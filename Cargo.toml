@@ -1,0 +1,16 @@
+[package]
+name = "casper-node"
+version = "0.1.0"
+authors = ["Marc Brinkmann <marc@casperlabs.io>",
+           "Fraser Hutchison <fraser@casperlabs.io>"]
+edition = "2018"
+description = "The CasperLabs blockchain node server"
+publish = false  # Prevent accidental `cargo publish` for now.
+license-file = "LICENSE"
+
+[dependencies]
+anyhow = "1.0.28"
+serde = { version = "1.0.110", features = ["derive"] }
+structopt = "0.3.14"
+tokio = { version = "0.2.20", features = ["macros", "rt-threaded"] }
+toml = "0.5.6"

@@ -1,0 +1,433 @@
+CasperLabs Open Source License (COSL)
+
+Version 1.0 - February 22, 2019
+
+https://github.com/CasperLabs/CasperLabs/blob/master/LICENSE
+
+TERMS AND CONDITIONS FOR USE, REPRODUCTION AND DISTRIBUTION
+
+0.   Preamble
+
+     This license, the CasperLabs Open Source License v1.0 (COSLv1.0), is an
+     open source license that modifies the Apache 2.0 License ("Apache 2.0"; see
+     https://www.apache.org/licenses/LICENSE-2.0) to be free (libre) open source
+     software (FLOSS) compliant and to extend to the decentralized application
+     ecosystem.  FLOSS philosophy is incorporated in this COSLv1.0 not only by
+     adding copyleft provisions, but also by extending the concept of governance
+     by community as under a license by defining user classes and a license
+     directed process to identify community compliant versus proprietary
+     behavior.  This COSLv1.0 also explicitly enumerates participants in a
+     decentralized application ecosystem and activities that harm the community.
+
+1.   Definitions
+
+     This COSLv1.0 incorporates by reference, the definitions within section 1,
+     "Definitions," of the Apache 2.0 License.
+
+2.   Bifurcation of Subject Matter
+
+     This COSLv1.0 applies to a subject matter code base.  The subject matter
+     code base is composed of both object and source code embodiments ("Novel
+     Code") and legacy code subject to the Apache 2.0 License ("Legacy Code") as
+     defined in this section 2.
+
+     Fork Demarcation: The subject matter code of this COSLv1.0 may be
+     demarcated by a code share fork made on Midnight GMT, December 2, 2018
+     ("Fork Demarcation Time").
+
+     Subject Matter Code Base: The subject matter of this COSLv1.0 is composed
+     of all files in the GitHub share initially committed to
+     https://github.com/casperlabs or copies made on or after the Fork
+     Demarcation Time ("Subject Matter Code").  (See initial commit at:
+     https://github.com/CasperLabs/CasperLabs/commit/9c83ec3ecaa955dacfa3e42054d05098fc32bfc7).
+
+     Novel Code Base: The scope of Novel Code is all additions or modifications
+     to the Subject Matter Code made on the Fork Demarcation Time or afterwards.
+
+     Legacy Code Base: The scope of the Legacy Code is all code included in the
+     Subject Matter Code share added or created before the Fork Demarcation
+     Time.
+
+3.   Express Invocation of Sections 4 and 9 of the Apache 2.0 License
+
+     In some cases, the Novel Code may be used, reproduced and/or distributed
+     without the Legacy Code.  However, where the Legacy Code is used,
+     reproduced and/or distributed with the Novel Code, this COSLv1.0, which
+     applies to the Novel Code, is not to be construed to relicense, modify, or
+     otherwise disturb the Apache 2.0 License of the Legacy Code.  This license,
+     the COSLv1.0, is an extension of the Apache 2.0 License under its section 4
+     which provides for "additional or different license terms and conditions
+     for use, reproduction, or distribution."  Furthermore, per the Apache 2.0
+     License under its section 9, a distributor of the Subject Matter Code may
+     solely accept "warrantee or additional liability" of the distributed
+     Subject Matter Code.
+
+4.   Express Disclaimer of Contributions Under the Apache 2.0 License
+
+     Notwithstanding the terms of the Apache License 2.0 regarding
+     contributions, unless explicitly stated otherwise, all additions or
+     modifications to the Subject Matter Code are contributions under this
+     COSLv1.0.  In the case of bug fix code changes or integration specific code
+     changes to the Legacy Code that are propagated to the pre-Fork Demarcation
+     date open source project share, those code changes are to be subject to the
+     Apache 2.0 License.
+
+5.   Contributions are Under COSLv1.0 and are Subject to Relicense
+
+     All contributions to Novel Code will be under this COSLv1.0 and are subject
+     to the contributor executing a relicensing consent ("Relicensing Consent")
+     which provides that contributor's agreement to allow their contributions to
+     be subject to updates to this COSLv1.0 or relicensing in the future,
+     provided that the updated COSLv1.0 or new license is an open source license
+     and is consistent with the present COSLv1.0 license including the copyleft
+     provisions in section 9.
+
+6.   Decentralized Ecosystem Parties
+
+     The COSLv1.0 is a license intended to benefit the open source community in
+     the context of the distributed and decentralized platform and decentralized
+     applications ("Decentralized Applications" or "DApps") based on a
+     distributed ledger built from the Subject Matter Code.  Licensees of the
+     Subject Matter Code under this COSLv1.0 include the following parties:
+
+     Node Operators: A node operator ("Node Operator") is a party that
+     contributes compute processing for a decentralized platform with a
+     computing node where at least a portion of a distributed ledger resides on
+     the node.  Node Operators include distributed ledger validators including
+     miners for Proof of Work decentralized platforms and validators for Proof
+     of Stake decentralized platforms.
+
+     Decentralized Application Developers: A decentralized application developer
+     ("Decentralized Application Developer" or "DApp Developer") is a party that
+     creates or modifies a DApp.  Where a DApp Developer is developing a DApp in
+     the scope of work for a company or is otherwise contractually bound to
+     develop a DApp for a company, that company is also a DApp Developer.
+
+     Decentralized Application Distributor: A decentralized application
+     distributor ("Decentralized Application Distributor" or "DApp Distributor")
+     is a party that distributes a DApp either freely or for compensation.
+
+     Decentralized Application Users: A decentralized application user
+     ("Decentralized Application User" or "DApp User") is a party who is an end
+     user of a DApp.  Where an end user uses a DApp in the scope of work for a
+     company or is otherwise contractually bound to a company to use a DApp, the
+     company is also a DApp User.
+
+     Decentralized Platform Developers: A decentralized platform developer
+     ("Decentralized Platform Developer") is a party that contributes code to
+     software that enables the decentralized maintenance of a distributed
+     ledger, development tools to develop DApps on that distributed ledger, or
+     tools to administer a distributed ledger or applications built on the
+     distributed ledger.
+
+     Token Issuers: A token issuer ("Token Issuer") is a party, including a
+     party other than the COSLv1.0 Licensor, that releases and manages quanta of
+     value as managed by the distributed ledger ("tokens") to be used to
+     transfer value between parties.  Tokens may be used to measure work effort,
+     such as amount of compute power estimated to be used to validate
+     transactions on a distributed ledger. Where the tokens are hashed by the
+     distributed ledger and are in a format suitable for use as a currency,
+     those tokens may be referred to as a "cryptocurrency."
+
+     Token Holders: A token holder ("Token Holder") is a party the retains
+     tokens either for holding, or for use as currency or in distributed
+     ledger-based transactions.
+
+     Decentralized Network Users: A decentralized network user ("Decentralized
+     Network User") is a general term for any party that avails itself to a
+     distributed ledger, or any application, tool, or token using the
+     distributed ledger, or any application, tool, or token that administers,
+     maintains, or develops any application, tool, or token using the
+     distributed ledger.
+
+     All the above parties defined in this section 6(a)-(h), in their context as
+     users of the Subject Matter Code and Licensees under this COSLv1.0 and any
+     other parties who access the Subject Matter Code are collectively known as
+     "Decentralized Ecosystem Parties".
+
+7.   User Classes
+
+     The COSLv1.0 Licensor and the Decentralized Ecosystem Parties as set forth
+     in section 6 of this COSLv1.0 solely comprise the members of a community
+     ("Community") around the Subject Matter Code.  The COSLv1.0 Licensor is the
+     granting party of rights to the Subject Matter Code and the Decentralized
+     Ecosystem Parties are the receiving party of rights to the Subject Matter
+     Code.  The Decentralized Ecosystem Parties all belong to one and only one
+     of the following two user classes ("User Classes"):
+
+     Proprietary User Class: The Proprietary User Class ("Proprietary User
+     Class") is a Decentralized Ecosystem Party that performs, or permits to
+     occur, any of the following acts or uses:
+
+     Co-opting the Development of the Decentralized Platform from the Community:
+     This form of use occurs when only one party, or a set of parties either via
+     explicit contract or via participation, substantially interferes, limits or
+     prevents other parties from materially participating in the decentralized
+     platform, in roles defined by a protocol of the decentralized platform,
+     and/or in roles that are required for the use and support of a protocol of
+     the decentralized platform.  Examples of defined and/or required roles
+     include end users and their client software to participate in a centralized
+     platform, node operators both for validation and for forming consensus,
+     decentralized application developers, decentralized platform developers,
+     and other parties set forth in section 6 of this COSLv1.0.
+
+     Such co-opting may include closed forks where the Subject Matter Code is
+     forked either in full or in part, and where the other parties are
+     substantively limited from materially participating in the development or
+     use of the decentralized platform, including in roles set forth in section
+     7(a)(i) above. This may also include forks where a party is to create a
+     cryptocurrency, native token or other quanta of value from operations of
+     the forked decentralized platform without remuneration to the Community as
+     set forth in section 11 of this COSLv1.0.
+
+     Co-opting the Operation or Use of the Decentralized Platform: This form of
+     use occurs when a party, or a set of parties either via explicit contract
+     or via participation, substantially interferes, limits or prevents other
+     parties from materially operating nodes, using the decentralized platform,
+     or deploying and using DApps.
+
+     Interfering with the Economic Operation of the Decentralized Platform: This
+     form of use occurs when a party or parties seek to operate nodes, develop
+     DApps, or run DApps to drive or to result in changes in the price of an
+     underlying cryptocurrency of a distributed ledger, resulting in
+     interference of the economic operation of the distributed ledger.
+
+     Open Source User Class: The Open Source User Class ("Open Source User
+     Class") is any Decentralized Ecosystem Party that is not in a Proprietary
+     User Class.
+
+8.   Governance and Conversion
+
+     Governance under the COSLv1.0 is performed by COSLv1.0 Licensor in close
+     cooperation with the Community as set forth in this COSLv1.0.  The
+     Community includes any Decentralized Ecosystem Party as set forth in
+     section 6 of this COSLv1.0.  Specifically, the COSLv1.0 Licensor will
+     designate a public, transparent online forum ("Community Forum") associated
+     with the Subject Matter Code and will designate one or more moderators
+     ("Community Forum Moderators") to monitor and moderate the Community Forum.
+     The Community Forum to receives requests and notifications from the
+     Community, including proposed feature additions, proposed code changes,
+     additions or deletions, and Community member status and user class.  The
+     Community Forum may host online discussions about topics broadly related to
+     the Subject Matter Code.  While acceptance or rejection of requests and
+     notifications are at the sole discretion of the COSLv1.0 Licensor,
+     acceptance will not be unreasonably withheld.  Moderation policy of the
+     Community Forum is at the sole discretion of the COSLv1.0 Licensor.
+
+     Rights to the Subject Matter Code, including intellectual property rights
+     under this COSLv1.0 are subject to membership of the Open Source User
+     Class.  Where a party of the Open Source User Class performs an act or use
+     as set forth in section 7(a) of this COSLv1.0, that party converts to the
+     Proprietary User Class ("Conversion").  Where a party contemplates
+     performing an act that might be construed as proprietary, that party may
+     demonstrate good faith by providing a sixty (60) calendar day advance
+     notice to the COSLv1.0 Licensor and the Community, by sending a notice via
+     the Community Forum describing the proposed activity, how that activity
+     benefits the Community, and how that activity may not benefit the
+     Community.  If the COSLv1.0 Licensor accepts the activity in consultation
+     with the Community, that activity will not trigger Conversion.
+
+     Where a party is a member of the Proprietary User Class, that party may
+     seek to be re-characterized as a member of the Open Source User Class by
+     providing a notice via the Community Forum to the COSLv1.0 Licensor and the
+     Community.  The notice is to specify the activities that party is ceasing
+     and/or activities to remediate prior acts that triggered Conversion.  If
+     the COSLv1.0 Licensor in consultation with the Community accepts the
+     recharacterization, then that party will become a member of the Open Source
+     User Class.
+
+     The COSLv1.0 Licensor may opt to extend consideration of a
+     recharacterization by increments of sixty (60) calendar days at a
+     time. Neither the failure nor delay on the part of the COSLv1.0 Licensor to
+     respond to or act upon any requests and notifications from the member
+     parties of the Community under this section 8 shall operate as a waiver
+     thereof unless made in writing and signed by the COSLv1.0 Licensor.
+
+9.   Intellectual Property Rights
+
+     Subject to the terms and conditions of this COSLv1.0, each contributor
+     grants to all parties who are in the Open Source User Class a copyright
+     license under the terms of section 2 of the Apache 2.0 License.  Absent a
+     separate agreement to the contrary, members of the Proprietary User Class,
+     do not have a copyright license.  Where a member of the Proprietary User
+     Class converted from the Open Source User Class, that member retains no
+     prior copyright license.  Where a party performs an act that triggers a
+     Conversion of the party to the Proprietary User Class, the copyright
+     license is revoked.  A party whose copyright license is revoked exposes
+     that party to damages and other remedies for copyright infringement
+     including statutory damages and injunctive relief.  For purposes of
+     injunctive relieve, the Licensee stipulates the availability of equitable
+     damages.
+
+     Subject to the terms and conditions of this COSLv1.0, each contributor
+     grants to all parties who are in the Open Source User Class a patent
+     license under the terms of section 2 of the Apache 2.0 License.  Absent a
+     separate agreement to the contrary, members of the Proprietary User Class,
+     do not have a patent license.  Where a member of the Proprietary User Class
+     converted from the Open Source User Class, that member retains no prior
+     patent license.  Acceptance of this COSLv1.0 includes a stipulation of
+     knowledge that some portions of the Subject Matter code are subject to
+     patent coverage.  Where a party performs an act that triggers a Conversion
+     of the party to the Proprietary User Class, the patent license is revoked.
+     A party whose patent license is revoked exposes that party to damages and
+     other remedies for patent infringement including enhanced damages and
+     injunctive relief.  For purposes of injunctive relieve, the Licensee
+     stipulates the availability of equitable damages.
+
+     Subject to the terms and conditions of this COSLv1.0, the COSLv1.0 Licensor
+     grants to all parties who are in the Open Source User Class a perpetual,
+     irrevocable (except as provided in this COSLv1.0), non-transferrable,
+     sublicensable, royalty-free, fully paid, worldwide and non-exclusive right
+     and licensee to use any marks to name distributions of the Subject Matter
+     Code (under any operative nominative fair use law). Absent a separate
+     agreement to the contrary, members of the Proprietary User Class, do not
+     have trademark rights or trademark license.  Where a member of the
+     Proprietary User Class converted from the Open Source User Class, that
+     member retains no prior trademark right or trademark license.  No other
+     mark license is provided, including for marks relating to company name,
+     trade name, or other marks COSLv1.0 Licensor reserves the right to police
+     the quality and use of the licensed marks and to revoke license of those
+     marks at its sole discretion where those distributions of Subject Matter
+     Code are not compliant with this COSLv1.0 or FLOSS principles.  License of
+     those marks shall not be unreasonably withheld.  A party whose trademark
+     license is revoked exposes that party to damages and other remedies for
+     trademark infringement, unfair trade practices and injunctive relief.  For
+     purposes of injunctive relieve, the Licensee stipulates the availability of
+     equitable damages.
+
+10.  Copyleft
+
+     Any recipient of any copy, fork, distribution or conveyance of the Novel
+     Code, in full or in part, receives a license from the original licensors to
+     run, modify and propagate the Novel Code, modified or unaltered, subject to
+     this COSLv1.0.  Any copy, fork, distribution or conveyance is to be subject
+     to the COSLv1.0.  Additional conditions, including payment and/or
+     compensation terms, representations and warrantees, may be added beyond
+     COSLv1.0 license terms provided they are consistent with COSLv1.0 and free
+     (libre) and open source principles, and do not prejudice the COSLv1.0
+     Licensor's use of Novel code.  Contributors to the Novel Code are to be
+     fully indemnified by any party creating additional conditions.
+
+11.  Forks
+
+     Community friendly copies of all or part of the Subject Matter Code for
+     separate development from the original Subject Matter Code tree ("Forks")
+     are supported by this COSLv1.0, under the following conditions:
+
+     Propagation of COSLv1.0 Licensing Principles: Code in a Fork is to be
+     subject to and controlled by this COSLv1.0 or under a FLOSS compliant
+     relicensing under the terms of this COSLv1.0.  Failure to do so constitutes
+     an act co-opting the development of the decentralized platform from the
+     Community, thereby triggering a Conversion of the forking party to a
+     Proprietary User Class subject to penalties set forth in this COSLv1.0
+     including but limited to section 9.
+
+     For-Profit Fork Airdrop: Where code in a Fork is to be used to deploy a new
+     independent blockchain with a cryptocurrency, native token or other native
+     quantum of value that party is to notify the COSLv1.0 Licensor with an
+     offer to compensate development efforts of the Community with an Airdrop of
+     cryptocurrency supported by a distributed ledger deployment from the Fork.
+     The COSLv1.0 Licensor in consultation with the Community, has sixty (60)
+     calendar days to accept or reject the offer.
+
+     Backpropagation of Changes: The COSLv1.0 Licensor in consultation with the
+     Community may select features and code from the Fork code for addition to
+     the Subject Matter Code at any time without penalty, fee, or other
+     remuneration.
+
+12.  Attribution and Marking
+
+     Reproduction and distribution of the Subject Matter Code, in full or in
+     part, original or modified, ("Subject Matter Code Distribution") is subject
+     to the following conditions:
+
+     Licensee shall provide all recipients of the Subject Matter Code
+     Distribution, a copy of this COSLv1.0;
+
+     Licensee shall cause any files modified from the Subject Matter Code
+     distributed in the Subject Matter Code Distribution to carry prominent
+     notices stating that Licensee has changed the files;
+
+     Licensee shall retain, in the Source form of any Subject Matter Code
+     Distribution that the Licensee distributes, all pertinent copyright,
+     patent, trademark, and attribution notices from the Source form Subject
+     Matter Code; and
+
+     If the Subject Matter Code includes a "NOTICE" text file as part of its
+     distribution, then any Subject Matter Code Distribution, that the Licensee
+     distributes must include a readable copy of the pertinent portions of the
+     attribution notices contained within such NOTICE file, in at least one of
+     the following places:
+
+     within a NOTICE text file in the distribution; within the Source form or
+     documentation, if provided along with the Subject Matter Code Distribution;
+
+     within a display generated by the Subject Matter Code Distribution, if and
+     wherever such third-party notices normally appear.
+
+     The contents of the NOTICE file are for informational purposes only and do
+     not modify the CasperLabs Open Source License, Version 1.0 (COSLv1.0).
+     Licensee of the Subject Matter Code may add their own attribution notices
+     within the Subject Matter Code Distribution, alongside or as an addendum to
+     the NOTICE text from the Subject Matter Code, provided that such additional
+     attribution notices cannot be construed as modifying the COSLv1.0.
+
+     Copyright under the COSLv1.0 is to be as follows:
+
+     Copyright [yyyy] [name of copyright owner (Subject Matter Code)]
+
+     Licensed under the CasperLabs Open Source License, Version 1.0 (COSLv1.0);
+     you may not use this file except in compliance with this COSLv1.0. You may
+     obtain a copy of this COSLv1.0 at
+
+     https://github.com/CasperLabs/CasperLabs/blob/master/LICENSE
+
+     Unless required by applicable law or agreed to in writing, software
+     distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+     WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+     COSLv1.0 for the specific language governing permissions and limitations
+     under the COSLv1.0.
+
+     Where Legacy Code is to be distributed, copyright under the Apache 2.0
+     License is to be as follows:
+
+     Copyright [yyyy] [name of copyright owner (Legacy Code)]
+
+     Licensed under the Apache License, Version 2.0 ("License"); you may not use
+     this file except in compliance with the License. You may obtain a copy of
+     the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+     Unless required by applicable law or agreed to in writing, software
+     distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+     WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+     License for the specific language governing permissions and limitations
+     under the License.
+
+13.  Disclaimer of Warranty
+
+     Unless required by applicable law or agreed to in writing, COSLv1.0
+     Licensor provides the Subject Matter Code and materials provided with the
+     Subject Matter Code (and each Contributor provides its Contributions) on an
+     "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+     or implied, including, without limitation, any warranties or conditions of
+     TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR
+     PURPOSE. You are solely responsible for determining the appropriateness of
+     using or redistributing the same and assume any risks associated with your
+     exercise of permissions under this COSLv1.0.
+
+14.  Miscellaneous
+
+     The following miscellaneous terms apply to this COSLv1.0:
+
+     Clickwrap: The terms of this COSLv1.0 may be accepted via clickwrap or
+     other analogous means.
+
+     Choice of Law: For purposes of conflicts of law, for contract
+     interpretation of this COSLv1.0, New York state law is to be used, and for
+     intellectual property law, of this COSLv1.0, United States Federal law is
+     to be used.
+
+     Venue: State venue is to be New York County, New York.  Federal venue is to
+     be U.S. District Court, Southern District of New York.
