@@ -1,3 +1,5 @@
+//! Zero, one or many item collection.
+
 use std::{iter, vec};
 
 /// A type that contains zero, one or multiple instances of a value.

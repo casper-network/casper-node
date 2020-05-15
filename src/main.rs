@@ -5,7 +5,7 @@
 //!
 //! ## Application structure
 //!
-//! While the `main` function is the central entrypoint for the node application, its core event
+//! While the [`main`](fn.main.html) function is the central entrypoint for the node application, its core event
 //! loop is found inside the reactor. To get a tour of the sourcecode, be sure to run
 //! `cargo doc --open`.
 
@@ -16,7 +16,7 @@ mod util;
 
 use structopt::StructOpt;
 
-/// Parse command-line arguments and run application.
+/// Parse [command-line arguments](cli/index.html) and run application.
 #[tokio::main]
 pub async fn main() -> anyhow::Result<()> {
     // Parse CLI args and run selected subcommand.

@@ -1,9 +1,10 @@
 //! Effects subsystem.
 //!
-//! Effects describe things that the creator of the effect intends to happen
-//! and produce a value upon completion. They are, in fact, futures.
+//! Effects describe things that the creator of the effect intends to happen,
+//! producing a value upon completion. They are, in fact, futures.
 //!
-//! A boxed future returning an event is typed as an `Effect<Ev>`, where `Ev` is the event's type.
+//! A boxed, pinned future returning an event is called an effect and typed as an `Effect<Ev>`,
+//! where `Ev` is the event's type.
 //!
 //! ## Using effects
 //!
