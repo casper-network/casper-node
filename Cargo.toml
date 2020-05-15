@@ -10,6 +10,8 @@ license-file = "LICENSE"
 
 [dependencies]
 anyhow = "1.0.28"
+either = "1.5.3"
+futures = "0.3.5"
 serde = { version = "1.0.110", features = ["derive"] }
 structopt = "0.3.14"
 tokio = { version = "0.2.20", features = ["macros", "rt-threaded"] }
