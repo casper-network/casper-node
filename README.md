@@ -29,3 +29,5 @@ A good starting point is to build the documentation and read it in your browser:
 ```
 cargo doc --no-deps --open
 ```
+
+When generating a configuration file, it is usually helpful to set the log-level to `DEBUG` during development.
