@@ -74,11 +74,6 @@ use std::time;
 /// Effects are just boxed futures that produce one or more events.
 pub type Effect<T> = BoxFuture<'static, ZeroOneMany<T>>;
 
-/// Request responder.
-///
-/// Responders are closures used to deliver a value to a pending request.
-pub type Responder<T, Ev> = Box<dyn FnOnce(T) -> Effect<Ev> + Send>;
-
 /// Effect extension for futures.
 ///
 /// Used to convert futures into actual effects.
@@ -111,7 +106,7 @@ where
         F: FnOnce(Self::Output) -> U + 'static + Send,
         U: 'static,
     {
-        self.map(f).map(|value| ZeroOneMany::One(value)).boxed()
+        self.map(f).map(ZeroOneMany::One).boxed()
     }
 
     fn ignore<Ev>(self) -> Effect<Ev> {

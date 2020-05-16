@@ -40,7 +40,7 @@ impl Queue {
     ///
     /// The weight determines how many events are at most processed from a specific queue during
     /// each event processing round.
-    fn weight(&self) -> num::NonZeroUsize {
+    fn weight(self) -> num::NonZeroUsize {
         num::NonZeroUsize::new(match self {
             Queue::NetworkIncoming => 4,
             Queue::Network => 4,

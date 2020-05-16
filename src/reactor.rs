@@ -66,7 +66,7 @@ where
     ///
     /// Awaits until there is an event, then returns it.
     #[inline]
-    async fn next_event(&self) -> (Ev, Queue) {
+    async fn next_event(self) -> (Ev, Queue) {
         self.0.pop().await
     }
 
@@ -88,7 +88,7 @@ where
 
     /// Schedule an event in the given queue.
     #[inline]
-    pub async fn schedule(&self, event: Ev, queue_kind: Queue) {
+    pub async fn schedule(self, event: Ev, queue_kind: Queue) {
         self.0.push(event, queue_kind).await
     }
 }

@@ -41,23 +41,12 @@ impl<T> ZeroOneMany<T> {
             }
         }
     }
-
-    /// Map all value(s).
-    #[inline]
-    pub fn map<F, U>(self, f: F) -> ZeroOneMany<U>
-    where
-        F: Fn(T) -> U,
-    {
-        match self {
-            ZeroOneMany::Zero => ZeroOneMany::Zero,
-            ZeroOneMany::One(value) => ZeroOneMany::One(f(value)),
-            ZeroOneMany::Many(values) => ZeroOneMany::Many(values.into_iter().map(f).collect()),
-        }
-    }
 }
 
 impl<T> IntoIterator for ZeroOneMany<T> {
     type Item = T;
+
+    #[allow(clippy::type_complexity)]
     type IntoIter = either::Either<
         iter::Empty<Self::Item>,
         either::Either<iter::Once<Self::Item>, vec::IntoIter<Self::Item>>,
