@@ -5,3 +5,11 @@
 
 pub mod round_robin;
 pub mod zero_one_many;
+
+/// Leak a value.
+///
+/// Moves a value to the heap and then forgets about, leaving only a static reference behind.
+#[inline]
+pub fn leak<T>(value: T) -> &'static T {
+    Box::leak(Box::new(value))
+}

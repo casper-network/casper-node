@@ -5,7 +5,7 @@
 use std::{io, io::Write, path};
 use structopt::StructOpt;
 
-use crate::config;
+use crate::{config, reactor};
 
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
 #[derive(Debug, StructOpt)]
@@ -14,7 +14,10 @@ pub enum Cli {
     /// Generate a configuration file from defaults and dump it to stdout.
     GenerateConfig {},
     /// Run the validator node.
-    RunValidator {
+    ///
+    /// Loads the configuration values from the given configuration file or uses defaults if not
+    /// given, then launches the reactor.
+    Validator {
         #[structopt(short, long, env)]
         /// Path to configuration file.
         config: Option<path::PathBuf>,
@@ -28,8 +31,10 @@ impl Cli {
             Cli::GenerateConfig {} => {
                 let cfg_str = config::to_string(&Default::default())?;
                 io::stdout().write_all(cfg_str.as_bytes())?;
+
+                Ok(())
             }
-            Cli::RunValidator { config } => {
+            Cli::Validator { config } => {
                 // We load the specified config, if any, otherwise use defaults.
                 let cfg = config
                     .map(config::load_from_file)
@@ -37,9 +42,9 @@ impl Cli {
                     .unwrap_or_default();
 
                 cfg.log.setup_logging()?;
+
+                reactor::launch::<reactor::validator::Reactor>(cfg).await
             }
         }
-
-        Ok(())
     }
 }
