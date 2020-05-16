@@ -16,14 +16,38 @@ clone:
       git rev-parse HEAD
     image: "rust:latest"
 
+__buildenv: &buildenv
+  image: "rust:latest"
+
 kind: pipeline
 name: cargo
 
 steps:
+- name: cargo-fmt
+  <<: *buildenv
+  commands:
+  - rustup component add rustfmt
+  - cargo fmt -- --check
+
+- name: cargo-clippy
+  <<: *buildenv
+  environment:
+    RUSTFLAGS: '-D warnings'
+  commands:
+  - rustup component add clippy
+  - cargo clippy
+
+- name: cargo-check
+  <<: *buildenv
+  environment:
+    RUSTFLAGS: '-D warnings'
+  commands:
+  - cargo check
+
 - name: cargo-test
+  <<: *buildenv
   commands:
   - cargo test
-  image: "rust:latest"
 
 trigger:
   branch:
