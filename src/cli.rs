@@ -36,7 +36,7 @@ impl Cli {
                     .transpose()?
                     .unwrap_or_default();
 
-                println!("{:?}", cfg);
+                cfg.log.setup_logging()?;
             }
         }
 
