@@ -80,6 +80,7 @@ dependencies = [
  "enum-iterator",
  "futures",
  "serde",
+ "smallvec",
  "structopt",
  "tokio",
  "toml",

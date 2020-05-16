@@ -26,6 +26,7 @@ pub mod non_validator;
 mod queue_kind;
 pub mod validator;
 
+use crate::util::Multiple;
 use crate::{config, effect, util};
 use async_trait::async_trait;
 use std::{fmt, mem};
@@ -72,18 +73,20 @@ where
 
     /// Process an effect.
     ///
-    /// This function simply spawns another task that will take of the effect
-    /// processing.
+    /// Spawns tasks that will process the given effects.
     #[inline]
-    pub fn process_effect(self, effect: effect::Effect<Ev>) {
+    pub fn process_effects(self, effects: Multiple<effect::Effect<Ev>>) {
         let eq = self;
         // TODO: Properly carry around priorities.
         let queue = Default::default();
-        tokio::spawn(async move {
-            for event in effect.await {
-                eq.schedule(event, queue).await;
-            }
-        });
+
+        for effect in effects {
+            tokio::spawn(async move {
+                for event in effect.await {
+                    eq.schedule(event, queue).await;
+                }
+            });
+        }
     }
 
     /// Schedule an event in the given queue.
@@ -111,7 +114,7 @@ pub trait Reactor: Sized {
     /// This function is typically only called by the reactor itself to dispatch an event. It is
     /// safe to call regardless, but will cause the event to skip the queue and things like
     /// accounting.
-    fn dispatch_event(&mut self, event: Self::Event) -> effect::Effect<Self::Event>;
+    fn dispatch_event(&mut self, event: Self::Event) -> Multiple<effect::Effect<Self::Event>>;
 
     /// Create a new instance of the reactor.
     ///
@@ -122,7 +125,7 @@ pub trait Reactor: Sized {
     fn new(
         cfg: &config::Config,
         eq: EventQueueHandle<Self::Event>,
-    ) -> anyhow::Result<(Self, Vec<effect::Effect<Self::Event>>)>;
+    ) -> anyhow::Result<(Self, Multiple<effect::Effect<Self::Event>>)>;
 }
 
 /// Run a reactor.
@@ -153,9 +156,7 @@ pub async fn launch<R: Reactor>(cfg: config::Config) -> anyhow::Result<()> {
     let (mut reactor, initial_effects) = R::new(&cfg, eq)?;
 
     // Run all effects from component instantiation.
-    for effect in initial_effects {
-        eq.process_effect(effect);
-    }
+    eq.process_effects(initial_effects);
 
     info!("entering reactor main loop");
     loop {
@@ -163,7 +164,7 @@ pub async fn launch<R: Reactor>(cfg: config::Config) -> anyhow::Result<()> {
         debug!(?event, ?q, "event");
 
         // Dispatch the event, then execute the resulting effect.
-        let effect = reactor.dispatch_event(event);
-        eq.process_effect(effect);
+        let effects = reactor.dispatch_event(event);
+        eq.process_effects(effects);
     }
 }

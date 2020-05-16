@@ -1,6 +1,7 @@
 //! Reactor for validator nodes.
 //!
 //! Validator nodes join the validator only network upon startup.
+use crate::util::Multiple;
 use crate::{config, effect, reactor};
 
 /// Top-level event for the reactor.
@@ -17,14 +18,14 @@ impl reactor::Reactor for Reactor {
     fn new(
         _cfg: &config::Config,
         _eq: reactor::EventQueueHandle<Self::Event>,
-    ) -> anyhow::Result<(Self, Vec<effect::Effect<Self::Event>>)> {
+    ) -> anyhow::Result<(Self, Multiple<effect::Effect<Self::Event>>)> {
         // TODO: Instantiate components here.
-        let mut _effects = Vec::new();
+        let mut _effects = Multiple::new();
 
         Ok((Reactor, _effects))
     }
 
-    fn dispatch_event(&mut self, _event: Event) -> effect::Effect<Self::Event> {
+    fn dispatch_event(&mut self, _event: Event) -> Multiple<effect::Effect<Self::Event>> {
         todo!()
     }
 }

@@ -63,16 +63,17 @@
 //! the effects explicitly listed in this module through traits to create them. Post-processing on
 //! effects to turn them into events should also be kept brief.
 
-use crate::util::zero_one_many::ZeroOneMany;
+use crate::util::Multiple;
 use futures::future::BoxFuture;
 use futures::FutureExt;
+use smallvec::smallvec;
 use std::future::Future;
 use std::time;
 
 /// Effect type.
 ///
 /// Effects are just boxed futures that produce one or more events.
-pub type Effect<T> = BoxFuture<'static, ZeroOneMany<T>>;
+pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
 
 /// Effect extension for futures.
 ///
@@ -81,49 +82,30 @@ pub trait EffectExt: Future + Send {
     /// Finalize a future into an effect that returns an event.
     ///
     /// The passed in function `f` is used to translate the resulting value from an effect into
-    fn event<U, F>(self, f: F) -> Effect<U>
+    fn event<U, F>(self, f: F) -> Multiple<Effect<U>>
     where
         F: FnOnce(Self::Output) -> U + 'static + Send,
         U: 'static,
         Self: Sized;
 
     /// Finalize a future into an effect that runs but drops the result.
-    fn ignore<Ev>(self) -> Effect<Ev>;
-}
-
-/// Parallel execution combinator for finalized effects.
-pub trait EffectAlso: Future + Send {
-    /// Create new effect that runs multiple effects in parallel.
-    fn also(self, other: Self) -> Self;
+    fn ignore<Ev>(self) -> Multiple<Effect<Ev>>;
 }
 
 impl<T: ?Sized> EffectExt for T
 where
     T: Future + Send + 'static + Sized,
 {
-    fn event<U, F>(self, f: F) -> Effect<U>
+    fn event<U, F>(self, f: F) -> Multiple<Effect<U>>
     where
         F: FnOnce(Self::Output) -> U + 'static + Send,
         U: 'static,
     {
-        self.map(f).map(ZeroOneMany::One).boxed()
+        smallvec![self.map(f).map(|item| smallvec![item]).boxed()]
     }
 
-    fn ignore<Ev>(self) -> Effect<Ev> {
-        self.map(|_| ZeroOneMany::Zero).boxed()
-    }
-}
-
-impl<T> EffectAlso for Effect<T>
-where
-    T: Send + 'static,
-{
-    fn also(self, other: Self) -> Self {
-        async move {
-            let (a, b) = futures::join!(self, other);
-            a.combine_unordered(b)
-        }
-        .boxed()
+    fn ignore<Ev>(self) -> Multiple<Effect<Ev>> {
+        smallvec![self.map(|_| Multiple::new()).boxed()]
     }
 }
 
@@ -132,7 +114,7 @@ pub trait Core {
     /// Do not do anything.
     ///
     /// Immediately completes, can be used to trigger an event.
-    fn do_nothing(self) -> BoxFuture<'static, ()>;
+    fn immediately(self) -> BoxFuture<'static, ()>;
 
     /// Set a timeout.
     ///
