@@ -25,6 +25,5 @@ pub fn load_from_file<P: AsRef<path::Path>>(config_path: P) -> anyhow::Result<Co
 
 /// Create a TOML-formatted string from a given configuration.
 pub fn to_string(cfg: &Config) -> anyhow::Result<String> {
-    toml::to_string_pretty(cfg)
-        .with_context(|| format!("Failed to serialize default configuration"))
+    toml::to_string_pretty(cfg).with_context(|| "Failed to serialize default configuration")
 }
