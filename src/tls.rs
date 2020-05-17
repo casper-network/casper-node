@@ -23,11 +23,12 @@
 use anyhow::Context;
 use displaydoc::Display;
 use hex_fmt::HexFmt;
-use openssl::{asn1, bn, ec, error, hash, nid, pkey, sign, ssl, x509};
+use openssl::{asn1, bn, ec, error, hash, nid, pkey, sha, sign, ssl, x509};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_big_array::big_array;
 use std::convert::TryInto;
+use std::hash::Hash;
 use std::marker::PhantomData;
 use std::{cmp, fmt, path, str, time};
 use thiserror::Error;
@@ -43,31 +44,22 @@ const SIGNATURE_CURVE: nid::Nid = nid::Nid::SECP521R1;
 /// The chosen signature algorithm (**SHA512**).
 const SIGNATURE_DIGEST: nid::Nid = nid::Nid::SHA512;
 
-/// Return the `MessageDigest` in use.
-///
-/// Constructs an `openssl::hash::MessageDigest` instance using the constant cipher parameters.
-fn message_digest() -> hash::MessageDigest {
-    // This can only fail if we specify a `Nid` that does not exist, which cannot happen unless
-    // there is something wrong with `SIGNATURE_DIGEST`.
-    hash::MessageDigest::from_nid(SIGNATURE_DIGEST).expect("invalid nid in digest constant")
-}
-
 /// OpenSSL result type alias.
 ///
 /// Many functions rely solely on `openssl` functions and return this kind of result.
 pub type SslResult<T> = Result<T, error::ErrorStack>;
 
-/// Public key fingerprint
-///
-/// Contains a full fingerprint, thus may be quite large (64+ bytes).
+/// SHA512 hash.
 #[derive(Copy, Clone, Deserialize, Serialize)]
-pub struct Fingerprint(#[serde(with = "BigArray")] [u8; Fingerprint::SIZE]);
+pub struct Sha512(#[serde(with = "BigArray")] [u8; Sha512::SIZE]);
+
+/// Public key fingerprint
+#[derive(Copy, Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+pub struct Fingerprint(Sha512);
 
 /// Cryptographic signature.
-///
-/// Contains a full message signature, thus may be quite large (64+ bytes).
-#[derive(Copy, Clone, Deserialize, Serialize)]
-pub struct Signature(#[serde(with = "BigArray")] [u8; Signature::SIZE]);
+#[derive(Copy, Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+pub struct Signature(Sha512);
 
 /// TLS certificate.
 ///
@@ -79,32 +71,11 @@ pub struct TlsCert(#[serde(with = "x509_serde")] pub openssl::x509::X509);
 ///
 /// Combines a value `V` with a `Signature` and a signature scheme. The signature scheme involves
 /// serializing the value to bytes and signing the result.
-#[derive(Debug, Deserialize, Serialize)]
-struct Signed<V> {
+#[derive(Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+pub struct Signed<V> {
     data: Vec<u8>,
     signature: Signature,
     _phantom: PhantomData<V>,
-}
-
-impl Fingerprint {
-    /// The length of a fingerprint in bytes.
-    pub const SIZE: usize = 64;
-
-    /// Convert an OpenSSL digest into a signature.
-    fn from_openssl_digest(digest: &hash::DigestBytes) -> Self {
-        let digest_bytes = digest.as_ref();
-
-        debug_assert_eq!(
-            digest_bytes.len(),
-            Signature::SIZE,
-            "digest is not the right size - check constants in `tls.rs`"
-        );
-
-        let mut buf = [0; Self::SIZE];
-        buf.copy_from_slice(&digest_bytes[0..Self::SIZE]);
-
-        Fingerprint(buf)
-    }
 }
 
 impl<V> Signed<V>
@@ -126,6 +97,52 @@ where
     }
 }
 
+impl Sha512 {
+    /// Size of digest in bytes.
+    pub const SIZE: usize = 64;
+
+    /// OpenSSL NID.
+    const NID: nid::Nid = nid::Nid::SHA512;
+
+    /// Create a new Sha512 by hashing a slice.
+    pub fn new<B: AsRef<[u8]>>(data: B) -> Self {
+        let mut openssl_sha = sha::Sha512::new();
+        openssl_sha.update(data.as_ref());
+        Sha512(openssl_sha.finish())
+    }
+
+    /// Return bytestring of the hash, with length `Self::SIZE`.
+    pub fn bytes(&self) -> &[u8] {
+        let bs = &self.0[..];
+
+        debug_assert_eq!(bs.len(), Self::SIZE);
+        bs
+    }
+
+    /// Convert an OpenSSL digest into an `Sha512`.
+    fn from_openssl_digest(digest: &hash::DigestBytes) -> Self {
+        let digest_bytes = digest.as_ref();
+
+        debug_assert_eq!(
+            digest_bytes.len(),
+            Self::SIZE,
+            "digest is not the right size - check constants in `tls.rs`"
+        );
+
+        let mut buf = [0; Self::SIZE];
+        buf.copy_from_slice(&digest_bytes[0..Self::SIZE]);
+
+        Sha512(buf)
+    }
+
+    /// Return a new OpenSSL `MessageDigest` set to SHA-512.
+    fn create_message_digest() -> hash::MessageDigest {
+        // This can only fail if we specify a `Nid` that does not exist, which cannot happen unless
+        // there is something wrong with `Self::NID`.
+        hash::MessageDigest::from_nid(Self::NID).expect("Sha512::NID is invalid")
+    }
+}
+
 impl<V> Signed<V>
 where
     V: DeserializeOwned,
@@ -141,28 +158,21 @@ where
 }
 
 impl Signature {
-    /// The length of a signature in bytes.
-    pub const SIZE: usize = 64;
-
-    /// Return bytestring of signature, with length of `Signature::SIZE`.
-    pub fn bytes(&self) -> &[u8] {
-        let bs = &self.0[..];
-
-        debug_assert_eq!(bs.len(), Self::SIZE);
-        bs
-    }
-
     /// Sign a binary blob with the blessed ciphers and TLS parameters.
     pub fn create(private_key: &pkey::PKeyRef<pkey::Private>, data: &[u8]) -> SslResult<Self> {
         // TODO: This needs verification to ensure we're not doing stupid/textbook RSA-ish.
-        let mut signer = sign::Signer::new(message_digest(), private_key)?;
 
-        let mut sig_buf = [0; Signature::SIZE];
+        // Sha512 is hardcoded, so check we're creating the correct signature.
+        assert_eq!(Sha512::NID, SIGNATURE_DIGEST);
+
+        let mut signer = sign::Signer::new(Sha512::create_message_digest(), private_key)?;
+
+        let mut sig_buf = [0; Sha512::SIZE];
 
         let written = signer.sign_oneshot(&mut sig_buf[..], data)?;
-        assert_eq!(written, Signature::SIZE);
+        assert_eq!(written, Sha512::SIZE);
 
-        Ok(Signature(sig_buf))
+        Ok(Signature(Sha512(sig_buf)))
     }
 
     /// Verify that signature matches on a binary blob.
@@ -171,9 +181,11 @@ impl Signature {
         public_key: &pkey::PKeyRef<pkey::Public>,
         data: &[u8],
     ) -> SslResult<bool> {
-        let mut verifier = sign::Verifier::new(message_digest(), public_key)?;
+        assert_eq!(Sha512::NID, SIGNATURE_DIGEST);
 
-        verifier.verify_oneshot(self.bytes(), data)
+        let mut verifier = sign::Verifier::new(Sha512::create_message_digest(), public_key)?;
+
+        verifier.verify_oneshot(self.0.bytes(), data)
     }
 }
 
@@ -190,6 +202,18 @@ impl TlsCert {
         validate_cert(self.x509())
     }
 
+    /// Return the certificates fingerprint.
+    ///
+    /// In contrast to the `public_key_fingerprint`, this fingerprint also contains the certificate
+    /// information.
+    fn fingerprint(&self) -> Fingerprint {
+        let digest = &self
+            .0
+            .digest(hash::MessageDigest::from_nid(Sha512::NID).expect("SHA512 NID not found"))
+            .expect("TlsCert does not have fingerprint digest, this should not happen");
+        Fingerprint(Sha512::from_openssl_digest(digest))
+    }
+
     /// Extract the public key from the certificate.
     fn public_key(&self) -> pkey::PKey<pkey::Public> {
         // This can never fail, we validate the certificate on construction and deserialization.
@@ -198,11 +222,44 @@ impl TlsCert {
             .expect("public key extraction failed, how did we end up with an invalid cert?")
     }
 
+    /// Generate a fingerprint by hashing the public key.
+    fn public_key_fingerprint(&self) -> SslResult<Fingerprint> {
+        let mut big_num_context = bn::BigNumContext::new()?;
+
+        let buf = self.public_key().ec_key()?.public_key().to_bytes(
+            ec::EcGroup::from_curve_name(SIGNATURE_CURVE)?.as_ref(),
+            ec::PointConversionForm::COMPRESSED,
+            &mut big_num_context,
+        )?;
+
+        Ok(Fingerprint(Sha512::new(&buf)))
+    }
+
     /// Return OpenSSL X509 certificate.
     fn x509(&self) -> &x509::X509 {
         &self.0
     }
 }
+
+impl fmt::Debug for TlsCert {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "TlsCert({:?})", self.fingerprint())
+    }
+}
+
+impl Hash for TlsCert {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.fingerprint().hash(state);
+    }
+}
+
+impl PartialEq for TlsCert {
+    fn eq(&self, other: &Self) -> bool {
+        self.fingerprint() == other.fingerprint()
+    }
+}
+
+impl Eq for TlsCert {}
 
 /// Generate a self-signed (key, certificate) pair suitable for TLS and signing.
 ///
@@ -371,10 +428,11 @@ pub fn validate_cert(cert: &x509::X509Ref) -> Result<Fingerprint, ValidationErro
     }
 
     // We now have a valid certificate and can extract the fingerprint.
+    assert_eq!(Sha512::NID, SIGNATURE_DIGEST);
     let digest = &cert
-        .digest(message_digest())
+        .digest(Sha512::create_message_digest())
         .map_err(ValidationError::InvalidFingerprint)?;
-    Ok(Fingerprint::from_openssl_digest(digest))
+    Ok(Fingerprint(Sha512::from_openssl_digest(digest)))
 }
 
 /// Load a certificate from a file.
@@ -533,7 +591,8 @@ fn generate_cert(private_key: &pkey::PKey<pkey::Private>, cn: &str) -> SslResult
 
     // Set the public key and sign.
     builder.set_pubkey(private_key.as_ref())?;
-    builder.sign(private_key.as_ref(), message_digest())?;
+    assert_eq!(Sha512::NID, SIGNATURE_DIGEST);
+    builder.sign(private_key.as_ref(), Sha512::create_message_digest())?;
 
     let cert = builder.build();
 
@@ -583,50 +642,49 @@ mod x509_serde {
     }
 }
 
-// Below are trait implementations for signatures, which double as NodeIDs. Signature implements the
-// full set of traits that are required to stick into either a `HashMap` or `BTreeMap`.
-
-impl PartialEq for Signature {
+// Below are trait implementations for signatures and fingerprints. Both implement the full set of
+// traits that are required to stick into either a `HashMap` or `BTreeMap`.
+impl PartialEq for Sha512 {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.bytes() == other.bytes()
     }
 }
 
-impl Eq for Signature {}
+impl Eq for Sha512 {}
 
-impl Ord for Signature {
+impl Ord for Sha512 {
     #[inline]
     fn cmp(&self, other: &Self) -> cmp::Ordering {
         Ord::cmp(self.bytes(), other.bytes())
     }
 }
 
-impl PartialOrd for Signature {
+impl PartialOrd for Sha512 {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(Ord::cmp(self, other))
     }
 }
 
-impl fmt::Debug for Signature {
+impl fmt::Debug for Sha512 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", HexFmt(&self.0[..]))
     }
 }
 
-impl fmt::Display for Signature {
+impl fmt::Display for Sha512 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", HexFmt(&self.0[0..7]))
     }
 }
 
-// Since all `Signature`s are already hashes, we provide a very cheap hashing function that uses
+// Since all `Sha512`s are already hashes, we provide a very cheap hashing function that uses
 // bytes from the fingerprint as input, cutting the number of bytes to be hashed to 1/16th.
 
 // If this is ever a performance bottleneck, a custom hasher can be added that passes these bytes
 // through unchanged.
-impl std::hash::Hash for Signature {
+impl Hash for Sha512 {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         // Use the first eight bytes when hashing, giving 64 bits pure entropy.
