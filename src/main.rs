@@ -13,6 +13,7 @@ mod cli;
 mod config;
 mod effect;
 mod reactor;
+mod tls;
 mod util;
 
 use structopt::StructOpt;
