@@ -69,6 +69,12 @@ pub struct Fingerprint(#[serde(with = "BigArray")] [u8; Fingerprint::SIZE]);
 #[derive(Copy, Clone, Deserialize, Serialize)]
 pub struct Signature(#[serde(with = "BigArray")] [u8; Signature::SIZE]);
 
+/// TLS certificate.
+///
+/// Thin wrapper around `X509` enabling things like serde Serialization.
+#[derive(Deserialize, Serialize)]
+pub struct TlsCert(#[serde(with = "x509_serde")] pub openssl::x509::X509);
+
 /// A signed value.
 ///
 /// Combines a value `V` with a `Signature` and a signature scheme. The signature scheme involves
@@ -168,6 +174,33 @@ impl Signature {
         let mut verifier = sign::Verifier::new(message_digest(), public_key)?;
 
         verifier.verify_oneshot(self.bytes(), data)
+    }
+}
+
+impl TlsCert {
+    /// Wrap X509 certificate.
+    fn new(x509: x509::X509) -> Result<Self, ValidationError> {
+        validate_cert(&x509)?;
+        // Ensure the certificate can extract a valid public key.
+        Ok(TlsCert(x509))
+    }
+
+    /// Validate certificate, returning the fingerprint.
+    fn validate(&self) -> Result<Fingerprint, ValidationError> {
+        validate_cert(self.x509())
+    }
+
+    /// Extract the public key from the certificate.
+    fn public_key(&self) -> pkey::PKey<pkey::Public> {
+        // This can never fail, we validate the certificate on construction and deserialization.
+        self.0
+            .public_key()
+            .expect("public key extraction failed, how did we end up with an invalid cert?")
+    }
+
+    /// Return OpenSSL X509 certificate.
+    fn x509(&self) -> &x509::X509 {
+        &self.0
     }
 }
 
@@ -514,7 +547,10 @@ fn generate_cert(private_key: &pkey::PKey<pkey::Private>, cn: &str) -> SslResult
 }
 
 /// Serde support for `openssl::x509::X509` certificates.
+///
+/// Will also check if certificates are valid according to `validate_cert` when deserializing.
 mod x509_serde {
+    use super::validate_cert;
     use openssl::x509::X509;
     use serde;
     use std::str;
@@ -540,7 +576,10 @@ mod x509_serde {
         // Create an extra copy for simplicity here. If this becomes a bottleneck, feel free to try
         // to leverage Cow<str> here, or implement a custom visitor that handles both cases.
         let s: String = Deserialize::deserialize(deserializer)?;
-        X509::from_pem(s.as_bytes()).map_err(serde::de::Error::custom)
+        let x509 = X509::from_pem(s.as_bytes()).map_err(serde::de::Error::custom)?;
+
+        validate_cert(&x509).map_err(serde::de::Error::custom)?;
+        Ok(x509)
     }
 }
 
@@ -602,11 +641,7 @@ impl std::hash::Hash for Signature {
 
 #[cfg(test)]
 mod test {
-    use super::{generate_node_cert, mkname, name_to_string, x509_serde};
-    use serde::{Deserialize, Serialize};
-
-    #[derive(Deserialize, Serialize)]
-    pub struct TlsCert(#[serde(with = "x509_serde")] pub openssl::x509::X509);
+    use super::{generate_node_cert, mkname, name_to_string, TlsCert};
 
     #[test]
     fn simple_name_to_string() {
