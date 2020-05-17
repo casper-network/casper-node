@@ -47,45 +47,45 @@ pub type Scheduler<Ev> = util::round_robin::WeightedRoundRobin<Ev, Queue>;
 /// outside of the normal event loop. It gives different parts a chance to schedule messages that
 /// stem from things like external IO.
 ///
-/// Every event queue handle carries with it a reference to a wrapper function that allows a
-/// particular event to be wrapped again into a reactor event. Every component requiring access is
-/// passed its own instance of the queue handle.
+/// Every event queue handle allows scheduling events of type `Ev` onto a reactor `R`. For this it
+/// carries with it a reference to a wrapper function that maps an `Ev` to a `Reactor::Event`.
 #[derive(Debug)]
-pub struct EventQueueHandle<Ev: 'static, W> {
+pub struct EventQueueHandle<R, Ev>
+where
+    R: Reactor,
+{
     /// The scheduler events will be scheduled on.
-    scheduler: &'static Scheduler<Ev>,
+    scheduler: &'static Scheduler<<R as Reactor>::Event>,
     /// A wrapper function translating from component event (input of `W`) to reactor event `Ev`.
-    wrapper: W,
+    wrapper: fn(Ev) -> R::Event,
 }
 
-// Clone needs to be implemented manually, since `Ev` prevents derivation.
-impl<Ev, W> Clone for EventQueueHandle<Ev, W>
+// Implement `Clone` and `Copy` manually, as `derive` will make it depend on `R` and `Ev` otherwise.
+impl<R, Ev> Clone for EventQueueHandle<R, Ev>
 where
-    W: Clone,
+    R: Reactor,
 {
     fn clone(&self) -> Self {
         EventQueueHandle {
             scheduler: self.scheduler,
-            wrapper: self.wrapper.clone(),
+            wrapper: self.wrapper,
         }
     }
 }
+impl<R, Ev> Copy for EventQueueHandle<R, Ev> where R: Reactor {}
 
-impl<Ev, W> EventQueueHandle<Ev, W>
+impl<R, Ev> EventQueueHandle<R, Ev>
 where
-    Ev: Send + 'static,
+    R: Reactor,
 {
     /// Create a new event queue handle with an associated wrapper function.
-    fn bind(scheduler: &'static Scheduler<Ev>, wrapper: W) -> Self {
+    fn bind(scheduler: &'static Scheduler<R::Event>, wrapper: fn(Ev) -> R::Event) -> Self {
         EventQueueHandle { scheduler, wrapper }
     }
 
     /// Schedule an event on a specific queue.
     #[inline]
-    pub async fn schedule<SubEv>(self, event: SubEv, queue_kind: Queue)
-    where
-        W: Fn(SubEv) -> Ev + 'static,
-    {
+    pub async fn schedule(self, event: Ev, queue_kind: Queue) {
         self.scheduler.push((self.wrapper)(event), queue_kind).await
     }
 }
