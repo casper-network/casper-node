@@ -28,6 +28,7 @@ pub mod validator;
 use crate::util::Multiple;
 use crate::{config, effect, util};
 use async_trait::async_trait;
+use futures::FutureExt;
 use std::{fmt, mem};
 use tracing::{debug, info, warn};
 
@@ -183,4 +184,37 @@ async fn process_effects<Ev>(
             }
         });
     }
+}
+
+/// Convert a single effect into another by wrapping it.
+#[inline]
+pub fn wrap_effect<Ev, REv, F>(wrap: F, effect: effect::Effect<Ev>) -> effect::Effect<REv>
+where
+    F: Fn(Ev) -> REv + Send + 'static,
+    Ev: Send + 'static,
+    REv: Send + 'static,
+{
+    // TODO: The double-boxing here is very unfortunate =(.
+    (async move {
+        let events: Multiple<Ev> = effect.await;
+        events.into_iter().map(wrap).collect()
+    })
+    .boxed()
+}
+
+/// Convert multiple effects into another by wrapping.
+#[inline]
+pub fn wrap_effects<Ev, REv, F>(
+    wrap: F,
+    effects: Multiple<effect::Effect<Ev>>,
+) -> Multiple<effect::Effect<REv>>
+where
+    F: Fn(Ev) -> REv + Send + 'static + Clone,
+    Ev: Send + 'static,
+    REv: Send + 'static,
+{
+    effects
+        .into_iter()
+        .map(move |effect| wrap_effect(wrap.clone(), effect))
+        .collect()
 }
