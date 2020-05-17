@@ -17,16 +17,18 @@
 //! * creation and validation of self-signed certificates
 //!   ([`generate_node_cert`](fn.generate_node_cert.html)),
 //! * signing and verification of arbitrary values using keys from certificates
-//!   ([`Signature`](struct.Signature.html)), and
+//!   ([`Signature`](struct.Signature.html), [`Signed`](struct.Signed.html)), and
 //! * `serde` support for certificates ([`x509_serde`](x509_serde/index.html))
 
 use anyhow::Context;
 use displaydoc::Display;
 use hex_fmt::HexFmt;
 use openssl::{asn1, bn, ec, error, hash, nid, pkey, sign, ssl, x509};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_big_array::big_array;
 use std::convert::TryInto;
+use std::marker::PhantomData;
 use std::{cmp, fmt, path, str, time};
 use thiserror::Error;
 
@@ -39,7 +41,6 @@ const SIGNATURE_ALGORITHM: nid::Nid = nid::Nid::ECDSA_WITH_SHA512;
 const SIGNATURE_CURVE: nid::Nid = nid::Nid::SECP521R1;
 
 /// The chosen signature algorithm (**SHA512**).
-// Important: When changing `SIGNATURE_DIGEST`, `Signature::SIZE` must be updated!
 const SIGNATURE_DIGEST: nid::Nid = nid::Nid::SHA512;
 
 /// Return the `MessageDigest` in use.
@@ -56,11 +57,82 @@ fn message_digest() -> hash::MessageDigest {
 /// Many functions rely solely on `openssl` functions and return this kind of result.
 pub type SslResult<T> = Result<T, error::ErrorStack>;
 
-/// A signature.
+/// Public key fingerprint
+///
+/// Contains a full fingerprint, thus may be quite large (64+ bytes).
+#[derive(Copy, Clone, Deserialize, Serialize)]
+pub struct Fingerprint(#[serde(with = "BigArray")] [u8; Fingerprint::SIZE]);
+
+/// Cryptographic signature.
 ///
 /// Contains a full message signature, thus may be quite large (64+ bytes).
 #[derive(Copy, Clone, Deserialize, Serialize)]
 pub struct Signature(#[serde(with = "BigArray")] [u8; Signature::SIZE]);
+
+/// A signed value.
+///
+/// Combines a value `V` with a `Signature` and a signature scheme. The signature scheme involves
+/// serializing the value to bytes and signing the result.
+#[derive(Debug, Deserialize, Serialize)]
+struct Signed<V> {
+    data: Vec<u8>,
+    signature: Signature,
+    _phantom: PhantomData<V>,
+}
+
+impl Fingerprint {
+    /// The length of a fingerprint in bytes.
+    pub const SIZE: usize = 64;
+
+    /// Convert an OpenSSL digest into a signature.
+    fn from_openssl_digest(digest: &hash::DigestBytes) -> Self {
+        let digest_bytes = digest.as_ref();
+
+        debug_assert_eq!(
+            digest_bytes.len(),
+            Signature::SIZE,
+            "digest is not the right size - check constants in `tls.rs`"
+        );
+
+        let mut buf = [0; Self::SIZE];
+        buf.copy_from_slice(&digest_bytes[0..Self::SIZE]);
+
+        Fingerprint(buf)
+    }
+}
+
+impl<V> Signed<V>
+where
+    V: Serialize,
+{
+    /// Create new signed value.
+    ///
+    /// Serializes the value to a buffer and signs the buffer.
+    pub fn new(value: &V, signing_key: &pkey::PKeyRef<pkey::Private>) -> anyhow::Result<Self> {
+        let data = rmp_serde::to_vec(value)?;
+        let signature = Signature::create(signing_key, &data)?;
+
+        Ok(Signed {
+            data,
+            signature,
+            _phantom: PhantomData,
+        })
+    }
+}
+
+impl<V> Signed<V>
+where
+    V: DeserializeOwned,
+{
+    /// Validate signature and restore value.
+    pub fn validate(&self, public_key: &pkey::PKeyRef<pkey::Public>) -> anyhow::Result<V> {
+        if self.signature.verify(public_key, &self.data)? {
+            Ok(rmp_serde::from_read(self.data.as_slice())?)
+        } else {
+            Err(anyhow::anyhow!("invalid signature"))
+        }
+    }
+}
 
 impl Signature {
     /// The length of a signature in bytes.
@@ -96,22 +168,6 @@ impl Signature {
         let mut verifier = sign::Verifier::new(message_digest(), public_key)?;
 
         verifier.verify_oneshot(self.bytes(), data)
-    }
-
-    /// Convert an OpenSSL digest into a signature.
-    fn from_openssl_digest(digest: &hash::DigestBytes) -> Self {
-        let digest_bytes = digest.as_ref();
-
-        debug_assert_eq!(
-            digest_bytes.len(),
-            Signature::SIZE,
-            "digest is not the right size - check constants in `tls.rs`"
-        );
-
-        let mut buf = [0; Self::SIZE];
-        buf.copy_from_slice(&digest_bytes[0..Self::SIZE]);
-
-        Signature(buf)
     }
 }
 
@@ -216,7 +272,7 @@ pub enum ValidationError {
 /// Check that the cryptographic parameters on a certificate are correct and return the fingerprint.
 ///
 /// At the very least this ensures that no weaker ciphers have been used to forge a certificate.
-pub fn validate_cert(cert: &x509::X509Ref) -> Result<Signature, ValidationError> {
+pub fn validate_cert(cert: &x509::X509Ref) -> Result<Fingerprint, ValidationError> {
     if cert.signature_algorithm().object().nid() != SIGNATURE_ALGORITHM {
         // The signature algorithm is not of the exact kind we are using to generate our
         // certificates, an attacker could have used a weaker one to generate colliding keys.
@@ -285,7 +341,7 @@ pub fn validate_cert(cert: &x509::X509Ref) -> Result<Signature, ValidationError>
     let digest = &cert
         .digest(message_digest())
         .map_err(ValidationError::InvalidFingerprint)?;
-    Ok(Signature::from_openssl_digest(digest))
+    Ok(Fingerprint::from_openssl_digest(digest))
 }
 
 /// Load a certificate from a file.
