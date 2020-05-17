@@ -17,7 +17,7 @@ impl reactor::Reactor for Reactor {
 
     fn new(
         _cfg: &config::Config,
-        _eq: reactor::EventQueueHandle<Self::Event>,
+        _sched: &'static reactor::Scheduler<Self::Event>,
     ) -> anyhow::Result<(Self, Multiple<effect::Effect<Self::Event>>)> {
         // TODO: Instantiate components here.
         let mut _effects = Multiple::new();

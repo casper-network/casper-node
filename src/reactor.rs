@@ -2,14 +2,13 @@
 //!
 //! Any long running instance of the node application uses an event-dispatch pattern: Events are
 //! generated and stored on an event queue, then processed one-by-one. This process happens inside
-//! the *reactor*, which also exclusively holds the state of the application:
+//! the *reactor*, which also exclusively holds the state of the application besides pending events:
 //!
-//! 1. The reactor pops an event off of the queue.
+//! 1. The reactor pops an event off of the event queue (called a `Scheduler`).
 //! 2. The event is dispatched by the reactor. Since the reactor holds mutable state, it can grant
 //!    any component that processes an event mutable, exclusive access to its state.
 //! 3. Once the (synchronous) event processing has completed, the component returns an effect.
-//! 4. The reactor spawns a task that executes these effects and eventually puts an event onto the
-//!    event queue.
+//! 4. The reactor spawns a task that executes these effects and eventually schedules another event.
 //! 5. meanwhile go to 1.
 //!
 //! # Reactors
@@ -34,65 +33,60 @@ use tracing::{debug, info, warn};
 
 pub use queue_kind::Queue;
 
-/// Event queue handle
+/// Event scheduler
+///
+/// The scheduler is a combination of multiple event queues that are polled in a specific order. It
+/// is the central hook for any part of the program that schedules events directly.
+///
+/// Components rarely use this, but use a bound `EventQueueHandle` instead.
+pub type Scheduler<Ev> = util::round_robin::WeightedRoundRobin<Ev, Queue>;
+
+/// Bound event queue handle
 ///
 /// The event queue handle is how almost all parts of the application interact with the reactor
 /// outside of the normal event loop. It gives different parts a chance to schedule messages that
 /// stem from things like external IO.
 ///
-/// It is also possible to schedule new events by directly processing effects. This allows re-use of
-/// the existing code for handling particular effects, as adding events directly should be a matter
-/// of last resort.
+/// Every event queue handle carries with it a reference to a wrapper function that allows a
+/// particular event to be wrapped again into a reactor event. Every component requiring access is
+/// passed its own instance of the queue handle.
 #[derive(Debug)]
-pub struct EventQueueHandle<Ev: 'static>(&'static util::round_robin::WeightedRoundRobin<Ev, Queue>);
+pub struct EventQueueHandle<Ev: 'static, W> {
+    /// The scheduler events will be scheduled on.
+    scheduler: &'static Scheduler<Ev>,
+    /// A wrapper function translating from component event (input of `W`) to reactor event `Ev`.
+    wrapper: W,
+}
 
-// Copy and Clone need to be implemented manually, since `Ev` prevents derivation.
-impl<Ev> Copy for EventQueueHandle<Ev> {}
-impl<Ev> Clone for EventQueueHandle<Ev> {
+// Clone needs to be implemented manually, since `Ev` prevents derivation.
+impl<Ev, W> Clone for EventQueueHandle<Ev, W>
+where
+    W: Clone,
+{
     fn clone(&self) -> Self {
-        EventQueueHandle(self.0)
+        EventQueueHandle {
+            scheduler: self.scheduler,
+            wrapper: self.wrapper.clone(),
+        }
     }
 }
 
-impl<Ev> EventQueueHandle<Ev>
+impl<Ev, W> EventQueueHandle<Ev, W>
 where
     Ev: Send + 'static,
 {
-    /// Create a new event queue handle.
-    fn new(round_robin: &'static util::round_robin::WeightedRoundRobin<Ev, Queue>) -> Self {
-        EventQueueHandle(round_robin)
+    /// Create a new event queue handle with an associated wrapper function.
+    fn bind(scheduler: &'static Scheduler<Ev>, wrapper: W) -> Self {
+        EventQueueHandle { scheduler, wrapper }
     }
 
-    /// Return the next event in the queue
-    ///
-    /// Awaits until there is an event, then returns it.
+    /// Schedule an event on a specific queue.
     #[inline]
-    async fn next_event(self) -> (Ev, Queue) {
-        self.0.pop().await
-    }
-
-    /// Process an effect.
-    ///
-    /// Spawns tasks that will process the given effects.
-    #[inline]
-    pub fn process_effects(self, effects: Multiple<effect::Effect<Ev>>) {
-        let eq = self;
-        // TODO: Properly carry around priorities.
-        let queue = Default::default();
-
-        for effect in effects {
-            tokio::spawn(async move {
-                for event in effect.await {
-                    eq.schedule(event, queue).await;
-                }
-            });
-        }
-    }
-
-    /// Schedule an event in the given queue.
-    #[inline]
-    pub async fn schedule(self, event: Ev, queue_kind: Queue) {
-        self.0.push(event, queue_kind).await
+    pub async fn schedule<SubEv>(self, event: SubEv, queue_kind: Queue)
+    where
+        W: Fn(SubEv) -> Ev + 'static,
+    {
+        self.scheduler.push((self.wrapper)(event), queue_kind).await
     }
 }
 
@@ -124,7 +118,7 @@ pub trait Reactor: Sized {
     /// If any instantiation fails, an error is returned.
     fn new(
         cfg: &config::Config,
-        eq: EventQueueHandle<Self::Event>,
+        scheduler: &'static Scheduler<Self::Event>,
     ) -> anyhow::Result<(Self, Multiple<effect::Effect<Self::Event>>)>;
 }
 
@@ -148,23 +142,45 @@ pub async fn launch<R: Reactor>(cfg: config::Config) -> anyhow::Result<()> {
         );
     }
 
-    let scheduler = util::round_robin::WeightedRoundRobin::<R::Event, Queue>::new(Queue::weights());
+    let scheduler = Scheduler::<R::Event>::new(Queue::weights());
 
     // Create a new event queue for this reactor run.
-    let eq = EventQueueHandle::new(util::leak(scheduler));
+    let scheduler = util::leak(scheduler);
 
-    let (mut reactor, initial_effects) = R::new(&cfg, eq)?;
+    let (mut reactor, initial_effects) = R::new(&cfg, scheduler)?;
 
     // Run all effects from component instantiation.
-    eq.process_effects(initial_effects);
+    process_effects(scheduler, initial_effects).await;
 
     info!("entering reactor main loop");
     loop {
-        let (event, q) = eq.next_event().await;
+        let (event, q) = scheduler.pop().await;
         debug!(?event, ?q, "event");
 
         // Dispatch the event, then execute the resulting effect.
         let effects = reactor.dispatch_event(event);
-        eq.process_effects(effects);
+        process_effects(scheduler, effects).await;
+    }
+}
+
+/// Process effects.
+///
+/// Spawns tasks that will process the given effects.
+#[inline]
+async fn process_effects<Ev>(
+    scheduler: &'static Scheduler<Ev>,
+    effects: Multiple<effect::Effect<Ev>>,
+) where
+    Ev: Send + 'static,
+{
+    // TODO: Properly carry around priorities.
+    let queue = Queue::default();
+
+    for effect in effects {
+        tokio::spawn(async move {
+            for event in effect.await {
+                scheduler.push(event, queue).await
+            }
+        });
     }
 }
