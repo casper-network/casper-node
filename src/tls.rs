@@ -10,9 +10,12 @@
 //!   ([`SIGNATURE_ALGORITHM`](constant.SIGNATURE_ALGORITHM.html),
 //!   [`SIGNATURE_CURVE`](constant.SIGNATURE_CURVE.html),
 //!   [`SIGNATURE_DIGEST`](constant.SIGNATURE_DIGEST.html)),
-//! * construction of TLS acceptors for listening TCP sockets,
-//! * construction of TLS connectors for outgoing TCP connections,
-//! * creation and validation of self-signed certificates,
+//! * construction of TLS acceptors for listening TCP sockets
+//!   ([`create_tls_acceptor`](fn.create_tls_acceptor.html)),
+//! * construction of TLS connectors for outgoing TCP connections
+//!   ([`create_tls_connector`](fn.create_tls_connector.html)),
+//! * creation and validation of self-signed certificates
+//!   ([`generate_node_cert`](fn.generate_node_cert.html)),
 //! * signing and verification of arbitrary values using keys from certificates
 //!   ([`Signature`](struct.Signature.html)), and
 //! * `serde` support for certificates ([`x509_serde`](x509_serde/index.html))
@@ -38,6 +41,15 @@ const SIGNATURE_CURVE: nid::Nid = nid::Nid::SECP521R1;
 /// The chosen signature algorithm (**SHA512**).
 // Important: When changing `SIGNATURE_DIGEST`, `Signature::SIZE` must be updated!
 const SIGNATURE_DIGEST: nid::Nid = nid::Nid::SHA512;
+
+/// Return the `MessageDigest` in use.
+///
+/// Constructs an `openssl::hash::MessageDigest` instance using the constant cipher parameters.
+fn message_digest() -> hash::MessageDigest {
+    // This can only fail if we specify a `Nid` that does not exist, which cannot happen unless
+    // there is something wrong with `SIGNATURE_DIGEST`.
+    hash::MessageDigest::from_nid(SIGNATURE_DIGEST).expect("invalid nid in digest constant")
+}
 
 /// OpenSSL result type alias.
 ///
@@ -85,42 +97,40 @@ impl Signature {
 
         verifier.verify_oneshot(self.bytes(), data)
     }
+
+    /// Convert an OpenSSL digest into a signature.
+    fn from_openssl_digest(digest: &hash::DigestBytes) -> Self {
+        let digest_bytes = digest.as_ref();
+
+        debug_assert_eq!(
+            digest_bytes.len(),
+            Signature::SIZE,
+            "digest is not the right size - check constants in `tls.rs`"
+        );
+
+        let mut buf = [0; Self::SIZE];
+        buf.copy_from_slice(&digest_bytes[0..Self::SIZE]);
+
+        Signature(buf)
+    }
 }
 
-/// Return the `MessageDigest` in use.
+/// Generate a self-signed (key, certificate) pair suitable for TLS and signing.
 ///
-/// Constructs an `openssl::hash::MessageDigest` instance using the constant cipher parameters.
-fn message_digest() -> hash::MessageDigest {
-    // This can only fail if we specify a `Nid` that does not exist, which
-    // cannot happen unless there is something wrong with `SIGNATURE_DIGEST`.
-    hash::MessageDigest::from_nid(SIGNATURE_DIGEST).expect("invalid nid in digest constant")
-}
-
-/// Convert an OpenSSL digest into a signature.
-fn digest_to_signature(digest: &hash::DigestBytes) -> Signature {
-    let digest_bytes = digest.as_ref();
-
-    assert_eq!(
-        digest_bytes.len(),
-        Signature::SIZE,
-        "digest is not the right size - check constants in `tls.rs`"
-    );
-
-    let mut buf = [0; Signature::SIZE];
-    buf.copy_from_slice(&digest_bytes[0..Signature::SIZE]);
-
-    Signature(buf)
-}
-
-/// Generate a self-signed (key, certificate) pair suitable for TLS node use.
+/// The common name of the certificate will be "casper-node".
 pub fn generate_node_cert() -> SslResult<(x509::X509, pkey::PKey<pkey::Private>)> {
     let private_key = generate_private_key()?;
-    let cert = generate_cert(&private_key, "POGCHAIN-node")?;
+    let cert = generate_cert(&private_key, "casper-node")?;
 
     Ok((cert, private_key))
 }
 
 /// Create a TLS acceptor for a server.
+///
+/// The acceptor will restrict TLS parameters to secure one defined in this crate that are
+/// compatible with connectors built with `create_tls_connector`.
+///
+/// Incoming certificates must still be validated using `validate_cert`.
 pub fn create_tls_acceptor(
     cert: &x509::X509Ref,
     private_key: &pkey::PKeyRef<pkey::Private>,
@@ -132,6 +142,9 @@ pub fn create_tls_acceptor(
 }
 
 /// Create a TLS acceptor for a client.
+///
+/// A connector compatible with the acceptor created using `create_tls_acceptor`. Server
+/// certificates must always be validated using `validate_cert` after connecting.
 pub fn create_tls_connector(
     cert: &x509::X509Ref,
     private_key: &pkey::PKeyRef<pkey::Private>,
@@ -143,6 +156,8 @@ pub fn create_tls_connector(
 }
 
 /// Set common options of both acceptor and connector on TLS context.
+///
+/// Used internally to set various TLS parameters.
 fn set_context_options(
     ctx: &mut ssl::SslContextBuilder,
     cert: &x509::X509Ref,
@@ -154,10 +169,10 @@ fn set_context_options(
     ctx.set_private_key(private_key)?;
     ctx.check_private_key()?;
 
-    // Note that this does not seem to work as one might naively expect; the client can still
-    // send no certificate and there will be no error from OpenSSL. For this reason, we pass
-    // set `PEER` (causing the request of a cert), but pass all of them through and verify them
-    // after the handshake has completed.
+    // Note that this does not seem to work as one might naively expect; the client can still send
+    // no certificate and there will be no error from OpenSSL. For this reason, we pass set `PEER`
+    // (causing the request of a cert), but pass all of them through and verify them after the
+    // handshake has completed.
     ctx.set_verify_callback(ssl::SslVerifyMode::PEER, |_, _| true);
 
     Ok(())
@@ -198,26 +213,18 @@ pub enum ValidationError {
     InvalidFingerprint(#[source] error::ErrorStack),
 }
 
-/// Check that the parameters on a certificate are correct, excluding the
-/// contents, and return the fingerprint.
+/// Check that the cryptographic parameters on a certificate are correct and return the fingerprint.
 ///
-/// The latter part ensures that the only way to obtain a node ID is by
-/// checking the certificate.
-///
-/// At the very least this ensures that no weaker ciphers have been used
-/// to forge a certificate.
+/// At the very least this ensures that no weaker ciphers have been used to forge a certificate.
 pub fn validate_cert(cert: &x509::X509Ref) -> Result<Signature, ValidationError> {
     if cert.signature_algorithm().object().nid() != SIGNATURE_ALGORITHM {
-        // The signature algorithm is not of the exact kind we are using to
-        // generate our certificates, an attacker could have used a weaker one
-        // to generate colliding keys.
+        // The signature algorithm is not of the exact kind we are using to generate our
+        // certificates, an attacker could have used a weaker one to generate colliding keys.
         return Err(ValidationError::WrongSignatureAlgorithm);
     }
-
-    // TODO: Lock down extensions on the certificate --- if we manage to lock
-    //       down the whole cert in a way that no additional bytes can be
-    //       added (all fields are either known or of fixed length) we would
-    //       have an additional hurdle for preimage attacks to clear.
+    // TODO: Lock down extensions on the certificate --- if we manage to lock down the whole cert in
+    //       a way that no additional bytes can be added (all fields are either known or of fixed
+    //       length) we would have an additional hurdle for preimage attacks to clear.
 
     let subject =
         name_to_string(cert.subject_name()).map_err(ValidationError::CorruptSubjectOrIssuer)?;
@@ -278,16 +285,7 @@ pub fn validate_cert(cert: &x509::X509Ref) -> Result<Signature, ValidationError>
     let digest = &cert
         .digest(message_digest())
         .map_err(ValidationError::InvalidFingerprint)?;
-    Ok(digest_to_signature(digest))
-}
-
-/// Save a certificate to a file.
-pub fn save_cert<P: AsRef<path::Path>>(cert: &x509::X509Ref, dest: P) -> anyhow::Result<()> {
-    let pem = cert.to_pem().context("converting certificate to PEM")?;
-
-    std::fs::write(dest.as_ref(), pem)
-        .with_context(|| format!("failed to write certificate {:?}", dest.as_ref()))?;
-    Ok(())
+    Ok(Signature::from_openssl_digest(digest))
 }
 
 /// Load a certificate from a file.
@@ -298,13 +296,22 @@ pub fn load_cert<P: AsRef<path::Path>>(src: P) -> anyhow::Result<x509::X509> {
     Ok(x509::X509::from_pem(&pem).context("parsing certificate")?)
 }
 
-/// Load a certificate from a file.
+/// Load a private key from a file.
 pub fn load_private_key<P: AsRef<path::Path>>(src: P) -> anyhow::Result<pkey::PKey<pkey::Private>> {
     let pem = std::fs::read(src.as_ref())
         .with_context(|| format!("failed to load private key {:?}", src.as_ref()))?;
 
     // TODO: It might be that we need to call `pkey::PKey::private_key_from_pkcs8` instead.
     Ok(pkey::PKey::private_key_from_pem(&pem).context("parsing private key")?)
+}
+
+/// Save a certificate to a file.
+pub fn save_cert<P: AsRef<path::Path>>(cert: &x509::X509Ref, dest: P) -> anyhow::Result<()> {
+    let pem = cert.to_pem().context("converting certificate to PEM")?;
+
+    std::fs::write(dest.as_ref(), pem)
+        .with_context(|| format!("failed to write certificate {:?}", dest.as_ref()))?;
+    Ok(())
 }
 
 /// Save a private key to a file.
@@ -323,17 +330,18 @@ pub fn save_private_key<P: AsRef<path::Path>>(
 
 /// Return an OpenSSL compatible timestamp.
 ///
-/// Note: We could do the timing dance a little better going straight to the
-///       UNIX time functions, but this saves us having to bring in `libc`.
+
 fn now() -> i64 {
+    // Note: We could do the timing dance a little better going straight to the UNIX time functions,
+    //       but this saves us having to bring in `libc` as a dependency.
     let now = time::SystemTime::now();
     let ts: i64 = now
         .duration_since(time::UNIX_EPOCH)
         // This should work unless the clock is set to before 1970.
         .expect("Great Scott! Your clock is horribly broken, Marty.")
         .as_secs()
-        // This will fail past year 2038 on 32 bit systems and a very far into
-        // the future, both cases we consider out of scope.
+        // This will fail past year 2038 on 32 bit systems and a very far into the future, both
+        // cases we consider out of scope.
         .try_into()
         .expect("32-bit systems and far future are not supported");
 
@@ -390,20 +398,18 @@ fn num_eq(num: &asn1::Asn1IntegerRef, other: u32) -> SslResult<bool> {
 
 /// Generate a secret key suitable for TLS encryption.
 fn generate_private_key() -> SslResult<pkey::PKey<pkey::Private>> {
-    // We do not care about browser-compliance, so we're free to use elliptic
-    // curves that are more likely to hold up under pressure than the NIST
-    // ones. We want to go with ED25519 because djb know's best:
-    // pkey::PKey::generate_ed25519()
+    // We do not care about browser-compliance, so we're free to use elliptic curves that are more
+    // likely to hold up under pressure than the NIST ones. We want to go with ED25519 because djb
+    // know's best: pkey::PKey::generate_ed25519()
     //
     // However the following bug currently prevents us from doing so:
-    // https://mta.openssl.org/pipermail/openssl-users/2018-July/008362.html
-    // (The same error occurs when trying to sign the cert inside the builder)
+    // https://mta.openssl.org/pipermail/openssl-users/2018-July/008362.html (The same error occurs
+    // when trying to sign the cert inside the builder)
 
     // Our second choice is 2^521-1, which is slow but a "nice prime".
     // http://blog.cr.yp.to/20140323-ecdsa.html
 
-    // An alternative is https://en.bitcoin.it/wiki/Secp256k1, which puts us
-    // at the same level of bitcoin.
+    // An alternative is https://en.bitcoin.it/wiki/Secp256k1, which puts us at level of bitcoin.
 
     // TODO: Please verify this for accuracy!
 
@@ -482,9 +488,8 @@ mod x509_serde {
     }
 }
 
-// Below are trait implementations for signatures, which double as NodeIDs.
-// Signature implements the full set of traits that are required to stick into
-// either a `HashMap` or `BTreeMap`.
+// Below are trait implementations for signatures, which double as NodeIDs. Signature implements the
+// full set of traits that are required to stick into either a `HashMap` or `BTreeMap`.
 
 impl PartialEq for Signature {
     #[inline]
@@ -521,12 +526,11 @@ impl fmt::Display for Signature {
     }
 }
 
-// Since all `Signature`s are already hashes, we provide a very cheap hashing
-// function that uses bytes from the NodeId as input, cutting the number of
-// bytes that need to be hashed to 1/16th.
+// Since all `Signature`s are already hashes, we provide a very cheap hashing function that uses
+// bytes from the fingerprint as input, cutting the number of bytes to be hashed to 1/16th.
 
-// If this is ever a performance bottleneck, a custom hasher can be added
-// that passes these bytes through unchanged.
+// If this is ever a performance bottleneck, a custom hasher can be added that passes these bytes
+// through unchanged.
 impl std::hash::Hash for Signature {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
