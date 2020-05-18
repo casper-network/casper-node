@@ -83,6 +83,10 @@ pub struct Endpoint {
 
 #[derive(Debug)]
 pub enum Event<P> {
+    /// Connection to the root node succeeded.
+    RootConnected { cert: TlsCert, transport: Transport },
+    /// Connection to the root node failed.
+    RootFailed { error: anyhow::Error },
     /// A new TCP connection has been established from an incoming connection.
     IncomingNew {
         stream: tokio::net::TcpStream,
@@ -189,15 +193,56 @@ where
 
         // Run the server task.
         info!(?addr, "starting server background task");
-        let effects = server_task(eq, tokio::net::TcpListener::from_std(listener)?)
+        let mut effects = server_task(eq, tokio::net::TcpListener::from_std(listener)?)
             .boxed()
             .ignore();
+
+        // Connect to the root node (even if we are the root node, just loopback).
+        effects.extend(model.connect_to_root());
 
         Ok((model, effects))
     }
 
+    /// Attempt to connect to the root node.
+    fn connect_to_root(&self) -> Multiple<Effect<Event<P>>> {
+        connect_trusted(
+            self.cfg.root_addr,
+            self.cert.clone(),
+            self.private_key.clone(),
+        )
+        .result(
+            move |(cert, transport)| Event::RootConnected { cert, transport },
+            move |error| Event::RootFailed { error },
+        )
+    }
+
     pub fn handle_event(&mut self, ev: Event<P>) -> Multiple<Effect<Event<P>>> {
         match ev {
+            Event::RootConnected { cert, transport } => {
+                // Create a pseudo-endpoint for the root node with the lowest priority (time 0)
+                let root_node_id = cert.public_key_fingerprint();
+                let ep = Endpoint {
+                    timestamp_ns: 0,
+                    addr: self.cfg.root_addr,
+                    cert,
+                };
+                if self.endpoints.insert(root_node_id, ep).is_some() {
+                    // This connection is the very first we will ever make, there should never be
+                    // a root node registered, as we will never re-attempt this connection if it
+                    // succeeded once.
+                    error!("Encountered a second root node connection.")
+                }
+
+                // We're now almost setup exactly as if the root node was any other node, proceed
+                // as normal.
+                self.setup_outgoing(root_node_id, transport)
+            }
+            Event::RootFailed { error } => {
+                warn!(%error, "connection to root failed");
+                self.connect_to_root()
+
+                // TODO: delay next attempt
+            }
             Event::IncomingNew { stream, addr } => {
                 debug!(%addr, "Incoming connection, starting TLS handshake");
 
@@ -229,32 +274,7 @@ where
                 Multiple::new()
             }
             Event::OutgoingEstablished { node_id, transport } => {
-                // This connection is send-only, we only use the sink.
-                let (sink, _stream) = framed::<P>(transport).split();
-
-                let (sender, receiver) = mpsc::unbounded_channel();
-                if self.outgoing.insert(node_id, sender).is_some() {
-                    // We assume that for a reconnect to have happened, the outgoing entry must have
-                    // been either non-existant yet or cleaned up by the handler of the connection
-                    // closing event. If this not the case, an assumed invariant has been violated.
-                    error!(%node_id, "did not expect leftover channel in outgoing map");
-                }
-
-                // We can now send a snapshot.
-                let snapshot = Message::Snapshot(
-                    self.signed_endpoints
-                        .values()
-                        .into_iter()
-                        .cloned()
-                        .collect(),
-                );
-                self.send_message(node_id, snapshot);
-
-                message_sender(receiver, sink).event(move |result| Event::OutgoingFailed {
-                    node_id,
-                    attempt_count: 0, // reset to 0, since we have had a successful connection
-                    error: result.err().map(Into::into),
-                })
+                self.setup_outgoing(node_id, transport)
             }
             Event::OutgoingFailed {
                 node_id,
@@ -401,6 +421,40 @@ where
                 Multiple::new()
             }
         }
+    }
+
+    /// Setup an established outgoing connection.
+    fn setup_outgoing(
+        &mut self,
+        node_id: NodeId,
+        transport: Transport,
+    ) -> Multiple<Effect<Event<P>>> {
+        // This connection is send-only, we only use the sink.
+        let (sink, _stream) = framed::<P>(transport).split();
+
+        let (sender, receiver) = mpsc::unbounded_channel();
+        if self.outgoing.insert(node_id, sender).is_some() {
+            // We assume that for a reconnect to have happened, the outgoing entry must have
+            // been either non-existant yet or cleaned up by the handler of the connection
+            // closing event. If this not the case, an assumed invariant has been violated.
+            error!(%node_id, "did not expect leftover channel in outgoing map");
+        }
+
+        // We can now send a snapshot.
+        let snapshot = Message::Snapshot(
+            self.signed_endpoints
+                .values()
+                .into_iter()
+                .cloned()
+                .collect(),
+        );
+        self.send_message(node_id, snapshot);
+
+        message_sender(receiver, sink).event(move |result| Event::OutgoingFailed {
+            node_id,
+            attempt_count: 0, // reset to 0, since we have had a successful connection
+            error: result.err().map(Into::into),
+        })
     }
 
     /// Handle received message.
@@ -575,12 +629,29 @@ async fn connect_outgoing(
     cert: Arc<x509::X509>,
     private_key: Arc<pkey::PKey<pkey::Private>>,
 ) -> anyhow::Result<Transport> {
+    let (server_cert, transport) = connect_trusted(endpoint.addr, cert, private_key).await?;
+
+    let remote_id = server_cert.public_key_fingerprint();
+
+    if remote_id != endpoint.cert.public_key_fingerprint() {
+        anyhow::bail!("remote node has wrong ID");
+    }
+
+    Ok(transport)
+}
+
+/// Initiate a TLS connection to a remote address, regardless of what ID the remote node reports.
+async fn connect_trusted(
+    addr: net::SocketAddr,
+    cert: Arc<x509::X509>,
+    private_key: Arc<pkey::PKey<pkey::Private>>,
+) -> anyhow::Result<(TlsCert, Transport)> {
     let mut config = tls::create_tls_connector(&cert, &private_key)
         .context("could not create TLS connector")?
         .configure()?;
     config.set_verify_hostname(false);
 
-    let stream = tokio::net::TcpStream::connect(endpoint.addr)
+    let stream = tokio::net::TcpStream::connect(addr)
         .await
         .context("TCP connection failed")?;
 
@@ -592,14 +663,7 @@ async fn connect_outgoing(
         .ssl()
         .peer_certificate()
         .ok_or_else(|| anyhow::anyhow!("no server certificate presented"))?;
-
-    let remote_id = tls::validate_cert(server_cert)?.public_key_fingerprint();
-
-    if remote_id != endpoint.cert.public_key_fingerprint() {
-        anyhow::bail!("remote node has wrong ID");
-    }
-
-    Ok(tls_stream)
+    Ok((tls::validate_cert(server_cert)?, tls_stream))
 }
 
 // Impose a total ordering on endpoints. Compare timestamps first, if the same, order by actual
