@@ -162,8 +162,7 @@ where
         };
 
         // We can now create a listener.
-        let rt = tokio::runtime::Handle::current();
-        let listener = rt.block_on(create_listener(&cfg))?;
+        let listener = create_listener(&cfg)?;
         let addr = listener.local_addr()?;
 
         // Create the model. Initially we know our own endpoint address.
@@ -188,7 +187,9 @@ where
 
         // Run the server task.
         info!(?addr, "starting server background task");
-        let effects = server_task(eq, listener).boxed().ignore();
+        let effects = server_task(eq, tokio::net::TcpListener::from_std(listener)?)
+            .boxed()
+            .ignore();
 
         Ok((model, effects))
     }
@@ -428,10 +429,10 @@ where
 ///
 /// Will attempt to bind on the root address first if the `bind_interface` is the same as the
 /// interface of `root_addr`. Otherwise uses an unused port on `bind_interface`.
-async fn create_listener(cfg: &config::SmallNetwork) -> io::Result<tokio::net::TcpListener> {
+fn create_listener(cfg: &config::SmallNetwork) -> io::Result<net::TcpListener> {
     if cfg.root_addr.ip() == cfg.bind_interface {
         // Try to become the root node, if the root nodes interface is available.
-        match tokio::net::TcpListener::bind(cfg.root_addr).await {
+        match net::TcpListener::bind(cfg.root_addr) {
             Ok(listener) => {
                 info!("we are the root node!");
                 return Ok(listener);
@@ -446,7 +447,7 @@ async fn create_listener(cfg: &config::SmallNetwork) -> io::Result<tokio::net::T
     }
 
     // We did not become the root node, bind on random port.
-    Ok(tokio::net::TcpListener::bind((cfg.bind_interface, 0u16)).await?)
+    Ok(net::TcpListener::bind((cfg.bind_interface, 0u16))?)
 }
 
 /// Core accept loop for the networking server.
