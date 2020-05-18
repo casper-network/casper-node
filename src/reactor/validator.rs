@@ -16,7 +16,7 @@ impl reactor::Reactor for Reactor {
     type Event = Event;
 
     fn new(
-        _cfg: &config::Config,
+        _cfg: config::Config,
         _sched: &'static reactor::Scheduler<Self::Event>,
     ) -> anyhow::Result<(Self, Multiple<effect::Effect<Self::Event>>)> {
         // TODO: Instantiate components here.

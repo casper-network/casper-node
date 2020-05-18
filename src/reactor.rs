@@ -118,7 +118,7 @@ pub trait Reactor: Sized {
     ///
     /// If any instantiation fails, an error is returned.
     fn new(
-        cfg: &config::Config,
+        cfg: config::Config,
         scheduler: &'static Scheduler<Self::Event>,
     ) -> anyhow::Result<(Self, Multiple<effect::Effect<Self::Event>>)>;
 }
@@ -148,7 +148,7 @@ pub async fn launch<R: Reactor>(cfg: config::Config) -> anyhow::Result<()> {
     // Create a new event queue for this reactor run.
     let scheduler = util::leak(scheduler);
 
-    let (mut reactor, initial_effects) = R::new(&cfg, scheduler)?;
+    let (mut reactor, initial_effects) = R::new(cfg, scheduler)?;
 
     // Run all effects from component instantiation.
     process_effects(scheduler, initial_effects).await;
