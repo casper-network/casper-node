@@ -136,7 +136,7 @@ pub async fn launch<R: Reactor>(cfg: config::Config) -> anyhow::Result<()> {
     // Check if the event is of a reasonable size. This only emits a runtime warning at startup
     // right now, since storage size of events is not an issue per se, but copying might be
     // expensive if events get too large.
-    if event_size > 4 * mem::size_of::<usize>() {
+    if event_size > 16 * mem::size_of::<usize>() {
         warn!(
             "event size is {} bytes, consider reducing it or boxing",
             event_size
