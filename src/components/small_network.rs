@@ -460,7 +460,6 @@ where
     /// Handle received message.
     // Internal function to keep indentation and nesting sane.
     fn handle_message(&mut self, node_id: NodeId, msg: Message<P>) -> Multiple<Effect<Event<P>>> {
-        debug!(%node_id, ?msg, "incoming msg");
         match msg {
             Message::Snapshot(snapshot) => snapshot
                 .into_iter()
@@ -684,6 +683,65 @@ impl PartialOrd for Endpoint {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+impl<P> fmt::Display for Message<P>
+where
+    P: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Message::Snapshot(snapshot) => write!(f, "snapshot: {} entries", snapshot.len()),
+            Message::BroadcastEndpoint(endpoint) => write!(f, "broadcast endpoint: {}", endpoint),
+            Message::Payload(payload) => write!(f, "payload: {}", payload),
+        }
+    }
+}
+
+impl<P> fmt::Display for Event<P>
+where
+    P: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Event::RootConnected { cert, .. } => {
+                write!(f, "root connected @ {}", cert.public_key_fingerprint())
+            }
+            Event::RootFailed { error } => write!(f, "root failed: {}", error),
+            Event::IncomingNew { addr, .. } => write!(f, "incoming connection from {}", addr),
+            Event::IncomingHandshakeCompleted { result, addr } => {
+                write!(f, "handshake from {}, is_err {}", addr, result.is_err())
+            }
+            Event::IncomingMessage { node_id, msg } => write!(f, "msg from {}: {}", node_id, msg),
+            Event::IncomingClosed { addr, .. } => write!(f, "closed connection from {}", addr),
+            Event::OutgoingEstablished { node_id, .. } => {
+                write!(f, "established outgoing to {}", node_id)
+            }
+            Event::OutgoingFailed {
+                node_id,
+                attempt_count,
+                error,
+            } => write!(
+                f,
+                "failed outgoing {} [{}]: (is_err {})",
+                node_id,
+                attempt_count,
+                error.is_some()
+            ),
+        }
+    }
+}
+
+impl fmt::Display for Endpoint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}@{} [{}]",
+            self.cert.public_key_fingerprint(),
+            self.addr,
+            self.timestamp_ns
+        )
     }
 }
 

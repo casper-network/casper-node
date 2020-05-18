@@ -5,6 +5,7 @@ use crate::components::small_network;
 use crate::util::Multiple;
 use crate::{config, effect, reactor};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 /// Top-level event for the reactor.
 #[derive(Debug)]
@@ -43,5 +44,19 @@ impl reactor::Reactor for Reactor {
         match event {
             Event::Network(ev) => reactor::wrap_effects(Event::Network, self.net.handle_event(ev)),
         }
+    }
+}
+
+impl fmt::Display for Event {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Event::Network(ev) => write!(f, "network: {}", ev),
+        }
+    }
+}
+
+impl fmt::Display for Message {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "TODO: MessagePayload")
     }
 }

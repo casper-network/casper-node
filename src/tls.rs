@@ -759,6 +759,15 @@ impl fmt::Display for Signature {
     }
 }
 
+impl<T> fmt::Display for Signed<T>
+where
+    T: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "signed<{}><{} bytes>", self.signature, self.data.len())
+    }
+}
+
 // Since all `Sha512`s are already hashes, we provide a very cheap hashing function that uses
 // bytes from the fingerprint as input, cutting the number of bytes to be hashed to 1/16th.
 

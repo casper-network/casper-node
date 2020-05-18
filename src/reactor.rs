@@ -30,7 +30,7 @@ use crate::{config, effect, util};
 use async_trait::async_trait;
 use futures::FutureExt;
 use std::{fmt, mem};
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 pub use queue_kind::Queue;
 
@@ -102,7 +102,7 @@ pub trait Reactor: Sized {
     /// Event type associated with reactor.
     ///
     /// Defines what kind of event the reactor processes.
-    type Event: Send + fmt::Debug + 'static;
+    type Event: Send + fmt::Debug + fmt::Display + 'static;
 
     /// Dispatch an event on the reactor.
     ///
@@ -156,7 +156,10 @@ pub async fn launch<R: Reactor>(cfg: config::Config) -> anyhow::Result<()> {
     info!("entering reactor main loop");
     loop {
         let (event, q) = scheduler.pop().await;
-        debug!(?event, ?q, "event");
+
+        // We log events twice, once in display and once in debug mode.
+        debug!(%event, ?q, "event");
+        trace!(?event, ?q, "event");
 
         // Dispatch the event, then execute the resulting effect.
         let effects = reactor.dispatch_event(event);
