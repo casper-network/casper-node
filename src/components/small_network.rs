@@ -39,7 +39,7 @@
 //! repeating the process.
 
 use crate::effect::{Effect, EffectExt, EffectResultExt};
-use crate::tls::{self, Fingerprint, Signed, TlsCert};
+use crate::tls::{self, Signed, TlsCert};
 use crate::util::Multiple;
 use crate::{config, reactor};
 use anyhow::Context;
@@ -53,6 +53,11 @@ use std::sync::Arc;
 use std::{cmp, collections, fmt, io, net, time};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
+
+/// A node id.
+///
+/// The key fingerprint found on TLS certificates.
+pub type NodeId = tls::KeyFingerprint;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Message<P> {
@@ -83,14 +88,11 @@ pub enum Event<P> {
     },
     /// The TLS handshake completed on the incoming connection.
     IncomingHandshakeCompleted {
-        result: anyhow::Result<(Fingerprint, Transport)>,
+        result: anyhow::Result<(NodeId, Transport)>,
         addr: net::SocketAddr,
     },
     /// Received network message.
-    IncomingMessage {
-        node_id: Fingerprint,
-        msg: Message<P>,
-    },
+    IncomingMessage { node_id: NodeId, msg: Message<P> },
     /// Incoming connection closed.
     IncomingClosed {
         result: io::Result<()>,
@@ -99,12 +101,12 @@ pub enum Event<P> {
 
     /// A new outgoing connection was successfully established.
     OutgoingEstablished {
-        node_id: Fingerprint,
+        node_id: NodeId,
         transport: Transport,
     },
     /// An outgoing connection failed to connect or was terminated.
     OutgoingFailed {
-        node_id: Fingerprint,
+        node_id: NodeId,
         attempt_count: u32,
         error: Option<anyhow::Error>,
     },
@@ -123,11 +125,11 @@ where
     /// Handle to event queue.
     eq: reactor::EventQueueHandle<R, Event<P>>,
     /// A list of known endpoints by node id.
-    endpoints: collections::HashMap<Fingerprint, Endpoint>,
+    endpoints: collections::HashMap<NodeId, Endpoint>,
     /// Stored signed endpoints that can be sent to other nodes.
-    signed_endpoints: collections::HashMap<Fingerprint, Signed<Endpoint>>,
+    signed_endpoints: collections::HashMap<NodeId, Signed<Endpoint>>,
     /// Outgoing network connections messages.
-    outgoing: collections::HashMap<Fingerprint, mpsc::UnboundedSender<Message<P>>>,
+    outgoing: collections::HashMap<NodeId, mpsc::UnboundedSender<Message<P>>>,
 }
 
 impl<R, P> SmallNetwork<R, P>
@@ -170,9 +172,9 @@ where
                 .duration_since(time::UNIX_EPOCH)?
                 .as_nanos(),
             addr,
-            cert: TlsCert::new(cert.clone())?,
+            cert: tls::validate_cert(cert.clone())?,
         };
-        let our_fp = our_endpoint.cert.public_key_fingerprint()?;
+        let our_fp = our_endpoint.cert.public_key_fingerprint();
 
         let model = SmallNetwork {
             cfg,
@@ -303,7 +305,7 @@ where
     // TODO: Move to trait.
     /// Queue a payload message to be sent to a specific node.
     #[inline]
-    pub fn send(&self, dest: Fingerprint, payload: P) {
+    pub fn send(&self, dest: NodeId, payload: P) {
         self.send_message(dest, Message::Payload(payload))
     }
 
@@ -321,7 +323,7 @@ where
     }
 
     /// Queue a message to be sent to a specific node.
-    fn send_message(&self, dest: Fingerprint, msg: Message<P>) {
+    fn send_message(&self, dest: NodeId, msg: Message<P>) {
         // Try to send the message.
         if let Some(sender) = self.outgoing.get(&dest) {
             if let Err(msg) = sender.send(msg) {
@@ -338,11 +340,8 @@ where
     ///
     /// Returns the node id of the endpoint if it was new.
     #[inline]
-    fn update_endpoint(&mut self, endpoint: &Endpoint) -> Option<Fingerprint> {
-        let fp = endpoint
-            .cert
-            .public_key_fingerprint()
-            .expect("FIXME: this should be infallible");
+    fn update_endpoint(&mut self, endpoint: &Endpoint) -> Option<NodeId> {
+        let fp = endpoint.cert.public_key_fingerprint();
 
         let mut rv = None;
         self.endpoints.entry(fp).and_modify(|prev| {
@@ -403,11 +402,7 @@ where
 
     /// Handle received message.
     // Internal function to keep indentation and nesting sane.
-    fn handle_message(
-        &mut self,
-        node_id: Fingerprint,
-        msg: Message<P>,
-    ) -> Multiple<Effect<Event<P>>> {
+    fn handle_message(&mut self, node_id: NodeId, msg: Message<P>) -> Multiple<Effect<Event<P>>> {
         debug!(%node_id, ?msg, "incoming msg");
         match msg {
             Message::Snapshot(snapshot) => snapshot
@@ -483,7 +478,7 @@ async fn setup_tls(
     stream: tokio::net::TcpStream,
     cert: Arc<x509::X509>,
     private_key: Arc<pkey::PKey<pkey::Private>>,
-) -> anyhow::Result<(Fingerprint, Transport)> {
+) -> anyhow::Result<(NodeId, Transport)> {
     let tls_stream = tokio_openssl::accept(
         &tls::create_tls_acceptor(&cert.as_ref(), &private_key.as_ref())?,
         stream,
@@ -496,7 +491,10 @@ async fn setup_tls(
         .peer_certificate()
         .ok_or_else(|| anyhow::anyhow!("no peer certificate presented"))?;
 
-    Ok((tls::validate_cert(&peer_cert.as_ref())?, tls_stream))
+    Ok((
+        tls::validate_cert(peer_cert)?.public_key_fingerprint(),
+        tls_stream,
+    ))
 }
 
 /// Network message reader.
@@ -505,7 +503,7 @@ async fn setup_tls(
 async fn message_reader<R, P>(
     eq: reactor::EventQueueHandle<R, Event<P>>,
     mut stream: futures::stream::SplitStream<FramedTransport<P>>,
-    node_id: Fingerprint,
+    node_id: NodeId,
 ) -> io::Result<()>
 where
     R: reactor::Reactor,
@@ -592,9 +590,9 @@ async fn connect_outgoing(
         .peer_certificate()
         .ok_or_else(|| anyhow::anyhow!("no server certificate presented"))?;
 
-    let remote_id = tls::validate_cert(&server_cert.as_ref())?;
+    let remote_id = tls::validate_cert(server_cert)?.public_key_fingerprint();
 
-    if remote_id != endpoint.cert.public_key_fingerprint()? {
+    if remote_id != endpoint.cert.public_key_fingerprint() {
         anyhow::bail!("remote node has wrong ID");
     }
 

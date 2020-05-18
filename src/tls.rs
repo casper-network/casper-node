@@ -53,9 +53,13 @@ pub type SslResult<T> = Result<T, error::ErrorStack>;
 #[derive(Copy, Clone, Deserialize, Serialize)]
 pub struct Sha512(#[serde(with = "BigArray")] [u8; Sha512::SIZE]);
 
+/// Certificate fingerprint
+#[derive(Copy, Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+pub struct CertFingerprint(Sha512);
+
 /// Public key fingerprint
 #[derive(Copy, Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-pub struct Fingerprint(Sha512);
+pub struct KeyFingerprint(Sha512);
 
 /// Cryptographic signature.
 #[derive(Copy, Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
@@ -63,9 +67,37 @@ pub struct Signature(Sha512);
 
 /// TLS certificate.
 ///
-/// Thin wrapper around `X509` enabling things like serde Serialization.
-#[derive(Clone, Deserialize, Serialize)]
-pub struct TlsCert(#[serde(with = "x509_serde")] pub openssl::x509::X509);
+/// Thin wrapper around `X509` enabling things like serde serialization and fingerprint caching.
+#[derive(Clone)]
+pub struct TlsCert {
+    /// The wrapped x509 certificate.
+    x509: openssl::x509::X509,
+
+    /// Cached certificate fingerprint.
+    cert_fingerprint: CertFingerprint,
+
+    /// Cached public key fingerprint.
+    key_fingerprint: KeyFingerprint,
+}
+
+// Serialization and deserialization happens only via x509, which is checked upon deserialization.
+impl<'de> serde::Deserialize<'de> for TlsCert {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        validate_cert(x509_serde::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+    }
+}
+
+impl serde::Serialize for TlsCert {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        x509_serde::serialize(&self.x509, serializer)
+    }
+}
 
 /// A signed value.
 ///
@@ -211,50 +243,31 @@ impl Signature {
 }
 
 impl TlsCert {
-    /// Wrap X509 certificate.
-    pub fn new(x509: x509::X509) -> Result<Self, ValidationError> {
-        validate_cert(&x509)?;
-        // Ensure the certificate can extract a valid public key.
-        Ok(TlsCert(x509))
-    }
-
     /// Return the certificates fingerprint.
     ///
     /// In contrast to the `public_key_fingerprint`, this fingerprint also contains the certificate
     /// information.
-    pub fn fingerprint(&self) -> Fingerprint {
-        let digest = &self
-            .0
-            .digest(hash::MessageDigest::from_nid(Sha512::NID).expect("SHA512 NID not found"))
-            .expect("TlsCert does not have fingerprint digest, this should not happen");
-        Fingerprint(Sha512::from_openssl_digest(digest))
+    pub fn fingerprint(&self) -> CertFingerprint {
+        self.cert_fingerprint
     }
 
     /// Extract the public key from the certificate.
     pub fn public_key(&self) -> pkey::PKey<pkey::Public> {
         // This can never fail, we validate the certificate on construction and deserialization.
-        self.0
+        self.x509
             .public_key()
             .expect("public key extraction failed, how did we end up with an invalid cert?")
     }
 
-    /// Generate a fingerprint by hashing the public key.
-    pub fn public_key_fingerprint(&self) -> SslResult<Fingerprint> {
-        let mut big_num_context = bn::BigNumContext::new()?;
-
-        let buf = self.public_key().ec_key()?.public_key().to_bytes(
-            ec::EcGroup::from_curve_name(SIGNATURE_CURVE)?.as_ref(),
-            ec::PointConversionForm::COMPRESSED,
-            &mut big_num_context,
-        )?;
-
-        Ok(Fingerprint(Sha512::new(&buf)))
+    /// Return the public key fingerprint.
+    pub fn public_key_fingerprint(&self) -> KeyFingerprint {
+        self.key_fingerprint
     }
 
     #[allow(dead_code)]
     /// Return OpenSSL X509 certificate.
     fn x509(&self) -> &x509::X509 {
-        &self.0
+        &self.x509
     }
 }
 
@@ -374,12 +387,17 @@ pub enum ValidationError {
     InvalidSignature,
     /// failed to read fingerprint
     InvalidFingerprint(#[source] error::ErrorStack),
+    /// could not create a big num context
+    BigNumContextNotAvailable(#[source] error::ErrorStack),
+    /// could not encode public key as bytes
+    PublicKeyEncodingFailed(#[source] error::ErrorStack),
 }
 
-/// Check that the cryptographic parameters on a certificate are correct and return the fingerprint.
+/// Check that the cryptographic parameters on a certificate are correct and return the fingerprint
+/// of the public key.
 ///
 /// At the very least this ensures that no weaker ciphers have been used to forge a certificate.
-pub fn validate_cert(cert: &x509::X509Ref) -> Result<Fingerprint, ValidationError> {
+pub fn validate_cert(cert: x509::X509) -> Result<TlsCert, ValidationError> {
     if cert.signature_algorithm().object().nid() != SIGNATURE_ALGORITHM {
         // The signature algorithm is not of the exact kind we are using to generate our
         // certificates, an attacker could have used a weaker one to generate colliding keys.
@@ -449,7 +467,30 @@ pub fn validate_cert(cert: &x509::X509Ref) -> Result<Fingerprint, ValidationErro
     let digest = &cert
         .digest(Sha512::create_message_digest())
         .map_err(ValidationError::InvalidFingerprint)?;
-    Ok(Fingerprint(Sha512::from_openssl_digest(digest)))
+    let cert_fingerprint = CertFingerprint(Sha512::from_openssl_digest(digest));
+
+    // Additionally we can calculate a fingerprint for the public key:
+    let mut big_num_context =
+        bn::BigNumContext::new().map_err(ValidationError::BigNumContextNotAvailable)?;
+
+    let buf = ec_key
+        .public_key()
+        .to_bytes(
+            ec::EcGroup::from_curve_name(SIGNATURE_CURVE)
+                .expect("broken constant SIGNATURE_CURVE")
+                .as_ref(),
+            ec::PointConversionForm::COMPRESSED,
+            &mut big_num_context,
+        )
+        .map_err(ValidationError::PublicKeyEncodingFailed)?;
+
+    let key_fingerprint = KeyFingerprint(Sha512::new(&buf));
+
+    Ok(TlsCert {
+        x509: cert,
+        cert_fingerprint,
+        key_fingerprint,
+    })
 }
 
 /// Load a certificate from a file.
@@ -615,7 +656,7 @@ fn generate_cert(private_key: &pkey::PKey<pkey::Private>, cn: &str) -> SslResult
 
     // Cheap sanity check.
     assert!(
-        validate_cert(&cert).is_ok(),
+        validate_cert(cert.clone()).is_ok(),
         "newly generated cert does not pass our own validity check"
     );
 
@@ -654,8 +695,9 @@ mod x509_serde {
         let s: String = Deserialize::deserialize(deserializer)?;
         let x509 = X509::from_pem(s.as_bytes()).map_err(serde::de::Error::custom)?;
 
-        validate_cert(&x509).map_err(serde::de::Error::custom)?;
-        Ok(x509)
+        validate_cert(x509)
+            .map_err(serde::de::Error::custom)
+            .map(|tc| tc.x509)
     }
 }
 
@@ -696,7 +738,13 @@ impl fmt::Display for Sha512 {
     }
 }
 
-impl fmt::Display for Fingerprint {
+impl fmt::Display for CertFingerprint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl fmt::Display for KeyFingerprint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.0, f)
     }
@@ -728,7 +776,7 @@ impl Hash for Sha512 {
 
 #[cfg(test)]
 mod test {
-    use super::{generate_node_cert, mkname, name_to_string, TlsCert};
+    use super::{generate_node_cert, mkname, name_to_string, validate_cert, TlsCert};
 
     #[test]
     fn simple_name_to_string() {
@@ -744,7 +792,7 @@ mod test {
     fn test_tls_cert_serde_roundtrip() {
         let (cert, _private_key) = generate_node_cert().expect("failed to generate key, cert pair");
 
-        let tls_cert = TlsCert(cert);
+        let tls_cert = validate_cert(cert).expect("generated cert is not valid");
 
         // There is no `PartialEq` impl for `TlsCert`, so we simply serialize it twice.
         let serialized = rmp_serde::to_vec(&tls_cert).expect("could not serialize");
