@@ -46,7 +46,7 @@ impl Cli {
                 let mut cert_path = output.clone();
                 cert_path.set_extension("crt.pem");
 
-                let mut key_path = output.clone();
+                let mut key_path = output;
                 key_path.set_extension("key.pem");
 
                 let (cert, key) = tls::generate_node_cert()?;

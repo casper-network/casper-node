@@ -143,6 +143,7 @@ where
     R: reactor::Reactor + 'static,
     P: Serialize + DeserializeOwned + Clone + fmt::Debug + Send + 'static,
 {
+    #[allow(clippy::type_complexity)]
     pub fn new(
         eq: reactor::EventQueueHandle<R, Event<P>>,
         cfg: config::SmallNetwork,
@@ -215,6 +216,7 @@ where
         )
     }
 
+    #[allow(clippy::cognitive_complexity)]
     pub fn handle_event(&mut self, ev: Event<P>) -> Multiple<Effect<Event<P>>> {
         match ev {
             Event::RootConnected { cert, transport } => {
@@ -322,19 +324,6 @@ where
                 }
             }
         }
-    }
-
-    // TODO: Move to trait.
-    /// Queue a payload message to be sent to a specific node.
-    #[inline]
-    pub fn send(&self, dest: NodeId, payload: P) {
-        self.send_message(dest, Message::Payload(payload))
-    }
-
-    /// Queue a broadcast to all connected nodes.
-    #[inline]
-    pub fn broadcast(&self, payload: P) {
-        self.broadcast_message(Message::Payload(payload))
     }
 
     /// Queue a message to be sent to all nodes.
@@ -445,13 +434,7 @@ where
         }
 
         // We can now send a snapshot.
-        let snapshot = Message::Snapshot(
-            self.signed_endpoints
-                .values()
-                .into_iter()
-                .cloned()
-                .collect(),
-        );
+        let snapshot = Message::Snapshot(self.signed_endpoints.values().cloned().collect());
         self.send_message(node_id, snapshot);
 
         message_sender(receiver, sink).event(move |result| Event::OutgoingFailed {

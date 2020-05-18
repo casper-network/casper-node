@@ -223,8 +223,7 @@ impl Signature {
         // The API of OpenSSL is a bit weird here; there is no constant size for the buffer required
         // to create the signatures. Additionally, we need to truncate it to the returned size.
         let sig_len = signer.len()?;
-        let mut sig_buf = Vec::with_capacity(sig_len);
-        sig_buf.resize(sig_len, 0);
+        let mut sig_buf = vec![0; sig_len];
         let bytes_written = signer.sign_oneshot(&mut sig_buf, data)?;
         sig_buf.truncate(bytes_written);
 
@@ -672,7 +671,6 @@ fn generate_cert(private_key: &pkey::PKey<pkey::Private>, cn: &str) -> SslResult
 mod x509_serde {
     use super::validate_cert;
     use openssl::x509::X509;
-    use serde;
     use std::str;
 
     /// Serde-compatible serialization for X509 certificates.
