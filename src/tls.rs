@@ -97,6 +97,40 @@ where
     }
 }
 
+impl<V> Signed<V>
+where
+    V: DeserializeOwned,
+{
+    /// Validate signature and restore value.
+    pub fn validate(&self, public_key: &pkey::PKeyRef<pkey::Public>) -> anyhow::Result<V> {
+        if self.signature.verify(public_key, &self.data)? {
+            Ok(rmp_serde::from_read(self.data.as_slice())?)
+        } else {
+            Err(anyhow::anyhow!("invalid signature"))
+        }
+    }
+
+    /// Validate a self-signed values.
+    ///
+    /// Allows for extraction of a public key prior to validating a value.
+    #[inline]
+    pub fn validate_self_signed<F>(&self, extract: F) -> anyhow::Result<V>
+    where
+        F: FnOnce(&V) -> anyhow::Result<pkey::PKey<pkey::Public>>,
+    {
+        let unverified = rmp_serde::from_read(self.data.as_slice())?;
+        {
+            let public_key =
+                extract(&unverified).context("could not extract public key from self-signed")?;
+            if self.signature.verify(&public_key, &self.data)? {
+                Ok(unverified)
+            } else {
+                Err(anyhow::anyhow!("invalid signature"))
+            }
+        }
+    }
+}
+
 impl Sha512 {
     /// Size of digest in bytes.
     pub const SIZE: usize = 64;
@@ -143,20 +177,6 @@ impl Sha512 {
     }
 }
 
-impl<V> Signed<V>
-where
-    V: DeserializeOwned,
-{
-    /// Validate signature and restore value.
-    pub fn validate(&self, public_key: &pkey::PKeyRef<pkey::Public>) -> anyhow::Result<V> {
-        if self.signature.verify(public_key, &self.data)? {
-            Ok(rmp_serde::from_read(self.data.as_slice())?)
-        } else {
-            Err(anyhow::anyhow!("invalid signature"))
-        }
-    }
-}
-
 impl Signature {
     /// Sign a binary blob with the blessed ciphers and TLS parameters.
     pub fn create(private_key: &pkey::PKeyRef<pkey::Private>, data: &[u8]) -> SslResult<Self> {
@@ -191,7 +211,7 @@ impl Signature {
 
 impl TlsCert {
     /// Wrap X509 certificate.
-    fn new(x509: x509::X509) -> Result<Self, ValidationError> {
+    pub fn new(x509: x509::X509) -> Result<Self, ValidationError> {
         validate_cert(&x509)?;
         // Ensure the certificate can extract a valid public key.
         Ok(TlsCert(x509))
@@ -206,7 +226,7 @@ impl TlsCert {
     ///
     /// In contrast to the `public_key_fingerprint`, this fingerprint also contains the certificate
     /// information.
-    fn fingerprint(&self) -> Fingerprint {
+    pub fn fingerprint(&self) -> Fingerprint {
         let digest = &self
             .0
             .digest(hash::MessageDigest::from_nid(Sha512::NID).expect("SHA512 NID not found"))
@@ -215,7 +235,7 @@ impl TlsCert {
     }
 
     /// Extract the public key from the certificate.
-    fn public_key(&self) -> pkey::PKey<pkey::Public> {
+    pub fn public_key(&self) -> pkey::PKey<pkey::Public> {
         // This can never fail, we validate the certificate on construction and deserialization.
         self.0
             .public_key()
@@ -223,7 +243,7 @@ impl TlsCert {
     }
 
     /// Generate a fingerprint by hashing the public key.
-    fn public_key_fingerprint(&self) -> SslResult<Fingerprint> {
+    pub fn public_key_fingerprint(&self) -> SslResult<Fingerprint> {
         let mut big_num_context = bn::BigNumContext::new()?;
 
         let buf = self.public_key().ec_key()?.public_key().to_bytes(
@@ -676,6 +696,18 @@ impl fmt::Debug for Sha512 {
 impl fmt::Display for Sha512 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", HexFmt(&self.0[0..7]))
+    }
+}
+
+impl fmt::Display for Fingerprint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl fmt::Display for Signature {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
     }
 }
 
