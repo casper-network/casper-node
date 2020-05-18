@@ -64,14 +64,14 @@ pub struct Signature(Sha512);
 /// TLS certificate.
 ///
 /// Thin wrapper around `X509` enabling things like serde Serialization.
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct TlsCert(#[serde(with = "x509_serde")] pub openssl::x509::X509);
 
 /// A signed value.
 ///
 /// Combines a value `V` with a `Signature` and a signature scheme. The signature scheme involves
 /// serializing the value to bytes and signing the result.
-#[derive(Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct Signed<V> {
     data: Vec<u8>,
     signature: Signature,
