@@ -38,8 +38,7 @@
 //! all nodes in the list and simultaneously tell all of its connected nodes about the new node,
 //! repeating the process.
 
-use crate::effect::Effect;
-use crate::effect::EffectExt;
+use crate::effect::{Effect, EffectExt, EffectResultExt};
 use crate::tls::{self, Fingerprint, Signed, TlsCert};
 use crate::util::Multiple;
 use crate::{config, reactor};
@@ -53,9 +52,9 @@ use std::hash::Hash;
 use std::sync::Arc;
 use std::{cmp, collections, fmt, io, net, time};
 use tokio::sync::mpsc;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Message<P> {
     /// A pruned set of all endpoint announcements the server has received.
     Snapshot(collections::HashSet<Signed<Endpoint>>),
@@ -98,11 +97,17 @@ pub enum Event<P> {
         addr: net::SocketAddr,
     },
 
-    // From external effects.
-    /// Send a message to a specific node if it is connected.
-    SendMessage { dest: Fingerprint, payload: P },
-    /// Send a message to all currently connected nodes.
-    Broadcast { payload: P },
+    /// A new outgoing connection was successfully established.
+    OutgoingEstablished {
+        node_id: Fingerprint,
+        transport: Transport,
+    },
+    /// An outgoing connection failed to connect or was terminated.
+    OutgoingFailed {
+        node_id: Fingerprint,
+        attempt_count: u32,
+        error: Option<anyhow::Error>,
+    },
 }
 
 pub struct SmallNetwork<R, P>
@@ -122,7 +127,7 @@ where
     /// Stored signed endpoints that can be sent to other nodes.
     signed_endpoints: collections::HashMap<Fingerprint, Signed<Endpoint>>,
     /// Outgoing network connections messages.
-    outgoing: collections::HashMap<Fingerprint, mpsc::UnboundedSender<P>>,
+    outgoing: collections::HashMap<Fingerprint, mpsc::UnboundedSender<Message<P>>>,
 }
 
 impl<R, P> SmallNetwork<R, P>
@@ -159,9 +164,7 @@ where
         let listener = rt.block_on(create_listener(&cfg))?;
         let addr = listener.local_addr()?;
 
-        // Run the server task.
-        info!(?addr, "starting server background task");
-
+        // Create the model. Initially we know our own endpoint address.
         let our_endpoint = Endpoint {
             timestamp_ns: time::SystemTime::now()
                 .duration_since(time::UNIX_EPOCH)?
@@ -180,77 +183,154 @@ where
             eq,
             outgoing: collections::HashMap::new(),
         };
+
+        // Run the server task.
+        info!(?addr, "starting server background task");
         let effects = server_task(eq, listener).boxed().ignore();
+
         Ok((model, effects))
     }
 
     pub fn handle_event(&mut self, ev: Event<P>) -> Multiple<Effect<Event<P>>> {
         match ev {
             Event::IncomingNew { stream, addr } => {
-                // We have received a new incoming connection, now setup a TLS context.
                 debug!(%addr, "Incoming connection, starting TLS handshake");
 
                 setup_tls(stream, self.cert.clone(), self.private_key.clone())
                     .boxed()
                     .event(move |result| Event::IncomingHandshakeCompleted { result, addr })
             }
-            Event::IncomingHandshakeCompleted {
-                result: Ok((fp, tls_stream)),
-                addr,
-            } => {
-                // The sink is never used, as we only read data from incoming connections.
-                let (_sink, stream) = framed::<P>(tls_stream).split();
+            Event::IncomingHandshakeCompleted { result, addr } => {
+                match result {
+                    Ok((fp, transport)) => {
+                        // The sink is never used, as we only read data from incoming connections.
+                        let (_sink, stream) = framed::<P>(transport).split();
 
-                // Start the reader.
-                message_reader(self.eq, stream, fp)
-                    .event(move |result| Event::IncomingClosed { result, addr })
-            }
-            Event::IncomingHandshakeCompleted {
-                result: Err(err),
-                addr,
-            } => {
-                warn!(%addr, %err, "TLS handshake failed");
-                Multiple::new()
+                        message_reader(self.eq, stream, fp)
+                            .event(move |result| Event::IncomingClosed { result, addr })
+                    }
+                    Err(err) => {
+                        warn!(%addr, %err, "TLS handshake failed");
+                        Multiple::new()
+                    }
+                }
             }
             Event::IncomingMessage { node_id, msg } => self.handle_message(node_id, msg),
-            Event::IncomingClosed {
-                result: Ok(()),
-                addr,
-            } => {
-                info!(%addr, "connection closed");
-                Multiple::new()
-            }
-            Event::IncomingClosed {
-                result: Err(err),
-                addr,
-            } => {
-                warn!(%addr, %err, "connection dopped");
-                Multiple::new()
-            }
-            Event::Broadcast { payload } => {
-                // Send to all connected nodes.
-                for node_id in self.outgoing.keys() {
-                    self.send_message(*node_id, payload.clone());
+            Event::IncomingClosed { result, addr } => {
+                match result {
+                    Ok(()) => info!(%addr, "connection closed"),
+                    Err(err) => warn!(%addr, %err, "connection dopped"),
                 }
                 Multiple::new()
             }
-            Event::SendMessage { dest, payload } => {
-                self.send_message(dest, payload);
-                Multiple::new()
+            Event::OutgoingEstablished { node_id, transport } => {
+                // This connection is send-only, we only use the sink.
+                let (sink, _stream) = framed::<P>(transport).split();
+
+                let (sender, receiver) = mpsc::unbounded_channel();
+                if self.outgoing.insert(node_id, sender).is_some() {
+                    // We assume that for a reconnect to have happened, the outgoing entry must have
+                    // been either non-existant yet or cleaned up by the handler of the connection
+                    // closing event. If this not the case, an assumed invariant has been violated.
+                    error!(%node_id, "did not expect leftover channel in outgoing map");
+                }
+
+                // We can now send a snapshot.
+                let snapshot = Message::Snapshot(
+                    self.signed_endpoints
+                        .values()
+                        .into_iter()
+                        .cloned()
+                        .collect(),
+                );
+                self.send_message(node_id, snapshot);
+
+                message_sender(receiver, sink).event(move |result| Event::OutgoingFailed {
+                    node_id,
+                    attempt_count: 0, // reset to 0, since we have had a successful connection
+                    error: result.err().map(Into::into),
+                })
+            }
+            Event::OutgoingFailed {
+                node_id,
+                attempt_count,
+                error,
+            } => {
+                if let Some(err) = error {
+                    warn!(%node_id, %err, "outgoing connection failed");
+                } else {
+                    warn!(%node_id, "outgoing connection closed");
+                }
+
+                if let Some(max) = self.cfg.max_outgoing_retries {
+                    if attempt_count >= max {
+                        // We're giving up connecting to the node. We will remove it completely
+                        // (this only carries the danger of the stale addresses being sent to us by
+                        // other nodes again).
+                        self.endpoints.remove(&node_id);
+                        self.signed_endpoints.remove(&node_id);
+                        self.outgoing.remove(&node_id);
+
+                        warn!(%attempt_count, %node_id, "giving up on outgoing connection");
+                    }
+
+                    return Multiple::new();
+                }
+                // TODO: Delay reconnection.
+
+                if let Some(endpoint) = self.endpoints.get(&node_id) {
+                    connect_outgoing(
+                        endpoint.clone(),
+                        self.cert.clone(),
+                        self.private_key.clone(),
+                    )
+                    .result(
+                        move |transport| Event::OutgoingEstablished { node_id, transport },
+                        move |error| Event::OutgoingFailed {
+                            node_id,
+                            attempt_count: attempt_count + 1,
+                            error: Some(error),
+                        },
+                    )
+                } else {
+                    error!("endpoint disappeared");
+                    Multiple::new()
+                }
             }
         }
     }
 
-    fn send_message(&self, dest: Fingerprint, payload: P) {
+    // TODO: Move to trait.
+    /// Queue a payload message to be sent to a specific node.
+    #[inline]
+    pub fn send(&self, dest: Fingerprint, payload: P) {
+        self.send_message(dest, Message::Payload(payload))
+    }
+
+    /// Queue a broadcast to all connected nodes.
+    #[inline]
+    pub fn broadcast(&self, payload: P) {
+        self.broadcast_message(Message::Payload(payload))
+    }
+
+    /// Queue a message to be sent to all nodes.
+    fn broadcast_message(&self, msg: Message<P>) {
+        for node_id in self.outgoing.keys() {
+            self.send_message(*node_id, msg.clone());
+        }
+    }
+
+    /// Queue a message to be sent to a specific node.
+    fn send_message(&self, dest: Fingerprint, msg: Message<P>) {
         // Try to send the message.
         if let Some(sender) = self.outgoing.get(&dest) {
-            if let Err(payload) = sender.send(payload) {
+            if let Err(msg) = sender.send(msg) {
                 // We lost the connection, but that fact has not reached us yet.
-                warn!(?payload, "dropped outgoing message, lost connection");
+                warn!(%dest, ?msg, "dropped outgoing message, lost connection");
             }
         } else {
             // We are not connected, so the reconnection is likely already in progress.
-            warn!(?payload, "dropped outgoing message, no connection");
+            warn!(%dest, ?msg, "dropped outgoing message, no connection");
         }
     }
 
@@ -259,7 +339,10 @@ where
     /// Returns the node id of the endpoint if it was new.
     #[inline]
     fn update_endpoint(&mut self, endpoint: &Endpoint) -> Option<Fingerprint> {
-        let fp = endpoint.cert.public_key_fingerprint().expect("FIXME");
+        let fp = endpoint
+            .cert
+            .public_key_fingerprint()
+            .expect("FIXME: this should be infallible");
 
         let mut rv = None;
         self.endpoints.entry(fp).and_modify(|prev| {
@@ -280,12 +363,33 @@ where
     ) -> Multiple<Effect<Event<P>>> {
         match signed.validate_self_signed(|endpoint| Ok(endpoint.cert.public_key())) {
             Ok(endpoint) => {
-                if let Some(fp) = self.update_endpoint(&endpoint) {
-                    // We learned of a new endpoint. Ensure it is sent to all connected nodes and
-                    // store it for later use.
-                    self.signed_endpoints.insert(fp, signed.clone());
+                if let Some(node_id) = self.update_endpoint(&endpoint) {
+                    // We learned of a new endpoint. We store it and note whether it is the first
+                    // endpoint for the node.
+                    self.signed_endpoints.insert(node_id, signed.clone());
+                    self.endpoints.insert(node_id, endpoint.clone());
 
-                    broadcast::<P>(Message::BroadcastEndpoint(signed)).ignore()
+                    self.broadcast_message(Message::BroadcastEndpoint(signed));
+
+                    if self.outgoing.remove(&node_id).is_none() {
+                        info!(%node_id, ?endpoint, "new outgoing channel");
+                        // Initiate the connection process once we learn of a new node ID.
+                        connect_outgoing(endpoint, self.cert.clone(), self.private_key.clone())
+                            .result(
+                                move |transport| Event::OutgoingEstablished { node_id, transport },
+                                move |error| Event::OutgoingFailed {
+                                    node_id,
+                                    attempt_count: 0,
+                                    error: Some(error),
+                                },
+                            )
+                    } else {
+                        // There was a previous endpoint, whose sender has now been dropped. This
+                        // will cause the sender task to exit and trigger a reconnect.
+
+                        info!(%node_id, ?endpoint, "endpoint changed");
+                        Multiple::new()
+                    }
                 } else {
                     Multiple::new()
                 }
@@ -426,10 +530,22 @@ where
     Ok(())
 }
 
-// Stand-in for message sending effect.
-async fn broadcast<P>(msg: Message<P>) {
-    std::mem::drop(msg);
-    todo!()
+/// Network message sender
+///
+/// Reads from a channel and sends all messages, until the stream is closed or an error occured.
+async fn message_sender<P>(
+    mut queue: mpsc::UnboundedReceiver<Message<P>>,
+    mut sink: futures::stream::SplitSink<FramedTransport<P>, Message<P>>,
+) -> io::Result<()>
+where
+    P: Serialize + Send,
+{
+    while let Some(payload) = queue.recv().await {
+        // We simply error-out if the sink fails, it means that our connection broke.
+        sink.send(payload).await?;
+    }
+
+    Ok(())
 }
 
 /// Transport type alias for base encrypted connections.
@@ -450,6 +566,39 @@ fn framed<P>(stream: Transport) -> FramedTransport<P> {
         length_delimited,
         tokio_serde::formats::SymmetricalMessagePack::<Message<P>>::default(),
     )
+}
+
+/// Initiate a TLS connection to an endpoint.
+async fn connect_outgoing(
+    endpoint: Endpoint,
+    cert: Arc<x509::X509>,
+    private_key: Arc<pkey::PKey<pkey::Private>>,
+) -> anyhow::Result<Transport> {
+    let mut config = tls::create_tls_connector(&cert, &private_key)
+        .context("could not create TLS connector")?
+        .configure()?;
+    config.set_verify_hostname(false);
+
+    let stream = tokio::net::TcpStream::connect(endpoint.addr)
+        .await
+        .context("TCP connection failed")?;
+
+    let tls_stream = tokio_openssl::connect(config, "this-will-not-be-checked.example.com", stream)
+        .await
+        .context("tls handshake failed")?;
+
+    let server_cert = tls_stream
+        .ssl()
+        .peer_certificate()
+        .ok_or_else(|| anyhow::anyhow!("no server certificate presented"))?;
+
+    let remote_id = tls::validate_cert(&server_cert.as_ref())?;
+
+    if remote_id != endpoint.cert.public_key_fingerprint()? {
+        anyhow::bail!("remote node has wrong ID");
+    }
+
+    Ok(tls_stream)
 }
 
 // Impose a total ordering on endpoints. Compare timestamps first, if the same, order by actual

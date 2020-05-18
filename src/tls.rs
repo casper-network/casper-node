@@ -102,6 +102,7 @@ where
     V: DeserializeOwned,
 {
     /// Validate signature and restore value.
+    #[allow(dead_code)]
     pub fn validate(&self, public_key: &pkey::PKeyRef<pkey::Public>) -> anyhow::Result<V> {
         if self.signature.verify(public_key, &self.data)? {
             Ok(rmp_serde::from_read(self.data.as_slice())?)
@@ -217,11 +218,6 @@ impl TlsCert {
         Ok(TlsCert(x509))
     }
 
-    /// Validate certificate, returning the fingerprint.
-    fn validate(&self) -> Result<Fingerprint, ValidationError> {
-        validate_cert(self.x509())
-    }
-
     /// Return the certificates fingerprint.
     ///
     /// In contrast to the `public_key_fingerprint`, this fingerprint also contains the certificate
@@ -255,6 +251,7 @@ impl TlsCert {
         Ok(Fingerprint(Sha512::new(&buf)))
     }
 
+    #[allow(dead_code)]
     /// Return OpenSSL X509 certificate.
     fn x509(&self) -> &x509::X509 {
         &self.0

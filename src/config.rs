@@ -55,6 +55,9 @@ pub struct SmallNetwork {
 
     /// Path to private key for certificate.
     pub private_key: Option<path::PathBuf>,
+
+    /// Maximum number of retries when trying to connect to an outgoing node. Unlimited if `None`.
+    pub max_outgoing_retries: Option<u32>,
 }
 
 impl SmallNetwork {
@@ -66,6 +69,7 @@ impl SmallNetwork {
             root_addr: (net::Ipv4Addr::new(127, 0, 0, 1), port).into(),
             cert: None,
             private_key: None,
+            max_outgoing_retries: None,
         }
     }
 }

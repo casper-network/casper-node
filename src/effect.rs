@@ -81,7 +81,7 @@ pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
 pub trait EffectExt: Future + Send {
     /// Finalize a future into an effect that returns an event.
     ///
-    /// The passed in function `f` is used to translate the resulting value from an effect into
+    /// The function `f` is used to translate the returned value from an effect into an event.
     fn event<U, F>(self, f: F) -> Multiple<Effect<U>>
     where
         F: FnOnce(Self::Output) -> U + 'static + Send,
@@ -90,6 +90,21 @@ pub trait EffectExt: Future + Send {
 
     /// Finalize a future into an effect that runs but drops the result.
     fn ignore<Ev>(self) -> Multiple<Effect<Ev>>;
+}
+
+pub trait EffectResultExt {
+    type Value;
+    type Error;
+
+    /// Finalize a future returning a `Result` into two different effects.
+    ///
+    /// The function `f` is used to translate the returned value from an effect into an event, while
+    /// the function `g` does the same for a potential error.
+    fn result<U, F, G>(self, f_ok: F, f_err: G) -> Multiple<Effect<U>>
+    where
+        F: FnOnce(Self::Value) -> U + 'static + Send,
+        G: FnOnce(Self::Error) -> U + 'static + Send,
+        U: 'static;
 }
 
 impl<T: ?Sized> EffectExt for T
@@ -106,6 +121,26 @@ where
 
     fn ignore<Ev>(self) -> Multiple<Effect<Ev>> {
         smallvec![self.map(|_| Multiple::new()).boxed()]
+    }
+}
+
+impl<T: ?Sized, V, E> EffectResultExt for T
+where
+    T: Future<Output = Result<V, E>> + Send + 'static + Sized,
+{
+    type Value = V;
+    type Error = E;
+
+    fn result<U, F, G>(self, f_ok: F, f_err: G) -> Multiple<Effect<U>>
+    where
+        F: FnOnce(V) -> U + 'static + Send,
+        G: FnOnce(E) -> U + 'static + Send,
+        U: 'static,
+    {
+        smallvec![self
+            .map(|result| result.map_or_else(f_err, f_ok))
+            .map(|item| smallvec![item])
+            .boxed()]
     }
 }
 
