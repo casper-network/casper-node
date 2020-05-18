@@ -15,14 +15,18 @@
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
-use std::{fs, io, path};
+use std::{fs, io, net, path};
 use tracing::debug;
 
 /// Root configuration.
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
     /// Log configuration.
     pub log: Log,
+    /// Network configuration for the validator-only network.
+    pub validator_net: SmallNetwork,
+    /// Network configuration for the public network.
+    pub public_net: SmallNetwork,
 }
 
 /// Log configuration.
@@ -31,6 +35,49 @@ pub struct Log {
     /// Log level.
     #[serde(with = "log_level")]
     pub level: tracing::Level,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+/// Small network configuration
+pub struct SmallNetwork {
+    /// Interface to bind to. If it is the same as the in `root_addr`, attempt
+    /// become the root node for this particular small network.
+    pub bind_interface: net::IpAddr,
+
+    /// Port to bind to when not the root node. Use 0 for a random port.
+    pub bind_port: u16,
+
+    /// Address to connect to join the network.
+    pub root_addr: net::SocketAddr,
+
+    /// Path to certificate file.
+    pub cert: Option<path::PathBuf>,
+
+    /// Path to private key for certificate.
+    pub private_key: Option<path::PathBuf>,
+}
+
+impl SmallNetwork {
+    /// Create a default instance for `SmallNetwork` with a constant port.
+    fn default_on_port(port: u16) -> Self {
+        SmallNetwork {
+            bind_interface: net::Ipv4Addr::new(127, 0, 0, 1).into(),
+            bind_port: 0,
+            root_addr: (net::Ipv4Addr::new(127, 0, 0, 1), port).into(),
+            cert: None,
+            private_key: None,
+        }
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            log: Default::default(),
+            validator_net: SmallNetwork::default_on_port(34553),
+            public_net: SmallNetwork::default_on_port(1485),
+        }
+    }
 }
 
 impl Default for Log {

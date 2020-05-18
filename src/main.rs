@@ -10,6 +10,7 @@
 //! sourcecode, be sure to run `cargo doc --open`.
 
 mod cli;
+mod components;
 mod config;
 mod effect;
 mod reactor;
