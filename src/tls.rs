@@ -761,10 +761,14 @@ impl fmt::Display for Signature {
 
 impl<T> fmt::Display for Signed<T>
 where
-    T: fmt::Display,
+    T: fmt::Display + for<'de> Deserialize<'de>,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "signed<{}><{} bytes>", self.signature, self.data.len())
+        // Decode the data here, even if it is expensive.
+        match rmp_serde::from_read::<_, T>(self.data.as_slice()) {
+            Ok(item) => write!(f, "signed[{}]<{} bytes>", self.signature, item),
+            Err(_err) => write!(f, "signed[{}]<CORRUPT>", self.signature),
+        }
     }
 }
 

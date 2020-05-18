@@ -40,7 +40,7 @@
 
 use crate::effect::{Effect, EffectExt, EffectResultExt};
 use crate::tls::{self, Signed, TlsCert};
-use crate::util::Multiple;
+use crate::util::{DisplayIter, Multiple};
 use crate::{config, reactor};
 use anyhow::Context;
 use futures::{FutureExt, SinkExt, StreamExt};
@@ -692,7 +692,9 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Message::Snapshot(snapshot) => write!(f, "snapshot: {} entries", snapshot.len()),
+            Message::Snapshot(snapshot) => {
+                write!(f, "snapshot: {:10}", DisplayIter::new(snapshot.iter()))
+            }
             Message::BroadcastEndpoint(endpoint) => write!(f, "broadcast endpoint: {}", endpoint),
             Message::Payload(payload) => write!(f, "payload: {}", payload),
         }
