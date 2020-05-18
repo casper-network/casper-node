@@ -72,7 +72,9 @@ pub enum Message<P> {
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct Endpoint {
     /// UNIX timestamp in nanoseconds resolution.
-    timestamp_ns: u128,
+    ///
+    /// Will overflow earliest November 2262.
+    timestamp_ns: u64,
     /// Socket address the node is listening on.
     addr: net::SocketAddr,
     /// Certificate.
@@ -169,7 +171,7 @@ where
         let our_endpoint = Endpoint {
             timestamp_ns: time::SystemTime::now()
                 .duration_since(time::UNIX_EPOCH)?
-                .as_nanos(),
+                .as_nanos() as u64,
             addr,
             cert: tls::validate_cert(cert.clone())?,
         };
