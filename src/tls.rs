@@ -283,10 +283,10 @@ impl Eq for TlsCert {}
 
 /// Generate a self-signed (key, certificate) pair suitable for TLS and signing.
 ///
-/// The common name of the certificate will be "casper-node".
+/// The common name of the certificate will be "casperlabs-node".
 pub fn generate_node_cert() -> SslResult<(x509::X509, pkey::PKey<pkey::Private>)> {
     let private_key = generate_private_key()?;
-    let cert = generate_cert(&private_key, "casper-node")?;
+    let cert = generate_cert(&private_key, "casperlabs-node")?;
 
     Ok((cert, private_key))
 }
