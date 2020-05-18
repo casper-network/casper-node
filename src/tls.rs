@@ -62,8 +62,8 @@ pub struct CertFingerprint(Sha512);
 pub struct KeyFingerprint(Sha512);
 
 /// Cryptographic signature.
-#[derive(Copy, Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-pub struct Signature(Sha512);
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+pub struct Signature(Vec<u8>);
 
 /// TLS certificate.
 ///
@@ -220,12 +220,15 @@ impl Signature {
 
         let mut signer = sign::Signer::new(Sha512::create_message_digest(), private_key)?;
 
-        let mut sig_buf = [0; Sha512::SIZE];
+        // The API of OpenSSL is a bit weird here; there is no constant size for the buffer required
+        // to create the signatures. Additionally, we need to truncate it to the returned size.
+        let sig_len = signer.len()?;
+        let mut sig_buf = Vec::with_capacity(sig_len);
+        sig_buf.resize(sig_len, 0);
+        let bytes_written = signer.sign_oneshot(&mut sig_buf, data)?;
+        sig_buf.truncate(bytes_written);
 
-        let written = signer.sign_oneshot(&mut sig_buf[..], data)?;
-        assert_eq!(written, Sha512::SIZE);
-
-        Ok(Signature(Sha512(sig_buf)))
+        Ok(Signature(sig_buf))
     }
 
     /// Verify that signature matches on a binary blob.
@@ -238,7 +241,7 @@ impl Signature {
 
         let mut verifier = sign::Verifier::new(Sha512::create_message_digest(), public_key)?;
 
-        verifier.verify_oneshot(self.0.bytes(), data)
+        verifier.verify_oneshot(&self.0, data)
     }
 }
 
@@ -752,7 +755,7 @@ impl fmt::Display for KeyFingerprint {
 
 impl fmt::Display for Signature {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.0, f)
+        write!(f, "{}", HexFmt(&self.0[0..7]))
     }
 }
 
@@ -776,7 +779,7 @@ impl Hash for Sha512 {
 
 #[cfg(test)]
 mod test {
-    use super::{generate_node_cert, mkname, name_to_string, validate_cert, TlsCert};
+    use super::{generate_node_cert, mkname, name_to_string, validate_cert, Signature, TlsCert};
 
     #[test]
     fn simple_name_to_string() {
@@ -801,5 +804,14 @@ mod test {
         let serialized_again = rmp_serde::to_vec(&deserialized).expect("could not serialize");
 
         assert_eq!(serialized, serialized_again);
+    }
+
+    #[test]
+    fn test_signature_roundtrip() {
+        let (cert, private_key) = generate_node_cert().expect("failed to generate key, cert pair");
+        let public_key = cert.public_key().unwrap();
+        let data = vec![1, 2, 3, 4, 5];
+        let sig = Signature::create(&private_key, &data).expect("signing failed");
+        assert!(sig.verify(&public_key, &data).expect("verification failed"));
     }
 }
