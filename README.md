@@ -1,25 +1,21 @@
-# CasperLabs node
+# casper-node
 
-The is the core application for the CasperLabs blockchain.
-
-## Building
-
-To compile this application, simply run `cargo build` on a recent stable Rust (`>= 1.43.1`) version.
+This is the core application for the CasperLabs blockchain.
 
 ## Running a validator node
 
-Launching a validator node with the default configuration is done by simply launching the application:
+To run a validator node with the default configuration:
 
 ```
-casper-node validator
+cargo run --release -- validator
 ```
 
 It is very likely that the configuration requires editing though, so typically one will want to generate a configuration file first, edit it and then launch:
 
 ```
-casper-node generate-config > mynode.toml
+cargo run --release -- generate-config > mynode.toml
 # ... edit mynode.toml
-casper-node validator -c mynode.toml
+cargo run --release -- validator --config=mynode.toml
 ```
 
 ## Development

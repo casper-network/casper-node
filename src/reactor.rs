@@ -2,9 +2,9 @@
 //!
 //! Any long running instance of the node application uses an event-dispatch pattern: Events are
 //! generated and stored on an event queue, then processed one-by-one. This process happens inside
-//! the *reactor*, which also exclusively holds the state of the application besides pending events:
+//! the reactor*, which also exclusively holds the state of the application besides pending events:
 //!
-//! 1. The reactor pops an event off of the event queue (called a `Scheduler`).
+//! 1. The reactor pops an event off the event queue (called a [`Scheduler`](type.Scheduler.html)).
 //! 2. The event is dispatched by the reactor. Since the reactor holds mutable state, it can grant
 //!    any component that processes an event mutable, exclusive access to its state.
 //! 3. Once the (synchronous) event processing has completed, the component returns an effect.
@@ -13,25 +13,30 @@
 //!
 //! # Reactors
 //!
-//! There no single reactor, but a reactor for each application type, since it defines which
-//! components are used and how they are wired up. The reactor defines the state by being a `struct`
-//! of components, their initialization through the `Reactor::new` and a function to `dispatch`
-//! events to components.
+//! There is no single reactor, but rather a reactor for each application type, since it defines
+//! which components are used and how they are wired up. The reactor defines the state by being a
+//! `struct` of components, their initialization through the
+//! [`Reactor::new()`](trait.Reactor.html#tymethod.new) and a method
+//! [`Reactor::dispatch_event()`](trait.Reactor.html#tymethod.dispatch_event) to dispatch events to
+//! components.
 //!
-//! With all these set up, a reactor can be `launch`ed, causing it to run indefinitely, processing
-//! events.
+//! With all these set up, a reactor can be [`launch`](fn.launch.html)ed, causing it to run
+//! indefinitely, processing events.
 
 pub mod non_validator;
 mod queue_kind;
 pub mod validator;
 
-use crate::util::Multiple;
-use crate::{config, effect, util};
-use async_trait::async_trait;
-use futures::FutureExt;
 use std::{fmt, mem};
+
+use futures::FutureExt;
 use tracing::{debug, info, trace, warn};
 
+use crate::{
+    config,
+    effect::Effect,
+    utils::{self, Multiple, WeightedRoundRobin},
+};
 pub use queue_kind::Queue;
 
 /// Event scheduler
@@ -40,7 +45,7 @@ pub use queue_kind::Queue;
 /// is the central hook for any part of the program that schedules events directly.
 ///
 /// Components rarely use this, but use a bound `EventQueueHandle` instead.
-pub type Scheduler<Ev> = util::round_robin::WeightedRoundRobin<Ev, Queue>;
+pub type Scheduler<Ev> = WeightedRoundRobin<Ev, Queue>;
 
 /// Bound event queue handle
 ///
@@ -79,7 +84,7 @@ impl<R, Ev> EventQueueHandle<R, Ev>
 where
     R: Reactor,
 {
-    /// Create a new event queue handle with an associated wrapper function.
+    /// Creates a new event queue handle with an associated wrapper function.
     fn bind(scheduler: &'static Scheduler<R::Event>, wrapper: fn(Ev) -> R::Event) -> Self {
         EventQueueHandle { scheduler, wrapper }
     }
@@ -93,8 +98,8 @@ where
 
 /// Reactor core.
 ///
-/// Any reactor implements should implement this trait and be launched by the `launch` function.
-#[async_trait]
+/// Any reactor should implement this trait and be launched by the [`launch`](fn.launch.html)
+/// function.
 pub trait Reactor: Sized {
     // Note: We've gone for the `Sized` bound here, since we return an instance in `new`. As an
     // alternative, `new` could return a boxed instance instead, removing this requirement.
@@ -104,14 +109,14 @@ pub trait Reactor: Sized {
     /// Defines what kind of event the reactor processes.
     type Event: Send + fmt::Debug + fmt::Display + 'static;
 
-    /// Dispatch an event on the reactor.
+    /// Dispatches an event on the reactor.
     ///
     /// This function is typically only called by the reactor itself to dispatch an event. It is
     /// safe to call regardless, but will cause the event to skip the queue and things like
     /// accounting.
-    fn dispatch_event(&mut self, event: Self::Event) -> Multiple<effect::Effect<Self::Event>>;
+    fn dispatch_event(&mut self, event: Self::Event) -> Multiple<Effect<Self::Event>>;
 
-    /// Create a new instance of the reactor.
+    /// Creates a new instance of the reactor.
     ///
     /// This method creates the full state, which consists of all components, and returns a reactor
     /// instances along with the effects the components generated upon instantiation.
@@ -120,12 +125,12 @@ pub trait Reactor: Sized {
     fn new(
         cfg: config::Config,
         scheduler: &'static Scheduler<Self::Event>,
-    ) -> anyhow::Result<(Self, Multiple<effect::Effect<Self::Event>>)>;
+    ) -> anyhow::Result<(Self, Multiple<Effect<Self::Event>>)>;
 }
 
-/// Run a reactor.
+/// Runs a reactor.
 ///
-/// Start the reactor and associated background tasks, then enter main the event processing loop.
+/// Starts the reactor and associated background tasks, then enters main the event processing loop.
 ///
 /// `launch` will leak memory on start for global structures each time it is called.
 ///
@@ -146,7 +151,7 @@ pub async fn launch<R: Reactor>(cfg: config::Config) -> anyhow::Result<()> {
     let scheduler = Scheduler::<R::Event>::new(Queue::weights());
 
     // Create a new event queue for this reactor run.
-    let scheduler = util::leak(scheduler);
+    let scheduler = utils::leak(scheduler);
 
     let (mut reactor, initial_effects) = R::new(cfg, scheduler)?;
 
@@ -167,14 +172,10 @@ pub async fn launch<R: Reactor>(cfg: config::Config) -> anyhow::Result<()> {
     }
 }
 
-/// Process effects.
-///
 /// Spawns tasks that will process the given effects.
 #[inline]
-async fn process_effects<Ev>(
-    scheduler: &'static Scheduler<Ev>,
-    effects: Multiple<effect::Effect<Ev>>,
-) where
+async fn process_effects<Ev>(scheduler: &'static Scheduler<Ev>, effects: Multiple<Effect<Ev>>)
+where
     Ev: Send + 'static,
 {
     // TODO: Properly carry around priorities.
@@ -189,9 +190,9 @@ async fn process_effects<Ev>(
     }
 }
 
-/// Convert a single effect into another by wrapping it.
+/// Converts a single effect into another by wrapping it.
 #[inline]
-pub fn wrap_effect<Ev, REv, F>(wrap: F, effect: effect::Effect<Ev>) -> effect::Effect<REv>
+pub fn wrap_effect<Ev, REv, F>(wrap: F, effect: Effect<Ev>) -> Effect<REv>
 where
     F: Fn(Ev) -> REv + Send + 'static,
     Ev: Send + 'static,
@@ -205,12 +206,9 @@ where
     .boxed()
 }
 
-/// Convert multiple effects into another by wrapping.
+/// Converts multiple effects into another by wrapping.
 #[inline]
-pub fn wrap_effects<Ev, REv, F>(
-    wrap: F,
-    effects: Multiple<effect::Effect<Ev>>,
-) -> Multiple<effect::Effect<REv>>
+pub fn wrap_effects<Ev, REv, F>(wrap: F, effects: Multiple<Effect<Ev>>) -> Multiple<Effect<REv>>
 where
     F: Fn(Ev) -> REv + Send + 'static + Clone,
     Ev: Send + 'static,

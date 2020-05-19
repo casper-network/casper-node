@@ -1,20 +1,28 @@
 //! Command-line option parsing.
 //!
-//! Most configuration is done through the configuration, which is the only required command-line
-//! argument. However some configuration values can be overwritten for convenience's sake.
-use std::{io, io::Write, path};
-use structopt::StructOpt;
+//! Most configuration is done via config files (see [`config`](../config/index.html) for details).
 
-use crate::{config, reactor, tls};
+use std::{io, io::Write, path::PathBuf};
+
+use anyhow::bail;
+use structopt::StructOpt;
+use tracing::Level;
+
+use crate::{
+    config,
+    reactor::{self, validator::Reactor},
+    tls,
+};
 
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
 #[derive(Debug, StructOpt)]
 /// CasperLabs blockchain node.
 pub enum Cli {
-    /// Generate a self-signed node certificate
+    /// Generate a self-signed node certificate.
     GenerateCert {
-        /// Output path base the certificate, private key pair in PEM format. The cert will be stored as `output.crt.pem`, while the key will be stored as `output.key.pem`.
-        output: path::PathBuf,
+        /// Output path base of the certificate. The certificate will be stored as
+        /// `output.crt.pem`, while the key will be stored as `output.key.pem`.
+        output: PathBuf,
     },
     /// Generate a configuration file from defaults and dump it to stdout.
     GenerateConfig {},
@@ -26,7 +34,7 @@ pub enum Cli {
     Validator {
         #[structopt(short, long, env)]
         /// Path to configuration file.
-        config: Option<path::PathBuf>,
+        config: Option<PathBuf>,
 
         /// Override log-level, forcing debug output.
         #[structopt(short, long)]
@@ -35,12 +43,12 @@ pub enum Cli {
 }
 
 impl Cli {
-    /// Execute selected CLI command.
+    /// Executes selected CLI command.
     pub async fn run(self) -> anyhow::Result<()> {
         match self {
             Cli::GenerateCert { output } => {
                 if output.file_name().is_none() {
-                    anyhow::bail!("not a valid output path");
+                    bail!("not a valid output path");
                 }
 
                 let mut cert_path = output.clone();
@@ -69,11 +77,11 @@ impl Cli {
                     .transpose()?
                     .unwrap_or_default();
                 if debug {
-                    cfg.log.level = tracing::Level::DEBUG;
+                    cfg.log.level = Level::DEBUG;
                 }
                 cfg.log.setup_logging()?;
 
-                reactor::launch::<reactor::validator::Reactor>(cfg).await
+                reactor::launch::<Reactor>(cfg).await
             }
         }
     }
