@@ -37,7 +37,6 @@ steps:
   - rustup component add clippy
   - cargo clippy --all-targets
 
-
 - name: cargo-test
   <<: *buildenv
   commands:
