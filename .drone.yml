@@ -37,12 +37,6 @@ steps:
   - rustup component add clippy
   - cargo clippy --all-targets
 
-- name: cargo-check
-  <<: *buildenv
-  environment:
-    RUSTFLAGS: '-D warnings'
-  commands:
-  - cargo check
 
 - name: cargo-test
   <<: *buildenv
