@@ -12,7 +12,7 @@ use enum_iterator::IntoEnumIterator;
 ///
 /// Priorities are ordered from lowest to highest.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, IntoEnumIterator)]
-pub enum Queue {
+pub enum QueueKind {
     /// Network events that were initiated outside of this node.
     ///
     /// Their load may vary and grouping them together in one queue aides DoS protection.
@@ -30,29 +30,31 @@ pub enum Queue {
     Metrics,
 }
 
-impl Default for Queue {
+impl Default for QueueKind {
     fn default() -> Self {
-        Queue::Regular
+        QueueKind::Regular
     }
 }
 
-impl Queue {
+impl QueueKind {
     /// Returns the weight of a specific queue.
     ///
     /// The weight determines how many events are at most processed from a specific queue during
     /// each event processing round.
     fn weight(self) -> NonZeroUsize {
         NonZeroUsize::new(match self {
-            Queue::NetworkIncoming => 4,
-            Queue::Network => 4,
-            Queue::Regular => 8,
-            Queue::Metrics => 16,
+            QueueKind::NetworkIncoming => 4,
+            QueueKind::Network => 4,
+            QueueKind::Regular => 8,
+            QueueKind::Metrics => 16,
         })
         .expect("weight must be positive")
     }
 
     /// Return weights of all possible `Queue`s.
     pub(super) fn weights() -> Vec<(Self, NonZeroUsize)> {
-        Queue::into_enum_iter().map(|q| (q, q.weight())).collect()
+        QueueKind::into_enum_iter()
+            .map(|q| (q, q.weight()))
+            .collect()
     }
 }

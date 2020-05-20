@@ -37,7 +37,7 @@ use crate::{
     effect::Effect,
     utils::{self, Multiple, WeightedRoundRobin},
 };
-pub use queue_kind::Queue;
+pub use queue_kind::QueueKind;
 
 /// Event scheduler
 ///
@@ -45,7 +45,7 @@ pub use queue_kind::Queue;
 /// is the central hook for any part of the program that schedules events directly.
 ///
 /// Components rarely use this, but use a bound `EventQueueHandle` instead.
-pub type Scheduler<Ev> = WeightedRoundRobin<Ev, Queue>;
+pub type Scheduler<Ev> = WeightedRoundRobin<Ev, QueueKind>;
 
 /// Bound event queue handle
 ///
@@ -91,7 +91,7 @@ where
 
     /// Schedule an event on a specific queue.
     #[inline]
-    pub async fn schedule(self, event: Ev, queue_kind: Queue) {
+    pub async fn schedule(self, event: Ev, queue_kind: QueueKind) {
         self.scheduler.push((self.wrapper)(event), queue_kind).await
     }
 }
@@ -148,7 +148,7 @@ pub async fn launch<R: Reactor>(cfg: config::Config) -> anyhow::Result<()> {
         );
     }
 
-    let scheduler = Scheduler::<R::Event>::new(Queue::weights());
+    let scheduler = Scheduler::<R::Event>::new(QueueKind::weights());
 
     // Create a new event queue for this reactor run.
     let scheduler = utils::leak(scheduler);
@@ -179,12 +179,12 @@ where
     Ev: Send + 'static,
 {
     // TODO: Properly carry around priorities.
-    let queue = Queue::default();
+    let queue_kind = QueueKind::default();
 
     for effect in effects {
         tokio::spawn(async move {
             for event in effect.await {
-                scheduler.push(event, queue).await
+                scheduler.push(event, queue_kind).await
             }
         });
     }

@@ -71,7 +71,7 @@ use x509::X509;
 use crate::{
     config,
     effect::{Effect, EffectExt, EffectResultExt},
-    reactor::{EventQueueHandle, Queue, Reactor},
+    reactor::{EventQueueHandle, QueueKind, Reactor},
     tls::{self, KeyFingerprint, Signed, TlsCert},
     utils::{DisplayIter, Multiple},
 };
@@ -523,7 +523,7 @@ async fn server_task<P, R: Reactor>(
             Ok((stream, addr)) => {
                 // Move the incoming connection to the event queue for handling.
                 let ev = Event::IncomingNew { stream, addr };
-                eq.schedule(ev, Queue::NetworkIncoming).await;
+                eq.schedule(ev, QueueKind::NetworkIncoming).await;
             }
             Err(err) => warn!(%err, "dropping incoming connection during accept"),
         }
@@ -574,7 +574,7 @@ where
                 // We've received a message, push it to the reactor.
                 eq.schedule(
                     Event::IncomingMessage { node_id, msg },
-                    Queue::NetworkIncoming,
+                    QueueKind::NetworkIncoming,
                 )
                 .await;
             }

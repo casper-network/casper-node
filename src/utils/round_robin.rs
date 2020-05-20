@@ -116,8 +116,7 @@ where
 
     /// Returns the next item from queue.
     ///
-    /// Returns `None` if the queue is empty or an internal error occurred. The
-    /// latter should never happen.
+    /// Asynchronously waits until a queue is non-empty or panics if an internal error occurred.
     pub async fn pop(&self) -> (I, K) {
         self.total.acquire().await.forget();
 
@@ -151,5 +150,53 @@ where
                 inner.active_slot.key,
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::num::NonZeroUsize;
+
+    use futures::{future::FutureExt, join};
+
+    use super::*;
+
+    #[repr(usize)]
+    #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+    enum QueueKind {
+        One = 1,
+        Two,
+    }
+
+    fn weights() -> Vec<(QueueKind, NonZeroUsize)> {
+        unsafe {
+            vec![
+                (QueueKind::One, NonZeroUsize::new_unchecked(1)),
+                (QueueKind::Two, NonZeroUsize::new_unchecked(2)),
+            ]
+        }
+    }
+
+    #[tokio::test]
+    async fn should_respect_weighting() {
+        let scheduler = WeightedRoundRobin::<char, QueueKind>::new(weights());
+        // Push three items on to each queue
+        let future1 = scheduler
+            .push('a', QueueKind::One)
+            .then(|_| scheduler.push('b', QueueKind::One))
+            .then(|_| scheduler.push('c', QueueKind::One));
+        let future2 = scheduler
+            .push('d', QueueKind::Two)
+            .then(|_| scheduler.push('e', QueueKind::Two))
+            .then(|_| scheduler.push('f', QueueKind::Two));
+        join!(future2, future1);
+
+        // We should receive the popped values in the order a, d, e, b, f, c
+        assert_eq!(('a', QueueKind::One), scheduler.pop().await);
+        assert_eq!(('d', QueueKind::Two), scheduler.pop().await);
+        assert_eq!(('e', QueueKind::Two), scheduler.pop().await);
+        assert_eq!(('b', QueueKind::One), scheduler.pop().await);
+        assert_eq!(('f', QueueKind::Two), scheduler.pop().await);
+        assert_eq!(('c', QueueKind::One), scheduler.pop().await);
     }
 }
