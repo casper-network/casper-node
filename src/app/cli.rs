@@ -8,11 +8,8 @@ use anyhow::bail;
 use structopt::StructOpt;
 use tracing::Level;
 
-use crate::{
-    config,
-    reactor::{self, validator::Reactor},
-    tls,
-};
+use crate::config;
+use casper_node::{reactor, tls};
 
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
 #[derive(Debug, StructOpt)]
@@ -81,7 +78,7 @@ impl Cli {
                 }
                 cfg.log.setup_logging()?;
 
-                reactor::launch::<Reactor>(cfg).await
+                reactor::validator::launch(cfg.validator_net).await
             }
         }
     }

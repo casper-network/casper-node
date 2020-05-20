@@ -14,8 +14,25 @@
 //!
 //! ```
 //! use std::time::Duration;
-//! use crate::effect::EffectExt;
+//! use casper_node::effect::{Core, EffectExt};
 //!
+//! # struct EffectBuilder {}
+//! #
+//! # impl Core for EffectBuilder {
+//! #     fn immediately(self) -> futures::future::BoxFuture<'static, ()> {
+//! #         Box::pin(async {})
+//! #     }
+//! #
+//! #     fn set_timeout(self, timeout: Duration) -> futures::future::BoxFuture<'static, Duration> {
+//! #         Box::pin(async move {
+//! #             let then = std::time::Instant::now();
+//! #             tokio::time::delay_for(timeout).await;
+//! #             std::time::Instant::now() - then
+//! #         })
+//! #     }
+//! # }
+//! # let events_factory = EffectBuilder {};
+//! #
 //! enum Event {
 //!     ThreeSecondsElapsed(Duration)
 //! }
@@ -29,43 +46,6 @@
 //! `Event::ThreeSecondsElapsed`. Note that effects do nothing on their own, they need to be passed
 //! to a [`reactor`](../reactor/index.html) to be executed.
 //!
-//! ## Chaining futures and effects
-//!
-//! Effects are built from futures, which can be combined before being finalized
-//! into an effect. However, only one effect can be created as the end result
-//! of such a chain.
-//!
-//! It is possible to create an effect from multiple effects being run in parallel using `.also`:
-//!
-//! ```
-//! use std::time::Duration;
-//! use crate::effect::{EffectExt, EffectAlso};
-//!
-//! enum Event {
-//!     ThreeSecondsElapsed(Duration),
-//!     FiveSecondsElapsed(Duration),
-//! }
-//!
-//! // This effect produces a single event after five seconds:
-//! events_factory
-//!     .set_timeout(Duration::from_secs(3))
-//!     .then(|_| {
-//!         events_factory
-//!             .set_timeout(Duration::from_secs(2))
-//!             .event(Event::FiveSecondsElapsed)
-//!     });
-//!
-//! // Here, two effects are run in parallel, resulting in two events:
-//! events_factory
-//!     .set_timeout(Duration::from_secs(3))
-//!     .event(Event::ThreeSecondsElapsed)
-//!     .also(
-//!         events_factory
-//!             .set_timeout(Duration::from_secs(5))
-//!             .event(Event::FiveSecondsElapsed),
-//!     );
-//! ```
-//!
 //! ## Arbitrary effects
 //!
 //! While it is technically possible to turn any future into an effect, it is advisable to only use
@@ -75,18 +55,20 @@
 use std::{future::Future, time::Duration};
 
 use futures::{future::BoxFuture, FutureExt};
-use smallvec::smallvec;
+use smallvec::{smallvec, SmallVec};
 
-use crate::utils::Multiple;
-
-/// Effect type.
-///
-/// Effects are just boxed futures that produce one or more events.
+/// Boxed futures that produce one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
 
-/// Effect extension for futures.
+/// Intended to hold a small collection of effects.
 ///
-/// Used to convert futures into actual effects.
+/// Stored in a `SmallVec` to avoid allocations in case there are less than three items grouped. The
+/// size of two items is chosen because one item is the most common use case, and large items are
+/// typically boxed. In the latter case two pointers and one enum variant discriminator is almost
+/// the same size as an empty vec, which is two pointers.
+pub type Multiple<T> = SmallVec<[T; 2]>;
+
+/// Effect extension for futures, used to convert futures into actual effects.
 pub trait EffectExt: Future + Send {
     /// Finalizes a future into an effect that returns an event.
     ///
@@ -97,18 +79,22 @@ pub trait EffectExt: Future + Send {
         U: 'static,
         Self: Sized;
 
-    /// Finalize a future into an effect that runs but drops the result.
+    /// Finalizes a future into an effect that runs but drops the result.
     fn ignore<Ev>(self) -> Multiple<Effect<Ev>>;
 }
 
+/// Effect extension for futures, used to convert futures returning a `Result` into two different
+/// effects.
 pub trait EffectResultExt {
+    /// The type the future will return if `Ok`.
     type Value;
+    /// The type the future will return if `Err`.
     type Error;
 
     /// Finalizes a future returning a `Result` into two different effects.
     ///
-    /// The function `f` is used to translate the returned value from an effect into an event, while
-    /// the function `g` does the same for a potential error.
+    /// The function `f_ok` is used to translate the returned value from an effect into an event,
+    /// while the function `f_err` does the same for a potential error.
     fn result<U, F, G>(self, f_ok: F, f_err: G) -> Multiple<Effect<U>>
     where
         F: FnOnce(Self::Value) -> U + 'static + Send,

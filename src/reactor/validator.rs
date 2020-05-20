@@ -7,25 +7,23 @@ use std::fmt::{self, Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    components::small_network::{self, SmallNetwork},
-    config::Config,
-    effect::Effect,
+    effect::{Effect, Multiple},
     reactor::{self, EventQueueHandle, Scheduler},
-    utils::Multiple,
+    small_network, SmallNetwork, SmallNetworkConfig,
 };
 
 /// Top-level event for the reactor.
 #[derive(Debug)]
 #[must_use]
-pub enum Event {
+enum Event {
     Network(small_network::Event<Message>),
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub enum Message {}
+enum Message {}
 
 /// Validator node reactor.
-pub struct Reactor {
+struct Reactor {
     net: SmallNetwork<Self, Message>,
 }
 
@@ -33,13 +31,11 @@ impl reactor::Reactor for Reactor {
     type Event = Event;
 
     fn new(
-        cfg: Config,
+        cfg: SmallNetworkConfig,
         scheduler: &'static Scheduler<Self::Event>,
     ) -> anyhow::Result<(Self, Multiple<Effect<Self::Event>>)> {
-        let (net, net_effects) = SmallNetwork::new(
-            EventQueueHandle::bind(scheduler, Event::Network),
-            cfg.validator_net,
-        )?;
+        let (net, net_effects) =
+            SmallNetwork::new(EventQueueHandle::bind(scheduler, Event::Network), cfg)?;
 
         Ok((
             Reactor { net },
@@ -66,4 +62,15 @@ impl Display for Message {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "TODO: MessagePayload")
     }
+}
+
+/// Runs a validator reactor.
+///
+/// Starts the reactor and associated background tasks, then enters main the event processing loop.
+///
+/// `launch` will leak memory on start for global structures each time it is called.
+///
+/// Errors are returned only if component initialization fails.
+pub async fn launch(cfg: SmallNetworkConfig) -> anyhow::Result<()> {
+    super::launch::<Reactor>(cfg).await
 }

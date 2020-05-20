@@ -23,7 +23,7 @@ use tokio::sync::{Mutex, Semaphore};
 ///
 /// The scheduler keeps track internally which queue needs to be popped next.
 #[derive(Debug)]
-pub struct WeightedRoundRobin<I, K> {
+pub(crate) struct WeightedRoundRobin<I, K> {
     /// Current iteration state.
     state: Mutex<IterationState<K>>,
 
@@ -70,7 +70,7 @@ where
     ///
     /// Creates a queue for each pair given in `weights`. The second component of each `weight` is
     /// the number of times to return items from one queue before moving on to the next one.
-    pub fn new(weights: Vec<(K, NonZeroUsize)>) -> Self {
+    pub(crate) fn new(weights: Vec<(K, NonZeroUsize)>) -> Self {
         assert!(!weights.is_empty(), "must provide at least one slot");
 
         let queues = weights
@@ -102,7 +102,7 @@ where
     /// ## Panics
     ///
     /// Panics if the queue identified by key `queue` does not exist.
-    pub async fn push(&self, item: I, queue: K) {
+    pub(crate) async fn push(&self, item: I, queue: K) {
         self.queues
             .get(&queue)
             .expect("tried to push to non-existent queue")
@@ -117,7 +117,7 @@ where
     /// Returns the next item from queue.
     ///
     /// Asynchronously waits until a queue is non-empty or panics if an internal error occurred.
-    pub async fn pop(&self) -> (I, K) {
+    pub(crate) async fn pop(&self) -> (I, K) {
         self.total.acquire().await.forget();
 
         let mut inner = self.state.lock().await;

@@ -3,9 +3,8 @@
 //! Configuration for the node is loaded from TOML files, but all configuration values have sensible
 //! defaults.
 //!
-//! The [`Cli`](../cli/enum.Cli.html#variant.GenerateConfig) offers an option to generate a
-//! configuration from defaults for editing. I.e. running the following will dump a default
-//! configuration file to stdout:
+//! The binary offers an option to generate a configuration from defaults for editing. I.e. running
+//! the following will dump a default configuration file to stdout:
 //! ```
 //! cargo run --release -- generate-config
 //! ```
@@ -18,15 +17,13 @@
 //! * `Default` is implemented (derived or manually) with sensible defaults, and
 //! * it is completely documented.
 
-use std::{
-    fs, io,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    path::{Path, PathBuf},
-};
+use std::{fs, io, path::Path};
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, Level};
+
+use casper_node::SmallNetworkConfig;
 
 /// Root configuration.
 #[derive(Debug, Deserialize, Serialize)]
@@ -34,9 +31,9 @@ pub struct Config {
     /// Log configuration.
     pub log: Log,
     /// Network configuration for the validator-only network.
-    pub validator_net: SmallNetwork,
+    pub validator_net: SmallNetworkConfig,
     /// Network configuration for the public network.
-    pub public_net: SmallNetwork,
+    pub public_net: SmallNetworkConfig,
 }
 
 /// Log configuration.
@@ -47,49 +44,12 @@ pub struct Log {
     pub level: Level,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-/// Small network configuration
-pub struct SmallNetwork {
-    /// Interface to bind to. If it is the same as the in `root_addr`, attempt
-    /// become the root node for this particular small network.
-    pub bind_interface: IpAddr,
-
-    /// Port to bind to when not the root node. Use 0 for a random port.
-    pub bind_port: u16,
-
-    /// Address to connect to join the network.
-    pub root_addr: SocketAddr,
-
-    /// Path to certificate file.
-    pub cert: Option<PathBuf>,
-
-    /// Path to private key for certificate.
-    pub private_key: Option<PathBuf>,
-
-    /// Maximum number of retries when trying to connect to an outgoing node. Unlimited if `None`.
-    pub max_outgoing_retries: Option<u32>,
-}
-
-impl SmallNetwork {
-    /// Creates a default instance for `SmallNetwork` with a constant port.
-    fn default_on_port(port: u16) -> Self {
-        SmallNetwork {
-            bind_interface: Ipv4Addr::new(127, 0, 0, 1).into(),
-            bind_port: 0,
-            root_addr: (Ipv4Addr::new(127, 0, 0, 1), port).into(),
-            cert: None,
-            private_key: None,
-            max_outgoing_retries: None,
-        }
-    }
-}
-
 impl Default for Config {
     fn default() -> Self {
         Config {
             log: Default::default(),
-            validator_net: SmallNetwork::default_on_port(34553),
-            public_net: SmallNetwork::default_on_port(1485),
+            validator_net: SmallNetworkConfig::default_on_port(34553),
+            public_net: SmallNetworkConfig::default_on_port(1485),
         }
     }
 }

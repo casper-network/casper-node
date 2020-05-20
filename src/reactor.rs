@@ -33,9 +33,9 @@ use futures::FutureExt;
 use tracing::{debug, info, trace, warn};
 
 use crate::{
-    config,
-    effect::Effect,
-    utils::{self, Multiple, WeightedRoundRobin},
+    effect::{Effect, Multiple},
+    utils::{self, WeightedRoundRobin},
+    SmallNetworkConfig,
 };
 pub use queue_kind::QueueKind;
 
@@ -45,7 +45,7 @@ pub use queue_kind::QueueKind;
 /// is the central hook for any part of the program that schedules events directly.
 ///
 /// Components rarely use this, but use a bound `EventQueueHandle` instead.
-pub type Scheduler<Ev> = WeightedRoundRobin<Ev, QueueKind>;
+type Scheduler<Ev> = WeightedRoundRobin<Ev, QueueKind>;
 
 /// Bound event queue handle
 ///
@@ -56,7 +56,7 @@ pub type Scheduler<Ev> = WeightedRoundRobin<Ev, QueueKind>;
 /// Every event queue handle allows scheduling events of type `Ev` onto a reactor `R`. For this it
 /// carries with it a reference to a wrapper function that maps an `Ev` to a `Reactor::Event`.
 #[derive(Debug)]
-pub struct EventQueueHandle<R, Ev>
+pub(crate) struct EventQueueHandle<R, Ev>
 where
     R: Reactor,
 {
@@ -78,6 +78,7 @@ where
         }
     }
 }
+
 impl<R, Ev> Copy for EventQueueHandle<R, Ev> where R: Reactor {}
 
 impl<R, Ev> EventQueueHandle<R, Ev>
@@ -91,7 +92,7 @@ where
 
     /// Schedule an event on a specific queue.
     #[inline]
-    pub async fn schedule(self, event: Ev, queue_kind: QueueKind) {
+    pub(crate) async fn schedule(self, event: Ev, queue_kind: QueueKind) {
         self.scheduler.push((self.wrapper)(event), queue_kind).await
     }
 }
@@ -100,7 +101,7 @@ where
 ///
 /// Any reactor should implement this trait and be launched by the [`launch`](fn.launch.html)
 /// function.
-pub trait Reactor: Sized {
+pub(crate) trait Reactor: Sized {
     // Note: We've gone for the `Sized` bound here, since we return an instance in `new`. As an
     // alternative, `new` could return a boxed instance instead, removing this requirement.
 
@@ -123,7 +124,7 @@ pub trait Reactor: Sized {
     ///
     /// If any instantiation fails, an error is returned.
     fn new(
-        cfg: config::Config,
+        cfg: SmallNetworkConfig,
         scheduler: &'static Scheduler<Self::Event>,
     ) -> anyhow::Result<(Self, Multiple<Effect<Self::Event>>)>;
 }
@@ -136,7 +137,7 @@ pub trait Reactor: Sized {
 ///
 /// Errors are returned only if component initialization fails.
 #[inline]
-pub async fn launch<R: Reactor>(cfg: config::Config) -> anyhow::Result<()> {
+async fn launch<R: Reactor>(cfg: SmallNetworkConfig) -> anyhow::Result<()> {
     let event_size = mem::size_of::<R::Event>();
     // Check if the event is of a reasonable size. This only emits a runtime warning at startup
     // right now, since storage size of events is not an issue per se, but copying might be
