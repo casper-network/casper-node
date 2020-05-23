@@ -23,7 +23,7 @@ use tokio::sync::{Mutex, Semaphore};
 ///
 /// The scheduler keeps track internally which queue needs to be popped next.
 #[derive(Debug)]
-pub(crate) struct WeightedRoundRobin<I, K> {
+pub struct WeightedRoundRobin<I, K> {
     /// Current iteration state.
     state: Mutex<IterationState<K>>,
 

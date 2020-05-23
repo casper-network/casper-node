@@ -5,8 +5,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize)]
 /// Small network configuration
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
     /// Interface to bind to. If it is the same as the in `root_addr`, attempt
     /// become the root node for this particular small network.

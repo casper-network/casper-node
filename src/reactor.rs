@@ -27,7 +27,10 @@ pub mod non_validator;
 mod queue_kind;
 pub mod validator;
 
-use std::{fmt, mem};
+use std::{
+    fmt::{Debug, Display},
+    mem,
+};
 
 use futures::FutureExt;
 use tracing::{debug, info, trace, warn};
@@ -45,7 +48,7 @@ pub use queue_kind::QueueKind;
 /// is the central hook for any part of the program that schedules events directly.
 ///
 /// Components rarely use this, but use a bound `EventQueueHandle` instead.
-type Scheduler<Ev> = WeightedRoundRobin<Ev, QueueKind>;
+pub type Scheduler<Ev> = WeightedRoundRobin<Ev, QueueKind>;
 
 /// Bound event queue handle
 ///
@@ -62,7 +65,8 @@ where
 {
     /// The scheduler events will be scheduled on.
     scheduler: &'static Scheduler<<R as Reactor>::Event>,
-    /// A wrapper function translating from component event (input of `W`) to reactor event `Ev`.
+    /// A wrapper function translating from component event (input of `Ev`) to reactor event
+    /// `R::Event`.
     wrapper: fn(Ev) -> R::Event,
 }
 
@@ -101,21 +105,25 @@ where
 ///
 /// Any reactor should implement this trait and be launched by the [`launch`](fn.launch.html)
 /// function.
-pub(crate) trait Reactor: Sized {
+pub trait Reactor: Sized {
     // Note: We've gone for the `Sized` bound here, since we return an instance in `new`. As an
     // alternative, `new` could return a boxed instance instead, removing this requirement.
 
     /// Event type associated with reactor.
     ///
     /// Defines what kind of event the reactor processes.
-    type Event: Send + fmt::Debug + fmt::Display + 'static;
+    type Event: Send + Debug + Display + 'static;
 
     /// Dispatches an event on the reactor.
     ///
     /// This function is typically only called by the reactor itself to dispatch an event. It is
     /// safe to call regardless, but will cause the event to skip the queue and things like
     /// accounting.
-    fn dispatch_event(&mut self, event: Self::Event) -> Multiple<Effect<Self::Event>>;
+    fn dispatch_event(
+        &mut self,
+        scheduler: &'static Scheduler<Self::Event>,
+        event: Self::Event,
+    ) -> Multiple<Effect<Self::Event>>;
 
     /// Creates a new instance of the reactor.
     ///
@@ -168,7 +176,7 @@ async fn launch<R: Reactor>(cfg: SmallNetworkConfig) -> anyhow::Result<()> {
         trace!(?event, ?q, "event");
 
         // Dispatch the event, then execute the resulting effect.
-        let effects = reactor.dispatch_event(event);
+        let effects = reactor.dispatch_event(scheduler, event);
         process_effects(scheduler, effects).await;
     }
 }

@@ -8,36 +8,19 @@
 //!
 //! ## Using effects
 //!
-//! To create an effect, an events factory is used that implements one or more of the factory traits
-//! of this module. For example, given an events factory `events_factory`, we can create a
-//! `set_timeout` future and turn it into an effect:
+//! To create an effect, an `EffectBuilder` will be passed in from the relevant reactor. For
+//! example, given an effect builder `effect_builder`, we can create a `set_timeout` future and turn
+//! it into an effect:
 //!
-//! ```
+//! ```ignore
 //! use std::time::Duration;
-//! use casper_node::effect::{Core, EffectExt};
+//! use casper_node::effect::EffectExt;
 //!
-//! # struct EffectBuilder {}
-//! #
-//! # impl Core for EffectBuilder {
-//! #     fn immediately(self) -> futures::future::BoxFuture<'static, ()> {
-//! #         Box::pin(async {})
-//! #     }
-//! #
-//! #     fn set_timeout(self, timeout: Duration) -> futures::future::BoxFuture<'static, Duration> {
-//! #         Box::pin(async move {
-//! #             let then = std::time::Instant::now();
-//! #             tokio::time::delay_for(timeout).await;
-//! #             std::time::Instant::now() - then
-//! #         })
-//! #     }
-//! # }
-//! # let events_factory = EffectBuilder {};
-//! #
 //! enum Event {
 //!     ThreeSecondsElapsed(Duration)
 //! }
 //!
-//! events_factory
+//! effect_builder
 //!     .set_timeout(Duration::from_secs(3))
 //!     .event(Event::ThreeSecondsElapsed);
 //! ```
@@ -52,15 +35,22 @@
 //! the effects explicitly listed in this module through traits to create them. Post-processing on
 //! effects to turn them into events should also be kept brief.
 
-use std::{future::Future, time::Duration};
+use std::{
+    future::Future,
+    time::{Duration, Instant},
+};
 
-use futures::{future::BoxFuture, FutureExt};
+use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use smallvec::{smallvec, SmallVec};
+use tracing::error;
 
-/// Boxed futures that produce one or more events.
+/// A boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
 
-/// Intended to hold a small collection of effects.
+/// A boxed closure which returns an [`Effect`](type.Effect.html).
+pub type Responder<T, Ev> = Box<dyn FnOnce(T) -> Effect<Ev> + Send>;
+
+/// Intended to hold a small collection of [`Effect`](type.Effect.html)s.
 ///
 /// Stored in a `SmallVec` to avoid allocations in case there are less than three items grouped. The
 /// size of two items is chosen because one item is the most common use case, and large items are
@@ -139,17 +129,70 @@ where
     }
 }
 
-/// Core effects.
-pub trait Core {
-    /// Immediately completes without doing anything.
-    ///
-    /// Can be used to trigger an event.
-    fn immediately(self) -> BoxFuture<'static, ()>;
+use crate::reactor::{EventQueueHandle, QueueKind, Reactor};
+
+/// A builder for [`Effect`](type.Effect.html)s.
+///
+/// Provides methods allowing the creation of effects which need scheduled on the reactor's event
+/// queue, without giving direct access to this queue.
+#[derive(Copy, Clone, Debug)]
+pub struct EffectBuilder<R: Reactor, Ev> {
+    event_queue_handle: EventQueueHandle<R, Ev>,
+    queue_kind: QueueKind,
+}
+
+impl<R: Reactor, Ev> EffectBuilder<R, Ev> {
+    pub(crate) fn new(event_queue_handle: EventQueueHandle<R, Ev>, queue_kind: QueueKind) -> Self {
+        EffectBuilder {
+            event_queue_handle,
+            queue_kind,
+        }
+    }
 
     /// Sets a timeout.
+    pub async fn set_timeout(self, timeout: Duration) -> Duration {
+        let then = Instant::now();
+        tokio::time::delay_for(timeout).await;
+        Instant::now() - then
+    }
+
+    /// Creates a request and response pair.
     ///
-    /// Once the timeout fires, it will return the actual elapsed time since the execution (not
-    /// creation!) of this effect. Event loops typically execute effects right after a called event
-    /// handling function completes.
-    fn set_timeout(self, timeout: Duration) -> BoxFuture<'static, Duration>;
+    /// This creates and enqueues a request Event by invoking the provided `create_request_event`
+    /// closure, having first created the responder required in the form of a oneshot channel.
+    pub async fn make_request<T, F>(self, create_request_event: F) -> T
+    where
+        T: 'static + Send,
+        F: FnOnce(Responder<T, Ev>) -> Ev,
+    {
+        // Prepare a channel.
+        let (sender, receiver) = oneshot::channel();
+
+        // Create response function.
+        let responder = create_responder(sender);
+
+        // Now inject the request event into the event loop.
+        let request_event = create_request_event(responder);
+        self.event_queue_handle
+            .schedule(request_event, self.queue_kind)
+            .await;
+
+        receiver.await.unwrap_or_else(|err| {
+            // The channel should never be closed, ever.
+            error!(%err, "request oneshot closed, this should not happen");
+            unreachable!()
+        })
+    }
+}
+
+fn create_responder<T: 'static + Send, Ev>(sender: oneshot::Sender<T>) -> Responder<T, Ev> {
+    Box::new(move |value| {
+        async move {
+            if sender.send(value).is_err() {
+                error!("could not send response to request down oneshot channel")
+            }
+            smallvec![]
+        }
+        .boxed()
+    })
 }
