@@ -9,7 +9,7 @@ use std::{
 
 use futures::FutureExt;
 use smallvec::smallvec;
-use tokio::{sync::RwLock, task};
+use tokio::task;
 use tracing::info;
 
 use crate::effect::{Effect, Multiple, Responder};
@@ -61,46 +61,38 @@ pub(crate) trait StorageType {
             Event::PutBlock { block, responder } => {
                 let block_store = self.block_store();
                 let future = async move {
-                    task::spawn_blocking(move || async move {
-                        let mut block_store = block_store.write().await;
-                        block_store.put(block)
-                    })
-                    .await
-                    .expect("should run")
-                    .await
+                    task::spawn_blocking(move || block_store.put(block))
+                        .await
+                        .expect("should run")
                 };
                 smallvec![future.then(|is_success| responder(is_success)).boxed()]
             }
             Event::GetBlock { name, responder } => {
                 let block_store = self.block_store();
                 let future = async move {
-                    task::spawn_blocking(move || async move {
-                        let block_store = block_store.read().await;
-                        block_store.get(&name)
-                    })
-                    .await
-                    .expect("should run")
-                    .await
+                    task::spawn_blocking(move || block_store.get(&name))
+                        .await
+                        .expect("should run")
                 };
                 smallvec![future.then(|block| responder(block)).boxed()]
             }
         }
     }
 
-    fn block_store(&self) -> Arc<RwLock<Self::BlockStore>>;
+    fn block_store(&self) -> Arc<Self::BlockStore>;
 }
 
 // Concrete type of `Storage` - backed by in-memory block store only for now, but will eventually
 // also hold in-mem versions of wasm-store, deploy-store, etc.
 #[derive(Debug)]
 pub(crate) struct InMemStorage<B: BlockType> {
-    block_store: Arc<RwLock<InMemBlockStore<B>>>,
+    block_store: Arc<InMemBlockStore<B>>,
 }
 
 impl<B: BlockType> InMemStorage<B> {
     pub(crate) fn new() -> Self {
         InMemStorage {
-            block_store: Arc::new(RwLock::new(InMemBlockStore::new())),
+            block_store: Arc::new(InMemBlockStore::new()),
         }
     }
 }
@@ -108,7 +100,7 @@ impl<B: BlockType> InMemStorage<B> {
 impl<B: BlockType> StorageType for InMemStorage<B> {
     type BlockStore = InMemBlockStore<B>;
 
-    fn block_store(&self) -> Arc<RwLock<Self::BlockStore>> {
+    fn block_store(&self) -> Arc<Self::BlockStore> {
         Arc::clone(&self.block_store)
     }
 }

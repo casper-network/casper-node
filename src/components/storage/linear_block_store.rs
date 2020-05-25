@@ -1,4 +1,7 @@
-use std::collections::{hash_map::Entry, HashMap};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    sync::RwLock,
+};
 
 use super::BlockType;
 
@@ -7,7 +10,7 @@ use super::BlockType;
 pub(crate) trait BlockStoreType {
     type Block: BlockType;
 
-    fn put(&mut self, block: Self::Block) -> bool;
+    fn put(&self, block: Self::Block) -> bool;
     fn get(
         &self,
         name: &<<Self as BlockStoreType>::Block as BlockType>::Name,
@@ -17,13 +20,13 @@ pub(crate) trait BlockStoreType {
 // In-memory version of a block store.
 #[derive(Debug)]
 pub(crate) struct InMemBlockStore<B: BlockType> {
-    inner: HashMap<B::Name, B>,
+    inner: RwLock<HashMap<B::Name, B>>,
 }
 
 impl<B: BlockType> InMemBlockStore<B> {
     pub(crate) fn new() -> Self {
         InMemBlockStore {
-            inner: HashMap::new(),
+            inner: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -31,9 +34,10 @@ impl<B: BlockType> InMemBlockStore<B> {
 impl<B: BlockType> BlockStoreType for InMemBlockStore<B> {
     type Block = B;
 
-    fn put(&mut self, block: B) -> bool {
+    fn put(&self, block: B) -> bool {
+        let mut inner = self.inner.write().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(100));
-        if let Entry::Vacant(entry) = self.inner.entry(*block.name()) {
+        if let Entry::Vacant(entry) = inner.entry(*block.name()) {
             entry.insert(block);
             return true;
         }
@@ -41,6 +45,6 @@ impl<B: BlockType> BlockStoreType for InMemBlockStore<B> {
     }
 
     fn get(&self, name: &B::Name) -> Option<Self::Block> {
-        self.inner.get(name).cloned()
+        self.inner.read().unwrap().get(name).cloned()
     }
 }
