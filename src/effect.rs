@@ -135,11 +135,23 @@ use crate::reactor::{EventQueueHandle, QueueKind, Reactor};
 ///
 /// Provides methods allowing the creation of effects which need scheduled on the reactor's event
 /// queue, without giving direct access to this queue.
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug)]
 pub struct EffectBuilder<R: Reactor, Ev> {
     event_queue_handle: EventQueueHandle<R, Ev>,
     queue_kind: QueueKind,
 }
+
+// Implement `Clone` and `Copy` manually, as `derive` will make it depend on `R` and `Ev` otherwise.
+impl<R: Reactor, Ev> Clone for EffectBuilder<R, Ev> {
+    fn clone(&self) -> Self {
+        EffectBuilder {
+            event_queue_handle: self.event_queue_handle,
+            queue_kind: self.queue_kind,
+        }
+    }
+}
+
+impl<R: Reactor, Ev> Copy for EffectBuilder<R, Ev> {}
 
 impl<R: Reactor, Ev> EffectBuilder<R, Ev> {
     pub(crate) fn new(event_queue_handle: EventQueueHandle<R, Ev>, queue_kind: QueueKind) -> Self {

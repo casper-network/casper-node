@@ -4,9 +4,12 @@ mod linear_block_store;
 use std::{
     collections::HashSet,
     fmt::{self, Debug, Formatter},
+    sync::Arc,
 };
 
+use futures::FutureExt;
 use smallvec::smallvec;
+use tokio::{sync::RwLock, task};
 use tracing::info;
 
 use crate::effect::{Effect, Multiple, Responder};
@@ -48,39 +51,56 @@ impl<S: StorageType> Debug for Event<S> {
 // If this trait is ultimately only used for testing scenarios, we shouldn't need to expose it to
 // the reactor - it can simply use a concrete type which implements this trait.
 pub(crate) trait StorageType {
-    type BlockStore: BlockStoreType;
+    type BlockStore: BlockStoreType + Send + Sync;
 
     fn handle_event(&mut self, event: Event<Self>) -> Multiple<Effect<Event<Self>>>
     where
-        Self: Sized,
+        Self: Sized + 'static,
     {
         match event {
             Event::PutBlock { block, responder } => {
-                let result = self.block_store_mut().put(block);
-                smallvec![responder(result)]
+                let block_store = self.block_store();
+                let future = async move {
+                    task::spawn_blocking(move || async move {
+                        let mut block_store = block_store.write().await;
+                        block_store.put(block)
+                    })
+                    .await
+                    .expect("should run")
+                    .await
+                };
+                smallvec![future.then(|is_success| responder(is_success)).boxed()]
             }
             Event::GetBlock { name, responder } => {
-                let result = self.block_store().get(&name);
-                smallvec![responder(result)]
+                let block_store = self.block_store();
+                let future = async move {
+                    task::spawn_blocking(move || async move {
+                        let block_store = block_store.read().await;
+                        block_store.get(&name)
+                    })
+                    .await
+                    .expect("should run")
+                    .await
+                };
+                smallvec![future.then(|block| responder(block)).boxed()]
             }
         }
     }
 
-    fn block_store(&mut self) -> &Self::BlockStore;
-    fn block_store_mut(&mut self) -> &mut Self::BlockStore;
+    fn block_store(&self) -> Arc<RwLock<Self::BlockStore>>;
 }
 
 // Concrete type of `Storage` - backed by in-memory block store only for now, but will eventually
 // also hold in-mem versions of wasm-store, deploy-store, etc.
 #[derive(Debug)]
 pub(crate) struct InMemStorage<B: BlockType> {
-    block_store: InMemBlockStore<B>,
+    block_store: Arc<RwLock<InMemBlockStore<B>>>,
 }
 
 impl<B: BlockType> InMemStorage<B> {
     pub(crate) fn new() -> Self {
         InMemStorage {
-            block_store: InMemBlockStore::new(),
+            block_store: Arc::new(RwLock::new(InMemBlockStore::new())),
         }
     }
 }
@@ -88,12 +108,8 @@ impl<B: BlockType> InMemStorage<B> {
 impl<B: BlockType> StorageType for InMemStorage<B> {
     type BlockStore = InMemBlockStore<B>;
 
-    fn block_store(&mut self) -> &Self::BlockStore {
-        &self.block_store
-    }
-
-    fn block_store_mut(&mut self) -> &mut Self::BlockStore {
-        &mut self.block_store
+    fn block_store(&self) -> Arc<RwLock<Self::BlockStore>> {
+        Arc::clone(&self.block_store)
     }
 }
 
@@ -175,7 +191,7 @@ pub(crate) mod dummy {
             storage_effect_builder: EffectBuilder<R, super::Event<Storage>>,
         ) -> Multiple<Effect<Event>> {
             storage_effect_builder
-                .set_timeout(Duration::from_millis(100))
+                .set_timeout(Duration::from_millis(10))
                 .event(|_| Event::Trigger)
         }
 

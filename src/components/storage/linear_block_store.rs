@@ -32,6 +32,7 @@ impl<B: BlockType> BlockStoreType for InMemBlockStore<B> {
     type Block = B;
 
     fn put(&mut self, block: B) -> bool {
+        std::thread::sleep(std::time::Duration::from_millis(100));
         if let Entry::Vacant(entry) = self.inner.entry(*block.name()) {
             entry.insert(block);
             return true;

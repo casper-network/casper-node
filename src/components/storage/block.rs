@@ -2,8 +2,10 @@ use std::{fmt::Debug, hash::Hash};
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-pub(crate) trait BlockType: Clone + Serialize + DeserializeOwned + Send + Debug {
-    type Name: Copy + Hash + PartialOrd + Ord + PartialEq + Eq + Debug + Send;
+pub(crate) trait BlockType:
+    Clone + Serialize + DeserializeOwned + Send + Sync + Debug
+{
+    type Name: Copy + Hash + PartialOrd + Ord + PartialEq + Eq + Debug + Send + Sync;
 
     fn name(&self) -> &Self::Name;
 }

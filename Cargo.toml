@@ -28,7 +28,7 @@ serde-big-array = "0.3.0"
 smallvec = "1.4.0"
 structopt = "0.3.14"
 thiserror = "1.0.18"
-tokio = { version = "0.2.20", features = ["macros", "rt-threaded", "sync", "tcp", "time"] }
+tokio = { version = "0.2.20", features = ["macros", "rt-threaded", "sync", "tcp", "time", "blocking"] }
 tokio-openssl = "0.4.0"
 tokio-serde = { version = "0.6.1", features = ["messagepack"] }
 tokio-util = { version = "0.3.1", features = ["codec"] }
