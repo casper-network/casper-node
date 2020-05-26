@@ -172,8 +172,8 @@ async fn launch<R: Reactor>(cfg: SmallNetworkConfig) -> anyhow::Result<()> {
         let (event, q) = scheduler.pop().await;
 
         // We log events twice, once in display and once in debug mode.
-        debug!(%event, ?q, "event");
-        trace!(?event, ?q, "event");
+        debug!(%event, ?q);
+        trace!(?event, ?q);
 
         // Dispatch the event, then execute the resulting effect.
         let effects = reactor.dispatch_event(scheduler, event);

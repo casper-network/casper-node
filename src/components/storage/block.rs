@@ -1,11 +1,14 @@
-use std::{fmt::Debug, hash::Hash};
+use std::{
+    fmt::{self, Debug, Display, Formatter},
+    hash::Hash,
+};
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 pub(crate) trait BlockType:
-    Clone + Serialize + DeserializeOwned + Send + Sync + Debug
+    Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display
 {
-    type Name: Copy + Hash + PartialOrd + Ord + PartialEq + Eq + Debug + Send + Sync;
+    type Name: Copy + Hash + PartialOrd + Ord + PartialEq + Eq + Debug + Display + Send + Sync;
 
     fn name(&self) -> &Self::Name;
 }
@@ -27,5 +30,11 @@ impl BlockType for CLBlock {
 
     fn name(&self) -> &Self::Name {
         &self.name
+    }
+}
+
+impl Display for CLBlock {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(formatter, "Block({})", self.name)
     }
 }

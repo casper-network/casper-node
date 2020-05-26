@@ -13,6 +13,7 @@ publish = false  # Prevent accidental `cargo publish` for now.
 default-run = "casper-node"
 
 [dependencies]
+ansi_term = "0.12.1"
 anyhow = "1.0.28"
 displaydoc = "0.1.6"
 either = "1.5.3"

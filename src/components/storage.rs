@@ -3,7 +3,7 @@ mod linear_block_store;
 
 use std::{
     collections::HashSet,
-    fmt::{self, Debug, Formatter},
+    fmt::{self, Debug, Display, Formatter},
     sync::Arc,
 };
 
@@ -42,6 +42,15 @@ impl<S: StorageType> Debug for Event<S> {
             Event::GetBlock { name, .. } => {
                 write!(formatter, "Event::GetBlock {{ name: {:?} }}", name)
             }
+        }
+    }
+}
+
+impl<S: StorageType> Display for Event<S> {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            Event::PutBlock { block, .. } => write!(formatter, "put {}", block),
+            Event::GetBlock { name, .. } => write!(formatter, "get {}", name),
         }
     }
 }
@@ -122,6 +131,22 @@ pub(crate) mod dummy {
         PutBlockSucceeded(u8),
         PutBlockFailed(u8),
         GetBlock(u8, Option<CLBlock>),
+    }
+
+    impl Display for Event {
+        fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+            match self {
+                Event::Trigger => write!(formatter, "Trigger"),
+                Event::PutBlockSucceeded(name) => write!(formatter, "PutBlockSucceeded({})", name),
+                Event::PutBlockFailed(name) => write!(formatter, "PutBlockFailed({})", name),
+                Event::GetBlock(name, maybe_block) => write!(
+                    formatter,
+                    "GetBlock {{ {}, {} }}",
+                    name,
+                    maybe_block.is_some()
+                ),
+            }
+        }
     }
 
     #[derive(Debug)]
