@@ -13,14 +13,14 @@ pub(crate) trait BlockStoreType {
     fn put(&self, block: Self::Block) -> bool;
     fn get(
         &self,
-        name: &<<Self as BlockStoreType>::Block as BlockType>::Name,
+        name: &<<Self as BlockStoreType>::Block as BlockType>::Hash,
     ) -> Option<Self::Block>;
 }
 
 // In-memory version of a block store.
 #[derive(Debug)]
 pub(crate) struct InMemBlockStore<B: BlockType> {
-    inner: RwLock<HashMap<B::Name, B>>,
+    inner: RwLock<HashMap<B::Hash, B>>,
 }
 
 impl<B: BlockType> InMemBlockStore<B> {
@@ -37,14 +37,14 @@ impl<B: BlockType> BlockStoreType for InMemBlockStore<B> {
     fn put(&self, block: B) -> bool {
         let mut inner = self.inner.write().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(100));
-        if let Entry::Vacant(entry) = inner.entry(*block.name()) {
+        if let Entry::Vacant(entry) = inner.entry(*block.hash()) {
             entry.insert(block);
             return true;
         }
         false
     }
 
-    fn get(&self, name: &B::Name) -> Option<Self::Block> {
-        self.inner.read().unwrap().get(name).cloned()
+    fn get(&self, hash: &B::Hash) -> Option<Self::Block> {
+        self.inner.read().unwrap().get(hash).cloned()
     }
 }

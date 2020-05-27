@@ -12,12 +12,15 @@ use smallvec::smallvec;
 use tokio::task;
 use tracing::info;
 
-use crate::effect::{Effect, Multiple, Responder};
-pub(crate) use block::{BlockType, CLBlock};
+use crate::{
+    effect::{Effect, Multiple, Responder},
+    types::Block,
+};
+pub(crate) use block::BlockType;
 pub(crate) use linear_block_store::BlockStoreType;
 use linear_block_store::InMemBlockStore;
 
-pub(crate) type Storage = InMemStorage<CLBlock>;
+pub(crate) type Storage = InMemStorage<Block>;
 
 pub(crate) enum Event<S: StorageType>
 where
@@ -28,7 +31,7 @@ where
         responder: Responder<bool, Event<S>>,
     },
     GetBlock {
-        name: <<S::BlockStore as BlockStoreType>::Block as BlockType>::Name,
+        block_hash: <<S::BlockStore as BlockStoreType>::Block as BlockType>::Hash,
         responder: Responder<Option<<S::BlockStore as BlockStoreType>::Block>, Event<S>>,
     },
 }
@@ -39,9 +42,11 @@ impl<S: StorageType> Debug for Event<S> {
             Event::PutBlock { block, .. } => {
                 write!(formatter, "Event::PutBlock {{ block: {:?} }}", block)
             }
-            Event::GetBlock { name, .. } => {
-                write!(formatter, "Event::GetBlock {{ name: {:?} }}", name)
-            }
+            Event::GetBlock { block_hash, .. } => write!(
+                formatter,
+                "Event::GetBlock {{ block_hash: {:?} }}",
+                block_hash
+            ),
         }
     }
 }
@@ -50,7 +55,7 @@ impl<S: StorageType> Display for Event<S> {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
             Event::PutBlock { block, .. } => write!(formatter, "put {}", block),
-            Event::GetBlock { name, .. } => write!(formatter, "get {}", name),
+            Event::GetBlock { block_hash, .. } => write!(formatter, "get {}", block_hash),
         }
     }
 }
@@ -76,10 +81,13 @@ pub(crate) trait StorageType {
                 };
                 smallvec![future.then(|is_success| responder.call(is_success)).boxed()]
             }
-            Event::GetBlock { name, responder } => {
+            Event::GetBlock {
+                block_hash,
+                responder,
+            } => {
                 let block_store = self.block_store();
                 let future = async move {
-                    task::spawn_blocking(move || block_store.get(&name))
+                    task::spawn_blocking(move || block_store.get(&block_hash))
                         .await
                         .expect("should run")
                 };
@@ -121,29 +129,33 @@ pub(crate) mod dummy {
 
     use super::*;
     use crate::{
+        crypto::hash,
         effect::{EffectBuilder, EffectExt},
         reactor::Reactor,
+        types::Block,
     };
 
     #[derive(Debug)]
     pub(crate) enum Event {
         Trigger,
-        PutBlockSucceeded(u8),
-        PutBlockFailed(u8),
-        GotBlock(u8, Option<CLBlock>),
+        PutBlockSucceeded(<Block as BlockType>::Hash),
+        PutBlockFailed(<Block as BlockType>::Hash),
+        GotBlock(<Block as BlockType>::Hash, Option<Block>),
     }
 
     impl Display for Event {
         fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
             match self {
                 Event::Trigger => write!(formatter, "Trigger"),
-                Event::PutBlockSucceeded(name) => write!(formatter, "put {} succeeded", name),
-                Event::PutBlockFailed(name) => write!(formatter, "put {} failed", name),
-                Event::GotBlock(name, maybe_block) => {
+                Event::PutBlockSucceeded(block_hash) => {
+                    write!(formatter, "put {} succeeded", block_hash)
+                }
+                Event::PutBlockFailed(block_hash) => write!(formatter, "put {} failed", block_hash),
+                Event::GotBlock(block_hash, maybe_block) => {
                     if maybe_block.is_some() {
-                        write!(formatter, "got block {}", name)
+                        write!(formatter, "got block {}", block_hash)
                     } else {
-                        write!(formatter, "failed to get block {}", name)
+                        write!(formatter, "failed to get block {}", block_hash)
                     }
                 }
             }
@@ -152,7 +164,7 @@ pub(crate) mod dummy {
 
     #[derive(Debug)]
     pub(crate) struct StorageConsumer {
-        stored_blocks_names: HashSet<u8>,
+        stored_blocks_hashes: HashSet<<Block as BlockType>::Hash>,
     }
 
     impl StorageConsumer {
@@ -161,7 +173,7 @@ pub(crate) mod dummy {
         ) -> (Self, Multiple<Effect<Event>>) {
             (
                 Self {
-                    stored_blocks_names: HashSet::new(),
+                    stored_blocks_hashes: HashSet::new(),
                 },
                 Self::set_timeout(storage_effect_builder),
             )
@@ -177,31 +189,31 @@ pub(crate) mod dummy {
                     let mut rng = rand::thread_rng();
                     let create_block: bool = rng.gen();
                     if create_block {
-                        let block = CLBlock::new(rng.gen(), rng.gen());
-                        let name = *block.name();
-                        self.stored_blocks_names.insert(name);
+                        let block = Block::new(rng.gen());
+                        let block_hash = *block.hash();
+                        self.stored_blocks_hashes.insert(block_hash);
                         Self::request_put_block(storage_effect_builder, block)
                     } else {
-                        let name = rng.gen();
-                        Self::request_get_block(storage_effect_builder, name)
+                        let block_hash = hash::hash(&[rng.gen::<u8>()]);
+                        Self::request_get_block(storage_effect_builder, block_hash)
                     }
                 }
-                Event::PutBlockSucceeded(name) => {
-                    info!("consumer knows {} has been stored.", name);
+                Event::PutBlockSucceeded(block_hash) => {
+                    info!("consumer knows {} has been stored.", block_hash);
                     Self::set_timeout(storage_effect_builder)
                 }
-                Event::PutBlockFailed(name) => {
-                    info!("consumer knows {} has failed to be stored.", name);
+                Event::PutBlockFailed(block_hash) => {
+                    info!("consumer knows {} has failed to be stored.", block_hash);
                     Self::set_timeout(storage_effect_builder)
                 }
-                Event::GotBlock(name, maybe_block) => {
+                Event::GotBlock(block_hash, maybe_block) => {
                     match &maybe_block {
-                        Some(block) => info!("consumer got {:?}", block),
-                        None => info!("consumer failed to get {}.", name),
+                        Some(block) => info!("consumer got {}", block),
+                        None => info!("consumer failed to get {}.", block_hash),
                     }
                     assert_eq!(
                         maybe_block.is_some(),
-                        self.stored_blocks_names.contains(&name)
+                        self.stored_blocks_hashes.contains(&block_hash)
                     );
                     Self::set_timeout(storage_effect_builder)
                 }
@@ -218,27 +230,30 @@ pub(crate) mod dummy {
 
         fn request_put_block<R: Reactor + 'static>(
             storage_effect_builder: EffectBuilder<R, super::Event<Storage>>,
-            block: CLBlock,
+            block: Block,
         ) -> Multiple<Effect<Event>> {
-            let name = *block.name();
+            let block_hash = *block.hash();
             storage_effect_builder
                 .make_request(|responder| super::Event::PutBlock { block, responder })
                 .event(move |is_success| {
                     if is_success {
-                        Event::PutBlockSucceeded(name)
+                        Event::PutBlockSucceeded(block_hash)
                     } else {
-                        Event::PutBlockFailed(name)
+                        Event::PutBlockFailed(block_hash)
                     }
                 })
         }
 
         fn request_get_block<R: Reactor + 'static>(
             storage_effect_builder: EffectBuilder<R, super::Event<Storage>>,
-            name: u8,
+            block_hash: <Block as BlockType>::Hash,
         ) -> Multiple<Effect<Event>> {
             storage_effect_builder
-                .make_request(move |responder| super::Event::GetBlock { name, responder })
-                .event(move |maybe_block| Event::GotBlock(name, maybe_block))
+                .make_request(move |responder| super::Event::GetBlock {
+                    block_hash,
+                    responder,
+                })
+                .event(move |maybe_block| Event::GotBlock(block_hash, maybe_block))
         }
     }
 }
