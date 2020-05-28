@@ -38,7 +38,7 @@ use tracing::{debug, info, trace, warn};
 use crate::{
     effect::{Effect, Multiple},
     utils::{self, WeightedRoundRobin},
-    SmallNetworkConfig,
+    Config,
 };
 pub use queue_kind::QueueKind;
 
@@ -132,7 +132,7 @@ pub trait Reactor: Sized {
     ///
     /// If any instantiation fails, an error is returned.
     fn new(
-        cfg: SmallNetworkConfig,
+        cfg: Config,
         scheduler: &'static Scheduler<Self::Event>,
     ) -> anyhow::Result<(Self, Multiple<Effect<Self::Event>>)>;
 }
@@ -145,7 +145,7 @@ pub trait Reactor: Sized {
 ///
 /// Errors are returned only if component initialization fails.
 #[inline]
-async fn launch<R: Reactor>(cfg: SmallNetworkConfig) -> anyhow::Result<()> {
+async fn launch<R: Reactor>(cfg: Config) -> anyhow::Result<()> {
     let event_size = mem::size_of::<R::Event>();
     // Check if the event is of a reasonable size. This only emits a runtime warning at startup
     // right now, since storage size of events is not an issue per se, but copying might be

@@ -52,6 +52,8 @@ use openssl::{
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
+// This is inside a private module so that the generated `BigArray` does not form part of this
+// crate's public API, and hence also doesn't appear in the rustdocs.
 mod big_array {
     use serde_big_array::big_array;
 

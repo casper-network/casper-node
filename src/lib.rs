@@ -28,5 +28,5 @@ pub mod reactor;
 pub mod tls;
 mod utils;
 
-pub use components::small_network::Config as SmallNetworkConfig;
+pub use components::small_network::Config;
 pub(crate) use components::small_network::{self, SmallNetwork};

@@ -33,7 +33,7 @@ use tracing_subscriber::{
     registry::LookupSpan,
 };
 
-use casper_node::SmallNetworkConfig;
+use casper_node::Config as SmallNetworkConfig;
 
 /// Root configuration.
 #[derive(Debug, Deserialize, Serialize)]
@@ -92,13 +92,13 @@ where
         SystemTime.format_time(writer)?;
         write!(writer, "{}", style.suffix())?;
 
-        let colour = log_level::colour(meta.level());
+        let color = log_level::color(meta.level());
         write!(
             writer,
             " {}{:<6}{}",
-            colour.prefix(),
+            color.prefix(),
             meta.level().to_string(),
-            colour.suffix()
+            color.suffix()
         )?;
 
         // TODO - enable outputting spans.  See
@@ -108,13 +108,7 @@ where
         // let full_ctx = FullCtx::new(&ctx);
         // write!(writer, "{}", full_ctx)?;
 
-        let module = meta
-            .module_path()
-            // .unwrap_or_default()
-            // .splitn(2, "::")
-            // .skip(1)
-            // .next()
-            .unwrap_or_default();
+        let module = meta.module_path().unwrap_or_default();
 
         let file = meta
             .file()
@@ -154,6 +148,7 @@ impl Log {
             }
         })
         .delimited("; ");
+
         // Setup a new tracing-subscriber writing to `stderr` for logging.
         tracing::subscriber::set_global_default(
             tracing_subscriber::fmt()
@@ -188,7 +183,7 @@ pub fn to_string(cfg: &Config) -> anyhow::Result<String> {
 mod log_level {
     use std::str::FromStr;
 
-    use ansi_term::Colour;
+    use ansi_term::Color;
     use serde::{self, de::Error, Deserialize, Deserializer, Serializer};
     use tracing::Level;
 
@@ -208,13 +203,13 @@ mod log_level {
         Level::from_str(s.as_str()).map_err(Error::custom)
     }
 
-    pub(super) fn colour(value: &Level) -> Colour {
+    pub(super) fn color(value: &Level) -> Color {
         match *value {
-            Level::TRACE => Colour::Purple,
-            Level::DEBUG => Colour::Blue,
-            Level::INFO => Colour::Green,
-            Level::WARN => Colour::Yellow,
-            Level::ERROR => Colour::Red,
+            Level::TRACE => Color::Purple,
+            Level::DEBUG => Color::Blue,
+            Level::INFO => Color::Green,
+            Level::WARN => Color::Yellow,
+            Level::ERROR => Color::Red,
         }
     }
 }

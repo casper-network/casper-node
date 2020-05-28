@@ -36,6 +36,7 @@
 //! effects to turn them into events should also be kept brief.
 
 use std::{
+    fmt::{self, Debug, Display, Formatter},
     future::Future,
     time::{Duration, Instant},
 };
@@ -47,9 +48,6 @@ use tracing::error;
 /// A boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
 
-/// A boxed closure which returns an [`Effect`](type.Effect.html).
-pub type Responder<T, Ev> = Box<dyn FnOnce(T) -> Effect<Ev> + Send>;
-
 /// Intended to hold a small collection of [`Effect`](type.Effect.html)s.
 ///
 /// Stored in a `SmallVec` to avoid allocations in case there are less than three items grouped. The
@@ -57,6 +55,42 @@ pub type Responder<T, Ev> = Box<dyn FnOnce(T) -> Effect<Ev> + Send>;
 /// typically boxed. In the latter case two pointers and one enum variant discriminator is almost
 /// the same size as an empty vec, which is two pointers.
 pub type Multiple<T> = SmallVec<[T; 2]>;
+
+/// A boxed closure which returns an [`Effect`](type.Effect.html).
+pub struct Responder<T, Ev>(Box<dyn FnOnce(T) -> Effect<Ev> + Send>);
+
+impl<T: 'static + Send, Ev> Responder<T, Ev> {
+    fn new(sender: oneshot::Sender<T>) -> Self {
+        Responder(Box::new(move |value| {
+            async move {
+                if sender.send(value).is_err() {
+                    error!("could not send response to request down oneshot channel")
+                }
+                smallvec![]
+            }
+            .boxed()
+        }))
+    }
+}
+
+impl<T, Ev> Responder<T, Ev> {
+    /// Invoke the wrapped closure, passing in `data`.
+    pub fn call(self, data: T) -> Effect<Ev> {
+        self.0(data)
+    }
+}
+
+impl<T, Ev> Debug for Responder<T, Ev> {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(formatter, "responder")
+    }
+}
+
+impl<T, Ev> Display for Responder<T, Ev> {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        Debug::fmt(self, formatter)
+    }
+}
 
 /// Effect extension for futures, used to convert futures into actual effects.
 pub trait EffectExt: Future + Send {
@@ -170,7 +204,7 @@ impl<R: Reactor, Ev> EffectBuilder<R, Ev> {
 
     /// Creates a request and response pair.
     ///
-    /// This creates and enqueues a request Event by invoking the provided `create_request_event`
+    /// This creates and enqueues a request event by invoking the provided `create_request_event`
     /// closure, having first created the responder required in the form of a oneshot channel.
     pub async fn make_request<T, F>(self, create_request_event: F) -> T
     where
@@ -181,7 +215,7 @@ impl<R: Reactor, Ev> EffectBuilder<R, Ev> {
         let (sender, receiver) = oneshot::channel();
 
         // Create response function.
-        let responder = create_responder(sender);
+        let responder = Responder::new(sender);
 
         // Now inject the request event into the event loop.
         let request_event = create_request_event(responder);
@@ -195,16 +229,4 @@ impl<R: Reactor, Ev> EffectBuilder<R, Ev> {
             unreachable!()
         })
     }
-}
-
-fn create_responder<T: 'static + Send, Ev>(sender: oneshot::Sender<T>) -> Responder<T, Ev> {
-    Box::new(move |value| {
-        async move {
-            if sender.send(value).is_err() {
-                error!("could not send response to request down oneshot channel")
-            }
-            smallvec![]
-        }
-        .boxed()
-    })
 }

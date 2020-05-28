@@ -10,7 +10,7 @@ use crate::{
     components::storage::{self, Storage, StorageType},
     effect::{Effect, EffectBuilder, Multiple},
     reactor::{self, EventQueueHandle, QueueKind, Scheduler},
-    small_network, SmallNetwork, SmallNetworkConfig,
+    small_network, Config, SmallNetwork,
 };
 
 /// Top-level event for the reactor.
@@ -36,7 +36,7 @@ impl reactor::Reactor for Reactor {
     type Event = Event;
 
     fn new(
-        cfg: SmallNetworkConfig,
+        cfg: Config,
         scheduler: &'static Scheduler<Self::Event>,
     ) -> anyhow::Result<(Self, Multiple<Effect<Self::Event>>)> {
         let (net, net_effects) =
@@ -114,6 +114,6 @@ impl Display for Message {
 /// `launch` will leak memory on start for global structures each time it is called.
 ///
 /// Errors are returned only if component initialization fails.
-pub async fn launch(cfg: SmallNetworkConfig) -> anyhow::Result<()> {
+pub async fn launch(cfg: Config) -> anyhow::Result<()> {
     super::launch::<Reactor>(cfg).await
 }

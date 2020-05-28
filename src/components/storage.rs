@@ -74,7 +74,7 @@ pub(crate) trait StorageType {
                         .await
                         .expect("should run")
                 };
-                smallvec![future.then(|is_success| responder(is_success)).boxed()]
+                smallvec![future.then(|is_success| responder.call(is_success)).boxed()]
             }
             Event::GetBlock { name, responder } => {
                 let block_store = self.block_store();
@@ -83,7 +83,7 @@ pub(crate) trait StorageType {
                         .await
                         .expect("should run")
                 };
-                smallvec![future.then(|block| responder(block)).boxed()]
+                smallvec![future.then(|block| responder.call(block)).boxed()]
             }
         }
     }
@@ -130,21 +130,22 @@ pub(crate) mod dummy {
         Trigger,
         PutBlockSucceeded(u8),
         PutBlockFailed(u8),
-        GetBlock(u8, Option<CLBlock>),
+        GotBlock(u8, Option<CLBlock>),
     }
 
     impl Display for Event {
         fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
             match self {
                 Event::Trigger => write!(formatter, "Trigger"),
-                Event::PutBlockSucceeded(name) => write!(formatter, "PutBlockSucceeded({})", name),
-                Event::PutBlockFailed(name) => write!(formatter, "PutBlockFailed({})", name),
-                Event::GetBlock(name, maybe_block) => write!(
-                    formatter,
-                    "GetBlock {{ {}, {} }}",
-                    name,
-                    maybe_block.is_some()
-                ),
+                Event::PutBlockSucceeded(name) => write!(formatter, "put {} succeeded", name),
+                Event::PutBlockFailed(name) => write!(formatter, "put {} failed", name),
+                Event::GotBlock(name, maybe_block) => {
+                    if maybe_block.is_some() {
+                        write!(formatter, "got block {}", name)
+                    } else {
+                        write!(formatter, "failed to get block {}", name)
+                    }
+                }
             }
         }
     }
@@ -186,15 +187,18 @@ pub(crate) mod dummy {
                     }
                 }
                 Event::PutBlockSucceeded(name) => {
-                    info!("Consumer knows {} has been stored.", name);
+                    info!("consumer knows {} has been stored.", name);
                     Self::set_timeout(storage_effect_builder)
                 }
                 Event::PutBlockFailed(name) => {
-                    info!("Consumer knows {} has failed to be stored.", name);
+                    info!("consumer knows {} has failed to be stored.", name);
                     Self::set_timeout(storage_effect_builder)
                 }
-                Event::GetBlock(name, maybe_block) => {
-                    info!("Consumer received {:?}.", maybe_block);
+                Event::GotBlock(name, maybe_block) => {
+                    match &maybe_block {
+                        Some(block) => info!("consumer got {:?}", block),
+                        None => info!("consumer failed to get {}.", name),
+                    }
                     assert_eq!(
                         maybe_block.is_some(),
                         self.stored_blocks_names.contains(&name)
@@ -234,7 +238,7 @@ pub(crate) mod dummy {
         ) -> Multiple<Effect<Event>> {
             storage_effect_builder
                 .make_request(move |responder| super::Event::GetBlock { name, responder })
-                .event(move |maybe_block| Event::GetBlock(name, maybe_block))
+                .event(move |maybe_block| Event::GotBlock(name, maybe_block))
         }
     }
 }
