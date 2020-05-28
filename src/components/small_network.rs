@@ -341,7 +341,7 @@ where
                     self.endpoints.insert(node_id, endpoint.clone());
 
                     let effect = if self.outgoing.remove(&node_id).is_none() {
-                        info!(%node_id, ?endpoint, "new outgoing channel");
+                        info!(%node_id, %endpoint, "new outgoing channel");
                         // Initiate the connection process once we learn of a new node ID.
                         connect_outgoing(endpoint, self.cert.clone(), self.private_key.clone())
                             .result(
