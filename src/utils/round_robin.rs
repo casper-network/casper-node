@@ -1,13 +1,16 @@
-//! Round-robin scheduling.
+//! Weighted round-robin scheduling.
 //!
 //! This module implements a weighted round-robin scheduler that ensures no deadlocks occur, but
-//! still allows prioriting events from one source over another. The module uses `tokio`s
+//! still allows prioritizing events from one source over another. The module uses `tokio`'s
 //! synchronization primitives under the hood.
 
-use std::collections::{HashMap, VecDeque};
-use std::hash::Hash;
-use std::num::NonZeroUsize;
-use tokio::sync;
+use std::{
+    collections::{HashMap, VecDeque},
+    hash::Hash,
+    num::NonZeroUsize,
+};
+
+use tokio::sync::{Mutex, Semaphore};
 
 /// Weighted round-robin scheduler.
 ///
@@ -22,16 +25,16 @@ use tokio::sync;
 #[derive(Debug)]
 pub struct WeightedRoundRobin<I, K> {
     /// Current iteration state.
-    state: sync::Mutex<IterationState<K>>,
+    state: Mutex<IterationState<K>>,
 
     /// A list of slots that are round-robin'd.
     slots: Vec<Slot<K>>,
 
     /// Actual queues.
-    queues: HashMap<K, sync::Mutex<VecDeque<I>>>,
+    queues: HashMap<K, Mutex<VecDeque<I>>>,
 
     /// Number of items in all queues combined.
-    total: sync::Semaphore,
+    total: Semaphore,
 }
 
 /// The inner state of the queue iteration.
@@ -48,8 +51,8 @@ struct IterationState<K> {
 
 /// An internal slot in the round-robin scheduler.
 ///
-/// A slot marks the scheduling position, i.e. which queue we are currently
-/// polling and how many tickets it has left before the next one is due.
+/// A slot marks the scheduling position, i.e. which queue we are currently polling and how many
+/// tickets it has left before the next one is due.
 #[derive(Copy, Clone, Debug)]
 struct Slot<K> {
     /// The key, identifying a queue.
@@ -63,17 +66,16 @@ impl<I, K> WeightedRoundRobin<I, K>
 where
     K: Copy + Clone + Eq + Hash,
 {
-    /// Create new weighted round-robin scheduler.
+    /// Creates a new weighted round-robin scheduler.
     ///
-    /// Creates a queue for each pair given in `weights`. The second component
-    /// of each `weight` is the number of times to return items from one
-    /// queue before moving on to the next one.
+    /// Creates a queue for each pair given in `weights`. The second component of each `weight` is
+    /// the number of times to return items from one queue before moving on to the next one.
     pub fn new(weights: Vec<(K, NonZeroUsize)>) -> Self {
         assert!(!weights.is_empty(), "must provide at least one slot");
 
         let queues = weights
             .iter()
-            .map(|(idx, _)| (*idx, sync::Mutex::new(VecDeque::new())))
+            .map(|(idx, _)| (*idx, Mutex::new(VecDeque::new())))
             .collect();
         let slots: Vec<Slot<K>> = weights
             .into_iter()
@@ -85,17 +87,17 @@ where
         let active_slot = slots[0];
 
         WeightedRoundRobin {
-            state: sync::Mutex::new(IterationState {
+            state: Mutex::new(IterationState {
                 active_slot,
                 active_slot_idx: 0,
             }),
             slots,
             queues,
-            total: sync::Semaphore::new(0),
+            total: Semaphore::new(0),
         }
     }
 
-    /// Push an item to a queue identified by key.
+    /// Pushes an item to a queue identified by key.
     ///
     /// ## Panics
     ///
@@ -103,7 +105,7 @@ where
     pub async fn push(&self, item: I, queue: K) {
         self.queues
             .get(&queue)
-            .expect("tried to push to non-existant queue")
+            .expect("tried to push to non-existent queue")
             .lock()
             .await
             .push_back(item);
@@ -112,10 +114,9 @@ where
         self.total.add_permits(1);
     }
 
-    /// Return the next item from queue.
+    /// Returns the next item from queue.
     ///
-    /// Returns `None` if the queue is empty or an internal error occurred. The
-    /// latter should never happen.
+    /// Asynchronously waits until a queue is non-empty or panics if an internal error occurred.
     pub async fn pop(&self) -> (I, K) {
         self.total.acquire().await.forget();
 
@@ -149,5 +150,53 @@ where
                 inner.active_slot.key,
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::num::NonZeroUsize;
+
+    use futures::{future::FutureExt, join};
+
+    use super::*;
+
+    #[repr(usize)]
+    #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+    enum QueueKind {
+        One = 1,
+        Two,
+    }
+
+    fn weights() -> Vec<(QueueKind, NonZeroUsize)> {
+        unsafe {
+            vec![
+                (QueueKind::One, NonZeroUsize::new_unchecked(1)),
+                (QueueKind::Two, NonZeroUsize::new_unchecked(2)),
+            ]
+        }
+    }
+
+    #[tokio::test]
+    async fn should_respect_weighting() {
+        let scheduler = WeightedRoundRobin::<char, QueueKind>::new(weights());
+        // Push three items on to each queue
+        let future1 = scheduler
+            .push('a', QueueKind::One)
+            .then(|_| scheduler.push('b', QueueKind::One))
+            .then(|_| scheduler.push('c', QueueKind::One));
+        let future2 = scheduler
+            .push('d', QueueKind::Two)
+            .then(|_| scheduler.push('e', QueueKind::Two))
+            .then(|_| scheduler.push('f', QueueKind::Two));
+        join!(future2, future1);
+
+        // We should receive the popped values in the order a, d, e, b, f, c
+        assert_eq!(('a', QueueKind::One), scheduler.pop().await);
+        assert_eq!(('d', QueueKind::Two), scheduler.pop().await);
+        assert_eq!(('e', QueueKind::Two), scheduler.pop().await);
+        assert_eq!(('b', QueueKind::One), scheduler.pop().await);
+        assert_eq!(('f', QueueKind::Two), scheduler.pop().await);
+        assert_eq!(('c', QueueKind::One), scheduler.pop().await);
     }
 }
