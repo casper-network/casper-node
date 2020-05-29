@@ -4,10 +4,16 @@ version = "0.1.0"
 authors = ["Marc Brinkmann <marc@casperlabs.io>", "Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "The CasperLabs blockchain node"
-publish = false  # Prevent accidental `cargo publish` for now.
+documentation = "https://docs.rs/casper-node"
+readme = "README.md"
+homepage = "https://casperlabs.io"
+repository = "https://github.com/CasperLabs/casper-node"
 license-file = "LICENSE"
+publish = false  # Prevent accidental `cargo publish` for now.
+default-run = "casper-node"
 
 [dependencies]
+ansi_term = "0.12.1"
 anyhow = "1.0.28"
 displaydoc = "0.1.6"
 either = "1.5.3"
@@ -16,16 +22,24 @@ futures = "0.3.5"
 hex_fmt = "0.3.0"
 maplit = "1.0.2"
 openssl = "0.10.29"
+rand = "0.7.3"
 rmp-serde = "0.14.3"
 serde = { version = "1.0.110", features = ["derive"] }
 serde-big-array = "0.3.0"
 smallvec = "1.4.0"
 structopt = "0.3.14"
 thiserror = "1.0.18"
-tokio = { version = "0.2.20", features = ["macros", "rt-threaded", "sync", "tcp"] }
+tokio = { version = "0.2.20", features = ["macros", "rt-threaded", "sync", "tcp", "time", "blocking"] }
 tokio-openssl = "0.4.0"
 tokio-serde = { version = "0.6.1", features = ["messagepack"] }
 tokio-util = { version = "0.3.1", features = ["codec"] }
 toml = "0.5.6"
 tracing = "0.1.14"
 tracing-subscriber = "0.2.5"
+
+[[bin]]
+name = "casper-node"
+path = "src/app/main.rs"
+bench = false
+doctest = false
+test = false

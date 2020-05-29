@@ -3,9 +3,8 @@
 //! Configuration for the node is loaded from TOML files, but all configuration values have sensible
 //! defaults.
 //!
-//! The [`Cli`](../cli/enum.Cli.html#variant.GenerateConfig) offers an option to generate a
-//! configuration from defaults for editing. I.e. running the following will dump a default
-//! configuration file to stdout:
+//! The binary offers an option to generate a configuration from defaults for editing. I.e. running
+//! the following will dump a default configuration file to stdout:
 //! ```
 //! cargo run --release -- generate-config
 //! ```
@@ -18,15 +17,23 @@
 //! * `Default` is implemented (derived or manually) with sensible defaults, and
 //! * it is completely documented.
 
-use std::{
-    fs, io,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    path::{Path, PathBuf},
-};
+use std::{fmt, fs, io, path::Path};
 
+use ansi_term::Style;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, Level};
+use tracing::{debug, Event, Level, Subscriber};
+use tracing_subscriber::{
+    fmt::{
+        format,
+        time::{FormatTime, SystemTime},
+        FmtContext, FormatEvent, FormatFields,
+    },
+    prelude::*,
+    registry::LookupSpan,
+};
+
+use casper_node::Config as SmallNetworkConfig;
 
 /// Root configuration.
 #[derive(Debug, Deserialize, Serialize)]
@@ -34,9 +41,9 @@ pub struct Config {
     /// Log configuration.
     pub log: Log,
     /// Network configuration for the validator-only network.
-    pub validator_net: SmallNetwork,
+    pub validator_net: SmallNetworkConfig,
     /// Network configuration for the public network.
-    pub public_net: SmallNetwork,
+    pub public_net: SmallNetworkConfig,
 }
 
 /// Log configuration.
@@ -47,49 +54,12 @@ pub struct Log {
     pub level: Level,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-/// Small network configuration
-pub struct SmallNetwork {
-    /// Interface to bind to. If it is the same as the in `root_addr`, attempt
-    /// become the root node for this particular small network.
-    pub bind_interface: IpAddr,
-
-    /// Port to bind to when not the root node. Use 0 for a random port.
-    pub bind_port: u16,
-
-    /// Address to connect to join the network.
-    pub root_addr: SocketAddr,
-
-    /// Path to certificate file.
-    pub cert: Option<PathBuf>,
-
-    /// Path to private key for certificate.
-    pub private_key: Option<PathBuf>,
-
-    /// Maximum number of retries when trying to connect to an outgoing node. Unlimited if `None`.
-    pub max_outgoing_retries: Option<u32>,
-}
-
-impl SmallNetwork {
-    /// Creates a default instance for `SmallNetwork` with a constant port.
-    fn default_on_port(port: u16) -> Self {
-        SmallNetwork {
-            bind_interface: Ipv4Addr::new(127, 0, 0, 1).into(),
-            bind_port: 0,
-            root_addr: (Ipv4Addr::new(127, 0, 0, 1), port).into(),
-            cert: None,
-            private_key: None,
-            max_outgoing_retries: None,
-        }
-    }
-}
-
 impl Default for Config {
     fn default() -> Self {
         Config {
             log: Default::default(),
-            validator_net: SmallNetwork::default_on_port(34553),
-            public_net: SmallNetwork::default_on_port(1485),
+            validator_net: SmallNetworkConfig::default_on_port(34553),
+            public_net: SmallNetworkConfig::default_on_port(1485),
         }
     }
 }
@@ -100,17 +70,92 @@ impl Default for Log {
     }
 }
 
+/// This is used to implement tracing's `FormatEvent` so that we can customize the way tracing
+/// events are formatted.
+struct FmtEvent {}
+
+impl<S, N> FormatEvent<S, N> for FmtEvent
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+    N: for<'a> FormatFields<'a> + 'static,
+{
+    fn format_event(
+        &self,
+        ctx: &FmtContext<'_, S, N>,
+        writer: &mut dyn fmt::Write,
+        event: &Event<'_>,
+    ) -> fmt::Result {
+        let meta = event.metadata();
+
+        let style = Style::new().dimmed();
+        write!(writer, "{}", style.prefix())?;
+        SystemTime.format_time(writer)?;
+        write!(writer, "{}", style.suffix())?;
+
+        let color = log_level::color(meta.level());
+        write!(
+            writer,
+            " {}{:<6}{}",
+            color.prefix(),
+            meta.level().to_string(),
+            color.suffix()
+        )?;
+
+        // TODO - enable outputting spans.  See
+        // https://github.com/tokio-rs/tracing/blob/21f28f74/tracing-subscriber/src/fmt/format/mod.rs#L667-L695
+        // for details.
+        //
+        // let full_ctx = FullCtx::new(&ctx);
+        // write!(writer, "{}", full_ctx)?;
+
+        let module = meta.module_path().unwrap_or_default();
+
+        let file = meta
+            .file()
+            .unwrap_or_default()
+            .rsplitn(2, '/')
+            .next()
+            .unwrap_or_default();
+
+        let line = meta.line().unwrap_or_default();
+
+        write!(
+            writer,
+            "{}[{} {}:{}]{} ",
+            style.prefix(),
+            module,
+            file,
+            line,
+            style.suffix()
+        )?;
+
+        ctx.format_fields(writer, event)?;
+        writeln!(writer)
+    }
+}
+
 impl Log {
     /// Initializes logging system based on settings in configuration.
     ///
     /// Will setup logging as described in this configuration for the whole application. This
     /// function should only be called once during the lifetime of the application.
     pub fn setup_logging(&self) -> anyhow::Result<()> {
+        let formatter = format::debug_fn(|writer, field, value| {
+            if field.name() == "message" {
+                write!(writer, "{:?}", value)
+            } else {
+                write!(writer, "{}={:?}", field, value)
+            }
+        })
+        .delimited("; ");
+
         // Setup a new tracing-subscriber writing to `stderr` for logging.
         tracing::subscriber::set_global_default(
             tracing_subscriber::fmt()
                 .with_writer(io::stderr)
                 .with_max_level(self.level.clone())
+                .fmt_fields(formatter)
+                .event_format(FmtEvent {})
                 .finish(),
         )?;
         debug!("debug output enabled");
@@ -138,6 +183,7 @@ pub fn to_string(cfg: &Config) -> anyhow::Result<String> {
 mod log_level {
     use std::str::FromStr;
 
+    use ansi_term::Color;
     use serde::{self, de::Error, Deserialize, Deserializer, Serializer};
     use tracing::Level;
 
@@ -155,5 +201,15 @@ mod log_level {
         let s = String::deserialize(deserializer)?;
 
         Level::from_str(s.as_str()).map_err(Error::custom)
+    }
+
+    pub(super) fn color(value: &Level) -> Color {
+        match *value {
+            Level::TRACE => Color::Purple,
+            Level::DEBUG => Color::Blue,
+            Level::INFO => Color::Green,
+            Level::WARN => Color::Yellow,
+            Level::ERROR => Color::Red,
+        }
     }
 }

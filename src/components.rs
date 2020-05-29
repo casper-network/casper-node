@@ -2,4 +2,5 @@
 //!
 //! Docs to be written, sorry.
 
-pub mod small_network;
+pub(crate) mod small_network;
+pub(crate) mod storage;

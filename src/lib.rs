@@ -18,24 +18,15 @@
     missing_docs,
     trivial_casts,
     trivial_numeric_casts,
-    // unreachable_pub,
+    unreachable_pub,
     unused_qualifications
 )]
 
-mod cli;
 mod components;
-mod config;
-mod effect;
-mod reactor;
-mod tls;
+pub mod effect;
+pub mod reactor;
+pub mod tls;
 mod utils;
 
-use structopt::StructOpt;
-
-/// Parses [command-line arguments](cli/index.html) and run application.
-#[tokio::main]
-pub async fn main() -> anyhow::Result<()> {
-    // Parse CLI args and run selected subcommand.
-    let opts = cli::Cli::from_args();
-    opts.run().await
-}
+pub use components::small_network::Config;
+pub(crate) use components::small_network::{self, SmallNetwork};

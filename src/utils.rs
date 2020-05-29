@@ -8,30 +8,20 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
-use smallvec::SmallVec;
-
-pub use round_robin::WeightedRoundRobin;
+pub(crate) use round_robin::WeightedRoundRobin;
 
 /// Moves a value to the heap and then forgets about, leaving only a static reference behind.
 #[inline]
-pub fn leak<T>(value: T) -> &'static T {
+pub(crate) fn leak<T>(value: T) -> &'static T {
     Box::leak(Box::new(value))
 }
 
-/// Small amount store.
-///
-/// Stored in a `SmallVec` to avoid allocations in case there are less than three items grouped. The
-/// size of two items is chosen because one item is the most common use case, and large items are
-/// typically boxed. In the latter case two pointers and one enum variant discriminator is almost
-/// the same size as an empty vec, which is two pointers.
-pub type Multiple<T> = SmallVec<[T; 2]>;
-
 /// A display-helper that shows iterators display joined by ",".
 #[derive(Debug)]
-pub struct DisplayIter<T>(RefCell<Option<T>>);
+pub(crate) struct DisplayIter<T>(RefCell<Option<T>>);
 
 impl<T> DisplayIter<T> {
-    pub fn new(item: T) -> Self {
+    pub(crate) fn new(item: T) -> Self {
         DisplayIter(RefCell::new(Some(item)))
     }
 }

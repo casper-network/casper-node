@@ -50,10 +50,15 @@ use openssl::{
     x509::{X509Builder, X509Name, X509NameBuilder, X509NameRef, X509Ref, X509},
 };
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer};
-use serde_big_array::big_array;
 use thiserror::Error;
 
-big_array! { BigArray; }
+// This is inside a private module so that the generated `BigArray` does not form part of this
+// crate's public API, and hence also doesn't appear in the rustdocs.
+mod big_array {
+    use serde_big_array::big_array;
+
+    big_array! { BigArray; }
+}
 
 /// The chosen signature algorithm (**ECDSA  with SHA512**).
 const SIGNATURE_ALGORITHM: Nid = Nid::ECDSA_WITH_SHA512;
@@ -67,139 +72,28 @@ const SIGNATURE_DIGEST: Nid = Nid::SHA512;
 /// OpenSSL result type alias.
 ///
 /// Many functions rely solely on `openssl` functions and return this kind of result.
-pub type SslResult<T> = Result<T, ErrorStack>;
+type SslResult<T> = Result<T, ErrorStack>;
 
 /// SHA512 hash.
 #[derive(Copy, Clone, Deserialize, Serialize)]
-pub struct Sha512(#[serde(with = "BigArray")] [u8; Sha512::SIZE]);
-
-/// Certificate fingerprint.
-#[derive(Copy, Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-pub struct CertFingerprint(Sha512);
-
-/// Public key fingerprint.
-#[derive(Copy, Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-pub struct KeyFingerprint(Sha512);
-
-/// Cryptographic signature.
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-pub struct Signature(Vec<u8>);
-
-/// TLS certificate.
-///
-/// Thin wrapper around `X509` enabling things like Serde serialization and fingerprint caching.
-#[derive(Clone)]
-pub struct TlsCert {
-    /// The wrapped x509 certificate.
-    x509: X509,
-
-    /// Cached certificate fingerprint.
-    cert_fingerprint: CertFingerprint,
-
-    /// Cached public key fingerprint.
-    key_fingerprint: KeyFingerprint,
-}
-
-// Serialization and deserialization happens only via x509, which is checked upon deserialization.
-impl<'de> Deserialize<'de> for TlsCert {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        validate_cert(x509_serde::deserialize(deserializer)?).map_err(serde::de::Error::custom)
-    }
-}
-
-impl Serialize for TlsCert {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        x509_serde::serialize(&self.x509, serializer)
-    }
-}
-
-/// A signed value.
-///
-/// Combines a value `V` with a `Signature` and a signature scheme. The signature scheme involves
-/// serializing the value to bytes and signing the result.
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-pub struct Signed<V> {
-    data: Vec<u8>,
-    signature: Signature,
-    _phantom: PhantomData<V>,
-}
-
-impl<V> Signed<V>
-where
-    V: Serialize,
-{
-    /// Creates a new signed value.
-    ///
-    /// Serializes the value to a buffer and signs the buffer.
-    pub fn new(value: &V, signing_key: &PKeyRef<Private>) -> anyhow::Result<Self> {
-        let data = rmp_serde::to_vec(value)?;
-        let signature = Signature::create(signing_key, &data)?;
-
-        Ok(Signed {
-            data,
-            signature,
-            _phantom: PhantomData,
-        })
-    }
-}
-
-impl<V> Signed<V>
-where
-    V: DeserializeOwned,
-{
-    /// Validates signature and restore value.
-    #[allow(dead_code)]
-    pub fn validate(&self, public_key: &PKeyRef<Public>) -> anyhow::Result<V> {
-        if self.signature.verify(public_key, &self.data)? {
-            Ok(rmp_serde::from_read(self.data.as_slice())?)
-        } else {
-            Err(anyhow!("invalid signature"))
-        }
-    }
-
-    /// Validates a self-signed value.
-    ///
-    /// Allows for extraction of a public key prior to validating a value.
-    #[inline]
-    pub fn validate_self_signed<F>(&self, extract: F) -> anyhow::Result<V>
-    where
-        F: FnOnce(&V) -> anyhow::Result<PKey<Public>>,
-    {
-        let unverified = rmp_serde::from_read(self.data.as_slice())?;
-        {
-            let public_key =
-                extract(&unverified).context("could not extract public key from self-signed")?;
-            if self.signature.verify(&public_key, &self.data)? {
-                Ok(unverified)
-            } else {
-                Err(anyhow!("invalid signature"))
-            }
-        }
-    }
-}
+struct Sha512(#[serde(with = "big_array::BigArray")] [u8; Sha512::SIZE]);
 
 impl Sha512 {
     /// Size of digest in bytes.
-    pub const SIZE: usize = 64;
+    const SIZE: usize = 64;
 
     /// OpenSSL NID.
     const NID: Nid = Nid::SHA512;
 
     /// Create a new Sha512 by hashing a slice.
-    pub fn new<B: AsRef<[u8]>>(data: B) -> Self {
+    fn new<B: AsRef<[u8]>>(data: B) -> Self {
         let mut openssl_sha = sha::Sha512::new();
         openssl_sha.update(data.as_ref());
         Sha512(openssl_sha.finish())
     }
 
     /// Returns bytestring of the hash, with length `Self::SIZE`.
-    pub fn bytes(&self) -> &[u8] {
+    fn bytes(&self) -> &[u8] {
         let bs = &self.0[..];
 
         debug_assert_eq!(bs.len(), Self::SIZE);
@@ -230,9 +124,21 @@ impl Sha512 {
     }
 }
 
+/// Certificate fingerprint.
+#[derive(Copy, Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+pub(crate) struct CertFingerprint(Sha512);
+
+/// Public key fingerprint.
+#[derive(Copy, Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+pub(crate) struct KeyFingerprint(Sha512);
+
+/// Cryptographic signature.
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+struct Signature(Vec<u8>);
+
 impl Signature {
     /// Signs a binary blob with the blessed ciphers and TLS parameters.
-    pub fn create(private_key: &PKeyRef<Private>, data: &[u8]) -> SslResult<Self> {
+    fn create(private_key: &PKeyRef<Private>, data: &[u8]) -> SslResult<Self> {
         // TODO: This needs verification to ensure we're not doing stupid/textbook RSA-ish.
 
         // Sha512 is hardcoded, so check we're creating the correct signature.
@@ -251,7 +157,7 @@ impl Signature {
     }
 
     /// Verifies that signature matches on a binary blob.
-    pub fn verify(self: &Signature, public_key: &PKeyRef<Public>, data: &[u8]) -> SslResult<bool> {
+    fn verify(self: &Signature, public_key: &PKeyRef<Public>, data: &[u8]) -> SslResult<bool> {
         assert_eq!(Sha512::NID, SIGNATURE_DIGEST);
 
         let mut verifier = Verifier::new(Sha512::create_message_digest(), public_key)?;
@@ -260,17 +166,32 @@ impl Signature {
     }
 }
 
+/// TLS certificate.
+///
+/// Thin wrapper around `X509` enabling things like Serde serialization and fingerprint caching.
+#[derive(Clone)]
+pub(crate) struct TlsCert {
+    /// The wrapped x509 certificate.
+    x509: X509,
+
+    /// Cached certificate fingerprint.
+    cert_fingerprint: CertFingerprint,
+
+    /// Cached public key fingerprint.
+    key_fingerprint: KeyFingerprint,
+}
+
 impl TlsCert {
     /// Returns the certificate's fingerprint.
     ///
     /// In contrast to the `public_key_fingerprint`, this fingerprint also contains the certificate
     /// information.
-    pub fn fingerprint(&self) -> CertFingerprint {
+    pub(crate) fn fingerprint(&self) -> CertFingerprint {
         self.cert_fingerprint
     }
 
     /// Extracts the public key from the certificate.
-    pub fn public_key(&self) -> PKey<Public> {
+    pub(crate) fn public_key(&self) -> PKey<Public> {
         // This can never fail, we validate the certificate on construction and deserialization.
         self.x509
             .public_key()
@@ -278,14 +199,8 @@ impl TlsCert {
     }
 
     /// Returns the public key fingerprint.
-    pub fn public_key_fingerprint(&self) -> KeyFingerprint {
+    pub(crate) fn public_key_fingerprint(&self) -> KeyFingerprint {
         self.key_fingerprint
-    }
-
-    #[allow(dead_code)]
-    /// Returns OpenSSL X509 certificate.
-    fn x509(&self) -> &X509 {
-        &self.x509
     }
 }
 
@@ -309,6 +224,90 @@ impl PartialEq for TlsCert {
 
 impl Eq for TlsCert {}
 
+// Serialization and deserialization happens only via x509, which is checked upon deserialization.
+impl<'de> Deserialize<'de> for TlsCert {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        validate_cert(x509_serde::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+    }
+}
+
+impl Serialize for TlsCert {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        x509_serde::serialize(&self.x509, serializer)
+    }
+}
+
+/// A signed value.
+///
+/// Combines a value `V` with a `Signature` and a signature scheme. The signature scheme involves
+/// serializing the value to bytes and signing the result.
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+pub(crate) struct Signed<V> {
+    data: Vec<u8>,
+    signature: Signature,
+    _phantom: PhantomData<V>,
+}
+
+impl<V> Signed<V>
+where
+    V: Serialize,
+{
+    /// Creates a new signed value.
+    ///
+    /// Serializes the value to a buffer and signs the buffer.
+    pub(crate) fn new(value: &V, signing_key: &PKeyRef<Private>) -> anyhow::Result<Self> {
+        let data = rmp_serde::to_vec(value)?;
+        let signature = Signature::create(signing_key, &data)?;
+
+        Ok(Signed {
+            data,
+            signature,
+            _phantom: PhantomData,
+        })
+    }
+}
+
+impl<V> Signed<V>
+where
+    V: DeserializeOwned,
+{
+    /// Validates signature and restore value.
+    #[allow(dead_code)]
+    pub(crate) fn validate(&self, public_key: &PKeyRef<Public>) -> anyhow::Result<V> {
+        if self.signature.verify(public_key, &self.data)? {
+            Ok(rmp_serde::from_read(self.data.as_slice())?)
+        } else {
+            Err(anyhow!("invalid signature"))
+        }
+    }
+
+    /// Validates a self-signed value.
+    ///
+    /// Allows for extraction of a public key prior to validating a value.
+    #[inline]
+    pub(crate) fn validate_self_signed<F>(&self, extract: F) -> anyhow::Result<V>
+    where
+        F: FnOnce(&V) -> anyhow::Result<PKey<Public>>,
+    {
+        let unverified = rmp_serde::from_read(self.data.as_slice())?;
+        {
+            let public_key =
+                extract(&unverified).context("could not extract public key from self-signed")?;
+            if self.signature.verify(&public_key, &self.data)? {
+                Ok(unverified)
+            } else {
+                Err(anyhow!("invalid signature"))
+            }
+        }
+    }
+}
+
 /// Generates a self-signed (key, certificate) pair suitable for TLS and signing.
 ///
 /// The common name of the certificate will be "casper-node".
@@ -325,7 +324,7 @@ pub fn generate_node_cert() -> SslResult<(X509, PKey<Private>)> {
 /// compatible with connectors built with `create_tls_connector`.
 ///
 /// Incoming certificates must still be validated using `validate_cert`.
-pub fn create_tls_acceptor(
+pub(crate) fn create_tls_acceptor(
     cert: &X509Ref,
     private_key: &PKeyRef<Private>,
 ) -> SslResult<SslAcceptor> {
@@ -339,7 +338,7 @@ pub fn create_tls_acceptor(
 ///
 /// A connector compatible with the acceptor created using `create_tls_acceptor`. Server
 /// certificates must always be validated using `validate_cert` after connecting.
-pub fn create_tls_connector(
+pub(crate) fn create_tls_connector(
     cert: &X509Ref,
     private_key: &PKeyRef<Private>,
 ) -> SslResult<SslConnector> {
@@ -374,7 +373,7 @@ fn set_context_options(
 
 /// Error during certificate validation.
 #[derive(Debug, Display, Error)]
-pub enum ValidationError {
+pub(crate) enum ValidationError {
     /// error reading public key from certificate: {0:?}
     CannotReadPublicKey(#[source] ErrorStack),
     /// error reading subject or issuer name: {0:?}
@@ -415,7 +414,7 @@ pub enum ValidationError {
 /// fingerprint of the public key.
 ///
 /// At the very least this ensures that no weaker ciphers have been used to forge a certificate.
-pub fn validate_cert(cert: X509) -> Result<TlsCert, ValidationError> {
+pub(crate) fn validate_cert(cert: X509) -> Result<TlsCert, ValidationError> {
     if cert.signature_algorithm().object().nid() != SIGNATURE_ALGORITHM {
         // The signature algorithm is not of the exact kind we are using to generate our
         // certificates, an attacker could have used a weaker one to generate colliding keys.
@@ -512,7 +511,7 @@ pub fn validate_cert(cert: X509) -> Result<TlsCert, ValidationError> {
 }
 
 /// Loads a certificate from a file.
-pub fn load_cert<P: AsRef<Path>>(src: P) -> anyhow::Result<X509> {
+pub(crate) fn load_cert<P: AsRef<Path>>(src: P) -> anyhow::Result<X509> {
     let pem = fs::read(src.as_ref())
         .with_context(|| format!("failed to load certificate {:?}", src.as_ref()))?;
 
@@ -520,7 +519,7 @@ pub fn load_cert<P: AsRef<Path>>(src: P) -> anyhow::Result<X509> {
 }
 
 /// Loads a private key from a file.
-pub fn load_private_key<P: AsRef<Path>>(src: P) -> anyhow::Result<PKey<Private>> {
+pub(crate) fn load_private_key<P: AsRef<Path>>(src: P) -> anyhow::Result<PKey<Private>> {
     let pem = fs::read(src.as_ref())
         .with_context(|| format!("failed to load private key {:?}", src.as_ref()))?;
 
@@ -688,7 +687,7 @@ mod x509_serde {
     use super::validate_cert;
 
     /// Serde-compatible serialization for X509 certificates.
-    pub fn serialize<S>(value: &X509, serializer: S) -> Result<S::Ok, S::Error>
+    pub(super) fn serialize<S>(value: &X509, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -699,7 +698,7 @@ mod x509_serde {
     }
 
     /// Serde-compatible deserialization for X509 certificates.
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<X509, D::Error>
+    pub(super) fn deserialize<'de, D>(deserializer: D) -> Result<X509, D::Error>
     where
         D: Deserializer<'de>,
     {

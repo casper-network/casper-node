@@ -27,15 +27,18 @@ pub mod non_validator;
 mod queue_kind;
 pub mod validator;
 
-use std::{fmt, mem};
+use std::{
+    fmt::{Debug, Display},
+    mem,
+};
 
 use futures::FutureExt;
 use tracing::{debug, info, trace, warn};
 
 use crate::{
-    config,
-    effect::Effect,
-    utils::{self, Multiple, WeightedRoundRobin},
+    effect::{Effect, Multiple},
+    utils::{self, WeightedRoundRobin},
+    Config,
 };
 pub use queue_kind::QueueKind;
 
@@ -56,13 +59,14 @@ pub type Scheduler<Ev> = WeightedRoundRobin<Ev, QueueKind>;
 /// Every event queue handle allows scheduling events of type `Ev` onto a reactor `R`. For this it
 /// carries with it a reference to a wrapper function that maps an `Ev` to a `Reactor::Event`.
 #[derive(Debug)]
-pub struct EventQueueHandle<R, Ev>
+pub(crate) struct EventQueueHandle<R, Ev>
 where
     R: Reactor,
 {
     /// The scheduler events will be scheduled on.
     scheduler: &'static Scheduler<<R as Reactor>::Event>,
-    /// A wrapper function translating from component event (input of `W`) to reactor event `Ev`.
+    /// A wrapper function translating from component event (input of `Ev`) to reactor event
+    /// `R::Event`.
     wrapper: fn(Ev) -> R::Event,
 }
 
@@ -78,6 +82,7 @@ where
         }
     }
 }
+
 impl<R, Ev> Copy for EventQueueHandle<R, Ev> where R: Reactor {}
 
 impl<R, Ev> EventQueueHandle<R, Ev>
@@ -91,7 +96,7 @@ where
 
     /// Schedule an event on a specific queue.
     #[inline]
-    pub async fn schedule(self, event: Ev, queue_kind: QueueKind) {
+    pub(crate) async fn schedule(self, event: Ev, queue_kind: QueueKind) {
         self.scheduler.push((self.wrapper)(event), queue_kind).await
     }
 }
@@ -107,14 +112,18 @@ pub trait Reactor: Sized {
     /// Event type associated with reactor.
     ///
     /// Defines what kind of event the reactor processes.
-    type Event: Send + fmt::Debug + fmt::Display + 'static;
+    type Event: Send + Debug + Display + 'static;
 
     /// Dispatches an event on the reactor.
     ///
     /// This function is typically only called by the reactor itself to dispatch an event. It is
     /// safe to call regardless, but will cause the event to skip the queue and things like
     /// accounting.
-    fn dispatch_event(&mut self, event: Self::Event) -> Multiple<Effect<Self::Event>>;
+    fn dispatch_event(
+        &mut self,
+        scheduler: &'static Scheduler<Self::Event>,
+        event: Self::Event,
+    ) -> Multiple<Effect<Self::Event>>;
 
     /// Creates a new instance of the reactor.
     ///
@@ -123,7 +132,7 @@ pub trait Reactor: Sized {
     ///
     /// If any instantiation fails, an error is returned.
     fn new(
-        cfg: config::Config,
+        cfg: Config,
         scheduler: &'static Scheduler<Self::Event>,
     ) -> anyhow::Result<(Self, Multiple<Effect<Self::Event>>)>;
 }
@@ -136,7 +145,7 @@ pub trait Reactor: Sized {
 ///
 /// Errors are returned only if component initialization fails.
 #[inline]
-pub async fn launch<R: Reactor>(cfg: config::Config) -> anyhow::Result<()> {
+async fn launch<R: Reactor>(cfg: Config) -> anyhow::Result<()> {
     let event_size = mem::size_of::<R::Event>();
     // Check if the event is of a reasonable size. This only emits a runtime warning at startup
     // right now, since storage size of events is not an issue per se, but copying might be
@@ -163,11 +172,11 @@ pub async fn launch<R: Reactor>(cfg: config::Config) -> anyhow::Result<()> {
         let (event, q) = scheduler.pop().await;
 
         // We log events twice, once in display and once in debug mode.
-        debug!(%event, ?q, "event");
-        trace!(?event, ?q, "event");
+        debug!(%event, ?q);
+        trace!(?event, ?q);
 
         // Dispatch the event, then execute the resulting effect.
-        let effects = reactor.dispatch_event(event);
+        let effects = reactor.dispatch_event(scheduler, event);
         process_effects(scheduler, effects).await;
     }
 }

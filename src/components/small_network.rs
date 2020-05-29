@@ -38,11 +38,14 @@
 //! all nodes in the list and simultaneously tell all of its connected nodes about the new node,
 //! repeating the process.
 
+mod config;
+mod endpoint;
+mod event;
+mod message;
+
 use std::{
-    cmp::Ordering,
-    collections::{HashMap, HashSet},
-    fmt::{self, Debug, Display, Formatter},
-    hash::Hash,
+    collections::HashMap,
+    fmt::{self, Debug, Formatter},
     io,
     net::{SocketAddr, TcpListener},
     sync::Arc,
@@ -55,9 +58,9 @@ use futures::{
     FutureExt, SinkExt, StreamExt,
 };
 use maplit::hashmap;
-use openssl::{pkey, x509};
+use openssl::{pkey, x509::X509};
 use pkey::{PKey, Private};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 use tokio::{
     net::TcpStream,
     sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
@@ -66,83 +69,26 @@ use tokio_openssl::SslStream;
 use tokio_serde::{formats::SymmetricalMessagePack, SymmetricallyFramed};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::{debug, error, info, warn};
-use x509::X509;
 
+pub(crate) use self::{endpoint::Endpoint, event::Event, message::Message};
 use crate::{
-    config,
-    effect::{Effect, EffectExt, EffectResultExt},
+    effect::{Effect, EffectExt, EffectResultExt, Multiple},
     reactor::{EventQueueHandle, QueueKind, Reactor},
     tls::{self, KeyFingerprint, Signed, TlsCert},
-    utils::{DisplayIter, Multiple},
 };
+pub use config::Config;
 
 /// A node ID.
 ///
 /// The key fingerprint found on TLS certificates.
-pub type NodeId = KeyFingerprint;
+type NodeId = KeyFingerprint;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub enum Message<P> {
-    /// A pruned set of all endpoint announcements the server has received.
-    Snapshot(HashSet<Signed<Endpoint>>),
-    /// Broadcast a new endpoint known to the sender.
-    BroadcastEndpoint(Signed<Endpoint>),
-    /// A payload message.
-    Payload(P),
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-pub struct Endpoint {
-    /// UNIX timestamp in nanoseconds resolution.
-    ///
-    /// Will overflow earliest November 2262.
-    timestamp_ns: u64,
-    /// Socket address the node is listening on.
-    addr: SocketAddr,
-    /// Certificate.
-    cert: TlsCert,
-}
-
-#[derive(Debug)]
-pub enum Event<P> {
-    /// Connection to the root node succeeded.
-    RootConnected { cert: TlsCert, transport: Transport },
-    /// Connection to the root node failed.
-    RootFailed { error: anyhow::Error },
-    /// A new TCP connection has been established from an incoming connection.
-    IncomingNew { stream: TcpStream, addr: SocketAddr },
-    /// The TLS handshake completed on the incoming connection.
-    IncomingHandshakeCompleted {
-        result: anyhow::Result<(NodeId, Transport)>,
-        addr: SocketAddr,
-    },
-    /// Received network message.
-    IncomingMessage { node_id: NodeId, msg: Message<P> },
-    /// Incoming connection closed.
-    IncomingClosed {
-        result: io::Result<()>,
-        addr: SocketAddr,
-    },
-
-    /// A new outgoing connection was successfully established.
-    OutgoingEstablished {
-        node_id: NodeId,
-        transport: Transport,
-    },
-    /// An outgoing connection failed to connect or was terminated.
-    OutgoingFailed {
-        node_id: NodeId,
-        attempt_count: u32,
-        error: Option<anyhow::Error>,
-    },
-}
-
-pub struct SmallNetwork<R, P>
+pub(crate) struct SmallNetwork<R, P>
 where
     R: Reactor,
 {
     /// Configuration.
-    cfg: config::SmallNetwork,
+    cfg: Config,
     /// Server certificate.
     cert: Arc<X509>,
     /// Server private key.
@@ -163,9 +109,9 @@ where
     P: Serialize + DeserializeOwned + Clone + Debug + Send + 'static,
 {
     #[allow(clippy::type_complexity)]
-    pub fn new(
+    pub(crate) fn new(
         eq: EventQueueHandle<R, Event<P>>,
-        cfg: config::SmallNetwork,
+        cfg: Config,
     ) -> anyhow::Result<(SmallNetwork<R, P>, Multiple<Effect<Event<P>>>)>
     where
         R: Reactor + 'static,
@@ -192,12 +138,12 @@ where
         let addr = listener.local_addr()?;
 
         // Create the model. Initially we know our own endpoint address.
-        let our_endpoint = Endpoint {
-            timestamp_ns: SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos() as u64,
+        let our_endpoint = Endpoint::new(
+            SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos() as u64,
             addr,
-            cert: tls::validate_cert(cert.clone())?,
-        };
-        let our_fp = our_endpoint.cert.public_key_fingerprint();
+            tls::validate_cert(cert.clone())?,
+        );
+        let our_fp = our_endpoint.cert().public_key_fingerprint();
 
         // Run the server task.
         info!(%our_endpoint, "starting server background task");
@@ -234,16 +180,12 @@ where
     }
 
     #[allow(clippy::cognitive_complexity)]
-    pub fn handle_event(&mut self, ev: Event<P>) -> Multiple<Effect<Event<P>>> {
+    pub(crate) fn handle_event(&mut self, ev: Event<P>) -> Multiple<Effect<Event<P>>> {
         match ev {
             Event::RootConnected { cert, transport } => {
                 // Create a pseudo-endpoint for the root node with the lowest priority (time 0)
                 let root_node_id = cert.public_key_fingerprint();
-                let ep = Endpoint {
-                    timestamp_ns: 0,
-                    addr: self.cfg.root_addr,
-                    cert,
-                };
+                let ep = Endpoint::new(0, self.cfg.root_addr, cert);
                 if self.endpoints.insert(root_node_id, ep).is_some() {
                     // This connection is the very first we will ever make, there should never be
                     // a root node registered, as we will never re-attempt this connection if it
@@ -369,7 +311,7 @@ where
     /// Returns the node ID of the endpoint if it was new.
     #[inline]
     fn update_endpoint(&mut self, endpoint: &Endpoint) -> Option<NodeId> {
-        let fp = endpoint.cert.public_key_fingerprint();
+        let fp = endpoint.cert().public_key_fingerprint();
 
         if let Some(prev) = self.endpoints.get(&fp) {
             if prev >= endpoint {
@@ -388,7 +330,7 @@ where
         &mut self,
         signed: Signed<Endpoint>,
     ) -> Multiple<Effect<Event<P>>> {
-        match signed.validate_self_signed(|endpoint| Ok(endpoint.cert.public_key())) {
+        match signed.validate_self_signed(|endpoint| Ok(endpoint.cert().public_key())) {
             Ok(endpoint) => {
                 // Endpoint is valid, check if it was new.
                 if let Some(node_id) = self.update_endpoint(&endpoint) {
@@ -488,7 +430,7 @@ where
 ///
 /// Will attempt to bind on the root address first if the `bind_interface` is the same as the
 /// interface of `root_addr`. Otherwise uses an unused port on `bind_interface`.
-fn create_listener(cfg: &config::SmallNetwork) -> io::Result<TcpListener> {
+fn create_listener(cfg: &Config) -> io::Result<TcpListener> {
     if cfg.root_addr.ip() == cfg.bind_interface {
         // Try to become the root node, if the root nodes interface is available.
         match TcpListener::bind(cfg.root_addr) {
@@ -630,11 +572,11 @@ async fn connect_outgoing(
     cert: Arc<X509>,
     private_key: Arc<PKey<Private>>,
 ) -> anyhow::Result<Transport> {
-    let (server_cert, transport) = connect_trusted(endpoint.addr, cert, private_key).await?;
+    let (server_cert, transport) = connect_trusted(endpoint.addr(), cert, private_key).await?;
 
     let remote_id = server_cert.public_key_fingerprint();
 
-    if remote_id != endpoint.cert.public_key_fingerprint() {
+    if remote_id != endpoint.cert().public_key_fingerprint() {
         bail!("remote node has wrong ID");
     }
 
@@ -665,82 +607,6 @@ async fn connect_trusted(
         .peer_certificate()
         .ok_or_else(|| anyhow!("no server certificate presented"))?;
     Ok((tls::validate_cert(server_cert)?, tls_stream))
-}
-
-// Impose a total ordering on endpoints. Compare timestamps first, if the same, order by actual
-// address. If both of these are the same, use the TLS certificate's fingerprint as a tie-breaker.
-impl Ord for Endpoint {
-    fn cmp(&self, other: &Self) -> Ordering {
-        Ord::cmp(&self.timestamp_ns, &other.timestamp_ns)
-            .then_with(|| {
-                Ord::cmp(
-                    &(self.addr.ip(), self.addr.port()),
-                    &(other.addr.ip(), other.addr.port()),
-                )
-            })
-            .then_with(|| Ord::cmp(&self.cert.fingerprint(), &other.cert.fingerprint()))
-    }
-}
-impl PartialOrd for Endpoint {
-    #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<P: Display> Display for Message<P> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Message::Snapshot(snapshot) => {
-                write!(f, "snapshot: {:10}", DisplayIter::new(snapshot.iter()))
-            }
-            Message::BroadcastEndpoint(endpoint) => write!(f, "broadcast endpoint: {}", endpoint),
-            Message::Payload(payload) => write!(f, "payload: {}", payload),
-        }
-    }
-}
-
-impl<P: Display> Display for Event<P> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Event::RootConnected { cert, .. } => {
-                write!(f, "root connected @ {}", cert.public_key_fingerprint())
-            }
-            Event::RootFailed { error } => write!(f, "root failed: {}", error),
-            Event::IncomingNew { addr, .. } => write!(f, "incoming connection from {}", addr),
-            Event::IncomingHandshakeCompleted { result, addr } => {
-                write!(f, "handshake from {}, is_err {}", addr, result.is_err())
-            }
-            Event::IncomingMessage { node_id, msg } => write!(f, "msg from {}: {}", node_id, msg),
-            Event::IncomingClosed { addr, .. } => write!(f, "closed connection from {}", addr),
-            Event::OutgoingEstablished { node_id, .. } => {
-                write!(f, "established outgoing to {}", node_id)
-            }
-            Event::OutgoingFailed {
-                node_id,
-                attempt_count,
-                error,
-            } => write!(
-                f,
-                "failed outgoing {} [{}]: (is_err {})",
-                node_id,
-                attempt_count,
-                error.is_some()
-            ),
-        }
-    }
-}
-
-impl Display for Endpoint {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}@{} [{}]",
-            self.cert.public_key_fingerprint(),
-            self.addr,
-            self.timestamp_ns
-        )
-    }
 }
 
 impl<R, P> Debug for SmallNetwork<R, P>
