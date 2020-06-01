@@ -97,9 +97,9 @@ impl reactor::Reactor for Reactor {
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Network(ev) => write!(f, "Network[{}]", ev),
-            Event::Storage(ev) => write!(f, "Storage[{}]", ev),
-            Event::StorageConsumer(ev) => write!(f, "StorageConsumer[{}]", ev),
+            Event::Network(ev) => write!(f, "network: {}", ev),
+            Event::Storage(ev) => write!(f, "storage: {}", ev),
+            Event::StorageConsumer(ev) => write!(f, "storage_consumer: {}", ev),
         }
     }
 }
