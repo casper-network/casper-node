@@ -57,42 +57,31 @@ pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
 /// the same size as an empty vec, which is two pointers.
 pub type Multiple<T> = SmallVec<[T; 2]>;
 
-/// A boxed closure which returns an [`Effect`](type.Effect.html).
-pub struct Responder<T, Ev>(Box<dyn FnOnce(T) -> Effect<Ev> + Send>);
+/// A responder satisfying a request.
+pub struct Responder<T>(oneshot::Sender<T>);
 
-impl<T: 'static + Send, Ev> Responder<T, Ev> {
+impl<T: 'static + Send> Responder<T> {
     fn new(sender: oneshot::Sender<T>) -> Self {
-        Responder(Box::new(move |value| {
-            async move {
-                if sender.send(value).is_err() {
-                    error!("could not send response to request down oneshot channel")
-                }
-                smallvec![]
-            }
-            .boxed()
-        }))
+        Responder(sender)
     }
 }
 
-impl<T, Ev> Responder<T, Ev> {
-    /// Invoke the wrapped closure, passing in `data`.
-    pub fn call(self, data: T) -> Effect<Ev> {
-        self.0(data)
+impl<T> Responder<T> {
+    /// Send `data` to the origin of the request.
+    pub async fn respond(self, data: T) {
+        if self.0.send(data).is_err() {
+            error!("could not send response to request down oneshot channel");
+        }
     }
 }
 
-impl<T, Ev> Debug for Responder<T, Ev> {
+impl<T> Debug for Responder<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "Responder<{}->{}>",
-            type_name::<T>(),
-            type_name::<Effect<Ev>>()
-        )
+        write!(formatter, "Responder<{}>", type_name::<T>(),)
     }
 }
 
-impl<T, Ev> Display for Responder<T, Ev> {
+impl<T> Display for Responder<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "responder({})", type_name::<T>(),)
     }
@@ -215,7 +204,7 @@ impl<R: Reactor, Ev> EffectBuilder<R, Ev> {
     pub async fn make_request<T, F>(self, create_request_event: F) -> T
     where
         T: 'static + Send,
-        F: FnOnce(Responder<T, Ev>) -> Ev,
+        F: FnOnce(Responder<T>) -> Ev,
     {
         // Prepare a channel.
         let (sender, receiver) = oneshot::channel();

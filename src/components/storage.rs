@@ -7,14 +7,12 @@ use std::{
     sync::Arc,
 };
 
-use futures::FutureExt;
-use smallvec::smallvec;
 use tokio::task;
 use tracing::info;
 
 use crate::{
     components::Component,
-    effect::{Effect, Multiple, Responder},
+    effect::{Effect, EffectExt, Multiple, Responder},
     types::Block,
 };
 pub(crate) use block::BlockType;
@@ -24,17 +22,14 @@ use linear_block_store::InMemBlockStore;
 pub(crate) type Storage = InMemStorage<Block>;
 
 #[derive(Debug)]
-pub(crate) enum Event<S: StorageType>
-where
-    <S::BlockStore as BlockStoreType>::Block: Debug,
-{
+pub(crate) enum Event<S: StorageType> {
     PutBlock {
         block: <S::BlockStore as BlockStoreType>::Block,
-        responder: Responder<bool, Event<S>>,
+        responder: Responder<bool>,
     },
     GetBlock {
         block_hash: <<S::BlockStore as BlockStoreType>::Block as BlockType>::Hash,
-        responder: Responder<Option<<S::BlockStore as BlockStoreType>::Block>, Event<S>>,
+        responder: Responder<Option<<S::BlockStore as BlockStoreType>::Block>>,
     },
 }
 
@@ -68,24 +63,26 @@ where
         match event {
             Event::PutBlock { block, responder } => {
                 let block_store = self.block_store();
-                let future = async move {
-                    task::spawn_blocking(move || block_store.put(block))
+                async move {
+                    let result = task::spawn_blocking(move || block_store.put(block))
                         .await
-                        .expect("should run")
-                };
-                smallvec![future.then(|is_success| responder.call(is_success)).boxed()]
+                        .expect("should run");
+                    responder.respond(result).await
+                }
+                .ignore()
             }
             Event::GetBlock {
                 block_hash,
                 responder,
             } => {
                 let block_store = self.block_store();
-                let future = async move {
-                    task::spawn_blocking(move || block_store.get(&block_hash))
+                async move {
+                    let result = task::spawn_blocking(move || block_store.get(&block_hash))
                         .await
-                        .expect("should run")
-                };
-                smallvec![future.then(|block| responder.call(block)).boxed()]
+                        .expect("should run");
+                    responder.respond(result).await
+                }
+                .ignore()
             }
         }
     }
