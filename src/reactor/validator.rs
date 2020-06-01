@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
-        storage::{self, Storage, StorageType},
+        storage::{self, Storage},
         Component,
     },
     effect::{Effect, EffectBuilder, Multiple},
