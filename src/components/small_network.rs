@@ -446,7 +446,7 @@ where
             Event::NetworkRequest {
                 req: NetworkRequest::BroadcastMessage { payload, responder },
             } => {
-                // We're given a message to send out.
+                // We're given a message to broadcast.
                 responder
                     .respond(self.broadcast_message(Message::Payload(payload)))
                     .ignore()

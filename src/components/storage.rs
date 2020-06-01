@@ -124,7 +124,6 @@ pub(crate) mod dummy {
     use crate::{
         crypto::hash,
         effect::{EffectBuilder, EffectExt},
-        reactor::Reactor,
         types::Block,
     };
 

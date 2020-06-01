@@ -8,6 +8,7 @@ use derive_more::From;
 
 use crate::{
     components::{
+        pinger::{self, Message, Pinger},
         storage::{self, Storage},
         Component,
     },
@@ -24,6 +25,8 @@ enum Event {
     #[from]
     Network(small_network::Event<Message>),
     #[from]
+    Pinger(pinger::Event),
+    #[from]
     Storage(storage::Event<Storage>),
     StorageConsumer(storage::dummy::Event),
 }
@@ -37,6 +40,7 @@ impl From<NetworkRequest<NodeId, Message>> for Event {
 /// Validator node reactor.
 struct Reactor {
     net: SmallNetwork<Event, Message>,
+    pinger: Pinger,
     storage: Storage,
     dummy_storage_consumer: storage::dummy::StorageConsumer,
 }
@@ -51,11 +55,14 @@ impl reactor::Reactor for Reactor {
         let eb = EffectBuilder::new(eq);
         let (net, net_effects) = SmallNetwork::new(eq, cfg)?;
 
+        let (pinger, pinger_effects) = Pinger::new(eb);
+
         let storage = Storage::new();
         let (dummy_storage_consumer, storage_consumer_effects) =
             storage::dummy::StorageConsumer::new(eb);
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
+        effects.extend(reactor::wrap_effects(Event::Pinger, pinger_effects));
         effects.extend(reactor::wrap_effects(
             Event::StorageConsumer,
             storage_consumer_effects,
@@ -64,6 +71,7 @@ impl reactor::Reactor for Reactor {
         Ok((
             Reactor {
                 net,
+                pinger,
                 storage,
                 dummy_storage_consumer,
             },
@@ -80,6 +88,9 @@ impl reactor::Reactor for Reactor {
             Event::Network(ev) => {
                 reactor::wrap_effects(Event::Network, self.net.handle_event(eb, ev))
             }
+            Event::Pinger(ev) => {
+                reactor::wrap_effects(Event::Pinger, self.pinger.handle_event(eb, ev))
+            }
             Event::Storage(ev) => {
                 reactor::wrap_effects(Event::Storage, self.storage.handle_event(eb, ev))
             }
@@ -95,15 +106,10 @@ impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Network(ev) => write!(f, "network: {}", ev),
+            Event::Pinger(ev) => write!(f, "pinger: {}", ev),
             Event::Storage(ev) => write!(f, "storage: {}", ev),
             Event::StorageConsumer(ev) => write!(f, "storage_consumer: {}", ev),
         }
-    }
-}
-
-impl Display for Message {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "TODO: MessagePayload")
     }
 }
 

@@ -2,6 +2,7 @@
 //!
 //! Components are the building blocks of the whole application, wired together inside a reactor.
 //! Each component has a unified interface, expressed by the `Component` trait.
+pub(crate) mod pinger;
 pub(crate) mod small_network;
 pub(crate) mod storage;
 
