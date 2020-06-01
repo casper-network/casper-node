@@ -35,6 +35,8 @@
 //! the effects explicitly listed in this module through traits to create them. Post-processing on
 //! effects to turn them into events should also be kept brief.
 
+pub(crate) mod requests;
+
 use std::{
     any::type_name,
     fmt::{self, Debug, Display, Formatter},

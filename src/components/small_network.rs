@@ -73,7 +73,7 @@ use tracing::{debug, error, info, warn};
 pub(crate) use self::{endpoint::Endpoint, event::Event, message::Message};
 use crate::{
     components::Component,
-    effect::{Effect, EffectExt, EffectResultExt, Multiple},
+    effect::{requests::NetworkRequest, Effect, EffectExt, EffectResultExt, Multiple},
     reactor::{EventQueueHandle, QueueKind, Reactor},
     tls::{self, KeyFingerprint, Signed, TlsCert},
 };
@@ -430,6 +430,27 @@ where
                     error!("endpoint disappeared");
                     Multiple::new()
                 }
+            }
+            Event::NetworkRequest {
+                req:
+                    NetworkRequest::SendMessage {
+                        dest,
+                        payload,
+                        responder,
+                    },
+            } => {
+                // We're given a message to send out.
+                responder
+                    .respond(self.send_message(dest, Message::Payload(payload)))
+                    .ignore()
+            }
+            Event::NetworkRequest {
+                req: NetworkRequest::BroadcastMessage { payload, responder },
+            } => {
+                // We're given a message to send out.
+                responder
+                    .respond(self.broadcast_message(Message::Payload(payload)))
+                    .ignore()
             }
         }
     }
