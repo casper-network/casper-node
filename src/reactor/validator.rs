@@ -4,33 +4,39 @@
 
 use std::fmt::{self, Display, Formatter};
 
-use serde::{Deserialize, Serialize};
+use derive_more::From;
 
 use crate::{
     components::{
         storage::{self, Storage},
         Component,
     },
-    effect::{Effect, EffectBuilder, Multiple},
-    reactor::{self, EventQueueHandle, QueueKind, Scheduler},
-    small_network, Config, SmallNetwork,
+    effect::{requests::NetworkRequest, Effect, EffectBuilder, Multiple},
+    reactor::{self, EventQueueHandle},
+    small_network::{self, NodeId},
+    Config, SmallNetwork,
 };
 
 /// Top-level event for the reactor.
-#[derive(Debug)]
+#[derive(Debug, From)]
 #[must_use]
 enum Event {
+    #[from]
     Network(small_network::Event<Message>),
+    #[from]
     Storage(storage::Event<Storage>),
     StorageConsumer(storage::dummy::Event),
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-enum Message {}
+impl From<NetworkRequest<NodeId, Message>> for Event {
+    fn from(req: NetworkRequest<NodeId, Message>) -> Self {
+        Event::Network(small_network::Event::from(req))
+    }
+}
 
 /// Validator node reactor.
 struct Reactor {
-    net: SmallNetwork<Self, Message>,
+    net: SmallNetwork<Event, Message>,
     storage: Storage,
     dummy_storage_consumer: storage::dummy::StorageConsumer,
 }
@@ -40,18 +46,14 @@ impl reactor::Reactor for Reactor {
 
     fn new(
         cfg: Config,
-        scheduler: &'static Scheduler<Self::Event>,
+        eq: EventQueueHandle<Self::Event>,
     ) -> anyhow::Result<(Self, Multiple<Effect<Self::Event>>)> {
-        let (net, net_effects) =
-            SmallNetwork::new(EventQueueHandle::bind(scheduler, Event::Network), cfg)?;
+        let eb = EffectBuilder::new(eq);
+        let (net, net_effects) = SmallNetwork::new(eq, cfg)?;
 
         let storage = Storage::new();
-        let storage_effect_builder = EffectBuilder::new(
-            EventQueueHandle::bind(scheduler, Event::Storage),
-            QueueKind::Regular,
-        );
         let (dummy_storage_consumer, storage_consumer_effects) =
-            storage::dummy::StorageConsumer::new::<Self>(storage_effect_builder);
+            storage::dummy::StorageConsumer::new(eb);
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
         effects.extend(reactor::wrap_effects(
@@ -71,25 +73,20 @@ impl reactor::Reactor for Reactor {
 
     fn dispatch_event(
         &mut self,
-        scheduler: &'static Scheduler<Self::Event>,
+        eb: EffectBuilder<Self::Event>,
         event: Event,
     ) -> Multiple<Effect<Self::Event>> {
         match event {
-            Event::Network(ev) => reactor::wrap_effects(Event::Network, self.net.handle_event(ev)),
+            Event::Network(ev) => {
+                reactor::wrap_effects(Event::Network, self.net.handle_event(eb, ev))
+            }
             Event::Storage(ev) => {
-                reactor::wrap_effects(Event::Storage, self.storage.handle_event(ev))
+                reactor::wrap_effects(Event::Storage, self.storage.handle_event(eb, ev))
             }
-            Event::StorageConsumer(ev) => {
-                let storage_effect_builder = EffectBuilder::<Self, _>::new(
-                    EventQueueHandle::bind(scheduler, Event::Storage),
-                    QueueKind::Regular,
-                );
-                reactor::wrap_effects(
-                    Event::StorageConsumer,
-                    self.dummy_storage_consumer
-                        .handle_event(storage_effect_builder, ev),
-                )
-            }
+            Event::StorageConsumer(ev) => reactor::wrap_effects(
+                Event::StorageConsumer,
+                self.dummy_storage_consumer.handle_event(eb, ev),
+            ),
         }
     }
 }

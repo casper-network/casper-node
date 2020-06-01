@@ -3,7 +3,7 @@ use std::fmt;
 use super::Responder;
 
 #[derive(Debug)]
-pub(crate) enum NetworkRequest<I, P> {
+pub enum NetworkRequest<I, P> {
     /// Send a message on the network to a specific peer.
     SendMessage {
         dest: I,

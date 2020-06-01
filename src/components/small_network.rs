@@ -73,7 +73,9 @@ use tracing::{debug, error, info, warn};
 pub(crate) use self::{endpoint::Endpoint, event::Event, message::Message};
 use crate::{
     components::Component,
-    effect::{requests::NetworkRequest, Effect, EffectExt, EffectResultExt, Multiple},
+    effect::{
+        requests::NetworkRequest, Effect, EffectBuilder, EffectExt, EffectResultExt, Multiple,
+    },
     reactor::{EventQueueHandle, QueueKind, Reactor},
     tls::{self, KeyFingerprint, Signed, TlsCert},
 };
@@ -82,12 +84,9 @@ pub use config::Config;
 /// A node ID.
 ///
 /// The key fingerprint found on TLS certificates.
-type NodeId = KeyFingerprint;
+pub(crate) type NodeId = KeyFingerprint;
 
-pub(crate) struct SmallNetwork<R, P>
-where
-    R: Reactor,
-{
+pub(crate) struct SmallNetwork<REv: 'static, P> {
     /// Configuration.
     cfg: Config,
     /// Server certificate.
@@ -95,7 +94,7 @@ where
     /// Server private key.
     private_key: Arc<PKey<Private>>,
     /// Handle to event queue.
-    eq: EventQueueHandle<R, Event<P>>,
+    eq: EventQueueHandle<REv>,
     /// A list of known endpoints by node ID.
     endpoints: HashMap<NodeId, Endpoint>,
     /// Stored signed endpoints that can be sent to other nodes.
@@ -104,19 +103,15 @@ where
     outgoing: HashMap<NodeId, UnboundedSender<Message<P>>>,
 }
 
-impl<R, P> SmallNetwork<R, P>
+impl<REv, P> SmallNetwork<REv, P>
 where
-    R: Reactor + 'static,
     P: Serialize + DeserializeOwned + Clone + Debug + Send + 'static,
+    REv: Send + From<Event<P>>,
 {
-    #[allow(clippy::type_complexity)]
     pub(crate) fn new(
-        eq: EventQueueHandle<R, Event<P>>,
+        eq: EventQueueHandle<REv>,
         cfg: Config,
-    ) -> anyhow::Result<(SmallNetwork<R, P>, Multiple<Effect<Event<P>>>)>
-    where
-        R: Reactor + 'static,
-    {
+    ) -> anyhow::Result<(SmallNetwork<REv, P>, Multiple<Effect<Event<P>>>)> {
         // First, we load or generate the TLS keys.
         let (cert, private_key) = match (&cfg.cert, &cfg.private_key) {
             // We're given a cert_file and a private_key file. Just load them, additional checking
@@ -321,16 +316,20 @@ where
     }
 }
 
-impl<R, P> Component for SmallNetwork<R, P>
+impl<REv, P> Component<REv> for SmallNetwork<REv, P>
 where
-    R: Reactor + 'static,
+    REv: Send + From<Event<P>>,
     P: Serialize + DeserializeOwned + Clone + Debug + Send + 'static,
 {
     type Event = Event<P>;
 
     #[allow(clippy::cognitive_complexity)]
-    fn handle_event(&mut self, ev: Self::Event) -> Multiple<Effect<Self::Event>> {
-        match ev {
+    fn handle_event(
+        &mut self,
+        eb: EffectBuilder<REv>,
+        event: Self::Event,
+    ) -> Multiple<Effect<Self::Event>> {
+        match event {
             Event::RootConnected { cert, transport } => {
                 // Create a pseudo-endpoint for the root node with the lowest priority (time 0)
                 let root_node_id = cert.public_key_fingerprint();
@@ -484,10 +483,10 @@ fn create_listener(cfg: &Config) -> io::Result<TcpListener> {
 /// Core accept loop for the networking server.
 ///
 /// Never terminates.
-async fn server_task<P, R: Reactor>(
-    eq: EventQueueHandle<R, Event<P>>,
-    mut listener: tokio::net::TcpListener,
-) {
+async fn server_task<P, REv>(eq: EventQueueHandle<REv>, mut listener: tokio::net::TcpListener)
+where
+    REv: From<Event<P>>,
+{
     loop {
         // We handle accept errors here, since they can be caused by a temporary resource shortage
         // or the remote side closing the connection while it is waiting in the queue.
@@ -495,7 +494,7 @@ async fn server_task<P, R: Reactor>(
             Ok((stream, addr)) => {
                 // Move the incoming connection to the event queue for handling.
                 let ev = Event::IncomingNew { stream, addr };
-                eq.schedule(ev, QueueKind::NetworkIncoming).await;
+                eq.schedule(ev.into(), QueueKind::NetworkIncoming).await;
             }
             Err(err) => warn!(%err, "dropping incoming connection during accept"),
         }
@@ -531,21 +530,21 @@ async fn setup_tls(
 /// Network message reader.
 ///
 /// Schedules all received messages until the stream is closed or an error occurs.
-async fn message_reader<R, P>(
-    eq: EventQueueHandle<R, Event<P>>,
+async fn message_reader<REv, P>(
+    eq: EventQueueHandle<REv>,
     mut stream: SplitStream<FramedTransport<P>>,
     node_id: NodeId,
 ) -> io::Result<()>
 where
-    R: Reactor,
     P: DeserializeOwned + Send,
+    REv: From<Event<P>>,
 {
     while let Some(msg_result) = stream.next().await {
         match msg_result {
             Ok(msg) => {
                 // We've received a message, push it to the reactor.
                 eq.schedule(
-                    Event::IncomingMessage { node_id, msg },
+                    Event::IncomingMessage { node_id, msg }.into(),
                     QueueKind::NetworkIncoming,
                 )
                 .await;

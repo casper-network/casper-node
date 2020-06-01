@@ -48,6 +48,9 @@ use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use smallvec::{smallvec, SmallVec};
 use tracing::error;
 
+use crate::reactor::{EventQueueHandle, QueueKind};
+use requests::NetworkRequest;
+
 /// A boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
 
@@ -160,36 +163,58 @@ where
     }
 }
 
-use crate::reactor::{EventQueueHandle, QueueKind, Reactor};
-
 /// A builder for [`Effect`](type.Effect.html)s.
 ///
 /// Provides methods allowing the creation of effects which need scheduled on the reactor's event
 /// queue, without giving direct access to this queue.
 #[derive(Debug)]
-pub struct EffectBuilder<R: Reactor, Ev> {
-    event_queue_handle: EventQueueHandle<R, Ev>,
-    queue_kind: QueueKind,
-}
+pub struct EffectBuilder<REv: 'static>(EventQueueHandle<REv>);
 
-// Implement `Clone` and `Copy` manually, as `derive` will make it depend on `R` and `Ev` otherwise.
-impl<R: Reactor, Ev> Clone for EffectBuilder<R, Ev> {
+// Implement `Clone` and `Copy` manually, as `derive` will make it depend on `REv` otherwise.
+impl<REv> Clone for EffectBuilder<REv> {
     fn clone(&self) -> Self {
-        EffectBuilder {
-            event_queue_handle: self.event_queue_handle,
-            queue_kind: self.queue_kind,
-        }
+        EffectBuilder(self.0)
     }
 }
 
-impl<R: Reactor, Ev> Copy for EffectBuilder<R, Ev> {}
+impl<REv> Copy for EffectBuilder<REv> {}
 
-impl<R: Reactor, Ev> EffectBuilder<R, Ev> {
-    pub(crate) fn new(event_queue_handle: EventQueueHandle<R, Ev>, queue_kind: QueueKind) -> Self {
-        EffectBuilder {
-            event_queue_handle,
-            queue_kind,
-        }
+impl<REv> EffectBuilder<REv> {
+    /// Creates a new effect builder.
+    pub(crate) fn new(event_queue_handle: EventQueueHandle<REv>) -> Self {
+        EffectBuilder(event_queue_handle)
+    }
+
+    /// Performs a request.
+    ///
+    /// Given a request `Q`, that when completed will yield a result of `T`, produces a future
+    /// that will
+    ///
+    /// 1. create an event to send the request to the respective component (thus `Q: Into<REv>`),
+    /// 2. waits for a response and returns it.
+    ///
+    /// This function is only used internally by effects implement on the effects builder.
+    async fn make_request<T, Q, F>(self, f: F, queue_kind: QueueKind) -> T
+    where
+        T: Send + 'static,
+        Q: Into<REv>,
+        F: FnOnce(Responder<T>) -> Q,
+    {
+        // Prepare a channel.
+        let (sender, receiver) = oneshot::channel();
+
+        // Create response function.
+        let responder = Responder::new(sender);
+
+        // Now inject the request event into the event loop.
+        let request_event = f(responder).into();
+        self.0.schedule(request_event, queue_kind).await;
+
+        receiver.await.unwrap_or_else(|err| {
+            // The channel should never be closed, ever.
+            error!(%err, "request oneshot closed, this should not happen");
+            unreachable!()
+        })
     }
 
     /// Sets a timeout.
@@ -199,31 +224,36 @@ impl<R: Reactor, Ev> EffectBuilder<R, Ev> {
         Instant::now() - then
     }
 
-    /// Creates a request and response pair.
+    /// Sends a network message.
     ///
-    /// This creates and enqueues a request event by invoking the provided `create_request_event`
-    /// closure, having first created the responder required in the form of a oneshot channel.
-    pub async fn make_request<T, F>(self, create_request_event: F) -> T
+    /// The message is queued in "fire-and-forget" fashion, there is no guarantee that the peer
+    /// will receive it.
+    pub async fn send_message<I, P>(self, dest: I, payload: P)
     where
-        T: 'static + Send,
-        F: FnOnce(Responder<T>) -> Ev,
+        REv: From<NetworkRequest<I, P>>,
     {
-        // Prepare a channel.
-        let (sender, receiver) = oneshot::channel();
+        self.make_request(
+            |responder| NetworkRequest::SendMessage {
+                dest,
+                payload,
+                responder,
+            },
+            QueueKind::Network,
+        )
+        .await
+    }
 
-        // Create response function.
-        let responder = Responder::new(sender);
-
-        // Now inject the request event into the event loop.
-        let request_event = create_request_event(responder);
-        self.event_queue_handle
-            .schedule(request_event, self.queue_kind)
-            .await;
-
-        receiver.await.unwrap_or_else(|err| {
-            // The channel should never be closed, ever.
-            error!(%err, "request oneshot closed, this should not happen");
-            unreachable!()
-        })
+    /// Broadcasts a network message.
+    ///
+    /// Broadcasts a network message to all peers connected at the time the message is sent.
+    pub async fn broadcast_message<I, P>(self, payload: P)
+    where
+        REv: From<NetworkRequest<I, P>>,
+    {
+        self.make_request(
+            |responder| NetworkRequest::BroadcastMessage { payload, responder },
+            QueueKind::Network,
+        )
+        .await
     }
 }

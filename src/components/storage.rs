@@ -12,7 +12,7 @@ use tracing::info;
 
 use crate::{
     components::Component,
-    effect::{Effect, EffectExt, Multiple, Responder},
+    effect::{Effect, EffectBuilder, EffectExt, Multiple, Responder},
     types::Block,
 };
 pub(crate) use block::BlockType;
@@ -52,14 +52,18 @@ pub(crate) trait StorageType {
     fn block_store(&self) -> Arc<Self::BlockStore>;
 }
 
-impl<T> Component for T
+impl<REv, T> Component<REv> for T
 where
     T: StorageType,
     Self: Sized + 'static,
 {
     type Event = Event<Self>;
 
-    fn handle_event(&mut self, event: Self::Event) -> Multiple<Effect<Self::Event>> {
+    fn handle_event(
+        &mut self,
+        eb: EffectBuilder<REv>,
+        event: Self::Event,
+    ) -> Multiple<Effect<Self::Event>> {
         match event {
             Event::PutBlock { block, responder } => {
                 let block_store = self.block_store();
@@ -157,20 +161,18 @@ pub(crate) mod dummy {
     }
 
     impl StorageConsumer {
-        pub(crate) fn new<R: Reactor + 'static>(
-            storage_effect_builder: EffectBuilder<R, super::Event<Storage>>,
-        ) -> (Self, Multiple<Effect<Event>>) {
+        pub(crate) fn new<REv: Send>(eb: EffectBuilder<REv>) -> (Self, Multiple<Effect<Event>>) {
             (
                 Self {
                     stored_blocks_hashes: HashSet::new(),
                 },
-                Self::set_timeout(storage_effect_builder),
+                Self::set_timeout(eb),
             )
         }
 
-        pub(crate) fn handle_event<R: Reactor + 'static>(
+        pub(crate) fn handle_event<REv: Send>(
             &mut self,
-            storage_effect_builder: EffectBuilder<R, super::Event<Storage>>,
+            eb: EffectBuilder<REv>,
             event: Event,
         ) -> Multiple<Effect<Event>> {
             match event {
@@ -181,19 +183,19 @@ pub(crate) mod dummy {
                         let block = Block::new(rng.gen());
                         let block_hash = *block.hash();
                         self.stored_blocks_hashes.insert(block_hash);
-                        Self::request_put_block(storage_effect_builder, block)
+                        Self::request_put_block(eb, block)
                     } else {
                         let block_hash = hash::hash(&[rng.gen::<u8>()]);
-                        Self::request_get_block(storage_effect_builder, block_hash)
+                        Self::request_get_block(eb, block_hash)
                     }
                 }
                 Event::PutBlockSucceeded(block_hash) => {
                     info!("consumer knows {} has been stored.", block_hash);
-                    Self::set_timeout(storage_effect_builder)
+                    Self::set_timeout(eb)
                 }
                 Event::PutBlockFailed(block_hash) => {
                     info!("consumer knows {} has failed to be stored.", block_hash);
-                    Self::set_timeout(storage_effect_builder)
+                    Self::set_timeout(eb)
                 }
                 Event::GotBlock(block_hash, maybe_block) => {
                     match &maybe_block {
@@ -204,45 +206,41 @@ pub(crate) mod dummy {
                         maybe_block.is_some(),
                         self.stored_blocks_hashes.contains(&block_hash)
                     );
-                    Self::set_timeout(storage_effect_builder)
+                    Self::set_timeout(eb)
                 }
             }
         }
 
-        fn set_timeout<R: Reactor + 'static>(
-            storage_effect_builder: EffectBuilder<R, super::Event<Storage>>,
-        ) -> Multiple<Effect<Event>> {
-            storage_effect_builder
-                .set_timeout(Duration::from_millis(10))
+        fn set_timeout<REv: Send>(eb: EffectBuilder<REv>) -> Multiple<Effect<Event>> {
+            eb.set_timeout(Duration::from_millis(10))
                 .event(|_| Event::Trigger)
         }
 
-        fn request_put_block<R: Reactor + 'static>(
-            storage_effect_builder: EffectBuilder<R, super::Event<Storage>>,
-            block: Block,
-        ) -> Multiple<Effect<Event>> {
-            let block_hash = *block.hash();
-            storage_effect_builder
-                .make_request(|responder| super::Event::PutBlock { block, responder })
-                .event(move |is_success| {
-                    if is_success {
-                        Event::PutBlockSucceeded(block_hash)
-                    } else {
-                        Event::PutBlockFailed(block_hash)
-                    }
-                })
+        fn request_put_block<REv>(eb: EffectBuilder<REv>, block: Block) -> Multiple<Effect<Event>> {
+            todo!()
+            // let block_hash = *block.hash();
+            // eb
+            //     .make_request(|responder| super::Event::PutBlock { block, responder })
+            //     .event(move |is_success| {
+            //         if is_success {
+            //             Event::PutBlockSucceeded(block_hash)
+            //         } else {
+            //             Event::PutBlockFailed(block_hash)
+            //         }
+            //     })
         }
 
-        fn request_get_block<R: Reactor + 'static>(
-            storage_effect_builder: EffectBuilder<R, super::Event<Storage>>,
+        fn request_get_block<REv>(
+            eb: EffectBuilder<REv>,
             block_hash: <Block as BlockType>::Hash,
         ) -> Multiple<Effect<Event>> {
-            storage_effect_builder
-                .make_request(move |responder| super::Event::GetBlock {
-                    block_hash,
-                    responder,
-                })
-                .event(move |maybe_block| Event::GotBlock(block_hash, maybe_block))
+            todo!()
+            // eb
+            //     .make_request(move |responder| super::Event::GetBlock {
+            //         block_hash,
+            //         responder,
+            //     })
+            //     .event(move |maybe_block| Event::GotBlock(block_hash, maybe_block))
         }
     }
 }

@@ -5,7 +5,7 @@
 pub(crate) mod small_network;
 pub(crate) mod storage;
 
-use crate::effect::{Effect, Multiple};
+use crate::effect::{Effect, EffectBuilder, Multiple};
 
 /// Core Component.
 ///
@@ -20,7 +20,16 @@ use crate::effect::{Effect, Multiple};
 /// recoverable error states by itself.
 ///
 /// If a fatal error occurs that is not recoverable, the reactor should be notified instead.
-pub(crate) trait Component {
+///
+/// # Component events and reactor events
+///
+/// Each component has two events related to it: An associated `Event` and a reactor event (`REv`).
+/// The `Event` type indicates what type of event a component accepts, these are typically event
+/// types specific to the component.
+///
+/// Components place restrictions on reactor events (`REv`s), indicating what kind of effects they
+/// need to be able to produce to operate.
+pub(crate) trait Component<REv> {
     /// Event associated with `Component`.
     ///
     /// The event type that is handled by the component.
@@ -30,5 +39,9 @@ pub(crate) trait Component {
     ///
     /// This function must not ever perform any blocking or CPU intensive work, as it is expected
     /// to return very quickly.
-    fn handle_event(&mut self, event: Self::Event) -> Multiple<Effect<Self::Event>>;
+    fn handle_event(
+        &mut self,
+        eb: EffectBuilder<REv>,
+        event: Self::Event,
+    ) -> Multiple<Effect<Self::Event>>;
 }

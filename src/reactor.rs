@@ -36,7 +36,7 @@ use futures::FutureExt;
 use tracing::{debug, info, trace, warn};
 
 use crate::{
-    effect::{Effect, Multiple},
+    effect::{Effect, EffectBuilder, Multiple},
     utils::{self, WeightedRoundRobin},
     Config,
 };
@@ -50,54 +50,34 @@ pub use queue_kind::QueueKind;
 /// Components rarely use this, but use a bound `EventQueueHandle` instead.
 pub type Scheduler<Ev> = WeightedRoundRobin<Ev, QueueKind>;
 
-/// Bound event queue handle
+/// Event queue handle
 ///
 /// The event queue handle is how almost all parts of the application interact with the reactor
 /// outside of the normal event loop. It gives different parts a chance to schedule messages that
 /// stem from things like external IO.
-///
-/// Every event queue handle allows scheduling events of type `Ev` onto a reactor `R`. For this it
-/// carries with it a reference to a wrapper function that maps an `Ev` to a `Reactor::Event`.
 #[derive(Debug)]
-pub(crate) struct EventQueueHandle<R, Ev>
-where
-    R: Reactor,
-{
-    /// The scheduler events will be scheduled on.
-    scheduler: &'static Scheduler<<R as Reactor>::Event>,
-    /// A wrapper function translating from component event (input of `Ev`) to reactor event
-    /// `R::Event`.
-    wrapper: fn(Ev) -> R::Event,
-}
+pub struct EventQueueHandle<REv: 'static>(&'static Scheduler<REv>);
 
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `R` and `Ev` otherwise.
-impl<R, Ev> Clone for EventQueueHandle<R, Ev>
-where
-    R: Reactor,
-{
+impl<REv> Clone for EventQueueHandle<REv> {
     fn clone(&self) -> Self {
-        EventQueueHandle {
-            scheduler: self.scheduler,
-            wrapper: self.wrapper,
-        }
+        EventQueueHandle(self.0)
     }
 }
+impl<REv> Copy for EventQueueHandle<REv> {}
 
-impl<R, Ev> Copy for EventQueueHandle<R, Ev> where R: Reactor {}
-
-impl<R, Ev> EventQueueHandle<R, Ev>
-where
-    R: Reactor,
-{
-    /// Creates a new event queue handle with an associated wrapper function.
-    fn bind(scheduler: &'static Scheduler<R::Event>, wrapper: fn(Ev) -> R::Event) -> Self {
-        EventQueueHandle { scheduler, wrapper }
+impl<REv> EventQueueHandle<REv> {
+    pub(crate) fn new(scheduler: &'static Scheduler<REv>) -> Self {
+        EventQueueHandle(scheduler)
     }
 
     /// Schedule an event on a specific queue.
     #[inline]
-    pub(crate) async fn schedule(self, event: Ev, queue_kind: QueueKind) {
-        self.scheduler.push((self.wrapper)(event), queue_kind).await
+    pub(crate) async fn schedule<Ev>(self, event: Ev, queue_kind: QueueKind)
+    where
+        REv: From<Ev>,
+    {
+        self.0.push(event.into(), queue_kind).await
     }
 }
 
@@ -121,7 +101,7 @@ pub trait Reactor: Sized {
     /// accounting.
     fn dispatch_event(
         &mut self,
-        scheduler: &'static Scheduler<Self::Event>,
+        eb: EffectBuilder<Self::Event>,
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>>;
 
@@ -133,7 +113,7 @@ pub trait Reactor: Sized {
     /// If any instantiation fails, an error is returned.
     fn new(
         cfg: Config,
-        scheduler: &'static Scheduler<Self::Event>,
+        eq: EventQueueHandle<Self::Event>,
     ) -> anyhow::Result<(Self, Multiple<Effect<Self::Event>>)>;
 }
 
@@ -162,12 +142,14 @@ async fn launch<R: Reactor>(cfg: Config) -> anyhow::Result<()> {
     // Create a new event queue for this reactor run.
     let scheduler = utils::leak(scheduler);
 
-    let (mut reactor, initial_effects) = R::new(cfg, scheduler)?;
+    let eq = EventQueueHandle::new(scheduler);
+    let (mut reactor, initial_effects) = R::new(cfg, eq)?;
 
     // Run all effects from component instantiation.
     process_effects(scheduler, initial_effects).await;
 
     info!("entering reactor main loop");
+    let eb = EffectBuilder::new(eq);
     loop {
         let (event, q) = scheduler.pop().await;
 
@@ -176,7 +158,7 @@ async fn launch<R: Reactor>(cfg: Config) -> anyhow::Result<()> {
         trace!(?event, ?q);
 
         // Dispatch the event, then execute the resulting effect.
-        let effects = reactor.dispatch_event(scheduler, event);
+        let effects = reactor.dispatch_event(eb, event);
         process_effects(scheduler, effects).await;
     }
 }
