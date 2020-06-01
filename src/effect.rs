@@ -94,7 +94,7 @@ impl<T, Ev> Debug for Responder<T, Ev> {
 
 impl<T, Ev> Display for Responder<T, Ev> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        Debug::fmt(self, formatter)
+        write!(formatter, "responder({})", type_name::<T>(),)
     }
 }
 
