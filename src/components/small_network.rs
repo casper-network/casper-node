@@ -72,6 +72,7 @@ use tracing::{debug, error, info, warn};
 
 pub(crate) use self::{endpoint::Endpoint, event::Event, message::Message};
 use crate::{
+    components::Component,
     effect::{Effect, EffectExt, EffectResultExt, Multiple},
     reactor::{EventQueueHandle, QueueKind, Reactor},
     tls::{self, KeyFingerprint, Signed, TlsCert},
@@ -177,112 +178,6 @@ where
             move |(cert, transport)| Event::RootConnected { cert, transport },
             move |error| Event::RootFailed { error },
         )
-    }
-
-    #[allow(clippy::cognitive_complexity)]
-    pub(crate) fn handle_event(&mut self, ev: Event<P>) -> Multiple<Effect<Event<P>>> {
-        match ev {
-            Event::RootConnected { cert, transport } => {
-                // Create a pseudo-endpoint for the root node with the lowest priority (time 0)
-                let root_node_id = cert.public_key_fingerprint();
-                let ep = Endpoint::new(0, self.cfg.root_addr, cert);
-                if self.endpoints.insert(root_node_id, ep).is_some() {
-                    // This connection is the very first we will ever make, there should never be
-                    // a root node registered, as we will never re-attempt this connection if it
-                    // succeeded once.
-                    error!("Encountered a second root node connection.")
-                }
-
-                // We're now almost setup exactly as if the root node was any other node, proceed
-                // as normal.
-                self.setup_outgoing(root_node_id, transport)
-            }
-            Event::RootFailed { error } => {
-                warn!(%error, "connection to root failed");
-                self.connect_to_root()
-
-                // TODO: delay next attempt
-            }
-            Event::IncomingNew { stream, addr } => {
-                debug!(%addr, "Incoming connection, starting TLS handshake");
-
-                setup_tls(stream, self.cert.clone(), self.private_key.clone())
-                    .boxed()
-                    .event(move |result| Event::IncomingHandshakeCompleted { result, addr })
-            }
-            Event::IncomingHandshakeCompleted { result, addr } => {
-                match result {
-                    Ok((fp, transport)) => {
-                        // The sink is never used, as we only read data from incoming connections.
-                        let (_sink, stream) = framed::<P>(transport).split();
-
-                        message_reader(self.eq, stream, fp)
-                            .event(move |result| Event::IncomingClosed { result, addr })
-                    }
-                    Err(err) => {
-                        warn!(%addr, %err, "TLS handshake failed");
-                        Multiple::new()
-                    }
-                }
-            }
-            Event::IncomingMessage { node_id, msg } => self.handle_message(node_id, msg),
-            Event::IncomingClosed { result, addr } => {
-                match result {
-                    Ok(()) => info!(%addr, "connection closed"),
-                    Err(err) => warn!(%addr, %err, "connection dropped"),
-                }
-                Multiple::new()
-            }
-            Event::OutgoingEstablished { node_id, transport } => {
-                self.setup_outgoing(node_id, transport)
-            }
-            Event::OutgoingFailed {
-                node_id,
-                attempt_count,
-                error,
-            } => {
-                if let Some(err) = error {
-                    warn!(%node_id, %err, "outgoing connection failed");
-                } else {
-                    warn!(%node_id, "outgoing connection closed");
-                }
-
-                if let Some(max) = self.cfg.max_outgoing_retries {
-                    if attempt_count >= max {
-                        // We're giving up connecting to the node. We will remove it completely
-                        // (this only carries the danger of the stale addresses being sent to us by
-                        // other nodes again).
-                        self.endpoints.remove(&node_id);
-                        self.signed_endpoints.remove(&node_id);
-                        self.outgoing.remove(&node_id);
-
-                        warn!(%attempt_count, %node_id, "giving up on outgoing connection");
-                    }
-
-                    return Multiple::new();
-                }
-                // TODO: Delay reconnection.
-
-                if let Some(endpoint) = self.endpoints.get(&node_id) {
-                    connect_outgoing(
-                        endpoint.clone(),
-                        self.cert.clone(),
-                        self.private_key.clone(),
-                    )
-                    .result(
-                        move |transport| Event::OutgoingEstablished { node_id, transport },
-                        move |error| Event::OutgoingFailed {
-                            node_id,
-                            attempt_count: attempt_count + 1,
-                            error: Some(error),
-                        },
-                    )
-                } else {
-                    error!("endpoint disappeared");
-                    Multiple::new()
-                }
-            }
-        }
     }
 
     /// Queues a message to be sent to all nodes.
@@ -421,6 +316,120 @@ where
                     "received message payload, but no implementation for what comes next"
                 );
                 Multiple::new()
+            }
+        }
+    }
+}
+
+impl<R, P> Component for SmallNetwork<R, P>
+where
+    R: Reactor + 'static,
+    P: Serialize + DeserializeOwned + Clone + Debug + Send + 'static,
+{
+    type Event = Event<P>;
+
+    #[allow(clippy::cognitive_complexity)]
+    fn handle_event(&mut self, ev: Self::Event) -> Multiple<Effect<Self::Event>> {
+        match ev {
+            Event::RootConnected { cert, transport } => {
+                // Create a pseudo-endpoint for the root node with the lowest priority (time 0)
+                let root_node_id = cert.public_key_fingerprint();
+                let ep = Endpoint::new(0, self.cfg.root_addr, cert);
+                if self.endpoints.insert(root_node_id, ep).is_some() {
+                    // This connection is the very first we will ever make, there should never be
+                    // a root node registered, as we will never re-attempt this connection if it
+                    // succeeded once.
+                    error!("Encountered a second root node connection.")
+                }
+
+                // We're now almost setup exactly as if the root node was any other node, proceed
+                // as normal.
+                self.setup_outgoing(root_node_id, transport)
+            }
+            Event::RootFailed { error } => {
+                warn!(%error, "connection to root failed");
+                self.connect_to_root()
+
+                // TODO: delay next attempt
+            }
+            Event::IncomingNew { stream, addr } => {
+                debug!(%addr, "Incoming connection, starting TLS handshake");
+
+                setup_tls(stream, self.cert.clone(), self.private_key.clone())
+                    .boxed()
+                    .event(move |result| Event::IncomingHandshakeCompleted { result, addr })
+            }
+            Event::IncomingHandshakeCompleted { result, addr } => {
+                match result {
+                    Ok((fp, transport)) => {
+                        // The sink is never used, as we only read data from incoming connections.
+                        let (_sink, stream) = framed::<P>(transport).split();
+
+                        message_reader(self.eq, stream, fp)
+                            .event(move |result| Event::IncomingClosed { result, addr })
+                    }
+                    Err(err) => {
+                        warn!(%addr, %err, "TLS handshake failed");
+                        Multiple::new()
+                    }
+                }
+            }
+            Event::IncomingMessage { node_id, msg } => self.handle_message(node_id, msg),
+            Event::IncomingClosed { result, addr } => {
+                match result {
+                    Ok(()) => info!(%addr, "connection closed"),
+                    Err(err) => warn!(%addr, %err, "connection dropped"),
+                }
+                Multiple::new()
+            }
+            Event::OutgoingEstablished { node_id, transport } => {
+                self.setup_outgoing(node_id, transport)
+            }
+            Event::OutgoingFailed {
+                node_id,
+                attempt_count,
+                error,
+            } => {
+                if let Some(err) = error {
+                    warn!(%node_id, %err, "outgoing connection failed");
+                } else {
+                    warn!(%node_id, "outgoing connection closed");
+                }
+
+                if let Some(max) = self.cfg.max_outgoing_retries {
+                    if attempt_count >= max {
+                        // We're giving up connecting to the node. We will remove it completely
+                        // (this only carries the danger of the stale addresses being sent to us by
+                        // other nodes again).
+                        self.endpoints.remove(&node_id);
+                        self.signed_endpoints.remove(&node_id);
+                        self.outgoing.remove(&node_id);
+
+                        warn!(%attempt_count, %node_id, "giving up on outgoing connection");
+                    }
+
+                    return Multiple::new();
+                }
+                // TODO: Delay reconnection.
+
+                if let Some(endpoint) = self.endpoints.get(&node_id) {
+                    connect_outgoing(
+                        endpoint.clone(),
+                        self.cert.clone(),
+                        self.private_key.clone(),
+                    )
+                    .result(
+                        move |transport| Event::OutgoingEstablished { node_id, transport },
+                        move |error| Event::OutgoingFailed {
+                            node_id,
+                            attempt_count: attempt_count + 1,
+                            error: Some(error),
+                        },
+                    )
+                } else {
+                    error!("endpoint disappeared");
+                    Multiple::new()
+                }
             }
         }
     }

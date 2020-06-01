@@ -7,7 +7,10 @@ use std::fmt::{self, Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    components::storage::{self, Storage, StorageType},
+    components::{
+        storage::{self, Storage, StorageType},
+        Component,
+    },
     effect::{Effect, EffectBuilder, Multiple},
     reactor::{self, EventQueueHandle, QueueKind, Scheduler},
     small_network, Config, SmallNetwork,
