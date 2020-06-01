@@ -27,7 +27,7 @@ use tracing_subscriber::{
     fmt::{
         format,
         time::{FormatTime, SystemTime},
-        FmtContext, FormatEvent, FormatFields,
+        FmtContext, FormatEvent, FormatFields, FormattedFields,
     },
     prelude::*,
     registry::LookupSpan,
@@ -85,13 +85,14 @@ where
         writer: &mut dyn fmt::Write,
         event: &Event<'_>,
     ) -> fmt::Result {
-        let meta = event.metadata();
-
-        let style = Style::new().dimmed();
-        write!(writer, "{}", style.prefix())?;
+        // print the date/time with dimmed style
+        let dimmed = Style::new().dimmed();
+        write!(writer, "{}", dimmed.prefix())?;
         SystemTime.format_time(writer)?;
-        write!(writer, "{}", style.suffix())?;
+        write!(writer, "{}", dimmed.suffix())?;
 
+        // print the log level in color
+        let meta = event.metadata();
         let color = log_level::color(meta.level());
         write!(
             writer,
@@ -101,13 +102,29 @@ where
             color.suffix()
         )?;
 
-        // TODO - enable outputting spans.  See
+        // print the span information as per
         // https://github.com/tokio-rs/tracing/blob/21f28f74/tracing-subscriber/src/fmt/format/mod.rs#L667-L695
-        // for details.
-        //
-        // let full_ctx = FullCtx::new(&ctx);
-        // write!(writer, "{}", full_ctx)?;
+        let mut span_seen = false;
 
+        ctx.visit_spans(|span| {
+            write!(writer, "{}", span.metadata().name())?;
+            span_seen = true;
+
+            let ext = span.extensions();
+            let fields = &ext
+                .get::<FormattedFields<N>>()
+                .expect("Unable to find FormattedFields in extensions; this is a bug");
+            if !fields.is_empty() {
+                write!(writer, "{{{}}}", fields)?;
+            }
+            writer.write_char(':')
+        })?;
+
+        if span_seen {
+            writer.write_char(' ')?;
+        }
+
+        // print the module path, filename and line number with dimmed style
         let module = meta.module_path().unwrap_or_default();
 
         let file = meta
@@ -122,13 +139,14 @@ where
         write!(
             writer,
             "{}[{} {}:{}]{} ",
-            style.prefix(),
+            dimmed.prefix(),
             module,
             file,
             line,
-            style.suffix()
+            dimmed.suffix()
         )?;
 
+        // print the log message and other fields
         ctx.format_fields(writer, event)?;
         writeln!(writer)
     }
