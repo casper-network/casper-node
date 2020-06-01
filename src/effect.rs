@@ -36,6 +36,7 @@
 //! effects to turn them into events should also be kept brief.
 
 use std::{
+    any::type_name,
     fmt::{self, Debug, Display, Formatter},
     future::Future,
     time::{Duration, Instant},
@@ -82,7 +83,12 @@ impl<T, Ev> Responder<T, Ev> {
 
 impl<T, Ev> Debug for Responder<T, Ev> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(formatter, "responder")
+        write!(
+            formatter,
+            "Responder<{}->{}>",
+            type_name::<T>(),
+            type_name::<Effect<Ev>>()
+        )
     }
 }
 
