@@ -14,7 +14,7 @@
 //!
 //! ```ignore
 //! use std::time::Duration;
-//! use casper_node::effect::EffectExt;
+//! use casperlabs_node::effect::EffectExt;
 //!
 //! enum Event {
 //!     ThreeSecondsElapsed(Duration)

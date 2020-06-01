@@ -33,7 +33,7 @@ use tracing_subscriber::{
     registry::LookupSpan,
 };
 
-use casper_node::Config as SmallNetworkConfig;
+use casperlabs_node::Config as SmallNetworkConfig;
 
 /// Root configuration.
 #[derive(Debug, Deserialize, Serialize)]

@@ -9,7 +9,7 @@ use structopt::StructOpt;
 use tracing::Level;
 
 use crate::config;
-use casper_node::{reactor, tls};
+use casperlabs_node::{reactor, tls};
 
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
 #[derive(Debug, StructOpt)]
