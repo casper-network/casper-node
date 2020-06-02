@@ -23,6 +23,7 @@ use linear_block_store::InMemBlockStore;
 
 pub(crate) type Storage = InMemStorage<Block>;
 
+#[derive(Debug)]
 pub(crate) enum Event<S: StorageType>
 where
     <S::BlockStore as BlockStoreType>::Block: Debug,
@@ -35,21 +36,6 @@ where
         block_hash: <<S::BlockStore as BlockStoreType>::Block as BlockType>::Hash,
         responder: Responder<Option<<S::BlockStore as BlockStoreType>::Block>, Event<S>>,
     },
-}
-
-impl<S: StorageType> Debug for Event<S> {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        match self {
-            Event::PutBlock { block, .. } => {
-                write!(formatter, "Event::PutBlock {{ block: {:?} }}", block)
-            }
-            Event::GetBlock { block_hash, .. } => write!(
-                formatter,
-                "Event::GetBlock {{ block_hash: {:?} }}",
-                block_hash
-            ),
-        }
-    }
 }
 
 impl<S: StorageType> Display for Event<S> {
