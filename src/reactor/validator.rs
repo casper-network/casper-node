@@ -12,7 +12,10 @@ use crate::{
         storage::{self, Storage},
         Component,
     },
-    effect::{requests::NetworkRequest, Effect, EffectBuilder, Multiple},
+    effect::{
+        requests::{NetworkRequest, StorageRequest},
+        Effect, EffectBuilder, Multiple,
+    },
     reactor::{self, EventQueueHandle},
     small_network::{self, NodeId},
     Config, SmallNetwork,
@@ -27,7 +30,8 @@ enum Event {
     #[from]
     Pinger(pinger::Event),
     #[from]
-    Storage(storage::Event<Storage>),
+    Storage(StorageRequest<Storage>),
+    #[from]
     StorageConsumer(storage::dummy::Event),
 }
 

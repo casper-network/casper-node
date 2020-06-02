@@ -3,9 +3,7 @@
 //! The pinger component sends a broadcast to all other nodes every five seconds with a `Ping`. When
 //! receiving a `Ping`, it will respond with a `Pong` to the sender.
 
-use std::collections::HashSet;
-use std::fmt;
-use std::time::Duration;
+use std::{collections::HashSet, fmt, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use tracing::info;
@@ -43,6 +41,8 @@ pub(crate) enum Message {
 #[derive(Debug)]
 pub(crate) enum Event {
     /// An incoming network message.
+    // TODO: remove lint relaxation
+    #[allow(dead_code)]
     MessageReceived { sender: NodeId, msg: Message },
     /// The next round of pings should be sent out.
     Timer,

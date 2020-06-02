@@ -85,7 +85,7 @@ impl<REv> EventQueueHandle<REv> {
 ///
 /// Any reactor should implement this trait and be launched by the [`launch`](fn.launch.html)
 /// function.
-pub trait Reactor: Sized {
+pub(crate) trait Reactor: Sized {
     // Note: We've gone for the `Sized` bound here, since we return an instance in `new`. As an
     // alternative, `new` could return a boxed instance instead, removing this requirement.
 

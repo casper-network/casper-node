@@ -38,6 +38,9 @@
 //! all nodes in the list and simultaneously tell all of its connected nodes about the new node,
 //! repeating the process.
 
+// TODO: remove clippy relaxation
+#![allow(clippy::type_complexity)]
+
 mod config;
 mod endpoint;
 mod event;
@@ -326,7 +329,7 @@ where
     #[allow(clippy::cognitive_complexity)]
     fn handle_event(
         &mut self,
-        eb: EffectBuilder<REv>,
+        _eb: EffectBuilder<REv>,
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>> {
         match event {
@@ -439,17 +442,15 @@ where
                     },
             } => {
                 // We're given a message to send out.
-                responder
-                    .respond(self.send_message(dest, Message::Payload(payload)))
-                    .ignore()
+                self.send_message(dest, Message::Payload(payload));
+                responder.respond(()).ignore()
             }
             Event::NetworkRequest {
                 req: NetworkRequest::BroadcastMessage { payload, responder },
             } => {
                 // We're given a message to broadcast.
-                responder
-                    .respond(self.broadcast_message(Message::Payload(payload)))
-                    .ignore()
+                self.broadcast_message(Message::Payload(payload));
+                responder.respond(()).ignore()
             }
         }
     }
@@ -494,7 +495,7 @@ where
             Ok((stream, addr)) => {
                 // Move the incoming connection to the event queue for handling.
                 let ev = Event::IncomingNew { stream, addr };
-                eq.schedule(ev.into(), QueueKind::NetworkIncoming).await;
+                eq.schedule(ev, QueueKind::NetworkIncoming).await;
             }
             Err(err) => warn!(%err, "dropping incoming connection during accept"),
         }
@@ -544,7 +545,7 @@ where
             Ok(msg) => {
                 // We've received a message, push it to the reactor.
                 eq.schedule(
-                    Event::IncomingMessage { node_id, msg }.into(),
+                    Event::IncomingMessage { node_id, msg },
                     QueueKind::NetworkIncoming,
                 )
                 .await;

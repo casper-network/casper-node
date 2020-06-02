@@ -48,8 +48,11 @@ use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use smallvec::{smallvec, SmallVec};
 use tracing::error;
 
-use crate::reactor::{EventQueueHandle, QueueKind};
-use requests::NetworkRequest;
+use crate::{
+    components::storage::{BlockStoreType, BlockType, StorageType},
+    reactor::{EventQueueHandle, QueueKind},
+};
+use requests::{NetworkRequest, StorageRequest};
 
 /// A boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
@@ -168,7 +171,7 @@ where
 /// Provides methods allowing the creation of effects which need scheduled on the reactor's event
 /// queue, without giving direct access to this queue.
 #[derive(Debug)]
-pub struct EffectBuilder<REv: 'static>(EventQueueHandle<REv>);
+pub(crate) struct EffectBuilder<REv: 'static>(EventQueueHandle<REv>);
 
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `REv` otherwise.
 impl<REv> Clone for EffectBuilder<REv> {
@@ -218,7 +221,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Sets a timeout.
-    pub async fn set_timeout(self, timeout: Duration) -> Duration {
+    pub(crate) async fn set_timeout(self, timeout: Duration) -> Duration {
         let then = Instant::now();
         tokio::time::delay_for(timeout).await;
         Instant::now() - then
@@ -228,7 +231,7 @@ impl<REv> EffectBuilder<REv> {
     ///
     /// The message is queued in "fire-and-forget" fashion, there is no guarantee that the peer
     /// will receive it.
-    pub async fn send_message<I, P>(self, dest: I, payload: P)
+    pub(crate) async fn send_message<I, P>(self, dest: I, payload: P)
     where
         REv: From<NetworkRequest<I, P>>,
     {
@@ -246,13 +249,45 @@ impl<REv> EffectBuilder<REv> {
     /// Broadcasts a network message.
     ///
     /// Broadcasts a network message to all peers connected at the time the message is sent.
-    pub async fn broadcast_message<I, P>(self, payload: P)
+    pub(crate) async fn broadcast_message<I, P>(self, payload: P)
     where
         REv: From<NetworkRequest<I, P>>,
     {
         self.make_request(
             |responder| NetworkRequest::BroadcastMessage { payload, responder },
             QueueKind::Network,
+        )
+        .await
+    }
+
+    /// Puts the given block into the linear block store.  Returns true on success.
+    pub(crate) async fn put_block<S>(self, block: <S::BlockStore as BlockStoreType>::Block) -> bool
+    where
+        S: StorageType,
+        REv: From<StorageRequest<S>>,
+    {
+        self.make_request(
+            |responder| StorageRequest::PutBlock { block, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block from the linear block store.
+    pub(crate) async fn get_block<S>(
+        self,
+        block_hash: <<S::BlockStore as BlockStoreType>::Block as BlockType>::Hash,
+    ) -> Option<<S::BlockStore as BlockStoreType>::Block>
+    where
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlock {
+                block_hash,
+                responder,
+            },
+            QueueKind::Regular,
         )
         .await
     }

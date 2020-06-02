@@ -12,7 +12,7 @@ use tracing::info;
 
 use crate::{
     components::Component,
-    effect::{Effect, EffectBuilder, EffectExt, Multiple, Responder},
+    effect::{requests::StorageRequest, Effect, EffectBuilder, EffectExt, Multiple},
     types::Block,
 };
 pub(crate) use block::BlockType;
@@ -20,27 +20,6 @@ pub(crate) use linear_block_store::BlockStoreType;
 use linear_block_store::InMemBlockStore;
 
 pub(crate) type Storage = InMemStorage<Block>;
-
-#[derive(Debug)]
-pub(crate) enum Event<S: StorageType> {
-    PutBlock {
-        block: <S::BlockStore as BlockStoreType>::Block,
-        responder: Responder<bool>,
-    },
-    GetBlock {
-        block_hash: <<S::BlockStore as BlockStoreType>::Block as BlockType>::Hash,
-        responder: Responder<Option<<S::BlockStore as BlockStoreType>::Block>>,
-    },
-}
-
-impl<S: StorageType> Display for Event<S> {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        match self {
-            Event::PutBlock { block, .. } => write!(formatter, "put {}", block),
-            Event::GetBlock { block_hash, .. } => write!(formatter, "get {}", block_hash),
-        }
-    }
-}
 
 // Trait which will handle management of the various storage sub-components.
 //
@@ -52,20 +31,20 @@ pub(crate) trait StorageType {
     fn block_store(&self) -> Arc<Self::BlockStore>;
 }
 
-impl<REv, T> Component<REv> for T
+impl<REv, S> Component<REv> for S
 where
-    T: StorageType,
+    S: StorageType,
     Self: Sized + 'static,
 {
-    type Event = Event<Self>;
+    type Event = StorageRequest<Self>;
 
     fn handle_event(
         &mut self,
-        eb: EffectBuilder<REv>,
+        _eb: EffectBuilder<REv>,
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>> {
         match event {
-            Event::PutBlock { block, responder } => {
+            StorageRequest::PutBlock { block, responder } => {
                 let block_store = self.block_store();
                 async move {
                     let result = task::spawn_blocking(move || block_store.put(block))
@@ -75,7 +54,7 @@ where
                 }
                 .ignore()
             }
-            Event::GetBlock {
+            StorageRequest::GetBlock {
                 block_hash,
                 responder,
             } => {
@@ -123,7 +102,7 @@ pub(crate) mod dummy {
     use super::*;
     use crate::{
         crypto::hash,
-        effect::{EffectBuilder, EffectExt},
+        effect::{requests::StorageRequest, EffectBuilder, EffectExt},
         types::Block,
     };
 
@@ -159,21 +138,17 @@ pub(crate) mod dummy {
         stored_blocks_hashes: HashSet<<Block as BlockType>::Hash>,
     }
 
-    impl StorageConsumer {
-        pub(crate) fn new<REv: Send>(eb: EffectBuilder<REv>) -> (Self, Multiple<Effect<Event>>) {
-            (
-                Self {
-                    stored_blocks_hashes: HashSet::new(),
-                },
-                Self::set_timeout(eb),
-            )
-        }
+    impl<REv> Component<REv> for StorageConsumer
+    where
+        REv: From<Event> + Send + From<StorageRequest<Storage>>,
+    {
+        type Event = Event;
 
-        pub(crate) fn handle_event<REv: Send>(
+        fn handle_event(
             &mut self,
             eb: EffectBuilder<REv>,
-            event: Event,
-        ) -> Multiple<Effect<Event>> {
+            event: Self::Event,
+        ) -> Multiple<Effect<Self::Event>> {
             match event {
                 Event::Trigger => {
                     let mut rng = rand::thread_rng();
@@ -209,37 +184,52 @@ pub(crate) mod dummy {
                 }
             }
         }
+    }
 
-        fn set_timeout<REv: Send>(eb: EffectBuilder<REv>) -> Multiple<Effect<Event>> {
+    impl StorageConsumer {
+        pub(crate) fn new<REv>(eb: EffectBuilder<REv>) -> (Self, Multiple<Effect<Event>>)
+        where
+            REv: From<Event> + Send + From<StorageRequest<Storage>>,
+        {
+            (
+                Self {
+                    stored_blocks_hashes: HashSet::new(),
+                },
+                Self::set_timeout(eb),
+            )
+        }
+
+        fn set_timeout<REv>(eb: EffectBuilder<REv>) -> Multiple<Effect<Event>>
+        where
+            REv: From<Event> + Send + From<StorageRequest<Storage>>,
+        {
             eb.set_timeout(Duration::from_millis(10))
                 .event(|_| Event::Trigger)
         }
 
-        fn request_put_block<REv>(eb: EffectBuilder<REv>, block: Block) -> Multiple<Effect<Event>> {
-            todo!()
-            // let block_hash = *block.hash();
-            // eb
-            //     .make_request(|responder| super::Event::PutBlock { block, responder })
-            //     .event(move |is_success| {
-            //         if is_success {
-            //             Event::PutBlockSucceeded(block_hash)
-            //         } else {
-            //             Event::PutBlockFailed(block_hash)
-            //         }
-            //     })
+        fn request_put_block<REv>(eb: EffectBuilder<REv>, block: Block) -> Multiple<Effect<Event>>
+        where
+            REv: From<Event> + Send + From<StorageRequest<Storage>>,
+        {
+            let block_hash = *block.hash();
+            eb.put_block(block).event(move |is_success| {
+                if is_success {
+                    Event::PutBlockSucceeded(block_hash)
+                } else {
+                    Event::PutBlockFailed(block_hash)
+                }
+            })
         }
 
         fn request_get_block<REv>(
             eb: EffectBuilder<REv>,
             block_hash: <Block as BlockType>::Hash,
-        ) -> Multiple<Effect<Event>> {
-            todo!()
-            // eb
-            //     .make_request(move |responder| super::Event::GetBlock {
-            //         block_hash,
-            //         responder,
-            //     })
-            //     .event(move |maybe_block| Event::GotBlock(block_hash, maybe_block))
+        ) -> Multiple<Effect<Event>>
+        where
+            REv: From<Event> + Send + From<StorageRequest<Storage>>,
+        {
+            eb.get_block(block_hash)
+                .event(move |maybe_block| Event::GotBlock(block_hash, maybe_block))
         }
     }
 }
