@@ -72,6 +72,7 @@ use tracing::{debug, error, info, warn};
 
 pub(crate) use self::{endpoint::Endpoint, event::Event, message::Message};
 use crate::{
+    components::Component,
     effect::{Effect, EffectExt, EffectResultExt, Multiple},
     reactor::{EventQueueHandle, QueueKind, Reactor},
     tls::{self, KeyFingerprint, Signed, TlsCert},
@@ -179,8 +180,156 @@ where
         )
     }
 
+    /// Queues a message to be sent to all nodes.
+    fn broadcast_message(&self, msg: Message<P>) {
+        for node_id in self.outgoing.keys() {
+            self.send_message(*node_id, msg.clone());
+        }
+    }
+
+    /// Queues a message to be sent to a specific node.
+    fn send_message(&self, dest: NodeId, msg: Message<P>) {
+        // Try to send the message.
+        if let Some(sender) = self.outgoing.get(&dest) {
+            if let Err(msg) = sender.send(msg) {
+                // We lost the connection, but that fact has not reached us yet.
+                warn!(%dest, ?msg, "dropped outgoing message, lost connection");
+            }
+        } else {
+            // We are not connected, so the reconnection is likely already in progress.
+            warn!(%dest, ?msg, "dropped outgoing message, no connection");
+        }
+    }
+
+    /// Updates the internal endpoint store from a given endpoint.
+    ///
+    /// Returns the node ID of the endpoint if it was new.
+    #[inline]
+    fn update_endpoint(&mut self, endpoint: &Endpoint) -> Option<NodeId> {
+        let fp = endpoint.cert().public_key_fingerprint();
+
+        if let Some(prev) = self.endpoints.get(&fp) {
+            if prev >= endpoint {
+                // Still up to date or stale, do nothing.
+                return None;
+            }
+        }
+
+        self.endpoints.insert(fp, endpoint.clone());
+        Some(fp)
+    }
+
+    /// Updates internal endpoint store and if new, output a `BroadcastEndpoint` effect.
+    #[inline]
+    fn update_and_broadcast_if_new(
+        &mut self,
+        signed: Signed<Endpoint>,
+    ) -> Multiple<Effect<Event<P>>> {
+        match signed.validate_self_signed(|endpoint| Ok(endpoint.cert().public_key())) {
+            Ok(endpoint) => {
+                // Endpoint is valid, check if it was new.
+                if let Some(node_id) = self.update_endpoint(&endpoint) {
+                    debug!("new endpoint {}", endpoint);
+                    // We learned of a new endpoint. We store it and note whether it is the first
+                    // endpoint for the node.
+                    self.signed_endpoints.insert(node_id, signed.clone());
+                    self.endpoints.insert(node_id, endpoint.clone());
+
+                    let effect = if self.outgoing.remove(&node_id).is_none() {
+                        info!(%node_id, %endpoint, "new outgoing channel");
+                        // Initiate the connection process once we learn of a new node ID.
+                        connect_outgoing(endpoint, self.cert.clone(), self.private_key.clone())
+                            .result(
+                                move |transport| Event::OutgoingEstablished { node_id, transport },
+                                move |error| Event::OutgoingFailed {
+                                    node_id,
+                                    attempt_count: 0,
+                                    error: Some(error),
+                                },
+                            )
+                    } else {
+                        // There was a previous endpoint, whose sender has now been dropped. This
+                        // will cause the sender task to exit and trigger a reconnect.
+
+                        info!(%endpoint, "endpoint changed");
+                        Multiple::new()
+                    };
+
+                    self.broadcast_message(Message::BroadcastEndpoint(signed));
+
+                    effect
+                } else {
+                    debug!("known endpoint: {}", endpoint);
+                    Multiple::new()
+                }
+            }
+            Err(err) => {
+                warn!(%err, ?signed, "received invalid endpoint");
+                Multiple::new()
+            }
+        }
+    }
+
+    /// Sets up an established outgoing connection.
+    fn setup_outgoing(
+        &mut self,
+        node_id: NodeId,
+        transport: Transport,
+    ) -> Multiple<Effect<Event<P>>> {
+        // This connection is send-only, we only use the sink.
+        let (sink, _stream) = framed::<P>(transport).split();
+
+        let (sender, receiver) = mpsc::unbounded_channel();
+        if self.outgoing.insert(node_id, sender).is_some() {
+            // We assume that for a reconnect to have happened, the outgoing entry must have
+            // been either non-existent yet or cleaned up by the handler of the connection
+            // closing event. If this is not the case, an assumed invariant has been violated.
+            error!(%node_id, "did not expect leftover channel in outgoing map");
+        }
+
+        // We can now send a snapshot.
+        let snapshot = Message::Snapshot(self.signed_endpoints.values().cloned().collect());
+        self.send_message(node_id, snapshot);
+
+        message_sender(receiver, sink).event(move |result| Event::OutgoingFailed {
+            node_id,
+            attempt_count: 0, // reset to 0, since we have had a successful connection
+            error: result.err().map(Into::into),
+        })
+    }
+
+    /// Handles a received message.
+    // Internal function to keep indentation and nesting sane.
+    fn handle_message(&mut self, node_id: NodeId, msg: Message<P>) -> Multiple<Effect<Event<P>>> {
+        match msg {
+            Message::Snapshot(snapshot) => snapshot
+                .into_iter()
+                .map(|signed| self.update_and_broadcast_if_new(signed))
+                .flatten()
+                .collect(),
+            Message::BroadcastEndpoint(signed) => self.update_and_broadcast_if_new(signed),
+            Message::Payload(payload) => {
+                // We received a message payload.
+                warn!(
+                    %node_id,
+                    ?payload,
+                    "received message payload, but no implementation for what comes next"
+                );
+                Multiple::new()
+            }
+        }
+    }
+}
+
+impl<R, P> Component for SmallNetwork<R, P>
+where
+    R: Reactor + 'static,
+    P: Serialize + DeserializeOwned + Clone + Debug + Send + 'static,
+{
+    type Event = Event<P>;
+
     #[allow(clippy::cognitive_complexity)]
-    pub(crate) fn handle_event(&mut self, ev: Event<P>) -> Multiple<Effect<Event<P>>> {
+    fn handle_event(&mut self, ev: Self::Event) -> Multiple<Effect<Self::Event>> {
         match ev {
             Event::RootConnected { cert, transport } => {
                 // Create a pseudo-endpoint for the root node with the lowest priority (time 0)
@@ -281,146 +430,6 @@ where
                     error!("endpoint disappeared");
                     Multiple::new()
                 }
-            }
-        }
-    }
-
-    /// Queues a message to be sent to all nodes.
-    fn broadcast_message(&self, msg: Message<P>) {
-        for node_id in self.outgoing.keys() {
-            self.send_message(*node_id, msg.clone());
-        }
-    }
-
-    /// Queues a message to be sent to a specific node.
-    fn send_message(&self, dest: NodeId, msg: Message<P>) {
-        // Try to send the message.
-        if let Some(sender) = self.outgoing.get(&dest) {
-            if let Err(msg) = sender.send(msg) {
-                // We lost the connection, but that fact has not reached us yet.
-                warn!(%dest, ?msg, "dropped outgoing message, lost connection");
-            }
-        } else {
-            // We are not connected, so the reconnection is likely already in progress.
-            warn!(%dest, ?msg, "dropped outgoing message, no connection");
-        }
-    }
-
-    /// Updates the internal endpoint store from a given endpoint.
-    ///
-    /// Returns the node ID of the endpoint if it was new.
-    #[inline]
-    fn update_endpoint(&mut self, endpoint: &Endpoint) -> Option<NodeId> {
-        let fp = endpoint.cert().public_key_fingerprint();
-
-        if let Some(prev) = self.endpoints.get(&fp) {
-            if prev >= endpoint {
-                // Still up to date or stale, do nothing.
-                return None;
-            }
-        }
-
-        self.endpoints.insert(fp, endpoint.clone());
-        Some(fp)
-    }
-
-    /// Updates internal endpoint store and if new, output a `BroadcastEndpoint` effect.
-    #[inline]
-    fn update_and_broadcast_if_new(
-        &mut self,
-        signed: Signed<Endpoint>,
-    ) -> Multiple<Effect<Event<P>>> {
-        match signed.validate_self_signed(|endpoint| Ok(endpoint.cert().public_key())) {
-            Ok(endpoint) => {
-                // Endpoint is valid, check if it was new.
-                if let Some(node_id) = self.update_endpoint(&endpoint) {
-                    debug!("new endpoint {}", endpoint);
-                    // We learned of a new endpoint. We store it and note whether it is the first
-                    // endpoint for the node.
-                    self.signed_endpoints.insert(node_id, signed.clone());
-                    self.endpoints.insert(node_id, endpoint.clone());
-
-                    let effect = if self.outgoing.remove(&node_id).is_none() {
-                        info!(%node_id, ?endpoint, "new outgoing channel");
-                        // Initiate the connection process once we learn of a new node ID.
-                        connect_outgoing(endpoint, self.cert.clone(), self.private_key.clone())
-                            .result(
-                                move |transport| Event::OutgoingEstablished { node_id, transport },
-                                move |error| Event::OutgoingFailed {
-                                    node_id,
-                                    attempt_count: 0,
-                                    error: Some(error),
-                                },
-                            )
-                    } else {
-                        // There was a previous endpoint, whose sender has now been dropped. This
-                        // will cause the sender task to exit and trigger a reconnect.
-
-                        info!(%endpoint, "endpoint changed");
-                        Multiple::new()
-                    };
-
-                    self.broadcast_message(Message::BroadcastEndpoint(signed));
-
-                    effect
-                } else {
-                    debug!("known endpoint: {}", endpoint);
-                    Multiple::new()
-                }
-            }
-            Err(err) => {
-                warn!(%err, ?signed, "received invalid endpoint");
-                Multiple::new()
-            }
-        }
-    }
-
-    /// Sets up an established outgoing connection.
-    fn setup_outgoing(
-        &mut self,
-        node_id: NodeId,
-        transport: Transport,
-    ) -> Multiple<Effect<Event<P>>> {
-        // This connection is send-only, we only use the sink.
-        let (sink, _stream) = framed::<P>(transport).split();
-
-        let (sender, receiver) = mpsc::unbounded_channel();
-        if self.outgoing.insert(node_id, sender).is_some() {
-            // We assume that for a reconnect to have happened, the outgoing entry must have
-            // been either non-existent yet or cleaned up by the handler of the connection
-            // closing event. If this is not the case, an assumed invariant has been violated.
-            error!(%node_id, "did not expect leftover channel in outgoing map");
-        }
-
-        // We can now send a snapshot.
-        let snapshot = Message::Snapshot(self.signed_endpoints.values().cloned().collect());
-        self.send_message(node_id, snapshot);
-
-        message_sender(receiver, sink).event(move |result| Event::OutgoingFailed {
-            node_id,
-            attempt_count: 0, // reset to 0, since we have had a successful connection
-            error: result.err().map(Into::into),
-        })
-    }
-
-    /// Handles a received message.
-    // Internal function to keep indentation and nesting sane.
-    fn handle_message(&mut self, node_id: NodeId, msg: Message<P>) -> Multiple<Effect<Event<P>>> {
-        match msg {
-            Message::Snapshot(snapshot) => snapshot
-                .into_iter()
-                .map(|signed| self.update_and_broadcast_if_new(signed))
-                .flatten()
-                .collect(),
-            Message::BroadcastEndpoint(signed) => self.update_and_broadcast_if_new(signed),
-            Message::Payload(payload) => {
-                // We received a message payload.
-                warn!(
-                    %node_id,
-                    ?payload,
-                    "received message payload, but no implementation for what comes next"
-                );
-                Multiple::new()
             }
         }
     }

@@ -13,6 +13,7 @@ use tokio::task;
 use tracing::info;
 
 use crate::{
+    components::Component,
     effect::{Effect, Multiple, Responder},
     types::Block,
 };
@@ -22,6 +23,7 @@ use linear_block_store::InMemBlockStore;
 
 pub(crate) type Storage = InMemStorage<Block>;
 
+#[derive(Debug)]
 pub(crate) enum Event<S: StorageType>
 where
     <S::BlockStore as BlockStoreType>::Block: Debug,
@@ -34,21 +36,6 @@ where
         block_hash: <<S::BlockStore as BlockStoreType>::Block as BlockType>::Hash,
         responder: Responder<Option<<S::BlockStore as BlockStoreType>::Block>, Event<S>>,
     },
-}
-
-impl<S: StorageType> Debug for Event<S> {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        match self {
-            Event::PutBlock { block, .. } => {
-                write!(formatter, "Event::PutBlock {{ block: {:?} }}", block)
-            }
-            Event::GetBlock { block_hash, .. } => write!(
-                formatter,
-                "Event::GetBlock {{ block_hash: {:?} }}",
-                block_hash
-            ),
-        }
-    }
 }
 
 impl<S: StorageType> Display for Event<S> {
@@ -67,10 +54,17 @@ impl<S: StorageType> Display for Event<S> {
 pub(crate) trait StorageType {
     type BlockStore: BlockStoreType + Send + Sync;
 
-    fn handle_event(&mut self, event: Event<Self>) -> Multiple<Effect<Event<Self>>>
-    where
-        Self: Sized + 'static,
-    {
+    fn block_store(&self) -> Arc<Self::BlockStore>;
+}
+
+impl<T> Component for T
+where
+    T: StorageType,
+    Self: Sized + 'static,
+{
+    type Event = Event<Self>;
+
+    fn handle_event(&mut self, event: Self::Event) -> Multiple<Effect<Self::Event>> {
         match event {
             Event::PutBlock { block, responder } => {
                 let block_store = self.block_store();
@@ -95,8 +89,6 @@ pub(crate) trait StorageType {
             }
         }
     }
-
-    fn block_store(&self) -> Arc<Self::BlockStore>;
 }
 
 // Concrete type of `Storage` - backed by in-memory block store only for now, but will eventually
