@@ -30,9 +30,9 @@ enum Event {
     #[from]
     Pinger(pinger::Event),
     #[from]
-    Storage(StorageRequest<Storage>),
+    Storage(Box<StorageRequest<Storage>>),
     #[from]
-    StorageConsumer(storage::dummy::Event),
+    StorageConsumer(Box<storage::dummy::Event>),
 }
 
 impl From<NetworkRequest<NodeId, Message>> for Event {
@@ -68,7 +68,7 @@ impl reactor::Reactor for Reactor {
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
         effects.extend(reactor::wrap_effects(Event::Pinger, pinger_effects));
         effects.extend(reactor::wrap_effects(
-            Event::StorageConsumer,
+            |event| Event::StorageConsumer(Box::new(event)),
             storage_consumer_effects,
         ));
 
@@ -95,12 +95,13 @@ impl reactor::Reactor for Reactor {
             Event::Pinger(ev) => {
                 reactor::wrap_effects(Event::Pinger, self.pinger.handle_event(eb, ev))
             }
-            Event::Storage(ev) => {
-                reactor::wrap_effects(Event::Storage, self.storage.handle_event(eb, ev))
-            }
+            Event::Storage(ev) => reactor::wrap_effects(
+                |event| Event::Storage(Box::new(event)),
+                self.storage.handle_event(eb, *ev),
+            ),
             Event::StorageConsumer(ev) => reactor::wrap_effects(
-                Event::StorageConsumer,
-                self.dummy_storage_consumer.handle_event(eb, ev),
+                |event| Event::StorageConsumer(Box::new(event)),
+                self.dummy_storage_consumer.handle_event(eb, *ev),
             ),
         }
     }
