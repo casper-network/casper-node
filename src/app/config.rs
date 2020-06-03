@@ -19,7 +19,7 @@
 
 use std::{fmt, fs, io, path::Path};
 
-use ansi_term::Style;
+use ansi_term::{Color, Style};
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, Event, Level, Subscriber};
@@ -31,6 +31,7 @@ use tracing_subscriber::{
     },
     prelude::*,
     registry::LookupSpan,
+    EnvFilter,
 };
 
 use casper_node::Config as SmallNetworkConfig;
@@ -47,11 +48,11 @@ pub struct Config {
 }
 
 /// Log configuration.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct Log {
-    /// Log level.
-    #[serde(with = "log_level")]
-    pub level: Level,
+    // TODO: There currently is no configuration for logging. Either there need to be requirements
+//       for how logging should be configurable or implemented, or this configuration section
+//       should be removed.
 }
 
 impl Default for Config {
@@ -61,12 +62,6 @@ impl Default for Config {
             validator_net: SmallNetworkConfig::default_on_port(34553),
             public_net: SmallNetworkConfig::default_on_port(1485),
         }
-    }
-}
-
-impl Default for Log {
-    fn default() -> Self {
-        Log { level: Level::INFO }
     }
 }
 
@@ -93,7 +88,14 @@ where
 
         // print the log level in color
         let meta = event.metadata();
-        let color = log_level::color(meta.level());
+        let color = match *meta.level() {
+            Level::TRACE => Color::Purple,
+            Level::DEBUG => Color::Blue,
+            Level::INFO => Color::Green,
+            Level::WARN => Color::Yellow,
+            Level::ERROR => Color::Red,
+        };
+
         write!(
             writer,
             " {}{:<6}{}",
@@ -171,7 +173,7 @@ impl Log {
         tracing::subscriber::set_global_default(
             tracing_subscriber::fmt()
                 .with_writer(io::stderr)
-                .with_max_level(self.level.clone())
+                .with_env_filter(EnvFilter::from_default_env())
                 .fmt_fields(formatter)
                 .event_format(FmtEvent {})
                 .finish(),
@@ -195,39 +197,4 @@ pub fn load_from_file<P: AsRef<Path>>(config_path: P) -> anyhow::Result<Config> 
 /// Creates a TOML-formatted string from a given configuration.
 pub fn to_string(cfg: &Config) -> anyhow::Result<String> {
     toml::to_string_pretty(cfg).with_context(|| "Failed to serialize default configuration")
-}
-
-/// Serialization/deserialization
-mod log_level {
-    use std::str::FromStr;
-
-    use ansi_term::Color;
-    use serde::{self, de::Error, Deserialize, Deserializer, Serializer};
-    use tracing::Level;
-
-    pub fn serialize<S>(value: &Level, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(value.to_string().as_str())
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Level, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-
-        Level::from_str(s.as_str()).map_err(Error::custom)
-    }
-
-    pub(super) fn color(value: &Level) -> Color {
-        match *value {
-            Level::TRACE => Color::Purple,
-            Level::DEBUG => Color::Blue,
-            Level::INFO => Color::Green,
-            Level::WARN => Color::Yellow,
-            Level::ERROR => Color::Red,
-        }
-    }
 }
