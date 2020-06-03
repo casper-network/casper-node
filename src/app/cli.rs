@@ -6,7 +6,6 @@ use std::{io, io::Write, path::PathBuf};
 
 use anyhow::bail;
 use structopt::StructOpt;
-use tracing::Level;
 
 use crate::config;
 use casperlabs_node::{reactor, tls};
@@ -32,10 +31,6 @@ pub enum Cli {
         #[structopt(short, long, env)]
         /// Path to configuration file.
         config: Option<PathBuf>,
-
-        /// Override log-level, forcing debug output.
-        #[structopt(short, long)]
-        debug: bool,
     },
 }
 
@@ -67,15 +62,12 @@ impl Cli {
 
                 Ok(())
             }
-            Cli::Validator { config, debug } => {
+            Cli::Validator { config } => {
                 // We load the specified config, if any, otherwise use defaults.
-                let mut cfg = config
+                let cfg = config
                     .map(config::load_from_file)
                     .transpose()?
                     .unwrap_or_default();
-                if debug {
-                    cfg.log.level = Level::DEBUG;
-                }
                 cfg.log.setup_logging()?;
 
                 reactor::validator::launch(cfg.validator_net).await

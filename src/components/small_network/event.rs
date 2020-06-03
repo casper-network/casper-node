@@ -4,12 +4,13 @@ use std::{
     net::SocketAddr,
 };
 
+use derive_more::From;
 use tokio::net::TcpStream;
 
 use super::{Message, NodeId, Transport};
-use crate::tls::TlsCert;
+use crate::{effect::requests::NetworkRequest, tls::TlsCert};
 
-#[derive(Debug)]
+#[derive(Debug, From)]
 pub(crate) enum Event<P> {
     /// Connection to the root node succeeded.
     RootConnected { cert: TlsCert, transport: Transport },
@@ -41,6 +42,10 @@ pub(crate) enum Event<P> {
         attempt_count: u32,
         error: Option<anyhow::Error>,
     },
+
+    /// Incoming network request.
+    #[from]
+    NetworkRequest { req: NetworkRequest<NodeId, P> },
 }
 
 impl<P: Display> Display for Event<P> {
@@ -70,6 +75,7 @@ impl<P: Display> Display for Event<P> {
                 attempt_count,
                 error.is_some()
             ),
+            Event::NetworkRequest { req } => write!(f, "request: {}", req),
         }
     }
 }

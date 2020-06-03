@@ -16,6 +16,7 @@ default-run = "casperlabs-node"
 ansi_term = "0.12.1"
 anyhow = "1.0.28"
 blake2 = { version = "0.8.1", default-features = false }
+derive_more = "0.99.7"
 displaydoc = "0.1.6"
 ed25519-dalek = { version = "1.0.0-pre.3", default-features = false, features = ["rand", "serde", "u64_backend"] }
 either = "1.5.3"
