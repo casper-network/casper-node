@@ -35,6 +35,8 @@
 //! the effects explicitly listed in this module through traits to create them. Post-processing on
 //! effects to turn them into events should also be kept brief.
 
+pub(crate) mod requests;
+
 use std::{
     any::type_name,
     fmt::{self, Debug, Display, Formatter},
@@ -45,6 +47,12 @@ use std::{
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use smallvec::{smallvec, SmallVec};
 use tracing::error;
+
+use crate::{
+    components::storage::{BlockStoreType, BlockType, StorageType},
+    reactor::{EventQueueHandle, QueueKind},
+};
+use requests::{NetworkRequest, StorageRequest};
 
 /// A boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
@@ -57,42 +65,31 @@ pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
 /// the same size as an empty vec, which is two pointers.
 pub type Multiple<T> = SmallVec<[T; 2]>;
 
-/// A boxed closure which returns an [`Effect`](type.Effect.html).
-pub struct Responder<T, Ev>(Box<dyn FnOnce(T) -> Effect<Ev> + Send>);
+/// A responder satisfying a request.
+pub struct Responder<T>(oneshot::Sender<T>);
 
-impl<T: 'static + Send, Ev> Responder<T, Ev> {
+impl<T: 'static + Send> Responder<T> {
     fn new(sender: oneshot::Sender<T>) -> Self {
-        Responder(Box::new(move |value| {
-            async move {
-                if sender.send(value).is_err() {
-                    error!("could not send response to request down oneshot channel")
-                }
-                smallvec![]
-            }
-            .boxed()
-        }))
+        Responder(sender)
     }
 }
 
-impl<T, Ev> Responder<T, Ev> {
-    /// Invoke the wrapped closure, passing in `data`.
-    pub fn call(self, data: T) -> Effect<Ev> {
-        self.0(data)
+impl<T> Responder<T> {
+    /// Send `data` to the origin of the request.
+    pub async fn respond(self, data: T) {
+        if self.0.send(data).is_err() {
+            error!("could not send response to request down oneshot channel");
+        }
     }
 }
 
-impl<T, Ev> Debug for Responder<T, Ev> {
+impl<T> Debug for Responder<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "Responder<{}->{}>",
-            type_name::<T>(),
-            type_name::<Effect<Ev>>()
-        )
+        write!(formatter, "Responder<{}>", type_name::<T>(),)
     }
 }
 
-impl<T, Ev> Display for Responder<T, Ev> {
+impl<T> Display for Responder<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "responder({})", type_name::<T>(),)
     }
@@ -169,53 +166,42 @@ where
     }
 }
 
-use crate::reactor::{EventQueueHandle, QueueKind, Reactor};
-
 /// A builder for [`Effect`](type.Effect.html)s.
 ///
 /// Provides methods allowing the creation of effects which need scheduled on the reactor's event
 /// queue, without giving direct access to this queue.
 #[derive(Debug)]
-pub struct EffectBuilder<R: Reactor, Ev> {
-    event_queue_handle: EventQueueHandle<R, Ev>,
-    queue_kind: QueueKind,
-}
+pub(crate) struct EffectBuilder<REv: 'static>(EventQueueHandle<REv>);
 
-// Implement `Clone` and `Copy` manually, as `derive` will make it depend on `R` and `Ev` otherwise.
-impl<R: Reactor, Ev> Clone for EffectBuilder<R, Ev> {
+// Implement `Clone` and `Copy` manually, as `derive` will make it depend on `REv` otherwise.
+impl<REv> Clone for EffectBuilder<REv> {
     fn clone(&self) -> Self {
-        EffectBuilder {
-            event_queue_handle: self.event_queue_handle,
-            queue_kind: self.queue_kind,
-        }
+        EffectBuilder(self.0)
     }
 }
 
-impl<R: Reactor, Ev> Copy for EffectBuilder<R, Ev> {}
+impl<REv> Copy for EffectBuilder<REv> {}
 
-impl<R: Reactor, Ev> EffectBuilder<R, Ev> {
-    pub(crate) fn new(event_queue_handle: EventQueueHandle<R, Ev>, queue_kind: QueueKind) -> Self {
-        EffectBuilder {
-            event_queue_handle,
-            queue_kind,
-        }
+impl<REv> EffectBuilder<REv> {
+    /// Creates a new effect builder.
+    pub(crate) fn new(event_queue_handle: EventQueueHandle<REv>) -> Self {
+        EffectBuilder(event_queue_handle)
     }
 
-    /// Sets a timeout.
-    pub async fn set_timeout(self, timeout: Duration) -> Duration {
-        let then = Instant::now();
-        tokio::time::delay_for(timeout).await;
-        Instant::now() - then
-    }
-
-    /// Creates a request and response pair.
+    /// Performs a request.
     ///
-    /// This creates and enqueues a request event by invoking the provided `create_request_event`
-    /// closure, having first created the responder required in the form of a oneshot channel.
-    pub async fn make_request<T, F>(self, create_request_event: F) -> T
+    /// Given a request `Q`, that when completed will yield a result of `T`, produces a future
+    /// that will
+    ///
+    /// 1. create an event to send the request to the respective component (thus `Q: Into<REv>`),
+    /// 2. waits for a response and returns it.
+    ///
+    /// This function is only used internally by effects implement on the effects builder.
+    async fn make_request<T, Q, F>(self, f: F, queue_kind: QueueKind) -> T
     where
-        T: 'static + Send,
-        F: FnOnce(Responder<T, Ev>) -> Ev,
+        T: Send + 'static,
+        Q: Into<REv>,
+        F: FnOnce(Responder<T>) -> Q,
     {
         // Prepare a channel.
         let (sender, receiver) = oneshot::channel();
@@ -224,15 +210,85 @@ impl<R: Reactor, Ev> EffectBuilder<R, Ev> {
         let responder = Responder::new(sender);
 
         // Now inject the request event into the event loop.
-        let request_event = create_request_event(responder);
-        self.event_queue_handle
-            .schedule(request_event, self.queue_kind)
-            .await;
+        let request_event = f(responder).into();
+        self.0.schedule(request_event, queue_kind).await;
 
         receiver.await.unwrap_or_else(|err| {
             // The channel should never be closed, ever.
             error!(%err, "request oneshot closed, this should not happen");
             unreachable!()
         })
+    }
+
+    /// Sets a timeout.
+    pub(crate) async fn set_timeout(self, timeout: Duration) -> Duration {
+        let then = Instant::now();
+        tokio::time::delay_for(timeout).await;
+        Instant::now() - then
+    }
+
+    /// Sends a network message.
+    ///
+    /// The message is queued in "fire-and-forget" fashion, there is no guarantee that the peer
+    /// will receive it.
+    pub(crate) async fn send_message<I, P>(self, dest: I, payload: P)
+    where
+        REv: From<NetworkRequest<I, P>>,
+    {
+        self.make_request(
+            |responder| NetworkRequest::SendMessage {
+                dest,
+                payload,
+                responder,
+            },
+            QueueKind::Network,
+        )
+        .await
+    }
+
+    /// Broadcasts a network message.
+    ///
+    /// Broadcasts a network message to all peers connected at the time the message is sent.
+    pub(crate) async fn broadcast_message<I, P>(self, payload: P)
+    where
+        REv: From<NetworkRequest<I, P>>,
+    {
+        self.make_request(
+            |responder| NetworkRequest::BroadcastMessage { payload, responder },
+            QueueKind::Network,
+        )
+        .await
+    }
+
+    /// Puts the given block into the linear block store.  Returns true on success.
+    pub(crate) async fn put_block<S>(self, block: <S::BlockStore as BlockStoreType>::Block) -> bool
+    where
+        S: StorageType,
+        REv: From<StorageRequest<S>>,
+    {
+        self.make_request(
+            |responder| StorageRequest::PutBlock { block, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block from the linear block store.
+    pub(crate) async fn get_block<S>(
+        self,
+        block_hash: <<S::BlockStore as BlockStoreType>::Block as BlockType>::Hash,
+    ) -> Option<<S::BlockStore as BlockStoreType>::Block>
+    where
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlock {
+                block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
     }
 }
