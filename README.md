@@ -1,4 +1,4 @@
-# casper-node
+# casperlabs-node
 
 This is the core application for the CasperLabs blockchain.
 
