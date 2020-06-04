@@ -1,17 +1,19 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
-    fmt::{self, Debug, Display, Formatter},
+    fmt::{Debug, Display},
     hash::Hash,
-    sync::RwLock,
+    sync::{PoisonError, RwLock},
 };
 
 use serde::{de::DeserializeOwned, Serialize};
+use thiserror::Error;
 
 /// Trait defining the API for a value able to be held within the storage component.
 pub(crate) trait Value:
     Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display
 {
     type Id: Copy + Clone + Ord + PartialOrd + Eq + PartialEq + Hash + Debug + Display + Send + Sync;
+    /// A relatively small portion of the value, representing header info or metadata.
     type Header: Clone + Ord + PartialOrd + Eq + PartialEq + Hash + Debug + Display + Send + Sync;
 
     fn id(&self) -> &Self::Id;
@@ -48,7 +50,10 @@ impl<V: Value> Store for InMemStore<V> {
     type Error = InMemError;
 
     fn put(&self, value: V) -> bool {
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = match self.inner.write() {
+            Ok(inner) => inner,
+            Err(_) => return false,
+        };
         std::thread::sleep(std::time::Duration::from_millis(100));
         if let Entry::Vacant(entry) = inner.entry(*value.id()) {
             entry.insert(value);
@@ -59,32 +64,27 @@ impl<V: Value> Store for InMemStore<V> {
 
     fn get(&self, id: &V::Id) -> Result<V, InMemError> {
         self.inner
-            .read()
-            .unwrap()
+            .read()?
             .get(id)
             .cloned()
             .ok_or_else(|| InMemError::ValueNotFound)
     }
 
     fn get_header(&self, id: &V::Id) -> Option<V::Header> {
-        self.inner
-            .read()
-            .unwrap()
-            .get(id)
-            .map(Value::header)
-            .cloned()
+        self.inner.read().ok()?.get(id).map(Value::header).cloned()
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub(crate) enum InMemError {
+    #[error("value not found")]
     ValueNotFound,
+    #[error("poisoned lock")]
+    PoisonedLock,
 }
 
-impl Display for InMemError {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        match self {
-            InMemError::ValueNotFound => write!(formatter, "value not found"),
-        }
+impl<T> From<PoisonError<T>> for InMemError {
+    fn from(_error: PoisonError<T>) -> Self {
+        InMemError::PoisonedLock
     }
 }

@@ -30,7 +30,7 @@ impl DeployHash {
 
 impl Display for DeployHash {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "DeployHash({})", self.0,)
+        write!(formatter, "deploy-hash({})", self.0,)
     }
 }
 
@@ -50,7 +50,7 @@ impl Display for DeployHeader {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "DeployHeader {{ account: {}, timestamp: {}, gas_price: {}, body_hash: {}, ttl_millis: {}, dependencies: {}, chain_name: {} }}",
+            "deploy-header[account: {}, timestamp: {}, gas_price: {}, body_hash: {}, ttl_millis: {}, dependencies: {}, chain_name: {}]",
             self.account,
             self.timestamp,
             self.gas_price,
@@ -140,7 +140,7 @@ impl Display for Deploy {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "Deploy {{ hash: {}, {}, payment_code: {:10}, session_code: {:10}, approvals: {} }}",
+            "deploy[{}, {}, payment_code: {:10}, session_code: {:10}, approvals: {}]",
             self.hash,
             self.header,
             HexFmt(&self.payment_code),

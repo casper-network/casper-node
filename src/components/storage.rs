@@ -286,44 +286,43 @@ pub(crate) mod dummy {
                     assert!(!self.stored_blocks_hashes.contains(&block_hash));
                     Self::set_timeout(eb)
                 }
-                Event::GotBlockHeader(block_hash, maybe_block_header) => {
-                    match &maybe_block_header {
-                        Some(block_header) => info!("consumer got {}", block_header),
-                        None => info!("consumer failed to get block header {}.", block_hash),
-                    }
-                    assert_eq!(
-                        maybe_block_header.is_some(),
-                        self.stored_blocks_hashes.contains(&block_hash)
-                    );
-                    eb.do_nothing().ignore()
+                Event::GotBlockHeader(block_hash, Some(header)) => {
+                    info!("consumer got {}", header);
+                    assert!(self.stored_blocks_hashes.contains(&block_hash));
+                    Multiple::new()
+                }
+                Event::GotBlockHeader(block_hash, None) => {
+                    info!("consumer failed to get block header {}.", block_hash);
+                    assert!(!self.stored_blocks_hashes.contains(&block_hash));
+                    Multiple::new()
                 }
                 Event::PutDeploySucceeded(deploy_hash) => {
                     info!("consumer knows {} has been stored.", deploy_hash);
-                    eb.do_nothing().ignore()
+                    Multiple::new()
                 }
                 Event::PutDeployFailed(deploy_hash) => {
                     info!("consumer knows {} has failed to be stored.", deploy_hash);
-                    eb.do_nothing().ignore()
+                    Multiple::new()
                 }
                 Event::GotDeploy(deploy_hash, deploy) => {
                     info!("consumer got {}", deploy);
                     assert!(self.stored_deploys_hashes.contains(&deploy_hash));
-                    eb.do_nothing().ignore()
+                    Multiple::new()
                 }
                 Event::GetDeployFailed(deploy_hash, _error) => {
                     info!("consumer failed to get deploy {}.", deploy_hash);
                     assert!(!self.stored_deploys_hashes.contains(&deploy_hash));
-                    eb.do_nothing().ignore()
+                    Multiple::new()
                 }
                 Event::GotDeployHeader(deploy_hash, deploy_header) => {
                     info!("consumer got {}", deploy_header);
                     assert!(self.stored_deploys_hashes.contains(&deploy_hash));
-                    eb.do_nothing().ignore()
+                    Multiple::new()
                 }
                 Event::GetDeployHeaderFailed(deploy_hash) => {
                     info!("consumer failed to get deploy header {}.", deploy_hash);
                     assert!(!self.stored_deploys_hashes.contains(&deploy_hash));
-                    eb.do_nothing().ignore()
+                    Multiple::new()
                 }
             }
         }

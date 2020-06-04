@@ -29,7 +29,7 @@ impl BlockHash {
 
 impl Display for BlockHash {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "BlockHash({})", self.0,)
+        write!(formatter, "block-hash({})", self.0,)
     }
 }
 
@@ -47,7 +47,7 @@ impl Display for BlockHeader {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "BlockHeader {{ parent_hash: {}, root_state_hash: {}, era: {}, proofs: {} }}",
+            "block-header[parent_hash: {}, root_state_hash: {}, era: {}, proofs: {}]",
             self.parent_hash,
             self.root_state_hash,
             self.era,
@@ -105,10 +105,6 @@ impl Value for Block {
 
 impl Display for Block {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(
-            formatter,
-            "Block {{ hash: {}, {} }}",
-            self.hash, self.header
-        )
+        write!(formatter, "block[{} {}]", self.hash, self.header)
     }
 }

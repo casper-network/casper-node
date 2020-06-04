@@ -258,9 +258,6 @@ impl<REv> EffectBuilder<REv> {
         })
     }
 
-    /// Does nothing.
-    pub(crate) async fn do_nothing(self) {}
-
     /// Sets a timeout.
     pub(crate) async fn set_timeout(self, timeout: Duration) -> Duration {
         let then = Instant::now();
