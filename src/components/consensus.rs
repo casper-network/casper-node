@@ -22,7 +22,7 @@ pub(crate) enum Message {
     Dummy,
 }
 
-/// Pinger component event.
+/// Consensus component event.
 #[derive(Debug)]
 pub(crate) enum Event {
     /// An incoming network message.
