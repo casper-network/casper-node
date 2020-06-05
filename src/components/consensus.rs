@@ -9,7 +9,7 @@ use crate::{
     effect::{requests::NetworkRequest, Effect, EffectBuilder, Multiple},
 };
 
-/// The consensus components.
+/// The consensus component.
 #[derive(Debug)]
 pub(crate) struct Consensus {
     // TODO
