@@ -71,9 +71,7 @@ where
 
 impl Consensus {
     /// Create and initialize a new consensus instance.
-    // TODO: remove lint relaxation
-    #[allow(dead_code)]
-    pub(crate) fn new<REv: From<Event> + Send>(
+    pub(crate) fn new<REv: From<Event> + Send + From<NetworkRequest<NodeId, Message>>>(
         _eb: EffectBuilder<REv>,
     ) -> (Self, Multiple<Effect<Event>>) {
         let consensus = Consensus {};
@@ -82,7 +80,7 @@ impl Consensus {
     }
 
     /// Handles an incoming message
-    fn handle_message<REv: From<Event> + Send>(
+    fn handle_message<REv: From<Event> + Send + From<NetworkRequest<NodeId, Message>>>(
         &mut self,
         _eb: EffectBuilder<REv>,
         _sender: NodeId,
