@@ -48,7 +48,7 @@ mod message;
 
 use std::{
     collections::HashMap,
-    fmt::{self, Debug, Formatter},
+    fmt::{self, Debug, Display, Formatter},
     io,
     net::{SocketAddr, TcpListener},
     sync::Arc,
@@ -215,6 +215,8 @@ where
                 // Still up to date or stale, do nothing.
                 return None;
             }
+
+            info!(%endpoint, %prev, "endpoint changed");
         }
 
         self.endpoints.insert(fp, endpoint.clone());
@@ -261,7 +263,7 @@ where
 
                     effect
                 } else {
-                    debug!("known endpoint: {}", endpoint);
+                    debug!("known endpoint: {}, no change", endpoint);
                     Multiple::new()
                 }
             }
@@ -326,7 +328,7 @@ where
 impl<REv, P> Component<REv> for SmallNetwork<REv, P>
 where
     REv: Send + From<Event<P>>,
-    P: Serialize + DeserializeOwned + Clone + Debug + Send + 'static,
+    P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
 {
     type Event = Event<P>;
 
@@ -340,6 +342,7 @@ where
             Event::RootConnected { cert, transport } => {
                 // Create a pseudo-endpoint for the root node with the lowest priority (time 0)
                 let root_node_id = cert.public_key_fingerprint();
+
                 let ep = Endpoint::new(0, self.cfg.root_addr, cert);
                 if self.endpoints.insert(root_node_id, ep).is_some() {
                     // This connection is the very first we will ever make, there should never be
@@ -359,7 +362,7 @@ where
                 // TODO: delay next attempt
             }
             Event::IncomingNew { stream, addr } => {
-                debug!(%addr, "Incoming connection, starting TLS handshake");
+                debug!(%addr, "incoming connection, starting TLS handshake");
 
                 setup_tls(stream, self.cert.clone(), self.private_key.clone())
                     .boxed()
@@ -368,6 +371,7 @@ where
             Event::IncomingHandshakeCompleted { result, addr } => {
                 match result {
                     Ok((fp, transport)) => {
+                        debug!(%addr, peer=%fp, "established new connection");
                         // The sink is never used, as we only read data from incoming connections.
                         let (_sink, stream) = framed::<P>(transport).split();
 
@@ -541,12 +545,13 @@ async fn message_reader<REv, P>(
     node_id: NodeId,
 ) -> io::Result<()>
 where
-    P: DeserializeOwned + Send,
+    P: DeserializeOwned + Send + Display,
     REv: From<Event<P>>,
 {
     while let Some(msg_result) = stream.next().await {
         match msg_result {
             Ok(msg) => {
+                debug!(%msg, %node_id, "message received");
                 // We've received a message, push it to the reactor.
                 eq.schedule(
                     Event::IncomingMessage { node_id, msg },
@@ -555,7 +560,7 @@ where
                 .await;
             }
             Err(err) => {
-                warn!(%err, "receiving message failed, closing connection");
+                warn!(%err, peer=%node_id, "receiving message failed, closing connection");
                 return Err(err);
             }
         }
