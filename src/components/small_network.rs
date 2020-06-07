@@ -239,24 +239,29 @@ where
                     self.signed_endpoints.insert(node_id, signed.clone());
                     self.endpoints.insert(node_id, endpoint.clone());
 
-                    let effect = if self.outgoing.remove(&node_id).is_none() {
-                        info!(%node_id, %endpoint, "new outgoing channel");
-                        // Initiate the connection process once we learn of a new node ID.
-                        connect_outgoing(endpoint, self.cert.clone(), self.private_key.clone())
-                            .result(
-                                move |transport| Event::OutgoingEstablished { node_id, transport },
-                                move |error| Event::OutgoingFailed {
-                                    node_id,
-                                    attempt_count: 0,
-                                    error: Some(error),
-                                },
-                            )
-                    } else {
-                        // There was a previous endpoint, whose sender has now been dropped. This
-                        // will cause the sender task to exit and trigger a reconnect.
+                    let effect = match self.outgoing.remove(&node_id) {
+                        None => {
+                            info!(%node_id, %endpoint, "new outgoing channel");
+                            // Initiate the connection process once we learn of a new node ID.
+                            connect_outgoing(endpoint, self.cert.clone(), self.private_key.clone())
+                                .result(
+                                    move |transport| Event::OutgoingEstablished {
+                                        node_id,
+                                        transport,
+                                    },
+                                    move |error| Event::OutgoingFailed {
+                                        node_id,
+                                        attempt_count: 0,
+                                        error: Some(error),
+                                    },
+                                )
+                        }
+                        Some(_sender) => {
+                            // There was a previous endpoint, whose sender has now been dropped. This
+                            // will cause the sender task to exit and trigger a reconnect.
 
-                        info!(%endpoint, "endpoint changed");
-                        Multiple::new()
+                            Multiple::new()
+                        }
                     };
 
                     self.broadcast_message(Message::BroadcastEndpoint(signed));
