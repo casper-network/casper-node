@@ -33,12 +33,10 @@ enum Event {
     Storage(StorageRequest<Storage>),
     #[from]
     StorageConsumer(storage::dummy::Event),
-}
 
-impl From<NetworkRequest<NodeId, Message>> for Event {
-    fn from(req: NetworkRequest<NodeId, Message>) -> Self {
-        Event::Network(small_network::Event::from(req))
-    }
+    // Requests
+    #[from]
+    NetworkRequest(NetworkRequest<NodeId, Message>),
 }
 
 /// Validator node reactor.
@@ -102,6 +100,11 @@ impl reactor::Reactor for Reactor {
                 Event::StorageConsumer,
                 self.dummy_storage_consumer.handle_event(eb, ev),
             ),
+
+            // Requests:
+            Event::NetworkRequest(req) => {
+                self.dispatch_event(eb, Event::Network(small_network::Event::from(req)))
+            }
         }
     }
 }
@@ -113,6 +116,7 @@ impl Display for Event {
             Event::Pinger(ev) => write!(f, "pinger: {}", ev),
             Event::Storage(ev) => write!(f, "storage: {}", ev),
             Event::StorageConsumer(ev) => write!(f, "storage_consumer: {}", ev),
+            Event::NetworkRequest(req) => write!(f, "network request: {}", req),
         }
     }
 }
