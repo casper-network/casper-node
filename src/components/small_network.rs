@@ -133,7 +133,7 @@ where
         };
 
         // We can now create a listener.
-        let listener = create_listener(&cfg)?;
+        let (listener, we_are_root) = create_listener(&cfg)?;
         let addr = listener.local_addr()?;
 
         // Create the model. Initially we know our own endpoint address.
@@ -159,8 +159,12 @@ where
             outgoing: HashMap::new(),
         };
 
-        // Connect to the root node (even if we are the root node, just loopback).
-        effects.extend(model.connect_to_root());
+        // Connect to the root node if we are not the root node.
+        if !we_are_root {
+            effects.extend(model.connect_to_root());
+        } else {
+            debug!("will not connect to root node, since we are the root");
+        }
 
         Ok((model, effects))
     }
@@ -460,13 +464,13 @@ where
 ///
 /// Will attempt to bind on the root address first if the `bind_interface` is the same as the
 /// interface of `root_addr`. Otherwise uses an unused port on `bind_interface`.
-fn create_listener(cfg: &Config) -> io::Result<TcpListener> {
+fn create_listener(cfg: &Config) -> io::Result<(TcpListener, bool)> {
     if cfg.root_addr.ip() == cfg.bind_interface {
         // Try to become the root node, if the root nodes interface is available.
         match TcpListener::bind(cfg.root_addr) {
             Ok(listener) => {
                 info!("we are the root node!");
-                return Ok(listener);
+                return Ok((listener, true));
             }
             Err(err) => {
                 warn!(
@@ -478,7 +482,7 @@ fn create_listener(cfg: &Config) -> io::Result<TcpListener> {
     }
 
     // We did not become the root node, bind on random port.
-    Ok(TcpListener::bind((cfg.bind_interface, 0u16))?)
+    Ok((TcpListener::bind((cfg.bind_interface, 0u16))?, false))
 }
 
 /// Core accept loop for the networking server.
