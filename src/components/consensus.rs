@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -55,9 +56,10 @@ where
 {
     type Event = Event;
 
-    fn handle_event(
+    fn handle_event<R: Rng + ?Sized>(
         &mut self,
         eb: EffectBuilder<REv>,
+        _rng: &mut R,
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>> {
         match event {

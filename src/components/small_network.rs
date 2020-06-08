@@ -63,6 +63,7 @@ use futures::{
 use maplit::hashmap;
 use openssl::{pkey, x509::X509};
 use pkey::{PKey, Private};
+use rand::Rng;
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::{
     net::TcpStream,
@@ -381,9 +382,10 @@ where
     type Event = Event<P>;
 
     #[allow(clippy::cognitive_complexity)]
-    fn handle_event(
+    fn handle_event<R: Rng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
+        _rng: &mut R,
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>> {
         match event {

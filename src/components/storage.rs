@@ -6,6 +6,7 @@ use std::{
     sync::Arc,
 };
 
+use rand::Rng;
 use tokio::task;
 use tracing::info;
 
@@ -38,9 +39,10 @@ where
 {
     type Event = StorageRequest<Self>;
 
-    fn handle_event(
+    fn handle_event<R: Rng + ?Sized>(
         &mut self,
         _eb: EffectBuilder<REv>,
+        _rng: &mut R,
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>> {
         match event {
@@ -237,14 +239,14 @@ pub(crate) mod dummy {
         type Event = Event;
 
         #[allow(clippy::cognitive_complexity)]
-        fn handle_event(
+        fn handle_event<R: Rng + ?Sized>(
             &mut self,
             eb: EffectBuilder<REv>,
+            rng: &mut R,
             event: Self::Event,
         ) -> Multiple<Effect<Self::Event>> {
             match event {
                 Event::Trigger => {
-                    let mut rng = rand::thread_rng();
                     let create_block_and_deploy: bool = rng.gen();
                     let mut effects;
                     if create_block_and_deploy {

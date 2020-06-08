@@ -5,6 +5,8 @@
 use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -88,6 +90,7 @@ struct Reactor {
     api_server: ApiServer,
     consensus: Consensus,
     dummy_storage_consumer: storage::dummy::StorageConsumer,
+    rng: ChaCha20Rng,
 }
 
 impl reactor::Reactor for Reactor {
@@ -118,6 +121,8 @@ impl reactor::Reactor for Reactor {
         effects.extend(reactor::wrap_effects(Event::ApiServer, api_server_effects));
         effects.extend(reactor::wrap_effects(Event::Consensus, consensus_effects));
 
+        let rng = ChaCha20Rng::from_entropy();
+
         Ok((
             Reactor {
                 net,
@@ -126,6 +131,7 @@ impl reactor::Reactor for Reactor {
                 api_server,
                 consensus,
                 dummy_storage_consumer,
+                rng,
             },
             effects,
         ))
@@ -138,25 +144,29 @@ impl reactor::Reactor for Reactor {
     ) -> Multiple<Effect<Self::Event>> {
         match event {
             Event::Network(ev) => {
-                reactor::wrap_effects(Event::Network, self.net.handle_event(eb, ev))
+                reactor::wrap_effects(Event::Network, self.net.handle_event(eb, &mut self.rng, ev))
             }
-            Event::Pinger(ev) => {
-                reactor::wrap_effects(Event::Pinger, self.pinger.handle_event(eb, ev))
-            }
+            Event::Pinger(ev) => reactor::wrap_effects(
+                Event::Pinger,
+                self.pinger.handle_event(eb, &mut self.rng, ev),
+            ),
             Event::Storage(ev) => reactor::wrap_effects(
                 |event| Event::Storage(Box::new(event)),
-                self.storage.handle_event(eb, *ev),
+                self.storage.handle_event(eb, &mut self.rng, *ev),
             ),
             Event::StorageConsumer(ev) => reactor::wrap_effects(
                 |event| Event::StorageConsumer(Box::new(event)),
-                self.dummy_storage_consumer.handle_event(eb, *ev),
+                self.dummy_storage_consumer
+                    .handle_event(eb, &mut self.rng, *ev),
             ),
-            Event::ApiServer(ev) => {
-                reactor::wrap_effects(Event::ApiServer, self.api_server.handle_event(eb, ev))
-            }
-            Event::Consensus(ev) => {
-                reactor::wrap_effects(Event::Consensus, self.consensus.handle_event(eb, ev))
-            }
+            Event::ApiServer(ev) => reactor::wrap_effects(
+                Event::ApiServer,
+                self.api_server.handle_event(eb, &mut self.rng, ev),
+            ),
+            Event::Consensus(ev) => reactor::wrap_effects(
+                Event::Consensus,
+                self.consensus.handle_event(eb, &mut self.rng, ev),
+            ),
 
             // Requests:
             Event::NetworkRequest(req) => {

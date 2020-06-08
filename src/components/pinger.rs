@@ -5,6 +5,7 @@
 
 use std::{collections::HashSet, fmt, time::Duration};
 
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
@@ -70,9 +71,10 @@ where
 {
     type Event = Event;
 
-    fn handle_event(
+    fn handle_event<R: Rng + ?Sized>(
         &mut self,
         eb: EffectBuilder<REv>,
+        _rng: &mut R,
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>> {
         match event {
