@@ -315,9 +315,12 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given block into the linear block store.  Returns true on success.
-    pub(crate) async fn put_block<S>(self, block: <S::BlockStore as Store>::Value) -> bool
+    pub(crate) async fn put_block<S>(
+        self,
+        block: <S::BlockStore as Store>::Value,
+    ) -> Result<(), <S::BlockStore as Store>::Error>
     where
-        S: StorageType,
+        S: StorageType + 'static,
         REv: From<Box<StorageRequest<S>>>,
     {
         self.make_request(
@@ -352,7 +355,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_block_header<S>(
         self,
         block_hash: <<S::BlockStore as Store>::Value as Value>::Id,
-    ) -> Option<<<S::BlockStore as Store>::Value as Value>::Header>
+    ) -> Result<<<S::BlockStore as Store>::Value as Value>::Header, <S::BlockStore as Store>::Error>
     where
         S: StorageType + 'static,
         REv: From<Box<StorageRequest<S>>>,
@@ -370,9 +373,12 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given deploy into the deploy store.  Returns true on success.
-    pub(crate) async fn put_deploy<S>(self, deploy: <S::DeployStore as Store>::Value) -> bool
+    pub(crate) async fn put_deploy<S>(
+        self,
+        deploy: <S::DeployStore as Store>::Value,
+    ) -> Result<(), <S::DeployStore as Store>::Error>
     where
-        S: StorageType,
+        S: StorageType + 'static,
         REv: From<Box<StorageRequest<S>>>,
     {
         self.make_request(
@@ -407,7 +413,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_deploy_header<S>(
         self,
         deploy_hash: <<S::DeployStore as Store>::Value as Value>::Id,
-    ) -> Option<<<S::DeployStore as Store>::Value as Value>::Header>
+    ) -> Result<<<S::DeployStore as Store>::Value as Value>::Header, <S::DeployStore as Store>::Error>
     where
         S: StorageType + 'static,
         REv: From<Box<StorageRequest<S>>>,

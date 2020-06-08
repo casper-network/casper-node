@@ -76,7 +76,7 @@ pub(crate) enum StorageRequest<S: StorageType> {
     /// Store given block.
     PutBlock {
         block: <S::BlockStore as Store>::Value,
-        responder: Responder<bool>,
+        responder: ResultResponder<(), <S::BlockStore as Store>::Error>,
     },
     /// Retrieve block with given hash.
     GetBlock {
@@ -87,12 +87,15 @@ pub(crate) enum StorageRequest<S: StorageType> {
     /// Retrieve block header with given hash.
     GetBlockHeader {
         block_hash: <<S::BlockStore as Store>::Value as Value>::Id,
-        responder: Responder<Option<<<S::BlockStore as Store>::Value as Value>::Header>>,
+        responder: ResultResponder<
+            <<S::BlockStore as Store>::Value as Value>::Header,
+            <S::BlockStore as Store>::Error,
+        >,
     },
     /// Store given deploy.
     PutDeploy {
         deploy: <S::DeployStore as Store>::Value,
-        responder: Responder<bool>,
+        responder: ResultResponder<(), <S::DeployStore as Store>::Error>,
     },
     /// Retrieve deploy with given hash.
     GetDeploy {
@@ -103,7 +106,10 @@ pub(crate) enum StorageRequest<S: StorageType> {
     /// Retrieve deploy header with given hash.
     GetDeployHeader {
         deploy_hash: <<S::DeployStore as Store>::Value as Value>::Id,
-        responder: Responder<Option<<<S::DeployStore as Store>::Value as Value>::Header>>,
+        responder: ResultResponder<
+            <<S::DeployStore as Store>::Value as Value>::Header,
+            <S::DeployStore as Store>::Error,
+        >,
     },
 }
 
