@@ -73,6 +73,7 @@ use tokio_serde::{formats::SymmetricalMessagePack, SymmetricallyFramed};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::{debug, error, info, warn};
 
+use self::endpoint::EndpointUpdate;
 pub(crate) use self::{endpoint::Endpoint, event::Event, message::Message};
 use crate::{
     components::Component,
@@ -203,24 +204,52 @@ where
         }
     }
 
-    /// Updates the internal endpoint store from a given endpoint.
+    /// Updates the internal endpoint store with a given endpoint.
     ///
-    /// Returns the node ID of the endpoint if it was new.
+    /// Will update both, the store for signed endpoints and unpacked ones and indicate what kind
+    /// of update happened.
     #[inline]
-    fn update_endpoint(&mut self, endpoint: &Endpoint) -> Option<NodeId> {
-        let fp = endpoint.cert().public_key_fingerprint();
+    fn update_endpoint(&mut self, signed: Signed<Endpoint>) -> EndpointUpdate {
+        match signed.validate_self_signed(|endpoint| Ok(endpoint.cert().public_key())) {
+            Ok(endpoint) => {
+                let fp = endpoint.cert().public_key_fingerprint();
 
-        if let Some(prev) = self.endpoints.get(&fp) {
-            if prev >= endpoint {
-                // Still up to date or stale, do nothing.
-                return None;
+                match self.endpoints.get(&fp) {
+                    None => {
+                        // Endpoint was not known at all.
+                        self.endpoints.insert(fp, endpoint.clone());
+                        self.signed_endpoints.insert(fp, signed);
+
+                        EndpointUpdate::New { cur: endpoint }
+                    }
+                    Some(prev_ep) if prev_ep >= &endpoint => {
+                        // The stored timestamp is newer or equal, we ignore the stored value. This
+                        // branch is also taken if we hit a duplicate endpoint that is logically
+                        // less than ours, which is a rare edge-case or an attack.
+                        EndpointUpdate::Unchanged
+                    }
+                    Some(prev_ep) if prev_ep.dest() == endpoint.dest() => {
+                        // The new endpoint has newer timestamp, but points to same destination.
+                        self.signed_endpoints.insert(fp, signed);
+                        let prev = self.endpoints.insert(fp, endpoint.clone()).unwrap();
+                        EndpointUpdate::Refreshed {
+                            cur: endpoint,
+                            prev,
+                        }
+                    }
+                    Some(_) => {
+                        // Newer timestamp, different endpoint.
+                        self.signed_endpoints.insert(fp, signed);
+                        let prev = self.endpoints.insert(fp, endpoint.clone()).unwrap();
+                        EndpointUpdate::Updated {
+                            cur: endpoint,
+                            prev,
+                        }
+                    }
+                }
             }
-
-            info!(%endpoint, %prev, "endpoint changed");
+            Err(err) => EndpointUpdate::InvalidSignature { signed, err },
         }
-
-        self.endpoints.insert(fp, endpoint.clone());
-        Some(fp)
     }
 
     /// Updates internal endpoint store and if new, output a `BroadcastEndpoint` effect.
@@ -229,50 +258,58 @@ where
         &mut self,
         signed: Signed<Endpoint>,
     ) -> Multiple<Effect<Event<P>>> {
-        match signed.validate_self_signed(|endpoint| Ok(endpoint.cert().public_key())) {
-            Ok(endpoint) => {
-                // Endpoint is valid, check if it was new.
-                if let Some(node_id) = self.update_endpoint(&endpoint) {
-                    debug!("new endpoint {}", endpoint);
-                    // We learned of a new endpoint. We store it and note whether it is the first
-                    // endpoint for the node.
-                    self.signed_endpoints.insert(node_id, signed.clone());
-                    self.endpoints.insert(node_id, endpoint.clone());
+        let change = self.update_endpoint(signed);
+        debug!(%change, "endpoint change");
 
-                    let effect = match self.outgoing.remove(&node_id) {
-                        None => {
-                            info!(%node_id, %endpoint, "new outgoing channel");
-                            // Initiate the connection process once we learn of a new node ID.
-                            connect_outgoing(endpoint, self.cert.clone(), self.private_key.clone())
-                                .result(
-                                    move |transport| Event::OutgoingEstablished {
-                                        node_id,
-                                        transport,
-                                    },
-                                    move |error| Event::OutgoingFailed {
-                                        node_id,
-                                        attempt_count: 0,
-                                        error: Some(error),
-                                    },
-                                )
-                        }
-                        Some(_sender) => {
-                            // There was a previous endpoint, whose sender has now been dropped. This
-                            // will cause the sender task to exit and trigger a reconnect.
+        match change {
+            EndpointUpdate::New { cur } | EndpointUpdate::Updated { cur, .. } => {
+                let node_id = cur.node_id();
 
-                            Multiple::new()
-                        }
-                    };
+                // New/updated endpoint, now establish or replace the outgoing connection.
+                let effect = match self.outgoing.remove(&node_id) {
+                    None => {
+                        info!(%node_id, endpoint=%cur, "new outgoing channel");
 
-                    self.broadcast_message(Message::BroadcastEndpoint(signed));
+                        connect_outgoing(cur, self.cert.clone(), self.private_key.clone()).result(
+                            move |transport| Event::OutgoingEstablished { node_id, transport },
+                            move |error| Event::OutgoingFailed {
+                                node_id,
+                                attempt_count: 0,
+                                error: Some(error),
+                            },
+                        )
+                    }
+                    Some(_sender) => {
+                        // There was a previous endpoint, whose sender has now been dropped. This
+                        // will cause the sender task to exit and trigger a reconnect, so no action
+                        // must be taken at this point.
 
-                    effect
-                } else {
-                    debug!("known endpoint: {}, no change", endpoint);
-                    Multiple::new()
-                }
+                        Multiple::new()
+                    }
+                };
+
+                // Let others know what we've learned.
+                self.broadcast_message(Message::BroadcastEndpoint(
+                    self.signed_endpoints[&node_id].clone(),
+                ));
+
+                effect
             }
-            Err(err) => {
+            EndpointUpdate::Refreshed { cur, .. } => {
+                let node_id = cur.node_id();
+
+                // On a refresh we propagate the newer signature.
+                self.broadcast_message(Message::BroadcastEndpoint(
+                    self.signed_endpoints[&node_id].clone(),
+                ));
+
+                Multiple::new()
+            }
+            EndpointUpdate::Unchanged => {
+                // Nothing to do.
+                Multiple::new()
+            }
+            EndpointUpdate::InvalidSignature { signed, err } => {
                 warn!(%err, ?signed, "received invalid endpoint");
                 Multiple::new()
             }
