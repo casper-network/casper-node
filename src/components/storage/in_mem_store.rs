@@ -4,7 +4,7 @@ use std::{
     sync::RwLock,
 };
 
-use super::{InMemError, Store, Value};
+use super::{InMemError, InMemResult, Store, Value};
 
 /// In-memory version of a store.
 #[derive(Debug)]
@@ -24,14 +24,14 @@ impl<V: Value> Store for InMemStore<V> {
     type Value = V;
     type Error = InMemError;
 
-    fn put(&self, value: V) -> Result<(), InMemError> {
+    fn put(&self, value: V) -> InMemResult<()> {
         if let Entry::Vacant(entry) = self.inner.write()?.entry(*value.id()) {
             entry.insert(value);
         }
         Ok(())
     }
 
-    fn get(&self, id: &V::Id) -> Result<V, InMemError> {
+    fn get(&self, id: &V::Id) -> InMemResult<V> {
         self.inner
             .read()?
             .get(id)
@@ -39,7 +39,7 @@ impl<V: Value> Store for InMemStore<V> {
             .ok_or_else(|| InMemError::ValueNotFound)
     }
 
-    fn get_header(&self, id: &V::Id) -> Result<V::Header, InMemError> {
+    fn get_header(&self, id: &V::Id) -> InMemResult<V::Header> {
         self.inner
             .read()?
             .get(id)

@@ -3,8 +3,9 @@
 //! Effects describe things that the creator of the effect intends to happen, producing a value upon
 //! completion. They are, in fact, futures.
 //!
-//! A boxed, pinned future returning an event is called an effect and typed as an `Effect<Ev>`,
-//! where `Ev` is the event's type.
+//! A pinned, boxed future returning an event is called an effect and typed as an `Effect<Ev>`,
+//! where `Ev` is the event's type. Generally, `Ev` is an Event enum defined at the top level of
+//! each component in the `crate::components` module.
 //!
 //! ## Using effects
 //!
@@ -56,7 +57,7 @@ use crate::{
 use announcements::NetworkAnnouncement;
 use requests::{NetworkRequest, StorageRequest};
 
-/// A boxed future that produces one or more events.
+/// A pinned, boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
 
 /// Intended to hold a small collection of [`Effect`](type.Effect.html)s.
@@ -315,6 +316,8 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given block into the linear block store.  Returns true on success.
+    // TODO: remove once method is used.
+    #[allow(dead_code)]
     pub(crate) async fn put_block<S>(
         self,
         block: <S::BlockStore as Store>::Value,
@@ -334,6 +337,8 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block from the linear block store.
+    // TODO: remove once method is used.
+    #[allow(dead_code)]
     pub(crate) async fn get_block<S>(
         self,
         block_hash: <<S::BlockStore as Store>::Value as Value>::Id,
@@ -353,6 +358,8 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block header from the linear block store.
+    // TODO: remove once method is used.
+    #[allow(dead_code)]
     pub(crate) async fn get_block_header<S>(
         self,
         block_hash: <<S::BlockStore as Store>::Value as Value>::Id,
@@ -372,6 +379,8 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given deploy into the deploy store.  Returns true on success.
+    // TODO: remove once method is used.
+    #[allow(dead_code)]
     pub(crate) async fn put_deploy<S>(
         self,
         deploy: <S::DeployStore as Store>::Value,
@@ -391,6 +400,8 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested deploy from the deploy store.
+    // TODO: remove once method is used.
+    #[allow(dead_code)]
     pub(crate) async fn get_deploy<S>(
         self,
         deploy_hash: <<S::DeployStore as Store>::Value as Value>::Id,
@@ -410,6 +421,8 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested deploy header from the deploy store.
+    // TODO: remove once method is used.
+    #[allow(dead_code)]
     pub(crate) async fn get_deploy_header<S>(
         self,
         deploy_hash: <<S::DeployStore as Store>::Value as Value>::Id,

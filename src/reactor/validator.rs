@@ -14,7 +14,7 @@ use crate::{
         api_server::{self, ApiServer},
         consensus::{self, Consensus},
         pinger::{self, Pinger},
-        storage::{self, Storage},
+        storage::Storage,
         Component,
     },
     effect::{
@@ -57,8 +57,6 @@ enum Event {
     #[from]
     ApiServer(api_server::Event),
     #[from]
-    StorageConsumer(Box<storage::dummy::Event>),
-    #[from]
     Consensus(consensus::Event),
 
     // Requests
@@ -89,7 +87,6 @@ struct Reactor {
     storage: Storage,
     api_server: ApiServer,
     consensus: Consensus,
-    dummy_storage_consumer: storage::dummy::StorageConsumer,
     rng: ChaCha20Rng,
 }
 
@@ -106,18 +103,12 @@ impl reactor::Reactor for Reactor {
         let (pinger, pinger_effects) = Pinger::new(eb);
 
         let storage = Storage::new();
-        let (dummy_storage_consumer, storage_consumer_effects) =
-            storage::dummy::StorageConsumer::new(eb);
 
         let (api_server, api_server_effects) = ApiServer::new(eb);
         let (consensus, consensus_effects) = Consensus::new(eb);
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
         effects.extend(reactor::wrap_effects(Event::Pinger, pinger_effects));
-        effects.extend(reactor::wrap_effects(
-            |event| Event::StorageConsumer(Box::new(event)),
-            storage_consumer_effects,
-        ));
         effects.extend(reactor::wrap_effects(Event::ApiServer, api_server_effects));
         effects.extend(reactor::wrap_effects(Event::Consensus, consensus_effects));
 
@@ -130,7 +121,6 @@ impl reactor::Reactor for Reactor {
                 storage,
                 api_server,
                 consensus,
-                dummy_storage_consumer,
                 rng,
             },
             effects,
@@ -153,11 +143,6 @@ impl reactor::Reactor for Reactor {
             Event::Storage(ev) => reactor::wrap_effects(
                 Event::Storage,
                 self.storage.handle_event(eb, &mut self.rng, ev),
-            ),
-            Event::StorageConsumer(ev) => reactor::wrap_effects(
-                |event| Event::StorageConsumer(Box::new(event)),
-                self.dummy_storage_consumer
-                    .handle_event(eb, &mut self.rng, *ev),
             ),
             Event::ApiServer(ev) => reactor::wrap_effects(
                 Event::ApiServer,
@@ -200,7 +185,6 @@ impl Display for Event {
             Event::Network(ev) => write!(f, "network: {}", ev),
             Event::Pinger(ev) => write!(f, "pinger: {}", ev),
             Event::Storage(ev) => write!(f, "storage: {}", ev),
-            Event::StorageConsumer(ev) => write!(f, "storage_consumer: {}", ev),
             Event::ApiServer(ev) => write!(f, "api server: {}", ev),
             Event::Consensus(ev) => write!(f, "consensus: {}", ev),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),

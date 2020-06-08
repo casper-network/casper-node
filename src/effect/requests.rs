@@ -71,6 +71,8 @@ where
 
 #[derive(Debug)]
 #[allow(clippy::type_complexity)]
+// TODO: remove once all variants are used.
+#[allow(dead_code)]
 pub(crate) enum StorageRequest<S: StorageType> {
     /// Store given block.
     PutBlock {
