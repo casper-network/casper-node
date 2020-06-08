@@ -143,7 +143,6 @@ dependencies = [
  "anyhow",
  "blake2",
  "derive_more",
- "displaydoc",
  "ed25519-dalek",
  "either",
  "enum-iterator",
@@ -278,17 +277,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f3d0c8c8752312f9713efd397ff63acb9f85585afbf179282e720e7704954dd5"
 dependencies = [
  "generic-array",
-]
-
-[[package]]
-name = "displaydoc"
-version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6269d127174b18c665e683e23c2c55d3735fadbec4181c7c70b0450b764bfa5"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
