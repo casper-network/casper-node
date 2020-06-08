@@ -236,8 +236,9 @@ impl<REv> EffectBuilder<REv> {
     /// 1. create an event to send the request to the respective component (thus `Q: Into<REv>`),
     /// 2. waits for a response and returns it.
     ///
-    /// This function is only used internally by effects implement on the effects builder.
-    async fn make_request<T, Q, F>(self, f: F, queue_kind: QueueKind) -> T
+    /// This function is usually only used internally by effects implement on the effects builder,
+    /// but IO components may also make use of it.
+    pub(crate) async fn make_request<T, Q, F>(self, f: F, queue_kind: QueueKind) -> T
     where
         T: Send + 'static,
         Q: Into<REv>,

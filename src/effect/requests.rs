@@ -1,7 +1,13 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
 use super::Responder;
-use crate::components::storage::{StorageType, Store, Value};
+use crate::{
+    components::{
+        api_server::Deploy,
+        storage::{StorageType, Store, Value},
+    },
+    utils::DisplayIter,
+};
 
 type ResultResponder<T, E> = Responder<Result<T, E>>;
 
@@ -116,6 +122,36 @@ impl<S: StorageType> Display for StorageRequest<S> {
             StorageRequest::GetDeployHeader { deploy_hash, .. } => {
                 write!(formatter, "get {}", deploy_hash)
             }
+        }
+    }
+}
+
+/// Abstract API request
+///
+/// An API request is an abstract request that does not concern itself with serialization or
+/// transport.
+#[derive(Debug)]
+pub(crate) enum ApiRequest {
+    /// Return a list of deploys.
+    GetDeploys { responder: Responder<Vec<Deploy>> },
+    /// Submit a number of deploys for inclusion.
+    ///
+    /// Returns the deploys that could not be stored.
+    SubmitDeploys {
+        responder: Responder<Vec<Deploy>>,
+        deploys: Vec<Deploy>,
+    },
+}
+
+impl Display for ApiRequest {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ApiRequest::GetDeploys { .. } => write!(formatter, "get deploys"),
+            ApiRequest::SubmitDeploys { deploys, .. } => write!(
+                formatter,
+                "submit deploys: {:10}",
+                DisplayIter::new(deploys.iter())
+            ),
         }
     }
 }
