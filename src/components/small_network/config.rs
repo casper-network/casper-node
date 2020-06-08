@@ -24,8 +24,11 @@ pub struct Config {
     /// Path to private key for certificate.
     pub private_key: Option<PathBuf>,
 
-    /// Maximum number of retries when trying to connect to an outgoing node. Unlimited if `None`.
+    /// Maximum number of retries before removing an outgoing node. Unlimited if `None`.
     pub max_outgoing_retries: Option<u32>,
+
+    /// Number of milliseconds to delay between each reconnection attempt.
+    pub outgoing_retry_delay_millis: u64,
 }
 
 impl Config {
@@ -37,7 +40,8 @@ impl Config {
             root_addr: (Ipv4Addr::new(127, 0, 0, 1), port).into(),
             cert: None,
             private_key: None,
-            max_outgoing_retries: None,
+            max_outgoing_retries: Some(360),
+            outgoing_retry_delay_millis: 10_000,
         }
     }
 }

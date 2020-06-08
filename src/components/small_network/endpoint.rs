@@ -6,7 +6,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::tls::TlsCert;
+use super::NodeId;
+use crate::tls::{Signed, TlsCert};
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub(crate) struct Endpoint {
@@ -20,7 +21,29 @@ pub(crate) struct Endpoint {
     cert: TlsCert,
 }
 
+/// Result of an endpoint update.
+///
+/// Describes how an insertion of an endpoint changed an endpoint set.
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug)]
+pub(super) enum EndpointUpdate {
+    /// The endpoint was previously not known.
+    New { cur: Endpoint },
+    /// The endpoint was known and did not change, due to being the same, more recent or invalid.
+    Unchanged,
+    /// The endpoint was known but with an older timestamp, only the timestamp changed.
+    Refreshed { cur: Endpoint, prev: Endpoint },
+    /// The endpoint changed to a different one.
+    Updated { cur: Endpoint, prev: Endpoint },
+    /// The signature was invalid and the endpoint discarded.
+    InvalidSignature {
+        signed: Signed<Endpoint>,
+        err: anyhow::Error,
+    },
+}
+
 impl Endpoint {
+    /// Creates a new endpoint.
     pub(super) fn new(timestamp_ns: u64, addr: SocketAddr, cert: TlsCert) -> Self {
         Endpoint {
             timestamp_ns,
@@ -29,12 +52,40 @@ impl Endpoint {
         }
     }
 
+    /// Gets the endpoint's address.
     pub(super) fn addr(&self) -> SocketAddr {
         self.addr
     }
 
+    /// Gets the endpoint's TLS certificate.
     pub(super) fn cert(&self) -> &TlsCert {
         &self.cert
+    }
+
+    /// Get the destination of an endpoint.
+    ///
+    /// The destination is the endpoints socket address and certificate combined.
+    pub(super) fn dest(&self) -> (SocketAddr, &TlsCert) {
+        (self.addr, &self.cert)
+    }
+
+    /// Determine node ID of endpoint.
+    pub(super) fn node_id(&self) -> NodeId {
+        self.cert.public_key_fingerprint()
+    }
+}
+
+impl Display for EndpointUpdate {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            EndpointUpdate::New { cur } => write!(f, "new: {}", cur),
+            EndpointUpdate::Unchanged => write!(f, "unchanged"),
+            EndpointUpdate::Refreshed { cur, prev } => {
+                write!(f, "refreshed (cur {} prev {})", cur, prev)
+            }
+            EndpointUpdate::Updated { cur, prev } => write!(f, "updated: from {} to {}", prev, cur),
+            EndpointUpdate::InvalidSignature { err, .. } => write!(f, "invalid signature: {}", err),
+        }
     }
 }
 

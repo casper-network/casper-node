@@ -15,6 +15,7 @@ use crate::{
         Component,
     },
     effect::{
+        announcements::NetworkAnnouncement,
         requests::{NetworkRequest, StorageRequest},
         Effect, EffectBuilder, Multiple,
     },
@@ -40,36 +41,6 @@ impl Display for Message {
     }
 }
 
-// This is ugly, but it works around trait specialization not being stable yet:
-trait IsNotMessage {}
-impl IsNotMessage for pinger::Message {}
-impl IsNotMessage for consensus::Message {}
-
-impl<I, P> From<NetworkRequest<I, P>> for NetworkRequest<I, Message>
-where
-    P: Into<Message> + IsNotMessage,
-{
-    fn from(other: NetworkRequest<I, P>) -> NetworkRequest<I, Message> {
-        match other {
-            NetworkRequest::SendMessage {
-                dest,
-                payload,
-                responder,
-            } => NetworkRequest::SendMessage {
-                dest,
-                payload: payload.into(),
-                responder,
-            },
-            NetworkRequest::BroadcastMessage { payload, responder } => {
-                NetworkRequest::BroadcastMessage {
-                    payload: payload.into(),
-                    responder,
-                }
-            }
-        }
-    }
-}
-
 /// Top-level event for the reactor.
 #[derive(Debug, From)]
 #[must_use]
@@ -84,13 +55,25 @@ enum Event {
     StorageConsumer(Box<storage::dummy::Event>),
     #[from]
     Consensus(consensus::Event),
+
+    // Requests
+    #[from]
+    NetworkRequest(NetworkRequest<NodeId, Message>),
+
+    // Announcements
+    #[from]
+    NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
 }
 
-impl<P: Into<Message> + IsNotMessage> From<NetworkRequest<NodeId, P>> for Event {
-    fn from(req: NetworkRequest<NodeId, P>) -> Self {
-        Event::Network(small_network::Event::from(
-            NetworkRequest::<NodeId, Message>::from(req),
-        ))
+impl From<NetworkRequest<NodeId, consensus::Message>> for Event {
+    fn from(request: NetworkRequest<NodeId, consensus::Message>) -> Self {
+        Event::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
+impl From<NetworkRequest<NodeId, pinger::Message>> for Event {
+    fn from(request: NetworkRequest<NodeId, pinger::Message>) -> Self {
+        Event::NetworkRequest(request.map_payload(Message::from))
     }
 }
 
@@ -164,6 +147,29 @@ impl reactor::Reactor for Reactor {
             Event::Consensus(ev) => {
                 reactor::wrap_effects(Event::Consensus, self.consensus.handle_event(eb, ev))
             }
+
+            // Requests:
+            Event::NetworkRequest(req) => {
+                self.dispatch_event(eb, Event::Network(small_network::Event::from(req)))
+            }
+
+            // Announcements:
+            Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
+                sender,
+                payload,
+            }) => {
+                let reactor_event = match payload {
+                    Message::Consensus(msg) => {
+                        Event::Consensus(consensus::Event::MessageReceived { sender, msg })
+                    }
+                    Message::Pinger(msg) => {
+                        Event::Pinger(pinger::Event::MessageReceived { sender, msg })
+                    }
+                };
+
+                // Any incoming message is one for the pinger.
+                self.dispatch_event(eb, reactor_event)
+            }
         }
     }
 }
@@ -176,6 +182,8 @@ impl Display for Event {
             Event::Storage(ev) => write!(f, "storage: {}", ev),
             Event::StorageConsumer(ev) => write!(f, "storage_consumer: {}", ev),
             Event::Consensus(ev) => write!(f, "consensus: {}", ev),
+            Event::NetworkRequest(req) => write!(f, "network request: {}", req),
+            Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
         }
     }
 }

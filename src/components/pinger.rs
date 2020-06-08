@@ -41,8 +41,6 @@ pub(crate) enum Message {
 #[derive(Debug)]
 pub(crate) enum Event {
     /// An incoming network message.
-    // TODO: remove lint relaxation
-    #[allow(dead_code)]
     MessageReceived { sender: NodeId, msg: Message },
     /// The next round of pings should be sent out.
     Timer,

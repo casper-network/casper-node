@@ -35,6 +35,7 @@
 //! the effects explicitly listed in this module through traits to create them. Post-processing on
 //! effects to turn them into events should also be kept brief.
 
+pub(crate) mod announcements;
 pub(crate) mod requests;
 
 use std::{
@@ -52,6 +53,7 @@ use crate::{
     components::storage::{StorageType, Store, Value},
     reactor::{EventQueueHandle, QueueKind},
 };
+use announcements::NetworkAnnouncement;
 use requests::{NetworkRequest, StorageRequest};
 
 /// A boxed future that produces one or more events.
@@ -296,6 +298,19 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Network,
         )
         .await
+    }
+
+    /// Announce that a network message has been received.
+    pub(crate) async fn announce_message_received<I, P>(self, sender: I, payload: P)
+    where
+        REv: From<NetworkAnnouncement<I, P>>,
+    {
+        self.0
+            .schedule(
+                NetworkAnnouncement::MessageReceived { sender, payload },
+                QueueKind::NetworkIncoming,
+            )
+            .await;
     }
 
     /// Puts the given block into the linear block store.  Returns true on success.

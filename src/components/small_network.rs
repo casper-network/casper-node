@@ -48,11 +48,11 @@ mod message;
 
 use std::{
     collections::HashMap,
-    fmt::{self, Debug, Formatter},
+    fmt::{self, Debug, Display, Formatter},
     io,
     net::{SocketAddr, TcpListener},
     sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{anyhow, bail, Context};
@@ -73,11 +73,13 @@ use tokio_serde::{formats::SymmetricalMessagePack, SymmetricallyFramed};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::{debug, error, info, warn};
 
+use self::endpoint::EndpointUpdate;
 pub(crate) use self::{endpoint::Endpoint, event::Event, message::Message};
 use crate::{
     components::Component,
     effect::{
-        requests::NetworkRequest, Effect, EffectBuilder, EffectExt, EffectResultExt, Multiple,
+        announcements::NetworkAnnouncement, requests::NetworkRequest, Effect, EffectBuilder,
+        EffectExt, EffectResultExt, Multiple,
     },
     reactor::{EventQueueHandle, QueueKind, Reactor},
     tls::{self, KeyFingerprint, Signed, TlsCert},
@@ -133,7 +135,7 @@ where
         };
 
         // We can now create a listener.
-        let listener = create_listener(&cfg)?;
+        let (listener, we_are_root) = create_listener(&cfg)?;
         let addr = listener.local_addr()?;
 
         // Create the model. Initially we know our own endpoint address.
@@ -159,8 +161,12 @@ where
             outgoing: HashMap::new(),
         };
 
-        // Connect to the root node (even if we are the root node, just loopback).
-        effects.extend(model.connect_to_root());
+        // Connect to the root node if we are not the root node.
+        if !we_are_root {
+            effects.extend(model.connect_to_root());
+        } else {
+            debug!("will not connect to root node, since we are the root");
+        }
 
         Ok((model, effects))
     }
@@ -199,22 +205,52 @@ where
         }
     }
 
-    /// Updates the internal endpoint store from a given endpoint.
+    /// Updates the internal endpoint store with a given endpoint.
     ///
-    /// Returns the node ID of the endpoint if it was new.
+    /// Will update both, the store for signed endpoints and unpacked ones and indicate what kind
+    /// of update happened.
     #[inline]
-    fn update_endpoint(&mut self, endpoint: &Endpoint) -> Option<NodeId> {
-        let fp = endpoint.cert().public_key_fingerprint();
+    fn update_endpoint(&mut self, signed: Signed<Endpoint>) -> EndpointUpdate {
+        match signed.validate_self_signed(|endpoint| Ok(endpoint.cert().public_key())) {
+            Ok(endpoint) => {
+                let fp = endpoint.cert().public_key_fingerprint();
 
-        if let Some(prev) = self.endpoints.get(&fp) {
-            if prev >= endpoint {
-                // Still up to date or stale, do nothing.
-                return None;
+                match self.endpoints.get(&fp) {
+                    None => {
+                        // Endpoint was not known at all.
+                        self.endpoints.insert(fp, endpoint.clone());
+                        self.signed_endpoints.insert(fp, signed);
+
+                        EndpointUpdate::New { cur: endpoint }
+                    }
+                    Some(prev_ep) if prev_ep >= &endpoint => {
+                        // The stored timestamp is newer or equal, we ignore the stored value. This
+                        // branch is also taken if we hit a duplicate endpoint that is logically
+                        // less than ours, which is a rare edge-case or an attack.
+                        EndpointUpdate::Unchanged
+                    }
+                    Some(prev_ep) if prev_ep.dest() == endpoint.dest() => {
+                        // The new endpoint has newer timestamp, but points to same destination.
+                        self.signed_endpoints.insert(fp, signed);
+                        let prev = self.endpoints.insert(fp, endpoint.clone()).unwrap();
+                        EndpointUpdate::Refreshed {
+                            cur: endpoint,
+                            prev,
+                        }
+                    }
+                    Some(_) => {
+                        // Newer timestamp, different endpoint.
+                        self.signed_endpoints.insert(fp, signed);
+                        let prev = self.endpoints.insert(fp, endpoint.clone()).unwrap();
+                        EndpointUpdate::Updated {
+                            cur: endpoint,
+                            prev,
+                        }
+                    }
+                }
             }
+            Err(err) => EndpointUpdate::InvalidSignature { signed, err },
         }
-
-        self.endpoints.insert(fp, endpoint.clone());
-        Some(fp)
     }
 
     /// Updates internal endpoint store and if new, output a `BroadcastEndpoint` effect.
@@ -223,45 +259,58 @@ where
         &mut self,
         signed: Signed<Endpoint>,
     ) -> Multiple<Effect<Event<P>>> {
-        match signed.validate_self_signed(|endpoint| Ok(endpoint.cert().public_key())) {
-            Ok(endpoint) => {
-                // Endpoint is valid, check if it was new.
-                if let Some(node_id) = self.update_endpoint(&endpoint) {
-                    debug!("new endpoint {}", endpoint);
-                    // We learned of a new endpoint. We store it and note whether it is the first
-                    // endpoint for the node.
-                    self.signed_endpoints.insert(node_id, signed.clone());
-                    self.endpoints.insert(node_id, endpoint.clone());
+        let change = self.update_endpoint(signed);
+        debug!(%change, "endpoint change");
 
-                    let effect = if self.outgoing.remove(&node_id).is_none() {
-                        info!(%node_id, %endpoint, "new outgoing channel");
-                        // Initiate the connection process once we learn of a new node ID.
-                        connect_outgoing(endpoint, self.cert.clone(), self.private_key.clone())
-                            .result(
-                                move |transport| Event::OutgoingEstablished { node_id, transport },
-                                move |error| Event::OutgoingFailed {
-                                    node_id,
-                                    attempt_count: 0,
-                                    error: Some(error),
-                                },
-                            )
-                    } else {
+        match change {
+            EndpointUpdate::New { cur } | EndpointUpdate::Updated { cur, .. } => {
+                let node_id = cur.node_id();
+
+                // New/updated endpoint, now establish or replace the outgoing connection.
+                let effect = match self.outgoing.remove(&node_id) {
+                    None => {
+                        info!(%node_id, endpoint=%cur, "new outgoing channel");
+
+                        connect_outgoing(cur, self.cert.clone(), self.private_key.clone()).result(
+                            move |transport| Event::OutgoingEstablished { node_id, transport },
+                            move |error| Event::OutgoingFailed {
+                                node_id,
+                                attempt_count: 0,
+                                error: Some(error),
+                            },
+                        )
+                    }
+                    Some(_sender) => {
                         // There was a previous endpoint, whose sender has now been dropped. This
-                        // will cause the sender task to exit and trigger a reconnect.
+                        // will cause the sender task to exit and trigger a reconnect, so no action
+                        // must be taken at this point.
 
-                        info!(%endpoint, "endpoint changed");
                         Multiple::new()
-                    };
+                    }
+                };
 
-                    self.broadcast_message(Message::BroadcastEndpoint(signed));
+                // Let others know what we've learned.
+                self.broadcast_message(Message::BroadcastEndpoint(
+                    self.signed_endpoints[&node_id].clone(),
+                ));
 
-                    effect
-                } else {
-                    debug!("known endpoint: {}", endpoint);
-                    Multiple::new()
-                }
+                effect
             }
-            Err(err) => {
+            EndpointUpdate::Refreshed { cur, .. } => {
+                let node_id = cur.node_id();
+
+                // On a refresh we propagate the newer signature.
+                self.broadcast_message(Message::BroadcastEndpoint(
+                    self.signed_endpoints[&node_id].clone(),
+                ));
+
+                Multiple::new()
+            }
+            EndpointUpdate::Unchanged => {
+                // Nothing to do.
+                Multiple::new()
+            }
+            EndpointUpdate::InvalidSignature { signed, err } => {
                 warn!(%err, ?signed, "received invalid endpoint");
                 Multiple::new()
             }
@@ -298,7 +347,15 @@ where
 
     /// Handles a received message.
     // Internal function to keep indentation and nesting sane.
-    fn handle_message(&mut self, node_id: NodeId, msg: Message<P>) -> Multiple<Effect<Event<P>>> {
+    fn handle_message(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        node_id: NodeId,
+        msg: Message<P>,
+    ) -> Multiple<Effect<Event<P>>>
+    where
+        REv: From<NetworkAnnouncement<NodeId, P>>,
+    {
         match msg {
             Message::Snapshot(snapshot) => snapshot
                 .into_iter()
@@ -307,13 +364,10 @@ where
                 .collect(),
             Message::BroadcastEndpoint(signed) => self.update_and_broadcast_if_new(signed),
             Message::Payload(payload) => {
-                // We received a message payload.
-                warn!(
-                    %node_id,
-                    ?payload,
-                    "received message payload, but no implementation for what comes next"
-                );
-                Multiple::new()
+                // We received a message payload, announce it.
+                effect_builder
+                    .announce_message_received(node_id, payload)
+                    .ignore()
             }
         }
     }
@@ -321,21 +375,22 @@ where
 
 impl<REv, P> Component<REv> for SmallNetwork<REv, P>
 where
-    REv: Send + From<Event<P>>,
-    P: Serialize + DeserializeOwned + Clone + Debug + Send + 'static,
+    REv: Send + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
+    P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
 {
     type Event = Event<P>;
 
     #[allow(clippy::cognitive_complexity)]
     fn handle_event(
         &mut self,
-        _eb: EffectBuilder<REv>,
+        effect_builder: EffectBuilder<REv>,
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>> {
         match event {
             Event::RootConnected { cert, transport } => {
                 // Create a pseudo-endpoint for the root node with the lowest priority (time 0)
                 let root_node_id = cert.public_key_fingerprint();
+
                 let ep = Endpoint::new(0, self.cfg.root_addr, cert);
                 if self.endpoints.insert(root_node_id, ep).is_some() {
                     // This connection is the very first we will ever make, there should never be
@@ -355,7 +410,7 @@ where
                 // TODO: delay next attempt
             }
             Event::IncomingNew { stream, addr } => {
-                debug!(%addr, "Incoming connection, starting TLS handshake");
+                debug!(%addr, "incoming connection, starting TLS handshake");
 
                 setup_tls(stream, self.cert.clone(), self.private_key.clone())
                     .boxed()
@@ -364,6 +419,7 @@ where
             Event::IncomingHandshakeCompleted { result, addr } => {
                 match result {
                     Ok((fp, transport)) => {
+                        debug!(%addr, peer=%fp, "established new connection");
                         // The sink is never used, as we only read data from incoming connections.
                         let (_sink, stream) = framed::<P>(transport).split();
 
@@ -376,7 +432,9 @@ where
                     }
                 }
             }
-            Event::IncomingMessage { node_id, msg } => self.handle_message(node_id, msg),
+            Event::IncomingMessage { node_id, msg } => {
+                self.handle_message(effect_builder, node_id, msg)
+            }
             Event::IncomingClosed { result, addr } => {
                 match result {
                     Ok(()) => info!(%addr, "connection closed"),
@@ -407,27 +465,27 @@ where
                         self.signed_endpoints.remove(&node_id);
                         self.outgoing.remove(&node_id);
 
-                        warn!(%attempt_count, %node_id, "giving up on outgoing connection");
+                        warn!(%attempt_count, %node_id, "gave up on outgoing connection");
+                        return Multiple::new();
                     }
-
-                    return Multiple::new();
                 }
-                // TODO: Delay reconnection.
 
                 if let Some(endpoint) = self.endpoints.get(&node_id) {
-                    connect_outgoing(
-                        endpoint.clone(),
-                        self.cert.clone(),
-                        self.private_key.clone(),
-                    )
-                    .result(
-                        move |transport| Event::OutgoingEstablished { node_id, transport },
-                        move |error| Event::OutgoingFailed {
-                            node_id,
-                            attempt_count: attempt_count + 1,
-                            error: Some(error),
-                        },
-                    )
+                    let ep = endpoint.clone();
+                    let cert = self.cert.clone();
+                    let private_key = self.private_key.clone();
+
+                    effect_builder
+                        .set_timeout(Duration::from_millis(self.cfg.outgoing_retry_delay_millis))
+                        .then(move |_| connect_outgoing(ep, cert, private_key))
+                        .result(
+                            move |transport| Event::OutgoingEstablished { node_id, transport },
+                            move |error| Event::OutgoingFailed {
+                                node_id,
+                                attempt_count: attempt_count + 1,
+                                error: Some(error),
+                            },
+                        )
                 } else {
                     error!("endpoint disappeared");
                     Multiple::new()
@@ -460,13 +518,15 @@ where
 ///
 /// Will attempt to bind on the root address first if the `bind_interface` is the same as the
 /// interface of `root_addr`. Otherwise uses an unused port on `bind_interface`.
-fn create_listener(cfg: &Config) -> io::Result<TcpListener> {
+///
+/// Returns a `(listener, is_root)` pair. `is_root` is `true` if the node is a root node.
+fn create_listener(cfg: &Config) -> io::Result<(TcpListener, bool)> {
     if cfg.root_addr.ip() == cfg.bind_interface {
         // Try to become the root node, if the root nodes interface is available.
         match TcpListener::bind(cfg.root_addr) {
             Ok(listener) => {
                 info!("we are the root node!");
-                return Ok(listener);
+                return Ok((listener, true));
             }
             Err(err) => {
                 warn!(
@@ -478,7 +538,7 @@ fn create_listener(cfg: &Config) -> io::Result<TcpListener> {
     }
 
     // We did not become the root node, bind on random port.
-    Ok(TcpListener::bind((cfg.bind_interface, 0u16))?)
+    Ok((TcpListener::bind((cfg.bind_interface, 0u16))?, false))
 }
 
 /// Core accept loop for the networking server.
@@ -537,12 +597,13 @@ async fn message_reader<REv, P>(
     node_id: NodeId,
 ) -> io::Result<()>
 where
-    P: DeserializeOwned + Send,
+    P: DeserializeOwned + Send + Display,
     REv: From<Event<P>>,
 {
     while let Some(msg_result) = stream.next().await {
         match msg_result {
             Ok(msg) => {
+                debug!(%msg, %node_id, "message received");
                 // We've received a message, push it to the reactor.
                 eq.schedule(
                     Event::IncomingMessage { node_id, msg },
@@ -551,7 +612,7 @@ where
                 .await;
             }
             Err(err) => {
-                warn!(%err, "receiving message failed, closing connection");
+                warn!(%err, peer=%node_id, "receiving message failed, closing connection");
                 return Err(err);
             }
         }
