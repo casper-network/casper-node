@@ -13,6 +13,7 @@ use crate::{
         Component,
     },
     effect::{
+        announcements::NetworkAnnouncement,
         requests::{NetworkRequest, StorageRequest},
         Effect, EffectBuilder, Multiple,
     },
@@ -37,6 +38,10 @@ enum Event {
     // Requests
     #[from]
     NetworkRequest(NetworkRequest<NodeId, Message>),
+
+    // Announcements
+    #[from]
+    NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
 }
 
 /// Validator node reactor.
@@ -105,6 +110,21 @@ impl reactor::Reactor for Reactor {
             Event::NetworkRequest(req) => {
                 self.dispatch_event(eb, Event::Network(small_network::Event::from(req)))
             }
+
+            // Announcements:
+            Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
+                sender,
+                payload,
+            }) => {
+                // Any incoming message is one for the pinger.
+                self.dispatch_event(
+                    eb,
+                    Event::Pinger(pinger::Event::MessageReceived {
+                        sender,
+                        msg: payload,
+                    }),
+                )
+            }
         }
     }
 }
@@ -117,6 +137,7 @@ impl Display for Event {
             Event::Storage(ev) => write!(f, "storage: {}", ev),
             Event::StorageConsumer(ev) => write!(f, "storage_consumer: {}", ev),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
+            Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
         }
     }
 }

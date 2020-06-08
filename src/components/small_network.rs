@@ -78,7 +78,8 @@ pub(crate) use self::{endpoint::Endpoint, event::Event, message::Message};
 use crate::{
     components::Component,
     effect::{
-        requests::NetworkRequest, Effect, EffectBuilder, EffectExt, EffectResultExt, Multiple,
+        announcements::NetworkAnnouncement, requests::NetworkRequest, Effect, EffectBuilder,
+        EffectExt, EffectResultExt, Multiple,
     },
     reactor::{EventQueueHandle, QueueKind, Reactor},
     tls::{self, KeyFingerprint, Signed, TlsCert},
@@ -346,7 +347,15 @@ where
 
     /// Handles a received message.
     // Internal function to keep indentation and nesting sane.
-    fn handle_message(&mut self, node_id: NodeId, msg: Message<P>) -> Multiple<Effect<Event<P>>> {
+    fn handle_message(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        node_id: NodeId,
+        msg: Message<P>,
+    ) -> Multiple<Effect<Event<P>>>
+    where
+        REv: From<NetworkAnnouncement<NodeId, P>>,
+    {
         match msg {
             Message::Snapshot(snapshot) => snapshot
                 .into_iter()
@@ -355,13 +364,10 @@ where
                 .collect(),
             Message::BroadcastEndpoint(signed) => self.update_and_broadcast_if_new(signed),
             Message::Payload(payload) => {
-                // We received a message payload.
-                warn!(
-                    %node_id,
-                    ?payload,
-                    "received message payload, but no implementation for what comes next"
-                );
-                Multiple::new()
+                // We received a message payload, announce it.
+                effect_builder
+                    .announce_message_received(node_id, payload)
+                    .ignore()
             }
         }
     }
@@ -369,7 +375,7 @@ where
 
 impl<REv, P> Component<REv> for SmallNetwork<REv, P>
 where
-    REv: Send + From<Event<P>>,
+    REv: Send + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
     P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
 {
     type Event = Event<P>;
@@ -377,7 +383,7 @@ where
     #[allow(clippy::cognitive_complexity)]
     fn handle_event(
         &mut self,
-        _eb: EffectBuilder<REv>,
+        effect_builder: EffectBuilder<REv>,
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>> {
         match event {
@@ -426,7 +432,9 @@ where
                     }
                 }
             }
-            Event::IncomingMessage { node_id, msg } => self.handle_message(node_id, msg),
+            Event::IncomingMessage { node_id, msg } => {
+                self.handle_message(effect_builder, node_id, msg)
+            }
             Event::IncomingClosed { result, addr } => {
                 match result {
                     Ok(()) => info!(%addr, "connection closed"),
