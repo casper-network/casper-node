@@ -8,6 +8,7 @@ use derive_more::From;
 
 use crate::{
     components::{
+        api_server::{self, ApiServer},
         pinger::{self, Message, Pinger},
         storage::{self, Storage},
         Component,
@@ -34,6 +35,8 @@ enum Event {
     Storage(StorageRequest<Storage>),
     #[from]
     StorageConsumer(storage::dummy::Event),
+    #[from]
+    ApiServer(api_server::Event),
 
     // Requests
     #[from]
@@ -49,6 +52,7 @@ struct Reactor {
     net: SmallNetwork<Event, Message>,
     pinger: Pinger,
     storage: Storage,
+    api_server: ApiServer,
     dummy_storage_consumer: storage::dummy::StorageConsumer,
 }
 
@@ -68,18 +72,22 @@ impl reactor::Reactor for Reactor {
         let (dummy_storage_consumer, storage_consumer_effects) =
             storage::dummy::StorageConsumer::new(eb);
 
+        let (api_server, api_server_effects) = ApiServer::new(eb);
+
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
         effects.extend(reactor::wrap_effects(Event::Pinger, pinger_effects));
         effects.extend(reactor::wrap_effects(
             Event::StorageConsumer,
             storage_consumer_effects,
         ));
+        effects.extend(reactor::wrap_effects(Event::ApiServer, api_server_effects));
 
         Ok((
             Reactor {
                 net,
                 pinger,
                 storage,
+                api_server,
                 dummy_storage_consumer,
             },
             effects,
@@ -105,6 +113,9 @@ impl reactor::Reactor for Reactor {
                 Event::StorageConsumer,
                 self.dummy_storage_consumer.handle_event(eb, ev),
             ),
+            Event::ApiServer(ev) => {
+                reactor::wrap_effects(Event::ApiServer, self.api_server.handle_event(eb, ev))
+            }
 
             // Requests:
             Event::NetworkRequest(req) => {
@@ -136,6 +147,7 @@ impl Display for Event {
             Event::Pinger(ev) => write!(f, "pinger: {}", ev),
             Event::Storage(ev) => write!(f, "storage: {}", ev),
             Event::StorageConsumer(ev) => write!(f, "storage_consumer: {}", ev),
+            Event::ApiServer(ev) => write!(f, "api server: {}", ev),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
         }

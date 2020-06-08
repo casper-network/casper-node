@@ -38,11 +38,34 @@ pub(crate) struct ApiServer {
     deploys: Vec<Deploy>,
 }
 
+// Since our server is so simple, we're cheating in the implementation for now by using the
+// `ApiRequest` directly. As soon as actual fetching of deploys happens, a proper `Event` needs
+// to be introduced.
+pub(crate) type Event = ApiRequest;
+
+impl ApiServer {
+    pub(crate) fn new<REv>(effect_builder: EffectBuilder<REv>) -> (Self, Multiple<Effect<Event>>)
+    where
+        REv: From<ApiRequest> + Send,
+    {
+        let effects = Multiple::new();
+        let api_server = ApiServer {
+            deploys: Vec::new(),
+        };
+
+        // Start the actual HTTP server.
+        tokio::spawn(run_server(
+            "127.0.0.1:7777".parse().unwrap(),
+            effect_builder,
+        ));
+
+        (api_server, effects)
+    }
+}
+
 impl<REv> Component<REv> for ApiServer {
-    // Since our server is so simple, we're cheating in the implementation for now by using the
-    // `ApiRequest` directly. As soon as actual fetching of deploys happens, a proper `Event` needs
-    // to be introduced.
-    type Event = ApiRequest;
+    type Event = Event;
+
     fn handle_event(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
