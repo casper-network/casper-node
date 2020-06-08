@@ -518,6 +518,8 @@ where
 ///
 /// Will attempt to bind on the root address first if the `bind_interface` is the same as the
 /// interface of `root_addr`. Otherwise uses an unused port on `bind_interface`.
+///
+/// Returns a `(listener, is_root)` pair. `is_root` is `true` if the node is a root node.
 fn create_listener(cfg: &Config) -> io::Result<(TcpListener, bool)> {
     if cfg.root_addr.ip() == cfg.bind_interface {
         // Try to become the root node, if the root nodes interface is available.
