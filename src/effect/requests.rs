@@ -75,7 +75,7 @@ where
 pub(crate) enum StorageRequest<S: StorageType> {
     /// Store given block.
     PutBlock {
-        block: <S::BlockStore as Store>::Value,
+        block: Box<<S::BlockStore as Store>::Value>,
         responder: ResultResponder<(), <S::BlockStore as Store>::Error>,
     },
     /// Retrieve block with given hash.
@@ -94,7 +94,7 @@ pub(crate) enum StorageRequest<S: StorageType> {
     },
     /// Store given deploy.
     PutDeploy {
-        deploy: <S::DeployStore as Store>::Value,
+        deploy: Box<<S::DeployStore as Store>::Value>,
         responder: ResultResponder<(), <S::DeployStore as Store>::Error>,
     },
     /// Retrieve deploy with given hash.

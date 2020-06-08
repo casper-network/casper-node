@@ -321,10 +321,13 @@ impl<REv> EffectBuilder<REv> {
     ) -> Result<(), <S::BlockStore as Store>::Error>
     where
         S: StorageType + 'static,
-        REv: From<Box<StorageRequest<S>>>,
+        REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| Box::new(StorageRequest::PutBlock { block, responder }),
+            |responder| StorageRequest::PutBlock {
+                block: Box::new(block),
+                responder,
+            },
             QueueKind::Regular,
         )
         .await
@@ -337,14 +340,12 @@ impl<REv> EffectBuilder<REv> {
     ) -> Result<<S::BlockStore as Store>::Value, <S::BlockStore as Store>::Error>
     where
         S: StorageType + 'static,
-        REv: From<Box<StorageRequest<S>>>,
+        REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| {
-                Box::new(StorageRequest::GetBlock {
-                    block_hash,
-                    responder,
-                })
+            |responder| StorageRequest::GetBlock {
+                block_hash,
+                responder,
             },
             QueueKind::Regular,
         )
@@ -358,14 +359,12 @@ impl<REv> EffectBuilder<REv> {
     ) -> Result<<<S::BlockStore as Store>::Value as Value>::Header, <S::BlockStore as Store>::Error>
     where
         S: StorageType + 'static,
-        REv: From<Box<StorageRequest<S>>>,
+        REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| {
-                Box::new(StorageRequest::GetBlockHeader {
-                    block_hash,
-                    responder,
-                })
+            |responder| StorageRequest::GetBlockHeader {
+                block_hash,
+                responder,
             },
             QueueKind::Regular,
         )
@@ -379,10 +378,13 @@ impl<REv> EffectBuilder<REv> {
     ) -> Result<(), <S::DeployStore as Store>::Error>
     where
         S: StorageType + 'static,
-        REv: From<Box<StorageRequest<S>>>,
+        REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| Box::new(StorageRequest::PutDeploy { deploy, responder }),
+            |responder| StorageRequest::PutDeploy {
+                deploy: Box::new(deploy),
+                responder,
+            },
             QueueKind::Regular,
         )
         .await
@@ -395,14 +397,12 @@ impl<REv> EffectBuilder<REv> {
     ) -> Result<<S::DeployStore as Store>::Value, <S::DeployStore as Store>::Error>
     where
         S: StorageType + 'static,
-        REv: From<Box<StorageRequest<S>>>,
+        REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| {
-                Box::new(StorageRequest::GetDeploy {
-                    deploy_hash,
-                    responder,
-                })
+            |responder| StorageRequest::GetDeploy {
+                deploy_hash,
+                responder,
             },
             QueueKind::Regular,
         )
@@ -416,14 +416,12 @@ impl<REv> EffectBuilder<REv> {
     ) -> Result<<<S::DeployStore as Store>::Value as Value>::Header, <S::DeployStore as Store>::Error>
     where
         S: StorageType + 'static,
-        REv: From<Box<StorageRequest<S>>>,
+        REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| {
-                Box::new(StorageRequest::GetDeployHeader {
-                    deploy_hash,
-                    responder,
-                })
+            |responder| StorageRequest::GetDeployHeader {
+                deploy_hash,
+                responder,
             },
             QueueKind::Regular,
         )

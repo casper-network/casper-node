@@ -75,7 +75,7 @@ where
             StorageRequest::PutBlock { block, responder } => {
                 let block_store = self.block_store();
                 async move {
-                    let result = task::spawn_blocking(move || block_store.put(block))
+                    let result = task::spawn_blocking(move || block_store.put(*block))
                         .await
                         .expect("should run");
                     responder.respond(result).await
@@ -111,7 +111,7 @@ where
             StorageRequest::PutDeploy { deploy, responder } => {
                 let deploy_store = self.deploy_store();
                 async move {
-                    let result = task::spawn_blocking(move || deploy_store.put(deploy))
+                    let result = task::spawn_blocking(move || deploy_store.put(*deploy))
                         .await
                         .expect("should run");
                     responder.respond(result).await
@@ -270,7 +270,7 @@ pub(crate) mod dummy {
 
     impl<REv> Component<REv> for StorageConsumer
     where
-        REv: From<Box<Event>> + Send + From<Box<StorageRequest<Storage>>>,
+        REv: From<Box<Event>> + Send + From<StorageRequest<Storage>>,
     {
         type Event = Event;
 
@@ -401,14 +401,14 @@ pub(crate) mod dummy {
     impl StorageConsumer {
         pub(crate) fn new<REv>(eb: EffectBuilder<REv>) -> (Self, Multiple<Effect<Event>>)
         where
-            REv: From<Box<Event>> + Send + From<Box<StorageRequest<Storage>>>,
+            REv: From<Box<Event>> + Send + From<StorageRequest<Storage>>,
         {
             (Self {}, Self::set_timeout(eb))
         }
 
         fn set_timeout<REv>(eb: EffectBuilder<REv>) -> Multiple<Effect<Event>>
         where
-            REv: From<Box<Event>> + Send + From<Box<StorageRequest<Storage>>>,
+            REv: From<Box<Event>> + Send + From<StorageRequest<Storage>>,
         {
             eb.set_timeout(Duration::from_millis(100))
                 .event(|_| Event::Trigger)

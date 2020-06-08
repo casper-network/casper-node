@@ -53,7 +53,7 @@ enum Event {
     #[from]
     Pinger(pinger::Event),
     #[from]
-    Storage(Box<StorageRequest<Storage>>),
+    Storage(StorageRequest<Storage>),
     #[from]
     ApiServer(api_server::Event),
     #[from]
@@ -151,8 +151,8 @@ impl reactor::Reactor for Reactor {
                 self.pinger.handle_event(eb, &mut self.rng, ev),
             ),
             Event::Storage(ev) => reactor::wrap_effects(
-                |event| Event::Storage(Box::new(event)),
-                self.storage.handle_event(eb, &mut self.rng, *ev),
+                Event::Storage,
+                self.storage.handle_event(eb, &mut self.rng, ev),
             ),
             Event::StorageConsumer(ev) => reactor::wrap_effects(
                 |event| Event::StorageConsumer(Box::new(event)),
