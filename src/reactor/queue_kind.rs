@@ -27,7 +27,7 @@ pub enum QueueKind {
     ///
     /// Metric events take precedence over most other events since missing a request for metrics
     /// might cause the requester to assume that the node is down and forcefully restart it.
-    Metrics,
+    Api,
 }
 
 impl Default for QueueKind {
@@ -46,7 +46,7 @@ impl QueueKind {
             QueueKind::NetworkIncoming => 4,
             QueueKind::Network => 4,
             QueueKind::Regular => 8,
-            QueueKind::Metrics => 16,
+            QueueKind::Api => 16,
         })
         .expect("weight must be positive")
     }
