@@ -34,7 +34,7 @@ use tracing_subscriber::{
     EnvFilter,
 };
 
-use casper_node::Config as SmallNetworkConfig;
+use casperlabs_node::Config as SmallNetworkConfig;
 
 /// Root configuration.
 #[derive(Debug, Deserialize, Serialize)]
