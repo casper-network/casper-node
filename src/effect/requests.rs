@@ -1,7 +1,9 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
 use super::Responder;
-use crate::components::storage::{BlockStoreType, BlockType, StorageType};
+use crate::components::storage::{StorageType, Store, Value};
+
+type ResultResponder<T, E> = Responder<Result<T, E>>;
 
 #[derive(Debug)]
 pub(crate) enum NetworkRequest<I, P> {
@@ -35,16 +37,39 @@ where
     }
 }
 
+#[derive(Debug)]
 pub(crate) enum StorageRequest<S: StorageType> {
     /// Store given block.
     PutBlock {
-        block: <S::BlockStore as BlockStoreType>::Block,
+        block: <S::BlockStore as Store>::Value,
         responder: Responder<bool>,
     },
     /// Retrieve block with given hash.
     GetBlock {
-        block_hash: <<S::BlockStore as BlockStoreType>::Block as BlockType>::Hash,
-        responder: Responder<Option<<S::BlockStore as BlockStoreType>::Block>>,
+        block_hash: <<S::BlockStore as Store>::Value as Value>::Id,
+        responder:
+            ResultResponder<<S::BlockStore as Store>::Value, <S::BlockStore as Store>::Error>,
+    },
+    /// Retrieve block header with given hash.
+    GetBlockHeader {
+        block_hash: <<S::BlockStore as Store>::Value as Value>::Id,
+        responder: Responder<Option<<<S::BlockStore as Store>::Value as Value>::Header>>,
+    },
+    /// Store given deploy.
+    PutDeploy {
+        deploy: <S::DeployStore as Store>::Value,
+        responder: Responder<bool>,
+    },
+    /// Retrieve deploy with given hash.
+    GetDeploy {
+        deploy_hash: <<S::DeployStore as Store>::Value as Value>::Id,
+        responder:
+            ResultResponder<<S::DeployStore as Store>::Value, <S::DeployStore as Store>::Error>,
+    },
+    /// Retrieve deploy header with given hash.
+    GetDeployHeader {
+        deploy_hash: <<S::DeployStore as Store>::Value as Value>::Id,
+        responder: Responder<Option<<<S::DeployStore as Store>::Value as Value>::Header>>,
     },
 }
 
@@ -53,26 +78,16 @@ impl<S: StorageType> Display for StorageRequest<S> {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
             StorageRequest::GetBlock { block_hash, .. } => write!(formatter, "get {}", block_hash),
-        }
-    }
-}
-
-impl<S: StorageType> Debug for StorageRequest<S> {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            StorageRequest::PutBlock { block, responder } => write!(
-                formatter,
-                "StorageRequest::PutBlock {{ block: {:?}, responder: {:?} }}",
-                block, responder
-            ),
-            StorageRequest::GetBlock {
-                block_hash,
-                responder,
-            } => write!(
-                formatter,
-                "StorageRequest::GetBlock {{ block_hash: {:?}, responder: {:?} }}",
-                block_hash, responder
-            ),
+            StorageRequest::GetBlockHeader { block_hash, .. } => {
+                write!(formatter, "get {}", block_hash)
+            }
+            StorageRequest::PutDeploy { deploy, .. } => write!(formatter, "put {}", deploy),
+            StorageRequest::GetDeploy { deploy_hash, .. } => {
+                write!(formatter, "get {}", deploy_hash)
+            }
+            StorageRequest::GetDeployHeader { deploy_hash, .. } => {
+                write!(formatter, "get {}", deploy_hash)
+            }
         }
     }
 }
