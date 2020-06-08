@@ -52,7 +52,7 @@ use std::{
     io,
     net::{SocketAddr, TcpListener},
     sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{anyhow, bail, Context};
@@ -465,27 +465,27 @@ where
                         self.signed_endpoints.remove(&node_id);
                         self.outgoing.remove(&node_id);
 
-                        warn!(%attempt_count, %node_id, "giving up on outgoing connection");
+                        warn!(%attempt_count, %node_id, "gave up on outgoing connection");
+                        return Multiple::new();
                     }
-
-                    return Multiple::new();
                 }
-                // TODO: Delay reconnection.
 
                 if let Some(endpoint) = self.endpoints.get(&node_id) {
-                    connect_outgoing(
-                        endpoint.clone(),
-                        self.cert.clone(),
-                        self.private_key.clone(),
-                    )
-                    .result(
-                        move |transport| Event::OutgoingEstablished { node_id, transport },
-                        move |error| Event::OutgoingFailed {
-                            node_id,
-                            attempt_count: attempt_count + 1,
-                            error: Some(error),
-                        },
-                    )
+                    let ep = endpoint.clone();
+                    let cert = self.cert.clone();
+                    let pk = self.private_key.clone();
+
+                    effect_builder
+                        .set_timeout(Duration::from_millis(self.cfg.outgoing_retry_delay_millis))
+                        .then(move |_| connect_outgoing(ep, cert, pk))
+                        .result(
+                            move |transport| Event::OutgoingEstablished { node_id, transport },
+                            move |error| Event::OutgoingFailed {
+                                node_id,
+                                attempt_count: attempt_count + 1,
+                                error: Some(error),
+                            },
+                        )
                 } else {
                     error!("endpoint disappeared");
                     Multiple::new()
