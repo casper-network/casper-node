@@ -24,6 +24,7 @@ pub(crate) struct Endpoint {
 /// Result of an endpoint update.
 ///
 /// Describes how an insertion of an endpoint changed an endpoint set.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub(super) enum EndpointUpdate {
     /// The endpoint was previously not known.

@@ -269,7 +269,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.0
             .schedule(
-                NetworkAnnouncement::MessageReceived { sender, payload }.into(),
+                NetworkAnnouncement::MessageReceived { sender, payload },
                 QueueKind::NetworkIncoming,
             )
             .await;
