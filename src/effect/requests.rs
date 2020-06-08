@@ -9,8 +9,6 @@ use crate::{
     utils::DisplayIter,
 };
 
-type ResultResponder<T, E> = Responder<Result<T, E>>;
-
 #[derive(Debug)]
 pub(crate) enum NetworkRequest<I, P> {
     /// Send a message on the network to a specific peer.
@@ -72,43 +70,48 @@ where
 }
 
 #[derive(Debug)]
+#[allow(clippy::type_complexity)]
 pub(crate) enum StorageRequest<S: StorageType> {
     /// Store given block.
     PutBlock {
         block: Box<<S::BlockStore as Store>::Value>,
-        responder: ResultResponder<(), <S::BlockStore as Store>::Error>,
+        responder: Responder<Result<(), <S::BlockStore as Store>::Error>>,
     },
     /// Retrieve block with given hash.
     GetBlock {
         block_hash: <<S::BlockStore as Store>::Value as Value>::Id,
         responder:
-            ResultResponder<<S::BlockStore as Store>::Value, <S::BlockStore as Store>::Error>,
+            Responder<Result<<S::BlockStore as Store>::Value, <S::BlockStore as Store>::Error>>,
     },
     /// Retrieve block header with given hash.
     GetBlockHeader {
         block_hash: <<S::BlockStore as Store>::Value as Value>::Id,
-        responder: ResultResponder<
-            <<S::BlockStore as Store>::Value as Value>::Header,
-            <S::BlockStore as Store>::Error,
+        responder: Responder<
+            Result<
+                <<S::BlockStore as Store>::Value as Value>::Header,
+                <S::BlockStore as Store>::Error,
+            >,
         >,
     },
     /// Store given deploy.
     PutDeploy {
         deploy: Box<<S::DeployStore as Store>::Value>,
-        responder: ResultResponder<(), <S::DeployStore as Store>::Error>,
+        responder: Responder<Result<(), <S::DeployStore as Store>::Error>>,
     },
     /// Retrieve deploy with given hash.
     GetDeploy {
         deploy_hash: <<S::DeployStore as Store>::Value as Value>::Id,
         responder:
-            ResultResponder<<S::DeployStore as Store>::Value, <S::DeployStore as Store>::Error>,
+            Responder<Result<<S::DeployStore as Store>::Value, <S::DeployStore as Store>::Error>>,
     },
     /// Retrieve deploy header with given hash.
     GetDeployHeader {
         deploy_hash: <<S::DeployStore as Store>::Value as Value>::Id,
-        responder: ResultResponder<
-            <<S::DeployStore as Store>::Value as Value>::Header,
-            <S::DeployStore as Store>::Error,
+        responder: Responder<
+            Result<
+                <<S::DeployStore as Store>::Value as Value>::Header,
+                <S::DeployStore as Store>::Error,
+            >,
         >,
     },
 }
