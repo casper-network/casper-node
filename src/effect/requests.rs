@@ -20,6 +20,34 @@ pub(crate) enum NetworkRequest<I, P> {
     },
 }
 
+impl<I, P> NetworkRequest<I, P> {
+    /// Transform a network request by mapping the contained payload.
+    ///
+    /// This is a replacement for a `From` conversion that is not possible without specialization.
+    pub(crate) fn map_payload<F, P2>(self, wrap_payload: F) -> NetworkRequest<I, P2>
+    where
+        F: FnOnce(P) -> P2,
+    {
+        match self {
+            NetworkRequest::SendMessage {
+                dest,
+                payload,
+                responder,
+            } => NetworkRequest::SendMessage {
+                dest,
+                payload: wrap_payload(payload),
+                responder,
+            },
+            NetworkRequest::BroadcastMessage { payload, responder } => {
+                NetworkRequest::BroadcastMessage {
+                    payload: wrap_payload(payload),
+                    responder,
+                }
+            }
+        }
+    }
+}
+
 impl<I, P> Display for NetworkRequest<I, P>
 where
     I: Display,

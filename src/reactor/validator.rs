@@ -41,36 +41,6 @@ impl Display for Message {
     }
 }
 
-// This is ugly, but it works around trait specialization not being stable yet:
-trait IsNotMessage {}
-impl IsNotMessage for pinger::Message {}
-impl IsNotMessage for consensus::Message {}
-
-impl<I, P> From<NetworkRequest<I, P>> for NetworkRequest<I, Message>
-where
-    P: Into<Message> + IsNotMessage,
-{
-    fn from(other: NetworkRequest<I, P>) -> NetworkRequest<I, Message> {
-        match other {
-            NetworkRequest::SendMessage {
-                dest,
-                payload,
-                responder,
-            } => NetworkRequest::SendMessage {
-                dest,
-                payload: payload.into(),
-                responder,
-            },
-            NetworkRequest::BroadcastMessage { payload, responder } => {
-                NetworkRequest::BroadcastMessage {
-                    payload: payload.into(),
-                    responder,
-                }
-            }
-        }
-    }
-}
-
 /// Top-level event for the reactor.
 #[derive(Debug, From)]
 #[must_use]
@@ -95,11 +65,15 @@ enum Event {
     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
 }
 
-impl<P: Into<Message> + IsNotMessage> From<NetworkRequest<NodeId, P>> for Event {
-    fn from(req: NetworkRequest<NodeId, P>) -> Self {
-        Event::Network(small_network::Event::from(
-            NetworkRequest::<NodeId, Message>::from(req),
-        ))
+impl From<NetworkRequest<NodeId, consensus::Message>> for Event {
+    fn from(request: NetworkRequest<NodeId, consensus::Message>) -> Self {
+        Event::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
+impl From<NetworkRequest<NodeId, pinger::Message>> for Event {
+    fn from(request: NetworkRequest<NodeId, pinger::Message>) -> Self {
+        Event::NetworkRequest(request.map_payload(Message::from))
     }
 }
 
