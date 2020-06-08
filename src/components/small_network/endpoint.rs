@@ -24,6 +24,7 @@ pub(crate) struct Endpoint {
 /// Result of an endpoint update.
 ///
 /// Describes how an insertion of an endpoint changed an endpoint set.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub(super) enum EndpointUpdate {
     /// The endpoint was previously not known.
@@ -79,12 +80,9 @@ impl Display for EndpointUpdate {
         match self {
             EndpointUpdate::New { cur } => write!(f, "new: {}", cur),
             EndpointUpdate::Unchanged => write!(f, "unchanged"),
-            EndpointUpdate::Refreshed { cur, prev } => write!(
-                f,
-                "refreshed (cur {cur} prev {prev})",
-                cur = cur,
-                prev = prev
-            ),
+            EndpointUpdate::Refreshed { cur, prev } => {
+                write!(f, "refreshed (cur {} prev {})", cur, prev)
+            }
             EndpointUpdate::Updated { cur, prev } => write!(f, "updated: from {} to {}", prev, cur),
             EndpointUpdate::InvalidSignature { err, .. } => write!(f, "invalid signature: {}", err),
         }

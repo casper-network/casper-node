@@ -5,11 +5,13 @@
 use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
         api_server::{self, ApiServer},
-        pinger::{self, Message, Pinger},
+        consensus::{self, Consensus},
+        pinger::{self, Pinger},
         storage::{self, Storage},
         Component,
     },
@@ -23,6 +25,23 @@ use crate::{
     Config, SmallNetwork,
 };
 
+#[derive(Debug, Clone, From, Serialize, Deserialize)]
+enum Message {
+    #[from]
+    Pinger(pinger::Message),
+    #[from]
+    Consensus(consensus::Message),
+}
+
+impl Display for Message {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            Message::Pinger(pinger) => write!(f, "Pinger::{}", pinger),
+            Message::Consensus(consensus) => write!(f, "Consensus::{}", consensus),
+        }
+    }
+}
+
 /// Top-level event for the reactor.
 #[derive(Debug, From)]
 #[must_use]
@@ -32,11 +51,13 @@ enum Event {
     #[from]
     Pinger(pinger::Event),
     #[from]
-    Storage(StorageRequest<Storage>),
-    #[from]
-    StorageConsumer(storage::dummy::Event),
+    Storage(Box<StorageRequest<Storage>>),
     #[from]
     ApiServer(api_server::Event),
+    #[from]
+    StorageConsumer(Box<storage::dummy::Event>),
+    #[from]
+    Consensus(consensus::Event),
 
     // Requests
     #[from]
@@ -47,12 +68,25 @@ enum Event {
     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
 }
 
+impl From<NetworkRequest<NodeId, consensus::Message>> for Event {
+    fn from(request: NetworkRequest<NodeId, consensus::Message>) -> Self {
+        Event::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
+impl From<NetworkRequest<NodeId, pinger::Message>> for Event {
+    fn from(request: NetworkRequest<NodeId, pinger::Message>) -> Self {
+        Event::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
 /// Validator node reactor.
 struct Reactor {
     net: SmallNetwork<Event, Message>,
     pinger: Pinger,
     storage: Storage,
     api_server: ApiServer,
+    consensus: Consensus,
     dummy_storage_consumer: storage::dummy::StorageConsumer,
 }
 
@@ -73,14 +107,16 @@ impl reactor::Reactor for Reactor {
             storage::dummy::StorageConsumer::new(eb);
 
         let (api_server, api_server_effects) = ApiServer::new(eb);
+        let (consensus, consensus_effects) = Consensus::new(eb);
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
         effects.extend(reactor::wrap_effects(Event::Pinger, pinger_effects));
         effects.extend(reactor::wrap_effects(
-            Event::StorageConsumer,
+            |event| Event::StorageConsumer(Box::new(event)),
             storage_consumer_effects,
         ));
         effects.extend(reactor::wrap_effects(Event::ApiServer, api_server_effects));
+        effects.extend(reactor::wrap_effects(Event::Consensus, consensus_effects));
 
         Ok((
             Reactor {
@@ -88,6 +124,7 @@ impl reactor::Reactor for Reactor {
                 pinger,
                 storage,
                 api_server,
+                consensus,
                 dummy_storage_consumer,
             },
             effects,
@@ -106,15 +143,19 @@ impl reactor::Reactor for Reactor {
             Event::Pinger(ev) => {
                 reactor::wrap_effects(Event::Pinger, self.pinger.handle_event(eb, ev))
             }
-            Event::Storage(ev) => {
-                reactor::wrap_effects(Event::Storage, self.storage.handle_event(eb, ev))
-            }
+            Event::Storage(ev) => reactor::wrap_effects(
+                |event| Event::Storage(Box::new(event)),
+                self.storage.handle_event(eb, *ev),
+            ),
             Event::StorageConsumer(ev) => reactor::wrap_effects(
-                Event::StorageConsumer,
-                self.dummy_storage_consumer.handle_event(eb, ev),
+                |event| Event::StorageConsumer(Box::new(event)),
+                self.dummy_storage_consumer.handle_event(eb, *ev),
             ),
             Event::ApiServer(ev) => {
                 reactor::wrap_effects(Event::ApiServer, self.api_server.handle_event(eb, ev))
+            }
+            Event::Consensus(ev) => {
+                reactor::wrap_effects(Event::Consensus, self.consensus.handle_event(eb, ev))
             }
 
             // Requests:
@@ -127,14 +168,17 @@ impl reactor::Reactor for Reactor {
                 sender,
                 payload,
             }) => {
+                let reactor_event = match payload {
+                    Message::Consensus(msg) => {
+                        Event::Consensus(consensus::Event::MessageReceived { sender, msg })
+                    }
+                    Message::Pinger(msg) => {
+                        Event::Pinger(pinger::Event::MessageReceived { sender, msg })
+                    }
+                };
+
                 // Any incoming message is one for the pinger.
-                self.dispatch_event(
-                    eb,
-                    Event::Pinger(pinger::Event::MessageReceived {
-                        sender,
-                        msg: payload,
-                    }),
-                )
+                self.dispatch_event(eb, reactor_event)
             }
         }
     }
@@ -148,6 +192,7 @@ impl Display for Event {
             Event::Storage(ev) => write!(f, "storage: {}", ev),
             Event::StorageConsumer(ev) => write!(f, "storage_consumer: {}", ev),
             Event::ApiServer(ev) => write!(f, "api server: {}", ev),
+            Event::Consensus(ev) => write!(f, "consensus: {}", ev),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
         }

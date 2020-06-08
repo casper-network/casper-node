@@ -1,16 +1,16 @@
 [package]
-name = "casper-node"
+name = "casperlabs-node"
 version = "0.1.0"
 authors = ["Marc Brinkmann <marc@casperlabs.io>", "Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "The CasperLabs blockchain node"
-documentation = "https://docs.rs/casper-node"
+documentation = "https://docs.rs/casperlabs-node"
 readme = "README.md"
 homepage = "https://casperlabs.io"
-repository = "https://github.com/CasperLabs/casper-node"
+repository = "https://github.com/CasperLabs/casperlabs-node"
 license-file = "LICENSE"
 publish = false  # Prevent accidental `cargo publish` for now.
-default-run = "casper-node"
+default-run = "casperlabs-node"
 
 [dependencies]
 ansi_term = "0.12.1"
@@ -43,7 +43,7 @@ tracing-subscriber = "0.2.5"
 warp = "0.2.3"
 
 [[bin]]
-name = "casper-node"
+name = "casperlabs-node"
 path = "src/app/main.rs"
 bench = false
 doctest = false

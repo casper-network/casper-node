@@ -473,11 +473,11 @@ where
                 if let Some(endpoint) = self.endpoints.get(&node_id) {
                     let ep = endpoint.clone();
                     let cert = self.cert.clone();
-                    let pk = self.private_key.clone();
+                    let private_key = self.private_key.clone();
 
                     effect_builder
                         .set_timeout(Duration::from_millis(self.cfg.outgoing_retry_delay_millis))
-                        .then(move |_| connect_outgoing(ep, cert, pk))
+                        .then(move |_| connect_outgoing(ep, cert, private_key))
                         .result(
                             move |transport| Event::OutgoingEstablished { node_id, transport },
                             move |error| Event::OutgoingFailed {
@@ -518,6 +518,8 @@ where
 ///
 /// Will attempt to bind on the root address first if the `bind_interface` is the same as the
 /// interface of `root_addr`. Otherwise uses an unused port on `bind_interface`.
+///
+/// Returns a `(listener, is_root)` pair. `is_root` is `true` if the node is a root node.
 fn create_listener(cfg: &Config) -> io::Result<(TcpListener, bool)> {
     if cfg.root_addr.ip() == cfg.bind_interface {
         // Try to become the root node, if the root nodes interface is available.

@@ -14,7 +14,7 @@
 //!
 //! ```ignore
 //! use std::time::Duration;
-//! use casper_node::effect::EffectExt;
+//! use casperlabs_node::effect::EffectExt;
 //!
 //! enum Event {
 //!     ThreeSecondsElapsed(Duration)
@@ -50,7 +50,7 @@ use smallvec::{smallvec, SmallVec};
 use tracing::error;
 
 use crate::{
-    components::storage::{BlockStoreType, BlockType, StorageType},
+    components::storage::{StorageType, Store, Value},
     reactor::{EventQueueHandle, QueueKind},
 };
 use announcements::NetworkAnnouncement;
@@ -131,6 +131,23 @@ pub trait EffectResultExt {
         U: 'static;
 }
 
+/// Effect extension for futures, used to convert futures returning an `Option` into two different
+/// effects.
+pub trait EffectOptionExt {
+    /// The type the future will return if `Some`.
+    type Value;
+
+    /// Finalizes a future returning an `Option` into two different effects.
+    ///
+    /// The function `f_some` is used to translate the returned value from an effect into an event,
+    /// while the function `f_none` does the same for a returned `None`.
+    fn option<U, F, G>(self, f_some: F, f_none: G) -> Multiple<Effect<U>>
+    where
+        F: FnOnce(Self::Value) -> U + 'static + Send,
+        G: FnOnce() -> U + 'static + Send,
+        U: 'static;
+}
+
 impl<T: ?Sized> EffectExt for T
 where
     T: Future + Send + 'static + Sized,
@@ -148,9 +165,10 @@ where
     }
 }
 
-impl<T: ?Sized, V, E> EffectResultExt for T
+impl<T, V, E> EffectResultExt for T
 where
     T: Future<Output = Result<V, E>> + Send + 'static + Sized,
+    T: ?Sized,
 {
     type Value = V;
     type Error = E;
@@ -163,6 +181,26 @@ where
     {
         smallvec![self
             .map(|result| result.map_or_else(f_err, f_ok))
+            .map(|item| smallvec![item])
+            .boxed()]
+    }
+}
+
+impl<T, V> EffectOptionExt for T
+where
+    T: Future<Output = Option<V>> + Send + 'static + Sized,
+    T: ?Sized,
+{
+    type Value = V;
+
+    fn option<U, F, G>(self, f_some: F, f_none: G) -> Multiple<Effect<U>>
+    where
+        F: FnOnce(V) -> U + 'static + Send,
+        G: FnOnce() -> U + 'static + Send,
+        U: 'static,
+    {
+        smallvec![self
+            .map(|option| option.map_or_else(f_none, f_some))
             .map(|item| smallvec![item])
             .boxed()]
     }
@@ -270,20 +308,20 @@ impl<REv> EffectBuilder<REv> {
     {
         self.0
             .schedule(
-                NetworkAnnouncement::MessageReceived { sender, payload }.into(),
+                NetworkAnnouncement::MessageReceived { sender, payload },
                 QueueKind::NetworkIncoming,
             )
             .await;
     }
 
     /// Puts the given block into the linear block store.  Returns true on success.
-    pub(crate) async fn put_block<S>(self, block: <S::BlockStore as BlockStoreType>::Block) -> bool
+    pub(crate) async fn put_block<S>(self, block: <S::BlockStore as Store>::Value) -> bool
     where
         S: StorageType,
-        REv: From<StorageRequest<S>>,
+        REv: From<Box<StorageRequest<S>>>,
     {
         self.make_request(
-            |responder| StorageRequest::PutBlock { block, responder },
+            |responder| Box::new(StorageRequest::PutBlock { block, responder }),
             QueueKind::Regular,
         )
         .await
@@ -292,16 +330,94 @@ impl<REv> EffectBuilder<REv> {
     /// Gets the requested block from the linear block store.
     pub(crate) async fn get_block<S>(
         self,
-        block_hash: <<S::BlockStore as BlockStoreType>::Block as BlockType>::Hash,
-    ) -> Option<<S::BlockStore as BlockStoreType>::Block>
+        block_hash: <<S::BlockStore as Store>::Value as Value>::Id,
+    ) -> Result<<S::BlockStore as Store>::Value, <S::BlockStore as Store>::Error>
     where
         S: StorageType + 'static,
-        REv: From<StorageRequest<S>>,
+        REv: From<Box<StorageRequest<S>>>,
     {
         self.make_request(
-            |responder| StorageRequest::GetBlock {
-                block_hash,
-                responder,
+            |responder| {
+                Box::new(StorageRequest::GetBlock {
+                    block_hash,
+                    responder,
+                })
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block header from the linear block store.
+    pub(crate) async fn get_block_header<S>(
+        self,
+        block_hash: <<S::BlockStore as Store>::Value as Value>::Id,
+    ) -> Option<<<S::BlockStore as Store>::Value as Value>::Header>
+    where
+        S: StorageType + 'static,
+        REv: From<Box<StorageRequest<S>>>,
+    {
+        self.make_request(
+            |responder| {
+                Box::new(StorageRequest::GetBlockHeader {
+                    block_hash,
+                    responder,
+                })
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Puts the given deploy into the deploy store.  Returns true on success.
+    pub(crate) async fn put_deploy<S>(self, deploy: <S::DeployStore as Store>::Value) -> bool
+    where
+        S: StorageType,
+        REv: From<Box<StorageRequest<S>>>,
+    {
+        self.make_request(
+            |responder| Box::new(StorageRequest::PutDeploy { deploy, responder }),
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested deploy from the deploy store.
+    pub(crate) async fn get_deploy<S>(
+        self,
+        deploy_hash: <<S::DeployStore as Store>::Value as Value>::Id,
+    ) -> Result<<S::DeployStore as Store>::Value, <S::DeployStore as Store>::Error>
+    where
+        S: StorageType + 'static,
+        REv: From<Box<StorageRequest<S>>>,
+    {
+        self.make_request(
+            |responder| {
+                Box::new(StorageRequest::GetDeploy {
+                    deploy_hash,
+                    responder,
+                })
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested deploy header from the deploy store.
+    pub(crate) async fn get_deploy_header<S>(
+        self,
+        deploy_hash: <<S::DeployStore as Store>::Value as Value>::Id,
+    ) -> Option<<<S::DeployStore as Store>::Value as Value>::Header>
+    where
+        S: StorageType + 'static,
+        REv: From<Box<StorageRequest<S>>>,
+    {
+        self.make_request(
+            |responder| {
+                Box::new(StorageRequest::GetDeployHeader {
+                    deploy_hash,
+                    responder,
+                })
             },
             QueueKind::Regular,
         )

@@ -136,7 +136,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "130aac562c0dd69c56b3b1cc8ffd2e17be31d0b6c25b61c96b76231aa23e39e1"
 
 [[package]]
-name = "casper-node"
+name = "casperlabs-node"
 version = "0.1.0"
 dependencies = [
  "ansi_term 0.12.1",
