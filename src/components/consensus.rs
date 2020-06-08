@@ -1,5 +1,17 @@
 //! The consensus component. Provides distributed consensus among the nodes in the network.
 
+mod consensus_protocol;
+mod consensus_service;
+// TODO: remove when we actually construct a Pothole era
+#[allow(unused)]
+mod pothole;
+// TODO: remove when we actually construct a Pothole era
+#[allow(unused)]
+mod synchronizer;
+// TODO: remove when we actually construct a Pothole era
+#[allow(unused)]
+mod highway_core;
+
 use std::fmt::{self, Display, Formatter};
 
 use rand::Rng;
@@ -8,12 +20,16 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{small_network::NodeId, Component},
     effect::{requests::NetworkRequest, Effect, EffectBuilder, Multiple},
+    types::Block,
 };
+
+use consensus_protocol::pothole::PotholeContext;
+use consensus_service::consensus_service::EraSupervisor;
 
 /// The consensus component.
 #[derive(Debug)]
 pub(crate) struct Consensus {
-    // TODO
+    era_supervisor: EraSupervisor<PotholeContext<NodeId, Block>>,
 }
 
 /// Network message used by the consensus component.
@@ -76,7 +92,9 @@ impl Consensus {
     pub(crate) fn new<REv: From<Event> + Send + From<NetworkRequest<NodeId, Message>>>(
         _effect_builder: EffectBuilder<REv>,
     ) -> (Self, Multiple<Effect<Event>>) {
-        let consensus = Consensus {};
+        let consensus = Consensus {
+            era_supervisor: EraSupervisor::<PotholeContext<NodeId, Block>>::new(),
+        };
 
         (consensus, Default::default())
     }
