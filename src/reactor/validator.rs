@@ -5,6 +5,8 @@
 use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -12,7 +14,7 @@ use crate::{
         api_server::{self, ApiServer},
         consensus::{self, Consensus},
         pinger::{self, Pinger},
-        storage::{self, Storage},
+        storage::Storage,
         Component,
     },
     effect::{
@@ -20,7 +22,7 @@ use crate::{
         requests::{NetworkRequest, StorageRequest},
         Effect, EffectBuilder, Multiple,
     },
-    reactor::{self, EventQueueHandle},
+    reactor::{self, EventQueueHandle, Result},
     small_network::{self, NodeId},
     Config, SmallNetwork,
 };
@@ -51,11 +53,9 @@ enum Event {
     #[from]
     Pinger(pinger::Event),
     #[from]
-    Storage(Box<StorageRequest<Storage>>),
+    Storage(StorageRequest<Storage>),
     #[from]
     ApiServer(api_server::Event),
-    #[from]
-    StorageConsumer(Box<storage::dummy::Event>),
     #[from]
     Consensus(consensus::Event),
 
@@ -87,7 +87,7 @@ struct Reactor {
     storage: Storage,
     api_server: ApiServer,
     consensus: Consensus,
-    dummy_storage_consumer: storage::dummy::StorageConsumer,
+    rng: ChaCha20Rng,
 }
 
 impl reactor::Reactor for Reactor {
@@ -95,28 +95,24 @@ impl reactor::Reactor for Reactor {
 
     fn new(
         cfg: Config,
-        eq: EventQueueHandle<Self::Event>,
-    ) -> anyhow::Result<(Self, Multiple<Effect<Self::Event>>)> {
-        let eb = EffectBuilder::new(eq);
-        let (net, net_effects) = SmallNetwork::new(eq, cfg)?;
+        event_queue: EventQueueHandle<Self::Event>,
+    ) -> Result<(Self, Multiple<Effect<Self::Event>>)> {
+        let effect_builder = EffectBuilder::new(event_queue);
+        let (net, net_effects) = SmallNetwork::new(event_queue, cfg)?;
 
-        let (pinger, pinger_effects) = Pinger::new(eb);
+        let (pinger, pinger_effects) = Pinger::new(effect_builder);
 
         let storage = Storage::new();
-        let (dummy_storage_consumer, storage_consumer_effects) =
-            storage::dummy::StorageConsumer::new(eb);
 
-        let (api_server, api_server_effects) = ApiServer::new(eb);
-        let (consensus, consensus_effects) = Consensus::new(eb);
+        let (api_server, api_server_effects) = ApiServer::new(effect_builder);
+        let (consensus, consensus_effects) = Consensus::new(effect_builder);
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
         effects.extend(reactor::wrap_effects(Event::Pinger, pinger_effects));
-        effects.extend(reactor::wrap_effects(
-            |event| Event::StorageConsumer(Box::new(event)),
-            storage_consumer_effects,
-        ));
         effects.extend(reactor::wrap_effects(Event::ApiServer, api_server_effects));
         effects.extend(reactor::wrap_effects(Event::Consensus, consensus_effects));
+
+        let rng = ChaCha20Rng::from_entropy();
 
         Ok((
             Reactor {
@@ -125,7 +121,7 @@ impl reactor::Reactor for Reactor {
                 storage,
                 api_server,
                 consensus,
-                dummy_storage_consumer,
+                rng,
             },
             effects,
         ))
@@ -133,35 +129,40 @@ impl reactor::Reactor for Reactor {
 
     fn dispatch_event(
         &mut self,
-        eb: EffectBuilder<Self::Event>,
+        effect_builder: EffectBuilder<Self::Event>,
         event: Event,
     ) -> Multiple<Effect<Self::Event>> {
         match event {
-            Event::Network(ev) => {
-                reactor::wrap_effects(Event::Network, self.net.handle_event(eb, ev))
-            }
-            Event::Pinger(ev) => {
-                reactor::wrap_effects(Event::Pinger, self.pinger.handle_event(eb, ev))
-            }
-            Event::Storage(ev) => reactor::wrap_effects(
-                |event| Event::Storage(Box::new(event)),
-                self.storage.handle_event(eb, *ev),
+            Event::Network(event) => reactor::wrap_effects(
+                Event::Network,
+                self.net.handle_event(effect_builder, &mut self.rng, event),
             ),
-            Event::StorageConsumer(ev) => reactor::wrap_effects(
-                |event| Event::StorageConsumer(Box::new(event)),
-                self.dummy_storage_consumer.handle_event(eb, *ev),
+            Event::Pinger(event) => reactor::wrap_effects(
+                Event::Pinger,
+                self.pinger
+                    .handle_event(effect_builder, &mut self.rng, event),
             ),
-            Event::ApiServer(ev) => {
-                reactor::wrap_effects(Event::ApiServer, self.api_server.handle_event(eb, ev))
-            }
-            Event::Consensus(ev) => {
-                reactor::wrap_effects(Event::Consensus, self.consensus.handle_event(eb, ev))
-            }
+            Event::Storage(event) => reactor::wrap_effects(
+                Event::Storage,
+                self.storage
+                    .handle_event(effect_builder, &mut self.rng, event),
+            ),
+            Event::ApiServer(event) => reactor::wrap_effects(
+                Event::ApiServer,
+                self.api_server
+                    .handle_event(effect_builder, &mut self.rng, event),
+            ),
+            Event::Consensus(event) => reactor::wrap_effects(
+                Event::Consensus,
+                self.consensus
+                    .handle_event(effect_builder, &mut self.rng, event),
+            ),
 
             // Requests:
-            Event::NetworkRequest(req) => {
-                self.dispatch_event(eb, Event::Network(small_network::Event::from(req)))
-            }
+            Event::NetworkRequest(req) => self.dispatch_event(
+                effect_builder,
+                Event::Network(small_network::Event::from(req)),
+            ),
 
             // Announcements:
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
@@ -178,7 +179,7 @@ impl reactor::Reactor for Reactor {
                 };
 
                 // Any incoming message is one for the pinger.
-                self.dispatch_event(eb, reactor_event)
+                self.dispatch_event(effect_builder, reactor_event)
             }
         }
     }
@@ -187,12 +188,11 @@ impl reactor::Reactor for Reactor {
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Network(ev) => write!(f, "network: {}", ev),
-            Event::Pinger(ev) => write!(f, "pinger: {}", ev),
-            Event::Storage(ev) => write!(f, "storage: {}", ev),
-            Event::StorageConsumer(ev) => write!(f, "storage_consumer: {}", ev),
-            Event::ApiServer(ev) => write!(f, "api server: {}", ev),
-            Event::Consensus(ev) => write!(f, "consensus: {}", ev),
+            Event::Network(event) => write!(f, "network: {}", event),
+            Event::Pinger(event) => write!(f, "pinger: {}", event),
+            Event::Storage(event) => write!(f, "storage: {}", event),
+            Event::ApiServer(event) => write!(f, "api server: {}", event),
+            Event::Consensus(event) => write!(f, "consensus: {}", event),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
         }
@@ -203,9 +203,9 @@ impl Display for Event {
 ///
 /// Starts the reactor and associated background tasks, then enters main the event processing loop.
 ///
-/// `launch` will leak memory on start for global structures each time it is called.
+/// `run` will leak memory on start for global structures each time it is called.
 ///
 /// Errors are returned only if component initialization fails.
-pub async fn launch(cfg: Config) -> anyhow::Result<()> {
-    super::launch::<Reactor>(cfg).await
+pub async fn run(cfg: Config) -> Result<()> {
+    super::run::<Reactor>(cfg).await
 }

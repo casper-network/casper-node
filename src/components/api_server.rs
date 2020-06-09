@@ -12,6 +12,7 @@ use std::{
     net::SocketAddr,
 };
 
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp::Filter;
@@ -66,9 +67,10 @@ impl ApiServer {
 impl<REv> Component<REv> for ApiServer {
     type Event = Event;
 
-    fn handle_event(
+    fn handle_event<R: Rng + ?Sized>(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
+        _rng: &mut R,
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>> {
         // TODO: We handle all storage locally on the component. The actual storage should be used.

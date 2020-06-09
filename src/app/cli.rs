@@ -7,7 +7,7 @@ use std::{io, io::Write, path::PathBuf};
 use anyhow::bail;
 use structopt::StructOpt;
 
-use crate::config;
+use crate::{config, logging};
 use casperlabs_node::{reactor, tls};
 
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
@@ -26,7 +26,7 @@ pub enum Cli {
     /// Run the validator node.
     ///
     /// Loads the configuration values from the given configuration file or uses defaults if not
-    /// given, then launches the reactor.
+    /// given, then runs the reactor.
     Validator {
         #[structopt(short, long, env)]
         /// Path to configuration file.
@@ -53,14 +53,10 @@ impl Cli {
 
                 tls::save_cert(&cert, cert_path)?;
                 tls::save_private_key(&key, key_path)?;
-
-                Ok(())
             }
             Cli::GenerateConfig {} => {
                 let cfg_str = config::to_string(&Default::default())?;
                 io::stdout().write_all(cfg_str.as_bytes())?;
-
-                Ok(())
             }
             Cli::Validator { config } => {
                 // We load the specified config, if any, otherwise use defaults.
@@ -68,10 +64,11 @@ impl Cli {
                     .map(config::load_from_file)
                     .transpose()?
                     .unwrap_or_default();
-                cfg.log.setup_logging()?;
+                logging::init()?;
 
-                reactor::validator::launch(cfg.validator_net).await
+                reactor::validator::run(cfg.validator_net).await?
             }
         }
+        Ok(())
     }
 }

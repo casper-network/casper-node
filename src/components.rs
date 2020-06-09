@@ -8,6 +8,8 @@ pub(crate) mod pinger;
 pub(crate) mod small_network;
 pub(crate) mod storage;
 
+use rand::Rng;
+
 use crate::effect::{Effect, EffectBuilder, Multiple};
 
 /// Core Component.
@@ -42,9 +44,10 @@ pub(crate) trait Component<REv> {
     ///
     /// This function must not ever perform any blocking or CPU intensive work, as it is expected
     /// to return very quickly.
-    fn handle_event(
+    fn handle_event<R: Rng + ?Sized>(
         &mut self,
-        eb: EffectBuilder<REv>,
+        effect_builder: EffectBuilder<REv>,
+        rng: &mut R,
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>>;
 }

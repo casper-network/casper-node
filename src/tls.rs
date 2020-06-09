@@ -33,7 +33,6 @@ use std::{
 };
 
 use anyhow::{anyhow, Context};
-use displaydoc::Display;
 use hex_fmt::HexFmt;
 use nid::Nid;
 use openssl::{
@@ -372,41 +371,58 @@ fn set_context_options(
 }
 
 /// Error during certificate validation.
-#[derive(Debug, Display, Error)]
-pub(crate) enum ValidationError {
-    /// error reading public key from certificate: {0:?}
+#[derive(Debug, Error)]
+pub enum ValidationError {
+    /// Failed to read public key from certificate.
+    #[error("error reading public key from certificate: {0:?}")]
     CannotReadPublicKey(#[source] ErrorStack),
-    /// error reading subject or issuer name: {0:?}
+    /// Failed to read subject or issuer name.
+    #[error("error reading subject or issuer name: {0:?}")]
     CorruptSubjectOrIssuer(#[source] ErrorStack),
-    /// wrong signature scheme
+    /// Wrong signature scheme.
+    #[error("wrong signature scheme")]
     WrongSignatureAlgorithm,
-    /// there was an issue reading or converting times: {0:?}
+    /// Failed to read or convert times.
+    #[error("there was an issue reading or converting times: {0:?}")]
     TimeIssue(#[source] ErrorStack),
-    /// the certificate is not yet valid
+    /// Certificate not yet valid.
+    #[error("the certificate is not yet valid")]
     NotYetValid,
-    /// the certificate expired
+    /// Certificate expired.
+    #[error("the certificate expired")]
     Expired,
-    /// the serial number could not be compared to the reference: {0:?}
+    /// Serial number could not be compared to the reference.
+    #[error("the serial number could not be compared to the reference: {0:?}")]
     InvalidSerialNumber(#[source] ErrorStack),
-    /// wrong serial number
+    /// Wrong serial number.
+    #[error("wrong serial number")]
     WrongSerialNumber,
-    /// no valid elliptic curve key could be extracted from certificate: {0:?}
+    /// No valid elliptic curve key could be extracted from certificate.
+    #[error("no valid elliptic curve key could be extracted from certificate: {0:?}")]
     CouldNotExtractEcKey(#[source] ErrorStack),
-    /// the given public key fails basic sanity checks: {0:?}
+    /// Public key failed sanity check.
+    #[error("the given public key fails basic sanity checks: {0:?}")]
     KeyFailsCheck(#[source] ErrorStack),
-    /// underlying elliptic curve is wrong
+    /// Wrong elliptic curve.
+    #[error("underlying elliptic curve is wrong")]
     WrongCurve,
-    /// certificate is not self-signed
+    /// Certificate not self-signed.
+    #[error("certificate is not self-signed")]
     NotSelfSigned,
-    /// the signature could not be validated
+    /// Failed to validate signature.
+    #[error("the signature could not be validated")]
     FailedToValidateSignature(#[source] ErrorStack),
-    /// the signature is invalid
+    /// Invalid signature.
+    #[error("the signature is invalid")]
     InvalidSignature,
-    /// failed to read fingerprint
+    /// Invalid fingerprint.
+    #[error("failed to read fingerprint")]
     InvalidFingerprint(#[source] ErrorStack),
-    /// could not create a big num context
+    /// Failed to create a big num context.
+    #[error("could not create a big num context")]
     BigNumContextNotAvailable(#[source] ErrorStack),
-    /// could not encode public key as bytes
+    /// Failed to encode public key.
+    #[error("could not encode public key as bytes")]
     PublicKeyEncodingFailed(#[source] ErrorStack),
 }
 

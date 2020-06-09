@@ -3,8 +3,9 @@
 //! Effects describe things that the creator of the effect intends to happen, producing a value upon
 //! completion. They are, in fact, futures.
 //!
-//! A boxed, pinned future returning an event is called an effect and typed as an `Effect<Ev>`,
-//! where `Ev` is the event's type.
+//! A pinned, boxed future returning an event is called an effect and typed as an `Effect<Ev>`,
+//! where `Ev` is the event's type. Generally, `Ev` is an Event enum defined at the top level of
+//! each component in the `crate::components` module.
 //!
 //! ## Using effects
 //!
@@ -56,7 +57,7 @@ use crate::{
 use announcements::NetworkAnnouncement;
 use requests::{NetworkRequest, StorageRequest};
 
-/// A boxed future that produces one or more events.
+/// A pinned, boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
 
 /// Intended to hold a small collection of [`Effect`](type.Effect.html)s.
@@ -315,33 +316,41 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given block into the linear block store.  Returns true on success.
-    pub(crate) async fn put_block<S>(self, block: <S::BlockStore as Store>::Value) -> bool
+    // TODO: remove once method is used.
+    #[allow(dead_code)]
+    pub(crate) async fn put_block<S>(
+        self,
+        block: <S::BlockStore as Store>::Value,
+    ) -> Result<(), <S::BlockStore as Store>::Error>
     where
-        S: StorageType,
-        REv: From<Box<StorageRequest<S>>>,
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| Box::new(StorageRequest::PutBlock { block, responder }),
+            |responder| StorageRequest::PutBlock {
+                block: Box::new(block),
+                responder,
+            },
             QueueKind::Regular,
         )
         .await
     }
 
     /// Gets the requested block from the linear block store.
+    // TODO: remove once method is used.
+    #[allow(dead_code)]
     pub(crate) async fn get_block<S>(
         self,
         block_hash: <<S::BlockStore as Store>::Value as Value>::Id,
     ) -> Result<<S::BlockStore as Store>::Value, <S::BlockStore as Store>::Error>
     where
         S: StorageType + 'static,
-        REv: From<Box<StorageRequest<S>>>,
+        REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| {
-                Box::new(StorageRequest::GetBlock {
-                    block_hash,
-                    responder,
-                })
+            |responder| StorageRequest::GetBlock {
+                block_hash,
+                responder,
             },
             QueueKind::Regular,
         )
@@ -349,20 +358,20 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block header from the linear block store.
+    // TODO: remove once method is used.
+    #[allow(dead_code)]
     pub(crate) async fn get_block_header<S>(
         self,
         block_hash: <<S::BlockStore as Store>::Value as Value>::Id,
-    ) -> Option<<<S::BlockStore as Store>::Value as Value>::Header>
+    ) -> Result<<<S::BlockStore as Store>::Value as Value>::Header, <S::BlockStore as Store>::Error>
     where
         S: StorageType + 'static,
-        REv: From<Box<StorageRequest<S>>>,
+        REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| {
-                Box::new(StorageRequest::GetBlockHeader {
-                    block_hash,
-                    responder,
-                })
+            |responder| StorageRequest::GetBlockHeader {
+                block_hash,
+                responder,
             },
             QueueKind::Regular,
         )
@@ -370,33 +379,41 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given deploy into the deploy store.  Returns true on success.
-    pub(crate) async fn put_deploy<S>(self, deploy: <S::DeployStore as Store>::Value) -> bool
+    // TODO: remove once method is used.
+    #[allow(dead_code)]
+    pub(crate) async fn put_deploy<S>(
+        self,
+        deploy: <S::DeployStore as Store>::Value,
+    ) -> Result<(), <S::DeployStore as Store>::Error>
     where
-        S: StorageType,
-        REv: From<Box<StorageRequest<S>>>,
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| Box::new(StorageRequest::PutDeploy { deploy, responder }),
+            |responder| StorageRequest::PutDeploy {
+                deploy: Box::new(deploy),
+                responder,
+            },
             QueueKind::Regular,
         )
         .await
     }
 
     /// Gets the requested deploy from the deploy store.
+    // TODO: remove once method is used.
+    #[allow(dead_code)]
     pub(crate) async fn get_deploy<S>(
         self,
         deploy_hash: <<S::DeployStore as Store>::Value as Value>::Id,
     ) -> Result<<S::DeployStore as Store>::Value, <S::DeployStore as Store>::Error>
     where
         S: StorageType + 'static,
-        REv: From<Box<StorageRequest<S>>>,
+        REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| {
-                Box::new(StorageRequest::GetDeploy {
-                    deploy_hash,
-                    responder,
-                })
+            |responder| StorageRequest::GetDeploy {
+                deploy_hash,
+                responder,
             },
             QueueKind::Regular,
         )
@@ -404,20 +421,20 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested deploy header from the deploy store.
+    // TODO: remove once method is used.
+    #[allow(dead_code)]
     pub(crate) async fn get_deploy_header<S>(
         self,
         deploy_hash: <<S::DeployStore as Store>::Value as Value>::Id,
-    ) -> Option<<<S::DeployStore as Store>::Value as Value>::Header>
+    ) -> Result<<<S::DeployStore as Store>::Value as Value>::Header, <S::DeployStore as Store>::Error>
     where
         S: StorageType + 'static,
-        REv: From<Box<StorageRequest<S>>>,
+        REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| {
-                Box::new(StorageRequest::GetDeployHeader {
-                    deploy_hash,
-                    responder,
-                })
+            |responder| StorageRequest::GetDeployHeader {
+                deploy_hash,
+                responder,
             },
             QueueKind::Regular,
         )

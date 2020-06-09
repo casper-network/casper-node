@@ -43,6 +43,7 @@
 
 mod config;
 mod endpoint;
+mod error;
 mod event;
 mod message;
 
@@ -55,7 +56,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use anyhow::{anyhow, bail, Context};
+use anyhow::Context;
 use futures::{
     stream::{SplitSink, SplitStream},
     FutureExt, SinkExt, StreamExt,
@@ -63,6 +64,7 @@ use futures::{
 use maplit::hashmap;
 use openssl::{pkey, x509::X509};
 use pkey::{PKey, Private};
+use rand::Rng;
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::{
     net::TcpStream,
@@ -73,8 +75,8 @@ use tokio_serde::{formats::SymmetricalMessagePack, SymmetricallyFramed};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::{debug, error, info, warn};
 
-use self::endpoint::EndpointUpdate;
 pub(crate) use self::{endpoint::Endpoint, event::Event, message::Message};
+use self::{endpoint::EndpointUpdate, error::Result};
 use crate::{
     components::Component,
     effect::{
@@ -84,7 +86,12 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind, Reactor},
     tls::{self, KeyFingerprint, Signed, TlsCert},
 };
+// Seems to be a false positive.
+#[allow(unreachable_pub)]
 pub use config::Config;
+// Seems to be a false positive.
+#[allow(unreachable_pub)]
+pub use error::Error;
 
 /// A node ID.
 ///
@@ -99,7 +106,7 @@ pub(crate) struct SmallNetwork<REv: 'static, P> {
     /// Server private key.
     private_key: Arc<PKey<Private>>,
     /// Handle to event queue.
-    eq: EventQueueHandle<REv>,
+    event_queue: EventQueueHandle<REv>,
     /// A list of known endpoints by node ID.
     endpoints: HashMap<NodeId, Endpoint>,
     /// Stored signed endpoints that can be sent to other nodes.
@@ -114,9 +121,9 @@ where
     REv: Send + From<Event<P>>,
 {
     pub(crate) fn new(
-        eq: EventQueueHandle<REv>,
+        event_queue: EventQueueHandle<REv>,
         cfg: Config,
-    ) -> anyhow::Result<(SmallNetwork<REv, P>, Multiple<Effect<Event<P>>>)> {
+    ) -> Result<(SmallNetwork<REv, P>, Multiple<Effect<Event<P>>>)> {
         // First, we load or generate the TLS keys.
         let (cert, private_key) = match (&cfg.cert, &cfg.private_key) {
             // We're given a cert_file and a private_key file. Just load them, additional checking
@@ -131,7 +138,7 @@ where
             (None, None) => tls::generate_node_cert()?,
 
             // If we get only one of the two, return an error.
-            _ => bail!("need either both or none of cert, private_key in network config"),
+            _ => return Err(Error::InvalidConfig),
         };
 
         // We can now create a listener.
@@ -144,20 +151,20 @@ where
             addr,
             tls::validate_cert(cert.clone())?,
         );
-        let our_fp = our_endpoint.cert().public_key_fingerprint();
+        let our_fingerprint = our_endpoint.cert().public_key_fingerprint();
 
         // Run the server task.
         info!(%our_endpoint, "starting server background task");
-        let mut effects = server_task(eq, tokio::net::TcpListener::from_std(listener)?)
+        let mut effects = server_task(event_queue, tokio::net::TcpListener::from_std(listener)?)
             .boxed()
             .ignore();
         let model = SmallNetwork {
             cfg,
-            signed_endpoints: hashmap! { our_fp => Signed::new(&our_endpoint, &private_key)? },
-            endpoints: hashmap! { our_fp => our_endpoint },
+            signed_endpoints: hashmap! { our_fingerprint => Signed::new(&our_endpoint, &private_key)? },
+            endpoints: hashmap! { our_fingerprint => our_endpoint },
             cert: Arc::new(cert),
             private_key: Arc::new(private_key),
-            eq,
+            event_queue,
             outgoing: HashMap::new(),
         };
 
@@ -213,13 +220,13 @@ where
     fn update_endpoint(&mut self, signed: Signed<Endpoint>) -> EndpointUpdate {
         match signed.validate_self_signed(|endpoint| Ok(endpoint.cert().public_key())) {
             Ok(endpoint) => {
-                let fp = endpoint.cert().public_key_fingerprint();
+                let fingerprint = endpoint.cert().public_key_fingerprint();
 
-                match self.endpoints.get(&fp) {
+                match self.endpoints.get(&fingerprint) {
                     None => {
                         // Endpoint was not known at all.
-                        self.endpoints.insert(fp, endpoint.clone());
-                        self.signed_endpoints.insert(fp, signed);
+                        self.endpoints.insert(fingerprint, endpoint.clone());
+                        self.signed_endpoints.insert(fingerprint, signed);
 
                         EndpointUpdate::New { cur: endpoint }
                     }
@@ -231,8 +238,11 @@ where
                     }
                     Some(prev_ep) if prev_ep.dest() == endpoint.dest() => {
                         // The new endpoint has newer timestamp, but points to same destination.
-                        self.signed_endpoints.insert(fp, signed);
-                        let prev = self.endpoints.insert(fp, endpoint.clone()).unwrap();
+                        self.signed_endpoints.insert(fingerprint, signed);
+                        let prev = self
+                            .endpoints
+                            .insert(fingerprint, endpoint.clone())
+                            .unwrap();
                         EndpointUpdate::Refreshed {
                             cur: endpoint,
                             prev,
@@ -240,8 +250,11 @@ where
                     }
                     Some(_) => {
                         // Newer timestamp, different endpoint.
-                        self.signed_endpoints.insert(fp, signed);
-                        let prev = self.endpoints.insert(fp, endpoint.clone()).unwrap();
+                        self.signed_endpoints.insert(fingerprint, signed);
+                        let prev = self
+                            .endpoints
+                            .insert(fingerprint, endpoint.clone())
+                            .unwrap();
                         EndpointUpdate::Updated {
                             cur: endpoint,
                             prev,
@@ -249,7 +262,10 @@ where
                     }
                 }
             }
-            Err(err) => EndpointUpdate::InvalidSignature { signed, err },
+            Err(err) => EndpointUpdate::InvalidSignature {
+                signed,
+                err: err.into(),
+            },
         }
     }
 
@@ -381,9 +397,10 @@ where
     type Event = Event<P>;
 
     #[allow(clippy::cognitive_complexity)]
-    fn handle_event(
+    fn handle_event<R: Rng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
+        _rng: &mut R,
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>> {
         match event {
@@ -418,12 +435,12 @@ where
             }
             Event::IncomingHandshakeCompleted { result, addr } => {
                 match result {
-                    Ok((fp, transport)) => {
-                        debug!(%addr, peer=%fp, "established new connection");
+                    Ok((fingerprint, transport)) => {
+                        debug!(%addr, peer=%fingerprint, "established new connection");
                         // The sink is never used, as we only read data from incoming connections.
                         let (_sink, stream) = framed::<P>(transport).split();
 
-                        message_reader(self.eq, stream, fp)
+                        message_reader(self.event_queue, stream, fingerprint)
                             .event(move |result| Event::IncomingClosed { result, addr })
                     }
                     Err(err) => {
@@ -544,8 +561,10 @@ fn create_listener(cfg: &Config) -> io::Result<(TcpListener, bool)> {
 /// Core accept loop for the networking server.
 ///
 /// Never terminates.
-async fn server_task<P, REv>(eq: EventQueueHandle<REv>, mut listener: tokio::net::TcpListener)
-where
+async fn server_task<P, REv>(
+    event_queue: EventQueueHandle<REv>,
+    mut listener: tokio::net::TcpListener,
+) where
     REv: From<Event<P>>,
 {
     loop {
@@ -554,8 +573,10 @@ where
         match listener.accept().await {
             Ok((stream, addr)) => {
                 // Move the incoming connection to the event queue for handling.
-                let ev = Event::IncomingNew { stream, addr };
-                eq.schedule(ev, QueueKind::NetworkIncoming).await;
+                let event = Event::IncomingNew { stream, addr };
+                event_queue
+                    .schedule(event, QueueKind::NetworkIncoming)
+                    .await;
             }
             Err(err) => warn!(%err, "dropping incoming connection during accept"),
         }
@@ -569,7 +590,7 @@ async fn setup_tls(
     stream: TcpStream,
     cert: Arc<X509>,
     private_key: Arc<PKey<Private>>,
-) -> anyhow::Result<(NodeId, Transport)> {
+) -> Result<(NodeId, Transport)> {
     let tls_stream = tokio_openssl::accept(
         &tls::create_tls_acceptor(&cert.as_ref(), &private_key.as_ref())?,
         stream,
@@ -580,7 +601,7 @@ async fn setup_tls(
     let peer_cert = tls_stream
         .ssl()
         .peer_certificate()
-        .ok_or_else(|| anyhow!("no peer certificate presented"))?;
+        .ok_or_else(|| Error::NoPeerCertificate)?;
 
     Ok((
         tls::validate_cert(peer_cert)?.public_key_fingerprint(),
@@ -592,7 +613,7 @@ async fn setup_tls(
 ///
 /// Schedules all received messages until the stream is closed or an error occurs.
 async fn message_reader<REv, P>(
-    eq: EventQueueHandle<REv>,
+    event_queue: EventQueueHandle<REv>,
     mut stream: SplitStream<FramedTransport<P>>,
     node_id: NodeId,
 ) -> io::Result<()>
@@ -605,11 +626,12 @@ where
             Ok(msg) => {
                 debug!(%msg, %node_id, "message received");
                 // We've received a message, push it to the reactor.
-                eq.schedule(
-                    Event::IncomingMessage { node_id, msg },
-                    QueueKind::NetworkIncoming,
-                )
-                .await;
+                event_queue
+                    .schedule(
+                        Event::IncomingMessage { node_id, msg },
+                        QueueKind::NetworkIncoming,
+                    )
+                    .await;
             }
             Err(err) => {
                 warn!(%err, peer=%node_id, "receiving message failed, closing connection");
@@ -662,13 +684,13 @@ async fn connect_outgoing(
     endpoint: Endpoint,
     cert: Arc<X509>,
     private_key: Arc<PKey<Private>>,
-) -> anyhow::Result<Transport> {
+) -> Result<Transport> {
     let (server_cert, transport) = connect_trusted(endpoint.addr(), cert, private_key).await?;
 
     let remote_id = server_cert.public_key_fingerprint();
 
     if remote_id != endpoint.cert().public_key_fingerprint() {
-        bail!("remote node has wrong ID");
+        return Err(Error::WrongId);
     }
 
     Ok(transport)
@@ -679,7 +701,7 @@ async fn connect_trusted(
     addr: SocketAddr,
     cert: Arc<X509>,
     private_key: Arc<PKey<Private>>,
-) -> anyhow::Result<(TlsCert, Transport)> {
+) -> Result<(TlsCert, Transport)> {
     let mut config = tls::create_tls_connector(&cert, &private_key)
         .context("could not create TLS connector")?
         .configure()?;
@@ -696,7 +718,7 @@ async fn connect_trusted(
     let server_cert = tls_stream
         .ssl()
         .peer_certificate()
-        .ok_or_else(|| anyhow!("no server certificate presented"))?;
+        .ok_or_else(|| Error::NoServerCertificate)?;
     Ok((tls::validate_cert(server_cert)?, tls_stream))
 }
 
@@ -709,7 +731,7 @@ where
         f.debug_struct("SmallNetwork")
             .field("cert", &"<SSL cert>")
             .field("private_key", &"<hidden>")
-            .field("eq", &"<eq>")
+            .field("event_queue", &"<event_queue>")
             .field("endpoints", &self.endpoints)
             .field("signed_endpoints", &self.signed_endpoints)
             .field("outgoing", &self.outgoing)

@@ -1,7 +1,8 @@
 //! The consensus component. Provides distributed consensus among the nodes in the network.
 
-use std::fmt;
+use std::fmt::{self, Display, Formatter};
 
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -32,16 +33,16 @@ pub(crate) enum Event {
     Timer,
 }
 
-impl fmt::Display for Message {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for Message {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Message::Dummy => write!(f, "dummy"),
         }
     }
 }
 
-impl fmt::Display for Event {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for Event {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::MessageReceived { sender, msg } => write!(f, "msg from {}: {}", sender, msg),
             Event::Timer => write!(f, "timer"),
@@ -55,14 +56,17 @@ where
 {
     type Event = Event;
 
-    fn handle_event(
+    fn handle_event<R: Rng + ?Sized>(
         &mut self,
-        eb: EffectBuilder<REv>,
+        effect_builder: EffectBuilder<REv>,
+        _rng: &mut R,
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>> {
         match event {
             Event::Timer => todo!(),
-            Event::MessageReceived { sender, msg } => self.handle_message(eb, sender, msg),
+            Event::MessageReceived { sender, msg } => {
+                self.handle_message(effect_builder, sender, msg)
+            }
         }
     }
 }
@@ -70,7 +74,7 @@ where
 impl Consensus {
     /// Create and initialize a new consensus instance.
     pub(crate) fn new<REv: From<Event> + Send + From<NetworkRequest<NodeId, Message>>>(
-        _eb: EffectBuilder<REv>,
+        _effect_builder: EffectBuilder<REv>,
     ) -> (Self, Multiple<Effect<Event>>) {
         let consensus = Consensus {};
 
@@ -80,7 +84,7 @@ impl Consensus {
     /// Handles an incoming message
     fn handle_message<REv: From<Event> + Send + From<NetworkRequest<NodeId, Message>>>(
         &mut self,
-        _eb: EffectBuilder<REv>,
+        _effect_builder: EffectBuilder<REv>,
         _sender: NodeId,
         _msg: Message,
     ) -> Multiple<Effect<Event>> {

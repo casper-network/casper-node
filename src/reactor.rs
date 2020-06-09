@@ -20,9 +20,10 @@
 //! [`Reactor::dispatch_event()`](trait.Reactor.html#tymethod.dispatch_event) to dispatch events to
 //! components.
 //!
-//! With all these set up, a reactor can be [`launch`](fn.launch.html)ed, causing it to run
+//! With all these set up, a reactor can be [`run`](fn.run.html), causing it to execute
 //! indefinitely, processing events.
 
+mod error;
 pub mod non_validator;
 mod queue_kind;
 pub mod validator;
@@ -40,6 +41,8 @@ use crate::{
     utils::{self, WeightedRoundRobin},
     Config,
 };
+pub use error::Error;
+pub(crate) use error::Result;
 pub use queue_kind::QueueKind;
 
 /// Event scheduler
@@ -83,8 +86,7 @@ impl<REv> EventQueueHandle<REv> {
 
 /// Reactor core.
 ///
-/// Any reactor should implement this trait and be launched by the [`launch`](fn.launch.html)
-/// function.
+/// Any reactor should implement this trait and be executed by the `reactor::run` function.
 pub(crate) trait Reactor: Sized {
     // Note: We've gone for the `Sized` bound here, since we return an instance in `new`. As an
     // alternative, `new` could return a boxed instance instead, removing this requirement.
@@ -101,7 +103,7 @@ pub(crate) trait Reactor: Sized {
     /// accounting.
     fn dispatch_event(
         &mut self,
-        eb: EffectBuilder<Self::Event>,
+        effect_builder: EffectBuilder<Self::Event>,
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>>;
 
@@ -113,19 +115,19 @@ pub(crate) trait Reactor: Sized {
     /// If any instantiation fails, an error is returned.
     fn new(
         cfg: Config,
-        eq: EventQueueHandle<Self::Event>,
-    ) -> anyhow::Result<(Self, Multiple<Effect<Self::Event>>)>;
+        event_queue: EventQueueHandle<Self::Event>,
+    ) -> Result<(Self, Multiple<Effect<Self::Event>>)>;
 }
 
 /// Runs a reactor.
 ///
 /// Starts the reactor and associated background tasks, then enters main the event processing loop.
 ///
-/// `launch` will leak memory on start for global structures each time it is called.
+/// `run` will leak memory on start for global structures each time it is called.
 ///
 /// Errors are returned only if component initialization fails.
 #[inline]
-async fn launch<R: Reactor>(cfg: Config) -> anyhow::Result<()> {
+async fn run<R: Reactor>(cfg: Config) -> Result<()> {
     let event_size = mem::size_of::<R::Event>();
     // Check if the event is of a reasonable size. This only emits a runtime warning at startup
     // right now, since storage size of events is not an issue per se, but copying might be
@@ -142,14 +144,14 @@ async fn launch<R: Reactor>(cfg: Config) -> anyhow::Result<()> {
     // Create a new event queue for this reactor run.
     let scheduler = utils::leak(scheduler);
 
-    let eq = EventQueueHandle::new(scheduler);
-    let (mut reactor, initial_effects) = R::new(cfg, eq)?;
+    let event_queue = EventQueueHandle::new(scheduler);
+    let (mut reactor, initial_effects) = R::new(cfg, event_queue)?;
 
     // Run all effects from component instantiation.
     process_effects(scheduler, initial_effects).await;
 
     info!("entering reactor main loop");
-    let eb = EffectBuilder::new(eq);
+    let effect_builder = EffectBuilder::new(event_queue);
     loop {
         let (event, q) = scheduler.pop().await;
 
@@ -158,7 +160,7 @@ async fn launch<R: Reactor>(cfg: Config) -> anyhow::Result<()> {
         trace!(?event, ?q);
 
         // Dispatch the event, then execute the resulting effect.
-        let effects = reactor.dispatch_event(eb, event);
+        let effects = reactor.dispatch_event(effect_builder, event);
         process_effects(scheduler, effects).await;
     }
 }
