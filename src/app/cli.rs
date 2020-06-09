@@ -53,14 +53,10 @@ impl Cli {
 
                 tls::save_cert(&cert, cert_path)?;
                 tls::save_private_key(&key, key_path)?;
-
-                Ok(())
             }
             Cli::GenerateConfig {} => {
                 let cfg_str = config::to_string(&Default::default())?;
                 io::stdout().write_all(cfg_str.as_bytes())?;
-
-                Ok(())
             }
             Cli::Validator { config } => {
                 // We load the specified config, if any, otherwise use defaults.
@@ -70,8 +66,9 @@ impl Cli {
                     .unwrap_or_default();
                 logging::init()?;
 
-                reactor::validator::run(cfg.validator_net).await
+                reactor::validator::run(cfg.validator_net).await?
             }
         }
+        Ok(())
     }
 }

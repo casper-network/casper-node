@@ -43,6 +43,7 @@
 
 mod config;
 mod endpoint;
+mod error;
 mod event;
 mod message;
 
@@ -55,7 +56,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use anyhow::{anyhow, bail, Context};
+use anyhow::Context;
 use futures::{
     stream::{SplitSink, SplitStream},
     FutureExt, SinkExt, StreamExt,
@@ -74,8 +75,8 @@ use tokio_serde::{formats::SymmetricalMessagePack, SymmetricallyFramed};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::{debug, error, info, warn};
 
-use self::endpoint::EndpointUpdate;
 pub(crate) use self::{endpoint::Endpoint, event::Event, message::Message};
+use self::{endpoint::EndpointUpdate, error::Result};
 use crate::{
     components::Component,
     effect::{
@@ -85,7 +86,12 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind, Reactor},
     tls::{self, KeyFingerprint, Signed, TlsCert},
 };
+// Seems to be a false positive.
+#[allow(unreachable_pub)]
 pub use config::Config;
+// Seems to be a false positive.
+#[allow(unreachable_pub)]
+pub use error::Error;
 
 /// A node ID.
 ///
@@ -117,7 +123,7 @@ where
     pub(crate) fn new(
         event_queue: EventQueueHandle<REv>,
         cfg: Config,
-    ) -> anyhow::Result<(SmallNetwork<REv, P>, Multiple<Effect<Event<P>>>)> {
+    ) -> Result<(SmallNetwork<REv, P>, Multiple<Effect<Event<P>>>)> {
         // First, we load or generate the TLS keys.
         let (cert, private_key) = match (&cfg.cert, &cfg.private_key) {
             // We're given a cert_file and a private_key file. Just load them, additional checking
@@ -132,7 +138,7 @@ where
             (None, None) => tls::generate_node_cert()?,
 
             // If we get only one of the two, return an error.
-            _ => bail!("need either both or none of cert, private_key in network config"),
+            _ => return Err(Error::InvalidConfig),
         };
 
         // We can now create a listener.
@@ -256,7 +262,10 @@ where
                     }
                 }
             }
-            Err(err) => EndpointUpdate::InvalidSignature { signed, err },
+            Err(err) => EndpointUpdate::InvalidSignature {
+                signed,
+                err: err.into(),
+            },
         }
     }
 
@@ -581,7 +590,7 @@ async fn setup_tls(
     stream: TcpStream,
     cert: Arc<X509>,
     private_key: Arc<PKey<Private>>,
-) -> anyhow::Result<(NodeId, Transport)> {
+) -> Result<(NodeId, Transport)> {
     let tls_stream = tokio_openssl::accept(
         &tls::create_tls_acceptor(&cert.as_ref(), &private_key.as_ref())?,
         stream,
@@ -592,7 +601,7 @@ async fn setup_tls(
     let peer_cert = tls_stream
         .ssl()
         .peer_certificate()
-        .ok_or_else(|| anyhow!("no peer certificate presented"))?;
+        .ok_or_else(|| Error::NoPeerCertificate)?;
 
     Ok((
         tls::validate_cert(peer_cert)?.public_key_fingerprint(),
@@ -675,13 +684,13 @@ async fn connect_outgoing(
     endpoint: Endpoint,
     cert: Arc<X509>,
     private_key: Arc<PKey<Private>>,
-) -> anyhow::Result<Transport> {
+) -> Result<Transport> {
     let (server_cert, transport) = connect_trusted(endpoint.addr(), cert, private_key).await?;
 
     let remote_id = server_cert.public_key_fingerprint();
 
     if remote_id != endpoint.cert().public_key_fingerprint() {
-        bail!("remote node has wrong ID");
+        return Err(Error::WrongId);
     }
 
     Ok(transport)
@@ -692,7 +701,7 @@ async fn connect_trusted(
     addr: SocketAddr,
     cert: Arc<X509>,
     private_key: Arc<PKey<Private>>,
-) -> anyhow::Result<(TlsCert, Transport)> {
+) -> Result<(TlsCert, Transport)> {
     let mut config = tls::create_tls_connector(&cert, &private_key)
         .context("could not create TLS connector")?
         .configure()?;
@@ -709,7 +718,7 @@ async fn connect_trusted(
     let server_cert = tls_stream
         .ssl()
         .peer_certificate()
-        .ok_or_else(|| anyhow!("no server certificate presented"))?;
+        .ok_or_else(|| Error::NoServerCertificate)?;
     Ok((tls::validate_cert(server_cert)?, tls_stream))
 }
 

@@ -8,8 +8,9 @@ pub(crate) mod pinger;
 pub(crate) mod small_network;
 pub(crate) mod storage;
 
-use crate::effect::{Effect, EffectBuilder, Multiple};
 use rand::Rng;
+
+use crate::effect::{Effect, EffectBuilder, Multiple};
 
 /// Core Component.
 ///

@@ -23,6 +23,7 @@
 //! With all these set up, a reactor can be [`run`](fn.run.html), causing it to execute
 //! indefinitely, processing events.
 
+mod error;
 pub mod non_validator;
 mod queue_kind;
 pub mod validator;
@@ -40,6 +41,8 @@ use crate::{
     utils::{self, WeightedRoundRobin},
     Config,
 };
+pub use error::Error;
+pub(crate) use error::Result;
 pub use queue_kind::QueueKind;
 
 /// Event scheduler
@@ -113,7 +116,7 @@ pub(crate) trait Reactor: Sized {
     fn new(
         cfg: Config,
         event_queue: EventQueueHandle<Self::Event>,
-    ) -> anyhow::Result<(Self, Multiple<Effect<Self::Event>>)>;
+    ) -> Result<(Self, Multiple<Effect<Self::Event>>)>;
 }
 
 /// Runs a reactor.
@@ -124,7 +127,7 @@ pub(crate) trait Reactor: Sized {
 ///
 /// Errors are returned only if component initialization fails.
 #[inline]
-async fn run<R: Reactor>(cfg: Config) -> anyhow::Result<()> {
+async fn run<R: Reactor>(cfg: Config) -> Result<()> {
     let event_size = mem::size_of::<R::Event>();
     // Check if the event is of a reasonable size. This only emits a runtime warning at startup
     // right now, since storage size of events is not an issue per se, but copying might be

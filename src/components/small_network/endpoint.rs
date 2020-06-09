@@ -6,7 +6,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use super::NodeId;
+use super::{Error, NodeId};
 use crate::tls::{Signed, TlsCert};
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -38,7 +38,7 @@ pub(super) enum EndpointUpdate {
     /// The signature was invalid and the endpoint discarded.
     InvalidSignature {
         signed: Signed<Endpoint>,
-        err: anyhow::Error,
+        err: Error,
     },
 }
 

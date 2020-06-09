@@ -7,7 +7,7 @@ use std::{
 use derive_more::From;
 use tokio::net::TcpStream;
 
-use super::{Message, NodeId, Transport};
+use super::{Error, Message, NodeId, Transport};
 use crate::{effect::requests::NetworkRequest, tls::TlsCert};
 
 #[derive(Debug, From)]
@@ -15,12 +15,12 @@ pub(crate) enum Event<P> {
     /// Connection to the root node succeeded.
     RootConnected { cert: TlsCert, transport: Transport },
     /// Connection to the root node failed.
-    RootFailed { error: anyhow::Error },
+    RootFailed { error: Error },
     /// A new TCP connection has been established from an incoming connection.
     IncomingNew { stream: TcpStream, addr: SocketAddr },
     /// The TLS handshake completed on the incoming connection.
     IncomingHandshakeCompleted {
-        result: anyhow::Result<(NodeId, Transport)>,
+        result: Result<(NodeId, Transport), Error>,
         addr: SocketAddr,
     },
     /// Received network message.
@@ -40,7 +40,7 @@ pub(crate) enum Event<P> {
     OutgoingFailed {
         node_id: NodeId,
         attempt_count: u32,
-        error: Option<anyhow::Error>,
+        error: Option<Error>,
     },
 
     /// Incoming network request.

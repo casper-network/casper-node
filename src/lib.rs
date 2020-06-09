@@ -30,5 +30,5 @@ pub mod tls;
 pub mod types;
 mod utils;
 
-pub use components::small_network::Config;
 pub(crate) use components::small_network::{self, SmallNetwork};
+pub use components::small_network::{Config, Error};

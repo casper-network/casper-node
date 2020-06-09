@@ -372,39 +372,56 @@ fn set_context_options(
 
 /// Error during certificate validation.
 #[derive(Debug, Error)]
-pub(crate) enum ValidationError {
+pub enum ValidationError {
+    /// Failed to read public key from certificate.
     #[error("error reading public key from certificate: {0:?}")]
     CannotReadPublicKey(#[source] ErrorStack),
+    /// Failed to read subject or issuer name.
     #[error("error reading subject or issuer name: {0:?}")]
     CorruptSubjectOrIssuer(#[source] ErrorStack),
+    /// Wrong signature scheme.
     #[error("wrong signature scheme")]
     WrongSignatureAlgorithm,
+    /// Failed to read or convert times.
     #[error("there was an issue reading or converting times: {0:?}")]
     TimeIssue(#[source] ErrorStack),
+    /// Certificate not yet valid.
     #[error("the certificate is not yet valid")]
     NotYetValid,
+    /// Certificate expired.
     #[error("the certificate expired")]
     Expired,
+    /// Serial number could not be compared to the reference.
     #[error("the serial number could not be compared to the reference: {0:?}")]
     InvalidSerialNumber(#[source] ErrorStack),
+    /// Wrong serial number.
     #[error("wrong serial number")]
     WrongSerialNumber,
+    /// No valid elliptic curve key could be extracted from certificate.
     #[error("no valid elliptic curve key could be extracted from certificate: {0:?}")]
     CouldNotExtractEcKey(#[source] ErrorStack),
+    /// Public key failed sanity check.
     #[error("the given public key fails basic sanity checks: {0:?}")]
     KeyFailsCheck(#[source] ErrorStack),
+    /// Wrong elliptic curve.
     #[error("underlying elliptic curve is wrong")]
     WrongCurve,
+    /// Certificate not self-signed.
     #[error("certificate is not self-signed")]
     NotSelfSigned,
+    /// Failed to validate signature.
     #[error("the signature could not be validated")]
     FailedToValidateSignature(#[source] ErrorStack),
+    /// Invalid signature.
     #[error("the signature is invalid")]
     InvalidSignature,
+    /// Invalid fingerprint.
     #[error("failed to read fingerprint")]
     InvalidFingerprint(#[source] ErrorStack),
+    /// Failed to create a big num context.
     #[error("could not create a big num context")]
     BigNumContextNotAvailable(#[source] ErrorStack),
+    /// Failed to encode public key.
     #[error("could not encode public key as bytes")]
     PublicKeyEncodingFailed(#[source] ErrorStack),
 }

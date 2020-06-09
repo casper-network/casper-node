@@ -22,7 +22,7 @@ use crate::{
         requests::{NetworkRequest, StorageRequest},
         Effect, EffectBuilder, Multiple,
     },
-    reactor::{self, EventQueueHandle},
+    reactor::{self, EventQueueHandle, Result},
     small_network::{self, NodeId},
     Config, SmallNetwork,
 };
@@ -96,7 +96,7 @@ impl reactor::Reactor for Reactor {
     fn new(
         cfg: Config,
         event_queue: EventQueueHandle<Self::Event>,
-    ) -> anyhow::Result<(Self, Multiple<Effect<Self::Event>>)> {
+    ) -> Result<(Self, Multiple<Effect<Self::Event>>)> {
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, cfg)?;
 
@@ -206,6 +206,6 @@ impl Display for Event {
 /// `run` will leak memory on start for global structures each time it is called.
 ///
 /// Errors are returned only if component initialization fails.
-pub async fn run(cfg: Config) -> anyhow::Result<()> {
+pub async fn run(cfg: Config) -> Result<()> {
     super::run::<Reactor>(cfg).await
 }
