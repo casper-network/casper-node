@@ -45,7 +45,7 @@ pub(crate) trait Component<REv> {
     /// to return very quickly.
     fn handle_event<R: Rng + ?Sized>(
         &mut self,
-        eb: EffectBuilder<REv>,
+        effect_builder: EffectBuilder<REv>,
         rng: &mut R,
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>>;

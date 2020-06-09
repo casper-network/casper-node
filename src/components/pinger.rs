@@ -73,18 +73,20 @@ where
 
     fn handle_event<R: Rng + ?Sized>(
         &mut self,
-        eb: EffectBuilder<REv>,
+        effect_builder: EffectBuilder<REv>,
         _rng: &mut R,
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>> {
         match event {
-            Event::Timer => self.send_pings(eb),
+            Event::Timer => self.send_pings(effect_builder),
             Event::MessageReceived {
                 sender,
                 msg: Message::Ping(counter),
             } => {
                 // When receiving a `Ping`, do nothing but reply with a `Pong`.
-                eb.send_message(sender, Message::Pong(counter)).ignore()
+                effect_builder
+                    .send_message(sender, Message::Pong(counter))
+                    .ignore()
             }
             Event::MessageReceived {
                 sender,
@@ -106,7 +108,7 @@ where
 impl Pinger {
     /// Create and initialize a new pinger.
     pub(crate) fn new<REv: From<Event> + Send + From<NetworkRequest<NodeId, Message>>>(
-        eb: EffectBuilder<REv>,
+        effect_builder: EffectBuilder<REv>,
     ) -> (Self, Multiple<Effect<Event>>) {
         let mut pinger = Pinger {
             responsive_nodes: HashSet::new(),
@@ -114,7 +116,7 @@ impl Pinger {
         };
 
         // We send out a round of pings immediately on construction.
-        let init = pinger.send_pings(eb);
+        let init = pinger.send_pings(effect_builder);
 
         (pinger, init)
     }
@@ -122,7 +124,7 @@ impl Pinger {
     /// Broadcast a ping and set a timer for the next broadcast.
     fn send_pings<REv: From<Event> + Send + From<NetworkRequest<NodeId, Message>>>(
         &mut self,
-        eb: EffectBuilder<REv>,
+        effect_builder: EffectBuilder<REv>,
     ) -> Multiple<Effect<Event>> {
         info!(
             "starting new ping round, previously saw {{{}}}",
@@ -136,10 +138,15 @@ impl Pinger {
 
         let mut effects: Multiple<Effect<Event>> = Default::default();
         effects.extend(
-            eb.broadcast_message(Message::Ping(self.ping_counter))
+            effect_builder
+                .broadcast_message(Message::Ping(self.ping_counter))
                 .ignore(),
         );
-        effects.extend(eb.set_timeout(PING_INTERVAL).event(|_| Event::Timer));
+        effects.extend(
+            effect_builder
+                .set_timeout(PING_INTERVAL)
+                .event(|_| Event::Timer),
+        );
 
         effects
     }

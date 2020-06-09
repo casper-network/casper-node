@@ -26,7 +26,7 @@ pub enum Cli {
     /// Run the validator node.
     ///
     /// Loads the configuration values from the given configuration file or uses defaults if not
-    /// given, then launches the reactor.
+    /// given, then runs the reactor.
     Validator {
         #[structopt(short, long, env)]
         /// Path to configuration file.
@@ -70,7 +70,7 @@ impl Cli {
                     .unwrap_or_default();
                 cfg.log.setup_logging()?;
 
-                reactor::validator::launch(cfg.validator_net).await
+                reactor::validator::run(cfg.validator_net).await
             }
         }
     }
