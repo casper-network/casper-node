@@ -31,4 +31,12 @@ pub mod types;
 mod utils;
 
 pub(crate) use components::small_network::{self, SmallNetwork};
-pub use components::small_network::{Config, Error};
+pub use components::{
+    api_server::Config as ApiServerConfig,
+    small_network::{Config as SmallNetworkConfig, Error},
+};
+
+/// The default listening port for the root node of the validator network.
+pub const ROOT_VALIDATOR_LISTENING_PORT: u16 = 34553;
+/// The default listening port for the root node of the public network.
+pub const ROOT_PUBLIC_LISTENING_PORT: u16 = 1485;

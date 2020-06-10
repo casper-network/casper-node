@@ -9,12 +9,12 @@
 
 use std::{
     fmt::{self, Display, Formatter},
-    net::SocketAddr,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
 };
 
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{debug, info, warn};
 use warp::Filter;
 
 use super::Component;
@@ -22,6 +22,34 @@ use crate::{
     effect::{requests::ApiRequest, Effect, EffectBuilder, EffectExt, Multiple, Responder},
     reactor::QueueKind,
 };
+
+const DEPLOYS_API_PATH: &str = "deploys";
+
+/// API server configuration.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Config {
+    /// Interface to bind to. Defaults to loopback address.
+    pub bind_interface: IpAddr,
+
+    /// Port to bind to. Use 0 for a random port. Defaults to 0.
+    pub bind_port: u16,
+}
+
+impl Config {
+    /// Creates a default instance for `ApiServer`.
+    pub fn new() -> Self {
+        Config {
+            bind_interface: Ipv4Addr::LOCALHOST.into(),
+            bind_port: 0,
+        }
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config::new()
+    }
+}
 
 /// Placeholder deploy.
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
@@ -45,7 +73,10 @@ pub(crate) struct ApiServer {
 pub(crate) type Event = ApiRequest;
 
 impl ApiServer {
-    pub(crate) fn new<REv>(effect_builder: EffectBuilder<REv>) -> (Self, Multiple<Effect<Event>>)
+    pub(crate) fn new<REv>(
+        config: Config,
+        effect_builder: EffectBuilder<REv>,
+    ) -> (Self, Multiple<Effect<Event>>)
     where
         REv: From<ApiRequest> + Send,
     {
@@ -55,10 +86,7 @@ impl ApiServer {
         };
 
         // Start the actual HTTP server.
-        tokio::spawn(run_server(
-            "127.0.0.1:7777".parse().unwrap(),
-            effect_builder,
-        ));
+        tokio::spawn(run_server(config, effect_builder));
 
         (api_server, effects)
     }
@@ -86,7 +114,7 @@ impl<REv> Component<REv> for ApiServer {
     }
 }
 
-/// Helper function that JSON encodes a response from a reacter request.
+/// Helper function that JSON encodes a response from a reactor request.
 // Note: Also takes care of some otherwise tricky type annotations.
 async fn handle_http_request<REv, T, Q, F>(
     effect_builder: EffectBuilder<REv>,
@@ -104,18 +132,20 @@ where
 }
 
 /// Run the HTTP server.
-async fn run_server<REv>(server_addr: SocketAddr, effect_builder: EffectBuilder<REv>)
+async fn run_server<REv>(config: Config, effect_builder: EffectBuilder<REv>)
 where
     REv: From<ApiRequest> + Send,
 {
-    let get_deploys = warp::get().and(warp::path("deploys")).and_then(move || {
-        handle_http_request(effect_builder, |responder| ApiRequest::GetDeploys {
-            responder,
-        })
-    });
+    let get_deploys = warp::get()
+        .and(warp::path(DEPLOYS_API_PATH))
+        .and_then(move || {
+            handle_http_request(effect_builder, |responder| ApiRequest::GetDeploys {
+                responder,
+            })
+        });
 
     let post_deploys = warp::post()
-        .and(warp::path("deploys"))
+        .and(warp::path(DEPLOYS_API_PATH))
         .and(warp::body::json())
         .and_then(move |deploys| {
             handle_http_request(effect_builder, |responder| ApiRequest::SubmitDeploys {
@@ -124,11 +154,32 @@ where
             })
         });
 
-    info!(%server_addr, "starting HTTP server");
+    let mut server_addr = SocketAddr::from((config.bind_interface, config.bind_port));
 
-    // TODO: This call will panic if the port cannot be bound. It is possible that a framework other
-    //       than `warp` is a better choice overall.
-    warp::serve(get_deploys.or(post_deploys))
-        .run(server_addr)
-        .await;
+    debug!(%server_addr, "starting HTTP server");
+    match warp::serve(get_deploys.or(post_deploys)).try_bind_ephemeral(server_addr) {
+        Ok((addr, server_fut)) => {
+            info!(%addr, "started HTTP server");
+            return server_fut.await;
+        }
+        Err(error) => {
+            if server_addr.port() == 0 {
+                warn!(%error, "failed to start HTTP server");
+                return;
+            } else {
+                debug!(%error, "failed to start HTTP server. retrying on random port");
+            }
+        }
+    }
+
+    server_addr.set_port(0);
+    match warp::serve(get_deploys.or(post_deploys)).try_bind_ephemeral(server_addr) {
+        Ok((addr, server_fut)) => {
+            info!(%addr, "started HTTP server");
+            server_fut.await;
+        }
+        Err(error) => {
+            warn!(%error, "failed to start HTTP server");
+        }
+    }
 }

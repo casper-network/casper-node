@@ -66,7 +66,7 @@ impl Cli {
                     .unwrap_or_default();
                 logging::init()?;
 
-                reactor::validator::run(cfg.validator_net).await?
+                reactor::validator::run(cfg.validator_net, cfg.api_server).await?
             }
         }
         Ok(())

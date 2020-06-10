@@ -22,7 +22,9 @@ use std::{fs, path::Path};
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
-use casperlabs_node::Config as SmallNetworkConfig;
+use casperlabs_node::{
+    ApiServerConfig, SmallNetworkConfig, ROOT_PUBLIC_LISTENING_PORT, ROOT_VALIDATOR_LISTENING_PORT,
+};
 
 /// Root configuration.
 #[derive(Debug, Deserialize, Serialize)]
@@ -31,13 +33,16 @@ pub struct Config {
     pub validator_net: SmallNetworkConfig,
     /// Network configuration for the public network.
     pub public_net: SmallNetworkConfig,
+    /// Network configuration for the API
+    pub api_server: ApiServerConfig,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Config {
-            validator_net: SmallNetworkConfig::default_on_port(34553),
-            public_net: SmallNetworkConfig::default_on_port(1485),
+            validator_net: SmallNetworkConfig::default_on_port(ROOT_VALIDATOR_LISTENING_PORT),
+            public_net: SmallNetworkConfig::default_on_port(ROOT_PUBLIC_LISTENING_PORT),
+            api_server: ApiServerConfig::default(),
         }
     }
 }

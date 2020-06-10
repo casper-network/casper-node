@@ -24,7 +24,7 @@ use crate::{
     },
     reactor::{self, EventQueueHandle, Result},
     small_network::{self, NodeId},
-    Config, SmallNetwork,
+    ApiServerConfig, SmallNetwork, SmallNetworkConfig,
 };
 
 #[derive(Debug, Clone, From, Serialize, Deserialize)]
@@ -94,17 +94,18 @@ impl reactor::Reactor for Reactor {
     type Event = Event;
 
     fn new(
-        cfg: Config,
+        validator_network_config: SmallNetworkConfig,
+        api_server_config: ApiServerConfig,
         event_queue: EventQueueHandle<Self::Event>,
     ) -> Result<(Self, Multiple<Effect<Self::Event>>)> {
         let effect_builder = EffectBuilder::new(event_queue);
-        let (net, net_effects) = SmallNetwork::new(event_queue, cfg)?;
+        let (net, net_effects) = SmallNetwork::new(event_queue, validator_network_config)?;
 
         let (pinger, pinger_effects) = Pinger::new(effect_builder);
 
         let storage = Storage::new();
 
-        let (api_server, api_server_effects) = ApiServer::new(effect_builder);
+        let (api_server, api_server_effects) = ApiServer::new(api_server_config, effect_builder);
         let (consensus, consensus_effects) = Consensus::new(effect_builder);
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
@@ -206,6 +207,9 @@ impl Display for Event {
 /// `run` will leak memory on start for global structures each time it is called.
 ///
 /// Errors are returned only if component initialization fails.
-pub async fn run(cfg: Config) -> Result<()> {
-    super::run::<Reactor>(cfg).await
+pub async fn run(
+    validator_network_config: SmallNetworkConfig,
+    api_server_config: ApiServerConfig,
+) -> Result<()> {
+    super::run::<Reactor>(validator_network_config, api_server_config).await
 }
