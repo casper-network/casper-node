@@ -4,6 +4,8 @@
 use super::super::consensus_protocol::{NodeId, TimerId};
 use std::time::Instant;
 
+use serde::{Deserialize, Serialize};
+
 // Very simple reactor effect.
 #[derive(Debug)]
 pub(crate) enum Effect<Ev> {
@@ -21,5 +23,5 @@ pub(crate) struct MessageWireFormat {
     pub(crate) message_content: Vec<u8>,
 }
 
-#[derive(Debug, Hash, PartialEq, Eq)]
-pub(crate) struct EraId(u64);
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct EraId(pub(crate) u64);

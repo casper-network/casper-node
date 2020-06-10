@@ -1,16 +1,13 @@
 #![allow(dead_code)]
 use std::{hash::Hash, time::Instant};
 
-mod impls;
 mod protocol_state;
 mod synchronizer;
 
-pub(crate) use impls::pothole;
-
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct TimerId(u64);
+pub(crate) struct TimerId(pub(crate) u64);
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct NodeId(u64);
 
 pub(crate) trait ConsensusContext {

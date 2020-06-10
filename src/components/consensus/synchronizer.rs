@@ -2,6 +2,8 @@
 mod tests;
 mod traits;
 
+use serde::{Deserialize, Serialize};
+
 pub(crate) use traits::{DependencySpec, HandleNewItemResult, ItemWithId, NodeId, ProtocolState};
 
 use std::collections::HashMap;
@@ -22,7 +24,7 @@ pub(crate) struct Synchronizer<N: NodeId, C: ProtocolState> {
 }
 
 /// Messages that can be sent and handled by the synchronizer
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub(crate) enum SynchronizerMessage<D: DependencySpec> {
     DependencyRequest(D::DependencyDescription),
     NewItem(D::ItemId, D::Item),

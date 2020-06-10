@@ -7,6 +7,9 @@ mod consensus_service;
 mod pothole;
 // TODO: remove when we actually construct a Pothole era
 #[allow(unused)]
+mod protocols;
+// TODO: remove when we actually construct a Pothole era
+#[allow(unused)]
 mod synchronizer;
 // TODO: remove when we actually construct a Pothole era
 #[allow(unused)]
@@ -23,37 +26,41 @@ use crate::{
     types::Block,
 };
 
-use consensus_protocol::pothole::PotholeContext;
-use consensus_service::consensus_service::EraSupervisor;
+use consensus_protocol::NodeId as ConsensusNodeId;
+use consensus_service::{
+    consensus_service::{ConsensusService, EraSupervisor, Event as ConsensusEvent},
+    traits::{EraId, MessageWireFormat},
+};
+use protocols::pothole::PotholeContext;
 
 /// The consensus component.
 #[derive(Debug)]
 pub(crate) struct Consensus {
-    era_supervisor: EraSupervisor<PotholeContext<NodeId, Block>>,
+    era_supervisor: EraSupervisor<PotholeContext<ConsensusNodeId, Block>>,
 }
 
-/// Network message used by the consensus component.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub(crate) enum Message {
-    /// TODO: create actual message variants
-    Dummy,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ConsensusMessage {
+    era_id: EraId,
+    payload: Vec<u8>,
 }
 
 /// Consensus component event.
 #[derive(Debug)]
 pub(crate) enum Event {
     /// An incoming network message.
-    MessageReceived { sender: NodeId, msg: Message },
+    MessageReceived {
+        sender: NodeId,
+        msg: ConsensusMessage,
+    },
     // TODO: remove lint relaxation
     #[allow(dead_code)]
     Timer,
 }
 
-impl Display for Message {
+impl Display for ConsensusMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Message::Dummy => write!(f, "dummy"),
-        }
+        write!(f, "ConsensusMessage {{ era_id: {}, .. }}", self.era_id.0)
     }
 }
 
@@ -68,7 +75,7 @@ impl Display for Event {
 
 impl<REv> Component<REv> for Consensus
 where
-    REv: From<Event> + Send + From<NetworkRequest<NodeId, Message>>,
+    REv: From<Event> + Send + From<NetworkRequest<NodeId, ConsensusMessage>>,
 {
     type Event = Event;
 
@@ -89,23 +96,37 @@ where
 
 impl Consensus {
     /// Create and initialize a new consensus instance.
-    pub(crate) fn new<REv: From<Event> + Send + From<NetworkRequest<NodeId, Message>>>(
+    pub(crate) fn new<REv: From<Event> + Send + From<NetworkRequest<NodeId, ConsensusMessage>>>(
         _effect_builder: EffectBuilder<REv>,
     ) -> (Self, Multiple<Effect<Event>>) {
         let consensus = Consensus {
-            era_supervisor: EraSupervisor::<PotholeContext<NodeId, Block>>::new(),
+            era_supervisor: EraSupervisor::<PotholeContext<ConsensusNodeId, Block>>::new(),
         };
 
         (consensus, Default::default())
     }
 
+    fn internal_node_id(&self, _node_id: NodeId) -> ConsensusNodeId {
+        todo!("implement some kind of mapping between node ids")
+    }
+
     /// Handles an incoming message
-    fn handle_message<REv: From<Event> + Send + From<NetworkRequest<NodeId, Message>>>(
+    fn handle_message<REv: From<Event> + Send + From<NetworkRequest<NodeId, ConsensusMessage>>>(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
-        _sender: NodeId,
-        _msg: Message,
+        sender: NodeId,
+        msg: ConsensusMessage,
     ) -> Multiple<Effect<Event>> {
+        let msg = MessageWireFormat {
+            era_id: msg.era_id,
+            sender: self.internal_node_id(sender),
+            message_content: msg.payload,
+        };
+
+        let _result = self
+            .era_supervisor
+            .handle_event(ConsensusEvent::IncomingMessage(msg));
+
         Default::default()
     }
 }

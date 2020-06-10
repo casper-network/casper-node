@@ -1,18 +1,25 @@
 use std::{
     collections::{BTreeSet, VecDeque},
+    convert::{From, TryFrom},
     hash::Hash,
     marker::PhantomData,
     mem,
 };
 
-use super::super::super::pothole::{Block, BlockIndex, Pothole, PotholeResult};
-use super::super::super::synchronizer::{
+use bincode;
+use derive_more::{Deref, DerefMut};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+
+use super::super::consensus_protocol::{
+    ConsensusContext, ConsensusProtocol, ConsensusProtocolResult, NodeId as ConsensusNodeId,
+    TimerId,
+};
+use super::super::consensus_service::traits::{EraId, MessageWireFormat};
+use super::super::pothole::{Block, BlockIndex, Pothole, PotholeResult};
+use super::super::synchronizer::{
     DependencySpec, HandleNewItemResult, ItemWithId, NodeId, ProtocolState, Synchronizer,
     SynchronizerMessage,
 };
-use derive_more::{Deref, DerefMut};
-
-use super::super::{ConsensusContext, ConsensusProtocol, ConsensusProtocolResult, TimerId};
 
 #[derive(Debug)]
 pub(crate) enum PotholeMessage<B> {
@@ -40,7 +47,7 @@ impl<B: Block> PotholeWrapper<B> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct PotholeDepSpec<B> {
     to_request: BTreeSet<BlockIndex>,
     requested: BTreeSet<BlockIndex>,
@@ -178,5 +185,32 @@ impl<N: NodeId, B: Block + Hash + Eq> ConsensusProtocol<PotholeContext<N, B>>
             .into_iter()
             .filter_map(into_consensus_result)
             .collect())
+    }
+}
+
+impl<B: Block + Hash + Eq + DeserializeOwned> TryFrom<MessageWireFormat>
+    for (ConsensusNodeId, SynchronizerMessage<PotholeDepSpec<B>>)
+{
+    type Error = bincode::Error;
+
+    fn try_from(msg: MessageWireFormat) -> Result<Self, Self::Error> {
+        let sync_msg = bincode::deserialize(&msg.message_content)?;
+        Ok((msg.sender, sync_msg))
+    }
+}
+
+impl<B: Block + Hash + Eq + Serialize>
+    From<(ConsensusNodeId, SynchronizerMessage<PotholeDepSpec<B>>)> for MessageWireFormat
+{
+    fn from(
+        (node_id, msg): (ConsensusNodeId, SynchronizerMessage<PotholeDepSpec<B>>),
+    ) -> MessageWireFormat {
+        let message_content = bincode::serialize(&msg).unwrap();
+        MessageWireFormat {
+            // TODO: include correct EraId here
+            era_id: EraId(0),
+            sender: node_id,
+            message_content,
+        }
     }
 }
