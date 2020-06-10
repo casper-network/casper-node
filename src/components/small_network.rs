@@ -135,15 +135,15 @@ where
             ),
 
             // Neither was passed, so we auto-generate a pair.
-            (None, None) => tls::generate_node_cert()?,
+            (None, None) => tls::generate_node_cert().map_err(Error::CertificateGeneration)?,
 
             // If we get only one of the two, return an error.
             _ => return Err(Error::InvalidConfig),
         };
 
         // We can now create a listener.
-        let (listener, we_are_root) = create_listener(&cfg)?;
-        let addr = listener.local_addr()?;
+        let (listener, we_are_root) = create_listener(&cfg).map_err(Error::ListenerCreation)?;
+        let addr = listener.local_addr().map_err(Error::ListenerAddr)?;
 
         // Create the model. Initially we know our own endpoint address.
         let our_endpoint = Endpoint::new(
@@ -155,9 +155,12 @@ where
 
         // Run the server task.
         info!(%our_endpoint, "starting server background task");
-        let mut effects = server_task(event_queue, tokio::net::TcpListener::from_std(listener)?)
-            .boxed()
-            .ignore();
+        let mut effects = server_task(
+            event_queue,
+            tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
+        )
+        .boxed()
+        .ignore();
         let model = SmallNetwork {
             cfg,
             signed_endpoints: hashmap! { our_fingerprint => Signed::new(&our_endpoint, &private_key)? },
@@ -592,7 +595,8 @@ async fn setup_tls(
     private_key: Arc<PKey<Private>>,
 ) -> Result<(NodeId, Transport)> {
     let tls_stream = tokio_openssl::accept(
-        &tls::create_tls_acceptor(&cert.as_ref(), &private_key.as_ref())?,
+        &tls::create_tls_acceptor(&cert.as_ref(), &private_key.as_ref())
+            .map_err(Error::AcceptorCreation)?,
         stream,
     )
     .await?;
@@ -601,7 +605,7 @@ async fn setup_tls(
     let peer_cert = tls_stream
         .ssl()
         .peer_certificate()
-        .ok_or_else(|| Error::NoPeerCertificate)?;
+        .ok_or_else(|| Error::NoClientCertificate)?;
 
     Ok((
         tls::validate_cert(peer_cert)?.public_key_fingerprint(),
@@ -648,13 +652,13 @@ where
 async fn message_sender<P>(
     mut queue: UnboundedReceiver<Message<P>>,
     mut sink: SplitSink<FramedTransport<P>, Message<P>>,
-) -> io::Result<()>
+) -> Result<()>
 where
     P: Serialize + Send,
 {
     while let Some(payload) = queue.recv().await {
         // We simply error-out if the sink fails, it means that our connection broke.
-        sink.send(payload).await?;
+        sink.send(payload).await.map_err(Error::MessageNotSent)?;
     }
 
     Ok(())
@@ -704,7 +708,8 @@ async fn connect_trusted(
 ) -> Result<(TlsCert, Transport)> {
     let mut config = tls::create_tls_connector(&cert, &private_key)
         .context("could not create TLS connector")?
-        .configure()?;
+        .configure()
+        .map_err(Error::ConnectorConfiguration)?;
     config.set_verify_hostname(false);
 
     let stream = tokio::net::TcpStream::connect(addr)

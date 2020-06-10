@@ -15,21 +15,36 @@ pub enum Error {
     /// Server failed to present certificate.
     #[error("no server certificate presented")]
     NoServerCertificate,
-    /// Peer failed to present certificate.
-    #[error("no peer certificate presented")]
-    NoPeerCertificate,
-    /// Peer has wrong ID.
+    /// Client failed to present certificate.
+    #[error("no client certificate presented")]
+    NoClientCertificate,
+    /// Peer ID presented does not match the expected one.
     #[error("remote node has wrong ID")]
     WrongId,
-    /// Invalid configuration.
+    /// The config must have both or neither of certificate and private key.
     #[error("need either both or none of cert, private_key in network config")]
     InvalidConfig,
-    /// I/O error.
-    #[error("I/O error: {0}")]
-    Io(#[from] io::Error),
-    /// OpenSSL error.
-    #[error("OpenSSL error: {0}")]
-    OpenSSL(#[from] ErrorStack),
+    /// Failed to create a TCP listener.
+    #[error("failed to create listener")]
+    ListenerCreation(#[source] io::Error),
+    /// Failed to get TCP listener address.
+    #[error("failed to get listener addr")]
+    ListenerAddr(#[source] io::Error),
+    /// Failed to convert std TCP listener to tokio TCP listener.
+    #[error("failed to convert listener to tokio")]
+    ListenerConversion(#[source] io::Error),
+    /// Failed to send message.
+    #[error("failed to send message")]
+    MessageNotSent(#[source] io::Error),
+    /// Failed to create TLS acceptor.
+    #[error("failed to create acceptor")]
+    AcceptorCreation(#[source] ErrorStack),
+    /// Failed to create configuration for TLS connector.
+    #[error("failed to configure connector")]
+    ConnectorConfiguration(#[source] ErrorStack),
+    /// Failed to generate node TLS certificate.
+    #[error("failed to generate cert")]
+    CertificateGeneration(#[source] ErrorStack),
     /// Handshaking error.
     #[error("handshake error: {0}")]
     Handshake(#[from] HandshakeError<TcpStream>),
