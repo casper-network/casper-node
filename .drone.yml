@@ -63,7 +63,7 @@ steps:
       from_secret: slack_webhook
     template:
     - |
-      signer-repo build status: *{{ uppercasefirst build.status }}*
+      casperlabs-node build status: *{{ uppercasefirst build.status }}*
       Author: {{ build.author }}
       Drone Build: <{{ build.link }}|#{{ build.number }}>
       Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
