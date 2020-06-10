@@ -1,5 +1,6 @@
-use std::{result, time::SystemTimeError};
+use std::{io, result, time::SystemTimeError};
 
+use openssl::error::ErrorStack;
 use thiserror::Error;
 use tokio::net::TcpStream;
 use tokio_openssl::HandshakeError;
@@ -25,25 +26,25 @@ pub enum Error {
     InvalidConfig,
     /// Failed to create a TCP listener.
     #[error("failed to create listener")]
-    ListenerCreation,
+    ListenerCreation(#[source] io::Error),
     /// Failed to get TCP listener address.
     #[error("failed to get listener addr")]
-    ListenerAddr,
+    ListenerAddr(#[source] io::Error),
     /// Failed to convert std TCP listener to tokio TCP listener.
     #[error("failed to convert listener to tokio")]
-    ListenerConversion,
+    ListenerConversion(#[source] io::Error),
     /// Failed to send message.
     #[error("failed to send message")]
-    MessageNotSent,
+    MessageNotSent(#[source] io::Error),
     /// Failed to create TLS acceptor.
     #[error("failed to create acceptor")]
-    AcceptorCreation,
+    AcceptorCreation(#[source] ErrorStack),
     /// Failed to create configuration for TLS connector.
     #[error("failed to configure connector")]
-    ConnectorConfiguration,
+    ConnectorConfiguration(#[source] ErrorStack),
     /// Failed to generate node TLS certificate.
     #[error("failed to generate cert")]
-    CertificateGeneration,
+    CertificateGeneration(#[source] ErrorStack),
     /// Handshaking error.
     #[error("handshake error: {0}")]
     Handshake(#[from] HandshakeError<TcpStream>),

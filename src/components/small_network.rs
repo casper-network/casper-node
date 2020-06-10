@@ -135,15 +135,15 @@ where
             ),
 
             // Neither was passed, so we auto-generate a pair.
-            (None, None) => tls::generate_node_cert().map_err(|_| Error::CertificateGeneration)?,
+            (None, None) => tls::generate_node_cert().map_err(Error::CertificateGeneration)?,
 
             // If we get only one of the two, return an error.
             _ => return Err(Error::InvalidConfig),
         };
 
         // We can now create a listener.
-        let (listener, we_are_root) = create_listener(&cfg).map_err(|_| Error::ListenerCreation)?;
-        let addr = listener.local_addr().map_err(|_| Error::ListenerAddr)?;
+        let (listener, we_are_root) = create_listener(&cfg).map_err(Error::ListenerCreation)?;
+        let addr = listener.local_addr().map_err(Error::ListenerAddr)?;
 
         // Create the model. Initially we know our own endpoint address.
         let our_endpoint = Endpoint::new(
@@ -157,7 +157,7 @@ where
         info!(%our_endpoint, "starting server background task");
         let mut effects = server_task(
             event_queue,
-            tokio::net::TcpListener::from_std(listener).map_err(|_| Error::ListenerConversion)?,
+            tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
         )
         .boxed()
         .ignore();
@@ -596,7 +596,7 @@ async fn setup_tls(
 ) -> Result<(NodeId, Transport)> {
     let tls_stream = tokio_openssl::accept(
         &tls::create_tls_acceptor(&cert.as_ref(), &private_key.as_ref())
-            .map_err(|_| Error::AcceptorCreation)?,
+            .map_err(Error::AcceptorCreation)?,
         stream,
     )
     .await?;
@@ -658,9 +658,7 @@ where
 {
     while let Some(payload) = queue.recv().await {
         // We simply error-out if the sink fails, it means that our connection broke.
-        sink.send(payload)
-            .await
-            .map_err(|_| Error::MessageNotSent)?;
+        sink.send(payload).await.map_err(Error::MessageNotSent)?;
     }
 
     Ok(())
@@ -711,7 +709,7 @@ async fn connect_trusted(
     let mut config = tls::create_tls_connector(&cert, &private_key)
         .context("could not create TLS connector")?
         .configure()
-        .map_err(|_| Error::ConnectorConfiguration)?;
+        .map_err(Error::ConnectorConfiguration)?;
     config.set_verify_hostname(false);
 
     let stream = tokio::net::TcpStream::connect(addr)
