@@ -70,10 +70,11 @@ To create a new random `Deploy` and store it:
 cargo run --release --bin=casperlabs-client -- put-deploy http://localhost:7777
 ```
 
-On success, the hash identifying the `Deploy` is output as a 64 character hex-encoded string.
+On success, the hash identifying the `Deploy` is output as a 64 character hex-encoded string.  The `Deploy` will be
+broadcast immediately to all interconnected validator nodes.
 
-To retrieve that deploy:
+To retrieve that deploy from any node:
 
 ```
-cargo run --release --bin=casperlabs-client -- get-deploy http://localhost:7777 a555b68c8fed43078db6022a3de83fce97c1d80caf070c3654f9526d149e8182
+cargo run --release --bin=casperlabs-client -- get-deploy http://localhost:8888 a555b68c8fed43078db6022a3de83fce97c1d80caf070c3654f9526d149e8182
 ```

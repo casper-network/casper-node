@@ -162,3 +162,20 @@ impl Display for ApiRequest {
         }
     }
 }
+
+#[derive(Debug)]
+pub(crate) enum DeployBroadcasterRequest {
+    /// A new `Deploy` received from a client via the HTTP server component.  Should be broadcast
+    /// by us.
+    PutFromClient { deploy: Box<Deploy> },
+}
+
+impl Display for DeployBroadcasterRequest {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            DeployBroadcasterRequest::PutFromClient { deploy, .. } => {
+                write!(formatter, "put from client: {}", deploy.id())
+            }
+        }
+    }
+}

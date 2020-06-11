@@ -13,13 +13,14 @@ use crate::{
     components::{
         api_server::{self, ApiServer},
         consensus::{self, Consensus},
+        deploy_broadcaster::{self, DeployBroadcaster},
         pinger::{self, Pinger},
         storage::Storage,
         Component,
     },
     effect::{
         announcements::NetworkAnnouncement,
-        requests::{ApiRequest, NetworkRequest, StorageRequest},
+        requests::{ApiRequest, DeployBroadcasterRequest, NetworkRequest, StorageRequest},
         Effect, EffectBuilder, Multiple,
     },
     reactor::{self, EventQueueHandle, Result},
@@ -33,6 +34,8 @@ enum Message {
     Pinger(pinger::Message),
     #[from]
     Consensus(consensus::Message),
+    #[from]
+    DeployBroadcaster(deploy_broadcaster::Message),
 }
 
 impl Display for Message {
@@ -40,6 +43,7 @@ impl Display for Message {
         match self {
             Message::Pinger(pinger) => write!(f, "Pinger::{}", pinger),
             Message::Consensus(consensus) => write!(f, "Consensus::{}", consensus),
+            Message::DeployBroadcaster(deploy) => write!(f, "DeployBroadcaster::{}", deploy),
         }
     }
 }
@@ -58,6 +62,8 @@ enum Event {
     ApiServer(api_server::Event),
     #[from]
     Consensus(consensus::Event),
+    #[from]
+    DeployBroadcaster(deploy_broadcaster::Event),
 
     // Requests
     #[from]
@@ -86,6 +92,18 @@ impl From<NetworkRequest<NodeId, pinger::Message>> for Event {
     }
 }
 
+impl From<NetworkRequest<NodeId, deploy_broadcaster::Message>> for Event {
+    fn from(request: NetworkRequest<NodeId, deploy_broadcaster::Message>) -> Self {
+        Event::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
+impl From<DeployBroadcasterRequest> for Event {
+    fn from(request: DeployBroadcasterRequest) -> Self {
+        Event::DeployBroadcaster(deploy_broadcaster::Event::Request(request))
+    }
+}
+
 /// Validator node reactor.
 struct Reactor {
     net: SmallNetwork<Event, Message>,
@@ -93,6 +111,7 @@ struct Reactor {
     storage: Storage,
     api_server: ApiServer,
     consensus: Consensus,
+    deploy_broadcaster: DeployBroadcaster,
     rng: ChaCha20Rng,
 }
 
@@ -106,13 +125,11 @@ impl reactor::Reactor for Reactor {
     ) -> Result<(Self, Multiple<Effect<Self::Event>>)> {
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, validator_network_config)?;
-
         let (pinger, pinger_effects) = Pinger::new(effect_builder);
-
         let storage = Storage::new();
-
         let (api_server, api_server_effects) = ApiServer::new(api_server_config, effect_builder);
         let (consensus, consensus_effects) = Consensus::new(effect_builder);
+        let deploy_broadcaster = DeployBroadcaster::new();
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
         effects.extend(reactor::wrap_effects(Event::Pinger, pinger_effects));
@@ -128,6 +145,7 @@ impl reactor::Reactor for Reactor {
                 storage,
                 api_server,
                 consensus,
+                deploy_broadcaster,
                 rng,
             },
             effects,
@@ -164,6 +182,11 @@ impl reactor::Reactor for Reactor {
                 self.consensus
                     .handle_event(effect_builder, &mut self.rng, event),
             ),
+            Event::DeployBroadcaster(event) => reactor::wrap_effects(
+                Event::DeployBroadcaster,
+                self.deploy_broadcaster
+                    .handle_event(effect_builder, &mut self.rng, event),
+            ),
 
             // Requests:
             Event::NetworkRequest(req) => self.dispatch_event(
@@ -183,6 +206,12 @@ impl reactor::Reactor for Reactor {
                     Message::Pinger(msg) => {
                         Event::Pinger(pinger::Event::MessageReceived { sender, msg })
                     }
+                    Message::DeployBroadcaster(message) => {
+                        Event::DeployBroadcaster(deploy_broadcaster::Event::MessageReceived {
+                            sender,
+                            message,
+                        })
+                    }
                 };
 
                 // Any incoming message is one for the pinger.
@@ -200,6 +229,7 @@ impl Display for Event {
             Event::Storage(event) => write!(f, "storage: {}", event),
             Event::ApiServer(event) => write!(f, "api server: {}", event),
             Event::Consensus(event) => write!(f, "consensus: {}", event),
+            Event::DeployBroadcaster(event) => write!(f, "deploy broadcaster: {}", event),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
         }

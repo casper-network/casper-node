@@ -30,7 +30,7 @@ use crate::{
     components::storage::Storage,
     crypto::hash::Digest,
     effect::{
-        requests::{ApiRequest, StorageRequest},
+        requests::{ApiRequest, DeployBroadcasterRequest, StorageRequest},
         Effect, EffectBuilder, EffectExt, Multiple,
     },
     reactor::QueueKind,
@@ -62,7 +62,7 @@ impl ApiServer {
 
 impl<REv> Component<REv> for ApiServer
 where
-    REv: From<StorageRequest<Storage>> + Send,
+    REv: From<StorageRequest<Storage>> + Send + From<DeployBroadcasterRequest>,
 {
     type Event = Event;
 
@@ -73,13 +73,18 @@ where
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>> {
         match event {
-            Event::ApiRequest(ApiRequest::SubmitDeploy { deploy, responder }) => effect_builder
-                .put_deploy(*deploy.clone())
-                .event(move |result| Event::PutDeployResult {
-                    deploy,
-                    result,
-                    main_responder: responder,
-                }),
+            Event::ApiRequest(ApiRequest::SubmitDeploy { deploy, responder }) => {
+                let cloned_deploy = deploy.clone();
+                let mut effects = effect_builder
+                    .put_deploy(*deploy.clone())
+                    .event(move |result| Event::PutDeployResult {
+                        deploy,
+                        result,
+                        main_responder: responder,
+                    });
+                effects.extend(effect_builder.broadcast_deploy(cloned_deploy).ignore());
+                effects
+            }
             Event::ApiRequest(ApiRequest::GetDeploy { hash, responder }) => effect_builder
                 .get_deploy(hash)
                 .event(move |result| Event::GetDeployResult {

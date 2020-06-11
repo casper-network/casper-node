@@ -52,7 +52,9 @@ use tracing::error;
 
 use crate::{
     components::storage::{StorageType, Store, Value},
+    effect::requests::DeployBroadcasterRequest,
     reactor::{EventQueueHandle, QueueKind},
+    types::Deploy,
 };
 use announcements::NetworkAnnouncement;
 use requests::{NetworkRequest, StorageRequest};
@@ -435,5 +437,18 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
+    }
+
+    /// Passes the given deploy to the `DeployBroadcaster` component to be broadcast.
+    pub(crate) async fn broadcast_deploy(self, deploy: Box<Deploy>)
+    where
+        REv: From<DeployBroadcasterRequest>,
+    {
+        self.0
+            .schedule(
+                DeployBroadcasterRequest::PutFromClient { deploy },
+                QueueKind::Regular,
+            )
+            .await;
     }
 }
