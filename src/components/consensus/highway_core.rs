@@ -27,6 +27,9 @@
 //! or with some other governance system that can add and remove validators, by starting a new
 //! protocol instance whenever the set of validators changes.
 
+// This is to suppress warnings originating in the test macros
+#![allow(unused_qualifications)]
+
 // This needs to come before the other modules, so the macros are available everywhere.
 #[cfg(test)]
 #[macro_use]
