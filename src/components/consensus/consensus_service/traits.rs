@@ -25,3 +25,18 @@ pub(crate) struct MessageWireFormat {
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct EraId(pub(crate) u64);
+
+pub(crate) enum ConsensusServiceError {
+    InvalidFormat(String),
+    InternalError(anyhow::Error),
+}
+
+pub(crate) enum Event {
+    IncomingMessage(MessageWireFormat),
+    Timer(EraId, TimerId),
+}
+
+/// API between the reactor and consensus component.
+pub(crate) trait ConsensusService {
+    fn handle_event(&mut self, event: Event) -> Result<Vec<Effect<Event>>, ConsensusServiceError>;
+}

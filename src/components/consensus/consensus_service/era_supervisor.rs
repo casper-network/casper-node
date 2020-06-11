@@ -13,19 +13,11 @@ use std::{
 };
 
 use super::super::consensus_protocol::{
-    ConsensusContext, ConsensusProtocol, ConsensusProtocolResult, TimerId,
+    ConsensusContext, ConsensusProtocol, ConsensusProtocolResult,
 };
-use super::traits::{Effect, EraId, MessageWireFormat};
-
-pub(crate) enum ConsensusServiceError {
-    InvalidFormat(String),
-    InternalError(anyhow::Error),
-}
-
-pub(crate) enum Event {
-    IncomingMessage(MessageWireFormat),
-    Timer(EraId, TimerId),
-}
+use super::traits::{
+    ConsensusService, ConsensusServiceError, Effect, EraId, Event, MessageWireFormat,
+};
 
 #[derive(Clone, Debug)]
 struct EraConfig {
@@ -52,11 +44,6 @@ struct EraInstance<Id> {
     era_id: Id,
     era_start: Instant,
     era_end: Instant,
-}
-
-/// API between the reactor and consensus component.
-pub(crate) trait ConsensusService {
-    fn handle_event(&mut self, event: Event) -> Result<Vec<Effect<Event>>, ConsensusServiceError>;
 }
 
 pub(crate) struct EraSupervisor<C: ConsensusContext> {

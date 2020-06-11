@@ -6,7 +6,6 @@ use std::{
     mem,
 };
 
-use bincode;
 use derive_more::{Deref, DerefMut};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 

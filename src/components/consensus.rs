@@ -28,8 +28,8 @@ use crate::{
 
 use consensus_protocol::NodeId as ConsensusNodeId;
 use consensus_service::{
-    consensus_service::{ConsensusService, EraSupervisor, Event as ConsensusEvent},
-    traits::{EraId, MessageWireFormat},
+    era_supervisor::EraSupervisor,
+    traits::{ConsensusService, EraId, Event as ConsensusEvent, MessageWireFormat},
 };
 use protocols::pothole::PotholeContext;
 
