@@ -19,7 +19,7 @@ use crate::{
     },
     effect::{
         announcements::NetworkAnnouncement,
-        requests::{NetworkRequest, StorageRequest},
+        requests::{ApiRequest, NetworkRequest, StorageRequest},
         Effect, EffectBuilder, Multiple,
     },
     reactor::{self, EventQueueHandle, Result},
@@ -66,6 +66,12 @@ enum Event {
     // Announcements
     #[from]
     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
+}
+
+impl From<ApiRequest> for Event {
+    fn from(request: ApiRequest) -> Self {
+        Event::ApiServer(api_server::Event::ApiRequest(request))
+    }
 }
 
 impl From<NetworkRequest<NodeId, consensus::Message>> for Event {
