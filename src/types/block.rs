@@ -66,10 +66,10 @@ pub struct Block {
 impl Block {
     /// Constructs a new `Block`.
     // TODO(Fraser): implement properly
-    pub fn new(temp: u8) -> Self {
-        let hash = BlockHash::new(hash::hash(&[temp]));
-        let parent_hash = BlockHash::new(hash::hash(&[temp.overflowing_add(1).0]));
-        let root_state_hash = hash::hash(&[temp.overflowing_add(2).0]);
+    pub fn new(temp: u64) -> Self {
+        let hash = BlockHash::new(hash::hash(temp.to_le_bytes()));
+        let parent_hash = BlockHash::new(hash::hash(temp.overflowing_add(1).0.to_le_bytes()));
+        let root_state_hash = hash::hash(temp.overflowing_add(2).0.to_le_bytes());
 
         let secret_key = SecretKey::generate_ed25519();
         let public_key = PublicKey::from(&secret_key);
@@ -83,10 +83,15 @@ impl Block {
         let header = BlockHeader {
             parent_hash,
             root_state_hash,
-            era: temp.into(),
+            era: temp,
             proofs,
         };
         Block { hash, header }
+    }
+
+    /// Returns the `BlockHash` identifying this `Block`.
+    pub fn id(&self) -> &BlockHash {
+        &self.hash
     }
 }
 

@@ -25,10 +25,12 @@ futures = "0.3.5"
 getrandom = "0.1.14"
 hex = "0.4.2"
 hex_fmt = "0.3.0"
+http = "0.2.1"
 maplit = "1.0.2"
 openssl = "0.10.29"
 rand = "0.7.3"
 rand_chacha = "0.2.2"
+reqwest = "0.10.6"
 rmp-serde = "0.14.3"
 serde = { version = "1.0.110", features = ["derive"] }
 serde-big-array = "0.3.0"
@@ -47,7 +49,14 @@ warp = "0.2.3"
 
 [[bin]]
 name = "casperlabs-node"
-path = "src/app/main.rs"
+path = "src/apps/node/main.rs"
+bench = false
+doctest = false
+test = false
+
+[[bin]]
+name = "casperlabs-client"
+path = "src/apps/client/main.rs"
 bench = false
 doctest = false
 test = false

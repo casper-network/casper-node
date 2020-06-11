@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 use derive_more::From;
 
 use crate::{
-    components::storage::{InMemResult, Value},
+    components::storage::InMemResult,
     effect::{requests::ApiRequest, Responder},
     types::{Deploy, DeployHash},
 };

@@ -33,8 +33,8 @@ pub struct Config {
     pub validator_net: SmallNetworkConfig,
     /// Network configuration for the public network.
     pub public_net: SmallNetworkConfig,
-    /// Network configuration for the API
-    pub api_server: ApiServerConfig,
+    /// Network configuration for the HTTP API.
+    pub http_server: ApiServerConfig,
 }
 
 impl Default for Config {
@@ -42,7 +42,7 @@ impl Default for Config {
         Config {
             validator_net: SmallNetworkConfig::default_on_port(ROOT_VALIDATOR_LISTENING_PORT),
             public_net: SmallNetworkConfig::default_on_port(ROOT_PUBLIC_LISTENING_PORT),
-            api_server: ApiServerConfig::default(),
+            http_server: ApiServerConfig::default(),
         }
     }
 }

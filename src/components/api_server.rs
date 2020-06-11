@@ -13,6 +13,7 @@ mod event;
 use std::{net::SocketAddr, str};
 
 use bytes::Bytes;
+use http::Response;
 use rand::Rng;
 use tracing::{debug, info, warn};
 use warp::{
@@ -183,7 +184,7 @@ where
 async fn parse_get_request<REv>(
     effect_builder: EffectBuilder<REv>,
     hex_digest: Tail,
-) -> Result<WithStatus<Json>, Rejection>
+) -> Result<Response<String>, Rejection>
 where
     REv: From<Event> + From<ApiRequest> + Send,
 {
@@ -196,8 +197,12 @@ where
                 hex_digest.as_str(),
                 error
             );
-            let json = reply::json(&error_reply);
-            return Ok(reply::with_status(json, StatusCode::BAD_REQUEST));
+            let response = Response::builder()
+                .header("content-type", "application/json")
+                .status(StatusCode::BAD_REQUEST)
+                .body(error_reply)
+                .unwrap();
+            return Ok(response);
         }
     };
 
@@ -210,7 +215,12 @@ where
             QueueKind::Api,
         )
         .await
-        .and_then(|deploy| deploy.to_json().ok());
-    let json = reply::json(&reply);
-    Ok(reply::with_status(json, StatusCode::OK))
+        .and_then(|deploy| deploy.to_json().ok())
+        .unwrap_or_else(|| "null".to_string());
+
+    Ok(Response::builder()
+        .header("content-type", "application/json")
+        .status(StatusCode::OK)
+        .body(reply)
+        .unwrap())
 }

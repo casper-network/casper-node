@@ -5,6 +5,7 @@ use std::{
 
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::{
     components::storage::Value,
@@ -17,13 +18,25 @@ use crate::{
 
 // TODO - improve this if it's to be kept
 /// Error while encoding.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub struct EncodingError;
+
+impl Display for EncodingError {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(formatter, "encoding error")
+    }
+}
 
 // TODO - improve this if it's to be kept
 /// Error while decoding.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub struct DecodingError;
+
+impl Display for DecodingError {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(formatter, "decoding error")
+    }
+}
 
 /// The cryptographic hash of a [`Deploy`](struct.Deploy.html).
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
@@ -88,21 +101,21 @@ pub struct Deploy {
 impl Deploy {
     /// Constructs a new `Deploy`.
     // TODO(Fraser): implement properly
-    pub fn new(temp: u8) -> Self {
-        let hash = DeployHash::new(hash::hash(&[temp]));
+    pub fn new(temp: u64) -> Self {
+        let hash = DeployHash::new(hash::hash(temp.to_le_bytes()));
 
         let secret_key = SecretKey::generate_ed25519();
         let account = PublicKey::from(&secret_key);
 
-        let timestamp = u64::from(temp) + 100;
-        let gas_price = u64::from(temp) + 101;
-        let body_hash = hash::hash(&[temp.overflowing_add(102).0]);
-        let ttl_millis = u32::from(temp) + 103;
+        let timestamp = temp + 100;
+        let gas_price = temp + 101;
+        let body_hash = hash::hash(temp.overflowing_add(102).0.to_le_bytes());
+        let ttl_millis = temp as u32 + 103;
 
         let dependencies = vec![
-            DeployHash::new(hash::hash(&[temp.overflowing_add(104).0])),
-            DeployHash::new(hash::hash(&[temp.overflowing_add(105).0])),
-            DeployHash::new(hash::hash(&[temp.overflowing_add(106).0])),
+            DeployHash::new(hash::hash(temp.overflowing_add(104).0.to_le_bytes())),
+            DeployHash::new(hash::hash(temp.overflowing_add(105).0.to_le_bytes())),
+            DeployHash::new(hash::hash(temp.overflowing_add(106).0.to_le_bytes())),
         ];
 
         let chain_name = "Spike".to_string();
@@ -117,8 +130,12 @@ impl Deploy {
             chain_name,
         };
 
-        let payment_code = hash::hash(&[temp.overflowing_add(107).0]).as_ref().to_vec();
-        let session_code = hash::hash(&[temp.overflowing_add(108).0]).as_ref().to_vec();
+        let payment_code = hash::hash(temp.overflowing_add(107).0.to_le_bytes())
+            .as_ref()
+            .to_vec();
+        let session_code = hash::hash(temp.overflowing_add(108).0.to_le_bytes())
+            .as_ref()
+            .to_vec();
 
         let approvals = vec![
             asymmetric_key::sign(&[3], &secret_key, &account),
@@ -133,6 +150,11 @@ impl Deploy {
             session_code,
             approvals,
         }
+    }
+
+    /// Returns the `DeployHash` identifying this `Deploy`.
+    pub fn id(&self) -> &DeployHash {
+        &self.hash
     }
 
     /// Try to convert the `Deploy` to JSON-encoded string.
