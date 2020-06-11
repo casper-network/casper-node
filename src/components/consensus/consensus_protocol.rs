@@ -16,11 +16,13 @@ pub(crate) trait ConsensusContext {
     /// it is materialized to concrete type in the consensus protocol layer.
     ///
     /// Example ADT might be:
+    /// ```ignore
     /// enum Message {
     ///   NewVote(…),
     ///   NewBlock(…),
     ///   RequestDependency(…),
     /// }
+    /// ```
     ///
     /// Note that some consensus protocols (like HoneyBadgerBFT) don't have dependencies,
     /// so it's not possible to differentiate between new message and dependency requests

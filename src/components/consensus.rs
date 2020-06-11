@@ -11,7 +11,7 @@ mod protocols;
 // TODO: remove when we actually construct a Pothole era
 #[allow(unused)]
 mod synchronizer;
-// TODO: remove when we actually construct a Pothole era
+// TODO: remove when we actually construct a Highway era
 #[allow(unused)]
 mod highway_core;
 
