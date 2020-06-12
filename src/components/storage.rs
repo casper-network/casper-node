@@ -3,7 +3,6 @@ mod in_mem_store;
 mod store;
 
 use std::{
-    error::Error as StdError,
     fmt::{Debug, Display},
     hash::Hash,
     sync::Arc,
@@ -18,9 +17,9 @@ use crate::{
     effect::{requests::StorageRequest, Effect, EffectBuilder, EffectExt, Multiple},
     types::{Block, Deploy},
 };
-pub(crate) use error::{InMemError, InMemResult};
+pub(crate) use error::{Error, Result};
 use in_mem_store::InMemStore;
-pub(crate) use store::Store;
+use store::Store;
 
 pub(crate) type Storage = InMemStorage<Block, Deploy>;
 
@@ -28,7 +27,19 @@ pub(crate) type Storage = InMemStorage<Block, Deploy>;
 pub(crate) trait Value:
     Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display
 {
-    type Id: Copy + Clone + Ord + PartialOrd + Eq + PartialEq + Hash + Debug + Display + Send + Sync;
+    type Id: Copy
+        + Clone
+        + Ord
+        + PartialOrd
+        + Eq
+        + PartialEq
+        + Hash
+        + Debug
+        + Display
+        + Serialize
+        + DeserializeOwned
+        + Send
+        + Sync;
     /// A relatively small portion of the value, representing header info or metadata.
     type Header: Clone + Ord + PartialOrd + Eq + PartialEq + Hash + Debug + Display + Send + Sync;
 
@@ -41,19 +52,11 @@ pub(crate) trait Value:
 /// If this trait is ultimately only used for testing scenarios, we shouldn't need to expose it to
 /// the reactor - it can simply use a concrete type which implements this trait.
 pub(crate) trait StorageType {
-    type BlockStore: Store + Send + Sync;
-    type DeployStore: Store + Send + Sync;
-    type Error: StdError
-        + Clone
-        + Serialize
-        + DeserializeOwned
-        + Send
-        + Sync
-        + From<<Self::BlockStore as Store>::Error>
-        + From<<Self::DeployStore as Store>::Error>;
+    type Block: Value;
+    type Deploy: Value;
 
-    fn block_store(&self) -> Arc<Self::BlockStore>;
-    fn deploy_store(&self) -> Arc<Self::DeployStore>;
+    fn block_store(&self) -> Arc<dyn Store<Value = Self::Block>>;
+    fn deploy_store(&self) -> Arc<dyn Store<Value = Self::Deploy>>;
 }
 
 impl<REv, S> Component<REv> for S
@@ -164,16 +167,16 @@ impl<B: Value, D: Value> InMemStorage<B, D> {
     }
 }
 
-impl<B: Value, D: Value> StorageType for InMemStorage<B, D> {
-    type BlockStore = InMemStore<B>;
-    type DeployStore = InMemStore<D>;
-    type Error = InMemError;
+#[allow(trivial_casts)]
+impl<B: Value + 'static, D: Value + 'static> StorageType for InMemStorage<B, D> {
+    type Block = B;
+    type Deploy = D;
 
-    fn block_store(&self) -> Arc<Self::BlockStore> {
-        Arc::clone(&self.block_store)
+    fn block_store(&self) -> Arc<dyn Store<Value = B>> {
+        Arc::clone(&self.block_store) as Arc<dyn Store<Value = B>>
     }
 
-    fn deploy_store(&self) -> Arc<Self::DeployStore> {
-        Arc::clone(&self.deploy_store)
+    fn deploy_store(&self) -> Arc<dyn Store<Value = D>> {
+        Arc::clone(&self.deploy_store) as Arc<dyn Store<Value = D>>
     }
 }
