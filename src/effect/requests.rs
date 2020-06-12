@@ -165,8 +165,9 @@ impl Display for ApiRequest {
 
 #[derive(Debug)]
 pub(crate) enum DeployBroadcasterRequest {
-    /// A new `Deploy` received from a client via the HTTP server component.  Should be broadcast
-    /// by us.
+    /// A new `Deploy` received from a client via the HTTP server component.  Since this has been
+    /// received from a client and not via another node's broadcast, this receiving node should
+    /// broadcast it.
     PutFromClient { deploy: Box<Deploy> },
 }
 

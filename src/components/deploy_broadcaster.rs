@@ -39,8 +39,8 @@ impl Display for Event {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) enum Message {
-    /// A new `Deploy` received from a peer via the small network component.  Should not be
-    /// broadcast by us.
+    /// A new `Deploy` received from a peer via the small network component.  Since this has been
+    /// received via another node's broadcast, this receiving node should not broadcast it.
     Put(Box<Deploy>),
 }
 
@@ -90,7 +90,7 @@ where
             }
             Event::MessageReceived {
                 message: Message::Put(deploy),
-                ..
+                sender: _,
             } => {
                 // Incoming broadcast message - just store the `Deploy`.
                 self.ids.insert(*deploy.id());
