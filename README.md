@@ -19,6 +19,9 @@ cargo run --release -- generate-config > mynode.toml
 cargo run --release -- validator --config=mynode.toml
 ```
 
+**NOTE:** If you want to run multiple instances on the same machine, ensure you modify the `[storage.path]` field of
+their configuration files to give each a unique path, or else instances will share database files.
+
 ## Logging
 
 Logging can be enabled by setting the environment variable `RUST_LOG`.  This can be set to one of the following levels,

@@ -15,7 +15,7 @@ use crate::{
         consensus::{self, Consensus},
         deploy_broadcaster::{self, DeployBroadcaster},
         pinger::{self, Pinger},
-        storage::Storage,
+        storage::{Storage, StorageType},
         Component,
     },
     effect::{
@@ -25,7 +25,7 @@ use crate::{
     },
     reactor::{self, EventQueueHandle, Result},
     small_network::{self, NodeId},
-    ApiServerConfig, SmallNetwork, SmallNetworkConfig,
+    ApiServerConfig, SmallNetwork, SmallNetworkConfig, StorageConfig,
 };
 
 #[derive(Debug, Clone, From, Serialize, Deserialize)]
@@ -121,12 +121,13 @@ impl reactor::Reactor for Reactor {
     fn new(
         validator_network_config: SmallNetworkConfig,
         api_server_config: ApiServerConfig,
+        storage_config: StorageConfig,
         event_queue: EventQueueHandle<Self::Event>,
     ) -> Result<(Self, Multiple<Effect<Self::Event>>)> {
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, validator_network_config)?;
         let (pinger, pinger_effects) = Pinger::new(effect_builder);
-        let storage = Storage::new();
+        let storage = Storage::new(storage_config)?;
         let (api_server, api_server_effects) = ApiServer::new(api_server_config, effect_builder);
         let (consensus, consensus_effects) = Consensus::new(effect_builder);
         let deploy_broadcaster = DeployBroadcaster::new();
@@ -246,6 +247,7 @@ impl Display for Event {
 pub async fn run(
     validator_network_config: SmallNetworkConfig,
     api_server_config: ApiServerConfig,
+    storage_config: StorageConfig,
 ) -> Result<()> {
-    super::run::<Reactor>(validator_network_config, api_server_config).await
+    super::run::<Reactor>(validator_network_config, api_server_config, storage_config).await
 }

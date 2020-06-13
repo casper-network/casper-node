@@ -181,6 +181,10 @@ impl Value for Deploy {
     fn header(&self) -> &Self::Header {
         &self.header
     }
+
+    fn take_header(self) -> Self::Header {
+        self.header
+    }
 }
 
 impl Display for Deploy {

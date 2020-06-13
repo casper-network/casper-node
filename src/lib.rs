@@ -33,7 +33,8 @@ mod utils;
 pub(crate) use components::small_network::{self, SmallNetwork};
 pub use components::{
     api_server::Config as ApiServerConfig,
-    small_network::{Config as SmallNetworkConfig, Error},
+    small_network::{Config as SmallNetworkConfig, Error as SmallNetworkError},
+    storage::{Config as StorageConfig, Error as StorageError},
 };
 
 /// The default listening port for the root node of the validator network.

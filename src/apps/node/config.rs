@@ -23,7 +23,8 @@ use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
 use casperlabs_node::{
-    ApiServerConfig, SmallNetworkConfig, ROOT_PUBLIC_LISTENING_PORT, ROOT_VALIDATOR_LISTENING_PORT,
+    ApiServerConfig, SmallNetworkConfig, StorageConfig, ROOT_PUBLIC_LISTENING_PORT,
+    ROOT_VALIDATOR_LISTENING_PORT,
 };
 
 /// Root configuration.
@@ -35,6 +36,8 @@ pub struct Config {
     pub public_net: SmallNetworkConfig,
     /// Network configuration for the HTTP API.
     pub http_server: ApiServerConfig,
+    /// On-disk storage configuration.
+    pub storage: StorageConfig,
 }
 
 impl Default for Config {
@@ -43,6 +46,7 @@ impl Default for Config {
             validator_net: SmallNetworkConfig::default_on_port(ROOT_VALIDATOR_LISTENING_PORT),
             public_net: SmallNetworkConfig::default_on_port(ROOT_PUBLIC_LISTENING_PORT),
             http_server: ApiServerConfig::default(),
+            storage: StorageConfig::default(),
         }
     }
 }
@@ -50,11 +54,13 @@ impl Default for Config {
 /// Loads a TOML-formatted configuration from a given file.
 pub fn load_from_file<P: AsRef<Path>>(config_path: P) -> anyhow::Result<Config> {
     let path_ref = config_path.as_ref();
-    Ok(toml::from_str(
-        &fs::read_to_string(path_ref)
-            .with_context(|| format!("Failed to read configuration file {:?}", path_ref))?,
-    )
-    .with_context(|| format!("Failed to parse configuration file {:?}", path_ref))?)
+    let config: Config =
+        toml::from_str(&fs::read_to_string(path_ref).with_context(|| {
+            format!("Failed to read configuration file {}", path_ref.display())
+        })?)
+        .with_context(|| format!("Failed to parse configuration file {}", path_ref.display()))?;
+    config.storage.check_sizes();
+    Ok(config)
 }
 
 /// Creates a TOML-formatted string from a given configuration.

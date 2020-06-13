@@ -39,7 +39,7 @@ use tracing::{debug, info, trace, warn};
 use crate::{
     effect::{Effect, EffectBuilder, Multiple},
     utils::{self, WeightedRoundRobin},
-    ApiServerConfig, SmallNetworkConfig,
+    ApiServerConfig, SmallNetworkConfig, StorageConfig,
 };
 pub use error::Error;
 pub(crate) use error::Result;
@@ -116,6 +116,7 @@ pub(crate) trait Reactor: Sized {
     fn new(
         validator_network_config: SmallNetworkConfig,
         api_server_config: ApiServerConfig,
+        storage_config: StorageConfig,
         event_queue: EventQueueHandle<Self::Event>,
     ) -> Result<(Self, Multiple<Effect<Self::Event>>)>;
 }
@@ -131,6 +132,7 @@ pub(crate) trait Reactor: Sized {
 async fn run<R: Reactor>(
     validator_network_config: SmallNetworkConfig,
     api_server_config: ApiServerConfig,
+    storage_config: StorageConfig,
 ) -> Result<()> {
     let event_size = mem::size_of::<R::Event>();
     // Check if the event is of a reasonable size. This only emits a runtime warning at startup
@@ -149,8 +151,12 @@ async fn run<R: Reactor>(
     let scheduler = utils::leak(scheduler);
 
     let event_queue = EventQueueHandle::new(scheduler);
-    let (mut reactor, initial_effects) =
-        R::new(validator_network_config, api_server_config, event_queue)?;
+    let (mut reactor, initial_effects) = R::new(
+        validator_network_config,
+        api_server_config,
+        storage_config,
+        event_queue,
+    )?;
 
     // Run all effects from component instantiation.
     process_effects(scheduler, initial_effects).await;

@@ -4,7 +4,13 @@ use std::{
     sync::RwLock,
 };
 
+use thiserror::Error;
+
 use super::{Error, Result, Store, Value};
+
+#[derive(Error, Debug)]
+#[error("poisoned lock")]
+pub(super) struct PoisonedLock {}
 
 /// In-memory version of a store.
 #[derive(Debug)]
