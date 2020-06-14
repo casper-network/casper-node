@@ -433,6 +433,19 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Lists all deploy hashes held in the deploy store.
+    pub(crate) async fn list_deploys<S>(self) -> storage::Result<Vec<<S::Deploy as Value>::Id>>
+    where
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
+    {
+        self.make_request(
+            |responder| StorageRequest::ListDeploys { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Passes the given deploy to the `DeployBroadcaster` component to be broadcast.
     pub(crate) async fn broadcast_deploy(self, deploy: Box<Deploy>)
     where

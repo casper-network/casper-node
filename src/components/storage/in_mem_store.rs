@@ -52,4 +52,8 @@ impl<V: Value> Store for InMemStore<V> {
             .cloned()
             .ok_or_else(|| Error::NotFound)
     }
+
+    fn ids(&self) -> Result<Vec<V::Id>> {
+        Ok(self.inner.read()?.keys().cloned().collect())
+    }
 }

@@ -8,4 +8,6 @@ pub(crate) trait Store: Send + Sync {
     fn get(&self, id: &<Self::Value as Value>::Id) -> Result<Self::Value>;
     fn get_header(&self, id: &<Self::Value as Value>::Id)
         -> Result<<Self::Value as Value>::Header>;
+    /// Returns a copy of all IDs held by the store.
+    fn ids(&self) -> Result<Vec<<Self::Value as Value>::Id>>;
 }

@@ -101,6 +101,10 @@ pub(crate) enum StorageRequest<S: StorageType + 'static> {
         deploy_hash: <S::Deploy as Value>::Id,
         responder: Responder<storage::Result<<S::Deploy as Value>::Header>>,
     },
+    /// List all deploy hashes.
+    ListDeploys {
+        responder: Responder<storage::Result<Vec<<S::Deploy as Value>::Id>>>,
+    },
 }
 
 impl<S: StorageType> Display for StorageRequest<S> {
@@ -118,6 +122,7 @@ impl<S: StorageType> Display for StorageRequest<S> {
             StorageRequest::GetDeployHeader { deploy_hash, .. } => {
                 write!(formatter, "get {}", deploy_hash)
             }
+            StorageRequest::ListDeploys { .. } => write!(formatter, "list deploys"),
         }
     }
 }
@@ -133,12 +138,16 @@ pub(crate) enum ApiRequest {
     /// Returns the deploy along with an error message if it could not be stored.
     SubmitDeploy {
         deploy: Box<Deploy>,
-        responder: Responder<Result<(), (Deploy, String)>>,
+        responder: Responder<Result<(), (Deploy, storage::Error)>>,
     },
     /// Return the specified deploy if it exists, else `None`.
     GetDeploy {
         hash: DeployHash,
-        responder: Responder<Option<Deploy>>,
+        responder: Responder<Result<Deploy, storage::Error>>,
+    },
+    /// Return the list of all deploy hashes stored on this node.
+    ListDeploys {
+        responder: Responder<Result<Vec<DeployHash>, storage::Error>>,
     },
 }
 
@@ -147,6 +156,7 @@ impl Display for ApiRequest {
         match self {
             ApiRequest::SubmitDeploy { deploy, .. } => write!(formatter, "submit {}", *deploy),
             ApiRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
+            ApiRequest::ListDeploys { .. } => write!(formatter, "list deploys"),
         }
     }
 }

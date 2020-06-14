@@ -67,6 +67,8 @@ There is a minimal client which can be executed to store and retrieve `Deploy`s 
 The client targets the HTTP service of a validator node.  This can be configured via the config file for the node, and
 the actual bound endpoint is displayed as an info-level log message just after node startup.
 
+#### Put a `Deploy`
+
 To create a new random `Deploy` and store it:
 
 ```
@@ -76,8 +78,18 @@ cargo run --release --bin=casperlabs-client -- put-deploy http://localhost:7777
 On success, the hash identifying the `Deploy` is output as a 64 character hex-encoded string.  The `Deploy` will be
 broadcast immediately to all interconnected validator nodes.
 
+#### Get a `Deploy`
+
 To retrieve that deploy from any node:
 
 ```
 cargo run --release --bin=casperlabs-client -- get-deploy http://localhost:8888 a555b68c8fed43078db6022a3de83fce97c1d80caf070c3654f9526d149e8182
+```
+
+#### List stored `Deploy`s
+
+To get a list of all stored `Deploy`s' hashes:
+
+```
+cargo run --release --bin=casperlabs-client -- list-deploys http://localhost:9999
 ```

@@ -6,7 +6,7 @@ use structopt::StructOpt;
 
 use casperlabs_node::types::Deploy;
 
-const DEPLOY_API_PATH: &str = "deploy";
+const DEPLOY_API_PATH: &str = "deploys";
 
 #[derive(Debug, StructOpt)]
 /// CasperLabs client.
@@ -25,6 +25,12 @@ pub enum Args {
         /// Hex-encoded deploy hash.
         deploy_hash: String,
     },
+    /// Get the list of all stored deploys' hashes.
+    ListDeploys {
+        /// Address of the casperlabs-node HTTP service to contact.  Example format:
+        /// http://localhost:7777
+        node_address: String,
+    },
 }
 
 #[tokio::main]
@@ -35,6 +41,7 @@ async fn main() -> anyhow::Result<()> {
             node_address,
             deploy_hash,
         } => get_deploy(node_address, deploy_hash).await,
+        Args::ListDeploys { node_address } => list_deploys(node_address).await,
     }
 }
 
@@ -68,6 +75,16 @@ async fn get_deploy(node_address: String, deploy_hash: String) -> anyhow::Result
         let deploy = Deploy::from_json(json_encoded)?;
         println!("{}", deploy);
     }
+
+    Ok(())
+}
+
+async fn list_deploys(node_address: String) -> anyhow::Result<()> {
+    let url = format!("{}/{}", node_address, DEPLOY_API_PATH);
+    let body = reqwest::get(&url).await?.bytes().await?;
+
+    let json_encoded = str::from_utf8(body.as_ref())?;
+    println!("{}", json_encoded);
 
     Ok(())
 }

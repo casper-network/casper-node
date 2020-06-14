@@ -15,12 +15,16 @@ pub(crate) enum Event {
     PutDeployResult {
         deploy: Box<Deploy>,
         result: storage::Result<()>,
-        main_responder: Responder<Result<(), (Deploy, String)>>,
+        main_responder: Responder<Result<(), (Deploy, storage::Error)>>,
     },
     GetDeployResult {
         hash: DeployHash,
         result: Box<storage::Result<Deploy>>,
-        main_responder: Responder<Option<Deploy>>,
+        main_responder: Responder<storage::Result<Deploy>>,
+    },
+    ListDeploysResult {
+        result: Box<storage::Result<Vec<DeployHash>>>,
+        main_responder: Responder<storage::Result<Vec<DeployHash>>>,
     },
 }
 
@@ -33,6 +37,9 @@ impl Display for Event {
             }
             Event::GetDeployResult { hash, result, .. } => {
                 write!(formatter, "GetDeployResult for {}: {:?}", hash, result)
+            }
+            Event::ListDeploysResult { result, .. } => {
+                write!(formatter, "ListDeployResult: {:?}", result)
             }
         }
     }

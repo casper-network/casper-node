@@ -6,11 +6,21 @@
 //!
 //! This module currently provides both halves of what is required for an API server: An abstract
 //! API Server that handles API requests and an external service endpoint based on HTTP+JSON.
+//!
+//! API
+//! * To store a deploy, send an HTTP POST request to "/deploys" where the body is the
+//!   JSON-serialized deploy.  The response will be the deploy's hash (hex-encoded) or an error
+//!   message on failure.
+//! * To retrieve a deploy, send an HTTP GET request to "/deploys/<ID>" where <ID> is the
+//!   hex-encoded deploy hash.  The response will be the JSON-serialized deploy, "null"  if the
+//!   deploy doesn't exist or an error message on failure..
+//! * To list all stored deploy hashes, send an HTTP GET request to "/deploys".  The response will
+//!   be the JSON-serialized list of hex-encoded deploy hashes or an error message on failure.
 
 mod config;
 mod event;
 
-use std::{net::SocketAddr, str};
+use std::{error::Error as StdError, net::SocketAddr, str};
 
 use bytes::Bytes;
 use http::Response;
@@ -27,7 +37,7 @@ use warp::{
 
 use super::Component;
 use crate::{
-    components::storage::Storage,
+    components::storage::{self, Storage},
     crypto::hash::Digest,
     effect::{
         requests::{ApiRequest, DeployBroadcasterRequest, StorageRequest},
@@ -39,7 +49,7 @@ use crate::{
 pub use config::Config;
 pub(crate) use event::Event;
 
-const DEPLOY_API_PATH: &str = "deploy";
+const DEPLOYS_API_PATH: &str = "deploys";
 
 pub(crate) struct ApiServer {}
 
@@ -49,7 +59,7 @@ impl ApiServer {
         effect_builder: EffectBuilder<REv>,
     ) -> (Self, Multiple<Effect<Event>>)
     where
-        REv: From<Event> + From<ApiRequest> + Send,
+        REv: From<Event> + From<ApiRequest> + From<StorageRequest<Storage>> + Send,
     {
         let effects = Multiple::new();
         let api_server = ApiServer {};
@@ -62,7 +72,7 @@ impl ApiServer {
 
 impl<REv> Component<REv> for ApiServer
 where
-    REv: From<StorageRequest<Storage>> + Send + From<DeployBroadcasterRequest>,
+    REv: From<StorageRequest<Storage>> + From<DeployBroadcasterRequest> + Send,
 {
     type Event = Event;
 
@@ -92,18 +102,28 @@ where
                     result: Box::new(result),
                     main_responder: responder,
                 }),
+            Event::ApiRequest(ApiRequest::ListDeploys { responder }) => effect_builder
+                .list_deploys()
+                .event(move |result| Event::ListDeploysResult {
+                    result: Box::new(result),
+                    main_responder: responder,
+                }),
             Event::PutDeployResult {
                 deploy,
                 result,
                 main_responder,
             } => main_responder
-                .respond(result.map_err(|error| (*deploy, error.to_string())))
+                .respond(result.map_err(|error| (*deploy, error)))
                 .ignore(),
             Event::GetDeployResult {
                 hash: _,
                 result,
                 main_responder,
-            } => main_responder.respond(result.ok()).ignore(),
+            } => main_responder.respond(*result).ignore(),
+            Event::ListDeploysResult {
+                result,
+                main_responder,
+            } => main_responder.respond(*result).ignore(),
         }
     }
 }
@@ -111,15 +131,15 @@ where
 /// Run the HTTP server.
 async fn run_server<REv>(config: Config, effect_builder: EffectBuilder<REv>)
 where
-    REv: From<Event> + From<ApiRequest> + Send,
+    REv: From<Event> + From<ApiRequest> + From<StorageRequest<Storage>> + Send,
 {
     let post_deploy = warp::post()
-        .and(warp::path(DEPLOY_API_PATH))
+        .and(warp::path(DEPLOYS_API_PATH))
         .and(body::bytes())
         .and_then(move |encoded_deploy| parse_post_request(effect_builder, encoded_deploy));
 
     let get_deploy = warp::get()
-        .and(warp::path(DEPLOY_API_PATH))
+        .and(warp::path(DEPLOYS_API_PATH))
         .and(warp::path::tail())
         .and_then(move |hex_digest| parse_get_request(effect_builder, hex_digest));
 
@@ -173,7 +193,7 @@ where
         }
     };
 
-    let reply = effect_builder
+    let result = effect_builder
         .make_request(
             |responder| ApiRequest::SubmitDeploy {
                 deploy: Box::new(deploy),
@@ -182,16 +202,86 @@ where
             QueueKind::Api,
         )
         .await;
-    let json = reply::json(&reply);
-    Ok(reply::with_status(json, StatusCode::OK))
+
+    match result {
+        Ok(()) => {
+            let json = reply::json(&"");
+            Ok(reply::with_status(json, StatusCode::OK))
+        }
+        Err((deploy, error)) => {
+            let error_reply = format!("Failed to store {}: {}", deploy.id(), error);
+            let json = reply::json(&error_reply);
+            Ok(reply::with_status(json, StatusCode::BAD_REQUEST))
+        }
+    }
 }
 
 async fn parse_get_request<REv>(
     effect_builder: EffectBuilder<REv>,
+    tail: Tail,
+) -> Result<Response<String>, Rejection>
+where
+    REv: From<Event> + From<ApiRequest> + From<StorageRequest<Storage>> + Send,
+{
+    if tail.as_str().is_empty() {
+        handle_list_deploys_request(effect_builder).await
+    } else {
+        handle_get_deploy_request(effect_builder, tail).await
+    }
+}
+
+async fn handle_list_deploys_request<REv>(
+    effect_builder: EffectBuilder<REv>,
+) -> Result<Response<String>, Rejection>
+where
+    REv: From<Event> + From<ApiRequest> + From<StorageRequest<Storage>> + Send,
+{
+    let result = effect_builder
+        .make_request(
+            |responder| ApiRequest::ListDeploys { responder },
+            QueueKind::Api,
+        )
+        .await;
+    let error_body = |error: storage::Error| -> String {
+        format!(
+            r#""Internal server error listing deploys.  Error: {}""#,
+            error
+        )
+    };
+
+    // TODO - paginate these?
+    let (body, status) = match result {
+        Ok(deploy_hashes) => {
+            let mut hex_hashes = "[".to_string();
+            let count = deploy_hashes.len();
+            for (index, deploy_hash) in deploy_hashes.into_iter().enumerate() {
+                let hex_hash = hex::encode(deploy_hash.inner());
+                hex_hashes.push('"');
+                hex_hashes.push_str(&hex_hash);
+                hex_hashes.push('"');
+                if index + 1 != count {
+                    hex_hashes.push(',');
+                }
+            }
+            hex_hashes.push(']');
+            (hex_hashes, StatusCode::OK)
+        }
+        Err(error) => (error_body(error), StatusCode::INTERNAL_SERVER_ERROR),
+    };
+
+    Ok(Response::builder()
+        .header("content-type", "application/json")
+        .status(status)
+        .body(body)
+        .unwrap())
+}
+
+async fn handle_get_deploy_request<REv>(
+    effect_builder: EffectBuilder<REv>,
     hex_digest: Tail,
 ) -> Result<Response<String>, Rejection>
 where
-    REv: From<Event> + From<ApiRequest> + Send,
+    REv: From<Event> + From<ApiRequest> + From<StorageRequest<Storage>> + Send,
 {
     let digest = match Digest::from_hex(hex_digest.as_str()) {
         Ok(digest) => digest,
@@ -211,21 +301,36 @@ where
         }
     };
 
-    let reply = effect_builder
+    let result = effect_builder
         .make_request(
-            move |responder| ApiRequest::GetDeploy {
+            |responder| ApiRequest::GetDeploy {
                 hash: DeployHash::new(digest),
                 responder,
             },
             QueueKind::Api,
         )
-        .await
-        .and_then(|deploy| deploy.to_json().ok())
-        .unwrap_or_else(|| "null".to_string());
+        .await;
+
+    let error_body = |error: &dyn StdError| -> String {
+        format!(
+            r#""Internal server error retrieving {}.  Error: {}""#,
+            hex_digest.as_str(),
+            error
+        )
+    };
+
+    let (body, status) = match result {
+        Ok(deploy) => match deploy.to_json() {
+            Ok(deploy_as_json) => (deploy_as_json, StatusCode::OK),
+            Err(error) => (error_body(&error), StatusCode::INTERNAL_SERVER_ERROR),
+        },
+        Err(storage::Error::NotFound) => ("null".to_string(), StatusCode::OK),
+        Err(error) => (error_body(&error), StatusCode::INTERNAL_SERVER_ERROR),
+    };
 
     Ok(Response::builder()
         .header("content-type", "application/json")
-        .status(StatusCode::OK)
-        .body(reply)
+        .status(status)
+        .body(body)
         .unwrap())
 }

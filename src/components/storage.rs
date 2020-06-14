@@ -174,6 +174,16 @@ where
                 }
                 .ignore()
             }
+            StorageRequest::ListDeploys { responder } => {
+                let deploy_store = self.deploy_store();
+                async move {
+                    let result = task::spawn_blocking(move || deploy_store.ids())
+                        .await
+                        .expect("should run");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
         }
     }
 }

@@ -1,6 +1,8 @@
 use std::{fmt::Debug, marker::PhantomData, path::Path};
 
-use lmdb::{self, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags};
+use lmdb::{
+    self, Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags,
+};
 use tracing::info;
 
 use super::{Error, Result, Store, Value};
@@ -21,6 +23,7 @@ impl<V: Value> LmdbStore<V> {
             .open(db_path.as_ref())?;
         let db = env.create_db(None, DatabaseFlags::empty())?;
         info!("opened DB at {}", db_path.as_ref().display());
+
         Ok(LmdbStore {
             env,
             db,
@@ -29,16 +32,32 @@ impl<V: Value> LmdbStore<V> {
     }
 }
 
+impl<V: Value> LmdbStore<V> {
+    fn get_value(&self, id: &V::Id) -> Result<V> {
+        let id = bincode::serialize(id).map_err(|error| Error::from_serialization(*error))?;
+        let txn = self.env.begin_ro_txn()?;
+        let serialized_value = match txn.get(self.db, &id) {
+            Ok(value) => value,
+            Err(lmdb::Error::NotFound) => return Err(Error::NotFound),
+            Err(error) => return Err(error.into()),
+        };
+        let value = bincode::deserialize(serialized_value)
+            .map_err(|error| Error::from_deserialization(*error))?;
+        txn.commit()?;
+        Ok(value)
+    }
+}
+
 impl<V: Value> Store for LmdbStore<V> {
     type Value = V;
 
     fn put(&self, value: V) -> Result<()> {
-        let key =
+        let id =
             bincode::serialize(value.id()).map_err(|error| Error::from_serialization(*error))?;
         let serialized_value =
             bincode::serialize(&value).map_err(|error| Error::from_serialization(*error))?;
         let mut txn = self.env.begin_rw_txn()?;
-        txn.put(self.db, &key, &serialized_value, WriteFlags::empty())?;
+        txn.put(self.db, &id, &serialized_value, WriteFlags::empty())?;
         txn.commit()?;
         Ok(())
     }
@@ -50,20 +69,19 @@ impl<V: Value> Store for LmdbStore<V> {
     fn get_header(&self, id: &V::Id) -> Result<V::Header> {
         self.get_value(id).map(|value| value.take_header())
     }
-}
 
-impl<V: Value> LmdbStore<V> {
-    fn get_value(&self, id: &V::Id) -> Result<V> {
-        let key = bincode::serialize(id).map_err(|error| Error::from_serialization(*error))?;
+    fn ids(&self) -> Result<Vec<V::Id>> {
         let txn = self.env.begin_ro_txn()?;
-        let serialized_value = match txn.get(self.db, &key) {
-            Ok(value) => value,
-            Err(lmdb::Error::NotFound) => return Err(Error::NotFound),
-            Err(error) => return Err(error.into()),
-        };
-        let value = bincode::deserialize(serialized_value)
-            .map_err(|error| Error::from_deserialization(*error))?;
+        let mut ids = vec![];
+        {
+            let mut cursor = txn.open_ro_cursor(self.db)?;
+            for (id, _value) in cursor.iter() {
+                let id: V::Id = bincode::deserialize(id)
+                    .map_err(|error| Error::from_deserialization(*error))?;
+                ids.push(id);
+            }
+        }
         txn.commit()?;
-        Ok(value)
+        Ok(ids)
     }
 }
