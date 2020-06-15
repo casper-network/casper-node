@@ -1,7 +1,13 @@
-use std::{cmp::Ordering, collections::HashMap, convert::identity, iter, ops::Mul};
+use std::{
+    cmp::Ordering,
+    collections::HashMap,
+    convert::identity,
+    fmt::{self, Display, Formatter},
+    iter,
+    ops::Mul,
+};
 
 use derive_more::{Add, AddAssign, Sub, SubAssign, Sum};
-use displaydoc::Display;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
@@ -41,12 +47,23 @@ pub(crate) struct AddVoteError<C: Context> {
     pub(crate) cause: VoteError,
 }
 
-#[derive(Debug, Display, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq)]
 pub(crate) enum VoteError {
     /// The vote's panorama is inconsistent.
     Panorama,
     /// The vote contains the wrong sequence number.
     SequenceNumber,
+}
+
+impl Display for VoteError {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            VoteError::Panorama => write!(formatter, "The vote's panorama is inconsistent."),
+            VoteError::SequenceNumber => {
+                write!(formatter, "The vote contains the wrong sequence number.")
+            }
+        }
+    }
 }
 
 impl<C: Context> WireVote<C> {
