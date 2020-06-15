@@ -2,11 +2,11 @@
 mod tests;
 mod traits;
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 pub(crate) use traits::{DependencySpec, HandleNewItemResult, ItemWithId, NodeId, ProtocolState};
-
-use std::collections::HashMap;
 
 /// Data associated with an item in the queue that is still missing some dependencies
 #[derive(Debug)]

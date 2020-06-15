@@ -1,3 +1,4 @@
+// TODO: Remove when all code is used
 #![allow(dead_code)]
 use std::{hash::Hash, time::Instant};
 

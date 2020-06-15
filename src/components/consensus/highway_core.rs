@@ -16,7 +16,7 @@
 //! * A _synchronizer_ that exchanges messages with other participating nodes to exchange their DAG
 //!   vertices and ensure that each vertex becomes eventually known to every node.
 //! * Semantics for the consensus values, which can e.g. represent token transfers, or programs to
-//!   executed in a virtual machine for a smart contract platform.
+//!   be executed in a virtual machine for a smart contract platform.
 //! * Signing of finalized blocks, as a finality proof to third parties/clients.
 //!
 //! Note that consensus values should be small. If they represent a lot of data, e.g. lists of
