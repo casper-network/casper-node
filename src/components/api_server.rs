@@ -242,7 +242,7 @@ where
             QueueKind::Api,
         )
         .await;
-    let error_body = |error: storage::Error| -> String {
+    let error_body = |error: &dyn std::error::Error| -> String {
         format!(
             r#""Internal server error listing deploys.  Error: {}""#,
             error
@@ -252,21 +252,16 @@ where
     // TODO - paginate these?
     let (body, status) = match result {
         Ok(deploy_hashes) => {
-            let mut hex_hashes = "[".to_string();
-            let count = deploy_hashes.len();
-            for (index, deploy_hash) in deploy_hashes.into_iter().enumerate() {
-                let hex_hash = hex::encode(deploy_hash.inner());
-                hex_hashes.push('"');
-                hex_hashes.push_str(&hex_hash);
-                hex_hashes.push('"');
-                if index + 1 != count {
-                    hex_hashes.push(',');
-                }
+            let hex_hashes = deploy_hashes
+                .into_iter()
+                .map(|deploy_hash| hex::encode(deploy_hash.inner()))
+                .collect::<Vec<_>>();
+            match serde_json::to_string(&hex_hashes) {
+                Ok(body) => (body, StatusCode::OK),
+                Err(error) => (error_body(&error), StatusCode::INTERNAL_SERVER_ERROR),
             }
-            hex_hashes.push(']');
-            (hex_hashes, StatusCode::OK)
         }
-        Err(error) => (error_body(error), StatusCode::INTERNAL_SERVER_ERROR),
+        Err(error) => (error_body(&error), StatusCode::INTERNAL_SERVER_ERROR),
     };
 
     Ok(Response::builder()
