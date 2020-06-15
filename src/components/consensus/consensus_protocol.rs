@@ -1,6 +1,6 @@
 // TODO: Remove when all code is used
 #![allow(dead_code)]
-use std::{hash::Hash, time::Instant};
+use std::{fmt::Debug, hash::Hash, time::Instant};
 
 mod protocol_state;
 mod synchronizer;
@@ -30,13 +30,15 @@ pub(crate) trait ConsensusContext {
     /// in consensus-agnostic layers.
     type Message;
 
+    type Error: Debug;
+
     type ConsensusValue: Hash + PartialEq + Eq;
 }
 
 #[derive(Debug)]
 pub(crate) enum ConsensusProtocolResult<Ctx: ConsensusContext> {
     CreatedNewMessage(Ctx::Message),
-    InvalidIncomingMessage(Ctx::Message, anyhow::Error),
+    InvalidIncomingMessage(Ctx::Message, Ctx::Error),
     ScheduleTimer(Instant, TimerId),
     CreateNewBlock,
     FinalizedBlock(Ctx::ConsensusValue),
@@ -48,13 +50,13 @@ pub(crate) trait ConsensusProtocol<Ctx: ConsensusContext> {
     fn handle_message(
         &mut self,
         msg: Ctx::Message,
-    ) -> Result<Vec<ConsensusProtocolResult<Ctx>>, anyhow::Error>;
+    ) -> Result<Vec<ConsensusProtocolResult<Ctx>>, Ctx::Error>;
 
     /// Triggers consensus' timer.
     fn handle_timer(
         &mut self,
         timer_id: TimerId,
-    ) -> Result<Vec<ConsensusProtocolResult<Ctx>>, anyhow::Error>;
+    ) -> Result<Vec<ConsensusProtocolResult<Ctx>>, Ctx::Error>;
 }
 
 #[cfg(test)]
@@ -64,7 +66,6 @@ mod example {
         synchronizer::DagSynchronizerState,
         ConsensusContext, ConsensusProtocol, ConsensusProtocolResult, TimerId,
     };
-    use anyhow::Error;
 
     struct HighwayContext();
 
@@ -90,8 +91,12 @@ mod example {
     #[derive(Debug, Hash, PartialEq, Eq, Clone)]
     struct DeployHash(u64);
 
+    #[derive(Debug)]
+    struct Error;
+
     impl ConsensusContext for HighwayContext {
         type Message = HighwayMessage;
+        type Error = Error;
         type ConsensusValue = DeployHash;
     }
 

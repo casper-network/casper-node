@@ -126,6 +126,7 @@ pub(crate) struct PotholeContext<N, B> {
 
 impl<N: NodeId, B: Block + Hash + Eq> ConsensusContext for PotholeContext<N, B> {
     type ConsensusValue = B;
+    type Error = &'static str;
     type Message = (N, SynchronizerMessage<PotholeDepSpec<B>>);
 }
 
@@ -164,7 +165,7 @@ impl<N: NodeId, B: Block + Hash + Eq> ConsensusProtocol<PotholeContext<N, B>>
     fn handle_message(
         &mut self,
         msg: (N, SynchronizerMessage<PotholeDepSpec<B>>),
-    ) -> Result<Vec<ConsensusProtocolResult<PotholeContext<N, B>>>, anyhow::Error> {
+    ) -> Result<Vec<ConsensusProtocolResult<PotholeContext<N, B>>>, &'static str> {
         let (sender, msg) = msg;
         Ok(self
             .synchronizer
@@ -177,7 +178,7 @@ impl<N: NodeId, B: Block + Hash + Eq> ConsensusProtocol<PotholeContext<N, B>>
     fn handle_timer(
         &mut self,
         timer_id: TimerId,
-    ) -> Result<Vec<ConsensusProtocolResult<PotholeContext<N, B>>>, anyhow::Error> {
+    ) -> Result<Vec<ConsensusProtocolResult<PotholeContext<N, B>>>, &'static str> {
         Ok(self
             .pothole
             .handle_timer(timer_id.0)

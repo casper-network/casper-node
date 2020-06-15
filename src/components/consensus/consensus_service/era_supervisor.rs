@@ -76,7 +76,12 @@ impl<C: ConsensusContext> ConsensusService for EraSupervisor<C>
 where
     C::Message: TryFrom<MessageWireFormat> + Into<MessageWireFormat>,
 {
-    fn handle_event(&mut self, event: Event) -> Result<Vec<Effect<Event>>, ConsensusServiceError> {
+    type Ctx = C;
+
+    fn handle_event(
+        &mut self,
+        event: Event,
+    ) -> Result<Vec<Effect<Event>>, ConsensusServiceError<C>> {
         match event {
             Event::Timer(era_id, timer_id) => match self.active_eras.get_mut(&era_id) {
                 None => todo!("Handle missing eras."),
