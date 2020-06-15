@@ -33,7 +33,7 @@ enum Message {
     #[from]
     Pinger(pinger::Message),
     #[from]
-    Consensus(consensus::Message),
+    Consensus(consensus::ConsensusMessage),
     #[from]
     DeployBroadcaster(deploy_broadcaster::Message),
 }
@@ -80,8 +80,8 @@ impl From<ApiRequest> for Event {
     }
 }
 
-impl From<NetworkRequest<NodeId, consensus::Message>> for Event {
-    fn from(request: NetworkRequest<NodeId, consensus::Message>) -> Self {
+impl From<NetworkRequest<NodeId, consensus::ConsensusMessage>> for Event {
+    fn from(request: NetworkRequest<NodeId, consensus::ConsensusMessage>) -> Self {
         Event::NetworkRequest(request.map_payload(Message::from))
     }
 }
