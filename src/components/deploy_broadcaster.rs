@@ -1,7 +1,4 @@
-use std::{
-    collections::HashSet,
-    fmt::{self, Display, Formatter},
-};
+use std::fmt::{self, Display, Formatter};
 
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -12,7 +9,7 @@ use crate::{
         requests::{DeployBroadcasterRequest, NetworkRequest, StorageRequest},
         Effect, EffectBuilder, EffectExt, Multiple,
     },
-    types::{Deploy, DeployHash},
+    types::Deploy,
 };
 
 /// Deploy broadcaster events.
@@ -55,16 +52,11 @@ impl Display for Message {
 /// The component which broadcasts `Deploy`s to peers and handles incoming `Deploy`s which have been
 /// broadcast to it.
 #[derive(Default)]
-pub(crate) struct DeployBroadcaster {
-    /// The IDs of all the `Deploy`s stored locally.
-    ids: HashSet<DeployHash>,
-}
+pub(crate) struct DeployBroadcaster {}
 
 impl DeployBroadcaster {
     pub(crate) fn new() -> Self {
-        DeployBroadcaster {
-            ids: HashSet::new(),
-        }
+        DeployBroadcaster {}
     }
 }
 
@@ -83,7 +75,6 @@ where
         match event {
             Event::Request(DeployBroadcasterRequest::PutFromClient { deploy }) => {
                 // Incoming HTTP request - broadcast the `Deploy`.
-                self.ids.insert(*deploy.id());
                 effect_builder
                     .broadcast_message(Message::Put(deploy))
                     .ignore()
@@ -93,7 +84,6 @@ where
                 sender: _,
             } => {
                 // Incoming broadcast message - just store the `Deploy`.
-                self.ids.insert(*deploy.id());
                 effect_builder.put_deploy(*deploy).ignore()
             }
         }

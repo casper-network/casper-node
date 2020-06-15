@@ -59,14 +59,14 @@ impl Cli {
                 io::stdout().write_all(cfg_str.as_bytes())?;
             }
             Cli::Validator { config } => {
+                logging::init()?;
                 // We load the specified config, if any, otherwise use defaults.
                 let cfg = config
                     .map(config::load_from_file)
                     .transpose()?
                     .unwrap_or_default();
-                logging::init()?;
 
-                reactor::validator::run(cfg.validator_net, cfg.http_server).await?
+                reactor::validator::run(cfg.validator_net, cfg.http_server, cfg.storage).await?
             }
         }
         Ok(())

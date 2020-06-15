@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 use derive_more::From;
 
 use crate::{
-    components::storage::InMemResult,
+    components::storage,
     effect::{requests::ApiRequest, Responder},
     types::{Deploy, DeployHash},
 };
@@ -14,13 +14,17 @@ pub(crate) enum Event {
     ApiRequest(ApiRequest),
     PutDeployResult {
         deploy: Box<Deploy>,
-        result: InMemResult<()>,
-        main_responder: Responder<Result<(), (Deploy, String)>>,
+        result: storage::Result<()>,
+        main_responder: Responder<Result<(), (Deploy, storage::Error)>>,
     },
     GetDeployResult {
         hash: DeployHash,
-        result: Box<InMemResult<Deploy>>,
-        main_responder: Responder<Option<Deploy>>,
+        result: Box<storage::Result<Deploy>>,
+        main_responder: Responder<storage::Result<Deploy>>,
+    },
+    ListDeploysResult {
+        result: Box<storage::Result<Vec<DeployHash>>>,
+        main_responder: Responder<storage::Result<Vec<DeployHash>>>,
     },
 }
 
@@ -28,14 +32,14 @@ impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
             Event::ApiRequest(request) => write!(formatter, "{}", request),
-            Event::PutDeployResult { deploy, result, .. } => write!(
-                formatter,
-                "PutDeployResult for {}: {:?}",
-                deploy.id(),
-                result
-            ),
+            Event::PutDeployResult { result, .. } => {
+                write!(formatter, "PutDeployResult: {:?}", result)
+            }
             Event::GetDeployResult { hash, result, .. } => {
                 write!(formatter, "GetDeployResult for {}: {:?}", hash, result)
+            }
+            Event::ListDeploysResult { result, .. } => {
+                write!(formatter, "ListDeployResult: {:?}", result)
             }
         }
     }

@@ -2,7 +2,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 
 use super::Responder;
 use crate::{
-    components::storage::{StorageType, Store, Value},
+    components::storage::{self, StorageType, Value},
     types::{Deploy, DeployHash},
 };
 
@@ -70,48 +70,40 @@ where
 #[allow(clippy::type_complexity)]
 // TODO: remove once all variants are used.
 #[allow(dead_code)]
-pub(crate) enum StorageRequest<S: StorageType> {
+pub(crate) enum StorageRequest<S: StorageType + 'static> {
     /// Store given block.
     PutBlock {
-        block: Box<<S::BlockStore as Store>::Value>,
-        responder: Responder<Result<(), <S::BlockStore as Store>::Error>>,
+        block: Box<S::Block>,
+        responder: Responder<storage::Result<()>>,
     },
     /// Retrieve block with given hash.
     GetBlock {
-        block_hash: <<S::BlockStore as Store>::Value as Value>::Id,
-        responder:
-            Responder<Result<<S::BlockStore as Store>::Value, <S::BlockStore as Store>::Error>>,
+        block_hash: <S::Block as Value>::Id,
+        responder: Responder<storage::Result<S::Block>>,
     },
     /// Retrieve block header with given hash.
     GetBlockHeader {
-        block_hash: <<S::BlockStore as Store>::Value as Value>::Id,
-        responder: Responder<
-            Result<
-                <<S::BlockStore as Store>::Value as Value>::Header,
-                <S::BlockStore as Store>::Error,
-            >,
-        >,
+        block_hash: <S::Block as Value>::Id,
+        responder: Responder<storage::Result<<S::Block as Value>::Header>>,
     },
     /// Store given deploy.
     PutDeploy {
-        deploy: Box<<S::DeployStore as Store>::Value>,
-        responder: Responder<Result<(), <S::DeployStore as Store>::Error>>,
+        deploy: Box<S::Deploy>,
+        responder: Responder<storage::Result<()>>,
     },
     /// Retrieve deploy with given hash.
     GetDeploy {
-        deploy_hash: <<S::DeployStore as Store>::Value as Value>::Id,
-        responder:
-            Responder<Result<<S::DeployStore as Store>::Value, <S::DeployStore as Store>::Error>>,
+        deploy_hash: <S::Deploy as Value>::Id,
+        responder: Responder<storage::Result<S::Deploy>>,
     },
     /// Retrieve deploy header with given hash.
     GetDeployHeader {
-        deploy_hash: <<S::DeployStore as Store>::Value as Value>::Id,
-        responder: Responder<
-            Result<
-                <<S::DeployStore as Store>::Value as Value>::Header,
-                <S::DeployStore as Store>::Error,
-            >,
-        >,
+        deploy_hash: <S::Deploy as Value>::Id,
+        responder: Responder<storage::Result<<S::Deploy as Value>::Header>>,
+    },
+    /// List all deploy hashes.
+    ListDeploys {
+        responder: Responder<storage::Result<Vec<<S::Deploy as Value>::Id>>>,
     },
 }
 
@@ -130,6 +122,7 @@ impl<S: StorageType> Display for StorageRequest<S> {
             StorageRequest::GetDeployHeader { deploy_hash, .. } => {
                 write!(formatter, "get {}", deploy_hash)
             }
+            StorageRequest::ListDeploys { .. } => write!(formatter, "list deploys"),
         }
     }
 }
@@ -145,12 +138,16 @@ pub(crate) enum ApiRequest {
     /// Returns the deploy along with an error message if it could not be stored.
     SubmitDeploy {
         deploy: Box<Deploy>,
-        responder: Responder<Result<(), (Deploy, String)>>,
+        responder: Responder<Result<(), (Deploy, storage::Error)>>,
     },
     /// Return the specified deploy if it exists, else `None`.
     GetDeploy {
         hash: DeployHash,
-        responder: Responder<Option<Deploy>>,
+        responder: Responder<Result<Deploy, storage::Error>>,
+    },
+    /// Return the list of all deploy hashes stored on this node.
+    ListDeploys {
+        responder: Responder<Result<Vec<DeployHash>, storage::Error>>,
     },
 }
 
@@ -159,6 +156,7 @@ impl Display for ApiRequest {
         match self {
             ApiRequest::SubmitDeploy { deploy, .. } => write!(formatter, "submit {}", *deploy),
             ApiRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
+            ApiRequest::ListDeploys { .. } => write!(formatter, "list deploys"),
         }
     }
 }

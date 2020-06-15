@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-/// Small network configuration
+/// Small network configuration.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
     /// Interface to bind to.
