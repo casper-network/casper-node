@@ -12,11 +12,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::super::consensus_protocol::{
-    ConsensusContext, ConsensusProtocol, ConsensusProtocolResult,
-};
-use super::traits::{
-    ConsensusService, ConsensusServiceError, Effect, EraId, Event, MessageWireFormat,
+use super::{
+    super::consensus_protocol::{ConsensusContext, ConsensusProtocol, ConsensusProtocolResult},
+    traits::{ConsensusService, ConsensusServiceError, Effect, EraId, Event, MessageWireFormat},
 };
 
 #[derive(Clone, Debug)]

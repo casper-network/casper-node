@@ -9,15 +9,17 @@ use std::{
 use derive_more::{Deref, DerefMut};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use super::super::consensus_protocol::{
-    ConsensusContext, ConsensusProtocol, ConsensusProtocolResult, NodeId as ConsensusNodeId,
-    TimerId,
-};
-use super::super::consensus_service::traits::{EraId, MessageWireFormat};
-use super::super::pothole::{Block, BlockIndex, Pothole, PotholeResult};
-use super::super::synchronizer::{
-    DependencySpec, HandleNewItemResult, ItemWithId, NodeId, ProtocolState, Synchronizer,
-    SynchronizerMessage,
+use super::super::{
+    consensus_protocol::{
+        ConsensusContext, ConsensusProtocol, ConsensusProtocolResult, NodeId as ConsensusNodeId,
+        TimerId,
+    },
+    consensus_service::traits::{EraId, MessageWireFormat},
+    pothole::{Block, BlockIndex, Pothole, PotholeResult},
+    synchronizer::{
+        DependencySpec, HandleNewItemResult, ItemWithId, NodeId, ProtocolState, Synchronizer,
+        SynchronizerMessage,
+    },
 };
 
 #[derive(Debug)]

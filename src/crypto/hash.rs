@@ -9,6 +9,8 @@ use blake2::{
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 
+use super::Result;
+
 /// The hash digest; a wrapped `u8` array.
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Digest([u8; Digest::LENGTH]);
@@ -20,6 +22,13 @@ impl Digest {
     /// Returns the wrapped `u8` array.
     pub fn to_bytes(&self) -> [u8; Digest::LENGTH] {
         self.0
+    }
+
+    /// Returns a `Digest` parsed from a hex-encoded `Digest`.
+    pub fn from_hex<T: AsRef<[u8]>>(hex_input: T) -> Result<Self> {
+        let mut inner = [0; Digest::LENGTH];
+        hex::decode_to_slice(hex_input, &mut inner)?;
+        Ok(Digest(inner))
     }
 }
 
@@ -55,6 +64,8 @@ pub fn hash<T: AsRef<[u8]>>(data: T) -> Digest {
 
 #[cfg(test)]
 mod test {
+    use std::iter::{self, FromIterator};
+
     use super::*;
 
     #[test]
@@ -76,6 +87,30 @@ mod test {
         for (known_input, expected_digest) in &inputs_and_digests {
             let known_input: &[u8] = known_input.as_ref();
             assert_eq!(*expected_digest, format!("{:?}", hash(known_input)));
+        }
+    }
+
+    #[test]
+    fn from_valid_hex_should_succeed() {
+        for char in "abcdefABCDEF0123456789".chars() {
+            let input = String::from_iter(iter::repeat(char).take(64));
+            assert!(Digest::from_hex(input).is_ok());
+        }
+    }
+
+    #[test]
+    fn from_hex_invalid_length_should_fail() {
+        for len in &[2_usize, 62, 63, 65, 66] {
+            let input = String::from_iter(iter::repeat('f').take(*len));
+            assert!(Digest::from_hex(input).is_err());
+        }
+    }
+
+    #[test]
+    fn from_hex_invalid_char_should_fail() {
+        for char in "g %-".chars() {
+            let input = String::from_iter(iter::repeat('f').take(63).chain(iter::once(char)));
+            assert!(Digest::from_hex(input).is_err());
         }
     }
 }

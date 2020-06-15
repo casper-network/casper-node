@@ -8,8 +8,10 @@ use serde::{Deserialize, Serialize};
 /// Small network configuration
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
-    /// Interface to bind to. If it is the same as the in `root_addr`, attempt
-    /// become the root node for this particular small network.
+    /// Interface to bind to.
+    ///
+    /// If it is the same as that in `root_addr` and the `bind_port` is non-zero and the same as
+    /// that in `root_addr`, attempt to become the root node for this particular small network.
     pub bind_interface: IpAddr,
 
     /// Port to bind to when not the root node. Use 0 for a random port.
@@ -35,9 +37,9 @@ impl Config {
     /// Creates a default instance for `SmallNetwork` with a constant port.
     pub fn default_on_port(port: u16) -> Self {
         Config {
-            bind_interface: Ipv4Addr::new(127, 0, 0, 1).into(),
+            bind_interface: Ipv4Addr::LOCALHOST.into(),
             bind_port: 0,
-            root_addr: (Ipv4Addr::new(127, 0, 0, 1), port).into(),
+            root_addr: (Ipv4Addr::LOCALHOST, port).into(),
             cert: None,
             private_key: None,
             max_outgoing_retries: Some(360),

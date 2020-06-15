@@ -52,7 +52,9 @@ use tracing::error;
 
 use crate::{
     components::storage::{StorageType, Store, Value},
+    effect::requests::DeployBroadcasterRequest,
     reactor::{EventQueueHandle, QueueKind},
+    types::Deploy,
 };
 use announcements::NetworkAnnouncement;
 use requests::{NetworkRequest, StorageRequest};
@@ -379,8 +381,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given deploy into the deploy store.  Returns true on success.
-    // TODO: remove once method is used.
-    #[allow(dead_code)]
     pub(crate) async fn put_deploy<S>(
         self,
         deploy: <S::DeployStore as Store>::Value,
@@ -400,8 +400,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested deploy from the deploy store.
-    // TODO: remove once method is used.
-    #[allow(dead_code)]
     pub(crate) async fn get_deploy<S>(
         self,
         deploy_hash: <<S::DeployStore as Store>::Value as Value>::Id,
@@ -439,5 +437,18 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
+    }
+
+    /// Passes the given deploy to the `DeployBroadcaster` component to be broadcast.
+    pub(crate) async fn broadcast_deploy(self, deploy: Box<Deploy>)
+    where
+        REv: From<DeployBroadcasterRequest>,
+    {
+        self.0
+            .schedule(
+                DeployBroadcasterRequest::PutFromClient { deploy },
+                QueueKind::Regular,
+            )
+            .await;
     }
 }

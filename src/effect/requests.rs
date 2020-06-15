@@ -2,11 +2,8 @@ use std::fmt::{self, Debug, Display, Formatter};
 
 use super::Responder;
 use crate::{
-    components::{
-        api_server::Deploy,
-        storage::{StorageType, Store, Value},
-    },
-    utils::DisplayIter,
+    components::storage::{StorageType, Store, Value},
+    types::{Deploy, DeployHash},
 };
 
 #[derive(Debug)]
@@ -143,26 +140,43 @@ impl<S: StorageType> Display for StorageRequest<S> {
 /// transport.
 #[derive(Debug)]
 pub(crate) enum ApiRequest {
-    /// Return a list of deploys.
-    GetDeploys { responder: Responder<Vec<Deploy>> },
-    /// Submit a number of deploys for inclusion.
+    /// Submit a deploy for storing.
     ///
-    /// Returns the deploys that could not be stored.
-    SubmitDeploys {
-        responder: Responder<Vec<Deploy>>,
-        deploys: Vec<Deploy>,
+    /// Returns the deploy along with an error message if it could not be stored.
+    SubmitDeploy {
+        deploy: Box<Deploy>,
+        responder: Responder<Result<(), (Deploy, String)>>,
+    },
+    /// Return the specified deploy if it exists, else `None`.
+    GetDeploy {
+        hash: DeployHash,
+        responder: Responder<Option<Deploy>>,
     },
 }
 
 impl Display for ApiRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ApiRequest::GetDeploys { .. } => write!(formatter, "get deploys"),
-            ApiRequest::SubmitDeploys { deploys, .. } => write!(
-                formatter,
-                "submit deploys: {:10}",
-                DisplayIter::new(deploys.iter())
-            ),
+            ApiRequest::SubmitDeploy { deploy, .. } => write!(formatter, "submit {}", *deploy),
+            ApiRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum DeployBroadcasterRequest {
+    /// A new `Deploy` received from a client via the HTTP server component.  Since this has been
+    /// received from a client and not via another node's broadcast, this receiving node should
+    /// broadcast it.
+    PutFromClient { deploy: Box<Deploy> },
+}
+
+impl Display for DeployBroadcasterRequest {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            DeployBroadcasterRequest::PutFromClient { deploy, .. } => {
+                write!(formatter, "put from client: {}", deploy.id())
+            }
         }
     }
 }

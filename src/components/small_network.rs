@@ -541,11 +541,13 @@ where
 ///
 /// Returns a `(listener, is_root)` pair. `is_root` is `true` if the node is a root node.
 fn create_listener(cfg: &Config) -> io::Result<(TcpListener, bool)> {
-    if cfg.root_addr.ip() == cfg.bind_interface {
+    if cfg.root_addr.ip() == cfg.bind_interface
+        && (cfg.bind_port == 0 || cfg.root_addr.port() == cfg.bind_port)
+    {
         // Try to become the root node, if the root nodes interface is available.
         match TcpListener::bind(cfg.root_addr) {
             Ok(listener) => {
-                info!("we are the root node!");
+                info!("we are the root node");
                 return Ok((listener, true));
             }
             Err(err) => {
@@ -557,8 +559,11 @@ fn create_listener(cfg: &Config) -> io::Result<(TcpListener, bool)> {
         };
     }
 
-    // We did not become the root node, bind on random port.
-    Ok((TcpListener::bind((cfg.bind_interface, 0u16))?, false))
+    // We did not become the root node, bind on the specified port.
+    Ok((
+        TcpListener::bind((cfg.bind_interface, cfg.bind_port))?,
+        false,
+    ))
 }
 
 /// Core accept loop for the networking server.

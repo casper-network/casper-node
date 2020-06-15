@@ -174,8 +174,10 @@ impl<'a, C: Context> Tallies<'a, C> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::state::{tests::*, AddVoteError, State};
-    use super::*;
+    use super::{
+        super::state::{tests::*, AddVoteError, State},
+        *,
+    };
 
     #[test]
     fn tallies() -> Result<(), AddVoteError<TestContext>> {

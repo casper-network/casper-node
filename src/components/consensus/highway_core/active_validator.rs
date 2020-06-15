@@ -207,12 +207,14 @@ impl<C: Context> ActiveValidator<C> {
 mod tests {
     use std::fmt::Debug;
 
-    use super::super::{
-        finality_detector::{FinalityDetector, FinalityResult},
-        state::{tests::*, AddVoteError, Weight},
-        vertex::Vertex,
+    use super::{
+        super::{
+            finality_detector::{FinalityDetector, FinalityResult},
+            state::{tests::*, AddVoteError, Weight},
+            vertex::Vertex,
+        },
+        *,
     };
-    use super::*;
 
     type Eff = Effect<TestContext>;
 

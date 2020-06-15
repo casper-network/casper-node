@@ -221,8 +221,10 @@ impl<C: Context> FinalityDetector<C> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::state::{tests::*, AddVoteError, State};
-    use super::*;
+    use super::{
+        super::state::{tests::*, AddVoteError, State},
+        *,
+    };
 
     #[test]
     fn finality_detector() -> Result<(), AddVoteError<TestContext>> {
