@@ -44,7 +44,6 @@ pub(crate) trait StorageType {
     type BlockStore: Store + Send + Sync;
     type DeployStore: Store + Send + Sync;
     type Error: StdError
-        + StdError
         + Clone
         + Serialize
         + DeserializeOwned
