@@ -15,6 +15,7 @@ default-run = "casperlabs-node"
 [dependencies]
 ansi_term = "0.12.1"
 anyhow = "1.0.28"
+bincode = "1.2.1"
 blake2 = { version = "0.8.1", default-features = false }
 bytes = "0.5.4"
 derive_more = "0.99.7"
