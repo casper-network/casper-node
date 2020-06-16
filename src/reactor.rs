@@ -125,7 +125,7 @@ pub trait Reactor: Sized {
 ///
 /// Starts the reactor and associated background tasks, then enters main the event processing loop.
 ///
-/// `run` will leak memory on start forli global structures each time it is called.
+/// `run` will leak memory each time it is called.
 ///
 /// Errors are returned only if component initialization fails.
 #[inline]
