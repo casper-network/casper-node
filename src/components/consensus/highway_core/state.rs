@@ -54,6 +54,8 @@ pub(crate) enum VoteError {
     Panorama,
     /// The vote contains the wrong sequence number.
     SequenceNumber,
+    /// The vote's timestamp is older than a justification's.
+    Timestamps,
 }
 
 impl Display for VoteError {
@@ -63,6 +65,10 @@ impl Display for VoteError {
             VoteError::SequenceNumber => {
                 write!(formatter, "The vote contains the wrong sequence number.")
             }
+            VoteError::Timestamps => write!(
+                formatter,
+                "The vote's timestamp is older than a justification's"
+            ),
         }
     }
 }
@@ -287,7 +293,7 @@ impl<C: Context> State<C> {
         self.find_ancestor(&block.skip_idx[i], height)
     }
 
-    /// Merge two panoramas into a new one.
+    /// Merges two panoramas into a new one.
     pub(crate) fn merge_panoramas(&self, pan0: &Panorama<C>, pan1: &Panorama<C>) -> Panorama<C> {
         let merge_obs = |observations: (&Observation<C>, &Observation<C>)| match observations {
             (Observation::Faulty, _) | (_, Observation::Faulty) => Observation::Faulty,
@@ -300,16 +306,32 @@ impl<C: Context> State<C> {
         Panorama(observations)
     }
 
+    /// Returns the panorama seeing all votes seen by `pan` with a timestamp no later than
+    /// `instant`. Accusations are preserved regardless of the evidence's timestamp.
+    pub(crate) fn panorama_cutoff(&self, pan: &Panorama<C>, instant: u64) -> Panorama<C> {
+        let obs_cutoff = |obs: &Observation<C>| match obs {
+            Observation::Correct(vhash) => self
+                .swimlane(vhash)
+                .find(|(_, vote)| vote.instant <= instant)
+                .map(|(vh, _)| vh.clone())
+                .map_or(Observation::None, Observation::Correct),
+            obs @ Observation::None | obs @ Observation::Faulty => obs.clone(),
+        };
+        Panorama(pan.iter().map(obs_cutoff).collect())
+    }
+
     /// Returns an error if `wvote` is invalid.
     fn validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {
         let wvote = &swvote.wire_vote;
         let sender = wvote.sender;
-        // TODO: Check instant >= justification instants.
-        // Check that the panorama is consistent.
         if (wvote.values.is_none() && wvote.panorama.is_empty())
             || !self.is_panorama_valid(&wvote.panorama)
         {
             return Err(VoteError::Panorama);
+        }
+        let mut justifications = wvote.panorama.iter_correct();
+        if !justifications.all(|vh| self.vote(vh).instant <= wvote.instant) {
+            return Err(VoteError::Timestamps);
         }
         // Check that the vote's sequence number is one more than the sender's previous one.
         let expected_seq_number = match wvote.panorama.get(sender) {
@@ -323,7 +345,7 @@ impl<C: Context> State<C> {
         Ok(())
     }
 
-    /// Update `self.panorama` with an incoming vote. Panics if dependencies are missing.
+    /// Updates `self.panorama` with an incoming vote. Panics if dependencies are missing.
     ///
     /// If the new vote is valid, it will just add `Observation::Correct(wvote.hash())` to the
     /// panorama. If it represents an equivocation, it adds `Observation::Faulty` and updates

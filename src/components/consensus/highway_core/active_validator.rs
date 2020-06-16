@@ -1,3 +1,5 @@
+use tracing::warn;
+
 use super::{
     state::State,
     traits::Context,
@@ -80,14 +82,18 @@ impl<C: Context> ActiveValidator<C> {
     /// Returns actions a validator needs to take at the specified `instant`, with the given
     /// protocol `state`.
     pub(crate) fn handle_timer(&mut self, instant: u64, state: &State<C>) -> Vec<Effect<C>> {
+        let mut effects = self.schedule_timer(instant, state);
+        if self.earliest_vote_time(state) > instant {
+            warn!(%instant, "skipping outdated timer event");
+            return effects;
+        }
         let round_offset = instant % self.round_len();
         let round_id = instant - round_offset;
-        let mut effects = self.schedule_timer(instant, state);
         if round_offset == 0 && state.leader(round_id) == self.vidx {
             let bctx = BlockContext { instant };
             effects.push(Effect::RequestNewBlock(bctx));
         } else if round_offset == self.witness_offset() {
-            let panorama = state.panorama().clone();
+            let panorama = state.panorama_cutoff(state.panorama(), instant);
             let witness_vote = self.new_vote(panorama, instant, None, state);
             effects.push(Effect::NewVertex(Vertex::Vote(witness_vote)))
         }
@@ -101,13 +107,14 @@ impl<C: Context> ActiveValidator<C> {
         instant: u64,
         state: &State<C>,
     ) -> Vec<Effect<C>> {
-        if self.should_send_confirmation(vhash, instant, state) {
+        if self.earliest_vote_time(state) > instant {
+            warn!(%instant, "skipping outdated confirmation");
+        } else if self.should_send_confirmation(vhash, instant, state) {
             let panorama = self.confirmation_panorama(vhash, state);
             let confirmation_vote = self.new_vote(panorama, instant, None, state);
-            vec![Effect::NewVertex(Vertex::Vote(confirmation_vote))]
-        } else {
-            vec![]
+            return vec![Effect::NewVertex(Vertex::Vote(confirmation_vote))];
         }
+        vec![]
     }
 
     /// Proposes a new block with the given consensus value.
@@ -117,7 +124,11 @@ impl<C: Context> ActiveValidator<C> {
         block_context: BlockContext,
         state: &State<C>,
     ) -> Vec<Effect<C>> {
-        let panorama = state.panorama().clone();
+        if self.earliest_vote_time(state) > block_context.instant {
+            warn!(?block_context, "skipping outdated proposal");
+            return vec![];
+        }
+        let panorama = state.panorama_cutoff(state.panorama(), block_context.instant);
         let instant = block_context.instant();
         let proposal_vote = self.new_vote(panorama, instant, Some(values), state);
         vec![Effect::NewVertex(Vertex::Vote(proposal_vote))]
@@ -126,6 +137,10 @@ impl<C: Context> ActiveValidator<C> {
     /// Returns whether the incoming message is a proposal that we need to send a confirmation for.
     fn should_send_confirmation(&self, vhash: &C::Hash, instant: u64, state: &State<C>) -> bool {
         let vote = state.vote(vhash);
+        if vote.instant > instant {
+            warn!(%vote.instant, %instant, "added a vote with a future timestamp");
+            return false;
+        }
         instant / self.round_len() == vote.instant / self.round_len() // Current round.
             && state.leader(vote.instant) == vote.sender // The sender is the round's leader.
             && vote.sender != self.vidx // We didn't send it ourselves.
@@ -192,6 +207,13 @@ impl<C: Context> ActiveValidator<C> {
             round_id + self.round_len() + self.witness_offset()
         };
         vec![Effect::ScheduleTimer(self.next_timer)]
+    }
+
+    /// Returns the earliest instant where we can cast our next vote without equivocating, i.e. the
+    /// timestamp of our previous vote, or 0 if there is none.
+    fn earliest_vote_time(&self, state: &State<C>) -> u64 {
+        let opt_own_vh = state.panorama().get(self.vidx).correct();
+        opt_own_vh.map_or(0, |own_vh| state.vote(own_vh).instant)
     }
 
     /// Returns the number of ticks after the beginning of a round when the witness votes are sent.
