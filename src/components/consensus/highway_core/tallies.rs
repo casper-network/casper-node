@@ -1,9 +1,8 @@
 use std::{
     collections::BTreeMap,
     iter::{self, Extend, FromIterator},
+    ops::Index,
 };
-
-use derive_more::{Deref, DerefMut};
 
 use super::{
     state::{State, Weight},
@@ -97,12 +96,19 @@ impl<'a, C: Context> Tally<'a, C> {
 
 /// A list of tallies by block height. The tally at each height contains only the votes that point
 /// directly to a block at that height, not at a descendant.
-#[derive(Deref, DerefMut)]
 pub(crate) struct Tallies<'a, C: Context>(BTreeMap<u64, Tally<'a, C>>);
 
 impl<'a, C: Context> Default for Tallies<'a, C> {
     fn default() -> Self {
         Tallies(BTreeMap::new())
+    }
+}
+
+impl<'a, C: Context> Index<u64> for Tallies<'a, C> {
+    type Output = Tally<'a, C>;
+
+    fn index(&self, index: u64) -> &Self::Output {
+        &self.0[&index]
     }
 }
 
@@ -120,16 +126,16 @@ impl<'a, C: Context> Tallies<'a, C> {
     /// Returns the height and hash of a block that is an ancestor of the fork choice, and _not_ an
     /// ancestor of all entries in `self`. Returns `None` if `self` is empty.
     pub(crate) fn find_decided(&self, state: &'a State<C>) -> Option<(u64, &'a C::Hash)> {
-        let max_height = *self.keys().next_back()?;
-        let total_weight = self.values().map(Tally::weight).sum();
+        let max_height = *self.0.keys().next_back()?;
+        let total_weight = self.0.values().map(Tally::weight).sum();
         // In the loop, this will be the tally of all votes from higher than the current height.
-        let mut prev_tally = self[&max_height].clone();
+        let mut prev_tally = self[max_height].clone();
         // Start from `max_height - 1` and find the greatest height where a decision can be made.
         for height in (0..max_height).rev() {
             // The tally at `height` is the sum of the parents of `prev_height` and the votes that
             // point directly to blocks at `height`.
             let mut h_tally = prev_tally.parents(state);
-            if let Some(tally) = self.get(&height) {
+            if let Some(tally) = self.0.get(&height) {
                 h_tally.extend(tally);
             }
             // If any block received more than 50%, a decision can be made: Either that block is
@@ -166,9 +172,20 @@ impl<'a, C: Context> Tallies<'a, C> {
 
     /// Adds an entry to the tally at the specified `height`.
     fn add(&mut self, height: u64, bhash: &'a C::Hash, weight: Weight) {
-        self.entry(height)
+        self.0
+            .entry(height)
             .and_modify(|tally| tally.add(bhash, weight))
             .or_insert_with(|| Tally::new(bhash, weight));
+    }
+
+    /// Returns the number tallies.
+    pub(crate) fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns `true` if there are no tallies in this map.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }
 
@@ -206,16 +223,16 @@ mod tests {
         ];
         let tallies: Tallies<TestContext> = vote_entries.into_iter().collect();
         assert_eq!(2, tallies.len());
-        assert_eq!(Weight(5), tallies[&1].weight()); // Carol's vote is on height 1.
-        assert_eq!(Weight(7), tallies[&2].weight()); // Alice's and Bob's votes are on height 2.
+        assert_eq!(Weight(5), tallies[1].weight()); // Carol's vote is on height 1.
+        assert_eq!(Weight(7), tallies[2].weight()); // Alice's and Bob's votes are on height 2.
 
         // Compute the tally at height 1: Take the parents of the blocks Alice and Bob vote for...
-        let mut h1_tally = tallies[&2].parents(&state);
+        let mut h1_tally = tallies[2].parents(&state);
         // (Their votes have the same parent: `a0`.)
         assert_eq!(1, h1_tally.votes.len());
         assert_eq!(Weight(7), h1_tally.votes[&a0]);
         // ...and adding Carol's vote.
-        h1_tally.extend(&tallies[&1]);
+        h1_tally.extend(&tallies[1]);
         assert_eq!(2, h1_tally.votes.len());
         assert_eq!(Weight(5), h1_tally.votes[&c0]);
 
@@ -226,9 +243,9 @@ mod tests {
         // But let's filter at level 1, and keep only the children of `a0`:
         let tallies = tallies.filter_descendants(1, &a0, &state);
         assert_eq!(1, tallies.len());
-        assert_eq!(2, tallies[&2].votes.len());
-        assert_eq!(Weight(3), tallies[&2].votes[&a1]);
-        assert_eq!(Weight(4), tallies[&2].votes[&b2]);
+        assert_eq!(2, tallies[2].votes.len());
+        assert_eq!(Weight(3), tallies[2].votes[&a1]);
+        assert_eq!(Weight(4), tallies[2].votes[&b2]);
         Ok(())
     }
 

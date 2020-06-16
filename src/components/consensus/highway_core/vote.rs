@@ -1,4 +1,3 @@
-use derive_more::Deref;
 use serde::{Deserialize, Serialize};
 
 use super::{state::State, traits::Context, validators::ValidatorIndex, vertex::WireVote};
@@ -38,7 +37,7 @@ impl<C: Context> Observation<C> {
 }
 
 /// The observed behavior of all validators at some point in time.
-#[derive(Clone, Debug, Deref, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -64,6 +63,11 @@ impl<C: Context> Panorama<C> {
     /// Returns an iterator over all hashes of the honest validators' latest messages.
     pub(crate) fn iter_correct(&self) -> impl Iterator<Item = &C::Hash> {
         self.iter().filter_map(Observation::correct)
+    }
+
+    /// Returns an iterator over all observations.
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &Observation<C>> {
+        self.0.iter()
     }
 
     /// Returns an iterator over all observations, by validator index.
