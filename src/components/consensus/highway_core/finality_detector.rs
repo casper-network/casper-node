@@ -165,22 +165,7 @@ impl<C: Context> FinalityDetector<C> {
                 let lvl = self.find_summit(target_lvl, fault_w, candidate, state);
                 if lvl == target_lvl {
                     self.last_finalized = Some(candidate.clone());
-                    let new_equivocators: Vec<ValidatorIndex> = {
-                        let cvote = state.vote(candidate);
-                        let mut equivocators: Vec<ValidatorIndex> = Vec::new();
-                        let fblock = state.block(candidate);
-                        if let Some(pvhash) = fblock.parent() {
-                            let pvpanorama = &state.vote(pvhash).panorama;
-                            for (vid, obs) in cvote.panorama.enumerate() {
-                                // If validator is faulty in candidate's panorama but not in its
-                                // parent, it means it's the "new" equivocator.
-                                if obs.is_faulty() && !pvpanorama.get(vid).is_faulty() {
-                                    equivocators.push(vid)
-                                }
-                            }
-                        }
-                        equivocators
-                    };
+                    let new_equivocators = state.get_new_equivocators(&candidate);
                     return FinalityResult::Finalized(
                         state.block(candidate).values.clone(),
                         new_equivocators,

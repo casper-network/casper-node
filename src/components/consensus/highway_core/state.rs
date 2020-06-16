@@ -389,6 +389,25 @@ impl<C: Context> State<C> {
         })
     }
 
+    /// Returns a vector of validator indexes that equivocated between block
+    /// identified by `fhash` and its parent.
+    pub(crate) fn get_new_equivocators(&self, fhash: &C::Hash) -> Vec<ValidatorIndex> {
+        let cvote = self.vote(fhash);
+        let mut equivocators: Vec<ValidatorIndex> = Vec::new();
+        let fblock = self.block(fhash);
+        if let Some(pvhash) = fblock.parent() {
+            let pvpanorama = &self.vote(pvhash).panorama;
+            for (vid, obs) in cvote.panorama.enumerate() {
+                // If validator is faulty in candidate's panorama but not in its
+                // parent, it means it's the "new" equivocator.
+                if obs.is_faulty() && !pvpanorama.get(vid).is_faulty() {
+                    equivocators.push(vid)
+                }
+            }
+        }
+        equivocators
+    }
+
     /// Returns `pan` is valid, i.e. it contains the latest votes of some substate of `self`.
     fn is_panorama_valid(&self, pan: &Panorama<C>) -> bool {
         pan.enumerate().all(|(idx, observation)| {
