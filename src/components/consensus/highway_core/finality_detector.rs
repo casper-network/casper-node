@@ -334,6 +334,19 @@ mod tests {
             FinalityResult::Finalized(vec![0xA2], vec![]),
             fd4.run(&state)
         );
+
+        // Test that an initial block reports equivocators as well.
+        let mut bstate: State<TestContext> = State::new(&[Weight(5), Weight(4), Weight(1)], 0);
+        let mut fde4 = FinalityDetector::new(Weight(4)); // Fault tolerance 4.
+        add_vote!(bstate, c0, CAROL, CAROL_SEC, 0; N, N, N; 0xB0);
+        add_vote!(bstate, _c0_prime, CAROL, CAROL_SEC, 0; N, N, N; 0xB0);
+        add_vote!(bstate, a0, ALICE, ALICE_SEC, 0; N, N, F; 0xA0);
+        add_vote!(bstate, b0, BOB, BOB_SEC, 0; a0, N, F);
+        add_vote!(bstate, a1, ALICE, ALICE_SEC, 1; a0, b0, F);
+        assert_eq!(
+            FinalityResult::Finalized(vec![0xA0], vec![CAROL]),
+            fde4.run(&bstate)
+        );
         Ok(())
     }
 }

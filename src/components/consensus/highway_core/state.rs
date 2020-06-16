@@ -395,14 +395,16 @@ impl<C: Context> State<C> {
         let cvote = self.vote(fhash);
         let mut equivocators: Vec<ValidatorIndex> = Vec::new();
         let fblock = self.block(fhash);
-        if let Some(pvhash) = fblock.parent() {
-            let pvpanorama = &self.vote(pvhash).panorama;
-            for (vid, obs) in cvote.panorama.enumerate() {
-                // If validator is faulty in candidate's panorama but not in its
-                // parent, it means it's the "new" equivocator.
-                if obs.is_faulty() && !pvpanorama.get(vid).is_faulty() {
-                    equivocators.push(vid)
-                }
+        let empty_panorama = Panorama::new(self.weights.len());
+        let pvpanorama = fblock
+            .parent()
+            .map(|pvhash| &self.vote(pvhash).panorama)
+            .unwrap_or(&empty_panorama);
+        for (vid, obs) in cvote.panorama.enumerate() {
+            // If validator is faulty in candidate's panorama but not in its
+            // parent, it means it's the "new" equivocator.
+            if obs.is_faulty() && !pvpanorama.get(vid).is_faulty() {
+                equivocators.push(vid)
             }
         }
         equivocators
