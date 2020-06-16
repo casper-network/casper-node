@@ -20,8 +20,9 @@
 //! [`Reactor::dispatch_event()`](trait.Reactor.html#tymethod.dispatch_event) to dispatch events to
 //! components.
 //!
-//! With all these set up, a reactor can be [`run`](fn.run.html), causing it to execute
-//! indefinitely, processing events.
+//! With all these set up, a reactor can be executed using a [`Runner`](struct.Runner.html), either
+//! in a step-wise manner using [`crank`](struct.Runner.html#method.crank) or indefinitely using
+//! [`run`](struct.Runner.html#method.crank).
 
 mod error;
 pub mod non_validator;
@@ -121,67 +122,90 @@ pub trait Reactor: Sized {
     ) -> Result<(Self, Multiple<Effect<Self::Event>>)>;
 }
 
-/// Runs a reactor.
+// / Runs a reactor.
+// /
+// / Starts the reactor and associated background tasks, then enters main the event processing loop.
+// /
+// / `run` will leak memory each time it is called.
+// /
+// / Errors are returned only if component initialization fails.
+// /
+// / The event hook is called with the reactor and internal state every time an event is dispatched.
+// / Should the hook return `false`, the main loop is terminated.
+
+/// A runner for a reactor.
 ///
-/// Starts the reactor and associated background tasks, then enters main the event processing loop.
-///
-/// `run` will leak memory each time it is called.
-///
-/// Errors are returned only if component initialization fails.
-///
-/// The event hook is called with the reactor and internal state every time an event is dispatched.
-/// Should the hook return `false`, the main loop is terminated.
-#[inline]
-pub async fn run_with_hook<R, F>(cfg: R::Config, pre_event_pop: F) -> Result<()>
+/// The runner manages a reactors event queue and reactor itself and can run it either continously
+/// or in a step-by-step manner.
+#[derive(Debug)]
+pub struct Runner<R>
 where
     R: Reactor,
-    F: Fn(&Scheduler<R::Event>, &mut R) -> bool,
 {
-    let event_size = mem::size_of::<R::Event>();
+    /// The scheduler used for the reactor.
+    scheduler: &'static Scheduler<R::Event>,
 
-    // Check if the event is of a reasonable size. This only emits a runtime warning at startup
-    // right now, since storage size of events is not an issue per se, but copying might be
-    // expensive if events get too large.
-    if event_size > 16 * mem::size_of::<usize>() {
-        warn!(
-            "event size is {} bytes, consider reducing it or boxing",
-            event_size
-        );
+    /// The reactor instance itself.
+    reactor: R,
+}
+
+impl<R> Runner<R>
+where
+    R: Reactor,
+{
+    /// Creates a new runner from a given configuration.
+    #[inline]
+    pub async fn new(cfg: R::Config) -> Result<Self> {
+        let event_size = mem::size_of::<R::Event>();
+
+        // Check if the event is of a reasonable size. This only emits a runtime warning at startup
+        // right now, since storage size of events is not an issue per se, but copying might be
+        // expensive if events get too large.
+        if event_size > 16 * mem::size_of::<usize>() {
+            warn!(
+                "event size is {} bytes, consider reducing it or boxing",
+                event_size
+            );
+        }
+
+        // Create a new event queue for this reactor run.
+        let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
+
+        let event_queue = EventQueueHandle::new(scheduler);
+        let (reactor, initial_effects) = R::new(cfg, event_queue)?;
+
+        // Run all effects from component instantiation.
+        process_effects(scheduler, initial_effects).await;
+
+        info!("reactor main loop is ready");
+
+        Ok(Runner { scheduler, reactor })
     }
 
-    let scheduler = Scheduler::<R::Event>::new(QueueKind::weights());
+    /// Processes a single event on the event queue.
+    #[inline]
+    pub async fn crank(&mut self) {
+        let event_queue = EventQueueHandle::new(self.scheduler);
+        let effect_builder = EffectBuilder::new(event_queue);
 
-    // Create a new event queue for this reactor run.
-    let scheduler = utils::leak(scheduler);
-
-    let event_queue = EventQueueHandle::new(scheduler);
-    let (mut reactor, initial_effects) = R::new(cfg, event_queue)?;
-
-    // Run all effects from component instantiation.
-    process_effects(scheduler, initial_effects).await;
-
-    info!("entering reactor main loop");
-    let effect_builder = EffectBuilder::new(event_queue);
-    loop {
-        if !pre_event_pop(scheduler, &mut reactor) {
-            break Ok(());
-        }
-        let (event, q) = scheduler.pop().await;
+        let (event, q) = self.scheduler.pop().await;
 
         // We log events twice, once in display and once in debug mode.
         debug!(%event, ?q);
         trace!(?event, ?q);
 
         // Dispatch the event, then execute the resulting effect.
-        let effects = reactor.dispatch_event(effect_builder, event);
-        process_effects(scheduler, effects).await;
+        let effects = self.reactor.dispatch_event(effect_builder, event);
+        process_effects(self.scheduler, effects).await;
     }
-}
 
-/// Shortcut for `run_with_hook` with no hooks attached.
-#[inline]
-pub async fn run<R: Reactor>(cfg: R::Config) -> Result<()> {
-    run_with_hook::<R, _>(cfg, |_, _| true).await
+    /// Runs the reactor indefinitely.
+    #[inline]
+    pub async fn run(&mut self) {
+        loop {
+            self.crank().await;
+        }
+    }
 }
 
 /// Spawns tasks that will process the given effects.
