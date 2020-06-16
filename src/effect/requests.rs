@@ -15,7 +15,13 @@ pub(crate) enum NetworkRequest<I, P> {
         responder: Responder<()>,
     },
     /// Send a message on the network to all peers.
+    // Note: This request is deprecated and should be phased out, as not every network
+    // implementation is likely to implement broadcast support.
     BroadcastMessage {
+        payload: P,
+        responder: Responder<()>,
+    },
+    GossipMessage {
         payload: P,
         responder: Responder<()>,
     },
@@ -45,6 +51,10 @@ impl<I, P> NetworkRequest<I, P> {
                     responder,
                 }
             }
+            NetworkRequest::GossipMessage { payload, responder } => NetworkRequest::GossipMessage {
+                payload: wrap_payload(payload),
+                responder,
+            },
         }
     }
 }
@@ -61,6 +71,9 @@ where
             }
             NetworkRequest::BroadcastMessage { payload, .. } => {
                 write!(formatter, "broadcast: {}", payload)
+            }
+            NetworkRequest::GossipMessage { payload, .. } => {
+                write!(formatter, "gossip: {}", payload)
             }
         }
     }

@@ -304,6 +304,21 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gossip a network message.
+    ///
+    /// A low-level "gossip" function, selects a fixed number of randomly chosen nodes on the
+    /// network and sends each a copy of the message.
+    pub(crate) async fn gossip_message<I, P>(self, payload: P)
+    where
+        REv: From<NetworkRequest<I, P>>,
+    {
+        self.make_request(
+            |responder| NetworkRequest::GossipMessage { payload, responder },
+            QueueKind::Network,
+        )
+        .await
+    }
+
     /// Announce that a network message has been received.
     pub(crate) async fn announce_message_received<I, P>(self, sender: I, payload: P)
     where
