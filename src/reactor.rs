@@ -129,7 +129,7 @@ pub trait Reactor: Sized {
 ///
 /// Errors are returned only if component initialization fails.
 #[inline]
-async fn run<R: Reactor>(cfg: R::Config) -> Result<()> {
+pub async fn run<R: Reactor>(cfg: R::Config) -> Result<()> {
     let event_size = mem::size_of::<R::Event>();
     // Check if the event is of a reasonable size. This only emits a runtime warning at startup
     // right now, since storage size of events is not an issue per se, but copying might be

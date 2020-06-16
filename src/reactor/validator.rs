@@ -250,14 +250,3 @@ impl Display for Event {
         }
     }
 }
-
-/// Runs a validator reactor.
-///
-/// Starts the reactor and associated background tasks, then enters main the event processing loop.
-///
-/// `run` will leak memory on start for global structures each time it is called.
-///
-/// Errors are returned only if component initialization fails.
-pub async fn run(cfg: <Reactor as reactor::Reactor>::Config) -> Result<()> {
-    super::run::<Reactor>(cfg).await
-}

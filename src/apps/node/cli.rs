@@ -66,9 +66,10 @@ impl Cli {
                     .transpose()?
                     .unwrap_or_default();
 
-                reactor::validator::run(cfg).await?
+                reactor::run::<reactor::validator::Reactor>(cfg).await?;
             }
         }
+
         Ok(())
     }
 }
