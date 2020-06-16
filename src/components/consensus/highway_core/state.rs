@@ -465,24 +465,24 @@ pub(crate) mod tests {
     pub(crate) struct TestContext;
 
     #[derive(Clone, Debug, Eq, PartialEq)]
-    pub(crate) struct TestSecret(pub(crate) u64);
+    pub(crate) struct TestSecret(pub(crate) u32);
 
     impl ValidatorSecret for TestSecret {
         type Hash = u64;
         type Signature = u64;
 
-        fn sign(&self, _data: &Self::Hash) -> Self::Signature {
-            unimplemented!()
+        fn sign(&self, data: &Self::Hash) -> Self::Signature {
+            data + u64::from(self.0)
         }
     }
 
     pub(crate) const ALICE_SEC: TestSecret = TestSecret(0);
-    pub(crate) const BOB_SEC: TestSecret = TestSecret(0);
-    pub(crate) const CAROL_SEC: TestSecret = TestSecret(0);
+    pub(crate) const BOB_SEC: TestSecret = TestSecret(1);
+    pub(crate) const CAROL_SEC: TestSecret = TestSecret(2);
 
     impl Context for TestContext {
         type ConsensusValue = u32;
-        type ValidatorId = &'static str;
+        type ValidatorId = u32;
         type ValidatorSecret = TestSecret;
         type Hash = u64;
         type InstanceId = u64;
@@ -495,9 +495,11 @@ pub(crate) mod tests {
 
         fn validate_signature(
             hash: &Self::Hash,
+            public_key: &Self::ValidatorId,
             signature: &<Self::ValidatorSecret as ValidatorSecret>::Signature,
         ) -> bool {
-            unimplemented!()
+            let computed_signature = hash + u64::from(*public_key);
+            computed_signature == *signature
         }
     }
 

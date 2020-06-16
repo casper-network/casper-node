@@ -107,3 +107,62 @@ impl<C: Context> Highway<C> {
         }
     }
 }
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use std::iter::FromIterator;
+    use crate::components::consensus::highway_core::state::{AddVoteError, State, Weight};
+    use crate::components::consensus::highway_core::state::tests::{TestContext, WEIGHTS, ALICE_SEC, ALICE, BOB_SEC, BOB, CAROL_SEC, CAROL};
+    use crate::components::consensus::highway_core::validators::Validators;
+    use crate::components::consensus::highway_core::highway::{HighwayParams, Highway, AddVertexOutcome};
+    use crate::components::consensus::highway_core::vote::Panorama;
+    use crate::components::consensus::highway_core::vertex::{WireVote, Vertex, SignedWireVote};
+    use crate::components::consensus::highway_core::traits::ValidatorSecret;
+
+    #[test]
+    fn invalid_signature_error() -> Result<(), AddVoteError<TestContext>> {
+        let state: State<TestContext> = State::new(WEIGHTS, 0);
+        let validators = {
+            let vid_weights: Vec<(u32, u64)> =
+                vec![(ALICE_SEC, ALICE), (BOB_SEC, BOB), (CAROL_SEC, CAROL)]
+                    .into_iter()
+                    .map(|(sk, vid)| {
+                        assert_eq!(sk.0, vid.0);
+                        (sk.0, WEIGHTS[vid.0 as usize].0)
+                    })
+                    .collect();
+            Validators::from_iter(vid_weights)
+        };
+        let params = HighwayParams {
+            instance_id: 1u64,
+            validators,
+        };
+        let mut highway = Highway { params, state };
+        let wvote = WireVote {
+            panorama: Panorama::new(WEIGHTS.len()),
+            sender: ALICE,
+            values: Some(vec![]),
+            seq_number: 0,
+            instant: 1,
+        };
+        let invalid_signature = 1u64;
+        let invalid_signature_vote = SignedWireVote {
+            wire_vote: wvote.clone(),
+            signature: invalid_signature,
+        };
+        let invalid_vertex = Vertex::Vote(invalid_signature_vote.clone());
+        assert_eq!(
+            AddVertexOutcome::Invalid(Vertex::Vote(invalid_signature_vote)),
+            highway.add_vertex(invalid_vertex)
+        );
+
+        let valid_signature = ALICE_SEC.sign(&wvote.hash());
+        let correct_signature_vote = SignedWireVote {
+            wire_vote: wvote,
+            signature: valid_signature,
+        };
+        let valid_vertex = Vertex::Vote(correct_signature_vote);
+        assert_eq!(AddVertexOutcome::Success, highway.add_vertex(valid_vertex));
+        Ok(())
+    }
+}
