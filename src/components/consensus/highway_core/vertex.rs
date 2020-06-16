@@ -3,6 +3,7 @@ use std::iter;
 use serde::{Deserialize, Serialize};
 
 use super::{evidence::Evidence, traits::Context, validators::ValidatorIndex, vote::Panorama};
+use crate::components::consensus::highway_core::traits::ValidatorSecret;
 
 /// A dependency of a `Vertex` that can be satisfied by one or more other vertices.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -34,6 +35,23 @@ impl<C: Context> Vertex<C> {
         }
     }
 }
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub(crate) struct SignedWireVote<C: Context> {
+    pub(crate) wire_vote: WireVote<C>,
+    pub(crate) signature: <C::ValidatorSecret as ValidatorSecret>::Signature,
+}
+
+impl<C: Context> SignedWireVote<C> {
+    pub(crate) fn new(wire_vote: WireVote<C>, secret_key: C::ValidatorSecret) -> Self {
+        let signature = secret_key.sign(&wire_vote.hash());
+        SignedWireVote {
+            wire_vote,
+            signature,
+        }
+    }
+}
+
 
 /// A vote as it is sent over the wire, possibly containing a new block.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
