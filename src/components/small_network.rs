@@ -83,7 +83,7 @@ use crate::{
         announcements::NetworkAnnouncement, requests::NetworkRequest, Effect, EffectBuilder,
         EffectExt, EffectResultExt, Multiple,
     },
-    reactor::{EventQueueHandle, QueueKind, Reactor},
+    reactor::{EventQueueHandle, QueueKind},
     tls::{self, KeyFingerprint, Signed, TlsCert},
 };
 // Seems to be a false positive.
@@ -760,7 +760,6 @@ async fn connect_trusted(
 
 impl<R, P> Debug for SmallNetwork<R, P>
 where
-    R: Reactor,
     P: Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -797,7 +796,7 @@ mod test {
     #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
     struct Message;
 
-    // #[derive(Debug)]
+    #[derive(Debug)]
     struct TestReactor {
         net: SmallNetwork<Event, Message>,
     }
