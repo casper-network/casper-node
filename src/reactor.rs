@@ -128,9 +128,17 @@ pub trait Reactor: Sized {
 /// `run` will leak memory each time it is called.
 ///
 /// Errors are returned only if component initialization fails.
+///
+/// The event hook is called with the reactor and internal state every time an event is dispatched.
+/// Should the hook return `false`, the main loop is terminated.
 #[inline]
-pub async fn run<R: Reactor>(cfg: R::Config) -> Result<()> {
+pub async fn run_with_hook<R, F>(cfg: R::Config, pre_event_pop: F) -> Result<()>
+where
+    R: Reactor,
+    F: Fn(&Scheduler<R::Event>, &mut R) -> bool,
+{
     let event_size = mem::size_of::<R::Event>();
+
     // Check if the event is of a reasonable size. This only emits a runtime warning at startup
     // right now, since storage size of events is not an issue per se, but copying might be
     // expensive if events get too large.
@@ -155,6 +163,9 @@ pub async fn run<R: Reactor>(cfg: R::Config) -> Result<()> {
     info!("entering reactor main loop");
     let effect_builder = EffectBuilder::new(event_queue);
     loop {
+        if !pre_event_pop(scheduler, &mut reactor) {
+            break Ok(());
+        }
         let (event, q) = scheduler.pop().await;
 
         // We log events twice, once in display and once in debug mode.
@@ -165,6 +176,12 @@ pub async fn run<R: Reactor>(cfg: R::Config) -> Result<()> {
         let effects = reactor.dispatch_event(effect_builder, event);
         process_effects(scheduler, effects).await;
     }
+}
+
+/// Shortcut for `run_with_hook` with no hooks attached.
+#[inline]
+pub async fn run<R: Reactor>(cfg: R::Config) -> Result<()> {
+    run_with_hook::<R, _>(cfg, |_, _| true).await
 }
 
 /// Spawns tasks that will process the given effects.
