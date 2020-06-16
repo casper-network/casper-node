@@ -20,50 +20,20 @@
 use std::{fs, path::Path};
 
 use anyhow::Context;
-use serde::{Deserialize, Serialize};
-
-use casperlabs_node::{
-    ApiServerConfig, SmallNetworkConfig, StorageConfig, ROOT_PUBLIC_LISTENING_PORT,
-    ROOT_VALIDATOR_LISTENING_PORT,
-};
-
-/// Root configuration.
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Config {
-    /// Network configuration for the validator-only network.
-    pub validator_net: SmallNetworkConfig,
-    /// Network configuration for the public network.
-    pub public_net: SmallNetworkConfig,
-    /// Network configuration for the HTTP API.
-    pub http_server: ApiServerConfig,
-    /// On-disk storage configuration.
-    pub storage: StorageConfig,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Config {
-            validator_net: SmallNetworkConfig::default_on_port(ROOT_VALIDATOR_LISTENING_PORT),
-            public_net: SmallNetworkConfig::default_on_port(ROOT_PUBLIC_LISTENING_PORT),
-            http_server: ApiServerConfig::default(),
-            storage: StorageConfig::default(),
-        }
-    }
-}
+use serde::{de::DeserializeOwned, Serialize};
 
 /// Loads a TOML-formatted configuration from a given file.
-pub fn load_from_file<P: AsRef<Path>>(config_path: P) -> anyhow::Result<Config> {
+pub fn load_from_file<P: AsRef<Path>, C: DeserializeOwned>(config_path: P) -> anyhow::Result<C> {
     let path_ref = config_path.as_ref();
-    let config: Config =
+    let config: C =
         toml::from_str(&fs::read_to_string(path_ref).with_context(|| {
             format!("Failed to read configuration file {}", path_ref.display())
         })?)
         .with_context(|| format!("Failed to parse configuration file {}", path_ref.display()))?;
-    config.storage.check_sizes();
     Ok(config)
 }
 
 /// Creates a TOML-formatted string from a given configuration.
-pub fn to_string(cfg: &Config) -> anyhow::Result<String> {
+pub fn to_string<C: Serialize>(cfg: &C) -> anyhow::Result<String> {
     toml::to_string_pretty(cfg).with_context(|| "Failed to serialize default configuration")
 }

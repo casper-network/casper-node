@@ -10,7 +10,7 @@ use super::{Error, NodeId};
 use crate::tls::{Signed, TlsCert};
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-pub(crate) struct Endpoint {
+pub struct Endpoint {
     /// UNIX timestamp in nanoseconds resolution.
     ///
     /// Will overflow earliest November 2262.

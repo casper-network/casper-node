@@ -2,7 +2,7 @@ use std::{io, path::PathBuf};
 
 use directories::ProjectDirs;
 use libc::{self, _SC_PAGESIZE};
-use serde::{Deserialize, Serialize};
+use serde::{de::Deserializer, Deserialize, Serialize};
 use tempfile::TempDir;
 use tracing::warn;
 
@@ -35,12 +35,14 @@ pub struct Config {
     /// Defaults to 483,183,820,800 == 450 GiB.
     ///
     /// The size should be a multiple of the OS page size.
+    #[serde(deserialize_with = "deserialize_page_size_multiple")]
     pub max_block_store_size: usize,
     /// Sets the maximum size of the database to use for the deploy store.
     ///
     /// Defaults to 322,122,547,200 == 300 GiB.
     ///
     /// The size should be a multiple of the OS page size.
+    #[serde(deserialize_with = "deserialize_page_size_multiple")]
     pub max_deploy_store_size: usize,
 }
 
@@ -59,23 +61,6 @@ impl Config {
         };
         (config, tempdir)
     }
-
-    /// Prints a warning if any max DB size is not a multiple of the OS page size.
-    pub fn check_sizes(&self) {
-        let page_size = get_page_size().unwrap_or(1);
-        if self.max_block_store_size % page_size != 0 {
-            warn!(
-                "max block store DB size {} is not multiple of system page size {}",
-                self.max_block_store_size, page_size
-            );
-        }
-        if self.max_deploy_store_size % page_size != 0 {
-            warn!(
-                "max deploy store DB size {} is not multiple of system page size {}",
-                self.max_deploy_store_size, page_size
-            );
-        }
-    }
 }
 
 impl Default for Config {
@@ -87,14 +72,11 @@ impl Default for Config {
                 PathBuf::from(".")
             });
 
-        let config = Config {
+        Config {
             path,
             max_block_store_size: DEFAULT_MAX_BLOCK_STORE_SIZE,
             max_deploy_store_size: DEFAULT_MAX_DEPLOY_STORE_SIZE,
-        };
-
-        config.check_sizes();
-        config
+        }
     }
 }
 
@@ -109,4 +91,21 @@ fn get_page_size() -> Result<usize, io::Error> {
     }
 
     Ok(value as usize)
+}
+
+/// Deserializes a `usize` but warns if it is not a multiple of the OS page size.
+fn deserialize_page_size_multiple<'de, D>(deserializer: D) -> Result<usize, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = usize::deserialize(deserializer)?;
+    let page_size = get_page_size().unwrap_or(1);
+    if value % page_size != 0 {
+        warn!(
+            "maximum size {} is not multiple of system page size {}",
+            value, page_size
+        );
+    }
+
+    Ok(value)
 }

@@ -40,14 +40,14 @@ pub(crate) struct Consensus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct ConsensusMessage {
+pub struct ConsensusMessage {
     era_id: EraId,
     payload: Vec<u8>,
 }
 
 /// Consensus component event.
 #[derive(Debug)]
-pub(crate) enum Event {
+pub enum Event {
     /// An incoming network message.
     MessageReceived {
         sender: NodeId,

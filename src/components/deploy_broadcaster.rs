@@ -14,7 +14,7 @@ use crate::{
 
 /// Deploy broadcaster events.
 #[derive(Debug)]
-pub(crate) enum Event {
+pub enum Event {
     Request(DeployBroadcasterRequest),
     /// An incoming broadcast network message.
     MessageReceived {
@@ -35,7 +35,7 @@ impl Display for Event {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub(crate) enum Message {
+pub enum Message {
     /// A new `Deploy` received from a peer via the small network component.  Since this has been
     /// received via another node's broadcast, this receiving node should not broadcast it.
     Put(Box<Deploy>),

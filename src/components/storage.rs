@@ -37,9 +37,7 @@ const BLOCK_STORE_FILENAME: &str = "block_store.db";
 const DEPLOY_STORE_FILENAME: &str = "deploy_store.db";
 
 /// Trait defining the API for a value able to be held within the storage component.
-pub(crate) trait Value:
-    Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display
-{
+pub trait Value: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display {
     type Id: Copy
         + Clone
         + Ord
@@ -76,7 +74,7 @@ pub(crate) trait Value:
 ///
 /// If this trait is ultimately only used for testing scenarios, we shouldn't need to expose it to
 /// the reactor - it can simply use a concrete type which implements this trait.
-pub(crate) trait StorageType {
+pub trait StorageType {
     type Block: Value;
     type Deploy: Value;
 
@@ -218,7 +216,7 @@ impl<B: Value + 'static, D: Value + 'static> StorageType for InMemStorage<B, D> 
 
 // Concrete type of `Storage` backed by LMDB stores.
 #[derive(Debug)]
-pub(crate) struct LmdbStorage<B: Value, D: Value> {
+pub struct LmdbStorage<B: Value, D: Value> {
     block_store: Arc<LmdbStore<B>>,
     deploy_store: Arc<LmdbStore<D>>,
 }

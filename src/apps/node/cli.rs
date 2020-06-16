@@ -55,7 +55,7 @@ impl Cli {
                 tls::save_private_key(&key, key_path)?;
             }
             Cli::GenerateConfig {} => {
-                let cfg_str = config::to_string(&Default::default())?;
+                let cfg_str = config::to_string(&reactor::validator::Config::default())?;
                 io::stdout().write_all(cfg_str.as_bytes())?;
             }
             Cli::Validator { config } => {
@@ -66,9 +66,10 @@ impl Cli {
                     .transpose()?
                     .unwrap_or_default();
 
-                reactor::validator::run(cfg.validator_net, cfg.http_server, cfg.storage).await?
+                reactor::run::<reactor::validator::Reactor>(cfg).await?;
             }
         }
+
         Ok(())
     }
 }
