@@ -190,13 +190,13 @@ mod tests {
         // b0: 12           b2: 4
         //        \
         //          c0: 5 — c1: 5
-        add_vote!(state, b0, BOB, 0; N, N, N; 0xB0);
-        add_vote!(state, c0, CAROL, 0; N, b0, N; 0xC0);
-        add_vote!(state, c1, CAROL, 1; N, b0, c0; 0xC1);
-        add_vote!(state, a0, ALICE, 0; N, b0, N; 0xA0);
-        add_vote!(state, b1, BOB, 1; a0, b0, N); // Just a ballot; not shown above.
-        add_vote!(state, a1, ALICE, 1; a0, b1, c1; 0xA1);
-        add_vote!(state, b2, BOB, 2; a0, b1, N; 0xB2);
+        add_vote!(state, b0, BOB, BOB_SEC, 0; N, N, N; 0xB0);
+        add_vote!(state, c0, CAROL, CAROL_SEC, 0; N, b0, N; 0xC0);
+        add_vote!(state, c1, CAROL, CAROL_SEC, 1; N, b0, c0; 0xC1);
+        add_vote!(state, a0, ALICE, ALICE_SEC, 0; N, b0, N; 0xA0);
+        add_vote!(state, b1, BOB, BOB_SEC, 1; a0, b0, N); // Just a ballot; not shown above.
+        add_vote!(state, a1, ALICE, ALICE_SEC, 1; a0, b1, c1; 0xA1);
+        add_vote!(state, b2, BOB, BOB_SEC, 2; a0, b1, N; 0xB2);
 
         // These are the entries of a panorama seeing `a1`, `b2` and `c0`.
         let vote_entries = vec![
