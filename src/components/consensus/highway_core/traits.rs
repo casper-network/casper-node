@@ -21,10 +21,10 @@ pub(crate) trait HashT:
 impl<H> HashT for H where H: Eq + Ord + Clone + Debug + Hash + Serialize + DeserializeOwned {}
 
 /// A validator's secret signing key.
-pub(crate) trait ValidatorSecret: Debug {
+pub(crate) trait ValidatorSecret: Debug + Eq + Clone {
     type Hash;
 
-    type Signature: Eq + Clone + Debug + Hash + Serialize + DeserializeOwned;
+    type Signature: Eq + PartialEq + Clone + Debug + Hash + Serialize + DeserializeOwned;
 
     fn sign(&self, data: &Self::Hash) -> Self::Signature;
 }

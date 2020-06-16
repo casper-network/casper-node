@@ -17,7 +17,7 @@ pub(crate) enum Dependency<C: Context> {
 /// It is the vertex in a directed acyclic graph, whose edges are dependencies.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Vertex<C: Context> {
-    Vote(WireVote<C>),
+    Vote(SignedWireVote<C>),
     Evidence(Evidence<C>),
 }
 
@@ -30,7 +30,7 @@ impl<C: Context> Vertex<C> {
     /// obtained _and_ validated. Only after that, the vertex can be considered valid.
     pub(crate) fn values<'a>(&'a self) -> Box<dyn Iterator<Item = &'a C::ConsensusValue> + 'a> {
         match self {
-            Vertex::Vote(wvote) => Box::new(wvote.values.iter().flat_map(|v| v.iter())),
+            Vertex::Vote(swvote) => Box::new(swvote.wire_vote.values.iter().flat_map(|v| v.iter())),
             Vertex::Evidence(_) => Box::new(iter::empty()),
         }
     }
@@ -43,15 +43,18 @@ pub(crate) struct SignedWireVote<C: Context> {
 }
 
 impl<C: Context> SignedWireVote<C> {
-    pub(crate) fn new(wire_vote: WireVote<C>, secret_key: C::ValidatorSecret) -> Self {
+    pub(crate) fn new(wire_vote: WireVote<C>, secret_key: &C::ValidatorSecret) -> Self {
         let signature = secret_key.sign(&wire_vote.hash());
         SignedWireVote {
             wire_vote,
             signature,
         }
     }
-}
 
+    pub(crate) fn hash(&self) -> C::Hash {
+        self.wire_vote.hash()
+    }
+}
 
 /// A vote as it is sent over the wire, possibly containing a new block.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

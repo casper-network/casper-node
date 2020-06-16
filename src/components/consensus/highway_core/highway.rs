@@ -5,6 +5,7 @@ use super::{
     validators::Validators,
     vertex::{Dependency, Vertex, WireVote},
 };
+use crate::components::consensus::highway_core::vertex::SignedWireVote;
 
 /// The result of trying to add a vertex to the protocol highway.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -22,7 +23,7 @@ pub(crate) enum AddVertexOutcome<C: Context> {
 impl<C: Context> From<AddVoteError<C>> for AddVertexOutcome<C> {
     fn from(err: AddVoteError<C>) -> Self {
         // TODO: debug!("Invalid vote: {}", err);
-        Self::Invalid(Vertex::Vote(err.wvote))
+        Self::Invalid(Vertex::Vote(err.swvote))
     }
 }
 
@@ -72,15 +73,15 @@ impl<C: Context> Highway<C> {
         }
     }
 
-    fn add_vote(&mut self, wvote: WireVote<C>) -> AddVertexOutcome<C> {
-        if !self.params.validators.contains(wvote.sender) {
-            return AddVertexOutcome::Invalid(Vertex::Vote(wvote));
+    fn add_vote(&mut self, swvote: SignedWireVote<C>) -> AddVertexOutcome<C> {
+        if !self.params.validators.contains(swvote.wire_vote.sender) {
+            return AddVertexOutcome::Invalid(Vertex::Vote(swvote));
         }
-        if let Some(dep) = self.state.missing_dependency(&wvote.panorama) {
-            return AddVertexOutcome::MissingDependency(Vertex::Vote(wvote), dep);
+        if let Some(dep) = self.state.missing_dependency(&swvote.wire_vote.panorama) {
+            return AddVertexOutcome::MissingDependency(Vertex::Vote(swvote), dep);
         }
         // If the vote is invalid, `add_vote` returns it as an error.
-        let opt_wvote = self.state.add_vote(wvote).err();
+        let opt_wvote = self.state.add_vote(swvote).err();
         opt_wvote.map_or(AddVertexOutcome::Success, AddVertexOutcome::from)
     }
 
