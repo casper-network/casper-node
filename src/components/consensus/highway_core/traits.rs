@@ -45,4 +45,10 @@ pub(crate) trait Context: Clone + Debug + PartialEq {
     type InstanceId: HashT;
 
     fn hash(data: &[u8]) -> Self::Hash;
+
+    fn validate_signature(
+        hash: &Self::Hash,
+        public_key: &Self::ValidatorId,
+        signature: &<Self::ValidatorSecret as ValidatorSecret>::Signature,
+    ) -> bool;
 }

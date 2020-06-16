@@ -492,6 +492,13 @@ pub(crate) mod tests {
             hasher.write(data);
             hasher.finish()
         }
+
+        fn validate_signature(
+            hash: &Self::Hash,
+            signature: &<Self::ValidatorSecret as ValidatorSecret>::Signature,
+        ) -> bool {
+            unimplemented!()
+        }
     }
 
     impl From<<TestContext as Context>::Hash> for Observation<TestContext> {

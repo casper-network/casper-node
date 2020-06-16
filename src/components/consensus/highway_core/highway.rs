@@ -77,12 +77,24 @@ impl<C: Context> Highway<C> {
         if !self.params.validators.contains(swvote.wire_vote.sender) {
             return AddVertexOutcome::Invalid(Vertex::Vote(swvote));
         }
+        if !C::validate_signature(
+            &swvote.hash(),
+            self.validator_pk(&swvote),
+            &swvote.signature,
+        ) {
+            return AddVertexOutcome::Invalid(Vertex::Vote(swvote));
+        }
         if let Some(dep) = self.state.missing_dependency(&swvote.wire_vote.panorama) {
             return AddVertexOutcome::MissingDependency(Vertex::Vote(swvote), dep);
         }
         // If the vote is invalid, `add_vote` returns it as an error.
         let opt_wvote = self.state.add_vote(swvote).err();
         opt_wvote.map_or(AddVertexOutcome::Success, AddVertexOutcome::from)
+    }
+
+    /// Returns validator ID of the `swvote` sender.
+    fn validator_pk(&self, swvote: &SignedWireVote<C>) -> &C::ValidatorId {
+        self.params.validators.get_by_id(swvote.wire_vote.sender)
     }
 
     fn add_evidence(&mut self, evidence: Evidence<C>) -> AddVertexOutcome<C> {
