@@ -72,13 +72,11 @@ impl Default for Config {
                 PathBuf::from(".")
             });
 
-        let config = Config {
+        Config {
             path,
             max_block_store_size: DEFAULT_MAX_BLOCK_STORE_SIZE,
             max_deploy_store_size: DEFAULT_MAX_DEPLOY_STORE_SIZE,
-        };
-
-        config
+        }
     }
 }
 
