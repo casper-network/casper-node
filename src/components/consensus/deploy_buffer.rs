@@ -1,18 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
-// TODO: temporary type, probably will get replaced with something with more structure
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct Deploy(Vec<u8>);
-
-/// TODO: also temporary, will be defined somewhere else
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct BlockHash([u8; 32]);
+use crate::types::{BlockHash, DeployHeader};
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct DeployBuffer {
-    collected_deploys: HashSet<Deploy>,
-    processed: HashMap<BlockHash, HashSet<Deploy>>,
-    finalized: HashMap<BlockHash, HashSet<Deploy>>,
+    collected_deploys: HashSet<DeployHeader>,
+    processed: HashMap<BlockHash, HashSet<DeployHeader>>,
+    finalized: HashMap<BlockHash, HashSet<DeployHeader>>,
 }
 
 impl DeployBuffer {
@@ -20,7 +14,7 @@ impl DeployBuffer {
         Default::default()
     }
 
-    pub(crate) fn add_deploy(&mut self, deploy: Deploy) {
+    pub(crate) fn add_deploy(&mut self, deploy: DeployHeader) {
         // only add the deploy if it isn't contained in a finalized block
         if !self.finalized.values().any(|block| block.contains(&deploy)) {
             self.collected_deploys.insert(deploy);
@@ -29,7 +23,10 @@ impl DeployBuffer {
 
     /// `blocks` contains the ancestors that haven't been finalized yet - we exclude all the
     /// deploys from the finalized blocks by default.
-    pub(crate) fn remaining_deploys(&mut self, blocks: &HashSet<BlockHash>) -> HashSet<Deploy> {
+    pub(crate) fn remaining_deploys(
+        &mut self,
+        blocks: &HashSet<BlockHash>,
+    ) -> HashSet<DeployHeader> {
         // deploys_to_return = all deploys in collected_deploys that aren't in finalized blocks or
         // processed blocks from the set `blocks`
         let deploys_to_return = blocks
@@ -45,7 +42,7 @@ impl DeployBuffer {
         deploys_to_return
     }
 
-    pub(crate) fn added_block(&mut self, block: BlockHash, deploys: HashSet<Deploy>) {
+    pub(crate) fn added_block(&mut self, block: BlockHash, deploys: HashSet<DeployHeader>) {
         self.collected_deploys
             .retain(|deploy| !deploys.contains(deploy));
         self.processed.insert(block, deploys);
@@ -70,17 +67,36 @@ impl DeployBuffer {
 
 #[cfg(test)]
 mod tests {
-    use super::{BlockHash, Deploy, DeployBuffer};
     use std::collections::HashSet;
+
+    use rand::random;
+
+    use super::DeployBuffer;
+    use crate::{
+        crypto::{asymmetric_key::PublicKey, hash::hash},
+        types::{BlockHash, DeployHeader},
+    };
+
+    fn generate_deploy_header() -> DeployHeader {
+        DeployHeader {
+            account: PublicKey::new_ed25519([1; PublicKey::ED25519_LENGTH]).unwrap(),
+            timestamp: random(),
+            gas_price: random(),
+            body_hash: hash(random::<[u8; 16]>()),
+            ttl_millis: random(),
+            dependencies: vec![],
+            chain_name: "chain".to_string(),
+        }
+    }
 
     #[test]
     fn add_and_take_deploys() {
         let no_blocks = HashSet::new();
         let mut buffer = DeployBuffer::new();
-        let deploy1 = Deploy(vec![1]);
-        let deploy2 = Deploy(vec![2]);
-        let deploy3 = Deploy(vec![3]);
-        let deploy4 = Deploy(vec![4]);
+        let deploy1 = generate_deploy_header();
+        let deploy2 = generate_deploy_header();
+        let deploy3 = generate_deploy_header();
+        let deploy4 = generate_deploy_header();
 
         assert!(buffer.remaining_deploys(&no_blocks).is_empty());
 
@@ -99,7 +115,7 @@ mod tests {
         assert!(buffer.remaining_deploys(&no_blocks).is_empty());
 
         // the two deploys will be included in block 1
-        let block_hash1 = BlockHash([0; 32]);
+        let block_hash1 = BlockHash::new(hash(random::<[u8; 16]>()));
         buffer.added_block(block_hash1, deploys);
 
         let mut blocks = HashSet::new();
