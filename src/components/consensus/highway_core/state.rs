@@ -466,6 +466,7 @@ fn log2(x: u64) -> u32 {
     prev_pow2.trailing_zeros()
 }
 
+#[allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
 #[cfg(test)]
 pub(crate) mod tests {
     use std::{collections::hash_map::DefaultHasher, hash::Hasher};
