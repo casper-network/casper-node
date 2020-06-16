@@ -402,7 +402,7 @@ impl<C: Context> State<C> {
             .unwrap_or(&empty_panorama);
         for (vid, obs) in cvote.panorama.enumerate() {
             // If validator is faulty in candidate's panorama but not in its
-            // parent, it means it's the "new" equivocator.
+            // parent, it means it's a "new" equivocator.
             if obs.is_faulty() && !pvpanorama.get(vid).is_faulty() {
                 equivocators.push(vid)
             }
