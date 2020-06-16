@@ -774,3 +774,81 @@ where
             .finish()
     }
 }
+
+mod test {
+    use crate::{
+        components::Component,
+        effect::{announcements::NetworkAnnouncement, Effect, EffectBuilder, Multiple},
+        reactor::{self, Reactor},
+        small_network::{self, SmallNetwork},
+    };
+    use derive_more::From;
+    use reactor::EventQueueHandle;
+    use serde::{Deserialize, Serialize};
+    use small_network::NodeId;
+    use std::fmt::{self, Debug, Display, Formatter};
+
+    #[derive(Debug, From)]
+    enum Event {
+        #[from]
+        SmallNet(small_network::Event<Message>),
+    }
+
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
+    struct Message;
+
+    // #[derive(Debug)]
+    struct TestReactor {
+        net: SmallNetwork<Event, Message>,
+    }
+
+    impl From<NetworkAnnouncement<NodeId, Message>> for Event {
+        fn from(_: NetworkAnnouncement<NodeId, Message>) -> Self {
+            todo!()
+        }
+    }
+
+    impl Reactor for TestReactor {
+        type Event = Event;
+        type Config = small_network::Config;
+
+        fn dispatch_event(
+            &mut self,
+            effect_builder: EffectBuilder<Self::Event>,
+            event: Self::Event,
+        ) -> Multiple<Effect<Self::Event>> {
+            let mut rng = rand::thread_rng(); // FIXME
+
+            match event {
+                Event::SmallNet(ev) => reactor::wrap_effects(
+                    Event::SmallNet,
+                    self.net.handle_event(effect_builder, &mut rng, ev),
+                ),
+            }
+        }
+
+        fn new(
+            cfg: Self::Config,
+            event_queue: EventQueueHandle<Self::Event>,
+        ) -> reactor::Result<(Self, Multiple<Effect<Self::Event>>)> {
+            let (net, effects) = SmallNetwork::new(event_queue, cfg)?;
+
+            Ok((
+                TestReactor { net },
+                reactor::wrap_effects(Event::SmallNet, effects),
+            ))
+        }
+    }
+
+    impl Display for Event {
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            Debug::fmt(self, f)
+        }
+    }
+
+    impl Display for Message {
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            Debug::fmt(self, f)
+        }
+    }
+}
