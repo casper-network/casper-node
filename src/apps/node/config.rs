@@ -30,8 +30,6 @@ pub fn load_from_file<P: AsRef<Path>, C: DeserializeOwned>(config_path: P) -> an
             format!("Failed to read configuration file {}", path_ref.display())
         })?)
         .with_context(|| format!("Failed to parse configuration file {}", path_ref.display()))?;
-    // config.storage.check_sizes();
-    // TODO: Fix size check.
     Ok(config)
 }
 
