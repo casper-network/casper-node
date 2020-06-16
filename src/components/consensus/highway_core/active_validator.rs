@@ -311,7 +311,10 @@ mod tests {
         assert_eq!(None, effects.next());
 
         // Payment finalized! "One Pumpkin Spice Mochaccino for Corbyn!"
-        assert_eq!(FinalityResult::Finalized(vec![0xC0FFEE]), fd.run(&state));
+        assert_eq!(
+            FinalityResult::Finalized(vec![0xC0FFEE], Vec::new()),
+            fd.run(&state)
+        );
         Ok(())
     }
 }
