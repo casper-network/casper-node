@@ -298,7 +298,7 @@ impl<REv> EffectBuilder<REv> {
         REv: From<NetworkRequest<I, P>>,
     {
         self.make_request(
-            |responder| NetworkRequest::BroadcastMessage { payload, responder },
+            |responder| NetworkRequest::Broadcast { payload, responder },
             QueueKind::Network,
         )
         .await
@@ -315,7 +315,7 @@ impl<REv> EffectBuilder<REv> {
         REv: From<NetworkRequest<I, P>>,
     {
         self.make_request(
-            |responder| NetworkRequest::GossipMessage { payload, responder },
+            |responder| NetworkRequest::Gossip { payload, responder },
             QueueKind::Network,
         )
         .await

@@ -543,14 +543,14 @@ where
                 responder.respond(()).ignore()
             }
             Event::NetworkRequest {
-                req: NetworkRequest::BroadcastMessage { payload, responder },
+                req: NetworkRequest::Broadcast { payload, responder },
             } => {
                 // We're given a message to broadcast.
                 self.broadcast_message(Message::Payload(payload));
                 responder.respond(()).ignore()
             }
             Event::NetworkRequest {
-                req: NetworkRequest::GossipMessage { payload, responder },
+                req: NetworkRequest::Gossip { payload, responder },
             } => {
                 // We're given a message to broadcast.
                 self.gossip_message(rng, Message::Payload(payload));
