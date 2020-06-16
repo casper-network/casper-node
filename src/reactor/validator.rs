@@ -2,6 +2,8 @@
 //!
 //! Validator nodes join the validator-only network upon startup.
 
+mod config;
+
 use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
@@ -25,15 +27,20 @@ use crate::{
     },
     reactor::{self, EventQueueHandle, Result},
     small_network::{self, NodeId},
-    ApiServerConfig, SmallNetwork, SmallNetworkConfig, StorageConfig,
+    SmallNetwork,
 };
+pub use config::Config;
 
+/// Reactor message.
 #[derive(Debug, Clone, From, Serialize, Deserialize)]
-enum Message {
+pub enum Message {
+    /// Pinger component message.
     #[from]
     Pinger(pinger::Message),
+    /// Consensus component message.
     #[from]
     Consensus(consensus::ConsensusMessage),
+    /// Deploy broadcaster component message.
     #[from]
     DeployBroadcaster(deploy_broadcaster::Message),
 }
@@ -51,25 +58,33 @@ impl Display for Message {
 /// Top-level event for the reactor.
 #[derive(Debug, From)]
 #[must_use]
-enum Event {
+pub enum Event {
+    /// Network event.
     #[from]
     Network(small_network::Event<Message>),
+    /// Pinger event.
     #[from]
     Pinger(pinger::Event),
     #[from]
+    /// Storage event.
     Storage(StorageRequest<Storage>),
     #[from]
+    /// API server event.
     ApiServer(api_server::Event),
     #[from]
+    /// Consensus event.
     Consensus(consensus::Event),
+    /// Deploy broadcaster event.
     #[from]
     DeployBroadcaster(deploy_broadcaster::Event),
 
     // Requests
+    /// Network request.
     #[from]
     NetworkRequest(NetworkRequest<NodeId, Message>),
 
     // Announcements
+    /// Network announcement.
     #[from]
     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
 }
@@ -105,7 +120,7 @@ impl From<DeployBroadcasterRequest> for Event {
 }
 
 /// Validator node reactor.
-struct Reactor {
+pub struct Reactor {
     net: SmallNetwork<Event, Message>,
     pinger: Pinger,
     storage: Storage,
@@ -117,18 +132,17 @@ struct Reactor {
 
 impl reactor::Reactor for Reactor {
     type Event = Event;
+    type Config = Config;
 
     fn new(
-        validator_network_config: SmallNetworkConfig,
-        api_server_config: ApiServerConfig,
-        storage_config: StorageConfig,
+        cfg: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
     ) -> Result<(Self, Multiple<Effect<Self::Event>>)> {
         let effect_builder = EffectBuilder::new(event_queue);
-        let (net, net_effects) = SmallNetwork::new(event_queue, validator_network_config)?;
+        let (net, net_effects) = SmallNetwork::new(event_queue, cfg.validator_net)?;
         let (pinger, pinger_effects) = Pinger::new(effect_builder);
-        let storage = Storage::new(storage_config)?;
-        let (api_server, api_server_effects) = ApiServer::new(api_server_config, effect_builder);
+        let storage = Storage::new(cfg.storage)?;
+        let (api_server, api_server_effects) = ApiServer::new(cfg.http_server, effect_builder);
         let (consensus, consensus_effects) = Consensus::new(effect_builder);
         let deploy_broadcaster = DeployBroadcaster::new();
 
@@ -244,10 +258,6 @@ impl Display for Event {
 /// `run` will leak memory on start for global structures each time it is called.
 ///
 /// Errors are returned only if component initialization fails.
-pub async fn run(
-    validator_network_config: SmallNetworkConfig,
-    api_server_config: ApiServerConfig,
-    storage_config: StorageConfig,
-) -> Result<()> {
-    super::run::<Reactor>(validator_network_config, api_server_config, storage_config).await
+pub async fn run(cfg: <Reactor as reactor::Reactor>::Config) -> Result<()> {
+    super::run::<Reactor>(cfg).await
 }

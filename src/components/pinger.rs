@@ -35,7 +35,7 @@ const PING_INTERVAL: Duration = Duration::from_secs(3);
 
 /// Network message used by the pinger.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub(crate) enum Message {
+pub enum Message {
     /// Ping with counter.
     Ping(u32),
     /// Pong with counter.
@@ -44,7 +44,7 @@ pub(crate) enum Message {
 
 /// Pinger component event.
 #[derive(Debug)]
-pub(crate) enum Event {
+pub enum Event {
     /// An incoming network message.
     MessageReceived { sender: NodeId, msg: Message },
     /// The next round of pings should be sent out.

@@ -1,7 +1,7 @@
 use super::{Result, Value};
 
 /// Trait defining the API for a store managed by the storage component.
-pub(crate) trait Store: Send + Sync {
+pub trait Store: Send + Sync {
     type Value: Value;
 
     fn put(&self, block: Self::Value) -> Result<()>;

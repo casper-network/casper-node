@@ -214,7 +214,7 @@ where
 /// Provides methods allowing the creation of effects which need scheduled on the reactor's event
 /// queue, without giving direct access to this queue.
 #[derive(Debug)]
-pub(crate) struct EffectBuilder<REv: 'static>(EventQueueHandle<REv>);
+pub struct EffectBuilder<REv: 'static>(EventQueueHandle<REv>);
 
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `REv` otherwise.
 impl<REv> Clone for EffectBuilder<REv> {

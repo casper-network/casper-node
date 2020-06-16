@@ -9,7 +9,7 @@ use crate::{
 };
 
 #[derive(Debug, From)]
-pub(crate) enum Event {
+pub enum Event {
     #[from]
     ApiRequest(ApiRequest),
     PutDeployResult {

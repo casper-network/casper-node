@@ -7,7 +7,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub(crate) enum NetworkRequest<I, P> {
+pub enum NetworkRequest<I, P> {
     /// Send a message on the network to a specific peer.
     SendMessage {
         dest: I,
@@ -79,7 +79,7 @@ where
 #[allow(clippy::type_complexity)]
 // TODO: remove once all variants are used.
 #[allow(dead_code)]
-pub(crate) enum StorageRequest<S: StorageType + 'static> {
+pub enum StorageRequest<S: StorageType + 'static> {
     /// Store given block.
     PutBlock {
         block: Box<S::Block>,
@@ -141,7 +141,7 @@ impl<S: StorageType> Display for StorageRequest<S> {
 /// An API request is an abstract request that does not concern itself with serialization or
 /// transport.
 #[derive(Debug)]
-pub(crate) enum ApiRequest {
+pub enum ApiRequest {
     /// Submit a deploy for storing.
     ///
     /// Returns the deploy along with an error message if it could not be stored.
@@ -171,7 +171,7 @@ impl Display for ApiRequest {
 }
 
 #[derive(Debug)]
-pub(crate) enum DeployBroadcasterRequest {
+pub enum DeployBroadcasterRequest {
     /// A new `Deploy` received from a client via the HTTP server component.  Since this has been
     /// received from a client and not via another node's broadcast, this receiving node should
     /// broadcast it.

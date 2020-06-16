@@ -2,7 +2,7 @@ use std::fmt::{self, Display, Formatter};
 
 /// A networking layer announcement.
 #[derive(Debug)]
-pub(crate) enum NetworkAnnouncement<I, P> {
+pub enum NetworkAnnouncement<I, P> {
     /// A payload message has been received from a peer.
     MessageReceived { sender: I, payload: P },
 }
