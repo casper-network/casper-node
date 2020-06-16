@@ -237,12 +237,12 @@ mod tests {
         // b0: 10           b1: 4
         //        \
         //          c0: 1 — c1: 1
-        add_vote!(state, b0, BOB, 0; N, N, N; 0xB0);
-        add_vote!(state, c0, CAROL, 0; N, b0, N; 0xC0);
-        add_vote!(state, c1, CAROL, 1; N, b0, c0; 0xC1);
-        add_vote!(state, a0, ALICE, 0; N, b0, N; 0xA0);
-        add_vote!(state, a1, ALICE, 1; a0, b0, c1; 0xA1);
-        add_vote!(state, b1, BOB, 1; a0, b0, N; 0xB1);
+        add_vote!(state, b0, BOB, BOB_SEC, 0; N, N, N; 0xB0);
+        add_vote!(state, c0, CAROL, CAROL_SEC, 0; N, b0, N; 0xC0);
+        add_vote!(state, c1, CAROL, CAROL_SEC, 1; N, b0, c0; 0xC1);
+        add_vote!(state, a0, ALICE, ALICE_SEC, 0; N, b0, N; 0xA0);
+        add_vote!(state, a1, ALICE, ALICE_SEC, 1; a0, b0, c1; 0xA1);
+        add_vote!(state, b1, BOB, BOB_SEC, 1; a0, b0, N; 0xB1);
 
         let mut fd4 = FinalityDetector::new(Weight(4)); // Fault tolerance 4.
         let mut fd6 = FinalityDetector::new(Weight(6)); // Fault tolerance 6.
@@ -257,14 +257,14 @@ mod tests {
         assert_eq!(FinalityResult::None, fd4.run(&state));
 
         // Adding another level to the summit increases `B0`'s fault tolerance to 6.
-        add_vote!(state, _a2, ALICE, 2; a1, b1, c1);
-        add_vote!(state, _b2, BOB, 2; a1, b1, c1);
+        add_vote!(state, _a2, ALICE, ALICE_SEC, 2; a1, b1, c1);
+        add_vote!(state, _b2, BOB, BOB_SEC, 2; a1, b1, c1);
         assert_eq!(FinalityResult::Finalized(vec![0xB0]), fd6.run(&state));
         assert_eq!(FinalityResult::None, fd6.run(&state));
 
         // If Alice equivocates, the FTT 4 is exceeded, but she counts as being part of any summit,
         // so `A0` and `A1` get FTT 6. (Bob voted for `A1` and against `B1` in `b2`.)
-        add_vote!(state, _e2, BOB, 2; a1, b1, c1);
+        add_vote!(state, _e2, BOB, BOB_SEC, 2; a1, b1, c1);
         assert_eq!(FinalityResult::FttExceeded, fd4.run(&state));
         assert_eq!(FinalityResult::Finalized(vec![0xA0]), fd6.run(&state));
         assert_eq!(FinalityResult::Finalized(vec![0xA1]), fd6.run(&state));

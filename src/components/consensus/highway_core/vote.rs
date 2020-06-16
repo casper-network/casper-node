@@ -2,6 +2,8 @@ use derive_more::Deref;
 use serde::{Deserialize, Serialize};
 
 use super::{state::State, traits::Context, validators::ValidatorIndex, vertex::WireVote};
+use crate::components::consensus::highway_core::traits::ValidatorSecret;
+use crate::components::consensus::highway_core::vertex::SignedWireVote;
 
 /// The observed behavior of a validator at some point in time.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -98,18 +100,20 @@ pub(crate) struct Vote<C: Context> {
     pub(crate) skip_idx: Vec<C::Hash>,
     /// This vote's instant, in milliseconds since the epoch.
     pub(crate) instant: u64,
+    /// Original signature of the `SignedWireVote`.
+    pub(crate) signature: <C::ValidatorSecret as ValidatorSecret>::Signature,
 }
 
 impl<C: Context> Vote<C> {
     /// Creates a new `Vote` from the `WireVote`, and returns the values if it contained any.
     /// Values must be stored as a block, with the same hash.
     pub(crate) fn new(
-        wvote: WireVote<C>,
+        swvote: SignedWireVote<C>,
         fork_choice: Option<&C::Hash>,
         state: &State<C>,
     ) -> (Vote<C>, Option<Vec<C::ConsensusValue>>) {
-        let block = if wvote.values.is_some() {
-            wvote.hash() // A vote with a new block votes for itself.
+        let block = if swvote.wire_vote.values.is_some() {
+            swvote.wire_vote.hash() // A vote with a new block votes for itself.
         } else {
             // If the vote didn't introduce a new block, it votes for the fork choice itself.
             // `Highway::add_vote` checks that the panorama is not empty.
@@ -118,22 +122,28 @@ impl<C: Context> Vote<C> {
                 .expect("nonempty panorama has nonempty fork choice")
         };
         let mut skip_idx = Vec::new();
-        if let Some(hash) = wvote.panorama.get(wvote.sender).correct() {
+        if let Some(hash) = swvote
+            .wire_vote
+            .panorama
+            .get(swvote.wire_vote.sender)
+            .correct()
+        {
             skip_idx.push(hash.clone());
-            for i in 0..wvote.seq_number.trailing_zeros() as usize {
+            for i in 0..swvote.wire_vote.seq_number.trailing_zeros() as usize {
                 let old_vote = state.vote(&skip_idx[i]);
                 skip_idx.push(old_vote.skip_idx[i].clone());
             }
         }
         let vote = Vote {
-            panorama: wvote.panorama,
-            seq_number: wvote.seq_number,
-            sender: wvote.sender,
+            panorama: swvote.wire_vote.panorama,
+            seq_number: swvote.wire_vote.seq_number,
+            sender: swvote.wire_vote.sender,
             block,
             skip_idx,
-            instant: wvote.instant,
+            instant: swvote.wire_vote.instant,
+            signature: swvote.signature,
         };
-        (vote, wvote.values)
+        (vote, swvote.wire_vote.values)
     }
 
     /// Returns the sender's previous message.

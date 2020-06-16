@@ -3,6 +3,7 @@ use std::iter;
 use serde::{Deserialize, Serialize};
 
 use super::{evidence::Evidence, traits::Context, validators::ValidatorIndex, vote::Panorama};
+use crate::components::consensus::highway_core::traits::ValidatorSecret;
 
 /// A dependency of a `Vertex` that can be satisfied by one or more other vertices.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -16,7 +17,7 @@ pub(crate) enum Dependency<C: Context> {
 /// It is the vertex in a directed acyclic graph, whose edges are dependencies.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Vertex<C: Context> {
-    Vote(WireVote<C>),
+    Vote(SignedWireVote<C>),
     Evidence(Evidence<C>),
 }
 
@@ -29,9 +30,29 @@ impl<C: Context> Vertex<C> {
     /// obtained _and_ validated. Only after that, the vertex can be considered valid.
     pub(crate) fn values<'a>(&'a self) -> Box<dyn Iterator<Item = &'a C::ConsensusValue> + 'a> {
         match self {
-            Vertex::Vote(wvote) => Box::new(wvote.values.iter().flat_map(|v| v.iter())),
+            Vertex::Vote(swvote) => Box::new(swvote.wire_vote.values.iter().flat_map(|v| v.iter())),
             Vertex::Evidence(_) => Box::new(iter::empty()),
         }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub(crate) struct SignedWireVote<C: Context> {
+    pub(crate) wire_vote: WireVote<C>,
+    pub(crate) signature: <C::ValidatorSecret as ValidatorSecret>::Signature,
+}
+
+impl<C: Context> SignedWireVote<C> {
+    pub(crate) fn new(wire_vote: WireVote<C>, secret_key: &C::ValidatorSecret) -> Self {
+        let signature = secret_key.sign(&wire_vote.hash());
+        SignedWireVote {
+            wire_vote,
+            signature,
+        }
+    }
+
+    pub(crate) fn hash(&self) -> C::Hash {
+        self.wire_vote.hash()
     }
 }
 
