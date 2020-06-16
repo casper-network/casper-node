@@ -110,14 +110,18 @@ impl<C: Context> Highway<C> {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::iter::FromIterator;
+    use crate::components::consensus::highway_core::highway::{
+        AddVertexOutcome, Highway, HighwayParams,
+    };
+    use crate::components::consensus::highway_core::state::tests::{
+        TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC, WEIGHTS,
+    };
     use crate::components::consensus::highway_core::state::{AddVoteError, State, Weight};
-    use crate::components::consensus::highway_core::state::tests::{TestContext, WEIGHTS, ALICE_SEC, ALICE, BOB_SEC, BOB, CAROL_SEC, CAROL};
-    use crate::components::consensus::highway_core::validators::Validators;
-    use crate::components::consensus::highway_core::highway::{HighwayParams, Highway, AddVertexOutcome};
-    use crate::components::consensus::highway_core::vote::Panorama;
-    use crate::components::consensus::highway_core::vertex::{WireVote, Vertex, SignedWireVote};
     use crate::components::consensus::highway_core::traits::ValidatorSecret;
+    use crate::components::consensus::highway_core::validators::Validators;
+    use crate::components::consensus::highway_core::vertex::{SignedWireVote, Vertex, WireVote};
+    use crate::components::consensus::highway_core::vote::Panorama;
+    use std::iter::FromIterator;
 
     #[test]
     fn invalid_signature_error() -> Result<(), AddVoteError<TestContext>> {
