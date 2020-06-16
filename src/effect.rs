@@ -308,6 +308,8 @@ impl<REv> EffectBuilder<REv> {
     ///
     /// A low-level "gossip" function, selects a fixed number of randomly chosen nodes on the
     /// network and sends each a copy of the message.
+    // TODO: Remove list-relaxation once function is used.
+    #[allow(dead_code)]
     pub(crate) async fn gossip_message<I, P>(self, payload: P)
     where
         REv: From<NetworkRequest<I, P>>,
