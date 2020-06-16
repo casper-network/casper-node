@@ -35,6 +35,13 @@ impl<C: Context> Observation<C> {
             Self::Correct(_) => true,
         }
     }
+
+    pub(crate) fn is_faulty(&self) -> bool {
+        match self {
+            Self::Faulty => true,
+            Self::None | Self::Correct(_) => false,
+        }
+    }
 }
 
 /// The observed behavior of all validators at some point in time.
