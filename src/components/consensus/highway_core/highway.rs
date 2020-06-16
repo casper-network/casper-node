@@ -5,6 +5,7 @@ use super::{
     validators::Validators,
     vertex::{Dependency, Vertex, WireVote},
 };
+use crate::components::consensus::highway_core::vertex::SignedWireVote;
 
 /// The result of trying to add a vertex to the protocol highway.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -22,7 +23,7 @@ pub(crate) enum AddVertexOutcome<C: Context> {
 impl<C: Context> From<AddVoteError<C>> for AddVertexOutcome<C> {
     fn from(err: AddVoteError<C>) -> Self {
         // TODO: debug!("Invalid vote: {}", err);
-        Self::Invalid(Vertex::Vote(err.wvote))
+        Self::Invalid(Vertex::Vote(err.swvote))
     }
 }
 
@@ -72,16 +73,28 @@ impl<C: Context> Highway<C> {
         }
     }
 
-    fn add_vote(&mut self, wvote: WireVote<C>) -> AddVertexOutcome<C> {
-        if !self.params.validators.contains(wvote.sender) {
-            return AddVertexOutcome::Invalid(Vertex::Vote(wvote));
+    fn add_vote(&mut self, swvote: SignedWireVote<C>) -> AddVertexOutcome<C> {
+        if !self.params.validators.contains(swvote.wire_vote.sender) {
+            return AddVertexOutcome::Invalid(Vertex::Vote(swvote));
         }
-        if let Some(dep) = self.state.missing_dependency(&wvote.panorama) {
-            return AddVertexOutcome::MissingDependency(Vertex::Vote(wvote), dep);
+        if !C::validate_signature(
+            &swvote.hash(),
+            self.validator_pk(&swvote),
+            &swvote.signature,
+        ) {
+            return AddVertexOutcome::Invalid(Vertex::Vote(swvote));
+        }
+        if let Some(dep) = self.state.missing_dependency(&swvote.wire_vote.panorama) {
+            return AddVertexOutcome::MissingDependency(Vertex::Vote(swvote), dep);
         }
         // If the vote is invalid, `add_vote` returns it as an error.
-        let opt_wvote = self.state.add_vote(wvote).err();
+        let opt_wvote = self.state.add_vote(swvote).err();
         opt_wvote.map_or(AddVertexOutcome::Success, AddVertexOutcome::from)
+    }
+
+    /// Returns validator ID of the `swvote` sender.
+    fn validator_pk(&self, swvote: &SignedWireVote<C>) -> &C::ValidatorId {
+        self.params.validators.get_by_id(swvote.wire_vote.sender)
     }
 
     fn add_evidence(&mut self, evidence: Evidence<C>) -> AddVertexOutcome<C> {
@@ -92,5 +105,68 @@ impl<C: Context> Highway<C> {
         } else {
             AddVertexOutcome::Invalid(Vertex::Evidence(evidence))
         }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use crate::components::consensus::highway_core::highway::{
+        AddVertexOutcome, Highway, HighwayParams,
+    };
+    use crate::components::consensus::highway_core::state::tests::{
+        TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC, WEIGHTS,
+    };
+    use crate::components::consensus::highway_core::state::{AddVoteError, State, Weight};
+    use crate::components::consensus::highway_core::traits::ValidatorSecret;
+    use crate::components::consensus::highway_core::validators::Validators;
+    use crate::components::consensus::highway_core::vertex::{SignedWireVote, Vertex, WireVote};
+    use crate::components::consensus::highway_core::vote::Panorama;
+    use std::iter::FromIterator;
+
+    #[test]
+    fn invalid_signature_error() -> Result<(), AddVoteError<TestContext>> {
+        let state: State<TestContext> = State::new(WEIGHTS, 0);
+        let validators = {
+            let vid_weights: Vec<(u32, u64)> =
+                vec![(ALICE_SEC, ALICE), (BOB_SEC, BOB), (CAROL_SEC, CAROL)]
+                    .into_iter()
+                    .map(|(sk, vid)| {
+                        assert_eq!(sk.0, vid.0);
+                        (sk.0, WEIGHTS[vid.0 as usize].0)
+                    })
+                    .collect();
+            Validators::from_iter(vid_weights)
+        };
+        let params = HighwayParams {
+            instance_id: 1u64,
+            validators,
+        };
+        let mut highway = Highway { params, state };
+        let wvote = WireVote {
+            panorama: Panorama::new(WEIGHTS.len()),
+            sender: ALICE,
+            values: Some(vec![]),
+            seq_number: 0,
+            instant: 1,
+        };
+        let invalid_signature = 1u64;
+        let invalid_signature_vote = SignedWireVote {
+            wire_vote: wvote.clone(),
+            signature: invalid_signature,
+        };
+        let invalid_vertex = Vertex::Vote(invalid_signature_vote.clone());
+        assert_eq!(
+            AddVertexOutcome::Invalid(Vertex::Vote(invalid_signature_vote)),
+            highway.add_vertex(invalid_vertex)
+        );
+
+        let valid_signature = ALICE_SEC.sign(&wvote.hash());
+        let correct_signature_vote = SignedWireVote {
+            wire_vote: wvote,
+            signature: valid_signature,
+        };
+        let valid_vertex = Vertex::Vote(correct_signature_vote);
+        assert_eq!(AddVertexOutcome::Success, highway.add_vertex(valid_vertex));
+        Ok(())
     }
 }

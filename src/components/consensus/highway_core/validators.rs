@@ -36,6 +36,12 @@ impl<VID: Eq + Hash> Validators<VID> {
     pub(crate) fn contains(&self, idx: ValidatorIndex) -> bool {
         self.validators.len() as u32 > idx.0
     }
+
+    /// Returns validator at index.
+    /// Expects that idx has been validated before calling this function.
+    pub(crate) fn get_by_id(&self, idx: ValidatorIndex) -> &VID {
+        &self.validators.get(idx.0 as usize).unwrap().id
+    }
 }
 
 impl<VID: Ord + Hash + Clone> FromIterator<(VID, u64)> for Validators<VID> {
