@@ -199,12 +199,28 @@ where
         process_effects(self.scheduler, effects).await;
     }
 
+    /// Processes a single event if there is one, returns `None` otherwise.
+    #[inline]
+    pub async fn try_crank(&mut self) -> Option<()> {
+        if self.scheduler.item_count() == 0 {
+            None
+        } else {
+            Some(self.crank().await)
+        }
+    }
+
     /// Runs the reactor indefinitely.
     #[inline]
     pub async fn run(&mut self) {
         loop {
             self.crank().await;
         }
+    }
+
+    /// Returns a reference to the reactor.
+    #[inline]
+    pub fn reactor(&self) -> &R {
+        &self.reactor
     }
 }
 

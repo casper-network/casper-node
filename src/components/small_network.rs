@@ -46,9 +46,11 @@ mod endpoint;
 mod error;
 mod event;
 mod message;
+#[cfg(test)]
+mod test;
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     io,
     net::{SocketAddr, TcpListener},
@@ -408,6 +410,18 @@ where
                     .ignore()
             }
         }
+    }
+
+    /// Returns the set of connected nodes.
+    ///
+    /// This inspection function is usually used in testing.
+    pub(crate) fn connected_nodes(&self) -> HashSet<NodeId> {
+        self.outgoing.keys().cloned().collect()
+    }
+
+    /// Returns the node id of this network node.
+    pub(crate) fn node_id(&self) -> NodeId {
+        self.cert.public_key_fingerprint()
     }
 }
 
@@ -771,83 +785,5 @@ where
             .field("signed_endpoints", &self.signed_endpoints)
             .field("outgoing", &self.outgoing)
             .finish()
-    }
-}
-
-mod test {
-    use crate::{
-        components::Component,
-        effect::{announcements::NetworkAnnouncement, Effect, EffectBuilder, Multiple},
-        reactor::{self, Reactor},
-        small_network::{self, SmallNetwork},
-    };
-    use derive_more::From;
-    use reactor::EventQueueHandle;
-    use serde::{Deserialize, Serialize};
-    use small_network::NodeId;
-    use std::fmt::{self, Debug, Display, Formatter};
-
-    #[derive(Debug, From)]
-    enum Event {
-        #[from]
-        SmallNet(small_network::Event<Message>),
-    }
-
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
-    struct Message;
-
-    #[derive(Debug)]
-    struct TestReactor {
-        net: SmallNetwork<Event, Message>,
-    }
-
-    impl From<NetworkAnnouncement<NodeId, Message>> for Event {
-        fn from(_: NetworkAnnouncement<NodeId, Message>) -> Self {
-            todo!()
-        }
-    }
-
-    impl Reactor for TestReactor {
-        type Event = Event;
-        type Config = small_network::Config;
-
-        fn dispatch_event(
-            &mut self,
-            effect_builder: EffectBuilder<Self::Event>,
-            event: Self::Event,
-        ) -> Multiple<Effect<Self::Event>> {
-            let mut rng = rand::thread_rng(); // FIXME
-
-            match event {
-                Event::SmallNet(ev) => reactor::wrap_effects(
-                    Event::SmallNet,
-                    self.net.handle_event(effect_builder, &mut rng, ev),
-                ),
-            }
-        }
-
-        fn new(
-            cfg: Self::Config,
-            event_queue: EventQueueHandle<Self::Event>,
-        ) -> reactor::Result<(Self, Multiple<Effect<Self::Event>>)> {
-            let (net, effects) = SmallNetwork::new(event_queue, cfg)?;
-
-            Ok((
-                TestReactor { net },
-                reactor::wrap_effects(Event::SmallNet, effects),
-            ))
-        }
-    }
-
-    impl Display for Event {
-        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-            Debug::fmt(self, f)
-        }
-    }
-
-    impl Display for Message {
-        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-            Debug::fmt(self, f)
-        }
     }
 }
