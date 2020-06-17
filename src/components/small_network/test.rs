@@ -171,7 +171,7 @@ fn init_logging() {
             .with_env_filter(EnvFilter::from_default_env())
             .finish(),
     )
-    .unwrap();
+    .expect("initialize test logging");
 }
 
 /// Checks whether or not a given network is completely connected.

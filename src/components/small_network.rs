@@ -49,8 +49,10 @@ mod message;
 #[cfg(test)]
 mod test;
 
+#[cfg(test)]
+use std::collections::HashSet;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fmt::{self, Debug, Display, Formatter},
     io,
     net::{SocketAddr, TcpListener},
@@ -415,11 +417,13 @@ where
     /// Returns the set of connected nodes.
     ///
     /// This inspection function is usually used in testing.
+    #[cfg(test)]
     pub(crate) fn connected_nodes(&self) -> HashSet<NodeId> {
         self.outgoing.keys().cloned().collect()
     }
 
     /// Returns the node id of this network node.
+    #[cfg(test)]
     pub(crate) fn node_id(&self) -> NodeId {
         self.cert.public_key_fingerprint()
     }

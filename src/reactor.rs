@@ -205,7 +205,8 @@ where
         if self.scheduler.item_count() == 0 {
             None
         } else {
-            Some(self.crank().await)
+            self.crank().await;
+            Some(())
         }
     }
 
