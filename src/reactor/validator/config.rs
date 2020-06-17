@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    ApiServerConfig, SmallNetworkConfig, StorageConfig, ROOT_VALIDATOR_LISTENING_PORT,
-};
+use crate::{ApiServerConfig, SmallNetworkConfig, StorageConfig, ROOT_VALIDATOR_LISTENING_PORT};
 
 /// Root configuration.
 #[derive(Debug, Deserialize, Serialize)]
