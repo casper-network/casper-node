@@ -9,7 +9,7 @@ use super::Endpoint;
 use crate::{tls::Signed, utils::DisplayIter};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub(crate) enum Message<P> {
+pub enum Message<P> {
     /// A pruned set of all endpoint announcements the server has received.
     Snapshot(HashSet<Signed<Endpoint>>),
     /// Broadcast a new endpoint known to the sender.

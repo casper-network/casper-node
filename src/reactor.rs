@@ -39,7 +39,6 @@ use tracing::{debug, info, trace, warn};
 use crate::{
     effect::{Effect, EffectBuilder, Multiple},
     utils::{self, WeightedRoundRobin},
-    Config,
 };
 pub use error::Error;
 pub(crate) use error::Result;
@@ -87,7 +86,7 @@ impl<REv> EventQueueHandle<REv> {
 /// Reactor core.
 ///
 /// Any reactor should implement this trait and be executed by the `reactor::run` function.
-pub(crate) trait Reactor: Sized {
+pub trait Reactor: Sized {
     // Note: We've gone for the `Sized` bound here, since we return an instance in `new`. As an
     // alternative, `new` could return a boxed instance instead, removing this requirement.
 
@@ -95,6 +94,9 @@ pub(crate) trait Reactor: Sized {
     ///
     /// Defines what kind of event the reactor processes.
     type Event: Send + Debug + Display + 'static;
+
+    /// A configuration for the reactor
+    type Config;
 
     /// Dispatches an event on the reactor.
     ///
@@ -114,7 +116,7 @@ pub(crate) trait Reactor: Sized {
     ///
     /// If any instantiation fails, an error is returned.
     fn new(
-        cfg: Config,
+        cfg: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
     ) -> Result<(Self, Multiple<Effect<Self::Event>>)>;
 }
@@ -123,11 +125,11 @@ pub(crate) trait Reactor: Sized {
 ///
 /// Starts the reactor and associated background tasks, then enters main the event processing loop.
 ///
-/// `run` will leak memory on start for global structures each time it is called.
+/// `run` will leak memory each time it is called.
 ///
 /// Errors are returned only if component initialization fails.
 #[inline]
-async fn run<R: Reactor>(cfg: Config) -> Result<()> {
+pub async fn run<R: Reactor>(cfg: R::Config) -> Result<()> {
     let event_size = mem::size_of::<R::Event>();
     // Check if the event is of a reasonable size. This only emits a runtime warning at startup
     // right now, since storage size of events is not an issue per se, but copying might be

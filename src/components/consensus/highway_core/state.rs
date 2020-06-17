@@ -21,6 +21,7 @@ use super::{
     vertex::{Dependency, WireVote},
     vote::{Observation, Panorama, Vote},
 };
+use crate::components::consensus::highway_core::vertex::SignedWireVote;
 
 /// A vote weight.
 #[derive(
@@ -41,7 +42,7 @@ impl Mul<u64> for Weight {
 #[error("{:?}", .cause)]
 pub(crate) struct AddVoteError<C: Context> {
     /// The invalid vote that was not added to the protocol state.
-    pub(crate) wvote: WireVote<C>,
+    pub(crate) swvote: SignedWireVote<C>,
     /// The reason the vote is invalid.
     #[source]
     pub(crate) cause: VoteError,
@@ -53,6 +54,8 @@ pub(crate) enum VoteError {
     Panorama,
     /// The vote contains the wrong sequence number.
     SequenceNumber,
+    /// The vote's timestamp is older than a justification's.
+    Timestamps,
 }
 
 impl Display for VoteError {
@@ -62,13 +65,20 @@ impl Display for VoteError {
             VoteError::SequenceNumber => {
                 write!(formatter, "The vote contains the wrong sequence number.")
             }
+            VoteError::Timestamps => write!(
+                formatter,
+                "The vote's timestamp is older than a justification's"
+            ),
         }
     }
 }
 
-impl<C: Context> WireVote<C> {
+impl<C: Context> SignedWireVote<C> {
     fn with_error(self, cause: VoteError) -> AddVoteError<C> {
-        AddVoteError { wvote: self, cause }
+        AddVoteError {
+            swvote: self,
+            cause,
+        }
     }
 }
 
@@ -192,14 +202,15 @@ impl<C: Context> State<C> {
 
     /// Adds the vote to the protocol state, or returns an error if it is invalid.
     /// Panics if dependencies are not satisfied.
-    pub(crate) fn add_vote(&mut self, wvote: WireVote<C>) -> Result<(), AddVoteError<C>> {
-        if let Err(err) = self.validate_vote(&wvote) {
-            return Err(wvote.with_error(err));
+    pub(crate) fn add_vote(&mut self, swvote: SignedWireVote<C>) -> Result<(), AddVoteError<C>> {
+        if let Err(err) = self.validate_vote(&swvote) {
+            return Err(swvote.with_error(err));
         }
-        self.update_panorama(&wvote);
+        let wvote = &swvote.wire_vote;
+        self.update_panorama(&swvote);
         let hash = wvote.hash();
         let fork_choice = self.fork_choice(&wvote.panorama).cloned();
-        let (vote, opt_values) = Vote::new(wvote, fork_choice.as_ref(), self);
+        let (vote, opt_values) = Vote::new(swvote, fork_choice.as_ref(), self);
         if let Some(values) = opt_values {
             let block = Block::new(fork_choice, values, self);
             self.blocks.insert(hash.clone(), block);
@@ -213,16 +224,20 @@ impl<C: Context> State<C> {
         self.evidence.insert(idx, evidence);
     }
 
-    pub(crate) fn wire_vote(&self, hash: &C::Hash) -> Option<WireVote<C>> {
+    pub(crate) fn wire_vote(&self, hash: &C::Hash) -> Option<SignedWireVote<C>> {
         let vote = self.opt_vote(hash)?.clone();
         let opt_block = self.opt_block(hash);
         let values = opt_block.map(|block| block.values.clone());
-        Some(WireVote {
+        let wvote = WireVote {
             panorama: vote.panorama.clone(),
             sender: vote.sender,
             values,
             seq_number: vote.seq_number,
             instant: vote.instant,
+        };
+        Some(SignedWireVote {
+            wire_vote: wvote,
+            signature: vote.signature,
         })
     }
 
@@ -278,7 +293,7 @@ impl<C: Context> State<C> {
         self.find_ancestor(&block.skip_idx[i], height)
     }
 
-    /// Merge two panoramas into a new one.
+    /// Merges two panoramas into a new one.
     pub(crate) fn merge_panoramas(&self, pan0: &Panorama<C>, pan1: &Panorama<C>) -> Panorama<C> {
         let merge_obs = |observations: (&Observation<C>, &Observation<C>)| match observations {
             (Observation::Faulty, _) | (_, Observation::Faulty) => Observation::Faulty,
@@ -291,15 +306,32 @@ impl<C: Context> State<C> {
         Panorama(observations)
     }
 
+    /// Returns the panorama seeing all votes seen by `pan` with a timestamp no later than
+    /// `instant`. Accusations are preserved regardless of the evidence's timestamp.
+    pub(crate) fn panorama_cutoff(&self, pan: &Panorama<C>, instant: u64) -> Panorama<C> {
+        let obs_cutoff = |obs: &Observation<C>| match obs {
+            Observation::Correct(vhash) => self
+                .swimlane(vhash)
+                .find(|(_, vote)| vote.instant <= instant)
+                .map(|(vh, _)| vh.clone())
+                .map_or(Observation::None, Observation::Correct),
+            obs @ Observation::None | obs @ Observation::Faulty => obs.clone(),
+        };
+        Panorama(pan.iter().map(obs_cutoff).collect())
+    }
+
     /// Returns an error if `wvote` is invalid.
-    fn validate_vote(&self, wvote: &WireVote<C>) -> Result<(), VoteError> {
+    fn validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {
+        let wvote = &swvote.wire_vote;
         let sender = wvote.sender;
-        // TODO: Check instant >= justification instants.
-        // Check that the panorama is consistent.
         if (wvote.values.is_none() && wvote.panorama.is_empty())
             || !self.is_panorama_valid(&wvote.panorama)
         {
             return Err(VoteError::Panorama);
+        }
+        let mut justifications = wvote.panorama.iter_correct();
+        if !justifications.all(|vh| self.vote(vh).instant <= wvote.instant) {
+            return Err(VoteError::Timestamps);
         }
         // Check that the vote's sequence number is one more than the sender's previous one.
         let expected_seq_number = match wvote.panorama.get(sender) {
@@ -313,14 +345,15 @@ impl<C: Context> State<C> {
         Ok(())
     }
 
-    /// Update `self.panorama` with an incoming vote. Panics if dependencies are missing.
+    /// Updates `self.panorama` with an incoming vote. Panics if dependencies are missing.
     ///
     /// If the new vote is valid, it will just add `Observation::Correct(wvote.hash())` to the
     /// panorama. If it represents an equivocation, it adds `Observation::Faulty` and updates
     /// `self.evidence`.
     ///
     /// Panics unless all dependencies of `wvote` have already been added to `self`.
-    fn update_panorama(&mut self, wvote: &WireVote<C>) {
+    fn update_panorama(&mut self, swvote: &SignedWireVote<C>) {
+        let wvote = &swvote.wire_vote;
         let sender = wvote.sender;
         let new_obs = match (self.panorama.get(sender), wvote.panorama.get(sender)) {
             (Observation::Faulty, _) => Observation::Faulty,
@@ -330,7 +363,7 @@ impl<C: Context> State<C> {
                 if !self.has_evidence(sender) {
                     let prev0 = self.find_in_swimlane(hash0, wvote.seq_number).unwrap();
                     let wvote0 = self.wire_vote(prev0).unwrap();
-                    self.add_evidence(Evidence::Equivocation(wvote0, wvote.clone()));
+                    self.add_evidence(Evidence::Equivocation(wvote0, swvote.clone()));
                 }
                 Observation::Faulty
             }
@@ -376,6 +409,27 @@ impl<C: Context> State<C> {
         pan.get(vote.sender).correct().map_or(false, |latest_hash| {
             Some(hash) == self.find_in_swimlane(latest_hash, vote.seq_number)
         })
+    }
+
+    /// Returns a vector of validator indexes that equivocated between block
+    /// identified by `fhash` and its parent.
+    pub(crate) fn get_new_equivocators(&self, fhash: &C::Hash) -> Vec<ValidatorIndex> {
+        let cvote = self.vote(fhash);
+        let mut equivocators: Vec<ValidatorIndex> = Vec::new();
+        let fblock = self.block(fhash);
+        let empty_panorama = Panorama::new(self.weights.len());
+        let pvpanorama = fblock
+            .parent()
+            .map(|pvhash| &self.vote(pvhash).panorama)
+            .unwrap_or(&empty_panorama);
+        for (vid, obs) in cvote.panorama.enumerate() {
+            // If validator is faulty in candidate's panorama but not in its
+            // parent, it means it's a "new" equivocator.
+            if obs.is_faulty() && !pvpanorama.get(vid).is_faulty() {
+                equivocators.push(vid)
+            }
+        }
+        equivocators
     }
 
     /// Returns `pan` is valid, i.e. it contains the latest votes of some substate of `self`.
@@ -433,6 +487,7 @@ fn log2(x: u64) -> u32 {
     prev_pow2.trailing_zeros()
 }
 
+#[allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
 #[cfg(test)]
 pub(crate) mod tests {
     use std::{collections::hash_map::DefaultHasher, hash::Hasher};
@@ -453,20 +508,25 @@ pub(crate) mod tests {
     #[derive(Clone, Debug, PartialEq)]
     pub(crate) struct TestContext;
 
-    #[derive(Debug)]
-    pub(crate) struct TestSecret(pub(crate) u64);
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    pub(crate) struct TestSecret(pub(crate) u32);
 
     impl ValidatorSecret for TestSecret {
+        type Hash = u64;
         type Signature = u64;
 
-        fn sign(&self, _data: &[u8]) -> Vec<u8> {
-            unimplemented!()
+        fn sign(&self, data: &Self::Hash) -> Self::Signature {
+            data + u64::from(self.0)
         }
     }
 
+    pub(crate) const ALICE_SEC: TestSecret = TestSecret(0);
+    pub(crate) const BOB_SEC: TestSecret = TestSecret(1);
+    pub(crate) const CAROL_SEC: TestSecret = TestSecret(2);
+
     impl Context for TestContext {
         type ConsensusValue = u32;
-        type ValidatorId = &'static str;
+        type ValidatorId = u32;
         type ValidatorSecret = TestSecret;
         type Hash = u64;
         type InstanceId = u64;
@@ -475,6 +535,15 @@ pub(crate) mod tests {
             let mut hasher = DefaultHasher::new();
             hasher.write(data);
             hasher.finish()
+        }
+
+        fn validate_signature(
+            hash: &Self::Hash,
+            public_key: &Self::ValidatorId,
+            signature: &<Self::ValidatorSecret as ValidatorSecret>::Signature,
+        ) -> bool {
+            let computed_signature = hash + u64::from(*public_key);
+            computed_signature == *signature
         }
     }
 
@@ -500,18 +569,18 @@ pub(crate) mod tests {
         // Bob:   b0 —— b1
         //          \  /
         // Carol:    c0
-        add_vote!(state, a0, ALICE, 0; N, N, N; 0xA);
-        add_vote!(state, b0, BOB, 0; N, N, N; 0xB);
-        add_vote!(state, c0, CAROL, 0; N, b0, N);
-        add_vote!(state, b1, BOB, 1; N, b0, c0);
-        add_vote!(state, _a1, ALICE, 1; a0, b1, c0);
+        add_vote!(state, a0, ALICE, ALICE_SEC, 0; N, N, N; 0xA);
+        add_vote!(state, b0, BOB, BOB_SEC, 0; N, N, N; 0xB);
+        add_vote!(state, c0, CAROL, CAROL_SEC, 0; N, b0, N);
+        add_vote!(state, b1, BOB, BOB_SEC, 1; N, b0, c0);
+        add_vote!(state, _a1, ALICE, ALICE_SEC, 1; a0, b1, c0);
 
         // Wrong sequence number: Carol hasn't produced c1 yet.
-        let vote = vote!(CAROL, 2; N, b1, c0);
+        let vote = vote!(CAROL, CAROL_SEC, 2; N, b1, c0);
         let opt_err = state.add_vote(vote).err().map(vote_err);
         assert_eq!(Some(VoteError::SequenceNumber), opt_err);
         // Inconsistent panorama: If you see b1, you have to see c0, too.
-        let vote = vote!(CAROL, 1; N, b1, N);
+        let vote = vote!(CAROL, CAROL_SEC, 1; N, b1, N);
         let opt_err = state.add_vote(vote).err().map(vote_err);
         assert_eq!(Some(VoteError::Panorama), opt_err);
 
@@ -522,7 +591,7 @@ pub(crate) mod tests {
         assert_eq!(Some(Dependency::Vote(42)), missing);
 
         // Alice equivocates: A1 doesn't see a1.
-        add_vote!(state, ae1, ALICE, 1; a0, b1, c0);
+        add_vote!(state, ae1, ALICE, ALICE_SEC, 1; a0, b1, c0);
         assert!(state.has_evidence(ALICE));
 
         let missing = state.missing_dependency(&panorama!(F, b1, c0));
@@ -531,7 +600,7 @@ pub(crate) mod tests {
         assert_eq!(None, missing);
 
         // Bob can see the equivocation.
-        add_vote!(state, b2, BOB, 2; F, b1, c0);
+        add_vote!(state, b2, BOB, BOB_SEC, 2; F, b1, c0);
 
         // The state's own panorama has been updated correctly.
         assert_eq!(state.panorama, panorama!(F, b2, c0));
@@ -542,11 +611,11 @@ pub(crate) mod tests {
     fn find_in_swimlane() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new(WEIGHTS, 0);
         let mut a = Vec::new();
-        let vote = vote!(ALICE, 0; N, N, N; Some(vec![0xA]));
+        let vote = vote!(ALICE, ALICE_SEC, 0; N, N, N; Some(vec![0xA]));
         a.push(vote.hash());
         state.add_vote(vote)?;
         for i in 1..10 {
-            add_vote!(state, ai, ALICE, i as u64; a[i - 1], N, N);
+            add_vote!(state, ai, ALICE, ALICE_SEC, i as u64; a[i - 1], N, N);
             a.push(ai);
         }
 
@@ -577,13 +646,13 @@ pub(crate) mod tests {
         // b0: 12           b2: 4
         //        \
         //          c0: 5 — c1: 5
-        add_vote!(state, b0, BOB, 0; N, N, N; 0xB0);
-        add_vote!(state, c0, CAROL, 0; N, b0, N; 0xC0);
-        add_vote!(state, c1, CAROL, 1; N, b0, c0; 0xC1);
-        add_vote!(state, a0, ALICE, 0; N, b0, N; 0xA0);
-        add_vote!(state, b1, BOB, 1; a0, b0, N); // Just a ballot; not shown above.
-        add_vote!(state, a1, ALICE, 1; a0, b1, c1; 0xA1);
-        add_vote!(state, b2, BOB, 2; a0, b1, N; 0xB2);
+        add_vote!(state, b0, BOB, BOB_SEC, 0; N, N, N; 0xB0);
+        add_vote!(state, c0, CAROL, CAROL_SEC, 0; N, b0, N; 0xC0);
+        add_vote!(state, c1, CAROL, CAROL_SEC, 1; N, b0, c0; 0xC1);
+        add_vote!(state, a0, ALICE, ALICE_SEC, 0; N, b0, N; 0xA0);
+        add_vote!(state, b1, BOB, BOB_SEC, 1; a0, b0, N); // Just a ballot; not shown above.
+        add_vote!(state, a1, ALICE, ALICE_SEC, 1; a0, b1, c1; 0xA1);
+        add_vote!(state, b2, BOB, BOB_SEC, 2; a0, b1, N; 0xB2);
 
         // Alice built `a1` on top of `a0`, which had already 7 points.
         assert_eq!(Some(&a0), state.block(&state.vote(&a1).block).parent());

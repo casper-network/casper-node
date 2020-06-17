@@ -3,7 +3,11 @@
 //! The pinger component sends a broadcast to all other nodes every five seconds with a `Ping`. When
 //! receiving a `Ping`, it will respond with a `Pong` to the sender.
 
-use std::{collections::HashSet, fmt, time::Duration};
+use std::{
+    collections::HashSet,
+    fmt::{self, Display, Formatter},
+    time::Duration,
+};
 
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -20,7 +24,7 @@ use crate::{
 /// Keeps track internally of nodes it knows are up.
 #[derive(Debug)]
 pub(crate) struct Pinger {
-    /// Nodes that respondes to the most recent ping sent.
+    /// Nodes that respond to the most recent ping sent.
     responsive_nodes: HashSet<NodeId>,
     /// Increasing ping counter.
     ping_counter: u32,
@@ -31,7 +35,7 @@ const PING_INTERVAL: Duration = Duration::from_secs(3);
 
 /// Network message used by the pinger.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub(crate) enum Message {
+pub enum Message {
     /// Ping with counter.
     Ping(u32),
     /// Pong with counter.
@@ -40,15 +44,15 @@ pub(crate) enum Message {
 
 /// Pinger component event.
 #[derive(Debug)]
-pub(crate) enum Event {
+pub enum Event {
     /// An incoming network message.
     MessageReceived { sender: NodeId, msg: Message },
     /// The next round of pings should be sent out.
     Timer,
 }
 
-impl fmt::Display for Message {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for Message {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Message::Ping(ctr) => write!(f, "ping({})", ctr),
             Message::Pong(ctr) => write!(f, "pong({})", ctr),
@@ -56,8 +60,8 @@ impl fmt::Display for Message {
     }
 }
 
-impl fmt::Display for Event {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for Event {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::MessageReceived { sender, msg } => write!(f, "msg from {}: {}", sender, msg),
             Event::Timer => write!(f, "timer"),

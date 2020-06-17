@@ -11,7 +11,7 @@ use super::{Error, Message, NodeId, Transport};
 use crate::{effect::requests::NetworkRequest, tls::TlsCert};
 
 #[derive(Debug, From)]
-pub(crate) enum Event<P> {
+pub enum Event<P> {
     /// Connection to the root node succeeded.
     RootConnected { cert: TlsCert, transport: Transport },
     /// Connection to the root node failed.

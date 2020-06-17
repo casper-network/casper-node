@@ -1,10 +1,12 @@
+mod config;
 mod error;
 mod in_mem_store;
+mod lmdb_store;
 mod store;
 
 use std::{
-    error::Error as StdError,
     fmt::{Debug, Display},
+    fs,
     hash::Hash,
     sync::Arc,
 };
@@ -18,42 +20,69 @@ use crate::{
     effect::{requests::StorageRequest, Effect, EffectBuilder, EffectExt, Multiple},
     types::{Block, Deploy},
 };
-pub(crate) use error::{InMemError, InMemResult};
+// Seems to be a false positive.
+#[allow(unreachable_pub)]
+pub use config::Config;
+// Seems to be a false positive.
+#[allow(unreachable_pub)]
+pub use error::Error;
+pub(crate) use error::Result;
 use in_mem_store::InMemStore;
-pub(crate) use store::Store;
+use lmdb_store::LmdbStore;
+use store::Store;
 
-pub(crate) type Storage = InMemStorage<Block, Deploy>;
+pub(crate) type Storage = LmdbStorage<Block, Deploy>;
+
+const BLOCK_STORE_FILENAME: &str = "block_store.db";
+const DEPLOY_STORE_FILENAME: &str = "deploy_store.db";
 
 /// Trait defining the API for a value able to be held within the storage component.
-pub(crate) trait Value:
-    Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display
-{
-    type Id: Copy + Clone + Ord + PartialOrd + Eq + PartialEq + Hash + Debug + Display + Send + Sync;
+pub trait Value: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display {
+    type Id: Copy
+        + Clone
+        + Ord
+        + PartialOrd
+        + Eq
+        + PartialEq
+        + Hash
+        + Debug
+        + Display
+        + Serialize
+        + DeserializeOwned
+        + Send
+        + Sync;
     /// A relatively small portion of the value, representing header info or metadata.
-    type Header: Clone + Ord + PartialOrd + Eq + PartialEq + Hash + Debug + Display + Send + Sync;
+    type Header: Clone
+        + Ord
+        + PartialOrd
+        + Eq
+        + PartialEq
+        + Hash
+        + Debug
+        + Display
+        + Serialize
+        + DeserializeOwned
+        + Send
+        + Sync;
 
     fn id(&self) -> &Self::Id;
     fn header(&self) -> &Self::Header;
+    fn take_header(self) -> Self::Header;
 }
 
 /// Trait which will handle management of the various storage sub-components.
 ///
 /// If this trait is ultimately only used for testing scenarios, we shouldn't need to expose it to
 /// the reactor - it can simply use a concrete type which implements this trait.
-pub(crate) trait StorageType {
-    type BlockStore: Store + Send + Sync;
-    type DeployStore: Store + Send + Sync;
-    type Error: StdError
-        + Clone
-        + Serialize
-        + DeserializeOwned
-        + Send
-        + Sync
-        + From<<Self::BlockStore as Store>::Error>
-        + From<<Self::DeployStore as Store>::Error>;
+pub trait StorageType {
+    type Block: Value;
+    type Deploy: Value;
 
-    fn block_store(&self) -> Arc<Self::BlockStore>;
-    fn deploy_store(&self) -> Arc<Self::DeployStore>;
+    fn block_store(&self) -> Arc<dyn Store<Value = Self::Block>>;
+    fn deploy_store(&self) -> Arc<dyn Store<Value = Self::Deploy>>;
+    fn new(config: Config) -> Result<Self>
+    where
+        Self: Sized;
 }
 
 impl<REv, S> Component<REv> for S
@@ -65,7 +94,7 @@ where
 
     fn handle_event<R: Rng + ?Sized>(
         &mut self,
-        _eb: EffectBuilder<REv>,
+        _effect_builder: EffectBuilder<REv>,
         _rng: &mut R,
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>> {
@@ -143,37 +172,83 @@ where
                 }
                 .ignore()
             }
+            StorageRequest::ListDeploys { responder } => {
+                let deploy_store = self.deploy_store();
+                async move {
+                    let result = task::spawn_blocking(move || deploy_store.ids())
+                        .await
+                        .expect("should run");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
         }
     }
 }
 
-// Concrete type of `Storage` - backed by in-memory block store only for now, but will eventually
-// also hold in-mem versions of wasm-store, deploy-store, etc.
+// Concrete type of `Storage` backed by in-memory stores.
 #[derive(Debug)]
 pub(crate) struct InMemStorage<B: Value, D: Value> {
     block_store: Arc<InMemStore<B>>,
     deploy_store: Arc<InMemStore<D>>,
 }
 
-impl<B: Value, D: Value> InMemStorage<B, D> {
-    pub(crate) fn new() -> Self {
-        InMemStorage {
+#[allow(trivial_casts)]
+impl<B: Value + 'static, D: Value + 'static> StorageType for InMemStorage<B, D> {
+    type Block = B;
+    type Deploy = D;
+
+    fn block_store(&self) -> Arc<dyn Store<Value = B>> {
+        Arc::clone(&self.block_store) as Arc<dyn Store<Value = B>>
+    }
+
+    fn new(_config: Config) -> Result<Self> {
+        Ok(InMemStorage {
             block_store: Arc::new(InMemStore::new()),
             deploy_store: Arc::new(InMemStore::new()),
-        }
+        })
+    }
+
+    fn deploy_store(&self) -> Arc<dyn Store<Value = D>> {
+        Arc::clone(&self.deploy_store) as Arc<dyn Store<Value = D>>
     }
 }
 
-impl<B: Value, D: Value> StorageType for InMemStorage<B, D> {
-    type BlockStore = InMemStore<B>;
-    type DeployStore = InMemStore<D>;
-    type Error = InMemError;
+// Concrete type of `Storage` backed by LMDB stores.
+#[derive(Debug)]
+pub struct LmdbStorage<B: Value, D: Value> {
+    block_store: Arc<LmdbStore<B>>,
+    deploy_store: Arc<LmdbStore<D>>,
+}
 
-    fn block_store(&self) -> Arc<Self::BlockStore> {
-        Arc::clone(&self.block_store)
+#[allow(trivial_casts)]
+impl<B: Value + 'static, D: Value + 'static> StorageType for LmdbStorage<B, D> {
+    type Block = B;
+    type Deploy = D;
+
+    fn new(config: Config) -> Result<Self> {
+        fs::create_dir_all(&config.path).map_err(|error| Error::CreateDir {
+            dir: config.path.display().to_string(),
+            source: error,
+        })?;
+
+        let block_store_path = config.path.join(BLOCK_STORE_FILENAME);
+        let deploy_store_path = config.path.join(DEPLOY_STORE_FILENAME);
+
+        let block_store = LmdbStore::new(block_store_path, config.max_block_store_size)?;
+        let deploy_store = LmdbStore::new(deploy_store_path, config.max_deploy_store_size)?;
+
+        Ok(LmdbStorage {
+            block_store: Arc::new(block_store),
+            deploy_store: Arc::new(deploy_store),
+        })
     }
 
-    fn deploy_store(&self) -> Arc<Self::DeployStore> {
-        Arc::clone(&self.deploy_store)
+    fn block_store(&self) -> Arc<dyn Store<Value = B>> {
+        Arc::clone(&self.block_store) as Arc<dyn Store<Value = B>>
+    }
+
+    fn deploy_store(&self) -> Arc<dyn Store<Value = D>> {
+        Arc::clone(&self.deploy_store) as Arc<dyn Store<Value = D>>
     }
 }

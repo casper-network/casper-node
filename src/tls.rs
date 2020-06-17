@@ -129,7 +129,7 @@ pub(crate) struct CertFingerprint(Sha512);
 
 /// Public key fingerprint.
 #[derive(Copy, Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-pub(crate) struct KeyFingerprint(Sha512);
+pub struct KeyFingerprint(Sha512);
 
 /// Cryptographic signature.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -169,7 +169,7 @@ impl Signature {
 ///
 /// Thin wrapper around `X509` enabling things like Serde serialization and fingerprint caching.
 #[derive(Clone)]
-pub(crate) struct TlsCert {
+pub struct TlsCert {
     /// The wrapped x509 certificate.
     x509: X509,
 
@@ -247,7 +247,7 @@ impl Serialize for TlsCert {
 /// Combines a value `V` with a `Signature` and a signature scheme. The signature scheme involves
 /// serializing the value to bytes and signing the result.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-pub(crate) struct Signed<V> {
+pub struct Signed<V> {
     data: Vec<u8>,
     signature: Signature,
     _phantom: PhantomData<V>,

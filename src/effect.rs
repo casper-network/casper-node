@@ -51,8 +51,10 @@ use smallvec::{smallvec, SmallVec};
 use tracing::error;
 
 use crate::{
-    components::storage::{StorageType, Store, Value},
+    components::storage::{self, StorageType, Value},
+    effect::requests::DeployBroadcasterRequest,
     reactor::{EventQueueHandle, QueueKind},
+    types::Deploy,
 };
 use announcements::NetworkAnnouncement;
 use requests::{NetworkRequest, StorageRequest};
@@ -212,7 +214,7 @@ where
 /// Provides methods allowing the creation of effects which need scheduled on the reactor's event
 /// queue, without giving direct access to this queue.
 #[derive(Debug)]
-pub(crate) struct EffectBuilder<REv: 'static>(EventQueueHandle<REv>);
+pub struct EffectBuilder<REv: 'static>(EventQueueHandle<REv>);
 
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `REv` otherwise.
 impl<REv> Clone for EffectBuilder<REv> {
@@ -296,7 +298,24 @@ impl<REv> EffectBuilder<REv> {
         REv: From<NetworkRequest<I, P>>,
     {
         self.make_request(
-            |responder| NetworkRequest::BroadcastMessage { payload, responder },
+            |responder| NetworkRequest::Broadcast { payload, responder },
+            QueueKind::Network,
+        )
+        .await
+    }
+
+    /// Gossip a network message.
+    ///
+    /// A low-level "gossip" function, selects a fixed number of randomly chosen nodes on the
+    /// network and sends each a copy of the message.
+    // TODO: Remove list-relaxation once function is used.
+    #[allow(dead_code)]
+    pub(crate) async fn gossip_message<I, P>(self, payload: P)
+    where
+        REv: From<NetworkRequest<I, P>>,
+    {
+        self.make_request(
+            |responder| NetworkRequest::Gossip { payload, responder },
             QueueKind::Network,
         )
         .await
@@ -318,10 +337,7 @@ impl<REv> EffectBuilder<REv> {
     /// Puts the given block into the linear block store.  Returns true on success.
     // TODO: remove once method is used.
     #[allow(dead_code)]
-    pub(crate) async fn put_block<S>(
-        self,
-        block: <S::BlockStore as Store>::Value,
-    ) -> Result<(), <S::BlockStore as Store>::Error>
+    pub(crate) async fn put_block<S>(self, block: S::Block) -> storage::Result<()>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
@@ -341,8 +357,8 @@ impl<REv> EffectBuilder<REv> {
     #[allow(dead_code)]
     pub(crate) async fn get_block<S>(
         self,
-        block_hash: <<S::BlockStore as Store>::Value as Value>::Id,
-    ) -> Result<<S::BlockStore as Store>::Value, <S::BlockStore as Store>::Error>
+        block_hash: <S::Block as Value>::Id,
+    ) -> storage::Result<S::Block>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
@@ -362,8 +378,8 @@ impl<REv> EffectBuilder<REv> {
     #[allow(dead_code)]
     pub(crate) async fn get_block_header<S>(
         self,
-        block_hash: <<S::BlockStore as Store>::Value as Value>::Id,
-    ) -> Result<<<S::BlockStore as Store>::Value as Value>::Header, <S::BlockStore as Store>::Error>
+        block_hash: <S::Block as Value>::Id,
+    ) -> storage::Result<<S::Block as Value>::Header>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
@@ -379,12 +395,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given deploy into the deploy store.  Returns true on success.
-    // TODO: remove once method is used.
-    #[allow(dead_code)]
-    pub(crate) async fn put_deploy<S>(
-        self,
-        deploy: <S::DeployStore as Store>::Value,
-    ) -> Result<(), <S::DeployStore as Store>::Error>
+    pub(crate) async fn put_deploy<S>(self, deploy: S::Deploy) -> storage::Result<()>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
@@ -400,12 +411,10 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested deploy from the deploy store.
-    // TODO: remove once method is used.
-    #[allow(dead_code)]
     pub(crate) async fn get_deploy<S>(
         self,
-        deploy_hash: <<S::DeployStore as Store>::Value as Value>::Id,
-    ) -> Result<<S::DeployStore as Store>::Value, <S::DeployStore as Store>::Error>
+        deploy_hash: <S::Deploy as Value>::Id,
+    ) -> storage::Result<S::Deploy>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
@@ -425,8 +434,8 @@ impl<REv> EffectBuilder<REv> {
     #[allow(dead_code)]
     pub(crate) async fn get_deploy_header<S>(
         self,
-        deploy_hash: <<S::DeployStore as Store>::Value as Value>::Id,
-    ) -> Result<<<S::DeployStore as Store>::Value as Value>::Header, <S::DeployStore as Store>::Error>
+        deploy_hash: <S::Deploy as Value>::Id,
+    ) -> storage::Result<<S::Deploy as Value>::Header>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
@@ -439,5 +448,31 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
+    }
+
+    /// Lists all deploy hashes held in the deploy store.
+    pub(crate) async fn list_deploys<S>(self) -> storage::Result<Vec<<S::Deploy as Value>::Id>>
+    where
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
+    {
+        self.make_request(
+            |responder| StorageRequest::ListDeploys { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Passes the given deploy to the `DeployBroadcaster` component to be broadcast.
+    pub(crate) async fn broadcast_deploy(self, deploy: Box<Deploy>)
+    where
+        REv: From<DeployBroadcasterRequest>,
+    {
+        self.0
+            .schedule(
+                DeployBroadcasterRequest::PutFromClient { deploy },
+                QueueKind::Regular,
+            )
+            .await;
     }
 }

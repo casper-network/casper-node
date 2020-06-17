@@ -64,7 +64,7 @@ use futures::{
 use maplit::hashmap;
 use openssl::{pkey, x509::X509};
 use pkey::{PKey, Private};
-use rand::Rng;
+use rand::{seq::IteratorRandom, Rng};
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::{
     net::TcpStream,
@@ -197,6 +197,25 @@ where
     /// Queues a message to be sent to all nodes.
     fn broadcast_message(&self, msg: Message<P>) {
         for node_id in self.outgoing.keys() {
+            self.send_message(*node_id, msg.clone());
+        }
+    }
+
+    /// Queues a message to `n` random nodes on the network.
+    fn gossip_message<R: Rng + ?Sized>(&self, rng: &mut R, msg: Message<P>) {
+        let node_ids = self
+            .outgoing
+            .keys()
+            .choose_multiple(rng, self.cfg.gossip_nodes_outgoing as usize);
+
+        if node_ids.len() != self.cfg.gossip_nodes_outgoing as usize {
+            warn!(
+                wanted=self.cfg.gossip_nodes_outgoing, selected=node_ids.len(),
+                "could not select enough random nodes for gossiping, not enough outgoing connections"
+            );
+        }
+
+        for node_id in node_ids {
             self.send_message(*node_id, msg.clone());
         }
     }
@@ -403,7 +422,7 @@ where
     fn handle_event<R: Rng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        rng: &mut R,
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>> {
         match event {
@@ -524,10 +543,17 @@ where
                 responder.respond(()).ignore()
             }
             Event::NetworkRequest {
-                req: NetworkRequest::BroadcastMessage { payload, responder },
+                req: NetworkRequest::Broadcast { payload, responder },
             } => {
                 // We're given a message to broadcast.
                 self.broadcast_message(Message::Payload(payload));
+                responder.respond(()).ignore()
+            }
+            Event::NetworkRequest {
+                req: NetworkRequest::Gossip { payload, responder },
+            } => {
+                // We're given a message to broadcast.
+                self.gossip_message(rng, Message::Payload(payload));
                 responder.respond(()).ignore()
             }
         }
@@ -541,11 +567,13 @@ where
 ///
 /// Returns a `(listener, is_root)` pair. `is_root` is `true` if the node is a root node.
 fn create_listener(cfg: &Config) -> io::Result<(TcpListener, bool)> {
-    if cfg.root_addr.ip() == cfg.bind_interface {
+    if cfg.root_addr.ip() == cfg.bind_interface
+        && (cfg.bind_port == 0 || cfg.root_addr.port() == cfg.bind_port)
+    {
         // Try to become the root node, if the root nodes interface is available.
         match TcpListener::bind(cfg.root_addr) {
             Ok(listener) => {
-                info!("we are the root node!");
+                info!("we are the root node");
                 return Ok((listener, true));
             }
             Err(err) => {
@@ -557,8 +585,11 @@ fn create_listener(cfg: &Config) -> io::Result<(TcpListener, bool)> {
         };
     }
 
-    // We did not become the root node, bind on random port.
-    Ok((TcpListener::bind((cfg.bind_interface, 0u16))?, false))
+    // We did not become the root node, bind on the specified port.
+    Ok((
+        TcpListener::bind((cfg.bind_interface, cfg.bind_port))?,
+        false,
+    ))
 }
 
 /// Core accept loop for the networking server.
