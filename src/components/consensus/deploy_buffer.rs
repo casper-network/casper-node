@@ -1,12 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::types::{BlockHash, DeployHeader};
+use crate::types::{BlockHash, DeployHash, DeployHeader};
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct DeployBuffer {
-    collected_deploys: HashSet<DeployHeader>,
-    processed: HashMap<BlockHash, HashSet<DeployHeader>>,
-    finalized: HashMap<BlockHash, HashSet<DeployHeader>>,
+    collected_deploys: HashMap<DeployHash, DeployHeader>,
+    processed: HashMap<BlockHash, HashMap<DeployHash, DeployHeader>>,
+    finalized: HashMap<BlockHash, HashMap<DeployHash, DeployHeader>>,
 }
 
 impl DeployBuffer {
@@ -14,10 +14,14 @@ impl DeployBuffer {
         Default::default()
     }
 
-    pub(crate) fn add_deploy(&mut self, deploy: DeployHeader) {
+    pub(crate) fn add_deploy(&mut self, hash: DeployHash, deploy: DeployHeader) {
         // only add the deploy if it isn't contained in a finalized block
-        if !self.finalized.values().any(|block| block.contains(&deploy)) {
-            self.collected_deploys.insert(deploy);
+        if !self
+            .finalized
+            .values()
+            .any(|block| block.contains_key(&hash))
+        {
+            self.collected_deploys.insert(hash, deploy);
         }
     }
 
@@ -26,26 +30,32 @@ impl DeployBuffer {
     pub(crate) fn remaining_deploys(
         &mut self,
         blocks: &HashSet<BlockHash>,
-    ) -> HashSet<DeployHeader> {
+    ) -> HashMap<DeployHash, DeployHeader> {
         // deploys_to_return = all deploys in collected_deploys that aren't in finalized blocks or
         // processed blocks from the set `blocks`
         let deploys_to_return = blocks
             .iter()
-            .filter_map(|hash| self.processed.get(hash))
+            .filter_map(|block_hash| self.processed.get(block_hash))
             .chain(self.finalized.values())
-            .fold(self.collected_deploys.clone(), |mut set, other_set| {
-                set.retain(|deploy| !other_set.contains(deploy));
-                set
+            .fold(self.collected_deploys.clone(), |mut map, other_map| {
+                map.retain(|deploy_hash, _deploy| !other_map.contains_key(deploy_hash));
+                map
             });
-        self.collected_deploys
-            .retain(|deploy| !deploys_to_return.contains(deploy));
         deploys_to_return
     }
 
-    pub(crate) fn added_block(&mut self, block: BlockHash, deploys: HashSet<DeployHeader>) {
+    pub(crate) fn added_block(&mut self, block: BlockHash, deploys: HashSet<DeployHash>) {
+        let deploy_map = deploys
+            .iter()
+            .filter_map(|deploy_hash| {
+                self.collected_deploys
+                    .get(deploy_hash)
+                    .map(|deploy| (*deploy_hash, deploy.clone()))
+            })
+            .collect();
         self.collected_deploys
-            .retain(|deploy| !deploys.contains(deploy));
-        self.processed.insert(block, deploys);
+            .retain(|deploy_hash, _| !deploys.contains(deploy_hash));
+        self.processed.insert(block, deploy_map);
     }
 
     pub(crate) fn finalized_block(&mut self, block: BlockHash) {
@@ -74,11 +84,12 @@ mod tests {
     use super::DeployBuffer;
     use crate::{
         crypto::{asymmetric_key::PublicKey, hash::hash},
-        types::{BlockHash, DeployHeader},
+        types::{BlockHash, DeployHash, DeployHeader},
     };
 
-    fn generate_deploy_header() -> DeployHeader {
-        DeployHeader {
+    fn generate_deploy() -> (DeployHash, DeployHeader) {
+        let deploy_hash = DeployHash::new(hash(random::<[u8; 16]>()));
+        let deploy = DeployHeader {
             account: PublicKey::new_ed25519([1; PublicKey::ED25519_LENGTH]).unwrap(),
             timestamp: random(),
             gas_price: random(),
@@ -86,37 +97,41 @@ mod tests {
             ttl_millis: random(),
             dependencies: vec![],
             chain_name: "chain".to_string(),
-        }
+        };
+        (deploy_hash, deploy)
     }
 
     #[test]
     fn add_and_take_deploys() {
         let no_blocks = HashSet::new();
         let mut buffer = DeployBuffer::new();
-        let deploy1 = generate_deploy_header();
-        let deploy2 = generate_deploy_header();
-        let deploy3 = generate_deploy_header();
-        let deploy4 = generate_deploy_header();
+        let (hash1, deploy1) = generate_deploy();
+        let (hash2, deploy2) = generate_deploy();
+        let (hash3, deploy3) = generate_deploy();
+        let (hash4, deploy4) = generate_deploy();
 
         assert!(buffer.remaining_deploys(&no_blocks).is_empty());
 
         // add two deploys
-        buffer.add_deploy(deploy1.clone());
-        buffer.add_deploy(deploy2.clone());
+        buffer.add_deploy(hash1, deploy1);
+        buffer.add_deploy(hash2, deploy2.clone());
 
         // take the deploys out
         let deploys = buffer.remaining_deploys(&no_blocks);
 
         assert_eq!(deploys.len(), 2);
-        assert!(deploys.contains(&deploy1));
-        assert!(deploys.contains(&deploy2));
+        assert!(deploys.contains_key(&hash1));
+        assert!(deploys.contains_key(&hash2));
 
-        // the deploys should have been removed
-        assert!(buffer.remaining_deploys(&no_blocks).is_empty());
+        // the deploys should not have been removed yet
+        assert!(!buffer.remaining_deploys(&no_blocks).is_empty());
 
         // the two deploys will be included in block 1
         let block_hash1 = BlockHash::new(hash(random::<[u8; 16]>()));
-        buffer.added_block(block_hash1, deploys);
+        buffer.added_block(block_hash1, deploys.keys().cloned().collect());
+
+        // the deploys should have been removed now
+        assert!(buffer.remaining_deploys(&no_blocks).is_empty());
 
         let mut blocks = HashSet::new();
         blocks.insert(block_hash1);
@@ -124,7 +139,7 @@ mod tests {
         assert!(buffer.remaining_deploys(&blocks).is_empty());
 
         // try adding the same deploy again
-        buffer.add_deploy(deploy2.clone());
+        buffer.add_deploy(hash2, deploy2.clone());
 
         // it shouldn't be returned if we include block 1 in the past blocks
         assert!(buffer.remaining_deploys(&blocks).is_empty());
@@ -132,20 +147,20 @@ mod tests {
         assert!(buffer.remaining_deploys(&no_blocks).len() == 1);
 
         // the previous check removed the deploy from the buffer, let's re-add it
-        buffer.add_deploy(deploy2);
+        buffer.add_deploy(hash2, deploy2);
 
         // finalize the block
         buffer.finalized_block(block_hash1);
 
         // add more deploys
-        buffer.add_deploy(deploy3.clone());
-        buffer.add_deploy(deploy4.clone());
+        buffer.add_deploy(hash3, deploy3);
+        buffer.add_deploy(hash4, deploy4);
 
         let deploys = buffer.remaining_deploys(&no_blocks);
 
         // since block 1 is now finalized, deploy2 shouldn't be among the ones returned
         assert_eq!(deploys.len(), 2);
-        assert!(deploys.contains(&deploy3));
-        assert!(deploys.contains(&deploy4));
+        assert!(deploys.contains_key(&hash3));
+        assert!(deploys.contains_key(&hash4));
     }
 }
