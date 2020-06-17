@@ -16,25 +16,31 @@ clone:
       git rev-parse HEAD
     image: "rust:latest"
 
+# Anchor for default buildenv
 __buildenv: &buildenv
   image: "rust:latest"
   environment:
     CARGO_HOME: ".cargo"
+
+# Anchor for cache plugin
+__cache: &cache
+  image: drillster/drone-volume-cache
+  volumes:
+  - name: cache
+    path: /cache
+  settings:
+    mount:
+      - ./target
+      - ./.cargo
 
 kind: pipeline
 name: cargo
 
 steps:
 - name: restore-cache
-  image: drillster/drone-volume-cache
-  volumes:
-  - name: cache
-    path: /cache
+  <<: *cache
   settings:
     restore: true
-    mount:
-      - ./target
-      - ./.cargo
 
 - name: cargo-fmt
   <<: *buildenv
@@ -56,15 +62,9 @@ steps:
   - cargo test
 
 - name: rebuild-cache
-  image: drillster/drone-volume-cache
-  volumes:
-  - name: cache
-    path: /cache
+  <<: *cache
   settings:
     rebuild: true
-    mount:
-      - ./target
-      - ./.cargo
   when:
     branch:
     - master
