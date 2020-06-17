@@ -101,10 +101,14 @@ impl Network {
     }
 
     /// Creates a new networking node on the network.
-    async fn add_node(&mut self) -> anyhow::Result<()> {
+    async fn add_node(&mut self) -> anyhow::Result<&mut reactor::Runner<TestReactor>> {
         let runner = reactor::Runner::new(small_network::Config::default_on_port(11223)).await?;
         self.nodes.push(runner);
-        Ok(())
+
+        Ok(self
+            .nodes
+            .last_mut()
+            .expect("vector cannot be empty after insertion"))
     }
 
     /// Crank all runners once, returning the number of events processed.
