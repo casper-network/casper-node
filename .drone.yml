@@ -18,11 +18,24 @@ clone:
 
 __buildenv: &buildenv
   image: "rust:latest"
+  environment:
+    CARGO_HOME: ".cargo"
 
 kind: pipeline
 name: cargo
 
 steps:
+- name: restore-cache
+  image: drillster/drone-volume-cache
+  volumes:
+  - name: cache
+    path: /cache
+  settings:
+    restore: true
+    mount:
+      - ./target
+      - ./.cargo
+
 - name: cargo-fmt
   <<: *buildenv
   commands:
@@ -41,6 +54,27 @@ steps:
   <<: *buildenv
   commands:
   - cargo test
+
+- name: rebuild-cache
+  image: drillster/drone-volume-cache
+  volumes:
+  - name: cache
+    path: /cache
+  settings:
+    rebuild: true
+    mount:
+      - ./target
+      - ./.cargo
+  when:
+    branch:
+    - master
+    event:
+    - push
+
+volumes:
+  - name: cache
+    host:
+      path: /tmp/cache
 
 trigger:
   branch:
