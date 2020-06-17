@@ -62,7 +62,7 @@ use futures::{
     FutureExt, SinkExt, StreamExt,
 };
 use maplit::hashmap;
-use openssl::{pkey, x509::X509};
+use openssl::pkey;
 use pkey::{PKey, Private};
 use rand::{seq::IteratorRandom, Rng};
 use serde::{de::DeserializeOwned, Serialize};
@@ -102,7 +102,7 @@ pub(crate) struct SmallNetwork<REv: 'static, P> {
     /// Configuration.
     cfg: Config,
     /// Server certificate.
-    cert: Arc<X509>,
+    cert: Arc<TlsCert>,
     /// Server private key.
     private_key: Arc<PKey<Private>>,
     /// Handle to event queue.
@@ -165,7 +165,7 @@ where
             cfg,
             signed_endpoints: hashmap! { our_fingerprint => Signed::new(&our_endpoint, &private_key)? },
             endpoints: hashmap! { our_fingerprint => our_endpoint },
-            cert: Arc::new(cert),
+            cert: Arc::new(tls::validate_cert(cert).map_err(Error::OwnCertificateInvalid)?),
             private_key: Arc::new(private_key),
             event_queue,
             outgoing: HashMap::new(),
@@ -622,11 +622,11 @@ async fn server_task<P, REv>(
 /// This function groups the TLS handshake into a convenient function, enabling the `?` operator.
 async fn setup_tls(
     stream: TcpStream,
-    cert: Arc<X509>,
+    cert: Arc<TlsCert>,
     private_key: Arc<PKey<Private>>,
 ) -> Result<(NodeId, Transport)> {
     let tls_stream = tokio_openssl::accept(
-        &tls::create_tls_acceptor(&cert.as_ref(), &private_key.as_ref())
+        &tls::create_tls_acceptor(&cert.as_x509().as_ref(), &private_key.as_ref())
             .map_err(Error::AcceptorCreation)?,
         stream,
     )
@@ -717,7 +717,7 @@ fn framed<P>(stream: Transport) -> FramedTransport<P> {
 /// Initiates a TLS connection to an endpoint.
 async fn connect_outgoing(
     endpoint: Endpoint,
-    cert: Arc<X509>,
+    cert: Arc<TlsCert>,
     private_key: Arc<PKey<Private>>,
 ) -> Result<Transport> {
     let (server_cert, transport) = connect_trusted(endpoint.addr(), cert, private_key).await?;
@@ -734,10 +734,10 @@ async fn connect_outgoing(
 /// Initiates a TLS connection to a remote address, regardless of what ID the remote node reports.
 async fn connect_trusted(
     addr: SocketAddr,
-    cert: Arc<X509>,
+    cert: Arc<TlsCert>,
     private_key: Arc<PKey<Private>>,
 ) -> Result<(TlsCert, Transport)> {
-    let mut config = tls::create_tls_connector(&cert, &private_key)
+    let mut config = tls::create_tls_connector(&cert.as_x509(), &private_key)
         .context("could not create TLS connector")?
         .configure()
         .map_err(Error::ConnectorConfiguration)?;
