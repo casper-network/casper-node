@@ -29,11 +29,16 @@ impl DeployBuffer {
     /// deploys from the finalized blocks by default.
     pub(crate) fn remaining_deploys(
         &mut self,
-        blocks: &HashSet<BlockHash>,
+        current_timestamp: u64,
+        max_ttl: u32,
+        max_block_size_bytes: u64,
+        max_gas_limit: u64,
+        max_dependencies: u8,
+        past: &HashSet<BlockHash>,
     ) -> HashMap<DeployHash, DeployHeader> {
         // deploys_to_return = all deploys in collected_deploys that aren't in finalized blocks or
-        // processed blocks from the set `blocks`
-        let deploys_to_return = blocks
+        // processed blocks from the set `past`
+        let mut deploys_to_return = past
             .iter()
             .filter_map(|block_hash| self.processed.get(block_hash))
             .chain(self.finalized.values())
@@ -41,7 +46,42 @@ impl DeployBuffer {
                 map.retain(|deploy_hash, _deploy| !other_map.contains_key(deploy_hash));
                 map
             });
+        // filter out invalid deploys
+        deploys_to_return.retain(|_deploy_hash, deploy| {
+            self.is_deploy_valid(deploy, current_timestamp, max_ttl, max_dependencies, past)
+        });
+        // TODO: check gas and block size limits
         deploys_to_return
+    }
+
+    fn is_deploy_valid(
+        &self,
+        deploy: &DeployHeader,
+        current_timestamp: u64,
+        max_ttl: u32,
+        max_dependencies: u8,
+        past: &HashSet<BlockHash>,
+    ) -> bool {
+        let all_deps_resolved = || {
+            let past_deploys = past
+                .iter()
+                .filter_map(|block_hash| {
+                    self.finalized
+                        .get(block_hash)
+                        .or_else(|| self.processed.get(block_hash))
+                })
+                .flat_map(|deploys| deploys.keys())
+                .collect::<HashSet<_>>();
+            deploy
+                .dependencies
+                .iter()
+                .all(|dep| past_deploys.contains(dep))
+        };
+        let ttl_valid = deploy.ttl_millis <= max_ttl;
+        let timestamp_valid = deploy.timestamp <= current_timestamp;
+        let deploy_valid = deploy.timestamp + deploy.ttl_millis as u64 >= current_timestamp;
+        let num_deps_valid = deploy.dependencies.len() <= max_dependencies as usize;
+        ttl_valid && timestamp_valid && deploy_valid && num_deps_valid && all_deps_resolved()
     }
 
     pub(crate) fn added_block(&mut self, block: BlockHash, deploys: HashSet<DeployHash>) {
@@ -77,7 +117,7 @@ impl DeployBuffer {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
 
     use rand::random;
 
@@ -87,64 +127,99 @@ mod tests {
         types::{BlockHash, DeployHash, DeployHeader},
     };
 
-    fn generate_deploy() -> (DeployHash, DeployHeader) {
+    fn generate_deploy(timestamp: u64, ttl: u32) -> (DeployHash, DeployHeader) {
         let deploy_hash = DeployHash::new(hash(random::<[u8; 16]>()));
         let deploy = DeployHeader {
             account: PublicKey::new_ed25519([1; PublicKey::ED25519_LENGTH]).unwrap(),
-            timestamp: random(),
-            gas_price: random(),
+            timestamp,
+            gas_price: 10,
             body_hash: hash(random::<[u8; 16]>()),
-            ttl_millis: random(),
+            ttl_millis: ttl,
             dependencies: vec![],
             chain_name: "chain".to_string(),
         };
         (deploy_hash, deploy)
     }
 
+    fn remaining_deploys(
+        buffer: &mut DeployBuffer,
+        time: u64,
+        blocks: &HashSet<BlockHash>,
+    ) -> HashMap<DeployHash, DeployHeader> {
+        let max_ttl = 200u32;
+        // TODO:
+        let max_block_size = 0u64;
+        let max_gas_limit = 0u64;
+        let max_dependencies = 1u8;
+
+        buffer.remaining_deploys(
+            time,
+            max_ttl,
+            max_block_size,
+            max_gas_limit,
+            max_dependencies,
+            blocks,
+        )
+    }
+
     #[test]
     fn add_and_take_deploys() {
+        let creation_time = 100u64;
+        let ttl = 100u32;
+        let block_time1 = 80u64;
+        let block_time2 = 120u64;
+        let block_time3 = 220u64;
+
         let no_blocks = HashSet::new();
         let mut buffer = DeployBuffer::new();
-        let (hash1, deploy1) = generate_deploy();
-        let (hash2, deploy2) = generate_deploy();
-        let (hash3, deploy3) = generate_deploy();
-        let (hash4, deploy4) = generate_deploy();
+        let (hash1, deploy1) = generate_deploy(creation_time, ttl);
+        let (hash2, deploy2) = generate_deploy(creation_time, ttl);
+        let (hash3, deploy3) = generate_deploy(creation_time, ttl);
+        let (hash4, deploy4) = generate_deploy(creation_time, ttl);
 
-        assert!(buffer.remaining_deploys(&no_blocks).is_empty());
+        assert!(remaining_deploys(&mut buffer, block_time2, &no_blocks).is_empty());
 
         // add two deploys
         buffer.add_deploy(hash1, deploy1);
         buffer.add_deploy(hash2, deploy2.clone());
 
+        // if we try to create a block with a timestamp that is too early, we shouldn't get any
+        // deploys
+        assert!(remaining_deploys(&mut buffer, block_time1, &no_blocks).is_empty());
+
+        // if we try to create a block with a timestamp that is too late, we shouldn't get any
+        // deploys, either
+        assert!(remaining_deploys(&mut buffer, block_time3, &no_blocks).is_empty());
+
         // take the deploys out
-        let deploys = buffer.remaining_deploys(&no_blocks);
+        let deploys = remaining_deploys(&mut buffer, block_time2, &no_blocks);
 
         assert_eq!(deploys.len(), 2);
         assert!(deploys.contains_key(&hash1));
         assert!(deploys.contains_key(&hash2));
 
         // the deploys should not have been removed yet
-        assert!(!buffer.remaining_deploys(&no_blocks).is_empty());
+        assert!(!remaining_deploys(&mut buffer, block_time2, &no_blocks).is_empty());
 
         // the two deploys will be included in block 1
         let block_hash1 = BlockHash::new(hash(random::<[u8; 16]>()));
         buffer.added_block(block_hash1, deploys.keys().cloned().collect());
 
         // the deploys should have been removed now
-        assert!(buffer.remaining_deploys(&no_blocks).is_empty());
+        assert!(remaining_deploys(&mut buffer, block_time2, &no_blocks).is_empty());
 
         let mut blocks = HashSet::new();
         blocks.insert(block_hash1);
 
-        assert!(buffer.remaining_deploys(&blocks).is_empty());
+        assert!(remaining_deploys(&mut buffer, block_time2, &blocks).is_empty());
 
         // try adding the same deploy again
         buffer.add_deploy(hash2, deploy2.clone());
 
         // it shouldn't be returned if we include block 1 in the past blocks
-        assert!(buffer.remaining_deploys(&blocks).is_empty());
+        assert!(remaining_deploys(&mut buffer, block_time2, &blocks).is_empty());
         // ...but it should be returned if we don't include it
-        assert!(buffer.remaining_deploys(&no_blocks).len() == 1);
+        assert!(remaining_deploys(&mut buffer, block_time2, &no_blocks).len() == 1);
 
         // the previous check removed the deploy from the buffer, let's re-add it
         buffer.add_deploy(hash2, deploy2);
@@ -156,11 +231,50 @@ mod tests {
         buffer.add_deploy(hash3, deploy3);
         buffer.add_deploy(hash4, deploy4);
 
-        let deploys = buffer.remaining_deploys(&no_blocks);
+        let deploys = remaining_deploys(&mut buffer, block_time2, &no_blocks);
 
         // since block 1 is now finalized, deploy2 shouldn't be among the ones returned
         assert_eq!(deploys.len(), 2);
         assert!(deploys.contains_key(&hash3));
         assert!(deploys.contains_key(&hash4));
+    }
+
+    #[test]
+    fn test_deploy_dependencies() {
+        let creation_time = 100u64;
+        let ttl = 100u32;
+        let block_time = 120u64;
+
+        let (hash1, deploy1) = generate_deploy(creation_time, ttl);
+        let (hash2, mut deploy2) = generate_deploy(creation_time, ttl);
+        // let deploy2 depend on deploy1
+        deploy2.dependencies = vec![hash1];
+
+        let mut blocks = HashSet::new();
+        let mut buffer = DeployBuffer::new();
+
+        // add deploy2
+        buffer.add_deploy(hash2, deploy2);
+
+        // deploy2 has an unsatisfied dependency
+        assert!(remaining_deploys(&mut buffer, block_time, &blocks).is_empty());
+
+        // add deploy1
+        buffer.add_deploy(hash1, deploy1);
+
+        let deploys = remaining_deploys(&mut buffer, block_time, &blocks);
+        // only deploy1 should be returned, as it has no dependencies
+        assert_eq!(deploys.len(), 1);
+        assert!(deploys.contains_key(&hash1));
+
+        // the deploy will be included in block 1
+        let block_hash1 = BlockHash::new(hash(random::<[u8; 16]>()));
+        buffer.added_block(block_hash1, deploys.keys().cloned().collect());
+        blocks.insert(block_hash1);
+
+        let deploys2 = remaining_deploys(&mut buffer, block_time, &blocks);
+        // `blocks` contains a block that contains deploy1 now, so we should get deploy2
+        assert_eq!(deploys2.len(), 1);
+        assert!(deploys2.contains_key(&hash2));
     }
 }
