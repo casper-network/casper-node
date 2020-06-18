@@ -27,6 +27,9 @@ const POLL_INTERVAL: Duration = Duration::from_millis(50);
 /// catch up.
 const NET_COOLDOWN: Duration = Duration::from_millis(100);
 
+/// The networking port used by the tests for the root node.
+const TEST_ROOT_NODE_PORT: u16 = 11223;
+
 #[derive(Debug, From)]
 enum Event {
     #[from]
@@ -104,9 +107,18 @@ impl Network {
         Network { nodes: Vec::new() }
     }
 
-    /// Creates a new networking node on the network.
+    /// Creates a new networking node on the network using the default root node port.
     async fn add_node(&mut self) -> anyhow::Result<&mut reactor::Runner<TestReactor>> {
-        let runner = reactor::Runner::new(small_network::Config::default_on_port(11223)).await?;
+        self.add_node_with_config(small_network::Config::default_on_port(TEST_ROOT_NODE_PORT))
+            .await
+    }
+
+    /// Creates a new networking node on the network.
+    async fn add_node_with_config(
+        &mut self,
+        cfg: small_network::Config,
+    ) -> anyhow::Result<&mut reactor::Runner<TestReactor>> {
+        let runner = reactor::Runner::new(cfg).await?;
         self.nodes.push(runner);
 
         Ok(self
