@@ -62,6 +62,7 @@ use std::{
 
 use anyhow::Context;
 use futures::{
+    future::{select, Either},
     stream::{SplitSink, SplitStream},
     FutureExt, SinkExt, StreamExt,
 };
@@ -72,7 +73,10 @@ use rand::{seq::IteratorRandom, Rng};
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::{
     net::TcpStream,
-    sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
+    sync::{
+        mpsc::{self, UnboundedReceiver, UnboundedSender},
+        oneshot,
+    },
 };
 use tokio_openssl::SslStream;
 use tokio_serde::{formats::SymmetricalMessagePack, SymmetricallyFramed};
@@ -117,6 +121,11 @@ pub(crate) struct SmallNetwork<REv: 'static, P> {
     signed_endpoints: HashMap<NodeId, Signed<Endpoint>>,
     /// Outgoing network connections' messages.
     outgoing: HashMap<NodeId, UnboundedSender<Message<P>>>,
+    /// Channel signaling a shutdown of the small network.
+    // Note: This channel never sends anything, instead it is closed when `SmallNetwork` is dropped,
+    //       signalling the receiver that it should cease operation. Don't listen to clippy!
+    #[allow(dead_code)]
+    shutdown: oneshot::Sender<()>,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -159,9 +168,11 @@ where
 
         // Run the server task.
         info!(%our_endpoint, "starting server background task");
+        let (server_shutdown_sender, server_shutdown_receiver) = oneshot::channel();
         let mut effects = server_task(
             event_queue,
             tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
+            server_shutdown_receiver,
         )
         .boxed()
         .ignore();
@@ -173,6 +184,7 @@ where
             private_key: Arc::new(private_key),
             event_queue,
             outgoing: HashMap::new(),
+            shutdown: server_shutdown_sender,
         };
 
         // Connect to the root node if we are not the root node.
@@ -616,22 +628,44 @@ fn create_listener(cfg: &Config) -> io::Result<(TcpListener, bool)> {
 async fn server_task<P, REv>(
     event_queue: EventQueueHandle<REv>,
     mut listener: tokio::net::TcpListener,
+    shutdown: oneshot::Receiver<()>,
 ) where
     REv: From<Event<P>>,
 {
-    loop {
-        // We handle accept errors here, since they can be caused by a temporary resource shortage
-        // or the remote side closing the connection while it is waiting in the queue.
-        match listener.accept().await {
-            Ok((stream, addr)) => {
-                // Move the incoming connection to the event queue for handling.
-                let event = Event::IncomingNew { stream, addr };
-                event_queue
-                    .schedule(event, QueueKind::NetworkIncoming)
-                    .await;
+    // The server task is a bit tricky, since it has to wait on incoming connections while at the
+    // same time shut down if the networking component is dropped, otherwise the TCP socket will
+    // stay open, preventing reuse.
+
+    // We first create a future that never terminates, handling incoming connections:
+    let accept_connections = async move {
+        loop {
+            // We handle accept errors here, since they can be caused by a temporary resource shortage
+            // or the remote side closing the connection while it is waiting in the queue.
+            match listener.accept().await {
+                Ok((stream, addr)) => {
+                    // Move the incoming connection to the event queue for handling.
+                    let event = Event::IncomingNew { stream, addr };
+                    event_queue
+                        .schedule(event, QueueKind::NetworkIncoming)
+                        .await;
+                }
+                // TODO: Handle resource errors gracefully.
+                //       In general, two kinds of errors occur here: Local resource exhaustion,
+                //       which should be handled by waiting a few milliseconds, or remote connection
+                //       errors, which can be dropped immediately.
+                //
+                //       The code in its current state will consume 100% CPU if local resource
+                //       exhaustion happens, as no distinction is made and no delay introduced.
+                Err(err) => warn!(%err, "dropping incoming connection during accept"),
             }
-            Err(err) => warn!(%err, "dropping incoming connection during accept"),
         }
+    };
+
+    // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
+    // infinite loop to terminate, which never happens.
+    match select(shutdown, Box::pin(accept_connections)).await {
+        Either::Left(_) => info!("shutting down socket, no longer accepting incoming connections"),
+        Either::Right(_) => unreachable!(),
     }
 }
 
