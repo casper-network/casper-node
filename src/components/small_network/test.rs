@@ -6,7 +6,7 @@ use std::{
 };
 
 use derive_more::From;
-use futures::future::join_all;
+use futures::{future::join_all, Future};
 use serde::{Deserialize, Serialize};
 use small_network::NodeId;
 use tracing_subscriber::{self, EnvFilter};
@@ -17,11 +17,15 @@ use crate::{
     reactor::{self, EventQueueHandle, Reactor},
     small_network::{self, SmallNetwork},
 };
-use tokio::time::timeout;
+use tokio::time::{timeout, Timeout};
 use tracing::debug;
 
 /// Time interval for which to poll an observed testing network when no events have occured.
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
+
+/// Amount of time to wait after shutting down all nodes to give the OS networking stack time to
+/// catch up.
+const NET_COOLDOWN: Duration = Duration::from_millis(100);
 
 #[derive(Debug, From)]
 enum Event {
@@ -164,6 +168,21 @@ impl Network {
     fn nodes(&self) -> &[reactor::Runner<TestReactor>] {
         &self.nodes
     }
+
+    /// Shut down the network.
+    ///
+    /// Shuts down the network, allowing all connections to terminate. This is the same as dropping
+    /// every node and waiting until every networking instance has completely shut down.
+    ///
+    /// Usually dropping is enough, but when attempting to reusing listening ports immediately, this
+    /// gets the job done.
+    async fn shutdown(self) {
+        drop(self);
+
+        debug!("dropped network, waiting for connections to terminate");
+        tokio::time::delay_for(NET_COOLDOWN).await;
+        debug!("finished waiting for connections to terminate");
+    }
 }
 
 /// Setup logging for testing.
@@ -205,33 +224,53 @@ fn network_is_complete(nodes: &[reactor::Runner<TestReactor>]) -> bool {
         .all(|actual| actual == expected)
 }
 
+trait Within<T> {
+    fn within(self, duration: Duration) -> Timeout<T>;
+}
+
+impl<T> Within<T> for T
+where
+    T: Future,
+{
+    // type Output = T::Output;
+
+    fn within(self, duration: Duration) -> Timeout<T> {
+        timeout(duration, self)
+    }
+}
+
+/// Run a two-node network five times.
+///
+/// Ensures that network cleanup and basic networking works.
 #[tokio::test]
-async fn run_two_node_network() {
+async fn run_two_node_network_five_times() {
     init_logging();
 
-    let mut net = Network::new();
+    for i in 0..5 {
+        eprintln!("round {}", i);
 
-    net.add_node().await.unwrap();
-    net.add_node().await.unwrap();
+        let mut net = Network::new();
 
-    timeout(
-        Duration::from_millis(1000),
-        net.settle_on(network_is_complete),
-    )
-    .await
-    .expect("network did not fully connect in time");
+        net.add_node().await.unwrap();
+        net.add_node().await.unwrap();
 
-    timeout(
-        Duration::from_millis(2000),
-        net.settle(Duration::from_millis(250)),
-    )
-    .await
-    .expect("network did not stay settled");
+        net.settle_on(network_is_complete)
+            .within(Duration::from_millis(1000))
+            .await
+            .expect("network did not fully connect in time");
 
-    assert!(
-        network_is_complete(net.nodes()),
-        "network did not stay connected"
-    );
+        net.settle(Duration::from_millis(25))
+            .within(Duration::from_millis(2000))
+            .await
+            .expect("network did not stay settled");
+
+        assert!(
+            network_is_complete(net.nodes()),
+            "network did not stay connected"
+        );
+
+        net.shutdown().await;
+    }
 }
 
 #[tokio::test]
