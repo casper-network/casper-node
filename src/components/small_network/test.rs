@@ -18,7 +18,7 @@ use crate::{
     small_network::{self, SmallNetwork},
 };
 use tokio::time::{timeout, Timeout};
-use tracing::debug;
+use tracing::{debug, info};
 
 /// Time interval for which to poll an observed testing network when no events have occured.
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -247,12 +247,19 @@ async fn run_two_node_network_five_times() {
     init_logging();
 
     for i in 0..5 {
-        eprintln!("round {}", i);
+        info!("two-network test round {}", i);
 
         let mut net = Network::new();
 
+        let start = std::time::Instant::now();
         net.add_node().await.unwrap();
         net.add_node().await.unwrap();
+        let end = std::time::Instant::now();
+
+        debug!(
+            total_time_ms = (end - start).as_millis() as u64,
+            "finished setting up networking nodes"
+        );
 
         net.settle_on(network_is_complete)
             .within(Duration::from_millis(1000))
