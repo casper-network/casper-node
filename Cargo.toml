@@ -52,6 +52,9 @@ tracing = "0.1.14"
 tracing-subscriber = "0.2.5"
 warp = "0.2.3"
 
+[features]
+vendored-openssl = ['openssl/vendored']
+
 [[bin]]
 name = "casperlabs-node"
 path = "src/apps/node/main.rs"
@@ -65,3 +68,10 @@ path = "src/apps/client/main.rs"
 bench = false
 doctest = false
 test = false
+
+[package.metadata.deb]
+features = ["vendored-openssl"]
+assets = [
+    ["./target/release/casperlabs-node","/usr/bin/casperlabs-node", "755"],
+    ["./target/release/casperlabs-client","/usr/bin/casperlabs-client", "755"]
+]
