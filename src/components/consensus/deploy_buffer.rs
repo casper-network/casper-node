@@ -29,7 +29,7 @@ impl DeployBuffer {
     /// deploys from the finalized blocks by default.
     pub(crate) fn remaining_deploys(
         &mut self,
-        current_timestamp: u64,
+        current_instant: u64,
         max_ttl: u32,
         max_block_size_bytes: u64,
         max_gas_limit: u64,
@@ -41,14 +41,25 @@ impl DeployBuffer {
         let mut deploys_to_return = past
             .iter()
             .filter_map(|block_hash| self.processed.get(block_hash))
-            .chain(self.finalized.values())
             .fold(self.collected_deploys.clone(), |mut map, other_map| {
                 map.retain(|deploy_hash, _deploy| !other_map.contains_key(deploy_hash));
                 map
             });
+        let past_deploys = past
+            .iter()
+            .filter_map(|block_hash| self.processed.get(block_hash))
+            .chain(self.finalized.values())
+            .flat_map(|deploys| deploys.keys())
+            .collect::<HashSet<_>>();
         // filter out invalid deploys
         deploys_to_return.retain(|_deploy_hash, deploy| {
-            self.is_deploy_valid(deploy, current_timestamp, max_ttl, max_dependencies, past)
+            self.is_deploy_valid(
+                deploy,
+                current_instant,
+                max_ttl,
+                max_dependencies,
+                &past_deploys,
+            )
         });
         // TODO: check gas and block size limits
         deploys_to_return
@@ -57,29 +68,20 @@ impl DeployBuffer {
     fn is_deploy_valid(
         &self,
         deploy: &DeployHeader,
-        current_timestamp: u64,
+        current_instant: u64,
         max_ttl: u32,
         max_dependencies: u8,
-        past: &HashSet<BlockHash>,
+        past_deploys: &HashSet<&DeployHash>,
     ) -> bool {
         let all_deps_resolved = || {
-            let past_deploys = past
-                .iter()
-                .filter_map(|block_hash| {
-                    self.finalized
-                        .get(block_hash)
-                        .or_else(|| self.processed.get(block_hash))
-                })
-                .flat_map(|deploys| deploys.keys())
-                .collect::<HashSet<_>>();
             deploy
                 .dependencies
                 .iter()
                 .all(|dep| past_deploys.contains(dep))
         };
         let ttl_valid = deploy.ttl_millis <= max_ttl;
-        let timestamp_valid = deploy.timestamp <= current_timestamp;
-        let deploy_valid = deploy.timestamp + deploy.ttl_millis as u64 >= current_timestamp;
+        let timestamp_valid = deploy.timestamp <= current_instant;
+        let deploy_valid = deploy.timestamp + deploy.ttl_millis as u64 >= current_instant;
         let num_deps_valid = deploy.dependencies.len() <= max_dependencies as usize;
         ttl_valid && timestamp_valid && deploy_valid && num_deps_valid && all_deps_resolved()
     }
