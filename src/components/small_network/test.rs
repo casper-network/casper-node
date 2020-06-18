@@ -17,6 +17,7 @@ use crate::{
     reactor::{self, EventQueueHandle, Reactor},
     small_network::{self, SmallNetwork},
 };
+use pnet::datalink;
 use tokio::time::{timeout, Timeout};
 use tracing::{debug, info};
 
@@ -322,4 +323,40 @@ async fn run_five_node_network() {
         network_is_complete(net.nodes()),
         "network did not stay connected"
     );
+}
+
+/// Sanity check that we can bind to a real network.
+///
+/// Very unlikely to ever fail on a real machine.
+#[tokio::test]
+async fn bind_to_real_network_interface() {
+    let iface = datalink::interfaces()
+        .into_iter()
+        .filter(|net| !net.ips.is_empty() && !net.ips.iter().any(|ip| ip.ip().is_loopback()))
+        .next()
+        .expect("could not find a single networking interface that isn't localhost");
+
+    let local_addr = iface
+        .ips
+        .into_iter()
+        .next()
+        .expect("found a interface with no ips")
+        .ip();
+    let port = TEST_ROOT_NODE_PORT;
+
+    let local_net_config = small_network::Config {
+        bind_interface: local_addr,
+        bind_port: port,
+        root_addr: (local_addr, port).into(),
+        max_outgoing_retries: Some(360),
+        outgoing_retry_delay_millis: 10000,
+        cert: None,
+        private_key: None,
+        gossip_nodes_outgoing: 3,
+    };
+
+    let mut net = Network::new();
+    net.add_node_with_config(local_net_config).await.unwrap();
+
+    net.settle(Duration::from_millis(250)).await;
 }
