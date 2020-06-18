@@ -102,6 +102,8 @@ impl DeployBuffer {
 
     pub(crate) fn finalized_block(&mut self, block: BlockHash) {
         if let Some(deploys) = self.processed.remove(&block) {
+            self.collected_deploys
+                .retain(|deploy_hash, _| !deploys.contains_key(deploy_hash));
             self.finalized.insert(block, deploys);
         } else {
             panic!("finalized block that hasn't been processed!");
