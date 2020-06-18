@@ -35,7 +35,7 @@ impl DeployBuffer {
         max_gas_limit: u64,
         max_dependencies: u8,
         past: &HashSet<BlockHash>,
-    ) -> HashMap<DeployHash, DeployHeader> {
+    ) -> HashSet<DeployHash> {
         // deploys_to_return = all deploys in collected_deploys that aren't in finalized blocks or
         // processed blocks from the set `past`
         let mut deploys_to_return = past
@@ -62,7 +62,7 @@ impl DeployBuffer {
             )
         });
         // TODO: check gas and block size limits
-        deploys_to_return
+        deploys_to_return.keys().cloned().collect()
     }
 
     fn is_deploy_valid(
@@ -147,7 +147,7 @@ mod tests {
         buffer: &mut DeployBuffer,
         time: u64,
         blocks: &HashSet<BlockHash>,
-    ) -> HashMap<DeployHash, DeployHeader> {
+    ) -> HashSet<DeployHash> {
         let max_ttl = 200u32;
         // TODO:
         let max_block_size = 0u64;
@@ -197,15 +197,15 @@ mod tests {
         let deploys = remaining_deploys(&mut buffer, block_time2, &no_blocks);
 
         assert_eq!(deploys.len(), 2);
-        assert!(deploys.contains_key(&hash1));
-        assert!(deploys.contains_key(&hash2));
+        assert!(deploys.contains(&hash1));
+        assert!(deploys.contains(&hash2));
 
         // the deploys should not have been removed yet
         assert!(!remaining_deploys(&mut buffer, block_time2, &no_blocks).is_empty());
 
         // the two deploys will be included in block 1
         let block_hash1 = BlockHash::new(hash(random::<[u8; 16]>()));
-        buffer.added_block(block_hash1, deploys.keys().cloned().collect());
+        buffer.added_block(block_hash1, deploys);
 
         // the deploys should have been removed now
         assert!(remaining_deploys(&mut buffer, block_time2, &no_blocks).is_empty());
@@ -237,8 +237,8 @@ mod tests {
 
         // since block 1 is now finalized, deploy2 shouldn't be among the ones returned
         assert_eq!(deploys.len(), 2);
-        assert!(deploys.contains_key(&hash3));
-        assert!(deploys.contains_key(&hash4));
+        assert!(deploys.contains(&hash3));
+        assert!(deploys.contains(&hash4));
     }
 
     #[test]
@@ -267,16 +267,16 @@ mod tests {
         let deploys = remaining_deploys(&mut buffer, block_time, &blocks);
         // only deploy1 should be returned, as it has no dependencies
         assert_eq!(deploys.len(), 1);
-        assert!(deploys.contains_key(&hash1));
+        assert!(deploys.contains(&hash1));
 
         // the deploy will be included in block 1
         let block_hash1 = BlockHash::new(hash(random::<[u8; 16]>()));
-        buffer.added_block(block_hash1, deploys.keys().cloned().collect());
+        buffer.added_block(block_hash1, deploys);
         blocks.insert(block_hash1);
 
         let deploys2 = remaining_deploys(&mut buffer, block_time, &blocks);
         // `blocks` contains a block that contains deploy1 now, so we should get deploy2
         assert_eq!(deploys2.len(), 1);
-        assert!(deploys2.contains_key(&hash2));
+        assert!(deploys2.contains(&hash2));
     }
 }
