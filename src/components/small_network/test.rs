@@ -294,38 +294,6 @@ async fn run_two_node_network_five_times() {
     }
 }
 
-#[tokio::test]
-async fn run_five_node_network() {
-    init_logging();
-
-    let mut net = Network::new();
-
-    net.add_node().await.unwrap();
-    net.add_node().await.unwrap();
-    net.add_node().await.unwrap();
-    net.add_node().await.unwrap();
-    net.add_node().await.unwrap();
-
-    timeout(
-        Duration::from_millis(10000),
-        net.settle_on(network_is_complete),
-    )
-    .await
-    .expect("network did not fully connect in time");
-
-    timeout(
-        Duration::from_millis(2000),
-        net.settle(Duration::from_millis(250)),
-    )
-    .await
-    .expect("network did not stay settled");
-
-    assert!(
-        network_is_complete(net.nodes()),
-        "network did not stay connected"
-    );
-}
-
 /// Sanity check that we can bind to a real network.
 ///
 /// Very unlikely to ever fail on a real machine.
