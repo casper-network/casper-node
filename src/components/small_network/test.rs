@@ -1,3 +1,8 @@
+//! Tests for the `small_network` component.
+//!
+//! Calling these "unit tests" would be a bit of a misnomer, since they deal mostly with multiple
+//! instances of `small_net` arranged in a network.
+
 use std::{
     collections::HashSet,
     fmt::{self, Debug, Display, Formatter},
@@ -22,7 +27,7 @@ use tokio::time::{timeout, Timeout};
 use tracing::{debug, dispatcher::DefaultGuard, info};
 
 /// Time interval for which to poll an observed testing network when no events have occured.
-const POLL_INTERVAL: Duration = Duration::from_millis(50);
+const POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 /// Amount of time to wait after shutting down all nodes to give the OS networking stack time to
 /// catch up.
@@ -31,15 +36,22 @@ const NET_COOLDOWN: Duration = Duration::from_millis(100);
 /// The networking port used by the tests for the root node.
 const TEST_ROOT_NODE_PORT: u16 = 11223;
 
+/// Test-reactor event.
 #[derive(Debug, From)]
 enum Event {
     #[from]
     SmallNet(small_network::Event<Message>),
 }
 
+/// Example message.
+///
+/// All messages are empty, currently the tests are not checking the payload.
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 struct Message;
 
+/// Test reactor.
+///
+/// Runs a single small network.
 #[derive(Debug)]
 struct TestReactor {
     net: SmallNetwork<Event, Message>,
@@ -47,6 +59,7 @@ struct TestReactor {
 
 impl From<NetworkAnnouncement<NodeId, Message>> for Event {
     fn from(_: NetworkAnnouncement<NodeId, Message>) -> Self {
+        // This will be called if a message is sent, thus it is currently not implemented.
         todo!()
     }
 }
@@ -97,6 +110,11 @@ impl Display for Message {
     }
 }
 
+/// A network of multiple `small_network` test reactors.
+///
+/// Nodes themselves are not run in the background, rather manual cranking is required through
+/// `crank_all`. As an alternative, the `settle` and `settle_all` functions can be used to continue
+/// cranking until a condition has been reached.
 #[derive(Debug)]
 struct Network {
     nodes: Vec<reactor::Runner<TestReactor>>,
@@ -137,7 +155,7 @@ impl Network {
             .count()
     }
 
-    /// Process events on all nodes until all queues are empty.
+    /// Process events on all nodes until all event queues are empty.
     ///
     /// Exits if `at_least` time has passed twice between events that have been processed.
     async fn settle(&mut self, at_least: Duration) {
@@ -171,7 +189,7 @@ impl Network {
             }
 
             if self.crank_all().await == 0 {
-                // No events processed, wait for a bit
+                // No events processed, wait for a bit to avoid 100% cpu usage.
                 tokio::time::delay_for(POLL_INTERVAL).await;
             }
         }
@@ -182,7 +200,7 @@ impl Network {
         &self.nodes
     }
 
-    /// Shut down the network.
+    /// Shuts down the network.
     ///
     /// Shuts down the network, allowing all connections to terminate. This is the same as dropping
     /// every node and waiting until every networking instance has completely shut down.
@@ -198,7 +216,7 @@ impl Network {
     }
 }
 
-/// Setup logging for testing.
+/// Sets up logging for testing.
 ///
 /// Returns a guard that when dropped out of scope, clears the logger again.
 fn init_logging() -> DefaultGuard {
@@ -238,7 +256,11 @@ fn network_is_complete(nodes: &[reactor::Runner<TestReactor>]) -> bool {
         .all(|actual| actual == expected)
 }
 
+/// Helper trait to annotate timeouts more naturally.
 trait Within<T> {
+    /// Sets a timeout on a future.
+    ///
+    /// If the timeout occurs, the annotated future will be **cancelled**. Use with caution.
     fn within(self, duration: Duration) -> Timeout<T>;
 }
 
@@ -246,8 +268,6 @@ impl<T> Within<T> for T
 where
     T: Future,
 {
-    // type Output = T::Output;
-
     fn within(self, duration: Duration) -> Timeout<T> {
         timeout(duration, self)
     }
