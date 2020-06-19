@@ -29,10 +29,6 @@ use tracing::{debug, dispatcher::DefaultGuard, info};
 /// Time interval for which to poll an observed testing network when no events have occured.
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 
-/// Amount of time to wait after shutting down all nodes to give the OS networking stack time to
-/// catch up.
-const NET_COOLDOWN: Duration = Duration::from_millis(100);
-
 /// The networking port used by the tests for the root node.
 const TEST_ROOT_NODE_PORT: u16 = 11223;
 
@@ -208,11 +204,12 @@ impl Network {
     /// Usually dropping is enough, but when attempting to reusing listening ports immediately, this
     /// gets the job done.
     async fn shutdown(self) {
-        drop(self);
+        // Shutdown the sender of every reactor node to ensure the port is open again.
+        for node in self.nodes.into_iter() {
+            node.into_inner().net.shutdown_server().await;
+        }
 
-        debug!("dropped network, waiting for connections to terminate");
-        tokio::time::delay_for(NET_COOLDOWN).await;
-        debug!("finished waiting for connections to terminate");
+        debug!("shut down network");
     }
 }
 
