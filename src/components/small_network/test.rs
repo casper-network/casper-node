@@ -301,8 +301,7 @@ async fn run_two_node_network_five_times() {
 async fn bind_to_real_network_interface() {
     let iface = datalink::interfaces()
         .into_iter()
-        .filter(|net| !net.ips.is_empty() && !net.ips.iter().any(|ip| ip.ip().is_loopback()))
-        .next()
+        .find(|net| !net.ips.is_empty() && !net.ips.iter().any(|ip| ip.ip().is_loopback()))
         .expect("could not find a single networking interface that isn't localhost");
 
     let local_addr = iface
