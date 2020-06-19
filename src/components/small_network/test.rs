@@ -19,7 +19,7 @@ use crate::{
 };
 use pnet::datalink;
 use tokio::time::{timeout, Timeout};
-use tracing::{debug, info};
+use tracing::{debug, dispatcher::DefaultGuard, info};
 
 /// Time interval for which to poll an observed testing network when no events have occured.
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -199,15 +199,16 @@ impl Network {
 }
 
 /// Setup logging for testing.
-fn init_logging() {
+///
+/// Returns a guard that when dropped out of scope, clears the logger again.
+fn init_logging() -> DefaultGuard {
     // TODO: Write logs to file by default for each test.
-    tracing::subscriber::set_global_default(
+    tracing::subscriber::set_default(
         tracing_subscriber::fmt()
             .with_writer(io::stderr)
             .with_env_filter(EnvFilter::from_default_env())
             .finish(),
     )
-    .expect("initialize test logging");
 }
 
 /// Checks whether or not a given network is completely connected.
