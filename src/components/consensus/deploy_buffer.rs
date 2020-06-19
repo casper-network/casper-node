@@ -36,33 +36,30 @@ impl DeployBuffer {
         max_dependencies: u8,
         past: &HashSet<BlockHash>,
     ) -> HashSet<DeployHash> {
-        // deploys_to_return = all deploys in collected_deploys that aren't in finalized blocks or
-        // processed blocks from the set `past`
-        let mut deploys_to_return = past
-            .iter()
-            .filter_map(|block_hash| self.processed.get(block_hash))
-            .fold(self.collected_deploys.clone(), |mut map, other_map| {
-                map.retain(|deploy_hash, _deploy| !other_map.contains_key(deploy_hash));
-                map
-            });
         let past_deploys = past
             .iter()
             .filter_map(|block_hash| self.processed.get(block_hash))
             .chain(self.finalized.values())
             .flat_map(|deploys| deploys.keys())
             .collect::<HashSet<_>>();
-        // filter out invalid deploys
-        deploys_to_return.retain(|_deploy_hash, deploy| {
-            self.is_deploy_valid(
-                deploy,
-                current_instant,
-                max_ttl,
-                max_dependencies,
-                &past_deploys,
-            )
-        });
+        // deploys_to_return = all deploys in collected_deploys that aren't in finalized blocks or
+        // processed blocks from the set `past`
+        let mut deploys_to_return = self
+            .collected_deploys
+            .iter()
+            .filter(|&(hash, deploy)| {
+                self.is_deploy_valid(
+                    deploy,
+                    current_instant,
+                    max_ttl,
+                    max_dependencies,
+                    &past_deploys,
+                ) && !past_deploys.contains(hash)
+            })
+            .map(|(hash, deploy)| *hash)
+            .collect::<HashSet<_>>();
         // TODO: check gas and block size limits
-        deploys_to_return.keys().cloned().collect()
+        deploys_to_return
     }
 
     fn is_deploy_valid(
