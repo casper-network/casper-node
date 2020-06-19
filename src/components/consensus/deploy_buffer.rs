@@ -44,8 +44,7 @@ impl DeployBuffer {
             .collect::<HashSet<_>>();
         // deploys_to_return = all deploys in collected_deploys that aren't in finalized blocks or
         // processed blocks from the set `past`
-        let mut deploys_to_return = self
-            .collected_deploys
+        self.collected_deploys
             .iter()
             .filter(|&(hash, deploy)| {
                 self.is_deploy_valid(
@@ -57,9 +56,8 @@ impl DeployBuffer {
                 ) && !past_deploys.contains(hash)
             })
             .map(|(hash, deploy)| *hash)
-            .collect::<HashSet<_>>();
+            .collect::<HashSet<_>>()
         // TODO: check gas and block size limits
-        deploys_to_return
     }
 
     fn is_deploy_valid(
