@@ -223,6 +223,12 @@ where
     pub fn reactor(&self) -> &R {
         &self.reactor
     }
+
+    /// Deconstructs the runner to return the reactor.
+    #[inline]
+    pub fn into_inner(self) -> R {
+        self.reactor
+    }
 }
 
 /// Spawns tasks that will process the given effects.
