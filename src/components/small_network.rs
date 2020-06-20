@@ -208,7 +208,7 @@ where
     /// waits for it to complete the shutdown. This explicitly allows the background task to finish
     /// and drop everything it owns, ensuring that resources such as allocated ports are free to be
     /// reused once this completes.
-    #[allow(dead_code)]
+    #[cfg(test)]
     async fn shutdown_server(&mut self) {
         // Close the shutdown socket, causing the server to exit.
         drop(self.shutdown.take());
