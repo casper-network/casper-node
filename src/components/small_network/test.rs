@@ -14,11 +14,11 @@ use derive_more::From;
 use futures::{future::join_all, Future};
 use serde::{Deserialize, Serialize};
 use small_network::NodeId;
-use tracing_subscriber::{self, EnvFilter};
 
 use crate::{
     components::Component,
     effect::{announcements::NetworkAnnouncement, Effect, EffectBuilder, Multiple},
+    logging,
     reactor::{self, EventQueueHandle, Reactor},
     small_network::{self, SmallNetwork},
 };
@@ -232,14 +232,9 @@ impl Network {
 /// Returns a guard that when dropped out of scope, clears the logger again.
 fn init_logging() {
     // TODO: Write logs to file by default for each test.
-    tracing::subscriber::set_global_default(
-        tracing_subscriber::fmt()
-            .with_writer(io::stderr)
-            .with_env_filter(EnvFilter::from_default_env())
-            .finish(),
-    )
-    // Ignore the return value, setting the global subscriber will fail if `init_logging` has been called before, which we don't care about.
-    .ok();
+    logging::init()
+        // Ignore the return value, setting the global subscriber will fail if `init_logging` has been called before, which we don't care about.
+        .ok();
 }
 
 /// Checks whether or not a given network is completely connected.
