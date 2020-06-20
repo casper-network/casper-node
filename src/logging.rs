@@ -104,10 +104,9 @@ where
     }
 }
 
-/// Initializes logging system based on settings in configuration.
+/// Initializes the logging system.
 ///
-/// Will setup logging as described in this configuration for the whole application. This
-/// function should only be called once during the lifetime of the application.
+/// This function should only be called once during the lifetime of the application.
 pub fn init() -> anyhow::Result<()> {
     let formatter = format::debug_fn(|writer, field, value| {
         if field.name() == "message" {
