@@ -2,6 +2,9 @@
 
 mod consensus_protocol;
 mod consensus_service;
+// TODO: remove when we actually use the deploy buffer
+#[allow(unused)]
+mod deploy_buffer;
 // TODO: remove when we actually construct a Pothole era
 #[allow(unused)]
 mod pothole;

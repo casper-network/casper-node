@@ -63,13 +63,20 @@ impl Display for DeployHash {
 /// The header portion of a [`Deploy`](struct.Deploy.html).
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct DeployHeader {
-    account: PublicKey,
-    timestamp: u64,
-    gas_price: u64,
-    body_hash: Digest,
-    ttl_millis: u32,
-    dependencies: Vec<DeployHash>,
-    chain_name: String,
+    /// The account within which the deploy will be run
+    pub account: PublicKey,
+    /// When the deploy was created
+    pub timestamp: u64,
+    /// Price per gas unit for this deploy
+    pub gas_price: u64,
+    /// Hash of the WASM code
+    pub body_hash: Digest,
+    /// How long the deploy will stay valid
+    pub ttl_millis: u32,
+    /// Other deploys that have to be run before this one
+    pub dependencies: Vec<DeployHash>,
+    /// Which chain the deploy is supposed to be run on
+    pub chain_name: String,
 }
 
 impl Display for DeployHeader {
