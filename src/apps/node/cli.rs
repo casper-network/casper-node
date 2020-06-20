@@ -66,7 +66,8 @@ impl Cli {
                     .transpose()?
                     .unwrap_or_default();
 
-                let mut runner = reactor::Runner::<reactor::validator::Reactor>::new(cfg).await?;
+                let mut runner =
+                    reactor::Runner::<reactor::validator::Reactor>::new(0, cfg).await?;
                 runner.run().await;
             }
         }

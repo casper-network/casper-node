@@ -35,7 +35,7 @@ use std::{
 };
 
 use futures::FutureExt;
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, info, trace, warn, Span};
 
 use crate::{
     effect::{Effect, EffectBuilder, Multiple},
@@ -147,6 +147,9 @@ where
 
     /// The reactor instance itself.
     reactor: R,
+
+    /// The logging span indicating which reactor we are in.
+    span: Span,
 }
 
 impl<R> Runner<R>
@@ -154,18 +157,24 @@ where
     R: Reactor,
 {
     /// Creates a new runner from a given configuration.
+    ///
+    /// The `id` is used to identify the runner during logging when debugging and can be chosen
+    /// arbitrarily.
     #[inline]
-    pub async fn new(cfg: R::Config) -> Result<Self> {
+    pub async fn new(id: usize, cfg: R::Config) -> Result<Self> {
+        // We create a new logging span, ensuring that we can always associate log messages to this
+        // specific reactor. This is usually only relevant when running multiple reactors, e.g.
+        // during testing, so we set the log level to `debug` here.
+        let span = tracing::debug_span!("node", id = id);
+        let entered = span.enter();
+
         let event_size = mem::size_of::<R::Event>();
 
         // Check if the event is of a reasonable size. This only emits a runtime warning at startup
         // right now, since storage size of events is not an issue per se, but copying might be
         // expensive if events get too large.
         if event_size > 16 * mem::size_of::<usize>() {
-            warn!(
-                "event size is {} bytes, consider reducing it or boxing",
-                event_size
-            );
+            warn!(%event_size, "large event size, consider reducing it or boxing");
         }
 
         // Create a new event queue for this reactor run.
@@ -179,12 +188,19 @@ where
 
         info!("reactor main loop is ready");
 
-        Ok(Runner { scheduler, reactor })
+        drop(entered);
+        Ok(Runner {
+            scheduler,
+            reactor,
+            span,
+        })
     }
 
     /// Processes a single event on the event queue.
     #[inline]
     pub async fn crank(&mut self) {
+        let _enter = self.span.enter();
+
         let event_queue = EventQueueHandle::new(self.scheduler);
         let effect_builder = EffectBuilder::new(event_queue);
 

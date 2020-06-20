@@ -113,6 +113,7 @@ impl Display for Message {
 /// cranking until a condition has been reached.
 #[derive(Debug)]
 struct Network {
+    node_count: usize,
     nodes: HashMap<NodeId, reactor::Runner<TestReactor>>,
 }
 
@@ -120,6 +121,7 @@ impl Network {
     /// Creates a new network.
     fn new() -> Self {
         Network {
+            node_count: 0,
             nodes: HashMap::new(),
         }
     }
@@ -135,7 +137,11 @@ impl Network {
         &mut self,
         cfg: small_network::Config,
     ) -> anyhow::Result<(NodeId, &mut reactor::Runner<TestReactor>)> {
-        let runner: reactor::Runner<TestReactor> = reactor::Runner::new(cfg).await?;
+        let id = self.node_count;
+
+        let runner: reactor::Runner<TestReactor> = reactor::Runner::new(id, cfg).await?;
+        self.node_count += 1;
+
         let node_id = runner.reactor().net.node_id();
         self.nodes.insert(node_id, runner);
 
