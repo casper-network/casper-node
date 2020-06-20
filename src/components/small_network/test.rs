@@ -322,6 +322,8 @@ async fn run_two_node_network_five_times() {
 /// Very unlikely to ever fail on a real machine.
 #[tokio::test]
 async fn bind_to_real_network_interface() {
+    init_logging();
+
     let iface = datalink::interfaces()
         .into_iter()
         .find(|net| !net.ips.is_empty() && !net.ips.iter().any(|ip| ip.ip().is_loopback()))
