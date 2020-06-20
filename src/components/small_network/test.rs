@@ -125,7 +125,7 @@ impl Network {
     }
 
     /// Creates a new networking node on the network using the default root node port.
-    async fn add_node(&mut self) -> anyhow::Result<&mut reactor::Runner<TestReactor>> {
+    async fn add_node(&mut self) -> anyhow::Result<(NodeId, &mut reactor::Runner<TestReactor>)> {
         self.add_node_with_config(small_network::Config::default_on_port(TEST_ROOT_NODE_PORT))
             .await
     }
@@ -134,14 +134,16 @@ impl Network {
     async fn add_node_with_config(
         &mut self,
         cfg: small_network::Config,
-    ) -> anyhow::Result<&mut reactor::Runner<TestReactor>> {
+    ) -> anyhow::Result<(NodeId, &mut reactor::Runner<TestReactor>)> {
         let runner: reactor::Runner<TestReactor> = reactor::Runner::new(cfg).await?;
         let node_id = runner.reactor().net.node_id();
         self.nodes.insert(node_id, runner);
 
-        self.nodes
-            .get_mut(&node_id)
-            .ok_or_else(|| anyhow::anyhow!("node mysteriously disappeared, this should not happen"))
+        let node_ref = self.nodes.get_mut(&node_id).ok_or_else(|| {
+            anyhow::anyhow!("node mysteriously disappeared, this should not happen")
+        })?;
+
+        Ok((node_id, node_ref))
     }
 
     /// Crank all runners once, returning the number of events processed.
