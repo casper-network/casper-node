@@ -65,3 +65,6 @@ path = "src/apps/client/main.rs"
 bench = false
 doctest = false
 test = false
+
+[dev-dependencies]
+pnet = "0.26.0"

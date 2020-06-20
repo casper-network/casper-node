@@ -201,6 +201,11 @@ impl TlsCert {
     pub(crate) fn public_key_fingerprint(&self) -> KeyFingerprint {
         self.key_fingerprint
     }
+
+    /// Returns a reference to the inner x509 certificate.
+    pub(crate) fn as_x509(&self) -> &X509 {
+        &self.x509
+    }
 }
 
 impl Debug for TlsCert {
