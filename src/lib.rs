@@ -39,5 +39,3 @@ pub use components::{
 
 /// The default listening port for the root node of the validator network.
 pub const ROOT_VALIDATOR_LISTENING_PORT: u16 = 34553;
-/// The default listening port for the root node of the public network.
-pub const ROOT_PUBLIC_LISTENING_PORT: u16 = 1485;
