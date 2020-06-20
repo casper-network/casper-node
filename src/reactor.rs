@@ -115,10 +115,14 @@ pub trait Reactor: Sized {
     /// This method creates the full state, which consists of all components, and returns a reactor
     /// instances along with the effects the components generated upon instantiation.
     ///
+    /// The function is also given an instance to the tracing span used, this enables it to set up
+    /// tracing fields like `id` to set an ID for the reactor if desired.
+    ///
     /// If any instantiation fails, an error is returned.
     fn new(
         cfg: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
+        span: &Span,
     ) -> Result<(Self, Multiple<Effect<Self::Event>>)>;
 }
 
@@ -150,6 +154,9 @@ where
 
     /// The logging span indicating which reactor we are in.
     span: Span,
+
+    /// Counter for events, to aid tracing.
+    event_count: usize,
 }
 
 impl<R> Runner<R>
@@ -161,11 +168,11 @@ where
     /// The `id` is used to identify the runner during logging when debugging and can be chosen
     /// arbitrarily.
     #[inline]
-    pub async fn new(id: usize, cfg: R::Config) -> Result<Self> {
+    pub async fn new(cfg: R::Config) -> Result<Self> {
         // We create a new logging span, ensuring that we can always associate log messages to this
         // specific reactor. This is usually only relevant when running multiple reactors, e.g.
         // during testing, so we set the log level to `debug` here.
-        let span = tracing::debug_span!("node", id = id);
+        let mut span = tracing::debug_span!("node", id = tracing::field::Empty);
         let entered = span.enter();
 
         let event_size = mem::size_of::<R::Event>();
@@ -181,7 +188,8 @@ where
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
 
         let event_queue = EventQueueHandle::new(scheduler);
-        let (reactor, initial_effects) = R::new(cfg, event_queue)?;
+
+        let (reactor, initial_effects) = R::new(cfg, event_queue, &span)?;
 
         // Run all effects from component instantiation.
         process_effects(scheduler, initial_effects).await;
@@ -193,6 +201,7 @@ where
             scheduler,
             reactor,
             span,
+            event_count: 0,
         })
     }
 
@@ -200,6 +209,12 @@ where
     #[inline]
     pub async fn crank(&mut self) {
         let _enter = self.span.enter();
+
+        // Create another span for tracing the processing of one event.
+        let crank_span = tracing::debug_span!("crank", ev = self.event_count);
+        let _inner_enter = crank_span.enter();
+
+        self.event_count += 1;
 
         let event_queue = EventQueueHandle::new(self.scheduler);
         let effect_builder = EffectBuilder::new(event_queue);
