@@ -172,7 +172,7 @@ where
         // We create a new logging span, ensuring that we can always associate log messages to this
         // specific reactor. This is usually only relevant when running multiple reactors, e.g.
         // during testing, so we set the log level to `debug` here.
-        let mut span = tracing::debug_span!("node", id = tracing::field::Empty);
+        let span = tracing::debug_span!("node", id = tracing::field::Empty);
         let entered = span.enter();
 
         let event_size = mem::size_of::<R::Event>();
