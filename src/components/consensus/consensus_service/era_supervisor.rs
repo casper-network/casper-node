@@ -7,14 +7,13 @@
 
 use std::{
     collections::HashMap,
-    convert::{TryFrom, TryInto},
     fmt::{self, Debug, Formatter},
     time::{Duration, Instant},
 };
 
 use super::{
-    super::consensus_protocol::{ConsensusContext, ConsensusProtocol, ConsensusProtocolResult},
-    traits::{ConsensusService, ConsensusServiceError, Effect, EraId, Event, MessageWireFormat},
+    super::consensus_protocol::{ConsensusProtocol, ConsensusProtocolResult, ConsensusValue},
+    traits::{ConsensusService, ConsensusServiceError, Effect, EraId, Event},
 };
 
 #[derive(Clone, Debug)]
@@ -44,14 +43,14 @@ struct EraInstance<Id> {
     era_end: Instant,
 }
 
-pub(crate) struct EraSupervisor<C: ConsensusContext> {
+pub(crate) struct EraSupervisor<C: ConsensusValue> {
     // A map of active consensus protocols.
     // A value is a trait so that we can run different consensus protocol instances per era.
     active_eras: HashMap<EraId, Box<dyn ConsensusProtocol<C>>>,
     era_config: EraConfig,
 }
 
-impl<C: ConsensusContext> Debug for EraSupervisor<C> {
+impl<C: ConsensusValue> Debug for EraSupervisor<C> {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
@@ -61,7 +60,7 @@ impl<C: ConsensusContext> Debug for EraSupervisor<C> {
     }
 }
 
-impl<C: ConsensusContext> EraSupervisor<C> {
+impl<C: ConsensusValue> EraSupervisor<C> {
     pub(crate) fn new() -> Self {
         Self {
             active_eras: HashMap::new(),
@@ -70,16 +69,8 @@ impl<C: ConsensusContext> EraSupervisor<C> {
     }
 }
 
-impl<C: ConsensusContext> ConsensusService for EraSupervisor<C>
-where
-    C::Message: TryFrom<MessageWireFormat> + Into<MessageWireFormat>,
-{
-    type Ctx = C;
-
-    fn handle_event(
-        &mut self,
-        event: Event,
-    ) -> Result<Vec<Effect<Event>>, ConsensusServiceError<C>> {
+impl<C: ConsensusValue> ConsensusService for EraSupervisor<C> {
+    fn handle_event(&mut self, event: Event) -> Result<Vec<Effect<Event>>, ConsensusServiceError> {
         match event {
             Event::Timer(era_id, timer_id) => match self.active_eras.get_mut(&era_id) {
                 None => todo!("Handle missing eras."),
@@ -92,8 +83,7 @@ where
                                 ConsensusProtocolResult::InvalidIncomingMessage(_msg, _error) => {
                                     unimplemented!()
                                 }
-                                ConsensusProtocolResult::CreatedNewMessage(out_msg) => {
-                                    let _wire_msg: MessageWireFormat = out_msg.into();
+                                ConsensusProtocolResult::CreatedNewMessage(_out_msg) => {
                                     todo!("Create an effect to broadcast new msg")
                                 }
                                 ConsensusProtocolResult::ScheduleTimer(_delay, _timer_id) => {
@@ -108,36 +98,27 @@ where
             },
             Event::IncomingMessage(wire_msg) => match self.active_eras.get_mut(&wire_msg.era_id) {
                 None => todo!("Handle missing eras."),
-                Some(consensus) => {
-                    let message: C::Message = wire_msg
-                        .try_into()
-                        .map_err(|_| ConsensusServiceError::InvalidFormat("".to_string()))?;
-                    consensus
-                        .handle_message(message)
-                        .map(|result_vec| {
-                            result_vec
-                                .into_iter()
-                                .map(|result| match result {
-                                    ConsensusProtocolResult::InvalidIncomingMessage(
-                                        _msg,
-                                        _error,
-                                    ) => unimplemented!(),
-                                    ConsensusProtocolResult::CreatedNewMessage(out_msg) => {
-                                        let _wire_msg: MessageWireFormat = out_msg.into();
-                                        todo!("Create an effect to broadcast new msg")
-                                    }
-                                    ConsensusProtocolResult::ScheduleTimer(_delay, _timer_id) => {
-                                        unimplemented!()
-                                    }
-                                    ConsensusProtocolResult::CreateNewBlock => unimplemented!(),
-                                    ConsensusProtocolResult::FinalizedBlock(_block) => {
-                                        unimplemented!()
-                                    }
-                                })
-                                .collect()
-                        })
-                        .map_err(ConsensusServiceError::InternalError)
-                }
+                Some(consensus) => consensus
+                    .handle_message(wire_msg.message_content)
+                    .map(|result_vec| {
+                        result_vec
+                            .into_iter()
+                            .map(|result| match result {
+                                ConsensusProtocolResult::InvalidIncomingMessage(_msg, _error) => {
+                                    unimplemented!()
+                                }
+                                ConsensusProtocolResult::CreatedNewMessage(_out_msg) => {
+                                    todo!("Create an effect to broadcast new msg")
+                                }
+                                ConsensusProtocolResult::ScheduleTimer(_delay, _timer_id) => {
+                                    unimplemented!()
+                                }
+                                ConsensusProtocolResult::CreateNewBlock => unimplemented!(),
+                                ConsensusProtocolResult::FinalizedBlock(_block) => unimplemented!(),
+                            })
+                            .collect()
+                    })
+                    .map_err(ConsensusServiceError::InternalError),
             },
         }
     }
