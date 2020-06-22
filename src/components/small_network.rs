@@ -46,7 +46,11 @@ mod endpoint;
 mod error;
 mod event;
 mod message;
+#[cfg(test)]
+mod test;
 
+#[cfg(test)]
+use std::collections::HashSet;
 use std::{
     collections::HashMap,
     fmt::{self, Debug, Display, Formatter},
@@ -58,17 +62,22 @@ use std::{
 
 use anyhow::Context;
 use futures::{
+    future::{select, Either},
     stream::{SplitSink, SplitStream},
     FutureExt, SinkExt, StreamExt,
 };
 use maplit::hashmap;
-use openssl::{pkey, x509::X509};
+use openssl::pkey;
 use pkey::{PKey, Private};
 use rand::{seq::IteratorRandom, Rng};
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::{
     net::TcpStream,
-    sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
+    sync::{
+        mpsc::{self, UnboundedReceiver, UnboundedSender},
+        oneshot,
+    },
+    task::JoinHandle,
 };
 use tokio_openssl::SslStream;
 use tokio_serde::{formats::SymmetricalMessagePack, SymmetricallyFramed};
@@ -83,7 +92,7 @@ use crate::{
         announcements::NetworkAnnouncement, requests::NetworkRequest, Effect, EffectBuilder,
         EffectExt, EffectResultExt, Multiple,
     },
-    reactor::{EventQueueHandle, QueueKind, Reactor},
+    reactor::{EventQueueHandle, QueueKind},
     tls::{self, KeyFingerprint, Signed, TlsCert},
 };
 // Seems to be a false positive.
@@ -102,7 +111,7 @@ pub(crate) struct SmallNetwork<REv: 'static, P> {
     /// Configuration.
     cfg: Config,
     /// Server certificate.
-    cert: Arc<X509>,
+    cert: Arc<TlsCert>,
     /// Server private key.
     private_key: Arc<PKey<Private>>,
     /// Handle to event queue.
@@ -113,6 +122,14 @@ pub(crate) struct SmallNetwork<REv: 'static, P> {
     signed_endpoints: HashMap<NodeId, Signed<Endpoint>>,
     /// Outgoing network connections' messages.
     outgoing: HashMap<NodeId, UnboundedSender<Message<P>>>,
+    /// Channel signaling a shutdown of the small network.
+    // Note: This channel never sends anything, instead it is closed when `SmallNetwork` is dropped,
+    //       signalling the receiver that it should cease operation. Don't listen to clippy!
+    #[allow(dead_code)]
+    shutdown: Option<oneshot::Sender<()>>,
+    /// Join handle for the server thread.
+    #[allow(dead_code)]
+    server_join_handle: Option<JoinHandle<()>>,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -154,24 +171,30 @@ where
         let our_fingerprint = our_endpoint.cert().public_key_fingerprint();
 
         // Run the server task.
+        // We spawn it ourselves instead of through an effect to get a hold of the join handle,
+        // which we need to shutdown cleanly later on.
         info!(%our_endpoint, "starting server background task");
-        let mut effects = server_task(
+        let (server_shutdown_sender, server_shutdown_receiver) = oneshot::channel();
+        let server_join_handle = tokio::spawn(server_task(
             event_queue,
             tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
-        )
-        .boxed()
-        .ignore();
+            server_shutdown_receiver,
+        ));
+
         let model = SmallNetwork {
             cfg,
             signed_endpoints: hashmap! { our_fingerprint => Signed::new(&our_endpoint, &private_key)? },
             endpoints: hashmap! { our_fingerprint => our_endpoint },
-            cert: Arc::new(cert),
+            cert: Arc::new(tls::validate_cert(cert).map_err(Error::OwnCertificateInvalid)?),
             private_key: Arc::new(private_key),
             event_queue,
             outgoing: HashMap::new(),
+            shutdown: Some(server_shutdown_sender),
+            server_join_handle: Some(server_join_handle),
         };
 
         // Connect to the root node if we are not the root node.
+        let mut effects: Multiple<_> = Default::default();
         if !we_are_root {
             effects.extend(model.connect_to_root());
         } else {
@@ -179,6 +202,28 @@ where
         }
 
         Ok((model, effects))
+    }
+
+    /// Close down the listening server socket.
+    ///
+    /// Signals that the background process that runs the server should shutdown completely and
+    /// waits for it to complete the shutdown. This explicitly allows the background task to finish
+    /// and drop everything it owns, ensuring that resources such as allocated ports are free to be
+    /// reused once this completes.
+    #[allow(dead_code)]
+    async fn shutdown_server(&mut self) {
+        // Close the shutdown socket, causing the server to exit.
+        drop(self.shutdown.take());
+
+        // Wait for the server to exit cleanly.
+        if let Some(join_handle) = self.server_join_handle.take() {
+            match join_handle.await {
+                Ok(_) => debug!("server exited cleanly"),
+                Err(err) => error!(%err, "could not join server task cleanly"),
+            }
+        } else {
+            warn!("server shutdown while already shut down")
+        }
     }
 
     /// Attempts to connect to the root node.
@@ -409,6 +454,20 @@ where
             }
         }
     }
+
+    /// Returns the set of connected nodes.
+    ///
+    /// This inspection function is usually used in testing.
+    #[cfg(test)]
+    pub(crate) fn connected_nodes(&self) -> HashSet<NodeId> {
+        self.outgoing.keys().cloned().collect()
+    }
+
+    /// Returns the node id of this network node.
+    #[cfg(test)]
+    pub(crate) fn node_id(&self) -> NodeId {
+        self.cert.public_key_fingerprint()
+    }
 }
 
 impl<REv, P> Component<REv> for SmallNetwork<REv, P>
@@ -598,22 +657,44 @@ fn create_listener(cfg: &Config) -> io::Result<(TcpListener, bool)> {
 async fn server_task<P, REv>(
     event_queue: EventQueueHandle<REv>,
     mut listener: tokio::net::TcpListener,
+    shutdown: oneshot::Receiver<()>,
 ) where
     REv: From<Event<P>>,
 {
-    loop {
-        // We handle accept errors here, since they can be caused by a temporary resource shortage
-        // or the remote side closing the connection while it is waiting in the queue.
-        match listener.accept().await {
-            Ok((stream, addr)) => {
-                // Move the incoming connection to the event queue for handling.
-                let event = Event::IncomingNew { stream, addr };
-                event_queue
-                    .schedule(event, QueueKind::NetworkIncoming)
-                    .await;
+    // The server task is a bit tricky, since it has to wait on incoming connections while at the
+    // same time shut down if the networking component is dropped, otherwise the TCP socket will
+    // stay open, preventing reuse.
+
+    // We first create a future that never terminates, handling incoming connections:
+    let accept_connections = async move {
+        loop {
+            // We handle accept errors here, since they can be caused by a temporary resource shortage
+            // or the remote side closing the connection while it is waiting in the queue.
+            match listener.accept().await {
+                Ok((stream, addr)) => {
+                    // Move the incoming connection to the event queue for handling.
+                    let event = Event::IncomingNew { stream, addr };
+                    event_queue
+                        .schedule(event, QueueKind::NetworkIncoming)
+                        .await;
+                }
+                // TODO: Handle resource errors gracefully.
+                //       In general, two kinds of errors occur here: Local resource exhaustion,
+                //       which should be handled by waiting a few milliseconds, or remote connection
+                //       errors, which can be dropped immediately.
+                //
+                //       The code in its current state will consume 100% CPU if local resource
+                //       exhaustion happens, as no distinction is made and no delay introduced.
+                Err(err) => warn!(%err, "dropping incoming connection during accept"),
             }
-            Err(err) => warn!(%err, "dropping incoming connection during accept"),
         }
+    };
+
+    // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
+    // infinite loop to terminate, which never happens.
+    match select(shutdown, Box::pin(accept_connections)).await {
+        Either::Left(_) => info!("shutting down socket, no longer accepting incoming connections"),
+        Either::Right(_) => unreachable!(),
     }
 }
 
@@ -622,11 +703,11 @@ async fn server_task<P, REv>(
 /// This function groups the TLS handshake into a convenient function, enabling the `?` operator.
 async fn setup_tls(
     stream: TcpStream,
-    cert: Arc<X509>,
+    cert: Arc<TlsCert>,
     private_key: Arc<PKey<Private>>,
 ) -> Result<(NodeId, Transport)> {
     let tls_stream = tokio_openssl::accept(
-        &tls::create_tls_acceptor(&cert.as_ref(), &private_key.as_ref())
+        &tls::create_tls_acceptor(&cert.as_x509().as_ref(), &private_key.as_ref())
             .map_err(Error::AcceptorCreation)?,
         stream,
     )
@@ -717,7 +798,7 @@ fn framed<P>(stream: Transport) -> FramedTransport<P> {
 /// Initiates a TLS connection to an endpoint.
 async fn connect_outgoing(
     endpoint: Endpoint,
-    cert: Arc<X509>,
+    cert: Arc<TlsCert>,
     private_key: Arc<PKey<Private>>,
 ) -> Result<Transport> {
     let (server_cert, transport) = connect_trusted(endpoint.addr(), cert, private_key).await?;
@@ -734,10 +815,10 @@ async fn connect_outgoing(
 /// Initiates a TLS connection to a remote address, regardless of what ID the remote node reports.
 async fn connect_trusted(
     addr: SocketAddr,
-    cert: Arc<X509>,
+    cert: Arc<TlsCert>,
     private_key: Arc<PKey<Private>>,
 ) -> Result<(TlsCert, Transport)> {
-    let mut config = tls::create_tls_connector(&cert, &private_key)
+    let mut config = tls::create_tls_connector(&cert.as_x509(), &private_key)
         .context("could not create TLS connector")?
         .configure()
         .map_err(Error::ConnectorConfiguration)?;
@@ -760,7 +841,6 @@ async fn connect_trusted(
 
 impl<R, P> Debug for SmallNetwork<R, P>
 where
-    R: Reactor,
     P: Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

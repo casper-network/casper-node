@@ -75,3 +75,6 @@ assets = [
     ["./target/release/casperlabs-node","/usr/bin/casperlabs-node", "755"],
     ["./target/release/casperlabs-client","/usr/bin/casperlabs-client", "755"]
 ]
+
+[dev-dependencies]
+pnet = "0.26.0"
