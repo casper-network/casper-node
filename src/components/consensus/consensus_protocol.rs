@@ -2,77 +2,61 @@
 #![allow(dead_code)]
 use std::{fmt::Debug, hash::Hash, time::Instant};
 
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+
 mod protocol_state;
 mod synchronizer;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct TimerId(pub(crate) u64);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct NodeId(u64);
 
-pub(crate) trait ConsensusContext {
-    /// Consensus specific message.
-    /// What gets sent over the wire is opaque to the networking layer,
-    /// it is materialized to concrete type in the consensus protocol layer.
-    ///
-    /// Example ADT might be:
-    /// ```ignore
-    /// enum Message {
-    ///   NewVote(…),
-    ///   NewBlock(…),
-    ///   RequestDependency(…),
-    /// }
-    /// ```
-    ///
-    /// Note that some consensus protocols (like HoneyBadgerBFT) don't have dependencies,
-    /// so it's not possible to differentiate between new message and dependency requests
-    /// in consensus-agnostic layers.
-    type Message;
-
-    type Error: Debug;
-
-    type ConsensusValue: Hash + PartialEq + Eq;
+pub(crate) trait ConsensusValue:
+    Hash + PartialEq + Eq + Serialize + DeserializeOwned
+{
 }
+impl<T> ConsensusValue for T where T: Hash + PartialEq + Eq + Serialize + DeserializeOwned {}
 
 #[derive(Debug)]
-pub(crate) enum ConsensusProtocolResult<Ctx: ConsensusContext> {
-    CreatedNewMessage(Ctx::Message),
-    InvalidIncomingMessage(Ctx::Message, Ctx::Error),
+pub(crate) enum ConsensusProtocolResult<C: ConsensusValue> {
+    CreatedNewMessage(Vec<u8>),
+    InvalidIncomingMessage(Vec<u8>, anyhow::Error),
     ScheduleTimer(Instant, TimerId),
     CreateNewBlock,
-    FinalizedBlock(Ctx::ConsensusValue),
+    FinalizedBlock(C),
 }
 
 /// An API for a single instance of the consensus.
-pub(crate) trait ConsensusProtocol<Ctx: ConsensusContext> {
+pub(crate) trait ConsensusProtocol<C: ConsensusValue> {
     /// Handle an incoming message (like NewVote, RequestDependency).
     fn handle_message(
         &mut self,
-        msg: Ctx::Message,
-    ) -> Result<Vec<ConsensusProtocolResult<Ctx>>, Ctx::Error>;
+        msg: Vec<u8>,
+    ) -> Result<Vec<ConsensusProtocolResult<C>>, anyhow::Error>;
 
     /// Triggers consensus' timer.
     fn handle_timer(
         &mut self,
         timer_id: TimerId,
-    ) -> Result<Vec<ConsensusProtocolResult<Ctx>>, Ctx::Error>;
+    ) -> Result<Vec<ConsensusProtocolResult<C>>, anyhow::Error>;
 }
 
 #[cfg(test)]
 mod example {
+    use serde::{Deserialize, Serialize};
+
     use super::{
         protocol_state::{ProtocolState, Vertex},
         synchronizer::DagSynchronizerState,
-        ConsensusContext, ConsensusProtocol, ConsensusProtocolResult, TimerId,
+        ConsensusProtocol, ConsensusProtocolResult, TimerId,
     };
-
-    struct HighwayContext();
 
     #[derive(Debug, Hash, PartialEq, Eq, Clone)]
     struct VIdU64(u64);
 
-    #[derive(Debug, Hash, PartialEq, Eq, Clone)]
+    #[derive(Debug, Hash, PartialEq, Eq, Clone, Serialize, Deserialize)]
     struct DummyVertex {
         id: u64,
         deploy_hash: DeployHash,
@@ -88,40 +72,26 @@ mod example {
         }
     }
 
-    #[derive(Debug, Hash, PartialEq, Eq, Clone)]
+    #[derive(Debug, Hash, PartialEq, Eq, Clone, Serialize, Deserialize)]
     struct DeployHash(u64);
 
     #[derive(Debug)]
     struct Error;
 
-    impl ConsensusContext for HighwayContext {
-        type Message = HighwayMessage;
-        type Error = Error;
-        type ConsensusValue = DeployHash;
-    }
-
-    enum HighwayMessage {
-        NewVertex(DummyVertex),
-        RequestVertex(VIdU64),
-    }
-
-    impl<P: ProtocolState<VIdU64, DummyVertex>> ConsensusProtocol<HighwayContext>
+    impl<P: ProtocolState<VIdU64, DummyVertex>> ConsensusProtocol<DeployHash>
         for DagSynchronizerState<VIdU64, DummyVertex, DeployHash, P>
     {
         fn handle_message(
             &mut self,
-            msg: <HighwayContext as ConsensusContext>::Message,
-        ) -> Result<Vec<ConsensusProtocolResult<HighwayContext>>, Error> {
-            match msg {
-                HighwayMessage::RequestVertex(_v_id) => unimplemented!(),
-                HighwayMessage::NewVertex(_vertex) => unimplemented!(),
-            }
+            _msg: Vec<u8>,
+        ) -> Result<Vec<ConsensusProtocolResult<DeployHash>>, anyhow::Error> {
+            unimplemented!()
         }
 
         fn handle_timer(
             &mut self,
             _timer_id: TimerId,
-        ) -> Result<Vec<ConsensusProtocolResult<HighwayContext>>, Error> {
+        ) -> Result<Vec<ConsensusProtocolResult<DeployHash>>, anyhow::Error> {
             unimplemented!()
         }
     }

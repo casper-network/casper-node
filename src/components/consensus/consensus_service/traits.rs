@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
-use super::super::consensus_protocol::{ConsensusContext, NodeId, TimerId};
+use super::super::consensus_protocol::{NodeId, TimerId};
 
 // Very simple reactor effect.
 #[derive(Debug)]
@@ -27,9 +27,9 @@ pub(crate) struct MessageWireFormat {
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct EraId(pub(crate) u64);
 
-pub(crate) enum ConsensusServiceError<Ctx: ConsensusContext> {
+pub(crate) enum ConsensusServiceError {
     InvalidFormat(String),
-    InternalError(Ctx::Error),
+    InternalError(anyhow::Error),
 }
 
 pub(crate) enum Event {
@@ -39,10 +39,5 @@ pub(crate) enum Event {
 
 /// API between the reactor and consensus component.
 pub(crate) trait ConsensusService {
-    type Ctx: ConsensusContext;
-
-    fn handle_event(
-        &mut self,
-        event: Event,
-    ) -> Result<Vec<Effect<Event>>, ConsensusServiceError<Self::Ctx>>;
+    fn handle_event(&mut self, event: Event) -> Result<Vec<Effect<Event>>, ConsensusServiceError>;
 }
