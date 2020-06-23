@@ -14,6 +14,8 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 mod protocol_state;
 mod synchronizer;
 
+pub(crate) use protocol_state::{AddVertexOk, ProtocolState, VertexTrait};
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct TimerId(pub(crate) u64);
 
@@ -74,8 +76,12 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
     ) -> Result<Vec<ConsensusProtocolResult<<C as Context>::ConsensusValue>>, Error> {
         let highway_message: HighwayMessage<C> = serde_json::from_slice(msg.as_slice()).unwrap();
         match highway_message {
-            HighwayMessage::NewVertex(v) => todo!(),
-            HighwayMessage::RequestDependency(dep) => todo!(),
+            HighwayMessage::NewVertex(v) => {
+                match self.synchronizer.add_vertex(sender, v, &mut self.highway) {
+                    _ => todo!(),
+                }
+            }
+            HighwayMessage::RequestDependency(_dep) => todo!(),
         }
     }
 
