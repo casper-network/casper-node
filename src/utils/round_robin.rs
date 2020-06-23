@@ -151,6 +151,11 @@ where
             );
         }
     }
+
+    /// Returns the number of events currently in the queue.
+    pub(crate) fn item_count(&self) -> usize {
+        self.total.available_permits()
+    }
 }
 
 #[cfg(test)]

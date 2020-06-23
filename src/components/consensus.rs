@@ -2,6 +2,9 @@
 
 mod consensus_protocol;
 mod consensus_service;
+// TODO: remove when we actually use the deploy buffer
+#[allow(unused)]
+mod deploy_buffer;
 // TODO: remove when we actually construct a Pothole era
 #[allow(unused)]
 mod pothole;
@@ -31,12 +34,11 @@ use consensus_service::{
     era_supervisor::EraSupervisor,
     traits::{ConsensusService, EraId, Event as ConsensusEvent, MessageWireFormat},
 };
-use protocols::pothole::PotholeContext;
 
 /// The consensus component.
 #[derive(Debug)]
 pub(crate) struct Consensus {
-    era_supervisor: EraSupervisor<PotholeContext<ConsensusNodeId, Block>>,
+    era_supervisor: EraSupervisor<Block>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,7 +102,7 @@ impl Consensus {
         _effect_builder: EffectBuilder<REv>,
     ) -> (Self, Multiple<Effect<Event>>) {
         let consensus = Consensus {
-            era_supervisor: EraSupervisor::<PotholeContext<ConsensusNodeId, Block>>::new(),
+            era_supervisor: EraSupervisor::<Block>::new(),
         };
 
         (consensus, Default::default())

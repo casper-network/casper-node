@@ -51,7 +51,7 @@ impl Display for Message {
 
 /// The component which broadcasts `Deploy`s to peers and handles incoming `Deploy`s which have been
 /// broadcast to it.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct DeployBroadcaster {}
 
 impl DeployBroadcaster {

@@ -24,6 +24,9 @@ pub enum Error {
     /// The config must have both or neither of certificate and private key.
     #[error("need either both or none of cert, private_key in network config")]
     InvalidConfig,
+    /// Our own certificate is not valid.
+    #[error("own certificate invalid")]
+    OwnCertificateInvalid(#[source] ValidationError),
     /// Failed to create a TCP listener.
     #[error("failed to create listener")]
     ListenerCreation(#[source] io::Error),

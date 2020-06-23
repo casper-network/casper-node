@@ -120,6 +120,7 @@ impl From<DeployBroadcasterRequest> for Event {
 }
 
 /// Validator node reactor.
+#[derive(Debug)]
 pub struct Reactor {
     net: SmallNetwork<Event, Message>,
     pinger: Pinger,

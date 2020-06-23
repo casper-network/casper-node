@@ -51,6 +51,7 @@ pub(crate) use event::Event;
 
 const DEPLOYS_API_PATH: &str = "deploys";
 
+#[derive(Debug)]
 pub(crate) struct ApiServer {}
 
 impl ApiServer {
