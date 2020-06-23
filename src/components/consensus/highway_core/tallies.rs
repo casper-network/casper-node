@@ -6,8 +6,8 @@ use std::{
 
 use super::{
     state::{State, Weight},
-    traits::Context,
 };
+use crate::components::consensus::traits::Context;
 
 /// A tally of votes at a specific height. This is never empty: It contains at least one vote.
 #[derive(Clone)]

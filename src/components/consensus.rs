@@ -2,6 +2,7 @@
 
 mod consensus_protocol;
 mod consensus_service;
+mod traits;
 // TODO: remove when we actually use the deploy buffer
 #[allow(unused)]
 mod deploy_buffer;

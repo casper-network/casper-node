@@ -1,5 +1,6 @@
-use super::{traits::Context, validators::ValidatorIndex, vertex::WireVote};
+use super::{validators::ValidatorIndex, vertex::WireVote};
 use crate::components::consensus::highway_core::vertex::SignedWireVote;
+use crate::components::consensus::traits::Context;
 
 /// Evidence that a validator is faulty.
 #[derive(Clone, Debug, Eq, PartialEq)]

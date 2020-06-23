@@ -2,8 +2,8 @@ use std::iter;
 
 use serde::{Deserialize, Serialize};
 
-use super::{evidence::Evidence, traits::Context, validators::ValidatorIndex, vote::Panorama};
-use crate::components::consensus::highway_core::traits::ValidatorSecret;
+use super::{evidence::Evidence, validators::ValidatorIndex, vote::Panorama};
+use crate::components::consensus::traits::{Context, ValidatorSecret};
 
 /// A dependency of a `Vertex` that can be satisfied by one or more other vertices.
 #[derive(Clone, Debug, Eq, PartialEq)]

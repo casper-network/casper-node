@@ -3,6 +3,8 @@
 use std::{fmt::Debug, hash::Hash, time::Instant};
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use crate::components::consensus::highway_core::active_validator::ActiveValidator;
+use crate::components::consensus::traits::Context;
 
 mod protocol_state;
 mod synchronizer;
@@ -41,6 +43,10 @@ pub(crate) trait ConsensusProtocol<C: ConsensusValue> {
         &mut self,
         timer_id: TimerId,
     ) -> Result<Vec<ConsensusProtocolResult<C>>, anyhow::Error>;
+}
+
+struct ConsensusInstance<C: Context> {
+    active_validator: Option<ActiveValidator<C>>
 }
 
 #[cfg(test)]
