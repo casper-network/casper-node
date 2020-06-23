@@ -6,6 +6,7 @@ use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
     hash::Hash,
 };
+use serde::export::PhantomData;
 
 /// Note that we might be requesting download of the duplicate element
 /// (one that had requested for earlier) but with a different node.
@@ -97,7 +98,7 @@ where
     //TODO: Wrap the following with a struct that will keep the details hidden.
     vertex_dependants: HashMap<VId, Vec<VId>>,
     vertex_by_vid: HashMap<VId, V>,
-    protocol_state: P,
+    _protocol_state: PhantomData<P>,
 }
 
 impl<C, VId, V, P> DagSynchronizerState<VId, V, C, P>
@@ -107,20 +108,21 @@ where
     V: Vertex<C, VId> + Clone,
     P: ProtocolState<VId, V>,
 {
-    fn new(protocol: P) -> Self {
+    fn new() -> Self {
         DagSynchronizerState {
             consensus_value_deps: ConsensusValueDependencies::new(),
             vertex_dependants: HashMap::new(),
             vertex_by_vid: HashMap::new(),
-            protocol_state: protocol,
+            _protocol_state: PhantomData,
         }
     }
 
     pub(crate) fn get_vertex(
         &self,
         v_id: VId,
+        protocol_state: &P,
     ) -> Result<SynchronizerEffect<VId, V, C>, anyhow::Error> {
-        self.protocol_state
+        protocol_state
             .get_vertex(v_id)
             .map_err(|err| anyhow::anyhow!("{:?}", err)) //TODO: Improve error reporting
             .map(SynchronizerEffect::RequestedVertexResponse)
@@ -130,8 +132,9 @@ where
         &mut self,
         sender: NodeId,
         v: V,
+        protocol_state: &mut P,
     ) -> Result<SynchronizerEffect<VId, V, C>, anyhow::Error> {
-        match self.protocol_state.add_vertex(v.clone()) {
+        match protocol_state.add_vertex(v.clone()) {
             Ok(Some(missing_vid)) => {
                 self.add_vertex_dependency(missing_vid.clone(), v);
                 Ok(SynchronizerEffect::RequestVertex(sender, missing_vid))
