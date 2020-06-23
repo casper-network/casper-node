@@ -1,9 +1,14 @@
 use super::{validators::ValidatorIndex, vertex::WireVote};
 use crate::components::consensus::highway_core::vertex::SignedWireVote;
 use crate::components::consensus::traits::Context;
+use serde::{Deserialize, Serialize};
 
 /// Evidence that a validator is faulty.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
 pub(crate) enum Evidence<C: Context> {
     /// The validator produced two votes with the same sequence number.
     Equivocation(SignedWireVote<C>, SignedWireVote<C>),

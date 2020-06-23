@@ -2,11 +2,11 @@ use super::{
     protocol_state::{ProtocolState, Vertex, VertexId},
     NodeId,
 };
+use serde::export::PhantomData;
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
     hash::Hash,
 };
-use serde::export::PhantomData;
 
 /// Note that we might be requesting download of the duplicate element
 /// (one that had requested for earlier) but with a different node.

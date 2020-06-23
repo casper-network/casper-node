@@ -120,8 +120,8 @@ pub(crate) mod tests {
     use crate::components::consensus::highway_core::validators::Validators;
     use crate::components::consensus::highway_core::vertex::{SignedWireVote, Vertex, WireVote};
     use crate::components::consensus::highway_core::vote::Panorama;
-    use std::iter::FromIterator;
     use crate::components::consensus::traits::ValidatorSecret;
+    use std::iter::FromIterator;
 
     #[test]
     fn invalid_signature_error() -> Result<(), AddVoteError<TestContext>> {

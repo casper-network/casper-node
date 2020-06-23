@@ -2,9 +2,14 @@
 #![allow(dead_code)]
 use std::{fmt::Debug, hash::Hash, time::Instant};
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use crate::components::consensus::consensus_protocol::synchronizer::DagSynchronizerState;
 use crate::components::consensus::highway_core::active_validator::ActiveValidator;
+use crate::components::consensus::highway_core::finality_detector::FinalityDetector;
+use crate::components::consensus::highway_core::highway::Highway;
+use crate::components::consensus::highway_core::vertex::{Vertex, Dependency};
 use crate::components::consensus::traits::Context;
+use anyhow::Error;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 mod protocol_state;
 mod synchronizer;
@@ -45,8 +50,41 @@ pub(crate) trait ConsensusProtocol<C: ConsensusValue> {
     ) -> Result<Vec<ConsensusProtocolResult<C>>, anyhow::Error>;
 }
 
-struct ConsensusInstance<C: Context> {
-    active_validator: Option<ActiveValidator<C>>
+struct HighwayProtocol<C: Context> {
+    active_validator: Option<ActiveValidator<C>>,
+    synchronizer: DagSynchronizerState<C::Hash, Vertex<C>, C::ConsensusValue, Highway<C>>,
+    finality_detector: FinalityDetector<C>,
+    highway: Highway<C>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
+enum HighwayMessage<C: Context> {
+    NewVertex(Vertex<C>),
+    RequestDependency(Dependency<C>),
+}
+
+impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
+    fn handle_message(
+        &mut self,
+        msg: Vec<u8>,
+    ) -> Result<Vec<ConsensusProtocolResult<<C as Context>::ConsensusValue>>, Error> {
+        let highway_message: HighwayMessage<C> = serde_json::from_slice(msg.as_slice()).unwrap();
+        match highway_message {
+            HighwayMessage::NewVertex(v) => todo!(),
+            HighwayMessage::RequestDependency(dep) => todo!(),
+        }
+    }
+
+    fn handle_timer(
+        &mut self,
+        timer_id: TimerId,
+    ) -> Result<Vec<ConsensusProtocolResult<<C as Context>::ConsensusValue>>, Error> {
+        unimplemented!()
+    }
 }
 
 #[cfg(test)]

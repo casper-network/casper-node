@@ -5,7 +5,7 @@ use super::{
     validators::ValidatorIndex,
     vote::{Observation, Vote},
 };
-use crate::components::consensus::traits::{Context, ConsensusValueT};
+use crate::components::consensus::traits::{ConsensusValueT, Context};
 
 /// A list containing the earliest level-n messages of each member of some committee, for some n.
 #[derive(Debug)]
