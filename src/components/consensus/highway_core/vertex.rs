@@ -6,7 +6,7 @@ use super::{evidence::Evidence, validators::ValidatorIndex, vote::Panorama};
 use crate::components::consensus::traits::{Context, ValidatorSecret};
 
 /// A dependency of a `Vertex` that can be satisfied by one or more other vertices.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -40,6 +40,13 @@ impl<C: Context> Vertex<C> {
         match self {
             Vertex::Vote(swvote) => Box::new(swvote.wire_vote.values.iter().flat_map(|v| v.iter())),
             Vertex::Evidence(_) => Box::new(iter::empty()),
+        }
+    }
+
+    pub(crate) fn id(&self) -> Dependency<C> {
+        match self {
+            Vertex::Vote(swvote) => Dependency::Vote(swvote.hash()),
+            Vertex::Evidence(ev) => Dependency::Evidence(ev.perpetrator()),
         }
     }
 }
@@ -87,6 +94,6 @@ impl<C: Context> WireVote<C> {
     // TODO: This involves serializing and hashing. Memoize?
     pub(crate) fn hash(&self) -> C::Hash {
         // TODO: Use serialize_into to avoid allocation?
-        C::hash(&bincode::serialize(self).expect("serialize WireVote"))
+        <C as Context>::hash(&bincode::serialize(self).expect("serialize WireVote"))
     }
 }

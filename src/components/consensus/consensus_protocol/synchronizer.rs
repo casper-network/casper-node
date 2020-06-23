@@ -1,22 +1,18 @@
 use super::{
-    protocol_state::{ProtocolState, Vertex, VertexId},
+    protocol_state::{AddVertexOk, ProtocolState, VertexTrait},
     NodeId,
 };
-use serde::export::PhantomData;
-use std::{
-    collections::{hash_map::Entry, HashMap, HashSet},
-    hash::Hash,
-};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 /// Note that we might be requesting download of the duplicate element
 /// (one that had requested for earlier) but with a different node.
 /// The assumption is that a downloading layer will collect different node IDs as alternative
 /// sources and use different address in the case of download failures.
-pub(crate) enum SynchronizerEffect<VId, V, C> {
+pub(crate) enum SynchronizerEffect<V: VertexTrait> {
     /// Effect for the reactor to download missing vertex.
-    RequestVertex(NodeId, VId),
+    RequestVertex(NodeId, V::Id),
     /// Effect for the reactor to download missing consensus values (a deploy for example).
-    RequestConsensusValues(NodeId, Vec<C>),
+    RequestConsensusValues(NodeId, Vec<V::Value>),
     /// Effect for the reactor to requeue a vertex once its dependencies are downloaded.
     RequeueVertex(Vec<V>),
     RequestedVertexResponse(Option<V>),
@@ -26,18 +22,14 @@ pub(crate) enum SynchronizerEffect<VId, V, C> {
 }
 
 /// Structure that tracks which vertices wait for what consensus value dependencies.
-pub(crate) struct ConsensusValueDependencies<C: Hash + PartialEq + Eq, Id: Hash + PartialEq + Eq> {
+pub(crate) struct ConsensusValueDependencies<V: VertexTrait> {
     // Multiple vertices can be dependent on the same consensus value.
-    cv_to_set: HashMap<C, Vec<Id>>,
+    cv_to_set: HashMap<V::Value, Vec<V::Id>>,
     // Each vertex can be depending on multiple consensus values.
-    id_to_group: HashMap<Id, HashSet<C>>,
+    id_to_group: HashMap<V::Id, HashSet<V::Value>>,
 }
 
-impl<C, Id> ConsensusValueDependencies<C, Id>
-where
-    C: Hash + PartialEq + Eq + Clone,
-    Id: Hash + PartialEq + Eq + Clone,
-{
+impl<V: VertexTrait> ConsensusValueDependencies<V> {
     fn new() -> Self {
         ConsensusValueDependencies {
             cv_to_set: HashMap::new(),
@@ -46,7 +38,7 @@ where
     }
 
     /// Adds a consensus value dependency.
-    fn add(&mut self, c: C, id: Id) {
+    fn add(&mut self, c: V::Value, id: V::Id) {
         self.cv_to_set
             .entry(c.clone())
             .or_default()
@@ -57,7 +49,7 @@ where
     /// Remove a consensus value from dependencies.
     /// Call when it's downloaded/synchronized.
     /// Returns vertices that were waiting on it.
-    fn remove(&mut self, c: C) -> Vec<Id> {
+    fn remove(&mut self, c: V::Value) -> Vec<V::Id> {
         // Get list of vertices that are dependent for the consensus value.
         match self.cv_to_set.remove(&c) {
             None => Vec::new(),
@@ -86,42 +78,36 @@ where
     }
 }
 
-pub(crate) struct DagSynchronizerState<VId, V, C, P>
+pub(crate) struct DagSynchronizerState<P>
 where
-    C: Hash + PartialEq + Eq,
-    VId: Hash + PartialEq + Eq,
+    P: ProtocolState,
 {
-    consensus_value_deps: ConsensusValueDependencies<C, VId>,
+    consensus_value_deps: ConsensusValueDependencies<P::Vertex>,
     // Tracks which vertices are still waiting for its vertex dependencies to be downloaded.
     // Since a vertex can have multiple vertices depend on it, downloading single vertex
     // can "release" more than one new vertex to be requeued to the reactor.
     //TODO: Wrap the following with a struct that will keep the details hidden.
-    vertex_dependants: HashMap<VId, Vec<VId>>,
-    vertex_by_vid: HashMap<VId, V>,
-    _protocol_state: PhantomData<P>,
+    vertex_dependants: HashMap<P::VId, Vec<P::VId>>,
+    vertex_by_vid: HashMap<P::VId, P::Vertex>,
 }
 
-impl<C, VId, V, P> DagSynchronizerState<VId, V, C, P>
+impl<P> DagSynchronizerState<P>
 where
-    C: Hash + PartialEq + Eq + Clone,
-    VId: VertexId + Clone + Hash + Eq + PartialEq,
-    V: Vertex<C, VId> + Clone,
-    P: ProtocolState<VId, V>,
+    P: ProtocolState,
 {
     fn new() -> Self {
         DagSynchronizerState {
             consensus_value_deps: ConsensusValueDependencies::new(),
             vertex_dependants: HashMap::new(),
             vertex_by_vid: HashMap::new(),
-            _protocol_state: PhantomData,
         }
     }
 
     pub(crate) fn get_vertex(
         &self,
-        v_id: VId,
+        v_id: P::VId,
         protocol_state: &P,
-    ) -> Result<SynchronizerEffect<VId, V, C>, anyhow::Error> {
+    ) -> Result<SynchronizerEffect<P::Vertex>, anyhow::Error> {
         protocol_state
             .get_vertex(v_id)
             .map_err(|err| anyhow::anyhow!("{:?}", err)) //TODO: Improve error reporting
@@ -131,15 +117,15 @@ where
     pub(crate) fn add_vertex(
         &mut self,
         sender: NodeId,
-        v: V,
+        v: P::Vertex,
         protocol_state: &mut P,
-    ) -> Result<SynchronizerEffect<VId, V, C>, anyhow::Error> {
+    ) -> Result<SynchronizerEffect<P::Vertex>, anyhow::Error> {
         match protocol_state.add_vertex(v.clone()) {
-            Ok(Some(missing_vid)) => {
+            Ok(AddVertexOk::MissingDependency(missing_vid)) => {
                 self.add_vertex_dependency(missing_vid.clone(), v);
                 Ok(SynchronizerEffect::RequestVertex(sender, missing_vid))
             }
-            Ok(None) => {
+            Ok(AddVertexOk::Success(_vid)) => {
                 let vertices_with_completed_dependencies = self.complete_vertex_dependency(v.id());
                 Ok(SynchronizerEffect::RequeueVertex(
                     vertices_with_completed_dependencies,
@@ -149,7 +135,8 @@ where
         }
     }
 
-    fn add_vertex_dependency(&mut self, v_id: VId, v: V) {
+    // Vertex `v` depends on the vertex with ID `v_id`
+    fn add_vertex_dependency(&mut self, v_id: P::VId, v: P::Vertex) {
         let dependant_id = v.id();
         self.vertex_by_vid.entry(dependant_id.clone()).or_insert(v);
         self.vertex_dependants
@@ -158,7 +145,11 @@ where
             .push(dependant_id);
     }
 
-    fn add_consensus_value_dependency(&mut self, c: C, v: &V) {
+    fn add_consensus_value_dependency(
+        &mut self,
+        c: <P::Vertex as VertexTrait>::Value,
+        v: &P::Vertex,
+    ) {
         let dependant_id = v.id();
         self.vertex_by_vid
             .entry(dependant_id.clone())
@@ -170,7 +161,7 @@ where
     /// persisted). Returns list of vertices that were waiting on that vertex dependency.
     /// Vertices returned have all of its dependencies completed - i.e. are not waiting for
     /// anything else.
-    fn complete_vertex_dependency(&mut self, v_id: VId) -> Vec<V> {
+    fn complete_vertex_dependency(&mut self, v_id: P::VId) -> Vec<P::Vertex> {
         match self.vertex_dependants.remove(&v_id) {
             None => Vec::new(),
             Some(dependants) => self.get_vertices_by_id(dependants),
@@ -181,7 +172,10 @@ where
     /// Returns list of vertices that were waiting on the completion of that consensus value.
     /// Vertices returned have all of its dependencies completed - i.e. are not waiting for anything
     /// else.
-    fn complete_consensus_value_dependency(&mut self, c: C) -> Vec<V> {
+    fn complete_consensus_value_dependency(
+        &mut self,
+        c: <P::Vertex as VertexTrait>::Value,
+    ) -> Vec<P::Vertex> {
         let dependants = self.consensus_value_deps.remove(c);
         if dependants.is_empty() {
             Vec::new()
@@ -191,7 +185,7 @@ where
     }
 
     /// Helper method for returning list of vertices by its ID.
-    fn get_vertices_by_id(&mut self, vertex_ids: Vec<VId>) -> Vec<V> {
+    fn get_vertices_by_id(&mut self, vertex_ids: Vec<P::VId>) -> Vec<P::Vertex> {
         vertex_ids
             .into_iter()
             .filter_map(|vertex_id| self.vertex_by_vid.remove(&vertex_id))
@@ -207,9 +201,9 @@ where
     fn sync_consensus_values(
         &mut self,
         node: NodeId,
-        c: Vec<C>,
-        v: V,
-    ) -> SynchronizerEffect<VId, V, C> {
+        c: Vec<<P::Vertex as VertexTrait>::Value>,
+        v: P::Vertex,
+    ) -> SynchronizerEffect<P::Vertex> {
         c.iter()
             .for_each(|c| self.add_consensus_value_dependency(c.clone(), &v));
 
@@ -223,16 +217,16 @@ where
     fn sync_dependency(
         &mut self,
         node: NodeId,
-        missing_dependency: VId,
-        new_vertex: V,
-    ) -> SynchronizerEffect<VId, V, C> {
+        missing_dependency: P::VId,
+        new_vertex: P::Vertex,
+    ) -> SynchronizerEffect<P::Vertex> {
         self.add_vertex_dependency(missing_dependency.clone(), new_vertex);
         SynchronizerEffect::RequestVertex(node, missing_dependency)
     }
 
     /// Must be called after consensus successfully handles the new vertex.
     /// That's b/c there might be other vertices that depend on this one and are waiting in a queue.
-    fn on_vertex_synced(&mut self, v: VId) -> Vec<SynchronizerEffect<VId, V, C>> {
+    fn on_vertex_synced(&mut self, v: P::VId) -> Vec<SynchronizerEffect<P::Vertex>> {
         let completed_dependencies = self.complete_vertex_dependency(v);
         completed_dependencies
             .into_iter()
@@ -240,7 +234,10 @@ where
             .collect()
     }
 
-    fn on_consensus_value_synced(&mut self, c: C) -> Vec<SynchronizerEffect<VId, V, C>> {
+    fn on_consensus_value_synced(
+        &mut self,
+        c: <P::Vertex as VertexTrait>::Value,
+    ) -> Vec<SynchronizerEffect<P::Vertex>> {
         let completed_dependencies = self.complete_consensus_value_dependency(c);
         completed_dependencies
             .into_iter()

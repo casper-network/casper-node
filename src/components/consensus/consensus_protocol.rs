@@ -6,7 +6,7 @@ use crate::components::consensus::consensus_protocol::synchronizer::DagSynchroni
 use crate::components::consensus::highway_core::active_validator::ActiveValidator;
 use crate::components::consensus::highway_core::finality_detector::FinalityDetector;
 use crate::components::consensus::highway_core::highway::Highway;
-use crate::components::consensus::highway_core::vertex::{Vertex, Dependency};
+use crate::components::consensus::highway_core::vertex::{Dependency, Vertex};
 use crate::components::consensus::traits::Context;
 use anyhow::Error;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -29,7 +29,7 @@ impl<T> ConsensusValue for T where T: Hash + PartialEq + Eq + Serialize + Deseri
 #[derive(Debug)]
 pub(crate) enum ConsensusProtocolResult<C: ConsensusValue> {
     CreatedNewMessage(Vec<u8>),
-    InvalidIncomingMessage(Vec<u8>, anyhow::Error),
+    InvalidIncomingMessage(Vec<u8>, Error),
     ScheduleTimer(Instant, TimerId),
     CreateNewBlock,
     FinalizedBlock(C),
@@ -40,19 +40,18 @@ pub(crate) trait ConsensusProtocol<C: ConsensusValue> {
     /// Handle an incoming message (like NewVote, RequestDependency).
     fn handle_message(
         &mut self,
+        sender: NodeId,
         msg: Vec<u8>,
-    ) -> Result<Vec<ConsensusProtocolResult<C>>, anyhow::Error>;
+    ) -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
 
     /// Triggers consensus' timer.
-    fn handle_timer(
-        &mut self,
-        timer_id: TimerId,
-    ) -> Result<Vec<ConsensusProtocolResult<C>>, anyhow::Error>;
+    fn handle_timer(&mut self, timer_id: TimerId)
+        -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
 }
 
 struct HighwayProtocol<C: Context> {
     active_validator: Option<ActiveValidator<C>>,
-    synchronizer: DagSynchronizerState<C::Hash, Vertex<C>, C::ConsensusValue, Highway<C>>,
+    synchronizer: DagSynchronizerState<Highway<C>>,
     finality_detector: FinalityDetector<C>,
     highway: Highway<C>,
 }
@@ -70,6 +69,7 @@ enum HighwayMessage<C: Context> {
 impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
     fn handle_message(
         &mut self,
+        sender: NodeId,
         msg: Vec<u8>,
     ) -> Result<Vec<ConsensusProtocolResult<<C as Context>::ConsensusValue>>, Error> {
         let highway_message: HighwayMessage<C> = serde_json::from_slice(msg.as_slice()).unwrap();
@@ -81,7 +81,7 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
 
     fn handle_timer(
         &mut self,
-        timer_id: TimerId,
+        _timer_id: TimerId,
     ) -> Result<Vec<ConsensusProtocolResult<<C as Context>::ConsensusValue>>, Error> {
         unimplemented!()
     }
@@ -92,12 +92,12 @@ mod example {
     use serde::{Deserialize, Serialize};
 
     use super::{
-        protocol_state::{ProtocolState, Vertex},
+        protocol_state::{ProtocolState, VertexTrait},
         synchronizer::DagSynchronizerState,
-        ConsensusProtocol, ConsensusProtocolResult, TimerId,
+        ConsensusProtocol, ConsensusProtocolResult, NodeId, TimerId,
     };
 
-    #[derive(Debug, Hash, PartialEq, Eq, Clone)]
+    #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
     struct VIdU64(u64);
 
     #[derive(Debug, Hash, PartialEq, Eq, Clone, Serialize, Deserialize)]
@@ -106,7 +106,10 @@ mod example {
         deploy_hash: DeployHash,
     }
 
-    impl Vertex<DeployHash, VIdU64> for DummyVertex {
+    impl VertexTrait for DummyVertex {
+        type Id = VIdU64;
+        type Value = DeployHash;
+
         fn id(&self) -> VIdU64 {
             VIdU64(self.id)
         }
@@ -122,11 +125,10 @@ mod example {
     #[derive(Debug)]
     struct Error;
 
-    impl<P: ProtocolState<VIdU64, DummyVertex>> ConsensusProtocol<DeployHash>
-        for DagSynchronizerState<VIdU64, DummyVertex, DeployHash, P>
-    {
+    impl<P: ProtocolState> ConsensusProtocol<DeployHash> for DagSynchronizerState<P> {
         fn handle_message(
             &mut self,
+            _sender: NodeId,
             _msg: Vec<u8>,
         ) -> Result<Vec<ConsensusProtocolResult<DeployHash>>, anyhow::Error> {
             unimplemented!()

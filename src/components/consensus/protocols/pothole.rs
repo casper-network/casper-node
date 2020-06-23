@@ -155,6 +155,7 @@ impl<N: NodeId + Serialize + DeserializeOwned, B: Block + ConsensusValue> Consen
 {
     fn handle_message(
         &mut self,
+        _sender: ConsensusNodeId,
         msg: Vec<u8>,
     ) -> Result<Vec<ConsensusProtocolResult<B>>, anyhow::Error> {
         let (sender, msg) = bincode::deserialize(&msg)?;

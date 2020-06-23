@@ -504,7 +504,7 @@ pub(crate) mod tests {
     pub(crate) const N: Observation<TestContext> = Observation::None;
     pub(crate) const F: Observation<TestContext> = Observation::Faulty;
 
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub(crate) struct TestContext;
 
     #[derive(Clone, Debug, Eq, PartialEq)]
