@@ -16,6 +16,7 @@ clone:
       git rev-parse HEAD
     image: "rust:latest"
 
+# NOTE: Anchors are per document
 # Anchor for default buildenv
 __buildenv: &buildenv
   image: "rust:latest"
@@ -81,6 +82,80 @@ trigger:
   - master
   - trying
   - staging
+
+---
+# Anchor for default buildenv
+__buildenv: &buildenv
+  image: "rust:latest"
+  environment:
+    CARGO_HOME: ".cargo"
+
+kind: pipeline
+name: on-tag
+
+steps:
+- name: restore-cache-tag
+  image: drillster/drone-volume-cache
+  volumes:
+  - name: cache
+    path: /cache
+  settings:
+    mount:
+      - ./target
+      - ./.cargo
+    restore: true
+
+- name: build-release-tag
+  <<: *buildenv
+  commands:
+  - "cargo build --release"
+  depends_on:
+  - restore-cache-tag
+
+- name: build-deb-tag
+  <<: *buildenv
+  commands:
+  - "cargo deb"
+  depends_on:
+  - build-release-tag
+
+- name: publish-github-tag
+  image: plugins/github-release
+  settings:
+    api_key:
+      from_secret: github_token
+    checksum:
+    - sha256
+    - md5
+    files:
+    - "./target/debian/*.deb"
+    prerelease:
+    - true
+  depends_on:
+  - build-deb-tag
+
+- name: publish-crate-tag
+  <<: *buildenv
+  commands:
+  - "echo TODO"
+  depends_on:
+  - build-release-tag
+
+- name: publish-bintray-tag
+  <<: *buildenv
+  commands:
+  - "echo TODO"
+  depends_on:
+  - build-deb-tag
+
+volumes:
+  - name: cache
+    host:
+      path: /tmp/cache
+
+trigger:
+  ref:
+  - refs/tags/v*
 
 ---
 kind: pipeline
