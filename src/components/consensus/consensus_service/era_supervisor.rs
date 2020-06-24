@@ -99,7 +99,7 @@ impl<C: ConsensusValue> ConsensusService for EraSupervisor<C> {
             Event::IncomingMessage(wire_msg) => match self.active_eras.get_mut(&wire_msg.era_id) {
                 None => todo!("Handle missing eras."),
                 Some(consensus) => consensus
-                    .handle_message(wire_msg.message_content)
+                    .handle_message(wire_msg.sender, wire_msg.message_content)
                     .map(|result_vec| {
                         result_vec
                             .into_iter()

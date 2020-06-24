@@ -2,11 +2,15 @@ use std::iter;
 
 use serde::{Deserialize, Serialize};
 
-use super::{evidence::Evidence, traits::Context, validators::ValidatorIndex, vote::Panorama};
-use crate::components::consensus::highway_core::traits::ValidatorSecret;
+use super::{evidence::Evidence, validators::ValidatorIndex, vote::Panorama};
+use crate::components::consensus::traits::{Context, ValidatorSecret};
 
 /// A dependency of a `Vertex` that can be satisfied by one or more other vertices.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
 pub(crate) enum Dependency<C: Context> {
     Vote(C::Hash),
     Evidence(ValidatorIndex),
@@ -15,7 +19,11 @@ pub(crate) enum Dependency<C: Context> {
 /// An element of the protocol state, that might depend on other elements.
 ///
 /// It is the vertex in a directed acyclic graph, whose edges are dependencies.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
 pub(crate) enum Vertex<C: Context> {
     Vote(SignedWireVote<C>),
     Evidence(Evidence<C>),
@@ -34,9 +42,20 @@ impl<C: Context> Vertex<C> {
             Vertex::Evidence(_) => Box::new(iter::empty()),
         }
     }
+
+    pub(crate) fn id(&self) -> Dependency<C> {
+        match self {
+            Vertex::Vote(swvote) => Dependency::Vote(swvote.hash()),
+            Vertex::Evidence(ev) => Dependency::Evidence(ev.perpetrator()),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
 pub(crate) struct SignedWireVote<C: Context> {
     pub(crate) wire_vote: WireVote<C>,
     pub(crate) signature: <C::ValidatorSecret as ValidatorSecret>::Signature,
@@ -75,6 +94,6 @@ impl<C: Context> WireVote<C> {
     // TODO: This involves serializing and hashing. Memoize?
     pub(crate) fn hash(&self) -> C::Hash {
         // TODO: Use serialize_into to avoid allocation?
-        C::hash(&bincode::serialize(self).expect("serialize WireVote"))
+        <C as Context>::hash(&bincode::serialize(self).expect("serialize WireVote"))
     }
 }

@@ -1,11 +1,11 @@
 use super::{
     evidence::Evidence,
     state::{AddVoteError, State},
-    traits::Context,
     validators::Validators,
     vertex::{Dependency, Vertex, WireVote},
 };
 use crate::components::consensus::highway_core::vertex::SignedWireVote;
+use crate::components::consensus::traits::Context;
 
 /// The result of trying to add a vertex to the protocol highway.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -117,10 +117,10 @@ pub(crate) mod tests {
         TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC, WEIGHTS,
     };
     use crate::components::consensus::highway_core::state::{AddVoteError, State, Weight};
-    use crate::components::consensus::highway_core::traits::ValidatorSecret;
     use crate::components::consensus::highway_core::validators::Validators;
     use crate::components::consensus::highway_core::vertex::{SignedWireVote, Vertex, WireVote};
     use crate::components::consensus::highway_core::vote::Panorama;
+    use crate::components::consensus::traits::ValidatorSecret;
     use std::iter::FromIterator;
 
     #[test]

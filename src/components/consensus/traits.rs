@@ -32,7 +32,7 @@ pub(crate) trait ValidatorSecret: Debug + Eq + Clone {
 /// The collection of types the user can choose for cryptography, IDs, transactions, etc.
 // TODO: These trait bounds make `#[derive(...)]` work for types with a `C: Context` type
 // parameter. Split this up or replace the derives with explicit implementations.
-pub(crate) trait Context: Clone + Debug + PartialEq {
+pub(crate) trait Context: Clone + Debug + Eq + Ord + Hash {
     /// The consensus value type, e.g. a list of transactions.
     type ConsensusValue: ConsensusValueT;
     /// Unique identifiers for validators.

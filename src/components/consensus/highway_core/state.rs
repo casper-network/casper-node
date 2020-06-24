@@ -16,12 +16,12 @@ use super::{
     block::Block,
     evidence::Evidence,
     tallies::Tallies,
-    traits::Context,
     validators::ValidatorIndex,
     vertex::{Dependency, WireVote},
     vote::{Observation, Panorama, Vote},
 };
 use crate::components::consensus::highway_core::vertex::SignedWireVote;
+use crate::components::consensus::traits::Context;
 
 /// A vote weight.
 #[derive(
@@ -492,9 +492,8 @@ fn log2(x: u64) -> u32 {
 pub(crate) mod tests {
     use std::{collections::hash_map::DefaultHasher, hash::Hasher};
 
-    use super::super::traits::ValidatorSecret;
-
     use super::*;
+    use crate::components::consensus::traits::ValidatorSecret;
 
     pub(crate) const WEIGHTS: &[Weight] = &[Weight(3), Weight(4), Weight(5)];
 
@@ -505,7 +504,7 @@ pub(crate) mod tests {
     pub(crate) const N: Observation<TestContext> = Observation::None;
     pub(crate) const F: Observation<TestContext> = Observation::Faulty;
 
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub(crate) struct TestContext;
 
     #[derive(Clone, Debug, Eq, PartialEq)]

@@ -1,1 +1,1 @@
-pub(crate) mod pothole;
+pub(crate) mod highway;

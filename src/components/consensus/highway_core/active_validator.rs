@@ -2,12 +2,12 @@ use tracing::warn;
 
 use super::{
     state::State,
-    traits::Context,
     validators::ValidatorIndex,
     vertex::{Vertex, WireVote},
     vote::{Observation, Panorama},
 };
 use crate::components::consensus::highway_core::vertex::SignedWireVote;
+use crate::components::consensus::traits::Context;
 
 /// An action taken by a validator.
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -52,7 +52,6 @@ pub(crate) struct ActiveValidator<C: Context> {
     /// Our own validator index.
     vidx: ValidatorIndex,
     /// The validator's secret signing key.
-    // TODO: Sign votes.
     secret: C::ValidatorSecret,
     /// The round exponent: Our subjective rounds are `1 << round_exp` milliseconds long.
     round_exp: u8,

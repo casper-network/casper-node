@@ -35,7 +35,6 @@ mod test_macros;
 pub(crate) mod active_validator;
 pub(crate) mod finality_detector;
 pub(crate) mod highway;
-pub(crate) mod traits;
 pub(crate) mod vertex;
 
 mod block;
