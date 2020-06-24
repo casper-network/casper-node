@@ -2,10 +2,10 @@ use std::{collections::BTreeMap, iter};
 
 use super::{
     state::{State, Weight},
-    traits::{ConsensusValueT, Context},
     validators::ValidatorIndex,
     vote::{Observation, Vote},
 };
+use crate::components::consensus::traits::{ConsensusValueT, Context};
 
 /// A list containing the earliest level-n messages of each member of some committee, for some n.
 #[derive(Debug)]

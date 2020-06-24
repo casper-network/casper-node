@@ -1,17 +1,29 @@
 use std::fmt::Debug;
+use std::hash::Hash;
 
-pub(crate) trait VertexId {}
+pub(crate) trait VertexId: Clone + Hash + Eq + Ord {}
+impl<T> VertexId for T where T: Clone + Hash + Eq + Ord {}
 
-pub(crate) trait Vertex<C, Id> {
-    fn id(&self) -> Id;
+pub(crate) trait VertexTrait: Clone {
+    type Id: VertexId;
+    type Value: Clone + Hash + Eq;
 
-    fn values(&self) -> Vec<C>;
+    fn id(&self) -> Self::Id;
+
+    fn values(&self) -> Vec<Self::Value>;
 }
 
-pub(crate) trait ProtocolState<VertexId, Vertex> {
+pub(crate) enum AddVertexOk<VId> {
+    Success(VId),
+    MissingDependency(VId),
+}
+
+pub(crate) trait ProtocolState {
     type Error: Debug;
+    type VId: VertexId;
+    type Vertex: VertexTrait<Id = Self::VId>;
 
-    fn add_vertex(&mut self, v: Vertex) -> Result<Option<VertexId>, Self::Error>;
+    fn add_vertex(&mut self, v: Self::Vertex) -> Result<AddVertexOk<Self::VId>, Self::Error>;
 
-    fn get_vertex(&self, v: VertexId) -> Result<Option<Vertex>, Self::Error>;
+    fn get_vertex(&self, v: Self::VId) -> Result<Option<Self::Vertex>, Self::Error>;
 }
