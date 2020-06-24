@@ -78,7 +78,8 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
         match highway_message {
             HighwayMessage::NewVertex(v) => {
                 match self.synchronizer.add_vertex(sender, v, &mut self.highway) {
-                    _ => todo!(),
+                    Ok(_) => todo!(),
+                    Err(err) => todo!("error: {:?}", err),
                 }
             }
             HighwayMessage::RequestDependency(_dep) => todo!(),
