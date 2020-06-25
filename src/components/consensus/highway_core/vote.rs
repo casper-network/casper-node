@@ -95,6 +95,11 @@ impl<C: Context> Panorama<C> {
     pub(crate) fn update(&mut self, idx: ValidatorIndex, obs: Observation<C>) {
         self.0[idx.0 as usize] = obs;
     }
+
+    /// Returns the number of entries in the panorama. This must equal the number of validators.
+    pub(crate) fn len(&self) -> usize {
+        self.0.len()
+    }
 }
 
 /// A vote sent to or received from the network.
