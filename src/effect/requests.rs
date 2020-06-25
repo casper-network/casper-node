@@ -1,4 +1,7 @@
-use std::fmt::{self, Debug, Display, Formatter};
+use std::{
+    collections::HashSet,
+    fmt::{self, Debug, Display, Formatter},
+};
 
 use super::Responder;
 use crate::{
@@ -23,6 +26,8 @@ pub enum NetworkRequest<I, P> {
     },
     Gossip {
         payload: P,
+        count: usize,
+        exclude: HashSet<I>,
         responder: Responder<()>,
     },
 }
@@ -49,8 +54,15 @@ impl<I, P> NetworkRequest<I, P> {
                 payload: wrap_payload(payload),
                 responder,
             },
-            NetworkRequest::Gossip { payload, responder } => NetworkRequest::Gossip {
+            NetworkRequest::Gossip {
+                payload,
+                count,
+                exclude,
+                responder,
+            } => NetworkRequest::Gossip {
                 payload: wrap_payload(payload),
+                count,
+                exclude,
                 responder,
             },
         }
