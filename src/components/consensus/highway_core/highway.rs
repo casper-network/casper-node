@@ -147,7 +147,7 @@ pub(crate) mod tests {
         let wvote = WireVote {
             panorama: Panorama::new(WEIGHTS.len()),
             sender: ALICE,
-            values: Some(vec![]),
+            value: Some(0),
             seq_number: 0,
             instant: 1,
         };

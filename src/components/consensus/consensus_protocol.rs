@@ -121,8 +121,8 @@ mod example {
             VIdU64(self.id)
         }
 
-        fn values(&self) -> Vec<DeployHash> {
-            vec![self.deploy_hash.clone()]
+        fn value(&self) -> Option<DeployHash> {
+            Some(self.deploy_hash.clone())
         }
     }
 
