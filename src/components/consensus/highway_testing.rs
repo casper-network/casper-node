@@ -9,19 +9,34 @@ use std::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
 struct NodeId(u64);
 /// A node in the test network.
-struct Node {
+struct Node<C> {
     id: NodeId,
-    // Whether a node should produce equivocations.
+    /// Whether a node should produce equivocations.
     is_faulty: bool,
+    /// Vector of consensus values finalized by the node.
+    finalized_values: Vec<C>,
 }
 
-impl Node {
+impl<C> Node<C> {
+    fn new(id: NodeId, is_faulty: bool) -> Self {
+        Node {
+            id,
+            is_faulty,
+            finalized_values: Vec::new(),
+        }
+    }
+
     fn is_faulty(&self) -> bool {
         self.is_faulty
     }
 
     fn node_id(&self) -> NodeId {
         self.id
+    }
+
+    /// Iterator over consensus values finalized by the node.
+    fn finalized_values(&self) -> impl Iterator<Item = &C> {
+        self.finalized_values.iter()
     }
 }
 
@@ -112,7 +127,7 @@ where
     M: PartialEq + Eq + Ord,
 {
     /// Maps node IDs to actual node instances.
-    nodes_map: BTreeMap<NodeId, Node>,
+    nodes_map: BTreeMap<NodeId, Node<C>>,
     /// A collection of all network messages queued up for delivery.
     msg_queue: Queue<M>,
     /// The instant the network was created.
@@ -126,7 +141,7 @@ impl<M, C> TestHarness<M, C>
 where
     M: PartialEq + Eq + Ord,
 {
-    fn new<I: IntoIterator<Item = Node>>(
+    fn new<I: IntoIterator<Item = Node<C>>>(
         nodes: I,
         start_time: u64,
         consensus_values: Vec<C>,
