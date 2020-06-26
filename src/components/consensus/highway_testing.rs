@@ -75,6 +75,7 @@ where
         Some(self.cmp(other))
     }
 }
+
 /// Priority queue of messages scheduled for delivery to nodes.
 /// Ordered by the delivery time.
 struct Queue<M>(BinaryHeap<QueueEntry<M>>)
@@ -106,7 +107,7 @@ where
     }
 }
 
-struct TestHarness<M>
+struct TestHarness<M, C>
 where
     M: PartialEq + Eq + Ord,
 {
@@ -116,14 +117,29 @@ where
     msg_queue: Queue<M>,
     /// The instant the network was created.
     start_time: u64,
-    /// Duration time of the test.
-    duration: u64,
+    /// Consensus values to be proposed.
+    /// Order of values in the vector defines the order in which they will be proposed.
+    consensus_values: Vec<C>,
 }
 
-impl<M> TestHarness<M>
+impl<M, C> TestHarness<M, C>
 where
     M: PartialEq + Eq + Ord,
 {
+    fn new<I: IntoIterator<Item = Node>>(
+        nodes: I,
+        start_time: u64,
+        consensus_values: Vec<C>,
+    ) -> Self {
+        let nodes_map = nodes.into_iter().map(|node| (node.id, node)).collect();
+        TestHarness {
+            nodes_map,
+            msg_queue: Default::default(),
+            start_time,
+            consensus_values,
+        }
+    }
+
     /// Schedules a message `message` to be delivered at `delivery_time` to `recipient` node.
     fn schedule_message(
         &mut self,
@@ -131,21 +147,8 @@ where
         recipient: NodeId,
         message: M,
     ) -> Result<(), anyhow::Error> {
-        if (delivery_time > self.end_time()) {
-            Err(anyhow!(
-                "Tried scheduling a message at {:?} while the test run finishes at {:?}",
-                delivery_time,
-                self.end_time()
-            ))
-        } else {
-            let qe = QueueEntry::new(delivery_time, recipient, message);
-            self.msg_queue.push(qe);
-            Ok(())
-        }
-    }
-
-    /// Returns the end time of the test run.
-    fn end_time(&self) -> u64 {
-        self.start_time + self.duration
+        let qe = QueueEntry::new(delivery_time, recipient, message);
+        self.msg_queue.push(qe);
+        Ok(())
     }
 }
