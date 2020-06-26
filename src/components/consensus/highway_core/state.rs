@@ -210,9 +210,9 @@ impl<C: Context> State<C> {
         self.update_panorama(&swvote);
         let hash = wvote.hash();
         let fork_choice = self.fork_choice(&wvote.panorama).cloned();
-        let (vote, opt_values) = Vote::new(swvote, fork_choice.as_ref(), self);
-        if let Some(values) = opt_values {
-            let block = Block::new(fork_choice, values, self);
+        let (vote, opt_value) = Vote::new(swvote, fork_choice.as_ref(), self);
+        if let Some(value) = opt_value {
+            let block = Block::new(fork_choice, value, self);
             self.blocks.insert(hash.clone(), block);
         }
         self.votes.insert(hash, vote);
@@ -227,11 +227,11 @@ impl<C: Context> State<C> {
     pub(crate) fn wire_vote(&self, hash: &C::Hash) -> Option<SignedWireVote<C>> {
         let vote = self.opt_vote(hash)?.clone();
         let opt_block = self.opt_block(hash);
-        let values = opt_block.map(|block| block.values.clone());
+        let value = opt_block.map(|block| block.value.clone());
         let wvote = WireVote {
             panorama: vote.panorama.clone(),
             sender: vote.sender,
-            values,
+            value,
             seq_number: vote.seq_number,
             instant: vote.instant,
         };
@@ -324,7 +324,7 @@ impl<C: Context> State<C> {
     fn validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {
         let wvote = &swvote.wire_vote;
         let sender = wvote.sender;
-        if (wvote.values.is_none() && wvote.panorama.is_empty())
+        if (wvote.value.is_none() && wvote.panorama.is_empty())
             || !self.is_panorama_valid(&wvote.panorama)
         {
             return Err(VoteError::Panorama);
@@ -610,7 +610,7 @@ pub(crate) mod tests {
     fn find_in_swimlane() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new(WEIGHTS, 0);
         let mut a = Vec::new();
-        let vote = vote!(ALICE, ALICE_SEC, 0; N, N, N; Some(vec![0xA]));
+        let vote = vote!(ALICE, ALICE_SEC, 0; N, N, N; Some(0xA));
         a.push(vote.hash());
         state.add_vote(vote)?;
         for i in 1..10 {

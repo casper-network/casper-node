@@ -15,7 +15,7 @@ macro_rules! vote {
         let wvote = crate::components::consensus::highway_core::vertex::WireVote {
             panorama: panorama!($($obs),*),
             sender: $sender,
-            values: $val,
+            value: $val,
             seq_number: $seq_num,
             instant: 0,
         };
@@ -32,7 +32,7 @@ macro_rules! add_vote {
         $state.add_vote(vote)?;
     };
     ($state: ident, $hash: ident, $sender: expr, $secret: expr, $seq_num: expr; $($obs:expr),*; $val: expr) => {
-        let vote = vote!($sender, $secret, $seq_num; $($obs),*; Some(vec![$val]));
+        let vote = vote!($sender, $secret, $seq_num; $($obs),*; Some($val));
         let $hash = vote.hash();
         $state.add_vote(vote)?;
     };
