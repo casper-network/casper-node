@@ -81,6 +81,15 @@ struct Queue<M>(BinaryHeap<QueueEntry<M>>)
 where
     M: PartialEq + Eq + Ord;
 
+impl<M> Default for Queue<M>
+where
+    M: PartialEq + Eq + Ord,
+{
+    fn default() -> Self {
+        Queue(Default::default())
+    }
+}
+
 impl<M> Queue<M>
 where
     M: PartialEq + Eq + Ord,
