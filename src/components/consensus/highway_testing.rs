@@ -106,7 +106,7 @@ where
     }
 }
 
-struct NetworkSim<M>
+struct TestHarness<M>
 where
     M: PartialEq + Eq + Ord,
 {
@@ -120,7 +120,7 @@ where
     duration: u64,
 }
 
-impl<M> NetworkSim<M>
+impl<M> TestHarness<M>
 where
     M: PartialEq + Eq + Ord,
 {
