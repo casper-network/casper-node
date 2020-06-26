@@ -10,7 +10,7 @@ pub(crate) trait VertexTrait: Clone {
 
     fn id(&self) -> Self::Id;
 
-    fn value(&self) -> Option<Self::Value>;
+    fn value(&self) -> Option<&Self::Value>;
 }
 
 pub(crate) enum AddVertexOk<VId> {

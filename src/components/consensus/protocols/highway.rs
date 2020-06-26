@@ -15,8 +15,8 @@ impl<C: Context> VertexTrait for Vertex<C> {
         self.id()
     }
 
-    fn value(&self) -> Option<C::ConsensusValue> {
-        self.value().cloned()
+    fn value(&self) -> Option<&C::ConsensusValue> {
+        self.value()
     }
 }
 
