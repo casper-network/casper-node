@@ -25,7 +25,7 @@ impl Node {
     }
 }
 
-/// An entry in the message queue o the test network.
+/// An entry in the message queue of the test network.
 #[derive(Debug, PartialEq, Eq)]
 struct QueueEntry<M>
 where
