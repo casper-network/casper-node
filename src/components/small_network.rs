@@ -244,7 +244,7 @@ where
         }
     }
 
-    /// Queues a message to `n` random nodes on the network.
+    /// Queues a message to `count` random nodes on the network.
     fn gossip_message<R: Rng + ?Sized>(
         &self,
         rng: &mut R,

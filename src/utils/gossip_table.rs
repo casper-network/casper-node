@@ -221,7 +221,7 @@ impl<T: Copy + Eq + Hash> GossipTable<T> {
     }
 
     /// We received or generated potentially new data with given ID.  If received from a peer,
-    /// its ID should be passed in `from`.  If received from a client or generated on this node,
+    /// its ID should be passed in `maybe_holder`.  If received from a client or generated on this node,
     /// `maybe_holder` should be `None`.
     ///
     /// This should only be called once we hold everything locally we need to be able to gossip it
