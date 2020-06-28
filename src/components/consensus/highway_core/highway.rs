@@ -74,7 +74,9 @@ impl<C: Context> Highway<C> {
     }
 
     fn add_vote(&mut self, swvote: SignedWireVote<C>) -> AddVertexOutcome<C> {
-        if !self.params.validators.contains(swvote.wire_vote.sender) {
+        if !self.params.validators.contains(swvote.wire_vote.sender)
+            || swvote.wire_vote.panorama.len() != self.params.validators.len()
+        {
             return AddVertexOutcome::Invalid(Vertex::Vote(swvote));
         }
         if !C::validate_signature(
@@ -145,7 +147,7 @@ pub(crate) mod tests {
         let wvote = WireVote {
             panorama: Panorama::new(WEIGHTS.len()),
             sender: ALICE,
-            values: Some(vec![]),
+            value: Some(0),
             seq_number: 0,
             instant: 1,
         };

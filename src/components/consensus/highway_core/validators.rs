@@ -37,6 +37,10 @@ impl<VID: Eq + Hash> Validators<VID> {
         self.validators.len() as u32 > idx.0
     }
 
+    pub(crate) fn len(&self) -> usize {
+        self.validators.len()
+    }
+
     /// Returns validator at index.
     /// Expects that idx has been validated before calling this function.
     pub(crate) fn get_by_id(&self, idx: ValidatorIndex) -> &VID {

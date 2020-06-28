@@ -7,7 +7,7 @@ pub(crate) struct Block<C: Context> {
     /// The total number of ancestors, i.e. the height in the blockchain.
     pub(crate) height: u64,
     /// The payload, e.g. a list of transactions.
-    pub(crate) values: Vec<C::ConsensusValue>,
+    pub(crate) value: C::ConsensusValue,
     /// A skip list index of the block's ancestors.
     ///
     /// For every `p = 1 << i` that divides `height`, this contains an `i`-th entry pointing to the
@@ -19,11 +19,11 @@ impl<C: Context> Block<C> {
     /// Creates a new block with the given parent and values. Panics if parent does not exist.
     pub(crate) fn new(
         parent_hash: Option<C::Hash>,
-        values: Vec<C::ConsensusValue>,
+        value: C::ConsensusValue,
         state: &State<C>,
     ) -> Block<C> {
         let (parent, mut skip_idx) = match parent_hash {
-            None => return Block::initial(values),
+            None => return Block::initial(value),
             Some(hash) => (state.block(&hash), vec![hash]),
         };
         let height = parent.height + 1;
@@ -33,7 +33,7 @@ impl<C: Context> Block<C> {
         }
         Block {
             height,
-            values,
+            value,
             skip_idx,
         }
     }
@@ -43,10 +43,10 @@ impl<C: Context> Block<C> {
         self.skip_idx.first()
     }
 
-    fn initial(values: Vec<C::ConsensusValue>) -> Block<C> {
+    fn initial(value: C::ConsensusValue) -> Block<C> {
         Block {
             height: 0,
-            values,
+            value,
             skip_idx: vec![],
         }
     }

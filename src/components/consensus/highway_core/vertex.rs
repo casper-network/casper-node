@@ -30,16 +30,16 @@ pub(crate) enum Vertex<C: Context> {
 }
 
 impl<C: Context> Vertex<C> {
-    /// Returns an iterator over all consensus values mentioned in this vertex.
+    /// Returns the consensus value mentioned in this vertex, if any.
     ///
     /// These need to be validated before passing the vertex into the protocol state. E.g. if
     /// `C::ConsensusValue` is a transaction, it should be validated first (correct signature,
     /// structure, gas limit, etc.). If it is a hash of a transaction, the transaction should be
     /// obtained _and_ validated. Only after that, the vertex can be considered valid.
-    pub(crate) fn values<'a>(&'a self) -> Box<dyn Iterator<Item = &'a C::ConsensusValue> + 'a> {
+    pub(crate) fn value(&self) -> Option<&C::ConsensusValue> {
         match self {
-            Vertex::Vote(swvote) => Box::new(swvote.wire_vote.values.iter().flat_map(|v| v.iter())),
-            Vertex::Evidence(_) => Box::new(iter::empty()),
+            Vertex::Vote(swvote) => swvote.wire_vote.value.as_ref(),
+            Vertex::Evidence(_) => None,
         }
     }
 
@@ -84,7 +84,7 @@ impl<C: Context> SignedWireVote<C> {
 pub(crate) struct WireVote<C: Context> {
     pub(crate) panorama: Panorama<C>,
     pub(crate) sender: ValidatorIndex,
-    pub(crate) values: Option<Vec<C::ConsensusValue>>,
+    pub(crate) value: Option<C::ConsensusValue>,
     pub(crate) seq_number: u64,
     pub(crate) instant: u64,
 }
