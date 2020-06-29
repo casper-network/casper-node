@@ -48,6 +48,11 @@ use openssl::{
     ssl::{SslAcceptor, SslConnector, SslContextBuilder, SslMethod, SslVerifyMode, SslVersion},
     x509::{X509Builder, X509Name, X509NameBuilder, X509NameRef, X509Ref, X509},
 };
+#[cfg(test)]
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
@@ -130,6 +135,22 @@ pub(crate) struct CertFingerprint(Sha512);
 /// Public key fingerprint.
 #[derive(Copy, Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct KeyFingerprint(Sha512);
+
+#[cfg(test)]
+impl From<[u8; Sha512::SIZE]> for KeyFingerprint {
+    fn from(raw_bytes: [u8; Sha512::SIZE]) -> Self {
+        KeyFingerprint(Sha512(raw_bytes))
+    }
+}
+
+#[cfg(test)]
+impl Distribution<KeyFingerprint> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> KeyFingerprint {
+        let mut bytes = [0u8; Sha512::SIZE];
+        rng.fill(&mut bytes[..]);
+        bytes.into()
+    }
+}
 
 /// Cryptographic signature.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -767,7 +788,7 @@ impl Debug for Sha512 {
 
 impl Display for Sha512 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", HexFmt(&self.0[0..7]))
+        write!(f, "{:10}", HexFmt(&self.0[..]))
     }
 }
 
@@ -785,7 +806,7 @@ impl Display for KeyFingerprint {
 
 impl Display for Signature {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", HexFmt(&self.0[0..7]))
+        write!(f, "{:10}", HexFmt(&self.0[..]))
     }
 }
 

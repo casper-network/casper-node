@@ -31,9 +31,6 @@ pub struct Config {
 
     /// Number of milliseconds to delay between each reconnection attempt.
     pub outgoing_retry_delay_millis: u64,
-
-    /// Number of nodes to randomly select when gossiping.
-    pub gossip_nodes_outgoing: u16,
 }
 
 impl Config {
@@ -47,7 +44,6 @@ impl Config {
             private_key: None,
             max_outgoing_retries: Some(360),
             outgoing_retry_delay_millis: 10_000,
-            gossip_nodes_outgoing: 3,
         }
     }
 }

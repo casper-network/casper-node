@@ -52,6 +52,10 @@ tracing = "0.1.14"
 tracing-subscriber = "0.2.5"
 warp = "0.2.3"
 
+[dev-dependencies]
+fake_instant = "0.4.0"
+pnet = "0.26.0"
+
 [features]
 vendored-openssl = ['openssl/vendored']
 
@@ -75,6 +79,3 @@ assets = [
     ["./target/release/casperlabs-node","/usr/bin/casperlabs-node", "755"],
     ["./target/release/casperlabs-client","/usr/bin/casperlabs-client", "755"]
 ]
-
-[dev-dependencies]
-pnet = "0.26.0"
