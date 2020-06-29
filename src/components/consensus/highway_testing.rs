@@ -37,6 +37,8 @@ trait ConsensusInstance {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
 struct NodeId(u64);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
+struct Instant(u64);
 
 /// A node in the test network.
 struct Node<C, D: ConsensusInstance> {
@@ -82,7 +84,7 @@ where
     /// When a message has dependencies that recipient node is missing,
     /// those will be added to it in a loop (simulating synchronization)
     /// and not influence the delivery time.
-    delivery_time: u64,
+    delivery_time: Instant,
     /// Recipient of the message.
     recipient: NodeId,
     /// The message.
@@ -93,7 +95,7 @@ impl<M> QueueEntry<M>
 where
     M: PartialEq + Eq + Ord + Clone + Copy,
 {
-    pub(crate) fn new(delivery_time: u64, recipient: NodeId, message: Message<M>) -> Self {
+    pub(crate) fn new(delivery_time: Instant, recipient: NodeId, message: Message<M>) -> Self {
         QueueEntry {
             delivery_time,
             recipient,
@@ -181,7 +183,7 @@ struct TestHarness<M, C, D, DS, R>
 where
     M: PartialEq + Eq + Ord + Clone + Copy,
     D: ConsensusInstance,
-    DS: Strategy<u64>,
+    DS: Strategy<Instant>,
 {
     /// Maps node IDs to actual node instances.
     nodes_map: BTreeMap<NodeId, Node<C, D>>,
@@ -200,7 +202,7 @@ impl<M, C, D, DS, R> TestHarness<M, C, D, DS, R>
 where
     M: PartialEq + Eq + Ord + Clone + Copy,
     D: ConsensusInstance<M = M>,
-    DS: Strategy<u64>,
+    DS: Strategy<Instant>,
     R: rand::Rng,
 {
     fn new<I: IntoIterator<Item = Node<C, D>>>(
@@ -222,7 +224,7 @@ where
     }
 
     /// Schedules a message `message` to be delivered at `delivery_time` to `recipient` node.
-    fn schedule_message(&mut self, delivery_time: u64, recipient: NodeId, message: Message<M>) {
+    fn schedule_message(&mut self, delivery_time: Instant, recipient: NodeId, message: Message<M>) {
         let qe = QueueEntry::new(delivery_time, recipient, message);
         self.msg_queue.push(qe);
     }
@@ -273,7 +275,7 @@ where
         &mut self,
         recipients: I,
         message: Message<M>,
-        base_delivery_time: u64,
+        base_delivery_time: Instant,
     ) {
         for node_id in recipients {
             let tampered_delivery_time = self
