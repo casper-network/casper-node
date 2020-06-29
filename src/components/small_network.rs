@@ -257,7 +257,7 @@ where
         msg: Message<P>,
         count: usize,
         exclude: HashSet<NodeId>,
-    ) {
+    ) -> HashSet<NodeId> {
         let node_ids = self
             .outgoing
             .keys()
@@ -273,9 +273,11 @@ where
             );
         }
 
-        for node_id in node_ids {
+        for &node_id in &node_ids {
             self.send_message(*node_id, msg.clone());
         }
+
+        node_ids.into_iter().copied().collect()
     }
 
     /// Queues a message to be sent to a specific node.
@@ -630,8 +632,8 @@ where
                     },
             } => {
                 // We're given a message to gossip.
-                self.gossip_message(rng, Message::Payload(payload), count, exclude);
-                responder.respond(()).ignore()
+                let sent_to = self.gossip_message(rng, Message::Payload(payload), count, exclude);
+                responder.respond(sent_to).ignore()
             }
         }
     }

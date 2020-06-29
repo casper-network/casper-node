@@ -16,14 +16,14 @@ use crate::{
     components::{
         api_server::{self, ApiServer},
         consensus::{self, EraSupervisor},
-        deploy_broadcaster::{self, DeployBroadcaster},
+        deploy_gossiper::{self, DeployGossiper},
         pinger::{self, Pinger},
         storage::{Storage, StorageType},
         Component,
     },
     effect::{
         announcements::NetworkAnnouncement,
-        requests::{ApiRequest, DeployBroadcasterRequest, NetworkRequest, StorageRequest},
+        requests::{ApiRequest, DeployGossiperRequest, NetworkRequest, StorageRequest},
         Effect, EffectBuilder, Multiple,
     },
     reactor::{self, EventQueueHandle, Result},
@@ -41,9 +41,9 @@ pub enum Message {
     /// Consensus component message.
     #[from]
     Consensus(consensus::ConsensusMessage),
-    /// Deploy broadcaster component message.
+    /// Deploy gossiper component message.
     #[from]
-    DeployBroadcaster(deploy_broadcaster::Message),
+    DeployGossiper(deploy_gossiper::Message),
 }
 
 impl Display for Message {
@@ -51,7 +51,7 @@ impl Display for Message {
         match self {
             Message::Pinger(pinger) => write!(f, "Pinger::{}", pinger),
             Message::Consensus(consensus) => write!(f, "Consensus::{}", consensus),
-            Message::DeployBroadcaster(deploy) => write!(f, "DeployBroadcaster::{}", deploy),
+            Message::DeployGossiper(deploy) => write!(f, "DeployGossiper::{}", deploy),
         }
     }
 }
@@ -75,9 +75,9 @@ pub enum Event {
     #[from]
     /// Consensus event.
     Consensus(consensus::Event),
-    /// Deploy broadcaster event.
+    /// Deploy gossiper event.
     #[from]
-    DeployBroadcaster(deploy_broadcaster::Event),
+    DeployGossiper(deploy_gossiper::Event),
 
     // Requests
     /// Network request.
@@ -108,15 +108,15 @@ impl From<NetworkRequest<NodeId, pinger::Message>> for Event {
     }
 }
 
-impl From<NetworkRequest<NodeId, deploy_broadcaster::Message>> for Event {
-    fn from(request: NetworkRequest<NodeId, deploy_broadcaster::Message>) -> Self {
+impl From<NetworkRequest<NodeId, deploy_gossiper::Message>> for Event {
+    fn from(request: NetworkRequest<NodeId, deploy_gossiper::Message>) -> Self {
         Event::NetworkRequest(request.map_payload(Message::from))
     }
 }
 
-impl From<DeployBroadcasterRequest> for Event {
-    fn from(request: DeployBroadcasterRequest) -> Self {
-        Event::DeployBroadcaster(deploy_broadcaster::Event::Request(request))
+impl From<DeployGossiperRequest> for Event {
+    fn from(request: DeployGossiperRequest) -> Self {
+        Event::DeployGossiper(deploy_gossiper::Event::Request(request))
     }
 }
 
@@ -128,7 +128,7 @@ pub struct Reactor {
     storage: Storage,
     api_server: ApiServer,
     consensus: EraSupervisor,
-    deploy_broadcaster: DeployBroadcaster,
+    deploy_gossiper: DeployGossiper,
     rng: ChaCha20Rng,
 }
 
@@ -149,7 +149,7 @@ impl reactor::Reactor for Reactor {
         let storage = Storage::new(cfg.storage)?;
         let (api_server, api_server_effects) = ApiServer::new(cfg.http_server, effect_builder);
         let consensus = EraSupervisor::new();
-        let deploy_broadcaster = DeployBroadcaster::new();
+        let deploy_gossiper = DeployGossiper::new(cfg.gossip);
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
         effects.extend(reactor::wrap_effects(Event::Pinger, pinger_effects));
@@ -164,7 +164,7 @@ impl reactor::Reactor for Reactor {
                 storage,
                 api_server,
                 consensus,
-                deploy_broadcaster,
+                deploy_gossiper,
                 rng,
             },
             effects,
@@ -201,9 +201,9 @@ impl reactor::Reactor for Reactor {
                 self.consensus
                     .handle_event(effect_builder, &mut self.rng, event),
             ),
-            Event::DeployBroadcaster(event) => reactor::wrap_effects(
-                Event::DeployBroadcaster,
-                self.deploy_broadcaster
+            Event::DeployGossiper(event) => reactor::wrap_effects(
+                Event::DeployGossiper,
+                self.deploy_gossiper
                     .handle_event(effect_builder, &mut self.rng, event),
             ),
 
@@ -225,8 +225,8 @@ impl reactor::Reactor for Reactor {
                     Message::Pinger(msg) => {
                         Event::Pinger(pinger::Event::MessageReceived { sender, msg })
                     }
-                    Message::DeployBroadcaster(message) => {
-                        Event::DeployBroadcaster(deploy_broadcaster::Event::MessageReceived {
+                    Message::DeployGossiper(message) => {
+                        Event::DeployGossiper(deploy_gossiper::Event::MessageReceived {
                             sender,
                             message,
                         })
@@ -248,7 +248,7 @@ impl Display for Event {
             Event::Storage(event) => write!(f, "storage: {}", event),
             Event::ApiServer(event) => write!(f, "api server: {}", event),
             Event::Consensus(event) => write!(f, "consensus: {}", event),
-            Event::DeployBroadcaster(event) => write!(f, "deploy broadcaster: {}", event),
+            Event::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
         }
