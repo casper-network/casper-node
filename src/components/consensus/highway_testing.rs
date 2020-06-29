@@ -235,34 +235,30 @@ where
     /// and pass it to the recipient node for execution.
     /// Messages returned from the execution are scheduled for later delivery.
     fn crank(&mut self) -> Result<(), TestRunError> {
-        if let Some(QueueEntry {
+        let QueueEntry {
             delivery_time,
             recipient,
             message,
-        }) = self.msg_queue.pop()
-        {
-            // TODO: Check if we should stop the test.
-            // Verify whether all nodes have finalized all consensus values.
-            let mut recipient_node = self
-                .nodes_map
-                .get_mut(&recipient)
-                .ok_or(TestRunError::MissingRecipient(recipient))?;
+        } = self.msg_queue.pop().ok_or(TestRunError::NoMessages)?;
+        // TODO: Check if we should stop the test.
+        // Verify whether all nodes have finalized all consensus values.
+        let mut recipient_node = self
+            .nodes_map
+            .get_mut(&recipient)
+            .ok_or(TestRunError::MissingRecipient(recipient))?;
 
-            for TargetedMessage { message, target } in recipient_node.consensus.handle_message(
-                message.sender,
-                message.payload,
-                recipient_node.is_faulty(),
-            ) {
-                let recipient_nodes = match target {
-                    Target::All => self.nodes_map.keys().cloned().collect(),
-                    Target::SingleNode(recipient_id) => vec![recipient_id],
-                };
-                self.send_messages(recipient_nodes, message, delivery_time)
-            }
-            Ok(())
-        } else {
-            Err(TestRunError::NoMessages)
+        for TargetedMessage { message, target } in recipient_node.consensus.handle_message(
+            message.sender,
+            message.payload,
+            recipient_node.is_faulty(),
+        ) {
+            let recipient_nodes = match target {
+                Target::All => self.nodes_map.keys().cloned().collect(),
+                Target::SingleNode(recipient_id) => vec![recipient_id],
+            };
+            self.send_messages(recipient_nodes, message, delivery_time)
         }
+        Ok(())
     }
 
     // Utility function for dispatching message to multiple recipients.
