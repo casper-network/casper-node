@@ -255,8 +255,7 @@ where
             ) {
                 match target {
                     Target::All => {
-                        let nodes: Vec<NodeId> =
-                            self.nodes_map.keys().into_iter().cloned().collect();
+                        let nodes: Vec<NodeId> = self.nodes_map.keys().cloned().collect();
                         self.send_messages(nodes, message, delivery_time);
                     }
                     Target::SingleNode(recipient_id) => {
