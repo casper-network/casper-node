@@ -6,23 +6,54 @@ use std::{
     time,
 };
 
+/// Enum defining recipients of the message.
+enum Target {
+    SingleNode(NodeId),
+    All,
+}
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+struct Message<M: Copy + Clone> {
+    sender: NodeId,
+    payload: M,
+}
+
+struct TargetedMessage<M: Copy + Clone> {
+    message: Message<M>,
+    target: Target,
+}
+
+trait ConsensusInstance {
+    type M: Clone + Copy;
+
+    fn handle_message(
+        &mut self,
+        sender: NodeId,
+        m: Self::M,
+        is_faulty: bool,
+    ) -> Vec<TargetedMessage<Self::M>>;
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
 struct NodeId(u64);
+
 /// A node in the test network.
-struct Node<C> {
+struct Node<C, D: ConsensusInstance> {
     id: NodeId,
     /// Whether a node should produce equivocations.
     is_faulty: bool,
     /// Vector of consensus values finalized by the node.
     finalized_values: Vec<C>,
+    consensus: D,
 }
 
-impl<C> Node<C> {
-    fn new(id: NodeId, is_faulty: bool) -> Self {
+impl<C, D: ConsensusInstance> Node<C, D> {
+    fn new(id: NodeId, is_faulty: bool, consensus: D) -> Self {
         Node {
             id,
             is_faulty,
             finalized_values: Vec::new(),
+            consensus,
         }
     }
 
@@ -44,7 +75,7 @@ impl<C> Node<C> {
 #[derive(Debug, PartialEq, Eq)]
 struct QueueEntry<M>
 where
-    M: PartialEq + Eq + Ord,
+    M: PartialEq + Eq + Ord + Clone + Copy,
 {
     /// Scheduled delivery time of the message.
     /// When a message has dependencies that recipient node is missing,
@@ -54,14 +85,14 @@ where
     /// Recipient of the message.
     recipient: NodeId,
     /// The message.
-    message: M,
+    message: Message<M>,
 }
 
 impl<M> QueueEntry<M>
 where
-    M: PartialEq + Eq + Ord,
+    M: PartialEq + Eq + Ord + Clone + Copy,
 {
-    pub(crate) fn new(delivery_time: u64, recipient: NodeId, message: M) -> Self {
+    pub(crate) fn new(delivery_time: u64, recipient: NodeId, message: Message<M>) -> Self {
         QueueEntry {
             delivery_time,
             recipient,
@@ -72,19 +103,19 @@ where
 
 impl<M> Ord for QueueEntry<M>
 where
-    M: PartialEq + Eq + Ord,
+    M: PartialEq + Eq + Ord + Clone + Copy,
 {
     fn cmp(&self, other: &Self) -> Ordering {
         self.delivery_time
             .cmp(&other.delivery_time)
             .then_with(|| self.recipient.cmp(&other.recipient))
-            .then_with(|| self.message.cmp(&other.message))
+            .then_with(|| self.message.payload.cmp(&other.message.payload))
     }
 }
 
 impl<M> PartialOrd for QueueEntry<M>
 where
-    M: PartialEq + Eq + Ord,
+    M: PartialEq + Eq + Ord + Clone + Copy,
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
@@ -95,11 +126,11 @@ where
 /// Ordered by the delivery time.
 struct Queue<M>(BinaryHeap<QueueEntry<M>>)
 where
-    M: PartialEq + Eq + Ord;
+    M: PartialEq + Eq + Ord + Clone + Copy;
 
 impl<M> Default for Queue<M>
 where
-    M: PartialEq + Eq + Ord,
+    M: PartialEq + Eq + Ord + Clone + Copy,
 {
     fn default() -> Self {
         Queue(Default::default())
@@ -108,7 +139,7 @@ where
 
 impl<M> Queue<M>
 where
-    M: PartialEq + Eq + Ord,
+    M: PartialEq + Eq + Ord + Clone + Copy,
 {
     /// Gets next message.
     /// Returns `None` if there aren't any.
@@ -122,12 +153,18 @@ where
     }
 }
 
-struct TestHarness<M, C>
+trait Strategy<Item> {
+    fn map<R: rand::Rng>(&self, rng: &mut R, i: Item) -> Option<Item>;
+}
+
+struct TestHarness<M, C, D, DS, R>
 where
-    M: PartialEq + Eq + Ord,
+    M: PartialEq + Eq + Ord + Clone + Copy,
+    D: ConsensusInstance,
+    DS: Strategy<u64>,
 {
     /// Maps node IDs to actual node instances.
-    nodes_map: BTreeMap<NodeId, Node<C>>,
+    nodes_map: BTreeMap<NodeId, Node<C, D>>,
     /// A collection of all network messages queued up for delivery.
     msg_queue: Queue<M>,
     /// The instant the network was created.
@@ -135,16 +172,23 @@ where
     /// Consensus values to be proposed.
     /// Order of values in the vector defines the order in which they will be proposed.
     consensus_values: Vec<C>,
+    delivery_time_strategy: DS,
+    rand: R,
 }
 
-impl<M, C> TestHarness<M, C>
+impl<M, C, D, DS, R> TestHarness<M, C, D, DS, R>
 where
-    M: PartialEq + Eq + Ord,
+    M: PartialEq + Eq + Ord + Clone + Copy,
+    D: ConsensusInstance<M = M>,
+    DS: Strategy<u64>,
+    R: rand::Rng,
 {
-    fn new<I: IntoIterator<Item = Node<C>>>(
+    fn new<I: IntoIterator<Item = Node<C, D>>>(
         nodes: I,
         start_time: u64,
         consensus_values: Vec<C>,
+        delivery_time_strategy: DS,
+        rand: R,
     ) -> Self {
         let nodes_map = nodes.into_iter().map(|node| (node.id, node)).collect();
         TestHarness {
@@ -152,18 +196,77 @@ where
             msg_queue: Default::default(),
             start_time,
             consensus_values,
+            delivery_time_strategy,
+            rand,
         }
     }
 
     /// Schedules a message `message` to be delivered at `delivery_time` to `recipient` node.
-    fn schedule_message(
-        &mut self,
-        delivery_time: u64,
-        recipient: NodeId,
-        message: M,
-    ) -> Result<(), anyhow::Error> {
+    fn schedule_message(&mut self, delivery_time: u64, recipient: NodeId, message: Message<M>) {
         let qe = QueueEntry::new(delivery_time, recipient, message);
         self.msg_queue.push(qe);
-        Ok(())
+    }
+
+    /// Advance the test by one message.
+    ///
+    /// Pops one message from the message queue (if there are any)
+    /// and pass it to the recipient node for execution.
+    /// Messages returned from the execution are scheduled for later delivery.
+    fn crank(&mut self) -> Result<(), anyhow::Error> {
+        if let Some(QueueEntry {
+            delivery_time,
+            recipient,
+            message,
+        }) = self.msg_queue.pop()
+        {
+            // TODO: Check if we should stop the test.
+            // Verify whether all nodes have finalized all consensus values.
+            let mut recipient_node = self.nodes_map.get_mut(&recipient).ok_or(anyhow!(
+                "Recipient node {:?} not present in the nodes_map",
+                recipient
+            ))?;
+
+            for TargetedMessage { message, target } in recipient_node.consensus.handle_message(
+                message.sender,
+                message.payload,
+                recipient_node.is_faulty(),
+            ) {
+                match target {
+                    Target::All => {
+                        let nodes: Vec<NodeId> =
+                            self.nodes_map.keys().into_iter().cloned().collect();
+                        self.send_messages(nodes, message, delivery_time);
+                    }
+                    Target::SingleNode(recipient_id) => {
+                        self.send_messages(vec![recipient_id], message, delivery_time);
+                    }
+                }
+            }
+            Ok(())
+        } else {
+            Err(anyhow!(
+                "Premature test run termination due to lack of messages in the queue."
+            ))
+        }
+    }
+
+    // Utility function for dispatching message to multiple recipients.
+    fn send_messages<I: IntoIterator<Item = NodeId>>(
+        &mut self,
+        recipients: I,
+        message: Message<M>,
+        base_delivery_time: u64,
+    ) {
+        for node_id in recipients {
+            let tampered_delivery_time = self
+                .delivery_time_strategy
+                .map(&mut self.rand, base_delivery_time);
+            match tampered_delivery_time {
+                // Simulate droping of the message.
+                // TODO: Add logging.
+                None => (),
+                Some(dt) => self.schedule_message(dt, node_id, message),
+            }
+        }
     }
 }
