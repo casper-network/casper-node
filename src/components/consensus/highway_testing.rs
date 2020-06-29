@@ -253,15 +253,11 @@ where
                 message.payload,
                 recipient_node.is_faulty(),
             ) {
-                match target {
-                    Target::All => {
-                        let nodes: Vec<NodeId> = self.nodes_map.keys().cloned().collect();
-                        self.send_messages(nodes, message, delivery_time);
-                    }
-                    Target::SingleNode(recipient_id) => {
-                        self.send_messages(vec![recipient_id], message, delivery_time);
-                    }
-                }
+                let recipient_nodes = match target {
+                    Target::All => self.nodes_map.keys().cloned().collect(),
+                    Target::SingleNode(recipient_id) => vec![recipient_id],
+                };
+                self.send_messages(recipient_nodes, message, delivery_time)
             }
             Ok(())
         } else {
