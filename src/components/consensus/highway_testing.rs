@@ -2,6 +2,7 @@ use anyhow::anyhow;
 use std::cmp::Ordering;
 use std::{
     collections::{BTreeMap, BinaryHeap},
+    fmt::{Display, Formatter},
     hash::Hash,
     time,
 };
@@ -157,6 +158,25 @@ trait Strategy<Item> {
     fn map<R: rand::Rng>(&self, rng: &mut R, i: Item) -> Option<Item>;
 }
 
+enum TestRunError {
+    MissingRecipient(NodeId),
+    NoMessages,
+}
+
+impl Display for TestRunError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TestRunError::MissingRecipient(node_id) => {
+                write!(f, "Recipient node {:?} was not found in the map.", node_id)
+            }
+            TestRunError::NoMessages => write!(
+                f,
+                "Test finished prematurely due to lack of messages in the queue"
+            ),
+        }
+    }
+}
+
 struct TestHarness<M, C, D, DS, R>
 where
     M: PartialEq + Eq + Ord + Clone + Copy,
@@ -212,7 +232,7 @@ where
     /// Pops one message from the message queue (if there are any)
     /// and pass it to the recipient node for execution.
     /// Messages returned from the execution are scheduled for later delivery.
-    fn crank(&mut self) -> Result<(), anyhow::Error> {
+    fn crank(&mut self) -> Result<(), TestRunError> {
         if let Some(QueueEntry {
             delivery_time,
             recipient,
@@ -221,10 +241,10 @@ where
         {
             // TODO: Check if we should stop the test.
             // Verify whether all nodes have finalized all consensus values.
-            let mut recipient_node = self.nodes_map.get_mut(&recipient).ok_or(anyhow!(
-                "Recipient node {:?} not present in the nodes_map",
-                recipient
-            ))?;
+            let mut recipient_node = self
+                .nodes_map
+                .get_mut(&recipient)
+                .ok_or(TestRunError::MissingRecipient(recipient))?;
 
             for TargetedMessage { message, target } in recipient_node.consensus.handle_message(
                 message.sender,
@@ -244,9 +264,7 @@ where
             }
             Ok(())
         } else {
-            Err(anyhow!(
-                "Premature test run termination due to lack of messages in the queue."
-            ))
+            Err(TestRunError::NoMessages)
         }
     }
 
