@@ -41,6 +41,7 @@ pub(crate) mod requests;
 
 use std::{
     any::type_name,
+    collections::HashSet,
     fmt::{self, Debug, Display, Formatter},
     future::Future,
     time::{Duration, Instant},
@@ -304,18 +305,23 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gossip a network message.
+    /// Gossips a network message.
     ///
-    /// A low-level "gossip" function, selects a fixed number of randomly chosen nodes on the
-    /// network and sends each a copy of the message.
-    // TODO: Remove list-relaxation once function is used.
+    /// A low-level "gossip" function, selects `count` randomly chosen nodes on the network,
+    /// excluding the indicated ones, and sends each a copy of the message.
+    // TODO: Remove lint-relaxation once function is used.
     #[allow(dead_code)]
-    pub(crate) async fn gossip_message<I, P>(self, payload: P)
+    pub(crate) async fn gossip_message<I, P>(self, payload: P, count: usize, exclude: HashSet<I>)
     where
         REv: From<NetworkRequest<I, P>>,
     {
         self.make_request(
-            |responder| NetworkRequest::Gossip { payload, responder },
+            |responder| NetworkRequest::Gossip {
+                payload,
+                count,
+                exclude,
+                responder,
+            },
             QueueKind::Network,
         )
         .await

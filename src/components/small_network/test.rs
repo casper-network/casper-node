@@ -26,7 +26,7 @@ use pnet::datalink;
 use tokio::time::{timeout, Timeout};
 use tracing::{debug, dispatcher::DefaultGuard, info};
 
-/// Time interval for which to poll an observed testing network when no events have occured.
+/// Time interval for which to poll an observed testing network when no events have occurred.
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 /// The networking port used by the tests for the root node.
@@ -337,7 +337,6 @@ async fn bind_to_real_network_interface() {
         outgoing_retry_delay_millis: 10000,
         cert: None,
         private_key: None,
-        gossip_nodes_outgoing: 3,
     };
 
     let mut net = Network::new();

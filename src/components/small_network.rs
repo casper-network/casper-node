@@ -49,10 +49,8 @@ mod message;
 #[cfg(test)]
 mod test;
 
-#[cfg(test)]
-use std::collections::HashSet;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     io,
     net::{SocketAddr, TcpListener},
@@ -246,17 +244,26 @@ where
         }
     }
 
-    /// Queues a message to `n` random nodes on the network.
-    fn gossip_message<R: Rng + ?Sized>(&self, rng: &mut R, msg: Message<P>) {
+    /// Queues a message to `count` random nodes on the network.
+    fn gossip_message<R: Rng + ?Sized>(
+        &self,
+        rng: &mut R,
+        msg: Message<P>,
+        count: usize,
+        exclude: HashSet<NodeId>,
+    ) {
         let node_ids = self
             .outgoing
             .keys()
-            .choose_multiple(rng, self.cfg.gossip_nodes_outgoing as usize);
+            .filter(|&node_id| !exclude.contains(node_id))
+            .choose_multiple(rng, count);
 
-        if node_ids.len() != self.cfg.gossip_nodes_outgoing as usize {
+        if node_ids.len() != count {
             warn!(
-                wanted=self.cfg.gossip_nodes_outgoing, selected=node_ids.len(),
-                "could not select enough random nodes for gossiping, not enough outgoing connections"
+                wanted = count,
+                selected = node_ids.len(),
+                "could not select enough random nodes for gossiping, not enough non-excluded \
+                outgoing connections"
             );
         }
 
@@ -609,10 +616,16 @@ where
                 responder.respond(()).ignore()
             }
             Event::NetworkRequest {
-                req: NetworkRequest::Gossip { payload, responder },
+                req:
+                    NetworkRequest::Gossip {
+                        payload,
+                        count,
+                        exclude,
+                        responder,
+                    },
             } => {
-                // We're given a message to broadcast.
-                self.gossip_message(rng, Message::Payload(payload));
+                // We're given a message to gossip.
+                self.gossip_message(rng, Message::Payload(payload), count, exclude);
                 responder.respond(()).ignore()
             }
         }
@@ -668,8 +681,9 @@ async fn server_task<P, REv>(
     // We first create a future that never terminates, handling incoming connections:
     let accept_connections = async move {
         loop {
-            // We handle accept errors here, since they can be caused by a temporary resource shortage
-            // or the remote side closing the connection while it is waiting in the queue.
+            // We handle accept errors here, since they can be caused by a temporary resource
+            // shortage or the remote side closing the connection while it is waiting in
+            // the queue.
             match listener.accept().await {
                 Ok((stream, addr)) => {
                     // Move the incoming connection to the event queue for handling.
