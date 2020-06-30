@@ -2,20 +2,23 @@
 #![allow(dead_code)]
 use std::{fmt::Debug, hash::Hash};
 
-use tracing::warn;
-
-use crate::components::consensus::consensus_protocol::synchronizer::{
-    DagSynchronizerState, SynchronizerEffect,
-};
-use crate::components::consensus::highway_core::active_validator::{
-    ActiveValidator, Effect as AvEffect,
-};
-use crate::components::consensus::highway_core::finality_detector::FinalityDetector;
-use crate::components::consensus::highway_core::highway::Highway;
-use crate::components::consensus::highway_core::vertex::{Dependency, Vertex};
-use crate::components::consensus::traits::Context;
 use anyhow::Error;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use tracing::warn;
+
+use crate::components::{
+    consensus::{
+        consensus_protocol::synchronizer::{DagSynchronizerState, SynchronizerEffect},
+        highway_core::{
+            active_validator::{ActiveValidator, Effect as AvEffect},
+            finality_detector::FinalityDetector,
+            highway::Highway,
+            vertex::{Dependency, Vertex},
+        },
+        traits::Context,
+    },
+    small_network::NodeId,
+};
 
 mod protocol_state;
 mod synchronizer;
@@ -24,9 +27,6 @@ pub(crate) use protocol_state::{AddVertexOk, ProtocolState, VertexTrait};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct TimerId(pub(crate) u64);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct NodeId(u64);
 
 pub(crate) trait ConsensusValue:
     Hash + PartialEq + Eq + Serialize + DeserializeOwned

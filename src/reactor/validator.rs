@@ -15,7 +15,7 @@ use tracing::Span;
 use crate::{
     components::{
         api_server::{self, ApiServer},
-        consensus::{self, Consensus},
+        consensus::{self, EraSupervisor},
         deploy_broadcaster::{self, DeployBroadcaster},
         pinger::{self, Pinger},
         storage::{Storage, StorageType},
@@ -28,6 +28,7 @@ use crate::{
     },
     reactor::{self, EventQueueHandle, Result},
     small_network::{self, NodeId},
+    types::Block,
     SmallNetwork,
 };
 pub use config::Config;
@@ -127,7 +128,7 @@ pub struct Reactor {
     pinger: Pinger,
     storage: Storage,
     api_server: ApiServer,
-    consensus: Consensus,
+    consensus: EraSupervisor<Block>,
     deploy_broadcaster: DeployBroadcaster,
     rng: ChaCha20Rng,
 }
@@ -148,13 +149,12 @@ impl reactor::Reactor for Reactor {
         let (pinger, pinger_effects) = Pinger::new(effect_builder);
         let storage = Storage::new(cfg.storage)?;
         let (api_server, api_server_effects) = ApiServer::new(cfg.http_server, effect_builder);
-        let (consensus, consensus_effects) = Consensus::new(effect_builder);
+        let consensus = EraSupervisor::new();
         let deploy_broadcaster = DeployBroadcaster::new();
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
         effects.extend(reactor::wrap_effects(Event::Pinger, pinger_effects));
         effects.extend(reactor::wrap_effects(Event::ApiServer, api_server_effects));
-        effects.extend(reactor::wrap_effects(Event::Consensus, consensus_effects));
 
         let rng = ChaCha20Rng::from_entropy();
 
