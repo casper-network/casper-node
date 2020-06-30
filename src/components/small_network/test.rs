@@ -4,7 +4,7 @@
 //! instances of `small_net` arranged in a network.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{hash_map::Entry, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     time::Duration,
 };
@@ -144,11 +144,15 @@ impl Network {
         self.node_count += 1;
 
         let node_id = runner.reactor().net.node_id();
-        self.nodes.insert(node_id, runner);
 
-        let node_ref = self.nodes.get_mut(&node_id).ok_or_else(|| {
-            anyhow::anyhow!("node mysteriously disappeared, this should not happen")
-        })?;
+        let node_ref = match self.nodes.entry(node_id) {
+            Entry::Occupied(_) => {
+                // This happens in the event of the extremely unlikely hash collision, or if the
+                // node ID was set manually.
+                anyhow::bail!("trying to insert a duplicate node {}", node_id)
+            }
+            Entry::Vacant(entry) => entry.insert(runner),
+        };
 
         Ok((node_id, node_ref))
     }
