@@ -25,6 +25,7 @@
 mod components;
 pub mod crypto;
 pub mod effect;
+pub mod logging;
 pub mod reactor;
 pub mod tls;
 pub mod types;

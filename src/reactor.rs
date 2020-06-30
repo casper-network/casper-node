@@ -35,7 +35,7 @@ use std::{
 };
 
 use futures::FutureExt;
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, info, trace, warn, Span};
 
 use crate::{
     effect::{Effect, EffectBuilder, Multiple},
@@ -115,10 +115,14 @@ pub trait Reactor: Sized {
     /// This method creates the full state, which consists of all components, and returns a reactor
     /// instances along with the effects the components generated upon instantiation.
     ///
+    /// The function is also given an instance to the tracing span used, this enables it to set up
+    /// tracing fields like `id` to set an ID for the reactor if desired.
+    ///
     /// If any instantiation fails, an error is returned.
     fn new(
         cfg: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
+        span: &Span,
     ) -> Result<(Self, Multiple<Effect<Self::Event>>)>;
 }
 
@@ -147,6 +151,12 @@ where
 
     /// The reactor instance itself.
     reactor: R,
+
+    /// The logging span indicating which reactor we are in.
+    span: Span,
+
+    /// Counter for events, to aid tracing.
+    event_count: usize,
 }
 
 impl<R> Runner<R>
@@ -154,37 +164,58 @@ where
     R: Reactor,
 {
     /// Creates a new runner from a given configuration.
+    ///
+    /// The `id` is used to identify the runner during logging when debugging and can be chosen
+    /// arbitrarily.
     #[inline]
     pub async fn new(cfg: R::Config) -> Result<Self> {
+        // We create a new logging span, ensuring that we can always associate log messages to this
+        // specific reactor. This is usually only relevant when running multiple reactors, e.g.
+        // during testing, so we set the log level to `debug` here.
+        let span = tracing::debug_span!("node", id = tracing::field::Empty);
+        let entered = span.enter();
+
         let event_size = mem::size_of::<R::Event>();
 
         // Check if the event is of a reasonable size. This only emits a runtime warning at startup
         // right now, since storage size of events is not an issue per se, but copying might be
         // expensive if events get too large.
         if event_size > 16 * mem::size_of::<usize>() {
-            warn!(
-                "event size is {} bytes, consider reducing it or boxing",
-                event_size
-            );
+            warn!(%event_size, "large event size, consider reducing it or boxing");
         }
 
         // Create a new event queue for this reactor run.
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
 
         let event_queue = EventQueueHandle::new(scheduler);
-        let (reactor, initial_effects) = R::new(cfg, event_queue)?;
+
+        let (reactor, initial_effects) = R::new(cfg, event_queue, &span)?;
 
         // Run all effects from component instantiation.
         process_effects(scheduler, initial_effects).await;
 
         info!("reactor main loop is ready");
 
-        Ok(Runner { scheduler, reactor })
+        drop(entered);
+        Ok(Runner {
+            scheduler,
+            reactor,
+            span,
+            event_count: 0,
+        })
     }
 
     /// Processes a single event on the event queue.
     #[inline]
     pub async fn crank(&mut self) {
+        let _enter = self.span.enter();
+
+        // Create another span for tracing the processing of one event.
+        let crank_span = tracing::debug_span!("crank", ev = self.event_count);
+        let _inner_enter = crank_span.enter();
+
+        self.event_count += 1;
+
         let event_queue = EventQueueHandle::new(self.scheduler);
         let effect_builder = EffectBuilder::new(event_queue);
 

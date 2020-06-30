@@ -5,7 +5,6 @@
 
 mod cli;
 pub mod config;
-pub mod logging;
 
 use structopt::StructOpt;
 
