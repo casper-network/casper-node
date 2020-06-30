@@ -155,7 +155,7 @@ impl Network {
 
     /// Crank all runners once, returning the number of events processed.
     async fn crank_all(&mut self) -> usize {
-        join_all(self.nodes.values_mut().map(Runner::try_crank))
+        join_all(self.nodes.values_mut().map(reactor::Runner::try_crank))
             .await
             .into_iter()
             .filter(|opt| opt.is_some())
