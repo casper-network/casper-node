@@ -17,16 +17,26 @@ use tracing::error;
 use crate::{
     components::{
         consensus::{
-            consensus_protocol::{ConsensusProtocol, ConsensusProtocolResult, ConsensusValue},
+            consensus_protocol::{ConsensusProtocol, ConsensusProtocolResult},
             ConsensusMessage, Event,
         },
         small_network::NodeId,
     },
-    effect::{requests::NetworkRequest, Effect, EffectBuilder, Multiple},
+    effect::{requests::NetworkRequest, Effect, EffectBuilder, EffectExt, Multiple},
+    types::ProtoBlock,
 };
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct EraId(pub(crate) u64);
+
+impl EraId {
+    fn message(self, payload: Vec<u8>) -> ConsensusMessage {
+        ConsensusMessage {
+            era_id: self,
+            payload,
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 struct EraConfig {
@@ -55,14 +65,14 @@ struct EraInstance<Id> {
     era_end: u64,
 }
 
-pub(crate) struct EraSupervisor<C: ConsensusValue> {
+pub(crate) struct EraSupervisor {
     // A map of active consensus protocols.
     // A value is a trait so that we can run different consensus protocol instances per era.
-    active_eras: HashMap<EraId, Box<dyn ConsensusProtocol<C>>>,
+    active_eras: HashMap<EraId, Box<dyn ConsensusProtocol<ProtoBlock>>>,
     era_config: EraConfig,
 }
 
-impl<C: ConsensusValue> Debug for EraSupervisor<C> {
+impl Debug for EraSupervisor {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
@@ -72,7 +82,7 @@ impl<C: ConsensusValue> Debug for EraSupervisor<C> {
     }
 }
 
-impl<C: ConsensusValue> EraSupervisor<C> {
+impl EraSupervisor {
     pub(crate) fn new() -> Self {
         Self {
             active_eras: HashMap::new(),
@@ -80,9 +90,60 @@ impl<C: ConsensusValue> EraSupervisor<C> {
         }
     }
 
+    fn handle_consensus_result<REv>(
+        &self,
+        era_id: EraId,
+        effect_builder: EffectBuilder<REv>,
+        consensus_result: ConsensusProtocolResult<ProtoBlock>,
+    ) -> Multiple<Effect<Event>>
+    where
+        REv: From<Event> + Send + From<NetworkRequest<NodeId, ConsensusMessage>>,
+    {
+        match consensus_result {
+            ConsensusProtocolResult::InvalidIncomingMessage(msg, error) => {
+                // TODO: we will probably want to disconnect from the sender here
+                error!(
+                    ?msg,
+                    ?error,
+                    "invalid incoming message to consensus instance"
+                );
+                Default::default()
+            }
+            ConsensusProtocolResult::CreatedGossipMessage(out_msg) => {
+                // TODO: we'll want to gossip instead of broadcast here
+                effect_builder
+                    .broadcast_message(era_id.message(out_msg))
+                    .ignore()
+            }
+            ConsensusProtocolResult::CreatedTargetedMessage(out_msg, to) => effect_builder
+                .send_message(to, era_id.message(out_msg))
+                .ignore(),
+            ConsensusProtocolResult::ScheduleTimer(_timestamp, _timer_id) => {
+                // TODO: we need to get the current system time here somehow, in order to schedule
+                // a timer for the correct moment - and we don't want to use std::Instant
+                unimplemented!()
+            }
+            ConsensusProtocolResult::CreateNewBlock(instant) => effect_builder
+                .request_proto_block(instant)
+                .event(Event::NewProtoBlock),
+            ConsensusProtocolResult::FinalizedBlock(block) => effect_builder
+                .execute_block(block)
+                .event(Event::ExecutedBlock),
+            ConsensusProtocolResult::ValidateConsensusValue(sender, proto_block) => effect_builder
+                .validate_proto_block(sender, proto_block)
+                .event(move |(is_valid, proto_block)| {
+                    if is_valid {
+                        Event::AcceptProtoBlock(proto_block)
+                    } else {
+                        Event::InvalidProtoBlock(sender, proto_block)
+                    }
+                }),
+        }
+    }
+
     pub(crate) fn handle_message<REv>(
         &mut self,
-        _effect_builder: EffectBuilder<REv>,
+        effect_builder: EffectBuilder<REv>,
         sender: NodeId,
         era_id: EraId,
         payload: Vec<u8>,
@@ -95,25 +156,7 @@ impl<C: ConsensusValue> EraSupervisor<C> {
             Some(consensus) => match consensus.handle_message(sender, payload) {
                 Ok(results) => results
                     .into_iter()
-                    .map(|result| match result {
-                        ConsensusProtocolResult::InvalidIncomingMessage(_msg, _error) => {
-                            unimplemented!()
-                        }
-                        ConsensusProtocolResult::CreatedGossipMessage(_out_msg) => {
-                            todo!("Create an effect to broadcast new msg")
-                        }
-                        ConsensusProtocolResult::CreatedTargetedMessage(_out_msg, _to) => {
-                            todo!("Create an effect to send new msg")
-                        }
-                        ConsensusProtocolResult::ScheduleTimer(_delay, _timer_id) => {
-                            unimplemented!()
-                        }
-                        ConsensusProtocolResult::CreateNewBlock(_instant) => unimplemented!(),
-                        ConsensusProtocolResult::FinalizedBlock(_block) => unimplemented!(),
-                        ConsensusProtocolResult::RequestConsensusValues(_sender, _values) => {
-                            unimplemented!()
-                        }
-                    })
+                    .flat_map(|result| self.handle_consensus_result(era_id, effect_builder, result))
                     .collect(),
                 Err(error) => {
                     error!(%error, ?era_id, "got error from era id {:?}: {:?}", era_id, error);

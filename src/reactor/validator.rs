@@ -28,7 +28,6 @@ use crate::{
     },
     reactor::{self, EventQueueHandle, Result},
     small_network::{self, NodeId},
-    types::Block,
     SmallNetwork,
 };
 pub use config::Config;
@@ -128,7 +127,7 @@ pub struct Reactor {
     pinger: Pinger,
     storage: Storage,
     api_server: ApiServer,
-    consensus: EraSupervisor<Block>,
+    consensus: EraSupervisor,
     deploy_broadcaster: DeployBroadcaster,
     rng: ChaCha20Rng,
 }

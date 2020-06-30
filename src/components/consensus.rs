@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{small_network::NodeId, Component},
     effect::{requests::NetworkRequest, Effect, EffectBuilder, Multiple},
-    types::Block,
+    types::{ExecutedBlock, ProtoBlock},
 };
 
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
@@ -51,6 +51,14 @@ pub enum Event {
     // TODO: remove lint relaxation
     #[allow(dead_code)]
     Timer,
+    /// We are receiving the data we require to propose a new block
+    NewProtoBlock(ProtoBlock),
+    /// We are receiving the information necessary to produce finality signatures
+    ExecutedBlock(ExecutedBlock),
+    /// The proto-block has been validated and can now be added to the protocol state
+    AcceptProtoBlock(ProtoBlock),
+    /// The proto-block turned out to be invalid, we might want to accuse/punish/... the sender
+    InvalidProtoBlock(NodeId, ProtoBlock),
 }
 
 impl Display for ConsensusMessage {
@@ -64,11 +72,23 @@ impl Display for Event {
         match self {
             Event::MessageReceived { sender, msg } => write!(f, "msg from {}: {}", sender, msg),
             Event::Timer => write!(f, "timer"),
+            Event::NewProtoBlock(proto_block) => write!(f, "New proto-block: {:?}", proto_block),
+            Event::ExecutedBlock(executed_block) => {
+                write!(f, "A block has been executed: {:?}", executed_block)
+            }
+            Event::AcceptProtoBlock(proto_block) => {
+                write!(f, "A proto-block has been validated: {:?}", proto_block)
+            }
+            Event::InvalidProtoBlock(sender, proto_block) => write!(
+                f,
+                "A proto-block received from {:?} turned out to be invalid: {:?}",
+                sender, proto_block
+            ),
         }
     }
 }
 
-impl<REv> Component<REv> for EraSupervisor<Block>
+impl<REv> Component<REv> for EraSupervisor
 where
     REv: From<Event> + Send + From<NetworkRequest<NodeId, ConsensusMessage>>,
 {
@@ -86,6 +106,10 @@ where
                 let ConsensusMessage { era_id, payload } = msg;
                 self.handle_message(effect_builder, sender, era_id, payload)
             }
+            Event::NewProtoBlock(_proto_block) => todo!(),
+            Event::ExecutedBlock(_executed_block) => todo!(),
+            Event::AcceptProtoBlock(_proto_block) => todo!(),
+            Event::InvalidProtoBlock(_sender, _proto_block) => todo!(),
         }
     }
 }

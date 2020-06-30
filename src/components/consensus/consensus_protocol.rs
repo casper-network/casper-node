@@ -43,7 +43,7 @@ pub(crate) enum ConsensusProtocolResult<C: ConsensusValue> {
     /// Request deploys for a new block, whose timestamp will be the given `u64`.
     CreateNewBlock(u64),
     FinalizedBlock(C),
-    RequestConsensusValues(NodeId, Vec<C>),
+    ValidateConsensusValue(NodeId, C),
 }
 
 /// An API for a single instance of the consensus.
@@ -118,9 +118,9 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
                                 serialized_msg,
                             ))
                         }
-                        Ok(SynchronizerEffect::RequestConsensusValues(sender, values)) => {
-                            effects.push(ConsensusProtocolResult::RequestConsensusValues(
-                                sender, values,
+                        Ok(SynchronizerEffect::RequestConsensusValue(sender, value)) => {
+                            effects.push(ConsensusProtocolResult::ValidateConsensusValue(
+                                sender, value,
                             ));
                         }
                         Ok(SynchronizerEffect::InvalidVertex(v, sender, err)) => {
