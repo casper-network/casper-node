@@ -6,7 +6,6 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
-    io,
     time::Duration,
 };
 
@@ -141,8 +140,6 @@ impl Network {
         &mut self,
         cfg: small_network::Config,
     ) -> anyhow::Result<(NodeId, &mut reactor::Runner<TestReactor>)> {
-        let id = self.node_count;
-
         let runner: reactor::Runner<TestReactor> = reactor::Runner::new(cfg).await?;
         self.node_count += 1;
 
