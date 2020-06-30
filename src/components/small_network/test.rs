@@ -230,7 +230,8 @@ impl Network {
 fn init_logging() {
     // TODO: Write logs to file by default for each test.
     logging::init()
-        // Ignore the return value, setting the global subscriber will fail if `init_logging` has been called before, which we don't care about.
+        // Ignore the return value, setting the global subscriber will fail if `init_logging` has
+        // been called before, which we don't care about.
         .ok();
 }
 
