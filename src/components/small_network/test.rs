@@ -23,7 +23,7 @@ use crate::{
 };
 use pnet::datalink;
 use tokio::time::{timeout, Timeout};
-use tracing::{debug, info, Span};
+use tracing::{debug, field, info, Span};
 
 /// Time interval for which to poll an observed testing network when no events have occurred.
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
@@ -86,7 +86,7 @@ impl Reactor for TestReactor {
         let (net, effects) = SmallNetwork::new(event_queue, cfg)?;
 
         let node_id = net.node_id();
-        span.record("id", &tracing::field::display(node_id));
+        span.record("id", &field::display(node_id));
 
         Ok((
             TestReactor { net },
