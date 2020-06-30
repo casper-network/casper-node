@@ -15,7 +15,6 @@ pub(crate) enum SynchronizerEffect<V: VertexTrait> {
     RequestConsensusValues(NodeId, Vec<V::Value>),
     /// Effect for the reactor to requeue a vertex once its dependencies are downloaded.
     RequeueVertex(Vec<V>),
-    RequestedVertexResponse(Option<V>),
     /// Vertex addition failed for some reason.
     /// TODO: Differentiate from attributable failures.
     InvalidVertex(V, NodeId, anyhow::Error),
@@ -101,17 +100,6 @@ where
             vertex_dependants: HashMap::new(),
             vertex_by_vid: HashMap::new(),
         }
-    }
-
-    pub(crate) fn get_vertex(
-        &self,
-        v_id: P::VId,
-        protocol_state: &P,
-    ) -> Result<SynchronizerEffect<P::Vertex>, anyhow::Error> {
-        protocol_state
-            .get_vertex(v_id)
-            .map_err(|err| anyhow::anyhow!("{:?}", err)) //TODO: Improve error reporting
-            .map(SynchronizerEffect::RequestedVertexResponse)
     }
 
     pub(crate) fn add_vertex(

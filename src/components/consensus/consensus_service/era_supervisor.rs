@@ -8,7 +8,7 @@
 use std::{
     collections::HashMap,
     fmt::{self, Debug, Formatter},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use super::{
@@ -39,8 +39,8 @@ impl Default for EraConfig {
 #[derive(Clone, Debug)]
 struct EraInstance<Id> {
     era_id: Id,
-    era_start: Instant,
-    era_end: Instant,
+    era_start: u64,
+    era_end: u64,
 }
 
 pub(crate) struct EraSupervisor<C: ConsensusValue> {
@@ -83,14 +83,23 @@ impl<C: ConsensusValue> ConsensusService for EraSupervisor<C> {
                                 ConsensusProtocolResult::InvalidIncomingMessage(_msg, _error) => {
                                     unimplemented!()
                                 }
-                                ConsensusProtocolResult::CreatedNewMessage(_out_msg) => {
+                                ConsensusProtocolResult::CreatedGossipMessage(_out_msg) => {
                                     todo!("Create an effect to broadcast new msg")
+                                }
+                                ConsensusProtocolResult::CreatedTargetedMessage(_out_msg, _to) => {
+                                    todo!("Create an effect to send new msg")
                                 }
                                 ConsensusProtocolResult::ScheduleTimer(_delay, _timer_id) => {
                                     unimplemented!()
                                 }
-                                ConsensusProtocolResult::CreateNewBlock => unimplemented!(),
+                                ConsensusProtocolResult::CreateNewBlock(_instant) => {
+                                    unimplemented!()
+                                }
                                 ConsensusProtocolResult::FinalizedBlock(_block) => unimplemented!(),
+                                ConsensusProtocolResult::RequestConsensusValues(
+                                    _sender,
+                                    _values,
+                                ) => unimplemented!(),
                             })
                             .collect()
                     })
@@ -107,14 +116,23 @@ impl<C: ConsensusValue> ConsensusService for EraSupervisor<C> {
                                 ConsensusProtocolResult::InvalidIncomingMessage(_msg, _error) => {
                                     unimplemented!()
                                 }
-                                ConsensusProtocolResult::CreatedNewMessage(_out_msg) => {
+                                ConsensusProtocolResult::CreatedGossipMessage(_out_msg) => {
                                     todo!("Create an effect to broadcast new msg")
+                                }
+                                ConsensusProtocolResult::CreatedTargetedMessage(_out_msg, _to) => {
+                                    todo!("Create an effect to send new msg")
                                 }
                                 ConsensusProtocolResult::ScheduleTimer(_delay, _timer_id) => {
                                     unimplemented!()
                                 }
-                                ConsensusProtocolResult::CreateNewBlock => unimplemented!(),
+                                ConsensusProtocolResult::CreateNewBlock(_instant) => {
+                                    unimplemented!()
+                                }
                                 ConsensusProtocolResult::FinalizedBlock(_block) => unimplemented!(),
+                                ConsensusProtocolResult::RequestConsensusValues(
+                                    _sender,
+                                    _values,
+                                ) => unimplemented!(),
                             })
                             .collect()
                     })
