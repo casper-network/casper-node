@@ -5,6 +5,8 @@ use super::{
     validators::Validators,
     vertex::{Dependency, Vertex, WireVote},
 };
+use tracing::warn;
+
 use crate::components::consensus::highway_core::vertex::SignedWireVote;
 use crate::components::consensus::traits::Context;
 
@@ -78,7 +80,7 @@ impl<C: Context> Highway<C> {
         match self.active_validator.as_ref() {
             None => {
                 // TODO: Error?
-                // At least add logging about the event.
+                warn!(?vhash, %instant, "Observer node was called with `on_new_vote` event.");
                 vec![]
             }
             Some(av) => av.on_new_vote(vhash, instant, &self.state),
@@ -90,6 +92,7 @@ impl<C: Context> Highway<C> {
             None => {
                 // TODO: Error?
                 // At least add logging about the event.
+                warn!(%instant, "Observer node was called with `handle_timer` event.");
                 vec![]
             }
             Some(av) => av.handle_timer(instant, &self.state),
@@ -104,7 +107,7 @@ impl<C: Context> Highway<C> {
         match self.active_validator.as_ref() {
             None => {
                 // TODO: Error?
-                // At least add logging about the event.
+                warn!(?value, %block_context.instant, "Observer node was called with `propose` event.");
                 vec![]
             }
             Some(av) => av.propose(value, block_context, &self.state),
