@@ -43,12 +43,18 @@ pub(crate) enum ConsensusProtocolResult<C: ConsensusValue> {
     /// Request deploys for a new block, whose timestamp will be the given `u64`.
     CreateNewBlock(u64),
     FinalizedBlock(C),
+    /// Request validation of the consensus value, contained in a message received from the given
+    /// node.
+    ///
+    /// The domain logic should verify any intrinsic validity conditions of consensus values, e.g.
+    /// that it has the expected structure, or that deploys that are mentioned by hash actually
+    /// exist, and then call `ConsensusProtocol::resolve_validity`.
     ValidateConsensusValue(NodeId, C),
 }
 
 /// An API for a single instance of the consensus.
 pub(crate) trait ConsensusProtocol<C: ConsensusValue> {
-    /// Handle an incoming message (like NewVote, RequestDependency).
+    /// Handles an incoming message (like NewVote, RequestDependency).
     fn handle_message(
         &mut self,
         sender: NodeId,
@@ -58,6 +64,14 @@ pub(crate) trait ConsensusProtocol<C: ConsensusValue> {
     /// Triggers consensus' timer.
     fn handle_timer(&mut self, timer_id: TimerId)
         -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
+
+    /// Marks the `value` as valid or invalid, based on validation requested via
+    /// `ConsensusProtocolResult::ValidateConsensusvalue`.
+    fn resolve_validity(
+        &mut self,
+        value: &C,
+        valid: bool,
+    ) -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
 }
 
 struct HighwayProtocol<C: Context> {
@@ -96,6 +110,8 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
                 // returned vertex that needs to be requeued, also return an `EnqueueVertex`
                 // effect.
                 while let Some(v) = new_vertices.pop() {
+                    // TODO: This is wrong!! `add_vertex` should not be called with `sender`, but
+                    // with the node that sent us `v` in the first place.
                     match self
                         .synchronizer
                         .add_vertex(sender, v.clone(), &mut self.highway)
@@ -165,6 +181,14 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
             })
             .collect())
     }
+
+    fn resolve_validity(
+        &mut self,
+        _value: &C::ConsensusValue,
+        _valid: bool,
+    ) -> Result<Vec<ConsensusProtocolResult<C::ConsensusValue>>, Error> {
+        todo!()
+    }
 }
 
 #[cfg(test)]
@@ -217,6 +241,14 @@ mod example {
         fn handle_timer(
             &mut self,
             _timer_id: TimerId,
+        ) -> Result<Vec<ConsensusProtocolResult<DeployHash>>, anyhow::Error> {
+            unimplemented!()
+        }
+
+        fn resolve_validity(
+            &mut self,
+            _value: &DeployHash,
+            _valid: bool,
         ) -> Result<Vec<ConsensusProtocolResult<DeployHash>>, anyhow::Error> {
             unimplemented!()
         }
