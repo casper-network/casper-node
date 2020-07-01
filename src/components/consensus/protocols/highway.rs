@@ -149,16 +149,17 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
             .into_iter()
             .map(|effect| match effect {
                 AvEffect::NewVertex(v) => {
-                    //TODO: Don't unwrap
-                    // Replace serde with generic serializer.
-                    let vertex_bytes = serde_json::to_vec_pretty(&v).unwrap();
-                    ConsensusProtocolResult::CreatedGossipMessage(vertex_bytes)
+                    let msg = HighwayMessage::NewVertex(v);
+                    // TODO: Add new vertex to state. (Indirectly, via synchronizer?)
+                    // TODO: Don't `unwrap`.
+                    let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
+                    ConsensusProtocolResult::CreatedGossipMessage(serialized_msg)
                 }
                 AvEffect::ScheduleTimer(instant_u64) => {
                     ConsensusProtocolResult::ScheduleTimer(instant_u64, Timestamp(instant_u64))
                 }
-                AvEffect::RequestNewBlock(block_context) => {
-                    ConsensusProtocolResult::CreateNewBlock(block_context.instant())
+                AvEffect::RequestNewBlock(ctx) => {
+                    ConsensusProtocolResult::CreateNewBlock(ctx.instant)
                 }
             })
             .collect())

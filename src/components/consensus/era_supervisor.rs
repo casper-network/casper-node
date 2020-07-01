@@ -11,6 +11,7 @@ use std::{
     time::Duration,
 };
 
+use anyhow::Error;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
@@ -148,19 +149,21 @@ impl EraSupervisor {
         }
     }
 
-    pub(crate) fn handle_message<REv>(
+    pub(crate) fn delegate_to_era<F, REv>(
         &mut self,
-        effect_builder: EffectBuilder<REv>,
-        sender: NodeId,
         era_id: EraId,
-        payload: Vec<u8>,
+        effect_builder: EffectBuilder<REv>,
+        f: F,
     ) -> Multiple<Effect<Event>>
     where
         REv: From<Event> + Send + From<NetworkRequest<NodeId, ConsensusMessage>>,
+        F: FnOnce(
+            &mut dyn ConsensusProtocol<ProtoBlock>,
+        ) -> Result<Vec<ConsensusProtocolResult<ProtoBlock>>, Error>,
     {
         match self.active_eras.get_mut(&era_id) {
             None => todo!("Handle missing eras."),
-            Some(consensus) => match consensus.handle_message(sender, payload) {
+            Some(consensus) => match f(&mut **consensus) {
                 Ok(results) => results
                     .into_iter()
                     .flat_map(|result| self.handle_consensus_result(era_id, effect_builder, result))

@@ -63,6 +63,7 @@ pub(crate) trait ConsensusProtocol<C: ConsensusValueT> {
         timerstamp: Timestamp,
     ) -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
 
+    /// Proposes a new value for consensus.
     fn propose(
         &self,
         value: C,
