@@ -1,11 +1,11 @@
 //! The consensus component. Provides distributed consensus among the nodes in the network.
 
 mod consensus_protocol;
-mod consensus_service;
 mod traits;
 // TODO: remove when we actually use the deploy buffer
 #[allow(unused)]
 mod deploy_buffer;
+mod era_supervisor;
 // TODO: remove when we actually construct a Pothole era
 #[allow(unused)]
 mod pothole;
@@ -29,20 +29,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{small_network::NodeId, Component},
     effect::{requests::NetworkRequest, Effect, EffectBuilder, Multiple},
-    types::Block,
+    types::{ExecutedBlock, ProtoBlock},
 };
 
-use consensus_protocol::NodeId as ConsensusNodeId;
-use consensus_service::{
-    era_supervisor::EraSupervisor,
-    traits::{ConsensusService, EraId, Event as ConsensusEvent, MessageWireFormat},
-};
-
-/// The consensus component.
-#[derive(Debug)]
-pub(crate) struct Consensus {
-    era_supervisor: EraSupervisor<Block>,
-}
+pub(crate) use era_supervisor::{EraId, EraSupervisor};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConsensusMessage {
@@ -61,6 +51,14 @@ pub enum Event {
     // TODO: remove lint relaxation
     #[allow(dead_code)]
     Timer,
+    /// We are receiving the data we require to propose a new block
+    NewProtoBlock(ProtoBlock),
+    /// We are receiving the information necessary to produce finality signatures
+    ExecutedBlock(ExecutedBlock),
+    /// The proto-block has been validated and can now be added to the protocol state
+    AcceptProtoBlock(ProtoBlock),
+    /// The proto-block turned out to be invalid, we might want to accuse/punish/... the sender
+    InvalidProtoBlock(NodeId, ProtoBlock),
 }
 
 impl Display for ConsensusMessage {
@@ -74,11 +72,23 @@ impl Display for Event {
         match self {
             Event::MessageReceived { sender, msg } => write!(f, "msg from {}: {}", sender, msg),
             Event::Timer => write!(f, "timer"),
+            Event::NewProtoBlock(proto_block) => write!(f, "New proto-block: {:?}", proto_block),
+            Event::ExecutedBlock(executed_block) => {
+                write!(f, "A block has been executed: {:?}", executed_block)
+            }
+            Event::AcceptProtoBlock(proto_block) => {
+                write!(f, "A proto-block has been validated: {:?}", proto_block)
+            }
+            Event::InvalidProtoBlock(sender, proto_block) => write!(
+                f,
+                "A proto-block received from {:?} turned out to be invalid: {:?}",
+                sender, proto_block
+            ),
         }
     }
 }
 
-impl<REv> Component<REv> for Consensus
+impl<REv> Component<REv> for EraSupervisor
 where
     REv: From<Event> + Send + From<NetworkRequest<NodeId, ConsensusMessage>>,
 {
@@ -93,45 +103,13 @@ where
         match event {
             Event::Timer => todo!(),
             Event::MessageReceived { sender, msg } => {
-                self.handle_message(effect_builder, sender, msg)
+                let ConsensusMessage { era_id, payload } = msg;
+                self.handle_message(effect_builder, sender, era_id, payload)
             }
+            Event::NewProtoBlock(_proto_block) => todo!(),
+            Event::ExecutedBlock(_executed_block) => todo!(),
+            Event::AcceptProtoBlock(_proto_block) => todo!(),
+            Event::InvalidProtoBlock(_sender, _proto_block) => todo!(),
         }
-    }
-}
-
-impl Consensus {
-    /// Create and initialize a new consensus instance.
-    pub(crate) fn new<REv: From<Event> + Send + From<NetworkRequest<NodeId, ConsensusMessage>>>(
-        _effect_builder: EffectBuilder<REv>,
-    ) -> (Self, Multiple<Effect<Event>>) {
-        let consensus = Consensus {
-            era_supervisor: EraSupervisor::<Block>::new(),
-        };
-
-        (consensus, Default::default())
-    }
-
-    fn internal_node_id(&self, _node_id: NodeId) -> ConsensusNodeId {
-        todo!("implement some kind of mapping between node ids")
-    }
-
-    /// Handles an incoming message
-    fn handle_message<REv: From<Event> + Send + From<NetworkRequest<NodeId, ConsensusMessage>>>(
-        &mut self,
-        _effect_builder: EffectBuilder<REv>,
-        sender: NodeId,
-        msg: ConsensusMessage,
-    ) -> Multiple<Effect<Event>> {
-        let msg = MessageWireFormat {
-            era_id: msg.era_id,
-            sender: self.internal_node_id(sender),
-            message_content: msg.payload,
-        };
-
-        let _result = self
-            .era_supervisor
-            .handle_event(ConsensusEvent::IncomingMessage(msg));
-
-        Default::default()
     }
 }

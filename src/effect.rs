@@ -55,7 +55,7 @@ use crate::{
     components::storage::{self, StorageType, Value},
     effect::requests::DeployBroadcasterRequest,
     reactor::{EventQueueHandle, QueueKind},
-    types::Deploy,
+    types::{Deploy, ExecutedBlock, ProtoBlock},
 };
 use announcements::NetworkAnnouncement;
 use requests::{NetworkRequest, StorageRequest};
@@ -480,5 +480,32 @@ impl<REv> EffectBuilder<REv> {
                 QueueKind::Regular,
             )
             .await;
+    }
+
+    /// Passes the timestamp of a future block for which deploys are to be proposed
+    pub(crate) async fn request_proto_block(self, instant: u64) -> ProtoBlock {
+        // TODO: actually return the relevant deploys and an actual random bit
+        ProtoBlock {
+            instant,
+            deploys: vec![],
+            random_bit: false,
+        }
+    }
+
+    /// Passes a finalized proto-block to the contract runtime for execution
+    pub(crate) async fn execute_block(self, _proto_block: ProtoBlock) -> ExecutedBlock {
+        // TODO: actually execute the block and return the relevant stuff
+        todo!()
+    }
+
+    /// Checks whether the deploys included in the proto-block exist on the network
+    pub(crate) async fn validate_proto_block<I>(
+        self,
+        _sender: I,
+        proto_block: ProtoBlock,
+    ) -> (bool, ProtoBlock) {
+        // TODO: check with the deploy fetcher or something whether the deploys whose hashes are
+        // contained in the proto-block actually exist
+        (true, proto_block)
     }
 }

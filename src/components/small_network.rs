@@ -80,7 +80,7 @@ use tokio::{
 use tokio_openssl::SslStream;
 use tokio_serde::{formats::SymmetricalMessagePack, SymmetricallyFramed};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, warn, Span};
 
 pub(crate) use self::{endpoint::Endpoint, event::Event, message::Message};
 use self::{endpoint::EndpointUpdate, error::Result};
@@ -139,6 +139,11 @@ where
         event_queue: EventQueueHandle<REv>,
         cfg: Config,
     ) -> Result<(SmallNetwork<REv, P>, Multiple<Effect<Event<P>>>)> {
+        let span = tracing::debug_span!("net");
+        let _enter = span.enter();
+
+        let server_span = tracing::info_span!("server");
+
         // First, we load or generate the TLS keys.
         let (cert, private_key) = match (&cfg.cert, &cfg.private_key) {
             // We're given a cert_file and a private_key file. Just load them, additional checking
@@ -177,6 +182,7 @@ where
             event_queue,
             tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
             server_shutdown_receiver,
+            server_span,
         ));
 
         let model = SmallNetwork {
@@ -208,7 +214,7 @@ where
     /// waits for it to complete the shutdown. This explicitly allows the background task to finish
     /// and drop everything it owns, ensuring that resources such as allocated ports are free to be
     /// reused once this completes.
-    #[allow(dead_code)]
+    #[cfg(test)]
     async fn shutdown_server(&mut self) {
         // Close the shutdown socket, causing the server to exit.
         drop(self.shutdown.take());
@@ -471,7 +477,6 @@ where
     }
 
     /// Returns the node id of this network node.
-    #[cfg(test)]
     pub(crate) fn node_id(&self) -> NodeId {
         self.cert.public_key_fingerprint()
     }
@@ -671,9 +676,12 @@ async fn server_task<P, REv>(
     event_queue: EventQueueHandle<REv>,
     mut listener: tokio::net::TcpListener,
     shutdown: oneshot::Receiver<()>,
+    span: Span,
 ) where
     REv: From<Event<P>>,
 {
+    let _enter = span.enter();
+
     // The server task is a bit tricky, since it has to wait on incoming connections while at the
     // same time shut down if the networking component is dropped, otherwise the TCP socket will
     // stay open, preventing reuse.

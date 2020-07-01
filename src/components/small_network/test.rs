@@ -4,9 +4,8 @@
 //! instances of `small_net` arranged in a network.
 
 use std::{
-    collections::HashSet,
+    collections::{hash_map::Entry, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
-    io,
     time::Duration,
 };
 
@@ -14,17 +13,17 @@ use derive_more::From;
 use futures::{future::join_all, Future};
 use serde::{Deserialize, Serialize};
 use small_network::NodeId;
-use tracing_subscriber::{self, EnvFilter};
 
 use crate::{
     components::Component,
     effect::{announcements::NetworkAnnouncement, Effect, EffectBuilder, Multiple},
+    logging,
     reactor::{self, EventQueueHandle, Reactor},
     small_network::{self, SmallNetwork},
 };
 use pnet::datalink;
 use tokio::time::{timeout, Timeout};
-use tracing::{debug, dispatcher::DefaultGuard, info};
+use tracing::{debug, field, info, Span};
 
 /// Time interval for which to poll an observed testing network when no events have occurred.
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
@@ -82,8 +81,12 @@ impl Reactor for TestReactor {
     fn new(
         cfg: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
+        span: &Span,
     ) -> reactor::Result<(Self, Multiple<Effect<Self::Event>>)> {
         let (net, effects) = SmallNetwork::new(event_queue, cfg)?;
+
+        let node_id = net.node_id();
+        span.record("id", &field::display(node_id));
 
         Ok((
             TestReactor { net },
@@ -113,17 +116,21 @@ impl Display for Message {
 /// cranking until a condition has been reached.
 #[derive(Debug)]
 struct Network {
-    nodes: Vec<reactor::Runner<TestReactor>>,
+    node_count: usize,
+    nodes: HashMap<NodeId, reactor::Runner<TestReactor>>,
 }
 
 impl Network {
     /// Creates a new network.
     fn new() -> Self {
-        Network { nodes: Vec::new() }
+        Network {
+            node_count: 0,
+            nodes: HashMap::new(),
+        }
     }
 
     /// Creates a new networking node on the network using the default root node port.
-    async fn add_node(&mut self) -> anyhow::Result<&mut reactor::Runner<TestReactor>> {
+    async fn add_node(&mut self) -> anyhow::Result<(NodeId, &mut reactor::Runner<TestReactor>)> {
         self.add_node_with_config(small_network::Config::default_on_port(TEST_ROOT_NODE_PORT))
             .await
     }
@@ -132,19 +139,27 @@ impl Network {
     async fn add_node_with_config(
         &mut self,
         cfg: small_network::Config,
-    ) -> anyhow::Result<&mut reactor::Runner<TestReactor>> {
-        let runner = reactor::Runner::new(cfg).await?;
-        self.nodes.push(runner);
+    ) -> anyhow::Result<(NodeId, &mut reactor::Runner<TestReactor>)> {
+        let runner: reactor::Runner<TestReactor> = reactor::Runner::new(cfg).await?;
+        self.node_count += 1;
 
-        Ok(self
-            .nodes
-            .last_mut()
-            .expect("vector cannot be empty after insertion"))
+        let node_id = runner.reactor().net.node_id();
+
+        let node_ref = match self.nodes.entry(node_id) {
+            Entry::Occupied(_) => {
+                // This happens in the event of the extremely unlikely hash collision, or if the
+                // node ID was set manually.
+                anyhow::bail!("trying to insert a duplicate node {}", node_id)
+            }
+            Entry::Vacant(entry) => entry.insert(runner),
+        };
+
+        Ok((node_id, node_ref))
     }
 
     /// Crank all runners once, returning the number of events processed.
     async fn crank_all(&mut self) -> usize {
-        join_all(self.nodes.iter_mut().map(|runner| runner.try_crank()))
+        join_all(self.nodes.values_mut().map(reactor::Runner::try_crank))
             .await
             .into_iter()
             .filter(|opt| opt.is_some())
@@ -175,7 +190,7 @@ impl Network {
     /// Runs the main loop of every reactor until a condition is true.
     async fn settle_on<F>(&mut self, f: F)
     where
-        F: Fn(&[reactor::Runner<TestReactor>]) -> bool,
+        F: Fn(&HashMap<NodeId, reactor::Runner<TestReactor>>) -> bool,
     {
         loop {
             // Check condition.
@@ -191,8 +206,8 @@ impl Network {
         }
     }
 
-    // Returns the internal list of nodes.
-    fn nodes(&self) -> &[reactor::Runner<TestReactor>] {
+    // Returns the internal map of nodes.
+    fn nodes(&self) -> &HashMap<NodeId, reactor::Runner<TestReactor>> {
         &self.nodes
     }
 
@@ -205,7 +220,7 @@ impl Network {
     /// gets the job done.
     async fn shutdown(self) {
         // Shutdown the sender of every reactor node to ensure the port is open again.
-        for node in self.nodes.into_iter() {
+        for (_, node) in self.nodes.into_iter() {
             node.into_inner().net.shutdown_server().await;
         }
 
@@ -216,18 +231,16 @@ impl Network {
 /// Sets up logging for testing.
 ///
 /// Returns a guard that when dropped out of scope, clears the logger again.
-fn init_logging() -> DefaultGuard {
+fn init_logging() {
     // TODO: Write logs to file by default for each test.
-    tracing::subscriber::set_default(
-        tracing_subscriber::fmt()
-            .with_writer(io::stderr)
-            .with_env_filter(EnvFilter::from_default_env())
-            .finish(),
-    )
+    logging::init()
+        // Ignore the return value, setting the global subscriber will fail if `init_logging` has
+        // been called before, which we don't care about.
+        .ok();
 }
 
 /// Checks whether or not a given network is completely connected.
-fn network_is_complete(nodes: &[reactor::Runner<TestReactor>]) -> bool {
+fn network_is_complete(nodes: &HashMap<NodeId, reactor::Runner<TestReactor>>) -> bool {
     // We need at least one node.
     if nodes.is_empty() {
         return false;
@@ -235,12 +248,12 @@ fn network_is_complete(nodes: &[reactor::Runner<TestReactor>]) -> bool {
 
     let expected: HashSet<_> = nodes
         .iter()
-        .map(|runner| runner.reactor().net.node_id())
+        .map(|(_, runner)| runner.reactor().net.node_id())
         .collect();
 
     nodes
         .iter()
-        .map(|runner| {
+        .map(|(_, runner)| {
             let net = &runner.reactor().net;
             let mut actual = net.connected_nodes();
 
@@ -316,6 +329,8 @@ async fn run_two_node_network_five_times() {
 /// Very unlikely to ever fail on a real machine.
 #[tokio::test]
 async fn bind_to_real_network_interface() {
+    init_logging();
+
     let iface = datalink::interfaces()
         .into_iter()
         .find(|net| !net.ips.is_empty() && !net.ips.iter().any(|ip| ip.ip().is_loopback()))

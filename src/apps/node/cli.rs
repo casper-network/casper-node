@@ -7,8 +7,8 @@ use std::{io, io::Write, path::PathBuf};
 use anyhow::bail;
 use structopt::StructOpt;
 
-use crate::{config, logging};
-use casperlabs_node::{reactor, tls};
+use crate::config;
+use casperlabs_node::{logging, reactor, tls};
 
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
 #[derive(Debug, StructOpt)]

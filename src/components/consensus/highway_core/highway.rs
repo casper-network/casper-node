@@ -111,6 +111,10 @@ impl<C: Context> Highway<C> {
         }
     }
 
+    pub(crate) fn state(&self) -> &State<C> {
+        &self.state
+    }
+
     fn add_vote(&mut self, swvote: SignedWireVote<C>) -> AddVertexOutcome<C> {
         if !self.params.validators.contains(swvote.wire_vote.sender)
             || swvote.wire_vote.panorama.len() != self.params.validators.len()

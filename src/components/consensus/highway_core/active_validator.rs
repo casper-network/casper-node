@@ -24,7 +24,7 @@ pub(crate) enum Effect<C: Context> {
 /// Information about the context in which a new block is created.
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub(crate) struct BlockContext {
-    instant: u64,
+    pub(crate) instant: u64,
 }
 
 impl BlockContext {
