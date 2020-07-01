@@ -23,8 +23,6 @@ use crate::{
 /// that this comes before a block in the linear, executed, finalized blockchain is produced.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ProtoBlock {
-    /// The timestamp of the future block
-    pub instant: u64,
     /// The list of deploy hashes included in the block
     pub deploys: Vec<DeployHash>,
     /// A random bit needed for initializing a future era

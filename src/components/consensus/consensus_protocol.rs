@@ -65,7 +65,7 @@ pub(crate) trait ConsensusProtocol<C: ConsensusValue> {
     fn handle_timer(&mut self, timer_id: TimerId)
         -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
 
-    /// Marks the `value` as valid or invalid, based on validatoin requested via
+    /// Marks the `value` as valid or invalid, based on validation requested via
     /// `ConsensusProtocolResult::ValidateConsensusvalue`.
     fn resolve_validity(
         &mut self,
