@@ -14,6 +14,13 @@ use crate::{
 
 /// The piece of information that will become the content of a future block (isn't finalized or
 /// executed yet)
+///
+/// From the view of the consensus protocol this is the "consensus value": The protocol deals with
+/// finalizing an order of `ProtoBlock`s. Only after consensus has been reached, the block's
+/// deploys actually get executed, and the executed block gets signed.
+///
+/// The word "proto" does _not_ refer to "protocol" or "protobuf"! It is just a prefix to highlight
+/// that this comes before a block in the linear, executed, finalized blockchain is produced.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ProtoBlock {
     /// The timestamp of the future block
