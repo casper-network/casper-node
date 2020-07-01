@@ -1,15 +1,24 @@
 // TODO: Remove when all code is used
 #![allow(dead_code)]
-use std::{fmt::Debug, hash::Hash, time::Instant};
+use std::{fmt::Debug, hash::Hash};
 
-use crate::components::consensus::consensus_protocol::synchronizer::DagSynchronizerState;
-use crate::components::consensus::highway_core::active_validator::ActiveValidator;
-use crate::components::consensus::highway_core::finality_detector::FinalityDetector;
-use crate::components::consensus::highway_core::highway::Highway;
-use crate::components::consensus::highway_core::vertex::{Dependency, Vertex};
-use crate::components::consensus::traits::Context;
 use anyhow::Error;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use tracing::warn;
+
+use crate::components::{
+    consensus::{
+        consensus_protocol::synchronizer::{DagSynchronizerState, SynchronizerEffect},
+        highway_core::{
+            active_validator::{ActiveValidator, Effect as AvEffect},
+            finality_detector::FinalityDetector,
+            highway::Highway,
+            vertex::{Dependency, Vertex},
+        },
+        traits::Context,
+    },
+    small_network::NodeId,
+};
 
 mod protocol_state;
 mod synchronizer;
@@ -19,9 +28,6 @@ pub(crate) use protocol_state::{AddVertexOk, ProtocolState, VertexTrait};
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct TimerId(pub(crate) u64);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct NodeId(u64);
-
 pub(crate) trait ConsensusValue:
     Hash + PartialEq + Eq + Serialize + DeserializeOwned
 {
@@ -30,11 +36,14 @@ impl<T> ConsensusValue for T where T: Hash + PartialEq + Eq + Serialize + Deseri
 
 #[derive(Debug)]
 pub(crate) enum ConsensusProtocolResult<C: ConsensusValue> {
-    CreatedNewMessage(Vec<u8>),
+    CreatedGossipMessage(Vec<u8>),
+    CreatedTargetedMessage(Vec<u8>, NodeId),
     InvalidIncomingMessage(Vec<u8>, Error),
-    ScheduleTimer(Instant, TimerId),
-    CreateNewBlock,
+    ScheduleTimer(u64, TimerId),
+    /// Request deploys for a new block, whose timestamp will be the given `u64`.
+    CreateNewBlock(u64),
     FinalizedBlock(C),
+    ValidateConsensusValue(NodeId, C),
 }
 
 /// An API for a single instance of the consensus.
@@ -75,22 +84,86 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
         msg: Vec<u8>,
     ) -> Result<Vec<ConsensusProtocolResult<<C as Context>::ConsensusValue>>, Error> {
         let highway_message: HighwayMessage<C> = serde_json::from_slice(msg.as_slice()).unwrap();
-        match highway_message {
+        Ok(match highway_message {
             HighwayMessage::NewVertex(v) => {
-                match self.synchronizer.add_vertex(sender, v, &mut self.highway) {
-                    Ok(_) => todo!(),
-                    Err(err) => todo!("error: {:?}", err),
+                let mut new_vertices = vec![v];
+                let mut effects = vec![];
+                // TODO: Is there a danger that this takes too much time, and starves other
+                // components and events? Consider replacing the loop with a "callback" effect:
+                // Instead of handling `HighwayMessage::NewVertex(v)` directly, return a
+                // `EnqueueVertex(v)` that causes the reactor to call us with an
+                // `Event::NewVertex(v)`, and call `add_vertex` when handling that event. For each
+                // returned vertex that needs to be requeued, also return an `EnqueueVertex`
+                // effect.
+                while let Some(v) = new_vertices.pop() {
+                    match self
+                        .synchronizer
+                        .add_vertex(sender, v.clone(), &mut self.highway)
+                    {
+                        Ok(SynchronizerEffect::RequestVertex(sender, missing_vid)) => {
+                            let msg = HighwayMessage::RequestDependency(missing_vid);
+                            let serialized_msg = serde_json::to_vec_pretty(&msg)?;
+                            effects.push(ConsensusProtocolResult::CreatedTargetedMessage(
+                                serialized_msg,
+                                sender,
+                            ));
+                        }
+                        Ok(SynchronizerEffect::RequeueVertex(vertices)) => {
+                            new_vertices.extend(vertices);
+                            let msg = HighwayMessage::NewVertex(v);
+                            // TODO: Add new vertex to state. (Indirectly, via synchronizer?)
+                            // TODO: Don't `unwrap`.
+                            let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
+                            effects.push(ConsensusProtocolResult::CreatedGossipMessage(
+                                serialized_msg,
+                            ))
+                        }
+                        Ok(SynchronizerEffect::RequestConsensusValue(sender, value)) => {
+                            effects.push(ConsensusProtocolResult::ValidateConsensusValue(
+                                sender, value,
+                            ));
+                        }
+                        Ok(SynchronizerEffect::InvalidVertex(v, sender, err)) => {
+                            warn!("Invalid vertex from {:?}: {:?}, {:?}", v, sender, err);
+                        }
+                        Err(err) => todo!("error: {:?}", err),
+                    }
                 }
+                effects
             }
             HighwayMessage::RequestDependency(_dep) => todo!(),
-        }
+        })
     }
 
     fn handle_timer(
         &mut self,
         _timer_id: TimerId,
     ) -> Result<Vec<ConsensusProtocolResult<<C as Context>::ConsensusValue>>, Error> {
-        unimplemented!()
+        // TODO: Instant!
+        let av = match self.active_validator.as_mut() {
+            Some(av) => av,
+            None => return Ok(vec![]),
+        };
+        let state = self.highway.state();
+        Ok(av
+            .handle_timer(0, state)
+            .into_iter()
+            .map(|effect| match effect {
+                AvEffect::NewVertex(v) => {
+                    let msg = HighwayMessage::NewVertex(v);
+                    // TODO: Add new vertex to state. (Indirectly, via synchronizer?)
+                    // TODO: Don't `unwrap`.
+                    let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
+                    ConsensusProtocolResult::CreatedGossipMessage(serialized_msg)
+                }
+                AvEffect::ScheduleTimer(instant) => {
+                    ConsensusProtocolResult::ScheduleTimer(instant, TimerId(0))
+                }
+                AvEffect::RequestNewBlock(ctx) => {
+                    ConsensusProtocolResult::CreateNewBlock(ctx.instant)
+                }
+            })
+            .collect())
     }
 }
 

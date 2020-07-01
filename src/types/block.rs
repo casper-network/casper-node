@@ -8,8 +8,30 @@ use crate::{
         asymmetric_key::{self, PublicKey, SecretKey, Signature},
         hash::{self, Digest},
     },
+    types::DeployHash,
     utils::DisplayIter,
 };
+
+/// The piece of information that will become the content of a future block (isn't finalized or
+/// executed yet)
+#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ProtoBlock {
+    /// The timestamp of the future block
+    pub instant: u64,
+    /// The list of deploy hashes included in the block
+    pub deploys: Vec<DeployHash>,
+    /// A random bit needed for initializing a future era
+    pub random_bit: bool,
+}
+
+/// A proto-block after execution, with the resulting post-state-hash
+#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ExecutedBlock {
+    /// The executed proto-block
+    pub proto_block: ProtoBlock,
+    /// The root hash of the resulting state
+    pub post_state_hash: Digest,
+}
 
 /// The cryptographic hash of a [`Block`](struct.Block.html).
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]

@@ -450,10 +450,10 @@ mod tests {
             .collect()
     }
 
-    fn check_holders(expected: &[NodeId], gossip_table: &GossipTable<u64>, data_id: &u64) {
+    fn check_holders(expected: &[NodeId], gossip_table: &GossipTable<u64>, data_id: u64) {
         let expected: BTreeSet<_> = expected.iter().collect();
         let actual: BTreeSet<_> = gossip_table
-            .holders(data_id)
+            .holders(&data_id)
             .map_or_else(BTreeSet::new, |itr| itr.collect());
         assert!(
             expected == actual,
@@ -480,32 +480,32 @@ mod tests {
         // Check new partial data causes `GetRemainder` to be returned.
         let action = gossip_table.new_partial_data(&data_id, node_ids[0]);
         assert_eq!(GossipAction::GetRemainder, action);
-        check_holders(&node_ids[..1], &gossip_table, &data_id);
+        check_holders(&node_ids[..1], &gossip_table, data_id);
 
         // Check same partial data from same source causes `AwaitingRemainder` to be returned.
         let action = gossip_table.new_partial_data(&data_id, node_ids[0]);
         assert_eq!(GossipAction::AwaitingRemainder, action);
-        check_holders(&node_ids[..1], &gossip_table, &data_id);
+        check_holders(&node_ids[..1], &gossip_table, data_id);
 
         // Check same partial data from different source causes `AwaitingRemainder` to be returned
         // and holders updated.
         let action = gossip_table.new_partial_data(&data_id, node_ids[1]);
         assert_eq!(GossipAction::AwaitingRemainder, action);
-        check_holders(&node_ids[..2], &gossip_table, &data_id);
+        check_holders(&node_ids[..2], &gossip_table, data_id);
 
         // Pause gossiping and check same partial data from third source causes `Noop` to be
         // returned and holders updated.
         gossip_table.pause(&data_id).unwrap();
         let action = gossip_table.new_partial_data(&data_id, node_ids[2]);
         assert_eq!(GossipAction::Noop, action);
-        check_holders(&node_ids[..3], &gossip_table, &data_id);
+        check_holders(&node_ids[..3], &gossip_table, data_id);
 
         // Reset the data and check same partial data from fourth source causes `AwaitingRemainder`
         // to be returned and holders updated.
         gossip_table.reset(&data_id).unwrap();
         let action = gossip_table.new_partial_data(&data_id, node_ids[3]);
         assert_eq!(GossipAction::AwaitingRemainder, action);
-        check_holders(&node_ids[..4], &gossip_table, &data_id);
+        check_holders(&node_ids[..4], &gossip_table, data_id);
 
         // Finish the gossip by reporting three infections, then check same partial data causes
         // `Noop` to be returned and holders cleared.
@@ -516,14 +516,14 @@ mod tests {
         }
         let action = gossip_table.new_partial_data(&data_id, node_ids[limit]);
         assert_eq!(GossipAction::Noop, action);
-        check_holders(&node_ids[..0], &gossip_table, &data_id);
+        check_holders(&node_ids[..0], &gossip_table, data_id);
 
         // Time the finished data out, then check same partial data causes `GetRemainder` to be
         // returned as per a completely new entry.
         Instant::advance_time(DEFAULT_FINISHED_ENTRY_DURATION_SECS * 1_000);
         let action = gossip_table.new_partial_data(&data_id, node_ids[0]);
         assert_eq!(GossipAction::GetRemainder, action);
-        check_holders(&node_ids[..1], &gossip_table, &data_id);
+        check_holders(&node_ids[..1], &gossip_table, data_id);
     }
 
     #[test]
@@ -568,27 +568,27 @@ mod tests {
         // Check new complete data from us causes `ShouldGossip` to be returned.
         let action = gossip_table.new_complete_data(&data_id, None);
         assert_eq!(should_gossip(0), action);
-        check_holders(&node_ids[..0], &gossip_table, &data_id);
+        check_holders(&node_ids[..0], &gossip_table, data_id);
 
         // Check same complete data from other source causes `ShouldGossip` to be returned and
         // holders updated.
         let action = gossip_table.new_complete_data(&data_id, Some(node_ids[0]));
         assert_eq!(should_gossip(1), action);
-        check_holders(&node_ids[..1], &gossip_table, &data_id);
+        check_holders(&node_ids[..1], &gossip_table, data_id);
 
         // Pause gossiping and check same complete data from third source causes `Noop` to be
         // returned and holders updated.
         gossip_table.pause(&data_id).unwrap();
         let action = gossip_table.new_complete_data(&data_id, Some(node_ids[1]));
         assert_eq!(GossipAction::Noop, action);
-        check_holders(&node_ids[..2], &gossip_table, &data_id);
+        check_holders(&node_ids[..2], &gossip_table, data_id);
 
         // Reset the data and check same complete data from third source causes `ShouldGossip` to be
         // returned and holders updated.
         gossip_table.reset(&data_id).unwrap();
         let action = gossip_table.new_complete_data(&data_id, Some(node_ids[2]));
         assert_eq!(should_gossip(3), action);
-        check_holders(&node_ids[..3], &gossip_table, &data_id);
+        check_holders(&node_ids[..3], &gossip_table, data_id);
 
         // Finish the gossip by reporting enough non-infections, then check same complete data
         // causes `Noop` to be returned and holders cleared.
@@ -597,14 +597,14 @@ mod tests {
         }
         let action = gossip_table.new_complete_data(&data_id, None);
         assert_eq!(GossipAction::Noop, action);
-        check_holders(&node_ids[..0], &gossip_table, &data_id);
+        check_holders(&node_ids[..0], &gossip_table, data_id);
 
         // Time the finished data out, then check same complete data causes `ShouldGossip` to be
         // returned as per a completely new entry.
         Instant::advance_time(DEFAULT_FINISHED_ENTRY_DURATION_SECS * 1_000);
         let action = gossip_table.new_complete_data(&data_id, Some(node_ids[0]));
         assert_eq!(should_gossip(1), action);
-        check_holders(&node_ids[..1], &gossip_table, &data_id);
+        check_holders(&node_ids[..1], &gossip_table, data_id);
     }
 
     #[test]
