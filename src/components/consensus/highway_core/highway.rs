@@ -44,6 +44,7 @@ pub(crate) struct HighwayParams<C: Context> {
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
 /// peers, and use a [FinalityDetector](../finality_detector/struct.FinalityDetector.html) to
 /// determine the outcome of the consensus process.
+#[derive(Debug)]
 pub(crate) struct Highway<C: Context> {
     /// The parameters that remain constant for the duration of this consensus instance.
     params: HighwayParams<C>,

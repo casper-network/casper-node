@@ -8,6 +8,7 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 /// (one that had requested for earlier) but with a different node.
 /// The assumption is that a downloading layer will collect different node IDs as alternative
 /// sources and use different address in the case of download failures.
+#[derive(Debug)]
 pub(crate) enum SynchronizerEffect<V: VertexTrait> {
     /// Effect for the reactor to download missing vertex.
     RequestVertex(NodeId, V::Id),
@@ -21,6 +22,7 @@ pub(crate) enum SynchronizerEffect<V: VertexTrait> {
 }
 
 /// Structure that tracks which vertices wait for what consensus value dependencies.
+#[derive(Debug)]
 pub(crate) struct ConsensusValueDependencies<V: VertexTrait> {
     // Multiple vertices can be dependent on the same consensus value.
     cv_to_set: HashMap<V::Value, Vec<V::Id>>,
@@ -77,6 +79,7 @@ impl<V: VertexTrait> ConsensusValueDependencies<V> {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct DagSynchronizerState<P>
 where
     P: ProtocolState,
