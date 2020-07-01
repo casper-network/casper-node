@@ -207,49 +207,49 @@ mod example {
     #[derive(Debug, Hash, PartialEq, Eq, Clone, Serialize, Deserialize)]
     struct DummyVertex {
         id: u64,
-        deploy_hash: DeployHash,
+        proto_block: ProtoBlock,
     }
 
     impl VertexTrait for DummyVertex {
         type Id = VIdU64;
-        type Value = DeployHash;
+        type Value = ProtoBlock;
 
         fn id(&self) -> VIdU64 {
             VIdU64(self.id)
         }
 
-        fn value(&self) -> Option<&DeployHash> {
-            Some(&self.deploy_hash)
+        fn value(&self) -> Option<&ProtoBlock> {
+            Some(&self.proto_block)
         }
     }
 
     #[derive(Debug, Hash, PartialEq, Eq, Clone, Serialize, Deserialize)]
-    struct DeployHash(u64);
+    struct ProtoBlock(u64);
 
     #[derive(Debug)]
     struct Error;
 
-    impl<P: ProtocolState> ConsensusProtocol<DeployHash> for DagSynchronizerState<P> {
+    impl<P: ProtocolState> ConsensusProtocol<ProtoBlock> for DagSynchronizerState<P> {
         fn handle_message(
             &mut self,
             _sender: NodeId,
             _msg: Vec<u8>,
-        ) -> Result<Vec<ConsensusProtocolResult<DeployHash>>, anyhow::Error> {
+        ) -> Result<Vec<ConsensusProtocolResult<ProtoBlock>>, anyhow::Error> {
             unimplemented!()
         }
 
         fn handle_timer(
             &mut self,
             _timer_id: TimerId,
-        ) -> Result<Vec<ConsensusProtocolResult<DeployHash>>, anyhow::Error> {
+        ) -> Result<Vec<ConsensusProtocolResult<ProtoBlock>>, anyhow::Error> {
             unimplemented!()
         }
 
         fn resolve_validity(
             &mut self,
-            _value: &DeployHash,
+            _value: &ProtoBlock,
             _valid: bool,
-        ) -> Result<Vec<ConsensusProtocolResult<DeployHash>>, anyhow::Error> {
+        ) -> Result<Vec<ConsensusProtocolResult<ProtoBlock>>, anyhow::Error> {
             unimplemented!()
         }
     }
