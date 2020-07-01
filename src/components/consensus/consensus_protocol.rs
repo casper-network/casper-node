@@ -1,9 +1,9 @@
 // TODO: Remove when all code is used
 #![allow(dead_code)]
-use std::{fmt::Debug, hash::Hash};
+use std::fmt::Debug;
 
 use anyhow::Error;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use tracing::warn;
 
 use crate::components::{
@@ -15,7 +15,7 @@ use crate::components::{
             highway::Highway,
             vertex::{Dependency, Vertex},
         },
-        traits::Context,
+        traits::{ConsensusValueT, Context},
     },
     small_network::NodeId,
 };
@@ -28,14 +28,8 @@ pub(crate) use protocol_state::{AddVertexOk, ProtocolState, VertexTrait};
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct TimerId(pub(crate) u64);
 
-pub(crate) trait ConsensusValue:
-    Hash + PartialEq + Eq + Serialize + DeserializeOwned
-{
-}
-impl<T> ConsensusValue for T where T: Hash + PartialEq + Eq + Serialize + DeserializeOwned {}
-
 #[derive(Debug)]
-pub(crate) enum ConsensusProtocolResult<C: ConsensusValue> {
+pub(crate) enum ConsensusProtocolResult<C: ConsensusValueT> {
     CreatedGossipMessage(Vec<u8>),
     CreatedTargetedMessage(Vec<u8>, NodeId),
     InvalidIncomingMessage(Vec<u8>, Error),
@@ -54,7 +48,7 @@ pub(crate) enum ConsensusProtocolResult<C: ConsensusValue> {
 }
 
 /// An API for a single instance of the consensus.
-pub(crate) trait ConsensusProtocol<C: ConsensusValue> {
+pub(crate) trait ConsensusProtocol<C: ConsensusValueT> {
     /// Handles an incoming message (like NewVote, RequestDependency).
     fn handle_message(
         &mut self,
