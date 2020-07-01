@@ -58,13 +58,6 @@ impl Default for EraConfig {
     }
 }
 
-#[derive(Clone, Debug)]
-struct EraInstance<Id> {
-    era_id: Id,
-    era_start: u64,
-    era_end: u64,
-}
-
 pub(crate) struct EraSupervisor {
     // A map of active consensus protocols.
     // A value is a trait so that we can run different consensus protocol instances per era.
@@ -102,6 +95,7 @@ impl EraSupervisor {
         match consensus_result {
             ConsensusProtocolResult::InvalidIncomingMessage(msg, error) => {
                 // TODO: we will probably want to disconnect from the sender here
+                // TODO: Print a more readable representation of the message.
                 error!(
                     ?msg,
                     ?error,
@@ -123,8 +117,8 @@ impl EraSupervisor {
                 // a timer for the correct moment - and we don't want to use std::Instant
                 unimplemented!()
             }
-            ConsensusProtocolResult::CreateNewBlock(instant) => effect_builder
-                .request_proto_block(instant)
+            ConsensusProtocolResult::CreateNewBlock(_instant) => effect_builder
+                .request_proto_block()
                 .event(Event::NewProtoBlock),
             ConsensusProtocolResult::FinalizedBlock(block) => effect_builder
                 .execute_block(block)

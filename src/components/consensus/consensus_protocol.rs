@@ -44,12 +44,18 @@ pub(crate) enum ConsensusProtocolResult<C: ConsensusValue> {
     /// TODO: Add more details that are necessary for block creation.
     CreateNewBlock(u64),
     FinalizedBlock(C),
+    /// Request validation of the consensus value, contained in a message received from the given
+    /// node.
+    ///
+    /// The domain logic should verify any intrinsic validity conditions of consensus values, e.g.
+    /// that it has the expected structure, or that deploys that are mentioned by hash actually
+    /// exist, and then call `ConsensusProtocol::resolve_validity`.
     ValidateConsensusValue(NodeId, C),
 }
 
 /// An API for a single instance of the consensus.
 pub(crate) trait ConsensusProtocol<C: ConsensusValue> {
-    /// Handle an incoming message (like NewVote, RequestDependency).
+    /// Handles an incoming message (like NewVote, RequestDependency).
     fn handle_message(
         &mut self,
         sender: NodeId,
@@ -64,6 +70,14 @@ pub(crate) trait ConsensusProtocol<C: ConsensusValue> {
         &self,
         value: C,
         block_context: BlockContext,
+    ) -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
+
+    /// Marks the `value` as valid or invalid, based on validation requested via
+    /// `ConsensusProtocolResult::ValidateConsensusvalue`.
+    fn resolve_validity(
+        &mut self,
+        value: &C,
+        valid: bool,
     ) -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
 }
 
@@ -102,6 +116,8 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
                 // returned vertex that needs to be requeued, also return an `EnqueueVertex`
                 // effect.
                 while let Some(v) = new_vertices.pop() {
+                    // TODO: This is wrong!! `add_vertex` should not be called with `sender`, but
+                    // with the node that sent us `v` in the first place.
                     match self
                         .synchronizer
                         .add_vertex(sender, v.clone(), &mut self.highway)
@@ -192,6 +208,14 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
             })
             .collect())
     }
+
+    fn resolve_validity(
+        &mut self,
+        _value: &C::ConsensusValue,
+        _valid: bool,
+    ) -> Result<Vec<ConsensusProtocolResult<C::ConsensusValue>>, Error> {
+        todo!()
+    }
 }
 
 #[cfg(test)]
@@ -210,49 +234,57 @@ mod example {
     #[derive(Debug, Hash, PartialEq, Eq, Clone, Serialize, Deserialize)]
     struct DummyVertex {
         id: u64,
-        deploy_hash: DeployHash,
+        proto_block: ProtoBlock,
     }
 
     impl VertexTrait for DummyVertex {
         type Id = VIdU64;
-        type Value = DeployHash;
+        type Value = ProtoBlock;
 
         fn id(&self) -> VIdU64 {
             VIdU64(self.id)
         }
 
-        fn value(&self) -> Option<&DeployHash> {
-            Some(&self.deploy_hash)
+        fn value(&self) -> Option<&ProtoBlock> {
+            Some(&self.proto_block)
         }
     }
 
     #[derive(Debug, Hash, PartialEq, Eq, Clone, Serialize, Deserialize)]
-    struct DeployHash(u64);
+    struct ProtoBlock(u64);
 
     #[derive(Debug)]
     struct Error;
 
-    impl<P: ProtocolState> ConsensusProtocol<DeployHash> for DagSynchronizerState<P> {
+    impl<P: ProtocolState> ConsensusProtocol<ProtoBlock> for DagSynchronizerState<P> {
         fn handle_message(
             &mut self,
             _sender: NodeId,
             _msg: Vec<u8>,
-        ) -> Result<Vec<ConsensusProtocolResult<DeployHash>>, anyhow::Error> {
+        ) -> Result<Vec<ConsensusProtocolResult<ProtoBlock>>, anyhow::Error> {
             unimplemented!()
         }
 
         fn handle_timer(
             &mut self,
             _timer_id: TimerId,
-        ) -> Result<Vec<ConsensusProtocolResult<DeployHash>>, anyhow::Error> {
+        ) -> Result<Vec<ConsensusProtocolResult<ProtoBlock>>, anyhow::Error> {
+            unimplemented!()
+        }
+
+        fn resolve_validity(
+            &mut self,
+            _value: &ProtoBlock,
+            _valid: bool,
+        ) -> Result<Vec<ConsensusProtocolResult<ProtoBlock>>, anyhow::Error> {
             unimplemented!()
         }
 
         fn propose(
             &self,
-            _value: DeployHash,
+            _value: ProtoBlock,
             _block_context: BlockContext,
-        ) -> Result<Vec<ConsensusProtocolResult<DeployHash>>, anyhow::Error> {
+        ) -> Result<Vec<ConsensusProtocolResult<ProtoBlock>>, anyhow::Error> {
             unimplemented!()
         }
     }
