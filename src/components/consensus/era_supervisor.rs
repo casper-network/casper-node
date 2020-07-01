@@ -27,7 +27,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct EraId(pub(crate) u64);
+pub struct EraId(pub(crate) u64);
 
 impl EraId {
     fn message(self, payload: Vec<u8>) -> ConsensusMessage {
@@ -119,17 +119,30 @@ impl EraSupervisor {
             }
             ConsensusProtocolResult::CreateNewBlock(_instant) => effect_builder
                 .request_proto_block()
-                .event(Event::NewProtoBlock),
+                .event(move |proto_block| Event::NewProtoBlock {
+                    era_id,
+                    proto_block,
+                }),
             ConsensusProtocolResult::FinalizedBlock(block) => effect_builder
                 .execute_block(block)
-                .event(Event::ExecutedBlock),
+                .event(move |executed_block| Event::ExecutedBlock {
+                    era_id,
+                    executed_block,
+                }),
             ConsensusProtocolResult::ValidateConsensusValue(sender, proto_block) => effect_builder
                 .validate_proto_block(sender, proto_block)
                 .event(move |(is_valid, proto_block)| {
                     if is_valid {
-                        Event::AcceptProtoBlock(proto_block)
+                        Event::AcceptProtoBlock {
+                            era_id,
+                            proto_block,
+                        }
                     } else {
-                        Event::InvalidProtoBlock(sender, proto_block)
+                        Event::InvalidProtoBlock {
+                            era_id,
+                            sender,
+                            proto_block,
+                        }
                     }
                 }),
         }
