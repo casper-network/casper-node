@@ -247,9 +247,9 @@ mod example {
 
         fn resolve_validity(
             &mut self,
-            _value: &DeployHash,
+            _value: &ProtoBlock,
             _valid: bool,
-        ) -> Result<Vec<ConsensusProtocolResult<DeployHash>>, anyhow::Error> {
+        ) -> Result<Vec<ConsensusProtocolResult<ProtoBlock>>, anyhow::Error> {
             unimplemented!()
         }
     }
