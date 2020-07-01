@@ -89,7 +89,9 @@ impl<C: ConsensusValue> ConsensusService for EraSupervisor<C> {
                                 ConsensusProtocolResult::ScheduleTimer(_delay, _timer_id) => {
                                     unimplemented!()
                                 }
-                                ConsensusProtocolResult::CreateNewBlock => unimplemented!(),
+                                ConsensusProtocolResult::CreateNewBlock(_instant) => {
+                                    unimplemented!()
+                                }
                                 ConsensusProtocolResult::FinalizedBlock(_block) => unimplemented!(),
                             })
                             .collect()
@@ -113,7 +115,9 @@ impl<C: ConsensusValue> ConsensusService for EraSupervisor<C> {
                                 ConsensusProtocolResult::ScheduleTimer(_delay, _timer_id) => {
                                     unimplemented!()
                                 }
-                                ConsensusProtocolResult::CreateNewBlock => unimplemented!(),
+                                ConsensusProtocolResult::CreateNewBlock(_instant) => {
+                                    unimplemented!()
+                                }
                                 ConsensusProtocolResult::FinalizedBlock(_block) => unimplemented!(),
                             })
                             .collect()

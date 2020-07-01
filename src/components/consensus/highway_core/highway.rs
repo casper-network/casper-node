@@ -1,4 +1,5 @@
 use super::{
+    active_validator::{ActiveValidator, BlockContext, Effect},
     evidence::Evidence,
     state::{AddVoteError, State},
     validators::Validators,
@@ -41,12 +42,12 @@ pub(crate) struct HighwayParams<C: Context> {
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
 /// peers, and use a [FinalityDetector](../finality_detector/struct.FinalityDetector.html) to
 /// determine the outcome of the consensus process.
-#[derive(Debug)]
 pub(crate) struct Highway<C: Context> {
     /// The parameters that remain constant for the duration of this consensus instance.
     params: HighwayParams<C>,
     /// The abstract protocol state.
     state: State<C>,
+    active_validator: Option<ActiveValidator<C>>,
 }
 
 impl<C: Context> Highway<C> {
@@ -70,6 +71,43 @@ impl<C: Context> Highway<C> {
         match dependency {
             Dependency::Vote(hash) => state.wire_vote(&hash).map(Vertex::Vote),
             Dependency::Evidence(idx) => state.opt_evidence(idx).cloned().map(Vertex::Evidence),
+        }
+    }
+
+    pub(crate) fn on_new_vote(&self, vhash: &C::Hash, instant: u64) -> Vec<Effect<C>> {
+        match self.active_validator.as_ref() {
+            None => {
+                // TODO: Error?
+                // At least add logging about the event.
+                vec![]
+            }
+            Some(av) => av.on_new_vote(vhash, instant, &self.state),
+        }
+    }
+
+    pub(crate) fn handle_timer(&mut self, instant: u64) -> Vec<Effect<C>> {
+        match self.active_validator.as_mut() {
+            None => {
+                // TODO: Error?
+                // At least add logging about the event.
+                vec![]
+            }
+            Some(av) => av.handle_timer(instant, &self.state),
+        }
+    }
+
+    pub(crate) fn propose(
+        &self,
+        value: C::ConsensusValue,
+        block_context: BlockContext,
+    ) -> Vec<Effect<C>> {
+        match self.active_validator.as_ref() {
+            None => {
+                // TODO: Error?
+                // At least add logging about the event.
+                vec![]
+            }
+            Some(av) => av.propose(value, block_context, &self.state),
         }
     }
 
@@ -143,7 +181,11 @@ pub(crate) mod tests {
             instance_id: 1u64,
             validators,
         };
-        let mut highway = Highway { params, state };
+        let mut highway = Highway {
+            params,
+            state,
+            active_validator: None,
+        };
         let wvote = WireVote {
             panorama: Panorama::new(WEIGHTS.len()),
             sender: ALICE,
