@@ -132,8 +132,18 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
                         }
                         Ok(SynchronizerEffect::RequeueVertex(vertices)) => {
                             new_vertices.extend(vertices);
-                            let msg = HighwayMessage::NewVertex(v);
                             // TODO: Add new vertex to state. (Indirectly, via synchronizer?)
+                            // TODO: Handle effects from `highway.on_new_vote`.
+                            let _additional_effects = match &v {
+                                Vertex::Vote(swv) => {
+                                    self.highway.on_new_vote(&swv.hash(), swv.wire_vote.instant)
+                                }
+                                Vertex::Evidence(_) => {
+                                    // Do nothing?
+                                    vec![]
+                                }
+                            };
+                            let msg = HighwayMessage::NewVertex(v);
                             // TODO: Don't `unwrap`.
                             let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
                             effects.push(ConsensusProtocolResult::CreatedGossipMessage(
