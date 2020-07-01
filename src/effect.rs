@@ -483,10 +483,11 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Passes the timestamp of a future block for which deploys are to be proposed
-    pub(crate) async fn request_proto_block(self, instant: u64) -> ProtoBlock {
+    // TODO: Add an argument (`BlockContext`?) that contains all information necessary to select
+    // deploys, e.g. the ancestors' deploys.
+    pub(crate) async fn request_proto_block(self) -> ProtoBlock {
         // TODO: actually return the relevant deploys and an actual random bit
         ProtoBlock {
-            instant,
             deploys: vec![],
             random_bit: false,
         }
