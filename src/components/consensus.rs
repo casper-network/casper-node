@@ -6,11 +6,7 @@ mod traits;
 #[allow(unused)]
 mod deploy_buffer;
 mod era_supervisor;
-// TODO: remove when we actually construct a Pothole era
-#[allow(unused)]
-mod pothole;
-// TODO: remove when we actually construct a Pothole era
-#[allow(unused)]
+// TODO: remove when we actually construct a Highway era
 mod protocols;
 // TODO: remove when we actually construct a Highway era
 #[allow(unused)]
