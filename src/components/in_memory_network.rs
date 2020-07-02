@@ -13,23 +13,31 @@ use std::{
 
 use rand::{seq::IteratorRandom, Rng};
 use tokio::sync::mpsc::{self, error::SendError};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     components::Component,
-    effect::{requests::NetworkRequest, Effect, EffectBuilder, EffectExt, Multiple},
+    effect::{
+        announcements::NetworkAnnouncement, requests::NetworkRequest, Effect, EffectBuilder,
+        EffectExt, Multiple,
+    },
+    reactor::{EventQueueHandle, QueueKind},
 };
 
-type Network<P> = Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<P>>>>;
+type Network<P> = Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<(NodeId, P)>>>>;
 type NodeId = u64;
 
 /// The network controller is used to control the network topology (e.g. adding and removing nodes).
 #[derive(Debug)]
 pub(crate) struct NetworkController<P> {
+    /// Channels for network communication.
     nodes: Network<P>,
 }
 
-impl<P> NetworkController<P> {
+impl<P> NetworkController<P>
+where
+    P: 'static + Send,
+{
     /// Creates a new, empty network inside a network controller.
     pub(crate) fn new() -> Self {
         NetworkController {
@@ -40,8 +48,16 @@ impl<P> NetworkController<P> {
     /// Creates a new networking node with a random node ID.
     ///
     /// Returns the already connected new networking component for new node.
-    pub(crate) fn create_node<R: Rng>(&self, rng: &mut R) -> InMemoryNetwork<P> {
-        InMemoryNetwork::new(rng.gen(), self.nodes.clone())
+    pub(crate) fn create_node<REv, R>(
+        &self,
+        event_queue: EventQueueHandle<REv>,
+        rng: &mut R,
+    ) -> InMemoryNetwork<P>
+    where
+        R: Rng,
+        REv: From<NetworkAnnouncement<NodeId, P>> + Send,
+    {
+        InMemoryNetwork::new(event_queue, rng.gen(), self.nodes.clone())
     }
 }
 
@@ -49,12 +65,19 @@ impl<P> NetworkController<P> {
 pub(crate) struct InMemoryNetwork<P> {
     /// Our node id.
     node_id: NodeId,
+
     /// The nodes map, contains the incoming channel for each virtual node.
     nodes: Network<P>,
 }
 
-impl<P> InMemoryNetwork<P> {
-    fn new(node_id: NodeId, nodes: Network<P>) -> Self {
+impl<P> InMemoryNetwork<P>
+where
+    P: 'static + Send,
+{
+    fn new<REv>(event_queue: EventQueueHandle<REv>, node_id: NodeId, nodes: Network<P>) -> Self
+    where
+        REv: From<NetworkAnnouncement<NodeId, P>> + Send,
+    {
         let (sender, receiver) = mpsc::unbounded_channel();
 
         // Sanity check, ensure that we do not create duplicate nodes.
@@ -64,7 +87,7 @@ impl<P> InMemoryNetwork<P> {
             nodes_write.insert(node_id, sender);
         }
 
-        // TODO: Start receiver task.
+        tokio::spawn(receiver_task(event_queue, receiver));
 
         InMemoryNetwork { node_id, nodes }
     }
@@ -75,10 +98,15 @@ where
     P: Display,
 {
     /// Internal helper, sends a payload to a node, ignoring but logging all errors.
-    fn send(&self, nodes: &HashMap<NodeId, mpsc::UnboundedSender<P>>, dest: NodeId, payload: P) {
+    fn send(
+        &self,
+        nodes: &HashMap<NodeId, mpsc::UnboundedSender<(NodeId, P)>>,
+        dest: NodeId,
+        payload: P,
+    ) {
         match nodes.get(&dest) {
             Some(sender) => {
-                if let Err(SendError(msg)) = sender.send(payload) {
+                if let Err(SendError((_, msg))) = sender.send((self.node_id, payload)) {
                     warn!(%dest, %msg, "could not send message (send error)");
 
                     // We do nothing else, the message is just dropped.
@@ -149,4 +177,22 @@ where
             }
         }
     }
+}
+
+async fn receiver_task<REv, P>(
+    event_queue: EventQueueHandle<REv>,
+    mut receiver: mpsc::UnboundedReceiver<(NodeId, P)>,
+) where
+    REv: From<NetworkAnnouncement<NodeId, P>>,
+    P: 'static + Send,
+{
+    while let Some((sender, payload)) = receiver.recv().await {
+        let announce = NetworkAnnouncement::MessageReceived { sender, payload };
+
+        event_queue
+            .schedule(announce.into(), QueueKind::NetworkIncoming)
+            .await;
+    }
+
+    debug!("receiver shutting down")
 }
