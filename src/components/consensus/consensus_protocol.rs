@@ -70,8 +70,10 @@ pub(crate) trait ConsensusProtocol<C: ConsensusValueT> {
     ) -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
 
     /// Triggers consensus' timer.
-    fn handle_timer(&mut self, timer_id: Timestamp)
-        -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
+    fn handle_timer(
+        &mut self,
+        timerstamp: Timestamp,
+    ) -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
 
     fn propose(
         &self,
@@ -166,11 +168,11 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
 
     fn handle_timer(
         &mut self,
-        timer_id: Timestamp,
+        timestamp: Timestamp,
     ) -> Result<Vec<ConsensusProtocolResult<<C as Context>::ConsensusValue>>, Error> {
         Ok(self
             .highway
-            .handle_timer(timer_id.0)
+            .handle_timer(timestamp.0)
             .into_iter()
             .map(|effect| match effect {
                 AvEffect::NewVertex(v) => {
@@ -274,7 +276,7 @@ mod example {
 
         fn handle_timer(
             &mut self,
-            _timer_id: Timestamp,
+            _timestamp: Timestamp,
         ) -> Result<Vec<ConsensusProtocolResult<ProtoBlock>>, anyhow::Error> {
             unimplemented!()
         }
