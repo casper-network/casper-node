@@ -23,7 +23,11 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    components::{consensus::consensus_protocol::BlockContext, small_network::NodeId, Component},
+    components::{
+        consensus::consensus_protocol::{BlockContext, Timestamp},
+        small_network::NodeId,
+        Component,
+    },
     effect::{requests::NetworkRequest, Effect, EffectBuilder, Multiple},
     types::{ExecutedBlock, ProtoBlock},
 };
@@ -141,7 +145,7 @@ where
                 era_id,
                 proto_block,
             } => self.delegate_to_era(era_id, effect_builder, move |consensus| {
-                consensus.propose(proto_block, BlockContext { instant: 0 } /* TODO */)
+                consensus.propose(proto_block, BlockContext::new(Timestamp(0)) /* TODO */)
             }),
             Event::ExecutedBlock { .. } => todo!(),
             Event::AcceptProtoBlock { .. } => todo!(),

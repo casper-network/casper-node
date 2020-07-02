@@ -156,11 +156,9 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
                     ConsensusProtocolResult::CreatedGossipMessage(serialized_msg)
                 }
                 AvEffect::ScheduleTimer(instant_u64) => {
-                    ConsensusProtocolResult::ScheduleTimer(instant_u64, Timestamp(instant_u64))
+                    ConsensusProtocolResult::ScheduleTimer(Timestamp(instant_u64))
                 }
-                AvEffect::RequestNewBlock(ctx) => {
-                    ConsensusProtocolResult::CreateNewBlock(ctx.instant)
-                }
+                AvEffect::RequestNewBlock(ctx) => ConsensusProtocolResult::CreateNewBlock(ctx),
             })
             .collect())
     }
@@ -183,10 +181,10 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
                     ConsensusProtocolResult::CreatedGossipMessage(vertex_bytes)
                 }
                 AvEffect::ScheduleTimer(instant_u64) => {
-                    ConsensusProtocolResult::ScheduleTimer(instant_u64, Timestamp(instant_u64))
+                    ConsensusProtocolResult::ScheduleTimer(Timestamp(instant_u64))
                 }
                 AvEffect::RequestNewBlock(block_context) => {
-                    ConsensusProtocolResult::CreateNewBlock(block_context.instant())
+                    ConsensusProtocolResult::CreateNewBlock(block_context)
                 }
             })
             .collect())

@@ -13,19 +13,24 @@ pub(crate) use protocol_state::{AddVertexOk, ProtocolState, VertexTrait};
 
 // TODO: Use `Timestamp` instead of `u64`.
 // Implement `Add`, `Sub` etc.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Timestamp(pub(crate) u64);
 
 /// Information about the context in which a new block is created.
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub(crate) struct BlockContext {
-    pub(crate) instant: u64,
+    timestamp: Timestamp,
 }
 
 impl BlockContext {
+    /// Constructs a new `BlockContext`
+    pub(crate) fn new(timestamp: Timestamp) -> Self {
+        BlockContext { timestamp }
+    }
+
     /// The block's timestamp.
-    pub(crate) fn instant(&self) -> u64 {
-        self.instant
+    pub(crate) fn timestamp(&self) -> Timestamp {
+        self.timestamp
     }
 }
 
@@ -34,10 +39,10 @@ pub(crate) enum ConsensusProtocolResult<C: ConsensusValueT> {
     CreatedGossipMessage(Vec<u8>),
     CreatedTargetedMessage(Vec<u8>, NodeId),
     InvalidIncomingMessage(Vec<u8>, Error),
-    ScheduleTimer(u64, Timestamp),
+    ScheduleTimer(Timestamp),
     /// Request deploys for a new block, whose timestamp will be the given `u64`.
     /// TODO: Add more details that are necessary for block creation.
-    CreateNewBlock(u64),
+    CreateNewBlock(BlockContext),
     FinalizedBlock(C),
     /// Request validation of the consensus value, contained in a message received from the given
     /// node.

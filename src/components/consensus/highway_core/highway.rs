@@ -108,7 +108,11 @@ impl<C: Context> Highway<C> {
         match self.active_validator.as_ref() {
             None => {
                 // TODO: Error?
-                warn!(?value, %block_context.instant, "Observer node was called with `propose` event.");
+                warn!(
+                    ?value,
+                    ?block_context,
+                    "Observer node was called with `propose` event."
+                );
                 vec![]
             }
             Some(av) => av.propose(value, block_context, &self.state),

@@ -113,7 +113,7 @@ impl EraSupervisor {
             ConsensusProtocolResult::CreatedTargetedMessage(out_msg, to) => effect_builder
                 .send_message(to, era_id.message(out_msg))
                 .ignore(),
-            ConsensusProtocolResult::ScheduleTimer(_timestamp, _timer_id) => {
+            ConsensusProtocolResult::ScheduleTimer(_timestamp) => {
                 // TODO: we need to get the current system time here somehow, in order to schedule
                 // a timer for the correct moment - and we don't want to use std::Instant
                 unimplemented!()
