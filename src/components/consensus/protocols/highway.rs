@@ -79,17 +79,114 @@ enum HighwayMessage<C: Context> {
     RequestDependency(Dependency<C>),
 }
 
+struct SynchronizerQueue<C: Context> {
+    vertex_queue: Vec<(NodeId, Vertex<C>)>,
+    synchronizer_effects_queue: Vec<SynchronizerEffect<Vertex<C>>>,
+    results: Vec<ConsensusProtocolResult<C::ConsensusValue>>,
+}
+
+impl<C: Context> SynchronizerQueue<C> {
+    fn new() -> Self {
+        Self {
+            vertex_queue: vec![],
+            synchronizer_effects_queue: vec![],
+            results: vec![],
+        }
+    }
+
+    fn with_vertices(mut self, vertices: Vec<(NodeId, Vertex<C>)>) -> Self {
+        self.vertex_queue = vertices;
+        self
+    }
+
+    fn with_synchronizer_effects(mut self, effects: Vec<SynchronizerEffect<Vertex<C>>>) -> Self {
+        self.synchronizer_effects_queue = effects;
+        self
+    }
+
+    fn is_finished(&self) -> bool {
+        self.vertex_queue.is_empty() && self.synchronizer_effects_queue.is_empty()
+    }
+
+    fn into_results(self) -> Vec<ConsensusProtocolResult<C::ConsensusValue>> {
+        self.results
+    }
+
+    fn process_vertex(
+        &mut self,
+        sender: NodeId,
+        vertex: Vertex<C>,
+        synchronizer: &mut DagSynchronizerState<Highway<C>>,
+        highway: &mut Highway<C>,
+    ) {
+        match synchronizer.add_vertex(sender, vertex, highway) {
+            Ok(effects) => self.synchronizer_effects_queue.extend(effects),
+            Err(err) => todo!("error: {:?}", err),
+        }
+    }
+
+    fn process_synchronizer_effect(&mut self, effect: SynchronizerEffect<Vertex<C>>) {
+        match effect {
+            SynchronizerEffect::RequestVertex(sender, missing_vid) => {
+                let msg = HighwayMessage::RequestDependency(missing_vid);
+                let serialized_msg = match serde_json::to_vec_pretty(&msg) {
+                    Ok(msg) => msg,
+                    Err(err) => todo!("error: {:?}", err),
+                };
+                self.results
+                    .push(ConsensusProtocolResult::CreatedTargetedMessage(
+                        serialized_msg,
+                        sender,
+                    ));
+            }
+            SynchronizerEffect::Success(vertex) => {
+                // TODO: Add new vertex to state. (Indirectly, via synchronizer?)
+                let msg = HighwayMessage::NewVertex(vertex);
+                // TODO: Don't `unwrap`.
+                let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
+                self.results
+                    .push(ConsensusProtocolResult::CreatedGossipMessage(
+                        serialized_msg,
+                    ))
+            }
+            SynchronizerEffect::RequeueVertex(sender, vertex) => {
+                self.vertex_queue.push((sender, vertex));
+            }
+            SynchronizerEffect::RequestConsensusValue(sender, value) => {
+                self.results
+                    .push(ConsensusProtocolResult::ValidateConsensusValue(
+                        sender, value,
+                    ));
+            }
+            SynchronizerEffect::InvalidVertex(v, sender, err) => {
+                warn!("Invalid vertex from {:?}: {:?}, {:?}", v, sender, err);
+            }
+        }
+    }
+
+    fn process_item(
+        &mut self,
+        synchronizer: &mut DagSynchronizerState<Highway<C>>,
+        highway: &mut Highway<C>,
+    ) {
+        if let Some((sender, vertex)) = self.vertex_queue.pop() {
+            self.process_vertex(sender, vertex, synchronizer, highway);
+        } else if let Some(effect) = self.synchronizer_effects_queue.pop() {
+            self.process_synchronizer_effect(effect);
+        }
+    }
+}
+
 impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
     fn handle_message(
         &mut self,
         sender: NodeId,
         msg: Vec<u8>,
-    ) -> Result<Vec<ConsensusProtocolResult<<C as Context>::ConsensusValue>>, Error> {
+    ) -> Result<Vec<ConsensusProtocolResult<C::ConsensusValue>>, Error> {
         let highway_message: HighwayMessage<C> = serde_json::from_slice(msg.as_slice()).unwrap();
         Ok(match highway_message {
             HighwayMessage::NewVertex(v) => {
-                let mut new_vertices = vec![v];
-                let mut effects = vec![];
+                let mut queue = SynchronizerQueue::new().with_vertices(vec![(sender, v)]);
                 // TODO: Is there a danger that this takes too much time, and starves other
                 // components and events? Consider replacing the loop with a "callback" effect:
                 // Instead of handling `HighwayMessage::NewVertex(v)` directly, return a
@@ -97,43 +194,10 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
                 // `Event::NewVertex(v)`, and call `add_vertex` when handling that event. For each
                 // returned vertex that needs to be requeued, also return an `EnqueueVertex`
                 // effect.
-                while let Some(v) = new_vertices.pop() {
-                    // TODO: This is wrong!! `add_vertex` should not be called with `sender`, but
-                    // with the node that sent us `v` in the first place.
-                    match self
-                        .synchronizer
-                        .add_vertex(sender, v.clone(), &mut self.highway)
-                    {
-                        Ok(SynchronizerEffect::RequestVertex(sender, missing_vid)) => {
-                            let msg = HighwayMessage::RequestDependency(missing_vid);
-                            let serialized_msg = serde_json::to_vec_pretty(&msg)?;
-                            effects.push(ConsensusProtocolResult::CreatedTargetedMessage(
-                                serialized_msg,
-                                sender,
-                            ));
-                        }
-                        Ok(SynchronizerEffect::RequeueVertex(vertices)) => {
-                            new_vertices.extend(vertices);
-                            // TODO: Add new vertex to state. (Indirectly, via synchronizer?)
-                            let msg = HighwayMessage::NewVertex(v);
-                            // TODO: Don't `unwrap`.
-                            let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
-                            effects.push(ConsensusProtocolResult::CreatedGossipMessage(
-                                serialized_msg,
-                            ))
-                        }
-                        Ok(SynchronizerEffect::RequestConsensusValue(sender, value)) => {
-                            effects.push(ConsensusProtocolResult::ValidateConsensusValue(
-                                sender, value,
-                            ));
-                        }
-                        Ok(SynchronizerEffect::InvalidVertex(v, sender, err)) => {
-                            warn!("Invalid vertex from {:?}: {:?}, {:?}", v, sender, err);
-                        }
-                        Err(err) => todo!("error: {:?}", err),
-                    }
+                while !queue.is_finished() {
+                    queue.process_item(&mut self.synchronizer, &mut self.highway);
                 }
-                effects
+                queue.into_results()
             }
             HighwayMessage::RequestDependency(_dep) => todo!(),
         })
@@ -192,9 +256,18 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
 
     fn resolve_validity(
         &mut self,
-        _value: &C::ConsensusValue,
-        _valid: bool,
+        value: &C::ConsensusValue,
+        valid: bool,
     ) -> Result<Vec<ConsensusProtocolResult<C::ConsensusValue>>, Error> {
-        todo!()
+        if valid {
+            let effects = self.synchronizer.on_consensus_value_synced(value);
+            let mut queue = SynchronizerQueue::new().with_synchronizer_effects(effects);
+            while !queue.is_finished() {
+                queue.process_item(&mut self.synchronizer, &mut self.highway);
+            }
+            Ok(queue.into_results())
+        } else {
+            todo!()
+        }
     }
 }

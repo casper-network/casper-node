@@ -152,8 +152,19 @@ where
                 consensus.propose(proto_block, block_context)
             }),
             Event::ExecutedBlock { .. } => todo!(),
-            Event::AcceptProtoBlock { .. } => todo!(),
-            Event::InvalidProtoBlock { .. } => todo!(),
+            Event::AcceptProtoBlock {
+                era_id,
+                proto_block,
+            } => self.delegate_to_era(era_id, effect_builder, |consensus| {
+                consensus.resolve_validity(&proto_block, true)
+            }),
+            Event::InvalidProtoBlock {
+                era_id,
+                sender: _sender,
+                proto_block,
+            } => self.delegate_to_era(era_id, effect_builder, |consensus| {
+                consensus.resolve_validity(&proto_block, false)
+            }),
         }
     }
 }
