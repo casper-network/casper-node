@@ -10,7 +10,7 @@ use crate::components::{
     consensus::{
         consensus_protocol::synchronizer::{DagSynchronizerState, SynchronizerEffect},
         highway_core::{
-            active_validator::{BlockContext, Effect as AvEffect},
+            active_validator::Effect as AvEffect,
             finality_detector::FinalityDetector,
             highway::Highway,
             vertex::{Dependency, Vertex},
@@ -27,6 +27,19 @@ pub(crate) use protocol_state::{AddVertexOk, ProtocolState, VertexTrait};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Timestamp(pub(crate) u64);
+
+/// Information about the context in which a new block is created.
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub(crate) struct BlockContext {
+    pub(crate) instant: u64,
+}
+
+impl BlockContext {
+    /// The block's timestamp.
+    pub(crate) fn instant(&self) -> u64 {
+        self.instant
+    }
+}
 
 #[derive(Debug)]
 pub(crate) enum ConsensusProtocolResult<C: ConsensusValueT> {

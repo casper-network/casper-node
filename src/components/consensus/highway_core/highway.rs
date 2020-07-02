@@ -1,5 +1,5 @@
 use super::{
-    active_validator::{ActiveValidator, BlockContext, Effect},
+    active_validator::{ActiveValidator, Effect},
     evidence::Evidence,
     state::{AddVoteError, State},
     validators::Validators,
@@ -8,7 +8,7 @@ use super::{
 use tracing::warn;
 
 use crate::components::consensus::highway_core::vertex::SignedWireVote;
-use crate::components::consensus::traits::Context;
+use crate::components::consensus::{consensus_protocol::BlockContext, traits::Context};
 
 /// The result of trying to add a vertex to the protocol highway.
 #[derive(Clone, Debug, Eq, PartialEq)]

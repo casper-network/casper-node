@@ -6,6 +6,7 @@ use super::{
     vertex::{Vertex, WireVote},
     vote::{Observation, Panorama},
 };
+use crate::components::consensus::consensus_protocol::BlockContext;
 use crate::components::consensus::highway_core::vertex::SignedWireVote;
 use crate::components::consensus::traits::Context;
 
@@ -19,19 +20,6 @@ pub(crate) enum Effect<C: Context> {
     /// `propose` needs to be called with a value for a new block with the specified instant.
     // TODO: Add more information required by the deploy buffer.
     RequestNewBlock(BlockContext),
-}
-
-/// Information about the context in which a new block is created.
-#[derive(Clone, Eq, PartialEq, Debug)]
-pub(crate) struct BlockContext {
-    pub(crate) instant: u64,
-}
-
-impl BlockContext {
-    /// The block's timestamp.
-    pub(crate) fn instant(&self) -> u64 {
-        self.instant
-    }
 }
 
 /// A validator that actively participates in consensus by creating new vertices.
