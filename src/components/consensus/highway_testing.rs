@@ -339,13 +339,21 @@ where
             }
         }
     }
+
+    fn nodes(&self) -> impl Iterator<Item = &Node<C, D>> {
+        self.nodes_map.values().into_iter()
+}
+
+    fn mut_handle(&mut self) -> &mut Self {
+        self
+    }
 }
 
 #[cfg(test)]
 mod test_harness {
     use super::{
-        ConsensusInstance, DeliverySchedule, Node, NodeId, Strategy, TargetedMessage, TestHarness,
-        TestRunError,
+        ConsensusInstance, DeliverySchedule, Instant, Message, Node, NodeId, Strategy, Target,
+        TargetedMessage, TestHarness, TestRunError,
     };
     use rand_core::SeedableRng;
     use rand_xorshift::XorShiftRng;
@@ -387,5 +395,48 @@ mod test_harness {
         let mut test_harness: TestHarness<M, C, NoOpConsensus, SmallDelay, XorShiftRng> =
             TestHarness::new(vec![single_node], 0, vec![], SmallDelay(), rand);
         assert_eq!(test_harness.crank(), Err(TestRunError::NoMessages));
+    }
+
+    #[test]
+    fn messages_are_delivered_in_order() {
+        let node_id = NodeId(1u64);
+        let single_node = Node::new(node_id, false, NoOpConsensus());
+        let mut rand = XorShiftRng::from_seed(rand::random());
+        let mut test_harness: TestHarness<M, C, NoOpConsensus, SmallDelay, XorShiftRng> =
+            TestHarness::new(vec![single_node], 0, vec![], SmallDelay(), rand);
+
+        let messages_num = 10;
+        // We want to enqueue messages from the latest delivery time to the earliest.
+        (0..messages_num)
+            .map(|i| (Instant(messages_num - i), Message::new(node_id, i)))
+            .for_each(|(instant, message)| {
+                test_harness.schedule_message(instant, node_id, message)
+            });
+
+        let mut crank_count = 0;
+        let mut previous_payload = 0u64;
+        while test_harness.crank().is_ok() {
+            let new_message = test_harness
+                .mut_handle()
+                .nodes()
+                .next()
+                .unwrap()
+                .messages_received()
+                .next()
+                .unwrap();
+
+            let new_payload = new_message.payload;
+            assert_eq!(
+                new_payload, previous_payload,
+                "Messages were not delivered in the expected order."
+            );
+            previous_payload = new_payload;
+            crank_count += 1;
+        }
+
+        assert_eq!(
+            crank_count, messages_num,
+            "There was more messages in the network than scheduled initially."
+        )
     }
 }
