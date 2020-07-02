@@ -183,6 +183,7 @@ impl From<Instant> for DeliverySchedule {
     }
 }
 
+#[derive(Debug, Eq, PartialEq)]
 enum TestRunError {
     MissingRecipient(NodeId),
     NoMessages,
@@ -301,7 +302,52 @@ where
                 DeliverySchedule::Drop => (),
                 DeliverySchedule::AtInstant(dt) => self.schedule_message(dt, node_id, message),
             }
-            }
         }
+    }
+}
+
+#[cfg(test)]
+mod test_harness {
+    use super::{
+        ConsensusInstance, DeliverySchedule, Node, NodeId, Strategy, TargetedMessage, TestHarness,
+        TestRunError,
+    };
+    use rand_core::SeedableRng;
+    use rand_xorshift::XorShiftRng;
+
+    struct NoOpStrategy();
+
+    impl Strategy<DeliverySchedule> for NoOpStrategy {
+        fn map<R: rand::Rng>(&self, _rng: &mut R, i: DeliverySchedule) -> DeliverySchedule {
+            i
+        }
+    }
+
+    type M = u64;
+    type C = u64;
+
+    struct Consensus();
+
+    impl ConsensusInstance for Consensus {
+        type M = M;
+        fn handle_message(
+            &mut self,
+            sender: NodeId,
+            m: Self::M,
+            is_faulty: bool,
+        ) -> Vec<TargetedMessage<Self::M>> {
+            todo!()
+        }
+    }
+
+    type D = Consensus;
+
+    #[test]
+    fn on_empty_queue_error() {
+        let single_node: Node<C, Consensus> = Node::new(NodeId(1u64), false, Consensus());
+        let mut rand = XorShiftRng::from_seed(rand::random());
+        let mut test_harness: TestHarness<M, C, D, NoOpStrategy, XorShiftRng> =
+            TestHarness::new(vec![single_node], 0, vec![], NoOpStrategy(), rand);
+        assert_eq!(test_harness.crank(), Err(TestRunError::NoMessages));
     }
 }
