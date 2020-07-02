@@ -14,7 +14,7 @@ use crate::components::consensus::traits::Context;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum AddVertexOutcome<C: Context> {
     /// The vertex was successfully added.
-    Success,
+    Success(Vec<Effect<C>>),
     /// The vertex could not be added because it is missing a dependency. The vertex itself is
     /// returned, together with the missing dependency.
     MissingDependency(Vertex<C>, Dependency<C>),
@@ -134,9 +134,17 @@ impl<C: Context> Highway<C> {
         if let Some(dep) = self.state.missing_dependency(&swvote.wire_vote.panorama) {
             return AddVertexOutcome::MissingDependency(Vertex::Vote(swvote), dep);
         }
+        let vote_instant = swvote.wire_vote.instant;
+        let vote_hash = swvote.hash();
         // If the vote is invalid, `add_vote` returns it as an error.
-        let opt_wvote = self.state.add_vote(swvote).err();
-        opt_wvote.map_or(AddVertexOutcome::Success, AddVertexOutcome::from)
+        let opt_err = self.state.add_vote(swvote).err();
+        match opt_err {
+            None => {
+                let effects = self.on_new_vote(&vote_hash, vote_instant);
+                AddVertexOutcome::Success(effects)
+            }
+            Some(err) => AddVertexOutcome::from(err),
+        }
     }
 
     /// Returns validator ID of the `swvote` sender.
@@ -148,7 +156,7 @@ impl<C: Context> Highway<C> {
         // TODO: Validate evidence. Signatures, sequence numbers, etc.
         if self.params.validators.contains(evidence.perpetrator()) {
             self.state.add_evidence(evidence);
-            AddVertexOutcome::Success
+            AddVertexOutcome::Success(vec![])
         } else {
             AddVertexOutcome::Invalid(Vertex::Evidence(evidence))
         }
@@ -217,7 +225,10 @@ pub(crate) mod tests {
             signature: valid_signature,
         };
         let valid_vertex = Vertex::Vote(correct_signature_vote);
-        assert_eq!(AddVertexOutcome::Success, highway.add_vertex(valid_vertex));
+        assert_eq!(
+            AddVertexOutcome::Success(vec![]),
+            highway.add_vertex(valid_vertex)
+        );
         Ok(())
     }
 }

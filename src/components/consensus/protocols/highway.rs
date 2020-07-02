@@ -28,7 +28,13 @@ impl<C: Context> ProtocolState for Highway<C> {
     fn add_vertex(&mut self, v: Vertex<C>) -> Result<AddVertexOk<Dependency<C>>, Self::Error> {
         let vid = v.id();
         match self.add_vertex(v) {
-            AddVertexOutcome::Success => Ok(AddVertexOk::Success(vid)),
+            AddVertexOutcome::Success(vec) => {
+                if !vec.is_empty() {
+                    Err("add_vertex returned non-empty vec of effects. This mustn't happen. You forgot to update the code!".to_string())
+                } else {
+                    Ok(AddVertexOk::Success(vid))
+                }
+            }
             AddVertexOutcome::MissingDependency(_vertex, dependency) => {
                 Ok(AddVertexOk::MissingDependency(dependency))
             }
