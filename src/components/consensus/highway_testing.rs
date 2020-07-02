@@ -59,6 +59,11 @@ struct Node<C, D: ConsensusInstance> {
     is_faulty: bool,
     /// Vector of consensus values finalized by the node.
     finalized_values: Vec<C>,
+    /// Messages received by the node.
+    messages_received: Vec<Message<D::M>>,
+    /// Messages produced by the node.
+    messages_produced: Vec<Message<D::M>>,
+    /// An instance of consensus protocol.
     consensus: D,
 }
 
@@ -68,6 +73,8 @@ impl<C, D: ConsensusInstance> Node<C, D> {
             id,
             is_faulty,
             finalized_values: Vec::new(),
+            messages_received: Vec::new(),
+            messages_produced: Vec::new(),
             consensus,
         }
     }
@@ -83,6 +90,24 @@ impl<C, D: ConsensusInstance> Node<C, D> {
     /// Iterator over consensus values finalized by the node.
     fn finalized_values(&self) -> impl Iterator<Item = &C> {
         self.finalized_values.iter()
+    }
+
+    fn messages_received(&self) -> impl Iterator<Item = &Message<D::M>> {
+        self.messages_received.iter()
+}
+
+    fn messages_produced(&self) -> impl Iterator<Item = &Message<D::M>> {
+        self.messages_produced.iter()
+    }
+
+    fn handle_message(&mut self, sender: NodeId, m: D::M) -> Vec<TargetedMessage<D::M>> {
+        self.messages_received.push(Message::new(sender, m));
+        let outband_msgs = self.consensus.handle_message(sender, m, self.is_faulty);
+        outband_msgs
+            .iter()
+            .map(|tm| tm.message)
+            .for_each(|message| self.messages_produced.push(message));
+        outband_msgs
     }
 }
 
@@ -283,11 +308,9 @@ where
             .get_mut(&recipient)
             .ok_or(TestRunError::MissingRecipient(recipient))?;
 
-        for TargetedMessage { message, target } in recipient_node.consensus.handle_message(
-            message.sender,
-            message.payload,
-            recipient_node.is_faulty(),
-        ) {
+        for TargetedMessage { message, target } in
+            recipient_node.handle_message(message.sender, message.payload)
+        {
             let recipient_nodes = match target {
                 Target::All => self.nodes_map.keys().cloned().collect(),
                 Target::SingleNode(recipient_id) => vec![recipient_id],
@@ -309,7 +332,7 @@ where
                 .delivery_time_strategy
                 .map(&mut self.rand, base_delivery_time.into());
             match tampered_delivery_time {
-                // Simulate droping of the message.
+                // Simulates droping of the message.
                 // TODO: Add logging.
                 DeliverySchedule::Drop => (),
                 DeliverySchedule::AtInstant(dt) => self.schedule_message(dt, node_id, message),
