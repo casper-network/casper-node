@@ -121,17 +121,6 @@ impl<C: Context> Highway<C> {
         }
     }
 
-    pub(crate) fn on_new_vote(&self, vhash: &C::Hash, instant: u64) -> Vec<Effect<C>> {
-        match self.active_validator.as_ref() {
-            None => {
-                // TODO: Error?
-                warn!(?vhash, %instant, "Observer node was called with `on_new_vote` event.");
-                vec![]
-            }
-            Some(av) => av.on_new_vote(vhash, instant, &self.state),
-        }
-    }
-
     pub(crate) fn handle_timer(&mut self, instant: u64) -> Vec<Effect<C>> {
         match self.active_validator.as_mut() {
             None => {
@@ -161,6 +150,12 @@ impl<C: Context> Highway<C> {
 
     pub(crate) fn state(&self) -> &State<C> {
         &self.state
+    }
+
+    fn on_new_vote(&self, vhash: &C::Hash, instant: u64) -> Vec<Effect<C>> {
+        self.active_validator
+            .as_ref()
+            .map_or_else(Vec::new, |av| av.on_new_vote(vhash, instant, &self.state))
     }
 
     fn validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {
