@@ -25,6 +25,8 @@ mod synchronizer;
 
 pub(crate) use protocol_state::{AddVertexOk, ProtocolState, VertexTrait};
 
+// TODO: Use `Timestamp` instead of `u64`.
+// Implement `Add`, `Sub` etc.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Timestamp(pub(crate) u64);
 

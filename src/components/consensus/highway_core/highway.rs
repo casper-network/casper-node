@@ -137,13 +137,12 @@ impl<C: Context> Highway<C> {
         let vote_instant = swvote.wire_vote.instant;
         let vote_hash = swvote.hash();
         // If the vote is invalid, `add_vote` returns it as an error.
-        let opt_err = self.state.add_vote(swvote).err();
-        match opt_err {
-            None => {
+        match self.state.add_vote(swvote) {
+            Ok(()) => {
                 let effects = self.on_new_vote(&vote_hash, vote_instant);
                 AddVertexOutcome::Success(effects)
             }
-            Some(err) => AddVertexOutcome::from(err),
+            Err(error) => AddVertexOutcome::from(error),
         }
     }
 

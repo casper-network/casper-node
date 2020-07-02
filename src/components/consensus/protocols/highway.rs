@@ -30,7 +30,9 @@ impl<C: Context> ProtocolState for Highway<C> {
         match self.add_vertex(v) {
             AddVertexOutcome::Success(vec) => {
                 if !vec.is_empty() {
-                    Err("add_vertex returned non-empty vec of effects. This mustn't happen. You forgot to update the code!".to_string())
+                    Err("add_vertex returned non-empty vec of effects. \
+                    This mustn't happen. You forgot to update the code!"
+                        .to_string())
                 } else {
                     Ok(AddVertexOk::Success(vid))
                 }
