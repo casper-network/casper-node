@@ -350,20 +350,25 @@ mod test_harness {
     use rand_core::SeedableRng;
     use rand_xorshift::XorShiftRng;
 
-    struct NoOpStrategy();
+    struct SmallDelay();
 
-    impl Strategy<DeliverySchedule> for NoOpStrategy {
+    impl Strategy<DeliverySchedule> for SmallDelay {
         fn map<R: rand::Rng>(&self, _rng: &mut R, i: DeliverySchedule) -> DeliverySchedule {
-            i
+            match i {
+                DeliverySchedule::Drop => DeliverySchedule::Drop,
+                DeliverySchedule::AtInstant(instant) => {
+                    DeliverySchedule::AtInstant(Instant(instant.0 + 1))
+        }
+    }
         }
     }
 
     type M = u64;
     type C = u64;
 
-    struct Consensus();
+    struct NoOpConsensus();
 
-    impl ConsensusInstance for Consensus {
+    impl ConsensusInstance for NoOpConsensus {
         type M = M;
         fn handle_message(
             &mut self,
@@ -371,18 +376,16 @@ mod test_harness {
             m: Self::M,
             is_faulty: bool,
         ) -> Vec<TargetedMessage<Self::M>> {
-            todo!()
+            vec![]
         }
     }
 
-    type D = Consensus;
-
     #[test]
     fn on_empty_queue_error() {
-        let single_node: Node<C, Consensus> = Node::new(NodeId(1u64), false, Consensus());
+        let single_node: Node<C, NoOpConsensus> = Node::new(NodeId(1u64), false, NoOpConsensus());
         let mut rand = XorShiftRng::from_seed(rand::random());
-        let mut test_harness: TestHarness<M, C, D, NoOpStrategy, XorShiftRng> =
-            TestHarness::new(vec![single_node], 0, vec![], NoOpStrategy(), rand);
+        let mut test_harness: TestHarness<M, C, NoOpConsensus, SmallDelay, XorShiftRng> =
+            TestHarness::new(vec![single_node], 0, vec![], SmallDelay(), rand);
         assert_eq!(test_harness.crank(), Err(TestRunError::NoMessages));
     }
 }
