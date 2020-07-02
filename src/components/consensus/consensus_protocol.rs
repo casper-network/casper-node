@@ -26,14 +26,14 @@ mod synchronizer;
 pub(crate) use protocol_state::{AddVertexOk, ProtocolState, VertexTrait};
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct TimerId(pub(crate) u64);
+pub(crate) struct Timestamp(pub(crate) u64);
 
 #[derive(Debug)]
 pub(crate) enum ConsensusProtocolResult<C: ConsensusValueT> {
     CreatedGossipMessage(Vec<u8>),
     CreatedTargetedMessage(Vec<u8>, NodeId),
     InvalidIncomingMessage(Vec<u8>, Error),
-    ScheduleTimer(u64, TimerId),
+    ScheduleTimer(u64, Timestamp),
     /// Request deploys for a new block, whose timestamp will be the given `u64`.
     /// TODO: Add more details that are necessary for block creation.
     CreateNewBlock(u64),
@@ -57,7 +57,7 @@ pub(crate) trait ConsensusProtocol<C: ConsensusValueT> {
     ) -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
 
     /// Triggers consensus' timer.
-    fn handle_timer(&mut self, timer_id: TimerId)
+    fn handle_timer(&mut self, timer_id: Timestamp)
         -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
 
     fn propose(
@@ -163,7 +163,7 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
 
     fn handle_timer(
         &mut self,
-        timer_id: TimerId,
+        timer_id: Timestamp,
     ) -> Result<Vec<ConsensusProtocolResult<<C as Context>::ConsensusValue>>, Error> {
         Ok(self
             .highway
@@ -177,7 +177,7 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
                     ConsensusProtocolResult::CreatedGossipMessage(vertex_bytes)
                 }
                 AvEffect::ScheduleTimer(instant_u64) => {
-                    ConsensusProtocolResult::ScheduleTimer(instant_u64, TimerId(instant_u64))
+                    ConsensusProtocolResult::ScheduleTimer(instant_u64, Timestamp(instant_u64))
                 }
                 AvEffect::RequestNewBlock(block_context) => {
                     ConsensusProtocolResult::CreateNewBlock(block_context.instant())
@@ -204,7 +204,7 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
                     ConsensusProtocolResult::CreatedGossipMessage(vertex_bytes)
                 }
                 AvEffect::ScheduleTimer(instant_u64) => {
-                    ConsensusProtocolResult::ScheduleTimer(instant_u64, TimerId(instant_u64))
+                    ConsensusProtocolResult::ScheduleTimer(instant_u64, Timestamp(instant_u64))
                 }
                 AvEffect::RequestNewBlock(block_context) => {
                     ConsensusProtocolResult::CreateNewBlock(block_context.instant())
@@ -229,7 +229,7 @@ mod example {
     use super::{
         protocol_state::{ProtocolState, VertexTrait},
         synchronizer::DagSynchronizerState,
-        BlockContext, ConsensusProtocol, ConsensusProtocolResult, NodeId, TimerId,
+        BlockContext, ConsensusProtocol, ConsensusProtocolResult, NodeId, Timestamp,
     };
 
     #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
@@ -271,7 +271,7 @@ mod example {
 
         fn handle_timer(
             &mut self,
-            _timer_id: TimerId,
+            _timer_id: Timestamp,
         ) -> Result<Vec<ConsensusProtocolResult<ProtoBlock>>, anyhow::Error> {
             unimplemented!()
         }
