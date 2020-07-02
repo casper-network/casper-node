@@ -50,27 +50,16 @@ pub(crate) struct AddVoteError<C: Context> {
 
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum VoteError {
-    /// The vote's panorama is inconsistent.
+    #[error("The vote's panorama is inconsistent.")]
     Panorama,
-    /// The vote contains the wrong sequence number.
+    #[error("The vote contains the wrong sequence number.")]
     SequenceNumber,
-    /// The vote's timestamp is older than a justification's.
+    #[error("The vote's timestamp is older than a justification's.")]
     Timestamps,
-}
-
-impl Display for VoteError {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        match self {
-            VoteError::Panorama => write!(formatter, "The vote's panorama is inconsistent."),
-            VoteError::SequenceNumber => {
-                write!(formatter, "The vote contains the wrong sequence number.")
-            }
-            VoteError::Timestamps => write!(
-                formatter,
-                "The vote's timestamp is older than a justification's"
-            ),
-        }
-    }
+    #[error("The creator is not a validator.")]
+    Creator,
+    #[error("The signature is invalid.")]
+    Signature,
 }
 
 impl<C: Context> SignedWireVote<C> {
