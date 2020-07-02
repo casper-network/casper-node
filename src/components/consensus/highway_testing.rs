@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use std::cmp::Ordering;
 use std::{
     collections::{BTreeMap, BinaryHeap},
-    fmt::{Display, Formatter},
+    fmt::{Debug, Display, Formatter},
     hash::Hash,
     time,
 };
@@ -14,18 +14,30 @@ enum Target {
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
-struct Message<M: Copy + Clone> {
+struct Message<M: Copy + Clone + Debug> {
     sender: NodeId,
     payload: M,
 }
 
-struct TargetedMessage<M: Copy + Clone> {
+impl<M: Copy + Clone + Debug> Message<M> {
+    fn new(sender: NodeId, payload: M) -> Self {
+        Message { sender, payload }
+    }
+}
+
+struct TargetedMessage<M: Copy + Clone + Debug> {
     message: Message<M>,
     target: Target,
 }
 
+impl<M: Copy + Clone + Debug> TargetedMessage<M> {
+    fn new(message: Message<M>, target: Target) -> Self {
+        TargetedMessage { message, target }
+    }
+}
+
 trait ConsensusInstance {
-    type M: Clone + Copy;
+    type M: Clone + Copy + Debug;
 
     fn handle_message(
         &mut self,
@@ -78,7 +90,7 @@ impl<C, D: ConsensusInstance> Node<C, D> {
 #[derive(Debug, PartialEq, Eq)]
 struct QueueEntry<M>
 where
-    M: PartialEq + Eq + Ord + Clone + Copy,
+    M: PartialEq + Eq + Ord + Clone + Copy + Debug,
 {
     /// Scheduled delivery time of the message.
     /// When a message has dependencies that recipient node is missing,
@@ -93,7 +105,7 @@ where
 
 impl<M> QueueEntry<M>
 where
-    M: PartialEq + Eq + Ord + Clone + Copy,
+    M: PartialEq + Eq + Ord + Clone + Copy + Debug,
 {
     pub(crate) fn new(delivery_time: Instant, recipient: NodeId, message: Message<M>) -> Self {
         QueueEntry {
@@ -106,7 +118,7 @@ where
 
 impl<M> Ord for QueueEntry<M>
 where
-    M: PartialEq + Eq + Ord + Clone + Copy,
+    M: PartialEq + Eq + Ord + Clone + Copy + Debug,
 {
     fn cmp(&self, other: &Self) -> Ordering {
         self.delivery_time
@@ -118,7 +130,7 @@ where
 
 impl<M> PartialOrd for QueueEntry<M>
 where
-    M: PartialEq + Eq + Ord + Clone + Copy,
+    M: PartialEq + Eq + Ord + Clone + Copy + Debug,
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
@@ -129,11 +141,11 @@ where
 /// Ordered by the delivery time.
 struct Queue<M>(BinaryHeap<QueueEntry<M>>)
 where
-    M: PartialEq + Eq + Ord + Clone + Copy;
+    M: PartialEq + Eq + Ord + Clone + Copy + Debug;
 
 impl<M> Default for Queue<M>
 where
-    M: PartialEq + Eq + Ord + Clone + Copy,
+    M: PartialEq + Eq + Ord + Clone + Copy + Debug,
 {
     fn default() -> Self {
         Queue(Default::default())
@@ -142,7 +154,7 @@ where
 
 impl<M> Queue<M>
 where
-    M: PartialEq + Eq + Ord + Clone + Copy,
+    M: PartialEq + Eq + Ord + Clone + Copy + Debug,
 {
     /// Gets next message.
     /// Returns `None` if there aren't any.
@@ -205,7 +217,7 @@ impl Display for TestRunError {
 
 struct TestHarness<M, C, D, DS, R>
 where
-    M: PartialEq + Eq + Ord + Clone + Copy,
+    M: PartialEq + Eq + Ord + Clone + Copy + Debug,
     D: ConsensusInstance,
     DS: Strategy<DeliverySchedule>,
 {
@@ -224,7 +236,7 @@ where
 
 impl<M, C, D, DS, R> TestHarness<M, C, D, DS, R>
 where
-    M: PartialEq + Eq + Ord + Clone + Copy,
+    M: PartialEq + Eq + Ord + Clone + Copy + Debug,
     D: ConsensusInstance<M = M>,
     DS: Strategy<DeliverySchedule>,
     R: rand::Rng,
