@@ -1,21 +1,21 @@
 // TODO: Remove when all code is used
 #![allow(dead_code)]
-use std::{fmt::Debug, hash::Hash};
+use std::fmt::Debug;
 
 use anyhow::Error;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use tracing::warn;
 
 use crate::components::{
     consensus::{
         consensus_protocol::synchronizer::{DagSynchronizerState, SynchronizerEffect},
         highway_core::{
-            active_validator::{ActiveValidator, Effect as AvEffect},
+            active_validator::Effect as AvEffect,
             finality_detector::FinalityDetector,
             highway::Highway,
             vertex::{Dependency, Vertex},
         },
-        traits::Context,
+        traits::{ConsensusValueT, Context},
     },
     small_network::NodeId,
 };
@@ -25,22 +25,32 @@ mod synchronizer;
 
 pub(crate) use protocol_state::{AddVertexOk, ProtocolState, VertexTrait};
 
+// TODO: Use `Timestamp` instead of `u64`.
+// Implement `Add`, `Sub` etc.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct TimerId(pub(crate) u64);
+pub(crate) struct Timestamp(pub(crate) u64);
 
-pub(crate) trait ConsensusValue:
-    Hash + PartialEq + Eq + Serialize + DeserializeOwned
-{
+/// Information about the context in which a new block is created.
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub(crate) struct BlockContext {
+    pub(crate) instant: u64,
 }
-impl<T> ConsensusValue for T where T: Hash + PartialEq + Eq + Serialize + DeserializeOwned {}
+
+impl BlockContext {
+    /// The block's timestamp.
+    pub(crate) fn instant(&self) -> u64 {
+        self.instant
+    }
+}
 
 #[derive(Debug)]
-pub(crate) enum ConsensusProtocolResult<C: ConsensusValue> {
+pub(crate) enum ConsensusProtocolResult<C: ConsensusValueT> {
     CreatedGossipMessage(Vec<u8>),
     CreatedTargetedMessage(Vec<u8>, NodeId),
     InvalidIncomingMessage(Vec<u8>, Error),
-    ScheduleTimer(u64, TimerId),
+    ScheduleTimer(u64, Timestamp),
     /// Request deploys for a new block, whose timestamp will be the given `u64`.
+    /// TODO: Add more details that are necessary for block creation.
     CreateNewBlock(u64),
     FinalizedBlock(C),
     /// Request validation of the consensus value, contained in a message received from the given
@@ -53,7 +63,7 @@ pub(crate) enum ConsensusProtocolResult<C: ConsensusValue> {
 }
 
 /// An API for a single instance of the consensus.
-pub(crate) trait ConsensusProtocol<C: ConsensusValue> {
+pub(crate) trait ConsensusProtocol<C: ConsensusValueT> {
     /// Handles an incoming message (like NewVote, RequestDependency).
     fn handle_message(
         &mut self,
@@ -62,8 +72,16 @@ pub(crate) trait ConsensusProtocol<C: ConsensusValue> {
     ) -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
 
     /// Triggers consensus' timer.
-    fn handle_timer(&mut self, timer_id: TimerId)
-        -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
+    fn handle_timer(
+        &mut self,
+        timerstamp: Timestamp,
+    ) -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
+
+    fn propose(
+        &self,
+        value: C,
+        block_context: BlockContext,
+    ) -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
 
     /// Marks the `value` as valid or invalid, based on validation requested via
     /// `ConsensusProtocolResult::ValidateConsensusvalue`.
@@ -75,7 +93,6 @@ pub(crate) trait ConsensusProtocol<C: ConsensusValue> {
 }
 
 struct HighwayProtocol<C: Context> {
-    active_validator: Option<ActiveValidator<C>>,
     synchronizer: DagSynchronizerState<Highway<C>>,
     finality_detector: FinalityDetector<C>,
     highway: Highway<C>,
@@ -126,8 +143,8 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
                         }
                         Ok(SynchronizerEffect::RequeueVertex(vertices)) => {
                             new_vertices.extend(vertices);
-                            let msg = HighwayMessage::NewVertex(v);
                             // TODO: Add new vertex to state. (Indirectly, via synchronizer?)
+                            let msg = HighwayMessage::NewVertex(v);
                             // TODO: Don't `unwrap`.
                             let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
                             effects.push(ConsensusProtocolResult::CreatedGossipMessage(
@@ -153,30 +170,51 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
 
     fn handle_timer(
         &mut self,
-        _timer_id: TimerId,
+        timestamp: Timestamp,
     ) -> Result<Vec<ConsensusProtocolResult<<C as Context>::ConsensusValue>>, Error> {
-        // TODO: Instant!
-        let av = match self.active_validator.as_mut() {
-            Some(av) => av,
-            None => return Ok(vec![]),
-        };
-        let state = self.highway.state();
-        Ok(av
-            .handle_timer(0, state)
+        Ok(self
+            .highway
+            .handle_timer(timestamp.0)
             .into_iter()
             .map(|effect| match effect {
                 AvEffect::NewVertex(v) => {
-                    let msg = HighwayMessage::NewVertex(v);
-                    // TODO: Add new vertex to state. (Indirectly, via synchronizer?)
-                    // TODO: Don't `unwrap`.
-                    let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
-                    ConsensusProtocolResult::CreatedGossipMessage(serialized_msg)
+                    //TODO: Don't unwrap
+                    // Replace serde with generic serializer.
+                    let vertex_bytes = serde_json::to_vec_pretty(&v).unwrap();
+                    ConsensusProtocolResult::CreatedGossipMessage(vertex_bytes)
                 }
-                AvEffect::ScheduleTimer(instant) => {
-                    ConsensusProtocolResult::ScheduleTimer(instant, TimerId(0))
+                AvEffect::ScheduleTimer(instant_u64) => {
+                    ConsensusProtocolResult::ScheduleTimer(instant_u64, Timestamp(instant_u64))
                 }
-                AvEffect::RequestNewBlock(ctx) => {
-                    ConsensusProtocolResult::CreateNewBlock(ctx.instant)
+                AvEffect::RequestNewBlock(block_context) => {
+                    ConsensusProtocolResult::CreateNewBlock(block_context.instant())
+                }
+            })
+            .collect())
+    }
+
+    fn propose(
+        &self,
+        value: C::ConsensusValue,
+        block_context: BlockContext,
+    ) -> Result<Vec<ConsensusProtocolResult<<C as Context>::ConsensusValue>>, Error> {
+        // TODO: Deduplicate
+        Ok(self
+            .highway
+            .propose(value, block_context)
+            .into_iter()
+            .map(|effect| match effect {
+                AvEffect::NewVertex(v) => {
+                    //TODO: Don't unwrap
+                    // Replace serde with generic serializer.
+                    let vertex_bytes = serde_json::to_vec_pretty(&v).unwrap();
+                    ConsensusProtocolResult::CreatedGossipMessage(vertex_bytes)
+                }
+                AvEffect::ScheduleTimer(instant_u64) => {
+                    ConsensusProtocolResult::ScheduleTimer(instant_u64, Timestamp(instant_u64))
+                }
+                AvEffect::RequestNewBlock(block_context) => {
+                    ConsensusProtocolResult::CreateNewBlock(block_context.instant())
                 }
             })
             .collect())
@@ -198,7 +236,7 @@ mod example {
     use super::{
         protocol_state::{ProtocolState, VertexTrait},
         synchronizer::DagSynchronizerState,
-        ConsensusProtocol, ConsensusProtocolResult, NodeId, TimerId,
+        BlockContext, ConsensusProtocol, ConsensusProtocolResult, NodeId, Timestamp,
     };
 
     #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
@@ -240,7 +278,7 @@ mod example {
 
         fn handle_timer(
             &mut self,
-            _timer_id: TimerId,
+            _timestamp: Timestamp,
         ) -> Result<Vec<ConsensusProtocolResult<ProtoBlock>>, anyhow::Error> {
             unimplemented!()
         }
@@ -249,6 +287,14 @@ mod example {
             &mut self,
             _value: &ProtoBlock,
             _valid: bool,
+        ) -> Result<Vec<ConsensusProtocolResult<ProtoBlock>>, anyhow::Error> {
+            unimplemented!()
+        }
+
+        fn propose(
+            &self,
+            _value: ProtoBlock,
+            _block_context: BlockContext,
         ) -> Result<Vec<ConsensusProtocolResult<ProtoBlock>>, anyhow::Error> {
             unimplemented!()
         }

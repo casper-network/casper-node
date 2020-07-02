@@ -1,17 +1,20 @@
 use super::{
+    active_validator::{ActiveValidator, Effect},
     evidence::Evidence,
     state::{AddVoteError, State},
     validators::Validators,
     vertex::{Dependency, Vertex, WireVote},
 };
+use tracing::warn;
+
 use crate::components::consensus::highway_core::vertex::SignedWireVote;
-use crate::components::consensus::traits::Context;
+use crate::components::consensus::{consensus_protocol::BlockContext, traits::Context};
 
 /// The result of trying to add a vertex to the protocol highway.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum AddVertexOutcome<C: Context> {
     /// The vertex was successfully added.
-    Success,
+    Success(Vec<Effect<C>>),
     /// The vertex could not be added because it is missing a dependency. The vertex itself is
     /// returned, together with the missing dependency.
     MissingDependency(Vertex<C>, Dependency<C>),
@@ -41,12 +44,12 @@ pub(crate) struct HighwayParams<C: Context> {
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
 /// peers, and use a [FinalityDetector](../finality_detector/struct.FinalityDetector.html) to
 /// determine the outcome of the consensus process.
-#[derive(Debug)]
 pub(crate) struct Highway<C: Context> {
     /// The parameters that remain constant for the duration of this consensus instance.
     params: HighwayParams<C>,
     /// The abstract protocol state.
     state: State<C>,
+    active_validator: Option<ActiveValidator<C>>,
 }
 
 impl<C: Context> Highway<C> {
@@ -73,6 +76,44 @@ impl<C: Context> Highway<C> {
         }
     }
 
+    pub(crate) fn on_new_vote(&self, vhash: &C::Hash, instant: u64) -> Vec<Effect<C>> {
+        match self.active_validator.as_ref() {
+            None => {
+                // TODO: Error?
+                warn!(?vhash, %instant, "Observer node was called with `on_new_vote` event.");
+                vec![]
+            }
+            Some(av) => av.on_new_vote(vhash, instant, &self.state),
+        }
+    }
+
+    pub(crate) fn handle_timer(&mut self, instant: u64) -> Vec<Effect<C>> {
+        match self.active_validator.as_mut() {
+            None => {
+                // TODO: Error?
+                // At least add logging about the event.
+                warn!(%instant, "Observer node was called with `handle_timer` event.");
+                vec![]
+            }
+            Some(av) => av.handle_timer(instant, &self.state),
+        }
+    }
+
+    pub(crate) fn propose(
+        &self,
+        value: C::ConsensusValue,
+        block_context: BlockContext,
+    ) -> Vec<Effect<C>> {
+        match self.active_validator.as_ref() {
+            None => {
+                // TODO: Error?
+                warn!(?value, %block_context.instant, "Observer node was called with `propose` event.");
+                vec![]
+            }
+            Some(av) => av.propose(value, block_context, &self.state),
+        }
+    }
+
     pub(crate) fn state(&self) -> &State<C> {
         &self.state
     }
@@ -93,9 +134,16 @@ impl<C: Context> Highway<C> {
         if let Some(dep) = self.state.missing_dependency(&swvote.wire_vote.panorama) {
             return AddVertexOutcome::MissingDependency(Vertex::Vote(swvote), dep);
         }
+        let vote_instant = swvote.wire_vote.instant;
+        let vote_hash = swvote.hash();
         // If the vote is invalid, `add_vote` returns it as an error.
-        let opt_wvote = self.state.add_vote(swvote).err();
-        opt_wvote.map_or(AddVertexOutcome::Success, AddVertexOutcome::from)
+        match self.state.add_vote(swvote) {
+            Ok(()) => {
+                let effects = self.on_new_vote(&vote_hash, vote_instant);
+                AddVertexOutcome::Success(effects)
+            }
+            Err(error) => AddVertexOutcome::from(error),
+        }
     }
 
     /// Returns validator ID of the `swvote` sender.
@@ -107,7 +155,7 @@ impl<C: Context> Highway<C> {
         // TODO: Validate evidence. Signatures, sequence numbers, etc.
         if self.params.validators.contains(evidence.perpetrator()) {
             self.state.add_evidence(evidence);
-            AddVertexOutcome::Success
+            AddVertexOutcome::Success(vec![])
         } else {
             AddVertexOutcome::Invalid(Vertex::Evidence(evidence))
         }
@@ -147,7 +195,11 @@ pub(crate) mod tests {
             instance_id: 1u64,
             validators,
         };
-        let mut highway = Highway { params, state };
+        let mut highway = Highway {
+            params,
+            state,
+            active_validator: None,
+        };
         let wvote = WireVote {
             panorama: Panorama::new(WEIGHTS.len()),
             sender: ALICE,
@@ -172,7 +224,10 @@ pub(crate) mod tests {
             signature: valid_signature,
         };
         let valid_vertex = Vertex::Vote(correct_signature_vote);
-        assert_eq!(AddVertexOutcome::Success, highway.add_vertex(valid_vertex));
+        assert_eq!(
+            AddVertexOutcome::Success(vec![]),
+            highway.add_vertex(valid_vertex)
+        );
         Ok(())
     }
 }
