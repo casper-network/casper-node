@@ -190,7 +190,7 @@ async fn receiver_task<REv, P>(
         let announce = NetworkAnnouncement::MessageReceived { sender, payload };
 
         event_queue
-            .schedule(announce.into(), QueueKind::NetworkIncoming)
+            .schedule(announce, QueueKind::NetworkIncoming)
             .await;
     }
 
