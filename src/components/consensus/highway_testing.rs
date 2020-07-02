@@ -157,7 +157,30 @@ where
 }
 
 trait Strategy<Item> {
-    fn map<R: rand::Rng>(&self, rng: &mut R, i: Item) -> Option<Item>;
+    fn map<R: rand::Rng>(&self, rng: &mut R, i: Item) -> Item {
+        i
+    }
+}
+
+enum DeliverySchedule {
+    AtInstant(Instant),
+    Drop,
+}
+
+impl DeliverySchedule {
+    fn at(instant: Instant) -> DeliverySchedule {
+        DeliverySchedule::AtInstant(instant)
+    }
+
+    fn drop(_instant: Instant) -> DeliverySchedule {
+        DeliverySchedule::Drop
+    }
+}
+
+impl From<Instant> for DeliverySchedule {
+    fn from(instant: Instant) -> Self {
+        DeliverySchedule::at(instant)
+    }
 }
 
 enum TestRunError {
@@ -183,7 +206,7 @@ struct TestHarness<M, C, D, DS, R>
 where
     M: PartialEq + Eq + Ord + Clone + Copy,
     D: ConsensusInstance,
-    DS: Strategy<Instant>,
+    DS: Strategy<DeliverySchedule>,
 {
     /// Maps node IDs to actual node instances.
     nodes_map: BTreeMap<NodeId, Node<C, D>>,
@@ -202,7 +225,7 @@ impl<M, C, D, DS, R> TestHarness<M, C, D, DS, R>
 where
     M: PartialEq + Eq + Ord + Clone + Copy,
     D: ConsensusInstance<M = M>,
-    DS: Strategy<Instant>,
+    DS: Strategy<DeliverySchedule>,
     R: rand::Rng,
 {
     fn new<I: IntoIterator<Item = Node<C, D>>>(
@@ -271,12 +294,13 @@ where
         for node_id in recipients {
             let tampered_delivery_time = self
                 .delivery_time_strategy
-                .map(&mut self.rand, base_delivery_time);
+                .map(&mut self.rand, base_delivery_time.into());
             match tampered_delivery_time {
                 // Simulate droping of the message.
                 // TODO: Add logging.
-                None => (),
-                Some(dt) => self.schedule_message(dt, node_id, message),
+                DeliverySchedule::Drop => (),
+                DeliverySchedule::AtInstant(dt) => self.schedule_message(dt, node_id, message),
+            }
             }
         }
     }
