@@ -5,6 +5,7 @@
 pub(crate) mod api_server;
 pub(crate) mod consensus;
 pub(crate) mod deploy_broadcaster;
+pub(crate) mod in_memory_network;
 pub(crate) mod pinger;
 pub(crate) mod small_network;
 pub(crate) mod storage;
