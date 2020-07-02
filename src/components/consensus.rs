@@ -23,15 +23,12 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    components::{
-        consensus::consensus_protocol::{BlockContext, Timestamp},
-        small_network::NodeId,
-        Component,
-    },
+    components::{small_network::NodeId, Component},
     effect::{requests::NetworkRequest, Effect, EffectBuilder, Multiple},
     types::{ExecutedBlock, ProtoBlock},
 };
 
+pub(crate) use consensus_protocol::BlockContext;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,6 +51,7 @@ pub enum Event {
     NewProtoBlock {
         era_id: EraId,
         proto_block: ProtoBlock,
+        block_context: BlockContext,
     },
     /// We are receiving the information necessary to produce finality signatures
     ExecutedBlock {
@@ -91,7 +89,12 @@ impl Display for Event {
             Event::NewProtoBlock {
                 era_id,
                 proto_block,
-            } => write!(f, "New proto-block for era {:?}: {:?}", era_id, proto_block),
+                block_context,
+            } => write!(
+                f,
+                "New proto-block for era {:?}: {:?}, {:?}",
+                era_id, proto_block, block_context
+            ),
             Event::ExecutedBlock {
                 era_id,
                 executed_block,
@@ -144,8 +147,9 @@ where
             Event::NewProtoBlock {
                 era_id,
                 proto_block,
+                block_context,
             } => self.delegate_to_era(era_id, effect_builder, move |consensus| {
-                consensus.propose(proto_block, BlockContext::new(Timestamp(0)) /* TODO */)
+                consensus.propose(proto_block, block_context)
             }),
             Event::ExecutedBlock { .. } => todo!(),
             Event::AcceptProtoBlock { .. } => todo!(),

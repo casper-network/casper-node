@@ -18,7 +18,7 @@ pub(crate) struct Timestamp(pub(crate) u64);
 
 /// Information about the context in which a new block is created.
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub(crate) struct BlockContext {
+pub struct BlockContext {
     timestamp: Timestamp,
 }
 

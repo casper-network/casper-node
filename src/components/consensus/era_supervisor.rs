@@ -118,11 +118,12 @@ impl EraSupervisor {
                 // a timer for the correct moment - and we don't want to use std::Instant
                 unimplemented!()
             }
-            ConsensusProtocolResult::CreateNewBlock(_instant) => effect_builder
-                .request_proto_block()
-                .event(move |proto_block| Event::NewProtoBlock {
+            ConsensusProtocolResult::CreateNewBlock(block_context) => effect_builder
+                .request_proto_block(block_context)
+                .event(move |(proto_block, block_context)| Event::NewProtoBlock {
                     era_id,
                     proto_block,
+                    block_context,
                 }),
             ConsensusProtocolResult::FinalizedBlock(block) => effect_builder
                 .execute_block(block)
