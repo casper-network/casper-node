@@ -1,6 +1,6 @@
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::components::{
     consensus::{
@@ -58,7 +58,7 @@ impl<C: Context> ProtocolState for Highway<C> {
     }
 
     fn get_vertex(&self, v: Dependency<C>) -> Result<Option<Vertex<C>>, Self::Error> {
-        Ok(self.get_dependency(v))
+        Ok(self.get_dependency(&v))
     }
 }
 
@@ -199,7 +199,20 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
                 }
                 queue.into_results()
             }
-            HighwayMessage::RequestDependency(_dep) => todo!(),
+            HighwayMessage::RequestDependency(dep) => {
+                if let Some(vertex) = self.highway.get_dependency(&dep) {
+                    let msg = HighwayMessage::NewVertex(vertex);
+                    let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
+                    // TODO: Should this be done via a gossip service?
+                    vec![ConsensusProtocolResult::CreatedTargetedMessage(
+                        serialized_msg,
+                        sender,
+                    )]
+                } else {
+                    info!(?dep, "Requested dependency doesn't exist.");
+                    vec![]
+                }
+            }
         })
     }
 
