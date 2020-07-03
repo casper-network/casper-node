@@ -94,7 +94,7 @@ impl<C, D: ConsensusInstance> Node<C, D> {
 
     fn messages_received(&self) -> impl Iterator<Item = &Message<D::M>> {
         self.messages_received.iter()
-}
+    }
 
     fn messages_produced(&self) -> impl Iterator<Item = &Message<D::M>> {
         self.messages_produced.iter()
@@ -392,7 +392,7 @@ where
 
     fn nodes(&self) -> impl Iterator<Item = &Node<C, D>> {
         self.nodes_map.values().into_iter()
-}
+    }
 
     fn mut_handle(&mut self) -> &mut Self {
         self
@@ -416,8 +416,8 @@ mod test_harness {
                 DeliverySchedule::Drop => DeliverySchedule::Drop,
                 DeliverySchedule::AtInstant(instant) => {
                     DeliverySchedule::AtInstant(Instant(instant.0 + 1))
-        }
-    }
+                }
+            }
         }
     }
 
@@ -457,14 +457,18 @@ mod test_harness {
 
         let messages_num = 10;
         // We want to enqueue messages from the latest delivery time to the earliest.
-        (0..messages_num)
+        let messages: Vec<(Instant, Message<u64>)> = (0..messages_num)
             .map(|i| (Instant(messages_num - i), Message::new(node_id, i)))
-            .for_each(|(instant, message)| {
-                test_harness.schedule_message(instant, node_id, message)
-            });
+            .collect();
+
+        let last_message_payload = messages.last().cloned().unwrap().1;
+
+        messages.into_iter().for_each(|(instant, message)| {
+            test_harness.schedule_message(instant, node_id, message)
+        });
 
         let mut crank_count = 0;
-        let mut previous_payload = 0u64;
+        let mut previous_payload = last_message_payload.payload;
         while test_harness.crank().is_ok() {
             let new_message = test_harness
                 .mut_handle()
@@ -488,5 +492,43 @@ mod test_harness {
             crank_count, messages_num,
             "There was more messages in the network than scheduled initially."
         )
+    }
+
+    struct ForwardAllConsensus;
+
+    impl ConsensusInstance for ForwardAllConsensus {
+        type M = M;
+        fn handle_message(
+            &mut self,
+            sender: NodeId,
+            m: Self::M,
+            is_faulty: bool,
+        ) -> Vec<TargetedMessage<Self::M>> {
+            vec![TargetedMessage::new(Message::new(sender, m), Target::All)]
+        }
+    }
+
+    #[test]
+    fn messages_are_broadcasted() {
+        let node_count = 10;
+        let nodes: Vec<Node<C, ForwardAllConsensus>> = (0u64..node_count)
+            .map(|id| Node::new(NodeId(id), false, ForwardAllConsensus))
+            .collect();
+        let mut rand = XorShiftRng::from_seed(rand::random());
+        let mut test_harness: TestHarness<M, C, ForwardAllConsensus, SmallDelay, XorShiftRng> =
+            TestHarness::new(nodes, 0, vec![], SmallDelay(), rand);
+
+        let test_message = Message::new(NodeId(1), 1u64);
+        test_harness.schedule_message(Instant(1), NodeId(0), test_message);
+        // Fist crank to deliver the first message.
+        // As a result of processing it, 1 message will be delivered to each node.
+        assert!(test_harness.crank().is_ok());
+        // We need to crank the network as many times as there are nodes so that everyone gets their response message.
+        // That's b/c 1 crank == 1 popped from the queue and delivered to the node.
+        (0..node_count).for_each(|_| assert!(test_harness.crank().is_ok()));
+        assert!(test_harness
+            .mut_handle()
+            .nodes()
+            .all(|node| node.messages_received().next() == Some(&test_message)));
     }
 }
