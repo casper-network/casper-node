@@ -9,18 +9,18 @@ use std::{
 
 /// Enum defining recipients of the message.
 enum Target {
-    SingleNode(NodeId),
+    SingleValidator(ValidatorId),
     All,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 struct Message<M: Copy + Clone + Debug> {
-    sender: NodeId,
+    sender: ValidatorId,
     payload: M,
 }
 
 impl<M: Copy + Clone + Debug> Message<M> {
-    fn new(sender: NodeId, payload: M) -> Self {
+    fn new(sender: ValidatorId, payload: M) -> Self {
         Message { sender, payload }
     }
 }
@@ -41,35 +41,35 @@ trait ConsensusInstance {
 
     fn handle_message(
         &mut self,
-        sender: NodeId,
+        sender: ValidatorId,
         m: Self::M,
         is_faulty: bool,
     ) -> Vec<TargetedMessage<Self::M>>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
-struct NodeId(u64);
+struct ValidatorId(u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
 struct Instant(u64);
 
-/// A node in the test network.
-struct Node<C, D: ConsensusInstance> {
-    id: NodeId,
-    /// Whether a node should produce equivocations.
+/// A validator in the test network.
+struct Validator<C, D: ConsensusInstance> {
+    id: ValidatorId,
+    /// Whether a validator should produce equivocations.
     is_faulty: bool,
-    /// Vector of consensus values finalized by the node.
+    /// Vector of consensus values finalized by the validator.
     finalized_values: Vec<C>,
-    /// Messages received by the node.
+    /// Messages received by the validator.
     messages_received: Vec<Message<D::M>>,
-    /// Messages produced by the node.
+    /// Messages produced by the validator.
     messages_produced: Vec<Message<D::M>>,
     /// An instance of consensus protocol.
     consensus: D,
 }
 
-impl<C, D: ConsensusInstance> Node<C, D> {
-    fn new(id: NodeId, is_faulty: bool, consensus: D) -> Self {
-        Node {
+impl<C, D: ConsensusInstance> Validator<C, D> {
+    fn new(id: ValidatorId, is_faulty: bool, consensus: D) -> Self {
+        Validator {
             id,
             is_faulty,
             finalized_values: Vec::new(),
@@ -83,11 +83,11 @@ impl<C, D: ConsensusInstance> Node<C, D> {
         self.is_faulty
     }
 
-    fn node_id(&self) -> NodeId {
+    fn validator_id(&self) -> ValidatorId {
         self.id
     }
 
-    /// Iterator over consensus values finalized by the node.
+    /// Iterator over consensus values finalized by the validator.
     fn finalized_values(&self) -> impl Iterator<Item = &C> {
         self.finalized_values.iter()
     }
@@ -100,7 +100,7 @@ impl<C, D: ConsensusInstance> Node<C, D> {
         self.messages_produced.iter()
     }
 
-    fn handle_message(&mut self, sender: NodeId, m: D::M) -> Vec<TargetedMessage<D::M>> {
+    fn handle_message(&mut self, sender: ValidatorId, m: D::M) -> Vec<TargetedMessage<D::M>> {
         self.messages_received.push(Message::new(sender, m));
         let outbound_msgs = self.consensus.handle_message(sender, m, self.is_faulty);
         self.messages_produced
@@ -119,12 +119,12 @@ where
     M: MessageT,
 {
     /// Scheduled delivery time of the message.
-    /// When a message has dependencies that recipient node is missing,
+    /// When a message has dependencies that recipient validator is missing,
     /// those will be added to it in a loop (simulating synchronization)
     /// and not influence the delivery time.
     delivery_time: Instant,
     /// Recipient of the message.
-    recipient: NodeId,
+    recipient: ValidatorId,
     /// The message.
     message: Message<M>,
 }
@@ -133,7 +133,7 @@ impl<M> QueueEntry<M>
 where
     M: MessageT,
 {
-    pub(crate) fn new(delivery_time: Instant, recipient: NodeId, message: Message<M>) -> Self {
+    pub(crate) fn new(delivery_time: Instant, recipient: ValidatorId, message: Message<M>) -> Self {
         QueueEntry {
             delivery_time,
             recipient,
@@ -166,14 +166,14 @@ where
 
 #[cfg(test)]
 mod queue_entry_tests {
-    use super::{Instant, Message, NodeId, QueueEntry};
+    use super::{Instant, Message, QueueEntry, ValidatorId};
     use std::cmp::Ordering;
 
     #[test]
     fn delivery_time_ord() {
-        let sender = NodeId(2);
-        let recipient1 = NodeId(1);
-        let recipient2 = NodeId(3);
+        let sender = ValidatorId(2);
+        let recipient1 = ValidatorId(1);
+        let recipient2 = ValidatorId(3);
         let message = Message::new(sender, 1u8);
         let m1 = QueueEntry::new(Instant(1), recipient1, message);
         let m2 = QueueEntry::new(Instant(2), recipient1, message);
@@ -183,7 +183,7 @@ mod queue_entry_tests {
     }
 }
 
-/// Priority queue of messages scheduled for delivery to nodes.
+/// Priority queue of messages scheduled for delivery to validators.
 /// Ordered by the delivery time.
 struct Queue<M>(BinaryHeap<QueueEntry<M>>)
 where
@@ -216,14 +216,14 @@ where
 
 #[cfg(test)]
 mod queue_tests {
-    use super::{Instant, Message, NodeId, Queue, QueueEntry};
+    use super::{Instant, Message, Queue, QueueEntry, ValidatorId};
 
     #[test]
     fn pop_earliest_delivery() {
         let mut queue: Queue<u8> = Queue::default();
-        let recipient_a = NodeId(1);
-        let recipient_b = NodeId(3);
-        let sender = NodeId(2);
+        let recipient_a = ValidatorId(1);
+        let recipient_b = ValidatorId(3);
+        let sender = ValidatorId(2);
         let message_a = Message::new(sender, 1u8);
         let message_b = Message::new(sender, 2u8);
 
@@ -274,16 +274,18 @@ impl From<Instant> for DeliverySchedule {
 
 #[derive(Debug, Eq, PartialEq)]
 enum TestRunError {
-    MissingRecipient(NodeId),
+    MissingRecipient(ValidatorId),
     NoMessages,
 }
 
 impl Display for TestRunError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            TestRunError::MissingRecipient(node_id) => {
-                write!(f, "Recipient node {:?} was not found in the map.", node_id)
-            }
+            TestRunError::MissingRecipient(validator_id) => write!(
+                f,
+                "Recipient validator {:?} was not found in the map.",
+                validator_id
+            ),
             TestRunError::NoMessages => write!(
                 f,
                 "Test finished prematurely due to lack of messages in the queue"
@@ -298,8 +300,8 @@ where
     D: ConsensusInstance,
     DS: Strategy<DeliverySchedule>,
 {
-    /// Maps node IDs to actual node instances.
-    nodes_map: BTreeMap<NodeId, Node<C, D>>,
+    /// Maps validator IDs to actual validator instances.
+    validators_map: BTreeMap<ValidatorId, Validator<C, D>>,
     /// A collection of all network messages queued up for delivery.
     msg_queue: Queue<M>,
     /// The instant the network was created.
@@ -318,16 +320,19 @@ where
     DS: Strategy<DeliverySchedule>,
     R: rand::Rng,
 {
-    fn new<I: IntoIterator<Item = Node<C, D>>>(
-        nodes: I,
+    fn new<I: IntoIterator<Item = Validator<C, D>>>(
+        validators: I,
         start_time: u64,
         consensus_values: Vec<C>,
         delivery_time_strategy: DS,
         rand: R,
     ) -> Self {
-        let nodes_map = nodes.into_iter().map(|node| (node.id, node)).collect();
+        let validators_map = validators
+            .into_iter()
+            .map(|validator| (validator.id, validator))
+            .collect();
         TestHarness {
-            nodes_map,
+            validators_map,
             msg_queue: Default::default(),
             start_time,
             consensus_values,
@@ -336,8 +341,13 @@ where
         }
     }
 
-    /// Schedules a message `message` to be delivered at `delivery_time` to `recipient` node.
-    fn schedule_message(&mut self, delivery_time: Instant, recipient: NodeId, message: Message<M>) {
+    /// Schedules a message `message` to be delivered at `delivery_time` to `recipient` validator.
+    fn schedule_message(
+        &mut self,
+        delivery_time: Instant,
+        recipient: ValidatorId,
+        message: Message<M>,
+    ) {
         let qe = QueueEntry::new(delivery_time, recipient, message);
         self.msg_queue.push(qe);
     }
@@ -345,7 +355,7 @@ where
     /// Advance the test by one message.
     ///
     /// Pops one message from the message queue (if there are any)
-    /// and pass it to the recipient node for execution.
+    /// and pass it to the recipient validator for execution.
     /// Messages returned from the execution are scheduled for later delivery.
     fn crank(&mut self) -> Result<(), TestRunError> {
         let QueueEntry {
@@ -354,32 +364,32 @@ where
             message,
         } = self.msg_queue.pop().ok_or(TestRunError::NoMessages)?;
         // TODO: Check if we should stop the test.
-        // Verify whether all nodes have finalized all consensus values.
-        let mut recipient_node = self
-            .nodes_map
+        // Verify whether all validators have finalized all consensus values.
+        let mut recipient_validator = self
+            .validators_map
             .get_mut(&recipient)
             .ok_or(TestRunError::MissingRecipient(recipient))?;
 
         for TargetedMessage { message, target } in
-            recipient_node.handle_message(message.sender, message.payload)
+            recipient_validator.handle_message(message.sender, message.payload)
         {
-            let recipient_nodes = match target {
-                Target::All => self.nodes_map.keys().cloned().collect(),
-                Target::SingleNode(recipient_id) => vec![recipient_id],
+            let validators_nodes = match target {
+                Target::All => self.validators_map.keys().cloned().collect(),
+                Target::SingleValidator(recipient_id) => vec![recipient_id],
             };
-            self.send_messages(recipient_nodes, message, delivery_time)
+            self.send_messages(validators_nodes, message, delivery_time)
         }
         Ok(())
     }
 
     // Utility function for dispatching message to multiple recipients.
-    fn send_messages<I: IntoIterator<Item = NodeId>>(
+    fn send_messages<I: IntoIterator<Item = ValidatorId>>(
         &mut self,
         recipients: I,
         message: Message<M>,
         base_delivery_time: Instant,
     ) {
-        for node_id in recipients {
+        for validator_id in recipients {
             let tampered_delivery_time = self
                 .delivery_time_strategy
                 .map(&mut self.rand, base_delivery_time.into());
@@ -387,13 +397,13 @@ where
                 // Simulates dropping of the message.
                 // TODO: Add logging.
                 DeliverySchedule::Drop => (),
-                DeliverySchedule::AtInstant(dt) => self.schedule_message(dt, node_id, message),
+                DeliverySchedule::AtInstant(dt) => self.schedule_message(dt, validator_id, message),
             }
         }
     }
 
-    fn nodes(&self) -> impl Iterator<Item = &Node<C, D>> {
-        self.nodes_map.values()
+    fn validators(&self) -> impl Iterator<Item = &Validator<C, D>> {
+        self.validators_map.values()
     }
 
     fn mut_handle(&mut self) -> &mut Self {
@@ -403,8 +413,8 @@ where
 
 mod test_harness {
     use super::{
-        ConsensusInstance, DeliverySchedule, Instant, Message, Node, NodeId, Strategy, Target,
-        TargetedMessage, TestHarness, TestRunError,
+        ConsensusInstance, DeliverySchedule, Instant, Message, Strategy, Target, TargetedMessage,
+        TestHarness, TestRunError, Validator, ValidatorId,
     };
     use rand_core::SeedableRng;
     use rand_xorshift::XorShiftRng;
@@ -431,7 +441,7 @@ mod test_harness {
         type M = M;
         fn handle_message(
             &mut self,
-            sender: NodeId,
+            sender: ValidatorId,
             m: Self::M,
             is_faulty: bool,
         ) -> Vec<TargetedMessage<Self::M>> {
@@ -441,7 +451,8 @@ mod test_harness {
 
     #[test]
     fn on_empty_queue_error() {
-        let single_node: Node<C, NoOpConsensus> = Node::new(NodeId(1u64), false, NoOpConsensus());
+        let single_node: Validator<C, NoOpConsensus> =
+            Validator::new(ValidatorId(1u64), false, NoOpConsensus());
         let mut rand = XorShiftRng::from_seed(rand::random());
         let mut test_harness: TestHarness<M, C, NoOpConsensus, SmallDelay, XorShiftRng> =
             TestHarness::new(vec![single_node], 0, vec![], SmallDelay(), rand);
@@ -450,22 +461,22 @@ mod test_harness {
 
     #[test]
     fn messages_are_delivered_in_order() {
-        let node_id = NodeId(1u64);
-        let single_node = Node::new(node_id, false, NoOpConsensus());
+        let validator_id = ValidatorId(1u64);
+        let single_validator = Validator::new(validator_id, false, NoOpConsensus());
         let mut rand = XorShiftRng::from_seed(rand::random());
         let mut test_harness: TestHarness<M, C, NoOpConsensus, SmallDelay, XorShiftRng> =
-            TestHarness::new(vec![single_node], 0, vec![], SmallDelay(), rand);
+            TestHarness::new(vec![single_validator], 0, vec![], SmallDelay(), rand);
 
         let messages_num = 10;
         // We want to enqueue messages from the latest delivery time to the earliest.
         let messages: Vec<(Instant, Message<u64>)> = (0..messages_num)
-            .map(|i| (Instant(messages_num - i), Message::new(node_id, i)))
+            .map(|i| (Instant(messages_num - i), Message::new(validator_id, i)))
             .collect();
 
         let last_message_payload = messages.last().cloned().unwrap().1;
 
         messages.into_iter().for_each(|(instant, message)| {
-            test_harness.schedule_message(instant, node_id, message)
+            test_harness.schedule_message(instant, validator_id, message)
         });
 
         let mut crank_count = 0;
@@ -473,7 +484,7 @@ mod test_harness {
         while test_harness.crank().is_ok() {
             let new_message = test_harness
                 .mut_handle()
-                .nodes()
+                .validators()
                 .next()
                 .unwrap()
                 .messages_received()
@@ -501,7 +512,7 @@ mod test_harness {
         type M = M;
         fn handle_message(
             &mut self,
-            sender: NodeId,
+            sender: ValidatorId,
             m: Self::M,
             is_faulty: bool,
         ) -> Vec<TargetedMessage<Self::M>> {
@@ -511,25 +522,25 @@ mod test_harness {
 
     #[test]
     fn messages_are_broadcasted() {
-        let node_count = 10;
-        let nodes: Vec<Node<C, ForwardAllConsensus>> = (0u64..node_count)
-            .map(|id| Node::new(NodeId(id), false, ForwardAllConsensus))
+        let validator_count = 10;
+        let validators: Vec<Validator<C, ForwardAllConsensus>> = (0u64..validator_count)
+            .map(|id| Validator::new(ValidatorId(id), false, ForwardAllConsensus))
             .collect();
         let mut rand = XorShiftRng::from_seed(rand::random());
         let mut test_harness: TestHarness<M, C, ForwardAllConsensus, SmallDelay, XorShiftRng> =
-            TestHarness::new(nodes, 0, vec![], SmallDelay(), rand);
+            TestHarness::new(validators, 0, vec![], SmallDelay(), rand);
 
-        let test_message = Message::new(NodeId(1), 1u64);
-        test_harness.schedule_message(Instant(1), NodeId(0), test_message);
+        let test_message = Message::new(ValidatorId(1), 1u64);
+        test_harness.schedule_message(Instant(1), ValidatorId(0), test_message);
         // Fist crank to deliver the first message.
-        // As a result of processing it, 1 message will be delivered to each node.
+        // As a result of processing it, 1 message will be delivered to each validator.
         assert!(test_harness.crank().is_ok());
-        // We need to crank the network as many times as there are nodes so that everyone gets their response message.
-        // That's b/c 1 crank == 1 popped from the queue and delivered to the node.
-        (0..node_count).for_each(|_| assert!(test_harness.crank().is_ok()));
+        // We need to crank the network as many times as there are validators so that everyone gets their response message.
+        // That's b/c 1 crank == 1 popped from the queue and delivered to the validator.
+        (0..validator_count).for_each(|_| assert!(test_harness.crank().is_ok()));
         assert!(test_harness
             .mut_handle()
-            .nodes()
-            .all(|node| node.messages_received().next() == Some(&test_message)));
+            .validators()
+            .all(|validator| validator.messages_received().next() == Some(&test_message)));
     }
 }
