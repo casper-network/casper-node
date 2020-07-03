@@ -112,7 +112,7 @@ impl<C, D: ConsensusInstance> Node<C, D> {
 }
 
 /// An entry in the message queue of the test network.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 struct QueueEntry<M>
 where
     M: PartialEq + Eq + Ord + Clone + Copy + Debug,
@@ -148,6 +148,7 @@ where
     fn cmp(&self, other: &Self) -> Ordering {
         self.delivery_time
             .cmp(&other.delivery_time)
+            .reverse()
             .then_with(|| self.recipient.cmp(&other.recipient))
             .then_with(|| self.message.payload.cmp(&other.message.payload))
     }
@@ -159,6 +160,25 @@ where
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+#[cfg(test)]
+mod queue_entry_tests {
+    use super::{Instant, Message, NodeId, QueueEntry};
+    use std::cmp::Ordering;
+
+    #[test]
+    fn delivery_time_ord() {
+        let sender = NodeId(2);
+        let recipient1 = NodeId(1);
+        let recipient2 = NodeId(3);
+        let message = Message::new(sender, 1u8);
+        let m1 = QueueEntry::new(Instant(1), recipient1, message);
+        let m2 = QueueEntry::new(Instant(2), recipient1, message);
+        assert_eq!(m1.cmp(&m2), Ordering::Less);
+        let m3 = QueueEntry::new(Instant(1), recipient2, message);
+        assert_eq!(m1.cmp(&m3), Ordering::Less);
     }
 }
 
@@ -190,6 +210,33 @@ where
     /// Pushes new message to the queue.
     fn push(&mut self, item: QueueEntry<M>) {
         self.0.push(item)
+    }
+}
+
+#[cfg(test)]
+mod queue_tests {
+    use super::{Instant, Message, NodeId, Queue, QueueEntry};
+
+    #[test]
+    fn pop_earliest_delivery() {
+        let mut queue: Queue<u8> = Queue::default();
+        let recipient_a = NodeId(1);
+        let recipient_b = NodeId(3);
+        let sender = NodeId(2);
+        let message_a = Message::new(sender, 1u8);
+        let message_b = Message::new(sender, 2u8);
+
+        let first = QueueEntry::new(Instant(1), recipient_a, message_a);
+        let second = QueueEntry::new(Instant(1), recipient_a, message_b);
+        let third = QueueEntry::new(Instant(3), recipient_b, message_a);
+
+        queue.push(first.clone());
+        queue.push(third.clone());
+        queue.push(second.clone());
+
+        assert_eq!(queue.pop(), Some(first));
+        assert_eq!(queue.pop(), Some(second));
+        assert_eq!(queue.pop(), Some(third));
     }
 }
 
