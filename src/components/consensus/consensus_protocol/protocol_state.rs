@@ -1,12 +1,12 @@
 use std::fmt::Debug;
 use std::hash::Hash;
 
-pub(crate) trait VertexId: Clone + Hash + Eq + Ord {}
-impl<T> VertexId for T where T: Clone + Hash + Eq + Ord {}
+pub(crate) trait VertexId: Debug + Clone + Hash + Eq + Ord {}
+impl<T> VertexId for T where T: Debug + Clone + Hash + Eq + Ord {}
 
-pub(crate) trait VertexTrait: Clone {
+pub(crate) trait VertexTrait: Debug + Clone {
     type Id: VertexId;
-    type Value: Clone + Hash + Eq;
+    type Value: Debug + Clone + Hash + Eq;
 
     fn id(&self) -> Self::Id;
 
