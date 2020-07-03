@@ -179,7 +179,7 @@ mod queue_entry_tests {
         let message = Message::new(sender, 1u8);
         let m1 = QueueEntry::new(Instant(1), recipient1, message);
         let m2 = QueueEntry::new(Instant(2), recipient1, message);
-        assert_eq!(m1.cmp(&m2), Ordering::Less);
+        assert_eq!(m1.cmp(&m2), Ordering::Greater);
         let m3 = QueueEntry::new(Instant(1), recipient2, message);
         assert_eq!(m1.cmp(&m3), Ordering::Less);
     }
@@ -229,8 +229,8 @@ mod queue_tests {
         let message_a = Message::new(sender, 1u8);
         let message_b = Message::new(sender, 2u8);
 
-        let first = QueueEntry::new(Instant(1), recipient_a, message_a);
-        let second = QueueEntry::new(Instant(1), recipient_a, message_b);
+        let first = QueueEntry::new(Instant(1), recipient_a, message_b);
+        let second = QueueEntry::new(Instant(1), recipient_a, message_a);
         let third = QueueEntry::new(Instant(3), recipient_b, message_a);
 
         queue.push(first.clone());
