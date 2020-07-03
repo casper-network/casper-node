@@ -111,11 +111,14 @@ impl<C, D: ConsensusInstance> Node<C, D> {
     }
 }
 
+trait MessageT: PartialEq + Eq + Ord + Clone + Copy + Debug {}
+impl<T> MessageT for T where T: PartialEq + Eq + Ord + Clone + Copy + Debug {}
+
 /// An entry in the message queue of the test network.
 #[derive(Debug, PartialEq, Eq, Clone)]
 struct QueueEntry<M>
 where
-    M: PartialEq + Eq + Ord + Clone + Copy + Debug,
+    M: MessageT,
 {
     /// Scheduled delivery time of the message.
     /// When a message has dependencies that recipient node is missing,
@@ -130,7 +133,7 @@ where
 
 impl<M> QueueEntry<M>
 where
-    M: PartialEq + Eq + Ord + Clone + Copy + Debug,
+    M: MessageT,
 {
     pub(crate) fn new(delivery_time: Instant, recipient: NodeId, message: Message<M>) -> Self {
         QueueEntry {
@@ -143,7 +146,7 @@ where
 
 impl<M> Ord for QueueEntry<M>
 where
-    M: PartialEq + Eq + Ord + Clone + Copy + Debug,
+    M: MessageT,
 {
     fn cmp(&self, other: &Self) -> Ordering {
         self.delivery_time
@@ -156,7 +159,7 @@ where
 
 impl<M> PartialOrd for QueueEntry<M>
 where
-    M: PartialEq + Eq + Ord + Clone + Copy + Debug,
+    M: MessageT,
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
@@ -186,11 +189,11 @@ mod queue_entry_tests {
 /// Ordered by the delivery time.
 struct Queue<M>(BinaryHeap<QueueEntry<M>>)
 where
-    M: PartialEq + Eq + Ord + Clone + Copy + Debug;
+    M: MessageT;
 
 impl<M> Default for Queue<M>
 where
-    M: PartialEq + Eq + Ord + Clone + Copy + Debug,
+    M: MessageT,
 {
     fn default() -> Self {
         Queue(Default::default())
@@ -199,7 +202,7 @@ where
 
 impl<M> Queue<M>
 where
-    M: PartialEq + Eq + Ord + Clone + Copy + Debug,
+    M: MessageT,
 {
     /// Gets next message.
     /// Returns `None` if there aren't any.
@@ -289,7 +292,7 @@ impl Display for TestRunError {
 
 struct TestHarness<M, C, D, DS, R>
 where
-    M: PartialEq + Eq + Ord + Clone + Copy + Debug,
+    M: MessageT,
     D: ConsensusInstance,
     DS: Strategy<DeliverySchedule>,
 {
@@ -308,7 +311,7 @@ where
 
 impl<M, C, D, DS, R> TestHarness<M, C, D, DS, R>
 where
-    M: PartialEq + Eq + Ord + Clone + Copy + Debug,
+    M: MessageT,
     D: ConsensusInstance<M = M>,
     DS: Strategy<DeliverySchedule>,
     R: rand::Rng,
