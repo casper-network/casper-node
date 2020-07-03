@@ -102,12 +102,10 @@ impl<C, D: ConsensusInstance> Node<C, D> {
 
     fn handle_message(&mut self, sender: NodeId, m: D::M) -> Vec<TargetedMessage<D::M>> {
         self.messages_received.push(Message::new(sender, m));
-        let outband_msgs = self.consensus.handle_message(sender, m, self.is_faulty);
-        outband_msgs
-            .iter()
-            .map(|tm| tm.message)
-            .for_each(|message| self.messages_produced.push(message));
-        outband_msgs
+        let outbound_msgs = self.consensus.handle_message(sender, m, self.is_faulty);
+        self.messages_produced
+            .extend(outbound_msgs.iter().map(|tm| tm.message));
+        outbound_msgs
     }
 }
 
@@ -243,6 +241,10 @@ mod queue_tests {
     }
 }
 
+/// A trait defining strategy for randomly changing value of `i`.
+///
+/// Can be used to simulate network delays, message drops, invalid signatures,
+/// panoramas etc.
 trait Strategy<Item> {
     fn map<R: rand::Rng>(&self, rng: &mut R, i: Item) -> Item {
         i
@@ -382,7 +384,7 @@ where
                 .delivery_time_strategy
                 .map(&mut self.rand, base_delivery_time.into());
             match tampered_delivery_time {
-                // Simulates droping of the message.
+                // Simulates dropping of the message.
                 // TODO: Add logging.
                 DeliverySchedule::Drop => (),
                 DeliverySchedule::AtInstant(dt) => self.schedule_message(dt, node_id, message),
@@ -399,7 +401,6 @@ where
     }
 }
 
-#[cfg(test)]
 mod test_harness {
     use super::{
         ConsensusInstance, DeliverySchedule, Instant, Message, Node, NodeId, Strategy, Target,
@@ -490,7 +491,7 @@ mod test_harness {
 
         assert_eq!(
             crank_count, messages_num,
-            "There was more messages in the network than scheduled initially."
+            "There were more messages in the network than scheduled initially."
         )
     }
 
