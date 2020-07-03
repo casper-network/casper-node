@@ -55,6 +55,8 @@ warp = "0.2.3"
 [dev-dependencies]
 fake_instant = "0.4.0"
 pnet = "0.26.0"
+rand_xorshift = { version = "~0.2.0" }
+rand_core = "0.5.1"
 
 [features]
 vendored-openssl = ['openssl/vendored']
