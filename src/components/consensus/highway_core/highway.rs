@@ -114,11 +114,11 @@ impl<C: Context> Highway<C> {
     ///
     /// If we send a vertex to a peer who is missing a dependency, they will ask us for it. In that
     /// case, `get_dependency` will always return `Some`, unless the peer is faulty.
-    pub(crate) fn get_dependency(&self, dependency: Dependency<C>) -> Option<Vertex<C>> {
+    pub(crate) fn get_dependency(&self, dependency: &Dependency<C>) -> Option<Vertex<C>> {
         let state = &self.state;
         match dependency {
-            Dependency::Vote(hash) => state.wire_vote(&hash).map(Vertex::Vote),
-            Dependency::Evidence(idx) => state.opt_evidence(idx).cloned().map(Vertex::Evidence),
+            Dependency::Vote(hash) => state.wire_vote(hash).map(Vertex::Vote),
+            Dependency::Evidence(idx) => state.opt_evidence(*idx).cloned().map(Vertex::Evidence),
         }
     }
 
