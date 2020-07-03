@@ -391,7 +391,7 @@ where
     }
 
     fn nodes(&self) -> impl Iterator<Item = &Node<C, D>> {
-        self.nodes_map.values().into_iter()
+        self.nodes_map.values()
     }
 
     fn mut_handle(&mut self) -> &mut Self {
