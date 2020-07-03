@@ -61,6 +61,7 @@ pub(crate) struct HighwayParams<C: Context> {
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
 /// peers, and use a [FinalityDetector](../finality_detector/struct.FinalityDetector.html) to
 /// determine the outcome of the consensus process.
+#[derive(Debug)]
 pub(crate) struct Highway<C: Context> {
     /// The parameters that remain constant for the duration of this consensus instance.
     params: HighwayParams<C>,
@@ -141,7 +142,11 @@ impl<C: Context> Highway<C> {
         match self.active_validator.as_ref() {
             None => {
                 // TODO: Error?
-                warn!(?value, %block_context.instant, "Observer node was called with `propose` event.");
+                warn!(
+                    ?value,
+                    ?block_context,
+                    "Observer node was called with `propose` event."
+                );
                 vec![]
             }
             Some(av) => av.propose(value, block_context, &self.state),

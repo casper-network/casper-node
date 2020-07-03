@@ -11,6 +11,7 @@ use std::{
     time::Duration,
 };
 
+use anyhow::Error;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
@@ -27,7 +28,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct EraId(pub(crate) u64);
+pub struct EraId(pub(crate) u64);
 
 impl EraId {
     fn message(self, payload: Vec<u8>) -> ConsensusMessage {
@@ -112,42 +113,58 @@ impl EraSupervisor {
             ConsensusProtocolResult::CreatedTargetedMessage(out_msg, to) => effect_builder
                 .send_message(to, era_id.message(out_msg))
                 .ignore(),
-            ConsensusProtocolResult::ScheduleTimer(_timestamp, _timer_id) => {
+            ConsensusProtocolResult::ScheduleTimer(_timestamp) => {
                 // TODO: we need to get the current system time here somehow, in order to schedule
                 // a timer for the correct moment - and we don't want to use std::Instant
                 unimplemented!()
             }
-            ConsensusProtocolResult::CreateNewBlock(_instant) => effect_builder
-                .request_proto_block()
-                .event(Event::NewProtoBlock),
+            ConsensusProtocolResult::CreateNewBlock(block_context) => effect_builder
+                .request_proto_block(block_context)
+                .event(move |(proto_block, block_context)| Event::NewProtoBlock {
+                    era_id,
+                    proto_block,
+                    block_context,
+                }),
             ConsensusProtocolResult::FinalizedBlock(block) => effect_builder
                 .execute_block(block)
-                .event(Event::ExecutedBlock),
+                .event(move |executed_block| Event::ExecutedBlock {
+                    era_id,
+                    executed_block,
+                }),
             ConsensusProtocolResult::ValidateConsensusValue(sender, proto_block) => effect_builder
                 .validate_proto_block(sender, proto_block)
                 .event(move |(is_valid, proto_block)| {
                     if is_valid {
-                        Event::AcceptProtoBlock(proto_block)
+                        Event::AcceptProtoBlock {
+                            era_id,
+                            proto_block,
+                        }
                     } else {
-                        Event::InvalidProtoBlock(sender, proto_block)
+                        Event::InvalidProtoBlock {
+                            era_id,
+                            sender,
+                            proto_block,
+                        }
                     }
                 }),
         }
     }
 
-    pub(crate) fn handle_message<REv>(
+    pub(crate) fn delegate_to_era<F, REv>(
         &mut self,
-        effect_builder: EffectBuilder<REv>,
-        sender: NodeId,
         era_id: EraId,
-        payload: Vec<u8>,
+        effect_builder: EffectBuilder<REv>,
+        f: F,
     ) -> Multiple<Effect<Event>>
     where
         REv: From<Event> + Send + From<NetworkRequest<NodeId, ConsensusMessage>>,
+        F: FnOnce(
+            &mut dyn ConsensusProtocol<ProtoBlock>,
+        ) -> Result<Vec<ConsensusProtocolResult<ProtoBlock>>, Error>,
     {
         match self.active_eras.get_mut(&era_id) {
             None => todo!("Handle missing eras."),
-            Some(consensus) => match consensus.handle_message(sender, payload) {
+            Some(consensus) => match f(&mut **consensus) {
                 Ok(results) => results
                     .into_iter()
                     .flat_map(|result| self.handle_consensus_result(era_id, effect_builder, result))

@@ -28,6 +28,7 @@ use crate::{
     types::{ExecutedBlock, ProtoBlock},
 };
 
+pub(crate) use consensus_protocol::BlockContext;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,17 +45,30 @@ pub enum Event {
         sender: NodeId,
         msg: ConsensusMessage,
     },
-    // TODO: remove lint relaxation
-    #[allow(dead_code)]
-    Timer,
+    /// A scheduled event to be handled by a specified era
+    Timer { era_id: EraId, instant: u64 },
     /// We are receiving the data we require to propose a new block
-    NewProtoBlock(ProtoBlock),
+    NewProtoBlock {
+        era_id: EraId,
+        proto_block: ProtoBlock,
+        block_context: BlockContext,
+    },
     /// We are receiving the information necessary to produce finality signatures
-    ExecutedBlock(ExecutedBlock),
+    ExecutedBlock {
+        era_id: EraId,
+        executed_block: ExecutedBlock,
+    },
     /// The proto-block has been validated and can now be added to the protocol state
-    AcceptProtoBlock(ProtoBlock),
+    AcceptProtoBlock {
+        era_id: EraId,
+        proto_block: ProtoBlock,
+    },
     /// The proto-block turned out to be invalid, we might want to accuse/punish/... the sender
-    InvalidProtoBlock(NodeId, ProtoBlock),
+    InvalidProtoBlock {
+        era_id: EraId,
+        sender: NodeId,
+        proto_block: ProtoBlock,
+    },
 }
 
 impl Display for ConsensusMessage {
@@ -67,18 +81,44 @@ impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::MessageReceived { sender, msg } => write!(f, "msg from {}: {}", sender, msg),
-            Event::Timer => write!(f, "timer"),
-            Event::NewProtoBlock(proto_block) => write!(f, "New proto-block: {:?}", proto_block),
-            Event::ExecutedBlock(executed_block) => {
-                write!(f, "A block has been executed: {:?}", executed_block)
-            }
-            Event::AcceptProtoBlock(proto_block) => {
-                write!(f, "A proto-block has been validated: {:?}", proto_block)
-            }
-            Event::InvalidProtoBlock(sender, proto_block) => write!(
+            Event::Timer { era_id, instant } => write!(
                 f,
-                "A proto-block received from {:?} turned out to be invalid: {:?}",
-                sender, proto_block
+                "timer for era {:?} scheduled for instant {}",
+                era_id, instant
+            ),
+            Event::NewProtoBlock {
+                era_id,
+                proto_block,
+                block_context,
+            } => write!(
+                f,
+                "New proto-block for era {:?}: {:?}, {:?}",
+                era_id, proto_block, block_context
+            ),
+            Event::ExecutedBlock {
+                era_id,
+                executed_block,
+            } => write!(
+                f,
+                "A block has been executed for era {:?}: {:?}",
+                era_id, executed_block
+            ),
+            Event::AcceptProtoBlock {
+                era_id,
+                proto_block,
+            } => write!(
+                f,
+                "A proto-block has been validated for era {:?}: {:?}",
+                era_id, proto_block
+            ),
+            Event::InvalidProtoBlock {
+                era_id,
+                sender,
+                proto_block,
+            } => write!(
+                f,
+                "A proto-block received from {:?} turned out to be invalid for era {:?}: {:?}",
+                sender, era_id, proto_block
             ),
         }
     }
@@ -97,15 +137,34 @@ where
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>> {
         match event {
-            Event::Timer => todo!(),
+            Event::Timer { .. } => todo!(),
             Event::MessageReceived { sender, msg } => {
                 let ConsensusMessage { era_id, payload } = msg;
-                self.handle_message(effect_builder, sender, era_id, payload)
+                self.delegate_to_era(era_id, effect_builder, move |consensus| {
+                    consensus.handle_message(sender, payload)
+                })
             }
-            Event::NewProtoBlock(_proto_block) => todo!(),
-            Event::ExecutedBlock(_executed_block) => todo!(),
-            Event::AcceptProtoBlock(_proto_block) => todo!(),
-            Event::InvalidProtoBlock(_sender, _proto_block) => todo!(),
+            Event::NewProtoBlock {
+                era_id,
+                proto_block,
+                block_context,
+            } => self.delegate_to_era(era_id, effect_builder, move |consensus| {
+                consensus.propose(proto_block, block_context)
+            }),
+            Event::ExecutedBlock { .. } => todo!(),
+            Event::AcceptProtoBlock {
+                era_id,
+                proto_block,
+            } => self.delegate_to_era(era_id, effect_builder, |consensus| {
+                consensus.resolve_validity(&proto_block, true)
+            }),
+            Event::InvalidProtoBlock {
+                era_id,
+                sender: _sender,
+                proto_block,
+            } => self.delegate_to_era(era_id, effect_builder, |consensus| {
+                consensus.resolve_validity(&proto_block, false)
+            }),
         }
     }
 }
