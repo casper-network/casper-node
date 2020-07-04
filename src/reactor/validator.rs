@@ -3,6 +3,7 @@
 //! Validator nodes join the validator-only network upon startup.
 
 mod config;
+mod error;
 
 use std::fmt::{self, Display, Formatter};
 
@@ -26,15 +27,12 @@ use crate::{
         requests::{ApiRequest, DeployBroadcasterRequest, NetworkRequest, StorageRequest},
         Effect, EffectBuilder, Multiple,
     },
-    reactor::{
-        self,
-        error::{Error, Result},
-        EventQueueHandle,
-    },
+    reactor::{self, EventQueueHandle},
     small_network::{self, NodeId},
     SmallNetwork,
 };
 pub use config::Config;
+use error::Error;
 
 /// Reactor message.
 #[derive(Debug, Clone, From, Serialize, Deserialize)]
@@ -145,7 +143,7 @@ impl reactor::Reactor for Reactor {
         cfg: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
         span: &Span,
-    ) -> Result<(Self, Multiple<Effect<Self::Event>>)> {
+    ) -> Result<(Self, Multiple<Effect<Event>>), Error> {
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, cfg.validator_net)?;
         span.record("id", &tracing::field::display(net.node_id()));

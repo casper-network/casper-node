@@ -24,7 +24,6 @@
 //! in a step-wise manner using [`crank`](struct.Runner.html#method.crank) or indefinitely using
 //! [`run`](struct.Runner.html#method.crank).
 
-mod error;
 pub mod non_validator;
 mod queue_kind;
 pub mod validator;
@@ -41,7 +40,6 @@ use crate::{
     effect::{Effect, EffectBuilder, Multiple},
     utils::{self, WeightedRoundRobin},
 };
-pub use error::Error;
 pub use queue_kind::QueueKind;
 
 /// Event scheduler

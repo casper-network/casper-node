@@ -1,12 +1,8 @@
-use std::result;
-
 use thiserror::Error;
 
 use crate::components::{small_network, storage};
 
-pub(crate) type Result<T> = result::Result<T, Error>;
-
-/// Error type returned by a reactor.
+/// Error type returned by the validator reactor.
 #[derive(Debug, Error)]
 pub enum Error {
     /// `SmallNetwork` component error.
