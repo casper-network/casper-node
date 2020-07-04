@@ -41,7 +41,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 /// Nodes themselves are not run in the background, rather manual cranking is required through
 /// `crank_all`. As an alternative, the `settle` and `settle_all` functions can be used to continue
 /// cranking until a condition has been reached.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Network<R: reactor::Reactor + NetworkedReactor> {
     /// Current network.
     nodes: HashMap<<R as NetworkedReactor>::NodeId, reactor::Runner<R>>,
