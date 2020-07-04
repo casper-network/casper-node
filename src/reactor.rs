@@ -42,7 +42,6 @@ use crate::{
     utils::{self, WeightedRoundRobin},
 };
 pub use error::Error;
-pub(crate) use error::Result;
 pub use queue_kind::QueueKind;
 
 /// Event scheduler
@@ -99,6 +98,9 @@ pub trait Reactor: Sized {
     /// A configuration for the reactor
     type Config;
 
+    /// The error type returned by the reactor.
+    type Error: Send + Sync + 'static;
+
     /// Dispatches an event on the reactor.
     ///
     /// This function is typically only called by the reactor itself to dispatch an event. It is
@@ -123,7 +125,7 @@ pub trait Reactor: Sized {
         cfg: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
         span: &Span,
-    ) -> Result<(Self, Multiple<Effect<Self::Event>>)>;
+    ) -> Result<(Self, Multiple<Effect<Self::Event>>), Self::Error>;
 }
 
 // / Runs a reactor.
@@ -168,7 +170,7 @@ where
     /// The `id` is used to identify the runner during logging when debugging and can be chosen
     /// arbitrarily.
     #[inline]
-    pub async fn new(cfg: R::Config) -> Result<Self> {
+    pub async fn new(cfg: R::Config) -> Result<Self, R::Error> {
         // We create a new logging span, ensuring that we can always associate log messages to this
         // specific reactor. This is usually only relevant when running multiple reactors, e.g.
         // during testing, so we set the log level to `debug` here.

@@ -51,6 +51,7 @@ impl<R> Network<R>
 where
     R: reactor::Reactor + NetworkedReactor,
     R::Config: Default,
+    anyhow::Error: From<R::Error>,
 {
     /// Creates a new networking node on the network using the default root node port.
     pub async fn add_node(&mut self) -> anyhow::Result<(R::NodeId, &mut reactor::Runner<R>)> {
@@ -61,6 +62,7 @@ where
 impl<R> Network<R>
 where
     R: reactor::Reactor + NetworkedReactor,
+    anyhow::Error: From<R::Error>,
 {
     /// Creates a new network.
     pub fn new() -> Self {
@@ -74,7 +76,9 @@ where
         &mut self,
         cfg: R::Config,
     ) -> anyhow::Result<(R::NodeId, &mut reactor::Runner<R>)> {
-        let runner: reactor::Runner<R> = reactor::Runner::new(cfg).await?;
+        let runner: reactor::Runner<R> = reactor::Runner::new(cfg)
+            .await
+            .map_err(anyhow::Error::from)?;
 
         let node_id = runner.reactor().node_id();
 

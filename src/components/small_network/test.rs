@@ -62,6 +62,7 @@ impl From<NetworkAnnouncement<NodeId, Message>> for Event {
 impl Reactor for TestReactor {
     type Event = Event;
     type Config = small_network::Config;
+    type Error = anyhow::Error;
 
     fn dispatch_event(
         &mut self,
@@ -82,7 +83,7 @@ impl Reactor for TestReactor {
         cfg: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
         span: &Span,
-    ) -> reactor::Result<(Self, Multiple<Effect<Self::Event>>)> {
+    ) -> anyhow::Result<(Self, Multiple<Effect<Self::Event>>)> {
         let (net, effects) = SmallNetwork::new(event_queue, cfg)?;
 
         let node_id = net.node_id();

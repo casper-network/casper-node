@@ -26,7 +26,11 @@ use crate::{
         requests::{ApiRequest, DeployBroadcasterRequest, NetworkRequest, StorageRequest},
         Effect, EffectBuilder, Multiple,
     },
-    reactor::{self, EventQueueHandle, Result},
+    reactor::{
+        self,
+        error::{Error, Result},
+        EventQueueHandle,
+    },
     small_network::{self, NodeId},
     SmallNetwork,
 };
@@ -135,6 +139,7 @@ pub struct Reactor {
 impl reactor::Reactor for Reactor {
     type Event = Event;
     type Config = Config;
+    type Error = Error;
 
     fn new(
         cfg: Self::Config,
