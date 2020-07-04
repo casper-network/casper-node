@@ -88,7 +88,6 @@ where
 }
 
 #[derive(Debug)]
-#[allow(clippy::type_complexity)]
 // TODO: remove once all variants are used.
 #[allow(dead_code)]
 pub enum StorageRequest<S: StorageType + 'static> {

@@ -119,7 +119,6 @@ pub trait Reactor: Sized {
     /// tracing fields like `id` to set an ID for the reactor if desired.
     ///
     /// If any instantiation fails, an error is returned.
-    #[allow(clippy::type_complexity)]
     fn new(
         cfg: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,

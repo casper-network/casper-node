@@ -38,9 +38,6 @@
 //! all nodes in the list and simultaneously tell all of its connected nodes about the new node,
 //! repeating the process.
 
-// TODO: remove clippy relaxation
-#![allow(clippy::type_complexity)]
-
 mod config;
 mod endpoint;
 mod error;
