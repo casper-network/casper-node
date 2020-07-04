@@ -51,10 +51,14 @@ impl<R> Network<R>
 where
     R: reactor::Reactor + NetworkedReactor,
     R::Config: Default,
-    anyhow::Error: From<R::Error>,
 {
     /// Creates a new networking node on the network using the default root node port.
-    pub async fn add_node(&mut self) -> anyhow::Result<(R::NodeId, &mut reactor::Runner<R>)> {
+    ///
+    /// # Panics
+    ///
+    /// Panics if a duplicate node ID is being inserted. This should only happen in case a randomly
+    /// generated ID collides.
+    pub async fn add_node(&mut self) -> Result<(R::NodeId, &mut reactor::Runner<R>), R::Error> {
         self.add_node_with_config(Default::default()).await
     }
 }
@@ -62,7 +66,6 @@ where
 impl<R> Network<R>
 where
     R: reactor::Reactor + NetworkedReactor,
-    anyhow::Error: From<R::Error>,
 {
     /// Creates a new network.
     pub fn new() -> Self {
@@ -72,13 +75,15 @@ where
     }
 
     /// Creates a new networking node on the network.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a duplicate node ID is being inserted.
     pub async fn add_node_with_config(
         &mut self,
         cfg: R::Config,
-    ) -> anyhow::Result<(R::NodeId, &mut reactor::Runner<R>)> {
-        let runner: reactor::Runner<R> = reactor::Runner::new(cfg)
-            .await
-            .map_err(anyhow::Error::from)?;
+    ) -> Result<(R::NodeId, &mut reactor::Runner<R>), R::Error> {
+        let runner: reactor::Runner<R> = reactor::Runner::new(cfg).await?;
 
         let node_id = runner.reactor().node_id();
 
@@ -86,7 +91,7 @@ where
             Entry::Occupied(_) => {
                 // This happens in the event of the extremely unlikely hash collision, or if the
                 // node ID was set manually.
-                anyhow::bail!("trying to insert a duplicate node {}", node_id)
+                panic!("trying to insert a duplicate node {}", node_id)
             }
             Entry::Vacant(entry) => entry.insert(runner),
         };
