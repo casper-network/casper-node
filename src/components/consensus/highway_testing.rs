@@ -59,6 +59,8 @@ struct Validator<C, D: ConsensusInstance<C>> {
     is_faulty: bool,
     /// Vector of consensus values finalized by the validator.
     finalized_values: Vec<C>,
+    /// Number of finalized values.
+    finalized_count: usize,
     /// Messages received by the validator.
     messages_received: Vec<Message<D::M>>,
     /// Messages produced by the validator.
@@ -73,6 +75,7 @@ impl<C, D: ConsensusInstance<C>> Validator<C, D> {
             id,
             is_faulty,
             finalized_values: Vec::new(),
+            finalized_count: 0,
             messages_received: Vec::new(),
             messages_produced: Vec::new(),
             consensus,
@@ -103,6 +106,7 @@ impl<C, D: ConsensusInstance<C>> Validator<C, D> {
     fn handle_message(&mut self, sender: ValidatorId, m: D::M) -> Vec<TargetedMessage<D::M>> {
         self.messages_received.push(Message::new(sender, m));
         let (finalized, outbound_msgs) = self.consensus.handle_message(sender, m, self.is_faulty);
+        self.finalized_count += finalized.len();
         self.finalized_values.extend(finalized);
         self.messages_produced
             .extend(outbound_msgs.iter().map(|tm| tm.message));
@@ -314,6 +318,15 @@ where
     rand: R,
 }
 
+/// Result of single `crank()` call.
+#[derive(Debug, Eq, PartialEq)]
+enum CrankOk {
+    /// Test run is not done.
+    Continue,
+    /// Test run is finished.
+    Done,
+}
+
 impl<M, C, D, DS, R> TestHarness<M, C, D, DS, R>
 where
     M: MessageT,
@@ -358,14 +371,21 @@ where
     /// Pops one message from the message queue (if there are any)
     /// and pass it to the recipient validator for execution.
     /// Messages returned from the execution are scheduled for later delivery.
-    fn crank(&mut self) -> Result<(), TestRunError> {
+    fn crank(&mut self) -> Result<CrankOk, TestRunError> {
         let QueueEntry {
             delivery_time,
             recipient,
             message,
         } = self.msg_queue.pop().ok_or(TestRunError::NoMessages)?;
-        // TODO: Check if we should stop the test.
-        // Verify whether all validators have finalized all consensus values.
+        // Stop the test when each node finalized all consensus values.
+        // Note that we're not testing the order of finalization here.
+        if self
+            .validators()
+            .all(|v| v.finalized_count == self.consensus_values.len())
+        {
+            return Ok(CrankOk::Done);
+        }
+
         let mut recipient_validator = self
             .validators_map
             .get_mut(&recipient)
@@ -380,7 +400,7 @@ where
             };
             self.send_messages(validators_nodes, message, delivery_time)
         }
-        Ok(())
+        Ok(CrankOk::Continue)
     }
 
     // Utility function for dispatching message to multiple recipients.
@@ -414,8 +434,8 @@ where
 
 mod test_harness {
     use super::{
-        ConsensusInstance, DeliverySchedule, Instant, Message, Strategy, Target, TargetedMessage,
-        TestHarness, TestRunError, Validator, ValidatorId,
+        ConsensusInstance, CrankOk, DeliverySchedule, Instant, Message, Strategy, Target,
+        TargetedMessage, TestHarness, TestRunError, Validator, ValidatorId,
     };
     use rand_core::SeedableRng;
     use rand_xorshift::XorShiftRng;
@@ -467,7 +487,7 @@ mod test_harness {
         let single_validator = Validator::new(validator_id, false, NoOpConsensus());
         let mut rand = XorShiftRng::from_seed(rand::random());
         let mut test_harness: TestHarness<M, C, NoOpConsensus, SmallDelay, XorShiftRng> =
-            TestHarness::new(vec![single_validator], 0, vec![], SmallDelay(), rand);
+            TestHarness::new(vec![single_validator], 0, vec![1, 2, 3], SmallDelay(), rand);
 
         let messages_num = 10;
         // We want to enqueue messages from the latest delivery time to the earliest.
@@ -533,13 +553,13 @@ mod test_harness {
             .collect();
         let mut rand = XorShiftRng::from_seed(rand::random());
         let mut test_harness: TestHarness<M, C, ForwardAllConsensus, SmallDelay, XorShiftRng> =
-            TestHarness::new(validators, 0, vec![], SmallDelay(), rand);
+            TestHarness::new(validators, 0, vec![1, 2, 3], SmallDelay(), rand);
 
         let test_message = Message::new(ValidatorId(1), 1u64);
         test_harness.schedule_message(Instant(1), ValidatorId(0), test_message);
         // Fist crank to deliver the first message.
         // As a result of processing it, 1 message will be delivered to each validator.
-        assert!(test_harness.crank().is_ok());
+        assert_eq!(test_harness.crank(), Ok(CrankOk::Continue));
         // We need to crank the network as many times as there are validators so that everyone gets their response message.
         // That's b/c 1 crank == 1 popped from the queue and delivered to the validator.
         (0..validator_count).for_each(|_| assert!(test_harness.crank().is_ok()));
@@ -547,5 +567,79 @@ mod test_harness {
             .mut_handle()
             .validators()
             .all(|validator| validator.messages_received().next() == Some(&test_message)));
+    }
+
+    struct FinalizeConsensusInstance {
+        previously_finalized: u64,
+    }
+
+    impl Default for FinalizeConsensusInstance {
+        fn default() -> Self {
+            FinalizeConsensusInstance {
+                previously_finalized: 0,
+            }
+        }
+    }
+
+    impl ConsensusInstance<C> for FinalizeConsensusInstance {
+        type M = M;
+
+        fn handle_message(
+            &mut self,
+            sender: ValidatorId,
+            m: Self::M,
+            is_faulty: bool,
+        ) -> (Vec<C>, Vec<TargetedMessage<Self::M>>) {
+            // Since test harness doesn't check _what_ consenus values
+            // were finalized (it only checks how many) we can output anything.
+            let just_finalized = self.previously_finalized + 1;
+            self.previously_finalized += 1;
+            (vec![just_finalized], vec![])
+        }
+    }
+
+    #[test]
+    fn stop_when_all_finalized() {
+        let validator_id = ValidatorId(1u64);
+        let single_validator =
+            Validator::new(validator_id, false, FinalizeConsensusInstance::default());
+
+        let cv_count = 3;
+        let init_consensus_values: Vec<u64> = (0..cv_count).collect();
+
+        let mut rand = XorShiftRng::from_seed(rand::random());
+
+        let mut test_harness: TestHarness<
+            M,
+            C,
+            FinalizeConsensusInstance,
+            SmallDelay,
+            XorShiftRng,
+        > = TestHarness::new(
+            vec![single_validator],
+            0,
+            init_consensus_values,
+            SmallDelay(),
+            rand,
+        );
+
+        let dummy_message = Message::new(ValidatorId(2), 1u64);
+        (0..cv_count * 2).for_each(|i| {
+            test_harness.schedule_message(Instant(i + 1), validator_id, dummy_message)
+        });
+
+        let mut crank_count = 0;
+        while test_harness.crank() != Ok(CrankOk::Done) {
+            crank_count += 1;
+        }
+
+        test_harness.mut_handle().validators().for_each(|v| {
+            assert_eq!(
+                v.finalized_count as u64, cv_count,
+                "Should stop only when each validator finalized all consensus values."
+            );
+        });
+
+        assert_eq!(crank_count, cv_count);
     }
 }
