@@ -13,19 +13,19 @@ enum Target {
     All,
 }
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
-struct Message<M: Copy + Clone + Debug> {
+#[derive(Debug, PartialEq, Eq, Clone)]
+struct Message<M: Clone + Debug> {
     sender: ValidatorId,
     payload: M,
 }
 
-impl<M: Copy + Clone + Debug> Message<M> {
+impl<M: Clone + Debug> Message<M> {
     fn new(sender: ValidatorId, payload: M) -> Self {
         Message { sender, payload }
     }
 }
 
-struct TargetedMessage<M: Copy + Clone + Debug> {
+pub(crate) struct TargetedMessage<M: Clone + Debug> {
     message: Message<M>,
     target: Target,
 }
@@ -36,21 +36,22 @@ impl<M: Copy + Clone + Debug> TargetedMessage<M> {
     }
 }
 
-trait ConsensusInstance<C> {
-    type M: Clone + Copy + Debug;
+pub(crate) trait ConsensusInstance<C> {
+    type In: Clone + Debug;
+    type Out: Clone + Debug;
 
     fn handle_message(
         &mut self,
         sender: ValidatorId,
-        m: Self::M,
+        m: Self::In,
         is_faulty: bool,
-    ) -> (Vec<C>, Vec<TargetedMessage<Self::M>>);
+    ) -> (Vec<C>, Vec<TargetedMessage<Self::Out>>);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
-struct ValidatorId(u64);
+pub(crate) struct ValidatorId(u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
-struct Instant(u64);
+pub(crate) struct Instant(u64);
 
 /// A validator in the test network.
 struct Validator<C, D: ConsensusInstance<C>> {
@@ -62,9 +63,9 @@ struct Validator<C, D: ConsensusInstance<C>> {
     /// Number of finalized values.
     finalized_count: usize,
     /// Messages received by the validator.
-    messages_received: Vec<Message<D::M>>,
+    messages_received: Vec<Message<D::In>>,
     /// Messages produced by the validator.
-    messages_produced: Vec<Message<D::M>>,
+    messages_produced: Vec<Message<D::Out>>,
     /// An instance of consensus protocol.
     consensus: D,
 }
@@ -95,21 +96,21 @@ impl<C, D: ConsensusInstance<C>> Validator<C, D> {
         self.finalized_values.iter()
     }
 
-    fn messages_received(&self) -> impl Iterator<Item = &Message<D::M>> {
+    fn messages_received(&self) -> impl Iterator<Item = &Message<D::In>> {
         self.messages_received.iter()
     }
 
-    fn messages_produced(&self) -> impl Iterator<Item = &Message<D::M>> {
+    fn messages_produced(&self) -> impl Iterator<Item = &Message<D::Out>> {
         self.messages_produced.iter()
     }
 
-    fn handle_message(&mut self, sender: ValidatorId, m: D::M) -> Vec<TargetedMessage<D::M>> {
-        self.messages_received.push(Message::new(sender, m));
+    fn handle_message(&mut self, sender: ValidatorId, m: D::In) -> Vec<TargetedMessage<D::Out>> {
+        self.messages_received.push(Message::new(sender, m.clone()));
         let (finalized, outbound_msgs) = self.consensus.handle_message(sender, m, self.is_faulty);
         self.finalized_count += finalized.len();
         self.finalized_values.extend(finalized);
         self.messages_produced
-            .extend(outbound_msgs.iter().map(|tm| tm.message));
+            .extend(outbound_msgs.iter().map(|tm| tm.message.clone()));
         outbound_msgs
     }
 }
@@ -180,10 +181,10 @@ mod queue_entry_tests {
         let recipient1 = ValidatorId(1);
         let recipient2 = ValidatorId(3);
         let message = Message::new(sender, 1u8);
-        let m1 = QueueEntry::new(Instant(1), recipient1, message);
-        let m2 = QueueEntry::new(Instant(2), recipient1, message);
+        let m1 = QueueEntry::new(Instant(1), recipient1, message.clone());
+        let m2 = QueueEntry::new(Instant(2), recipient1, message.clone());
         assert_eq!(m1.cmp(&m2), Ordering::Greater);
-        let m3 = QueueEntry::new(Instant(1), recipient2, message);
+        let m3 = QueueEntry::new(Instant(1), recipient2, message.clone());
         assert_eq!(m1.cmp(&m3), Ordering::Less);
     }
 }
@@ -233,7 +234,7 @@ mod queue_tests {
         let message_b = Message::new(sender, 2u8);
 
         let first = QueueEntry::new(Instant(1), recipient_a, message_b);
-        let second = QueueEntry::new(Instant(1), recipient_a, message_a);
+        let second = QueueEntry::new(Instant(1), recipient_a, message_a.clone());
         let third = QueueEntry::new(Instant(3), recipient_b, message_a);
 
         queue.push(first.clone());
@@ -330,7 +331,7 @@ enum CrankOk {
 impl<M, C, D, DS, R> TestHarness<M, C, D, DS, R>
 where
     M: MessageT,
-    D: ConsensusInstance<C, M = M>,
+    D: ConsensusInstance<C, In = M, Out = M>,
     DS: Strategy<DeliverySchedule>,
     R: rand::Rng,
 {
@@ -418,7 +419,9 @@ where
                 // Simulates dropping of the message.
                 // TODO: Add logging.
                 DeliverySchedule::Drop => (),
-                DeliverySchedule::AtInstant(dt) => self.schedule_message(dt, validator_id, message),
+                DeliverySchedule::AtInstant(dt) => {
+                    self.schedule_message(dt, validator_id, message.clone())
+                }
             }
         }
     }
@@ -459,14 +462,15 @@ mod test_harness {
     struct NoOpConsensus();
 
     impl<C> ConsensusInstance<C> for NoOpConsensus {
-        type M = M;
+        type In = M;
+        type Out = M;
 
         fn handle_message(
             &mut self,
             sender: ValidatorId,
-            m: Self::M,
+            m: Self::In,
             is_faulty: bool,
-        ) -> (Vec<C>, Vec<TargetedMessage<Self::M>>) {
+        ) -> (Vec<C>, Vec<TargetedMessage<Self::Out>>) {
             (vec![], vec![])
         }
     }
@@ -531,13 +535,15 @@ mod test_harness {
     struct ForwardAllConsensus;
 
     impl<C> ConsensusInstance<C> for ForwardAllConsensus {
-        type M = M;
+        type In = M;
+        type Out = M;
+
         fn handle_message(
             &mut self,
             sender: ValidatorId,
-            m: Self::M,
+            m: Self::In,
             is_faulty: bool,
-        ) -> (Vec<C>, Vec<TargetedMessage<Self::M>>) {
+        ) -> (Vec<C>, Vec<TargetedMessage<Self::Out>>) {
             (
                 vec![],
                 vec![TargetedMessage::new(Message::new(sender, m), Target::All)],
@@ -556,7 +562,7 @@ mod test_harness {
             TestHarness::new(validators, 0, vec![1, 2, 3], SmallDelay(), rand);
 
         let test_message = Message::new(ValidatorId(1), 1u64);
-        test_harness.schedule_message(Instant(1), ValidatorId(0), test_message);
+        test_harness.schedule_message(Instant(1), ValidatorId(0), test_message.clone());
         // Fist crank to deliver the first message.
         // As a result of processing it, 1 message will be delivered to each validator.
         assert_eq!(test_harness.crank(), Ok(CrankOk::Continue));
@@ -582,14 +588,15 @@ mod test_harness {
     }
 
     impl ConsensusInstance<C> for FinalizeConsensusInstance {
-        type M = M;
+        type In = M;
+        type Out = M;
 
         fn handle_message(
             &mut self,
             sender: ValidatorId,
-            m: Self::M,
+            m: Self::In,
             is_faulty: bool,
-        ) -> (Vec<C>, Vec<TargetedMessage<Self::M>>) {
+        ) -> (Vec<C>, Vec<TargetedMessage<Self::Out>>) {
             // Since test harness doesn't check _what_ consenus values
             // were finalized (it only checks how many) we can output anything.
             let just_finalized = self.previously_finalized + 1;
@@ -625,7 +632,7 @@ mod test_harness {
 
         let dummy_message = Message::new(ValidatorId(2), 1u64);
         (0..cv_count * 2).for_each(|i| {
-            test_harness.schedule_message(Instant(i + 1), validator_id, dummy_message)
+            test_harness.schedule_message(Instant(i + 1), validator_id, dummy_message.clone())
         });
 
         let mut crank_count = 0;
