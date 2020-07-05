@@ -36,7 +36,7 @@ impl<M: Copy + Clone + Debug> TargetedMessage<M> {
     }
 }
 
-trait ConsensusInstance {
+trait ConsensusInstance<C> {
     type M: Clone + Copy + Debug;
 
     fn handle_message(
@@ -44,7 +44,7 @@ trait ConsensusInstance {
         sender: ValidatorId,
         m: Self::M,
         is_faulty: bool,
-    ) -> Vec<TargetedMessage<Self::M>>;
+    ) -> (Vec<C>, Vec<TargetedMessage<Self::M>>);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
@@ -53,7 +53,7 @@ struct ValidatorId(u64);
 struct Instant(u64);
 
 /// A validator in the test network.
-struct Validator<C, D: ConsensusInstance> {
+struct Validator<C, D: ConsensusInstance<C>> {
     id: ValidatorId,
     /// Whether a validator should produce equivocations.
     is_faulty: bool,
@@ -67,7 +67,7 @@ struct Validator<C, D: ConsensusInstance> {
     consensus: D,
 }
 
-impl<C, D: ConsensusInstance> Validator<C, D> {
+impl<C, D: ConsensusInstance<C>> Validator<C, D> {
     fn new(id: ValidatorId, is_faulty: bool, consensus: D) -> Self {
         Validator {
             id,
@@ -102,7 +102,8 @@ impl<C, D: ConsensusInstance> Validator<C, D> {
 
     fn handle_message(&mut self, sender: ValidatorId, m: D::M) -> Vec<TargetedMessage<D::M>> {
         self.messages_received.push(Message::new(sender, m));
-        let outbound_msgs = self.consensus.handle_message(sender, m, self.is_faulty);
+        let (finalized, outbound_msgs) = self.consensus.handle_message(sender, m, self.is_faulty);
+        self.finalized_values.extend(finalized);
         self.messages_produced
             .extend(outbound_msgs.iter().map(|tm| tm.message));
         outbound_msgs
@@ -297,7 +298,7 @@ impl Display for TestRunError {
 struct TestHarness<M, C, D, DS, R>
 where
     M: MessageT,
-    D: ConsensusInstance,
+    D: ConsensusInstance<C>,
     DS: Strategy<DeliverySchedule>,
 {
     /// Maps validator IDs to actual validator instances.
@@ -316,7 +317,7 @@ where
 impl<M, C, D, DS, R> TestHarness<M, C, D, DS, R>
 where
     M: MessageT,
-    D: ConsensusInstance<M = M>,
+    D: ConsensusInstance<C, M = M>,
     DS: Strategy<DeliverySchedule>,
     R: rand::Rng,
 {
@@ -437,15 +438,16 @@ mod test_harness {
 
     struct NoOpConsensus();
 
-    impl ConsensusInstance for NoOpConsensus {
+    impl<C> ConsensusInstance<C> for NoOpConsensus {
         type M = M;
+
         fn handle_message(
             &mut self,
             sender: ValidatorId,
             m: Self::M,
             is_faulty: bool,
-        ) -> Vec<TargetedMessage<Self::M>> {
-            vec![]
+        ) -> (Vec<C>, Vec<TargetedMessage<Self::M>>) {
+            (vec![], vec![])
         }
     }
 
@@ -508,15 +510,18 @@ mod test_harness {
 
     struct ForwardAllConsensus;
 
-    impl ConsensusInstance for ForwardAllConsensus {
+    impl<C> ConsensusInstance<C> for ForwardAllConsensus {
         type M = M;
         fn handle_message(
             &mut self,
             sender: ValidatorId,
             m: Self::M,
             is_faulty: bool,
-        ) -> Vec<TargetedMessage<Self::M>> {
-            vec![TargetedMessage::new(Message::new(sender, m), Target::All)]
+        ) -> (Vec<C>, Vec<TargetedMessage<Self::M>>) {
+            (
+                vec![],
+                vec![TargetedMessage::new(Message::new(sender, m), Target::All)],
+            )
         }
     }
 
