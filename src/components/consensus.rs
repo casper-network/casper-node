@@ -15,7 +15,7 @@ mod highway_core;
 #[cfg(test)]
 #[allow(unused)]
 #[allow(dead_code)]
-mod highway_testing;
+mod consensus_des_testing;
 
 use std::fmt::{self, Display, Formatter};
 
