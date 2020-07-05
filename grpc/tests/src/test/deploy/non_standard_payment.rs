@@ -5,8 +5,7 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::components::contract_runtime::core::engine_state::CONV_RATE;
-use node::components::contract_runtime::shared::motes::Motes;
+use node::{components::contract_runtime::core::engine_state::CONV_RATE, types::Motes};
 use types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);

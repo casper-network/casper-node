@@ -3,6 +3,7 @@
 //! Components are the building blocks of the whole application, wired together inside a reactor.
 //! Each component has a unified interface, expressed by the `Component` trait.
 pub(crate) mod api_server;
+pub(crate) mod chainspec_handler;
 pub(crate) mod consensus;
 pub mod contract_runtime;
 pub(crate) mod deploy_gossiper;

@@ -203,6 +203,8 @@ impl StateProvider for InMemoryGlobalState {
 mod tests {
     use types::{account::AccountHash, CLValue};
 
+    use crate::crypto::hash;
+
     use super::*;
 
     #[derive(Debug, Clone)]
@@ -266,7 +268,7 @@ mod tests {
     #[test]
     fn checkout_fails_if_unknown_hash_is_given() {
         let (state, _) = create_test_state();
-        let fake_hash: Blake2bHash = [1u8; 32].into();
+        let fake_hash = hash::hash(&[1, 2, 3]);
         let result = state.checkout(fake_hash).unwrap();
         assert!(result.is_none());
     }

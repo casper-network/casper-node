@@ -1,6 +1,9 @@
+mod chainspec_store;
 mod config;
 mod error;
+mod in_mem_chainspec_store;
 mod in_mem_store;
+mod lmdb_chainspec_store;
 mod lmdb_store;
 mod store;
 
@@ -24,10 +27,13 @@ use crate::{
 #[allow(unreachable_pub)]
 pub use config::Config;
 // Seems to be a false positive.
+use chainspec_store::ChainspecStore;
 #[allow(unreachable_pub)]
 pub use error::Error;
 pub(crate) use error::Result;
+use in_mem_chainspec_store::InMemChainspecStore;
 use in_mem_store::InMemStore;
+use lmdb_chainspec_store::LmdbChainspecStore;
 use lmdb_store::LmdbStore;
 use store::Store;
 
@@ -35,6 +41,7 @@ pub(crate) type Storage = LmdbStorage<Block, Deploy>;
 
 const BLOCK_STORE_FILENAME: &str = "block_store.db";
 const DEPLOY_STORE_FILENAME: &str = "deploy_store.db";
+const CHAINSPEC_STORE_FILENAME: &str = "chainspec_store.db";
 
 /// Trait defining the API for a value able to be held within the storage component.
 pub trait Value: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display {
@@ -80,6 +87,7 @@ pub trait StorageType {
 
     fn block_store(&self) -> Arc<dyn Store<Value = Self::Block>>;
     fn deploy_store(&self) -> Arc<dyn Store<Value = Self::Deploy>>;
+    fn chainspec_store(&self) -> Arc<dyn ChainspecStore>;
     fn new(config: &Config) -> Result<Self>
     where
         Self: Sized;
@@ -182,6 +190,29 @@ where
                 }
                 .ignore()
             }
+            StorageRequest::PutChainspec {
+                chainspec,
+                responder,
+            } => {
+                let chainspec_store = self.chainspec_store();
+                async move {
+                    let result = task::spawn_blocking(move || chainspec_store.put(*chainspec))
+                        .await
+                        .expect("should run");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            StorageRequest::GetChainspec { version, responder } => {
+                let chainspec_store = self.chainspec_store();
+                async move {
+                    let result = task::spawn_blocking(move || chainspec_store.get(version))
+                        .await
+                        .expect("should run");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
         }
     }
 }
@@ -191,6 +222,7 @@ where
 pub(crate) struct InMemStorage<B: Value, D: Value> {
     block_store: Arc<InMemStore<B>>,
     deploy_store: Arc<InMemStore<D>>,
+    chainspec_store: Arc<InMemChainspecStore>,
 }
 
 #[allow(trivial_casts)]
@@ -202,15 +234,20 @@ impl<B: Value + 'static, D: Value + 'static> StorageType for InMemStorage<B, D> 
         Arc::clone(&self.block_store) as Arc<dyn Store<Value = B>>
     }
 
+    fn deploy_store(&self) -> Arc<dyn Store<Value = D>> {
+        Arc::clone(&self.deploy_store) as Arc<dyn Store<Value = D>>
+    }
+
+    fn chainspec_store(&self) -> Arc<dyn ChainspecStore> {
+        Arc::clone(&self.chainspec_store) as Arc<dyn ChainspecStore>
+    }
+
     fn new(_config: &Config) -> Result<Self> {
         Ok(InMemStorage {
             block_store: Arc::new(InMemStore::new()),
             deploy_store: Arc::new(InMemStore::new()),
+            chainspec_store: Arc::new(InMemChainspecStore::new()),
         })
-    }
-
-    fn deploy_store(&self) -> Arc<dyn Store<Value = D>> {
-        Arc::clone(&self.deploy_store) as Arc<dyn Store<Value = D>>
     }
 }
 
@@ -219,6 +256,7 @@ impl<B: Value + 'static, D: Value + 'static> StorageType for InMemStorage<B, D> 
 pub struct LmdbStorage<B: Value, D: Value> {
     block_store: Arc<LmdbStore<B>>,
     deploy_store: Arc<LmdbStore<D>>,
+    chainspec_store: Arc<LmdbChainspecStore>,
 }
 
 #[allow(trivial_casts)]
@@ -234,13 +272,17 @@ impl<B: Value + 'static, D: Value + 'static> StorageType for LmdbStorage<B, D> {
 
         let block_store_path = config.path.join(BLOCK_STORE_FILENAME);
         let deploy_store_path = config.path.join(DEPLOY_STORE_FILENAME);
+        let chainspec_store_path = config.path.join(CHAINSPEC_STORE_FILENAME);
 
         let block_store = LmdbStore::new(block_store_path, config.max_block_store_size)?;
         let deploy_store = LmdbStore::new(deploy_store_path, config.max_deploy_store_size)?;
+        let chainspec_store =
+            LmdbChainspecStore::new(chainspec_store_path, config.max_chainspec_store_size)?;
 
         Ok(LmdbStorage {
             block_store: Arc::new(block_store),
             deploy_store: Arc::new(deploy_store),
+            chainspec_store: Arc::new(chainspec_store),
         })
     }
 
@@ -250,5 +292,9 @@ impl<B: Value + 'static, D: Value + 'static> StorageType for LmdbStorage<B, D> {
 
     fn deploy_store(&self) -> Arc<dyn Store<Value = D>> {
         Arc::clone(&self.deploy_store) as Arc<dyn Store<Value = D>>
+    }
+
+    fn chainspec_store(&self) -> Arc<dyn ChainspecStore> {
+        Arc::clone(&self.chainspec_store) as Arc<dyn ChainspecStore>
     }
 }

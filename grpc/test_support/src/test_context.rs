@@ -1,12 +1,12 @@
 use num_traits::identities::Zero;
 
-use node::components::contract_runtime::core::engine_state::{
-    genesis::{GenesisAccount, GenesisConfig},
-    run_genesis_request::RunGenesisRequest,
-    CONV_RATE,
+use node::{
+    components::contract_runtime::core::engine_state::{
+        genesis::GenesisConfig, run_genesis_request::RunGenesisRequest, CONV_RATE,
+    },
+    types::Motes,
+    GenesisAccount,
 };
-
-use node::components::contract_runtime::shared::motes::Motes;
 use types::{AccessRights, Key, URef, U512};
 
 use crate::{

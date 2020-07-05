@@ -7,11 +7,10 @@ use std::{
     time::Duration,
 };
 
-use futures::{future::join_all, FutureExt};
+use futures::future::{join_all, BoxFuture, FutureExt};
 use tracing::debug;
 
-use crate::reactor;
-use reactor::Finalize;
+use crate::reactor::{Finalize, Reactor, Runner};
 
 /// A reactor with networking functionality.
 pub trait NetworkedReactor: Sized {
@@ -31,14 +30,14 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 /// `crank_all`. As an alternative, the `settle` and `settle_all` functions can be used to continue
 /// cranking until a condition has been reached.
 #[derive(Debug, Default)]
-pub struct Network<R: reactor::Reactor + NetworkedReactor> {
+pub struct Network<R: Reactor + NetworkedReactor> {
     /// Current network.
-    nodes: HashMap<<R as NetworkedReactor>::NodeId, reactor::Runner<R>>,
+    nodes: HashMap<<R as NetworkedReactor>::NodeId, Runner<R>>,
 }
 
 impl<R> Network<R>
 where
-    R: reactor::Reactor + NetworkedReactor,
+    R: Reactor + NetworkedReactor,
     R::Config: Default,
 {
     /// Creates a new networking node on the network using the default root node port.
@@ -47,14 +46,14 @@ where
     ///
     /// Panics if a duplicate node ID is being inserted. This should only happen in case a randomly
     /// generated ID collides.
-    pub async fn add_node(&mut self) -> Result<(R::NodeId, &mut reactor::Runner<R>), R::Error> {
+    pub async fn add_node(&mut self) -> Result<(R::NodeId, &mut Runner<R>), R::Error> {
         self.add_node_with_config(Default::default()).await
     }
 }
 
 impl<R> Network<R>
 where
-    R: reactor::Reactor + NetworkedReactor,
+    R: Reactor + NetworkedReactor,
 {
     /// Creates a new network.
     pub fn new() -> Self {
@@ -71,8 +70,8 @@ where
     pub async fn add_node_with_config(
         &mut self,
         cfg: R::Config,
-    ) -> Result<(R::NodeId, &mut reactor::Runner<R>), R::Error> {
-        let runner: reactor::Runner<R> = reactor::Runner::new(cfg).await?;
+    ) -> Result<(R::NodeId, &mut Runner<R>), R::Error> {
+        let runner: Runner<R> = Runner::new(cfg).await?;
 
         let node_id = runner.reactor().node_id();
 
@@ -90,7 +89,7 @@ where
 
     /// Crank all runners once, returning the number of events processed.
     pub async fn crank_all(&mut self) -> usize {
-        join_all(self.nodes.values_mut().map(reactor::Runner::try_crank))
+        join_all(self.nodes.values_mut().map(Runner::try_crank))
             .await
             .into_iter()
             .filter(Option::is_some)
@@ -121,7 +120,7 @@ where
     /// Runs the main loop of every reactor until a condition is true.
     pub async fn settle_on<F>(&mut self, f: F)
     where
-        F: Fn(&HashMap<R::NodeId, reactor::Runner<R>>) -> bool,
+        F: Fn(&HashMap<R::NodeId, Runner<R>>) -> bool,
     {
         loop {
             // Check condition.
@@ -138,17 +137,17 @@ where
     }
 
     /// Returns the internal map of nodes.
-    pub fn nodes(&self) -> &HashMap<R::NodeId, reactor::Runner<R>> {
+    pub fn nodes(&self) -> &HashMap<R::NodeId, Runner<R>> {
         &self.nodes
     }
 }
 
 impl<R> Finalize for Network<R>
 where
-    R: Finalize + NetworkedReactor + reactor::Reactor + Send + 'static,
+    R: Finalize + NetworkedReactor + Reactor + Send + 'static,
     R::NodeId: Send,
 {
-    fn finalize(self) -> futures::future::BoxFuture<'static, ()> {
+    fn finalize(self) -> BoxFuture<'static, ()> {
         // We support finalizing networks where the reactor itself can be finalized.
 
         async move {

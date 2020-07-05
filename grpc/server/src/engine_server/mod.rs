@@ -29,22 +29,24 @@ use std::{
 use grpc::{Error as GrpcError, RequestOptions, ServerBuilder, SingleResponse};
 use log::{info, warn, Level};
 
-use node::components::contract_runtime::core::{
-    engine_state::{
-        execute_request::ExecuteRequest,
-        genesis::GenesisResult,
-        query::{QueryRequest, QueryResult},
-        run_genesis_request::RunGenesisRequest,
-        upgrade::{UpgradeConfig, UpgradeResult},
-        EngineState, Error as EngineError,
+use node::components::contract_runtime::{
+    core::{
+        engine_state::{
+            execute_request::ExecuteRequest,
+            genesis::GenesisResult,
+            query::{QueryRequest, QueryResult},
+            run_genesis_request::RunGenesisRequest,
+            upgrade::{UpgradeConfig, UpgradeResult},
+            EngineState, Error as EngineError,
+        },
+        execution,
     },
-    execution,
+    shared::{
+        logging::{self, log_duration},
+        newtypes::{Blake2bHash, CorrelationId},
+    },
+    storage::global_state::{CommitResult, StateProvider},
 };
-use node::components::contract_runtime::shared::{
-    logging::{self, log_duration},
-    newtypes::{Blake2bHash, CorrelationId},
-};
-use node::components::contract_runtime::storage::global_state::{CommitResult, StateProvider};
 use types::{bytesrepr::ToBytes, ProtocolVersion};
 
 use self::{
@@ -341,7 +343,7 @@ where
         let protocol_version = run_genesis_request.protocol_version();
         let ee_config = run_genesis_request.ee_config();
 
-        let genesis_response = match self.commit_genesis(
+        let genesis_response = match self.commit_genesis_old(
             correlation_id,
             genesis_config_hash,
             protocol_version,

@@ -7,8 +7,7 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
-use node::components::contract_runtime::core::engine_state::CONV_RATE;
-use node::components::contract_runtime::shared::motes::Motes;
+use node::{components::contract_runtime::core::engine_state::CONV_RATE, types::Motes};
 use types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";

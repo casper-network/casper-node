@@ -1,15 +1,18 @@
 use proptest::{collection::vec, option, prelude::*};
 
-use crate::components::contract_runtime::shared::{
-    newtypes::Blake2bHash,
-    stored_value::{gens::stored_value_arb, StoredValue},
-};
 use types::{gens::key_arb, Key};
 
 use super::{Pointer, PointerBlock, Trie};
+use crate::{
+    components::contract_runtime::shared::{
+        newtypes::Blake2bHash,
+        stored_value::{gens::stored_value_arb, StoredValue},
+    },
+    crypto::hash,
+};
 
 pub fn blake2b_hash_arb() -> impl Strategy<Value = Blake2bHash> {
-    vec(any::<u8>(), 0..1000).prop_map(|b| Blake2bHash::new(&b))
+    vec(any::<u8>(), 0..1000).prop_map(|b| hash::hash(&b))
 }
 
 pub fn trie_pointer_arb() -> impl Strategy<Value = Pointer> {

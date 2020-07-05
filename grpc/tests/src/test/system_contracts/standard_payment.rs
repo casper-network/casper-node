@@ -7,11 +7,16 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
-use node::components::contract_runtime::core::{
-    engine_state::{genesis::POS_REWARDS_PURSE, Error, CONV_RATE, MAX_PAYMENT},
-    execution,
+use node::{
+    components::contract_runtime::{
+        core::{
+            engine_state::{genesis::POS_REWARDS_PURSE, Error, CONV_RATE, MAX_PAYMENT},
+            execution,
+        },
+        shared::transform::Transform,
+    },
+    types::Motes,
 };
-use node::components::contract_runtime::shared::{motes::Motes, transform::Transform};
 use types::{account::AccountHash, runtime_args, ApiError, Key, RuntimeArgs, URef, U512};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);

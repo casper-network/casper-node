@@ -1,18 +1,27 @@
 use std::convert::TryInto;
 
-use crate::components::contract_runtime::shared::wasm_prep::{self, Preprocessor};
-use crate::components::contract_runtime::shared::{
-    account::Account, motes::Motes, newtypes::CorrelationId, stored_value::StoredValue, wasm,
-    TypeMismatch,
-};
-use crate::components::contract_runtime::storage::global_state::StateReader;
+use parity_wasm::elements::Module;
+
 use types::{
     account::AccountHash, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
     ContractWasm, ContractWasmHash, Key, U512,
 };
 
-use crate::components::contract_runtime::core::{execution, tracking_copy::TrackingCopy};
-use parity_wasm::elements::Module;
+use crate::{
+    components::contract_runtime::{
+        core::{execution, tracking_copy::TrackingCopy},
+        shared::{
+            account::Account,
+            newtypes::CorrelationId,
+            stored_value::StoredValue,
+            wasm,
+            wasm_prep::{self, Preprocessor},
+            TypeMismatch,
+        },
+        storage::global_state::StateReader,
+    },
+    types::Motes,
+};
 
 pub trait TrackingCopyExt<R> {
     type Error;

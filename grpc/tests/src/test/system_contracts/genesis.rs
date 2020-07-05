@@ -2,12 +2,16 @@ use engine_test_support::internal::{
     utils, InMemoryWasmTestBuilder, DEFAULT_WASM_COSTS, MINT_INSTALL_CONTRACT,
     POS_INSTALL_CONTRACT, STANDARD_PAYMENT_INSTALL_CONTRACT,
 };
-use node::components::contract_runtime::core::engine_state::{
-    genesis::{ExecConfig, GenesisAccount},
-    run_genesis_request::RunGenesisRequest,
-    SYSTEM_ACCOUNT_ADDR,
+use node::{
+    components::contract_runtime::{
+        core::engine_state::{
+            genesis::ExecConfig, run_genesis_request::RunGenesisRequest, SYSTEM_ACCOUNT_ADDR,
+        },
+        shared::stored_value::StoredValue,
+    },
+    types::Motes,
+    GenesisAccount,
 };
-use node::components::contract_runtime::shared::{motes::Motes, stored_value::StoredValue};
 use types::{account::AccountHash, ProtocolVersion, U512};
 
 #[cfg(feature = "use-system-contracts")]

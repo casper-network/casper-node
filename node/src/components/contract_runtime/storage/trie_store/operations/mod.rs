@@ -3,17 +3,22 @@ mod tests;
 
 use std::{cmp, collections::VecDeque, mem, time::Instant};
 
-use crate::components::contract_runtime::shared::{
-    logging::{log_duration, log_metric},
-    newtypes::{Blake2bHash, CorrelationId},
-};
 use types::bytesrepr::{self, FromBytes, ToBytes};
 
-use crate::components::contract_runtime::storage::{
-    transaction_source::{Readable, Writable},
-    trie::{Parents, Pointer, Trie, RADIX},
-    trie_store::TrieStore,
-    GAUGE_METRIC_KEY,
+use crate::{
+    components::contract_runtime::{
+        shared::{
+            logging::{log_duration, log_metric},
+            newtypes::{Blake2bHash, CorrelationId},
+        },
+        storage::{
+            transaction_source::{Readable, Writable},
+            trie::{Parents, Pointer, Trie, RADIX},
+            trie_store::TrieStore,
+            GAUGE_METRIC_KEY,
+        },
+    },
+    crypto::hash,
 };
 
 const TRIE_STORE_READ_DURATION: &str = "trie_store_read_duration";
@@ -383,7 +388,7 @@ where
     let mut ret: Vec<(Blake2bHash, Trie<K, V>)> = Vec::new();
     let mut tip_hash = {
         let trie_bytes = tip.to_bytes()?;
-        Blake2bHash::new(&trie_bytes)
+        hash::hash(&trie_bytes)
     };
     ret.push((tip_hash, tip.to_owned()));
 
@@ -404,7 +409,7 @@ where
                 };
                 tip_hash = {
                     let node_bytes = tip.to_bytes()?;
-                    Blake2bHash::new(&node_bytes)
+                    hash::hash(&node_bytes)
                 };
                 ret.push((tip_hash, tip.to_owned()))
             }
@@ -415,7 +420,7 @@ where
                 };
                 tip_hash = {
                     let extension_bytes = tip.to_bytes()?;
-                    Blake2bHash::new(&extension_bytes)
+                    hash::hash(&extension_bytes)
                 };
                 ret.push((tip_hash, tip.to_owned()))
             }
@@ -529,7 +534,7 @@ where
     // to parents.
     if !affix.is_empty() {
         let new_node_bytes = new_node.to_bytes()?;
-        let new_node_hash = Blake2bHash::new(&new_node_bytes);
+        let new_node_hash = hash::hash(&new_node_bytes);
         let new_extension = Trie::extension(affix.to_vec(), Pointer::NodePointer(new_node_hash));
         parents.push((child_index, new_extension));
     }
@@ -583,7 +588,7 @@ where
         } else {
             let child_extension = Trie::extension(child_extension_affix.to_vec(), pointer);
             let child_extension_bytes = child_extension.to_bytes()?;
-            let child_extension_hash = Blake2bHash::new(&child_extension_bytes);
+            let child_extension_hash = hash::hash(&child_extension_bytes);
             Some((child_extension_hash, child_extension))
         };
     // Assemble a new node.
@@ -597,7 +602,7 @@ where
     // Create a parent extension if necessary
     if !parent_extension_affix.is_empty() {
         let new_node_bytes = new_node.to_bytes()?;
-        let new_node_hash = Blake2bHash::new(&new_node_bytes);
+        let new_node_hash = hash::hash(&new_node_bytes);
         let parent_extension = Trie::extension(
             parent_extension_affix.to_vec(),
             Pointer::NodePointer(new_node_hash),

@@ -5,7 +5,6 @@ pub mod additive_map;
 pub mod gas;
 pub mod account;
 pub mod logging;
-pub mod motes;
 pub mod newtypes;
 pub mod page_size;
 pub mod socket;

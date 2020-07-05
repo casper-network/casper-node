@@ -1,10 +1,16 @@
-use super::{error, execution_effect::ExecutionEffect, op::Op, CONV_RATE};
-use crate::components::contract_runtime::shared::{
-    additive_map::AdditiveMap, gas::Gas, motes::Motes, newtypes::CorrelationId,
-    stored_value::StoredValue, transform::Transform,
-};
-use crate::components::contract_runtime::storage::global_state::StateReader;
 use types::{bytesrepr::FromBytes, CLTyped, CLValue, Key};
+
+use super::{error, execution_effect::ExecutionEffect, op::Op, CONV_RATE};
+use crate::{
+    components::contract_runtime::{
+        shared::{
+            additive_map::AdditiveMap, gas::Gas, newtypes::CorrelationId,
+            stored_value::StoredValue, transform::Transform,
+        },
+        storage::global_state::StateReader,
+    },
+    types::Motes,
+};
 
 fn make_payment_error_effects(
     max_payment_cost: Motes,
