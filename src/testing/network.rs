@@ -93,7 +93,7 @@ where
         join_all(self.nodes.values_mut().map(reactor::Runner::try_crank))
             .await
             .into_iter()
-            .filter(|opt| opt.is_some())
+            .filter(Option::is_some)
             .count()
     }
 

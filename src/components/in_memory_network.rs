@@ -8,10 +8,10 @@
 //! The network itself is managed by a `NetworkController` that can be used to create networking
 //! components for nodes. Let's demonstrate this with an example in which we
 //!
-//! 1. Define a fictional "shouter" component to utilitze the network.
+//! 1. Define a fictional "shouter" component to utilize the network.
 //! 2. Create an application (in the form of a reactor) that connects this shouter to an in-memory
 //!    network of nodes.
-//! 3. Runs a test that verifies everything is working.
+//! 3. Run a test that verifies everything is working.
 //!
 //! ```rust
 //! # #![allow(dead_code)] // FIXME: Remove me
@@ -47,14 +47,14 @@
 //! struct Shouter {
 //!     /// Values we will gossip.
 //!     whispers: Vec<Message>,
-//!     /// Value we will broadcast.
+//!     /// Values we will broadcast.
 //!     shouts: Vec<Message>,
 //!     /// Values we received.
 //!     received: Vec<(NodeId, Message)>,
 //! }
 //!
 //! impl Shouter {
-//!     /// Return the totals of each message value received. Used for verification in testing.
+//!     /// Returns the totals of each message value received. Used for verification in testing.
 //!     fn count_messages(&self) -> HashMap<Message, usize> {
 //!         let mut totals = HashMap::<Message, usize>::new();
 //!
@@ -77,7 +77,7 @@
 //! }
 //!
 //! impl Shouter {
-//!     /// Create a new shouter.
+//!     /// Creates a new shouter.
 //!     fn new<REv: Send, I: 'static, P: 'static>(effect_builder: EffectBuilder<REv>)
 //!             -> (Self, Multiple<Effect<ShouterEvent<I, P>>>) {
 //!         (Shouter {
