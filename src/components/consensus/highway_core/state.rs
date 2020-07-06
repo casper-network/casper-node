@@ -189,12 +189,10 @@ impl<C: Context> State<C> {
         ValidatorIndex(idx as u32)
     }
 
-    /// Adds the vote to the protocol state, or returns an error if it is invalid.
-    /// Panics if dependencies are not satisfied.
-    pub(crate) fn add_vote(&mut self, swvote: SignedWireVote<C>) -> Result<(), AddVoteError<C>> {
-        if let Err(err) = self.validate_vote(&swvote) {
-            return Err(swvote.with_error(err));
-        }
+    /// Adds the vote to the protocol state.
+    ///
+    /// The vote must be valid, and its dependencies satisfied.
+    pub(crate) fn add_valid_vote(&mut self, swvote: SignedWireVote<C>) {
         let wvote = &swvote.wire_vote;
         self.update_panorama(&swvote);
         let hash = wvote.hash();
@@ -205,6 +203,16 @@ impl<C: Context> State<C> {
             self.blocks.insert(hash.clone(), block);
         }
         self.votes.insert(hash, vote);
+    }
+
+    /// Adds the vote to the protocol state, or returns an error if it is invalid.
+    /// Panics if dependencies are not satisfied.
+    #[cfg(test)] // TODO: Remove, and use `add_valid_vote` instead.
+    pub(crate) fn add_vote(&mut self, swvote: SignedWireVote<C>) -> Result<(), AddVoteError<C>> {
+        if let Err(err) = self.validate_vote(&swvote) {
+            return Err(swvote.with_error(err));
+        }
+        self.add_valid_vote(swvote);
         Ok(())
     }
 
@@ -309,13 +317,28 @@ impl<C: Context> State<C> {
         Panorama(pan.iter().map(obs_cutoff).collect())
     }
 
-    /// Returns an error if `wvote` is invalid.
-    fn validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {
+    /// Returns an error if `swvote` is invalid. This can be called even if the dependencies are
+    /// not present yet.
+    pub(crate) fn pre_validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {
         let wvote = &swvote.wire_vote;
         let sender = wvote.sender;
+        if sender.0 as usize >= self.weights.len() {
+            return Err(VoteError::Creator);
+        }
         if (wvote.value.is_none() && wvote.panorama.is_empty())
-            || !self.is_panorama_valid(&wvote.panorama)
+            || wvote.panorama.len() != self.weights.len()
         {
+            return Err(VoteError::Panorama);
+        }
+        Ok(())
+    }
+
+    /// Returns an error if `swvote` is invalid. Must only be called once all dependencies have
+    /// been added to the state.
+    pub(crate) fn validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {
+        let wvote = &swvote.wire_vote;
+        let sender = wvote.sender;
+        if !self.is_panorama_valid(&wvote.panorama) {
             return Err(VoteError::Panorama);
         }
         let mut justifications = wvote.panorama.iter_correct();

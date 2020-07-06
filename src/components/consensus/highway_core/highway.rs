@@ -12,7 +12,7 @@ use crate::components::consensus::highway_core::vertex::SignedWireVote;
 use crate::components::consensus::{consensus_protocol::BlockContext, traits::Context};
 
 /// An error due to an invalid vertex.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub(crate) enum VertexError {
     #[error("The vertex contains an invalid vote: `{0}`")]
     Vote(#[from] VoteError),
@@ -21,29 +21,33 @@ pub(crate) enum VertexError {
 }
 
 /// An error due to invalid evidence.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub(crate) enum EvidenceError {
     #[error("The perpetrator is not a validator.")]
     UnknownPerpetrator,
 }
 
-/// The result of trying to add a vertex to the protocol highway.
+/// A vertex that has passed initial validation.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum AddVertexOutcome<C: Context> {
-    /// The vertex was successfully added.
-    Success(Vec<Effect<C>>),
-    /// The vertex could not be added because it is missing a dependency. The vertex itself is
-    /// returned, together with the missing dependency.
-    MissingDependency(Vertex<C>, Dependency<C>),
-    /// The vertex is invalid and cannot be added to the protocol highway at all.
-    // TODO: Distinction — is it the vertex creator's attributable fault?
-    Invalid(Vertex<C>),
+pub(crate) struct PreValidatedVertex<C: Context>(Vertex<C>);
+
+impl<C: Context> PreValidatedVertex<C> {
+    pub(crate) fn vertex(&self) -> &Vertex<C> {
+        &self.0
+    }
 }
 
-impl<C: Context> From<AddVoteError<C>> for AddVertexOutcome<C> {
-    fn from(err: AddVoteError<C>) -> Self {
-        // TODO: debug!("Invalid vote: {}", err);
-        Self::Invalid(Vertex::Vote(err.swvote))
+/// A vertex that has been validated: `Highway` has all its dependencies and can add it to its
+/// protocol state.
+///
+/// Note that this must only be added to the `Highway` instance that created it. Can cause a panic
+/// or inconsistent state otherwise.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ValidVertex<C: Context>(Vertex<C>);
+
+impl<C: Context> ValidVertex<C> {
+    pub(crate) fn vertex(&self) -> &Vertex<C> {
+        &self.0
     }
 }
 
@@ -71,42 +75,55 @@ pub(crate) struct Highway<C: Context> {
 }
 
 impl<C: Context> Highway<C> {
-    /// Returns a missing dependency that needs to be added to the protocol state before this one
-    /// can be added. Returns an error if the vertex is invalid.
-    pub(crate) fn missing_dependency(
+    /// Does initial validation. Returns an error if the vertex is invalid.
+    pub(crate) fn pre_validate_vertex(
         &self,
-        vertex: &Vertex<C>,
-    ) -> Result<Option<Dependency<C>>, VertexError> {
-        match vertex {
-            Vertex::Vote(vote) => {
-                self.validate_vote(vote)?;
-                Ok(self.state.missing_dependency(&vote.wire_vote.panorama))
-            }
-            Vertex::Evidence(evidence) => {
-                if self.params.validators.contains(evidence.perpetrator()) {
-                    Ok(None)
-                } else {
-                    Err(EvidenceError::UnknownPerpetrator.into())
-                }
-            }
+        vertex: Vertex<C>,
+    ) -> Result<PreValidatedVertex<C>, (Vertex<C>, VertexError)> {
+        match self.do_pre_validate_vertex(&vertex) {
+            Err(err) => Err((vertex, err)),
+            Ok(()) => Ok(PreValidatedVertex(vertex)),
         }
     }
 
-    /// Try to add an incoming vertex to the protocol state.
+    /// Returns the next missing dependency, or `None` if all dependencies of `pvv` are satisfied.
     ///
-    /// If the vertex is invalid, or if there are dependencies that need to be added first, returns
-    /// `Invalid` resp. `MissingDependency`.
-    pub(crate) fn add_vertex(&mut self, vertex: Vertex<C>) -> AddVertexOutcome<C> {
-        match self.missing_dependency(&vertex) {
-            Err(err) => AddVertexOutcome::Invalid(vertex),
-            Ok(Some(dep)) => AddVertexOutcome::MissingDependency(vertex, dep),
-            Ok(None) => match vertex {
-                Vertex::Vote(vote) => self.add_vote(vote),
-                Vertex::Evidence(evidence) => {
-                    self.state.add_evidence(evidence);
-                    AddVertexOutcome::Success(vec![])
-                }
-            },
+    /// If this returns `None`, `validate_vertex` can be called.
+    pub(crate) fn missing_dependency(&self, pvv: &PreValidatedVertex<C>) -> Option<Dependency<C>> {
+        match pvv.vertex() {
+            Vertex::Evidence(_) => None,
+            Vertex::Vote(vote) => self.state.missing_dependency(&vote.wire_vote.panorama),
+        }
+    }
+
+    /// Does full validation. Returns an error if the vertex is invalid.
+    ///
+    /// All dependencies must be added to the state before this validation step.
+    pub(crate) fn validate_vertex(
+        &self,
+        pvv: PreValidatedVertex<C>,
+    ) -> Result<ValidVertex<C>, (PreValidatedVertex<C>, VertexError)> {
+        match self.do_validate_vertex(pvv.vertex()) {
+            Err(err) => Err((pvv, err)),
+            Ok(()) => Ok(ValidVertex(pvv.0)),
+        }
+    }
+
+    /// Add a validated vertex to the protocol state.
+    ///
+    /// The validation must have been performed by _this_ `Highway` instance.
+    /// More precisely: The instance on which `add_valid_vertex` is called must contain everything
+    /// (and possibly more) that the instance on which `validate_vertex` was called contained.
+    pub(crate) fn add_valid_vertex(
+        &mut self,
+        ValidVertex(vertex): ValidVertex<C>,
+    ) -> Vec<Effect<C>> {
+        match vertex {
+            Vertex::Vote(vote) => self.add_valid_vote(vote),
+            Vertex::Evidence(evidence) => {
+                self.state.add_evidence(evidence);
+                vec![]
+            }
         }
     }
 
@@ -163,33 +180,36 @@ impl<C: Context> Highway<C> {
             .map_or_else(Vec::new, |av| av.on_new_vote(vhash, instant, &self.state))
     }
 
-    fn validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {
-        if !self.params.validators.contains(swvote.wire_vote.sender) {
-            Err(VoteError::Creator)
-        } else if swvote.wire_vote.panorama.len() != self.params.validators.len() {
-            Err(VoteError::Panorama)
-        } else if !C::validate_signature(
-            &swvote.hash(),
-            self.validator_pk(&swvote),
-            &swvote.signature,
-        ) {
-            Err(VoteError::Signature)
-        } else {
-            Ok(())
+    fn do_pre_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
+        match vertex {
+            Vertex::Vote(vote) => {
+                if !C::validate_signature(&vote.hash(), self.validator_pk(&vote), &vote.signature) {
+                    return Err(VoteError::Signature.into());
+                }
+                Ok(self.state.pre_validate_vote(vote)?)
+            }
+            Vertex::Evidence(evidence) => {
+                if self.params.validators.contains(evidence.perpetrator()) {
+                    Ok(())
+                } else {
+                    Err(EvidenceError::UnknownPerpetrator.into())
+                }
+            }
         }
     }
 
-    fn add_vote(&mut self, swvote: SignedWireVote<C>) -> AddVertexOutcome<C> {
+    fn do_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
+        match vertex {
+            Vertex::Vote(vote) => Ok(self.state.validate_vote(vote)?),
+            Vertex::Evidence(evidence) => Ok(()),
+        }
+    }
+
+    fn add_valid_vote(&mut self, swvote: SignedWireVote<C>) -> Vec<Effect<C>> {
         let vote_instant = swvote.wire_vote.instant;
         let vote_hash = swvote.hash();
-        // If the vote is invalid, `add_vote` returns it as an error.
-        match self.state.add_vote(swvote) {
-            Ok(()) => {
-                let effects = self.on_new_vote(&vote_hash, vote_instant);
-                AddVertexOutcome::Success(effects)
-            }
-            Err(error) => AddVertexOutcome::from(error),
-        }
+        self.state.add_valid_vote(swvote);
+        self.on_new_vote(&vote_hash, vote_instant)
     }
 
     /// Returns validator ID of the `swvote` sender.
@@ -200,21 +220,23 @@ impl<C: Context> Highway<C> {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::components::consensus::highway_core::highway::{
-        AddVertexOutcome, Highway, HighwayParams,
+    use crate::components::consensus::{
+        highway_core::{
+            highway::{Highway, HighwayParams, VertexError, VoteError},
+            state::tests::{
+                TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC, WEIGHTS,
+            },
+            state::{AddVoteError, State, Weight},
+            validators::Validators,
+            vertex::{SignedWireVote, Vertex, WireVote},
+            vote::Panorama,
+        },
+        traits::ValidatorSecret,
     };
-    use crate::components::consensus::highway_core::state::tests::{
-        TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC, WEIGHTS,
-    };
-    use crate::components::consensus::highway_core::state::{AddVoteError, State, Weight};
-    use crate::components::consensus::highway_core::validators::Validators;
-    use crate::components::consensus::highway_core::vertex::{SignedWireVote, Vertex, WireVote};
-    use crate::components::consensus::highway_core::vote::Panorama;
-    use crate::components::consensus::traits::ValidatorSecret;
     use std::iter::FromIterator;
 
     #[test]
-    fn invalid_signature_error() -> Result<(), AddVoteError<TestContext>> {
+    fn invalid_signature_error() {
         let state: State<TestContext> = State::new(WEIGHTS, 0);
         let validators = {
             let vid_weights: Vec<(u32, u64)> =
@@ -248,11 +270,12 @@ pub(crate) mod tests {
             wire_vote: wvote.clone(),
             signature: invalid_signature,
         };
-        let invalid_vertex = Vertex::Vote(invalid_signature_vote.clone());
-        assert_eq!(
-            AddVertexOutcome::Invalid(Vertex::Vote(invalid_signature_vote)),
-            highway.add_vertex(invalid_vertex)
-        );
+        let invalid_vertex = Vertex::Vote(invalid_signature_vote);
+        let err = VertexError::Vote(VoteError::Signature);
+        let expected = (invalid_vertex.clone(), err);
+        assert_eq!(Err(expected), highway.pre_validate_vertex(invalid_vertex));
+
+        // TODO: Also test the `missing_dependency` and `validate_vertex` steps.
 
         let valid_signature = ALICE_SEC.sign(&wvote.hash());
         let correct_signature_vote = SignedWireVote {
@@ -260,10 +283,9 @@ pub(crate) mod tests {
             signature: valid_signature,
         };
         let valid_vertex = Vertex::Vote(correct_signature_vote);
-        assert_eq!(
-            AddVertexOutcome::Success(vec![]),
-            highway.add_vertex(valid_vertex)
-        );
-        Ok(())
+        let pvv = highway.pre_validate_vertex(valid_vertex).unwrap();
+        assert_eq!(None, highway.missing_dependency(&pvv));
+        let vv = highway.validate_vertex(pvv).unwrap();
+        assert!(highway.add_valid_vertex(vv).is_empty());
     }
 }

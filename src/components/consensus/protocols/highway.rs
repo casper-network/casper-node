@@ -12,7 +12,7 @@ use crate::components::{
         highway_core::{
             active_validator::Effect as AvEffect,
             finality_detector::FinalityDetector,
-            highway::{AddVertexOutcome, Highway},
+            highway::Highway,
             vertex::{Dependency, Vertex},
         },
         traits::Context,
@@ -40,21 +40,23 @@ impl<C: Context> ProtocolState for Highway<C> {
 
     fn add_vertex(&mut self, v: Vertex<C>) -> Result<AddVertexOk<Dependency<C>>, Self::Error> {
         let vid = v.id();
-        match self.add_vertex(v) {
-            AddVertexOutcome::Success(vec) => {
-                if !vec.is_empty() {
-                    Err("add_vertex returned non-empty vec of effects. \
-                    This mustn't happen. You forgot to update the code!"
-                        .to_string())
-                } else {
-                    Ok(AddVertexOk::Success(vid))
-                }
-            }
-            AddVertexOutcome::MissingDependency(_vertex, dependency) => {
-                Ok(AddVertexOk::MissingDependency(dependency))
-            }
-            AddVertexOutcome::Invalid(vertex) => Err(format!("invalid vertex: {:?}", vertex)),
+        let pvv = match self.pre_validate_vertex(v) {
+            Ok(pvv) => pvv,
+            Err((vertex, err)) => return Err(format!("invalid vertex: {:?}, {:?}", vertex, err)),
+        };
+        if let Some(dep) = self.missing_dependency(&pvv) {
+            return Ok(AddVertexOk::MissingDependency(dep));
         }
+        let vv = match self.validate_vertex(pvv) {
+            Ok(vv) => vv,
+            Err((pvv, err)) => return Err(format!("invalid vertex: {:?}, {:?}", pvv, err)),
+        };
+        if !self.add_valid_vertex(vv).is_empty() {
+            return Err("add_vertex returned non-empty vec of effects. \
+                        This mustn't happen. You forgot to update the code!"
+                .to_string());
+        }
+        Ok(AddVertexOk::Success(vid))
     }
 
     fn get_vertex(&self, v: Dependency<C>) -> Result<Option<Vertex<C>>, Self::Error> {
