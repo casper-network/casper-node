@@ -10,11 +10,15 @@ pub(crate) struct DeployBuffer {
 }
 
 impl DeployBuffer {
+    /// Creates a new, empty deploy buffer instance.
     pub(crate) fn new() -> Self {
         Default::default()
     }
 
-    pub(crate) fn add_deploy(&mut self, hash: DeployHash, deploy: DeployHeader) {
+    /// Add a deploy to the deploy buffer.
+    ///
+    /// Returns `false` if the deploy has been rejected.
+    pub(crate) fn add_deploy(&mut self, hash: DeployHash, deploy: DeployHeader) -> bool {
         // only add the deploy if it isn't contained in a finalized block
         if !self
             .finalized
@@ -22,6 +26,9 @@ impl DeployBuffer {
             .any(|block| block.contains_key(&hash))
         {
             self.collected_deploys.insert(hash, deploy);
+            true
+        } else {
+            false
         }
     }
 
