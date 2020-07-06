@@ -52,7 +52,10 @@ use smallvec::{smallvec, SmallVec};
 use tracing::error;
 
 use crate::{
-    components::storage::{self, StorageType, Value},
+    components::{
+        consensus::BlockContext,
+        storage::{self, StorageType, Value},
+    },
     effect::requests::DeployGossiperRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{Deploy, ExecutedBlock, ProtoBlock},
@@ -491,12 +494,20 @@ impl<REv> EffectBuilder<REv> {
     /// Passes the timestamp of a future block for which deploys are to be proposed
     // TODO: Add an argument (`BlockContext`?) that contains all information necessary to select
     // deploys, e.g. the ancestors' deploys.
-    pub(crate) async fn request_proto_block(self) -> ProtoBlock {
+    pub(crate) async fn request_proto_block(
+        self,
+        block_context: BlockContext, /* TODO: This `BlockContext` will probably be a different
+                                      * type
+                                      * than the context in the return value in the future */
+    ) -> (ProtoBlock, BlockContext) {
         // TODO: actually return the relevant deploys and an actual random bit
-        ProtoBlock {
-            deploys: vec![],
-            random_bit: false,
-        }
+        (
+            ProtoBlock {
+                deploys: vec![],
+                random_bit: false,
+            },
+            block_context,
+        )
     }
 
     /// Passes a finalized proto-block to the contract runtime for execution

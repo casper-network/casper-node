@@ -61,6 +61,7 @@ pub(crate) struct HighwayParams<C: Context> {
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
 /// peers, and use a [FinalityDetector](../finality_detector/struct.FinalityDetector.html) to
 /// determine the outcome of the consensus process.
+#[derive(Debug)]
 pub(crate) struct Highway<C: Context> {
     /// The parameters that remain constant for the duration of this consensus instance.
     params: HighwayParams<C>,
@@ -113,11 +114,11 @@ impl<C: Context> Highway<C> {
     ///
     /// If we send a vertex to a peer who is missing a dependency, they will ask us for it. In that
     /// case, `get_dependency` will always return `Some`, unless the peer is faulty.
-    pub(crate) fn get_dependency(&self, dependency: Dependency<C>) -> Option<Vertex<C>> {
+    pub(crate) fn get_dependency(&self, dependency: &Dependency<C>) -> Option<Vertex<C>> {
         let state = &self.state;
         match dependency {
-            Dependency::Vote(hash) => state.wire_vote(&hash).map(Vertex::Vote),
-            Dependency::Evidence(idx) => state.opt_evidence(idx).cloned().map(Vertex::Evidence),
+            Dependency::Vote(hash) => state.wire_vote(hash).map(Vertex::Vote),
+            Dependency::Evidence(idx) => state.opt_evidence(*idx).cloned().map(Vertex::Evidence),
         }
     }
 
@@ -141,7 +142,11 @@ impl<C: Context> Highway<C> {
         match self.active_validator.as_ref() {
             None => {
                 // TODO: Error?
-                warn!(?value, %block_context.instant, "Observer node was called with `propose` event.");
+                warn!(
+                    ?value,
+                    ?block_context,
+                    "Observer node was called with `propose` event."
+                );
                 vec![]
             }
             Some(av) => av.propose(value, block_context, &self.state),

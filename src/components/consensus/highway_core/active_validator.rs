@@ -6,7 +6,7 @@ use super::{
     vertex::{Vertex, WireVote},
     vote::{Observation, Panorama},
 };
-use crate::components::consensus::consensus_protocol::BlockContext;
+use crate::components::consensus::consensus_protocol::{BlockContext, Timestamp};
 use crate::components::consensus::highway_core::vertex::SignedWireVote;
 use crate::components::consensus::traits::Context;
 
@@ -36,6 +36,7 @@ pub(crate) enum Effect<C: Context> {
 /// If the rounds are long enough (i.e. message delivery is fast enough) and there are enough
 /// honest validators, there will be a lot of confirmations for the proposal, and enough witness
 /// votes citing all those confirmations, to create a summit and finalize the proposal.
+#[derive(Debug)]
 pub(crate) struct ActiveValidator<C: Context> {
     /// Our own validator index.
     vidx: ValidatorIndex,
@@ -77,7 +78,7 @@ impl<C: Context> ActiveValidator<C> {
         let round_offset = instant % self.round_len();
         let round_id = instant - round_offset;
         if round_offset == 0 && state.leader(round_id) == self.vidx {
-            let bctx = BlockContext { instant };
+            let bctx = BlockContext::new(Timestamp(instant));
             effects.push(Effect::RequestNewBlock(bctx));
         } else if round_offset == self.witness_offset() {
             let panorama = state.panorama_cutoff(state.panorama(), instant);
@@ -111,13 +112,13 @@ impl<C: Context> ActiveValidator<C> {
         block_context: BlockContext,
         state: &State<C>,
     ) -> Vec<Effect<C>> {
-        if self.earliest_vote_time(state) > block_context.instant {
+        let timestamp = block_context.timestamp().0;
+        if self.earliest_vote_time(state) > timestamp {
             warn!(?block_context, "skipping outdated proposal");
             return vec![];
         }
-        let panorama = state.panorama_cutoff(state.panorama(), block_context.instant);
-        let instant = block_context.instant();
-        let proposal_vote = self.new_vote(panorama, instant, Some(value), state);
+        let panorama = state.panorama_cutoff(state.panorama(), timestamp);
+        let proposal_vote = self.new_vote(panorama, timestamp, Some(value), state);
         vec![Effect::NewVertex(Vertex::Vote(proposal_vote))]
     }
 
@@ -270,7 +271,7 @@ mod tests {
             [Eff::ScheduleTimer(426), Eff::RequestNewBlock(bctx)] => bctx.clone(),
             effects => panic!("unexpected effects {:?}", effects),
         };
-        assert_eq!(416, bctx.instant());
+        assert_eq!(416, bctx.timestamp().0);
 
         // She has a pending deploy from Colin who wants to pay for a hot beverage.
         let effects = alice_av.propose(0xC0FFEE, bctx, &state);
