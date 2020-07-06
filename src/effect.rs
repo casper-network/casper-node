@@ -270,7 +270,7 @@ impl<REv> EffectBuilder<REv> {
     /// Can be used to trigger events from effects when combined with `.event`. Do not use this do
     /// "do nothing", as it will still cause a task to be spawned.
     #[inline(always)]
-    pub async fn immediately(self) -> () {}
+    pub async fn immediately(self) {}
 
     /// Sets a timeout.
     pub(crate) async fn set_timeout(self, timeout: Duration) -> Duration {
