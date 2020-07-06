@@ -125,15 +125,6 @@ pub trait Reactor: Sized {
         event_queue: EventQueueHandle<Self::Event>,
         span: &Span,
     ) -> Result<(Self, Multiple<Effect<Self::Event>>), Self::Error>;
-
-    /// Shuts down the reactor and waits for cleanup to complete.
-    ///
-    /// While components are supposed to cleanup on `Drop`, this hook allows for a shutdown to be
-    /// initiated manually and wait for all components to clean up.
-    fn shutdown(self) -> BoxFuture<'static, ()> {
-        // TODO: Move this into component trait?
-        async move {}.boxed()
-    }
 }
 
 /// A drop-like trait for `async` compatible drop-and-wait.
