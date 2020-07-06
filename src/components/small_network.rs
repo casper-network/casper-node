@@ -57,7 +57,7 @@ use std::{
 
 use anyhow::Context;
 use futures::{
-    future::{select, Either},
+    future::{select, BoxFuture, Either},
     stream::{SplitSink, SplitStream},
     FutureExt, SinkExt, StreamExt,
 };
@@ -87,7 +87,7 @@ use crate::{
         announcements::NetworkAnnouncement, requests::NetworkRequest, Effect, EffectBuilder,
         EffectExt, EffectResultExt, Multiple,
     },
-    reactor::{EventQueueHandle, QueueKind},
+    reactor::{EventQueueHandle, Finalize, QueueKind},
     tls::{self, KeyFingerprint, Signed, TlsCert},
 };
 // Seems to be a false positive.
@@ -203,28 +203,6 @@ where
         }
 
         Ok((model, effects))
-    }
-
-    /// Close down the listening server socket.
-    ///
-    /// Signals that the background process that runs the server should shutdown completely and
-    /// waits for it to complete the shutdown. This explicitly allows the background task to finish
-    /// and drop everything it owns, ensuring that resources such as allocated ports are free to be
-    /// reused once this completes.
-    #[cfg(test)]
-    async fn shutdown_server(&mut self) {
-        // Close the shutdown socket, causing the server to exit.
-        drop(self.shutdown.take());
-
-        // Wait for the server to exit cleanly.
-        if let Some(join_handle) = self.server_join_handle.take() {
-            match join_handle.await {
-                Ok(_) => debug!("server exited cleanly"),
-                Err(err) => error!(%err, "could not join server task cleanly"),
-            }
-        } else {
-            warn!("server shutdown while already shut down")
-        }
     }
 
     /// Attempts to connect to the root node.
@@ -476,6 +454,30 @@ where
     /// Returns the node id of this network node.
     pub(crate) fn node_id(&self) -> NodeId {
         self.cert.public_key_fingerprint()
+    }
+}
+
+impl<REv, P> Finalize for SmallNetwork<REv, P>
+where
+    REv: Send + 'static,
+    P: Send + 'static,
+{
+    fn finalize(mut self) -> BoxFuture<'static, ()> {
+        async move {
+            // Close the shutdown socket, causing the server to exit.
+            drop(self.shutdown.take());
+
+            // Wait for the server to exit cleanly.
+            if let Some(join_handle) = self.server_join_handle.take() {
+                match join_handle.await {
+                    Ok(_) => debug!("server exited cleanly"),
+                    Err(err) => error!(%err, "could not join server task cleanly"),
+                }
+            } else {
+                warn!("server shutdown while already shut down")
+            }
+        }
+        .boxed()
     }
 }
 

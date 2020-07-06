@@ -7,13 +7,11 @@ use std::{
     time::Duration,
 };
 
-use futures::{
-    future::{join_all, BoxFuture},
-    FutureExt,
-};
+use futures::{future::join_all, FutureExt};
 use tracing::debug;
 
 use crate::reactor;
+use reactor::Finalize;
 
 /// A reactor with networking functionality.
 pub trait NetworkedReactor: Sized {
@@ -22,15 +20,6 @@ pub trait NetworkedReactor: Sized {
 
     /// Returns the node ID assigned to this specific reactor instance.
     fn node_id(&self) -> Self::NodeId;
-
-    /// Shuts down the reactor and waits for cleanup to complete.
-    ///
-    /// While components are supposed to cleanup on `Drop`, this hook allows for a shutdown to be
-    /// initiated manually and wait for all components to clean up.
-    fn shutdown(self) -> BoxFuture<'static, ()> {
-        // TODO: Move this into component trait?
-        async move {}.boxed()
-    }
 }
 
 /// Time interval for which to poll an observed testing network when no events have occurred.
@@ -152,21 +141,24 @@ where
     pub fn nodes(&self) -> &HashMap<R::NodeId, reactor::Runner<R>> {
         &self.nodes
     }
+}
 
-    /// Shuts down the network.
-    ///
-    /// Shuts down the network, allowing all connections to terminate. This is the same as dropping
-    /// every node and waiting until every networking instance has completely shut down.
-    ///
-    /// Usually dropping is enough, but when attempting to reusing listening ports immediately, this
-    /// gets the job done.
-    pub async fn shutdown(self) {
-        todo!()
-        // // Shutdown the sender of every reactor node to ensure the port is open again.
-        // for (_, node) in self.nodes.into_iter() {
-        //     node.into_inner().net.shutdown_server().await;
-        // }
+impl<R> Finalize for Network<R>
+where
+    R: Finalize + NetworkedReactor + reactor::Reactor + Send + 'static,
+    R::NodeId: Send,
+{
+    fn finalize(self) -> futures::future::BoxFuture<'static, ()> {
+        // We support finalizing networks where the reactor itself can be finalized.
 
-        // debug!("shut down network");
+        async move {
+            // Shutdown the sender of every reactor node to ensure the port is open again.
+            for (_, node) in self.nodes.into_iter() {
+                node.into_inner().finalize().await;
+            }
+
+            debug!("network finalized");
+        }
+        .boxed()
     }
 }

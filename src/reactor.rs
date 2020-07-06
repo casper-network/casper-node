@@ -33,7 +33,7 @@ use std::{
     mem,
 };
 
-use futures::FutureExt;
+use futures::{future::BoxFuture, FutureExt};
 use tracing::{debug, info, trace, warn, Span};
 
 use crate::{
@@ -125,6 +125,28 @@ pub trait Reactor: Sized {
         event_queue: EventQueueHandle<Self::Event>,
         span: &Span,
     ) -> Result<(Self, Multiple<Effect<Self::Event>>), Self::Error>;
+
+    /// Shuts down the reactor and waits for cleanup to complete.
+    ///
+    /// While components are supposed to cleanup on `Drop`, this hook allows for a shutdown to be
+    /// initiated manually and wait for all components to clean up.
+    fn shutdown(self) -> BoxFuture<'static, ()> {
+        // TODO: Move this into component trait?
+        async move {}.boxed()
+    }
+}
+
+/// A drop-like trait for `async` compatible drop-and-wait.
+///
+/// Shuts down a type by explicitly freeing resources, but allowing to wait on cleanup to complete.
+pub trait Finalize: Sized {
+    /// Runs cleanup code and waits for a shutdown to complete.
+    ///
+    /// This function must always be optional and a way to wait for all resources to be freed, not
+    /// mandatory for cleanup!
+    fn finalize(self) -> BoxFuture<'static, ()> {
+        async move {}.boxed()
+    }
 }
 
 // / Runs a reactor.

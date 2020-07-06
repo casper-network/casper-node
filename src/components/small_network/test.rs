@@ -23,6 +23,7 @@ use crate::{
     testing::network::{Network, NetworkedReactor},
 };
 use pnet::datalink;
+use reactor::Finalize;
 use tokio::time::{timeout, Timeout};
 use tracing::{debug, field, info, Span};
 
@@ -99,6 +100,12 @@ impl NetworkedReactor for TestReactor {
 
     fn node_id(&self) -> NodeId {
         self.net.node_id()
+    }
+}
+
+impl Finalize for TestReactor {
+    fn finalize(self) -> futures::future::BoxFuture<'static, ()> {
+        self.net.finalize()
     }
 }
 
@@ -229,7 +236,7 @@ async fn run_two_node_network_five_times() {
             "network did not stay connected"
         );
 
-        net.shutdown().await;
+        net.finalize().await;
     }
 }
 
