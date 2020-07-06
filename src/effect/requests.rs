@@ -10,7 +10,7 @@ use std::{
 use super::Responder;
 use crate::{
     components::storage::{self, StorageType, Value},
-    types::{Deploy, DeployHash},
+    types::{BlockHash, Deploy, DeployHash, DeployHeader},
 };
 
 /// A networking request.
@@ -172,6 +172,65 @@ impl<S: StorageType> Display for StorageRequest<S> {
                 write!(formatter, "get {}", deploy_hash)
             }
             StorageRequest::ListDeploys { .. } => write!(formatter, "list deploys"),
+        }
+    }
+}
+
+/// Deploy-queue related requests.
+#[derive(Debug)]
+pub(crate) enum DeployQueueRequest {
+    /// Add a deploy to the queue for inclusion into an upcoming block.
+    QueueDeploy {
+        /// Hash of deploy to store.
+        hash: DeployHash,
+        /// Header of the deploy to store.
+        header: DeployHeader,
+        /// Responder to call with the result.
+        responder: Responder<bool>,
+    },
+
+    RequestForInclusion {
+        /// The instant for which the deploy is requested.
+        current_instant: u64,
+        /// Maximum time to live.
+        max_ttl: u32,
+        /// Maximum block size in bytes.
+        ///
+        /// The total size of the deploys must not exceed this.
+        max_block_size_bytes: u64,
+        /// Gas limit for sum of deploys.
+        max_gas_limit: u64,
+        /// Maximum number of dependencies.
+        max_dependencies: u8,
+        /// Set of block hashes pointing to blocks whose deploys should be excluded.
+        past: HashSet<BlockHash>,
+        /// Responder to call with the result.
+        responder: Responder<HashSet<DeployHash>>,
+    },
+}
+
+impl Display for DeployQueueRequest {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            DeployQueueRequest::QueueDeploy { hash, .. } => {
+                write!(formatter, "add deploy {} to queue", hash)
+            }
+            DeployQueueRequest::RequestForInclusion {
+                current_instant,
+                max_ttl,
+                max_block_size_bytes,
+                max_gas_limit,
+                max_dependencies,
+                past,
+                responder: _
+            } => write!(formatter,
+                        "request for inclusion: instant {} ttl {} block_size {} gas_limit {} max_deps {} #past {}",
+                        current_instant,
+                        max_ttl,
+                        max_block_size_bytes,
+                        max_gas_limit,
+                        max_dependencies,
+                        past.len()),
         }
     }
 }
