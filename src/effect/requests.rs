@@ -176,6 +176,7 @@ impl<S: StorageType> Display for StorageRequest<S> {
     }
 }
 
+#[allow(dead_code)] // FIXME: Remove once in use.
 /// Deploy-queue related requests.
 #[derive(Debug)]
 pub(crate) enum DeployQueueRequest {
