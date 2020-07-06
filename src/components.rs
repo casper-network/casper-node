@@ -4,7 +4,7 @@
 //! Each component has a unified interface, expressed by the `Component` trait.
 pub(crate) mod api_server;
 pub(crate) mod consensus;
-pub(crate) mod deploy_broadcaster;
+pub(crate) mod deploy_gossiper;
 // The  `in_memory_network` is public for use in doctests.
 pub mod in_memory_network;
 pub(crate) mod pinger;

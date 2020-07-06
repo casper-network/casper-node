@@ -269,7 +269,7 @@
 
 use std::{
     any::Any,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::Display,
     sync::{Arc, Mutex, RwLock},
 };
@@ -495,19 +495,22 @@ where
                 responder,
             } => {
                 if let Ok(guard) = self.nodes.read() {
-                    // Not terribly efficient, but will always get us the maximum amount of nodes.
-                    for dest in guard
+                    let chosen: HashSet<_> = guard
                         .keys()
                         .filter(|k| !exclude.contains(k))
+                        .cloned()
                         .choose_multiple(rng, count)
-                    {
-                        self.send(&guard, *dest, payload.clone());
+                        .into_iter()
+                        .collect();
+                    // Not terribly efficient, but will always get us the maximum amount of nodes.
+                    for &dest in chosen.iter() {
+                        self.send(&guard, dest, payload.clone());
                     }
+                    responder.respond(chosen).ignore()
                 } else {
-                    error!("network lock has been poisoned")
-                };
-
-                responder.respond(()).ignore()
+                    error!("network lock has been poisoned");
+                    responder.respond(Default::default()).ignore()
+                }
             }
         }
     }

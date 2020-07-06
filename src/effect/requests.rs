@@ -43,7 +43,7 @@ pub enum NetworkRequest<I, P> {
         /// Node IDs of nodes to exclude from gossiping to.
         exclude: HashSet<I>,
         /// Responder to be called when all messages are queued.
-        responder: Responder<()>,
+        responder: Responder<HashSet<I>>,
     },
 }
 
@@ -217,20 +217,18 @@ impl Display for ApiRequest {
 
 /// Requests for the deploy broadcaster.
 #[derive(Debug)]
-pub enum DeployBroadcasterRequest {
-    /// A new `Deploy` received from a client via the HTTP server component.  Since this has been
-    /// received from a client and not via another node's broadcast, this receiving node should
-    /// broadcast it.
+pub enum DeployGossiperRequest {
+    /// A new `Deploy` received from a client via the HTTP server component.
     PutFromClient {
         /// The received deploy.
         deploy: Box<Deploy>,
     },
 }
 
-impl Display for DeployBroadcasterRequest {
+impl Display for DeployGossiperRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            DeployBroadcasterRequest::PutFromClient { deploy, .. } => {
+            DeployGossiperRequest::PutFromClient { deploy, .. } => {
                 write!(formatter, "put from client: {}", deploy.id())
             }
         }
