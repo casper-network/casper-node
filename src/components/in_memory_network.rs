@@ -8,10 +8,10 @@
 //! The network itself is managed by a `NetworkController` that can be used to create networking
 //! components for nodes. Let's demonstrate this with an example in which we
 //!
-//! 1. Define a fictional "shouter" component to utilitze the network.
+//! 1. Define a fictional "shouter" component to utilize the network.
 //! 2. Create an application (in the form of a reactor) that connects this shouter to an in-memory
 //!    network of nodes.
-//! 3. Runs a test that verifies everything is working.
+//! 3. Run a test that verifies everything is working.
 //!
 //! ```rust
 //! # #![allow(dead_code)] // FIXME: Remove me
@@ -47,14 +47,14 @@
 //! struct Shouter {
 //!     /// Values we will gossip.
 //!     whispers: Vec<Message>,
-//!     /// Value we will broadcast.
+//!     /// Values we will broadcast.
 //!     shouts: Vec<Message>,
 //!     /// Values we received.
 //!     received: Vec<(NodeId, Message)>,
 //! }
 //!
 //! impl Shouter {
-//!     /// Return the totals of each message value received. Used for verification in testing.
+//!     /// Returns the totals of each message value received. Used for verification in testing.
 //!     fn count_messages(&self) -> HashMap<Message, usize> {
 //!         let mut totals = HashMap::<Message, usize>::new();
 //!
@@ -77,7 +77,7 @@
 //! }
 //!
 //! impl Shouter {
-//!     /// Create a new shouter.
+//!     /// Creates a new shouter.
 //!     fn new<REv: Send, I: 'static, P: 'static>(effect_builder: EffectBuilder<REv>)
 //!             -> (Self, Multiple<Effect<ShouterEvent<I, P>>>) {
 //!         (Shouter {
@@ -267,11 +267,9 @@
 //! # }); // end of tokio::block_on
 //! ```
 
-#![allow(dead_code)]
-
 use std::{
     any::Any,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::Display,
     sync::{Arc, Mutex, RwLock},
 };
@@ -298,7 +296,7 @@ pub type NodeId = u64;
 lazy_static! {
     /// The currently active network as a thread local.
     ///
-    /// The type is dynamic, as every network can be of a distinct type when `P` differs.
+    /// The type is dynamic, every network can be of a distinct type when the payload `P` differs.
     static ref ACTIVE_NETWORK: Mutex<Option<Box<dyn Any + Send + Sync>>> = Mutex::new(None);
 }
 
@@ -497,19 +495,22 @@ where
                 responder,
             } => {
                 if let Ok(guard) = self.nodes.read() {
-                    // Not terribly efficient, but will always get us the maximum amount of nodes.
-                    for dest in guard
+                    let chosen: HashSet<_> = guard
                         .keys()
                         .filter(|k| !exclude.contains(k))
+                        .cloned()
                         .choose_multiple(rng, count)
-                    {
-                        self.send(&guard, *dest, payload.clone());
+                        .into_iter()
+                        .collect();
+                    // Not terribly efficient, but will always get us the maximum amount of nodes.
+                    for &dest in chosen.iter() {
+                        self.send(&guard, dest, payload.clone());
                     }
+                    responder.respond(chosen).ignore()
                 } else {
-                    error!("network lock has been poisoned")
-                };
-
-                responder.respond(()).ignore()
+                    error!("network lock has been poisoned");
+                    responder.respond(Default::default()).ignore()
+                }
             }
         }
     }

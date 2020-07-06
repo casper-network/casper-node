@@ -9,6 +9,7 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
+pub(crate) use gossip_table::{GossipAction, GossipTable};
 pub(crate) use round_robin::WeightedRoundRobin;
 
 /// Moves a value to the heap and then forgets about, leaving only a static reference behind.
