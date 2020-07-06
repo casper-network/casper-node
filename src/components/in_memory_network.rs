@@ -267,8 +267,6 @@
 //! # }); // end of tokio::block_on
 //! ```
 
-#![allow(dead_code)]
-
 use std::{
     any::Any,
     collections::HashMap,
