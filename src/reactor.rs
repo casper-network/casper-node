@@ -119,6 +119,7 @@ pub trait Reactor: Sized {
     /// tracing fields like `id` to set an ID for the reactor if desired.
     ///
     /// If any instantiation fails, an error is returned.
+    // TODO: Remove `span` parameter and rely on trait to retrieve from reactor where needed.
     fn new(
         cfg: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
@@ -253,6 +254,12 @@ where
     #[inline]
     pub fn reactor(&self) -> &R {
         &self.reactor
+    }
+
+    /// Returns a mutable reference to the reactor.
+    #[inline]
+    pub fn reactor_mut(&mut self) -> &mut R {
+        &mut self.reactor
     }
 
     /// Deconstructs the runner to return the reactor.

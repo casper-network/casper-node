@@ -5,7 +5,8 @@
 pub(crate) mod api_server;
 pub(crate) mod consensus;
 pub(crate) mod deploy_broadcaster;
-pub(crate) mod in_memory_network;
+// The  `in_memory_network` is public for use in doctests.
+pub mod in_memory_network;
 pub(crate) mod pinger;
 pub(crate) mod small_network;
 pub(crate) mod storage;
@@ -36,7 +37,7 @@ use crate::effect::{Effect, EffectBuilder, Multiple};
 ///
 /// Components place restrictions on reactor events (`REv`s), indicating what kind of effects they
 /// need to be able to produce to operate.
-pub(crate) trait Component<REv> {
+pub trait Component<REv> {
     /// Event associated with `Component`.
     ///
     /// The event type that is handled by the component.

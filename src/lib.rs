@@ -25,7 +25,7 @@
 // "boilerplate" type aliases being written.
 #![allow(clippy::type_complexity)]
 
-mod components;
+pub mod components;
 pub mod crypto;
 pub mod effect;
 pub mod logging;

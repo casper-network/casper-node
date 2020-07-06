@@ -36,8 +36,8 @@
 //! the effects explicitly listed in this module through traits to create them. Post-processing on
 //! effects to turn them into events should also be kept brief.
 
-pub(crate) mod announcements;
-pub(crate) mod requests;
+pub mod announcements;
+pub mod requests;
 
 use std::{
     any::type_name,
@@ -228,7 +228,7 @@ impl<REv> Copy for EffectBuilder<REv> {}
 
 impl<REv> EffectBuilder<REv> {
     /// Creates a new effect builder.
-    pub(crate) fn new(event_queue_handle: EventQueueHandle<REv>) -> Self {
+    pub fn new(event_queue_handle: EventQueueHandle<REv>) -> Self {
         EffectBuilder(event_queue_handle)
     }
 
@@ -265,6 +265,13 @@ impl<REv> EffectBuilder<REv> {
         })
     }
 
+    /// Run and end effect immediately.
+    ///
+    /// Can be used to trigger events from effects when combined with `.event`. Do not use this do
+    /// "do nothing", as it will still cause a task to be spawned.
+    #[inline(always)]
+    pub async fn immediately(self) -> () {}
+
     /// Sets a timeout.
     pub(crate) async fn set_timeout(self, timeout: Duration) -> Duration {
         let then = Instant::now();
@@ -294,7 +301,7 @@ impl<REv> EffectBuilder<REv> {
     /// Broadcasts a network message.
     ///
     /// Broadcasts a network message to all peers connected at the time the message is sent.
-    pub(crate) async fn broadcast_message<I, P>(self, payload: P)
+    pub async fn broadcast_message<I, P>(self, payload: P)
     where
         REv: From<NetworkRequest<I, P>>,
     {
@@ -311,7 +318,7 @@ impl<REv> EffectBuilder<REv> {
     /// excluding the indicated ones, and sends each a copy of the message.
     // TODO: Remove lint-relaxation once function is used.
     #[allow(dead_code)]
-    pub(crate) async fn gossip_message<I, P>(self, payload: P, count: usize, exclude: HashSet<I>)
+    pub async fn gossip_message<I, P>(self, payload: P, count: usize, exclude: HashSet<I>)
     where
         REv: From<NetworkRequest<I, P>>,
     {
