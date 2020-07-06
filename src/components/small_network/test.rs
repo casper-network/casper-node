@@ -18,12 +18,12 @@ use crate::{
     components::Component,
     effect::{announcements::NetworkAnnouncement, Effect, EffectBuilder, Multiple},
     logging,
-    reactor::{self, EventQueueHandle, Reactor},
+    reactor::{self, EventQueueHandle, Reactor, Runner},
     small_network::{self, SmallNetwork},
     testing::network::{Network, NetworkedReactor},
 };
 use pnet::datalink;
-use reactor::Finalize;
+use reactor::{wrap_effects, Finalize};
 use tokio::time::{timeout, Timeout};
 use tracing::{debug, field, info, Span};
 
@@ -71,7 +71,7 @@ impl Reactor for TestReactor {
         let mut rng = rand::thread_rng(); // FIXME: Pass this in from the outside?
 
         match event {
-            Event::SmallNet(ev) => reactor::wrap_effects(
+            Event::SmallNet(ev) => wrap_effects(
                 Event::SmallNet,
                 self.net.handle_event(effect_builder, &mut rng, ev),
             ),
@@ -88,10 +88,7 @@ impl Reactor for TestReactor {
         let node_id = net.node_id();
         span.record("id", &field::display(node_id));
 
-        Ok((
-            TestReactor { net },
-            reactor::wrap_effects(Event::SmallNet, effects),
-        ))
+        Ok((TestReactor { net }, wrap_effects(Event::SmallNet, effects)))
     }
 }
 
@@ -135,7 +132,7 @@ fn init_logging() {
 }
 
 /// Checks whether or not a given network is completely connected.
-fn network_is_complete(nodes: &HashMap<NodeId, reactor::Runner<TestReactor>>) -> bool {
+fn network_is_complete(nodes: &HashMap<NodeId, Runner<TestReactor>>) -> bool {
     // We need at least one node.
     if nodes.is_empty() {
         return false;
