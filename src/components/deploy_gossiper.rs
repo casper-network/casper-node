@@ -59,6 +59,13 @@ pub enum Event {
     },
     /// An incoming gossip network message.
     MessageReceived { sender: NodeId, message: Message },
+    /// The result of the `DeployGossiper` putting a deploy to the storage component.  If the
+    /// result is `Ok`, the deploy hash should be gossiped onwards.
+    PutToStoreResult {
+        deploy_hash: DeployHash,
+        sender: NodeId,
+        result: storage::Result<()>,
+    },
     /// The result of the `DeployGossiper` getting a deploy from the storage component.  If the
     /// result is `Ok`, the deploy should be sent to the requesting peer.
     GetFromStoreResult {
@@ -90,6 +97,17 @@ impl Display for Event {
             ),
             Event::MessageReceived { sender, message } => {
                 write!(formatter, "{} received from {}", message, sender)
+            }
+            Event::PutToStoreResult {
+                deploy_hash,
+                result,
+                ..
+            } => {
+                if result.is_ok() {
+                    write!(formatter, "put {} to store", deploy_hash)
+                } else {
+                    write!(formatter, "failed to put {} to store", deploy_hash)
+                }
             }
             Event::GetFromStoreResult {
                 deploy_hash,
@@ -392,18 +410,48 @@ impl DeployGossiper {
     ) -> Multiple<Effect<Event>> {
         // Put the deploy to the storage component, and potentially start gossiping about it.
         let deploy_hash = *deploy.id();
-        let mut effects = effect_builder.put_deploy_to_storage(deploy).ignore();
+        effect_builder
+            .put_deploy_to_storage(deploy)
+            .event(move |result| Event::PutToStoreResult {
+                deploy_hash,
+                sender,
+                result,
+            })
+    }
 
+    /// Handles the `Ok` case for a `Result` of attempting to put the deploy to the storage
+    /// component having received it from the sender.
+    fn put_to_store<REv: ReactorEvent>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        deploy_hash: DeployHash,
+        sender: NodeId,
+    ) -> Multiple<Effect<Event>> {
         if let Some(should_gossip) = self.table.new_complete_data(&deploy_hash, Some(sender)) {
-            effects.extend(self.gossip(
+            self.gossip(
                 effect_builder,
                 deploy_hash,
                 should_gossip.count,
                 should_gossip.exclude_peers,
-            ));
+            )
+        } else {
+            Multiple::new()
         }
+    }
 
-        effects
+    /// Handles the `Err` case for a `Result` of attempting to put the deploy to the storage
+    /// component.
+    fn failed_to_put_to_store(
+        &mut self,
+        deploy_hash: DeployHash,
+        storage_error: storage::Error,
+    ) -> Multiple<Effect<Event>> {
+        self.table.pause(&deploy_hash);
+        error!(
+            "paused gossiping {} since failed to put to store: {}",
+            deploy_hash, storage_error
+        );
+        Multiple::new()
     }
 
     /// Handles the `Ok` case for a `Result` of attempting to get the deploy from the storage
@@ -479,6 +527,14 @@ where
                 Message::GetResponse(deploy) => {
                     self.handle_get_response(effect_builder, *deploy, sender)
                 }
+            },
+            Event::PutToStoreResult {
+                deploy_hash,
+                sender,
+                result,
+            } => match result {
+                Ok(()) => self.put_to_store(effect_builder, deploy_hash, sender),
+                Err(error) => self.failed_to_put_to_store(deploy_hash, error),
             },
             Event::GetFromStoreResult {
                 deploy_hash,
