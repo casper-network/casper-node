@@ -296,7 +296,7 @@ pub type NodeId = u64;
 lazy_static! {
     /// The currently active network as a thread local.
     ///
-    /// The type is dynamic, as every network can be of a distinct type when `P` differs.
+    /// The type is dynamic, every network can be of a distinct type when the payload `P` differs.
     static ref ACTIVE_NETWORK: Mutex<Option<Box<dyn Any + Send + Sync>>> = Mutex::new(None);
 }
 
