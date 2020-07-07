@@ -1,0 +1,20 @@
+[package]
+name = "transfer-purse-to-account-stored"
+version = "0.1.0"
+authors = ["Michał Papierski <michal@casperlabs.io>", "Ed Hastings <ed@casperlabs.io>"]
+edition = "2018"
+
+[[bin]]
+name = "transfer_purse_to_account_stored"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[features]
+std = ["contract/std", "types/std"]
+
+[dependencies]
+contract = { path = "../../../contract", package = "casperlabs-contract" }
+types = { path = "../../../../types", package = "casperlabs-types" }
+transfer_purse_to_account = { path = "../transfer-purse-to-account", package = "transfer-purse-to-account" }

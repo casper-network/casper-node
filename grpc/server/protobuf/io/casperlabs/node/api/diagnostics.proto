@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package io.casperlabs.node.api.diagnostics;
+
+import "google/protobuf/empty.proto";
+import "io/casperlabs/comm/discovery/node.proto";
+
+message NodeCoreMetrics {
+  int64 pingReceiverCount = 1;
+  int64 lookupReceiverCount = 2;
+  int64 disconnectReceiverCount = 3;
+  int64 connects = 4;
+  int64 p2pEncryptionHandshakeReceiverCount = 5;
+  int64 p2pProtocolHandshakeReceiverCount = 6;
+  int64 peers = 7;
+  int64 from = 8;
+  int64 to = 9;
+}
+
+service Diagnostics {
+  rpc ListPeers (google.protobuf.Empty) returns (Peers);
+}
+
+message Peers {
+  repeated io.casperlabs.comm.discovery.Node peers = 1;
+}

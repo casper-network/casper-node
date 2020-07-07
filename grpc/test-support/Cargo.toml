@@ -1,0 +1,41 @@
+[package]
+name = "casperlabs-engine-test-support"
+version = "0.8.0" # when updating, also update 'html_root_url' in lib.rs
+authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
+edition = "2018"
+description = "Library to support testing of Wasm smart contracts for use on the CasperLabs network."
+readme = "README.md"
+documentation = "https://docs.rs/casperlabs-engine-test-support"
+homepage = "https://casperlabs.io"
+repository = "https://github.com/CasperLabs/CasperLabs/tree/master/execution-engine/engine-test-support"
+license-file = "../../LICENSE"
+
+[dependencies]
+contract = { version = "0.6.0", path = "../../smart-contracts/contract", package = "casperlabs-contract" }
+engine-grpc-server = { version = "0.20.0", path = "../server", package = "casperlabs-engine-grpc-server" }
+node = { path = "../../node", package = "casperlabs-node" }
+grpc = "0.6.1"
+lazy_static = "1"
+lmdb = "0.8.0"
+log = "0.4.8"
+num-traits = "0.2.10"
+rand = "0.7.2"
+protobuf = "=2.8"
+types = { version = "0.6.0", path = "../../types", package = "casperlabs-types", features = ["std"] }
+
+[dev-dependencies]
+version-sync = "0.8"
+
+[features]
+enable-bonding = []
+use-as-wasm = []
+use-system-contracts = []
+test-support = ["engine-grpc-server/test-support", "contract/test-support"]
+no-unstable-features = [
+    "contract/no-unstable-features",
+    "engine-grpc-server/no-unstable-features",
+    "types/no-unstable-features"
+]
+
+[package.metadata.docs.rs]
+features = ["no-unstable-features"]

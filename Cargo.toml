@@ -1,84 +1,31 @@
-[package]
-name = "casperlabs-node"
-version = "0.1.0"
-authors = ["Marc Brinkmann <marc@casperlabs.io>", "Fraser Hutchison <fraser@casperlabs.io>"]
-edition = "2018"
-description = "The CasperLabs blockchain node"
-documentation = "https://docs.rs/casperlabs-node"
-readme = "README.md"
-homepage = "https://casperlabs.io"
-repository = "https://github.com/CasperLabs/casperlabs-node"
-license-file = "LICENSE"
-publish = false  # Prevent accidental `cargo publish` for now.
-default-run = "casperlabs-node"
+[workspace]
 
-[dependencies]
-ansi_term = "0.12.1"
-anyhow = "1.0.28"
-bincode = "1.2.1"
-blake2 = { version = "0.8.1", default-features = false }
-bytes = "0.5.4"
-derive_more = "0.99.7"
-directories = "2.0.2"
-ed25519-dalek = { version = "1.0.0-pre.3", default-features = false, features = ["rand", "serde", "u64_backend"] }
-either = "1.5.3"
-enum-iterator = "0.6.0"
-futures = "0.3.5"
-getrandom = "0.1.14"
-hex = "0.4.2"
-hex_fmt = "0.3.0"
-http = "0.2.1"
-lazy_static = "1.4.0"
-libc = "0.2.71"
-lmdb = "0.8.0"
-maplit = "1.0.2"
-openssl = "0.10.29"
-rand = "0.7.3"
-rand_chacha = "0.2.2"
-reqwest = "0.10.6"
-rmp-serde = "0.14.3"
-serde = { version = "1.0.110", features = ["derive"] }
-serde-big-array = "0.3.0"
-serde_json = "1.0.55"
-smallvec = "1.4.0"
-structopt = "0.3.14"
-tempfile = "3.1.0"
-thiserror = "1.0.18"
-tokio = { version = "0.2.20", features = ["macros", "rt-threaded", "sync", "tcp", "time", "blocking"] }
-tokio-openssl = "0.4.0"
-tokio-serde = { version = "0.6.1", features = ["messagepack"] }
-tokio-util = { version = "0.3.1", features = ["codec"] }
-toml = "0.5.6"
-tracing = "0.1.14"
-tracing-subscriber = "0.2.5"
-warp = "0.2.3"
-
-[dev-dependencies]
-fake_instant = "0.4.0"
-pnet = "0.26.0"
-rand_xorshift = { version = "~0.2.0" }
-rand_core = "0.5.1"
-
-[features]
-vendored-openssl = ['openssl/vendored']
-
-[[bin]]
-name = "casperlabs-node"
-path = "src/apps/node/main.rs"
-bench = false
-doctest = false
-test = false
-
-[[bin]]
-name = "casperlabs-client"
-path = "src/apps/client/main.rs"
-bench = false
-doctest = false
-test = false
-
-[package.metadata.deb]
-features = ["vendored-openssl"]
-assets = [
-    ["./target/release/casperlabs-node","/usr/bin/casperlabs-node", "755"],
-    ["./target/release/casperlabs-client","/usr/bin/casperlabs-client", "755"]
+members = [
+    "smart-contracts/contract",
+    "smart-contracts/contracts/[!.]*/*",
+    "grpc/server",
+    "grpc/test-support",
+    "grpc/tests",
+    "types",
+    "node",
 ]
+
+default-members = [
+    "smart-contracts/contract",
+    "grpc/server",
+    "grpc/test-support",
+    "grpc/tests",
+    "types",
+    "node",
+]
+
+# Include debug symbols in the release build of `casperlabs-engine-tests` so that `simple-transfer` will yield useful
+# perf data.
+[profile.release.package.casperlabs-engine-tests]
+debug = true
+
+[profile.release]
+lto = true
+
+[profile.bench]
+lto = true

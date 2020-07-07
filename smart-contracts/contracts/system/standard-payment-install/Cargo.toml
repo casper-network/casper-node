@@ -1,0 +1,21 @@
+[package]
+name = "standard-payment-install"
+version = "0.1.0"
+authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
+edition = "2018"
+
+[[bin]]
+name = "standard_payment_install"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[features]
+std = ["contract/std", "types/std"]
+no-unstable-features = ["contract/no-unstable-features", "types/no-unstable-features"]
+
+[dependencies]
+contract = { path = "../../../contract", package = "casperlabs-contract" }
+standard-payment = { version = "0.1.0", path = "../standard-payment" }
+types = { version = "0.6.0", path = "../../../../types", package = "casperlabs-types" }

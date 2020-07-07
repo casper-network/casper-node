@@ -1,0 +1,36 @@
+[package]
+name = "casperlabs-types"
+version = "0.6.0" # when updating, also update 'html_root_url' in lib.rs
+authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
+edition = "2018"
+description = "Types used to allow creation of Wasm contracts and tests for use on the CasperLabs network."
+readme = "README.md"
+documentation = "https://docs.rs/casperlabs-types"
+homepage = "https://casperlabs.io"
+repository = "https://github.com/CasperLabs/CasperLabs/tree/master/execution-engine/types"
+license-file = "../../LICENSE"
+
+[features]
+default = ["base16/alloc"]
+std = ["base16/std"]
+gens = ["std", "proptest/std"]
+no-unstable-features = []
+
+[dependencies]
+base16 = { version = "0.2.1", default-features = false }
+bitflags = "1"
+blake2 = { version = "0.8.1", default-features = false }
+failure = { version = "0.1.6", default-features = false, features = ["failure_derive"] }
+hex_fmt = "0.3.0"
+num-derive = { version = "0.3.0", default-features = false }
+num-integer = { version = "0.1.42", default-features = false }
+num-traits = { version = "0.2.10", default-features = false }
+proptest = { version = "0.9.4", optional = true }
+uint = { version = "0.8.2", default-features = false, features = [] }
+
+[dev-dependencies]
+proptest = "0.9.4"
+version-sync = "0.8"
+
+[package.metadata.docs.rs]
+features = ["no-unstable-features"]

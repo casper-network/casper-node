@@ -1,0 +1,68 @@
+[package]
+name = "casperlabs-engine-grpc-server"
+version = "0.20.0"
+authors = ["Mateusz Górski <gorski.mateusz@protonmail.ch>"]
+edition = "2018"
+description = "Wasm execution engine for CasperLabs smart contracts."
+readme = "README.md"
+documentation = "https://docs.rs/casperlabs-engine-grpc-server"
+homepage = "https://casperlabs.io"
+repository = "https://github.com/CasperLabs/CasperLabs/tree/master/execution-engine/engine-grpc-server"
+# this is required by 'cargo rpm'
+license-file = "../../LICENSE"
+include = [
+    "**/*.rs",
+    "Cargo.toml",
+    "protobuf/io/casperlabs/casper/consensus/state.proto",
+    "protobuf/io/casperlabs/ipc/ipc.proto",
+    "protobuf/io/casperlabs/ipc/transforms.proto",
+]
+
+[dependencies]
+clap = "2"
+ctrlc = "3"
+dirs = "2"
+grpc = "0.6.1"
+lmdb = "0.8"
+log = "0.4.8"
+proptest = "0.9.4"
+protobuf = "=2.8"
+
+types = { version = "0.6.0", path = "../../types", package = "casperlabs-types", features = ["std", "gens"] }
+node = { path = "../../node", package = "casperlabs-node", features = ["gens"] }
+
+[build-dependencies]
+protoc-rust-grpc = "0.6.1"
+
+[dev-dependencies]
+parity-wasm = "0.41.0"
+rand = "0.7.2"
+
+[features]
+test-support = ["node/test-support"]
+no-unstable-features = [
+    "types/no-unstable-features",
+]
+
+[[bin]]
+name = "casperlabs-engine-grpc-server"
+path = "src/main.rs"
+
+[package.metadata.rpm.cargo]
+buildflags = ["--release"]
+
+[package.metadata.rpm.targets]
+casperlabs-engine-grpc-server = { path = "/usr/bin/casperlabs-engine-grpc-server" }
+
+[package.metadata.rpm.files]
+"../packaging/casperlabs-engine-grpc-server.service" = { path = "/lib/systemd/system/casperlabs-engine-grpc-server.service" }
+
+[package.metadata.deb]
+maintainer-scripts="debian"
+assets = [
+	["packaging/casperlabs-engine-grpc-server.service", "/lib/systemd/system/casperlabs-engine-grpc-server.service", "644"],
+	["../../target/release/casperlabs-engine-grpc-server", "/usr/bin/casperlabs-engine-grpc-server", "755"]
+]
+
+[package.metadata.docs.rs]
+features = ["no-unstable-features"]

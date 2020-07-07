@@ -1,0 +1,19 @@
+[package]
+name = "ee-601-regression"
+version = "0.1.0"
+authors = ["Ed Hastings <ed@casperlabs.io>"]
+edition = "2018"
+
+[[bin]]
+name = "ee_601_regression"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[features]
+std = ["contract/std", "types/std"]
+
+[dependencies]
+contract = { path = "../../../contract", package = "casperlabs-contract" }
+types = { path = "../../../../types", package = "casperlabs-types" }

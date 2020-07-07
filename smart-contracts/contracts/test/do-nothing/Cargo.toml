@@ -1,0 +1,18 @@
+[package]
+name = "do-nothing"
+version = "0.1.0"
+authors = ["Michael Birch <birchmd@casperlabs.io>"]
+edition = "2018"
+
+[[bin]]
+name = "do_nothing"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[features]
+std = ["contract/std"]
+
+[dependencies]
+contract = { path = "../../../contract", package = "casperlabs-contract" }

@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package io.casperlabs.ipc;
+
+import "io/casperlabs/casper/consensus/state.proto";
+
+message TypeMismatch {
+    string expected = 1;
+    string found = 2;
+}
+
+// Final transformation to the value under the key.
+// It's the outcome of applying all `op`s
+message Transform {
+    oneof transform_instance {
+        TransformIdentity identity = 1;
+        TransformAddInt32 add_i32 = 2;
+        TransformAddUInt64 add_u64 = 3;
+        TransformWrite write = 4;
+        TransformAddKeys add_keys = 5;
+        TransformFailure failure = 6;
+        TransformAddBigInt add_big_int = 7;
+    }
+}
+
+message TransformIdentity {}
+message TransformAddInt32 {
+    int32 value = 1;
+}
+message TransformAddUInt64 {
+    uint64 value = 1;
+}
+message TransformAddBigInt {
+    io.casperlabs.casper.consensus.state.BigInt value = 1;
+}
+message TransformAddKeys {
+    repeated io.casperlabs.casper.consensus.state.NamedKey value = 1;
+}
+message TransformWrite {
+    io.casperlabs.casper.consensus.state.StoredValue value = 1;
+}
+message TransformFailure {
+    oneof failure_instance {
+        TypeMismatch type_mismatch = 1;
+    }
+}
+
+message TransformEntry {
+    io.casperlabs.casper.consensus.state.Key key = 1;
+    Transform transform = 2;
+}
