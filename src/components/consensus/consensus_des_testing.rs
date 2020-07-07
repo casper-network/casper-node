@@ -1,37 +1,42 @@
 use anyhow::anyhow;
+use rand::Rng;
 use std::cmp::Ordering;
 use std::{
-    collections::{BTreeMap, BinaryHeap},
+    collections::{BTreeMap, BinaryHeap, VecDeque},
     fmt::{Debug, Display, Formatter},
     hash::Hash,
     time,
 };
 
 /// Enum defining recipients of the message.
-enum Target {
+pub(crate) enum Target {
     SingleValidator(ValidatorId),
     All,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-struct Message<M: Clone + Debug> {
-    sender: ValidatorId,
+pub(crate) struct Message<M: Clone + Debug> {
+    pub(crate) sender: ValidatorId,
     payload: M,
 }
 
 impl<M: Clone + Debug> Message<M> {
-    fn new(sender: ValidatorId, payload: M) -> Self {
+    pub(crate) fn new(sender: ValidatorId, payload: M) -> Self {
         Message { sender, payload }
+    }
+
+    pub(crate) fn payload(&self) -> &M {
+        &self.payload
     }
 }
 
 pub(crate) struct TargetedMessage<M: Clone + Debug> {
-    message: Message<M>,
-    target: Target,
+    pub(crate) message: Message<M>,
+    pub(crate) target: Target,
 }
 
-impl<M: Copy + Clone + Debug> TargetedMessage<M> {
-    fn new(message: Message<M>, target: Target) -> Self {
+impl<M: Clone + Debug> TargetedMessage<M> {
+    pub(crate) fn new(message: Message<M>, target: Target) -> Self {
         TargetedMessage { message, target }
     }
 }
@@ -45,36 +50,51 @@ pub(crate) trait ConsensusInstance<C> {
         sender: ValidatorId,
         m: Self::In,
         is_faulty: bool,
-    ) -> (Vec<C>, Vec<TargetedMessage<Self::Out>>);
+        consensus_values: &mut VecDeque<C>,
+    ) -> (Vec<C>, Vec<Self::Out>);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
-pub(crate) struct ValidatorId(u64);
+pub(crate) struct ValidatorId(pub(crate) u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
 pub(crate) struct Instant(pub(crate) u64);
 
 /// A validator in the test network.
-struct Validator<C, D: ConsensusInstance<C>> {
-    id: ValidatorId,
+pub(crate) struct Validator<C, M, D>
+where
+    M: Clone + Debug,
+{
+    pub(crate) id: ValidatorId,
     /// Whether a validator should produce equivocations.
-    is_faulty: bool,
+    pub(crate) is_faulty: bool,
+    /// Consensus values to be proposed.
+    pub(crate) consensus_values: VecDeque<C>,
     /// Vector of consensus values finalized by the validator.
-    finalized_values: Vec<C>,
+    pub(crate) finalized_values: Vec<C>,
     /// Number of finalized values.
     finalized_count: usize,
     /// Messages received by the validator.
-    messages_received: Vec<Message<D::In>>,
+    messages_received: Vec<Message<M>>,
     /// Messages produced by the validator.
-    messages_produced: Vec<Message<D::Out>>,
+    messages_produced: Vec<M>,
     /// An instance of consensus protocol.
-    consensus: D,
+    pub(crate) consensus: D,
 }
 
-impl<C, D: ConsensusInstance<C>> Validator<C, D> {
-    fn new(id: ValidatorId, is_faulty: bool, consensus: D) -> Self {
+impl<C, M, D> Validator<C, M, D>
+where
+    M: Clone + Debug,
+{
+    pub(crate) fn new(
+        id: ValidatorId,
+        is_faulty: bool,
+        consensus_values: VecDeque<C>,
+        consensus: D,
+    ) -> Self {
         Validator {
             id,
             is_faulty,
+            consensus_values,
             finalized_values: Vec::new(),
             finalized_count: 0,
             messages_received: Vec::new(),
@@ -83,35 +103,29 @@ impl<C, D: ConsensusInstance<C>> Validator<C, D> {
         }
     }
 
-    fn is_faulty(&self) -> bool {
+    pub(crate) fn is_faulty(&self) -> bool {
         self.is_faulty
     }
 
-    fn validator_id(&self) -> ValidatorId {
+    pub(crate) fn validator_id(&self) -> ValidatorId {
         self.id
     }
 
     /// Iterator over consensus values finalized by the validator.
-    fn finalized_values(&self) -> impl Iterator<Item = &C> {
+    pub(crate) fn finalized_values(&self) -> impl Iterator<Item = &C> {
         self.finalized_values.iter()
     }
 
-    fn messages_received(&self) -> impl Iterator<Item = &Message<D::In>> {
+    pub(crate) fn messages_received(&self) -> impl Iterator<Item = &Message<M>> {
         self.messages_received.iter()
     }
 
-    fn messages_produced(&self) -> impl Iterator<Item = &Message<D::Out>> {
+    pub(crate) fn messages_produced(&self) -> impl Iterator<Item = &M> {
         self.messages_produced.iter()
     }
 
-    fn handle_message(&mut self, sender: ValidatorId, m: D::In) -> Vec<TargetedMessage<D::Out>> {
-        self.messages_received.push(Message::new(sender, m.clone()));
-        let (finalized, outbound_msgs) = self.consensus.handle_message(sender, m, self.is_faulty);
-        self.finalized_count += finalized.len();
-        self.finalized_values.extend(finalized);
-        self.messages_produced
-            .extend(outbound_msgs.iter().map(|tm| tm.message.clone()));
-        outbound_msgs
+    pub(crate) fn finalized_count(&self) -> usize {
+        self.finalized_count
     }
 }
 
@@ -120,7 +134,7 @@ impl<T> MessageT for T where T: PartialEq + Eq + Ord + Clone + Debug {}
 
 /// An entry in the message queue of the test network.
 #[derive(Debug, PartialEq, Eq, Clone)]
-struct QueueEntry<M>
+pub(crate) struct QueueEntry<M>
 where
     M: MessageT,
 {
@@ -128,11 +142,11 @@ where
     /// When a message has dependencies that recipient validator is missing,
     /// those will be added to it in a loop (simulating synchronization)
     /// and not influence the delivery time.
-    delivery_time: Instant,
+    pub(crate) delivery_time: Instant,
     /// Recipient of the message.
-    recipient: ValidatorId,
+    pub(crate) recipient: ValidatorId,
     /// The message.
-    message: Message<M>,
+    pub(crate) message: Message<M>,
 }
 
 impl<M> QueueEntry<M>
@@ -191,7 +205,7 @@ mod queue_entry_tests {
 
 /// Priority queue of messages scheduled for delivery to validators.
 /// Ordered by the delivery time.
-struct Queue<M>(BinaryHeap<QueueEntry<M>>)
+pub(crate) struct Queue<M>(BinaryHeap<QueueEntry<M>>)
 where
     M: MessageT;
 
@@ -210,12 +224,12 @@ where
 {
     /// Gets next message.
     /// Returns `None` if there aren't any.
-    fn pop(&mut self) -> Option<QueueEntry<M>> {
+    pub(crate) fn pop(&mut self) -> Option<QueueEntry<M>> {
         self.0.pop()
     }
 
     /// Pushes new message to the queue.
-    fn push(&mut self, item: QueueEntry<M>) {
+    pub(crate) fn push(&mut self, item: QueueEntry<M>) {
         self.0.push(item)
     }
 }
@@ -252,7 +266,7 @@ mod queue_tests {
 /// Can be used to simulate network delays, message drops, invalid signatures,
 /// panoramas etc.
 pub(crate) trait Strategy<Item> {
-    fn map<R: rand::Rng>(&self, rng: &mut R, i: Item) -> Item {
+    fn map<R: Rng>(&self, rng: &mut R, i: Item) -> Item {
         i
     }
 }
@@ -278,82 +292,102 @@ impl From<Instant> for DeliverySchedule {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
-enum TestRunError {
-    MissingRecipient(ValidatorId),
-    NoMessages,
-}
-
-impl Display for TestRunError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TestRunError::MissingRecipient(validator_id) => write!(
-                f,
-                "Recipient validator {:?} was not found in the map.",
-                validator_id
-            ),
-            TestRunError::NoMessages => write!(
-                f,
-                "Test finished prematurely due to lack of messages in the queue"
-            ),
-        }
-    }
-}
-
-pub(crate) struct TestHarness<M, C, D, DS, R>
+pub(crate) struct VirtualNet<C, D, M, DS>
 where
     M: MessageT,
-    D: ConsensusInstance<C>,
     DS: Strategy<DeliverySchedule>,
 {
     /// Maps validator IDs to actual validator instances.
-    validators_map: BTreeMap<ValidatorId, Validator<C, D>>,
+    validators_map: BTreeMap<ValidatorId, Validator<C, M, D>>,
     /// A collection of all network messages queued up for delivery.
     msg_queue: Queue<M>,
-    /// The instant the network was created.
-    start_time: u64,
-    /// Consensus values to be proposed.
-    /// Order of values in the vector defines the order in which they will be proposed.
-    consensus_values: Vec<C>,
+    /// A strategy to pseudo randomly change the message delivery times.
     delivery_time_strategy: DS,
-    // TODO: Move from constructor to method argument.
-    rand: R,
 }
 
-/// Result of single `crank()` call.
-#[derive(Debug, Eq, PartialEq)]
-enum CrankOk {
-    /// Test run is not done.
-    Continue,
-    /// Test run is finished.
-    Done,
-}
-
-impl<M, C, D, DS, R> TestHarness<M, C, D, DS, R>
+impl<C, D, M, DS> VirtualNet<C, D, M, DS>
 where
     M: MessageT,
-    D: ConsensusInstance<C, In = M, Out = M>,
     DS: Strategy<DeliverySchedule>,
-    R: rand::Rng,
 {
-    fn new<I: IntoIterator<Item = Validator<C, D>>>(
+    pub(crate) fn new<I: IntoIterator<Item = Validator<C, M, D>>>(
         validators: I,
-        start_time: u64,
-        consensus_values: Vec<C>,
         delivery_time_strategy: DS,
-        rand: R,
     ) -> Self {
         let validators_map = validators
             .into_iter()
             .map(|validator| (validator.id, validator))
             .collect();
-        TestHarness {
+
+        VirtualNet {
             validators_map,
-            msg_queue: Default::default(),
-            start_time,
-            consensus_values,
+            msg_queue: Queue::default(),
             delivery_time_strategy,
-            rand,
+        }
+    }
+
+    pub(crate) fn dispatch_messages<R: Rng>(
+        &mut self,
+        rand: &mut R,
+        delivery_time: Instant,
+        messages: Vec<TargetedMessage<M>>,
+    ) {
+        for TargetedMessage { message, target } in messages {
+            let recipients = match target {
+                Target::All => self.validators_ids().cloned().collect(),
+                Target::SingleValidator(recipient_id) => vec![recipient_id],
+            };
+            self.send_messages(rand, recipients, message, delivery_time)
+        }
+    }
+
+    pub(crate) fn pop_message(&mut self) -> Option<QueueEntry<M>> {
+        self.msg_queue.pop()
+    }
+
+    pub(crate) fn get_validator(&self, validator: ValidatorId) -> Option<&Validator<C, M, D>> {
+        self.validators_map.get(&validator)
+    }
+
+    pub(crate) fn validators_ids(&self) -> impl Iterator<Item = &ValidatorId> {
+        self.validators_map.keys().into_iter()
+    }
+
+    pub(crate) fn get_validator_mut(
+        &mut self,
+        validator_id: &ValidatorId,
+    ) -> Option<&mut Validator<C, M, D>> {
+        self.validators_map.get_mut(validator_id)
+    }
+
+    pub(crate) fn validator(&self, validator_id: &ValidatorId) -> Option<&Validator<C, M, D>> {
+        self.validators_map.get(validator_id)
+    }
+
+    pub(crate) fn validators(&self) -> impl Iterator<Item = &Validator<C, M, D>> {
+        self.validators_map.values()
+    }
+
+    // Utility function for dispatching message to multiple recipients.
+    fn send_messages<R: Rng, I: IntoIterator<Item = ValidatorId>>(
+        &mut self,
+        rand: &mut R,
+        recipients: I,
+        message: Message<M>,
+        base_delivery_time: Instant,
+    ) {
+        for validator_id in recipients {
+            let tampered_delivery_time = self
+                .delivery_time_strategy
+                .map(rand, base_delivery_time.into());
+            match tampered_delivery_time {
+                // Simulates dropping of the message.
+                // TODO: Add logging.
+                DeliverySchedule::Drop => (),
+                DeliverySchedule::AtInstant(dt) => {
+                    self.schedule_message(dt, validator_id, message.clone())
+                }
+            }
         }
     }
 
@@ -367,100 +401,30 @@ where
         let qe = QueueEntry::new(delivery_time, recipient, message);
         self.msg_queue.push(qe);
     }
-
-    /// Advance the test by one message.
-    ///
-    /// Pops one message from the message queue (if there are any)
-    /// and pass it to the recipient validator for execution.
-    /// Messages returned from the execution are scheduled for later delivery.
-    fn crank(&mut self) -> Result<CrankOk, TestRunError> {
-        let QueueEntry {
-            delivery_time,
-            recipient,
-            message,
-        } = self.msg_queue.pop().ok_or(TestRunError::NoMessages)?;
-        // Stop the test when each node finalized all consensus values.
-        // Note that we're not testing the order of finalization here.
-        if self
-            .validators()
-            .all(|v| v.finalized_count == self.consensus_values.len())
-        {
-            return Ok(CrankOk::Done);
-        }
-
-        let mut recipient_validator = self
-            .validators_map
-            .get_mut(&recipient)
-            .ok_or(TestRunError::MissingRecipient(recipient))?;
-
-        for TargetedMessage { message, target } in
-            recipient_validator.handle_message(message.sender, message.payload)
-        {
-            let validators_nodes = match target {
-                Target::All => self.validators_map.keys().cloned().collect(),
-                Target::SingleValidator(recipient_id) => vec![recipient_id],
-            };
-            self.send_messages(validators_nodes, message, delivery_time)
-        }
-        Ok(CrankOk::Continue)
-    }
-
-    // Utility function for dispatching message to multiple recipients.
-    fn send_messages<I: IntoIterator<Item = ValidatorId>>(
-        &mut self,
-        recipients: I,
-        message: Message<M>,
-        base_delivery_time: Instant,
-    ) {
-        for validator_id in recipients {
-            let tampered_delivery_time = self
-                .delivery_time_strategy
-                .map(&mut self.rand, base_delivery_time.into());
-            match tampered_delivery_time {
-                // Simulates dropping of the message.
-                // TODO: Add logging.
-                DeliverySchedule::Drop => (),
-                DeliverySchedule::AtInstant(dt) => {
-                    self.schedule_message(dt, validator_id, message.clone())
-                }
-            }
-        }
-    }
-
-    fn validators(&self) -> impl Iterator<Item = &Validator<C, D>> {
-        self.validators_map.values()
-    }
-
-    fn mut_handle(&mut self) -> &mut Self {
-        self
-    }
 }
 
-mod test_harness {
+mod virtual_net_tests {
+
     use super::{
-        ConsensusInstance, CrankOk, DeliverySchedule, Instant, Message, Strategy, Target,
-        TargetedMessage, TestHarness, TestRunError, Validator, ValidatorId,
+        ConsensusInstance, DeliverySchedule, Instant, Message, Strategy, Target, TargetedMessage,
+        Validator, ValidatorId, VirtualNet,
     };
     use rand_core::SeedableRng;
     use rand_xorshift::XorShiftRng;
+    use std::collections::{HashSet, VecDeque};
 
-    struct SmallDelay();
+    struct NoOpDelay;
 
-    impl Strategy<DeliverySchedule> for SmallDelay {
+    impl Strategy<DeliverySchedule> for NoOpDelay {
         fn map<R: rand::Rng>(&self, _rng: &mut R, i: DeliverySchedule) -> DeliverySchedule {
-            match i {
-                DeliverySchedule::Drop => DeliverySchedule::Drop,
-                DeliverySchedule::AtInstant(instant) => {
-                    DeliverySchedule::AtInstant(Instant(instant.0 + 1))
-                }
-            }
+            i
         }
     }
 
     type M = u64;
     type C = u64;
 
-    struct NoOpConsensus();
+    struct NoOpConsensus;
 
     impl<C> ConsensusInstance<C> for NoOpConsensus {
         type In = M;
@@ -471,28 +435,18 @@ mod test_harness {
             sender: ValidatorId,
             m: Self::In,
             is_faulty: bool,
-        ) -> (Vec<C>, Vec<TargetedMessage<Self::Out>>) {
+            consensus_values: &mut VecDeque<C>,
+        ) -> (Vec<C>, Vec<Self::Out>) {
             (vec![], vec![])
         }
     }
 
     #[test]
-    fn on_empty_queue_error() {
-        let single_node: Validator<C, NoOpConsensus> =
-            Validator::new(ValidatorId(1u64), false, NoOpConsensus());
-        let mut rand = XorShiftRng::from_seed(rand::random());
-        let mut test_harness: TestHarness<M, C, NoOpConsensus, SmallDelay, XorShiftRng> =
-            TestHarness::new(vec![single_node], 0, vec![], SmallDelay(), rand);
-        assert_eq!(test_harness.crank(), Err(TestRunError::NoMessages));
-    }
-
-    #[test]
-    fn messages_are_delivered_in_order() {
+    fn messages_are_enqueued_in_order() {
         let validator_id = ValidatorId(1u64);
-        let single_validator = Validator::new(validator_id, false, NoOpConsensus());
-        let mut rand = XorShiftRng::from_seed(rand::random());
-        let mut test_harness: TestHarness<M, C, NoOpConsensus, SmallDelay, XorShiftRng> =
-            TestHarness::new(vec![single_validator], 0, vec![1, 2, 3], SmallDelay(), rand);
+        let single_validator: Validator<C, u64, NoOpConsensus> =
+            Validator::new(validator_id, false, VecDeque::new(), NoOpConsensus);
+        let mut virtual_net = VirtualNet::new(vec![single_validator], NoOpDelay);
 
         let messages_num = 10;
         // We want to enqueue messages from the latest delivery time to the earliest.
@@ -500,154 +454,49 @@ mod test_harness {
             .map(|i| (Instant(messages_num - i), Message::new(validator_id, i)))
             .collect();
 
-        let last_message_payload = messages.last().cloned().unwrap().1;
-
-        messages.into_iter().for_each(|(instant, message)| {
-            test_harness.schedule_message(instant, validator_id, message)
+        messages.clone().into_iter().for_each(|(instant, message)| {
+            virtual_net.schedule_message(instant, validator_id, message)
         });
 
-        let mut crank_count = 0;
-        let mut previous_payload = last_message_payload.payload;
-        while test_harness.crank().is_ok() {
-            let new_message = test_harness
-                .mut_handle()
-                .validators()
-                .next()
-                .unwrap()
-                .messages_received()
-                .next()
-                .unwrap();
+        let queued_messages =
+            std::iter::successors(virtual_net.pop_message(), |_| virtual_net.pop_message())
+                .map(|qe| qe.message);
 
-            let new_payload = new_message.payload;
-            assert_eq!(
-                new_payload, previous_payload,
-                "Messages were not delivered in the expected order."
-            );
-            previous_payload = new_payload;
-            crank_count += 1;
-        }
+        // Since we enqueued in the order from the latest delivery time,
+        // we expect that the actual delivery will be a reverse.
+        let expected_order = messages.into_iter().map(|(_, msg)| msg).rev();
+
+        assert!(
+            queued_messages.eq(expected_order),
+            "Messages were not delivered in the expected order."
+        );
+    }
+
+    #[test]
+    fn messages_are_dispatched() {
+        let validator_id = ValidatorId(1u64);
+        let first_validator: Validator<C, M, NoOpConsensus> =
+            Validator::new(validator_id, false, VecDeque::new(), NoOpConsensus);
+        let second_validator: Validator<C, M, NoOpConsensus> =
+            Validator::new(ValidatorId(2u64), false, VecDeque::new(), NoOpConsensus);
+
+        let mut virtual_net = VirtualNet::new(vec![first_validator, second_validator], NoOpDelay);
+        let mut rand = XorShiftRng::from_seed(rand::random());
+
+        let message = Message::new(validator_id, 1u64);
+        let targeted_message = TargetedMessage::new(message.clone(), Target::All);
+
+        virtual_net.dispatch_messages(&mut rand, Instant(2), vec![targeted_message]);
+
+        let queued_msgs =
+            std::iter::successors(virtual_net.pop_message(), |_| virtual_net.pop_message())
+                .map(|qe| (qe.recipient, qe.message))
+                .collect::<Vec<_>>();
 
         assert_eq!(
-            crank_count, messages_num,
-            "There were more messages in the network than scheduled initially."
-        )
-    }
-
-    struct ForwardAllConsensus;
-
-    impl<C> ConsensusInstance<C> for ForwardAllConsensus {
-        type In = M;
-        type Out = M;
-
-        fn handle_message(
-            &mut self,
-            sender: ValidatorId,
-            m: Self::In,
-            is_faulty: bool,
-        ) -> (Vec<C>, Vec<TargetedMessage<Self::Out>>) {
-            (
-                vec![],
-                vec![TargetedMessage::new(Message::new(sender, m), Target::All)],
-            )
-        }
-    }
-
-    #[test]
-    fn messages_are_broadcasted() {
-        let validator_count = 10;
-        let validators: Vec<Validator<C, ForwardAllConsensus>> = (0u64..validator_count)
-            .map(|id| Validator::new(ValidatorId(id), false, ForwardAllConsensus))
-            .collect();
-        let mut rand = XorShiftRng::from_seed(rand::random());
-        let mut test_harness: TestHarness<M, C, ForwardAllConsensus, SmallDelay, XorShiftRng> =
-            TestHarness::new(validators, 0, vec![1, 2, 3], SmallDelay(), rand);
-
-        let test_message = Message::new(ValidatorId(1), 1u64);
-        test_harness.schedule_message(Instant(1), ValidatorId(0), test_message.clone());
-        // Fist crank to deliver the first message.
-        // As a result of processing it, 1 message will be delivered to each validator.
-        assert_eq!(test_harness.crank(), Ok(CrankOk::Continue));
-        // We need to crank the network as many times as there are validators so that everyone gets their response message.
-        // That's b/c 1 crank == 1 popped from the queue and delivered to the validator.
-        (0..validator_count).for_each(|_| assert!(test_harness.crank().is_ok()));
-        assert!(test_harness
-            .mut_handle()
-            .validators()
-            .all(|validator| validator.messages_received().next() == Some(&test_message)));
-    }
-
-    struct FinalizeConsensusInstance {
-        previously_finalized: u64,
-    }
-
-    impl Default for FinalizeConsensusInstance {
-        fn default() -> Self {
-            FinalizeConsensusInstance {
-                previously_finalized: 0,
-            }
-        }
-    }
-
-    impl ConsensusInstance<C> for FinalizeConsensusInstance {
-        type In = M;
-        type Out = M;
-
-        fn handle_message(
-            &mut self,
-            sender: ValidatorId,
-            m: Self::In,
-            is_faulty: bool,
-        ) -> (Vec<C>, Vec<TargetedMessage<Self::Out>>) {
-            // Since test harness doesn't check _what_ consenus values
-            // were finalized (it only checks how many) we can output anything.
-            let just_finalized = self.previously_finalized + 1;
-            self.previously_finalized += 1;
-            (vec![just_finalized], vec![])
-        }
-    }
-
-    #[test]
-    fn stop_when_all_finalized() {
-        let validator_id = ValidatorId(1u64);
-        let single_validator =
-            Validator::new(validator_id, false, FinalizeConsensusInstance::default());
-
-        let cv_count = 3;
-        let init_consensus_values: Vec<u64> = (0..cv_count).collect();
-
-        let mut rand = XorShiftRng::from_seed(rand::random());
-
-        let mut test_harness: TestHarness<
-            M,
-            C,
-            FinalizeConsensusInstance,
-            SmallDelay,
-            XorShiftRng,
-        > = TestHarness::new(
-            vec![single_validator],
-            0,
-            init_consensus_values,
-            SmallDelay(),
-            rand,
+            queued_msgs,
+            vec![(ValidatorId(2), message.clone()), (ValidatorId(1), message)],
+            "A broadcast message should be delivered to every node."
         );
-
-        let dummy_message = Message::new(ValidatorId(2), 1u64);
-        (0..cv_count * 2).for_each(|i| {
-            test_harness.schedule_message(Instant(i + 1), validator_id, dummy_message.clone())
-        });
-
-        let mut crank_count = 0;
-        while test_harness.crank() != Ok(CrankOk::Done) {
-            crank_count += 1;
-        }
-
-        test_harness.mut_handle().validators().for_each(|v| {
-            assert_eq!(
-                v.finalized_count as u64, cv_count,
-                "Should stop only when each validator finalized all consensus values."
-            );
-        });
-
-        assert_eq!(crank_count, cv_count);
     }
 }
