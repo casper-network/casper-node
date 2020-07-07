@@ -151,7 +151,10 @@ where
             } => self.delegate_to_era(era_id, effect_builder, move |consensus| {
                 consensus.propose(proto_block, block_context)
             }),
-            Event::ExecutedBlock { .. } => todo!(),
+            Event::ExecutedBlock { .. } => {
+                // TODO: Finality signatures
+                Multiple::default()
+            }
             Event::AcceptProtoBlock {
                 era_id,
                 proto_block,
