@@ -51,7 +51,7 @@ pub(crate) trait ConsensusInstance<C> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
 pub(crate) struct ValidatorId(u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
-pub(crate) struct Instant(u64);
+pub(crate) struct Instant(pub(crate) u64);
 
 /// A validator in the test network.
 struct Validator<C, D: ConsensusInstance<C>> {
@@ -115,8 +115,8 @@ impl<C, D: ConsensusInstance<C>> Validator<C, D> {
     }
 }
 
-trait MessageT: PartialEq + Eq + Ord + Clone + Copy + Debug {}
-impl<T> MessageT for T where T: PartialEq + Eq + Ord + Clone + Copy + Debug {}
+pub(crate) trait MessageT: PartialEq + Eq + Ord + Clone + Debug {}
+impl<T> MessageT for T where T: PartialEq + Eq + Ord + Clone + Debug {}
 
 /// An entry in the message queue of the test network.
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -251,13 +251,13 @@ mod queue_tests {
 ///
 /// Can be used to simulate network delays, message drops, invalid signatures,
 /// panoramas etc.
-trait Strategy<Item> {
+pub(crate) trait Strategy<Item> {
     fn map<R: rand::Rng>(&self, rng: &mut R, i: Item) -> Item {
         i
     }
 }
 
-enum DeliverySchedule {
+pub(crate) enum DeliverySchedule {
     AtInstant(Instant),
     Drop,
 }
@@ -300,7 +300,7 @@ impl Display for TestRunError {
     }
 }
 
-struct TestHarness<M, C, D, DS, R>
+pub(crate) struct TestHarness<M, C, D, DS, R>
 where
     M: MessageT,
     D: ConsensusInstance<C>,
@@ -316,6 +316,7 @@ where
     /// Order of values in the vector defines the order in which they will be proposed.
     consensus_values: Vec<C>,
     delivery_time_strategy: DS,
+    // TODO: Move from constructor to method argument.
     rand: R,
 }
 

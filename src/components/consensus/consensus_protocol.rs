@@ -13,11 +13,11 @@ pub(crate) use protocol_state::{AddVertexOk, ProtocolState, VertexTrait};
 
 // TODO: Use `Timestamp` instead of `u64`.
 // Implement `Add`, `Sub` etc.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
 pub(crate) struct Timestamp(pub(crate) u64);
 
 /// Information about the context in which a new block is created.
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
 pub struct BlockContext {
     timestamp: Timestamp,
 }
