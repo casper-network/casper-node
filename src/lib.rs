@@ -21,12 +21,16 @@
     unreachable_pub,
     unused_qualifications
 )]
+// Clippy is a little too trigger happy with these types, resulting in a lot of unnecessary
+// "boilerplate" type aliases being written.
+#![allow(clippy::type_complexity)]
 
-mod components;
+pub mod components;
 pub mod crypto;
 pub mod effect;
 pub mod logging;
 pub mod reactor;
+pub mod testing;
 pub mod tls;
 pub mod types;
 mod utils;

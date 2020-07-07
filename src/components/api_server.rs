@@ -40,7 +40,7 @@ use crate::{
     components::storage::{self, Storage},
     crypto::hash::Digest,
     effect::{
-        requests::{ApiRequest, DeployBroadcasterRequest, StorageRequest},
+        requests::{ApiRequest, DeployGossiperRequest, StorageRequest},
         Effect, EffectBuilder, EffectExt, Multiple,
     },
     reactor::QueueKind,
@@ -73,7 +73,7 @@ impl ApiServer {
 
 impl<REv> Component<REv> for ApiServer
 where
-    REv: From<StorageRequest<Storage>> + From<DeployBroadcasterRequest> + Send,
+    REv: From<StorageRequest<Storage>> + From<DeployGossiperRequest> + Send,
 {
     type Event = Event;
 
@@ -84,20 +84,15 @@ where
         event: Self::Event,
     ) -> Multiple<Effect<Self::Event>> {
         match event {
-            Event::ApiRequest(ApiRequest::SubmitDeploy { deploy, responder }) => {
-                let cloned_deploy = deploy.clone();
-                let mut effects = effect_builder
-                    .put_deploy(*deploy.clone())
-                    .event(move |result| Event::PutDeployResult {
-                        deploy,
-                        result,
-                        main_responder: responder,
-                    });
-                effects.extend(effect_builder.broadcast_deploy(cloned_deploy).ignore());
-                effects
-            }
+            Event::ApiRequest(ApiRequest::SubmitDeploy { deploy, responder }) => effect_builder
+                .put_deploy_to_storage(*deploy.clone())
+                .event(move |result| Event::PutDeployResult {
+                    deploy,
+                    result,
+                    main_responder: responder,
+                }),
             Event::ApiRequest(ApiRequest::GetDeploy { hash, responder }) => effect_builder
-                .get_deploy(hash)
+                .get_deploy_from_storage(hash)
                 .event(move |result| Event::GetDeployResult {
                     hash,
                     result: Box::new(result),
@@ -113,9 +108,14 @@ where
                 deploy,
                 result,
                 main_responder,
-            } => main_responder
-                .respond(result.map_err(|error| (*deploy, error)))
-                .ignore(),
+            } => {
+                let cloned_deploy = deploy.clone();
+                let mut effects = main_responder
+                    .respond(result.map_err(|error| (*deploy, error)))
+                    .ignore();
+                effects.extend(effect_builder.gossip_deploy(cloned_deploy).ignore());
+                effects
+            }
             Event::GetDeployResult {
                 hash: _,
                 result,

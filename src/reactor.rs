@@ -24,7 +24,6 @@
 //! in a step-wise manner using [`crank`](struct.Runner.html#method.crank) or indefinitely using
 //! [`run`](struct.Runner.html#method.crank).
 
-mod error;
 pub mod non_validator;
 mod queue_kind;
 pub mod validator;
@@ -34,15 +33,13 @@ use std::{
     mem,
 };
 
-use futures::FutureExt;
+use futures::{future::BoxFuture, FutureExt};
 use tracing::{debug, info, trace, warn, Span};
 
 use crate::{
     effect::{Effect, EffectBuilder, Multiple},
     utils::{self, WeightedRoundRobin},
 };
-pub use error::Error;
-pub(crate) use error::Result;
 pub use queue_kind::QueueKind;
 
 /// Event scheduler
@@ -99,6 +96,9 @@ pub trait Reactor: Sized {
     /// A configuration for the reactor
     type Config;
 
+    /// The error type returned by the reactor.
+    type Error: Send + Sync + 'static;
+
     /// Dispatches an event on the reactor.
     ///
     /// This function is typically only called by the reactor itself to dispatch an event. It is
@@ -119,11 +119,25 @@ pub trait Reactor: Sized {
     /// tracing fields like `id` to set an ID for the reactor if desired.
     ///
     /// If any instantiation fails, an error is returned.
+    // TODO: Remove `span` parameter and rely on trait to retrieve from reactor where needed.
     fn new(
         cfg: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
         span: &Span,
-    ) -> Result<(Self, Multiple<Effect<Self::Event>>)>;
+    ) -> Result<(Self, Multiple<Effect<Self::Event>>), Self::Error>;
+}
+
+/// A drop-like trait for `async` compatible drop-and-wait.
+///
+/// Shuts down a type by explicitly freeing resources, but allowing to wait on cleanup to complete.
+pub trait Finalize: Sized {
+    /// Runs cleanup code and waits for a shutdown to complete.
+    ///
+    /// This function must always be optional and a way to wait for all resources to be freed, not
+    /// mandatory for cleanup!
+    fn finalize(self) -> BoxFuture<'static, ()> {
+        async move {}.boxed()
+    }
 }
 
 // / Runs a reactor.
@@ -168,7 +182,7 @@ where
     /// The `id` is used to identify the runner during logging when debugging and can be chosen
     /// arbitrarily.
     #[inline]
-    pub async fn new(cfg: R::Config) -> Result<Self> {
+    pub async fn new(cfg: R::Config) -> Result<Self, R::Error> {
         // We create a new logging span, ensuring that we can always associate log messages to this
         // specific reactor. This is usually only relevant when running multiple reactors, e.g.
         // during testing, so we set the log level to `debug` here.
@@ -253,6 +267,12 @@ where
     #[inline]
     pub fn reactor(&self) -> &R {
         &self.reactor
+    }
+
+    /// Returns a mutable reference to the reactor.
+    #[inline]
+    pub fn reactor_mut(&mut self) -> &mut R {
+        &mut self.reactor
     }
 
     /// Deconstructs the runner to return the reactor.

@@ -4,13 +4,13 @@
 //! instances of `small_net` arranged in a network.
 
 use std::{
-    collections::{hash_map::Entry, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     time::Duration,
 };
 
 use derive_more::From;
-use futures::{future::join_all, Future};
+use futures::Future;
 use serde::{Deserialize, Serialize};
 use small_network::NodeId;
 
@@ -18,15 +18,14 @@ use crate::{
     components::Component,
     effect::{announcements::NetworkAnnouncement, Effect, EffectBuilder, Multiple},
     logging,
-    reactor::{self, EventQueueHandle, Reactor},
+    reactor::{self, EventQueueHandle, Reactor, Runner},
     small_network::{self, SmallNetwork},
+    testing::network::{Network, NetworkedReactor},
 };
 use pnet::datalink;
+use reactor::{wrap_effects, Finalize};
 use tokio::time::{timeout, Timeout};
 use tracing::{debug, field, info, Span};
-
-/// Time interval for which to poll an observed testing network when no events have occurred.
-const POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 /// The networking port used by the tests for the root node.
 const TEST_ROOT_NODE_PORT: u16 = 11223;
@@ -62,6 +61,7 @@ impl From<NetworkAnnouncement<NodeId, Message>> for Event {
 impl Reactor for TestReactor {
     type Event = Event;
     type Config = small_network::Config;
+    type Error = anyhow::Error;
 
     fn dispatch_event(
         &mut self,
@@ -71,7 +71,7 @@ impl Reactor for TestReactor {
         let mut rng = rand::thread_rng(); // FIXME: Pass this in from the outside?
 
         match event {
-            Event::SmallNet(ev) => reactor::wrap_effects(
+            Event::SmallNet(ev) => wrap_effects(
                 Event::SmallNet,
                 self.net.handle_event(effect_builder, &mut rng, ev),
             ),
@@ -82,16 +82,27 @@ impl Reactor for TestReactor {
         cfg: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
         span: &Span,
-    ) -> reactor::Result<(Self, Multiple<Effect<Self::Event>>)> {
+    ) -> anyhow::Result<(Self, Multiple<Effect<Self::Event>>)> {
         let (net, effects) = SmallNetwork::new(event_queue, cfg)?;
 
         let node_id = net.node_id();
         span.record("id", &field::display(node_id));
 
-        Ok((
-            TestReactor { net },
-            reactor::wrap_effects(Event::SmallNet, effects),
-        ))
+        Ok((TestReactor { net }, wrap_effects(Event::SmallNet, effects)))
+    }
+}
+
+impl NetworkedReactor for TestReactor {
+    type NodeId = NodeId;
+
+    fn node_id(&self) -> NodeId {
+        self.net.node_id()
+    }
+}
+
+impl Finalize for TestReactor {
+    fn finalize(self) -> futures::future::BoxFuture<'static, ()> {
+        self.net.finalize()
     }
 }
 
@@ -109,125 +120,6 @@ impl Display for Message {
     }
 }
 
-/// A network of multiple `small_network` test reactors.
-///
-/// Nodes themselves are not run in the background, rather manual cranking is required through
-/// `crank_all`. As an alternative, the `settle` and `settle_all` functions can be used to continue
-/// cranking until a condition has been reached.
-#[derive(Debug)]
-struct Network {
-    node_count: usize,
-    nodes: HashMap<NodeId, reactor::Runner<TestReactor>>,
-}
-
-impl Network {
-    /// Creates a new network.
-    fn new() -> Self {
-        Network {
-            node_count: 0,
-            nodes: HashMap::new(),
-        }
-    }
-
-    /// Creates a new networking node on the network using the default root node port.
-    async fn add_node(&mut self) -> anyhow::Result<(NodeId, &mut reactor::Runner<TestReactor>)> {
-        self.add_node_with_config(small_network::Config::default_on_port(TEST_ROOT_NODE_PORT))
-            .await
-    }
-
-    /// Creates a new networking node on the network.
-    async fn add_node_with_config(
-        &mut self,
-        cfg: small_network::Config,
-    ) -> anyhow::Result<(NodeId, &mut reactor::Runner<TestReactor>)> {
-        let runner: reactor::Runner<TestReactor> = reactor::Runner::new(cfg).await?;
-        self.node_count += 1;
-
-        let node_id = runner.reactor().net.node_id();
-
-        let node_ref = match self.nodes.entry(node_id) {
-            Entry::Occupied(_) => {
-                // This happens in the event of the extremely unlikely hash collision, or if the
-                // node ID was set manually.
-                anyhow::bail!("trying to insert a duplicate node {}", node_id)
-            }
-            Entry::Vacant(entry) => entry.insert(runner),
-        };
-
-        Ok((node_id, node_ref))
-    }
-
-    /// Crank all runners once, returning the number of events processed.
-    async fn crank_all(&mut self) -> usize {
-        join_all(self.nodes.values_mut().map(reactor::Runner::try_crank))
-            .await
-            .into_iter()
-            .filter(|opt| opt.is_some())
-            .count()
-    }
-
-    /// Process events on all nodes until all event queues are empty.
-    ///
-    /// Exits if `at_least` time has passed twice between events that have been processed.
-    async fn settle(&mut self, at_least: Duration) {
-        let mut no_events = false;
-        loop {
-            if self.crank_all().await == 0 {
-                // Stop once we have no pending events and haven't had any for `at_least` duration.
-                if no_events {
-                    debug!(?at_least, "network has settled after");
-                    break;
-                } else {
-                    no_events = true;
-                    tokio::time::delay_for(at_least).await;
-                }
-            } else {
-                no_events = false;
-            }
-        }
-    }
-
-    /// Runs the main loop of every reactor until a condition is true.
-    async fn settle_on<F>(&mut self, f: F)
-    where
-        F: Fn(&HashMap<NodeId, reactor::Runner<TestReactor>>) -> bool,
-    {
-        loop {
-            // Check condition.
-            if f(&self.nodes) {
-                debug!("network settled");
-                break;
-            }
-
-            if self.crank_all().await == 0 {
-                // No events processed, wait for a bit to avoid 100% cpu usage.
-                tokio::time::delay_for(POLL_INTERVAL).await;
-            }
-        }
-    }
-
-    // Returns the internal map of nodes.
-    fn nodes(&self) -> &HashMap<NodeId, reactor::Runner<TestReactor>> {
-        &self.nodes
-    }
-
-    /// Shuts down the network.
-    ///
-    /// Shuts down the network, allowing all connections to terminate. This is the same as dropping
-    /// every node and waiting until every networking instance has completely shut down.
-    ///
-    /// Usually dropping is enough, but when attempting to reusing listening ports immediately, this
-    /// gets the job done.
-    async fn shutdown(self) {
-        // Shutdown the sender of every reactor node to ensure the port is open again.
-        for (_, node) in self.nodes.into_iter() {
-            node.into_inner().net.shutdown_server().await;
-        }
-
-        debug!("shut down network");
-    }
-}
-
 /// Sets up logging for testing.
 ///
 /// Returns a guard that when dropped out of scope, clears the logger again.
@@ -240,7 +132,7 @@ fn init_logging() {
 }
 
 /// Checks whether or not a given network is completely connected.
-fn network_is_complete(nodes: &HashMap<NodeId, reactor::Runner<TestReactor>>) -> bool {
+fn network_is_complete(nodes: &HashMap<NodeId, Runner<TestReactor>>) -> bool {
     // We need at least one node.
     if nodes.is_empty() {
         return false;
@@ -283,6 +175,23 @@ where
     }
 }
 
+fn gen_config(bind_port: u16) -> small_network::Config {
+    // Bind everything to localhost.
+    let bind_interface = "127.0.0.1".parse().unwrap();
+
+    small_network::Config {
+        bind_interface,
+        bind_port,
+        root_addr: (bind_interface, TEST_ROOT_NODE_PORT).into(),
+        // Fast retry, moderate amount of times. This is 10 seconds max (100 x 100 ms)
+        max_outgoing_retries: Some(100),
+        outgoing_retry_delay_millis: 100,
+        // Auto-generate cert and key.
+        cert: None,
+        private_key: None,
+    }
+}
+
 /// Run a two-node network five times.
 ///
 /// Ensures that network cleanup and basic networking works.
@@ -296,8 +205,12 @@ async fn run_two_node_network_five_times() {
         let mut net = Network::new();
 
         let start = std::time::Instant::now();
-        net.add_node().await.unwrap();
-        net.add_node().await.unwrap();
+        net.add_node_with_config(gen_config(TEST_ROOT_NODE_PORT))
+            .await
+            .unwrap();
+        net.add_node_with_config(gen_config(TEST_ROOT_NODE_PORT + 1))
+            .await
+            .unwrap();
         let end = std::time::Instant::now();
 
         debug!(
@@ -320,7 +233,7 @@ async fn run_two_node_network_five_times() {
             "network did not stay connected"
         );
 
-        net.shutdown().await;
+        net.finalize().await;
     }
 }
 
@@ -354,7 +267,7 @@ async fn bind_to_real_network_interface() {
         private_key: None,
     };
 
-    let mut net = Network::new();
+    let mut net = Network::<TestReactor>::new();
     net.add_node_with_config(local_net_config).await.unwrap();
 
     net.settle(Duration::from_millis(250)).await;

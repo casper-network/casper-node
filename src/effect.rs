@@ -36,8 +36,8 @@
 //! the effects explicitly listed in this module through traits to create them. Post-processing on
 //! effects to turn them into events should also be kept brief.
 
-pub(crate) mod announcements;
-pub(crate) mod requests;
+pub mod announcements;
+pub mod requests;
 
 use std::{
     any::type_name,
@@ -56,7 +56,7 @@ use crate::{
         consensus::BlockContext,
         storage::{self, StorageType, Value},
     },
-    effect::requests::DeployBroadcasterRequest,
+    effect::requests::DeployGossiperRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{Deploy, ExecutedBlock, ProtoBlock},
 };
@@ -231,7 +231,7 @@ impl<REv> Copy for EffectBuilder<REv> {}
 
 impl<REv> EffectBuilder<REv> {
     /// Creates a new effect builder.
-    pub(crate) fn new(event_queue_handle: EventQueueHandle<REv>) -> Self {
+    pub fn new(event_queue_handle: EventQueueHandle<REv>) -> Self {
         EffectBuilder(event_queue_handle)
     }
 
@@ -268,6 +268,13 @@ impl<REv> EffectBuilder<REv> {
         })
     }
 
+    /// Run and end effect immediately.
+    ///
+    /// Can be used to trigger events from effects when combined with `.event`. Do not use this do
+    /// "do nothing", as it will still cause a task to be spawned.
+    #[inline(always)]
+    pub async fn immediately(self) {}
+
     /// Sets a timeout.
     pub(crate) async fn set_timeout(self, timeout: Duration) -> Duration {
         let then = Instant::now();
@@ -297,7 +304,7 @@ impl<REv> EffectBuilder<REv> {
     /// Broadcasts a network message.
     ///
     /// Broadcasts a network message to all peers connected at the time the message is sent.
-    pub(crate) async fn broadcast_message<I, P>(self, payload: P)
+    pub async fn broadcast_message<I, P>(self, payload: P)
     where
         REv: From<NetworkRequest<I, P>>,
     {
@@ -312,11 +319,17 @@ impl<REv> EffectBuilder<REv> {
     ///
     /// A low-level "gossip" function, selects `count` randomly chosen nodes on the network,
     /// excluding the indicated ones, and sends each a copy of the message.
-    // TODO: Remove lint-relaxation once function is used.
-    #[allow(dead_code)]
-    pub(crate) async fn gossip_message<I, P>(self, payload: P, count: usize, exclude: HashSet<I>)
+    ///
+    /// Returns the IDs of the chosen nodes.
+    pub async fn gossip_message<I, P>(
+        self,
+        payload: P,
+        count: usize,
+        exclude: HashSet<I>,
+    ) -> HashSet<I>
     where
         REv: From<NetworkRequest<I, P>>,
+        I: Send + 'static,
     {
         self.make_request(
             |responder| NetworkRequest::Gossip {
@@ -343,10 +356,10 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
-    /// Puts the given block into the linear block store.  Returns true on success.
+    /// Puts the given block into the linear block store.
     // TODO: remove once method is used.
     #[allow(dead_code)]
-    pub(crate) async fn put_block<S>(self, block: S::Block) -> storage::Result<()>
+    pub(crate) async fn put_block_to_storage<S>(self, block: S::Block) -> storage::Result<()>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
@@ -364,7 +377,7 @@ impl<REv> EffectBuilder<REv> {
     /// Gets the requested block from the linear block store.
     // TODO: remove once method is used.
     #[allow(dead_code)]
-    pub(crate) async fn get_block<S>(
+    pub(crate) async fn get_block_from_storage<S>(
         self,
         block_hash: <S::Block as Value>::Id,
     ) -> storage::Result<S::Block>
@@ -385,7 +398,7 @@ impl<REv> EffectBuilder<REv> {
     /// Gets the requested block header from the linear block store.
     // TODO: remove once method is used.
     #[allow(dead_code)]
-    pub(crate) async fn get_block_header<S>(
+    pub(crate) async fn get_block_header_from_storage<S>(
         self,
         block_hash: <S::Block as Value>::Id,
     ) -> storage::Result<<S::Block as Value>::Header>
@@ -403,8 +416,8 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Puts the given deploy into the deploy store.  Returns true on success.
-    pub(crate) async fn put_deploy<S>(self, deploy: S::Deploy) -> storage::Result<()>
+    /// Puts the given deploy into the deploy store.
+    pub(crate) async fn put_deploy_to_storage<S>(self, deploy: S::Deploy) -> storage::Result<()>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
@@ -420,7 +433,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested deploy from the deploy store.
-    pub(crate) async fn get_deploy<S>(
+    pub(crate) async fn get_deploy_from_storage<S>(
         self,
         deploy_hash: <S::Deploy as Value>::Id,
     ) -> storage::Result<S::Deploy>
@@ -441,7 +454,7 @@ impl<REv> EffectBuilder<REv> {
     /// Gets the requested deploy header from the deploy store.
     // TODO: remove once method is used.
     #[allow(dead_code)]
-    pub(crate) async fn get_deploy_header<S>(
+    pub(crate) async fn get_deploy_header_from_storage<S>(
         self,
         deploy_hash: <S::Deploy as Value>::Id,
     ) -> storage::Result<<S::Deploy as Value>::Header>
@@ -472,14 +485,14 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Passes the given deploy to the `DeployBroadcaster` component to be broadcast.
-    pub(crate) async fn broadcast_deploy(self, deploy: Box<Deploy>)
+    /// Passes the given deploy to the `DeployGossiper` component to be gossiped.
+    pub(crate) async fn gossip_deploy(self, deploy: Box<Deploy>)
     where
-        REv: From<DeployBroadcasterRequest>,
+        REv: From<DeployGossiperRequest>,
     {
         self.0
             .schedule(
-                DeployBroadcasterRequest::PutFromClient { deploy },
+                DeployGossiperRequest::PutFromClient { deploy },
                 QueueKind::Regular,
             )
             .await;
@@ -490,8 +503,9 @@ impl<REv> EffectBuilder<REv> {
     // deploys, e.g. the ancestors' deploys.
     pub(crate) async fn request_proto_block(
         self,
-        block_context: BlockContext, // TODO: This `BlockContext` will probably be a different type
-                                     // than the context in the return value in the future
+        block_context: BlockContext, /* TODO: This `BlockContext` will probably be a different
+                                      * type
+                                      * than the context in the return value in the future */
     ) -> (ProtoBlock, BlockContext) {
         // TODO: actually return the relevant deploys and an actual random bit
         (
