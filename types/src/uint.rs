@@ -9,7 +9,8 @@ use crate::bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
     clippy::assign_op_pattern,
     clippy::ptr_offset_with_cast,
     clippy::range_plus_one,
-    clippy::transmute_ptr_to_ptr
+    clippy::transmute_ptr_to_ptr,
+    clippy::clippy::reversed_empty_ranges
 )]
 mod macro_code {
     use uint::construct_uint;

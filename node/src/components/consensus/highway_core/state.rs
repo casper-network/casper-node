@@ -305,6 +305,7 @@ impl<C: Context> State<C> {
 
     /// Returns the panorama seeing all votes seen by `pan` with a timestamp no later than
     /// `instant`. Accusations are preserved regardless of the evidence's timestamp.
+    #[allow(clippy::unnested_or_patterns)]
     pub(crate) fn panorama_cutoff(&self, pan: &Panorama<C>, instant: u64) -> Panorama<C> {
         let obs_cutoff = |obs: &Observation<C>| match obs {
             Observation::Correct(vhash) => self

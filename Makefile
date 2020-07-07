@@ -3,7 +3,7 @@ CARGO  = $(or $(shell which cargo),  $(HOME)/.cargo/bin/cargo)
 RUSTUP = $(or $(shell which rustup), $(HOME)/.cargo/bin/rustup)
 NPM    = $(or $(shell which npm),    /usr/bin/npm)
 
-RUST_TOOLCHAIN := nightly
+RUST_TOOLCHAIN := $(shell cat rust-toolchain)
 
 CARGO := $(CARGO) $(CARGO_OPTS)
 
@@ -250,7 +250,7 @@ setup-audit:
 	$(CARGO) install cargo-audit
 
 .PHONY: setup-rs
-setup-rs:
+setup-rs: rust-toolchain
 	$(RUSTUP) update --no-self-update
 	$(RUSTUP) toolchain install --no-self-update $(RUST_TOOLCHAIN)
 	$(RUSTUP) target add --toolchain $(RUST_TOOLCHAIN) wasm32-unknown-unknown

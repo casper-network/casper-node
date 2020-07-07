@@ -22,6 +22,7 @@ impl From<ExecutionResult> for DeployResult {
     }
 }
 
+#[allow(clippy::unnested_or_patterns)]
 impl From<(EngineStateError, ExecutionEffect, Gas)> for DeployResult {
     fn from((engine_state_error, effect, cost): (EngineStateError, ExecutionEffect, Gas)) -> Self {
         match engine_state_error {
