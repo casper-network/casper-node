@@ -156,15 +156,20 @@ impl reactor::Reactor for Reactor {
         span.record("id", &tracing::field::display(net.node_id()));
 
         let (pinger, pinger_effects) = Pinger::new(effect_builder);
-        let storage = Storage::new(cfg.storage)?;
+        let storage = Storage::new(&cfg.storage)?;
         let (api_server, api_server_effects) = ApiServer::new(cfg.http_server, effect_builder);
         let consensus = EraSupervisor::new();
         let deploy_gossiper = DeployGossiper::new(cfg.gossip);
-        let (contract_runtime, _contract_runtime_effects) = ContractRuntime::new(effect_builder);
+        let (contract_runtime, contract_runtime_effects) =
+            ContractRuntime::new(&cfg.storage, cfg.contract_runtime, effect_builder);
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
         effects.extend(reactor::wrap_effects(Event::Pinger, pinger_effects));
         effects.extend(reactor::wrap_effects(Event::ApiServer, api_server_effects));
+        effects.extend(reactor::wrap_effects(
+            Event::ContractRuntime,
+            contract_runtime_effects,
+        ));
 
         let rng = ChaCha20Rng::from_entropy();
 

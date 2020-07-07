@@ -80,7 +80,7 @@ pub trait StorageType {
 
     fn block_store(&self) -> Arc<dyn Store<Value = Self::Block>>;
     fn deploy_store(&self) -> Arc<dyn Store<Value = Self::Deploy>>;
-    fn new(config: Config) -> Result<Self>
+    fn new(config: &Config) -> Result<Self>
     where
         Self: Sized;
 }
@@ -202,7 +202,7 @@ impl<B: Value + 'static, D: Value + 'static> StorageType for InMemStorage<B, D> 
         Arc::clone(&self.block_store) as Arc<dyn Store<Value = B>>
     }
 
-    fn new(_config: Config) -> Result<Self> {
+    fn new(_config: &Config) -> Result<Self> {
         Ok(InMemStorage {
             block_store: Arc::new(InMemStore::new()),
             deploy_store: Arc::new(InMemStore::new()),
@@ -226,7 +226,7 @@ impl<B: Value + 'static, D: Value + 'static> StorageType for LmdbStorage<B, D> {
     type Block = B;
     type Deploy = D;
 
-    fn new(config: Config) -> Result<Self> {
+    fn new(config: &Config) -> Result<Self> {
         fs::create_dir_all(&config.path).map_err(|error| Error::CreateDir {
             dir: config.path.display().to_string(),
             source: error,

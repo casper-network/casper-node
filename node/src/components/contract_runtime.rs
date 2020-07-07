@@ -1,4 +1,6 @@
 //! Contract Runtime component.
+mod config;
+
 use std::{
     fmt::{Debug, Display},
     path::PathBuf,
@@ -10,7 +12,6 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::contract_core::engine_state::{EngineConfig, EngineState};
-use crate::contract_shared::page_size;
 use crate::contract_storage::protocol_data_store::lmdb::LmdbProtocolDataStore;
 use crate::contract_storage::{
     global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
@@ -19,6 +20,8 @@ use crate::contract_storage::{
 
 use crate::components::Component;
 use crate::effect::{Effect, EffectBuilder, Multiple};
+use crate::StorageConfig;
+pub use config::Config;
 
 /// The contract runtime components.
 pub(crate) struct ContractRuntime {
@@ -105,15 +108,17 @@ fn get_engine_state(
 impl ContractRuntime {
     /// Create and initialize a new pinger.
     pub(crate) fn new<REv: From<Event> + Send>(
+        storage_config: &StorageConfig,
+        contract_runtime_config: Config,
         _effect_builder: EffectBuilder<REv>,
     ) -> (Self, Multiple<Effect<Event>>) {
         let engine_config = EngineConfig::new()
-            .with_use_system_contracts(false)
-            .with_enable_bonding(false);
+            .with_use_system_contracts(contract_runtime_config.use_system_contracts)
+            .with_enable_bonding(contract_runtime_config.enable_bonding);
 
         let engine_state = get_engine_state(
-            PathBuf::from("/tmp"),
-            page_size::get_page_size().expect("should get page size"),
+            storage_config.path.clone(),
+            contract_runtime_config.map_size,
             engine_config,
         );
 

@@ -178,7 +178,7 @@ impl LmdbWasmTestBuilder {
         engine_config: EngineConfig,
     ) -> Self {
         Self::initialize_logging();
-        let page_size = page_size::get_page_size().expect("should get page size");
+        let page_size = *page_size::PAGE_SIZE;
         let global_state_dir = Self::create_and_get_global_state_dir(data_dir);
         let environment = Arc::new(
             LmdbEnvironment::new(&global_state_dir, page_size * DEFAULT_LMDB_PAGES)
@@ -241,7 +241,7 @@ impl LmdbWasmTestBuilder {
         post_state_hash: Vec<u8>,
     ) -> Self {
         Self::initialize_logging();
-        let page_size = page_size::get_page_size().expect("should get page size");
+        let page_size = *page_size::PAGE_SIZE;
         let global_state_dir = Self::create_and_get_global_state_dir(data_dir);
         let environment = Arc::new(
             LmdbEnvironment::new(&global_state_dir, page_size * DEFAULT_LMDB_PAGES)

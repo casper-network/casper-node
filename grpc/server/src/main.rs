@@ -282,7 +282,7 @@ fn get_data_dir(arg_matches: &ArgMatches) -> PathBuf {
 
 ///  Parses pages argument and returns map size
 fn get_map_size(arg_matches: &ArgMatches) -> usize {
-    let page_size = page_size::get_page_size().unwrap();
+    let page_size = *page_size::PAGE_SIZE;
     let pages = arg_matches
         .value_of(ARG_PAGES)
         .map_or(Ok(DEFAULT_PAGES), usize::from_str)

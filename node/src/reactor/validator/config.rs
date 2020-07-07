@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ApiServerConfig, GossipTableConfig, SmallNetworkConfig, StorageConfig,
+    ApiServerConfig, ContractRuntimeConfig, GossipTableConfig, SmallNetworkConfig, StorageConfig,
     ROOT_VALIDATOR_LISTENING_PORT,
 };
 
@@ -16,6 +16,8 @@ pub struct Config {
     pub storage: StorageConfig,
     /// Gossip protocol configuration.
     pub gossip: GossipTableConfig,
+    /// Contract runtime configuration.
+    pub contract_runtime: ContractRuntimeConfig,
 }
 
 impl Default for Config {
@@ -25,6 +27,7 @@ impl Default for Config {
             http_server: ApiServerConfig::default(),
             storage: StorageConfig::default(),
             gossip: GossipTableConfig::default(),
+            contract_runtime: ContractRuntimeConfig::default(),
         }
     }
 }

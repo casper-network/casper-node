@@ -22,7 +22,7 @@ lazy_static! {
     // page size on x86_64 linux = 4096 bytes
     // 52428800 / 4096 = 12800
     static ref TEST_MAP_SIZE: usize = {
-        let page_size = crate::contract_shared::page_size::get_page_size().unwrap();
+        let page_size = *crate::contract_shared::page_size::PAGE_SIZE;
         page_size * 12800
     };
 }
