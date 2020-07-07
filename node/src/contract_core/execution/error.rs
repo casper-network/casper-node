@@ -1,5 +1,5 @@
-use thiserror::Error;
 use parity_wasm::elements;
+use thiserror::Error;
 
 use crate::contract_shared::{wasm_prep, TypeMismatch};
 use types::{

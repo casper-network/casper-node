@@ -4,12 +4,9 @@ mod settings;
 mod structured_message;
 mod terminal_logger;
 
-use std::{
-    collections::BTreeMap,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::{collections::BTreeMap, time::Duration};
 
-use log::{self, Level, LevelFilter, Log, Metadata, Record, SetLoggerError};
+use log::{self, Level, LevelFilter, Log, SetLoggerError};
 
 pub use self::terminal_logger::TerminalLogger;
 use crate::contract_shared::newtypes::CorrelationId;
@@ -60,29 +57,11 @@ pub fn initialize_with_logger(
 /// * `properties` - a collection of machine readable key / value properties which will be logged
 #[inline]
 pub fn log_details(
-    log_level: Level,
-    message_format: String,
-    mut properties: BTreeMap<&str, String>,
+    _log_level: Level,
+    _message_format: String,
+    _properties: BTreeMap<&str, String>,
 ) {
-    let logger = log::logger();
-
-    let metadata = Metadata::builder()
-        .target(CASPERLABS_METADATA_TARGET)
-        .level(log_level)
-        .build();
-
-    if !logger.enabled(&metadata) {
-        return;
-    }
-
-    properties.insert(MESSAGE_TEMPLATE_KEY, message_format);
-
-    let record = Record::builder()
-        .metadata(metadata)
-        .key_values(&properties)
-        .build();
-
-    logger.log(&record);
+    // TODO: Metrics story https://casperlabs.atlassian.net/browse/NDRS-120
 }
 
 /// Logs the duration of a specific operation.
@@ -117,72 +96,16 @@ pub fn log_duration(correlation_id: CorrelationId, metric: &str, tag: &str, dura
 /// * `metric_value` - numeric value of metric
 #[inline]
 pub fn log_metric(
-    correlation_id: CorrelationId,
-    metric: &str,
-    tag: &str,
-    metric_key: &str,
-    metric_value: f64,
+    _correlation_id: CorrelationId,
+    _metric: &str,
+    _tag: &str,
+    _metric_key: &str,
+    _metric_value: f64,
 ) {
-    let logger = log::logger();
-
-    let metadata = Metadata::builder()
-        .target(METRIC_METADATA_TARGET)
-        .level(Level::Info)
-        .build();
-
-    if !logger.enabled(&metadata) {
-        return;
-    }
-
-    let from_epoch = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("UNIX EPOCH ERROR");
-
-    let milliseconds_since_epoch = from_epoch.as_millis() as i64;
-
-    // https://prometheus.io/docs/instrumenting/exposition_formats/
-    let tsd_metric = format!(
-        "{}{{tag=\"{}\"}} {} {:?}",
-        metric, tag, metric_value, milliseconds_since_epoch
-    );
-
-    let mut properties = BTreeMap::new();
-    properties.insert("correlation_id", correlation_id.to_string());
-    properties.insert("time-series-data", tsd_metric);
-    properties.insert(metric_key, format!("{:?}", metric_value));
-    properties.insert(
-        DEFAULT_MESSAGE_KEY,
-        format!("{} {} {}", metric, tag, metric_value),
-    );
-
-    let record = Record::builder()
-        .metadata(metadata)
-        .key_values(&properties)
-        .build();
-
-    logger.log(&record);
+    // TODO: Metrics story https://casperlabs.atlassian.net/browse/NDRS-120
 }
 
 /// Logs the metrics associated with the specified host function.
-pub fn log_host_function_metrics(host_function: &str, mut properties: BTreeMap<&str, String>) {
-    let logger = log::logger();
-
-    let metadata = Metadata::builder()
-        .target(METRIC_METADATA_TARGET)
-        .level(Level::Info)
-        .build();
-
-    if !logger.enabled(&metadata) {
-        return;
-    }
-
-    let default_message = format!("{} {:?}", host_function, properties);
-    properties.insert(DEFAULT_MESSAGE_KEY, default_message);
-
-    let record = Record::builder()
-        .metadata(metadata)
-        .key_values(&properties)
-        .build();
-
-    logger.log(&record);
+pub fn log_host_function_metrics(_host_function: &str, _properties: BTreeMap<&str, String>) {
+    // TODO: Metrics story https://casperlabs.atlassian.net/browse/NDRS-120
 }

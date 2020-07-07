@@ -1,7 +1,7 @@
 use std::sync;
 
-use thiserror::Error;
 use lmdb as lmdb_external;
+use thiserror::Error;
 
 use types::bytesrepr;
 
