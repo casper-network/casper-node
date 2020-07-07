@@ -4,7 +4,7 @@ use std::fmt::Debug;
 
 use anyhow::Error;
 
-use crate::components::{consensus::traits::ConsensusValueT, small_network::NodeId};
+use crate::components::consensus::traits::ConsensusValueT;
 
 mod protocol_state;
 pub(crate) mod synchronizer;
@@ -35,9 +35,9 @@ impl BlockContext {
 }
 
 #[derive(Debug)]
-pub(crate) enum ConsensusProtocolResult<C: ConsensusValueT> {
+pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT> {
     CreatedGossipMessage(Vec<u8>),
-    CreatedTargetedMessage(Vec<u8>, NodeId),
+    CreatedTargetedMessage(Vec<u8>, I),
     InvalidIncomingMessage(Vec<u8>, Error),
     ScheduleTimer(Timestamp),
     /// Request deploys for a new block, whose timestamp will be the given `u64`.
@@ -50,30 +50,30 @@ pub(crate) enum ConsensusProtocolResult<C: ConsensusValueT> {
     /// The domain logic should verify any intrinsic validity conditions of consensus values, e.g.
     /// that it has the expected structure, or that deploys that are mentioned by hash actually
     /// exist, and then call `ConsensusProtocol::resolve_validity`.
-    ValidateConsensusValue(NodeId, C),
+    ValidateConsensusValue(I, C),
 }
 
 /// An API for a single instance of the consensus.
-pub(crate) trait ConsensusProtocol<C: ConsensusValueT> {
+pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT> {
     /// Handles an incoming message (like NewVote, RequestDependency).
     fn handle_message(
         &mut self,
-        sender: NodeId,
+        sender: I,
         msg: Vec<u8>,
-    ) -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
+    ) -> Result<Vec<ConsensusProtocolResult<I, C>>, Error>;
 
     /// Triggers consensus' timer.
     fn handle_timer(
         &mut self,
         timerstamp: Timestamp,
-    ) -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
+    ) -> Result<Vec<ConsensusProtocolResult<I, C>>, Error>;
 
     /// Proposes a new value for consensus.
     fn propose(
         &self,
         value: C,
         block_context: BlockContext,
-    ) -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
+    ) -> Result<Vec<ConsensusProtocolResult<I, C>>, Error>;
 
     /// Marks the `value` as valid or invalid, based on validation requested via
     /// `ConsensusProtocolResult::ValidateConsensusvalue`.
@@ -81,7 +81,7 @@ pub(crate) trait ConsensusProtocol<C: ConsensusValueT> {
         &mut self,
         value: &C,
         valid: bool,
-    ) -> Result<Vec<ConsensusProtocolResult<C>>, Error>;
+    ) -> Result<Vec<ConsensusProtocolResult<I, C>>, Error>;
 }
 
 #[cfg(test)]
@@ -91,7 +91,7 @@ mod example {
     use super::{
         protocol_state::{ProtocolState, VertexTrait},
         synchronizer::DagSynchronizerState,
-        BlockContext, ConsensusProtocol, ConsensusProtocolResult, NodeId, Timestamp,
+        BlockContext, ConsensusProtocol, ConsensusProtocolResult, Timestamp,
     };
 
     #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
@@ -122,19 +122,19 @@ mod example {
     #[derive(Debug)]
     struct Error;
 
-    impl<P: ProtocolState> ConsensusProtocol<ProtoBlock> for DagSynchronizerState<P> {
+    impl<I, P: ProtocolState> ConsensusProtocol<I, ProtoBlock> for DagSynchronizerState<I, P> {
         fn handle_message(
             &mut self,
-            _sender: NodeId,
+            _sender: I,
             _msg: Vec<u8>,
-        ) -> Result<Vec<ConsensusProtocolResult<ProtoBlock>>, anyhow::Error> {
+        ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock>>, anyhow::Error> {
             unimplemented!()
         }
 
         fn handle_timer(
             &mut self,
             _timestamp: Timestamp,
-        ) -> Result<Vec<ConsensusProtocolResult<ProtoBlock>>, anyhow::Error> {
+        ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock>>, anyhow::Error> {
             unimplemented!()
         }
 
@@ -142,7 +142,7 @@ mod example {
             &mut self,
             _value: &ProtoBlock,
             _valid: bool,
-        ) -> Result<Vec<ConsensusProtocolResult<ProtoBlock>>, anyhow::Error> {
+        ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock>>, anyhow::Error> {
             unimplemented!()
         }
 
@@ -150,7 +150,7 @@ mod example {
             &self,
             _value: ProtoBlock,
             _block_context: BlockContext,
-        ) -> Result<Vec<ConsensusProtocolResult<ProtoBlock>>, anyhow::Error> {
+        ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock>>, anyhow::Error> {
             unimplemented!()
         }
     }

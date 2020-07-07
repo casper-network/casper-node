@@ -77,7 +77,7 @@ pub enum Event {
     ApiServer(api_server::Event),
     #[from]
     /// Consensus event.
-    Consensus(consensus::Event),
+    Consensus(consensus::Event<NodeId>),
     /// Deploy gossiper event.
     #[from]
     DeployGossiper(deploy_gossiper::Event),
@@ -135,7 +135,7 @@ pub struct Reactor {
     pinger: Pinger,
     storage: Storage,
     api_server: ApiServer,
-    consensus: EraSupervisor,
+    consensus: EraSupervisor<NodeId>,
     deploy_gossiper: DeployGossiper,
     rng: ChaCha20Rng,
     contract_runtime: ContractRuntime,
