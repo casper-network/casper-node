@@ -134,7 +134,7 @@ test-rs:
 
 .PHONY: test-as
 test-as: setup-as
-	cd contract_as && npm run asbuild && npm run test
+	cd smart_contracts/contract_as && npm run asbuild && npm run test
 
 .PHONY: test
 test: test-rs test-as
@@ -264,8 +264,8 @@ setup-nightly-rs: RUST_TOOLCHAIN := nightly
 setup-nightly-rs: setup-rs
 
 .PHONY: setup-as
-setup-as: contract_as/package.json
-	cd contract_as && $(NPM) ci
+setup-as: smart_contracts/contract_as/package.json
+	cd smart_contracts/contract_as && $(NPM) ci
 
 .PHONY: setup
 setup: setup-rs setup-as

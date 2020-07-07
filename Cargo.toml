@@ -27,7 +27,9 @@ default-members = [
 debug = true
 
 [profile.release]
-lto = true
+# TODO: nightly compiler has issues with linking libraries with LTO enabled.
+# Change this back to true once stable is supported by default.
+lto = false
 
 [profile.bench]
 lto = true
