@@ -28,6 +28,10 @@ pub(crate) enum EvidenceError {
 }
 
 /// A vertex that has passed initial validation.
+///
+/// The vertex could not be determined to be invalid based on its contents alone. The remaining
+/// checks will be applied once all of its dependencies have been added to `Highway`. (See
+/// `ValidVertex`.)
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct PreValidatedVertex<C: Context>(Vertex<C>);
 
@@ -180,6 +184,8 @@ impl<C: Context> Highway<C> {
             .map_or_else(Vec::new, |av| av.on_new_vote(vhash, instant, &self.state))
     }
 
+    /// Performs initial validation and returns an error if `vertex` is invalid. (See
+    /// `PreValidatedVertex` and `validate_vertex`.)
     fn do_pre_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
             Vertex::Vote(vote) => {
@@ -198,6 +204,8 @@ impl<C: Context> Highway<C> {
         }
     }
 
+    /// Validates `vertex` and returns an error if it is invalid.
+    /// This requires all dependencies to be present.
     fn do_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
             Vertex::Vote(vote) => Ok(self.state.validate_vote(vote)?),
@@ -205,6 +213,10 @@ impl<C: Context> Highway<C> {
         }
     }
 
+    /// Adds a valid vote to the protocol state.
+    ///
+    /// Validity must be checked before calling this! Adding an invalid vote will result in a panic
+    /// or an inconsistent state.
     fn add_valid_vote(&mut self, swvote: SignedWireVote<C>) -> Vec<Effect<C>> {
         let vote_instant = swvote.wire_vote.instant;
         let vote_hash = swvote.hash();
