@@ -1,9 +1,0 @@
-{
-  "scripts": {
-    "asbuild:optimized": "asc --lib ../../.. assembly/index.ts -b ../../../../target-as/purse_holder_stored.wasm   --optimize --use abort=",
-    "asbuild": "npm run asbuild:optimized"
-  },
-  "devDependencies": {
-    "assemblyscript": "^0.8.1"
-  }
-}

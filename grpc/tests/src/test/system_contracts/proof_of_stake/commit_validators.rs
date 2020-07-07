@@ -5,8 +5,8 @@ use engine_test_support::{
     internal::{utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS},
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::contract_core::engine_state::genesis::GenesisAccount;
-use node::contract_shared::motes::Motes;
+use node::components::contract_runtime::core::engine_state::genesis::GenesisAccount;
+use node::components::contract_runtime::shared::motes::Motes;
 use types::{account::AccountHash, RuntimeArgs, U512};
 
 const CONTRACT_LOCAL_STATE: &str = "do_nothing.wasm";

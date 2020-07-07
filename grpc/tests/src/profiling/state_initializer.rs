@@ -15,7 +15,7 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::contract_core::engine_state::{
+use node::components::contract_runtime::core::engine_state::{
     engine_config::EngineConfig, genesis::ExecConfig, run_genesis_request::RunGenesisRequest,
 };
 

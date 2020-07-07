@@ -1,4 +1,4 @@
-target-as
+target_as
 
 # Criterion puts results in wrong directories inside workspace: https://github.com/bheisler/criterion.rs/issues/192
 target

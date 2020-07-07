@@ -4,8 +4,8 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::contract_core::engine_state::EngineConfig;
-use node::contract_shared::{stored_value::StoredValue, transform::Transform};
+use node::components::contract_runtime::core::engine_state::EngineConfig;
+use node::components::contract_runtime::shared::{stored_value::StoredValue, transform::Transform};
 use types::{
     contracts::CONTRACT_INITIAL_VERSION, ContractHash, ContractPackageHash, ContractVersionKey,
     ProtocolVersion, RuntimeArgs,

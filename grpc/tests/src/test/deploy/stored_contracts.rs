@@ -8,11 +8,11 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
-use node::contract_core::engine_state::{upgrade::ActivationPoint, CONV_RATE};
-use node::contract_shared::{
+use node::components::contract_runtime::core::engine_state::{upgrade::ActivationPoint, CONV_RATE};
+use node::components::contract_runtime::shared::{
     account::Account, motes::Motes, stored_value::StoredValue, transform::Transform,
 };
-use node::contract_storage::global_state::in_memory::InMemoryGlobalState;
+use node::components::contract_runtime::storage::global_state::in_memory::InMemoryGlobalState;
 use types::{
     account::AccountHash,
     contracts::{ContractVersion, CONTRACT_INITIAL_VERSION, DEFAULT_ENTRY_POINT_NAME},

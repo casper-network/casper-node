@@ -1,4 +1,6 @@
-use node::contract_core::engine_state::{execution_effect::ExecutionEffect, op::Op};
+use node::components::contract_runtime::core::engine_state::{
+    execution_effect::ExecutionEffect, op::Op,
+};
 use types::Key;
 
 use crate::engine_server::{

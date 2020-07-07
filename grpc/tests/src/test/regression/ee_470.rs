@@ -2,7 +2,7 @@ use engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::contract_storage::global_state::in_memory::InMemoryGlobalState;
+use node::components::contract_runtime::storage::global_state::in_memory::InMemoryGlobalState;
 use types::RuntimeArgs;
 
 const CONTRACT_DO_NOTHING: &str = "do_nothing.wasm";

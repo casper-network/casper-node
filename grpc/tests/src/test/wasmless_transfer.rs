@@ -7,7 +7,9 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::contract_core::{engine_state::Error as CoreError, execution::Error as ExecError};
+use node::components::contract_runtime::core::{
+    engine_state::Error as CoreError, execution::Error as ExecError,
+};
 use types::{
     account::AccountHash, runtime_args, AccessRights, ApiError, Key, RuntimeArgs, URef, U512,
 };

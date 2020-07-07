@@ -1,6 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
-use node::contract_core::engine_state::genesis::{ExecConfig, GenesisAccount};
+use node::components::contract_runtime::core::engine_state::genesis::{ExecConfig, GenesisAccount};
 
 use crate::engine_server::{ipc, mappings::MappingError};
 

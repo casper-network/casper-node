@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::contract_shared::page_size;
+use crate::components::contract_runtime::shared::page_size;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use tempfile::TempDir;

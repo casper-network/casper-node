@@ -1,4 +1,4 @@
-use crate::contract_shared::page_size;
+use crate::components::contract_runtime::shared::page_size;
 use serde::{Deserialize, Serialize};
 
 // 750 GiB = 805306368000 bytes

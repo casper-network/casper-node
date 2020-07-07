@@ -1,7 +1,7 @@
 use engine_test_support::internal::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST,
 };
-use node::contract_core::engine_state::Error;
+use node::components::contract_runtime::core::engine_state::Error;
 use types::{account::AccountHash, RuntimeArgs};
 
 const CONTRACT_EE_532_REGRESSION: &str = "ee_532_regression.wasm";

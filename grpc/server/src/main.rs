@@ -14,19 +14,19 @@ use clap::{App, Arg, ArgMatches};
 use dirs::home_dir;
 use lmdb::DatabaseFlags;
 use log::{error, info, Level, LevelFilter};
-use node::contract_core::engine_state::{EngineConfig, EngineState};
+use node::components::contract_runtime::core::engine_state::{EngineConfig, EngineState};
 
-use node::contract_shared::{
+use node::components::contract_runtime::shared::{
     logging::{self, Settings, Style},
     page_size, socket,
 };
-use node::contract_storage::{
+use node::components::contract_runtime::storage::{
     global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
     trie_store::lmdb::LmdbTrieStore,
 };
 
 use casperlabs_engine_grpc_server::engine_server;
-use node::contract_storage::protocol_data_store::lmdb::LmdbProtocolDataStore;
+use node::components::contract_runtime::storage::protocol_data_store::lmdb::LmdbProtocolDataStore;
 
 // exe / proc
 const PROC_NAME: &str = "casperlabs-engine-grpc-server";

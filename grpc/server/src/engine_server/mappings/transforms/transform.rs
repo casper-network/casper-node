@@ -1,6 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
-use node::contract_shared::{
+use node::components::contract_runtime::shared::{
     stored_value::StoredValue,
     transform::{Error as TransformError, Transform},
 };
@@ -108,7 +108,7 @@ impl TryFrom<transforms::Transform> for Transform {
 mod tests {
     use proptest::proptest;
 
-    use node::contract_shared::transform::gens;
+    use node::components::contract_runtime::shared::transform::gens;
 
     use super::*;
     use crate::engine_server::mappings::test_utils;

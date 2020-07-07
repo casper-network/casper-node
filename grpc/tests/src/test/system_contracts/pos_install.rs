@@ -10,7 +10,7 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::contract_core::engine_state::EngineConfig;
+use node::components::contract_runtime::core::engine_state::EngineConfig;
 use types::{
     account::AccountHash, contracts::NamedKeys, runtime_args, ContractHash, ContractPackageHash,
     Key, RuntimeArgs, URef, U512,

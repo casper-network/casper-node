@@ -1,7 +1,9 @@
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 
-use casperlabs_node::contract_shared::{newtypes::Blake2bHash, stored_value::StoredValue};
-use casperlabs_node::contract_storage::trie::{Pointer, PointerBlock, Trie};
+use casperlabs_node::components::contract_runtime::shared::{
+    newtypes::Blake2bHash, stored_value::StoredValue,
+};
+use casperlabs_node::components::contract_runtime::storage::trie::{Pointer, PointerBlock, Trie};
 use types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},

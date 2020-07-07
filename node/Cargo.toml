@@ -42,7 +42,6 @@ parity-wasm = "0.41.0"
 pwasm-utils = "0.12.0"
 rand = "0.7.3"
 rand_chacha = "0.2.2"
-reqwest = "0.10.6"
 rmp-serde = "0.14.3"
 serde = { version = "1.0.110", features = ["derive"] }
 serde_json = "1.0.55"
@@ -90,14 +89,7 @@ gens = ["proptest"]
 
 [[bin]]
 name = "casperlabs-node"
-path = "src/apps/node/main.rs"
-bench = false
-doctest = false
-test = false
-
-[[bin]]
-name = "casperlabs-client"
-path = "src/apps/client/main.rs"
+path = "src/app/main.rs"
 bench = false
 doctest = false
 test = false

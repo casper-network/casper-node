@@ -1,6 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
-use node::contract_shared::transform::Transform;
+use node::components::contract_runtime::shared::transform::Transform;
 use types::Key;
 
 use crate::engine_server::{mappings::ParsingError, transforms::TransformEntry};
@@ -38,7 +38,7 @@ impl TryFrom<TransformEntry> for (Key, Transform) {
 mod tests {
     use proptest::proptest;
 
-    use node::contract_shared::transform;
+    use node::components::contract_runtime::shared::transform;
 
     use super::*;
     use crate::engine_server::mappings::test_utils;

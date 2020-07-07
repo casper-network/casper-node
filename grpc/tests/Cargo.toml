@@ -7,11 +7,11 @@ edition = "2018"
 [dependencies]
 base16 = "0.2.1"
 clap = "2"
-contract = { path = "../../smart-contracts/contract",  package = "casperlabs-contract" }
+contract = { path = "../../smart_contracts/contract",  package = "casperlabs-contract" }
 crossbeam-channel = "0.4.0"
 node = { path = "../../node", package = "casperlabs-node" }
 engine-grpc-server = { path = "../server", package = "casperlabs-engine-grpc-server" }
-engine-test-support = { path = "../test-support", package = "casperlabs-engine-test-support" }
+engine-test-support = { path = "../test_support", package = "casperlabs-engine-test-support" }
 env_logger = "0.7.1"
 grpc = "0.6.1"
 log = "0.4.8"

@@ -4,8 +4,8 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::contract_core::engine_state::EngineConfig;
-use node::contract_shared::{stored_value::StoredValue, transform::Transform};
+use node::components::contract_runtime::core::engine_state::EngineConfig;
+use node::components::contract_runtime::shared::{stored_value::StoredValue, transform::Transform};
 use types::{runtime_args, ContractHash, RuntimeArgs};
 
 const DEPLOY_HASH_1: [u8; 32] = [1u8; 32];

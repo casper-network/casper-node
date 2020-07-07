@@ -25,9 +25,6 @@
 #![allow(clippy::type_complexity)]
 
 pub mod components;
-pub mod contract_core;
-pub mod contract_shared;
-pub mod contract_storage;
 pub mod crypto;
 pub mod effect;
 pub mod logging;

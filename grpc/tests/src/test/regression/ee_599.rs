@@ -7,8 +7,8 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::contract_core::engine_state::CONV_RATE;
-use node::contract_shared::motes::Motes;
+use node::components::contract_runtime::core::engine_state::CONV_RATE;
+use node::components::contract_runtime::shared::motes::Motes;
 use types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const CONTRACT_EE_599_REGRESSION: &str = "ee_599_regression.wasm";

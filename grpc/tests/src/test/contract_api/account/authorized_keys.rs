@@ -5,7 +5,7 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::contract_core::{engine_state, execution};
+use node::components::contract_runtime::core::{engine_state, execution};
 use types::{
     account::{AccountHash, Weight},
     runtime_args, RuntimeArgs,

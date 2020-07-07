@@ -2,7 +2,7 @@ use engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::contract_shared::stored_value::StoredValue;
+use node::components::contract_runtime::shared::stored_value::StoredValue;
 use types::{
     contracts::{ContractVersion, CONTRACT_INITIAL_VERSION},
     runtime_args, CLValue, ContractPackageHash, RuntimeArgs,

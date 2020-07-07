@@ -307,6 +307,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "casperlabs-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "casperlabs-node",
+ "rand 0.7.3",
+ "reqwest",
+ "structopt",
+ "tokio 0.2.21",
+]
+
+[[package]]
 name = "casperlabs-contract"
 version = "0.6.0"
 dependencies = [
@@ -425,7 +437,6 @@ dependencies = [
  "rand_chacha 0.2.2",
  "rand_core 0.5.1",
  "rand_xorshift 0.2.0",
- "reqwest",
  "rmp-serde",
  "serde",
  "serde-big-array",

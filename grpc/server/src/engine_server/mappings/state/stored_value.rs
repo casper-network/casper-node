@@ -1,4 +1,4 @@
-use node::contract_shared::stored_value::StoredValue;
+use node::components::contract_runtime::shared::stored_value::StoredValue;
 
 use crate::engine_server::{
     mappings::ParsingError,
@@ -62,7 +62,7 @@ impl TryFrom<state::StoredValue> for StoredValue {
 mod tests {
     use proptest::proptest;
 
-    use node::contract_shared::stored_value::gens;
+    use node::components::contract_runtime::shared::stored_value::gens;
 
     use super::*;
     use crate::engine_server::mappings::test_utils;

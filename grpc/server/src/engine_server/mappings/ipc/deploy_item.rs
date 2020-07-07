@@ -3,7 +3,7 @@ use std::{
     convert::{TryFrom, TryInto},
 };
 
-use node::contract_core::engine_state::deploy_item::DeployItem;
+use node::components::contract_runtime::core::engine_state::deploy_item::DeployItem;
 use types::account::AccountHash;
 
 use crate::engine_server::{ipc, mappings::MappingError};

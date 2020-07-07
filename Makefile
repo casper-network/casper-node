@@ -11,14 +11,14 @@ EE_DIR     = $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
 # Rust Contracts
 # Directory names should match crate names
-BENCH       = $(shell find ./smart-contracts/contracts/bench       -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-CLIENT      = $(shell find ./smart-contracts/contracts/client      -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-EXPLORER    = $(shell find ./smart-contracts/contracts/explorer    -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-INTEGRATION = $(shell find ./smart-contracts/contracts/integration -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-PROFILING   = $(shell find ./smart-contracts/contracts/profiling   -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-SRE         = $(shell find ./smart-contracts/contracts/SRE         -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-SYSTEM      = $(shell find ./smart-contracts/contracts/system      -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-TEST        = $(shell find ./smart-contracts/contracts/test        -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+BENCH       = $(shell find ./smart_contracts/contracts/bench       -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+CLIENT      = $(shell find ./smart_contracts/contracts/client      -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+EXPLORER    = $(shell find ./smart_contracts/contracts/explorer    -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+INTEGRATION = $(shell find ./smart_contracts/contracts/integration -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+PROFILING   = $(shell find ./smart_contracts/contracts/profiling   -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+SRE         = $(shell find ./smart_contracts/contracts/SRE         -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+SYSTEM      = $(shell find ./smart_contracts/contracts/system      -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+TEST        = $(shell find ./smart_contracts/contracts/test        -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 
 BENCH_CONTRACTS     := $(patsubst %, build-contract-rs/%, $(BENCH))
 CLIENT_CONTRACTS    := $(patsubst %, build-contract-rs/%, $(CLIENT))
@@ -28,8 +28,8 @@ SRE_CONTRACTS       := $(patsubst %, build-contract-rs/%, $(SRE))
 TEST_CONTRACTS      := $(patsubst %, build-contract-rs/%, $(TEST))
 
 # AssemblyScript Contracts
-CLIENT_CONTRACTS_AS  = $(shell find ./smart-contracts/contracts-as/client   -mindepth 1 -maxdepth 1 -type d)
-TEST_CONTRACTS_AS    = $(shell find ./smart-contracts/contracts-as/test     -mindepth 1 -maxdepth 1 -type d)
+CLIENT_CONTRACTS_AS  = $(shell find ./smart_contracts/contracts_as/client   -mindepth 1 -maxdepth 1 -type d)
+TEST_CONTRACTS_AS    = $(shell find ./smart_contracts/contracts_as/test     -mindepth 1 -maxdepth 1 -type d)
 
 CLIENT_CONTRACTS_AS  := $(patsubst %, build-contract-as/%, $(CLIENT_CONTRACTS_AS))
 TEST_CONTRACTS_AS    := $(patsubst %, build-contract-as/%, $(TEST_CONTRACTS_AS))
@@ -51,7 +51,7 @@ SYSTEM_CONTRACTS          := $(patsubst %, build-contract-rs/%,                 
 SYSTEM_CONTRACTS_FEATURED := $(patsubst %, build-system-contract-featured-rs/%, $(SYSTEM))
 
 CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
-CONTRACT_TARGET_DIR_AS    = target-as
+CONTRACT_TARGET_DIR_AS    = target_as
 PACKAGED_SYSTEM_CONTRACTS = mint_install.wasm pos_install.wasm standard_payment_install.wasm
 TOOL_TARGET_DIR           = cargo-casperlabs/target
 TOOL_WASM_DIR             = cargo-casperlabs/wasm
@@ -134,7 +134,7 @@ test-rs:
 
 .PHONY: test-as
 test-as: setup-as
-	cd contract-as && npm run asbuild && npm run test
+	cd contract_as && npm run asbuild && npm run test
 
 .PHONY: test
 test: test-rs test-as
@@ -149,13 +149,13 @@ test-contracts-enable-bonding-rs: build-contracts-enable-bonding-rs
 	$(CARGO) test $(CARGO_FLAGS) --manifest-path "grpc/tests/Cargo.toml" --features "enable-bonding" -- --ignored --nocapture
 	$(CARGO) test $(CARGO_FLAGS) --manifest-path "grpc/tests/Cargo.toml" --features "enable-bonding,use-system-contracts" -- --ignored --nocapture
 
-.PHONY: test-contracts-as
-test-contracts-as: build-contracts-rs build-contracts-as
+.PHONY: test-contracts_as
+test-contracts_as: build-contracts-rs build-contracts-as
 	@# see https://github.com/rust-lang/cargo/issues/5015#issuecomment-515544290
 	$(CARGO) test $(CARGO_FLAGS) --manifest-path "grpc/tests/Cargo.toml" --features "use-as-wasm" -- --ignored --nocapture
 
 .PHONY: test-contracts
-test-contracts: test-contracts-rs test-contracts-as
+test-contracts: test-contracts-rs test-contracts_as
 
 .PHONY: check-format
 check-format:
@@ -264,8 +264,8 @@ setup-nightly-rs: RUST_TOOLCHAIN := nightly
 setup-nightly-rs: setup-rs
 
 .PHONY: setup-as
-setup-as: contract-as/package.json
-	cd contract-as && $(NPM) ci
+setup-as: contract_as/package.json
+	cd contract_as && $(NPM) ci
 
 .PHONY: setup
 setup: setup-rs setup-as

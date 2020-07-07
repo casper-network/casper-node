@@ -6,7 +6,7 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::contract_core::{engine_state::Error, execution};
+use node::components::contract_runtime::core::{engine_state::Error, execution};
 use types::{contracts::CONTRACT_INITIAL_VERSION, runtime_args, Key, RuntimeArgs};
 
 const CONTRACT_HEADERS: &str = "contract_context.wasm";

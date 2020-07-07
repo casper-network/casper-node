@@ -1,6 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
-use node::contract_core::engine_state::run_genesis_request::RunGenesisRequest;
+use node::components::contract_runtime::core::engine_state::run_genesis_request::RunGenesisRequest;
 
 use crate::engine_server::{ipc, mappings::MappingError};
 

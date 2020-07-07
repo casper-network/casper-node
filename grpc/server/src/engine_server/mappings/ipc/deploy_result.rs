@@ -1,11 +1,11 @@
-use node::contract_core::{
+use node::components::contract_runtime::core::{
     engine_state::{
         execution_effect::ExecutionEffect, execution_result::ExecutionResult,
         Error as EngineStateError,
     },
     execution::Error as ExecutionError,
 };
-use node::contract_shared::gas::Gas;
+use node::components::contract_runtime::shared::gas::Gas;
 
 use crate::engine_server::ipc::{DeployError_OutOfGasError, DeployResult};
 
@@ -146,7 +146,9 @@ mod detail {
 mod tests {
     use std::convert::TryInto;
 
-    use node::contract_shared::{additive_map::AdditiveMap, transform::Transform};
+    use node::components::contract_runtime::shared::{
+        additive_map::AdditiveMap, transform::Transform,
+    };
     use types::{bytesrepr::Error as BytesReprError, AccessRights, ApiError, Key, URef, U512};
 
     use super::*;

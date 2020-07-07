@@ -14,7 +14,7 @@ use clap::{crate_version, App, Arg};
 use engine_test_support::internal::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_PAYMENT,
 };
-use node::contract_core::engine_state::EngineConfig;
+use node::components::contract_runtime::core::engine_state::EngineConfig;
 use types::{runtime_args, RuntimeArgs, U512};
 
 use casperlabs_engine_tests::profiling;

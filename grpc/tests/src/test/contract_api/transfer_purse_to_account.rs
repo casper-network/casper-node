@@ -9,7 +9,7 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
-use node::contract_shared::{stored_value::StoredValue, transform::Transform};
+use node::components::contract_runtime::shared::{stored_value::StoredValue, transform::Transform};
 use types::{
     account::AccountHash, runtime_args, ApiError, CLValue, Key, RuntimeArgs, TransferResult,
     TransferredTo, U512,

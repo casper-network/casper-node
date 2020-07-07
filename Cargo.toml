@@ -1,22 +1,24 @@
 [workspace]
 
 members = [
-    "smart-contracts/contract",
-    "smart-contracts/contracts/[!.]*/*",
+    "smart_contracts/contract",
+    "smart_contracts/contracts/[!.]*/*",
     "grpc/server",
-    "grpc/test-support",
+    "grpc/test_support",
     "grpc/tests",
     "types",
     "node",
+    "client",
 ]
 
 default-members = [
-    "smart-contracts/contract",
+    "smart_contracts/contract",
     "grpc/server",
-    "grpc/test-support",
+    "grpc/test_support",
     "grpc/tests",
     "types",
     "node",
+    "client",
 ]
 
 # Include debug symbols in the release build of `casperlabs-engine-tests` so that `simple-transfer` will yield useful

@@ -5,7 +5,7 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::contract_shared::{stored_value::StoredValue, transform::Transform};
+use node::components::contract_runtime::shared::{stored_value::StoredValue, transform::Transform};
 use types::{runtime_args, CLValue, Key, RuntimeArgs};
 
 const ARG_AMOUNT: &str = "amount";

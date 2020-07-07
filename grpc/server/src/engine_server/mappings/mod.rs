@@ -10,7 +10,7 @@ use std::{
     string::ToString,
 };
 
-use node::contract_core::{engine_state, DEPLOY_HASH_LENGTH};
+use node::components::contract_runtime::core::{engine_state, DEPLOY_HASH_LENGTH};
 use types::{account::ACCOUNT_HASH_LENGTH, KEY_HASH_LENGTH};
 
 pub use transforms::TransformMap;

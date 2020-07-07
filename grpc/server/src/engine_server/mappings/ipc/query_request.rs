@@ -1,7 +1,7 @@
 use std::convert::{TryFrom, TryInto};
 
-use node::contract_core::engine_state::query::QueryRequest;
-use node::contract_shared::newtypes::BLAKE2B_DIGEST_LENGTH;
+use node::components::contract_runtime::core::engine_state::query::QueryRequest;
+use node::components::contract_runtime::shared::newtypes::BLAKE2B_DIGEST_LENGTH;
 
 use crate::engine_server::{ipc, mappings::MappingError};
 

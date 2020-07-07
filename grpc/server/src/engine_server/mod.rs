@@ -29,7 +29,7 @@ use std::{
 use grpc::{Error as GrpcError, RequestOptions, ServerBuilder, SingleResponse};
 use log::{info, warn, Level};
 
-use node::contract_core::{
+use node::components::contract_runtime::core::{
     engine_state::{
         execute_request::ExecuteRequest,
         genesis::GenesisResult,
@@ -40,11 +40,11 @@ use node::contract_core::{
     },
     execution,
 };
-use node::contract_shared::{
+use node::components::contract_runtime::shared::{
     logging::{self, log_duration},
     newtypes::{Blake2bHash, CorrelationId},
 };
-use node::contract_storage::global_state::{CommitResult, StateProvider};
+use node::components::contract_runtime::storage::global_state::{CommitResult, StateProvider};
 use types::{bytesrepr::ToBytes, ProtocolVersion};
 
 use self::{

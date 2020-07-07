@@ -6,7 +6,7 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::contract_shared::transform::Transform;
+use node::components::contract_runtime::shared::transform::Transform;
 use types::{account::AccountHash, runtime_args, Key, RuntimeArgs, U512};
 
 const CONTRACT_CREATE_PURSE_01: &str = "create_purse_01.wasm";

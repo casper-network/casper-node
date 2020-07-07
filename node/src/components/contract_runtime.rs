@@ -1,5 +1,8 @@
 //! Contract Runtime component.
 mod config;
+pub mod core;
+pub mod shared;
+pub mod storage;
 
 use std::{
     fmt::{Debug, Display},
@@ -11,9 +14,9 @@ use lmdb::DatabaseFlags;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use crate::contract_core::engine_state::{EngineConfig, EngineState};
-use crate::contract_storage::protocol_data_store::lmdb::LmdbProtocolDataStore;
-use crate::contract_storage::{
+use crate::components::contract_runtime::core::engine_state::{EngineConfig, EngineState};
+use crate::components::contract_runtime::storage::protocol_data_store::lmdb::LmdbProtocolDataStore;
+use crate::components::contract_runtime::storage::{
     global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
     trie_store::lmdb::LmdbTrieStore,
 };

@@ -1,6 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
-use node::contract_core::engine_state::upgrade::UpgradeConfig;
+use node::components::contract_runtime::core::engine_state::upgrade::UpgradeConfig;
 use types::ProtocolVersion;
 
 use crate::engine_server::{ipc::UpgradeRequest, mappings::MappingError};

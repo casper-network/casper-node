@@ -5,10 +5,10 @@ use engine_test_support::internal::{
 };
 #[cfg(feature = "use-system-contracts")]
 use engine_test_support::{internal::ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
-use node::contract_core::engine_state::{upgrade::ActivationPoint, Error};
-use node::contract_shared::wasm_costs::WasmCosts;
+use node::components::contract_runtime::core::engine_state::{upgrade::ActivationPoint, Error};
+use node::components::contract_runtime::shared::wasm_costs::WasmCosts;
 #[cfg(feature = "use-system-contracts")]
-use node::contract_shared::{stored_value::StoredValue, transform::Transform};
+use node::components::contract_runtime::shared::{stored_value::StoredValue, transform::Transform};
 use types::ProtocolVersion;
 #[cfg(feature = "use-system-contracts")]
 use types::{runtime_args, CLValue, Key, RuntimeArgs, U512};

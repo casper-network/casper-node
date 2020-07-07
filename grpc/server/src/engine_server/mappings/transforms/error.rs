@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use node::contract_shared::{transform, TypeMismatch};
+use node::components::contract_runtime::shared::{transform, TypeMismatch};
 
 use crate::engine_server::{
     mappings::ParsingError,

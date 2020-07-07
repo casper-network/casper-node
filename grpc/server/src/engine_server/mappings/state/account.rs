@@ -4,7 +4,9 @@ use std::{
     mem,
 };
 
-use node::contract_shared::account::{Account, ActionThresholds, AssociatedKeys};
+use node::components::contract_runtime::shared::account::{
+    Account, ActionThresholds, AssociatedKeys,
+};
 use types::account::{AccountHash, Weight};
 
 use super::NamedKeyMap;
@@ -140,7 +142,7 @@ fn weight_from(value: u32, value_name: &str) -> Result<Weight, ParsingError> {
 mod tests {
     use proptest::proptest;
 
-    use node::contract_shared::account::gens;
+    use node::components::contract_runtime::shared::account::gens;
 
     use super::*;
     use crate::engine_server::mappings::test_utils;

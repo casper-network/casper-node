@@ -8,7 +8,7 @@ use engine_test_support::{
     DEFAULT_ACCOUNT_ADDR,
 };
 use lazy_static::lazy_static;
-use node::contract_core::{engine_state::Error, execution};
+use node::components::contract_runtime::core::{engine_state::Error, execution};
 use std::{collections::BTreeSet, iter::FromIterator};
 use types::{contracts, contracts::MAX_GROUPS, runtime_args, Group, Key, RuntimeArgs};
 

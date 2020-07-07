@@ -5,7 +5,7 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::contract_shared::stored_value::StoredValue;
+use node::components::contract_runtime::shared::stored_value::StoredValue;
 use types::{account::AccountHash, runtime_args, Key, RuntimeArgs, U512};
 
 const CONTRACT_CREATE: &str = "ee_572_regression_create.wasm";

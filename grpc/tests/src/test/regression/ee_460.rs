@@ -2,7 +2,7 @@ use engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::contract_shared::transform::Transform;
+use node::components::contract_runtime::shared::transform::Transform;
 use types::{runtime_args, RuntimeArgs, U512};
 
 const CONTRACT_EE_460_REGRESSION: &str = "ee_460_regression.wasm";

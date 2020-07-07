@@ -1,6 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
-use node::contract_core::engine_state::executable_deploy_item::ExecutableDeployItem;
+use node::components::contract_runtime::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 
 use crate::engine_server::{
     ipc::{DeployPayload, DeployPayload_oneof_payload},
