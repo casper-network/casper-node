@@ -38,9 +38,6 @@
 //! all nodes in the list and simultaneously tell all of its connected nodes about the new node,
 //! repeating the process.
 
-// TODO: remove clippy relaxation
-#![allow(clippy::type_complexity)]
-
 mod config;
 mod endpoint;
 mod error;
@@ -60,7 +57,7 @@ use std::{
 
 use anyhow::Context;
 use futures::{
-    future::{select, Either},
+    future::{select, BoxFuture, Either},
     stream::{SplitSink, SplitStream},
     FutureExt, SinkExt, StreamExt,
 };
@@ -90,7 +87,7 @@ use crate::{
         announcements::NetworkAnnouncement, requests::NetworkRequest, Effect, EffectBuilder,
         EffectExt, EffectResultExt, Multiple,
     },
-    reactor::{EventQueueHandle, QueueKind},
+    reactor::{EventQueueHandle, Finalize, QueueKind},
     tls::{self, KeyFingerprint, Signed, TlsCert},
 };
 // Seems to be a false positive.
@@ -208,28 +205,6 @@ where
         Ok((model, effects))
     }
 
-    /// Close down the listening server socket.
-    ///
-    /// Signals that the background process that runs the server should shutdown completely and
-    /// waits for it to complete the shutdown. This explicitly allows the background task to finish
-    /// and drop everything it owns, ensuring that resources such as allocated ports are free to be
-    /// reused once this completes.
-    #[cfg(test)]
-    async fn shutdown_server(&mut self) {
-        // Close the shutdown socket, causing the server to exit.
-        drop(self.shutdown.take());
-
-        // Wait for the server to exit cleanly.
-        if let Some(join_handle) = self.server_join_handle.take() {
-            match join_handle.await {
-                Ok(_) => debug!("server exited cleanly"),
-                Err(err) => error!(%err, "could not join server task cleanly"),
-            }
-        } else {
-            warn!("server shutdown while already shut down")
-        }
-    }
-
     /// Attempts to connect to the root node.
     fn connect_to_root(&self) -> Multiple<Effect<Event<P>>> {
         connect_trusted(
@@ -257,7 +232,7 @@ where
         msg: Message<P>,
         count: usize,
         exclude: HashSet<NodeId>,
-    ) {
+    ) -> HashSet<NodeId> {
         let node_ids = self
             .outgoing
             .keys()
@@ -273,9 +248,11 @@ where
             );
         }
 
-        for node_id in node_ids {
+        for &node_id in &node_ids {
             self.send_message(*node_id, msg.clone());
         }
+
+        node_ids.into_iter().copied().collect()
     }
 
     /// Queues a message to be sent to a specific node.
@@ -482,6 +459,30 @@ where
     }
 }
 
+impl<REv, P> Finalize for SmallNetwork<REv, P>
+where
+    REv: Send + 'static,
+    P: Send + 'static,
+{
+    fn finalize(mut self) -> BoxFuture<'static, ()> {
+        async move {
+            // Close the shutdown socket, causing the server to exit.
+            drop(self.shutdown.take());
+
+            // Wait for the server to exit cleanly.
+            if let Some(join_handle) = self.server_join_handle.take() {
+                match join_handle.await {
+                    Ok(_) => debug!("server exited cleanly"),
+                    Err(err) => error!(%err, "could not join server task cleanly"),
+                }
+            } else {
+                warn!("server shutdown while already shut down")
+            }
+        }
+        .boxed()
+    }
+}
+
 impl<REv, P> Component<REv> for SmallNetwork<REv, P>
 where
     REv: Send + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
@@ -630,8 +631,8 @@ where
                     },
             } => {
                 // We're given a message to gossip.
-                self.gossip_message(rng, Message::Payload(payload), count, exclude);
-                responder.respond(()).ignore()
+                let sent_to = self.gossip_message(rng, Message::Payload(payload), count, exclude);
+                responder.respond(sent_to).ignore()
             }
         }
     }

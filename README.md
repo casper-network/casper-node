@@ -76,7 +76,7 @@ cargo run --release --bin=casperlabs-client -- put-deploy http://localhost:7777
 ```
 
 On success, the hash identifying the `Deploy` is output as a 64 character hex-encoded string.  The `Deploy` will be
-broadcast immediately to all interconnected validator nodes.
+gossiped immediately to all interconnected validator nodes.
 
 #### Get a `Deploy`
 

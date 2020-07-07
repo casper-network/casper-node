@@ -203,6 +203,7 @@ dependencies = [
  "hex",
  "hex_fmt",
  "http",
+ "lazy_static",
  "libc",
  "lmdb",
  "maplit",
