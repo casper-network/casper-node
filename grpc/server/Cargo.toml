@@ -25,7 +25,6 @@ dirs = "2"
 grpc = "0.6.1"
 lmdb = "0.8"
 log = "0.4.8"
-proptest = "0.9.4"
 protobuf = "=2.8"
 
 types = { version = "0.6.0", path = "../../types", package = "casperlabs-types", features = ["std", "gens"] }
@@ -37,6 +36,7 @@ protoc-rust-grpc = "0.6.1"
 [dev-dependencies]
 parity-wasm = "0.41.0"
 rand = "0.7.2"
+proptest = "0.9.4"
 
 [features]
 test-support = ["node/test-support"]

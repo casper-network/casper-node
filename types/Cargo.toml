@@ -32,6 +32,12 @@ uint = { version = "0.8.2", default-features = false, features = [] }
 [dev-dependencies]
 proptest = "0.9.4"
 version-sync = "0.8"
+criterion = "0.3.3"
+
+[[bench]]
+name = "bytesrepr_bench"
+harness = false
 
 [package.metadata.docs.rs]
 features = ["no-unstable-features"]
+
