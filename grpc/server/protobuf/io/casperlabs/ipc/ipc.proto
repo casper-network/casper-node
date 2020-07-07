@@ -1,0 +1,504 @@
+syntax = "proto3";
+
+package io.casperlabs.ipc;
+
+import "io/casperlabs/casper/consensus/state.proto";
+import "io/casperlabs/ipc/transforms.proto";
+
+// --- BEGIN EXECUTION ENGINE SERVICE DEFINITION --- //
+
+message DeployCode {
+  bytes code = 1; // wasm byte code
+  bytes args = 2; // ABI-encoded arguments
+}
+
+message StoredContractHash{
+  bytes hash = 1; // public hash of a stored contract
+  bytes args = 2; // ABI-encoded arguments
+  string entry_point_name = 3; // optional entry point name (defaults to "call")
+}
+
+message StoredContractName{
+  // name of a stored contract associated with the executing account
+  string name = 1;
+  bytes args = 2;   // ABI-encoded arguments
+  string entry_point_name = 3; // optional entry point name (defaults to "call")
+}
+
+message StoredContractPackage {
+    string name = 1; // key name
+    oneof optional_version {
+        uint32 version = 2; // optional specific version (defaults to highest)
+    }
+    string entry_point_name = 3; // finds header by entrypoint name
+    bytes args = 4; // ABI-encoded arguments
+}
+
+message StoredContractPackageHash {
+    bytes hash = 1; // public hash of a stored contract package
+    oneof optional_version {
+        uint32 version = 2;     // finds active version
+    }
+    string entry_point_name = 3; // finds header by entrypoint name
+    bytes args = 4; // ABI-encoded arguments
+}
+
+message Transfer {
+    bytes args = 1; // ABI-encoded arguments
+}
+
+message DeployPayload {
+  reserved 4; // StoredContractURef is no longer supported
+  oneof payload {
+    DeployCode deploy_code = 1;
+    StoredContractHash stored_contract_hash = 2;  
+    StoredContractName stored_contract_name = 3;  
+    StoredContractPackage stored_package_by_name = 5; 
+    StoredContractPackageHash stored_package_by_hash = 6;
+    Transfer transfer = 7;
+  }
+}
+
+message Bond {
+    bytes validator_account_hash = 1;
+    io.casperlabs.casper.consensus.state.BigInt stake = 2;
+}
+
+message DeployItem {
+    reserved 5; // motes in payment
+    reserved 7; // nonce
+    // Public key hash of the account which is the context of the execution.
+    bytes address = 1; // length 32 bytes
+    DeployPayload session = 3;
+    DeployPayload payment = 4;
+    uint64 gas_price = 6; // in units of Mote / Gas
+    // Hashes of the public keys used to sign this deploy, to be checked against the keys
+    // associated with the account.
+    repeated bytes authorization_keys = 8;
+    bytes deploy_hash = 9;
+}
+
+message ExecuteRequest {
+    bytes parent_state_hash = 1;
+    uint64 block_time = 2;
+    repeated DeployItem deploys = 3;
+    io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 4;
+}
+
+message ExecuteResponse {
+    oneof result {
+        ExecResult success = 1;
+        RootNotFound missing_parent = 2;
+    }
+}
+
+message ExecResult {
+    repeated DeployResult deploy_results = 2;
+}
+
+message RootNotFound {
+    bytes hash = 1;
+}
+
+message CommitRequest {
+    bytes prestate_hash = 1;
+    repeated TransformEntry effects = 2;
+    io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 3;
+}
+
+message CommitResult {
+  bytes poststate_hash = 1;
+  repeated Bond bonded_validators = 2;
+}
+
+message CommitResponse {
+    oneof result {
+        CommitResult success = 1;
+        RootNotFound missing_prestate = 2;
+        io.casperlabs.casper.consensus.state.Key key_not_found = 3;
+        TypeMismatch type_mismatch = 4;
+        PostEffectsError failed_transform = 5;
+    }
+}
+
+// Describes operation that are allowed to do on a value under a key.
+message Op {
+    oneof op_instance {
+        ReadOp read = 1;
+        WriteOp write = 2;
+        AddOp add = 3;
+        NoOp noop = 4;
+    }
+}
+message ReadOp {}
+message WriteOp {}
+message AddOp {}
+message NoOp {}
+
+
+//Errors which may occur while interacting with global state
+message StorageError {
+    oneof error_instance {
+        BytesReprError bytes_repr = 1;
+        RkvError rkv = 2;
+    }
+}
+
+message BytesReprError {
+    oneof error_instance {
+        EarlyEndOfStream early_end = 1;
+        FormattingError formatting = 2;
+        LeftOverBytes left_over = 3;
+    }
+}
+message EarlyEndOfStream {}
+message FormattingError {}
+message LeftOverBytes {}
+message RkvError {
+    string error_msg = 1;
+}
+
+// Models key value pair of (key, op) entry.
+// Required b/c protobuff doesn't support maps natively
+message OpEntry {
+    io.casperlabs.casper.consensus.state.Key key = 1;
+    Op operation = 2;
+}
+
+// Returned by ExecutionEngine to consensus layer.
+// (Map[Key, Op], Map[Key, Transform]) pair, describes how the deploy modifies the global io.casperlabs.casper.consensus.state.
+// op_map and transform_map should be of equal lengths
+message ExecutionEffect {
+    repeated OpEntry op_map = 1;
+    repeated TransformEntry transform_map = 2;
+}
+
+message DeployError {
+    // Run out of gas during contract execution.
+    message OutOfGasError {}
+
+    // Error during contract execution.
+    message ExecutionError {
+        string message = 1;
+    }
+
+    oneof value {
+        OutOfGasError gas_error = 1;
+        ExecutionError exec_error = 2;
+    }
+}
+
+message DeployResult {
+    // Deploys that failed because of precondition failure that we can't charge for
+    // (invalid key format, invalid key address, invalid Wasm deploys).
+    message PreconditionFailure {
+        string message = 1;
+    }
+
+    // Execution result has effects and/or errors.
+    // Failed execution mutates the GlobalState by paying for the deploy.
+    message ExecutionResult {
+        ExecutionEffect effects = 1;
+        DeployError error = 2;
+        io.casperlabs.casper.consensus.state.BigInt cost = 3;
+    }
+
+    oneof value {
+        PreconditionFailure precondition_failure = 2;
+        ExecutionResult execution_result = 3;
+    }
+
+}
+
+//TODO: be more specific about errors
+message PostEffectsError {
+    string message = 1;
+}
+
+message QueryRequest {
+    bytes state_hash = 1;
+    io.casperlabs.casper.consensus.state.Key base_key = 2;
+    repeated string path = 3;
+    io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 4;
+}
+
+message QueryResponse {
+    reserved 1; // previously `state.Value`
+    oneof result {
+        // serialized `StoredValue`
+        bytes success = 3;
+        //TODO: ADT for errors
+        string failure = 2;
+    }
+}
+
+
+message GenesisResult {
+    bytes poststate_hash = 1;
+    ExecutionEffect effect = 2;
+}
+
+message GenesisDeployError {
+    string message = 1;
+}
+
+message GenesisResponse {
+    oneof result {
+        GenesisResult success = 1;
+        GenesisDeployError failed_deploy = 2;
+    }
+}
+
+message ChainSpec {
+    GenesisConfig genesis = 1;
+    repeated UpgradePoint upgrades = 2;
+
+    message GenesisConfig {
+        reserved 4; // mint_installer
+        reserved 5; // pos_installer
+        reserved 10; // standard_payment_installer
+        reserved 6; // genesis accounts
+        reserved 7; // WASM costs table
+        // Human readable name for convenience; the genesis_hash is the true identifier.
+        // The name influences the genesis hash by contributing to the seeding of the pseudo-
+        // random number generator used in execution engine for computing genesis post-state.
+        string name = 1;
+        // timestamp for the genesis block, also used in seeding the pseudo-random number
+        // generator used in execution engine for computing genesis post-state.
+        uint64 timestamp = 2;
+        io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 3;
+        DeployConfig deploy_config = 8;
+        HighwayConfig highway_config = 9;
+        ExecConfig ee_config = 11;
+
+        message ExecConfig {
+            // wasm bytecode for installing the mint system contract
+            bytes mint_installer = 1;
+            // wasm bytes for installing the pos system contract
+            bytes pos_installer = 2;
+            // wasm bytes for installing the standard payment system contract
+            bytes standard_payment_installer = 3;
+            // genesis account information
+            repeated GenesisAccount accounts = 4;
+            // costs at genesis
+            CostTable costs = 5;
+
+            message GenesisAccount {
+                bytes public_key_hash = 1;
+                io.casperlabs.casper.consensus.state.BigInt balance = 2; // in motes
+                io.casperlabs.casper.consensus.state.BigInt bonded_amount = 3; // in motes, 0 means "not bonded"
+            }
+        }
+    }
+
+    message DeployConfig {
+        uint32 max_ttl_millis = 2;
+        uint32 max_dependencies = 3;
+        uint32 max_block_size_bytes = 4;
+        uint64 max_block_cost = 5;
+    }
+
+    message HighwayConfig {
+        // Unix timestamp of the Genesis era start.
+        uint64 genesis_era_start_timestamp = 1;
+        // Fixed length duration of an era.
+        uint64 era_duration_millis = 2;
+        // Amount of time to look back from the start of an era to pick the booking block.
+        uint64 booking_duration_millis = 3;
+        // Amount of time after the booking time to allow for magic bits to accumulate before picking the key block.
+        uint64 entropy_duration_millis = 4;
+        // Fixed length duration of the post-era voting period; used when summit level is zero.
+        uint64 voting_period_duration_millis = 5;
+        // Stop the post-era voting period when the switch block reaches a certain summit level; when 0 use the duration instead.
+        uint32 voting_period_summit_level = 6;
+        // Relative fault tolerance threshold value used by the internal finalizer.
+        // Has to be between 0 and 0.5 .
+        double ftt = 7;
+
+    }
+
+    message CostTable {
+        WasmCosts wasm = 1;
+        // TODO (https://casperlabs.atlassian.net/browse/EE-638): design host function costs
+
+        message WasmCosts {
+            // Default opcode cost
+            uint32 regular = 1;
+            // Div operations multiplier.
+            uint32 div = 2;
+            // Mul operations multiplier.
+            uint32 mul = 3;
+            // Memory (load/store) operations multiplier.
+            uint32 mem = 4;
+            // Amount of free memory (in 64kb pages) each contract can use for stack.
+            uint32 initial_mem = 5;
+            // Grow memory cost, per page (64kb)
+            uint32 grow_mem = 6;
+            // Memory copy cost, per byte
+            uint32 memcpy = 7;
+            // Max stack height (native WebAssembly stack limiter)
+            uint32 max_stack_height = 8;
+            // Cost of wasm opcode is calculated as TABLE_ENTRY_COST * `opcodes_mul` / `opcodes_div`
+            uint32 opcodes_mul = 9;
+            uint32 opcodes_div = 10;
+        }
+    }
+
+    message UpgradePoint {
+        // Hiding this behind an abstraction so we are free
+        // to change how such a point is expressed in the future.
+        ActivationPoint activation_point = 1;
+        // The protocol version as of this upgrade
+        io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 2;
+        // bytes for a contract to run that applies the upgrades to system contracts
+        DeployCode upgrade_installer = 3;
+        // Note: this is optional; only needed when costs are changing
+        CostTable new_costs = 4;
+        DeployConfig new_deploy_config = 5;
+    }
+
+    message ActivationPoint {
+        // equal to Block.Header.rank
+        uint64 rank = 1;
+    }
+}
+
+message UpgradeRequest {
+    bytes parent_state_hash = 1;
+    ChainSpec.UpgradePoint upgrade_point = 2;
+    io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 3;
+}
+
+message UpgradeResult {
+    bytes post_state_hash = 1;
+    ExecutionEffect effect = 2;
+}
+
+message UpgradeDeployError {
+    string message = 1;
+}
+
+message UpgradeResponse {
+    oneof result {
+        UpgradeResult success = 1;
+        UpgradeDeployError failed_deploy = 2;
+    }
+}
+
+// --- END EXECUTION ENGINE SERVICE DEFINITION --- //
+
+// --- BEGIN PROOF-OF-STAKE SERVICE DEFINITION --- //
+
+message BidStateRequest {
+    bytes parent_state_hash = 1;
+    io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 2;
+}
+
+message BidState {
+    repeated Bid bids = 1;
+
+    message Bid {
+        bytes id = 1;
+        io.casperlabs.casper.consensus.state.BigInt value = 2;
+    }
+}
+
+message BidStateResponse {
+    oneof result {
+        BidState success = 1;
+        RootNotFound missing_parent = 2;
+    }
+}
+
+message DistributeRewardsRequest {
+    bytes parent_state_hash = 1;
+    repeated ValidatorReward rewards = 2;
+    io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 3;
+
+    message ValidatorReward {
+        bytes validator_id = 1;
+        io.casperlabs.casper.consensus.state.BigInt value = 2;
+    }
+}
+
+message DistibuteRewardsError {
+    string message = 1; // TODO: enum of possible errors
+}
+
+message DistributeRewardsResponse {
+    oneof result {
+        // effects of rewards distribution are committed automatically, so commit result is returned in the success case
+        CommitResult success = 1;
+        RootNotFound missing_parent = 2;
+        DistibuteRewardsError error = 3;
+    }
+}
+
+message SlashRequest {
+    bytes parent_state_hash = 1;
+    repeated ValidatorSlash slashes = 2;
+    io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 3;
+
+    message ValidatorSlash{
+        bytes validator_id = 1;
+        io.casperlabs.casper.consensus.state.BigInt value = 2;
+    }
+}
+
+message SlashError {
+    string message = 1; // TODO: enum of possible errors
+}
+
+message SlashResponse {
+    oneof result {
+        // effects of slashing are committed automatically, so commit result is returned in the success case
+        CommitResult success = 1;
+        RootNotFound missing_parent = 2;
+        SlashError error = 3;
+    }
+}
+
+message UnbondPayoutRequest {
+    bytes parent_state_hash = 1;
+    uint64 era_height = 2;
+    io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 3;
+}
+
+message UnbondPayoutError {
+    string message = 1; // TODO: enum of possible errors
+}
+
+message UnbondPayoutResponse {
+    oneof result {
+        // effects of unbond payment are committed automatically, so commit result is returned in the success case
+        CommitResult success = 1;
+        RootNotFound missing_parent = 2;
+        UnbondPayoutError error = 3;
+    }
+}
+
+message RunGenesisRequest {
+    // Hash of the Genesis configuration.
+    bytes genesis_config_hash = 1;
+    io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 2;
+    // Genesis configuration for the ExecutionEngine.
+    ChainSpec.GenesisConfig.ExecConfig ee_config = 3;
+}
+
+// --- END PROOF-OF-STAKE SERVICE DEFINITION --- //
+
+// Definition of the service.
+// ExecutionEngine implements server part while Consensus implements client part.
+service ExecutionEngineService {
+    // execution endpoints
+    rpc commit (CommitRequest) returns (CommitResponse) {}
+    rpc query (QueryRequest) returns (QueryResponse) {}
+    rpc execute (ExecuteRequest) returns (ExecuteResponse) {}
+    rpc run_genesis (RunGenesisRequest) returns (GenesisResponse) {}
+    rpc upgrade (UpgradeRequest) returns (UpgradeResponse) {}
+    // proof-of-stake endpoints
+    rpc bid_state(BidStateRequest) returns (BidStateResponse) {}
+    rpc distribute_rewards(DistributeRewardsRequest) returns (DistributeRewardsResponse) {}
+    rpc slash(SlashRequest) returns (SlashResponse) {}
+    rpc unbond_payout(UnbondPayoutRequest) returns (UnbondPayoutResponse) {}
+}
