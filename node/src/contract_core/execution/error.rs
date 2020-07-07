@@ -1,4 +1,4 @@
-use failure::Fail;
+use thiserror::Error;
 use parity_wasm::elements;
 
 use crate::contract_shared::{wasm_prep, TypeMismatch};
@@ -11,84 +11,78 @@ use types::{
 use crate::contract_core::resolvers::error::ResolverError;
 use crate::contract_storage;
 
-#[derive(Fail, Debug, Clone)]
+#[derive(Error, Debug, Clone)]
 pub enum Error {
-    #[fail(display = "Interpreter error: {}", _0)]
+    #[error("Interpreter error: {}", _0)]
     Interpreter(String),
-    #[fail(display = "Storage error: {}", _0)]
+    #[error("Storage error: {}", _0)]
     Storage(contract_storage::error::Error),
-    #[fail(display = "Serialization error: {}", _0)]
+    #[error("Serialization error: {}", _0)]
     BytesRepr(bytesrepr::Error),
-    #[fail(display = "Named key {} not found", _0)]
+    #[error("Named key {} not found", _0)]
     NamedKeyNotFound(String),
-    #[fail(display = "Key {} not found", _0)]
+    #[error("Key {} not found", _0)]
     KeyNotFound(Key),
-    #[fail(display = "Account {:?} not found", _0)]
+    #[error("Account {:?} not found", _0)]
     AccountNotFound(Key),
-    #[fail(display = "{}", _0)]
+    #[error("{}", _0)]
     TypeMismatch(TypeMismatch),
-    #[fail(display = "Invalid access rights: {}", required)]
+    #[error("Invalid access rights: {}", required)]
     InvalidAccess { required: AccessRights },
-    #[fail(display = "Forged reference: {}", _0)]
+    #[error("Forged reference: {}", _0)]
     ForgedReference(URef),
-    #[fail(display = "URef not found: {}", _0)]
+    #[error("URef not found: {}", _0)]
     URefNotFound(String),
-    #[fail(display = "Function not found: {}", _0)]
+    #[error("Function not found: {}", _0)]
     FunctionNotFound(String),
-    #[fail(display = "{}", _0)]
+    #[error("{}", _0)]
     ParityWasm(elements::Error),
-    #[fail(display = "Out of gas error")]
+    #[error("Out of gas error")]
     GasLimit,
-    #[fail(display = "Return")]
+    #[error("Return")]
     Ret(Vec<URef>),
-    #[fail(display = "{}", _0)]
+    #[error("{}", _0)]
     Rng(String),
-    #[fail(display = "Resolver error: {}", _0)]
+    #[error("Resolver error: {}", _0)]
     Resolver(ResolverError),
     /// Reverts execution with a provided status
-    #[fail(display = "{}", _0)]
+    #[error("{}", _0)]
     Revert(ApiError),
-    #[fail(display = "{}", _0)]
+    #[error("{}", _0)]
     AddKeyFailure(AddKeyFailure),
-    #[fail(display = "{}", _0)]
+    #[error("{}", _0)]
     RemoveKeyFailure(RemoveKeyFailure),
-    #[fail(display = "{}", _0)]
+    #[error("{}", _0)]
     UpdateKeyFailure(UpdateKeyFailure),
-    #[fail(display = "{}", _0)]
+    #[error("{}", _0)]
     SetThresholdFailure(SetThresholdFailure),
-    #[fail(display = "{}", _0)]
+    #[error("{}", _0)]
     SystemContract(system_contract_errors::Error),
-    #[fail(display = "Deployment authorization failure")]
+    #[error("Deployment authorization failure")]
     DeploymentAuthorizationFailure,
-    #[fail(display = "Expected return value")]
+    #[error("Expected return value")]
     ExpectedReturnValue,
-    #[fail(display = "Unexpected return value")]
+    #[error("Unexpected return value")]
     UnexpectedReturnValue,
-    #[fail(display = "Invalid context")]
+    #[error("Invalid context")]
     InvalidContext,
-    #[fail(
-        display = "Incompatible protocol major version. Expected version {} but actual version is {}",
-        expected, actual
-    )]
+    #[error("Incompatible protocol major version. Expected version {expected} but actual version is {actual}")]
     IncompatibleProtocolMajorVersion { expected: u32, actual: u32 },
-    #[fail(display = "{}", _0)]
+    #[error("{0}")]
     CLValue(CLValueError),
-    #[fail(display = "Host buffer is empty")]
+    #[error("Host buffer is empty")]
     HostBufferEmpty,
-    #[fail(display = "Unsupported WASM start")]
+    #[error("Unsupported WASM start")]
     UnsupportedWasmStart,
-    #[fail(display = "No active contract versions for contract package")]
+    #[error("No active contract versions for contract package")]
     NoActiveContractVersions(ContractPackageHash),
-    #[fail(display = "Invalid contract version: {}", _0)]
+    #[error("Invalid contract version: {}", _0)]
     InvalidContractVersion(ContractVersionKey),
-    #[fail(display = "No such method: {}", _0)]
+    #[error("No such method: {}", _0)]
     NoSuchMethod(String),
-    #[fail(display = "Wasm preprocessing error: {}", _0)]
+    #[error("Wasm preprocessing error: {}", _0)]
     WasmPreprocessing(wasm_prep::PreprocessingError),
-    #[fail(
-        display = "Unexpected Key length. Expected length {} but actual length is {}",
-        expected, actual
-    )]
+    #[error("Unexpected Key length. Expected length {expected} but actual length is {actual}")]
     InvalidKeyLength { expected: usize, actual: usize },
 }
 

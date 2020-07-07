@@ -1,11 +1,11 @@
-use failure::Fail;
+use thiserror::Error;
 
 use types::ProtocolVersion;
 
-#[derive(Fail, Debug, Copy, Clone)]
+#[derive(Error, Debug, Copy, Clone)]
 pub enum ResolverError {
-    #[fail(display = "Unknown protocol version: {}", _0)]
+    #[error("Unknown protocol version: {}", _0)]
     UnknownProtocolVersion(ProtocolVersion),
-    #[fail(display = "No imported memory")]
+    #[error("No imported memory")]
     NoImportedMemory,
 }

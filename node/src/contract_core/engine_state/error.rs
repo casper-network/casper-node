@@ -1,4 +1,4 @@
-use failure::Fail;
+use thiserror::Error;
 
 use crate::contract_shared::newtypes::Blake2bHash;
 use crate::contract_shared::wasm_prep;
@@ -8,46 +8,43 @@ use types::{bytesrepr, system_contract_errors::mint};
 use crate::contract_core::execution;
 use crate::contract_storage;
 
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum Error {
-    #[fail(display = "Invalid hash length: expected {}, actual {}", _0, _1)]
+    #[error("Invalid hash length: expected {expected}, actual {actual}")]
     InvalidHashLength { expected: usize, actual: usize },
-    #[fail(
-        display = "Invalid account hash length: expected {}, actual {}",
-        _0, _1
-    )]
+    #[error("Invalid account hash length: expected {expected}, actual {actual}")]
     InvalidAccountHashLength { expected: usize, actual: usize },
-    #[fail(display = "Invalid protocol version: {}", _0)]
+    #[error("Invalid protocol version: {0}")]
     InvalidProtocolVersion(ProtocolVersion),
-    #[fail(display = "Invalid upgrade config")]
+    #[error("Invalid upgrade config")]
     InvalidUpgradeConfig,
-    #[fail(display = "Wasm preprocessing error: {}", _0)]
+    #[error("Wasm preprocessing error: {0}")]
     WasmPreprocessing(wasm_prep::PreprocessingError),
-    #[fail(display = "Wasm serialization error: {:?}", _0)]
+    #[error("Wasm serialization error: {0:?}")]
     WasmSerialization(parity_wasm::SerializationError),
-    #[fail(display = "{}", _0)]
+    #[error(transparent)]
     Exec(execution::Error),
-    #[fail(display = "Storage error: {}", _0)]
+    #[error("Storage error: {}", _0)]
     Storage(contract_storage::error::Error),
-    #[fail(display = "Authorization failure: not authorized.")]
+    #[error("Authorization failure: not authorized.")]
     Authorization,
-    #[fail(display = "Insufficient payment")]
+    #[error("Insufficient payment")]
     InsufficientPayment,
-    #[fail(display = "Deploy error")]
+    #[error("Deploy error")]
     Deploy,
-    #[fail(display = "Payment finalization error")]
+    #[error("Payment finalization error")]
     Finalization,
-    #[fail(display = "Missing system contract association: {}", _0)]
+    #[error("Missing system contract association: {}", _0)]
     MissingSystemContract(String),
-    #[fail(display = "Serialization error: {}", _0)]
+    #[error("Serialization error: {}", _0)]
     Serialization(bytesrepr::Error),
-    #[fail(display = "Mint error: {}", _0)]
+    #[error("Mint error: {}", _0)]
     Mint(mint::Error),
-    #[fail(display = "Unsupported key type: {}", _0)]
+    #[error("Unsupported key type: {}", _0)]
     InvalidKeyVariant(String),
-    #[fail(display = "Invalid upgrade result value")]
+    #[error("Invalid upgrade result value")]
     InvalidUpgradeResult,
-    #[fail(display = "Unsupported deploy item variant: {}", _0)]
+    #[error("Unsupported deploy item variant: {}", _0)]
     InvalidDeployItemVariant(String),
 }
 

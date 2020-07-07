@@ -1,15 +1,15 @@
 use std::sync;
 
-use failure::Fail;
+use thiserror::Error;
 
 use types::bytesrepr;
 
-#[derive(Debug, Fail, PartialEq, Eq)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum Error {
-    #[fail(display = "{}", _0)]
-    BytesRepr(#[fail(cause)] bytesrepr::Error),
+    #[error("{0}")]
+    BytesRepr(bytesrepr::Error),
 
-    #[fail(display = "Another thread panicked while holding a lock")]
+    #[error("Another thread panicked while holding a lock")]
     Poison,
 }
 

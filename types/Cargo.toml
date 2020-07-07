@@ -20,6 +20,7 @@ no-unstable-features = []
 base16 = { version = "0.2.1", default-features = false }
 bitflags = "1"
 blake2 = { version = "0.8.1", default-features = false }
+# TODO: Replace failure with thiserror once no_std support is landed https://github.com/dtolnay/thiserror/pull/64 
 failure = { version = "0.1.6", default-features = false, features = ["failure_derive"] }
 hex_fmt = "0.3.0"
 num-derive = { version = "0.3.0", default-features = false }

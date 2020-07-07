@@ -510,7 +510,7 @@ struct LmdbTestContext {
 }
 
 impl LmdbTestContext {
-    fn new<K, V>(tries: &[HashedTrie<K, V>]) -> Result<Self, failure::Error>
+    fn new<K, V>(tries: &[HashedTrie<K, V>]) -> anyhow::Result<Self>
     where
         K: FromBytes + ToBytes,
         V: FromBytes + ToBytes,
@@ -526,7 +526,7 @@ impl LmdbTestContext {
         })
     }
 
-    fn update<K, V>(&self, tries: &[HashedTrie<K, V>]) -> Result<(), failure::Error>
+    fn update<K, V>(&self, tries: &[HashedTrie<K, V>]) -> anyhow::Result<()>
     where
         K: ToBytes,
         V: ToBytes,
@@ -543,7 +543,7 @@ struct InMemoryTestContext {
 }
 
 impl InMemoryTestContext {
-    fn new<K, V>(tries: &[HashedTrie<K, V>]) -> Result<Self, failure::Error>
+    fn new<K, V>(tries: &[HashedTrie<K, V>]) -> anyhow::Result<Self>
     where
         K: ToBytes,
         V: ToBytes,
@@ -554,7 +554,7 @@ impl InMemoryTestContext {
         Ok(InMemoryTestContext { environment, store })
     }
 
-    fn update<K, V>(&self, tries: &[HashedTrie<K, V>]) -> Result<(), failure::Error>
+    fn update<K, V>(&self, tries: &[HashedTrie<K, V>]) -> anyhow::Result<()>
     where
         K: ToBytes,
         V: ToBytes,
