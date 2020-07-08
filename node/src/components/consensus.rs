@@ -17,19 +17,20 @@ mod highway_core;
 #[allow(dead_code)]
 mod highway_testing;
 
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    components::{small_network::NodeId, Component},
+    components::Component,
     effect::{requests::NetworkRequest, Effect, EffectBuilder, Multiple},
     types::{ExecutedBlock, ProtoBlock},
 };
 
 pub(crate) use consensus_protocol::BlockContext;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
+use traits::NodeIdT;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConsensusMessage {
@@ -39,12 +40,9 @@ pub struct ConsensusMessage {
 
 /// Consensus component event.
 #[derive(Debug)]
-pub enum Event {
+pub enum Event<I> {
     /// An incoming network message.
-    MessageReceived {
-        sender: NodeId,
-        msg: ConsensusMessage,
-    },
+    MessageReceived { sender: I, msg: ConsensusMessage },
     /// A scheduled event to be handled by a specified era
     Timer { era_id: EraId, instant: u64 },
     /// We are receiving the data we require to propose a new block
@@ -66,7 +64,7 @@ pub enum Event {
     /// The proto-block turned out to be invalid, we might want to accuse/punish/... the sender
     InvalidProtoBlock {
         era_id: EraId,
-        sender: NodeId,
+        sender: I,
         proto_block: ProtoBlock,
     },
 }
@@ -77,10 +75,10 @@ impl Display for ConsensusMessage {
     }
 }
 
-impl Display for Event {
+impl<I: Debug> Display for Event<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::MessageReceived { sender, msg } => write!(f, "msg from {}: {}", sender, msg),
+            Event::MessageReceived { sender, msg } => write!(f, "msg from {:?}: {}", sender, msg),
             Event::Timer { era_id, instant } => write!(
                 f,
                 "timer for era {:?} scheduled for instant {}",
@@ -124,11 +122,12 @@ impl Display for Event {
     }
 }
 
-impl<REv> Component<REv> for EraSupervisor
+impl<I, REv> Component<REv> for EraSupervisor<I>
 where
-    REv: From<Event> + Send + From<NetworkRequest<NodeId, ConsensusMessage>>,
+    I: NodeIdT,
+    REv: From<Event<I>> + Send + From<NetworkRequest<I, ConsensusMessage>>,
 {
-    type Event = Event;
+    type Event = Event<I>;
 
     fn handle_event<R: Rng + ?Sized>(
         &mut self,

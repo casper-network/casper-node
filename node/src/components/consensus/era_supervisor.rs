@@ -16,12 +16,10 @@ use serde::{Deserialize, Serialize};
 use tracing::error;
 
 use crate::{
-    components::{
-        consensus::{
-            consensus_protocol::{ConsensusProtocol, ConsensusProtocolResult},
-            ConsensusMessage, Event,
-        },
-        small_network::NodeId,
+    components::consensus::{
+        consensus_protocol::{ConsensusProtocol, ConsensusProtocolResult},
+        traits::NodeIdT,
+        ConsensusMessage, Event,
     },
     effect::{requests::NetworkRequest, Effect, EffectBuilder, EffectExt, Multiple},
     types::ProtoBlock,
@@ -59,14 +57,14 @@ impl Default for EraConfig {
     }
 }
 
-pub(crate) struct EraSupervisor {
+pub(crate) struct EraSupervisor<I> {
     // A map of active consensus protocols.
     // A value is a trait so that we can run different consensus protocol instances per era.
-    active_eras: HashMap<EraId, Box<dyn ConsensusProtocol<ProtoBlock>>>,
+    active_eras: HashMap<EraId, Box<dyn ConsensusProtocol<I, ProtoBlock>>>,
     era_config: EraConfig,
 }
 
-impl Debug for EraSupervisor {
+impl<I> Debug for EraSupervisor<I> {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
@@ -76,7 +74,10 @@ impl Debug for EraSupervisor {
     }
 }
 
-impl EraSupervisor {
+impl<I> EraSupervisor<I>
+where
+    I: NodeIdT,
+{
     pub(crate) fn new() -> Self {
         Self {
             active_eras: HashMap::new(),
@@ -88,10 +89,10 @@ impl EraSupervisor {
         &self,
         era_id: EraId,
         effect_builder: EffectBuilder<REv>,
-        consensus_result: ConsensusProtocolResult<ProtoBlock>,
-    ) -> Multiple<Effect<Event>>
+        consensus_result: ConsensusProtocolResult<I, ProtoBlock>,
+    ) -> Multiple<Effect<Event<I>>>
     where
-        REv: From<Event> + Send + From<NetworkRequest<NodeId, ConsensusMessage>>,
+        REv: From<Event<I>> + Send + From<NetworkRequest<I, ConsensusMessage>>,
     {
         match consensus_result {
             ConsensusProtocolResult::InvalidIncomingMessage(msg, error) => {
@@ -132,7 +133,7 @@ impl EraSupervisor {
                     executed_block,
                 }),
             ConsensusProtocolResult::ValidateConsensusValue(sender, proto_block) => effect_builder
-                .validate_proto_block(sender, proto_block)
+                .validate_proto_block(sender.clone(), proto_block)
                 .event(move |(is_valid, proto_block)| {
                     if is_valid {
                         Event::AcceptProtoBlock {
@@ -155,12 +156,12 @@ impl EraSupervisor {
         era_id: EraId,
         effect_builder: EffectBuilder<REv>,
         f: F,
-    ) -> Multiple<Effect<Event>>
+    ) -> Multiple<Effect<Event<I>>>
     where
-        REv: From<Event> + Send + From<NetworkRequest<NodeId, ConsensusMessage>>,
+        REv: From<Event<I>> + Send + From<NetworkRequest<I, ConsensusMessage>>,
         F: FnOnce(
-            &mut dyn ConsensusProtocol<ProtoBlock>,
-        ) -> Result<Vec<ConsensusProtocolResult<ProtoBlock>>, Error>,
+            &mut dyn ConsensusProtocol<I, ProtoBlock>,
+        ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock>>, Error>,
     {
         match self.active_eras.get_mut(&era_id) {
             None => todo!("Handle missing eras."),

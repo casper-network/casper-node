@@ -2,6 +2,9 @@ use std::{fmt::Debug, hash::Hash};
 
 use serde::{de::DeserializeOwned, Serialize};
 
+pub(crate) trait NodeIdT: Clone + Debug + Send + 'static {}
+impl<I> NodeIdT for I where I: Clone + Debug + Send + 'static {}
+
 /// A validator identifier.
 pub(crate) trait ValidatorIdT: Eq + Ord + Clone + Debug + Hash {}
 impl<VID> ValidatorIdT for VID where VID: Eq + Ord + Clone + Debug + Hash {}

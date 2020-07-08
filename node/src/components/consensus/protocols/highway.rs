@@ -1,23 +1,22 @@
+use std::fmt::Debug;
+
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
-use crate::components::{
-    consensus::{
-        consensus_protocol::{
-            synchronizer::{DagSynchronizerState, SynchronizerEffect},
-            AddVertexOk, BlockContext, ConsensusProtocol, ConsensusProtocolResult, ProtocolState,
-            Timestamp, VertexTrait,
-        },
-        highway_core::{
-            active_validator::Effect as AvEffect,
-            finality_detector::FinalityDetector,
-            highway::Highway,
-            vertex::{Dependency, Vertex},
-        },
-        traits::Context,
+use crate::components::consensus::{
+    consensus_protocol::{
+        synchronizer::{DagSynchronizerState, SynchronizerEffect},
+        AddVertexOk, BlockContext, ConsensusProtocol, ConsensusProtocolResult, ProtocolState,
+        Timestamp, VertexTrait,
     },
-    small_network::NodeId,
+    highway_core::{
+        active_validator::Effect as AvEffect,
+        finality_detector::FinalityDetector,
+        highway::Highway,
+        vertex::{Dependency, Vertex},
+    },
+    traits::{Context, NodeIdT},
 };
 
 impl<C: Context> VertexTrait for Vertex<C> {
@@ -65,8 +64,8 @@ impl<C: Context> ProtocolState for Highway<C> {
 }
 
 #[derive(Debug)]
-pub(crate) struct HighwayProtocol<C: Context> {
-    synchronizer: DagSynchronizerState<Highway<C>>,
+pub(crate) struct HighwayProtocol<I, C: Context> {
+    synchronizer: DagSynchronizerState<I, Highway<C>>,
     finality_detector: FinalityDetector<C>,
     highway: Highway<C>,
 }
@@ -81,13 +80,16 @@ enum HighwayMessage<C: Context> {
     RequestDependency(Dependency<C>),
 }
 
-struct SynchronizerQueue<C: Context> {
-    vertex_queue: Vec<(NodeId, Vertex<C>)>,
-    synchronizer_effects_queue: Vec<SynchronizerEffect<Vertex<C>>>,
-    results: Vec<ConsensusProtocolResult<C::ConsensusValue>>,
+struct SynchronizerQueue<I, C: Context> {
+    vertex_queue: Vec<(I, Vertex<C>)>,
+    synchronizer_effects_queue: Vec<SynchronizerEffect<I, Vertex<C>>>,
+    results: Vec<ConsensusProtocolResult<I, C::ConsensusValue>>,
 }
 
-impl<C: Context> SynchronizerQueue<C> {
+impl<I, C: Context> SynchronizerQueue<I, C>
+where
+    I: NodeIdT,
+{
     fn new() -> Self {
         Self {
             vertex_queue: vec![],
@@ -96,12 +98,12 @@ impl<C: Context> SynchronizerQueue<C> {
         }
     }
 
-    fn with_vertices(mut self, vertices: Vec<(NodeId, Vertex<C>)>) -> Self {
+    fn with_vertices(mut self, vertices: Vec<(I, Vertex<C>)>) -> Self {
         self.vertex_queue = vertices;
         self
     }
 
-    fn with_synchronizer_effects(mut self, effects: Vec<SynchronizerEffect<Vertex<C>>>) -> Self {
+    fn with_synchronizer_effects(mut self, effects: Vec<SynchronizerEffect<I, Vertex<C>>>) -> Self {
         self.synchronizer_effects_queue = effects;
         self
     }
@@ -110,15 +112,15 @@ impl<C: Context> SynchronizerQueue<C> {
         self.vertex_queue.is_empty() && self.synchronizer_effects_queue.is_empty()
     }
 
-    fn into_results(self) -> Vec<ConsensusProtocolResult<C::ConsensusValue>> {
+    fn into_results(self) -> Vec<ConsensusProtocolResult<I, C::ConsensusValue>> {
         self.results
     }
 
     fn process_vertex(
         &mut self,
-        sender: NodeId,
+        sender: I,
         vertex: Vertex<C>,
-        synchronizer: &mut DagSynchronizerState<Highway<C>>,
+        synchronizer: &mut DagSynchronizerState<I, Highway<C>>,
         highway: &mut Highway<C>,
     ) {
         match synchronizer.add_vertex(sender, vertex, highway) {
@@ -127,7 +129,7 @@ impl<C: Context> SynchronizerQueue<C> {
         }
     }
 
-    fn process_synchronizer_effect(&mut self, effect: SynchronizerEffect<Vertex<C>>) {
+    fn process_synchronizer_effect(&mut self, effect: SynchronizerEffect<I, Vertex<C>>) {
         match effect {
             SynchronizerEffect::RequestVertex(sender, missing_vid) => {
                 let msg = HighwayMessage::RequestDependency(missing_vid);
@@ -168,7 +170,7 @@ impl<C: Context> SynchronizerQueue<C> {
 
     fn process_item(
         &mut self,
-        synchronizer: &mut DagSynchronizerState<Highway<C>>,
+        synchronizer: &mut DagSynchronizerState<I, Highway<C>>,
         highway: &mut Highway<C>,
     ) {
         if let Some((sender, vertex)) = self.vertex_queue.pop() {
@@ -179,12 +181,15 @@ impl<C: Context> SynchronizerQueue<C> {
     }
 }
 
-impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
+impl<I, C: Context> ConsensusProtocol<I, C::ConsensusValue> for HighwayProtocol<I, C>
+where
+    I: NodeIdT,
+{
     fn handle_message(
         &mut self,
-        sender: NodeId,
+        sender: I,
         msg: Vec<u8>,
-    ) -> Result<Vec<ConsensusProtocolResult<C::ConsensusValue>>, Error> {
+    ) -> Result<Vec<ConsensusProtocolResult<I, C::ConsensusValue>>, Error> {
         let highway_message: HighwayMessage<C> = serde_json::from_slice(msg.as_slice()).unwrap();
         Ok(match highway_message {
             HighwayMessage::NewVertex(v) => {
@@ -221,7 +226,7 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
     fn handle_timer(
         &mut self,
         timestamp: Timestamp,
-    ) -> Result<Vec<ConsensusProtocolResult<<C as Context>::ConsensusValue>>, Error> {
+    ) -> Result<Vec<ConsensusProtocolResult<I, <C as Context>::ConsensusValue>>, Error> {
         Ok(self
             .highway
             .handle_timer(timestamp.0)
@@ -247,7 +252,7 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
         &self,
         value: C::ConsensusValue,
         block_context: BlockContext,
-    ) -> Result<Vec<ConsensusProtocolResult<<C as Context>::ConsensusValue>>, Error> {
+    ) -> Result<Vec<ConsensusProtocolResult<I, <C as Context>::ConsensusValue>>, Error> {
         // TODO: Deduplicate
         Ok(self
             .highway
@@ -276,7 +281,7 @@ impl<C: Context> ConsensusProtocol<C::ConsensusValue> for HighwayProtocol<C> {
         &mut self,
         value: &C::ConsensusValue,
         valid: bool,
-    ) -> Result<Vec<ConsensusProtocolResult<C::ConsensusValue>>, Error> {
+    ) -> Result<Vec<ConsensusProtocolResult<I, C::ConsensusValue>>, Error> {
         if valid {
             let effects = self.synchronizer.on_consensus_value_synced(value);
             let mut queue = SynchronizerQueue::new().with_synchronizer_effects(effects);
