@@ -23,6 +23,12 @@ struct HighwayConsensus<C: Context> {
     finality_detector: FinalityDetector<C>,
 }
 
+impl<C: Context> HighwayConsensus<C> {
+    fn run_finality(&mut self) -> FinalityResult<C::ConsensusValue, ValidatorIndex> {
+        self.finality_detector.run(self.highway.state())
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum HighwayMessage<C: Context> {
     Timer(Instant),
@@ -89,24 +95,6 @@ impl<C: Context> Ord for HighwayMessage<C> {
             (RequestBlock(bc1), RequestBlock(bc2)) => bc1.cmp(&bc2),
             (RequestBlock(_), _) => std::cmp::Ordering::Less,
         }
-    }
-}
-
-/// Runs a finality detector and returns the result.
-/// TODO: Handle equivocations and exceeded FTT.
-fn run_finalizer<C: Context>(
-    finality_detector: &mut FinalityDetector<C>,
-    state: &State<C>,
-) -> Vec<C::ConsensusValue> {
-    match finality_detector.run(state) {
-        FinalityResult::Finalized(v, equivocated_ids) => {
-            if !equivocated_ids.is_empty() {
-                unimplemented!("Equivocations detected but not handled.")
-            }
-            vec![v]
-        }
-        FinalityResult::None => vec![],
-        FinalityResult::FttExceeded => unimplemented!("Ftt exceeded but not handled."),
     }
 }
 
@@ -194,14 +182,6 @@ where
     /// and pass it to the recipient validator for execution.
     /// Messages returned from the execution are scheduled for later delivery.
     pub(crate) fn crank(&mut self) -> Result<CrankOk, TestRunError> {
-        let QueueEntry {
-            delivery_time,
-            recipient,
-            message,
-        } = self
-            .virtual_net
-            .pop_message()
-            .ok_or(TestRunError::NoMessages)?;
         // Stop the test when each node finalized all consensus values.
         // Note that we're not testing the order of finalization here.
         // TODO: Consider moving out all the assertions to client side.
@@ -212,6 +192,15 @@ where
         {
             return Ok(CrankOk::Done);
         }
+
+        let QueueEntry {
+            delivery_time,
+            recipient,
+            message,
+        } = self
+            .virtual_net
+            .pop_message()
+            .ok_or(TestRunError::NoMessages)?;
 
         let messages = self.process_message(recipient, message);
 
@@ -237,30 +226,49 @@ where
         validator_id: ValidatorId,
         message: Message<HighwayMessage<Ctx>>,
     ) -> Vec<HighwayMessage<Ctx>> {
-        let sender_id = message.sender;
+        let messages = {
+            let sender_id = message.sender;
+            let recipient = self.virtual_net.get_validator_mut(&validator_id).unwrap(); // TODO: Don't unwrap.
+            let recipient_id = recipient.id;
+            let hwm = message.payload().clone();
+            match hwm {
+                Timer(instant) => recipient
+                    .consensus
+                    .highway
+                    .handle_timer(instant.0)
+                    .into_iter()
+                    .map(HighwayMessage::from)
+                    .collect(),
+                NewVertex(v) => self.add_vertex(recipient_id, sender_id, v),
+                RequestBlock(block_context) => recipient
+                    .consensus
+                    .highway
+                    .propose(
+                        recipient.consensus_values.pop_front().unwrap(),
+                        block_context,
+                    )
+                    .into_iter()
+                    .map(HighwayMessage::from)
+                    .collect(),
+            }
+        };
+
         let recipient = self.virtual_net.get_validator_mut(&validator_id).unwrap(); // TODO: Don't unwrap.
-        let recipient_id = recipient.id;
-        let hwm = message.payload().clone();
-        match hwm {
-            Timer(instant) => recipient
-                .consensus
-                .highway
-                .handle_timer(instant.0)
-                .into_iter()
-                .map(HighwayMessage::from)
-                .collect(),
-            NewVertex(v) => self.add_vertex(recipient_id, sender_id, v),
-            RequestBlock(block_context) => recipient
-                .consensus
-                .highway
-                .propose(
-                    recipient.consensus_values.pop_front().unwrap(),
-                    block_context,
-                )
-                .into_iter()
-                .map(HighwayMessage::from)
-                .collect(),
-        }
+
+        let finality_result = match recipient.consensus.run_finality() {
+            FinalityResult::Finalized(v, equivocated_ids) => {
+                if !equivocated_ids.is_empty() {
+                    unimplemented!("Equivocations detected but not handled.")
+                }
+                vec![v]
+            }
+            FinalityResult::None => vec![],
+            FinalityResult::FttExceeded => unimplemented!("Ftt exceeded but not handled."),
+        };
+
+        recipient.push_finalized(finality_result);
+
+        messages
     }
 
     // Adds vertex to the validator's state.

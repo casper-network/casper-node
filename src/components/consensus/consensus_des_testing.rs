@@ -111,6 +111,12 @@ where
         self.id
     }
 
+    /// Adds vector of finalized consensus values to validator's finalized set.
+    pub(crate) fn push_finalized(&mut self, finalized_values: Vec<C>) {
+        self.finalized_count += finalized_values.len();
+        self.finalized_values.extend(finalized_values);
+    }
+
     /// Iterator over consensus values finalized by the validator.
     pub(crate) fn finalized_values(&self) -> impl Iterator<Item = &C> {
         self.finalized_values.iter()
