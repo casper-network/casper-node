@@ -28,7 +28,7 @@ impl DeployBuffer {
         Default::default()
     }
 
-    /// Add a deploy to the deploy buffer.
+    /// Adds a deploy to the deploy buffer.
     ///
     /// Returns `false` if the deploy has been rejected.
     pub(crate) fn add_deploy(&mut self, hash: DeployHash, deploy: DeployHeader) -> bool {
@@ -45,7 +45,7 @@ impl DeployBuffer {
         }
     }
 
-    /// Return a list of candidates for inclusion into a block.
+    /// Returns a list of candidates for inclusion into a block.
     pub(crate) fn remaining_deploys(
         &mut self,
         current_instant: u64,
