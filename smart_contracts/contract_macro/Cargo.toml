@@ -1,0 +1,22 @@
+[package]
+name = "contract_macro"
+version = "0.1.0"
+authors = ["karandh <karan@casperlabs.io>"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dev-dependencies]
+trybuild = "1.0.30"
+
+[dependencies]
+quote = "1.0.7"
+syn = "1.0.31"
+proc-macro2 = "1.0.18"
+types = { path = "../../types", package = "casperlabs-types" }
+contract = { path = "../contract", package = "casperlabs-contract" }
+
+
+[features]
+default = ["syn/full", "syn/extra-traits","contract/std", "types/std"]

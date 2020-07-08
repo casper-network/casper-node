@@ -1,0 +1,7 @@
+error: custom attribute panicked
+  --> $DIR/no_constructor.rs:26:1
+   |
+26 | #[casperlabs_contract]
+   | ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: message: No constructor was present

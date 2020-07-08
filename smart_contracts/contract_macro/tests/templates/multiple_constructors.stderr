@@ -1,0 +1,58 @@
+error[E0428]: the name `call` is defined multiple times
+  --> $DIR/multiple_constructors.rs:37:5
+   |
+30 |     #[casperlabs_constructor]
+   |     ------------------------- previous definition of the value `call` here
+...
+37 |     #[casperlabs_constructor]
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^ `call` redefined here
+   |
+   = note: `call` must be defined only once in the value namespace of this module
+   = note: this error originates in an attribute macro (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0432]: unresolved import `types::account::PublicKey`
+  --> $DIR/multiple_constructors.rs:18:5
+   |
+18 |     account::PublicKey,
+   |     ^^^^^^^^^^^^^^^^^^ no `PublicKey` in `account`
+
+error: invalid `crate_type` value
+ --> $DIR/multiple_constructors.rs:4:18
+  |
+4 |     crate_type = "target arch should be wasm32"
+  |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[deny(unknown_crate_types)]` on by default
+
+warning: unused import: `BTreeMap`
+ --> $DIR/multiple_constructors.rs:8:19
+  |
+8 |     collections::{BTreeMap, BTreeSet},
+  |                   ^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused imports: `account`, `system`
+  --> $DIR/multiple_constructors.rs:14:20
+   |
+14 |     contract_api::{account, runtime, storage, system},
+   |                    ^^^^^^^                    ^^^^^^
+
+warning: unused import: `CLTyped`
+  --> $DIR/multiple_constructors.rs:20:27
+   |
+20 |     runtime_args, CLType, CLTyped, Group, Key, Parameter, RuntimeArgs, URef, U512,
+   |                           ^^^^^^^
+
+error[E0061]: this function takes 2 arguments but 0 arguments were supplied
+  --> $DIR/multiple_constructors.rs:37:5
+   |
+27 | #[casperlabs_contract]
+   | ---------------------- defined here
+...
+37 |     #[casperlabs_constructor]
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^- supplied 0 arguments
+   |     |
+   |     expected 2 arguments
+   |
+   = note: this error originates in an attribute macro (in Nightly builds, run with -Z macro-backtrace for more info)

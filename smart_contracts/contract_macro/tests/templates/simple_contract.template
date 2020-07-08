@@ -1,0 +1,112 @@
+#![feature(prelude_import)]
+#[prelude_import]
+use std::prelude::v1::*;
+#[macro_use]
+extern crate std;
+extern crate alloc;
+use alloc::{
+    collections::{BTreeMap, BTreeSet},
+    string::String,
+};
+use contract_macro::{casperlabs_constructor, casperlabs_contract, casperlabs_method};
+use contract::{
+    contract_api::{account, runtime, storage, system},
+    unwrap_or_revert::UnwrapOrRevert,
+};
+use types::{
+    account::PublicKey,
+    contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints},
+    runtime_args, CLType, CLTyped, Group, Key, Parameter, RuntimeArgs, URef, U512,
+};
+const KEY: &str = "string_value";
+const INT_KEY: &str = "int_value";
+const U512_KEY: &str = "u512_value";
+fn __deploy(s: String, a: u64) {
+    let (contract_package_hash, _) = storage::create_contract_package_at_hash();
+    let _constructor_access_uref: URef = storage::create_contract_user_group(
+        contract_package_hash,
+        "constructor",
+        1,
+        BTreeSet::new(),
+    )
+    .unwrap_or_revert()
+    .pop()
+    .unwrap_or_revert();
+    let constructor_group = Group::new("constructor");
+    let mut entry_points = EntryPoints::new();
+    entry_points.add_entry_point(EntryPoint::new(
+        String::from("store_hello_world"),
+        <[_]>::into_vec(box [
+            Parameter::new("s", CLType::String),
+            Parameter::new("a", CLType::U64),
+        ]),
+        CLType::Unit,
+        EntryPointAccess::Groups(<[_]>::into_vec(box [constructor_group])),
+        EntryPointType::Contract,
+    ));
+    entry_points.add_entry_point(EntryPoint::new(
+        String::from("store_u64"),
+        <[_]>::into_vec(box []),
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    ));
+    entry_points.add_entry_point(EntryPoint::new(
+        String::from("store_u512"),
+        <[_]>::into_vec(box [Parameter::new("c", CLType::U512)]),
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    ));
+    let (contract_hash, _) =
+        storage::add_contract_version(contract_package_hash, entry_points, Default::default());
+    runtime::put_key("sample_contract", contract_hash.into());
+    let contract_hash_pack = storage::new_uref(contract_hash);
+    runtime::put_key("sample_contract_hash", contract_hash_pack.into());
+    runtime::call_contract::<()>(contract_hash, "store_hello_world", {
+        let mut named_args = RuntimeArgs::new();
+        named_args.insert("s", s);
+        named_args.insert("a", a);
+        named_args
+    });
+}
+#[no_mangle]
+fn call() {
+    let s: String = runtime::get_named_arg("s");
+    let a: u64 = runtime::get_named_arg("a");
+    __deploy(s, a)
+}
+fn __store_hello_world(s: String, a: u64) {
+    let value_ref: URef = storage::new_uref(s);
+    let value_key: Key = value_ref.into();
+    runtime::put_key(KEY, value_key);
+}
+#[no_mangle]
+fn store_hello_world() {
+    let s: String = runtime::get_named_arg("s");
+    let a: u64 = runtime::get_named_arg("a");
+    __store_hello_world(s, a)
+}
+fn __store_u64() {
+    let u: u64 = bar();
+    let int_ref: URef = storage::new_uref(u);
+    let int_key: Key = int_ref.into();
+    runtime::put_key(INT_KEY, int_key)
+}
+#[no_mangle]
+fn store_u64() {
+    __store_u64()
+}
+fn __store_u512(c: U512) {
+    let int_ref: URef = storage::new_uref(c);
+    let int_key: Key = int_ref.into();
+    runtime::put_key(U512_KEY, int_key)
+}
+#[no_mangle]
+fn store_u512() {
+    let c: U512 = runtime::get_named_arg("c");
+    __store_u512(c)
+}
+fn bar() -> u64 {
+    1
+}

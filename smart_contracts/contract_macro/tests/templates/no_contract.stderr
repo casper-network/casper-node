@@ -1,0 +1,53 @@
+error[E0432]: unresolved import `types::account::PublicKey`
+  --> $DIR/no_contract.rs:18:5
+   |
+18 |     account::PublicKey,
+   |     ^^^^^^^^^^^^^^^^^^ no `PublicKey` in `account`
+
+error[E0425]: cannot find function `__deploy` in this scope
+  --> $DIR/no_contract.rs:30:5
+   |
+30 |     #[casperlabs_constructor]
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+   |
+   = note: this error originates in an attribute macro (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: invalid `crate_type` value
+ --> $DIR/no_contract.rs:4:18
+  |
+4 |     crate_type = "target arch should be wasm32"
+  |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[deny(unknown_crate_types)]` on by default
+
+warning: unused imports: `BTreeMap`, `BTreeSet`, `string::String`
+ --> $DIR/no_contract.rs:8:19
+  |
+8 |     collections::{BTreeMap, BTreeSet},
+  |                   ^^^^^^^^  ^^^^^^^^
+9 |     string::String,
+  |     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `casperlabs_contract`
+  --> $DIR/no_contract.rs:11:46
+   |
+11 | use contract_macro::{casperlabs_constructor, casperlabs_contract, casperlabs_method};
+   |                                              ^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `account`, `system`, `unwrap_or_revert::UnwrapOrRevert`
+  --> $DIR/no_contract.rs:14:20
+   |
+14 |     contract_api::{account, runtime, storage, system},
+   |                    ^^^^^^^                    ^^^^^^
+15 |     unwrap_or_revert::UnwrapOrRevert,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `CLType`, `CLTyped`, `EntryPointAccess`, `EntryPointType`, `EntryPoint`, `EntryPoints`, `Group`, `Parameter`, `RuntimeArgs`, `runtime_args`
+  --> $DIR/no_contract.rs:19:17
+   |
+19 |     contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints},
+   |                 ^^^^^^^^^^  ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^  ^^^^^^^^^^^
+20 |     runtime_args, CLType, CLTyped, Group, Key, Parameter, RuntimeArgs, URef, U512,
+   |     ^^^^^^^^^^^^  ^^^^^^  ^^^^^^^  ^^^^^       ^^^^^^^^^  ^^^^^^^^^^^
