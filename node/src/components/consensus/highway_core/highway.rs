@@ -1,7 +1,7 @@
 use super::{
     active_validator::{ActiveValidator, Effect},
     evidence::Evidence,
-    state::{AddVoteError, State, VoteError},
+    state::{State, VoteError},
     validators::Validators,
     vertex::{Dependency, Vertex, WireVote},
 };
@@ -143,15 +143,15 @@ impl<C: Context> Highway<C> {
         }
     }
 
-    pub(crate) fn handle_timer(&mut self, instant: u64) -> Vec<Effect<C>> {
+    pub(crate) fn handle_timer(&mut self, timestamp: u64) -> Vec<Effect<C>> {
         match self.active_validator.as_mut() {
             None => {
                 // TODO: Error?
                 // At least add logging about the event.
-                warn!(%instant, "Observer node was called with `handle_timer` event.");
+                warn!(%timestamp, "Observer node was called with `handle_timer` event.");
                 vec![]
             }
-            Some(av) => av.handle_timer(instant, &self.state),
+            Some(av) => av.handle_timer(timestamp, &self.state),
         }
     }
 
@@ -178,10 +178,10 @@ impl<C: Context> Highway<C> {
         &self.state
     }
 
-    fn on_new_vote(&self, vhash: &C::Hash, instant: u64) -> Vec<Effect<C>> {
+    fn on_new_vote(&self, vhash: &C::Hash, timestamp: u64) -> Vec<Effect<C>> {
         self.active_validator
             .as_ref()
-            .map_or_else(Vec::new, |av| av.on_new_vote(vhash, instant, &self.state))
+            .map_or_else(Vec::new, |av| av.on_new_vote(vhash, timestamp, &self.state))
     }
 
     /// Performs initial validation and returns an error if `vertex` is invalid. (See
@@ -218,15 +218,15 @@ impl<C: Context> Highway<C> {
     /// Validity must be checked before calling this! Adding an invalid vote will result in a panic
     /// or an inconsistent state.
     fn add_valid_vote(&mut self, swvote: SignedWireVote<C>) -> Vec<Effect<C>> {
-        let vote_instant = swvote.wire_vote.instant;
+        let vote_timestamp = swvote.wire_vote.timestamp;
         let vote_hash = swvote.hash();
         self.state.add_valid_vote(swvote);
-        self.on_new_vote(&vote_hash, vote_instant)
+        self.on_new_vote(&vote_hash, vote_timestamp)
     }
 
-    /// Returns validator ID of the `swvote` sender.
+    /// Returns validator ID of the `swvote` creator.
     fn validator_pk(&self, swvote: &SignedWireVote<C>) -> &C::ValidatorId {
-        self.params.validators.get_by_id(swvote.wire_vote.sender)
+        self.params.validators.get_by_id(swvote.wire_vote.creator)
     }
 }
 
@@ -236,9 +236,10 @@ pub(crate) mod tests {
         highway_core::{
             highway::{Highway, HighwayParams, VertexError, VoteError},
             state::tests::{
-                TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC, WEIGHTS,
+                AddVoteError, TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC,
+                WEIGHTS,
             },
-            state::{AddVoteError, State, Weight},
+            state::{State, Weight},
             validators::Validators,
             vertex::{SignedWireVote, Vertex, WireVote},
             vote::Panorama,
@@ -272,10 +273,10 @@ pub(crate) mod tests {
         };
         let wvote = WireVote {
             panorama: Panorama::new(WEIGHTS.len()),
-            sender: ALICE,
+            creator: ALICE,
             value: Some(0),
             seq_number: 0,
-            instant: 1,
+            timestamp: 1,
         };
         let invalid_signature = 1u64;
         let invalid_signature_vote = SignedWireVote {
