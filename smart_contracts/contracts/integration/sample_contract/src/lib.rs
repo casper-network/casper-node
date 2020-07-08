@@ -44,7 +44,7 @@ mod sample_contract {
     fn store_u512(c: U512) {
         let int_ref: URef = storage::new_uref(c);
         let int_key: Key = int_ref.into();
-        runtime::put_key(U512_KEY, int_key)  
+        runtime::put_key(U512_KEY, int_key)
     }
 
     fn bar() -> u64 {
