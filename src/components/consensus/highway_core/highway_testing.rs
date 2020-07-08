@@ -226,6 +226,9 @@ where
         validator_id: ValidatorId,
         message: Message<HighwayMessage<Ctx>>,
     ) -> Vec<HighwayMessage<Ctx>> {
+        let recipient = self.virtual_net.get_validator_mut(&validator_id).unwrap(); // TODO: Don't unwrap.
+        recipient.push_messages_received(vec![message.clone()]);
+
         let messages = {
             let sender_id = message.sender;
             let recipient = self.virtual_net.get_validator_mut(&validator_id).unwrap(); // TODO: Don't unwrap.
@@ -254,6 +257,7 @@ where
         };
 
         let recipient = self.virtual_net.get_validator_mut(&validator_id).unwrap(); // TODO: Don't unwrap.
+        recipient.push_messages_produced(messages.clone());
 
         let finality_result = match recipient.consensus.run_finality() {
             FinalityResult::Finalized(v, equivocated_ids) => {

@@ -117,6 +117,16 @@ where
         self.finalized_values.extend(finalized_values);
     }
 
+    /// Adds messages to validator's collection of received messages.
+    pub(crate) fn push_messages_received(&mut self, messages: Vec<Message<M>>) {
+        self.messages_received.extend(messages);
+    }
+
+    /// Adds messages to validator's collection of produced messages.
+    pub(crate) fn push_messages_produced(&mut self, messages: Vec<M>) {
+        self.messages_produced.extend(messages);
+    }
+
     /// Iterator over consensus values finalized by the validator.
     pub(crate) fn finalized_values(&self) -> impl Iterator<Item = &C> {
         self.finalized_values.iter()
