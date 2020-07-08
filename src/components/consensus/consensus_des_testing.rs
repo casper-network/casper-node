@@ -55,9 +55,9 @@ where
     /// Whether a validator should produce equivocations.
     pub(crate) is_faulty: bool,
     /// Consensus values to be proposed.
-    pub(crate) consensus_values: VecDeque<C>,
+    consensus_values: VecDeque<C>,
     /// Vector of consensus values finalized by the validator.
-    pub(crate) finalized_values: Vec<C>,
+    finalized_values: Vec<C>,
     /// Number of finalized values.
     finalized_count: usize,
     /// Messages received by the validator.
@@ -129,6 +129,10 @@ where
 
     pub(crate) fn finalized_count(&self) -> usize {
         self.finalized_count
+    }
+
+    pub(crate) fn next_consensus_value(&mut self) -> Option<C> {
+        self.consensus_values.pop_front()
     }
 }
 

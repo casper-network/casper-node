@@ -243,16 +243,16 @@ where
                     .map(HighwayMessage::from)
                     .collect(),
                 NewVertex(v) => self.add_vertex(recipient_id, sender_id, v),
-                RequestBlock(block_context) => recipient
-                    .consensus
-                    .highway
-                    .propose(
-                        recipient.consensus_values.pop_front().unwrap(),
-                        block_context,
-                    )
-                    .into_iter()
-                    .map(HighwayMessage::from)
-                    .collect(),
+                RequestBlock(block_context) => {
+                    let consensus_value = recipient.next_consensus_value().unwrap();
+                    recipient
+                        .consensus
+                        .highway
+                        .propose(consensus_value, block_context)
+                        .into_iter()
+                        .map(HighwayMessage::from)
+                        .collect()
+                }
             }
         };
 
