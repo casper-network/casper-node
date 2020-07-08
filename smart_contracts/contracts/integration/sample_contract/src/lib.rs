@@ -3,10 +3,7 @@
     crate_type = "target arch should be wasm32"
 )]
 extern crate alloc;
-use alloc::{
-    collections::BTreeSet,
-    string::String,
-};
+use alloc::{collections::BTreeSet, string::String};
 use contract_macro::{casperlabs_constructor, casperlabs_contract, casperlabs_method};
 
 use contract::{
