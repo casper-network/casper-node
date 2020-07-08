@@ -1,11 +1,8 @@
 //! The consensus component. Provides distributed consensus among the nodes in the network.
 
 mod consensus_protocol;
-mod traits;
-// TODO: remove when we actually use the deploy buffer
-#[allow(unused)]
-mod deploy_buffer;
 mod era_supervisor;
+mod traits;
 // TODO: remove when we actually construct a Highway era
 mod protocols;
 // TODO: remove when we actually construct a Highway era
