@@ -41,19 +41,6 @@ impl<M: Clone + Debug> TargetedMessage<M> {
     }
 }
 
-pub(crate) trait ConsensusInstance<C> {
-    type In: Clone + Debug;
-    type Out: Clone + Debug;
-
-    fn handle_message(
-        &mut self,
-        sender: ValidatorId,
-        m: Self::In,
-        is_faulty: bool,
-        consensus_values: &mut VecDeque<C>,
-    ) -> (Vec<C>, Vec<Self::Out>);
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
 pub(crate) struct ValidatorId(pub(crate) u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
@@ -422,8 +409,8 @@ where
 mod virtual_net_tests {
 
     use super::{
-        ConsensusInstance, DeliverySchedule, Instant, Message, Strategy, Target, TargetedMessage,
-        Validator, ValidatorId, VirtualNet,
+        DeliverySchedule, Instant, Message, Strategy, Target, TargetedMessage, Validator,
+        ValidatorId, VirtualNet,
     };
     use rand_core::SeedableRng;
     use rand_xorshift::XorShiftRng;
@@ -441,21 +428,6 @@ mod virtual_net_tests {
     type C = u64;
 
     struct NoOpConsensus;
-
-    impl<C> ConsensusInstance<C> for NoOpConsensus {
-        type In = M;
-        type Out = M;
-
-        fn handle_message(
-            &mut self,
-            sender: ValidatorId,
-            m: Self::In,
-            is_faulty: bool,
-            consensus_values: &mut VecDeque<C>,
-        ) -> (Vec<C>, Vec<Self::Out>) {
-            (vec![], vec![])
-        }
-    }
 
     #[test]
     fn messages_are_enqueued_in_order() {

@@ -11,8 +11,8 @@ use super::{
 };
 use crate::components::consensus::{
     consensus_des_testing::{
-        ConsensusInstance, DeliverySchedule, Instant, Message, MessageT, Queue, QueueEntry,
-        Strategy, Target, TargetedMessage, Validator, ValidatorId, VirtualNet,
+        DeliverySchedule, Instant, Message, MessageT, Queue, QueueEntry, Strategy, Target,
+        TargetedMessage, Validator, ValidatorId, VirtualNet,
     },
     traits::Context,
     BlockContext,
@@ -378,8 +378,8 @@ where
 
 mod test_harness {
     use super::{
-        ConsensusInstance, CrankOk, DeliverySchedule, HighwayMessage, HighwayTestHarness, Instant,
-        Message, Strategy, Target, TargetedMessage, TestRunError, Validator, ValidatorId,
+        CrankOk, DeliverySchedule, HighwayMessage, HighwayTestHarness, Instant, Message, Strategy,
+        Target, TargetedMessage, TestRunError, Validator, ValidatorId,
     };
     use crate::components::consensus::{
         consensus_des_testing::VirtualNet, highway_core::state::tests::TestContext,
@@ -401,64 +401,13 @@ mod test_harness {
         }
     }
 
-    struct NoOpConsensus();
-
-    impl ConsensusInstance<u32> for NoOpConsensus {
-        type In = HighwayMessage<TestContext>;
-        type Out = HighwayMessage<TestContext>;
-
-        fn handle_message(
-            &mut self,
-            sender: ValidatorId,
-            m: Self::In,
-            is_faulty: bool,
-            consensus_values: &mut VecDeque<u32>,
-        ) -> (Vec<u32>, Vec<Self::Out>) {
-            match m {
-                HighwayMessage::NewVertex(v) => (v.value().into_iter().cloned().collect(), vec![]),
-                _ => (vec![], vec![]),
-            }
-        }
+    #[test]
+    fn on_empty_queue_error() {
+        unimplemented!()
     }
 
-    // #[test]
-    // fn on_empty_queue_error() {
-    //     let single_node: Validator<u32, HighwayMessage<TestContext>, NoOpConsensus> =
-    //         Validator::new(ValidatorId(1u64), false, VecDeque::new(), NoOpConsensus());
-    //     let mut rand = XorShiftRng::from_seed(rand::random());
-    //     let virtual_net = VirtualNet::new(vec![single_node], SmallDelay());
-    //     let mut test_harness = HighwayTestHarness::new(virtual_net, 0, vec![], rand);
-    //     assert_eq!(test_harness.crank(), Err(TestRunError::NoMessages));
-    // }
-
-    struct FinalizeConsensusInstance {
-        previously_finalized: u32,
-    }
-
-    impl Default for FinalizeConsensusInstance {
-        fn default() -> Self {
-            FinalizeConsensusInstance {
-                previously_finalized: 0,
-            }
-        }
-    }
-
-    impl ConsensusInstance<u32> for FinalizeConsensusInstance {
-        type In = HighwayMessage<TestContext>;
-        type Out = HighwayMessage<TestContext>;
-
-        fn handle_message(
-            &mut self,
-            sender: ValidatorId,
-            m: Self::In,
-            is_faulty: bool,
-            consensus_values: &mut VecDeque<u32>,
-        ) -> (Vec<u32>, Vec<Self::Out>) {
-            // Since test harness doesn't check _what_ consenus values
-            // were finalized (it only checks how many) we can output anything.
-            let just_finalized = self.previously_finalized + 1;
-            self.previously_finalized += 1;
-            (vec![just_finalized], vec![])
-        }
+    #[test]
+    fn done_when_all_finalized() {
+        unimplemented!()
     }
 }
