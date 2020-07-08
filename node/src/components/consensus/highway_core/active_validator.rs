@@ -130,9 +130,9 @@ impl<C: Context> ActiveValidator<C> {
             return false;
         }
         instant / self.round_len() == vote.instant / self.round_len() // Current round.
-            && state.leader(vote.instant) == vote.sender // The sender is the round's leader.
-            && vote.sender != self.vidx // We didn't send it ourselves.
-            && !state.has_evidence(vote.sender) // The sender is not faulty.
+            && state.leader(vote.instant) == vote.creator // The creator is the round's leader.
+            && vote.creator != self.vidx // We didn't send it ourselves.
+            && !state.has_evidence(vote.creator) // The creator is not faulty.
             && state
                 .panorama()
                 .get(self.vidx)
@@ -153,7 +153,7 @@ impl<C: Context> ActiveValidator<C> {
         } else {
             panorama = vote.panorama.clone();
         }
-        panorama.update(vote.sender, Observation::Correct(vhash.clone()));
+        panorama.update(vote.creator, Observation::Correct(vhash.clone()));
         for faulty_v in state.faulty_validators() {
             panorama.update(faulty_v, Observation::Faulty);
         }
@@ -172,7 +172,7 @@ impl<C: Context> ActiveValidator<C> {
         let seq_number = panorama.get(self.vidx).correct().map_or(0, add1);
         let wvote = WireVote {
             panorama,
-            sender: self.vidx,
+            creator: self.vidx,
             value,
             seq_number,
             instant,

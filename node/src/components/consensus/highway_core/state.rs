@@ -227,7 +227,7 @@ impl<C: Context> State<C> {
         let value = opt_block.map(|block| block.value.clone());
         let wvote = WireVote {
             panorama: vote.panorama.clone(),
-            sender: vote.sender,
+            creator: vote.creator,
             value,
             seq_number: vote.seq_number,
             instant: vote.instant,
@@ -322,8 +322,8 @@ impl<C: Context> State<C> {
     /// not present yet.
     pub(crate) fn pre_validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {
         let wvote = &swvote.wire_vote;
-        let sender = wvote.sender;
-        if sender.0 as usize >= self.weights.len() {
+        let creator = wvote.creator;
+        if creator.0 as usize >= self.weights.len() {
             return Err(VoteError::Creator);
         }
         if (wvote.value.is_none() && wvote.panorama.is_empty())
@@ -338,7 +338,7 @@ impl<C: Context> State<C> {
     /// been added to the state.
     pub(crate) fn validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {
         let wvote = &swvote.wire_vote;
-        let sender = wvote.sender;
+        let creator = wvote.creator;
         if !self.is_panorama_valid(&wvote.panorama) {
             return Err(VoteError::Panorama);
         }
@@ -346,8 +346,8 @@ impl<C: Context> State<C> {
         if !justifications.all(|vh| self.vote(vh).instant <= wvote.instant) {
             return Err(VoteError::Timestamps);
         }
-        // Check that the vote's sequence number is one more than the sender's previous one.
-        let expected_seq_number = match wvote.panorama.get(sender) {
+        // Check that the vote's sequence number is one more than the creator's previous one.
+        let expected_seq_number = match wvote.panorama.get(creator) {
             Observation::Faulty => return Err(VoteError::Panorama),
             Observation::None => 0,
             Observation::Correct(hash) => 1 + self.vote(hash).seq_number,
@@ -367,13 +367,13 @@ impl<C: Context> State<C> {
     /// Panics unless all dependencies of `wvote` have already been added to `self`.
     fn update_panorama(&mut self, swvote: &SignedWireVote<C>) {
         let wvote = &swvote.wire_vote;
-        let sender = wvote.sender;
-        let new_obs = match (self.panorama.get(sender), wvote.panorama.get(sender)) {
+        let creator = wvote.creator;
+        let new_obs = match (self.panorama.get(creator), wvote.panorama.get(creator)) {
             (Observation::Faulty, _) => Observation::Faulty,
             (obs0, obs1) if obs0 == obs1 => Observation::Correct(wvote.hash()),
             (Observation::None, _) => panic!("missing own previous vote"),
             (Observation::Correct(hash0), _) => {
-                if !self.has_evidence(sender) {
+                if !self.has_evidence(creator) {
                     let prev0 = self.find_in_swimlane(hash0, wvote.seq_number).unwrap();
                     let wvote0 = self.wire_vote(prev0).unwrap();
                     self.add_evidence(Evidence::Equivocation(wvote0, swvote.clone()));
@@ -381,10 +381,10 @@ impl<C: Context> State<C> {
                 Observation::Faulty
             }
         };
-        self.panorama.update(wvote.sender, new_obs);
+        self.panorama.update(wvote.creator, new_obs);
     }
 
-    /// Returns the hash of the message with the given sequence number from the sender of `hash`,
+    /// Returns the hash of the message with the given sequence number from the creator of `hash`,
     /// or `None` if the sequence number is higher than that of the vote with `hash`.
     fn find_in_swimlane<'a>(&'a self, hash: &'a C::Hash, seq_number: u64) -> Option<&'a C::Hash> {
         let vote = self.vote(hash);
@@ -401,7 +401,7 @@ impl<C: Context> State<C> {
         }
     }
 
-    /// Returns an iterator over votes (with hashes) by the same sender, in reverse chronological
+    /// Returns an iterator over votes (with hashes) by the same creator, in reverse chronological
     /// order, starting with the specified vote.
     pub(crate) fn swimlane<'a>(
         &'a self,
@@ -416,12 +416,14 @@ impl<C: Context> State<C> {
         })
     }
 
-    /// Returns `true` if `pan` sees the sender of `hash` as correct, and sees that vote.
+    /// Returns `true` if `pan` sees the creator of `hash` as correct, and sees that vote.
     pub(crate) fn sees_correct(&self, pan: &Panorama<C>, hash: &C::Hash) -> bool {
         let vote = self.vote(hash);
-        pan.get(vote.sender).correct().map_or(false, |latest_hash| {
-            Some(hash) == self.find_in_swimlane(latest_hash, vote.seq_number)
-        })
+        pan.get(vote.creator)
+            .correct()
+            .map_or(false, |latest_hash| {
+                Some(hash) == self.find_in_swimlane(latest_hash, vote.seq_number)
+            })
     }
 
     /// Returns a vector of validator indexes that equivocated between block
@@ -452,7 +454,7 @@ impl<C: Context> State<C> {
                 Observation::None => true,
                 Observation::Faulty => self.has_evidence(idx),
                 Observation::Correct(hash) => match self.opt_vote(hash) {
-                    Some(vote) => vote.sender == idx && self.panorama_geq(pan, &vote.panorama),
+                    Some(vote) => vote.creator == idx && self.panorama_geq(pan, &vote.panorama),
                     None => false, // Unknown vote. Not a substate of `state`.
                 },
             }

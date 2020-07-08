@@ -106,15 +106,15 @@ impl<C: Context> Panorama<C> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct Vote<C: Context> {
     // TODO: Signature
-    /// The list of latest messages and faults observed by the sender of this message.
+    /// The list of latest messages and faults observed by the creator of this message.
     pub(crate) panorama: Panorama<C>,
-    /// The number of earlier messages by the same sender.
+    /// The number of earlier messages by the same creator.
     pub(crate) seq_number: u64,
     /// The validator who created and sent this vote.
-    pub(crate) sender: ValidatorIndex,
+    pub(crate) creator: ValidatorIndex,
     /// The block this is a vote for. Either it or its parent must be the fork choice.
     pub(crate) block: C::Hash,
-    /// A skip list index of the sender's swimlane, i.e. the previous vote by the same sender.
+    /// A skip list index of the creator's swimlane, i.e. the previous vote by the same creator.
     ///
     /// For every `p = 1 << i` that divides `seq_number`, this contains an `i`-th entry pointing to
     /// the older vote with `seq_number - p`.
@@ -146,7 +146,7 @@ impl<C: Context> Vote<C> {
         if let Some(hash) = swvote
             .wire_vote
             .panorama
-            .get(swvote.wire_vote.sender)
+            .get(swvote.wire_vote.creator)
             .correct()
         {
             skip_idx.push(hash.clone());
@@ -158,7 +158,7 @@ impl<C: Context> Vote<C> {
         let vote = Vote {
             panorama: swvote.wire_vote.panorama,
             seq_number: swvote.wire_vote.seq_number,
-            sender: swvote.wire_vote.sender,
+            creator: swvote.wire_vote.creator,
             block,
             skip_idx,
             instant: swvote.wire_vote.instant,
@@ -167,7 +167,7 @@ impl<C: Context> Vote<C> {
         (vote, swvote.wire_vote.value)
     }
 
-    /// Returns the sender's previous message.
+    /// Returns the creator's previous message.
     pub(crate) fn previous(&self) -> Option<&C::Hash> {
         self.skip_idx.first()
     }

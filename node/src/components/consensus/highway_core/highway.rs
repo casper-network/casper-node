@@ -224,9 +224,9 @@ impl<C: Context> Highway<C> {
         self.on_new_vote(&vote_hash, vote_instant)
     }
 
-    /// Returns validator ID of the `swvote` sender.
+    /// Returns validator ID of the `swvote` creator.
     fn validator_pk(&self, swvote: &SignedWireVote<C>) -> &C::ValidatorId {
-        self.params.validators.get_by_id(swvote.wire_vote.sender)
+        self.params.validators.get_by_id(swvote.wire_vote.creator)
     }
 }
 
@@ -272,7 +272,7 @@ pub(crate) mod tests {
         };
         let wvote = WireVote {
             panorama: Panorama::new(WEIGHTS.len()),
-            sender: ALICE,
+            creator: ALICE,
             value: Some(0),
             seq_number: 0,
             instant: 1,

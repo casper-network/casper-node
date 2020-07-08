@@ -83,7 +83,7 @@ impl<C: Context> SignedWireVote<C> {
 ))]
 pub(crate) struct WireVote<C: Context> {
     pub(crate) panorama: Panorama<C>,
-    pub(crate) sender: ValidatorIndex,
+    pub(crate) creator: ValidatorIndex,
     pub(crate) value: Option<C::ConsensusValue>,
     pub(crate) seq_number: u64,
     pub(crate) instant: u64,
