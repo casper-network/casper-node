@@ -20,7 +20,7 @@ impl<C: Context> Evidence<C> {
     /// Returns the ID of the faulty validator.
     pub(crate) fn perpetrator(&self) -> ValidatorIndex {
         match self {
-            Evidence::Equivocation(vote0, _) => vote0.wire_vote.sender,
+            Evidence::Equivocation(vote0, _) => vote0.wire_vote.creator,
         }
     }
 }

@@ -95,7 +95,7 @@ impl<'a, C: Context> Section<'a, C> {
     /// itself.
     fn can_see(&self, vote: &Vote<C>, idx: ValidatorIndex) -> bool {
         self.sequence_numbers.get(&idx).map_or(false, |self_sn| {
-            if vote.sender == idx {
+            if vote.creator == idx {
                 vote.seq_number >= *self_sn
             } else {
                 let sees_self_sn = |vhash| self.state.vote(vhash).seq_number >= *self_sn;

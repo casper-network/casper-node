@@ -15,9 +15,9 @@ use crate::components::consensus::traits::Context;
 pub(crate) enum Effect<C: Context> {
     /// Newly vertex that should be gossiped to peers and added to the protocol state.
     NewVertex(Vertex<C>),
-    /// `handle_timer` needs to be called at the specified instant.
+    /// `handle_timer` needs to be called at the specified time.
     ScheduleTimer(u64),
-    /// `propose` needs to be called with a value for a new block with the specified instant.
+    /// `propose` needs to be called with a value for a new block with the specified timestamp.
     // TODO: Add more information required by the deploy buffer.
     RequestNewBlock(BlockContext),
 }
@@ -54,7 +54,7 @@ impl<C: Context> ActiveValidator<C> {
         vidx: ValidatorIndex,
         secret: C::ValidatorSecret,
         round_exp: u8,
-        instant: u64,
+        timestamp: u64,
         state: &State<C>,
     ) -> (Self, Vec<Effect<C>>) {
         let mut av = ActiveValidator {
@@ -63,26 +63,26 @@ impl<C: Context> ActiveValidator<C> {
             round_exp,
             next_timer: 0,
         };
-        let effects = av.schedule_timer(instant, state);
+        let effects = av.schedule_timer(timestamp, state);
         (av, effects)
     }
 
-    /// Returns actions a validator needs to take at the specified `instant`, with the given
+    /// Returns actions a validator needs to take at the specified `timestamp`, with the given
     /// protocol `state`.
-    pub(crate) fn handle_timer(&mut self, instant: u64, state: &State<C>) -> Vec<Effect<C>> {
-        let mut effects = self.schedule_timer(instant, state);
-        if self.earliest_vote_time(state) > instant {
-            warn!(%instant, "skipping outdated timer event");
+    pub(crate) fn handle_timer(&mut self, timestamp: u64, state: &State<C>) -> Vec<Effect<C>> {
+        let mut effects = self.schedule_timer(timestamp, state);
+        if self.earliest_vote_time(state) > timestamp {
+            warn!(%timestamp, "skipping outdated timer event");
             return effects;
         }
-        let round_offset = instant % self.round_len();
-        let round_id = instant - round_offset;
+        let round_offset = timestamp % self.round_len();
+        let round_id = timestamp - round_offset;
         if round_offset == 0 && state.leader(round_id) == self.vidx {
-            let bctx = BlockContext::new(Timestamp(instant));
+            let bctx = BlockContext::new(Timestamp(timestamp));
             effects.push(Effect::RequestNewBlock(bctx));
         } else if round_offset == self.witness_offset() {
-            let panorama = state.panorama_cutoff(state.panorama(), instant);
-            let witness_vote = self.new_vote(panorama, instant, None, state);
+            let panorama = state.panorama_cutoff(state.panorama(), timestamp);
+            let witness_vote = self.new_vote(panorama, timestamp, None, state);
             effects.push(Effect::NewVertex(Vertex::Vote(witness_vote)))
         }
         effects
@@ -92,14 +92,14 @@ impl<C: Context> ActiveValidator<C> {
     pub(crate) fn on_new_vote(
         &self,
         vhash: &C::Hash,
-        instant: u64,
+        timestamp: u64,
         state: &State<C>,
     ) -> Vec<Effect<C>> {
-        if self.earliest_vote_time(state) > instant {
-            warn!(%instant, "skipping outdated confirmation");
-        } else if self.should_send_confirmation(vhash, instant, state) {
+        if self.earliest_vote_time(state) > timestamp {
+            warn!(%timestamp, "skipping outdated confirmation");
+        } else if self.should_send_confirmation(vhash, timestamp, state) {
             let panorama = self.confirmation_panorama(vhash, state);
-            let confirmation_vote = self.new_vote(panorama, instant, None, state);
+            let confirmation_vote = self.new_vote(panorama, timestamp, None, state);
             return vec![Effect::NewVertex(Vertex::Vote(confirmation_vote))];
         }
         vec![]
@@ -123,16 +123,16 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// Returns whether the incoming message is a proposal that we need to send a confirmation for.
-    fn should_send_confirmation(&self, vhash: &C::Hash, instant: u64, state: &State<C>) -> bool {
+    fn should_send_confirmation(&self, vhash: &C::Hash, timestamp: u64, state: &State<C>) -> bool {
         let vote = state.vote(vhash);
-        if vote.instant > instant {
-            warn!(%vote.instant, %instant, "added a vote with a future timestamp");
+        if vote.timestamp > timestamp {
+            warn!(%vote.timestamp, %timestamp, "added a vote with a future timestamp");
             return false;
         }
-        instant / self.round_len() == vote.instant / self.round_len() // Current round.
-            && state.leader(vote.instant) == vote.sender // The sender is the round's leader.
-            && vote.sender != self.vidx // We didn't send it ourselves.
-            && !state.has_evidence(vote.sender) // The sender is not faulty.
+        timestamp / self.round_len() == vote.timestamp / self.round_len() // Current round.
+            && state.leader(vote.timestamp) == vote.creator // The creator is the round's leader.
+            && vote.creator != self.vidx // We didn't send it ourselves.
+            && !state.has_evidence(vote.creator) // The creator is not faulty.
             && state
                 .panorama()
                 .get(self.vidx)
@@ -153,7 +153,7 @@ impl<C: Context> ActiveValidator<C> {
         } else {
             panorama = vote.panorama.clone();
         }
-        panorama.update(vote.sender, Observation::Correct(vhash.clone()));
+        panorama.update(vote.creator, Observation::Correct(vhash.clone()));
         for faulty_v in state.faulty_validators() {
             panorama.update(faulty_v, Observation::Faulty);
         }
@@ -164,7 +164,7 @@ impl<C: Context> ActiveValidator<C> {
     fn new_vote(
         &self,
         panorama: Panorama<C>,
-        instant: u64,
+        timestamp: u64,
         value: Option<C::ConsensusValue>,
         state: &State<C>,
     ) -> SignedWireVote<C> {
@@ -172,21 +172,21 @@ impl<C: Context> ActiveValidator<C> {
         let seq_number = panorama.get(self.vidx).correct().map_or(0, add1);
         let wvote = WireVote {
             panorama,
-            sender: self.vidx,
+            creator: self.vidx,
             value,
             seq_number,
-            instant,
+            timestamp,
         };
         SignedWireVote::new(wvote, &self.secret)
     }
 
     /// Returns a `ScheduleTimer` effect for the next time we need to be called.
-    fn schedule_timer(&mut self, instant: u64, state: &State<C>) -> Vec<Effect<C>> {
-        if self.next_timer > instant {
+    fn schedule_timer(&mut self, timestamp: u64, state: &State<C>) -> Vec<Effect<C>> {
+        if self.next_timer > timestamp {
             return Vec::new(); // We already scheduled the next call; nothing to do.
         }
-        let round_offset = instant % self.round_len();
-        let round_id = instant - round_offset;
+        let round_offset = timestamp % self.round_len();
+        let round_id = timestamp - round_offset;
         self.next_timer = if round_offset < self.witness_offset() {
             round_id + self.witness_offset()
         } else if state.leader(round_id + self.round_len()) == self.vidx {
@@ -197,11 +197,11 @@ impl<C: Context> ActiveValidator<C> {
         vec![Effect::ScheduleTimer(self.next_timer)]
     }
 
-    /// Returns the earliest instant where we can cast our next vote without equivocating, i.e. the
+    /// Returns the earliest timestamp where we can cast our next vote without equivocating, i.e. the
     /// timestamp of our previous vote, or 0 if there is none.
     fn earliest_vote_time(&self, state: &State<C>) -> u64 {
         let opt_own_vh = state.panorama().get(self.vidx).correct();
-        opt_own_vh.map_or(0, |own_vh| state.vote(own_vh).instant)
+        opt_own_vh.map_or(0, |own_vh| state.vote(own_vh).timestamp)
     }
 
     /// Returns the number of ticks after the beginning of a round when the witness votes are sent.
