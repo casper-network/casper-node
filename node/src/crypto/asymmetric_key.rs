@@ -6,7 +6,7 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use ed25519_dalek::{self as ed25519, ExpandedSecretKey};
+use ed25519_dalek::{self as ed25519, ExpandedSecretKey, Keypair};
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 
@@ -156,6 +156,15 @@ impl From<&SecretKey> for PublicKey {
             SecretKey::Ed25519(secret_key) => PublicKey::Ed25519(secret_key.into()),
         }
     }
+}
+
+/// Generates an ED25519 keypair using the thread_rng
+pub fn generate_ed25519_keypair() -> (SecretKey, PublicKey) {
+    let keypair = Keypair::generate(&mut rand::thread_rng());
+    (
+        SecretKey::Ed25519(keypair.secret),
+        PublicKey::Ed25519(keypair.public),
+    )
 }
 
 // This is inside a private module so that the generated `BigArray` does not form part of this
