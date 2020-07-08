@@ -4,24 +4,20 @@ use std::prelude::v1::*;
 #[macro_use]
 extern crate std;
 extern crate alloc;
-use alloc::{
-    collections::{BTreeMap, BTreeSet},
-    string::String,
-};
+use alloc::{collections::BTreeSet, string::String};
 use contract_macro::{casperlabs_constructor, casperlabs_contract, casperlabs_method};
 use contract::{
-    contract_api::{account, runtime, storage, system},
+    contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
 use types::{
-    account::PublicKey,
     contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints},
-    runtime_args, CLType, CLTyped, Group, Key, Parameter, RuntimeArgs, URef, U512,
+    runtime_args, CLType, Group, Key, Parameter, RuntimeArgs, URef, U512,
 };
 const KEY: &str = "string_value";
 const INT_KEY: &str = "int_value";
 const U512_KEY: &str = "u512_value";
-fn __deploy(s: String, a: u64) {
+fn __deploy(s: String, _a: u64) {
     let (contract_package_hash, _) = storage::create_contract_package_at_hash();
     let _constructor_access_uref: URef = storage::create_contract_user_group(
         contract_package_hash,
@@ -38,7 +34,7 @@ fn __deploy(s: String, a: u64) {
         String::from("store_hello_world"),
         <[_]>::into_vec(box [
             Parameter::new("s", CLType::String),
-            Parameter::new("a", CLType::U64),
+            Parameter::new("_a", CLType::U64),
         ]),
         CLType::Unit,
         EntryPointAccess::Groups(<[_]>::into_vec(box [constructor_group])),
@@ -66,17 +62,17 @@ fn __deploy(s: String, a: u64) {
     runtime::call_contract::<()>(contract_hash, "store_hello_world", {
         let mut named_args = RuntimeArgs::new();
         named_args.insert("s", s);
-        named_args.insert("a", a);
+        named_args.insert("_a", _a);
         named_args
     });
 }
 #[no_mangle]
 fn call() {
     let s: String = runtime::get_named_arg("s");
-    let a: u64 = runtime::get_named_arg("a");
-    __deploy(s, a)
+    let _a: u64 = runtime::get_named_arg("_a");
+    __deploy(s, _a)
 }
-fn __store_hello_world(s: String, a: u64) {
+fn __store_hello_world(s: String, _a: u64) {
     let value_ref: URef = storage::new_uref(s);
     let value_key: Key = value_ref.into();
     runtime::put_key(KEY, value_key);
@@ -84,8 +80,8 @@ fn __store_hello_world(s: String, a: u64) {
 #[no_mangle]
 fn store_hello_world() {
     let s: String = runtime::get_named_arg("s");
-    let a: u64 = runtime::get_named_arg("a");
-    __store_hello_world(s, a)
+    let _a: u64 = runtime::get_named_arg("_a");
+    __store_hello_world(s, _a)
 }
 fn __store_u64() {
     let u: u64 = bar();

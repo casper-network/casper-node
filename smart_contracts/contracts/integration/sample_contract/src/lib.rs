@@ -4,19 +4,18 @@
 )]
 extern crate alloc;
 use alloc::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     string::String,
 };
 use contract_macro::{casperlabs_constructor, casperlabs_contract, casperlabs_method};
 
 use contract::{
-    contract_api::{account, runtime, storage, system},
+    contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
 use types::{
-    account::PublicKey,
     contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints},
-    runtime_args, CLType, CLTyped, Group, Key, Parameter, RuntimeArgs, URef, U512,
+    runtime_args, CLType, Group, Key, Parameter, RuntimeArgs, URef, U512,
 };
 
 const KEY: &str = "string_value";
@@ -27,7 +26,7 @@ const U512_KEY: &str = "u512_value";
 mod sample_contract {
     use super::*;
     #[casperlabs_constructor]
-    fn store_hello_world(s: String, a: u64) {
+    fn store_hello_world(s: String, _a: u64) {
         let value_ref: URef = storage::new_uref(s);
         let value_key: Key = value_ref.into();
         runtime::put_key(KEY, value_key);
