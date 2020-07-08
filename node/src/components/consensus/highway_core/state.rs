@@ -37,17 +37,6 @@ impl Mul<u64> for Weight {
     }
 }
 
-/// An error that occurred when trying to add a vote.
-#[derive(Debug, Error)]
-#[error("{:?}", .cause)]
-pub(crate) struct AddVoteError<C: Context> {
-    /// The invalid vote that was not added to the protocol state.
-    pub(crate) swvote: SignedWireVote<C>,
-    /// The reason the vote is invalid.
-    #[source]
-    pub(crate) cause: VoteError,
-}
-
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum VoteError {
     #[error("The vote's panorama is inconsistent.")]
@@ -60,15 +49,6 @@ pub(crate) enum VoteError {
     Creator,
     #[error("The signature is invalid.")]
     Signature,
-}
-
-impl<C: Context> SignedWireVote<C> {
-    fn with_error(self, cause: VoteError) -> AddVoteError<C> {
-        AddVoteError {
-            swvote: self,
-            cause,
-        }
-    }
 }
 
 /// A passive instance of the Highway protocol, containing its local state.
@@ -205,17 +185,6 @@ impl<C: Context> State<C> {
         self.votes.insert(hash, vote);
     }
 
-    /// Adds the vote to the protocol state, or returns an error if it is invalid.
-    /// Panics if dependencies are not satisfied.
-    #[cfg(test)] // TODO: Remove, and use `add_valid_vote` instead.
-    pub(crate) fn add_vote(&mut self, swvote: SignedWireVote<C>) -> Result<(), AddVoteError<C>> {
-        if let Err(err) = self.validate_vote(&swvote) {
-            return Err(swvote.with_error(err));
-        }
-        self.add_valid_vote(swvote);
-        Ok(())
-    }
-
     pub(crate) fn add_evidence(&mut self, evidence: Evidence<C>) {
         let idx = evidence.perpetrator();
         self.evidence.insert(idx, evidence);
@@ -305,7 +274,6 @@ impl<C: Context> State<C> {
 
     /// Returns the panorama seeing all votes seen by `pan` with a timestamp no later than
     /// `timestamp`. Accusations are preserved regardless of the evidence's timestamp.
-    #[allow(clippy::unnested_or_patterns)]
     pub(crate) fn panorama_cutoff(&self, pan: &Panorama<C>, timestamp: u64) -> Panorama<C> {
         let obs_cutoff = |obs: &Observation<C>| match obs {
             Observation::Correct(vhash) => self
@@ -570,6 +538,41 @@ pub(crate) mod tests {
     /// Returns the cause of the error, dropping the `WireVote`.
     fn vote_err(err: AddVoteError<TestContext>) -> VoteError {
         err.cause
+    }
+
+    /// An error that occurred when trying to add a vote.
+    #[derive(Debug, Error)]
+    #[error("{:?}", .cause)]
+    pub(crate) struct AddVoteError<C: Context> {
+        /// The invalid vote that was not added to the protocol state.
+        pub(crate) swvote: SignedWireVote<C>,
+        /// The reason the vote is invalid.
+        #[source]
+        pub(crate) cause: VoteError,
+    }
+
+    impl<C: Context> SignedWireVote<C> {
+        fn with_error(self, cause: VoteError) -> AddVoteError<C> {
+            AddVoteError {
+                swvote: self,
+                cause,
+            }
+        }
+    }
+
+    impl State<TestContext> {
+        /// Adds the vote to the protocol state, or returns an error if it is invalid.
+        /// Panics if dependencies are not satisfied.
+        pub(crate) fn add_vote(
+            &mut self,
+            swvote: SignedWireVote<TestContext>,
+        ) -> Result<(), AddVoteError<TestContext>> {
+            if let Err(err) = self.validate_vote(&swvote) {
+                return Err(swvote.with_error(err));
+            }
+            self.add_valid_vote(swvote);
+            Ok(())
+        }
     }
 
     #[test]

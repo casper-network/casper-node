@@ -1,7 +1,7 @@
 use super::{
     active_validator::{ActiveValidator, Effect},
     evidence::Evidence,
-    state::{AddVoteError, State, VoteError},
+    state::{State, VoteError},
     validators::Validators,
     vertex::{Dependency, Vertex, WireVote},
 };
@@ -236,9 +236,10 @@ pub(crate) mod tests {
         highway_core::{
             highway::{Highway, HighwayParams, VertexError, VoteError},
             state::tests::{
-                TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC, WEIGHTS,
+                AddVoteError, TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC,
+                WEIGHTS,
             },
-            state::{AddVoteError, State, Weight},
+            state::{State, Weight},
             validators::Validators,
             vertex::{SignedWireVote, Vertex, WireVote},
             vote::Panorama,
