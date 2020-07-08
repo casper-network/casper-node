@@ -190,7 +190,7 @@ impl<'a, C: Context> Tallies<'a, C> {
 #[cfg(test)]
 mod tests {
     use super::{
-        super::state::{tests::*, AddVoteError, State},
+        super::state::{tests::*, State},
         *,
     };
 

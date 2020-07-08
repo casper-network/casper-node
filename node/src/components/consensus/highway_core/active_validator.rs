@@ -222,7 +222,7 @@ mod tests {
     use super::{
         super::{
             finality_detector::{FinalityDetector, FinalityResult},
-            state::{tests::*, AddVoteError, Weight},
+            state::{tests::*, Weight},
             vertex::Vertex,
         },
         *,
