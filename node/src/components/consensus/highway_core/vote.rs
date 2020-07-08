@@ -119,8 +119,8 @@ pub(crate) struct Vote<C: Context> {
     /// For every `p = 1 << i` that divides `seq_number`, this contains an `i`-th entry pointing to
     /// the older vote with `seq_number - p`.
     pub(crate) skip_idx: Vec<C::Hash>,
-    /// This vote's instant, in milliseconds since the epoch.
-    pub(crate) instant: u64,
+    /// This vote's timestamp, in milliseconds since the epoch.
+    pub(crate) timestamp: u64,
     /// Original signature of the `SignedWireVote`.
     pub(crate) signature: <C::ValidatorSecret as ValidatorSecret>::Signature,
 }
@@ -161,7 +161,7 @@ impl<C: Context> Vote<C> {
             creator: swvote.wire_vote.creator,
             block,
             skip_idx,
-            instant: swvote.wire_vote.instant,
+            timestamp: swvote.wire_vote.timestamp,
             signature: swvote.signature,
         };
         (vote, swvote.wire_vote.value)

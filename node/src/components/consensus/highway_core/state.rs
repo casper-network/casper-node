@@ -176,8 +176,8 @@ impl<C: Context> State<C> {
     }
 
     /// Returns the leader in the specified time slot.
-    pub(crate) fn leader(&self, instant: u64) -> ValidatorIndex {
-        let mut rng = ChaCha8Rng::seed_from_u64(self.seed.wrapping_add(instant));
+    pub(crate) fn leader(&self, timestamp: u64) -> ValidatorIndex {
+        let mut rng = ChaCha8Rng::seed_from_u64(self.seed.wrapping_add(timestamp));
         // TODO: `rand` doesn't seem to document how it generates this. Needs to be portable.
         // We select a random one out of the `total_weight` weight units, starting numbering at 1.
         let r = Weight(rng.gen_range(1, self.total_weight().0 + 1));
@@ -230,7 +230,7 @@ impl<C: Context> State<C> {
             creator: vote.creator,
             value,
             seq_number: vote.seq_number,
-            instant: vote.instant,
+            timestamp: vote.timestamp,
         };
         Some(SignedWireVote {
             wire_vote: wvote,
@@ -304,13 +304,13 @@ impl<C: Context> State<C> {
     }
 
     /// Returns the panorama seeing all votes seen by `pan` with a timestamp no later than
-    /// `instant`. Accusations are preserved regardless of the evidence's timestamp.
+    /// `timestamp`. Accusations are preserved regardless of the evidence's timestamp.
     #[allow(clippy::unnested_or_patterns)]
-    pub(crate) fn panorama_cutoff(&self, pan: &Panorama<C>, instant: u64) -> Panorama<C> {
+    pub(crate) fn panorama_cutoff(&self, pan: &Panorama<C>, timestamp: u64) -> Panorama<C> {
         let obs_cutoff = |obs: &Observation<C>| match obs {
             Observation::Correct(vhash) => self
                 .swimlane(vhash)
-                .find(|(_, vote)| vote.instant <= instant)
+                .find(|(_, vote)| vote.timestamp <= timestamp)
                 .map(|(vh, _)| vh.clone())
                 .map_or(Observation::None, Observation::Correct),
             obs @ Observation::None | obs @ Observation::Faulty => obs.clone(),
@@ -343,7 +343,7 @@ impl<C: Context> State<C> {
             return Err(VoteError::Panorama);
         }
         let mut justifications = wvote.panorama.iter_correct();
-        if !justifications.all(|vh| self.vote(vh).instant <= wvote.instant) {
+        if !justifications.all(|vh| self.vote(vh).timestamp <= wvote.timestamp) {
             return Err(VoteError::Timestamps);
         }
         // Check that the vote's sequence number is one more than the creator's previous one.

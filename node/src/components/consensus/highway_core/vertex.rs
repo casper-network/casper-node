@@ -86,7 +86,7 @@ pub(crate) struct WireVote<C: Context> {
     pub(crate) creator: ValidatorIndex,
     pub(crate) value: Option<C::ConsensusValue>,
     pub(crate) seq_number: u64,
-    pub(crate) instant: u64,
+    pub(crate) timestamp: u64,
 }
 
 impl<C: Context> WireVote<C> {
