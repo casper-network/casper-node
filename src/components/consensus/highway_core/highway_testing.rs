@@ -101,12 +101,12 @@ fn run_finalizer<C: Context>(
     match finality_detector.run(state) {
         FinalityResult::Finalized(v, equivocated_ids) => {
             if !equivocated_ids.is_empty() {
-                panic!("Equivocations detected but not handled!")
+                unimplemented!("Equivocations detected but not handled.")
             }
             vec![v]
         }
         FinalityResult::None => vec![],
-        FinalityResult::FttExceeded => unimplemented!(),
+        FinalityResult::FttExceeded => unimplemented!("Ftt exceeded but not handled."),
     }
 }
 
