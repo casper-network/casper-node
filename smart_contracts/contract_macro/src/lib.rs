@@ -110,6 +110,15 @@ pub fn casperlabs_constructor(_attr: TokenStream, input: TokenStream) -> TokenSt
 pub fn casperlabs_method(_attr: TokenStream, input: TokenStream) -> TokenStream {
     let mut item: syn::ItemFn = syn::parse_macro_input!(input);
     let orignal_ident = item.sig.ident.clone();
+    let return_type = item.sig.output.clone();
+    let mut return_code = proc_macro2::TokenStream::new();
+    if let syn::ReturnType::Type(_arrow, rt) = return_type {
+        if let syn::Type::Path(path) = *rt {
+            let return_ident = &path.path.segments[0].ident;
+            let code = quote!{ -> #return_ident };
+            return_code.extend(code);
+        }         
+    }
     let name = &orignal_ident;
     let new_ident = Ident::new(&format!("__{}", name), name.span());
     item.sig.ident = new_ident;
@@ -121,7 +130,7 @@ pub fn casperlabs_method(_attr: TokenStream, input: TokenStream) -> TokenStream 
         let gen = quote! {
             #func_def
             #[no_mangle]
-            fn #name() {
+            fn #name() #return_code {
                 #declaration
                 #internal()
             }
@@ -137,7 +146,7 @@ pub fn casperlabs_method(_attr: TokenStream, input: TokenStream) -> TokenStream 
     let gen = quote! {
         #func_def
         #[no_mangle]
-        fn #name() {
+        fn #name() #return_code {
             #declaration
             #internal(#input_args)
         }
