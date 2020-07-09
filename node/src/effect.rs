@@ -54,7 +54,7 @@
 //! **Requests** are some of the most complex effects, they represent a question of a component for
 //! another component, for which it eventually expects an answer.
 //!
-//! A request usually has a `Responder` in its fields, which a handler of a request **must** call at
+//! A request **must** have a `Responder` field, which a handler of a request **must** call at
 //! some point. Failing to do so will result in a resource leak.
 
 pub mod announcements;
