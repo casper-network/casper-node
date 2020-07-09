@@ -1,0 +1,19 @@
+[package]
+name = "args-u32"
+version = "0.1.0"
+authors = ["Piotr Kuchta <piotr@casperlabs.io>"]
+edition = "2018"
+
+[[bin]]
+name = "args_u32"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[features]
+std = ["contract/std", "types/std"]
+
+[dependencies]
+contract = { path = "../../../contract", package = "casperlabs-contract" }
+types = { path = "../../../../types", package = "casperlabs-types" }

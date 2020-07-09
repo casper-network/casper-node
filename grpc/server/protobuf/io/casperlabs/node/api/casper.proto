@@ -1,0 +1,209 @@
+syntax = "proto3";
+
+package io.casperlabs.node.api.casper;
+
+import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
+import "io/casperlabs/casper/consensus/consensus.proto";
+import "io/casperlabs/casper/consensus/info.proto";
+import "io/casperlabs/casper/consensus/state.proto";
+
+// CasperService is the way for user and dApp developer to interact with the system,
+// including deploying contracts, looking at the DAG and querying state.
+service CasperService {
+
+    // Add a deploy to the deploy pool on the node,
+    // to be processed during subsequent block proposals.
+    rpc Deploy(DeployRequest) returns (google.protobuf.Empty) {
+        option (google.api.http) = {
+            post: "/v2/deploys"
+            body: "deploy"
+        };
+    }
+
+    // Get the block summary with extra information about finality.
+    rpc GetBlockInfo(GetBlockInfoRequest) returns (io.casperlabs.casper.consensus.info.BlockInfo) {
+        option (google.api.http) = {
+            get: "/v2/blocks/{block_hash_base16=*}"
+        };
+    }
+
+    // Get slices of the DAG, going backwards, rank by rank.
+    rpc StreamBlockInfos(StreamBlockInfosRequest) returns (stream io.casperlabs.casper.consensus.info.BlockInfo) {
+        option (google.api.http) = {
+            get: "/v2/blocks"
+        };
+    }
+
+    // Retrieve information about a single deploy by hash.
+    rpc GetDeployInfo(GetDeployInfoRequest) returns (io.casperlabs.casper.consensus.info.DeployInfo) {
+        option (google.api.http) = {
+            get: "/v2/deploys/{deploy_hash_base16=*}"
+        };
+    }
+
+    // Get the processed deploys within a block.
+    rpc StreamBlockDeploys(StreamBlockDeploysRequest) returns (stream io.casperlabs.casper.consensus.Block.ProcessedDeploy) {
+        option (google.api.http) = {
+            get: "/v2/blocks{block_hash_base16=*}/deploys"
+        };
+    }
+
+    rpc StreamEvents(StreamEventsRequest) returns (stream io.casperlabs.casper.consensus.info.Event){
+        option (google.api.http) = {
+            get: "/v2/events"
+        };
+    }
+
+    // Query the value of global state as it was after the execution of a block.
+    rpc GetBlockState(GetBlockStateRequest) returns (io.casperlabs.casper.consensus.state.StoredValueInstance) {
+        option (google.api.http) = {
+            post: "v2/blocks/{block_hash_base16=*}/state"
+            body: "*"
+        };
+    }
+
+    // Execute multiple state queries at once.
+    rpc BatchGetBlockState(BatchGetBlockStateRequest) returns (BatchGetBlockStateResponse) {
+        option (google.api.http) = {
+            post: "v2/blocks/{block_hash_base16=*}/state:batchGet"
+            body: "*"
+        };
+    }
+
+    // Get deploys list of a given account
+    rpc ListDeployInfos (ListDeployInfosRequest) returns (ListDeployInfosResponse) {
+        option (google.api.http) = {
+            get: "v2/accounts/{account_public_key_hash_base16=*}/deploys"
+        };
+    }
+
+    rpc GetLastFinalizedBlockInfo (GetLastFinalizedBlockInfoRequest) returns (io.casperlabs.casper.consensus.info.BlockInfo) {
+        option (google.api.http) = {
+            get: "v2/last-finalized-block"
+        };
+    }
+}
+
+message DeployRequest {
+    io.casperlabs.casper.consensus.Deploy deploy = 1;
+}
+
+message GetBlockInfoRequest {
+    // Either the full or just the first few characters of the block hash in base16 encoding,
+    // so that it works with the client's redacted displays.
+    string block_hash_base16 = 1;
+    // Alternative to the base16 encoded value (which is intended for URL compatibility).
+    bytes block_hash = 3;
+    io.casperlabs.casper.consensus.info.BlockInfo.View view = 2;
+}
+
+message StreamBlockInfosRequest {
+    // How many of the top ranks of the DAG to show. 0 will not return anything.
+    uint32 depth = 1;
+
+    // Optionally specify the maximum rank to to go back from.
+    // 0 means go from the current tip of the DAG.
+    uint64 max_rank = 2;
+
+    io.casperlabs.casper.consensus.info.BlockInfo.View view = 3;
+}
+
+
+
+message GetDeployInfoRequest {
+    string deploy_hash_base16 = 1;
+    // Alternative to the base16 encoded value (which is intended for URL compatibility).
+    bytes deploy_hash = 3;
+    io.casperlabs.casper.consensus.info.DeployInfo.View view = 2;
+}
+
+message StreamBlockDeploysRequest {
+    string block_hash_base16 = 1;
+    // Alternative to the base16 encoded value (which is intended for URL compatibility).
+    bytes block_hash = 3;
+    io.casperlabs.casper.consensus.info.DeployInfo.View view = 2;
+}
+
+message StateQuery {
+    KeyVariant key_variant = 1;
+    string key_base16 = 2;
+    // Path of human readable names to the value.
+    repeated string path_segments = 3;
+
+    enum KeyVariant {
+        KEY_VARIANT_UNSPECIFIED = 0;
+        HASH = 1;
+        UREF = 2;
+        ADDRESS = 3;
+        LOCAL = 4;
+    }
+}
+
+message GetBlockStateRequest {
+    string block_hash_base16 = 1;
+    // Alternative to the base16 encoded value (which is intended for URL compatibility).
+    bytes block_hash = 3;
+    StateQuery query = 2;
+}
+
+message BatchGetBlockStateRequest {
+    string block_hash_base16 = 1;
+    // Alternative to the base16 encoded value (which is intended for URL compatibility).
+    bytes block_hash = 3;
+    repeated StateQuery queries = 2;
+}
+
+message BatchGetBlockStateResponse {
+    reserved 1; // previously repeated io.casperlabs.casper.consensus.state.Value
+    repeated io.casperlabs.casper.consensus.state.StoredValueInstance values = 2;
+}
+
+message ListDeployInfosRequest {
+    string account_public_key_hash_base16 = 1;
+    // Alternative to the base16 encoded value (which is intended for URL compatibility).
+    bytes account_public_key_hash = 5;
+    io.casperlabs.casper.consensus.info.DeployInfo.View view = 2;
+    uint32 page_size = 3;
+    string page_token = 4;
+}
+
+message ListDeployInfosResponse {
+    repeated io.casperlabs.casper.consensus.info.DeployInfo deploy_infos = 1;
+    string next_page_token = 2;
+    string prev_page_token = 3;
+}
+
+
+message GetLastFinalizedBlockInfoRequest {
+    io.casperlabs.casper.consensus.info.BlockInfo.View view = 1;
+}
+
+message StreamEventsRequest {
+  bool block_added = 1;
+  bool block_finalized = 2;
+  bool deploy_added = 3;
+  bool deploy_discarded = 4;
+  bool deploy_requeued = 5;
+  bool deploy_processed = 6;
+  bool deploy_finalized = 7;
+  bool deploy_orphaned = 8;
+
+  // Optional filters for deploy events; applies to anything opted into via the flags.
+  DeployFilter deploy_filter = 9;
+
+  // Supports replaying events from a given ID.
+  // If the value is 0, it it will subscribe to future events;
+  // if it's non-zero, it will replay all past events from that ID, without subscribing to new.
+  // To catch up with events from the beginning, start from 1.
+  uint64 min_event_id = 10;
+  uint64 max_event_id = 11;
+
+  // Filters to apply on deploy events; different fields combined with AND operator.
+  message DeployFilter {
+      // Filter to any of the accounts on the list.
+      repeated bytes account_public_key_hashes = 1;
+      // Filter for specific deploy hashes.
+      repeated bytes deploy_hashes = 2;
+  }
+}
