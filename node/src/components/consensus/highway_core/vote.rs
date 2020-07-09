@@ -1,3 +1,5 @@
+use std::fmt::{self, Debug};
+
 use serde::{Deserialize, Serialize};
 
 use super::{state::State, validators::ValidatorIndex, vertex::WireVote};
@@ -103,7 +105,6 @@ impl<C: Context> Panorama<C> {
 }
 
 /// A vote sent to or received from the network.
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct Vote<C: Context> {
     // TODO: Signature
     /// The list of latest messages and faults observed by the creator of this message.
@@ -124,6 +125,52 @@ pub(crate) struct Vote<C: Context> {
     /// Original signature of the `SignedWireVote`.
     pub(crate) signature: <C::ValidatorSecret as ValidatorSecret>::Signature,
 }
+
+// `#[derive]` doesn't work if `C::ValidatorSecret` is not `Clone`
+impl<C: Context> Clone for Vote<C> {
+    fn clone(&self) -> Self {
+        Self {
+            panorama: self.panorama.clone(),
+            seq_number: self.seq_number,
+            creator: self.creator,
+            block: self.block.clone(),
+            skip_idx: self.skip_idx.clone(),
+            timestamp: self.timestamp,
+            signature: self.signature.clone(),
+        }
+    }
+}
+
+// `#[derive]` doesn't work if `C::ValidatorSecret` is not `Debug`
+impl<C: Context> Debug for Vote<C> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Vote")
+            .field("panorama", &self.panorama)
+            .field("seq_number", &self.seq_number)
+            .field("creator", &self.creator)
+            .field("block", &self.block)
+            .field("skip_idx", &self.skip_idx)
+            .field("timestamp", &self.timestamp)
+            .field("signature", &self.signature)
+            .finish()
+    }
+}
+
+// `#[derive]` doesn't work if `C::ValidatorSecret` is not `PartialEq`
+impl<C: Context> PartialEq for Vote<C> {
+    fn eq(&self, other: &Vote<C>) -> bool {
+        self.panorama == other.panorama
+            && self.seq_number == other.seq_number
+            && self.creator == other.creator
+            && self.block == other.block
+            && self.skip_idx == other.skip_idx
+            && self.timestamp == other.timestamp
+            && self.signature == other.signature
+    }
+}
+
+// `#[derive]` doesn't work if `C::ValidatorSecret` is not `Eq`
+impl<C: Context> Eq for Vote<C> {}
 
 impl<C: Context> Vote<C> {
     /// Creates a new `Vote` from the `WireVote`, and returns the value if it contained any.

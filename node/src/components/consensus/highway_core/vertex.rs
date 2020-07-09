@@ -1,4 +1,7 @@
-use std::iter;
+use std::{
+    fmt::{self, Debug},
+    iter,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -51,7 +54,7 @@ impl<C: Context> Vertex<C> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -60,6 +63,36 @@ pub(crate) struct SignedWireVote<C: Context> {
     pub(crate) wire_vote: WireVote<C>,
     pub(crate) signature: <C::ValidatorSecret as ValidatorSecret>::Signature,
 }
+
+// `#[derive]` doesn't work if `C::ValidatorSecret` is not `Clone`
+impl<C: Context> Clone for SignedWireVote<C> {
+    fn clone(&self) -> Self {
+        Self {
+            wire_vote: self.wire_vote.clone(),
+            signature: self.signature.clone(),
+        }
+    }
+}
+
+// `#[derive]` doesn't work if `C::ValidatorSecret` is not `Debug`
+impl<C: Context> Debug for SignedWireVote<C> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("SignedWireVote")
+            .field("wire_vote", &self.wire_vote)
+            .field("signature", &self.signature)
+            .finish()
+    }
+}
+
+// `#[derive]` doesn't work if `C::ValidatorSecret` is not `PartialEq`
+impl<C: Context> PartialEq for SignedWireVote<C> {
+    fn eq(&self, other: &SignedWireVote<C>) -> bool {
+        self.wire_vote == other.wire_vote && self.signature == other.signature
+    }
+}
+
+// `#[derive]` doesn't work if `C::ValidatorSecret` is not `Eq`
+impl<C: Context> Eq for SignedWireVote<C> {}
 
 impl<C: Context> SignedWireVote<C> {
     pub(crate) fn new(wire_vote: WireVote<C>, secret_key: &C::ValidatorSecret) -> Self {
