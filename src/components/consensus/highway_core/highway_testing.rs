@@ -108,25 +108,24 @@ enum CrankOk {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-enum TestRunError {
-    /// VirtualNet was missing a recipient validator when it was expected to exist.
-    MissingRecipient(ValidatorId),
+enum TestRunError<C: Context> {
     /// VirtualNet was missing a validator when it was expected to exist.
     MissingValidator(ValidatorId),
+    SenderMissingDependency(ValidatorId, Dependency<C>),
     NoMessages,
 }
 
-impl Display for TestRunError {
+impl<C: Context> Display for TestRunError<C> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            TestRunError::MissingRecipient(validator_id) => write!(
-                f,
-                "Recipient validator {:?} was not found in the map.",
-                validator_id
-            ),
             TestRunError::NoMessages => write!(
                 f,
                 "Test finished prematurely due to lack of messages in the queue"
+            ),
+            TestRunError::SenderMissingDependency(validator_id, dependency) => write!(
+                f,
+                "{:?} was missing a dependency {:?} of a vertex it created.",
+                validator_id, dependency
             ),
             TestRunError::MissingValidator(id) => {
                 write!(f, "Virtual net is missing validator {:?}.", id)
@@ -181,7 +180,7 @@ where
     /// Pops one message from the message queue (if there are any)
     /// and pass it to the recipient validator for execution.
     /// Messages returned from the execution are scheduled for later delivery.
-    pub(crate) fn crank(&mut self) -> Result<CrankOk, TestRunError> {
+    pub(crate) fn crank(&mut self) -> Result<CrankOk, TestRunError<Ctx>> {
         // Stop the test when each node finalized all consensus values.
         // Note that we're not testing the order of finalization here.
         // TODO: Consider moving out all the assertions to client side.
@@ -202,7 +201,7 @@ where
             .pop_message()
             .ok_or(TestRunError::NoMessages)?;
 
-        let messages = self.process_message(recipient, message);
+        let messages = self.process_message(recipient, message)?;
 
         let targeted_messages = messages
             .into_iter()
@@ -225,13 +224,20 @@ where
         &mut self,
         validator_id: ValidatorId,
         message: Message<HighwayMessage<Ctx>>,
-    ) -> Vec<HighwayMessage<Ctx>> {
-        let recipient = self.virtual_net.get_validator_mut(&validator_id).unwrap(); // TODO: Don't unwrap.
+    ) -> Result<Vec<HighwayMessage<Ctx>>, TestRunError<Ctx>> {
+        let recipient = self
+            .virtual_net
+            .get_validator_mut(&validator_id)
+            .ok_or_else(|| TestRunError::MissingValidator(validator_id))?;
         recipient.push_messages_received(vec![message.clone()]);
 
         let messages = {
             let sender_id = message.sender;
-            let recipient = self.virtual_net.get_validator_mut(&validator_id).unwrap(); // TODO: Don't unwrap.
+            let recipient = self
+                .virtual_net
+                .get_validator_mut(&validator_id)
+                .ok_or_else(|| TestRunError::MissingValidator(validator_id))?;
+
             let recipient_id = recipient.id;
             let hwm = message.payload().clone();
             match hwm {
@@ -242,7 +248,7 @@ where
                     .into_iter()
                     .map(HighwayMessage::from)
                     .collect(),
-                NewVertex(v) => self.add_vertex(recipient_id, sender_id, v),
+                NewVertex(v) => self.add_vertex(recipient_id, sender_id, v)?,
                 RequestBlock(block_context) => {
                     let consensus_value = recipient.next_consensus_value().unwrap();
                     recipient
@@ -256,7 +262,10 @@ where
             }
         };
 
-        let recipient = self.virtual_net.get_validator_mut(&validator_id).unwrap(); // TODO: Don't unwrap.
+        let recipient = self
+            .virtual_net
+            .get_validator_mut(&validator_id)
+            .ok_or_else(|| TestRunError::MissingValidator(validator_id))?;
         recipient.push_messages_produced(messages.clone());
 
         let finality_result = match recipient.consensus.run_finality() {
@@ -272,7 +281,7 @@ where
 
         recipient.push_finalized(finality_result);
 
-        messages
+        Ok(messages)
     }
 
     // Adds vertex to the validator's state.
@@ -282,15 +291,17 @@ where
         recipient: ValidatorId,
         sender: ValidatorId,
         vertex: Vertex<Ctx>,
-    ) -> Vec<HighwayMessage<Ctx>> {
+    ) -> Result<Vec<HighwayMessage<Ctx>>, TestRunError<Ctx>> {
         // 1. pre_validate_vertex
         // 2. missing_dependency
         // 3. validate_vertex
         // 4. add_valid_vertex
 
         let (prevalidated_vertex, missing) = {
-            let validator = self.virtual_net.get_validator_mut(&recipient).unwrap(); //TODO: Don't unwrap.
-
+            let validator = self
+                .virtual_net
+                .get_validator_mut(&recipient)
+                .ok_or_else(|| TestRunError::MissingValidator(recipient))?;
             let prevalidated_vertex = validator
                 .consensus
                 .highway
@@ -305,10 +316,13 @@ where
             (prevalidated_vertex, missing_dependency)
         };
 
-        let mut sync_effects = self.synchronize_validator(missing, recipient, sender);
+        let mut sync_effects = self.synchronize_validator(missing, recipient, sender)?;
 
         let add_vertex_effects: Vec<HighwayMessage<Ctx>> = {
-            let validator = self.virtual_net.get_validator_mut(&recipient).unwrap(); //TODO: Don't unwrap.
+            let validator = self
+                .virtual_net
+                .get_validator_mut(&recipient)
+                .ok_or_else(|| TestRunError::MissingValidator(recipient))?;
 
             let valid_vertex = validator
                 .consensus
@@ -327,7 +341,7 @@ where
 
         sync_effects.extend(add_vertex_effects);
 
-        sync_effects
+        Ok(sync_effects)
     }
 
     // Synchronizes `validator` in case of missing dependencies.
@@ -340,7 +354,7 @@ where
         missing_dependency: Option<Dependency<Ctx>>,
         recipient: ValidatorId,
         sender: ValidatorId,
-    ) -> Vec<HighwayMessage<Ctx>> {
+    ) -> Result<Vec<HighwayMessage<Ctx>>, TestRunError<Ctx>> {
         if let Some(dependency) = missing_dependency {
             let senders_state = self
                 .virtual_net
@@ -351,19 +365,17 @@ where
                 .state();
 
             let vertex = match dependency {
-                Dependency::Vote(hash) => {
+                Dependency::Vote(ref hash) => {
                     let swvote = senders_state
                         .wire_vote(&hash)
-                        .ok_or_else(|| panic!("Sender didn't have vote for hash {:?}.", hash)) //TODO: Make an TestError case
-                        .unwrap();
+                        .ok_or_else(|| TestRunError::SenderMissingDependency(sender, dependency))?;
                     Vertex::Vote(swvote)
                 }
-                Dependency::Evidence(idx) => {
+                Dependency::Evidence(ref idx) => {
                     let evidence = senders_state
-                        .opt_evidence(idx)
+                        .opt_evidence(*idx)
                         .cloned()
-                        .ok_or_else(|| panic!("Sender didn't have evidence for {:?}.", idx)) //TODO: Make an TestError case
-                        .unwrap();
+                        .ok_or_else(|| TestRunError::SenderMissingDependency(sender, dependency))?;
 
                     Vertex::Evidence(evidence.clone())
                 }
@@ -371,7 +383,7 @@ where
 
             self.add_vertex(recipient, sender, vertex)
         } else {
-            vec![]
+            Ok(vec![])
         }
     }
 }
