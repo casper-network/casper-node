@@ -58,7 +58,7 @@ impl<C: Context> Vertex<C> {
 ))]
 pub(crate) struct SignedWireVote<C: Context> {
     pub(crate) wire_vote: WireVote<C>,
-    pub(crate) signature: <C::ValidatorSecret as ValidatorSecret>::Signature,
+    pub(crate) signature: C::Signature,
 }
 
 impl<C: Context> SignedWireVote<C> {
