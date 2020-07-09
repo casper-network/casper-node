@@ -7,8 +7,8 @@ use tracing::{info, warn};
 use crate::components::consensus::{
     consensus_protocol::{
         synchronizer::{DagSynchronizerState, SynchronizerEffect},
-        AddVertexOk, BlockContext, ConsensusProtocol, ConsensusProtocolResult, ProtocolState,
-        Timestamp, VertexTrait,
+        BlockContext, ConsensusProtocol, ConsensusProtocolResult, ProtocolState, Timestamp,
+        VertexTrait,
     },
     highway_core::{
         active_validator::Effect as AvEffect,
@@ -37,21 +37,8 @@ impl<C: Context> ProtocolState for Highway<C> {
     type VId = Dependency<C>;
     type Vertex = PreValidatedVertex<C>;
 
-    fn add_vertex(&mut self, pvv: Self::Vertex) -> Result<AddVertexOk<Dependency<C>>, Self::Error> {
-        let vid = pvv.vertex().id();
-        if let Some(dep) = self.missing_dependency(&pvv) {
-            return Ok(AddVertexOk::MissingDependency(dep));
-        }
-        let vv = match self.validate_vertex(pvv) {
-            Ok(vv) => vv,
-            Err((pvv, err)) => return Err(format!("invalid vertex: {:?}, {:?}", pvv, err)),
-        };
-        if !self.add_valid_vertex(vv).is_empty() {
-            return Err("add_vertex returned non-empty vec of effects. \
-                        This mustn't happen. You forgot to update the code!"
-                .to_string());
-        }
-        Ok(AddVertexOk::Success(vid))
+    fn missing_dependency(&self, pvv: &Self::Vertex) -> Option<Dependency<C>> {
+        Highway::missing_dependency(&self, &pvv)
     }
 
     fn get_vertex(&self, v: Dependency<C>) -> Result<Option<PreValidatedVertex<C>>, Self::Error> {
@@ -131,6 +118,7 @@ where
     fn process_synchronizer_effect(
         &mut self,
         effect: SynchronizerEffect<I, PreValidatedVertex<C>>,
+        highway: &mut Highway<C>,
     ) {
         match effect {
             SynchronizerEffect::RequestVertex(sender, missing_vid) => {
@@ -145,9 +133,47 @@ where
                         sender,
                     ));
             }
-            SynchronizerEffect::Success(vertex) => {
-                // TODO: Add new vertex to state. (Indirectly, via synchronizer?)
-                let msg = HighwayMessage::NewVertex(vertex.into());
+            SynchronizerEffect::Success(pvv) => {
+                let vv = match highway.validate_vertex(pvv) {
+                    Ok(vv) => vv,
+                    Err((pvv, err)) => {
+                        // TODO: Disconnect from sender!
+                        // TODO: Remove all vertices from the synchronizer that depend on this one.
+                        info!(?pvv, ?err, "invalid vertex");
+                        return;
+                    }
+                };
+                // TODO: Avoid cloning. (Serialize first?)
+                for effect in highway.add_valid_vertex(vv.clone()) {
+                    self.results.push(match effect {
+                        AvEffect::NewVertex(v) => {
+                            let msg = HighwayMessage::NewVertex(v.clone());
+                            //TODO: Don't unwrap
+                            // Replace serde with generic serializer.
+                            let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
+                            // TODO: Validation should be unnecessary, since we created the vertex
+                            // ourselves.
+                            let pvv = highway
+                                .pre_validate_vertex(v)
+                                .expect("we created an invalid vertex");
+                            let vv = highway
+                                .validate_vertex(pvv)
+                                .expect("we created an invalid vertex");
+                            assert!(
+                                highway.add_valid_vertex(vv).is_empty(),
+                                "unexpected effects when adding our own vertex"
+                            );
+                            ConsensusProtocolResult::CreatedGossipMessage(serialized_msg)
+                        }
+                        AvEffect::ScheduleTimer(instant_u64) => {
+                            ConsensusProtocolResult::ScheduleTimer(Timestamp(instant_u64))
+                        }
+                        AvEffect::RequestNewBlock(block_context) => {
+                            ConsensusProtocolResult::CreateNewBlock(block_context)
+                        }
+                    });
+                }
+                let msg = HighwayMessage::NewVertex(vv.into());
                 // TODO: Don't `unwrap`.
                 let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
                 self.results
@@ -178,7 +204,7 @@ where
         if let Some((sender, vertex)) = self.vertex_queue.pop() {
             self.process_vertex(sender, vertex, synchronizer, highway);
         } else if let Some(effect) = self.synchronizer_effects_queue.pop() {
-            self.process_synchronizer_effect(effect);
+            self.process_synchronizer_effect(effect, highway);
         }
     }
 }

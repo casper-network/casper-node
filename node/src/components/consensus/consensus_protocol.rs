@@ -9,7 +9,7 @@ use crate::components::consensus::traits::ConsensusValueT;
 mod protocol_state;
 pub(crate) mod synchronizer;
 
-pub(crate) use protocol_state::{AddVertexOk, ProtocolState, VertexTrait};
+pub(crate) use protocol_state::{ProtocolState, VertexTrait};
 
 // TODO: Use `Timestamp` instead of `u64`.
 // Implement `Add`, `Sub` etc.

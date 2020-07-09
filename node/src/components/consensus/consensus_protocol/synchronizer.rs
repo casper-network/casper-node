@@ -3,7 +3,7 @@ use std::{
     iter,
 };
 
-use super::protocol_state::{AddVertexOk, ProtocolState, VertexTrait};
+use super::protocol_state::{ProtocolState, VertexTrait};
 use crate::components::consensus::traits::NodeIdT;
 
 /// Note that we might be requesting download of the duplicate element
@@ -116,20 +116,16 @@ where
         v: P::Vertex,
         protocol_state: &mut P,
     ) -> Result<Vec<SynchronizerEffect<I, P::Vertex>>, anyhow::Error> {
-        match protocol_state.add_vertex(v.clone()) {
-            Ok(AddVertexOk::MissingDependency(missing_vid)) => {
-                self.add_vertex_dependency(missing_vid.clone(), sender.clone(), v);
-                Ok(vec![SynchronizerEffect::RequestVertex(sender, missing_vid)])
-            }
-            Ok(AddVertexOk::Success(_vid)) => {
-                let vertices_with_completed_dependencies = self.complete_vertex_dependency(v.id());
-                Ok(vertices_with_completed_dependencies
-                    .into_iter()
-                    .map(|(sender, vertex)| SynchronizerEffect::RequeueVertex(sender, vertex))
-                    .chain(iter::once(SynchronizerEffect::Success(v)))
-                    .collect())
-            }
-            Err(error) => Err(anyhow::anyhow!("{:?}", error)),
+        if let Some(missing_vid) = protocol_state.missing_dependency(&v) {
+            self.add_vertex_dependency(missing_vid.clone(), sender.clone(), v);
+            Ok(vec![SynchronizerEffect::RequestVertex(sender, missing_vid)])
+        } else {
+            let vertices_with_completed_dependencies = self.complete_vertex_dependency(v.id());
+            Ok(vertices_with_completed_dependencies
+                .into_iter()
+                .map(|(sender, vertex)| SynchronizerEffect::RequeueVertex(sender, vertex))
+                .chain(iter::once(SynchronizerEffect::Success(v)))
+                .collect())
         }
     }
 
