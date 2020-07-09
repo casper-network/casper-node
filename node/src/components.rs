@@ -6,6 +6,9 @@ pub(crate) mod api_server;
 pub(crate) mod consensus;
 pub mod contract_runtime;
 pub(crate) mod deploy_gossiper;
+// TODO: remove when we actually use the deploy buffer
+#[allow(unused)]
+pub(crate) mod deploy_buffer;
 // The  `in_memory_network` is public for use in doctests.
 pub mod in_memory_network;
 pub(crate) mod pinger;

@@ -1,7 +1,20 @@
-use std::collections::{HashMap, HashSet};
+//! Deploy buffer.
+//!
+//! The deploy buffer stores deploy hashes in memory, tracking their suitability for inclusion into
+//! a new block. Upon request, it returns a list of candidates that can be included.
 
-use crate::types::{BlockHash, DeployHash, DeployHeader};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::{self, Display, Formatter},
+};
 
+use crate::{
+    components::Component,
+    effect::{requests::DeployQueueRequest, EffectExt},
+    types::{BlockHash, DeployHash, DeployHeader},
+};
+
+/// Deploy buffer.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct DeployBuffer {
     collected_deploys: HashMap<DeployHash, DeployHeader>,
@@ -10,11 +23,15 @@ pub(crate) struct DeployBuffer {
 }
 
 impl DeployBuffer {
+    /// Creates a new, empty deploy buffer instance.
     pub(crate) fn new() -> Self {
         Default::default()
     }
 
-    pub(crate) fn add_deploy(&mut self, hash: DeployHash, deploy: DeployHeader) {
+    /// Adds a deploy to the deploy buffer.
+    ///
+    /// Returns `false` if the deploy has been rejected.
+    pub(crate) fn add_deploy(&mut self, hash: DeployHash, deploy: DeployHeader) -> bool {
         // only add the deploy if it isn't contained in a finalized block
         if !self
             .finalized
@@ -22,11 +39,13 @@ impl DeployBuffer {
             .any(|block| block.contains_key(&hash))
         {
             self.collected_deploys.insert(hash, deploy);
+            true
+        } else {
+            false
         }
     }
 
-    /// `blocks` contains the ancestors that haven't been finalized yet - we exclude all the
-    /// deploys from the finalized blocks by default.
+    /// Returns a list of candidates for inclusion into a block.
     pub(crate) fn remaining_deploys(
         &mut self,
         current_instant: u64,
@@ -60,6 +79,7 @@ impl DeployBuffer {
         // TODO: check gas and block size limits
     }
 
+    /// Checks if a deploy is valid (for inclusion into the next block).
     fn is_deploy_valid(
         &self,
         deploy: &DeployHeader,
@@ -81,6 +101,7 @@ impl DeployBuffer {
         ttl_valid && timestamp_valid && deploy_valid && num_deps_valid && all_deps_resolved()
     }
 
+    /// Notifies the deploy buffer of a new block.
     pub(crate) fn added_block(&mut self, block: BlockHash, deploys: HashSet<DeployHash>) {
         let deploy_map = deploys
             .iter()
@@ -95,6 +116,7 @@ impl DeployBuffer {
         self.processed.insert(block, deploy_map);
     }
 
+    /// Notifies the deploy buffer that a block has been finalized.
     pub(crate) fn finalized_block(&mut self, block: BlockHash) {
         if let Some(deploys) = self.processed.remove(&block) {
             self.collected_deploys
@@ -105,11 +127,63 @@ impl DeployBuffer {
         }
     }
 
+    /// Notifies the deploy buffer that a block has been orphaned.
     pub(crate) fn orphaned_block(&mut self, block: BlockHash) {
         if let Some(deploys) = self.processed.remove(&block) {
             self.collected_deploys.extend(deploys);
         } else {
             panic!("orphaned block that hasn't been processed!");
+        }
+    }
+}
+
+/// An event for when using the deploy buffer as a component.
+#[derive(Debug)]
+pub(crate) enum Event {
+    QueueRequest(DeployQueueRequest),
+}
+
+impl Display for Event {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Event::QueueRequest(req) => write!(f, "dq request: {}", req),
+        }
+    }
+}
+
+impl<REv> Component<REv> for DeployBuffer {
+    type Event = Event;
+
+    fn handle_event<R: rand::Rng + ?Sized>(
+        &mut self,
+        effect_builder: crate::effect::EffectBuilder<REv>,
+        rng: &mut R,
+        event: Self::Event,
+    ) -> crate::effect::Multiple<crate::effect::Effect<Self::Event>> {
+        match event {
+            Event::QueueRequest(DeployQueueRequest::QueueDeploy {
+                hash,
+                header,
+                responder,
+            }) => responder.respond(self.add_deploy(hash, header)).ignore(),
+            Event::QueueRequest(DeployQueueRequest::RequestForInclusion {
+                current_instant,
+                max_ttl,
+                max_block_size_bytes,
+                max_gas_limit,
+                max_dependencies,
+                past,
+                responder,
+            }) => responder
+                .respond(self.remaining_deploys(
+                    current_instant,
+                    max_ttl,
+                    max_block_size_bytes,
+                    max_gas_limit,
+                    max_dependencies,
+                    &past,
+                ))
+                .ignore(),
         }
     }
 }
