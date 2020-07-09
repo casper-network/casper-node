@@ -333,6 +333,7 @@ where
         }
     }
 
+    /// Dispatches messages to their recipients.
     pub(crate) fn dispatch_messages<R: Rng>(
         &mut self,
         rand: &mut R,
@@ -348,6 +349,8 @@ where
         }
     }
 
+    /// Pop a message from the queue.
+    /// It's a message with the earliest delivery time.
     pub(crate) fn pop_message(&mut self) -> Option<QueueEntry<M>> {
         self.msg_queue.pop()
     }
