@@ -354,13 +354,17 @@ fn string_to_array(input: String) -> Result<[u8; ACCOUNT_HASH_LENGTH], Error> {
 mod tests {
     use super::*;
 
-    const PRODUCTION_PATH: &str = "resources/production/chainspec.toml";
+    use super::chainspec::rewrite_with_absolute_paths;
+
+    const PRODUCTION_DIR: &str = "resources/production";
 
     #[test]
     fn default_config_should_match_production() {
         let default = Chainspec::default();
-        let path = format!("{}/../{}", env!("CARGO_MANIFEST_DIR"), PRODUCTION_PATH);
-        let production = Chainspec::from(&parse_toml(&path).unwrap());
+        let production_dir = format!("{}/../{}", env!("CARGO_MANIFEST_DIR"), PRODUCTION_DIR);
+        let chainspec_config = rewrite_with_absolute_paths(&production_dir);
+
+        let production = Chainspec::from(&parse_toml(chainspec_config.path()).unwrap());
         assert_eq!(production, default);
     }
 }

@@ -175,6 +175,9 @@ impl Chainspec {
 }
 
 #[cfg(test)]
+pub(super) use tests::rewrite_with_absolute_paths;
+
+#[cfg(test)]
 mod tests {
     use std::{fs, io::Write};
 
@@ -186,6 +189,46 @@ mod tests {
 
     const TEST_ROOT: &str = "resources/test/valid";
     const CHAINSPEC_CONFIG_NAME: &str = "chainspec.toml";
+
+    /// Takes a chainspec.toml in the specified `chainspec_dir` and rewrites it to a temp file with
+    /// the relative paths rewritten to absolute paths.
+    pub(in crate::components::chainspec_handler) fn rewrite_with_absolute_paths(
+        chainspec_dir: &str,
+    ) -> NamedTempFile {
+        let original_contents =
+            fs::read_to_string(format!("{}/{}", chainspec_dir, CHAINSPEC_CONFIG_NAME)).unwrap();
+
+        // Replace relative paths with absolute ones.
+        let test_root = format!("{}/../{}", env!("CARGO_MANIFEST_DIR"), TEST_ROOT,);
+        let mut updated_contents = String::new();
+        for line in original_contents.lines() {
+            let updated_line = if line.starts_with("mint_installer_path") {
+                format!("mint_installer_path = '{}/mint.wasm'", test_root)
+            } else if line.starts_with("pos_installer_path") {
+                format!("pos_installer_path = '{}/pos.wasm'", test_root)
+            } else if line.starts_with("standard_payment_installer_path") {
+                format!(
+                    "standard_payment_installer_path = '{}/standard_payment.wasm'",
+                    test_root
+                )
+            } else if line.starts_with("accounts_path") {
+                format!("accounts_path = '{}/accounts.csv'", test_root)
+            } else if line.starts_with("upgrade_installer_path") {
+                format!("upgrade_installer_path = '{}/upgrade.wasm'", test_root)
+            } else {
+                line.to_string()
+            };
+            updated_contents.push_str(&updated_line);
+            updated_contents.push('\n');
+        }
+
+        // Write the updated file to a temporary file which will be deleted on test exit.
+        let mut chainspec_config = NamedTempFile::new().unwrap();
+        chainspec_config
+            .write_all(updated_contents.as_bytes())
+            .unwrap();
+        chainspec_config
+    }
 
     fn check_spec(spec: Chainspec) {
         assert_eq!(spec.genesis.name, "test-chain");
@@ -313,42 +356,8 @@ mod tests {
 
     #[test]
     fn should_read_absolute_paths() {
-        // Read config file to string.
         let test_root = format!("{}/../{}", env!("CARGO_MANIFEST_DIR"), TEST_ROOT,);
-        let original_contents =
-            fs::read_to_string(format!("{}/{}", test_root, CHAINSPEC_CONFIG_NAME)).unwrap();
-
-        // Replace relative paths with absolute ones.
-        let mut updated_contents = String::new();
-        for line in original_contents.lines() {
-            let updated_line = match line {
-                "mint_installer_path = 'mint.wasm'" => {
-                    format!("mint_installer_path = '{}/mint.wasm'", test_root)
-                }
-                "pos_installer_path = 'pos.wasm'" => {
-                    format!("pos_installer_path = '{}/pos.wasm'", test_root)
-                }
-                "standard_payment_installer_path = 'standard_payment.wasm'" => format!(
-                    "standard_payment_installer_path = '{}/standard_payment.wasm'",
-                    test_root
-                ),
-                "accounts_path = 'accounts.csv'" => {
-                    format!("accounts_path = '{}/accounts.csv'", test_root)
-                }
-                "upgrade_installer_path = 'upgrade.wasm'" => {
-                    format!("upgrade_installer_path = '{}/upgrade.wasm'", test_root)
-                }
-                _ => line.to_string(),
-            };
-            updated_contents.push_str(&updated_line);
-            updated_contents.push('\n');
-        }
-
-        // Write the updated file to a temporary file which will be deleted on test exit.
-        let mut chainspec_config = NamedTempFile::new().unwrap();
-        chainspec_config
-            .write_all(updated_contents.as_bytes())
-            .unwrap();
+        let chainspec_config = rewrite_with_absolute_paths(&test_root);
 
         // Check the parsed chainspec.
         let spec = Chainspec::from_toml(chainspec_config.path()).unwrap();
