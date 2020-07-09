@@ -13,17 +13,12 @@ pub(crate) trait VertexTrait: Debug + Clone {
     fn value(&self) -> Option<&Self::Value>;
 }
 
-pub(crate) enum AddVertexOk<VId> {
-    Success(VId),
-    MissingDependency(VId),
-}
-
 pub(crate) trait ProtocolState {
     type Error: Debug;
     type VId: VertexId;
     type Vertex: VertexTrait<Id = Self::VId>;
 
-    fn add_vertex(&mut self, v: Self::Vertex) -> Result<AddVertexOk<Self::VId>, Self::Error>;
+    fn missing_dependency(&self, v: &Self::Vertex) -> Option<Self::VId>;
 
     fn get_vertex(&self, v: Self::VId) -> Result<Option<Self::Vertex>, Self::Error>;
 }

@@ -95,11 +95,12 @@ where
         REv: From<Event<I>> + Send + From<NetworkRequest<I, ConsensusMessage>>,
     {
         match consensus_result {
-            ConsensusProtocolResult::InvalidIncomingMessage(msg, error) => {
+            ConsensusProtocolResult::InvalidIncomingMessage(msg, sender, error) => {
                 // TODO: we will probably want to disconnect from the sender here
                 // TODO: Print a more readable representation of the message.
                 error!(
                     ?msg,
+                    ?sender,
                     ?error,
                     "invalid incoming message to consensus instance"
                 );

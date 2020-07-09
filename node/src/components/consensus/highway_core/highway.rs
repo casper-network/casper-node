@@ -41,6 +41,24 @@ impl<C: Context> PreValidatedVertex<C> {
     }
 }
 
+impl<C: Context> From<ValidVertex<C>> for PreValidatedVertex<C> {
+    fn from(vv: ValidVertex<C>) -> PreValidatedVertex<C> {
+        PreValidatedVertex(vv.0)
+    }
+}
+
+impl<C: Context> From<ValidVertex<C>> for Vertex<C> {
+    fn from(vv: ValidVertex<C>) -> Vertex<C> {
+        vv.0
+    }
+}
+
+impl<C: Context> From<PreValidatedVertex<C>> for Vertex<C> {
+    fn from(pvv: PreValidatedVertex<C>) -> Vertex<C> {
+        pvv.0
+    }
+}
+
 /// A vertex that has been validated: `Highway` has all its dependencies and can add it to its
 /// protocol state.
 ///
@@ -131,16 +149,25 @@ impl<C: Context> Highway<C> {
         }
     }
 
+    /// Returns whether the vertex is already part of this protocol state.
+    pub(crate) fn has_vertex(&self, vertex: &Vertex<C>) -> bool {
+        match vertex {
+            Vertex::Vote(vote) => self.state.has_vote(&vote.hash()),
+            Vertex::Evidence(evidence) => self.state.has_evidence(evidence.perpetrator()),
+        }
+    }
+
     /// Returns a vertex that satisfies the dependency, if available.
     ///
     /// If we send a vertex to a peer who is missing a dependency, they will ask us for it. In that
     /// case, `get_dependency` will always return `Some`, unless the peer is faulty.
-    pub(crate) fn get_dependency(&self, dependency: &Dependency<C>) -> Option<Vertex<C>> {
+    pub(crate) fn get_dependency(&self, dependency: &Dependency<C>) -> Option<ValidVertex<C>> {
         let state = &self.state;
         match dependency {
             Dependency::Vote(hash) => state.wire_vote(hash).map(Vertex::Vote),
             Dependency::Evidence(idx) => state.opt_evidence(*idx).cloned().map(Vertex::Evidence),
         }
+        .map(ValidVertex)
     }
 
     pub(crate) fn handle_timer(&mut self, timestamp: u64) -> Vec<Effect<C>> {
