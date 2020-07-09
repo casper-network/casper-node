@@ -38,7 +38,7 @@
 //!
 //! ## Announcements and effects
 //!
-//! Some effects can be further classified into either announcements or effects, although these
+//! Some effects can be further classified into either announcements or requests, although these
 //! properties are not reflected in the type system.
 //!
 //! **Announcements** are events emitted by components that are essentially "fire-and-forget"; the
