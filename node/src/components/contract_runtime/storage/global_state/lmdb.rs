@@ -166,9 +166,12 @@ mod tests {
 
     use types::{account::AccountHash, CLValue};
 
-    use crate::components::contract_runtime::storage::{
-        trie_store::operations::{write, WriteResult},
-        TEST_MAP_SIZE,
+    use crate::{
+        components::contract_runtime::storage::{
+            trie_store::operations::{write, WriteResult},
+            TEST_MAP_SIZE,
+        },
+        crypto::hash,
     };
 
     use super::*;
@@ -262,7 +265,7 @@ mod tests {
     #[test]
     fn checkout_fails_if_unknown_hash_is_given() {
         let (state, _) = create_test_state();
-        let fake_hash: Blake2bHash = [1u8; 32].into();
+        let fake_hash: Blake2bHash = hash::hash(&[1u8; 32]);
         let result = state.checkout(fake_hash).unwrap();
         assert!(result.is_none());
     }

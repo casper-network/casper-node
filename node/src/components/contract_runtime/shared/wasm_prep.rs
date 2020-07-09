@@ -2,13 +2,14 @@ use std::fmt::{self, Display, Formatter};
 
 use parity_wasm::elements::{self, Module};
 use pwasm_utils::{self, stack_height};
+use thiserror::Error;
 
 use crate::components::contract_runtime::shared::wasm_costs::WasmCosts;
 
 //NOTE: size of Wasm memory page is 64 KiB
 pub const MEM_PAGES: u32 = 64;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Error)]
 pub enum PreprocessingError {
     Deserialize(String),
     OperationForbiddenByGasRules,

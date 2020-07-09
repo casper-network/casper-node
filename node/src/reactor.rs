@@ -24,7 +24,7 @@
 //! in a step-wise manner using [`crank`](struct.Runner.html#method.crank) or indefinitely using
 //! [`run`](struct.Runner.html#method.crank).
 
-pub mod non_validator;
+pub mod initializer;
 mod queue_kind;
 pub mod validator;
 
@@ -125,6 +125,12 @@ pub trait Reactor: Sized {
         event_queue: EventQueueHandle<Self::Event>,
         span: &Span,
     ) -> Result<(Self, Multiple<Effect<Self::Event>>), Self::Error>;
+
+    /// Indicates that the reactor has completed all its work and the runner can exit.
+    #[inline]
+    fn is_stopped(&mut self) -> bool {
+        false
+    }
 }
 
 /// A drop-like trait for `async` compatible drop-and-wait.
@@ -140,20 +146,20 @@ pub trait Finalize: Sized {
     }
 }
 
-// / Runs a reactor.
-// /
-// / Starts the reactor and associated background tasks, then enters main the event processing loop.
-// /
-// / `run` will leak memory each time it is called.
-// /
-// / Errors are returned only if component initialization fails.
-// /
-// / The event hook is called with the reactor and internal state every time an event is dispatched.
-// / Should the hook return `false`, the main loop is terminated.
+/// Reactor extension trait.
+pub trait ReactorExt<R: Reactor>: Reactor {
+    /// Creates a new instance of the reactor by taking the components from a previous reactor (not
+    /// necessarily of the same concrete type).
+    fn new_from(
+        event_queue: EventQueueHandle<Self::Event>,
+        span: &Span,
+        reactor: R,
+    ) -> Result<(Self, Multiple<Effect<Self::Event>>), Self::Error>;
+}
 
 /// A runner for a reactor.
 ///
-/// The runner manages a reactors event queue and reactor itself and can run it either continously
+/// The runner manages a reactors event queue and reactor itself and can run it either continuously
 /// or in a step-by-step manner.
 #[derive(Debug)]
 pub struct Runner<R>
@@ -183,26 +189,10 @@ where
     /// arbitrarily.
     #[inline]
     pub async fn new(cfg: R::Config) -> Result<Self, R::Error> {
-        // We create a new logging span, ensuring that we can always associate log messages to this
-        // specific reactor. This is usually only relevant when running multiple reactors, e.g.
-        // during testing, so we set the log level to `debug` here.
-        let span = tracing::debug_span!("node", id = tracing::field::Empty);
+        let (span, scheduler) = Self::init();
         let entered = span.enter();
 
-        let event_size = mem::size_of::<R::Event>();
-
-        // Check if the event is of a reasonable size. This only emits a runtime warning at startup
-        // right now, since storage size of events is not an issue per se, but copying might be
-        // expensive if events get too large.
-        if event_size > 16 * mem::size_of::<usize>() {
-            warn!(%event_size, "large event size, consider reducing it or boxing");
-        }
-
-        // Create a new event queue for this reactor run.
-        let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
-
         let event_queue = EventQueueHandle::new(scheduler);
-
         let (reactor, initial_effects) = R::new(cfg, event_queue, &span)?;
 
         // Run all effects from component instantiation.
@@ -217,6 +207,57 @@ where
             span,
             event_count: 0,
         })
+    }
+
+    /// Creates a new runner from a given reactor.
+    ///
+    /// The `id` is used to identify the runner during logging when debugging and can be chosen
+    /// arbitrarily.
+    #[inline]
+    pub async fn from<R1>(old_reactor: R1) -> Result<Self, R::Error>
+    where
+        R1: Reactor,
+        R: ReactorExt<R1>,
+    {
+        let (span, scheduler) = Self::init();
+        let entered = span.enter();
+
+        let event_queue = EventQueueHandle::new(scheduler);
+        let (reactor, initial_effects) = R::new_from(event_queue, &span, old_reactor)?;
+
+        // Run all effects from component instantiation.
+        process_effects(scheduler, initial_effects).await;
+
+        info!("reactor main loop is ready");
+
+        drop(entered);
+        Ok(Runner {
+            scheduler,
+            reactor,
+            span,
+            event_count: 0,
+        })
+    }
+
+    fn init() -> (Span, &'static Scheduler<R::Event>) {
+        // We create a new logging span, ensuring that we can always associate log messages to this
+        // specific reactor. This is usually only relevant when running multiple reactors, e.g.
+        // during testing, so we set the log level to `debug` here.
+        let span = tracing::debug_span!("node", id = tracing::field::Empty);
+
+        let event_size = mem::size_of::<R::Event>();
+
+        // Check if the event is of a reasonable size. This only emits a runtime warning at startup
+        // right now, since storage size of events is not an issue per se, but copying might be
+        // expensive if events get too large.
+        if event_size > 16 * mem::size_of::<usize>() {
+            warn!(%event_size, "large event size, consider reducing it or boxing");
+        }
+
+        // Create a new event queue for this reactor run.
+        let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
+
+        (span, scheduler)
     }
 
     /// Processes a single event on the event queue.
@@ -255,10 +296,10 @@ where
         }
     }
 
-    /// Runs the reactor indefinitely.
+    /// Runs the reactor until `is_stopped()` returns true.
     #[inline]
     pub async fn run(&mut self) {
-        loop {
+        while !self.reactor.is_stopped() {
             self.crank().await;
         }
     }

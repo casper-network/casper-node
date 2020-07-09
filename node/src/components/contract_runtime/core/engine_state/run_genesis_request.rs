@@ -2,22 +2,22 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use std::{convert::TryInto, iter};
+
+use types::ProtocolVersion;
 
 use super::genesis::ExecConfig;
-use crate::components::contract_runtime::shared::newtypes::{Blake2bHash, BLAKE2B_DIGEST_LENGTH};
-use types::ProtocolVersion;
+use crate::crypto::hash::{self, Digest};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunGenesisRequest {
-    genesis_config_hash: Blake2bHash,
+    genesis_config_hash: Digest,
     protocol_version: ProtocolVersion,
     ee_config: ExecConfig,
 }
 
 impl RunGenesisRequest {
     pub fn new(
-        genesis_config_hash: Blake2bHash,
+        genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
         ee_config: ExecConfig,
     ) -> RunGenesisRequest {
@@ -28,7 +28,7 @@ impl RunGenesisRequest {
         }
     }
 
-    pub fn genesis_config_hash(&self) -> Blake2bHash {
+    pub fn genesis_config_hash(&self) -> Digest {
         self.genesis_config_hash
     }
 
@@ -47,17 +47,10 @@ impl RunGenesisRequest {
 
 impl Distribution<RunGenesisRequest> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> RunGenesisRequest {
-        let hash_bytes: [u8; BLAKE2B_DIGEST_LENGTH] = {
-            let bytes: Vec<u8> = iter::repeat(())
-                .map(|_| rng.gen())
-                .take(BLAKE2B_DIGEST_LENGTH)
-                .collect();
-            bytes.as_slice().try_into().expect("should convert")
-        };
-
+        let input: [u8; 32] = rng.gen();
+        let genesis_config_hash = hash::hash(&input);
         let protocol_version = ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen());
         let ee_config = rng.gen();
-
-        RunGenesisRequest::new(hash_bytes.into(), protocol_version, ee_config)
+        RunGenesisRequest::new(genesis_config_hash, protocol_version, ee_config)
     }
 }

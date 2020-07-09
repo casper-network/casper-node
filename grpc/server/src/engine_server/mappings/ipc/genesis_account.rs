@@ -1,7 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
-use node::components::contract_runtime::core::engine_state::genesis::GenesisAccount;
-use node::components::contract_runtime::shared::motes::Motes;
+use node::{types::Motes, GenesisAccount};
 use types::account::AccountHash;
 
 use crate::engine_server::{

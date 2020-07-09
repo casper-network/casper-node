@@ -1,12 +1,12 @@
 use thiserror::Error;
 
-use crate::components::contract_runtime::shared::newtypes::Blake2bHash;
-use crate::components::contract_runtime::shared::wasm_prep;
-use types::ProtocolVersion;
-use types::{bytesrepr, system_contract_errors::mint};
+use crate::components::contract_runtime::{
+    core::execution,
+    shared::{newtypes::Blake2bHash, wasm_prep},
+    storage,
+};
 
-use crate::components::contract_runtime::core::execution;
-use crate::components::contract_runtime::storage;
+use types::{bytesrepr, system_contract_errors::mint, ProtocolVersion};
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -19,13 +19,13 @@ pub enum Error {
     #[error("Invalid upgrade config")]
     InvalidUpgradeConfig,
     #[error("Wasm preprocessing error: {0}")]
-    WasmPreprocessing(wasm_prep::PreprocessingError),
+    WasmPreprocessing(#[from] wasm_prep::PreprocessingError),
     #[error("Wasm serialization error: {0:?}")]
-    WasmSerialization(parity_wasm::SerializationError),
+    WasmSerialization(#[from] parity_wasm::SerializationError),
     #[error(transparent)]
     Exec(execution::Error),
-    #[error("Storage error: {}", _0)]
-    Storage(storage::error::Error),
+    #[error("Storage error: {0}")]
+    Storage(#[from] storage::error::Error),
     #[error("Authorization failure: not authorized.")]
     Authorization,
     #[error("Insufficient payment")]
@@ -34,29 +34,33 @@ pub enum Error {
     Deploy,
     #[error("Payment finalization error")]
     Finalization,
-    #[error("Missing system contract association: {}", _0)]
+    #[error("Missing system contract association: {0}")]
     MissingSystemContract(String),
-    #[error("Serialization error: {}", _0)]
-    Serialization(bytesrepr::Error),
-    #[error("Mint error: {}", _0)]
-    Mint(mint::Error),
-    #[error("Unsupported key type: {}", _0)]
+    #[error("Bytesrepr error: {0}")]
+    Bytesrepr(String),
+    #[error("bincode serialization: {0}")]
+    BincodeSerialization(#[source] bincode::ErrorKind),
+    #[error("bincode deserialization: {0}")]
+    BincodeDeserialization(#[source] bincode::ErrorKind),
+    #[error("Mint error: {0}")]
+    Mint(String),
+    #[error("Unsupported key type: {0}")]
     InvalidKeyVariant(String),
     #[error("Invalid upgrade result value")]
     InvalidUpgradeResult,
-    #[error("Unsupported deploy item variant: {}", _0)]
+    #[error("Unsupported deploy item variant: {0}")]
     InvalidDeployItemVariant(String),
 }
 
-impl From<wasm_prep::PreprocessingError> for Error {
-    fn from(error: wasm_prep::PreprocessingError) -> Self {
-        Error::WasmPreprocessing(error)
+impl Error {
+    pub(crate) fn from_serialization(error: bincode::ErrorKind) -> Self {
+        Error::BincodeSerialization(error)
     }
-}
 
-impl From<parity_wasm::SerializationError> for Error {
-    fn from(error: parity_wasm::SerializationError) -> Self {
-        Error::WasmSerialization(error)
+    // TODO - remove lint relaxation, or remove method if not required
+    #[allow(dead_code)]
+    pub(crate) fn from_deserialization(error: bincode::ErrorKind) -> Self {
+        Error::BincodeDeserialization(error)
     }
 }
 
@@ -71,21 +75,15 @@ impl From<execution::Error> for Error {
     }
 }
 
-impl From<storage::error::Error> for Error {
-    fn from(error: storage::error::Error) -> Self {
-        Error::Storage(error)
-    }
-}
-
 impl From<bytesrepr::Error> for Error {
     fn from(error: bytesrepr::Error) -> Self {
-        Error::Serialization(error)
+        Error::Bytesrepr(format!("{}", error))
     }
 }
 
 impl From<mint::Error> for Error {
     fn from(error: mint::Error) -> Self {
-        Error::Mint(error)
+        Error::Mint(format!("{}", error))
     }
 }
 
@@ -98,6 +96,6 @@ impl RootNotFound {
     }
 
     pub fn to_vec(&self) -> Vec<u8> {
-        self.0.to_vec()
+        self.0.as_ref().to_vec()
     }
 }

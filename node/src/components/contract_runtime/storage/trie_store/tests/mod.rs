@@ -2,10 +2,15 @@ mod concurrent;
 mod proptests;
 mod simple;
 
-use crate::components::contract_runtime::shared::newtypes::Blake2bHash;
 use types::bytesrepr::ToBytes;
 
-use crate::components::contract_runtime::storage::trie::{Pointer, PointerBlock, Trie};
+use crate::{
+    components::contract_runtime::{
+        shared::newtypes::Blake2bHash,
+        storage::trie::{Pointer, PointerBlock, Trie},
+    },
+    crypto::hash,
+};
 
 #[derive(Clone)]
 struct TestData<K, V>(Blake2bHash, Trie<K, V>);
@@ -30,9 +35,9 @@ fn create_data() -> Vec<TestData<Vec<u8>, Vec<u8>>> {
         value: b"val_3".to_vec(),
     };
 
-    let leaf_1_hash = Blake2bHash::new(&leaf_1.to_bytes().unwrap());
-    let leaf_2_hash = Blake2bHash::new(&leaf_2.to_bytes().unwrap());
-    let leaf_3_hash = Blake2bHash::new(&leaf_3.to_bytes().unwrap());
+    let leaf_1_hash = hash::hash(&leaf_1.to_bytes().unwrap());
+    let leaf_2_hash = hash::hash(&leaf_2.to_bytes().unwrap());
+    let leaf_3_hash = hash::hash(&leaf_3.to_bytes().unwrap());
 
     let node_2: Trie<Vec<u8>, Vec<u8>> = {
         let mut pointer_block = PointerBlock::new();
@@ -42,7 +47,7 @@ fn create_data() -> Vec<TestData<Vec<u8>, Vec<u8>>> {
         Trie::Node { pointer_block }
     };
 
-    let node_2_hash = Blake2bHash::new(&node_2.to_bytes().unwrap());
+    let node_2_hash = hash::hash(&node_2.to_bytes().unwrap());
 
     let ext_node: Trie<Vec<u8>, Vec<u8>> = {
         let affix = vec![1u8, 0];
@@ -50,7 +55,7 @@ fn create_data() -> Vec<TestData<Vec<u8>, Vec<u8>>> {
         Trie::Extension { affix, pointer }
     };
 
-    let ext_node_hash = Blake2bHash::new(&ext_node.to_bytes().unwrap());
+    let ext_node_hash = hash::hash(&ext_node.to_bytes().unwrap());
 
     let node_1: Trie<Vec<u8>, Vec<u8>> = {
         let mut pointer_block = PointerBlock::new();
@@ -60,7 +65,7 @@ fn create_data() -> Vec<TestData<Vec<u8>, Vec<u8>>> {
         Trie::Node { pointer_block }
     };
 
-    let node_1_hash = Blake2bHash::new(&node_1.to_bytes().unwrap());
+    let node_1_hash = hash::hash(&node_1.to_bytes().unwrap());
 
     vec![
         TestData(leaf_1_hash, leaf_1),

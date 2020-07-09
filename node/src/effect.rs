@@ -70,20 +70,23 @@ use std::{
 };
 
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
+use semver::Version;
 use smallvec::{smallvec, SmallVec};
 use tracing::error;
 
 use crate::{
     components::{
         consensus::BlockContext,
+        contract_runtime::core::engine_state::{self, genesis::GenesisResult},
         storage::{self, StorageType, Value},
     },
     effect::requests::DeployGossiperRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{Deploy, ExecutedBlock, ProtoBlock},
+    Chainspec,
 };
 use announcements::NetworkAnnouncement;
-use requests::{NetworkRequest, StorageRequest};
+use requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest};
 
 /// A pinned, boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
@@ -520,7 +523,7 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
-    /// Passes the timestamp of a future block for which deploys are to be proposed
+    /// Passes the timestamp of a future block for which deploys are to be proposed.
     // TODO: Add an argument (`BlockContext`?) that contains all information necessary to select
     // deploys, e.g. the ancestors' deploys.
     pub(crate) async fn request_proto_block(
@@ -539,13 +542,13 @@ impl<REv> EffectBuilder<REv> {
         )
     }
 
-    /// Passes a finalized proto-block to the contract runtime for execution
+    /// Passes a finalized proto-block to the contract runtime for execution.
     pub(crate) async fn execute_block(self, _proto_block: ProtoBlock) -> ExecutedBlock {
         // TODO: actually execute the block and return the relevant stuff
         todo!()
     }
 
-    /// Checks whether the deploys included in the proto-block exist on the network
+    /// Checks whether the deploys included in the proto-block exist on the network.
     pub(crate) async fn validate_proto_block<I>(
         self,
         _sender: I,
@@ -554,5 +557,54 @@ impl<REv> EffectBuilder<REv> {
         // TODO: check with the deploy fetcher or something whether the deploys whose hashes are
         // contained in the proto-block actually exist
         (true, proto_block)
+    }
+
+    /// Runs the genesis process on the contract runtime.
+    pub(crate) async fn commit_genesis(
+        self,
+        chainspec: Chainspec,
+    ) -> Result<GenesisResult, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::CommitGenesis {
+                chainspec: Box::new(chainspec),
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Puts the given chainspec into the chainspec store.
+    pub(crate) async fn put_chainspec<S>(self, chainspec: Chainspec) -> storage::Result<()>
+    where
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
+    {
+        self.make_request(
+            |responder| StorageRequest::PutChainspec {
+                chainspec: Box::new(chainspec),
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested chainspec from the chainspec store.
+    // TODO: remove once method is used.
+    #[allow(dead_code)]
+    pub(crate) async fn get_chainspec<S>(self, version: Version) -> storage::Result<Chainspec>
+    where
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetChainspec { version, responder },
+            QueueKind::Regular,
+        )
+        .await
     }
 }

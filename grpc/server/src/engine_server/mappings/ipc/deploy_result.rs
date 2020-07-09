@@ -1,11 +1,13 @@
-use node::components::contract_runtime::core::{
-    engine_state::{
-        execution_effect::ExecutionEffect, execution_result::ExecutionResult,
-        Error as EngineStateError,
+use node::components::contract_runtime::{
+    core::{
+        engine_state::{
+            execution_effect::ExecutionEffect, execution_result::ExecutionResult,
+            Error as EngineStateError,
+        },
+        execution::Error as ExecutionError,
     },
-    execution::Error as ExecutionError,
+    shared::gas::Gas,
 };
-use node::components::contract_runtime::shared::gas::Gas;
 
 use crate::engine_server::ipc::{DeployError_OutOfGasError, DeployResult};
 
@@ -51,7 +53,9 @@ impl From<(EngineStateError, ExecutionEffect, Gas)> for DeployResult {
             error @ EngineStateError::InsufficientPayment
             | error @ EngineStateError::Deploy
             | error @ EngineStateError::Finalization
-            | error @ EngineStateError::Serialization(_)
+            | error @ EngineStateError::Bytesrepr(_)
+            | error @ EngineStateError::BincodeSerialization(_)
+            | error @ EngineStateError::BincodeDeserialization(_)
             | error @ EngineStateError::Mint(_) => detail::execution_error(error, effect, cost),
             EngineStateError::Exec(exec_error) => (exec_error, effect, cost).into(),
         }

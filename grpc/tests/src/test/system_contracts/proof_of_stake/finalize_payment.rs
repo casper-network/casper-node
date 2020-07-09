@@ -7,11 +7,16 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::components::contract_runtime::core::engine_state::{
-    genesis::{POS_PAYMENT_PURSE, POS_REWARDS_PURSE},
-    CONV_RATE,
+use node::{
+    components::contract_runtime::{
+        core::engine_state::{
+            genesis::{POS_PAYMENT_PURSE, POS_REWARDS_PURSE},
+            CONV_RATE,
+        },
+        shared::account::Account,
+    },
+    types::Motes,
 };
-use node::components::contract_runtime::shared::{account::Account, motes::Motes};
 use types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
 
 const CONTRACT_FINALIZE_PAYMENT: &str = "pos_finalize_payment.wasm";

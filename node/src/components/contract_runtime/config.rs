@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 const DEFAULT_PAGES: usize = 196_608_000;
 
 /// Contract runtime configuration.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub struct Config {
     /// Storage
     pub use_system_contracts: bool,
