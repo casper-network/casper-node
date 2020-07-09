@@ -146,10 +146,11 @@ where
             ConsensusProtocolResult::CreatedTargetedMessage(out_msg, to) => effect_builder
                 .send_message(to, era_id.message(out_msg))
                 .ignore(),
-            ConsensusProtocolResult::ScheduleTimer(_timestamp) => {
-                // TODO: we need to get the current system time here somehow, in order to schedule
-                // a timer for the correct moment - and we don't want to use std::Instant
-                unimplemented!()
+            ConsensusProtocolResult::ScheduleTimer(timestamp) => {
+                let timediff = timestamp - Timestamp::now();
+                effect_builder
+                    .set_timeout(timediff.into())
+                    .event(move |_| Event::Timer { era_id, timestamp })
             }
             ConsensusProtocolResult::CreateNewBlock(block_context) => effect_builder
                 .request_proto_block(block_context)
