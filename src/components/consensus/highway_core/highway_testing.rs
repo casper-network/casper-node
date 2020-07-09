@@ -248,7 +248,16 @@ where
                     .into_iter()
                     .map(HighwayMessage::from)
                     .collect(),
-                NewVertex(v) => self.add_vertex(recipient_id, sender_id, v)?,
+                NewVertex(v) => {
+                    match self.add_vertex(recipient_id, sender_id, v)? {
+                        Ok(msgs) => msgs,
+                        Err((v, error)) => {
+                            // TODO: Replace with tracing library and maybe add to sender state?
+                            println!("{:?} sent an invalid vertex {:?} to {:?} that resulted in {:?} error", sender_id, v, recipient_id, error);
+                            vec![]
+                        }
+                    }
+                }
                 RequestBlock(block_context) => {
                     let consensus_value = recipient.next_consensus_value().unwrap();
                     recipient
@@ -291,57 +300,61 @@ where
         recipient: ValidatorId,
         sender: ValidatorId,
         vertex: Vertex<Ctx>,
-    ) -> Result<Vec<HighwayMessage<Ctx>>, TestRunError<Ctx>> {
+    ) -> Result<Result<Vec<HighwayMessage<Ctx>>, (Vertex<Ctx>, VertexError)>, TestRunError<Ctx>>
+    {
         // 1. pre_validate_vertex
         // 2. missing_dependency
         // 3. validate_vertex
         // 4. add_valid_vertex
 
-        let (prevalidated_vertex, missing) = {
-            let validator = self
-                .virtual_net
-                .get_validator_mut(&recipient)
-                .ok_or_else(|| TestRunError::MissingValidator(recipient))?;
-            let prevalidated_vertex = validator
-                .consensus
-                .highway
-                .pre_validate_vertex(vertex)
-                .unwrap(); // TODO: Do not unwrap
-
-            let missing_dependency = validator
-                .consensus
-                .highway
-                .missing_dependency(&prevalidated_vertex);
-
-            (prevalidated_vertex, missing_dependency)
-        };
-
-        let mut sync_effects = self.synchronize_validator(missing, recipient, sender)?;
-
-        let add_vertex_effects: Vec<HighwayMessage<Ctx>> = {
+        let sync_result = {
             let validator = self
                 .virtual_net
                 .get_validator_mut(&recipient)
                 .ok_or_else(|| TestRunError::MissingValidator(recipient))?;
 
-            let valid_vertex = validator
-                .consensus
-                .highway
-                .validate_vertex(prevalidated_vertex)
-                .unwrap(); // TODO: Do not unwrap
+            match validator.consensus.highway.pre_validate_vertex(vertex) {
+                Err((v, error)) => Ok(Err((v, error))),
+                Ok(pvv) => match validator.consensus.highway.missing_dependency(&pvv) {
+                    None => Ok(Ok((pvv, vec![]))),
+                    Some(d) => self
+                        .synchronize_validator(d, recipient, sender)
+                        .map(|r| r.map(|hwm| (pvv, hwm))),
+                },
+            }
+        }?;
 
-            validator
-                .consensus
-                .highway
-                .add_valid_vertex(valid_vertex)
-                .into_iter()
-                .map(HighwayMessage::from)
-                .collect()
-        };
+        match sync_result {
+            Err(vertex_error) => Ok(Err(vertex_error)),
+            Ok((prevalidated_vertex, mut sync_effects)) => {
+                let add_vertex_effects: Vec<HighwayMessage<Ctx>> = {
+                    let validator = self
+                        .virtual_net
+                        .get_validator_mut(&recipient)
+                        .ok_or_else(|| TestRunError::MissingValidator(recipient))?;
 
-        sync_effects.extend(add_vertex_effects);
+                    match validator
+                        .consensus
+                        .highway
+                        .validate_vertex(prevalidated_vertex)
+                        .map_err(|(pvv, error)| (pvv.into_vertex(), error))
+                    {
+                        Err(vertex_error) => return Ok(Err(vertex_error)),
+                        Ok(valid_vertex) => validator
+                            .consensus
+                            .highway
+                            .add_valid_vertex(valid_vertex)
+                            .into_iter()
+                            .map(HighwayMessage::from)
+                            .collect(),
+                    }
+                };
 
-        Ok(sync_effects)
+                sync_effects.extend(add_vertex_effects);
+
+                Ok(Ok(sync_effects))
+            }
+        }
     }
 
     // Synchronizes `validator` in case of missing dependencies.
@@ -351,40 +364,36 @@ where
     // that when votes are added then all their dependencies are satisfied.
     fn synchronize_validator(
         &mut self,
-        missing_dependency: Option<Dependency<Ctx>>,
+        missing_dependency: Dependency<Ctx>,
         recipient: ValidatorId,
         sender: ValidatorId,
-    ) -> Result<Vec<HighwayMessage<Ctx>>, TestRunError<Ctx>> {
-        if let Some(dependency) = missing_dependency {
-            let senders_state = self
-                .virtual_net
-                .get_validator_mut(&sender)
-                .unwrap()
-                .consensus
-                .highway
-                .state();
+    ) -> Result<Result<Vec<HighwayMessage<Ctx>>, (Vertex<Ctx>, VertexError)>, TestRunError<Ctx>>
+    {
+        let senders_state = self
+            .virtual_net
+            .get_validator_mut(&sender)
+            .unwrap()
+            .consensus
+            .highway
+            .state();
 
-            let vertex = match dependency {
-                Dependency::Vote(ref hash) => {
-                    let swvote = senders_state
-                        .wire_vote(&hash)
-                        .ok_or_else(|| TestRunError::SenderMissingDependency(sender, dependency))?;
-                    Vertex::Vote(swvote)
-                }
-                Dependency::Evidence(ref idx) => {
-                    let evidence = senders_state
-                        .opt_evidence(*idx)
-                        .cloned()
-                        .ok_or_else(|| TestRunError::SenderMissingDependency(sender, dependency))?;
+        let vertex = match missing_dependency {
+            Dependency::Vote(ref hash) => {
+                let swvote = senders_state.wire_vote(&hash).ok_or_else(|| {
+                    TestRunError::SenderMissingDependency(sender, missing_dependency)
+                })?;
+                Vertex::Vote(swvote)
+            }
+            Dependency::Evidence(ref idx) => {
+                let evidence = senders_state.opt_evidence(*idx).cloned().ok_or_else(|| {
+                    TestRunError::SenderMissingDependency(sender, missing_dependency)
+                })?;
 
-                    Vertex::Evidence(evidence.clone())
-                }
-            };
+                Vertex::Evidence(evidence.clone())
+            }
+        };
 
-            self.add_vertex(recipient, sender, vertex)
-        } else {
-            Ok(vec![])
-        }
+        self.add_vertex(recipient, sender, vertex)
     }
 }
 

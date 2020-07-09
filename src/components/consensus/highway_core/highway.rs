@@ -39,6 +39,10 @@ impl<C: Context> PreValidatedVertex<C> {
     pub(crate) fn vertex(&self) -> &Vertex<C> {
         &self.0
     }
+
+    pub(crate) fn into_vertex(self) -> Vertex<C> {
+        self.0
+    }
 }
 
 /// A vertex that has been validated: `Highway` has all its dependencies and can add it to its
