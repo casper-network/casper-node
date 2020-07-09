@@ -38,7 +38,7 @@ impl<C: Context> ProtocolState for Highway<C> {
     type Vertex = PreValidatedVertex<C>;
 
     fn missing_dependency(&self, pvv: &Self::Vertex) -> Option<Dependency<C>> {
-        Highway::missing_dependency(&self, &pvv)
+        self.missing_dependency(pvv)
     }
 
     fn get_vertex(&self, v: Dependency<C>) -> Result<Option<PreValidatedVertex<C>>, Self::Error> {
