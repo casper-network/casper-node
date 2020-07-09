@@ -6,9 +6,14 @@ use std::{io, io::Write, path::PathBuf};
 
 use anyhow::bail;
 use structopt::StructOpt;
+use tracing::info;
 
 use crate::config;
-use casperlabs_node::{logging, reactor, tls};
+use casperlabs_node::{
+    logging,
+    reactor::{initializer, validator, Runner},
+    tls,
+};
 
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
 #[derive(Debug, StructOpt)]
@@ -28,6 +33,9 @@ pub enum Cli {
     /// Loads the configuration values from the given configuration file or uses defaults if not
     /// given, then runs the reactor.
     Validator {
+        #[structopt(short = "p", long, env)]
+        /// Path to chainspec configuration file.
+        chainspec_path: PathBuf,
         #[structopt(short, long, env)]
         /// Path to configuration file.
         config: Option<PathBuf>,
@@ -55,18 +63,33 @@ impl Cli {
                 tls::save_private_key(&key, key_path)?;
             }
             Cli::GenerateConfig {} => {
-                let cfg_str = config::to_string(&reactor::validator::Config::default())?;
+                let cfg_str = config::to_string(&validator::Config::default())?;
                 io::stdout().write_all(cfg_str.as_bytes())?;
             }
-            Cli::Validator { config } => {
+            Cli::Validator {
+                chainspec_path,
+                config,
+            } => {
                 logging::init()?;
+
                 // We load the specified config, if any, otherwise use defaults.
-                let cfg = config
+                let config: validator::Config = config
                     .map(config::load_from_file)
                     .transpose()?
                     .unwrap_or_default();
 
-                let mut runner = reactor::Runner::<reactor::validator::Reactor>::new(cfg).await?;
+                let mut runner =
+                    Runner::<initializer::Reactor>::new((chainspec_path, config)).await?;
+                runner.run().await;
+
+                info!("finished initialization");
+
+                let initializer = runner.into_inner();
+                if !initializer.stopped_successfully() {
+                    bail!("failed to initialize successfully");
+                }
+
+                let mut runner = Runner::<validator::Reactor>::from(initializer).await?;
                 runner.run().await;
             }
         }

@@ -399,12 +399,14 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "base16",
+ "base64 0.12.3",
  "bincode",
  "blake2",
  "bytes 0.5.5",
  "casperlabs-types",
  "chrono",
  "criterion",
+ "csv",
  "derive_more",
  "directories",
  "ed25519-dalek",
@@ -438,6 +440,7 @@ dependencies = [
  "rand_core 0.5.1",
  "rand_xorshift 0.2.0",
  "rmp-serde",
+ "semver 0.10.0",
  "serde",
  "serde-big-array",
  "serde_json",
@@ -452,6 +455,7 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+ "uint",
  "uuid",
  "wabt",
  "warp",
@@ -472,6 +476,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "proptest",
+ "serde",
  "uint",
  "version-sync",
 ]
@@ -3294,7 +3299,7 @@ version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "138e3e0acb6c9fb258b19b67cb8abd63c00679d2851805ea151465464fe9030a"
 dependencies = [
- "semver",
+ "semver 0.9.0",
 ]
 
 [[package]]
@@ -3388,6 +3393,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d7eb9ef2c18661902cc47e535f9bc51b78acd254da71d375c2f6720d9a40403"
 dependencies = [
  "semver-parser 0.7.0",
+]
+
+[[package]]
+name = "semver"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "394cec28fa623e00903caf7ba4fa6fb9a0e260280bb8cdbbba029611108a0190"
+dependencies = [
+ "semver-parser 0.7.0",
+ "serde",
 ]
 
 [[package]]

@@ -1,7 +1,12 @@
 use alloc::vec::Vec;
+use core::fmt::{self, Formatter};
 
 use num_integer::Integer;
 use num_traits::{AsPrimitive, Bounded, Num, One, Unsigned, WrappingAdd, WrappingSub, Zero};
+use serde::{
+    de::{self, Deserialize, Deserializer, SeqAccess, Visitor},
+    ser::{Serialize, SerializeStruct, Serializer},
+};
 
 use crate::bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
@@ -41,6 +46,68 @@ pub enum UIntParseError {
 
 macro_rules! impl_traits_for_uint {
     ($type:ident, $total_bytes:expr, $test_mod:ident) => {
+        impl Serialize for $type {
+            fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                let mut buffer = [0u8; $total_bytes];
+                self.to_little_endian(&mut buffer);
+                let non_zero_bytes: Vec<u8> = buffer
+                    .iter()
+                    .rev()
+                    .skip_while(|b| **b == 0)
+                    .cloned()
+                    .collect();
+                let num_bytes = non_zero_bytes.len();
+
+                let mut state = serializer.serialize_struct("bigint", num_bytes)?;
+                state.serialize_field("", &(num_bytes as u8))?;
+                for byte in non_zero_bytes.into_iter().rev() {
+                    state.serialize_field("", &byte)?;
+                }
+                state.end()
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $type {
+            fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                struct BigNumVisitor;
+
+                impl<'de> Visitor<'de> for BigNumVisitor {
+                    type Value = $type;
+
+                    fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                        formatter.write_str("bignum struct")
+                    }
+
+                    fn visit_seq<V: SeqAccess<'de>>(
+                        self,
+                        mut sequence: V,
+                    ) -> Result<$type, V::Error> {
+                        let length: u8 = sequence
+                            .next_element()?
+                            .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                        let mut buffer = [0u8; $total_bytes];
+                        for index in 0..length as usize {
+                            let value = sequence
+                                .next_element()?
+                                .ok_or_else(|| de::Error::invalid_length(index + 1, &self))?;
+                            buffer[index as usize] = value;
+                        }
+                        let result = $type::from_little_endian(&buffer);
+                        Ok(result)
+                    }
+                }
+
+                const FIELDS: &'static [&'static str] = &[
+                    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14",
+                    "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27",
+                    "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40",
+                    "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53",
+                    "54", "55", "56", "57", "58", "59", "60", "61", "62", "63", "64",
+                ];
+                deserializer.deserialize_struct("Duration", FIELDS, BigNumVisitor)
+            }
+        }
+
         impl ToBytes for $type {
             fn to_bytes(&self) -> Result<Vec<u8>, Error> {
                 let mut buf = [0u8; $total_bytes];

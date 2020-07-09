@@ -7,10 +7,16 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
 };
 
+use semver::Version;
+
 use super::Responder;
 use crate::{
-    components::storage::{self, StorageType, Value},
+    components::{
+        contract_runtime::core::engine_state::{self, genesis::GenesisResult},
+        storage::{self, StorageType, Value},
+    },
     types::{BlockHash, Deploy, DeployHash, DeployHeader},
+    Chainspec,
 };
 
 /// A networking request.
@@ -154,6 +160,20 @@ pub enum StorageRequest<S: StorageType + 'static> {
         /// Responder to call with the result.
         responder: Responder<storage::Result<Vec<<S::Deploy as Value>::Id>>>,
     },
+    /// Store given chainspec.
+    PutChainspec {
+        /// Chainspec.
+        chainspec: Box<Chainspec>,
+        /// Responder to call with the result.
+        responder: Responder<storage::Result<()>>,
+    },
+    /// Retrieve chainspec with given version.
+    GetChainspec {
+        /// Version.
+        version: Version,
+        /// Responder to call with the result.
+        responder: Responder<storage::Result<Chainspec>>,
+    },
 }
 
 impl<S: StorageType> Display for StorageRequest<S> {
@@ -172,6 +192,14 @@ impl<S: StorageType> Display for StorageRequest<S> {
                 write!(formatter, "get {}", deploy_hash)
             }
             StorageRequest::ListDeploys { .. } => write!(formatter, "list deploys"),
+            StorageRequest::PutChainspec { chainspec, .. } => write!(
+                formatter,
+                "put chainspec {}",
+                chainspec.genesis.protocol_version
+            ),
+            StorageRequest::GetChainspec { version, .. } => {
+                write!(formatter, "get chainspec {}", version)
+            }
         }
     }
 }
@@ -236,7 +264,7 @@ impl Display for DeployQueueRequest {
     }
 }
 
-/// Abstract API request
+/// Abstract API request.
 ///
 /// An API request is an abstract request that does not concern itself with serialization or
 /// transport.
@@ -271,6 +299,30 @@ impl Display for ApiRequest {
             ApiRequest::SubmitDeploy { deploy, .. } => write!(formatter, "submit {}", *deploy),
             ApiRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
             ApiRequest::ListDeploys { .. } => write!(formatter, "list deploys"),
+        }
+    }
+}
+
+/// A contract runtime request.
+#[derive(Debug)]
+pub enum ContractRuntimeRequest {
+    /// Commit genesis chainspec.
+    CommitGenesis {
+        /// The chainspec.
+        chainspec: Box<Chainspec>,
+        /// Responder to call with the result.
+        responder: Responder<Result<GenesisResult, engine_state::Error>>,
+    },
+}
+
+impl Display for ContractRuntimeRequest {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ContractRuntimeRequest::CommitGenesis { chainspec, .. } => write!(
+                formatter,
+                "commit genesis {}",
+                chainspec.genesis.protocol_version
+            ),
         }
     }
 }

@@ -1,0 +1,66 @@
+[genesis]
+name = 'test-chain'
+timestamp = 1
+protocol_version = '0.1.0'
+mint_installer_path = 'mint.wasm'
+pos_installer_path = 'pos.wasm'
+standard_payment_installer_path = 'standard_payment.wasm'
+accounts_path = 'accounts.csv'
+
+[highway]
+genesis_era_start_timestamp = 2
+era_duration_millis = 3
+booking_duration_millis = 4
+entropy_duration_millis = 5
+voting_period_duration_millis = 6
+voting_period_summit_level = 7
+finality_threshold_percent = 8
+
+[deploys]
+max_payment_cost = '9'
+max_ttl_millis = 10
+max_dependencies = 11
+max_block_size = 12
+
+[wasm_costs]
+regular = 13
+div = 14
+mul = 15
+mem = 16
+initial_mem = 17
+grow_mem = 18
+memcpy = 19
+max_stack_height = 20
+opcodes_mul = 21
+opcodes_div = 22
+
+[[upgrade]]
+protocol_version = '0.2.0'
+upgrade_installer_path = 'upgrade.wasm'
+
+[upgrade.activation_point]
+rank = 23
+
+[upgrade.new_costs]
+regular = 24
+div = 25
+mul = 26
+mem = 27
+initial_mem = 28
+grow_mem = 29
+memcpy = 30
+max_stack_height = 31
+opcodes_mul = 32
+opcodes_div = 33
+
+[upgrade.new_deploy_config]
+max_payment_cost = '34'
+max_ttl_millis = 35
+max_dependencies = 36
+max_block_size = 37
+
+[[upgrade]]
+protocol_version = '0.3.0'
+
+[upgrade.activation_point]
+rank = 38

@@ -12,11 +12,12 @@ const APPLICATION: &str = "casperlabs-node";
 
 const DEFAULT_MAX_BLOCK_STORE_SIZE: usize = 483_183_820_800; // 450 GiB
 const DEFAULT_MAX_DEPLOY_STORE_SIZE: usize = 322_122_547_200; // 300 GiB
+const DEFAULT_MAX_CHAINSPEC_STORE_SIZE: usize = 1_073_741_824; // 1 GiB
 
 const DEFAULT_TEST_MAX_DB_SIZE: usize = 52_428_800; // 50 MiB
 
 /// On-disk storage configuration.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Config {
     /// The path to the folder where any files created or read by the storage component will exist.
     ///
@@ -44,6 +45,13 @@ pub struct Config {
     /// The size should be a multiple of the OS page size.
     #[serde(deserialize_with = "page_size::deserialize_page_size_multiple")]
     pub max_deploy_store_size: usize,
+    /// Sets the maximum size of the database to use for the chainspec store.
+    ///
+    /// Defaults to 1,073,741,824 == 1 GiB.
+    ///
+    /// The size should be a multiple of the OS page size.
+    #[serde(deserialize_with = "page_size::deserialize_page_size_multiple")]
+    pub max_chainspec_store_size: usize,
 }
 
 impl Config {
@@ -58,6 +66,7 @@ impl Config {
             path,
             max_block_store_size: DEFAULT_TEST_MAX_DB_SIZE,
             max_deploy_store_size: DEFAULT_TEST_MAX_DB_SIZE,
+            max_chainspec_store_size: DEFAULT_TEST_MAX_DB_SIZE,
         };
         (config, tempdir)
     }
@@ -76,6 +85,7 @@ impl Default for Config {
             path,
             max_block_store_size: DEFAULT_MAX_BLOCK_STORE_SIZE,
             max_deploy_store_size: DEFAULT_MAX_DEPLOY_STORE_SIZE,
+            max_chainspec_store_size: DEFAULT_MAX_CHAINSPEC_STORE_SIZE,
         }
     }
 }
