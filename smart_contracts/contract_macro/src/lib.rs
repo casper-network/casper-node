@@ -115,9 +115,9 @@ pub fn casperlabs_method(_attr: TokenStream, input: TokenStream) -> TokenStream 
     if let syn::ReturnType::Type(_arrow, rt) = return_type {
         if let syn::Type::Path(path) = *rt {
             let return_ident = &path.path.segments[0].ident;
-            let code = quote!{ -> #return_ident };
+            let code = quote! { -> #return_ident };
             return_code.extend(code);
-        }         
+        }
     }
     let name = &orignal_ident;
     let new_ident = Ident::new(&format!("__{}", name), name.span());
