@@ -149,6 +149,14 @@ impl<C: Context> Highway<C> {
         }
     }
 
+    /// Returns whether the vertex is already part of this protocol state.
+    pub(crate) fn has_vertex(&self, vertex: &Vertex<C>) -> bool {
+        match vertex {
+            Vertex::Vote(vote) => self.state.has_vote(&vote.hash()),
+            Vertex::Evidence(evidence) => self.state.has_evidence(evidence.perpetrator()),
+        }
+    }
+
     /// Returns a vertex that satisfies the dependency, if available.
     ///
     /// If we send a vertex to a peer who is missing a dependency, they will ask us for it. In that

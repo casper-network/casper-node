@@ -220,6 +220,7 @@ where
     ) -> Result<Vec<ConsensusProtocolResult<I, C::ConsensusValue>>, Error> {
         let highway_message: HighwayMessage<C> = serde_json::from_slice(msg.as_slice()).unwrap();
         Ok(match highway_message {
+            HighwayMessage::NewVertex(ref v) if self.highway.has_vertex(v) => vec![],
             HighwayMessage::NewVertex(v) => {
                 let pvv = match self.highway.pre_validate_vertex(v) {
                     Ok(pvv) => pvv,
