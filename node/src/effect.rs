@@ -48,7 +48,7 @@
 //!
 //! A good example is the arrival of a new deploy passed in by a client. Depending on the setup it
 //! may be stored, buffered or, in certain testing setups, just discarded. None of this is a concern
-//! of the component that talks to the client and deserializes the incoming deploy though, which is
+//! of the component that talks to the client and deserializes the incoming deploy though, which
 //! considers the deploy no longer its concern after it has returned an announcement effect.
 //!
 //! **Requests** are some of the most complex effects, they represent a question of a component for
