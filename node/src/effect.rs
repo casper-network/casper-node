@@ -35,6 +35,27 @@
 //! While it is technically possible to turn any future into an effect, it is advisable to only use
 //! the effects explicitly listed in this module through traits to create them. Post-processing on
 //! effects to turn them into events should also be kept brief.
+//!
+//! ## Announcements and effects
+//!
+//! Some effects can be further classified into either announcements or effects, although these
+//! properties are not reflected in the type system.
+//!
+//! **Announcements** are events emitted by components that are essentially "fire-and-forget"; the
+//! component will never expect an answer for these and does not rely on them being handled. It is
+//! also conceivable that they are being cloned and dispatched to multiple components by the
+//! reactor.
+//!
+//! A good example is the arrival of a new deploy passed in by a client. Depending on the setup it
+//! may be stored, buffered or, in certain testing setups, just discarded. None of this is a concern
+//! of the component that talks to the client and deserializes the incoming deploy though, which is
+//! considers the deploy no longer its concern after it has returned an announcement effect.
+//!
+//! **Requests** are some of the most complex effects, they represent a question of a component for
+//! another component, for which it eventually expects an answer.
+//!
+//! A request usually has a `Responder` in its fields, which a handler of a request **must** call at
+//! some point. Failing to do so will result in a resource leak.
 
 pub mod announcements;
 pub mod requests;

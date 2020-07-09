@@ -1,6 +1,7 @@
 //! Request effects.
 //!
-//! Requests typically ask other components to perform a service and report back the result.
+//! Requests typically ask other components to perform a service and report back the result. See the
+//! top-level module documentation for details.
 
 use std::{
     collections::HashSet,
