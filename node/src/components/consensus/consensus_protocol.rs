@@ -38,7 +38,7 @@ impl BlockContext {
 pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT> {
     CreatedGossipMessage(Vec<u8>),
     CreatedTargetedMessage(Vec<u8>, I),
-    InvalidIncomingMessage(Vec<u8>, Error),
+    InvalidIncomingMessage(Vec<u8>, I, Error),
     ScheduleTimer(Timestamp),
     /// Request deploys for a new block, whose timestamp will be the given `u64`.
     /// TODO: Add more details that are necessary for block creation.

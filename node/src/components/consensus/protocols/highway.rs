@@ -13,36 +13,32 @@ use crate::components::consensus::{
     highway_core::{
         active_validator::Effect as AvEffect,
         finality_detector::FinalityDetector,
-        highway::Highway,
+        highway::{Highway, PreValidatedVertex},
         vertex::{Dependency, Vertex},
     },
     traits::{Context, NodeIdT},
 };
 
-impl<C: Context> VertexTrait for Vertex<C> {
+impl<C: Context> VertexTrait for PreValidatedVertex<C> {
     type Id = Dependency<C>;
     type Value = C::ConsensusValue;
 
     fn id(&self) -> Dependency<C> {
-        self.id()
+        self.vertex().id()
     }
 
     fn value(&self) -> Option<&C::ConsensusValue> {
-        self.value()
+        self.vertex().value()
     }
 }
 
 impl<C: Context> ProtocolState for Highway<C> {
     type Error = String;
     type VId = Dependency<C>;
-    type Vertex = Vertex<C>;
+    type Vertex = PreValidatedVertex<C>;
 
-    fn add_vertex(&mut self, v: Vertex<C>) -> Result<AddVertexOk<Dependency<C>>, Self::Error> {
-        let vid = v.id();
-        let pvv = match self.pre_validate_vertex(v) {
-            Ok(pvv) => pvv,
-            Err((vertex, err)) => return Err(format!("invalid vertex: {:?}, {:?}", vertex, err)),
-        };
+    fn add_vertex(&mut self, pvv: Self::Vertex) -> Result<AddVertexOk<Dependency<C>>, Self::Error> {
+        let vid = pvv.vertex().id();
         if let Some(dep) = self.missing_dependency(&pvv) {
             return Ok(AddVertexOk::MissingDependency(dep));
         }
@@ -58,8 +54,8 @@ impl<C: Context> ProtocolState for Highway<C> {
         Ok(AddVertexOk::Success(vid))
     }
 
-    fn get_vertex(&self, v: Dependency<C>) -> Result<Option<Vertex<C>>, Self::Error> {
-        Ok(self.get_dependency(&v))
+    fn get_vertex(&self, v: Dependency<C>) -> Result<Option<PreValidatedVertex<C>>, Self::Error> {
+        Ok(self.get_dependency(&v).map(PreValidatedVertex::from))
     }
 }
 
@@ -81,8 +77,8 @@ enum HighwayMessage<C: Context> {
 }
 
 struct SynchronizerQueue<I, C: Context> {
-    vertex_queue: Vec<(I, Vertex<C>)>,
-    synchronizer_effects_queue: Vec<SynchronizerEffect<I, Vertex<C>>>,
+    vertex_queue: Vec<(I, PreValidatedVertex<C>)>,
+    synchronizer_effects_queue: Vec<SynchronizerEffect<I, PreValidatedVertex<C>>>,
     results: Vec<ConsensusProtocolResult<I, C::ConsensusValue>>,
 }
 
@@ -98,12 +94,15 @@ where
         }
     }
 
-    fn with_vertices(mut self, vertices: Vec<(I, Vertex<C>)>) -> Self {
+    fn with_vertices(mut self, vertices: Vec<(I, PreValidatedVertex<C>)>) -> Self {
         self.vertex_queue = vertices;
         self
     }
 
-    fn with_synchronizer_effects(mut self, effects: Vec<SynchronizerEffect<I, Vertex<C>>>) -> Self {
+    fn with_synchronizer_effects(
+        mut self,
+        effects: Vec<SynchronizerEffect<I, PreValidatedVertex<C>>>,
+    ) -> Self {
         self.synchronizer_effects_queue = effects;
         self
     }
@@ -119,7 +118,7 @@ where
     fn process_vertex(
         &mut self,
         sender: I,
-        vertex: Vertex<C>,
+        vertex: PreValidatedVertex<C>,
         synchronizer: &mut DagSynchronizerState<I, Highway<C>>,
         highway: &mut Highway<C>,
     ) {
@@ -129,7 +128,10 @@ where
         }
     }
 
-    fn process_synchronizer_effect(&mut self, effect: SynchronizerEffect<I, Vertex<C>>) {
+    fn process_synchronizer_effect(
+        &mut self,
+        effect: SynchronizerEffect<I, PreValidatedVertex<C>>,
+    ) {
         match effect {
             SynchronizerEffect::RequestVertex(sender, missing_vid) => {
                 let msg = HighwayMessage::RequestDependency(missing_vid);
@@ -145,7 +147,7 @@ where
             }
             SynchronizerEffect::Success(vertex) => {
                 // TODO: Add new vertex to state. (Indirectly, via synchronizer?)
-                let msg = HighwayMessage::NewVertex(vertex);
+                let msg = HighwayMessage::NewVertex(vertex.into());
                 // TODO: Don't `unwrap`.
                 let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
                 self.results
@@ -193,7 +195,17 @@ where
         let highway_message: HighwayMessage<C> = serde_json::from_slice(msg.as_slice()).unwrap();
         Ok(match highway_message {
             HighwayMessage::NewVertex(v) => {
-                let mut queue = SynchronizerQueue::new().with_vertices(vec![(sender, v)]);
+                let pvv = match self.highway.pre_validate_vertex(v) {
+                    Ok(pvv) => pvv,
+                    Err((_vertex, err)) => {
+                        return Ok(vec![ConsensusProtocolResult::InvalidIncomingMessage(
+                            msg,
+                            sender,
+                            err.into(),
+                        )]);
+                    }
+                };
+                let mut queue = SynchronizerQueue::new().with_vertices(vec![(sender, pvv)]);
                 // TODO: Is there a danger that this takes too much time, and starves other
                 // components and events? Consider replacing the loop with a "callback" effect:
                 // Instead of handling `HighwayMessage::NewVertex(v)` directly, return a
@@ -207,8 +219,8 @@ where
                 queue.into_results()
             }
             HighwayMessage::RequestDependency(dep) => {
-                if let Some(vertex) = self.highway.get_dependency(&dep) {
-                    let msg = HighwayMessage::NewVertex(vertex);
+                if let Some(vv) = self.highway.get_dependency(&dep) {
+                    let msg = HighwayMessage::NewVertex(vv.into());
                     let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
                     // TODO: Should this be done via a gossip service?
                     vec![ConsensusProtocolResult::CreatedTargetedMessage(
