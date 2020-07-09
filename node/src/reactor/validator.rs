@@ -5,10 +5,7 @@
 mod config;
 mod error;
 
-use std::{
-    fmt::{self, Display, Formatter},
-    time::SystemTime,
-};
+use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
 use rand::SeedableRng;
@@ -33,6 +30,7 @@ use crate::{
     },
     reactor::{self, initializer, EventQueueHandle},
     small_network::{self, NodeId},
+    types::Timestamp,
     SmallNetwork,
 };
 pub use config::Config;
@@ -175,7 +173,7 @@ impl Reactor {
 
         let (pinger, pinger_effects) = Pinger::new(effect_builder);
         let api_server = ApiServer::new(config.http_server, effect_builder);
-        let timestamp = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
+        let timestamp = Timestamp::now();
         let (consensus, consensus_effects) = EraSupervisor::new(timestamp, effect_builder);
         let deploy_gossiper = DeployGossiper::new(config.gossip);
 

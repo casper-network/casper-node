@@ -4,17 +4,12 @@ use std::fmt::Debug;
 
 use anyhow::Error;
 
-use crate::components::consensus::traits::ConsensusValueT;
+use crate::{components::consensus::traits::ConsensusValueT, types::Timestamp};
 
 mod protocol_state;
 pub(crate) mod synchronizer;
 
 pub(crate) use protocol_state::{ProtocolState, VertexTrait};
-
-// TODO: Use `Timestamp` instead of `u64`.
-// Implement `Add`, `Sub` etc.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Timestamp(pub(crate) u64);
 
 /// Information about the context in which a new block is created.
 #[derive(Clone, Eq, PartialEq, Debug)]

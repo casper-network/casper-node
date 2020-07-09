@@ -27,7 +27,7 @@ use crate::{
     },
     crypto::{asymmetric_key::generate_ed25519_keypair, hash::hash},
     effect::{requests::NetworkRequest, Effect, EffectBuilder, EffectExt, Multiple},
-    types::ProtoBlock,
+    types::{ProtoBlock, Timestamp},
 };
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -84,7 +84,7 @@ where
     I: NodeIdT,
 {
     pub(crate) fn new<REv>(
-        timestamp: u64,
+        timestamp: Timestamp,
         effect_builder: EffectBuilder<REv>,
     ) -> (Self, Multiple<Effect<Event<I>>>)
     where
