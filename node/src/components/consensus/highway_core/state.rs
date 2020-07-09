@@ -510,6 +510,7 @@ pub(crate) mod tests {
         type ConsensusValue = u32;
         type ValidatorId = u32;
         type ValidatorSecret = TestSecret;
+        type Signature = u64;
         type Hash = u64;
         type InstanceId = u64;
 

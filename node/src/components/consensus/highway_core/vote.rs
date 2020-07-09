@@ -122,7 +122,7 @@ pub(crate) struct Vote<C: Context> {
     /// This vote's timestamp, in milliseconds since the epoch.
     pub(crate) timestamp: u64,
     /// Original signature of the `SignedWireVote`.
-    pub(crate) signature: <C::ValidatorSecret as ValidatorSecret>::Signature,
+    pub(crate) signature: C::Signature,
 }
 
 impl<C: Context> Vote<C> {

@@ -1,3 +1,5 @@
+use std::fmt::{self, Debug};
+
 use tracing::warn;
 
 use super::{
@@ -37,7 +39,6 @@ pub(crate) enum Effect<C: Context> {
 /// If the rounds are long enough (i.e. message delivery is fast enough) and there are enough
 /// honest validators, there will be a lot of confirmations for the proposal, and enough witness
 /// votes citing all those confirmations, to create a summit and finalize the proposal.
-#[derive(Debug)]
 pub(crate) struct ActiveValidator<C: Context> {
     /// Our own validator index.
     vidx: ValidatorIndex,
@@ -47,6 +48,16 @@ pub(crate) struct ActiveValidator<C: Context> {
     round_exp: u8,
     /// The latest timer we scheduled.
     next_timer: u64,
+}
+
+impl<C: Context> Debug for ActiveValidator<C> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("ActiveValidator")
+            .field("vidx", &self.vidx)
+            .field("round_exp", &self.round_exp)
+            .field("next_timer", &self.next_timer)
+            .finish()
+    }
 }
 
 impl<C: Context> ActiveValidator<C> {
