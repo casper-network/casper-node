@@ -51,8 +51,9 @@
 //! of the component that talks to the client and deserializes the incoming deploy though, which
 //! considers the deploy no longer its concern after it has returned an announcement effect.
 //!
-//! **Requests** are some of the most complex effects, they represent a question of a component for
-//! another component, for which it eventually expects an answer.
+//! **Requests** are complex effects that are used when a component needs something from 
+//! outside of itself (typically to be provided by another component); a request requires an 
+//! eventual response. 
 //!
 //! A request **must** have a `Responder` field, which a handler of a request **must** call at
 //! some point. Failing to do so will result in a resource leak.
