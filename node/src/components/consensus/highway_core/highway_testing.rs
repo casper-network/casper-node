@@ -63,7 +63,10 @@ impl<C: Context> From<Effect<C>> for HighwayMessage<C> {
 }
 
 use rand::Rng;
-use std::fmt::{Display, Formatter};
+use std::{
+    collections::VecDeque,
+    fmt::{Display, Formatter},
+};
 
 impl<C: Context> PartialOrd for HighwayMessage<C> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -112,8 +115,8 @@ enum TestRunError<C: Context> {
     SenderMissingDependency(ValidatorId, Dependency<C>),
     /// No more messages in the message queue.
     NoMessages,
-    /// Validator run out of consensus values to propose before the end of a test.
-    NoConsensusValues(ValidatorId),
+    /// We run out of consensus values to propose before the end of a test.
+    NoConsensusValues,
 }
 
 impl<C: Context> Display for TestRunError<C> {
@@ -131,9 +134,7 @@ impl<C: Context> Display for TestRunError<C> {
             TestRunError::MissingValidator(id) => {
                 write!(f, "Virtual net is missing validator {:?}.", id)
             }
-            TestRunError::NoConsensusValues(id) => {
-                write!(f, "{:?} has no consensus values to propose.", id)
-            }
+            TestRunError::NoConsensusValues => write!(f, "No consensus values to propose."),
         }
     }
 }
@@ -149,7 +150,9 @@ where
     start_time: u64,
     /// Consensus values to be proposed.
     /// Order of values in the vector defines the order in which they will be proposed.
-    consensus_values: Vec<C::ConsensusValue>,
+    consensus_values: VecDeque<C::ConsensusValue>,
+    /// Number of consensus values that the test is started with.
+    consensus_values_num: usize,
 }
 
 impl<Ctx, DS> HighwayTestHarness<HighwayMessage<Ctx>, Ctx, HighwayConsensus<Ctx>, DS>
@@ -165,12 +168,14 @@ where
             DS,
         >,
         start_time: u64,
-        consensus_values: Vec<Ctx::ConsensusValue>,
+        consensus_values: VecDeque<Ctx::ConsensusValue>,
     ) -> Self {
+        let cv_len = consensus_values.len();
         HighwayTestHarness {
             virtual_net,
             start_time,
             consensus_values,
+            consensus_values_num: cv_len,
         }
     }
 
@@ -213,6 +218,10 @@ where
         Ok(CrankOk::Continue)
     }
 
+    fn next_consensus_value(&mut self) -> Option<Ctx::ConsensusValue> {
+        self.consensus_values.pop_front()
+    }
+
     fn mut_handle(&mut self) -> &mut Self {
         self
     }
@@ -236,22 +245,29 @@ where
 
         let messages = {
             let sender_id = message.sender;
-            let recipient = self
-                .virtual_net
-                .get_validator_mut(&validator_id)
-                .ok_or_else(|| TestRunError::MissingValidator(validator_id))?;
 
-            let recipient_id = recipient.id;
             let hwm = message.payload().clone();
             match hwm {
-                Timer(timestamp) => recipient
-                    .consensus
-                    .highway
-                    .handle_timer(timestamp)
-                    .into_iter()
-                    .map(HighwayMessage::from)
-                    .collect(),
+                Timer(timestamp) => {
+                    let mut recipient = self
+                        .virtual_net
+                        .get_validator_mut(&validator_id)
+                        .ok_or_else(|| TestRunError::MissingValidator(validator_id))?;
+
+                    recipient
+                        .consensus
+                        .highway
+                        .handle_timer(timestamp)
+                        .into_iter()
+                        .map(HighwayMessage::from)
+                        .collect()
+                }
                 NewVertex(v) => {
+                    let mut recipient = self
+                        .virtual_net
+                        .get_validator_mut(&validator_id)
+                        .ok_or_else(|| TestRunError::MissingValidator(validator_id))?;
+                    let recipient_id = recipient.id;
                     match self.add_vertex(recipient_id, sender_id, v)? {
                         Ok(msgs) => msgs,
                         Err((v, error)) => {
@@ -262,9 +278,14 @@ where
                     }
                 }
                 RequestBlock(block_context) => {
-                    let consensus_value = recipient
+                    let consensus_value = self
                         .next_consensus_value()
-                        .ok_or_else(|| TestRunError::NoConsensusValues(recipient_id))?;
+                        .ok_or_else(|| TestRunError::NoConsensusValues)?;
+
+                    let mut recipient = self
+                        .virtual_net
+                        .get_validator_mut(&validator_id)
+                        .ok_or_else(|| TestRunError::MissingValidator(validator_id))?;
 
                     recipient
                         .consensus

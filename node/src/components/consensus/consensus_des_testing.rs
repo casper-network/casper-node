@@ -53,8 +53,6 @@ where
     pub(crate) id: ValidatorId,
     /// Whether a validator should produce equivocations.
     pub(crate) is_faulty: bool,
-    /// Consensus values to be proposed.
-    consensus_values: VecDeque<C>,
     /// Vector of consensus values finalized by the validator.
     finalized_values: Vec<C>,
     /// Number of finalized values.
@@ -71,16 +69,10 @@ impl<C, M, D> Validator<C, M, D>
 where
     M: Clone + Debug,
 {
-    pub(crate) fn new(
-        id: ValidatorId,
-        is_faulty: bool,
-        consensus_values: VecDeque<C>,
-        consensus: D,
-    ) -> Self {
+    pub(crate) fn new(id: ValidatorId, is_faulty: bool, consensus: D) -> Self {
         Validator {
             id,
             is_faulty,
-            consensus_values,
             finalized_values: Vec::new(),
             finalized_count: 0,
             messages_received: Vec::new(),
@@ -128,10 +120,6 @@ where
 
     pub(crate) fn finalized_count(&self) -> usize {
         self.finalized_count
-    }
-
-    pub(crate) fn next_consensus_value(&mut self) -> Option<C> {
-        self.consensus_values.pop_front()
     }
 }
 
@@ -450,7 +438,7 @@ mod virtual_net_tests {
     fn messages_are_enqueued_in_order() {
         let validator_id = ValidatorId(1u64);
         let single_validator: Validator<C, u64, NoOpConsensus> =
-            Validator::new(validator_id, false, VecDeque::new(), NoOpConsensus);
+            Validator::new(validator_id, false, NoOpConsensus);
         let mut virtual_net = VirtualNet::new(vec![single_validator], NoOpDelay);
 
         let messages_num = 10;
@@ -481,9 +469,9 @@ mod virtual_net_tests {
     fn messages_are_dispatched() {
         let validator_id = ValidatorId(1u64);
         let first_validator: Validator<C, M, NoOpConsensus> =
-            Validator::new(validator_id, false, VecDeque::new(), NoOpConsensus);
+            Validator::new(validator_id, false, NoOpConsensus);
         let second_validator: Validator<C, M, NoOpConsensus> =
-            Validator::new(ValidatorId(2u64), false, VecDeque::new(), NoOpConsensus);
+            Validator::new(ValidatorId(2u64), false, NoOpConsensus);
 
         let mut virtual_net = VirtualNet::new(vec![first_validator, second_validator], NoOpDelay);
         let mut rand = XorShiftRng::from_seed(rand::random());
