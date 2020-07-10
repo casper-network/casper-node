@@ -227,11 +227,15 @@ where
         validator_id: ValidatorId,
         message: Message<HighwayMessage<Ctx>>,
     ) -> Result<Vec<HighwayMessage<Ctx>>, TestRunError<Ctx>> {
-        let recipient = self
-            .virtual_net
-            .get_validator_mut(&validator_id)
-            .ok_or_else(|| TestRunError::MissingValidator(validator_id))?;
-        recipient.push_messages_received(vec![message.clone()]);
+        // Using the same `recipient` instance in the whole method body is not possible due to compiler
+        // complaining about using `self` as mutable and immutable.
+        {
+            let recipient = self
+                .virtual_net
+                .get_validator_mut(&validator_id)
+                .ok_or_else(|| TestRunError::MissingValidator(validator_id))?;
+            recipient.push_messages_received(vec![message.clone()]);
+        }
 
         let messages = {
             let sender_id = message.sender;
