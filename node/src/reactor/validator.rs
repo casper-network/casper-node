@@ -8,6 +8,7 @@ mod error;
 use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
+use rand::Rng;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
@@ -202,20 +203,22 @@ impl reactor::Reactor for Reactor {
     type Config = Config;
     type Error = Error;
 
-    fn new(
+    fn new<R: Rng + ?Sized>(
         config: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
+        _rng: &mut R,
         span: &Span,
     ) -> Result<(Self, Effects<Event>), Error> {
         let storage = Storage::new(&config.storage)?;
         let contract_runtime = ContractRuntime::new(&config.storage, config.contract_runtime)?;
-        let rng = ChaCha20Rng::from_entropy();
+        let rng = ChaCha20Rng::from_entropy(); // TODO
         Self::init(config, event_queue, span, storage, contract_runtime, rng)
     }
 
-    fn dispatch_event(
+    fn dispatch_event<R: Rng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
+        rng: &mut R,
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -252,6 +255,7 @@ impl reactor::Reactor for Reactor {
             // Requests:
             Event::NetworkRequest(req) => self.dispatch_event(
                 effect_builder,
+                rng,
                 Event::Network(small_network::Event::from(req)),
             ),
 
@@ -276,7 +280,7 @@ impl reactor::Reactor for Reactor {
                 };
 
                 // Any incoming message is one for the pinger.
-                self.dispatch_event(effect_builder, reactor_event)
+                self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::ContractRuntime(event) => todo!("handle contract runtime event: {:?}", event),
         }

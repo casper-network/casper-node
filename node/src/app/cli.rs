@@ -5,6 +5,7 @@
 use std::{io, io::Write, path::PathBuf};
 
 use anyhow::bail;
+use rand::rngs::OsRng;
 use structopt::StructOpt;
 use tracing::info;
 
@@ -72,6 +73,9 @@ impl Cli {
             } => {
                 logging::init()?;
 
+                // We initialize an OsRng, which internally calls `getrandom`.
+                let mut rng = OsRng;
+
                 // We load the specified config, if any, otherwise use defaults.
                 let config: validator::Config = config
                     .map(config::load_from_file)
@@ -79,8 +83,8 @@ impl Cli {
                     .unwrap_or_default();
 
                 let mut runner =
-                    Runner::<initializer::Reactor>::new((chainspec_path, config)).await?;
-                runner.run().await;
+                    Runner::<initializer::Reactor>::new((chainspec_path, config), &mut rng).await?;
+                runner.run(&mut rng).await;
 
                 info!("finished initialization");
 
@@ -90,7 +94,7 @@ impl Cli {
                 }
 
                 let mut runner = Runner::<validator::Reactor>::from(initializer).await?;
-                runner.run().await;
+                runner.run(&mut rng).await;
             }
         }
 

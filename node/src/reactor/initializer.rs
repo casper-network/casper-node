@@ -6,6 +6,7 @@ use std::{
 };
 
 use derive_more::From;
+use rand::Rng;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use thiserror::Error;
@@ -100,9 +101,10 @@ impl reactor::Reactor for Reactor {
     type Config = (PathBuf, validator::Config);
     type Error = Error;
 
-    fn new(
+    fn new<Rd: Rng + ?Sized>(
         (chainspec_config_path, config): Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
+        _rng: &mut Rd,
         _span: &Span,
     ) -> Result<(Self, Effects<Self::Event>), Error> {
         let effect_builder = EffectBuilder::new(event_queue);
@@ -128,9 +130,10 @@ impl reactor::Reactor for Reactor {
         ))
     }
 
-    fn dispatch_event(
+    fn dispatch_event<Rd: Rng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
+        _rng: &mut Rd,
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
