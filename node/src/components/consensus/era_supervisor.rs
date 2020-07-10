@@ -27,7 +27,7 @@ use crate::{
     },
     crypto::{asymmetric_key::generate_ed25519_keypair, hash::hash},
     effect::{requests::NetworkRequest, EffectBuilder, EffectExt, Effects},
-    types::ProtoBlock,
+    types::{ProtoBlock, Timestamp},
 };
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -84,7 +84,7 @@ where
     I: NodeIdT,
 {
     pub(crate) fn new<REv>(
-        timestamp: u64,
+        timestamp: Timestamp,
         effect_builder: EffectBuilder<REv>,
     ) -> (Self, Effects<Event<I>>)
     where
@@ -146,10 +146,11 @@ where
             ConsensusProtocolResult::CreatedTargetedMessage(out_msg, to) => effect_builder
                 .send_message(to, era_id.message(out_msg))
                 .ignore(),
-            ConsensusProtocolResult::ScheduleTimer(_timestamp) => {
-                // TODO: we need to get the current system time here somehow, in order to schedule
-                // a timer for the correct moment - and we don't want to use std::Instant
-                unimplemented!()
+            ConsensusProtocolResult::ScheduleTimer(timestamp) => {
+                let timediff = timestamp - Timestamp::now();
+                effect_builder
+                    .set_timeout(timediff.into())
+                    .event(move |_| Event::Timer { era_id, timestamp })
             }
             ConsensusProtocolResult::CreateNewBlock(block_context) => effect_builder
                 .request_proto_block(block_context)

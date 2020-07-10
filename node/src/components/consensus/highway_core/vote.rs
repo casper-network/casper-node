@@ -1,8 +1,13 @@
 use serde::{Deserialize, Serialize};
 
 use super::{state::State, validators::ValidatorIndex, vertex::WireVote};
-use crate::components::consensus::highway_core::vertex::SignedWireVote;
-use crate::components::consensus::traits::{Context, ValidatorSecret};
+use crate::{
+    components::consensus::{
+        highway_core::vertex::SignedWireVote,
+        traits::{Context, ValidatorSecret},
+    },
+    types::Timestamp,
+};
 
 /// The observed behavior of a validator at some point in time.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -120,7 +125,7 @@ pub(crate) struct Vote<C: Context> {
     /// the older vote with `seq_number - p`.
     pub(crate) skip_idx: Vec<C::Hash>,
     /// This vote's timestamp, in milliseconds since the epoch.
-    pub(crate) timestamp: u64,
+    pub(crate) timestamp: Timestamp,
     /// Original signature of the `SignedWireVote`.
     pub(crate) signature: C::Signature,
 }
