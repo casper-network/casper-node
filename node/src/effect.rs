@@ -91,7 +91,7 @@ use requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest};
 /// A pinned, boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
 
-/// Intended to hold a small collection of [`Effect`](type.Effect.html)s.
+/// A small collection of rarely more than two items.
 ///
 /// Stored in a `SmallVec` to avoid allocations in case there are less than three items grouped. The
 /// size of two items is chosen because one item is the most common use case, and large items are
