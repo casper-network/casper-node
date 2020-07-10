@@ -1,0 +1,14 @@
+[package]
+name = "pos"
+version = "0.1.0"
+authors = ["Andreas Fackler <andreas@casperlabs.io>"]
+edition = "2018"
+
+[features]
+std = ["contract/std", "types/std"]
+enable-bonding = []
+
+[dependencies]
+base16 = { version = "0.2.1", default-features = false }
+contract = { path = "../../../contract", package = "casperlabs-contract" }
+types = { path = "../../../../types", package = "casperlabs-types" }

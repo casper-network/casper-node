@@ -1,0 +1,48 @@
+{
+  "name": "@casperlabs/contract",
+  "version": "0.5.0",
+  "description": "Library for developing CasperLabs smart contracts.",
+  "main": "index.js",
+  "ascMain": "assembly/index.ts",
+  "dependencies": {},
+  "devDependencies": {
+    "@assemblyscript/loader": "^0.9.4",
+    "assemblyscript": "^0.10.0",
+    "ava": "^2.4.0",
+    "concat-md": "^0.3.2",
+    "ts-loader": "^6.2.1",
+    "ts-node": "^8.5.4",
+    "typedoc": "^0.17.0",
+    "typedoc-plugin-markdown": "^2.2.17",
+    "typescript": "^3.8.3"
+  },
+  "scripts": {
+    "test": "npm run asbuild:test && npx ava -v --serial",
+    "asbuild:untouched": "asc assembly/index.ts -b build/untouched.wasm -t build/untouched.wat --sourceMap  --debug --use abort=",
+    "asbuild:optimized": "asc assembly/index.ts -b build/optimized.wasm -t build/optimized.wat --sourceMap  --optimize --use abort=",
+    "asbuild:test:bytesrepr": "asc tests/assembly/bytesrepr.spec.as.ts -b build/bytesrepr.spec.as.wasm -t build/bytesrepr.spec.as.wat --sourceMap  --optimize",
+    "asbuild:test:bignum": "asc tests/assembly/bignum.spec.as.ts -b build/bignum.spec.as.wasm -t build/bignum.spec.as.wat --sourceMap  --optimize",
+    "asbuild:test:utils": "asc tests/assembly/utils.spec.as.ts -b build/utils.spec.as.wasm -t build/utils.spec.as.wat --sourceMap  --optimize",
+    "asbuild:test:runtime_args": "asc tests/assembly/runtime_args.spec.as.ts -b build/runtime_args.spec.as.wasm -t build/runtime_args.spec.as.wat --sourceMap  --optimize",
+    "asbuild:test": "npm run asbuild:test:runtime_args && npm run asbuild:test:bytesrepr && npm run asbuild:test:bignum && npm run asbuild:test:utils",
+    "asbuild": "npm run asbuild:untouched && npm run asbuild:optimized",
+    "prepublish-docs": "rm -rf apidoc && mkdir apidoc && node_modules/.bin/typedoc assembly/*.ts assembly/collections/*.ts --theme markdown --readme none --ignoreCompilerErrors --hideBreadcrumbs --skipSidebar --excludePrivate --excludeNotExported --out temp-apidoc/ && concat-md --decrease-title-levels --dir-name-as-title temp-apidoc >> README.md",
+    "prepublishOnly": "cp README.md ._README.md && npm run prepublish-docs",
+    "postpublish": "rm -rf temp-apidoc && mv ._README.md README.md"
+  },
+  "author": "Michał Papierski <michal@papierski.net>",
+  "license": "Apache-2.0",
+  "ava": {
+    "compileEnhancements": true,
+    "extensions": [
+      "ts"
+    ],
+    "require": [
+      "ts-node/register",
+      "ts-node/register/transpile-only"
+    ],
+    "files": [
+      "tests/**/*.spec.ts"
+    ]
+  }
+}

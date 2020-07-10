@@ -1,0 +1,13 @@
+[Unit]
+Description=CasperLabs Engine GRPC Server
+After=network.target
+Before=casperlabs-node.service
+BindsTo=casperlabs-node.service
+
+[Service]
+ExecStart=/usr/bin/casperlabs-engine-grpc-server -d /var/lib/casperlabs /var/lib/casperlabs/.casper-node.sock
+User=casperlabs
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

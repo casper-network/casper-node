@@ -4,23 +4,26 @@ This is the core application for the CasperLabs blockchain.
 
 ## Running a validator node
 
-To run a validator node with the default configuration:
+To run a validator node with the default configuration using the [example chainspec](resources/example/chainspec.toml):
 
 ```
-cargo run --release -- validator
+cargo run --release -- validator -p=resources/example/chainspec.toml
 ```
 
 It is very likely that the configuration requires editing though, so typically one will want to generate a configuration
 file first, edit it and then run:
 
 ```
-cargo run --release -- generate-config > mynode.toml
-# ... edit mynode.toml
-cargo run --release -- validator --config=mynode.toml
+cargo run --release -- generate-config > config.toml
+# ... edit config.toml
+cargo run --release -- validator -p=resources/example/chainspec.toml -c=config.toml
 ```
 
 **NOTE:** If you want to run multiple instances on the same machine, ensure you modify the `[storage.path]` field of
 their configuration files to give each a unique path, or else instances will share database files.
+
+As well as the [example chainspec](resources/example/chainspec.toml), there is a commented
+[example config file](resources/example/config.toml) in the same folder.
 
 ## Logging
 
@@ -28,7 +31,7 @@ Logging can be enabled by setting the environment variable `RUST_LOG`.  This can
 from lowest priority to highest: `trace`, `debug`, `info`, `warn`, `error`:
 
 ```
-RUST_LOG=info cargo run --release -- validator
+RUST_LOG=info cargo run --release -- validator -p=resources/example/chainspec.toml -c=config.toml
 ```
 
 If the environment variable is unset, it is equivalent to setting `RUST_LOG=error`.

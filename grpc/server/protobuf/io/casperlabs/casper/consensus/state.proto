@@ -1,0 +1,364 @@
+syntax = "proto3";
+package io.casperlabs.casper.consensus.state;
+
+message SemVer {
+    uint32 major = 1;
+    uint32 minor = 2;
+    uint32 patch = 3;
+}
+
+message Contract {
+    message EntryPoint {
+
+        message Arg {
+            string name = 1;
+            CLType cl_type = 2;
+        }
+        message Public {} // Tag
+        message Group {
+            string name = 1;
+        }
+
+        message SessionType {}
+        message ContractType {}
+
+        message Groups {
+            repeated Group groups = 1;
+        }
+
+        string name = 1;
+
+        repeated Arg args = 2;
+        CLType ret = 3;
+        oneof access {
+            Public public = 4;
+            Groups groups = 5;
+        }
+
+
+        oneof entry_point_type {
+            SessionType session = 6;
+            ContractType contract = 7;
+        }
+    }
+
+    bytes contract_package_hash = 1;
+    bytes contract_wasm_hash = 2;
+    repeated NamedKey named_keys = 3;
+    repeated EntryPoint entry_points = 4;
+    ProtocolVersion protocol_version = 6;
+
+}
+
+message ContractVersionKey {
+    uint32 protocol_version_major = 1;
+    uint32 contract_version = 2;
+}
+
+message ContractPackage {
+    
+    message Version {
+        ContractVersionKey version = 1;
+        bytes contract_hash = 2;
+    }
+    message Group {
+        Contract.EntryPoint.Group group = 1;
+        repeated Key.URef urefs = 2;
+    }
+    Key.URef access_key = 1;
+    repeated Version active_versions = 2;
+    repeated ContractVersionKey disabled_versions = 3;
+    repeated Group groups = 4;
+}
+
+
+// Fundamental type of a user-facing value stored under a key in global state.
+message CLType {
+    enum Simple {
+        BOOL = 0;
+        I32 = 1;
+        I64 = 2;
+        U8 = 3;
+        U32 = 4;
+        U64 = 5;
+        U128 = 6;
+        U256 = 7;
+        U512 = 8;
+        UNIT = 9;
+        STRING = 10;
+        KEY = 11;
+        UREF = 12;
+    }
+
+    message Option {
+        CLType inner = 1;
+    }
+
+    message List {
+        CLType inner = 1;
+    }
+
+    message FixedList {
+        CLType inner = 1;
+        uint32 len = 2;
+    }
+
+    message Result {
+        CLType ok = 1;
+        CLType err = 2;
+    }
+
+    message Map {
+        CLType key = 1;
+        CLType value = 2;
+    }
+
+    message Tuple1 {
+        CLType type0 = 1;
+    }
+
+    message Tuple2 {
+        CLType type0 = 1;
+        CLType type1 = 2;
+    }
+
+    message Tuple3 {
+        CLType type0 = 1;
+        CLType type1 = 2;
+        CLType type2 = 3;
+    }
+
+    message Any {}
+
+    oneof variants {
+        Simple simple_type = 1;
+        Option option_type = 2;
+        List list_type = 3;
+        FixedList fixed_list_type = 4;
+        Result result_type = 5;
+        Map map_type = 6;
+        Tuple1 tuple1_type = 7;
+        Tuple2 tuple2_type = 8;
+        Tuple3 tuple3_type = 9;
+        Any any_type = 10;
+    }
+}
+
+// User-facing value stored under a key in global state.
+message CLValue {
+    CLType cl_type = 1;
+    bytes serialized_value = 2;
+}
+
+// CLValue where the bytes are re-consistituted as an object
+message CLValueInstance {
+    CLType cl_type = 1;
+    Value value = 2;
+
+    message Value {
+        oneof value {
+            bool bool_value = 1;
+            int32 i32 = 2;
+            int64 i64 = 3;
+            // Protobuf does not have an 8-bit primitive, so we use the 32-bit
+            // primitive and will validate the value is in the range [0, 255].
+            int32 u8 = 4;
+            uint32 u32 = 5;
+            uint64 u64 = 6;
+            U128 u128 = 7;
+            U256 u256 = 8;
+            U512 u512 = 9;
+            Unit unit = 10;
+            string str_value = 11;
+            Key key = 12;
+            Key.URef uref = 13;
+            Option option_value = 14;
+            List list_value = 15;
+            FixedList fixed_list_value = 16;
+            Result result_value = 17;
+            Map map_value = 18;
+            Tuple1 tuple1_value = 19;
+            Tuple2 tuple2_value = 20;
+            Tuple3 tuple3_value = 21;
+            bytes bytes_value = 22; // convenience for representing List(U8) / FixedList(U8)
+        }
+    }
+
+    // The BigInt types encode their values as strings; it is invalid to have a
+    // string which cannot be parsed as a non-negative whole number.
+    message U128 {
+        string value = 1;
+    }
+    message U256 {
+        string value = 1;
+    }
+    message U512 {
+        string value = 1;
+    }
+    message Option {
+        Value value = 1;
+    }
+    // Technically these types can represent heterogeneous lists and maps,
+    // however it will be considered illegal to do so because there is no way to
+    // assign a CLType to such an object.
+    message List {
+        repeated Value values = 1;
+    }
+    message FixedList {
+        uint32 length = 1;
+        // length of this list must be equal to length above
+        repeated Value values = 2;
+    }
+    message Result {
+        oneof value {
+            Value ok = 1;
+            Value err = 2;
+        }
+    }
+    message Map {
+        // key-value pairs
+        repeated MapEntry values = 1;
+    }
+    message MapEntry {
+        Value key = 1;
+        Value value = 2;
+    }
+    message Tuple1 {
+        Value value_1 = 1;
+    }
+    message Tuple2 {
+        Value value_1 = 1;
+        Value value_2 = 2;
+    }
+    message Tuple3 {
+        Value value_1 = 1;
+        Value value_2 = 2;
+        Value value_3 = 3;
+    }
+
+}
+
+message ContractWasm {
+    bytes wasm = 1;
+}
+
+// Value stored under a key in global state.
+message StoredValue {
+    oneof variants {
+        CLValue cl_value = 1;
+        Account account = 2;
+        Contract contract = 3;
+        ContractPackage contract_package = 4;
+        ContractWasm contract_wasm = 5;
+    }
+}
+
+message StoredValueInstance {
+    oneof value {
+        CLValueInstance cl_value = 1;
+        Account account = 2;
+        Contract contract = 3;
+        ContractPackage contract_package = 4;
+        ContractWasm contract_wasm = 5;
+    }
+}
+
+message Value {
+	oneof value {
+		int32 int_value = 1;
+		bytes bytes_value = 2;
+		IntList int_list = 3;
+		string string_value = 4;
+		Account account = 5;
+		Contract contract = 6;
+		StringList string_list = 7;
+		NamedKey named_key = 8;
+		BigInt big_int = 9;
+		Key key = 10;
+		Unit unit = 11;
+		uint64 long_value = 12;
+	}
+}
+
+message IntList {
+	repeated int32 values = 1;
+}
+
+message StringList {
+	repeated string values = 1;
+}
+
+message BigInt {
+	string value = 1;
+	// Number of bits: 128 | 256 | 512.
+	uint32 bit_width = 2;
+}
+
+message Key {
+	oneof value {
+		Address address = 1;
+		Hash hash = 2;
+		URef uref = 3;
+	}
+
+	message Address {
+		bytes account = 1;
+	}
+
+	message Hash {
+		bytes hash = 1;
+	}
+
+	message URef {
+		bytes uref = 1;
+		AccessRights access_rights = 2;
+
+        // NOTE: Numeric values correspond to values of the domain
+        // AccessRights struct. DO NOT CHANGE.
+		enum AccessRights {
+			NONE           = 0;
+			READ           = 1;
+			WRITE          = 2;
+			ADD            = 4;
+			READ_ADD       = 5;
+			READ_WRITE     = 3;
+			ADD_WRITE      = 6;
+			READ_ADD_WRITE = 7;
+		}
+	}
+}
+
+message NamedKey {
+	string name = 1;
+	Key key = 2;
+}
+
+message Account {
+	// Removed: nonce.
+	reserved 2;
+	// Removed: account_activity
+	reserved 7;
+
+	bytes public_key = 1;
+	Key.URef main_purse = 3;
+	repeated NamedKey named_keys = 4;
+	repeated AssociatedKey associated_keys = 5;
+	ActionThresholds action_thresholds = 6;
+
+	message AssociatedKey {
+		bytes public_key = 1;
+		uint32 weight = 2;
+	}
+	message ActionThresholds {
+		uint32 deployment_threshold = 1;
+		uint32 key_management_threshold = 2;
+	}
+}
+
+message Unit {}
+
+message ProtocolVersion {
+    uint32 major = 1;
+    uint32 minor = 2;
+    uint32 patch = 3;
+}

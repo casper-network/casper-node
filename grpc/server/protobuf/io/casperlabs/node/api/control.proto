@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package io.casperlabs.node.api.control;
+
+import "google/api/annotations.proto";
+
+// The operators can use the ControlService to issue commands to the node,
+// such as proposing a block or otherwise influence the proposal strategy.
+service ControlService {
+    // Propose a block using the deploys in the pool.
+    rpc Propose(ProposeRequest) returns (ProposeResponse) {
+    	option (google.api.http) = {
+            post: "/v2:propose"
+            body: "*"
+        };
+    }
+}
+
+message ProposeRequest {}
+
+message ProposeResponse {
+	bytes block_hash = 1;
+}

@@ -14,12 +14,12 @@ clone:
           EMAIL=ci git merge --no-edit FETCH_HEAD
       fi
       git rev-parse HEAD
-    image: "rust:latest"
+    image: "casperlabs/buildenv:latest"
 
 # NOTE: Anchors are per document
 # Anchor for default buildenv
 __buildenv: &buildenv
-  image: "rust:latest"
+  image: "casperlabs/buildenv:latest"
   environment:
     CARGO_HOME: ".cargo"
 
@@ -47,7 +47,7 @@ steps:
   <<: *buildenv
   commands:
   - rustup component add rustfmt
-  - cargo fmt -- --check
+  - cargo fmt --all -- --check
 
 - name: cargo-clippy
   <<: *buildenv
@@ -55,12 +55,20 @@ steps:
     RUSTFLAGS: '-D warnings'
   commands:
   - rustup component add clippy
-  - cargo clippy --all-targets
+  - cargo clippy --all-targets --workspace
+
+- name: cargo-audit
+  <<: *buildenv
+  commands:
+  - cargo install cargo-audit
+  - cargo generate-lockfile
+  - cargo audit
 
 - name: cargo-test
   <<: *buildenv
   commands:
-  - cargo test
+  - make setup
+  - make test
 
 - name: rebuild-cache
   <<: *cache
@@ -86,7 +94,7 @@ trigger:
 ---
 # Anchor for default buildenv
 __buildenv: &buildenv
-  image: "rust:latest"
+  image: "casperlabs/buildenv:latest"
   environment:
     CARGO_HOME: ".cargo"
 

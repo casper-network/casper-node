@@ -1,0 +1,24 @@
+syntax = "proto3";
+package io.casperlabs.comm.discovery;
+
+import "io/casperlabs/comm/discovery/node.proto";
+
+service KademliaService {
+    rpc Ping (PingRequest) returns (PingResponse) {}
+    rpc Lookup (LookupRequest) returns (LookupResponse) {}
+}
+
+message PingRequest {
+    Node sender = 1;
+}
+
+message PingResponse {}
+
+message LookupRequest {
+    bytes id = 1;
+    Node sender = 2;
+}
+
+message LookupResponse {
+    repeated Node nodes = 1;
+}

@@ -1,0 +1,75 @@
+[genesis]
+# Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
+# contributing to the seeding of the pseudo-random number generator used in contract-runtime for computing genesis
+# post-state hash.
+name = 'casperlabs-devnet'
+# Timestamp for the genesis block, also used in seeding the pseudo-random number generator used in contract-runtime for
+# computing genesis post-state hash.
+timestamp = 0
+# Protocol version at genesis.
+protocol_version = '1.0.0'
+# Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the mint
+# system contract.
+mint_installer_path = 'mint_install.wasm'
+# Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the Proof of
+# Stake system contract.
+pos_installer_path = 'pos_install.wasm'
+# Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the Standard
+# Payment system contract.
+standard_payment_installer_path = 'standard_payment_install.wasm'
+# Path (absolute, or relative to this chainspec.toml) to the CSV file containing initial account balances and bonds.
+accounts_path = 'accounts.csv'
+
+[highway]
+# Tick unit is milliseconds.
+#
+# Unix timestamp for the genesis era.  At least one node has to be started when the genesis era is active in order to
+# make key blocks for the upcoming eras.  If the era is over by the time we start the nodes, they'll not be able to
+# produce blocks in it, and there won't be a new era build either.  That means when a completely new network is started,
+# the genesis era start time has to be adjusted to be active at the time.
+genesis_era_start_timestamp = 1583712000000
+# Era duration defined as a fixed number of milliseconds.  604800000 ms = 1 week.
+era_duration_millis = 604800000
+# Amount of time in milliseconds to go back before the start of the era for picking the booking block.
+# 864000000 ms = 10 days.
+booking_duration_millis = 864000000
+# Amount of time in milliseconds to wait after the booking before we pick the key block, collecting the magic bits along
+# the way.  10800000 ms = 3 hours.
+entropy_duration_millis = 10800000
+# Keep voting on the switch block for a fixed amount of time; effective if the summit level is zero.
+# 172800000 ms = 2 days.
+voting_period_duration_millis = 172800000
+# Integer between 0 and 99 representing the fault tolerance threshold as a percentage, used by the internal finalizer.
+finality_threshold_percent = 10
+
+[deploys]
+# The maximum number of Motes allowed to be spent during payment.  0 means unlimited.
+max_payment_cost = '0'
+# The maximum number of milliseconds after the deploy timestamp that it can be included in a block.
+# 86400000 ms = 1 day.
+max_ttl_millis = 86400000
+# The maximum number of other deploys a deploy can depend on (require to have been executed before it can execute).
+max_dependencies = 10
+# Maximum block size in bytes.  0 means unlimited.
+max_block_size = 10485760
+
+[wasm_costs]
+# Default opcode cost.
+regular = 1
+# Div operations multiplier.
+div = 16
+# Mul operations multiplier.
+mul = 4
+# Memory (load/store) operations multiplier.
+mem = 2
+# Amount of free memory (in 64kB pages) each contract can use for stack.
+initial_mem = 4096
+# Grow memory cost, per page (64kB).
+grow_mem = 8192
+# Memory copy cost, per byte.
+memcpy = 1
+# Max stack height (native WebAssembly stack limiter).
+max_stack_height = 65536
+# Cost of wasm opcode is calculated as TABLE_ENTRY_COST * `opcodes_mul` / `opcodes_div`.
+opcodes_mul = 3
+opcodes_div = 8

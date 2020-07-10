@@ -1,0 +1,18 @@
+[package]
+name = "endless-loop"
+version = "0.1.0"
+authors = ["Henry Till <henrytill@gmail.com>"]
+edition = "2018"
+
+[[bin]]
+name = "endless_loop"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[features]
+std = ["contract/std"]
+
+[dependencies]
+contract = { path = "../../../contract", package = "casperlabs-contract" }

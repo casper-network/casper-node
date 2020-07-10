@@ -1,0 +1,16 @@
+[package]
+name = "write-all-types"
+version = "0.1.0"
+authors = ["Michael Birch <birchmd@casperlabs.io>"]
+edition = "2018"
+
+[[bin]]
+name = "write_all_types"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+contract = { path = "../../../contract", package = "casperlabs-contract" }
+types = { path = "../../../../types", package = "casperlabs-types" }
