@@ -8,9 +8,13 @@ use super::{
     vertex::{Vertex, WireVote},
     vote::{Observation, Panorama},
 };
-use crate::components::consensus::consensus_protocol::{BlockContext, Timestamp};
-use crate::components::consensus::highway_core::vertex::SignedWireVote;
-use crate::components::consensus::traits::Context;
+
+use crate::{
+    components::consensus::{
+        consensus_protocol::BlockContext, highway_core::vertex::SignedWireVote, traits::Context,
+    },
+    types::{TimeDiff, Timestamp},
+};
 
 /// An action taken by a validator.
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -19,7 +23,7 @@ pub(crate) enum Effect<C: Context> {
     // TODO: This should contain a `ValidVertex`, since we created it ourselves.
     NewVertex(Vertex<C>),
     /// `handle_timer` needs to be called at the specified time.
-    ScheduleTimer(u64),
+    ScheduleTimer(Timestamp),
     /// `propose` needs to be called with a value for a new block with the specified timestamp.
     // TODO: Add more information required by the deploy buffer.
     RequestNewBlock(BlockContext),
@@ -47,7 +51,7 @@ pub(crate) struct ActiveValidator<C: Context> {
     /// The round exponent: Our subjective rounds are `1 << round_exp` milliseconds long.
     round_exp: u8,
     /// The latest timer we scheduled.
-    next_timer: u64,
+    next_timer: Timestamp,
 }
 
 impl<C: Context> Debug for ActiveValidator<C> {
@@ -66,14 +70,14 @@ impl<C: Context> ActiveValidator<C> {
         vidx: ValidatorIndex,
         secret: C::ValidatorSecret,
         round_exp: u8,
-        timestamp: u64,
+        timestamp: Timestamp,
         state: &State<C>,
     ) -> (Self, Vec<Effect<C>>) {
         let mut av = ActiveValidator {
             vidx,
             secret,
             round_exp,
-            next_timer: 0,
+            next_timer: Timestamp::zero(),
         };
         let effects = av.schedule_timer(timestamp, state);
         (av, effects)
@@ -81,7 +85,11 @@ impl<C: Context> ActiveValidator<C> {
 
     /// Returns actions a validator needs to take at the specified `timestamp`, with the given
     /// protocol `state`.
-    pub(crate) fn handle_timer(&mut self, timestamp: u64, state: &State<C>) -> Vec<Effect<C>> {
+    pub(crate) fn handle_timer(
+        &mut self,
+        timestamp: Timestamp,
+        state: &State<C>,
+    ) -> Vec<Effect<C>> {
         let mut effects = self.schedule_timer(timestamp, state);
         if self.earliest_vote_time(state) > timestamp {
             warn!(%timestamp, "skipping outdated timer event");
@@ -89,8 +97,8 @@ impl<C: Context> ActiveValidator<C> {
         }
         let round_offset = timestamp % self.round_len();
         let round_id = timestamp - round_offset;
-        if round_offset == 0 && state.leader(round_id) == self.vidx {
-            let bctx = BlockContext::new(Timestamp(timestamp));
+        if round_offset == TimeDiff::from(0) && state.leader(round_id) == self.vidx {
+            let bctx = BlockContext::new(timestamp);
             effects.push(Effect::RequestNewBlock(bctx));
         } else if round_offset == self.witness_offset() {
             let panorama = state.panorama_cutoff(state.panorama(), timestamp);
@@ -104,7 +112,7 @@ impl<C: Context> ActiveValidator<C> {
     pub(crate) fn on_new_vote(
         &self,
         vhash: &C::Hash,
-        timestamp: u64,
+        timestamp: Timestamp,
         state: &State<C>,
     ) -> Vec<Effect<C>> {
         if self.earliest_vote_time(state) > timestamp {
@@ -124,7 +132,7 @@ impl<C: Context> ActiveValidator<C> {
         block_context: BlockContext,
         state: &State<C>,
     ) -> Vec<Effect<C>> {
-        let timestamp = block_context.timestamp().0;
+        let timestamp = block_context.timestamp();
         if self.earliest_vote_time(state) > timestamp {
             warn!(?block_context, "skipping outdated proposal");
             return vec![];
@@ -135,7 +143,12 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// Returns whether the incoming message is a proposal that we need to send a confirmation for.
-    fn should_send_confirmation(&self, vhash: &C::Hash, timestamp: u64, state: &State<C>) -> bool {
+    fn should_send_confirmation(
+        &self,
+        vhash: &C::Hash,
+        timestamp: Timestamp,
+        state: &State<C>,
+    ) -> bool {
         let vote = state.vote(vhash);
         if vote.timestamp > timestamp {
             warn!(%vote.timestamp, %timestamp, "added a vote with a future timestamp");
@@ -176,7 +189,7 @@ impl<C: Context> ActiveValidator<C> {
     fn new_vote(
         &self,
         panorama: Panorama<C>,
-        timestamp: u64,
+        timestamp: Timestamp,
         value: Option<C::ConsensusValue>,
         state: &State<C>,
     ) -> SignedWireVote<C> {
@@ -193,7 +206,7 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// Returns a `ScheduleTimer` effect for the next time we need to be called.
-    fn schedule_timer(&mut self, timestamp: u64, state: &State<C>) -> Vec<Effect<C>> {
+    fn schedule_timer(&mut self, timestamp: Timestamp, state: &State<C>) -> Vec<Effect<C>> {
         if self.next_timer > timestamp {
             return Vec::new(); // We already scheduled the next call; nothing to do.
         }
@@ -211,19 +224,19 @@ impl<C: Context> ActiveValidator<C> {
 
     /// Returns the earliest timestamp where we can cast our next vote without equivocating, i.e. the
     /// timestamp of our previous vote, or 0 if there is none.
-    fn earliest_vote_time(&self, state: &State<C>) -> u64 {
+    fn earliest_vote_time(&self, state: &State<C>) -> Timestamp {
         let opt_own_vh = state.panorama().get(self.vidx).correct();
-        opt_own_vh.map_or(0, |own_vh| state.vote(own_vh).timestamp)
+        opt_own_vh.map_or(Timestamp::zero(), |own_vh| state.vote(own_vh).timestamp)
     }
 
     /// Returns the number of ticks after the beginning of a round when the witness votes are sent.
-    fn witness_offset(&self) -> u64 {
+    fn witness_offset(&self) -> TimeDiff {
         self.round_len() * 2 / 3
     }
 
     /// The length of a round, in ticks.
-    fn round_len(&self) -> u64 {
-        1u64 << self.round_exp
+    fn round_len(&self) -> TimeDiff {
+        TimeDiff::from(1u64 << self.round_exp)
     }
 }
 
@@ -269,44 +282,51 @@ mod tests {
 
         // We start at time 410, with round length 16, so the first leader tick is 416, and the
         // first witness tick 426.
-        assert_eq!(ALICE, state.leader(416)); // Alice will be the first leader.
-        assert_eq!(BOB, state.leader(432)); // Bob will be the second leader.
-        let (mut alice_av, effects) = ActiveValidator::new(ALICE, TestSecret(0), 4, 410, &state);
-        assert_eq!([Eff::ScheduleTimer(416)], *effects);
-        let (mut bob_av, effects) = ActiveValidator::new(BOB, TestSecret(1), 4, 410, &state);
-        assert_eq!([Eff::ScheduleTimer(426)], *effects);
+        assert_eq!(ALICE, state.leader(416.into())); // Alice will be the first leader.
+        assert_eq!(BOB, state.leader(432.into())); // Bob will be the second leader.
+        let (mut alice_av, effects) =
+            ActiveValidator::new(ALICE, TestSecret(0), 4, 410.into(), &state);
+        assert_eq!([Eff::ScheduleTimer(416.into())], *effects);
+        let (mut bob_av, effects) = ActiveValidator::new(BOB, TestSecret(1), 4, 410.into(), &state);
+        assert_eq!([Eff::ScheduleTimer(426.into())], *effects);
 
-        assert!(alice_av.handle_timer(415, &state).is_empty()); // Too early: No new effects.
+        assert!(alice_av.handle_timer(415.into(), &state).is_empty()); // Too early: No new effects.
 
         // Alice wants to propose a block, and also make her witness vote at 426.
-        let bctx = match &*alice_av.handle_timer(416, &state) {
-            [Eff::ScheduleTimer(426), Eff::RequestNewBlock(bctx)] => bctx.clone(),
+        let bctx = match &*alice_av.handle_timer(416.into(), &state) {
+            [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock(bctx)]
+                if *timestamp == 426.into() =>
+            {
+                bctx.clone()
+            }
             effects => panic!("unexpected effects {:?}", effects),
         };
-        assert_eq!(416, bctx.timestamp().0);
+        assert_eq!(Timestamp::from(416), bctx.timestamp());
 
         // She has a pending deploy from Colin who wants to pay for a hot beverage.
         let effects = alice_av.propose(0xC0FFEE, bctx, &state);
         let proposal_wvote = unwrap_single(effects).unwrap_vote();
         let prop_hash = proposal_wvote.hash();
         state.add_vote(proposal_wvote)?;
-        assert!(alice_av.on_new_vote(&prop_hash, 417, &state).is_empty());
+        assert!(alice_av
+            .on_new_vote(&prop_hash, 417.into(), &state)
+            .is_empty());
 
         // Bob creates a confirmation vote for Alice's proposal.
-        let effects = bob_av.on_new_vote(&prop_hash, 419, &state);
+        let effects = bob_av.on_new_vote(&prop_hash, 419.into(), &state);
         state.add_vote(unwrap_single(effects).unwrap_vote())?;
 
         // Bob creates his witness message 2/3 through the round.
-        let mut effects = bob_av.handle_timer(426, &state).into_iter();
-        assert_eq!(Some(Eff::ScheduleTimer(432)), effects.next()); // Bob is the next leader.
+        let mut effects = bob_av.handle_timer(426.into(), &state).into_iter();
+        assert_eq!(Some(Eff::ScheduleTimer(432.into())), effects.next()); // Bob is the next leader.
         state.add_vote(effects.next().unwrap().unwrap_vote())?;
         assert_eq!(None, effects.next());
 
         assert_eq!(FinalityResult::None, fd.run(&state)); // Alice has not witnessed Bob's vote yet.
 
         // Alice also sends her own witness message, completing the summit for her proposal.
-        let mut effects = alice_av.handle_timer(426, &state).into_iter();
-        assert_eq!(Some(Eff::ScheduleTimer(442)), effects.next()); // Timer for witness vote.
+        let mut effects = alice_av.handle_timer(426.into(), &state).into_iter();
+        assert_eq!(Some(Eff::ScheduleTimer(442.into())), effects.next()); // Timer for witness vote.
         state.add_vote(effects.next().unwrap().unwrap_vote())?;
         assert_eq!(None, effects.next());
 

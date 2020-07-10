@@ -19,8 +19,10 @@ use super::{
     vertex::{Dependency, WireVote},
     vote::{Observation, Panorama, Vote},
 };
-use crate::components::consensus::highway_core::vertex::SignedWireVote;
-use crate::components::consensus::traits::Context;
+use crate::{
+    components::consensus::{highway_core::vertex::SignedWireVote, traits::Context},
+    types::Timestamp,
+};
 
 /// A vote weight.
 #[derive(
@@ -176,8 +178,8 @@ impl<C: Context> State<C> {
     }
 
     /// Returns the leader in the specified time slot.
-    pub(crate) fn leader(&self, timestamp: u64) -> ValidatorIndex {
-        let mut rng = ChaCha8Rng::seed_from_u64(self.seed.wrapping_add(timestamp));
+    pub(crate) fn leader(&self, timestamp: Timestamp) -> ValidatorIndex {
+        let mut rng = ChaCha8Rng::seed_from_u64(self.seed.wrapping_add(timestamp.millis()));
         // TODO: `rand` doesn't seem to document how it generates this. Needs to be portable.
         // We select a random one out of the `total_weight` weight units, starting numbering at 1.
         let r = Weight(rng.gen_range(1, self.total_weight().0 + 1));
@@ -294,7 +296,7 @@ impl<C: Context> State<C> {
 
     /// Returns the panorama seeing all votes seen by `pan` with a timestamp no later than
     /// `timestamp`. Accusations are preserved regardless of the evidence's timestamp.
-    pub(crate) fn panorama_cutoff(&self, pan: &Panorama<C>, timestamp: u64) -> Panorama<C> {
+    pub(crate) fn panorama_cutoff(&self, pan: &Panorama<C>, timestamp: Timestamp) -> Panorama<C> {
         let obs_cutoff = |obs: &Observation<C>| match obs {
             Observation::Correct(vhash) => self
                 .swimlane(vhash)

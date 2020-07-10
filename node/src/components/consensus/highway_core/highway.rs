@@ -7,8 +7,12 @@ use super::{
 use thiserror::Error;
 use tracing::warn;
 
-use crate::components::consensus::highway_core::vertex::SignedWireVote;
-use crate::components::consensus::{consensus_protocol::BlockContext, traits::Context};
+use crate::{
+    components::consensus::{
+        consensus_protocol::BlockContext, highway_core::vertex::SignedWireVote, traits::Context,
+    },
+    types::Timestamp,
+};
 
 /// An error due to an invalid vertex.
 #[derive(Debug, Error, PartialEq)]
@@ -97,7 +101,7 @@ impl<C: Context> Highway<C> {
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
         round_exp: u8,
-        timestamp: u64,
+        timestamp: Timestamp,
     ) -> (Self, Vec<Effect<C>>) {
         let our_index = params.validators.get_index(&our_id);
         let weights = params
@@ -189,7 +193,7 @@ impl<C: Context> Highway<C> {
         .map(ValidVertex)
     }
 
-    pub(crate) fn handle_timer(&mut self, timestamp: u64) -> Vec<Effect<C>> {
+    pub(crate) fn handle_timer(&mut self, timestamp: Timestamp) -> Vec<Effect<C>> {
         match self.active_validator.as_mut() {
             None => {
                 // TODO: Error?
@@ -220,7 +224,7 @@ impl<C: Context> Highway<C> {
         }
     }
 
-    fn on_new_vote(&self, vhash: &C::Hash, timestamp: u64) -> Vec<Effect<C>> {
+    fn on_new_vote(&self, vhash: &C::Hash, timestamp: Timestamp) -> Vec<Effect<C>> {
         self.active_validator
             .as_ref()
             .map_or_else(Vec::new, |av| av.on_new_vote(vhash, timestamp, &self.state))
@@ -277,18 +281,21 @@ impl<C: Context> Highway<C> {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::components::consensus::{
-        highway_core::{
-            highway::{Highway, HighwayParams, VertexError, VoteError},
-            state::tests::{
-                TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC, WEIGHTS,
+    use crate::{
+        components::consensus::{
+            highway_core::{
+                highway::{Highway, HighwayParams, VertexError, VoteError},
+                state::tests::{
+                    TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC, WEIGHTS,
+                },
+                state::State,
+                validators::Validators,
+                vertex::{SignedWireVote, Vertex, WireVote},
+                vote::Panorama,
             },
-            state::State,
-            validators::Validators,
-            vertex::{SignedWireVote, Vertex, WireVote},
-            vote::Panorama,
+            traits::ValidatorSecret,
         },
-        traits::ValidatorSecret,
+        types::Timestamp,
     };
     use std::iter::FromIterator;
 
@@ -320,7 +327,7 @@ pub(crate) mod tests {
             creator: ALICE,
             value: Some(0),
             seq_number: 0,
-            timestamp: 1,
+            timestamp: Timestamp::zero() + 1.into(),
         };
         let invalid_signature = 1u64;
         let invalid_signature_vote = SignedWireVote {

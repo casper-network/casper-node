@@ -17,7 +17,7 @@ macro_rules! vote {
             creator: $creator,
             value: $val,
             seq_number: $seq_num,
-            timestamp: 0,
+            timestamp: crate::types::Timestamp::zero(),
         };
         crate::components::consensus::highway_core::vertex::SignedWireVote::new(wvote, &$secret)
     }};

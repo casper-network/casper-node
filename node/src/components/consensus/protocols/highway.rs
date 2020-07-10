@@ -8,8 +8,7 @@ use crate::{
     components::consensus::{
         consensus_protocol::{
             synchronizer::{DagSynchronizerState, SynchronizerEffect},
-            BlockContext, ConsensusProtocol, ConsensusProtocolResult, ProtocolState, Timestamp,
-            VertexTrait,
+            BlockContext, ConsensusProtocol, ConsensusProtocolResult, ProtocolState, VertexTrait,
         },
         highway_core::{
             active_validator::Effect as AvEffect,
@@ -24,7 +23,7 @@ use crate::{
         asymmetric_key::{sign, verify, PublicKey, SecretKey, Signature},
         hash::{hash, Digest},
     },
-    types::ProtoBlock,
+    types::{ProtoBlock, Timestamp},
 };
 
 impl<C: Context> VertexTrait for PreValidatedVertex<C> {
@@ -68,7 +67,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
         round_exp: u8,
-        timestamp: u64,
+        timestamp: Timestamp,
     ) -> (Self, Vec<ConsensusProtocolResult<I, C::ConsensusValue>>) {
         let ftt = (params.validators.total_weight() - Weight(1)) / 3;
         let (mut highway, av_effects) =
@@ -120,9 +119,7 @@ fn av_effect_to_result<I, C: Context>(
             );
             ConsensusProtocolResult::CreatedGossipMessage(serialized_msg)
         }
-        AvEffect::ScheduleTimer(instant_u64) => {
-            ConsensusProtocolResult::ScheduleTimer(Timestamp(instant_u64))
-        }
+        AvEffect::ScheduleTimer(timestamp) => ConsensusProtocolResult::ScheduleTimer(timestamp),
         AvEffect::RequestNewBlock(block_context) => {
             ConsensusProtocolResult::CreateNewBlock(block_context)
         }
@@ -306,7 +303,7 @@ where
         &mut self,
         timestamp: Timestamp,
     ) -> Result<Vec<ConsensusProtocolResult<I, <C as Context>::ConsensusValue>>, Error> {
-        let effects = self.highway.handle_timer(timestamp.0);
+        let effects = self.highway.handle_timer(timestamp);
         Ok(effects
             .into_iter()
             .map(|effect| av_effect_to_result(effect, &mut self.highway))
