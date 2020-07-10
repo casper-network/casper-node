@@ -130,7 +130,11 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Timer { .. } => Effects::new(),
+            Event::Timer { era_id, timestamp } => {
+                self.delegate_to_era(era_id, effect_builder, move |consensus| {
+                    consensus.handle_timer(timestamp)
+                })
+            }
             Event::MessageReceived { sender, msg } => {
                 let ConsensusMessage { era_id, payload } = msg;
                 self.delegate_to_era(era_id, effect_builder, move |consensus| {
