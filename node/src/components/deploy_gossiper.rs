@@ -192,7 +192,7 @@ impl DeployGossiper {
                 should_gossip.exclude_peers,
             )
         } else {
-            Default::default() // we already completed gossiping this deploy
+            Effects::new() // we already completed gossiping this deploy
         }
     }
 
@@ -225,7 +225,7 @@ impl DeployGossiper {
                 "paused gossiping {} since no more peers to gossip to",
                 deploy_hash
             );
-            return Default::default();
+            return Effects::new();
         }
 
         // Set timeouts to check later that the specified peers all responded.
@@ -254,7 +254,7 @@ impl DeployGossiper {
                 should_gossip.count,
                 should_gossip.exclude_peers,
             ),
-            GossipAction::Noop => Default::default(),
+            GossipAction::Noop => Effects::new(),
             GossipAction::GetRemainder { .. } | GossipAction::AwaitingRemainder => {
                 unreachable!("can't have gossiped if we don't hold the complete data")
             }
@@ -294,7 +294,7 @@ impl DeployGossiper {
                 effects
             }
 
-            GossipAction::Noop | GossipAction::AwaitingRemainder => Default::default(),
+            GossipAction::Noop | GossipAction::AwaitingRemainder => Effects::new(),
         }
     }
 
@@ -359,7 +359,7 @@ impl DeployGossiper {
         is_already_held: bool,
         sender: NodeId,
     ) -> Effects<Event> {
-        let mut effects: Effects<_> = Default::default();
+        let mut effects: Effects<_> = Effects::new();
         let action = if is_already_held {
             self.table.already_infected(&deploy_hash, sender)
         } else {
@@ -435,7 +435,7 @@ impl DeployGossiper {
                 should_gossip.exclude_peers,
             )
         } else {
-            Default::default()
+            Effects::new()
         }
     }
 
@@ -451,7 +451,7 @@ impl DeployGossiper {
             "paused gossiping {} since failed to put to store: {}",
             deploy_hash, storage_error
         );
-        Default::default()
+        Effects::new()
     }
 
     /// Handles the `Ok` case for a `Result` of attempting to get the deploy from the storage
@@ -478,7 +478,7 @@ impl DeployGossiper {
             "paused gossiping {} since failed to get from store: {}",
             deploy_hash, storage_error
         );
-        Default::default()
+        Effects::new()
     }
 }
 

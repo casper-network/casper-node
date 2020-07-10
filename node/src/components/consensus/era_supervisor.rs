@@ -206,7 +206,7 @@ where
                     .collect(),
                 Err(error) => {
                     error!(%error, ?era_id, "got error from era id {:?}: {:?}", era_id, error);
-                    Default::default()
+                    Effects::new()
                 }
             },
         }

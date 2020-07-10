@@ -149,7 +149,7 @@ where
             }),
             Event::ExecutedBlock { .. } => {
                 // TODO: Finality signatures
-                Default::default()
+                Effects::new()
             }
             Event::AcceptProtoBlock {
                 era_id,

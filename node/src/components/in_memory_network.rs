@@ -103,14 +103,14 @@
 //!             ShouterEvent::Net(NetworkAnnouncement::MessageReceived { sender, payload }) => {
 //!                 // Record the message we received.
 //!                 self.received.push((sender, payload));
-//!                 Default::default()
+//!                 Effects::new()
 //!             }
 //!             ShouterEvent::ReadyToSend => {
 //!                 // If we need to whisper something, do so.
 //!                 if let Some(msg) = self.whispers.pop() {
 //!                     return effect_builder.gossip_message(msg,
 //!                                                          TEST_GOSSIP_COUNT,
-//!                                                          Default::default())
+//!                                                          Effects::new())
 //!                         .event(|_| ShouterEvent::ReadyToSend);
 //!                 }
 //!                 // Shouts get broadcast.
@@ -118,7 +118,7 @@
 //!                     return effect_builder.broadcast_message(msg)
 //!                         .event(|_| ShouterEvent::ReadyToSend);
 //!                 }
-//!                 Default::default()
+//!                 Effects::new()
 //!             }
 //!         }
 //!     }
@@ -282,8 +282,8 @@ use tracing::{debug, error, info, warn};
 use crate::{
     components::Component,
     effect::{
-        announcements::NetworkAnnouncement, requests::NetworkRequest, Effects, EffectBuilder,
-        EffectExt,
+        announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, EffectExt,
+        Effects,
     },
     reactor::{EventQueueHandle, QueueKind},
 };

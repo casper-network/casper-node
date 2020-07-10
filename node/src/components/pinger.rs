@@ -103,7 +103,7 @@ where
                     info!("received stale ping({}) from {}", counter, sender);
                 }
 
-                Default::default()
+                Effects::new()
             }
         }
     }
@@ -140,7 +140,7 @@ impl Pinger {
         self.ping_counter += 1;
         self.responsive_nodes.clear();
 
-        let mut effects: Effects<Event> = Default::default();
+        let mut effects: Effects<Event> = Effects::new();
         effects.extend(
             effect_builder
                 .broadcast_message(Message::Ping(self.ping_counter))

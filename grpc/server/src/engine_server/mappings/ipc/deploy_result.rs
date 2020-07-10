@@ -195,7 +195,7 @@ mod tests {
     fn test_cost<E: Into<EngineStateError>>(expected_cost: Gas, error: E) -> Gas {
         let execution_failure = ExecutionResult::Failure {
             error: error.into(),
-            effect: Default::default(),
+            effect: Effects::new(),
             cost: expected_cost,
         };
         let mut ipc_deploy_result: DeployResult = execution_failure.into();
@@ -238,7 +238,7 @@ mod tests {
         let amount = U512::from(15);
         let exec_result = ExecutionResult::Failure {
             error: EngineStateError::Exec(revert_error),
-            effect: Default::default(),
+            effect: Effects::new(),
             cost: Gas::new(amount),
         };
         let mut ipc_result: DeployResult = exec_result.into();

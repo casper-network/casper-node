@@ -122,7 +122,7 @@ where
                 Err(error) => {
                     error!("failed to store chainspec {}: {}", version, error);
                     self.completed_successfully = Some(false);
-                    Default::default()
+                    Effects::new()
                 }
             },
             Event::CommitGenesisResult(result) => {
@@ -149,7 +149,7 @@ where
                         self.completed_successfully = Some(false);
                     }
                 }
-                Default::default()
+                Effects::new()
             }
         }
     }

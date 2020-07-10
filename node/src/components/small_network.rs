@@ -194,7 +194,7 @@ where
         };
 
         // Connect to the root node if we are not the root node.
-        let mut effects: Effects<_> = Default::default();
+        let mut effects: Effects<_> = Effects::new();
         if !we_are_root {
             effects.extend(model.connect_to_root());
         } else {
@@ -354,7 +354,7 @@ where
                         // will cause the sender task to exit and trigger a reconnect, so no action
                         // must be taken at this point.
 
-                        Default::default()
+                        Effects::new()
                     }
                 };
 
@@ -373,15 +373,15 @@ where
                     self.signed_endpoints[&node_id].clone(),
                 ));
 
-                Default::default()
+                Effects::new()
             }
             EndpointUpdate::Unchanged => {
                 // Nothing to do.
-                Default::default()
+                Effects::new()
             }
             EndpointUpdate::InvalidSignature { signed, err } => {
                 warn!(%err, ?signed, "received invalid endpoint");
-                Default::default()
+                Effects::new()
             }
         }
     }
@@ -531,7 +531,7 @@ where
                     }
                     Err(err) => {
                         warn!(%addr, %err, "TLS handshake failed");
-                        Default::default()
+                        Effects::new()
                     }
                 }
             }
@@ -543,7 +543,7 @@ where
                     Ok(()) => info!(%addr, "connection closed"),
                     Err(err) => warn!(%addr, %err, "connection dropped"),
                 }
-                Default::default()
+                Effects::new()
             }
             Event::OutgoingEstablished { node_id, transport } => {
                 self.setup_outgoing(node_id, transport)
@@ -569,7 +569,7 @@ where
                         self.outgoing.remove(&node_id);
 
                         warn!(%attempt_count, %node_id, "gave up on outgoing connection");
-                        return Default::default();
+                        return Effects::new();
                     }
                 }
 
@@ -591,7 +591,7 @@ where
                         )
                 } else {
                     error!("endpoint disappeared");
-                    Default::default()
+                    Effects::new()
                 }
             }
             Event::NetworkRequest {

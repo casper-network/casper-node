@@ -37,7 +37,7 @@ use futures::{future::BoxFuture, FutureExt};
 use tracing::{debug, info, trace, warn, Span};
 
 use crate::{
-    effect::{EffectBuilder,Effect, Effects},
+    effect::{Effect, EffectBuilder, Effects},
     utils::{self, WeightedRoundRobin},
 };
 pub use queue_kind::QueueKind;
