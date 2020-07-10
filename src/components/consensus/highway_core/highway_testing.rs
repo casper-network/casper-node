@@ -134,7 +134,7 @@ impl<C: Context> Display for TestRunError<C> {
     }
 }
 
-pub(crate) struct HighwayTestHarness<M, C, D, DS, R>
+pub(crate) struct HighwayTestHarness<M, C, D, DS>
 where
     M: MessageT,
     DS: Strategy<DeliverySchedule>,
@@ -146,15 +146,12 @@ where
     /// Consensus values to be proposed.
     /// Order of values in the vector defines the order in which they will be proposed.
     consensus_values: Vec<C::ConsensusValue>,
-    // TODO: Move from constructor to method argument.
-    rand: R,
 }
 
-impl<Ctx, DS, R> HighwayTestHarness<HighwayMessage<Ctx>, Ctx, HighwayConsensus<Ctx>, DS, R>
+impl<Ctx, DS> HighwayTestHarness<HighwayMessage<Ctx>, Ctx, HighwayConsensus<Ctx>, DS>
 where
     Ctx: Context,
     DS: Strategy<DeliverySchedule>,
-    R: Rng,
 {
     fn new(
         virtual_net: VirtualNet<
@@ -165,13 +162,11 @@ where
         >,
         start_time: u64,
         consensus_values: Vec<Ctx::ConsensusValue>,
-        rand: R,
     ) -> Self {
         HighwayTestHarness {
             virtual_net,
             start_time,
             consensus_values,
-            rand,
         }
     }
 
@@ -180,7 +175,7 @@ where
     /// Pops one message from the message queue (if there are any)
     /// and pass it to the recipient validator for execution.
     /// Messages returned from the execution are scheduled for later delivery.
-    pub(crate) fn crank(&mut self) -> Result<CrankOk, TestRunError<Ctx>> {
+    pub(crate) fn crank<R: Rng>(&mut self, rand: &mut R) -> Result<CrankOk, TestRunError<Ctx>> {
         // Stop the test when each node finalized all consensus values.
         // Note that we're not testing the order of finalization here.
         // TODO: Consider moving out all the assertions to client side.
@@ -209,7 +204,7 @@ where
             .collect();
 
         self.virtual_net
-            .dispatch_messages(&mut self.rand, delivery_time, targeted_messages);
+            .dispatch_messages(rand, delivery_time, targeted_messages);
 
         Ok(CrankOk::Continue)
     }
