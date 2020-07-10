@@ -5,10 +5,10 @@ use serde::{Deserialize, Serialize};
 /// API server configuration.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
-    /// Interface to bind to. Defaults to loopback address.
+    /// Interface to bind to.
     pub bind_interface: IpAddr,
 
-    /// Port to bind to. Use 0 for a random port. Defaults to 0.
+    /// Port to bind to. Use 0 for a random port.
     pub bind_port: u16,
 }
 

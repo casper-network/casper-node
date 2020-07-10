@@ -53,10 +53,6 @@ SYSTEM_CONTRACTS_FEATURED := $(patsubst %, build-system-contract-featured-rs/%, 
 CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 CONTRACT_TARGET_DIR_AS    = target_as
 PACKAGED_SYSTEM_CONTRACTS = mint_install.wasm pos_install.wasm standard_payment_install.wasm
-TOOL_TARGET_DIR           = cargo-casperlabs/target
-TOOL_WASM_DIR             = cargo-casperlabs/wasm
-ENGINE_CORE_TARGET_DIR    = engine-core/target
-ENGINE_CORE_WASM_DIR      = engine-core/wasm
 
 CRATES_WITH_DOCS_RS_MANIFEST_TABLE = \
 	contract \
@@ -129,8 +125,8 @@ build-contracts-as: \
 build-contracts: build-contracts-rs build-contracts-as
 
 .PHONY: test-rs
-test-rs:
-	$(CARGO) test $(CARGO_FLAGS) --all -- --nocapture
+test-rs: build-system-contracts
+	$(CARGO) test $(CARGO_FLAGS) --workspace -- --nocapture
 
 .PHONY: test-as
 test-as: setup-as
@@ -167,7 +163,7 @@ format:
 
 .PHONY: lint
 lint:
-	$(CARGO) clippy --all-targets --all -- -D warnings -A renamed_and_removed_lints
+	$(CARGO) clippy --all-targets --workspace -- -D warnings -A renamed_and_removed_lints
 
 .PHONY: audit
 audit:
@@ -202,12 +198,7 @@ check: \
 
 .PHONY: clean
 clean:
-	rm -f comm/.rpm
 	rm -rf $(CONTRACT_TARGET_DIR_AS)
-	rm -rf $(TOOL_TARGET_DIR)
-	rm -rf $(TOOL_WASM_DIR)
-	rm -rf $(ENGINE_CORE_TARGET_DIR)
-	rm -rf $(ENGINE_CORE_WASM_DIR)
 	$(CARGO) clean
 
 .PHONY: deb

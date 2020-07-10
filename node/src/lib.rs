@@ -42,7 +42,10 @@ pub use components::{
     small_network::{Config as SmallNetworkConfig, Error as SmallNetworkError},
     storage::{Config as StorageConfig, Error as StorageError},
 };
-pub use utils::gossip_table::{Config as GossipTableConfig, Error as GossipTableError};
+pub use utils::{
+    gossip_table::{Config as GossipTableConfig, Error as GossipTableError},
+    OS_PAGE_SIZE,
+};
 
 /// The default listening port for the root node of the validator network.
 pub const ROOT_VALIDATOR_LISTENING_PORT: u16 = 34553;

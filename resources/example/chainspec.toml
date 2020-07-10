@@ -2,7 +2,7 @@
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
 # contributing to the seeding of the pseudo-random number generator used in contract-runtime for computing genesis
 # post-state hash.
-name = 'casperlabs-devnet'
+name = 'casperlabs-example'
 # Timestamp for the genesis block, also used in seeding the pseudo-random number generator used in contract-runtime for
 # computing genesis post-state hash.
 timestamp = 0
@@ -10,15 +10,15 @@ timestamp = 0
 protocol_version = '1.0.0'
 # Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the mint
 # system contract.
-mint_installer_path = 'mint_install.wasm'
+mint_installer_path = '../../target/wasm32-unknown-unknown/release/mint_install.wasm'
 # Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the Proof of
 # Stake system contract.
-pos_installer_path = 'pos_install.wasm'
+pos_installer_path = '../../target/wasm32-unknown-unknown/release/pos_install.wasm'
 # Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the Standard
 # Payment system contract.
-standard_payment_installer_path = 'standard_payment_install.wasm'
+standard_payment_installer_path = '../../target/wasm32-unknown-unknown/release/standard_payment_install.wasm'
 # Path (absolute, or relative to this chainspec.toml) to the CSV file containing initial account balances and bonds.
-accounts_path = 'accounts.csv'
+accounts_path = '../production/accounts.csv'
 
 [highway]
 # Tick unit is milliseconds.

@@ -26,6 +26,8 @@ use crate::{
 // Seems to be a false positive.
 #[allow(unreachable_pub)]
 pub use config::Config;
+// TODO - remove this once contract runtime's config doesn't need it any more.
+pub(crate) use config::check_multiple_of_page_size;
 // Seems to be a false positive.
 use chainspec_store::ChainspecStore;
 #[allow(unreachable_pub)]
@@ -265,19 +267,20 @@ impl<B: Value + 'static, D: Value + 'static> StorageType for LmdbStorage<B, D> {
     type Deploy = D;
 
     fn new(config: &Config) -> Result<Self> {
-        fs::create_dir_all(&config.path).map_err(|error| Error::CreateDir {
-            dir: config.path.display().to_string(),
+        let path = config.path();
+        fs::create_dir_all(&path).map_err(|error| Error::CreateDir {
+            dir: path.display().to_string(),
             source: error,
         })?;
 
-        let block_store_path = config.path.join(BLOCK_STORE_FILENAME);
-        let deploy_store_path = config.path.join(DEPLOY_STORE_FILENAME);
-        let chainspec_store_path = config.path.join(CHAINSPEC_STORE_FILENAME);
+        let block_store_path = path.join(BLOCK_STORE_FILENAME);
+        let deploy_store_path = path.join(DEPLOY_STORE_FILENAME);
+        let chainspec_store_path = path.join(CHAINSPEC_STORE_FILENAME);
 
-        let block_store = LmdbStore::new(block_store_path, config.max_block_store_size)?;
-        let deploy_store = LmdbStore::new(deploy_store_path, config.max_deploy_store_size)?;
+        let block_store = LmdbStore::new(block_store_path, config.max_block_store_size())?;
+        let deploy_store = LmdbStore::new(deploy_store_path, config.max_deploy_store_size())?;
         let chainspec_store =
-            LmdbChainspecStore::new(chainspec_store_path, config.max_chainspec_store_size)?;
+            LmdbChainspecStore::new(chainspec_store_path, config.max_chainspec_store_size())?;
 
         Ok(LmdbStorage {
             block_store: Arc::new(block_store),

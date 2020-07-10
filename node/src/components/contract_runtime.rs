@@ -99,9 +99,10 @@ impl ContractRuntime {
         storage_config: &StorageConfig,
         contract_runtime_config: Config,
     ) -> Result<Self, ConfigError> {
+        let path = storage_config.path();
         let environment = Arc::new(LmdbEnvironment::new(
-            storage_config.path.as_path(),
-            contract_runtime_config.map_size,
+            path.as_path(),
+            contract_runtime_config.max_global_state_size(),
         )?);
 
         let trie_store = Arc::new(LmdbTrieStore::new(
@@ -118,8 +119,8 @@ impl ContractRuntime {
 
         let global_state = LmdbGlobalState::empty(environment, trie_store, protocol_data_store)?;
         let engine_config = EngineConfig::new()
-            .with_use_system_contracts(contract_runtime_config.use_system_contracts)
-            .with_enable_bonding(contract_runtime_config.enable_bonding);
+            .with_use_system_contracts(contract_runtime_config.use_system_contracts())
+            .with_enable_bonding(contract_runtime_config.enable_bonding());
 
         let engine_state = EngineState::new(global_state, engine_config);
 
