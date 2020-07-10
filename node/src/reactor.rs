@@ -184,9 +184,6 @@ where
     R: Reactor,
 {
     /// Creates a new runner from a given configuration.
-    ///
-    /// The `id` is used to identify the runner during logging when debugging and can be chosen
-    /// arbitrarily.
     #[inline]
     pub async fn new(cfg: R::Config) -> Result<Self, R::Error> {
         let (span, scheduler) = Self::init();
