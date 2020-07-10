@@ -67,6 +67,7 @@ steps:
 - name: cargo-test
   <<: *buildenv
   commands:
+  - make setup
   - make test
 
 - name: rebuild-cache
