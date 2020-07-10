@@ -271,7 +271,7 @@ impl reactor::Reactor for Reactor {
             }
             Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
                 let event = deploy_gossiper::Event::DeployReceived { deploy };
-                self.dispatch_event(effect_builder, Event::DeployGossiper(event))
+                self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
             }
         }
     }
