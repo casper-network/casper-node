@@ -5,7 +5,8 @@
 use std::{io, io::Write, path::PathBuf};
 
 use anyhow::bail;
-use rand::rngs::OsRng;
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use structopt::StructOpt;
 use tracing::info;
 
@@ -73,8 +74,11 @@ impl Cli {
             } => {
                 logging::init()?;
 
-                // We initialize an OsRng, which internally calls `getrandom`.
-                let mut rng = OsRng;
+                // We use a `ChaCha20Rng` for the production node. For one, we want to completely
+                // eliminate any chance of runtime failures, no regardless of how small (these
+                // exist with `OsRng`). Additionally, we want to limit the number of syscalls for
+                // performance reasons.
+                let mut rng = ChaCha20Rng::from_entropy();
 
                 // We load the specified config, if any, otherwise use defaults.
                 let config: validator::Config = config
