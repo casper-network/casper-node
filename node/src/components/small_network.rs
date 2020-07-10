@@ -132,6 +132,7 @@ where
     P: Serialize + DeserializeOwned + Clone + Debug + Send + 'static,
     REv: Send + From<Event<P>>,
 {
+    #[allow(clippy::type_complexity)]
     pub(crate) fn new(
         event_queue: EventQueueHandle<REv>,
         cfg: Config,
