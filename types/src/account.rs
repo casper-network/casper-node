@@ -7,6 +7,7 @@ use core::{
 };
 
 use failure::Fail;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -154,7 +155,7 @@ pub type AccountHashBytes = [u8; ACCOUNT_HASH_LENGTH];
 
 /// A newtype wrapping a [`AccountHashBytes`] which is the raw bytes of
 /// the AccountHash, a hash of Public Key and Algorithm
-#[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
 pub struct AccountHash(AccountHashBytes);
 
 impl AccountHash {

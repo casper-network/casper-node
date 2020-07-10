@@ -31,7 +31,7 @@ use crate::{
         requests::{ApiRequest, DeployGossiperRequest, NetworkRequest, StorageRequest},
         Effect, EffectBuilder, Multiple,
     },
-    reactor::{self, EventQueueHandle},
+    reactor::{self, initializer, EventQueueHandle},
     small_network::{self, NodeId},
     SmallNetwork,
 };
@@ -131,52 +131,57 @@ impl From<DeployGossiperRequest> for Event {
     }
 }
 
+impl Display for Event {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Event::Network(event) => write!(f, "network: {}", event),
+            Event::Pinger(event) => write!(f, "pinger: {}", event),
+            Event::Storage(event) => write!(f, "storage: {}", event),
+            Event::ApiServer(event) => write!(f, "api server: {}", event),
+            Event::Consensus(event) => write!(f, "consensus: {}", event),
+            Event::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
+            Event::NetworkRequest(req) => write!(f, "network request: {}", req),
+            Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
+            Event::ContractRuntime(event) => write!(f, "contract runtime: {}", event),
+        }
+    }
+}
+
 /// Validator node reactor.
 #[derive(Debug)]
 pub struct Reactor {
     net: SmallNetwork<Event, Message>,
     pinger: Pinger,
     storage: Storage,
+    contract_runtime: ContractRuntime,
     api_server: ApiServer,
     consensus: EraSupervisor<NodeId>,
     deploy_gossiper: DeployGossiper,
     rng: ChaCha20Rng,
-    contract_runtime: ContractRuntime,
 }
 
-impl reactor::Reactor for Reactor {
-    type Event = Event;
-    type Config = Config;
-    type Error = Error;
-
-    fn new(
-        cfg: Self::Config,
-        event_queue: EventQueueHandle<Self::Event>,
+impl Reactor {
+    fn init(
+        config: Config,
+        event_queue: EventQueueHandle<Event>,
         span: &Span,
+        storage: Storage,
+        contract_runtime: ContractRuntime,
+        rng: ChaCha20Rng,
     ) -> Result<(Self, Multiple<Effect<Event>>), Error> {
         let effect_builder = EffectBuilder::new(event_queue);
-        let (net, net_effects) = SmallNetwork::new(event_queue, cfg.validator_net)?;
+        let (net, net_effects) = SmallNetwork::new(event_queue, config.validator_net)?;
         span.record("id", &tracing::field::display(net.node_id()));
 
         let (pinger, pinger_effects) = Pinger::new(effect_builder);
-        let storage = Storage::new(&cfg.storage)?;
-        let (api_server, api_server_effects) = ApiServer::new(cfg.http_server, effect_builder);
+        let api_server = ApiServer::new(config.http_server, effect_builder);
         let timestamp = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
         let (consensus, consensus_effects) = EraSupervisor::new(timestamp, effect_builder);
-        let deploy_gossiper = DeployGossiper::new(cfg.gossip);
-        let (contract_runtime, contract_runtime_effects) =
-            ContractRuntime::new(&cfg.storage, cfg.contract_runtime, effect_builder);
+        let deploy_gossiper = DeployGossiper::new(config.gossip);
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
         effects.extend(reactor::wrap_effects(Event::Pinger, pinger_effects));
-        effects.extend(reactor::wrap_effects(Event::ApiServer, api_server_effects));
         effects.extend(reactor::wrap_effects(Event::Consensus, consensus_effects));
-        effects.extend(reactor::wrap_effects(
-            Event::ContractRuntime,
-            contract_runtime_effects,
-        ));
-
-        let rng = ChaCha20Rng::from_entropy();
 
         Ok((
             Reactor {
@@ -191,6 +196,23 @@ impl reactor::Reactor for Reactor {
             },
             effects,
         ))
+    }
+}
+
+impl reactor::Reactor for Reactor {
+    type Event = Event;
+    type Config = Config;
+    type Error = Error;
+
+    fn new(
+        config: Self::Config,
+        event_queue: EventQueueHandle<Self::Event>,
+        span: &Span,
+    ) -> Result<(Self, Multiple<Effect<Event>>), Error> {
+        let storage = Storage::new(&config.storage)?;
+        let contract_runtime = ContractRuntime::new(&config.storage, config.contract_runtime)?;
+        let rng = ChaCha20Rng::from_entropy();
+        Self::init(config, event_queue, span, storage, contract_runtime, rng)
     }
 
     fn dispatch_event(
@@ -263,18 +285,13 @@ impl reactor::Reactor for Reactor {
     }
 }
 
-impl Display for Event {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Event::Network(event) => write!(f, "network: {}", event),
-            Event::Pinger(event) => write!(f, "pinger: {}", event),
-            Event::Storage(event) => write!(f, "storage: {}", event),
-            Event::ApiServer(event) => write!(f, "api server: {}", event),
-            Event::Consensus(event) => write!(f, "consensus: {}", event),
-            Event::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
-            Event::NetworkRequest(req) => write!(f, "network request: {}", req),
-            Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
-            Event::ContractRuntime(event) => write!(f, "contract runtime: {}", event),
-        }
+impl reactor::ReactorExt<initializer::Reactor> for Reactor {
+    fn new_from(
+        event_queue: EventQueueHandle<Self::Event>,
+        span: &Span,
+        initializer_reactor: initializer::Reactor,
+    ) -> Result<(Self, Multiple<Effect<Self::Event>>), Error> {
+        let (config, storage, contract_runtime, rng) = initializer_reactor.destructure();
+        Self::init(config, event_queue, span, storage, contract_runtime, rng)
     }
 }

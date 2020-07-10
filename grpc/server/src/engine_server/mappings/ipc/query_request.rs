@@ -1,7 +1,8 @@
 use std::convert::{TryFrom, TryInto};
 
-use node::components::contract_runtime::core::engine_state::query::QueryRequest;
-use node::components::contract_runtime::shared::newtypes::BLAKE2B_DIGEST_LENGTH;
+use node::{
+    components::contract_runtime::core::engine_state::query::QueryRequest, crypto::hash::Digest,
+};
 
 use crate::engine_server::{ipc, mappings::MappingError};
 
@@ -12,9 +13,9 @@ impl TryFrom<ipc::QueryRequest> for QueryRequest {
         let state_hash = {
             let state_hash = query_request.get_state_hash();
             let length = state_hash.len();
-            if length != BLAKE2B_DIGEST_LENGTH {
+            if length != Digest::LENGTH {
                 return Err(MappingError::InvalidStateHashLength {
-                    expected: BLAKE2B_DIGEST_LENGTH,
+                    expected: Digest::LENGTH,
                     actual: length,
                 });
             }

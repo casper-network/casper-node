@@ -55,19 +55,12 @@ const DEPLOYS_API_PATH: &str = "deploys";
 pub(crate) struct ApiServer {}
 
 impl ApiServer {
-    pub(crate) fn new<REv>(
-        config: Config,
-        effect_builder: EffectBuilder<REv>,
-    ) -> (Self, Multiple<Effect<Event>>)
+    pub(crate) fn new<REv>(config: Config, effect_builder: EffectBuilder<REv>) -> Self
     where
         REv: From<Event> + From<ApiRequest> + From<StorageRequest<Storage>> + Send,
     {
-        let effects = Multiple::new();
-        let api_server = ApiServer {};
-
         tokio::spawn(run_server(config, effect_builder));
-
-        (api_server, effects)
+        ApiServer {}
     }
 }
 

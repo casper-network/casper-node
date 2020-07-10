@@ -1,6 +1,7 @@
 //! Announcement effects.
 //!
-//! Announcements indicate new incoming data or events from various sources.
+//! Announcements indicate new incoming data or events from various sources. See the top-level
+//! module documentation for details.
 
 use std::fmt::{self, Display, Formatter};
 

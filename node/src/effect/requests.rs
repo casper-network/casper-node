@@ -1,16 +1,23 @@
 //! Request effects.
 //!
-//! Requests typically ask other components to perform a service and report back the result.
+//! Requests typically ask other components to perform a service and report back the result. See the
+//! top-level module documentation for details.
 
 use std::{
     collections::HashSet,
     fmt::{self, Debug, Display, Formatter},
 };
 
+use semver::Version;
+
 use super::Responder;
 use crate::{
-    components::storage::{self, StorageType, Value},
-    types::{Deploy, DeployHash},
+    components::{
+        contract_runtime::core::engine_state::{self, genesis::GenesisResult},
+        storage::{self, StorageType, Value},
+    },
+    types::{BlockHash, Deploy, DeployHash, DeployHeader},
+    Chainspec,
 };
 
 /// A networking request.
@@ -154,6 +161,20 @@ pub enum StorageRequest<S: StorageType + 'static> {
         /// Responder to call with the result.
         responder: Responder<storage::Result<Vec<<S::Deploy as Value>::Id>>>,
     },
+    /// Store given chainspec.
+    PutChainspec {
+        /// Chainspec.
+        chainspec: Box<Chainspec>,
+        /// Responder to call with the result.
+        responder: Responder<storage::Result<()>>,
+    },
+    /// Retrieve chainspec with given version.
+    GetChainspec {
+        /// Version.
+        version: Version,
+        /// Responder to call with the result.
+        responder: Responder<storage::Result<Chainspec>>,
+    },
 }
 
 impl<S: StorageType> Display for StorageRequest<S> {
@@ -172,11 +193,79 @@ impl<S: StorageType> Display for StorageRequest<S> {
                 write!(formatter, "get {}", deploy_hash)
             }
             StorageRequest::ListDeploys { .. } => write!(formatter, "list deploys"),
+            StorageRequest::PutChainspec { chainspec, .. } => write!(
+                formatter,
+                "put chainspec {}",
+                chainspec.genesis.protocol_version
+            ),
+            StorageRequest::GetChainspec { version, .. } => {
+                write!(formatter, "get chainspec {}", version)
+            }
         }
     }
 }
 
-/// Abstract API request
+#[allow(dead_code)] // FIXME: Remove once in use.
+/// Deploy-queue related requests.
+#[derive(Debug)]
+pub(crate) enum DeployQueueRequest {
+    /// Add a deploy to the queue for inclusion into an upcoming block.
+    QueueDeploy {
+        /// Hash of deploy to store.
+        hash: DeployHash,
+        /// Header of the deploy to store.
+        header: DeployHeader,
+        /// Responder to call with the result.
+        responder: Responder<bool>,
+    },
+
+    RequestForInclusion {
+        /// The instant for which the deploy is requested.
+        current_instant: u64,
+        /// Maximum time to live.
+        max_ttl: u32,
+        /// Maximum block size in bytes.
+        ///
+        /// The total size of the deploys must not exceed this.
+        max_block_size_bytes: u64,
+        /// Gas limit for sum of deploys.
+        max_gas_limit: u64,
+        /// Maximum number of dependencies.
+        max_dependencies: u8,
+        /// Set of block hashes pointing to blocks whose deploys should be excluded.
+        past: HashSet<BlockHash>,
+        /// Responder to call with the result.
+        responder: Responder<HashSet<DeployHash>>,
+    },
+}
+
+impl Display for DeployQueueRequest {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            DeployQueueRequest::QueueDeploy { hash, .. } => {
+                write!(formatter, "add deploy {} to queue", hash)
+            }
+            DeployQueueRequest::RequestForInclusion {
+                current_instant,
+                max_ttl,
+                max_block_size_bytes,
+                max_gas_limit,
+                max_dependencies,
+                past,
+                responder: _
+            } => write!(formatter,
+                        "request for inclusion: instant {} ttl {} block_size {} gas_limit {} max_deps {} #past {}",
+                        current_instant,
+                        max_ttl,
+                        max_block_size_bytes,
+                        max_gas_limit,
+                        max_dependencies,
+                        past.len()),
+        }
+    }
+}
+
+/// Abstract API request.
 ///
 /// An API request is an abstract request that does not concern itself with serialization or
 /// transport.
@@ -211,6 +300,30 @@ impl Display for ApiRequest {
             ApiRequest::SubmitDeploy { deploy, .. } => write!(formatter, "submit {}", *deploy),
             ApiRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
             ApiRequest::ListDeploys { .. } => write!(formatter, "list deploys"),
+        }
+    }
+}
+
+/// A contract runtime request.
+#[derive(Debug)]
+pub enum ContractRuntimeRequest {
+    /// Commit genesis chainspec.
+    CommitGenesis {
+        /// The chainspec.
+        chainspec: Box<Chainspec>,
+        /// Responder to call with the result.
+        responder: Responder<Result<GenesisResult, engine_state::Error>>,
+    },
+}
+
+impl Display for ContractRuntimeRequest {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ContractRuntimeRequest::CommitGenesis { chainspec, .. } => write!(
+                formatter,
+                "commit genesis {}",
+                chainspec.genesis.protocol_version
+            ),
         }
     }
 }

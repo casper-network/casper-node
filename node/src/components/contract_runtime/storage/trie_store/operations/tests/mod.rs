@@ -9,24 +9,29 @@ use std::{collections::HashMap, convert};
 use lmdb::DatabaseFlags;
 use tempfile::{tempdir, TempDir};
 
-use crate::components::contract_runtime::shared::newtypes::{Blake2bHash, CorrelationId};
 use types::bytesrepr::{self, FromBytes, ToBytes};
 
-use crate::components::contract_runtime::storage::{
-    error::{self, in_memory},
-    transaction_source::{
-        in_memory::InMemoryEnvironment, lmdb::LmdbEnvironment, Readable, Transaction,
-        TransactionSource,
+use crate::{
+    components::contract_runtime::{
+        shared::newtypes::{Blake2bHash, CorrelationId},
+        storage::{
+            error::{self, in_memory},
+            transaction_source::{
+                in_memory::InMemoryEnvironment, lmdb::LmdbEnvironment, Readable, Transaction,
+                TransactionSource,
+            },
+            trie::{Pointer, Trie},
+            trie_store::{
+                self,
+                in_memory::InMemoryTrieStore,
+                lmdb::LmdbTrieStore,
+                operations::{self, read, write, ReadResult, WriteResult},
+                TrieStore,
+            },
+            TEST_MAP_SIZE,
+        },
     },
-    trie::{Pointer, Trie},
-    trie_store::{
-        self,
-        in_memory::InMemoryTrieStore,
-        lmdb::LmdbTrieStore,
-        operations::{self, read, write, ReadResult, WriteResult},
-        TrieStore,
-    },
-    TEST_MAP_SIZE,
+    crypto::hash,
 };
 
 const TEST_KEY_LENGTH: usize = 7;
@@ -93,7 +98,7 @@ struct HashedTrie<K, V> {
 impl<K: ToBytes, V: ToBytes> HashedTrie<K, V> {
     pub fn new(trie: Trie<K, V>) -> Result<Self, bytesrepr::Error> {
         let trie_bytes = trie.to_bytes()?;
-        let hash = Blake2bHash::new(&trie_bytes);
+        let hash = hash::hash(&trie_bytes);
         Ok(HashedTrie { hash, trie })
     }
 }

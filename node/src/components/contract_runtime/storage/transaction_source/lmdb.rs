@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 use lmdb::{self, Database, Environment, RoTransaction, RwTransaction, WriteFlags};
 
@@ -60,22 +60,16 @@ impl<'a> Writable for RwTransaction<'a> {
 /// Wraps [`lmdb::Environment`].
 #[derive(Debug)]
 pub struct LmdbEnvironment {
-    path: PathBuf,
     env: Environment,
 }
 
 impl LmdbEnvironment {
-    pub fn new(path: &PathBuf, map_size: usize) -> Result<Self, error::Error> {
+    pub fn new<P: AsRef<Path>>(path: P, map_size: usize) -> Result<Self, error::Error> {
         let env = Environment::new()
             .set_max_dbs(MAX_DBS)
             .set_map_size(map_size)
-            .open(path)?;
-        let path = path.to_owned();
-        Ok(LmdbEnvironment { path, env })
-    }
-
-    pub fn path(&self) -> &PathBuf {
-        &self.path
+            .open(path.as_ref())?;
+        Ok(LmdbEnvironment { env })
     }
 
     pub fn env(&self) -> &Environment {

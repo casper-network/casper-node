@@ -7,8 +7,7 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::components::contract_runtime::core::engine_state::genesis::GenesisAccount;
-use node::components::contract_runtime::shared::motes::Motes;
+use node::{types::Motes, GenesisAccount};
 use types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
 
 const ARG_AMOUNT: &str = "amount";
@@ -27,7 +26,7 @@ lazy_static! {
 
 #[ignore]
 #[test]
-fn should_fail_unboding_more_than_it_was_staked_ee_598_regression() {
+fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account = GenesisAccount::new(

@@ -35,6 +35,28 @@
 //! While it is technically possible to turn any future into an effect, it is advisable to only use
 //! the effects explicitly listed in this module through traits to create them. Post-processing on
 //! effects to turn them into events should also be kept brief.
+//!
+//! ## Announcements and effects
+//!
+//! Some effects can be further classified into either announcements or requests, although these
+//! properties are not reflected in the type system.
+//!
+//! **Announcements** are events emitted by components that are essentially "fire-and-forget"; the
+//! component will never expect an answer for these and does not rely on them being handled. It is
+//! also conceivable that they are being cloned and dispatched to multiple components by the
+//! reactor.
+//!
+//! A good example is the arrival of a new deploy passed in by a client. Depending on the setup it
+//! may be stored, buffered or, in certain testing setups, just discarded. None of this is a concern
+//! of the component that talks to the client and deserializes the incoming deploy though, which
+//! considers the deploy no longer its concern after it has returned an announcement effect.
+//!
+//! **Requests** are complex effects that are used when a component needs something from
+//! outside of itself (typically to be provided by another component); a request requires an
+//! eventual response.
+//!
+//! A request **must** have a `Responder` field, which a handler of a request **must** call at
+//! some point. Failing to do so will result in a resource leak.
 
 pub mod announcements;
 pub mod requests;
@@ -48,20 +70,23 @@ use std::{
 };
 
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
+use semver::Version;
 use smallvec::{smallvec, SmallVec};
 use tracing::error;
 
 use crate::{
     components::{
         consensus::BlockContext,
+        contract_runtime::core::engine_state::{self, genesis::GenesisResult},
         storage::{self, StorageType, Value},
     },
     effect::requests::DeployGossiperRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{Deploy, ExecutedBlock, ProtoBlock},
+    Chainspec,
 };
 use announcements::NetworkAnnouncement;
-use requests::{NetworkRequest, StorageRequest};
+use requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest};
 
 /// A pinned, boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
@@ -498,7 +523,7 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
-    /// Passes the timestamp of a future block for which deploys are to be proposed
+    /// Passes the timestamp of a future block for which deploys are to be proposed.
     // TODO: Add an argument (`BlockContext`?) that contains all information necessary to select
     // deploys, e.g. the ancestors' deploys.
     pub(crate) async fn request_proto_block(
@@ -517,13 +542,13 @@ impl<REv> EffectBuilder<REv> {
         )
     }
 
-    /// Passes a finalized proto-block to the contract runtime for execution
+    /// Passes a finalized proto-block to the contract runtime for execution.
     pub(crate) async fn execute_block(self, _proto_block: ProtoBlock) -> ExecutedBlock {
         // TODO: actually execute the block and return the relevant stuff
         todo!()
     }
 
-    /// Checks whether the deploys included in the proto-block exist on the network
+    /// Checks whether the deploys included in the proto-block exist on the network.
     pub(crate) async fn validate_proto_block<I>(
         self,
         _sender: I,
@@ -532,5 +557,54 @@ impl<REv> EffectBuilder<REv> {
         // TODO: check with the deploy fetcher or something whether the deploys whose hashes are
         // contained in the proto-block actually exist
         (true, proto_block)
+    }
+
+    /// Runs the genesis process on the contract runtime.
+    pub(crate) async fn commit_genesis(
+        self,
+        chainspec: Chainspec,
+    ) -> Result<GenesisResult, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::CommitGenesis {
+                chainspec: Box::new(chainspec),
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Puts the given chainspec into the chainspec store.
+    pub(crate) async fn put_chainspec<S>(self, chainspec: Chainspec) -> storage::Result<()>
+    where
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
+    {
+        self.make_request(
+            |responder| StorageRequest::PutChainspec {
+                chainspec: Box::new(chainspec),
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested chainspec from the chainspec store.
+    // TODO: remove once method is used.
+    #[allow(dead_code)]
+    pub(crate) async fn get_chainspec<S>(self, version: Version) -> storage::Result<Chainspec>
+    where
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetChainspec { version, responder },
+            QueueKind::Regular,
+        )
+        .await
     }
 }
