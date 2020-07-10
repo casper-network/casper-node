@@ -98,7 +98,7 @@
 //!                                      effect_builder: EffectBuilder<REv>,
 //!                                      _rng: &mut R,
 //!                                      event: Self::Event
-//!     ) -> Multiple<Effect<Self::Event>> {
+//!     ) -> Effects<Self::Event> {
 //!         match event {
 //!             ShouterEvent::Net(NetworkAnnouncement::MessageReceived { sender, payload }) => {
 //!                 // Record the message we received.
@@ -170,7 +170,7 @@
 //!     fn new(_cfg: Self::Config,
 //!            event_queue: EventQueueHandle<Self::Event>,
 //!            _span: &Span
-//!     ) -> Result<(Self, Multiple<Effect<Self::Event>>), ()> {
+//!     ) -> Result<(Self, Effects<Self::Event>), ()> {
 //!         let effect_builder = EffectBuilder::new(event_queue);
 //!         let (shouter, shouter_effect) = Shouter::new(effect_builder);
 //!
@@ -184,7 +184,7 @@
 //!     fn dispatch_event(&mut self,
 //!                       effect_builder: EffectBuilder<Event>,
 //!                       event: Event
-//!     ) -> Multiple<Effect<Event>> {
+//!     ) -> Effects<Event> {
 //!          let mut rng = rand::thread_rng(); // FIXME: RNGs should be passed in.
 //!          match event {
 //!              Event::Announcement(anc) => { wrap_effects(From::from,
@@ -282,8 +282,8 @@ use tracing::{debug, error, info, warn};
 use crate::{
     components::Component,
     effect::{
-        announcements::NetworkAnnouncement, requests::NetworkRequest, Effect, EffectBuilder,
-        EffectExt, Multiple,
+        announcements::NetworkAnnouncement, requests::NetworkRequest, Effects, EffectBuilder,
+        EffectExt,
     },
     reactor::{EventQueueHandle, QueueKind},
 };
@@ -462,7 +462,7 @@ where
         _effect_builder: EffectBuilder<REv>,
         rng: &mut R,
         event: Self::Event,
-    ) -> Multiple<Effect<Self::Event>> {
+    ) -> Effects<Self::Event> {
         match event {
             NetworkRequest::SendMessage {
                 dest,

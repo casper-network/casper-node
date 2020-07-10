@@ -20,7 +20,7 @@ use tokio::task;
 
 use crate::{
     components::Component,
-    effect::{requests::StorageRequest, Effect, EffectBuilder, EffectExt, Multiple},
+    effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
     types::{Block, Deploy},
 };
 // Seems to be a false positive.
@@ -107,7 +107,7 @@ where
         _effect_builder: EffectBuilder<REv>,
         _rng: &mut R,
         event: Self::Event,
-    ) -> Multiple<Effect<Self::Event>> {
+    ) -> Effects<Self::Event> {
         match event {
             StorageRequest::PutBlock { block, responder } => {
                 let block_store = self.block_store();

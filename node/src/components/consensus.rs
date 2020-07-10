@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::Component,
-    effect::{requests::NetworkRequest, Effect, EffectBuilder, Multiple},
+    effect::{requests::NetworkRequest, EffectBuilder, Effects},
     types::{ExecutedBlock, ProtoBlock},
 };
 
@@ -131,7 +131,7 @@ where
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,
         event: Self::Event,
-    ) -> Multiple<Effect<Self::Event>> {
+    ) -> Effects<Self::Event> {
         match event {
             Event::Timer { .. } => todo!(),
             Event::MessageReceived { sender, msg } => {
@@ -149,7 +149,7 @@ where
             }),
             Event::ExecutedBlock { .. } => {
                 // TODO: Finality signatures
-                Multiple::default()
+                Default::default()
             }
             Event::AcceptProtoBlock {
                 era_id,

@@ -15,7 +15,7 @@ use tracing::info;
 
 use crate::{
     components::{small_network::NodeId, Component},
-    effect::{requests::NetworkRequest, Effect, EffectBuilder, EffectExt, Multiple},
+    effect::{requests::NetworkRequest, EffectBuilder, EffectExt, Effects},
     utils::DisplayIter,
 };
 
@@ -80,7 +80,7 @@ where
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,
         event: Self::Event,
-    ) -> Multiple<Effect<Self::Event>> {
+    ) -> Effects<Self::Event> {
         match event {
             Event::Timer => self.send_pings(effect_builder),
             Event::MessageReceived {
@@ -113,7 +113,7 @@ impl Pinger {
     /// Create and initialize a new pinger.
     pub(crate) fn new<REv: From<Event> + Send + From<NetworkRequest<NodeId, Message>>>(
         effect_builder: EffectBuilder<REv>,
-    ) -> (Self, Multiple<Effect<Event>>) {
+    ) -> (Self, Effects<Event>) {
         let mut pinger = Pinger {
             responsive_nodes: HashSet::new(),
             ping_counter: 0,
@@ -129,7 +129,7 @@ impl Pinger {
     fn send_pings<REv: From<Event> + Send + From<NetworkRequest<NodeId, Message>>>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-    ) -> Multiple<Effect<Event>> {
+    ) -> Effects<Event> {
         info!(
             "starting new ping round, previously saw {{{}}}",
             DisplayIter::new(self.responsive_nodes.iter())
@@ -140,7 +140,7 @@ impl Pinger {
         self.ping_counter += 1;
         self.responsive_nodes.clear();
 
-        let mut effects: Multiple<Effect<Event>> = Default::default();
+        let mut effects: Effects<Event> = Default::default();
         effects.extend(
             effect_builder
                 .broadcast_message(Message::Ping(self.ping_counter))

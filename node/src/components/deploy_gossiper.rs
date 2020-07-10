@@ -18,7 +18,7 @@ use crate::{
     },
     effect::{
         requests::{DeployGossiperRequest, NetworkRequest, StorageRequest},
-        Effect, EffectBuilder, EffectExt, Multiple,
+        EffectBuilder, EffectExt, Effects,
     },
     types::{Deploy, DeployHash},
     utils::{DisplayIter, GossipAction, GossipTable},
@@ -183,7 +183,7 @@ impl DeployGossiper {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         deploy: Deploy,
-    ) -> Multiple<Effect<Event>> {
+    ) -> Effects<Event> {
         if let Some(should_gossip) = self.table.new_complete_data(deploy.id(), None) {
             self.gossip(
                 effect_builder,
@@ -192,7 +192,7 @@ impl DeployGossiper {
                 should_gossip.exclude_peers,
             )
         } else {
-            Multiple::new() // we already completed gossiping this deploy
+            Default::default() // we already completed gossiping this deploy
         }
     }
 
@@ -203,7 +203,7 @@ impl DeployGossiper {
         deploy_hash: DeployHash,
         count: usize,
         exclude_peers: HashSet<NodeId>,
-    ) -> Multiple<Effect<Event>> {
+    ) -> Effects<Event> {
         let message = Message::Gossip(deploy_hash);
         effect_builder
             .gossip_message(message, count, exclude_peers)
@@ -216,7 +216,7 @@ impl DeployGossiper {
         effect_builder: EffectBuilder<REv>,
         deploy_hash: DeployHash,
         peers: HashSet<NodeId>,
-    ) -> Multiple<Effect<Event>> {
+    ) -> Effects<Event> {
         // We don't have any peers to gossip to, so pause the process, which will eventually result
         // in the entry being removed.
         if peers.is_empty() {
@@ -225,7 +225,7 @@ impl DeployGossiper {
                 "paused gossiping {} since no more peers to gossip to",
                 deploy_hash
             );
-            return Multiple::new();
+            return Default::default();
         }
 
         // Set timeouts to check later that the specified peers all responded.
@@ -246,7 +246,7 @@ impl DeployGossiper {
         effect_builder: EffectBuilder<REv>,
         deploy_hash: DeployHash,
         peer: NodeId,
-    ) -> Multiple<Effect<Event>> {
+    ) -> Effects<Event> {
         match self.table.check_timeout(&deploy_hash, peer) {
             GossipAction::ShouldGossip(should_gossip) => self.gossip(
                 effect_builder,
@@ -254,7 +254,7 @@ impl DeployGossiper {
                 should_gossip.count,
                 should_gossip.exclude_peers,
             ),
-            GossipAction::Noop => Multiple::new(),
+            GossipAction::Noop => Default::default(),
             GossipAction::GetRemainder { .. } | GossipAction::AwaitingRemainder => {
                 unreachable!("can't have gossiped if we don't hold the complete data")
             }
@@ -268,7 +268,7 @@ impl DeployGossiper {
         effect_builder: EffectBuilder<REv>,
         deploy_hash: DeployHash,
         peer: NodeId,
-    ) -> Multiple<Effect<Event>> {
+    ) -> Effects<Event> {
         match self.table.remove_holder_if_unresponsive(&deploy_hash, peer) {
             GossipAction::ShouldGossip(should_gossip) => self.gossip(
                 effect_builder,
@@ -294,7 +294,7 @@ impl DeployGossiper {
                 effects
             }
 
-            GossipAction::Noop | GossipAction::AwaitingRemainder => Multiple::new(),
+            GossipAction::Noop | GossipAction::AwaitingRemainder => Default::default(),
         }
     }
 
@@ -304,7 +304,7 @@ impl DeployGossiper {
         effect_builder: EffectBuilder<REv>,
         deploy_hash: DeployHash,
         sender: NodeId,
-    ) -> Multiple<Effect<Event>> {
+    ) -> Effects<Event> {
         match self.table.new_partial_data(&deploy_hash, sender) {
             GossipAction::ShouldGossip(should_gossip) => {
                 // Gossip the deploy hash and send a response to the sender indicating we already
@@ -358,8 +358,8 @@ impl DeployGossiper {
         deploy_hash: DeployHash,
         is_already_held: bool,
         sender: NodeId,
-    ) -> Multiple<Effect<Event>> {
-        let mut effects = Multiple::new();
+    ) -> Effects<Event> {
+        let mut effects: Effects<_> = Default::default();
         let action = if is_already_held {
             self.table.already_infected(&deploy_hash, sender)
         } else {
@@ -390,7 +390,7 @@ impl DeployGossiper {
         effect_builder: EffectBuilder<REv>,
         deploy_hash: DeployHash,
         sender: NodeId,
-    ) -> Multiple<Effect<Event>> {
+    ) -> Effects<Event> {
         // Get the deploy from the storage component then send it to `sender`.
         effect_builder
             .get_deploy_from_storage(deploy_hash)
@@ -407,7 +407,7 @@ impl DeployGossiper {
         effect_builder: EffectBuilder<REv>,
         deploy: Deploy,
         sender: NodeId,
-    ) -> Multiple<Effect<Event>> {
+    ) -> Effects<Event> {
         // Put the deploy to the storage component, and potentially start gossiping about it.
         let deploy_hash = *deploy.id();
         effect_builder
@@ -426,7 +426,7 @@ impl DeployGossiper {
         effect_builder: EffectBuilder<REv>,
         deploy_hash: DeployHash,
         sender: NodeId,
-    ) -> Multiple<Effect<Event>> {
+    ) -> Effects<Event> {
         if let Some(should_gossip) = self.table.new_complete_data(&deploy_hash, Some(sender)) {
             self.gossip(
                 effect_builder,
@@ -435,7 +435,7 @@ impl DeployGossiper {
                 should_gossip.exclude_peers,
             )
         } else {
-            Multiple::new()
+            Default::default()
         }
     }
 
@@ -445,13 +445,13 @@ impl DeployGossiper {
         &mut self,
         deploy_hash: DeployHash,
         storage_error: storage::Error,
-    ) -> Multiple<Effect<Event>> {
+    ) -> Effects<Event> {
         self.table.pause(&deploy_hash);
         error!(
             "paused gossiping {} since failed to put to store: {}",
             deploy_hash, storage_error
         );
-        Multiple::new()
+        Default::default()
     }
 
     /// Handles the `Ok` case for a `Result` of attempting to get the deploy from the storage
@@ -461,7 +461,7 @@ impl DeployGossiper {
         effect_builder: EffectBuilder<REv>,
         deploy: Deploy,
         requester: NodeId,
-    ) -> Multiple<Effect<Event>> {
+    ) -> Effects<Event> {
         let message = Message::GetResponse(Box::new(deploy));
         effect_builder.send_message(requester, message).ignore()
     }
@@ -472,13 +472,13 @@ impl DeployGossiper {
         &mut self,
         deploy_hash: DeployHash,
         storage_error: storage::Error,
-    ) -> Multiple<Effect<Event>> {
+    ) -> Effects<Event> {
         self.table.pause(&deploy_hash);
         error!(
             "paused gossiping {} since failed to get from store: {}",
             deploy_hash, storage_error
         );
-        Multiple::new()
+        Default::default()
     }
 }
 
@@ -493,7 +493,7 @@ where
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,
         event: Self::Event,
-    ) -> Multiple<Effect<Self::Event>> {
+    ) -> Effects<Self::Event> {
         debug!(?event, "handling event");
         match event {
             Event::Request(DeployGossiperRequest::PutFromClient { deploy }) => {

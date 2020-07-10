@@ -67,7 +67,7 @@ impl Reactor for TestReactor {
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
         event: Self::Event,
-    ) -> Multiple<Effect<Self::Event>> {
+    ) -> Effects<Self::Event> {
         let mut rng = rand::thread_rng(); // FIXME: Pass this in from the outside?
 
         match event {
@@ -82,7 +82,7 @@ impl Reactor for TestReactor {
         cfg: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
         span: &Span,
-    ) -> anyhow::Result<(Self, Multiple<Effect<Self::Event>>)> {
+    ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let (net, effects) = SmallNetwork::new(event_queue, cfg)?;
 
         let node_id = net.node_id();

@@ -18,7 +18,7 @@ pub(crate) mod storage;
 
 use rand::Rng;
 
-use crate::effect::{Effect, EffectBuilder, Multiple};
+use crate::effect::{EffectBuilder, Effects};
 
 /// Core Component.
 ///
@@ -57,5 +57,5 @@ pub trait Component<REv> {
         effect_builder: EffectBuilder<REv>,
         rng: &mut R,
         event: Self::Event,
-    ) -> Multiple<Effect<Self::Event>>;
+    ) -> Effects<Self::Event>;
 }

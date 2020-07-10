@@ -29,7 +29,7 @@ use crate::{
     effect::{
         announcements::NetworkAnnouncement,
         requests::{ApiRequest, DeployGossiperRequest, NetworkRequest, StorageRequest},
-        Effect, EffectBuilder, Multiple,
+        EffectBuilder, Effects,
     },
     reactor::{self, initializer, EventQueueHandle},
     small_network::{self, NodeId},
@@ -168,7 +168,7 @@ impl Reactor {
         storage: Storage,
         contract_runtime: ContractRuntime,
         rng: ChaCha20Rng,
-    ) -> Result<(Self, Multiple<Effect<Event>>), Error> {
+    ) -> Result<(Self, Effects<Event>), Error> {
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, config.validator_net)?;
         span.record("id", &tracing::field::display(net.node_id()));
@@ -208,7 +208,7 @@ impl reactor::Reactor for Reactor {
         config: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
         span: &Span,
-    ) -> Result<(Self, Multiple<Effect<Event>>), Error> {
+    ) -> Result<(Self, Effects<Event>), Error> {
         let storage = Storage::new(&config.storage)?;
         let contract_runtime = ContractRuntime::new(&config.storage, config.contract_runtime)?;
         let rng = ChaCha20Rng::from_entropy();
@@ -219,7 +219,7 @@ impl reactor::Reactor for Reactor {
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
         event: Event,
-    ) -> Multiple<Effect<Self::Event>> {
+    ) -> Effects<Self::Event> {
         match event {
             Event::Network(event) => reactor::wrap_effects(
                 Event::Network,
@@ -290,7 +290,7 @@ impl reactor::ReactorExt<initializer::Reactor> for Reactor {
         event_queue: EventQueueHandle<Self::Event>,
         span: &Span,
         initializer_reactor: initializer::Reactor,
-    ) -> Result<(Self, Multiple<Effect<Self::Event>>), Error> {
+    ) -> Result<(Self, Effects<Self::Event>), Error> {
         let (config, storage, contract_runtime, rng) = initializer_reactor.destructure();
         Self::init(config, event_queue, span, storage, contract_runtime, rng)
     }

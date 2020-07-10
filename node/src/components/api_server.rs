@@ -41,7 +41,7 @@ use crate::{
     crypto::hash::Digest,
     effect::{
         requests::{ApiRequest, DeployGossiperRequest, StorageRequest},
-        Effect, EffectBuilder, EffectExt, Multiple,
+        EffectBuilder, EffectExt, Effects,
     },
     reactor::QueueKind,
     types::{DecodingError, Deploy, DeployHash},
@@ -75,7 +75,7 @@ where
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,
         event: Self::Event,
-    ) -> Multiple<Effect<Self::Event>> {
+    ) -> Effects<Self::Event> {
         match event {
             Event::ApiRequest(ApiRequest::SubmitDeploy { deploy, responder }) => effect_builder
                 .put_deploy_to_storage(*deploy.clone())

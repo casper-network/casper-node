@@ -19,7 +19,7 @@ use crate::{
     },
     effect::{
         requests::{ContractRuntimeRequest, StorageRequest},
-        Effect, EffectBuilder, EffectExt, Multiple,
+        EffectBuilder, EffectExt, Effects,
     },
 };
 // False positive.
@@ -72,7 +72,7 @@ impl ChainspecHandler {
     pub(crate) fn new<REv>(
         chainspec_config_path: PathBuf,
         effect_builder: EffectBuilder<REv>,
-    ) -> Result<(Self, Multiple<Effect<Event>>), Error>
+    ) -> Result<(Self, Effects<Event>), Error>
     where
         REv: From<Event> + From<StorageRequest<Storage>> + Send,
     {
@@ -110,7 +110,7 @@ where
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,
         event: Self::Event,
-    ) -> Multiple<Effect<Self::Event>> {
+    ) -> Effects<Self::Event> {
         match event {
             Event::PutToStoreResult { version, result } => match result {
                 Ok(()) => {
@@ -122,7 +122,7 @@ where
                 Err(error) => {
                     error!("failed to store chainspec {}: {}", version, error);
                     self.completed_successfully = Some(false);
-                    Multiple::new()
+                    Default::default()
                 }
             },
             Event::CommitGenesisResult(result) => {
@@ -149,7 +149,7 @@ where
                         self.completed_successfully = Some(false);
                     }
                 }
-                Multiple::new()
+                Default::default()
             }
         }
     }
