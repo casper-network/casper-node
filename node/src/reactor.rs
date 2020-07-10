@@ -35,7 +35,8 @@ use std::{
 
 use futures::{future::BoxFuture, FutureExt};
 use rand::Rng;
-use tracing::{debug, info, trace, warn, Span};
+use tracing::{debug, debug_span, info, trace, warn};
+use tracing_futures::Instrument;
 
 use crate::{
     effect::{Effect, EffectBuilder, Effects},
@@ -169,9 +170,6 @@ where
     /// The reactor instance itself.
     reactor: R,
 
-    /// The logging span indicating which reactor we are in.
-    span: Span,
-
     /// Counter for events, to aid tracing.
     event_count: usize,
 }
@@ -183,22 +181,22 @@ where
     /// Creates a new runner from a given configuration.
     #[inline]
     pub async fn new<Rd: Rng + ?Sized>(cfg: R::Config, rng: &mut Rd) -> Result<Self, R::Error> {
-        let (span, scheduler) = Self::init();
-        let entered = span.enter();
+        let scheduler = Self::init();
 
         let event_queue = EventQueueHandle::new(scheduler);
         let (reactor, initial_effects) = R::new(cfg, event_queue, rng)?;
 
         // Run all effects from component instantiation.
-        process_effects(scheduler, initial_effects).await;
+        let span = debug_span!("process initial effects");
+        process_effects(scheduler, initial_effects)
+            .instrument(span)
+            .await;
 
         info!("reactor main loop is ready");
 
-        drop(entered);
         Ok(Runner {
             scheduler,
             reactor,
-            span,
             event_count: 0,
         })
     }
@@ -213,32 +211,27 @@ where
         R1: Reactor,
         R: ReactorExt<R1>,
     {
-        let (span, scheduler) = Self::init();
-        let entered = span.enter();
+        let scheduler = Self::init();
 
         let event_queue = EventQueueHandle::new(scheduler);
         let (reactor, initial_effects) = R::new_from(event_queue, old_reactor)?;
 
         // Run all effects from component instantiation.
-        process_effects(scheduler, initial_effects).await;
+        let span = debug_span!("process initial effects (from)");
+        process_effects(scheduler, initial_effects)
+            .instrument(span)
+            .await;
 
         info!("reactor main loop is ready");
 
-        drop(entered);
         Ok(Runner {
             scheduler,
             reactor,
-            span,
             event_count: 0,
         })
     }
 
-    fn init() -> (Span, &'static Scheduler<R::Event>) {
-        // We create a new logging span, ensuring that we can always associate log messages to this
-        // specific reactor. This is usually only relevant when running multiple reactors, e.g.
-        // during testing, so we set the log level to `debug` here.
-        let span = tracing::debug_span!("node", id = tracing::field::Empty);
-
+    fn init() -> &'static Scheduler<R::Event> {
         let event_size = mem::size_of::<R::Event>();
 
         // Check if the event is of a reasonable size. This only emits a runtime warning at startup
@@ -249,26 +242,20 @@ where
         }
 
         // Create a new event queue for this reactor run.
-        let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
-
-        (span, scheduler)
+        utils::leak(Scheduler::new(QueueKind::weights()))
     }
 
     /// Processes a single event on the event queue.
     #[inline]
     pub async fn crank<Rd: Rng + ?Sized>(&mut self, rng: &mut Rd) {
-        let _enter = self.span.enter();
-
-        // Create another span for tracing the processing of one event.
-        let crank_span = tracing::debug_span!("crank", ev = self.event_count);
-        let _inner_enter = crank_span.enter();
-
-        self.event_count += 1;
-
         let event_queue = EventQueueHandle::new(self.scheduler);
         let effect_builder = EffectBuilder::new(event_queue);
 
         let (event, q) = self.scheduler.pop().await;
+
+        // Create another span for tracing the processing of one event.
+        let event_span = tracing::debug_span!("dispatch events", ev = self.event_count);
+        let inner_enter = event_span.enter();
 
         // We log events twice, once in display and once in debug mode.
         debug!(%event, ?q);
@@ -276,7 +263,16 @@ where
 
         // Dispatch the event, then execute the resulting effect.
         let effects = self.reactor.dispatch_event(effect_builder, rng, event);
-        process_effects(self.scheduler, effects).await;
+
+        drop(inner_enter);
+
+        // We create another span for the effects, but will keep the same ID.
+        let effect_span = tracing::debug_span!("process effects", ev = self.event_count);
+
+        process_effects(self.scheduler, effects)
+            .instrument(effect_span)
+            .await;
+        self.event_count += 1;
     }
 
     /// Processes a single event if there is one, returns `None` otherwise.
