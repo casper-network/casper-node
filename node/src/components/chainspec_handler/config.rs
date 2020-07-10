@@ -109,7 +109,6 @@ struct HighwayConfig {
     booking_duration_millis: u64,
     entropy_duration_millis: u64,
     voting_period_duration_millis: u64,
-    voting_period_summit_level: u8,
     finality_threshold_percent: u8,
 }
 
@@ -121,7 +120,6 @@ impl Default for HighwayConfig {
             booking_duration_millis: 864_000_000,       // 10 days
             entropy_duration_millis: 10_800_000,        // 3 hours
             voting_period_duration_millis: 172_800_000, // 2 days
-            voting_period_summit_level: 0,
             finality_threshold_percent: 10,
         }
     }
@@ -216,7 +214,6 @@ impl From<&chainspec::Chainspec> for Chainspec {
                 .highway_config
                 .voting_period_duration
                 .as_millis() as u64,
-            voting_period_summit_level: chainspec.genesis.highway_config.voting_period_summit_level,
             finality_threshold_percent: chainspec.genesis.highway_config.finality_threshold_percent,
         };
 
@@ -280,7 +277,6 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         voting_period_duration: Duration::from_millis(
             chainspec.highway.voting_period_duration_millis,
         ),
-        voting_period_summit_level: chainspec.highway.voting_period_summit_level,
         finality_threshold_percent: chainspec.highway.finality_threshold_percent,
     };
 
@@ -352,11 +348,18 @@ fn string_to_array(input: String) -> Result<[u8; ACCOUNT_HASH_LENGTH], Error> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::path::PathBuf;
 
     use super::chainspec::rewrite_with_absolute_paths;
+    use super::*;
 
     const PRODUCTION_DIR: &str = "resources/production";
+    const EXAMPLE_DIR: &str = "resources/example";
+    const TARGET_DIR: &str = "target/wasm32-unknown-unknown/release";
+    const MINT: &str = "mint_install.wasm";
+    const POS: &str = "pos_install.wasm";
+    const STANDARD_PAYMENT: &str = "standard_payment_install.wasm";
+    const CHAINSPEC_CONFIG_NAME: &str = "chainspec.toml";
 
     #[test]
     fn default_config_should_match_production() {
@@ -366,5 +369,39 @@ mod tests {
 
         let production = Chainspec::from(&parse_toml(chainspec_config.path()).unwrap());
         assert_eq!(production, default);
+    }
+
+    #[test]
+    fn example_chainspec_should_parse() {
+        let mint = PathBuf::from(format!(
+            "{}/{}/{}",
+            env!("CARGO_MANIFEST_DIR"),
+            TARGET_DIR,
+            MINT
+        ));
+        let pos = PathBuf::from(format!(
+            "{}/{}/{}",
+            env!("CARGO_MANIFEST_DIR"),
+            TARGET_DIR,
+            POS
+        ));
+        let standard_payment = PathBuf::from(format!(
+            "{}/{}/{}",
+            env!("CARGO_MANIFEST_DIR"),
+            TARGET_DIR,
+            STANDARD_PAYMENT
+        ));
+        if !mint.exists() || !pos.exists() || !standard_payment.exists() {
+            // We can't test if the Wasm files are missing.
+            return;
+        }
+
+        let example_path = format!(
+            "{}/../{}/{}",
+            env!("CARGO_MANIFEST_DIR"),
+            EXAMPLE_DIR,
+            CHAINSPEC_CONFIG_NAME
+        );
+        let _chainspec = Chainspec::from(&parse_toml(example_path).unwrap());
     }
 }

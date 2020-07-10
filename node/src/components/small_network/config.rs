@@ -23,8 +23,8 @@ pub struct Config {
     /// Path to certificate file.
     pub cert: Option<PathBuf>,
 
-    /// Path to private key for certificate.
-    pub private_key: Option<PathBuf>,
+    /// Path to secret key for certificate.
+    pub secret_key: Option<PathBuf>,
 
     /// Maximum number of retries before removing an outgoing node. Unlimited if `None`.
     pub max_outgoing_retries: Option<u32>,
@@ -41,7 +41,7 @@ impl Config {
             bind_port: 0,
             root_addr: (Ipv4Addr::LOCALHOST, port).into(),
             cert: None,
-            private_key: None,
+            secret_key: None,
             max_outgoing_retries: Some(360),
             outgoing_retry_delay_millis: 10_000,
         }

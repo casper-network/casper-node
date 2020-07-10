@@ -85,7 +85,6 @@ pub(crate) struct HighwayConfig {
     pub(crate) booking_duration: Duration,
     pub(crate) entropy_duration: Duration,
     pub(crate) voting_period_duration: Duration,
-    pub(crate) voting_period_summit_level: u8,
     pub(crate) finality_threshold_percent: u8,
 }
 
@@ -277,7 +276,6 @@ mod tests {
             spec.genesis.highway_config.voting_period_duration,
             Duration::from_millis(6)
         );
-        assert_eq!(spec.genesis.highway_config.voting_period_summit_level, 7);
         assert_eq!(spec.genesis.highway_config.finality_threshold_percent, 8);
 
         assert_eq!(

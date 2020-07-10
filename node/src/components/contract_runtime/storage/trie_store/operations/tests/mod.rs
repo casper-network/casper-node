@@ -28,7 +28,7 @@ use crate::{
                 operations::{self, read, write, ReadResult, WriteResult},
                 TrieStore,
             },
-            TEST_MAP_SIZE,
+            DEFAULT_TEST_MAX_DB_SIZE,
         },
     },
     crypto::hash,
@@ -521,7 +521,8 @@ impl LmdbTestContext {
         V: FromBytes + ToBytes,
     {
         let _temp_dir = tempdir()?;
-        let environment = LmdbEnvironment::new(&_temp_dir.path().to_path_buf(), *TEST_MAP_SIZE)?;
+        let environment =
+            LmdbEnvironment::new(&_temp_dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE)?;
         let store = LmdbTrieStore::new(&environment, None, DatabaseFlags::empty())?;
         put_tries::<_, _, _, _, error::Error>(&environment, &store, tries)?;
         Ok(LmdbTestContext {

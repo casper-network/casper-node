@@ -12,7 +12,7 @@ use crate::{
         storage::{
             store::tests as store_tests,
             trie::{gens::trie_arb, Trie},
-            TEST_MAP_SIZE,
+            DEFAULT_TEST_MAX_DB_SIZE,
         },
     },
     crypto::hash,
@@ -54,7 +54,8 @@ fn lmdb_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
     };
 
     let tmp_dir = tempdir().unwrap();
-    let env = LmdbEnvironment::new(&tmp_dir.path().to_path_buf(), *TEST_MAP_SIZE).unwrap();
+    let env =
+        LmdbEnvironment::new(&tmp_dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE).unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
 
     let inputs: BTreeMap<Blake2bHash, Trie<Key, StoredValue>> = inputs

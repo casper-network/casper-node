@@ -21,28 +21,33 @@ use engine_grpc_server::engine_server::{
     mappings::{MappingError, TransformMap},
     transforms::TransformEntry,
 };
-use node::components::contract_runtime::core::{
-    engine_state::{
-        execute_request::ExecuteRequest, execution_result::ExecutionResult,
-        run_genesis_request::RunGenesisRequest, EngineConfig, EngineState, SYSTEM_ACCOUNT_ADDR,
+use node::{
+    components::contract_runtime::{
+        core::{
+            engine_state::{
+                execute_request::ExecuteRequest, execution_result::ExecutionResult,
+                run_genesis_request::RunGenesisRequest, EngineConfig, EngineState,
+                SYSTEM_ACCOUNT_ADDR,
+            },
+            execution,
+        },
+        shared::{
+            account::Account,
+            additive_map::AdditiveMap,
+            gas::Gas,
+            logging::{self, Settings, Style},
+            newtypes::{Blake2bHash, CorrelationId},
+            stored_value::StoredValue,
+            transform::Transform,
+        },
+        storage::{
+            global_state::{in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, StateProvider},
+            protocol_data_store::lmdb::LmdbProtocolDataStore,
+            transaction_source::lmdb::LmdbEnvironment,
+            trie_store::lmdb::LmdbTrieStore,
+        },
     },
-    execution,
-};
-use node::components::contract_runtime::shared::{
-    account::Account,
-    additive_map::AdditiveMap,
-    gas::Gas,
-    logging::{self, Settings, Style},
-    newtypes::{Blake2bHash, CorrelationId},
-    page_size,
-    stored_value::StoredValue,
-    transform::Transform,
-};
-use node::components::contract_runtime::storage::{
-    global_state::{in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, StateProvider},
-    protocol_data_store::lmdb::LmdbProtocolDataStore,
-    transaction_source::lmdb::LmdbEnvironment,
-    trie_store::lmdb::LmdbTrieStore,
+    OS_PAGE_SIZE,
 };
 use types::{
     account::AccountHash,
@@ -178,7 +183,7 @@ impl LmdbWasmTestBuilder {
         engine_config: EngineConfig,
     ) -> Self {
         Self::initialize_logging();
-        let page_size = *page_size::PAGE_SIZE;
+        let page_size = *OS_PAGE_SIZE;
         let global_state_dir = Self::create_and_get_global_state_dir(data_dir);
         let environment = Arc::new(
             LmdbEnvironment::new(&global_state_dir, page_size * DEFAULT_LMDB_PAGES)
@@ -241,7 +246,7 @@ impl LmdbWasmTestBuilder {
         post_state_hash: Vec<u8>,
     ) -> Self {
         Self::initialize_logging();
-        let page_size = *page_size::PAGE_SIZE;
+        let page_size = *OS_PAGE_SIZE;
         let global_state_dir = Self::create_and_get_global_state_dir(data_dir);
         let environment = Arc::new(
             LmdbEnvironment::new(&global_state_dir, page_size * DEFAULT_LMDB_PAGES)
