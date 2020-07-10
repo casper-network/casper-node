@@ -16,7 +16,7 @@ use small_network::NodeId;
 
 use crate::{
     components::Component,
-    effect::{announcements::NetworkAnnouncement, Effect, EffectBuilder, Multiple},
+    effect::{announcements::NetworkAnnouncement, EffectBuilder, Effects},
     logging,
     reactor::{self, EventQueueHandle, Reactor, Runner},
     small_network::{self, SmallNetwork},

@@ -25,7 +25,7 @@
 //! #
 //! # use casperlabs_node::{components::{Component,
 //! #                       in_memory_network::{InMemoryNetwork, NetworkController, NodeId}},
-//! #                       effect::{Effect, EffectBuilder, EffectExt, Multiple,
+//! #                       effect::{EffectBuilder, EffectExt, Effects,
 //! #                       announcements::NetworkAnnouncement, requests::NetworkRequest},
 //! #                       reactor::{self, EventQueueHandle, wrap_effects},
 //! #                       testing::network::{Network, NetworkedReactor}};
@@ -79,7 +79,7 @@
 //! impl Shouter {
 //!     /// Creates a new shouter.
 //!     fn new<REv: Send, I: 'static, P: 'static>(effect_builder: EffectBuilder<REv>)
-//!             -> (Self, Multiple<Effect<ShouterEvent<I, P>>>) {
+//!             -> (Self, Effects<ShouterEvent<I, P>>) {
 //!         (Shouter {
 //!             whispers: Vec::new(),
 //!             shouts: Vec::new(),
