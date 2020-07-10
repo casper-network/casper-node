@@ -9,6 +9,7 @@ use crate::components::contract_runtime::core::engine_state::execution_effect::E
 
 pub type ActivationPoint = u64;
 
+#[derive(Debug)]
 pub enum UpgradeResult {
     RootNotFound,
     KeyNotFound(Key),

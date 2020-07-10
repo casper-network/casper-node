@@ -1,13 +1,15 @@
 use super::error;
 use crate::components::contract_runtime::core::execution;
 use crate::components::contract_runtime::shared::account::Account;
+use serde::{Deserialize, Serialize};
+use std::fmt::Debug;
 use types::{
     bytesrepr,
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
     ContractHash, ContractPackageHash, Key, RuntimeArgs,
 };
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum ExecutableDeployItem {
     ModuleBytes {
         module_bytes: Vec<u8>,
@@ -39,6 +41,66 @@ pub enum ExecutableDeployItem {
     Transfer {
         args: Vec<u8>,
     },
+}
+
+impl Debug for ExecutableDeployItem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExecutableDeployItem::ModuleBytes { module_bytes, args } => f
+                .debug_struct("ModuleBytes")
+                .field("module_bytes", &format!("[ {} bytes ]", module_bytes.len()))
+                .field("args", &hex::encode(&args))
+                .finish(),
+            ExecutableDeployItem::StoredContractByHash {
+                hash,
+                entry_point,
+                args,
+            } => f
+                .debug_struct("StoredContractByHash")
+                .field("hash", &hex::encode(&hash))
+                .field("entry_point", &entry_point)
+                .field("args", &hex::encode(&args))
+                .finish(),
+            ExecutableDeployItem::StoredContractByName {
+                name,
+                entry_point,
+                args,
+            } => f
+                .debug_struct("StoredContractByName")
+                .field("name", &name)
+                .field("entry_point", &entry_point)
+                .field("args", &hex::encode(&args))
+                .finish(),
+            ExecutableDeployItem::StoredVersionedContractByName {
+                name,
+                version,
+                entry_point,
+                args,
+            } => f
+                .debug_struct("StoredVersionedContractByName")
+                .field("name", &name)
+                .field("version", version)
+                .field("entry_point", &entry_point)
+                .field("args", &hex::encode(&args))
+                .finish(),
+            ExecutableDeployItem::StoredVersionedContractByHash {
+                hash,
+                version,
+                entry_point,
+                args,
+            } => f
+                .debug_struct("StoredVersionedContractByHash")
+                .field("hash", &hex::encode(&hash))
+                .field("version", version)
+                .field("entry_point", &entry_point)
+                .field("args", &hex::encode(&args))
+                .finish(),
+            ExecutableDeployItem::Transfer { args } => f
+                .debug_struct("Transfer")
+                .field("args", &hex::encode(&args))
+                .finish(),
+        }
+    }
 }
 
 impl ExecutableDeployItem {

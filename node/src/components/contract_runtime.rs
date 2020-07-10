@@ -29,13 +29,14 @@ use crate::{
     effect::{requests::ContractRuntimeRequest, EffectBuilder, EffectExt, Effects},
     StorageConfig,
 };
-
 pub use config::Config;
+use shared::newtypes::CorrelationId;
+use tokio::task;
+use tracing::debug;
 
 /// The contract runtime components.
 pub(crate) struct ContractRuntime {
-    #[allow(dead_code)]
-    engine_state: EngineState<LmdbGlobalState>,
+    engine_state: Arc<EngineState<LmdbGlobalState>>,
 }
 
 impl Debug for ContractRuntime {
@@ -72,16 +73,94 @@ where
         _rng: &mut R,
         event: Self::Event,
     ) -> Effects<Self::Event> {
+        debug!(?event, "handling event");
         match event {
-            Event::Request(request) => match request {
-                ContractRuntimeRequest::CommitGenesis {
-                    chainspec,
-                    responder,
-                } => {
-                    let result = self.engine_state.commit_genesis(*chainspec);
-                    responder.respond(result).ignore()
+            Event::Request(ContractRuntimeRequest::CommitGenesis {
+                chainspec,
+                responder,
+            }) => {
+                let result = self.engine_state.commit_genesis(*chainspec);
+                responder.respond(result).ignore()
+            }
+            Event::Request(ContractRuntimeRequest::Execute {
+                execute_request,
+                responder,
+            }) => {
+                debug!(?execute_request, "execute");
+                let engine_state = Arc::clone(&self.engine_state);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        engine_state.run_execute(correlation_id, execute_request)
+                    })
+                    .await
+                    .expect("should run");
+                    debug!(?result, "execute result");
+                    responder.respond(result).await
                 }
-            },
+                .ignore()
+            }
+            Event::Request(ContractRuntimeRequest::Commit {
+                protocol_version,
+                pre_state_hash,
+                effects,
+                responder,
+            }) => {
+                debug!(?protocol_version, ?pre_state_hash, ?effects, "commit");
+                let engine_state = Arc::clone(&self.engine_state);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        engine_state.apply_effect(
+                            correlation_id,
+                            protocol_version,
+                            pre_state_hash,
+                            effects,
+                        )
+                    })
+                    .await
+                    .expect("should run");
+                    debug!(?result, "commit result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            Event::Request(ContractRuntimeRequest::Upgrade {
+                upgrade_config,
+                responder,
+            }) => {
+                debug!(?upgrade_config, "upgrade");
+                let engine_state = Arc::clone(&self.engine_state);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        engine_state.commit_upgrade(correlation_id, upgrade_config)
+                    })
+                    .await
+                    .expect("should run");
+                    debug!(?result, "upgrade result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            Event::Request(ContractRuntimeRequest::Query {
+                query_request,
+                responder,
+            }) => {
+                debug!(?query_request, "query");
+                let engine_state = Arc::clone(&self.engine_state);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        engine_state.run_query(correlation_id, query_request)
+                    })
+                    .await
+                    .expect("should run");
+                    debug!(?result, "query result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
         }
     }
 }
@@ -122,7 +201,7 @@ impl ContractRuntime {
             .with_use_system_contracts(contract_runtime_config.use_system_contracts())
             .with_enable_bonding(contract_runtime_config.enable_bonding());
 
-        let engine_state = EngineState::new(global_state, engine_config);
+        let engine_state = Arc::new(EngineState::new(global_state, engine_config));
 
         Ok(ContractRuntime { engine_state })
     }

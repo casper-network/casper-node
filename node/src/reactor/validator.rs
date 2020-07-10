@@ -24,7 +24,10 @@ use crate::{
     },
     effect::{
         announcements::NetworkAnnouncement,
-        requests::{ApiRequest, DeployGossiperRequest, NetworkRequest, StorageRequest},
+        requests::{
+            ApiRequest, ContractRuntimeRequest, DeployGossiperRequest, NetworkRequest,
+            StorageRequest,
+        },
         EffectBuilder, Effects,
     },
     reactor::{self, initializer, EventQueueHandle},
@@ -125,6 +128,12 @@ impl From<NetworkRequest<NodeId, deploy_gossiper::Message>> for Event {
 impl From<DeployGossiperRequest> for Event {
     fn from(request: DeployGossiperRequest) -> Self {
         Event::DeployGossiper(deploy_gossiper::Event::Request(request))
+    }
+}
+
+impl From<ContractRuntimeRequest> for Event {
+    fn from(request: ContractRuntimeRequest) -> Event {
+        Event::ContractRuntime(contract_runtime::Event::Request(request))
     }
 }
 
@@ -272,7 +281,11 @@ impl reactor::Reactor for Reactor {
                 // Any incoming message is one for the pinger.
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
-            Event::ContractRuntime(event) => todo!("handle contract runtime event: {:?}", event),
+            Event::ContractRuntime(event) => reactor::wrap_effects(
+                Event::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, event),
+            ),
         }
     }
 }

@@ -3,15 +3,17 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
 };
 
-use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
-    components::storage::Value,
+    components::{
+        contract_runtime::core::engine_state::executable_deploy_item::ExecutableDeployItem,
+        storage::Value,
+    },
     crypto::{
-        asymmetric_key::{self, PublicKey, SecretKey, Signature},
-        hash::{self, Digest},
+        asymmetric_key::{PublicKey, Signature},
+        hash::Digest,
     },
     utils::DisplayIter,
 };
@@ -39,7 +41,9 @@ impl Display for DecodingError {
 }
 
 /// The cryptographic hash of a [`Deploy`](struct.Deploy.html).
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(
+    Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, Default,
+)]
 pub struct DeployHash(Digest);
 
 impl DeployHash {
@@ -57,6 +61,12 @@ impl DeployHash {
 impl Display for DeployHash {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(formatter, "deploy-hash({})", self.0,)
+    }
+}
+
+impl From<Digest> for DeployHash {
+    fn from(digest: Digest) -> Self {
+        Self(digest)
     }
 }
 
@@ -100,61 +110,25 @@ impl Display for DeployHeader {
 pub struct Deploy {
     hash: DeployHash,
     header: DeployHeader,
-    payment_code: Vec<u8>,
-    session_code: Vec<u8>,
+    payment: ExecutableDeployItem,
+    session: ExecutableDeployItem,
     approvals: Vec<Signature>,
 }
 
 impl Deploy {
     /// Constructs a new `Deploy`.
-    // TODO(Fraser): implement properly
-    pub fn new(temp: u64) -> Self {
-        let hash = DeployHash::new(hash::hash(temp.to_le_bytes()));
-
-        let secret_key = SecretKey::generate_ed25519();
-        let account = PublicKey::from(&secret_key);
-
-        let timestamp = temp + 100;
-        let gas_price = temp + 101;
-        let body_hash = hash::hash(temp.overflowing_add(102).0.to_le_bytes());
-        let ttl_millis = temp as u32 + 103;
-
-        let dependencies = vec![
-            DeployHash::new(hash::hash(temp.overflowing_add(104).0.to_le_bytes())),
-            DeployHash::new(hash::hash(temp.overflowing_add(105).0.to_le_bytes())),
-            DeployHash::new(hash::hash(temp.overflowing_add(106).0.to_le_bytes())),
-        ];
-
-        let chain_name = "Spike".to_string();
-
-        let header = DeployHeader {
-            account,
-            timestamp,
-            gas_price,
-            body_hash,
-            ttl_millis,
-            dependencies,
-            chain_name,
-        };
-
-        let payment_code = hash::hash(temp.overflowing_add(107).0.to_le_bytes())
-            .as_ref()
-            .to_vec();
-        let session_code = hash::hash(temp.overflowing_add(108).0.to_le_bytes())
-            .as_ref()
-            .to_vec();
-
-        let approvals = vec![
-            asymmetric_key::sign(&[3], &secret_key, &account),
-            asymmetric_key::sign(&[4], &secret_key, &account),
-            asymmetric_key::sign(&[5], &secret_key, &account),
-        ];
-
+    pub fn new(
+        hash: DeployHash,
+        header: DeployHeader,
+        payment: ExecutableDeployItem,
+        session: ExecutableDeployItem,
+        approvals: Vec<Signature>,
+    ) -> Deploy {
         Deploy {
             hash,
             header,
-            payment_code,
-            session_code,
+            payment,
+            session,
             approvals,
         }
     }
@@ -174,6 +148,16 @@ impl Deploy {
     pub fn from_json(input: &str) -> Result<Self, DecodingError> {
         let json: json::Deploy = serde_json::from_str(input).map_err(|_| DecodingError)?;
         Deploy::try_from(json)
+    }
+
+    /// Returns the `ExecutableDeployItem` for session code.
+    pub fn payment(&self) -> &ExecutableDeployItem {
+        &self.payment
+    }
+
+    /// Returns the `ExecutableDeployItem` for session code.
+    pub fn session(&self) -> &ExecutableDeployItem {
+        &self.session
     }
 }
 
@@ -198,11 +182,11 @@ impl Display for Deploy {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "deploy[{}, {}, payment_code: {:10}, session_code: {:10}, approvals: {}]",
+            "deploy[{}, {}, payment_code: {:?}, session_code: {:?}, approvals: {}]",
             self.hash,
             self.header,
-            HexFmt(&self.payment_code),
-            HexFmt(&self.session_code),
+            self.payment,
+            self.session,
             DisplayIter::new(self.approvals.iter())
         )
     }
@@ -217,9 +201,12 @@ mod json {
     use serde::{Deserialize, Serialize};
 
     use super::DecodingError;
-    use crate::crypto::{
-        asymmetric_key::{PublicKey, Signature},
-        hash::Digest,
+    use crate::{
+        components::contract_runtime::core::engine_state::executable_deploy_item::ExecutableDeployItem,
+        crypto::{
+            asymmetric_key::{PublicKey, Signature},
+            hash::Digest,
+        },
     };
 
     #[derive(Serialize, Deserialize)]
@@ -296,8 +283,8 @@ mod json {
     pub(super) struct Deploy {
         hash: DeployHash,
         header: DeployHeader,
-        payment_code: String,
-        session_code: String,
+        payment: ExecutableDeployItem,
+        session: ExecutableDeployItem,
         approvals: Vec<String>,
     }
 
@@ -306,8 +293,8 @@ mod json {
             Deploy {
                 hash: (&deploy.hash).into(),
                 header: (&deploy.header).into(),
-                payment_code: hex::encode(&deploy.payment_code),
-                session_code: hex::encode(&deploy.session_code),
+                payment: deploy.payment.clone(),
+                session: deploy.session.clone(),
                 approvals: deploy.approvals.iter().map(hex::encode).collect(),
             }
         }
@@ -326,8 +313,8 @@ mod json {
             Ok(super::Deploy {
                 hash: deploy.hash.try_into()?,
                 header: deploy.header.try_into()?,
-                payment_code: hex::decode(deploy.payment_code).map_err(|_| DecodingError)?,
-                session_code: hex::decode(deploy.session_code).map_err(|_| DecodingError)?,
+                payment: deploy.payment,
+                session: deploy.session,
                 approvals,
             })
         }
@@ -337,10 +324,36 @@ mod json {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypto::asymmetric_key::{self, SecretKey};
 
     #[test]
     fn json_roundtrip() {
-        let deploy = Deploy::new(1);
+        let secret_key = SecretKey::generate_ed25519();
+        let public_key = PublicKey::from(&secret_key);
+
+        let deploy_hash: Digest = [1; 32].into();
+
+        let deploy = Deploy::new(
+            DeployHash::from(deploy_hash),
+            DeployHeader {
+                account: PublicKey::new_ed25519([42; 32]).unwrap(),
+                timestamp: 100,
+                gas_price: 101,
+                body_hash: [43; 32].into(),
+                ttl_millis: 102,
+                dependencies: vec![],
+                chain_name: "Foo".to_owned(),
+            },
+            ExecutableDeployItem::ModuleBytes {
+                module_bytes: b"This is WASM of a module".to_vec(),
+                args: b"foo".to_vec(),
+            },
+            ExecutableDeployItem::ModuleBytes {
+                module_bytes: b"This is WASM of a module".to_vec(),
+                args: b"bar".to_vec(),
+            },
+            vec![asymmetric_key::sign(b"Message", &secret_key, &public_key)],
+        );
         let json = deploy.to_json().unwrap();
         let decoded = Deploy::from_json(&json).unwrap();
         assert_eq!(deploy, decoded);
