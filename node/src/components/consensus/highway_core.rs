@@ -43,3 +43,5 @@ mod state;
 mod tallies;
 mod validators;
 mod vote;
+
+pub(crate) use state::Weight;

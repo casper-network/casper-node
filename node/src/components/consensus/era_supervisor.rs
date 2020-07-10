@@ -8,19 +8,24 @@
 use std::{
     collections::HashMap,
     fmt::{self, Debug, Formatter},
+    iter,
     time::Duration,
 };
 
 use anyhow::Error;
+use maplit::hashmap;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
 use crate::{
     components::consensus::{
         consensus_protocol::{ConsensusProtocol, ConsensusProtocolResult},
+        highway_core::highway::HighwayParams,
+        protocols::highway::{HighwayContext, HighwayProtocol, HighwaySecret},
         traits::NodeIdT,
         ConsensusMessage, Event,
     },
+    crypto::{asymmetric_key::generate_ed25519_keypair, hash::hash},
     effect::{requests::NetworkRequest, Effect, EffectBuilder, EffectExt, Multiple},
     types::ProtoBlock,
 };
@@ -78,15 +83,41 @@ impl<I> EraSupervisor<I>
 where
     I: NodeIdT,
 {
-    pub(crate) fn new() -> Self {
-        Self {
-            active_eras: HashMap::new(),
+    pub(crate) fn new<REv>(
+        timestamp: u64,
+        effect_builder: EffectBuilder<REv>,
+    ) -> (Self, Multiple<Effect<Event<I>>>)
+    where
+        REv: From<Event<I>> + Send + From<NetworkRequest<I, ConsensusMessage>>,
+    {
+        // TODO: take all the parameters below from _somewhere_
+        let (secret_key, public_key) = generate_ed25519_keypair();
+        let params = HighwayParams {
+            instance_id: hash("test era 0"),
+            validators: iter::once((public_key, 100)).collect(),
+        };
+        let (highway, effects) = HighwayProtocol::<I, HighwayContext>::new(
+            params,
+            0, // TODO: get a proper seed ?
+            public_key,
+            HighwaySecret::new(secret_key, public_key),
+            12, // 4.1 seconds; TODO: get a proper round exp
+            timestamp,
+        );
+        let initial_era: Box<dyn ConsensusProtocol<I, ProtoBlock>> = Box::new(highway);
+        let active_eras = hashmap! { EraId(0) => initial_era };
+        let era_supervisor = Self {
+            active_eras,
             era_config: Default::default(),
-        }
+        };
+        let effects = effects
+            .into_iter()
+            .flat_map(|result| Self::handle_consensus_result(EraId(0), effect_builder, result))
+            .collect();
+        (era_supervisor, effects)
     }
 
     fn handle_consensus_result<REv>(
-        &self,
         era_id: EraId,
         effect_builder: EffectBuilder<REv>,
         consensus_result: ConsensusProtocolResult<I, ProtoBlock>,
@@ -169,7 +200,9 @@ where
             Some(consensus) => match f(&mut **consensus) {
                 Ok(results) => results
                     .into_iter()
-                    .flat_map(|result| self.handle_consensus_result(era_id, effect_builder, result))
+                    .flat_map(|result| {
+                        Self::handle_consensus_result(era_id, effect_builder, result)
+                    })
                     .collect(),
                 Err(error) => {
                     error!(%error, ?era_id, "got error from era id {:?}: {:?}", era_id, error);

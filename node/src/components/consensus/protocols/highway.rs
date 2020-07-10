@@ -4,19 +4,27 @@ use anyhow::Error;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
-use crate::components::consensus::{
-    consensus_protocol::{
-        synchronizer::{DagSynchronizerState, SynchronizerEffect},
-        BlockContext, ConsensusProtocol, ConsensusProtocolResult, ProtocolState, Timestamp,
-        VertexTrait,
+use crate::{
+    components::consensus::{
+        consensus_protocol::{
+            synchronizer::{DagSynchronizerState, SynchronizerEffect},
+            BlockContext, ConsensusProtocol, ConsensusProtocolResult, ProtocolState, Timestamp,
+            VertexTrait,
+        },
+        highway_core::{
+            active_validator::Effect as AvEffect,
+            finality_detector::FinalityDetector,
+            highway::{Highway, HighwayParams, PreValidatedVertex},
+            vertex::{Dependency, Vertex},
+            Weight,
+        },
+        traits::{Context, NodeIdT, ValidatorSecret},
     },
-    highway_core::{
-        active_validator::Effect as AvEffect,
-        finality_detector::FinalityDetector,
-        highway::{Highway, PreValidatedVertex},
-        vertex::{Dependency, Vertex},
+    crypto::{
+        asymmetric_key::{sign, verify, PublicKey, SecretKey, Signature},
+        hash::{hash, Digest},
     },
-    traits::{Context, NodeIdT},
+    types::ProtoBlock,
 };
 
 impl<C: Context> VertexTrait for PreValidatedVertex<C> {
@@ -53,6 +61,31 @@ pub(crate) struct HighwayProtocol<I, C: Context> {
     highway: Highway<C>,
 }
 
+impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
+    pub(crate) fn new(
+        params: HighwayParams<C>,
+        seed: u64,
+        our_id: C::ValidatorId,
+        secret: C::ValidatorSecret,
+        round_exp: u8,
+        timestamp: u64,
+    ) -> (Self, Vec<ConsensusProtocolResult<I, C::ConsensusValue>>) {
+        let ftt = (params.validators.total_weight() - Weight(1)) / 3;
+        let (mut highway, av_effects) =
+            Highway::new(params, seed, our_id, secret, round_exp, timestamp);
+        let effects = av_effects
+            .into_iter()
+            .map(|effect| av_effect_to_result(effect, &mut highway))
+            .collect();
+        let instance = HighwayProtocol {
+            synchronizer: DagSynchronizerState::new(),
+            finality_detector: FinalityDetector::new(ftt),
+            highway,
+        };
+        (instance, effects)
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
@@ -61,6 +94,39 @@ pub(crate) struct HighwayProtocol<I, C: Context> {
 enum HighwayMessage<C: Context> {
     NewVertex(Vertex<C>),
     RequestDependency(Dependency<C>),
+}
+
+fn av_effect_to_result<I, C: Context>(
+    effect: AvEffect<C>,
+    highway: &mut Highway<C>,
+) -> ConsensusProtocolResult<I, C::ConsensusValue> {
+    match effect {
+        AvEffect::NewVertex(v) => {
+            let msg = HighwayMessage::NewVertex(v.clone());
+            //TODO: Don't unwrap
+            // Replace serde with generic serializer.
+            let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
+            // TODO: Validation should be unnecessary, since we created the vertex
+            // ourselves.
+            let pvv = highway
+                .pre_validate_vertex(v)
+                .expect("we created an invalid vertex");
+            let vv = highway
+                .validate_vertex(pvv)
+                .expect("we created an invalid vertex");
+            assert!(
+                highway.add_valid_vertex(vv).is_empty(),
+                "unexpected effects when adding our own vertex"
+            );
+            ConsensusProtocolResult::CreatedGossipMessage(serialized_msg)
+        }
+        AvEffect::ScheduleTimer(instant_u64) => {
+            ConsensusProtocolResult::ScheduleTimer(Timestamp(instant_u64))
+        }
+        AvEffect::RequestNewBlock(block_context) => {
+            ConsensusProtocolResult::CreateNewBlock(block_context)
+        }
+    }
 }
 
 struct SynchronizerQueue<I, C: Context> {
@@ -145,33 +211,7 @@ where
                 };
                 // TODO: Avoid cloning. (Serialize first?)
                 for effect in highway.add_valid_vertex(vv.clone()) {
-                    self.results.push(match effect {
-                        AvEffect::NewVertex(v) => {
-                            let msg = HighwayMessage::NewVertex(v.clone());
-                            //TODO: Don't unwrap
-                            // Replace serde with generic serializer.
-                            let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
-                            // TODO: Validation should be unnecessary, since we created the vertex
-                            // ourselves.
-                            let pvv = highway
-                                .pre_validate_vertex(v)
-                                .expect("we created an invalid vertex");
-                            let vv = highway
-                                .validate_vertex(pvv)
-                                .expect("we created an invalid vertex");
-                            assert!(
-                                highway.add_valid_vertex(vv).is_empty(),
-                                "unexpected effects when adding our own vertex"
-                            );
-                            ConsensusProtocolResult::CreatedGossipMessage(serialized_msg)
-                        }
-                        AvEffect::ScheduleTimer(instant_u64) => {
-                            ConsensusProtocolResult::ScheduleTimer(Timestamp(instant_u64))
-                        }
-                        AvEffect::RequestNewBlock(block_context) => {
-                            ConsensusProtocolResult::CreateNewBlock(block_context)
-                        }
-                    });
+                    self.results.push(av_effect_to_result(effect, highway));
                 }
                 let msg = HighwayMessage::NewVertex(vv.into());
                 // TODO: Don't `unwrap`.
@@ -266,53 +306,22 @@ where
         &mut self,
         timestamp: Timestamp,
     ) -> Result<Vec<ConsensusProtocolResult<I, <C as Context>::ConsensusValue>>, Error> {
-        Ok(self
-            .highway
-            .handle_timer(timestamp.0)
+        let effects = self.highway.handle_timer(timestamp.0);
+        Ok(effects
             .into_iter()
-            .map(|effect| match effect {
-                AvEffect::NewVertex(v) => {
-                    // TODO: Add new vertex to state. (Indirectly, via synchronizer?)
-                    let msg = HighwayMessage::NewVertex(v);
-                    // TODO: Don't `unwrap`.
-                    // TODO: Replace serde with generic serializer
-                    let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
-                    ConsensusProtocolResult::CreatedGossipMessage(serialized_msg)
-                }
-                AvEffect::ScheduleTimer(instant_u64) => {
-                    ConsensusProtocolResult::ScheduleTimer(Timestamp(instant_u64))
-                }
-                AvEffect::RequestNewBlock(ctx) => ConsensusProtocolResult::CreateNewBlock(ctx),
-            })
+            .map(|effect| av_effect_to_result(effect, &mut self.highway))
             .collect())
     }
 
     fn propose(
-        &self,
+        &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
     ) -> Result<Vec<ConsensusProtocolResult<I, <C as Context>::ConsensusValue>>, Error> {
-        // TODO: Deduplicate
-        Ok(self
-            .highway
-            .propose(value, block_context)
+        let effects = self.highway.propose(value, block_context);
+        Ok(effects
             .into_iter()
-            .map(|effect| match effect {
-                AvEffect::NewVertex(v) => {
-                    // TODO: Add new vertex to state? (Indirectly, via synchronizer?)
-                    let msg = HighwayMessage::NewVertex(v);
-                    //TODO: Don't unwrap
-                    // Replace serde with generic serializer.
-                    let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
-                    ConsensusProtocolResult::CreatedGossipMessage(serialized_msg)
-                }
-                AvEffect::ScheduleTimer(instant_u64) => {
-                    ConsensusProtocolResult::ScheduleTimer(Timestamp(instant_u64))
-                }
-                AvEffect::RequestNewBlock(block_context) => {
-                    ConsensusProtocolResult::CreateNewBlock(block_context)
-                }
-            })
+            .map(|effect| av_effect_to_result(effect, &mut self.highway))
             .collect())
     }
 
@@ -331,5 +340,48 @@ where
         } else {
             todo!()
         }
+    }
+}
+
+pub(crate) struct HighwaySecret {
+    secret_key: SecretKey,
+    public_key: PublicKey,
+}
+
+impl HighwaySecret {
+    pub(crate) fn new(secret_key: SecretKey, public_key: PublicKey) -> Self {
+        Self {
+            secret_key,
+            public_key,
+        }
+    }
+}
+
+impl ValidatorSecret for HighwaySecret {
+    type Hash = Digest;
+    type Signature = Signature;
+
+    fn sign(&self, data: &Digest) -> Signature {
+        sign(data, &self.secret_key, &self.public_key)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct HighwayContext;
+
+impl Context for HighwayContext {
+    type ConsensusValue = ProtoBlock;
+    type ValidatorId = PublicKey;
+    type ValidatorSecret = HighwaySecret;
+    type Signature = Signature;
+    type Hash = Digest;
+    type InstanceId = Digest;
+
+    fn hash(data: &[u8]) -> Digest {
+        hash(data)
+    }
+
+    fn validate_signature(hash: &Digest, public_key: &PublicKey, signature: &Signature) -> bool {
+        verify(hash, signature, public_key).is_ok()
     }
 }

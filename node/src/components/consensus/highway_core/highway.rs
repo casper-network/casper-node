@@ -1,7 +1,7 @@
 use super::{
     active_validator::{ActiveValidator, Effect},
     evidence::Evidence,
-    state::{State, VoteError},
+    state::{State, VoteError, Weight},
     validators::Validators,
     vertex::{Dependency, Vertex, WireVote},
 };
@@ -77,9 +77,9 @@ impl<C: Context> ValidVertex<C> {
 pub(crate) struct HighwayParams<C: Context> {
     /// The protocol instance ID. This needs to be unique, to prevent replay attacks.
     // TODO: Add this to every `WireVote`?
-    instance_id: C::InstanceId,
+    pub(crate) instance_id: C::InstanceId,
     /// The validator IDs and weight map.
-    validators: Validators<C::ValidatorId>,
+    pub(crate) validators: Validators<C::ValidatorId>,
 }
 
 /// A passive instance of the Highway protocol, containing its local state.
@@ -97,6 +97,32 @@ pub(crate) struct Highway<C: Context> {
 }
 
 impl<C: Context> Highway<C> {
+    /// Creates a new Highway instance
+    pub(crate) fn new(
+        params: HighwayParams<C>,
+        seed: u64,
+        our_id: C::ValidatorId,
+        secret: C::ValidatorSecret,
+        round_exp: u8,
+        timestamp: u64,
+    ) -> (Self, Vec<Effect<C>>) {
+        let our_index = params.validators.get_index(&our_id);
+        let weights = params
+            .validators
+            .enumerate()
+            .map(|(_, val)| val.weight())
+            .collect::<Vec<_>>();
+        let state = State::new(&weights, seed);
+        let (av, effects) = ActiveValidator::new(our_index, secret, round_exp, timestamp, &state);
+        let instance = Self {
+            params,
+            state,
+            // TODO: Make it possible to create an instance without an active validator
+            active_validator: Some(av),
+        };
+        (instance, effects)
+    }
+
     /// Does initial validation. Returns an error if the vertex is invalid.
     pub(crate) fn pre_validate_vertex(
         &self,
@@ -253,7 +279,10 @@ impl<C: Context> Highway<C> {
 
     /// Returns validator ID of the `swvote` creator.
     fn validator_pk(&self, swvote: &SignedWireVote<C>) -> &C::ValidatorId {
-        self.params.validators.get_by_id(swvote.wire_vote.creator)
+        self.params
+            .validators
+            .get_by_id(swvote.wire_vote.creator)
+            .id()
     }
 }
 

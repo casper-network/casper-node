@@ -5,7 +5,10 @@
 mod config;
 mod error;
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    time::SystemTime,
+};
 
 use derive_more::From;
 use rand::SeedableRng;
@@ -172,11 +175,13 @@ impl Reactor {
 
         let (pinger, pinger_effects) = Pinger::new(effect_builder);
         let api_server = ApiServer::new(config.http_server, effect_builder);
-        let consensus = EraSupervisor::new();
+        let timestamp = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
+        let (consensus, consensus_effects) = EraSupervisor::new(timestamp, effect_builder);
         let deploy_gossiper = DeployGossiper::new(config.gossip);
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
         effects.extend(reactor::wrap_effects(Event::Pinger, pinger_effects));
+        effects.extend(reactor::wrap_effects(Event::Consensus, consensus_effects));
 
         Ok((
             Reactor {
