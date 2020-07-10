@@ -1,3 +1,4 @@
+use crate::types::Timestamp;
 use anyhow::anyhow;
 use rand::Rng;
 use std::cmp::Ordering;
@@ -43,8 +44,6 @@ impl<M: Clone + Debug> TargetedMessage<M> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
 pub(crate) struct ValidatorId(pub(crate) u64);
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
-pub(crate) struct Instant(pub(crate) u64);
 
 /// A validator in the test network.
 pub(crate) struct Validator<C, M, D>
@@ -149,7 +148,7 @@ where
     /// When a message has dependencies that recipient validator is missing,
     /// those will be added to it in a loop (simulating synchronization)
     /// and not influence the delivery time.
-    pub(crate) delivery_time: Instant,
+    pub(crate) delivery_time: Timestamp,
     /// Recipient of the message.
     pub(crate) recipient: ValidatorId,
     /// The message.
@@ -160,7 +159,11 @@ impl<M> QueueEntry<M>
 where
     M: MessageT,
 {
-    pub(crate) fn new(delivery_time: Instant, recipient: ValidatorId, message: Message<M>) -> Self {
+    pub(crate) fn new(
+        delivery_time: Timestamp,
+        recipient: ValidatorId,
+        message: Message<M>,
+    ) -> Self {
         QueueEntry {
             delivery_time,
             recipient,
@@ -193,7 +196,7 @@ where
 
 #[cfg(test)]
 mod queue_entry_tests {
-    use super::{Instant, Message, QueueEntry, ValidatorId};
+    use super::{Message, QueueEntry, Timestamp, ValidatorId};
     use std::cmp::Ordering;
 
     #[test]
@@ -202,10 +205,10 @@ mod queue_entry_tests {
         let recipient1 = ValidatorId(1);
         let recipient2 = ValidatorId(3);
         let message = Message::new(sender, 1u8);
-        let m1 = QueueEntry::new(Instant(1), recipient1, message.clone());
-        let m2 = QueueEntry::new(Instant(2), recipient1, message.clone());
+        let m1 = QueueEntry::new(1.into(), recipient1, message.clone());
+        let m2 = QueueEntry::new(2.into(), recipient1, message.clone());
         assert_eq!(m1.cmp(&m2), Ordering::Greater);
-        let m3 = QueueEntry::new(Instant(1), recipient2, message.clone());
+        let m3 = QueueEntry::new(1.into(), recipient2, message.clone());
         assert_eq!(m1.cmp(&m3), Ordering::Less);
     }
 }
@@ -243,7 +246,8 @@ where
 
 #[cfg(test)]
 mod queue_tests {
-    use super::{Instant, Message, Queue, QueueEntry, ValidatorId};
+    use super::{Message, Queue, QueueEntry, ValidatorId};
+    use crate::types::Timestamp;
 
     #[test]
     fn pop_earliest_delivery() {
@@ -254,9 +258,9 @@ mod queue_tests {
         let message_a = Message::new(sender, 1u8);
         let message_b = Message::new(sender, 2u8);
 
-        let first = QueueEntry::new(Instant(1), recipient_a, message_b);
-        let second = QueueEntry::new(Instant(1), recipient_a, message_a.clone());
-        let third = QueueEntry::new(Instant(3), recipient_b, message_a);
+        let first = QueueEntry::new(1.into(), recipient_a, message_b);
+        let second = QueueEntry::new(1.into(), recipient_a, message_a.clone());
+        let third = QueueEntry::new(3.into(), recipient_b, message_a);
 
         queue.push(first.clone());
         queue.push(third.clone());
@@ -279,23 +283,29 @@ pub(crate) trait Strategy<Item> {
 }
 
 pub(crate) enum DeliverySchedule {
-    AtInstant(Instant),
+    AtInstant(Timestamp),
     Drop,
 }
 
 impl DeliverySchedule {
-    fn at(instant: Instant) -> DeliverySchedule {
+    fn at(instant: Timestamp) -> DeliverySchedule {
         DeliverySchedule::AtInstant(instant)
     }
 
-    fn drop(_instant: Instant) -> DeliverySchedule {
+    fn drop(_instant: Timestamp) -> DeliverySchedule {
         DeliverySchedule::Drop
     }
 }
 
-impl From<Instant> for DeliverySchedule {
-    fn from(instant: Instant) -> Self {
-        DeliverySchedule::at(instant)
+impl From<u64> for DeliverySchedule {
+    fn from(instant: u64) -> Self {
+        DeliverySchedule::at(instant.into())
+    }
+}
+
+impl From<Timestamp> for DeliverySchedule {
+    fn from(timestamp: Timestamp) -> Self {
+        DeliverySchedule::at(timestamp)
     }
 }
 
@@ -337,7 +347,7 @@ where
     pub(crate) fn dispatch_messages<R: Rng>(
         &mut self,
         rand: &mut R,
-        delivery_time: Instant,
+        delivery_time: Timestamp,
         messages: Vec<TargetedMessage<M>>,
     ) {
         for TargetedMessage { message, target } in messages {
@@ -384,7 +394,7 @@ where
         rand: &mut R,
         recipients: I,
         message: Message<M>,
-        base_delivery_time: Instant,
+        base_delivery_time: Timestamp,
     ) {
         for validator_id in recipients {
             let tampered_delivery_time = self
@@ -404,7 +414,7 @@ where
     /// Schedules a message `message` to be delivered at `delivery_time` to `recipient` validator.
     fn schedule_message(
         &mut self,
-        delivery_time: Instant,
+        delivery_time: Timestamp,
         recipient: ValidatorId,
         message: Message<M>,
     ) {
@@ -416,7 +426,7 @@ where
 mod virtual_net_tests {
 
     use super::{
-        DeliverySchedule, Instant, Message, Strategy, Target, TargetedMessage, Validator,
+        DeliverySchedule, Message, Strategy, Target, TargetedMessage, Timestamp, Validator,
         ValidatorId, VirtualNet,
     };
     use rand_core::SeedableRng;
@@ -445,8 +455,8 @@ mod virtual_net_tests {
 
         let messages_num = 10;
         // We want to enqueue messages from the latest delivery time to the earliest.
-        let messages: Vec<(Instant, Message<u64>)> = (0..messages_num)
-            .map(|i| (Instant(messages_num - i), Message::new(validator_id, i)))
+        let messages: Vec<(Timestamp, Message<u64>)> = (0..messages_num)
+            .map(|i| ((messages_num - i).into(), Message::new(validator_id, i)))
             .collect();
 
         messages.clone().into_iter().for_each(|(instant, message)| {
@@ -481,7 +491,7 @@ mod virtual_net_tests {
         let message = Message::new(validator_id, 1u64);
         let targeted_message = TargetedMessage::new(message.clone(), Target::All);
 
-        virtual_net.dispatch_messages(&mut rand, Instant(2), vec![targeted_message]);
+        virtual_net.dispatch_messages(&mut rand, 2.into(), vec![targeted_message]);
 
         let queued_msgs =
             std::iter::successors(virtual_net.pop_message(), |_| virtual_net.pop_message())

@@ -9,8 +9,8 @@ use super::{
 use crate::{
     components::consensus::{
         consensus_des_testing::{
-            DeliverySchedule, Instant, Message, MessageT, QueueEntry, Strategy, Target,
-            TargetedMessage, ValidatorId, VirtualNet,
+            DeliverySchedule, Message, MessageT, QueueEntry, Strategy, Target, TargetedMessage,
+            ValidatorId, VirtualNet,
         },
         traits::Context,
         BlockContext,
@@ -31,7 +31,7 @@ impl<C: Context> HighwayConsensus<C> {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum HighwayMessage<C: Context> {
-    Timer(Instant),
+    Timer(Timestamp),
     NewVertex(Vertex<C>),
     RequestBlock(BlockContext),
 }
@@ -56,7 +56,7 @@ impl<C: Context> From<Effect<C>> for HighwayMessage<C> {
     fn from(eff: Effect<C>) -> Self {
         match eff {
             Effect::NewVertex(v) => NewVertex(v),
-            Effect::ScheduleTimer(t) => Timer(Instant(t.millis())),
+            Effect::ScheduleTimer(t) => Timer(t),
             Effect::RequestNewBlock(block_context) => RequestBlock(block_context),
         }
     }
@@ -244,10 +244,10 @@ where
             let recipient_id = recipient.id;
             let hwm = message.payload().clone();
             match hwm {
-                Timer(instant) => recipient
+                Timer(timestamp) => recipient
                     .consensus
                     .highway
-                    .handle_timer(Timestamp::zero() + instant.0.into())
+                    .handle_timer(timestamp)
                     .into_iter()
                     .map(HighwayMessage::from)
                     .collect(),
@@ -404,7 +404,7 @@ where
 }
 
 mod test_harness {
-    use super::{DeliverySchedule, Instant, Strategy};
+    use super::{DeliverySchedule, Strategy};
 
     struct SmallDelay();
 
@@ -413,7 +413,7 @@ mod test_harness {
             match i {
                 DeliverySchedule::Drop => DeliverySchedule::Drop,
                 DeliverySchedule::AtInstant(instant) => {
-                    DeliverySchedule::AtInstant(Instant(instant.0 + 1))
+                    DeliverySchedule::AtInstant(instant + 1.into())
                 }
             }
         }
