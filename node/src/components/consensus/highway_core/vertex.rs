@@ -3,7 +3,10 @@ use std::iter;
 use serde::{Deserialize, Serialize};
 
 use super::{evidence::Evidence, validators::ValidatorIndex, vote::Panorama};
-use crate::components::consensus::traits::{Context, ValidatorSecret};
+use crate::{
+    components::consensus::traits::{Context, ValidatorSecret},
+    types::Timestamp,
+};
 
 /// A dependency of a `Vertex` that can be satisfied by one or more other vertices.
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -86,7 +89,7 @@ pub(crate) struct WireVote<C: Context> {
     pub(crate) creator: ValidatorIndex,
     pub(crate) value: Option<C::ConsensusValue>,
     pub(crate) seq_number: u64,
-    pub(crate) timestamp: u64,
+    pub(crate) timestamp: Timestamp,
 }
 
 impl<C: Context> WireVote<C> {

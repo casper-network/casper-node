@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::Component,
     effect::{requests::NetworkRequest, Effect, EffectBuilder, Multiple},
-    types::{ExecutedBlock, ProtoBlock},
+    types::{ExecutedBlock, ProtoBlock, Timestamp},
 };
 
 pub(crate) use consensus_protocol::BlockContext;
@@ -41,7 +41,7 @@ pub enum Event<I> {
     /// An incoming network message.
     MessageReceived { sender: I, msg: ConsensusMessage },
     /// A scheduled event to be handled by a specified era
-    Timer { era_id: EraId, instant: u64 },
+    Timer { era_id: EraId, timestamp: Timestamp },
     /// We are receiving the data we require to propose a new block
     NewProtoBlock {
         era_id: EraId,
@@ -76,10 +76,10 @@ impl<I: Debug> Display for Event<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::MessageReceived { sender, msg } => write!(f, "msg from {:?}: {}", sender, msg),
-            Event::Timer { era_id, instant } => write!(
+            Event::Timer { era_id, timestamp } => write!(
                 f,
-                "timer for era {:?} scheduled for instant {}",
-                era_id, instant
+                "timer for era {:?} scheduled for timestamp {}",
+                era_id, timestamp
             ),
             Event::NewProtoBlock {
                 era_id,
