@@ -111,8 +111,12 @@ enum CrankOk {
 enum TestRunError<C: Context> {
     /// VirtualNet was missing a validator when it was expected to exist.
     MissingValidator(ValidatorId),
+    /// Sender sent a vertex for which it didn't have all dependencies.
     SenderMissingDependency(ValidatorId, Dependency<C>),
+    /// No more messages in the message queue.
     NoMessages,
+    /// Validator run out of consensus values to propose before the end of a test.
+    NoConsensusValues(ValidatorId),
 }
 
 impl<C: Context> Display for TestRunError<C> {
@@ -129,6 +133,9 @@ impl<C: Context> Display for TestRunError<C> {
             ),
             TestRunError::MissingValidator(id) => {
                 write!(f, "Virtual net is missing validator {:?}.", id)
+            }
+            TestRunError::NoConsensusValues(id) => {
+                write!(f, "{:?} has no consensus values to propose.", id)
             }
         }
     }
@@ -254,7 +261,10 @@ where
                     }
                 }
                 RequestBlock(block_context) => {
-                    let consensus_value = recipient.next_consensus_value().unwrap();
+                    let consensus_value = recipient
+                        .next_consensus_value()
+                        .ok_or_else(|| TestRunError::NoConsensusValues(recipient_id))?;
+
                     recipient
                         .consensus
                         .highway
@@ -367,7 +377,7 @@ where
         let senders_state = self
             .virtual_net
             .get_validator_mut(&sender)
-            .unwrap()
+            .ok_or_else(|| TestRunError::MissingValidator(sender))?
             .consensus
             .highway
             .state();
