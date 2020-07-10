@@ -39,9 +39,7 @@ entropy_duration_millis = 10800000
 # Keep voting on the switch block for a fixed amount of time; effective if the summit level is zero.
 # 172800000 ms = 2 days.
 voting_period_duration_millis = 172800000
-# Alternative voting duration based on the finality level of the switch block; effective if it's non-zero.
-voting_period_summit_level = 0
-# Integer between 0 and 50 representing the fault tolerance threshold as a percentage, used by the internal finalizer.
+# Integer between 0 and 99 representing the fault tolerance threshold as a percentage, used by the internal finalizer.
 finality_threshold_percent = 10
 
 [deploys]

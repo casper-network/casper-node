@@ -13,7 +13,6 @@ era_duration_millis = 3
 booking_duration_millis = 4
 entropy_duration_millis = 5
 voting_period_duration_millis = 6
-voting_period_summit_level = 7
 finality_threshold_percent = 8
 
 [deploys]

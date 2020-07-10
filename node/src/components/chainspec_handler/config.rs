@@ -109,7 +109,6 @@ struct HighwayConfig {
     booking_duration_millis: u64,
     entropy_duration_millis: u64,
     voting_period_duration_millis: u64,
-    voting_period_summit_level: u8,
     finality_threshold_percent: u8,
 }
 
@@ -121,7 +120,6 @@ impl Default for HighwayConfig {
             booking_duration_millis: 864_000_000,       // 10 days
             entropy_duration_millis: 10_800_000,        // 3 hours
             voting_period_duration_millis: 172_800_000, // 2 days
-            voting_period_summit_level: 0,
             finality_threshold_percent: 10,
         }
     }
@@ -216,7 +214,6 @@ impl From<&chainspec::Chainspec> for Chainspec {
                 .highway_config
                 .voting_period_duration
                 .as_millis() as u64,
-            voting_period_summit_level: chainspec.genesis.highway_config.voting_period_summit_level,
             finality_threshold_percent: chainspec.genesis.highway_config.finality_threshold_percent,
         };
 
@@ -280,7 +277,6 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         voting_period_duration: Duration::from_millis(
             chainspec.highway.voting_period_duration_millis,
         ),
-        voting_period_summit_level: chainspec.highway.voting_period_summit_level,
         finality_threshold_percent: chainspec.highway.finality_threshold_percent,
     };
 
