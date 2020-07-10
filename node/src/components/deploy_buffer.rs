@@ -10,7 +10,7 @@ use std::{
 
 use crate::{
     components::Component,
-    effect::{requests::DeployQueueRequest, EffectExt},
+    effect::{requests::DeployQueueRequest, EffectBuilder, EffectExt, Effects},
     types::{BlockHash, DeployHash, DeployHeader},
 };
 
@@ -156,10 +156,10 @@ impl<REv> Component<REv> for DeployBuffer {
 
     fn handle_event<R: rand::Rng + ?Sized>(
         &mut self,
-        effect_builder: crate::effect::EffectBuilder<REv>,
+        effect_builder: EffectBuilder<REv>,
         rng: &mut R,
         event: Self::Event,
-    ) -> crate::effect::Multiple<crate::effect::Effect<Self::Event>> {
+    ) -> Effects<Self::Event> {
         match event {
             Event::QueueRequest(DeployQueueRequest::QueueDeploy {
                 hash,

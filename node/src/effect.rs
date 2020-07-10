@@ -91,13 +91,16 @@ use requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest};
 /// A pinned, boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
 
-/// Intended to hold a small collection of [`Effect`](type.Effect.html)s.
+/// Multiple effects in a container.
+pub type Effects<Ev> = Multiple<Effect<Ev>>;
+
+/// A small collection of rarely more than two items.
 ///
 /// Stored in a `SmallVec` to avoid allocations in case there are less than three items grouped. The
 /// size of two items is chosen because one item is the most common use case, and large items are
 /// typically boxed. In the latter case two pointers and one enum variant discriminator is almost
 /// the same size as an empty vec, which is two pointers.
-pub type Multiple<T> = SmallVec<[T; 2]>;
+type Multiple<T> = SmallVec<[T; 2]>;
 
 /// A responder satisfying a request.
 pub struct Responder<T>(oneshot::Sender<T>);
@@ -134,14 +137,14 @@ pub trait EffectExt: Future + Send {
     /// Finalizes a future into an effect that returns an event.
     ///
     /// The function `f` is used to translate the returned value from an effect into an event.
-    fn event<U, F>(self, f: F) -> Multiple<Effect<U>>
+    fn event<U, F>(self, f: F) -> Effects<U>
     where
         F: FnOnce(Self::Output) -> U + 'static + Send,
         U: 'static,
         Self: Sized;
 
     /// Finalizes a future into an effect that runs but drops the result.
-    fn ignore<Ev>(self) -> Multiple<Effect<Ev>>;
+    fn ignore<Ev>(self) -> Effects<Ev>;
 }
 
 /// Effect extension for futures, used to convert futures returning a `Result` into two different
@@ -156,7 +159,7 @@ pub trait EffectResultExt {
     ///
     /// The function `f_ok` is used to translate the returned value from an effect into an event,
     /// while the function `f_err` does the same for a potential error.
-    fn result<U, F, G>(self, f_ok: F, f_err: G) -> Multiple<Effect<U>>
+    fn result<U, F, G>(self, f_ok: F, f_err: G) -> Effects<U>
     where
         F: FnOnce(Self::Value) -> U + 'static + Send,
         G: FnOnce(Self::Error) -> U + 'static + Send,
@@ -173,7 +176,7 @@ pub trait EffectOptionExt {
     ///
     /// The function `f_some` is used to translate the returned value from an effect into an event,
     /// while the function `f_none` does the same for a returned `None`.
-    fn option<U, F, G>(self, f_some: F, f_none: G) -> Multiple<Effect<U>>
+    fn option<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
     where
         F: FnOnce(Self::Value) -> U + 'static + Send,
         G: FnOnce() -> U + 'static + Send,
@@ -184,7 +187,7 @@ impl<T: ?Sized> EffectExt for T
 where
     T: Future + Send + 'static + Sized,
 {
-    fn event<U, F>(self, f: F) -> Multiple<Effect<U>>
+    fn event<U, F>(self, f: F) -> Effects<U>
     where
         F: FnOnce(Self::Output) -> U + 'static + Send,
         U: 'static,
@@ -192,7 +195,7 @@ where
         smallvec![self.map(f).map(|item| smallvec![item]).boxed()]
     }
 
-    fn ignore<Ev>(self) -> Multiple<Effect<Ev>> {
+    fn ignore<Ev>(self) -> Effects<Ev> {
         smallvec![self.map(|_| Multiple::new()).boxed()]
     }
 }
@@ -205,7 +208,7 @@ where
     type Value = V;
     type Error = E;
 
-    fn result<U, F, G>(self, f_ok: F, f_err: G) -> Multiple<Effect<U>>
+    fn result<U, F, G>(self, f_ok: F, f_err: G) -> Effects<U>
     where
         F: FnOnce(V) -> U + 'static + Send,
         G: FnOnce(E) -> U + 'static + Send,
@@ -225,7 +228,7 @@ where
 {
     type Value = V;
 
-    fn option<U, F, G>(self, f_some: F, f_none: G) -> Multiple<Effect<U>>
+    fn option<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
     where
         F: FnOnce(V) -> U + 'static + Send,
         G: FnOnce() -> U + 'static + Send,

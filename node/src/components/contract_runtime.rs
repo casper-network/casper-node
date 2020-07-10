@@ -26,7 +26,7 @@ use crate::{
         },
         Component,
     },
-    effect::{requests::ContractRuntimeRequest, Effect, EffectBuilder, EffectExt, Multiple},
+    effect::{requests::ContractRuntimeRequest, EffectBuilder, EffectExt, Effects},
     StorageConfig,
 };
 
@@ -71,7 +71,7 @@ where
         _effect_builder: EffectBuilder<REv>,
         _rng: &mut R,
         event: Self::Event,
-    ) -> Multiple<Effect<Self::Event>> {
+    ) -> Effects<Self::Event> {
         match event {
             Event::Request(request) => match request {
                 ContractRuntimeRequest::CommitGenesis {

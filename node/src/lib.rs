@@ -20,9 +20,6 @@
     trivial_numeric_casts,
     unused_qualifications
 )]
-// Clippy is a little too trigger happy with these types, resulting in a lot of unnecessary
-// "boilerplate" type aliases being written.
-#![allow(clippy::type_complexity)]
 
 pub mod components;
 pub mod crypto;

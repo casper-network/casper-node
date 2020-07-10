@@ -37,7 +37,7 @@ use futures::{future::BoxFuture, FutureExt};
 use tracing::{debug, info, trace, warn, Span};
 
 use crate::{
-    effect::{Effect, EffectBuilder, Multiple},
+    effect::{Effect, EffectBuilder, Effects},
     utils::{self, WeightedRoundRobin},
 };
 pub use queue_kind::QueueKind;
@@ -108,7 +108,7 @@ pub trait Reactor: Sized {
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
         event: Self::Event,
-    ) -> Multiple<Effect<Self::Event>>;
+    ) -> Effects<Self::Event>;
 
     /// Creates a new instance of the reactor.
     ///
@@ -124,7 +124,7 @@ pub trait Reactor: Sized {
         cfg: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
         span: &Span,
-    ) -> Result<(Self, Multiple<Effect<Self::Event>>), Self::Error>;
+    ) -> Result<(Self, Effects<Self::Event>), Self::Error>;
 
     /// Indicates that the reactor has completed all its work and the runner can exit.
     #[inline]
@@ -154,7 +154,7 @@ pub trait ReactorExt<R: Reactor>: Reactor {
         event_queue: EventQueueHandle<Self::Event>,
         span: &Span,
         reactor: R,
-    ) -> Result<(Self, Multiple<Effect<Self::Event>>), Self::Error>;
+    ) -> Result<(Self, Effects<Self::Event>), Self::Error>;
 }
 
 /// A runner for a reactor.
@@ -325,7 +325,7 @@ where
 
 /// Spawns tasks that will process the given effects.
 #[inline]
-async fn process_effects<Ev>(scheduler: &'static Scheduler<Ev>, effects: Multiple<Effect<Ev>>)
+async fn process_effects<Ev>(scheduler: &'static Scheduler<Ev>, effects: Effects<Ev>)
 where
     Ev: Send + 'static,
 {
@@ -351,7 +351,7 @@ where
 {
     // TODO: The double-boxing here is very unfortunate =(.
     (async move {
-        let events: Multiple<Ev> = effect.await;
+        let events = effect.await;
         events.into_iter().map(wrap).collect()
     })
     .boxed()
@@ -359,7 +359,7 @@ where
 
 /// Converts multiple effects into another by wrapping.
 #[inline]
-pub fn wrap_effects<Ev, REv, F>(wrap: F, effects: Multiple<Effect<Ev>>) -> Multiple<Effect<REv>>
+pub fn wrap_effects<Ev, REv, F>(wrap: F, effects: Effects<Ev>) -> Effects<REv>
 where
     F: Fn(Ev) -> REv + Send + 'static + Clone,
     Ev: Send + 'static,

@@ -20,7 +20,7 @@ use crate::{
     },
     effect::{
         requests::{ContractRuntimeRequest, StorageRequest},
-        Effect, EffectBuilder, Multiple,
+        EffectBuilder, Effects,
     },
     reactor::{self, validator, EventQueueHandle},
 };
@@ -104,7 +104,7 @@ impl reactor::Reactor for Reactor {
         (chainspec_config_path, config): Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
         _span: &Span,
-    ) -> Result<(Self, Multiple<Effect<Self::Event>>), Error> {
+    ) -> Result<(Self, Effects<Self::Event>), Error> {
         let effect_builder = EffectBuilder::new(event_queue);
 
         let storage = Storage::new(&config.storage)?;
@@ -132,7 +132,7 @@ impl reactor::Reactor for Reactor {
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
         event: Event,
-    ) -> Multiple<Effect<Self::Event>> {
+    ) -> Effects<Self::Event> {
         match event {
             Event::Chainspec(event) => reactor::wrap_effects(
                 Event::Chainspec,

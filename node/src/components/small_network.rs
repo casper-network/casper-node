@@ -84,8 +84,8 @@ use self::{endpoint::EndpointUpdate, error::Result};
 use crate::{
     components::Component,
     effect::{
-        announcements::NetworkAnnouncement, requests::NetworkRequest, Effect, EffectBuilder,
-        EffectExt, EffectResultExt, Multiple,
+        announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, EffectExt,
+        EffectResultExt, Effects,
     },
     reactor::{EventQueueHandle, Finalize, QueueKind},
     tls::{self, KeyFingerprint, Signed, TlsCert},
@@ -132,10 +132,11 @@ where
     P: Serialize + DeserializeOwned + Clone + Debug + Send + 'static,
     REv: Send + From<Event<P>>,
 {
+    #[allow(clippy::type_complexity)]
     pub(crate) fn new(
         event_queue: EventQueueHandle<REv>,
         cfg: Config,
-    ) -> Result<(SmallNetwork<REv, P>, Multiple<Effect<Event<P>>>)> {
+    ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         let span = tracing::debug_span!("net");
         let _enter = span.enter();
 
@@ -194,7 +195,7 @@ where
         };
 
         // Connect to the root node if we are not the root node.
-        let mut effects: Multiple<_> = Default::default();
+        let mut effects: Effects<_> = Effects::new();
         if !we_are_root {
             effects.extend(model.connect_to_root());
         } else {
@@ -205,7 +206,7 @@ where
     }
 
     /// Attempts to connect to the root node.
-    fn connect_to_root(&self) -> Multiple<Effect<Event<P>>> {
+    fn connect_to_root(&self) -> Effects<Event<P>> {
         connect_trusted(
             self.cfg.root_addr,
             self.cert.clone(),
@@ -327,10 +328,7 @@ where
 
     /// Updates internal endpoint store and if new, output a `BroadcastEndpoint` effect.
     #[inline]
-    fn update_and_broadcast_if_new(
-        &mut self,
-        signed: Signed<Endpoint>,
-    ) -> Multiple<Effect<Event<P>>> {
+    fn update_and_broadcast_if_new(&mut self, signed: Signed<Endpoint>) -> Effects<Event<P>> {
         let change = self.update_endpoint(signed);
         debug!(%change, "endpoint change");
 
@@ -357,7 +355,7 @@ where
                         // will cause the sender task to exit and trigger a reconnect, so no action
                         // must be taken at this point.
 
-                        Multiple::new()
+                        Effects::new()
                     }
                 };
 
@@ -376,25 +374,21 @@ where
                     self.signed_endpoints[&node_id].clone(),
                 ));
 
-                Multiple::new()
+                Effects::new()
             }
             EndpointUpdate::Unchanged => {
                 // Nothing to do.
-                Multiple::new()
+                Effects::new()
             }
             EndpointUpdate::InvalidSignature { signed, err } => {
                 warn!(%err, ?signed, "received invalid endpoint");
-                Multiple::new()
+                Effects::new()
             }
         }
     }
 
     /// Sets up an established outgoing connection.
-    fn setup_outgoing(
-        &mut self,
-        node_id: NodeId,
-        transport: Transport,
-    ) -> Multiple<Effect<Event<P>>> {
+    fn setup_outgoing(&mut self, node_id: NodeId, transport: Transport) -> Effects<Event<P>> {
         // This connection is send-only, we only use the sink.
         let (sink, _stream) = framed::<P>(transport).split();
 
@@ -424,7 +418,7 @@ where
         effect_builder: EffectBuilder<REv>,
         node_id: NodeId,
         msg: Message<P>,
-    ) -> Multiple<Effect<Event<P>>>
+    ) -> Effects<Event<P>>
     where
         REv: From<NetworkAnnouncement<NodeId, P>>,
     {
@@ -495,7 +489,7 @@ where
         effect_builder: EffectBuilder<REv>,
         rng: &mut R,
         event: Self::Event,
-    ) -> Multiple<Effect<Self::Event>> {
+    ) -> Effects<Self::Event> {
         match event {
             Event::RootConnected { cert, transport } => {
                 // Create a pseudo-endpoint for the root node with the lowest priority (time 0)
@@ -538,7 +532,7 @@ where
                     }
                     Err(err) => {
                         warn!(%addr, %err, "TLS handshake failed");
-                        Multiple::new()
+                        Effects::new()
                     }
                 }
             }
@@ -550,7 +544,7 @@ where
                     Ok(()) => info!(%addr, "connection closed"),
                     Err(err) => warn!(%addr, %err, "connection dropped"),
                 }
-                Multiple::new()
+                Effects::new()
             }
             Event::OutgoingEstablished { node_id, transport } => {
                 self.setup_outgoing(node_id, transport)
@@ -576,7 +570,7 @@ where
                         self.outgoing.remove(&node_id);
 
                         warn!(%attempt_count, %node_id, "gave up on outgoing connection");
-                        return Multiple::new();
+                        return Effects::new();
                     }
                 }
 
@@ -598,7 +592,7 @@ where
                         )
                 } else {
                     error!("endpoint disappeared");
-                    Multiple::new()
+                    Effects::new()
                 }
             }
             Event::NetworkRequest {

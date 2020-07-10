@@ -26,7 +26,7 @@ use crate::{
         ConsensusMessage, Event,
     },
     crypto::{asymmetric_key::generate_ed25519_keypair, hash::hash},
-    effect::{requests::NetworkRequest, Effect, EffectBuilder, EffectExt, Multiple},
+    effect::{requests::NetworkRequest, EffectBuilder, EffectExt, Effects},
     types::{ProtoBlock, Timestamp},
 };
 
@@ -86,7 +86,7 @@ where
     pub(crate) fn new<REv>(
         timestamp: Timestamp,
         effect_builder: EffectBuilder<REv>,
-    ) -> (Self, Multiple<Effect<Event<I>>>)
+    ) -> (Self, Effects<Event<I>>)
     where
         REv: From<Event<I>> + Send + From<NetworkRequest<I, ConsensusMessage>>,
     {
@@ -121,7 +121,7 @@ where
         era_id: EraId,
         effect_builder: EffectBuilder<REv>,
         consensus_result: ConsensusProtocolResult<I, ProtoBlock>,
-    ) -> Multiple<Effect<Event<I>>>
+    ) -> Effects<Event<I>>
     where
         REv: From<Event<I>> + Send + From<NetworkRequest<I, ConsensusMessage>>,
     {
@@ -189,7 +189,7 @@ where
         era_id: EraId,
         effect_builder: EffectBuilder<REv>,
         f: F,
-    ) -> Multiple<Effect<Event<I>>>
+    ) -> Effects<Event<I>>
     where
         REv: From<Event<I>> + Send + From<NetworkRequest<I, ConsensusMessage>>,
         F: FnOnce(
@@ -207,7 +207,7 @@ where
                     .collect(),
                 Err(error) => {
                     error!(%error, ?era_id, "got error from era id {:?}: {:?}", era_id, error);
-                    Default::default()
+                    Effects::new()
                 }
             },
         }

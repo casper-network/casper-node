@@ -25,7 +25,7 @@
 //! #
 //! # use casperlabs_node::{components::{Component,
 //! #                       in_memory_network::{InMemoryNetwork, NetworkController, NodeId}},
-//! #                       effect::{Effect, EffectBuilder, EffectExt, Multiple,
+//! #                       effect::{EffectBuilder, EffectExt, Effects,
 //! #                       announcements::NetworkAnnouncement, requests::NetworkRequest},
 //! #                       reactor::{self, EventQueueHandle, wrap_effects},
 //! #                       testing::network::{Network, NetworkedReactor}};
@@ -79,7 +79,7 @@
 //! impl Shouter {
 //!     /// Creates a new shouter.
 //!     fn new<REv: Send, I: 'static, P: 'static>(effect_builder: EffectBuilder<REv>)
-//!             -> (Self, Multiple<Effect<ShouterEvent<I, P>>>) {
+//!             -> (Self, Effects<ShouterEvent<I, P>>) {
 //!         (Shouter {
 //!             whispers: Vec::new(),
 //!             shouts: Vec::new(),
@@ -98,12 +98,12 @@
 //!                                      effect_builder: EffectBuilder<REv>,
 //!                                      _rng: &mut R,
 //!                                      event: Self::Event
-//!     ) -> Multiple<Effect<Self::Event>> {
+//!     ) -> Effects<Self::Event> {
 //!         match event {
 //!             ShouterEvent::Net(NetworkAnnouncement::MessageReceived { sender, payload }) => {
 //!                 // Record the message we received.
 //!                 self.received.push((sender, payload));
-//!                 Default::default()
+//!                 Effects::new()
 //!             }
 //!             ShouterEvent::ReadyToSend => {
 //!                 // If we need to whisper something, do so.
@@ -118,7 +118,7 @@
 //!                     return effect_builder.broadcast_message(msg)
 //!                         .event(|_| ShouterEvent::ReadyToSend);
 //!                 }
-//!                 Default::default()
+//!                 Effects::new()
 //!             }
 //!         }
 //!     }
@@ -170,7 +170,7 @@
 //!     fn new(_cfg: Self::Config,
 //!            event_queue: EventQueueHandle<Self::Event>,
 //!            _span: &Span
-//!     ) -> Result<(Self, Multiple<Effect<Self::Event>>), ()> {
+//!     ) -> Result<(Self, Effects<Self::Event>), ()> {
 //!         let effect_builder = EffectBuilder::new(event_queue);
 //!         let (shouter, shouter_effect) = Shouter::new(effect_builder);
 //!
@@ -184,7 +184,7 @@
 //!     fn dispatch_event(&mut self,
 //!                       effect_builder: EffectBuilder<Event>,
 //!                       event: Event
-//!     ) -> Multiple<Effect<Event>> {
+//!     ) -> Effects<Event> {
 //!          let mut rng = rand::thread_rng(); // FIXME: RNGs should be passed in.
 //!          match event {
 //!              Event::Announcement(anc) => { wrap_effects(From::from,
@@ -282,8 +282,8 @@ use tracing::{debug, error, info, warn};
 use crate::{
     components::Component,
     effect::{
-        announcements::NetworkAnnouncement, requests::NetworkRequest, Effect, EffectBuilder,
-        EffectExt, Multiple,
+        announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, EffectExt,
+        Effects,
     },
     reactor::{EventQueueHandle, QueueKind},
 };
@@ -462,7 +462,7 @@ where
         _effect_builder: EffectBuilder<REv>,
         rng: &mut R,
         event: Self::Event,
-    ) -> Multiple<Effect<Self::Event>> {
+    ) -> Effects<Self::Event> {
         match event {
             NetworkRequest::SendMessage {
                 dest,
