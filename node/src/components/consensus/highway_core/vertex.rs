@@ -1,5 +1,3 @@
-use std::iter;
-
 use serde::{Deserialize, Serialize};
 
 use super::{evidence::Evidence, validators::ValidatorIndex, vote::Panorama};

@@ -176,11 +176,6 @@ impl<'a, C: Context> Tallies<'a, C> {
             .or_insert_with(|| Tally::new(bhash, weight));
     }
 
-    /// Returns the number tallies.
-    pub(crate) fn len(&self) -> usize {
-        self.0.len()
-    }
-
     /// Returns `true` if there are no tallies in this map.
     pub(crate) fn is_empty(&self) -> bool {
         self.0.is_empty()
@@ -193,6 +188,13 @@ mod tests {
         super::state::{tests::*, State},
         *,
     };
+
+    impl<'a> Tallies<'a, TestContext> {
+        /// Returns the number of tallies.
+        pub(crate) fn len(&self) -> usize {
+            self.0.len()
+        }
+    }
 
     #[test]
     fn tallies() -> Result<(), AddVoteError<TestContext>> {

@@ -1,9 +1,8 @@
 use super::{
     active_validator::{ActiveValidator, Effect},
-    evidence::Evidence,
-    state::{State, VoteError, Weight},
+    state::{State, VoteError},
     validators::Validators,
-    vertex::{Dependency, Vertex, WireVote},
+    vertex::{Dependency, Vertex},
 };
 use thiserror::Error;
 use tracing::warn;
@@ -66,12 +65,6 @@ impl<C: Context> From<PreValidatedVertex<C>> for Vertex<C> {
 /// or inconsistent state otherwise.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ValidVertex<C: Context>(Vertex<C>);
-
-impl<C: Context> ValidVertex<C> {
-    pub(crate) fn vertex(&self) -> &Vertex<C> {
-        &self.0
-    }
-}
 
 #[derive(Debug)]
 pub(crate) struct HighwayParams<C: Context> {
@@ -227,10 +220,6 @@ impl<C: Context> Highway<C> {
         }
     }
 
-    pub(crate) fn state(&self) -> &State<C> {
-        &self.state
-    }
-
     fn on_new_vote(&self, vhash: &C::Hash, timestamp: u64) -> Vec<Effect<C>> {
         self.active_validator
             .as_ref()
@@ -262,7 +251,7 @@ impl<C: Context> Highway<C> {
     fn do_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
             Vertex::Vote(vote) => Ok(self.state.validate_vote(vote)?),
-            Vertex::Evidence(evidence) => Ok(()),
+            Vertex::Evidence(_evidence) => Ok(()),
         }
     }
 
@@ -292,10 +281,9 @@ pub(crate) mod tests {
         highway_core::{
             highway::{Highway, HighwayParams, VertexError, VoteError},
             state::tests::{
-                AddVoteError, TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC,
-                WEIGHTS,
+                TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC, WEIGHTS,
             },
-            state::{State, Weight},
+            state::State,
             validators::Validators,
             vertex::{SignedWireVote, Vertex, WireVote},
             vote::Panorama,

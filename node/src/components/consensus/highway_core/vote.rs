@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use super::{state::State, validators::ValidatorIndex, vertex::WireVote};
+use super::{state::State, validators::ValidatorIndex};
 use crate::components::consensus::highway_core::vertex::SignedWireVote;
-use crate::components::consensus::traits::{Context, ValidatorSecret};
+use crate::components::consensus::traits::Context;
 
 /// The observed behavior of a validator at some point in time.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

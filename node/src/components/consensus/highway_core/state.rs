@@ -2,7 +2,6 @@ use std::{
     cmp::Ordering,
     collections::HashMap,
     convert::identity,
-    fmt::{self, Display, Formatter},
     iter,
     ops::{Div, Mul},
 };
