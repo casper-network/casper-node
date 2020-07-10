@@ -271,14 +271,12 @@ impl Display for DeployQueueRequest {
 /// transport.
 #[derive(Debug)]
 pub enum ApiRequest {
-    /// Submit a deploy for storing.
-    ///
-    /// Returns the deploy along with an error message if it could not be stored.
+    /// Submit a deploy to be announced.
     SubmitDeploy {
-        /// The deploy to be stored.
+        /// The deploy to be announced.
         deploy: Box<Deploy>,
-        /// Responder to call with the result.
-        responder: Responder<Result<(), (Deploy, storage::Error)>>,
+        /// Responder to call.
+        responder: Responder<()>,
     },
     /// Return the specified deploy if it exists, else `None`.
     GetDeploy {
@@ -324,26 +322,6 @@ impl Display for ContractRuntimeRequest {
                 "commit genesis {}",
                 chainspec.genesis.protocol_version
             ),
-        }
-    }
-}
-
-/// Requests for the deploy broadcaster.
-#[derive(Debug)]
-pub enum DeployGossiperRequest {
-    /// A new `Deploy` received from a client via the HTTP server component.
-    PutFromClient {
-        /// The received deploy.
-        deploy: Box<Deploy>,
-    },
-}
-
-impl Display for DeployGossiperRequest {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            DeployGossiperRequest::PutFromClient { deploy, .. } => {
-                write!(formatter, "put from client: {}", deploy.id())
-            }
         }
     }
 }

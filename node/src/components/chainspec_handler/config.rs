@@ -350,8 +350,7 @@ fn string_to_array(input: String) -> Result<[u8; ACCOUNT_HASH_LENGTH], Error> {
 mod tests {
     use std::path::PathBuf;
 
-    use super::chainspec::rewrite_with_absolute_paths;
-    use super::*;
+    use super::{chainspec::rewrite_with_absolute_paths, *};
 
     const PRODUCTION_DIR: &str = "resources/production";
     const EXAMPLE_DIR: &str = "resources/example";
