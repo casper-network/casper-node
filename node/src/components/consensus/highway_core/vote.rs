@@ -1,11 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use super::{state::State, validators::ValidatorIndex, vertex::WireVote};
+use super::{state::State, validators::ValidatorIndex};
 use crate::{
-    components::consensus::{
-        highway_core::vertex::SignedWireVote,
-        traits::{Context, ValidatorSecret},
-    },
+    components::consensus::{highway_core::vertex::SignedWireVote, traits::Context},
     types::Timestamp,
 };
 

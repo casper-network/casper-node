@@ -56,10 +56,6 @@ impl<VID: Eq + Hash> Validators<VID> {
         self.validators.iter().map(|v| v.weight()).sum()
     }
 
-    pub(crate) fn len(&self) -> usize {
-        self.validators.len()
-    }
-
     pub(crate) fn get_index(&self, id: &VID) -> ValidatorIndex {
         *self.index_by_id.get(id).unwrap()
     }
