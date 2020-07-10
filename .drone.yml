@@ -47,7 +47,7 @@ steps:
   <<: *buildenv
   commands:
   - rustup component add rustfmt
-  - cargo fmt -- --check
+  - cargo fmt --all -- --check
 
 - name: cargo-clippy
   <<: *buildenv
@@ -57,10 +57,17 @@ steps:
   - rustup component add clippy
   - cargo clippy --all-targets --workspace
 
+- name: cargo-audit
+  <<: *buildenv
+  commands:
+  - cargo install cargo-audit
+  - cargo generate-lockfile
+  - cargo audit
+
 - name: cargo-test
   <<: *buildenv
   commands:
-  - cargo test
+  - make test
 
 - name: rebuild-cache
   <<: *cache

@@ -397,7 +397,7 @@ mod tests {
         ));
         if !mint.exists() || !pos.exists() || !standard_payment.exists() {
             // We can't test if the Wasm files are missing.
-            // return;
+            return;
         }
 
         let example_path = format!(
