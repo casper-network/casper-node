@@ -70,7 +70,7 @@ pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT> {
 
     /// Proposes a new value for consensus.
     fn propose(
-        &self,
+        &mut self,
         value: C,
         block_context: BlockContext,
     ) -> Result<Vec<ConsensusProtocolResult<I, C>>, Error>;
@@ -147,7 +147,7 @@ mod example {
         }
 
         fn propose(
-            &self,
+            &mut self,
             _value: ProtoBlock,
             _block_context: BlockContext,
         ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock>>, anyhow::Error> {

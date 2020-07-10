@@ -102,7 +102,7 @@ where
     I: NodeIdT,
     P: ProtocolState,
 {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         DagSynchronizerState {
             consensus_value_deps: ConsensusValueDependencies::new(),
             vertex_dependants: HashMap::new(),

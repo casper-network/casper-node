@@ -4,10 +4,10 @@ use std::{
     convert::identity,
     fmt::{self, Display, Formatter},
     iter,
-    ops::Mul,
+    ops::{Div, Mul},
 };
 
-use derive_more::{Add, AddAssign, Sub, SubAssign, Sum};
+use derive_more::{Add, AddAssign, From, Sub, SubAssign, Sum};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
@@ -25,7 +25,20 @@ use crate::components::consensus::traits::Context;
 
 /// A vote weight.
 #[derive(
-    Copy, Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord, Add, Sub, AddAssign, SubAssign, Sum,
+    Copy,
+    Clone,
+    Default,
+    Debug,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Add,
+    Sub,
+    AddAssign,
+    SubAssign,
+    Sum,
+    From,
 )]
 pub(crate) struct Weight(pub(crate) u64);
 
@@ -34,6 +47,14 @@ impl Mul<u64> for Weight {
 
     fn mul(self, rhs: u64) -> Self {
         Weight(self.0 * rhs)
+    }
+}
+
+impl Div<u64> for Weight {
+    type Output = Self;
+
+    fn div(self, rhs: u64) -> Self {
+        Weight(self.0 / rhs)
     }
 }
 
