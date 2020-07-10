@@ -34,6 +34,7 @@ use std::{
 };
 
 use futures::{future::BoxFuture, FutureExt};
+use rand::Rng;
 use tracing::{debug, info, trace, warn, Span};
 
 use crate::{
@@ -104,29 +105,31 @@ pub trait Reactor: Sized {
     /// This function is typically only called by the reactor itself to dispatch an event. It is
     /// safe to call regardless, but will cause the event to skip the queue and things like
     /// accounting.
-    fn dispatch_event(
+    fn dispatch_event<R: Rng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
+        rng: &mut R,
         event: Self::Event,
     ) -> Effects<Self::Event>;
 
     /// Creates a new instance of the reactor.
     ///
     /// This method creates the full state, which consists of all components, and returns a reactor
-    /// instances along with the effects the components generated upon instantiation.
+    /// instance along with the effects that the components generated upon instantiation.
     ///
     /// The function is also given an instance to the tracing span used, this enables it to set up
     /// tracing fields like `id` to set an ID for the reactor if desired.
     ///
     /// If any instantiation fails, an error is returned.
     // TODO: Remove `span` parameter and rely on trait to retrieve from reactor where needed.
-    fn new(
+    fn new<R: Rng + ?Sized>(
         cfg: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
+        rng: &mut R,
         span: &Span,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error>;
 
-    /// Indicates that the reactor has completed all its work and the runner can exit.
+    /// Indicates that the reactor has completed all its work and should no longer dispatch events.
     #[inline]
     fn is_stopped(&mut self) -> bool {
         false
@@ -184,16 +187,13 @@ where
     R: Reactor,
 {
     /// Creates a new runner from a given configuration.
-    ///
-    /// The `id` is used to identify the runner during logging when debugging and can be chosen
-    /// arbitrarily.
     #[inline]
-    pub async fn new(cfg: R::Config) -> Result<Self, R::Error> {
+    pub async fn new<Rd: Rng + ?Sized>(cfg: R::Config, rng: &mut Rd) -> Result<Self, R::Error> {
         let (span, scheduler) = Self::init();
         let entered = span.enter();
 
         let event_queue = EventQueueHandle::new(scheduler);
-        let (reactor, initial_effects) = R::new(cfg, event_queue, &span)?;
+        let (reactor, initial_effects) = R::new(cfg, event_queue, rng, &span)?;
 
         // Run all effects from component instantiation.
         process_effects(scheduler, initial_effects).await;
@@ -262,7 +262,7 @@ where
 
     /// Processes a single event on the event queue.
     #[inline]
-    pub async fn crank(&mut self) {
+    pub async fn crank<Rd: Rng + ?Sized>(&mut self, rng: &mut Rd) {
         let _enter = self.span.enter();
 
         // Create another span for tracing the processing of one event.
@@ -281,26 +281,26 @@ where
         trace!(?event, ?q);
 
         // Dispatch the event, then execute the resulting effect.
-        let effects = self.reactor.dispatch_event(effect_builder, event);
+        let effects = self.reactor.dispatch_event(effect_builder, rng, event);
         process_effects(self.scheduler, effects).await;
     }
 
     /// Processes a single event if there is one, returns `None` otherwise.
     #[inline]
-    pub async fn try_crank(&mut self) -> Option<()> {
+    pub async fn try_crank<Rd: Rng + ?Sized>(&mut self, rng: &mut Rd) -> Option<()> {
         if self.scheduler.item_count() == 0 {
             None
         } else {
-            self.crank().await;
+            self.crank(rng).await;
             Some(())
         }
     }
 
     /// Runs the reactor until `is_stopped()` returns true.
     #[inline]
-    pub async fn run(&mut self) {
+    pub async fn run<Rd: Rng + ?Sized>(&mut self, rng: &mut Rd) {
         while !self.reactor.is_stopped() {
-            self.crank().await;
+            self.crank(rng).await;
         }
     }
 

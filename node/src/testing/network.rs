@@ -7,7 +7,8 @@ use std::{
     time::Duration,
 };
 
-use futures::future::{join_all, BoxFuture, FutureExt};
+use futures::future::{BoxFuture, FutureExt};
+use rand::Rng;
 use tracing::debug;
 
 use crate::reactor::{Finalize, Reactor, Runner};
@@ -46,8 +47,11 @@ where
     ///
     /// Panics if a duplicate node ID is being inserted. This should only happen in case a randomly
     /// generated ID collides.
-    pub async fn add_node(&mut self) -> Result<(R::NodeId, &mut Runner<R>), R::Error> {
-        self.add_node_with_config(Default::default()).await
+    pub async fn add_node<Rd: Rng + ?Sized>(
+        &mut self,
+        rng: &mut Rd,
+    ) -> Result<(R::NodeId, &mut Runner<R>), R::Error> {
+        self.add_node_with_config(Default::default(), rng).await
     }
 }
 
@@ -67,11 +71,12 @@ where
     /// # Panics
     ///
     /// Panics if a duplicate node ID is being inserted.
-    pub async fn add_node_with_config(
+    pub async fn add_node_with_config<Rd: Rng + ?Sized>(
         &mut self,
         cfg: R::Config,
+        rng: &mut Rd,
     ) -> Result<(R::NodeId, &mut Runner<R>), R::Error> {
-        let runner: Runner<R> = Runner::new(cfg).await?;
+        let runner: Runner<R> = Runner::new(cfg, rng).await?;
 
         let node_id = runner.reactor().node_id();
 
@@ -88,21 +93,26 @@ where
     }
 
     /// Crank all runners once, returning the number of events processed.
-    pub async fn crank_all(&mut self) -> usize {
-        join_all(self.nodes.values_mut().map(Runner::try_crank))
-            .await
-            .into_iter()
-            .filter(Option::is_some)
-            .count()
+    pub async fn crank_all<Rd: Rng + ?Sized>(&mut self, rng: &mut Rd) -> usize {
+        let mut event_count = 0;
+        for node in self.nodes.values_mut() {
+            event_count += if node.try_crank(rng).await.is_some() {
+                1
+            } else {
+                0
+            }
+        }
+
+        event_count
     }
 
     /// Process events on all nodes until all event queues are empty.
     ///
     /// Exits if `at_least` time has passed twice between events that have been processed.
-    pub async fn settle(&mut self, at_least: Duration) {
+    pub async fn settle<Rd: Rng + ?Sized>(&mut self, rng: &mut Rd, at_least: Duration) {
         let mut no_events = false;
         loop {
-            if self.crank_all().await == 0 {
+            if self.crank_all(rng).await == 0 {
                 // Stop once we have no pending events and haven't had any for `at_least` duration.
                 if no_events {
                     debug!(?at_least, "network has settled after");
@@ -118,8 +128,9 @@ where
     }
 
     /// Runs the main loop of every reactor until a condition is true.
-    pub async fn settle_on<F>(&mut self, f: F)
+    pub async fn settle_on<Rd, F>(&mut self, rng: &mut Rd, f: F)
     where
+        Rd: Rng + ?Sized,
         F: Fn(&HashMap<R::NodeId, Runner<R>>) -> bool,
     {
         loop {
@@ -129,7 +140,7 @@ where
                 break;
             }
 
-            if self.crank_all().await == 0 {
+            if self.crank_all(rng).await == 0 {
                 // No events processed, wait for a bit to avoid 100% cpu usage.
                 tokio::time::delay_for(POLL_INTERVAL).await;
             }
