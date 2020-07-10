@@ -110,7 +110,7 @@
 //!                 if let Some(msg) = self.whispers.pop() {
 //!                     return effect_builder.gossip_message(msg,
 //!                                                          TEST_GOSSIP_COUNT,
-//!                                                          Effects::new())
+//!                                                          Default::default())
 //!                         .event(|_| ShouterEvent::ReadyToSend);
 //!                 }
 //!                 // Shouts get broadcast.
