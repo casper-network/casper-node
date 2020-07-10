@@ -117,16 +117,11 @@ pub trait Reactor: Sized {
     /// This method creates the full state, which consists of all components, and returns a reactor
     /// instance along with the effects that the components generated upon instantiation.
     ///
-    /// The function is also given an instance to the tracing span used, this enables it to set up
-    /// tracing fields like `id` to set an ID for the reactor if desired.
-    ///
     /// If any instantiation fails, an error is returned.
-    // TODO: Remove `span` parameter and rely on trait to retrieve from reactor where needed.
     fn new<R: Rng + ?Sized>(
         cfg: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut R,
-        span: &Span,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error>;
 
     /// Indicates that the reactor has completed all its work and should no longer dispatch events.
@@ -155,7 +150,6 @@ pub trait ReactorExt<R: Reactor>: Reactor {
     /// necessarily of the same concrete type).
     fn new_from(
         event_queue: EventQueueHandle<Self::Event>,
-        span: &Span,
         reactor: R,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error>;
 }
@@ -193,7 +187,7 @@ where
         let entered = span.enter();
 
         let event_queue = EventQueueHandle::new(scheduler);
-        let (reactor, initial_effects) = R::new(cfg, event_queue, rng, &span)?;
+        let (reactor, initial_effects) = R::new(cfg, event_queue, rng)?;
 
         // Run all effects from component instantiation.
         process_effects(scheduler, initial_effects).await;
@@ -223,7 +217,7 @@ where
         let entered = span.enter();
 
         let event_queue = EventQueueHandle::new(scheduler);
-        let (reactor, initial_effects) = R::new_from(event_queue, &span, old_reactor)?;
+        let (reactor, initial_effects) = R::new_from(event_queue, old_reactor)?;
 
         // Run all effects from component instantiation.
         process_effects(scheduler, initial_effects).await;
