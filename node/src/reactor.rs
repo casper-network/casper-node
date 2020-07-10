@@ -113,7 +113,7 @@ pub trait Reactor: Sized {
     /// Creates a new instance of the reactor.
     ///
     /// This method creates the full state, which consists of all components, and returns a reactor
-    /// instances along with the effects the components generated upon instantiation.
+    /// instance along with the effects that the components generated upon instantiation.
     ///
     /// The function is also given an instance to the tracing span used, this enables it to set up
     /// tracing fields like `id` to set an ID for the reactor if desired.
@@ -126,7 +126,7 @@ pub trait Reactor: Sized {
         span: &Span,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error>;
 
-    /// Indicates that the reactor has completed all its work and the runner can exit.
+    /// Indicates that the reactor has completed all its work and should no longer dispatch events.
     #[inline]
     fn is_stopped(&mut self) -> bool {
         false
