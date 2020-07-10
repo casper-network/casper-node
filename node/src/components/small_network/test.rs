@@ -23,6 +23,7 @@ use crate::{
     testing::network::{Network, NetworkedReactor},
 };
 use pnet::datalink;
+use rand::{rngs::OsRng, Rng};
 use reactor::{wrap_effects, Finalize};
 use tokio::time::{timeout, Timeout};
 use tracing::{debug, field, info, Span};
@@ -63,24 +64,24 @@ impl Reactor for TestReactor {
     type Config = small_network::Config;
     type Error = anyhow::Error;
 
-    fn dispatch_event(
+    fn dispatch_event<R: Rng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
+        rng: &mut R,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        let mut rng = rand::thread_rng(); // FIXME: Pass this in from the outside?
-
         match event {
             Event::SmallNet(ev) => wrap_effects(
                 Event::SmallNet,
-                self.net.handle_event(effect_builder, &mut rng, ev),
+                self.net.handle_event(effect_builder, rng, ev),
             ),
         }
     }
 
-    fn new(
+    fn new<R: Rng + ?Sized>(
         cfg: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
+        _rng: &mut R,
         span: &Span,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let (net, effects) = SmallNetwork::new(event_queue, cfg)?;
@@ -197,6 +198,8 @@ fn gen_config(bind_port: u16) -> small_network::Config {
 /// Ensures that network cleanup and basic networking works.
 #[tokio::test]
 async fn run_two_node_network_five_times() {
+    let mut rng = OsRng;
+
     init_logging();
 
     for i in 0..5 {
@@ -205,10 +208,10 @@ async fn run_two_node_network_five_times() {
         let mut net = Network::new();
 
         let start = std::time::Instant::now();
-        net.add_node_with_config(gen_config(TEST_ROOT_NODE_PORT))
+        net.add_node_with_config(gen_config(TEST_ROOT_NODE_PORT), &mut rng)
             .await
             .unwrap();
-        net.add_node_with_config(gen_config(TEST_ROOT_NODE_PORT + 1))
+        net.add_node_with_config(gen_config(TEST_ROOT_NODE_PORT + 1), &mut rng)
             .await
             .unwrap();
         let end = std::time::Instant::now();
@@ -218,12 +221,12 @@ async fn run_two_node_network_five_times() {
             "finished setting up networking nodes"
         );
 
-        net.settle_on(network_is_complete)
+        net.settle_on(&mut rng, network_is_complete)
             .within(Duration::from_millis(1000))
             .await
             .expect("network did not fully connect in time");
 
-        net.settle(Duration::from_millis(25))
+        net.settle(&mut rng, Duration::from_millis(25))
             .within(Duration::from_millis(2000))
             .await
             .expect("network did not stay settled");
@@ -243,6 +246,8 @@ async fn run_two_node_network_five_times() {
 #[tokio::test]
 async fn bind_to_real_network_interface() {
     init_logging();
+
+    let mut rng = OsRng;
 
     let iface = datalink::interfaces()
         .into_iter()
@@ -268,7 +273,9 @@ async fn bind_to_real_network_interface() {
     };
 
     let mut net = Network::<TestReactor>::new();
-    net.add_node_with_config(local_net_config).await.unwrap();
+    net.add_node_with_config(local_net_config, &mut rng)
+        .await
+        .unwrap();
 
-    net.settle(Duration::from_millis(250)).await;
+    net.settle(&mut rng, Duration::from_millis(250)).await;
 }
