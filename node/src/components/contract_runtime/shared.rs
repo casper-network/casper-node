@@ -6,7 +6,6 @@ pub mod gas;
 pub mod account;
 pub mod logging;
 pub mod newtypes;
-pub mod page_size;
 pub mod socket;
 pub mod stored_value;
 pub mod test_utils;

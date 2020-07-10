@@ -10,7 +10,7 @@ use crate::components::contract_runtime::storage::{
     protocol_data_store::{in_memory::InMemoryProtocolDataStore, lmdb::LmdbProtocolDataStore},
     store::tests as store_tests,
     transaction_source::{in_memory::InMemoryEnvironment, lmdb::LmdbEnvironment},
-    TEST_MAP_SIZE,
+    DEFAULT_TEST_MAX_DB_SIZE,
 };
 
 const DEFAULT_MIN_LENGTH: usize = 1;
@@ -35,7 +35,8 @@ fn in_memory_roundtrip_succeeds(inputs: BTreeMap<ProtocolVersion, ProtocolData>)
 
 fn lmdb_roundtrip_succeeds(inputs: BTreeMap<ProtocolVersion, ProtocolData>) -> bool {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let env = LmdbEnvironment::new(&tmp_dir.path().to_path_buf(), *TEST_MAP_SIZE).unwrap();
+    let env =
+        LmdbEnvironment::new(&tmp_dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE).unwrap();
     let store = LmdbProtocolDataStore::new(&env, None, DatabaseFlags::empty()).unwrap();
 
     let ret = store_tests::roundtrip_succeeds(&env, &store, inputs).unwrap();
