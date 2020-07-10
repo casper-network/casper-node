@@ -75,7 +75,7 @@ impl Cli {
                 logging::init()?;
 
                 // We use a `ChaCha20Rng` for the production node. For one, we want to completely
-                // eliminate any chance of runtime failures, no regardless of how small (these
+                // eliminate any chance of runtime failures, regardless of how small (these
                 // exist with `OsRng`). Additionally, we want to limit the number of syscalls for
                 // performance reasons.
                 let mut rng = ChaCha20Rng::from_entropy();
