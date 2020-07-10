@@ -1,3 +1,4 @@
+#![allow(unused)] // TODO: Use the finality detector!
 use std::{collections::BTreeMap, iter};
 
 use super::{

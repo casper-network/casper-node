@@ -2,12 +2,9 @@
 
 mod consensus_protocol;
 mod era_supervisor;
-mod traits;
-// TODO: remove when we actually construct a Highway era
-mod protocols;
-// TODO: remove when we actually construct a Highway era
-#[allow(unused)]
 mod highway_core;
+mod protocols;
+mod traits;
 
 #[cfg(test)]
 #[allow(unused)]
