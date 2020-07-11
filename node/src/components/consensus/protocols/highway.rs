@@ -12,7 +12,7 @@ use crate::{
         },
         highway_core::{
             active_validator::Effect as AvEffect,
-            finality_detector::{FinalityDetector, FinalityResult},
+            finality_detector::{FinalityDetector, FinalityOutcome},
             highway::{Highway, HighwayParams, PreValidatedVertex},
             vertex::{Dependency, Vertex},
             Weight,
@@ -123,9 +123,9 @@ fn av_effect_to_result<I, C: Context>(
                 serialized_msg,
             )];
             match finality_detector.run(highway.state()) {
-                FinalityResult::None => (),
-                FinalityResult::FttExceeded => panic!("Too many faulty validators"),
-                FinalityResult::Finalized(block, equivocators) => {
+                FinalityOutcome::None => (),
+                FinalityOutcome::FttExceeded => panic!("Too many faulty validators"),
+                FinalityOutcome::Finalized(block, equivocators) => {
                     if !equivocators.is_empty() {
                         // TODO: Add this information to the proto block for slashing.
                         info!(?equivocators, "Observed new faulty validators");
