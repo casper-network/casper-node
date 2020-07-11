@@ -107,7 +107,7 @@ impl reactor::Reactor for Reactor {
 
     fn new(
         (chainspec_config_path, config): Self::Config,
-        registry: &Registry,
+        _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         _span: &Span,
     ) -> Result<(Self, Effects<Self::Event>), Error> {

@@ -34,7 +34,7 @@ use std::{
 };
 
 use futures::{future::BoxFuture, FutureExt};
-use prometheus::{self, core::Collector, IntCounter, Registry};
+use prometheus::{self, IntCounter, Registry};
 use tracing::{debug, info, trace, warn, Span};
 
 use crate::{

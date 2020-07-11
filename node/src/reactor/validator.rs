@@ -205,7 +205,7 @@ impl reactor::Reactor for Reactor {
 
     fn new(
         config: Self::Config,
-        registry: &Registry,
+        _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         span: &Span,
     ) -> Result<(Self, Effects<Event>), Error> {
