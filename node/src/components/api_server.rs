@@ -20,7 +20,7 @@
 mod config;
 mod event;
 
-use std::{error::Error as StdError, net::SocketAddr, str};
+use std::{borrow::Cow, error::Error as StdError, net::SocketAddr, str};
 
 use bytes::Bytes;
 use futures::FutureExt;
@@ -158,8 +158,13 @@ where
                     QueueKind::Api,
                 )
                 .map(|text_opt| match text_opt {
-                    Some(text) => Ok::<_, Rejection>(text),
-                    None => todo!(),
+                    Some(text) => {
+                        Ok::<_, Rejection>(reply::with_status(Cow::from(text), StatusCode::OK))
+                    }
+                    None => Ok(reply::with_status(
+                        Cow::from("failed to collect metrics. sorry!"),
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                    )),
                 })
         });
 
