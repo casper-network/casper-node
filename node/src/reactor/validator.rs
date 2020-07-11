@@ -190,7 +190,7 @@ impl reactor::Reactor for Reactor {
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, config.validator_net)?;
 
-        let (pinger, pinger_effects) = Pinger::new(effect_builder);
+        let (pinger, pinger_effects) = Pinger::new(registry, effect_builder)?;
         let api_server = ApiServer::new(config.http_server, effect_builder);
         let timestamp = Timestamp::now();
         let (consensus, consensus_effects) = EraSupervisor::new(timestamp, effect_builder);
