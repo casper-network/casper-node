@@ -116,7 +116,7 @@ where
         &mut self,
         sender: I,
         v: P::Vertex,
-        protocol_state: &mut P,
+        protocol_state: &P,
     ) -> Result<Vec<SynchronizerEffect<I, P::Vertex>>, anyhow::Error> {
         if let Some(missing_vid) = protocol_state.missing_dependency(&v) {
             self.add_vertex_dependency(missing_vid.clone(), sender.clone(), v);
