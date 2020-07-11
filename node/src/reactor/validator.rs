@@ -10,7 +10,6 @@ use std::fmt::{self, Display, Formatter};
 use derive_more::From;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use tracing::Span;
 
 use crate::{
     components::{
@@ -156,13 +155,11 @@ impl Reactor {
     fn init(
         config: Config,
         event_queue: EventQueueHandle<Event>,
-        span: &Span,
         storage: Storage,
         contract_runtime: ContractRuntime,
     ) -> Result<(Self, Effects<Event>), Error> {
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, config.validator_net)?;
-        span.record("id", &tracing::field::display(net.node_id()));
 
         let (pinger, pinger_effects) = Pinger::new(effect_builder);
         let api_server = ApiServer::new(config.http_server, effect_builder);
@@ -198,11 +195,10 @@ impl reactor::Reactor for Reactor {
         config: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut R,
-        span: &Span,
     ) -> Result<(Self, Effects<Event>), Error> {
         let storage = Storage::new(&config.storage)?;
         let contract_runtime = ContractRuntime::new(&config.storage, config.contract_runtime)?;
-        Self::init(config, event_queue, span, storage, contract_runtime)
+        Self::init(config, event_queue, storage, contract_runtime)
     }
 
     fn dispatch_event<R: Rng + ?Sized>(
@@ -280,10 +276,9 @@ impl reactor::Reactor for Reactor {
 impl reactor::ReactorExt<initializer::Reactor> for Reactor {
     fn new_from(
         event_queue: EventQueueHandle<Self::Event>,
-        span: &Span,
         initializer_reactor: initializer::Reactor,
     ) -> Result<(Self, Effects<Self::Event>), Error> {
         let (config, storage, contract_runtime) = initializer_reactor.destructure();
-        Self::init(config, event_queue, span, storage, contract_runtime)
+        Self::init(config, event_queue, storage, contract_runtime)
     }
 }
