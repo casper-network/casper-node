@@ -1,4 +1,3 @@
-#![allow(unused)] // TODO: Use the finality detector!
 use std::{collections::BTreeMap, iter};
 
 use super::{
@@ -108,13 +107,13 @@ impl<'a, C: Context> Section<'a, C> {
 
 /// The result of running the finality detector on a protocol state.
 #[derive(Debug, Eq, PartialEq)]
-pub(crate) enum FinalityResult<V: ConsensusValueT, VID> {
+pub(crate) enum FinalityOutcome<V: ConsensusValueT, VID> {
     /// No new block has been finalized yet.
     None,
     /// A new block with this consensus value has been finalized.
-    /// Second vectors is a list of indexes of validators that equivocated.
+    /// Second vector is a list of indexes of validators that equivocated.
     Finalized(V, Vec<VID>),
-    /// The fault tolerance threshold has been exceeded: The number of observed equivocation
+    /// The fault tolerance threshold has been exceeded: The number of observed equivocations
     /// invalidates this finality detector's results.
     FttExceeded,
 }
@@ -145,7 +144,7 @@ impl<C: Context> FinalityDetector<C> {
     pub(crate) fn run(
         &mut self,
         state: &State<C>,
-    ) -> FinalityResult<C::ConsensusValue, ValidatorIndex> {
+    ) -> FinalityOutcome<C::ConsensusValue, ValidatorIndex> {
         let fault_w: Weight = state
             .panorama()
             .iter()
@@ -154,7 +153,7 @@ impl<C: Context> FinalityDetector<C> {
             .map(|(_, w)| *w)
             .sum();
         if fault_w >= self.ftt {
-            return FinalityResult::FttExceeded;
+            return FinalityOutcome::FttExceeded;
         }
         if let Some(candidate) = self.next_candidate(state) {
             // For `lvl` → ∞, the quorum converges to a fixed value. After level 64, it is closer
@@ -167,7 +166,7 @@ impl<C: Context> FinalityDetector<C> {
                 if lvl == target_lvl {
                     self.last_finalized = Some(candidate.clone());
                     let new_equivocators = state.get_new_equivocators(&candidate);
-                    return FinalityResult::Finalized(
+                    return FinalityOutcome::Finalized(
                         state.block(candidate).value.clone(),
                         new_equivocators,
                     );
@@ -177,7 +176,7 @@ impl<C: Context> FinalityDetector<C> {
                 target_lvl = lvl;
             }
         }
-        FinalityResult::None
+        FinalityOutcome::None
     }
 
     /// Returns the number of levels of the highest summit with a quorum that a `target_lvl` summit
@@ -261,23 +260,23 @@ mod tests {
         //
         // `b0`, `a0` are level 0 for `B0`. `a0`, `b1` are level 1.
         // So the fault tolerance of `B0` is 2 * (9 - 10/2) * (1 - 1/2) = 4.
-        assert_eq!(FinalityResult::None, fd6.run(&state));
-        assert_eq!(FinalityResult::Finalized(0xB0, vec![]), fd4.run(&state));
-        assert_eq!(FinalityResult::None, fd4.run(&state));
+        assert_eq!(FinalityOutcome::None, fd6.run(&state));
+        assert_eq!(FinalityOutcome::Finalized(0xB0, vec![]), fd4.run(&state));
+        assert_eq!(FinalityOutcome::None, fd4.run(&state));
 
         // Adding another level to the summit increases `B0`'s fault tolerance to 6.
         add_vote!(state, _a2, ALICE, ALICE_SEC, 2; a1, b1, c1);
         add_vote!(state, _b2, BOB, BOB_SEC, 2; a1, b1, c1);
-        assert_eq!(FinalityResult::Finalized(0xB0, vec![]), fd6.run(&state));
-        assert_eq!(FinalityResult::None, fd6.run(&state));
+        assert_eq!(FinalityOutcome::Finalized(0xB0, vec![]), fd6.run(&state));
+        assert_eq!(FinalityOutcome::None, fd6.run(&state));
 
         // If Alice equivocates, the FTT 4 is exceeded, but she counts as being part of any summit,
         // so `A0` and `A1` get FTT 6. (Bob voted for `A1` and against `B1` in `b2`.)
         add_vote!(state, _e2, BOB, BOB_SEC, 2; a1, b1, c1);
-        assert_eq!(FinalityResult::FttExceeded, fd4.run(&state));
-        assert_eq!(FinalityResult::Finalized(0xA0, vec![]), fd6.run(&state));
-        assert_eq!(FinalityResult::Finalized(0xA1, vec![]), fd6.run(&state));
-        assert_eq!(FinalityResult::None, fd6.run(&state));
+        assert_eq!(FinalityOutcome::FttExceeded, fd4.run(&state));
+        assert_eq!(FinalityOutcome::Finalized(0xA0, vec![]), fd6.run(&state));
+        assert_eq!(FinalityOutcome::Finalized(0xA1, vec![]), fd6.run(&state));
+        assert_eq!(FinalityOutcome::None, fd6.run(&state));
         Ok(())
     }
 
@@ -300,31 +299,31 @@ mod tests {
         add_vote!(state, _c1, CAROL, CAROL_SEC, 1; N, b0, c0; 0xC1);
         add_vote!(state, _c1_prime, CAROL, CAROL_SEC, 1; N, b0, c0);
         add_vote!(state, b1, BOB, BOB_SEC, 1; a0, b0, N; 0xB1);
-        assert_eq!(FinalityResult::Finalized(0xB0, vec![]), fd4.run(&state));
+        assert_eq!(FinalityOutcome::Finalized(0xB0, vec![]), fd4.run(&state));
         add_vote!(state, a1, ALICE, ALICE_SEC, 1; a0, b0, F; 0xA1);
         add_vote!(state, b2, BOB, BOB_SEC, 2; a1, b1, F);
         add_vote!(state, a2, ALICE, ALICE_SEC, 2; a1, b2, F; 0xA2);
-        assert_eq!(FinalityResult::Finalized(0xA0, vec![]), fd4.run(&state));
+        assert_eq!(FinalityOutcome::Finalized(0xA0, vec![]), fd4.run(&state));
         // A1 is the first block that sees CAROL equivocating.
         assert_eq!(
-            FinalityResult::Finalized(0xA1, vec![CAROL]),
+            FinalityOutcome::Finalized(0xA1, vec![CAROL]),
             fd4.run(&state)
         );
         // Finalize A2. It should not report CAROL as equivocator anymore.
         add_vote!(state, b3, BOB, BOB_SEC, 3; a2, b2, F);
         add_vote!(state, _a3, ALICE, ALICE_SEC, 3; a2, b3, F);
-        assert_eq!(FinalityResult::Finalized(0xA2, vec![]), fd4.run(&state));
+        assert_eq!(FinalityOutcome::Finalized(0xA2, vec![]), fd4.run(&state));
 
         // Test that an initial block reports equivocators as well.
         let mut bstate: State<TestContext> = State::new(&[Weight(5), Weight(4), Weight(1)], 0);
         let mut fde4 = FinalityDetector::new(Weight(4)); // Fault tolerance 4.
-        add_vote!(bstate, c0, CAROL, CAROL_SEC, 0; N, N, N; 0xB0);
+        add_vote!(bstate, _c0, CAROL, CAROL_SEC, 0; N, N, N; 0xB0);
         add_vote!(bstate, _c0_prime, CAROL, CAROL_SEC, 0; N, N, N; 0xB0);
         add_vote!(bstate, a0, ALICE, ALICE_SEC, 0; N, N, F; 0xA0);
         add_vote!(bstate, b0, BOB, BOB_SEC, 0; a0, N, F);
-        add_vote!(bstate, a1, ALICE, ALICE_SEC, 1; a0, b0, F);
+        add_vote!(bstate, _a1, ALICE, ALICE_SEC, 1; a0, b0, F);
         assert_eq!(
-            FinalityResult::Finalized(0xA0, vec![CAROL]),
+            FinalityOutcome::Finalized(0xA0, vec![CAROL]),
             fde4.run(&bstate)
         );
         Ok(())
