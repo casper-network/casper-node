@@ -20,6 +20,24 @@ use crate::{
     Chainspec,
 };
 
+/// A metrics request.
+#[derive(Debug)]
+pub enum MetricsRequest {
+    /// Render current node metrics as prometheus-formatted string.
+    RenderNodeMetricsText {
+        /// Resopnder returning the rendered metrics or `None`, if an internal error occurred.
+        responder: Responder<Option<String>>,
+    },
+}
+
+impl Display for MetricsRequest {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            MetricsRequest::RenderNodeMetricsText { .. } => write!(formatter, "get metrics text"),
+        }
+    }
+}
+
 /// A networking request.
 #[derive(Debug)]
 pub enum NetworkRequest<I, P> {

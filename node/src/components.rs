@@ -12,6 +12,7 @@ pub(crate) mod deploy_gossiper;
 pub(crate) mod deploy_buffer;
 // The  `in_memory_network` is public for use in doctests.
 pub mod in_memory_network;
+pub(crate) mod metrics;
 pub(crate) mod pinger;
 pub(crate) mod small_network;
 pub(crate) mod storage;
