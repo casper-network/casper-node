@@ -1,6 +1,27 @@
 //! Metrics component.
 //!
 //! The metrics component renders metrics upon request.
+//!
+//! # Adding metrics to a component
+//!
+//! When adding metrics to an existing component, there are a few guidelines that should in general
+//! be followed:
+//!
+//! 1. For a component `XYZ`, there should be a `XYZMetrics` struct that is one of its fields that
+//!    holds all of the `Collectors` (`Counter`s, etc) to make it easy to find all of the metrics
+//!    for a component in one place.
+//!
+//!    Creation and instantiation of this component happens inside the `reactor::Reactor::new`
+//!    function, which is passed in a `prometheus::Registry` (see 2.).
+//!
+//! 2. Instantiation of an `XYZMetrics` struct should always be combined with registering all of
+//!    the metrics on a registry. For this reason it is advisable to have the `XYZMetrics::new`
+//!    method take a `prometheus::Registry` and register it directly.
+//!
+//! 3. Updating metrics is done inside the `handle_event` function by simply calling methods on the
+//!    fields of `self.metrics` (`: XYZMetrics`). **Important**: Metrics should never be read to
+//!    prevent any actual logic depending on them. If a counter is being increment as a metric and
+//!    also required for busines logic, a second counter should be kept in the component's state.
 
 use prometheus::{Encoder, Registry, TextEncoder};
 use rand::Rng;
