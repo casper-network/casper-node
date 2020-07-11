@@ -8,6 +8,7 @@ mod error;
 use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
+use prometheus::Registry;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
@@ -204,6 +205,7 @@ impl reactor::Reactor for Reactor {
 
     fn new(
         config: Self::Config,
+        registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         span: &Span,
     ) -> Result<(Self, Effects<Event>), Error> {

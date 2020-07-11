@@ -34,6 +34,7 @@ use std::{
 };
 
 use futures::{future::BoxFuture, FutureExt};
+use prometheus::Registry;
 use tracing::{debug, info, trace, warn, Span};
 
 use crate::{
@@ -122,6 +123,7 @@ pub trait Reactor: Sized {
     // TODO: Remove `span` parameter and rely on trait to retrieve from reactor where needed.
     fn new(
         cfg: Self::Config,
+        registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         span: &Span,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error>;
@@ -192,8 +194,11 @@ where
         let (span, scheduler) = Self::init();
         let entered = span.enter();
 
+        // Instantiate a new registry for metrics for this reactor.
+        let registry = Registry::new();
+
         let event_queue = EventQueueHandle::new(scheduler);
-        let (reactor, initial_effects) = R::new(cfg, event_queue, &span)?;
+        let (reactor, initial_effects) = R::new(cfg, &registry, event_queue, &span)?;
 
         // Run all effects from component instantiation.
         process_effects(scheduler, initial_effects).await;

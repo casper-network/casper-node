@@ -23,6 +23,7 @@ use crate::{
     testing::network::{Network, NetworkedReactor},
 };
 use pnet::datalink;
+use prometheus::Registry;
 use reactor::{wrap_effects, Finalize};
 use tokio::time::{timeout, Timeout};
 use tracing::{debug, field, info, Span};
@@ -80,6 +81,7 @@ impl Reactor for TestReactor {
 
     fn new(
         cfg: Self::Config,
+        registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         span: &Span,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {

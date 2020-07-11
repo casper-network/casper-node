@@ -6,6 +6,7 @@ use std::{
 };
 
 use derive_more::From;
+use prometheus::Registry;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use thiserror::Error;
@@ -102,6 +103,7 @@ impl reactor::Reactor for Reactor {
 
     fn new(
         (chainspec_config_path, config): Self::Config,
+        registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         _span: &Span,
     ) -> Result<(Self, Effects<Self::Event>), Error> {

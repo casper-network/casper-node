@@ -20,6 +20,7 @@
 //! #
 //! # use derive_more::From;
 //! # use maplit::hashmap;
+//! # use prometheus::Registry;
 //! # use rand::Rng;
 //! # use tracing::Span;
 //! #
@@ -168,6 +169,7 @@
 //!     type Error = ();
 //!
 //!     fn new(_cfg: Self::Config,
+//!            _registry: &Registry,
 //!            event_queue: EventQueueHandle<Self::Event>,
 //!            _span: &Span
 //!     ) -> Result<(Self, Effects<Self::Event>), ()> {
