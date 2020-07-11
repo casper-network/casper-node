@@ -21,8 +21,7 @@
 //! # use derive_more::From;
 //! # use maplit::hashmap;
 //! # use prometheus::Registry;
-//! # use rand::Rng;
-//! # use tracing::Span;
+//! # use rand::{Rng, rngs::OsRng};
 //! #
 //! # use casperlabs_node::{components::{Component,
 //! #                       in_memory_network::{InMemoryNetwork, NetworkController, NodeId}},
@@ -168,35 +167,35 @@
 //!     type Config = ();
 //!     type Error = anyhow::Error;
 //!
-//!     fn new(_cfg: Self::Config,
+//!     fn new<R: Rng + ?Sized>(
+//!            _cfg: Self::Config,
 //!            _registry: &Registry,
 //!            event_queue: EventQueueHandle<Self::Event>,
-//!            _span: &Span
-//!     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
+//!            rng: &mut R,
+//!     ) -> Result<(Self, Effects<Self::Event>), anyhow::Error> {
 //!         let effect_builder = EffectBuilder::new(event_queue);
 //!         let (shouter, shouter_effect) = Shouter::new(effect_builder);
 //!
 //!         Ok((Reactor {
-//!             // TODO: Consider whether we want to move RNG access all the way up, if possible.
-//!             net: NetworkController::create_node(event_queue, &mut rand::thread_rng()),
+//!             net: NetworkController::create_node(event_queue, rng),
 //!             shouter,
 //!         }, wrap_effects(From::from, shouter_effect)))
 //!     }
 //!
-//!     fn dispatch_event(&mut self,
+//!     fn dispatch_event<R: Rng + ?Sized>(&mut self,
 //!                       effect_builder: EffectBuilder<Event>,
+//!                       rng: &mut R,
 //!                       event: Event
 //!     ) -> Effects<Event> {
-//!          let mut rng = rand::thread_rng(); // FIXME: RNGs should be passed in.
 //!          match event {
 //!              Event::Announcement(anc) => { wrap_effects(From::from,
-//!                  self.shouter.handle_event(effect_builder, &mut rng, anc.into())
+//!                  self.shouter.handle_event(effect_builder, rng, anc.into())
 //!              )}
 //!              Event::Request(req) => { wrap_effects(From::from,
-//!                  self.net.handle_event(effect_builder, &mut rng, req.into())
+//!                  self.net.handle_event(effect_builder, rng, req.into())
 //!              )}
 //!              Event::Shouter(ev) => { wrap_effects(From::from,
-//!                  self.shouter.handle_event(effect_builder, &mut rng, ev)
+//!                  self.shouter.handle_event(effect_builder, rng, ev)
 //!              )}
 //!          }
 //!     }
@@ -221,22 +220,23 @@
 //!
 //! // We can now create the network of nodes, using the `testing::Network` and insert three nodes.
 //! // Each node is given some data to send.
+//! let mut rng = OsRng;
 //! let mut net = Network::<Reactor>::new();
-//! let (id1, n1) = net.add_node().await.unwrap();
+//! let (id1, n1) = net.add_node(&mut rng).await.unwrap();
 //! n1.reactor_mut().shouter.shouts.push(1);
 //! n1.reactor_mut().shouter.shouts.push(2);
 //! n1.reactor_mut().shouter.whispers.push(3);
 //! n1.reactor_mut().shouter.whispers.push(4);
 //!
-//! let (id2, n2) = net.add_node().await.unwrap();
+//! let (id2, n2) = net.add_node(&mut rng).await.unwrap();
 //! n2.reactor_mut().shouter.shouts.push(6);
 //! n2.reactor_mut().shouter.whispers.push(4);
 //!
-//! let (id3, n3) = net.add_node().await.unwrap();
+//! let (id3, n3) = net.add_node(&mut rng).await.unwrap();
 //! n3.reactor_mut().shouter.whispers.push(8);
 //! n3.reactor_mut().shouter.shouts.push(1);
 //!
-//! net.settle(Duration::from_secs(1)).await;
+//! net.settle(&mut rng, Duration::from_secs(1)).await;
 //! assert_eq!(net.nodes().len(), TEST_NODE_COUNT);
 //!
 //! let mut global_count = HashMap::<Message, usize>::new();
@@ -361,7 +361,7 @@ where
         rng: &mut R,
     ) -> InMemoryNetwork<P>
     where
-        R: Rng,
+        R: Rng + ?Sized,
         REv: From<NetworkAnnouncement<NodeId, P>> + Send,
     {
         ACTIVE_NETWORK
@@ -383,7 +383,7 @@ where
         rng: &mut R,
     ) -> InMemoryNetwork<P>
     where
-        R: Rng,
+        R: Rng + ?Sized,
         REv: From<NetworkAnnouncement<NodeId, P>> + Send,
     {
         InMemoryNetwork::new(event_queue, rng.gen(), self.nodes.clone())

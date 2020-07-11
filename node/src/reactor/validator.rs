@@ -9,10 +9,8 @@ use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
 use prometheus::Registry;
-use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
-use tracing::Span;
 
 use crate::{
     components::{
@@ -156,21 +154,17 @@ pub struct Reactor {
     api_server: ApiServer,
     consensus: EraSupervisor<NodeId>,
     deploy_gossiper: DeployGossiper,
-    rng: ChaCha20Rng,
 }
 
 impl Reactor {
     fn init(
         config: Config,
         event_queue: EventQueueHandle<Event>,
-        span: &Span,
         storage: Storage,
         contract_runtime: ContractRuntime,
-        rng: ChaCha20Rng,
     ) -> Result<(Self, Effects<Event>), Error> {
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, config.validator_net)?;
-        span.record("id", &tracing::field::display(net.node_id()));
 
         let (pinger, pinger_effects) = Pinger::new(effect_builder);
         let api_server = ApiServer::new(config.http_server, effect_builder);
@@ -190,7 +184,6 @@ impl Reactor {
                 api_server,
                 consensus,
                 deploy_gossiper,
-                rng,
                 contract_runtime,
             },
             effects,
@@ -203,57 +196,54 @@ impl reactor::Reactor for Reactor {
     type Config = Config;
     type Error = Error;
 
-    fn new(
+    fn new<R: Rng + ?Sized>(
         config: Self::Config,
         _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        span: &Span,
+        _rng: &mut R,
     ) -> Result<(Self, Effects<Event>), Error> {
         let storage = Storage::new(&config.storage)?;
         let contract_runtime = ContractRuntime::new(&config.storage, config.contract_runtime)?;
-        let rng = ChaCha20Rng::from_entropy();
-        Self::init(config, event_queue, span, storage, contract_runtime, rng)
+        Self::init(config, event_queue, storage, contract_runtime)
     }
 
-    fn dispatch_event(
+    fn dispatch_event<R: Rng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
+        rng: &mut R,
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
             Event::Network(event) => reactor::wrap_effects(
                 Event::Network,
-                self.net.handle_event(effect_builder, &mut self.rng, event),
+                self.net.handle_event(effect_builder, rng, event),
             ),
             Event::Pinger(event) => reactor::wrap_effects(
                 Event::Pinger,
-                self.pinger
-                    .handle_event(effect_builder, &mut self.rng, event),
+                self.pinger.handle_event(effect_builder, rng, event),
             ),
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
-                self.storage
-                    .handle_event(effect_builder, &mut self.rng, event),
+                self.storage.handle_event(effect_builder, rng, event),
             ),
             Event::ApiServer(event) => reactor::wrap_effects(
                 Event::ApiServer,
-                self.api_server
-                    .handle_event(effect_builder, &mut self.rng, event),
+                self.api_server.handle_event(effect_builder, rng, event),
             ),
             Event::Consensus(event) => reactor::wrap_effects(
                 Event::Consensus,
-                self.consensus
-                    .handle_event(effect_builder, &mut self.rng, event),
+                self.consensus.handle_event(effect_builder, rng, event),
             ),
             Event::DeployGossiper(event) => reactor::wrap_effects(
                 Event::DeployGossiper,
                 self.deploy_gossiper
-                    .handle_event(effect_builder, &mut self.rng, event),
+                    .handle_event(effect_builder, rng, event),
             ),
 
             // Requests:
             Event::NetworkRequest(req) => self.dispatch_event(
                 effect_builder,
+                rng,
                 Event::Network(small_network::Event::from(req)),
             ),
 
@@ -278,7 +268,7 @@ impl reactor::Reactor for Reactor {
                 };
 
                 // Any incoming message is one for the pinger.
-                self.dispatch_event(effect_builder, reactor_event)
+                self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::ContractRuntime(event) => todo!("handle contract runtime event: {:?}", event),
         }
@@ -289,10 +279,9 @@ impl reactor::ReactorExt<initializer::Reactor> for Reactor {
     fn new_from(
         _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        span: &Span,
         initializer_reactor: initializer::Reactor,
     ) -> Result<(Self, Effects<Self::Event>), Error> {
-        let (config, storage, contract_runtime, rng) = initializer_reactor.destructure();
-        Self::init(config, event_queue, span, storage, contract_runtime, rng)
+        let (config, storage, contract_runtime) = initializer_reactor.destructure();
+        Self::init(config, event_queue, storage, contract_runtime)
     }
 }

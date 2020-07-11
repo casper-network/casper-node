@@ -5,6 +5,8 @@
 use std::{io, io::Write, path::PathBuf};
 
 use anyhow::bail;
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use structopt::StructOpt;
 use tracing::info;
 
@@ -72,6 +74,12 @@ impl Cli {
             } => {
                 logging::init()?;
 
+                // We use a `ChaCha20Rng` for the production node. For one, we want to completely
+                // eliminate any chance of runtime failures, regardless of how small (these
+                // exist with `OsRng`). Additionally, we want to limit the number of syscalls for
+                // performance reasons.
+                let mut rng = ChaCha20Rng::from_entropy();
+
                 // We load the specified config, if any, otherwise use defaults.
                 let config: validator::Config = config
                     .map(config::load_from_file)
@@ -79,8 +87,8 @@ impl Cli {
                     .unwrap_or_default();
 
                 let mut runner =
-                    Runner::<initializer::Reactor>::new((chainspec_path, config)).await?;
-                runner.run().await;
+                    Runner::<initializer::Reactor>::new((chainspec_path, config), &mut rng).await?;
+                runner.run(&mut rng).await;
 
                 info!("finished initialization");
 
@@ -90,7 +98,7 @@ impl Cli {
                 }
 
                 let mut runner = Runner::<validator::Reactor>::from(initializer).await?;
-                runner.run().await;
+                runner.run(&mut rng).await;
             }
         }
 

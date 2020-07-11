@@ -7,10 +7,8 @@ use std::{
 
 use derive_more::From;
 use prometheus::Registry;
-use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
+use rand::Rng;
 use thiserror::Error;
-use tracing::Span;
 
 use crate::{
     components::{
@@ -86,7 +84,6 @@ pub struct Reactor {
     chainspec_handler: ChainspecHandler,
     storage: Storage,
     contract_runtime: ContractRuntime,
-    rng: ChaCha20Rng,
 }
 
 impl Reactor {
@@ -95,8 +92,8 @@ impl Reactor {
         self.chainspec_handler.stopped_successfully()
     }
 
-    pub(super) fn destructure(self) -> (validator::Config, Storage, ContractRuntime, ChaCha20Rng) {
-        (self.config, self.storage, self.contract_runtime, self.rng)
+    pub(super) fn destructure(self) -> (validator::Config, Storage, ContractRuntime) {
+        (self.config, self.storage, self.contract_runtime)
     }
 }
 
@@ -105,11 +102,11 @@ impl reactor::Reactor for Reactor {
     type Config = (PathBuf, validator::Config);
     type Error = Error;
 
-    fn new(
+    fn new<Rd: Rng + ?Sized>(
         (chainspec_config_path, config): Self::Config,
         _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        _span: &Span,
+        _rng: &mut Rd,
     ) -> Result<(Self, Effects<Self::Event>), Error> {
         let effect_builder = EffectBuilder::new(event_queue);
 
@@ -120,7 +117,6 @@ impl reactor::Reactor for Reactor {
             ChainspecHandler::new(chainspec_config_path, effect_builder)?;
 
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
-        let rng = ChaCha20Rng::from_entropy();
 
         Ok((
             Reactor {
@@ -128,32 +124,31 @@ impl reactor::Reactor for Reactor {
                 chainspec_handler,
                 storage,
                 contract_runtime,
-                rng,
             },
             effects,
         ))
     }
 
-    fn dispatch_event(
+    fn dispatch_event<Rd: Rng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
+        rng: &mut Rd,
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
             Event::Chainspec(event) => reactor::wrap_effects(
                 Event::Chainspec,
                 self.chainspec_handler
-                    .handle_event(effect_builder, &mut self.rng, event),
+                    .handle_event(effect_builder, rng, event),
             ),
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
-                self.storage
-                    .handle_event(effect_builder, &mut self.rng, event),
+                self.storage.handle_event(effect_builder, rng, event),
             ),
             Event::ContractRuntime(event) => reactor::wrap_effects(
                 Event::ContractRuntime,
                 self.contract_runtime
-                    .handle_event(effect_builder, &mut self.rng, event),
+                    .handle_event(effect_builder, rng, event),
             ),
         }
     }

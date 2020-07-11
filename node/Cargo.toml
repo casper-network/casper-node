@@ -66,6 +66,7 @@ tokio-serde = { version = "0.6.1", features = ["messagepack"] }
 tokio-util = { version = "0.3.1", features = ["codec"] }
 toml = "0.5.6"
 tracing = "0.1.14"
+tracing-futures = "0.2.4"
 tracing-subscriber = "0.2.5"
 types = { path = "../types", package = "casperlabs-types", features = ["std", "gens"] }
 uint = "0.8.3"
