@@ -19,7 +19,7 @@ use crate::{
         contract_runtime::{self, ContractRuntime},
         deploy_gossiper::{self, DeployGossiper},
         pinger::{self, Pinger},
-        storage::{Storage, StorageType},
+        storage::Storage,
         Component,
     },
     effect::{
@@ -156,13 +156,27 @@ pub struct Reactor {
     deploy_gossiper: DeployGossiper,
 }
 
-impl Reactor {
-    fn init(
-        config: Config,
-        event_queue: EventQueueHandle<Event>,
-        storage: Storage,
-        contract_runtime: ContractRuntime,
+impl reactor::Reactor for Reactor {
+    type Event = Event;
+
+    // The "configuration" is in fact the whole state of the initializer reactor, which we
+    // deconstruct and reuse.
+    type Config = initializer::Reactor;
+    type Error = Error;
+
+    fn new<R: Rng + ?Sized>(
+        initializer: Self::Config,
+        _registry: &Registry,
+        event_queue: EventQueueHandle<Self::Event>,
+        _rng: &mut R,
     ) -> Result<(Self, Effects<Event>), Error> {
+        let initializer::Reactor {
+            config,
+            storage,
+            contract_runtime,
+            ..
+        } = initializer;
+
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, config.validator_net)?;
 
@@ -188,23 +202,6 @@ impl Reactor {
             },
             effects,
         ))
-    }
-}
-
-impl reactor::Reactor for Reactor {
-    type Event = Event;
-    type Config = Config;
-    type Error = Error;
-
-    fn new<R: Rng + ?Sized>(
-        config: Self::Config,
-        _registry: &Registry,
-        event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut R,
-    ) -> Result<(Self, Effects<Event>), Error> {
-        let storage = Storage::new(&config.storage)?;
-        let contract_runtime = ContractRuntime::new(&config.storage, config.contract_runtime)?;
-        Self::init(config, event_queue, storage, contract_runtime)
     }
 
     fn dispatch_event<R: Rng + ?Sized>(
@@ -272,16 +269,5 @@ impl reactor::Reactor for Reactor {
             }
             Event::ContractRuntime(event) => todo!("handle contract runtime event: {:?}", event),
         }
-    }
-}
-
-impl reactor::ReactorExt<initializer::Reactor> for Reactor {
-    fn new_from(
-        _registry: &Registry,
-        event_queue: EventQueueHandle<Self::Event>,
-        initializer_reactor: initializer::Reactor,
-    ) -> Result<(Self, Effects<Self::Event>), Error> {
-        let (config, storage, contract_runtime) = initializer_reactor.destructure();
-        Self::init(config, event_queue, storage, contract_runtime)
     }
 }

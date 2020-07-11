@@ -97,7 +97,7 @@ impl Cli {
                     bail!("failed to initialize successfully");
                 }
 
-                let mut runner = Runner::<validator::Reactor>::from(initializer).await?;
+                let mut runner = Runner::<validator::Reactor>::new(initializer, &mut rng).await?;
                 runner.run(&mut rng).await;
             }
         }

@@ -147,17 +147,6 @@ pub trait Finalize: Sized {
     }
 }
 
-/// Reactor extension trait.
-pub trait ReactorExt<R: Reactor>: Reactor {
-    /// Creates a new instance of the reactor by taking the components from a previous reactor (not
-    /// necessarily of the same concrete type).
-    fn new_from(
-        registry: &Registry,
-        event_queue: EventQueueHandle<Self::Event>,
-        reactor: R,
-    ) -> Result<(Self, Effects<Self::Event>), Self::Error>;
-}
-
 /// A runner for a reactor.
 ///
 /// The runner manages a reactors event queue and reactor itself and can run it either continuously
@@ -205,7 +194,16 @@ where
     /// Creates a new runner from a given configuration.
     #[inline]
     pub async fn new<Rd: Rng + ?Sized>(cfg: R::Config, rng: &mut Rd) -> Result<Self, R::Error> {
-        let scheduler = Self::init();
+        let event_size = mem::size_of::<R::Event>();
+
+        // Check if the event is of a reasonable size. This only emits a runtime warning at startup
+        // right now, since storage size of events is not an issue per se, but copying might be
+        // expensive if events get too large.
+        if event_size > 16 * mem::size_of::<usize>() {
+            warn!(%event_size, "large event size, consider reducing it or boxing");
+        }
+
+        let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
 
         // Instantiate a new registry for metrics for this reactor.
         let registry = Registry::new();
@@ -227,52 +225,6 @@ where
             event_count: 0,
             metrics: RunnerMetrics::new(&registry)?,
         })
-    }
-
-    /// Creates a new runner from a given reactor.
-    ///
-    /// Note that this will reset all metrics.
-    #[inline]
-    pub async fn from<R1>(old_reactor: R1) -> Result<Self, R::Error>
-    where
-        R1: Reactor,
-        R: ReactorExt<R1>,
-    {
-        let scheduler = Self::init();
-
-        let registry = Registry::new();
-
-        let event_queue = EventQueueHandle::new(scheduler);
-        let (reactor, initial_effects) = R::new_from(&registry, event_queue, old_reactor)?;
-
-        // Run all effects from component instantiation.
-        let span = debug_span!("process initial effects (from)");
-        process_effects(scheduler, initial_effects)
-            .instrument(span)
-            .await;
-
-        info!("reactor main loop is ready");
-
-        Ok(Runner {
-            scheduler,
-            reactor,
-            event_count: 0,
-            metrics: RunnerMetrics::new(&registry)?,
-        })
-    }
-
-    fn init() -> &'static Scheduler<R::Event> {
-        let event_size = mem::size_of::<R::Event>();
-
-        // Check if the event is of a reasonable size. This only emits a runtime warning at startup
-        // right now, since storage size of events is not an issue per se, but copying might be
-        // expensive if events get too large.
-        if event_size > 16 * mem::size_of::<usize>() {
-            warn!(%event_size, "large event size, consider reducing it or boxing");
-        }
-
-        // Create a new event queue for this reactor run.
-        utils::leak(Scheduler::new(QueueKind::weights()))
     }
 
     /// Processes a single event on the event queue.
