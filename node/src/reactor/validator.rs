@@ -18,13 +18,16 @@ use crate::{
         consensus::{self, EraSupervisor},
         contract_runtime::{self, ContractRuntime},
         deploy_gossiper::{self, DeployGossiper},
+        metrics::Metrics,
         pinger::{self, Pinger},
         storage::Storage,
         Component,
     },
     effect::{
         announcements::NetworkAnnouncement,
-        requests::{ApiRequest, DeployGossiperRequest, NetworkRequest, StorageRequest},
+        requests::{
+            ApiRequest, DeployGossiperRequest, MetricsRequest, NetworkRequest, StorageRequest,
+        },
         EffectBuilder, Effects,
     },
     reactor::{self, initializer, EventQueueHandle},
@@ -86,6 +89,9 @@ pub enum Event {
     /// Network request.
     #[from]
     NetworkRequest(NetworkRequest<NodeId, Message>),
+    /// Metrics request.
+    #[from]
+    MetricsRequest(MetricsRequest),
 
     // Announcements
     /// Network announcement.
@@ -138,6 +144,7 @@ impl Display for Event {
             Event::Consensus(event) => write!(f, "consensus: {}", event),
             Event::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
+            Event::MetricsRequest(req) => write!(f, "metrics request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
             Event::ContractRuntime(event) => write!(f, "contract runtime: {}", event),
         }
@@ -147,6 +154,7 @@ impl Display for Event {
 /// Validator node reactor.
 #[derive(Debug)]
 pub struct Reactor {
+    metrics: Metrics,
     net: SmallNetwork<Event, Message>,
     pinger: Pinger,
     storage: Storage,
@@ -166,7 +174,7 @@ impl reactor::Reactor for Reactor {
 
     fn new<R: Rng + ?Sized>(
         initializer: Self::Config,
-        _registry: &Registry,
+        registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut R,
     ) -> Result<(Self, Effects<Event>), Error> {
@@ -176,6 +184,8 @@ impl reactor::Reactor for Reactor {
             contract_runtime,
             ..
         } = initializer;
+
+        let metrics = Metrics::new(registry.clone());
 
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, config.validator_net)?;
@@ -192,6 +202,7 @@ impl reactor::Reactor for Reactor {
 
         Ok((
             Reactor {
+                metrics,
                 net,
                 pinger,
                 storage,
@@ -243,6 +254,9 @@ impl reactor::Reactor for Reactor {
                 rng,
                 Event::Network(small_network::Event::from(req)),
             ),
+            Event::MetricsRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::MetricsRequest(req))
+            }
 
             // Announcements:
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {

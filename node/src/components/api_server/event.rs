@@ -26,6 +26,10 @@ pub enum Event {
         result: Box<storage::Result<Vec<DeployHash>>>,
         main_responder: Responder<storage::Result<Vec<DeployHash>>>,
     },
+    GetMetricsResult {
+        text: Option<String>,
+        main_responder: Responder<Option<String>>,
+    },
 }
 
 impl Display for Event {
@@ -41,6 +45,10 @@ impl Display for Event {
             Event::ListDeploysResult { result, .. } => {
                 write!(formatter, "ListDeployResult: {:?}", result)
             }
+            Event::GetMetricsResult { text, .. } => match text {
+                Some(tx) => write!(formatter, "GetMetricsResult ({} bytes)", tx.len()),
+                None => write!(formatter, "GetMetricsResult (failed)"),
+            },
         }
     }
 }

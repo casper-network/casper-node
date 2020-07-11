@@ -310,6 +310,11 @@ pub enum ApiRequest {
         /// Responder to call with the result.
         responder: Responder<Result<Vec<DeployHash>, storage::Error>>,
     },
+    /// Return string formatted, prometheus compatible metrics or `None` if an error occured.
+    GetMetrics {
+        /// Responder to call with the result.
+        responder: Responder<Option<String>>,
+    },
 }
 
 impl Display for ApiRequest {
@@ -318,6 +323,7 @@ impl Display for ApiRequest {
             ApiRequest::SubmitDeploy { deploy, .. } => write!(formatter, "submit {}", *deploy),
             ApiRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
             ApiRequest::ListDeploys { .. } => write!(formatter, "list deploys"),
+            ApiRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
         }
     }
 }

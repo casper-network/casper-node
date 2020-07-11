@@ -23,6 +23,7 @@ mod event;
 use std::{error::Error as StdError, net::SocketAddr, str};
 
 use bytes::Bytes;
+use futures::FutureExt;
 use http::Response;
 use rand::Rng;
 use tracing::{debug, info, warn};
@@ -40,7 +41,7 @@ use crate::{
     components::storage::{self, Storage},
     crypto::hash::Digest,
     effect::{
-        requests::{ApiRequest, DeployGossiperRequest, StorageRequest},
+        requests::{ApiRequest, DeployGossiperRequest, MetricsRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     reactor::QueueKind,
@@ -50,6 +51,7 @@ pub use config::Config;
 pub(crate) use event::Event;
 
 const DEPLOYS_API_PATH: &str = "deploys";
+const METRICS_API_PATH: &str = "metrics";
 
 #[derive(Debug)]
 pub(crate) struct ApiServer {}
@@ -66,7 +68,7 @@ impl ApiServer {
 
 impl<REv> Component<REv> for ApiServer
 where
-    REv: From<StorageRequest<Storage>> + From<DeployGossiperRequest> + Send,
+    REv: From<StorageRequest<Storage>> + From<DeployGossiperRequest> + From<MetricsRequest> + Send,
 {
     type Event = Event;
 
@@ -97,6 +99,12 @@ where
                     result: Box::new(result),
                     main_responder: responder,
                 }),
+            Event::ApiRequest(ApiRequest::GetMetrics { responder }) => effect_builder
+                .get_metrics()
+                .event(move |text| Event::GetMetricsResult {
+                    text,
+                    main_responder: responder,
+                }),
             Event::PutDeployResult {
                 deploy,
                 result,
@@ -118,6 +126,10 @@ where
                 result,
                 main_responder,
             } => main_responder.respond(*result).ignore(),
+            Event::GetMetricsResult {
+                text,
+                main_responder,
+            } => main_responder.respond(text).ignore(),
         }
     }
 }
@@ -137,10 +149,24 @@ where
         .and(warp::path::tail())
         .and_then(move |hex_digest| parse_get_request(effect_builder, hex_digest));
 
+    let get_metrics = warp::get()
+        .and(warp::path(METRICS_API_PATH))
+        .and_then(move || {
+            effect_builder
+                .make_request(
+                    |responder| ApiRequest::GetMetrics { responder },
+                    QueueKind::Api,
+                )
+                .map(|text_opt| match text_opt {
+                    Some(text) => Ok::<_, Rejection>(text),
+                    None => todo!(),
+                })
+        });
+
     let mut server_addr = SocketAddr::from((config.bind_interface, config.bind_port));
 
     debug!(%server_addr, "starting HTTP server");
-    match warp::serve(post_deploy.or(get_deploy)).try_bind_ephemeral(server_addr) {
+    match warp::serve(post_deploy.or(get_deploy).or(get_metrics)).try_bind_ephemeral(server_addr) {
         Ok((addr, server_fut)) => {
             info!(%addr, "started HTTP server");
             return server_fut.await;
