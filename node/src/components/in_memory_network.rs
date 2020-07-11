@@ -21,7 +21,6 @@
 //! # use derive_more::From;
 //! # use maplit::hashmap;
 //! # use rand::{Rng, rngs::OsRng};
-//! # use tracing::Span;
 //! #
 //! # use casperlabs_node::{components::{Component,
 //! #                       in_memory_network::{InMemoryNetwork, NetworkController, NodeId}},
@@ -170,7 +169,6 @@
 //!     fn new<R: Rng + ?Sized>(_cfg: Self::Config,
 //!            event_queue: EventQueueHandle<Self::Event>,
 //!            rng: &mut R,
-//!            _span: &Span
 //!     ) -> Result<(Self, Effects<Self::Event>), ()> {
 //!         let effect_builder = EffectBuilder::new(event_queue);
 //!         let (shouter, shouter_effect) = Shouter::new(effect_builder);
