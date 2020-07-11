@@ -166,13 +166,13 @@
 //! impl reactor::Reactor for Reactor {
 //!     type Event = Event;
 //!     type Config = ();
-//!     type Error = ();
+//!     type Error = anyhow::Error;
 //!
 //!     fn new(_cfg: Self::Config,
 //!            _registry: &Registry,
 //!            event_queue: EventQueueHandle<Self::Event>,
 //!            _span: &Span
-//!     ) -> Result<(Self, Effects<Self::Event>), ()> {
+//!     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
 //!         let effect_builder = EffectBuilder::new(event_queue);
 //!         let (shouter, shouter_effect) = Shouter::new(effect_builder);
 //!

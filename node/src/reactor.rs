@@ -34,7 +34,7 @@ use std::{
 };
 
 use futures::{future::BoxFuture, FutureExt};
-use prometheus::Registry;
+use prometheus::{self, core::Collector, IntCounter, Registry};
 use tracing::{debug, info, trace, warn, Span};
 
 use crate::{
@@ -153,6 +153,7 @@ pub trait ReactorExt<R: Reactor>: Reactor {
     /// Creates a new instance of the reactor by taking the components from a previous reactor (not
     /// necessarily of the same concrete type).
     fn new_from(
+        registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         span: &Span,
         reactor: R,
@@ -179,11 +180,32 @@ where
 
     /// Counter for events, to aid tracing.
     event_count: usize,
+
+    /// Metrics for the runner.
+    metrics: RunnerMetrics,
+}
+
+/// Metric data for the Runner
+#[derive(Debug)]
+struct RunnerMetrics {
+    /// Total number of events processed.
+    events: IntCounter,
+}
+
+impl RunnerMetrics {
+    /// Create and register new runner metrics.
+    fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        let events = IntCounter::new("runner_events", "total event count")?;
+        registry.register(Box::new(events.clone()))?;
+
+        Ok(RunnerMetrics { events })
+    }
 }
 
 impl<R> Runner<R>
 where
     R: Reactor,
+    R::Error: From<prometheus::Error>,
 {
     /// Creates a new runner from a given configuration.
     ///
@@ -211,13 +233,13 @@ where
             reactor,
             span,
             event_count: 0,
+            metrics: RunnerMetrics::new(&registry)?,
         })
     }
 
     /// Creates a new runner from a given reactor.
     ///
-    /// The `id` is used to identify the runner during logging when debugging and can be chosen
-    /// arbitrarily.
+    /// Note that this will reset all metrics.
     #[inline]
     pub async fn from<R1>(old_reactor: R1) -> Result<Self, R::Error>
     where
@@ -227,8 +249,10 @@ where
         let (span, scheduler) = Self::init();
         let entered = span.enter();
 
+        let registry = Registry::new();
+
         let event_queue = EventQueueHandle::new(scheduler);
-        let (reactor, initial_effects) = R::new_from(event_queue, &span, old_reactor)?;
+        let (reactor, initial_effects) = R::new_from(&registry, event_queue, &span, old_reactor)?;
 
         // Run all effects from component instantiation.
         process_effects(scheduler, initial_effects).await;
@@ -241,6 +265,7 @@ where
             reactor,
             span,
             event_count: 0,
+            metrics: RunnerMetrics::new(&registry)?,
         })
     }
 
@@ -275,6 +300,7 @@ where
         let _inner_enter = crank_span.enter();
 
         self.event_count += 1;
+        self.metrics.events.inc();
 
         let event_queue = EventQueueHandle::new(self.scheduler);
         let effect_builder = EffectBuilder::new(event_queue);

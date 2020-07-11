@@ -62,6 +62,10 @@ impl Display for Event {
 /// Error type returned by the initializer reactor.
 #[derive(Debug, Error)]
 pub enum Error {
+    /// Metrics-related error
+    #[error("prometheus (metrics) error: {0}")]
+    Metrics(#[from] prometheus::Error),
+
     /// `ChainspecHandler` component error.
     #[error("chainspec error: {0}")]
     Chainspec(#[from] chainspec_handler::Error),

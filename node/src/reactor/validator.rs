@@ -287,6 +287,7 @@ impl reactor::Reactor for Reactor {
 
 impl reactor::ReactorExt<initializer::Reactor> for Reactor {
     fn new_from(
+        _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         span: &Span,
         initializer_reactor: initializer::Reactor,
