@@ -68,7 +68,7 @@ impl<C: Context> From<PreValidatedVertex<C>> for Vertex<C> {
 /// Note that this must only be added to the `Highway` instance that created it. Can cause a panic
 /// or inconsistent state otherwise.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct ValidVertex<C: Context>(Vertex<C>);
+pub(crate) struct ValidVertex<C: Context>(pub(super) Vertex<C>);
 
 #[derive(Debug)]
 pub(crate) struct HighwayParams<C: Context> {

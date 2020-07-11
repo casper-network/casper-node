@@ -13,7 +13,7 @@ use crate::{
         highway_core::{
             active_validator::Effect as AvEffect,
             finality_detector::{FinalityDetector, FinalityOutcome},
-            highway::{Highway, HighwayParams, PreValidatedVertex},
+            highway::{Highway, HighwayParams, PreValidatedVertex, ValidVertex},
             vertex::{Dependency, Vertex},
             Weight,
         },
@@ -96,7 +96,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         effect: AvEffect<C>,
     ) -> Vec<ConsensusProtocolResult<I, C::ConsensusValue>> {
         match effect {
-            AvEffect::NewVertex(vertex) => self.process_new_vertex(vertex),
+            AvEffect::NewVertex(vv) => self.process_new_vertex(vv),
             AvEffect::ScheduleTimer(timestamp) => {
                 vec![ConsensusProtocolResult::ScheduleTimer(timestamp)]
             }
@@ -108,22 +108,12 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
 
     fn process_new_vertex(
         &mut self,
-        vertex: Vertex<C>,
+        vv: ValidVertex<C>,
     ) -> Vec<ConsensusProtocolResult<I, C::ConsensusValue>> {
-        let msg = HighwayMessage::NewVertex(vertex.clone());
+        let msg = HighwayMessage::NewVertex(vv.clone().into());
         //TODO: Don't unwrap
         // Replace serde with generic serializer.
         let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
-        // TODO: Validation should be unnecessary, since we created the vertex
-        // ourselves.
-        let pvv = self
-            .highway
-            .pre_validate_vertex(vertex)
-            .expect("we created an invalid vertex");
-        let vv = self
-            .highway
-            .validate_vertex(pvv)
-            .expect("we created an invalid vertex");
         assert!(
             self.highway.add_valid_vertex(vv).is_empty(),
             "unexpected effects when adding our own vertex"
