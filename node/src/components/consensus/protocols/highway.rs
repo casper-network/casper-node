@@ -12,7 +12,7 @@ use crate::{
         },
         highway_core::{
             active_validator::Effect as AvEffect,
-            finality_detector::FinalityDetector,
+            finality_detector::{FinalityDetector, FinalityResult},
             highway::{Highway, HighwayParams, PreValidatedVertex},
             vertex::{Dependency, Vertex},
             Weight,
@@ -69,16 +69,17 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         round_exp: u8,
         timestamp: Timestamp,
     ) -> (Self, Vec<ConsensusProtocolResult<I, C::ConsensusValue>>) {
-        let ftt = (params.validators.total_weight() - Weight(1)) / 3;
+        let ftt = (params.validators.total_weight() - Weight(1)) / 3; // TODO: From chain spec!
         let (mut highway, av_effects) =
             Highway::new(params, seed, our_id, secret, round_exp, timestamp);
+        let mut finality_detector = FinalityDetector::new(ftt);
         let effects = av_effects
             .into_iter()
-            .map(|effect| av_effect_to_result(effect, &mut highway))
+            .flat_map(|effect| av_effect_to_result(effect, &mut highway, &mut finality_detector))
             .collect();
         let instance = HighwayProtocol {
             synchronizer: DagSynchronizerState::new(),
-            finality_detector: FinalityDetector::new(ftt),
+            finality_detector,
             highway,
         };
         (instance, effects)
@@ -98,7 +99,8 @@ enum HighwayMessage<C: Context> {
 fn av_effect_to_result<I, C: Context>(
     effect: AvEffect<C>,
     highway: &mut Highway<C>,
-) -> ConsensusProtocolResult<I, C::ConsensusValue> {
+    finality_detector: &mut FinalityDetector<C>,
+) -> Vec<ConsensusProtocolResult<I, C::ConsensusValue>> {
     match effect {
         AvEffect::NewVertex(v) => {
             let msg = HighwayMessage::NewVertex(v.clone());
@@ -117,11 +119,27 @@ fn av_effect_to_result<I, C: Context>(
                 highway.add_valid_vertex(vv).is_empty(),
                 "unexpected effects when adding our own vertex"
             );
-            ConsensusProtocolResult::CreatedGossipMessage(serialized_msg)
+            let mut results = vec![ConsensusProtocolResult::CreatedGossipMessage(
+                serialized_msg,
+            )];
+            match finality_detector.run(highway.state()) {
+                FinalityResult::None => (),
+                FinalityResult::FttExceeded => panic!("Too many faulty validators"),
+                FinalityResult::Finalized(block, equivocators) => {
+                    if !equivocators.is_empty() {
+                        // TODO: Add this information to the proto block for slashing.
+                        info!(?equivocators, "Observed new faulty validators");
+                    }
+                    results.push(ConsensusProtocolResult::FinalizedBlock(block));
+                }
+            }
+            results
         }
-        AvEffect::ScheduleTimer(timestamp) => ConsensusProtocolResult::ScheduleTimer(timestamp),
+        AvEffect::ScheduleTimer(timestamp) => {
+            vec![ConsensusProtocolResult::ScheduleTimer(timestamp)]
+        }
         AvEffect::RequestNewBlock(block_context) => {
-            ConsensusProtocolResult::CreateNewBlock(block_context)
+            vec![ConsensusProtocolResult::CreateNewBlock(block_context)]
         }
     }
 }
@@ -182,6 +200,7 @@ where
         &mut self,
         effect: SynchronizerEffect<I, PreValidatedVertex<C>>,
         highway: &mut Highway<C>,
+        fd: &mut FinalityDetector<C>,
     ) {
         match effect {
             SynchronizerEffect::RequestVertex(sender, missing_vid) => {
@@ -208,7 +227,8 @@ where
                 };
                 // TODO: Avoid cloning. (Serialize first?)
                 for effect in highway.add_valid_vertex(vv.clone()) {
-                    self.results.push(av_effect_to_result(effect, highway));
+                    self.results
+                        .extend(av_effect_to_result(effect, highway, fd));
                 }
                 let msg = HighwayMessage::NewVertex(vv.into());
                 // TODO: Don't `unwrap`.
@@ -237,11 +257,12 @@ where
         &mut self,
         synchronizer: &mut DagSynchronizerState<I, Highway<C>>,
         highway: &mut Highway<C>,
+        fd: &mut FinalityDetector<C>,
     ) {
         if let Some((sender, vertex)) = self.vertex_queue.pop() {
             self.process_vertex(sender, vertex, synchronizer, highway);
         } else if let Some(effect) = self.synchronizer_effects_queue.pop() {
-            self.process_synchronizer_effect(effect, highway);
+            self.process_synchronizer_effect(effect, highway, fd);
         }
     }
 }
@@ -278,7 +299,11 @@ where
                 // returned vertex that needs to be requeued, also return an `EnqueueVertex`
                 // effect.
                 while !queue.is_finished() {
-                    queue.process_item(&mut self.synchronizer, &mut self.highway);
+                    queue.process_item(
+                        &mut self.synchronizer,
+                        &mut self.highway,
+                        &mut self.finality_detector,
+                    );
                 }
                 queue.into_results()
             }
@@ -306,7 +331,9 @@ where
         let effects = self.highway.handle_timer(timestamp);
         Ok(effects
             .into_iter()
-            .map(|effect| av_effect_to_result(effect, &mut self.highway))
+            .flat_map(|effect| {
+                av_effect_to_result(effect, &mut self.highway, &mut self.finality_detector)
+            })
             .collect())
     }
 
@@ -318,7 +345,9 @@ where
         let effects = self.highway.propose(value, block_context);
         Ok(effects
             .into_iter()
-            .map(|effect| av_effect_to_result(effect, &mut self.highway))
+            .flat_map(|effect| {
+                av_effect_to_result(effect, &mut self.highway, &mut self.finality_detector)
+            })
             .collect())
     }
 
@@ -331,7 +360,11 @@ where
             let effects = self.synchronizer.on_consensus_value_synced(value);
             let mut queue = SynchronizerQueue::new().with_synchronizer_effects(effects);
             while !queue.is_finished() {
-                queue.process_item(&mut self.synchronizer, &mut self.highway);
+                queue.process_item(
+                    &mut self.synchronizer,
+                    &mut self.highway,
+                    &mut self.finality_detector,
+                );
             }
             Ok(queue.into_results())
         } else {

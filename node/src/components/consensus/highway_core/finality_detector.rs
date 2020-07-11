@@ -1,4 +1,3 @@
-#![allow(unused)] // TODO: Use the finality detector!
 use std::{collections::BTreeMap, iter};
 
 use super::{
@@ -112,9 +111,9 @@ pub(crate) enum FinalityResult<V: ConsensusValueT, VID> {
     /// No new block has been finalized yet.
     None,
     /// A new block with this consensus value has been finalized.
-    /// Second vectors is a list of indexes of validators that equivocated.
+    /// Second vector is a list of indexes of validators that equivocated.
     Finalized(V, Vec<VID>),
-    /// The fault tolerance threshold has been exceeded: The number of observed equivocation
+    /// The fault tolerance threshold has been exceeded: The number of observed equivocations
     /// invalidates this finality detector's results.
     FttExceeded,
 }
@@ -318,11 +317,11 @@ mod tests {
         // Test that an initial block reports equivocators as well.
         let mut bstate: State<TestContext> = State::new(&[Weight(5), Weight(4), Weight(1)], 0);
         let mut fde4 = FinalityDetector::new(Weight(4)); // Fault tolerance 4.
-        add_vote!(bstate, c0, CAROL, CAROL_SEC, 0; N, N, N; 0xB0);
+        add_vote!(bstate, _c0, CAROL, CAROL_SEC, 0; N, N, N; 0xB0);
         add_vote!(bstate, _c0_prime, CAROL, CAROL_SEC, 0; N, N, N; 0xB0);
         add_vote!(bstate, a0, ALICE, ALICE_SEC, 0; N, N, F; 0xA0);
         add_vote!(bstate, b0, BOB, BOB_SEC, 0; a0, N, F);
-        add_vote!(bstate, a1, ALICE, ALICE_SEC, 1; a0, b0, F);
+        add_vote!(bstate, _a1, ALICE, ALICE_SEC, 1; a0, b0, F);
         assert_eq!(
             FinalityResult::Finalized(0xA0, vec![CAROL]),
             fde4.run(&bstate)

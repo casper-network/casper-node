@@ -224,6 +224,10 @@ impl<C: Context> Highway<C> {
         }
     }
 
+    pub(crate) fn state(&self) -> &State<C> {
+        &self.state
+    }
+
     fn on_new_vote(&self, vhash: &C::Hash, timestamp: Timestamp) -> Vec<Effect<C>> {
         self.active_validator
             .as_ref()
