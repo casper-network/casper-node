@@ -22,6 +22,7 @@ use crate::{
 
 /// A networking request.
 #[derive(Debug)]
+#[must_use]
 pub enum NetworkRequest<I, P> {
     /// Send a message on the network to a specific peer.
     SendMessage {
@@ -113,6 +114,7 @@ where
 // TODO: remove once all variants are used.
 /// A storage request.
 #[allow(dead_code)]
+#[must_use]
 pub enum StorageRequest<S: StorageType + 'static> {
     /// Store given block.
     PutBlock {
@@ -208,6 +210,7 @@ impl<S: StorageType> Display for StorageRequest<S> {
 #[allow(dead_code)] // FIXME: Remove once in use.
 /// Deploy-queue related requests.
 #[derive(Debug)]
+#[must_use]
 pub(crate) enum DeployQueueRequest {
     /// Add a deploy to the queue for inclusion into an upcoming block.
     QueueDeploy {
@@ -270,6 +273,7 @@ impl Display for DeployQueueRequest {
 /// An API request is an abstract request that does not concern itself with serialization or
 /// transport.
 #[derive(Debug)]
+#[must_use]
 pub enum ApiRequest {
     /// Submit a deploy to be announced.
     SubmitDeploy {
@@ -304,6 +308,7 @@ impl Display for ApiRequest {
 
 /// A contract runtime request.
 #[derive(Debug)]
+#[must_use]
 pub enum ContractRuntimeRequest {
     /// Commit genesis chainspec.
     CommitGenesis {

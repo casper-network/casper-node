@@ -9,6 +9,7 @@ use crate::types::Deploy;
 
 /// A networking layer announcement.
 #[derive(Debug)]
+#[must_use]
 pub enum NetworkAnnouncement<I, P> {
     /// A payload message has been received from a peer.
     MessageReceived {
@@ -35,6 +36,7 @@ where
 
 /// An HTTP API server announcement.
 #[derive(Debug)]
+#[must_use]
 pub enum ApiServerAnnouncement {
     /// A new deploy received.
     DeployReceived {

@@ -423,7 +423,7 @@ impl DeployGossiper {
     /// Handles the `Ok` case for a `Result` of attempting to put the deploy to the storage
     /// component having received it from the sender (for the `Some` case) or from our own HTTP API
     /// server (the `None` case).
-    fn put_to_store<REv: ReactorEvent>(
+    fn handle_put_to_store_success<REv: ReactorEvent>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         deploy_hash: DeployHash,
@@ -535,7 +535,9 @@ where
                 maybe_sender,
                 result,
             } => match result {
-                Ok(()) => self.put_to_store(effect_builder, deploy_hash, maybe_sender),
+                Ok(()) => {
+                    self.handle_put_to_store_success(effect_builder, deploy_hash, maybe_sender)
+                }
                 Err(error) => self.failed_to_put_to_store(deploy_hash, error),
             },
             Event::GetFromStoreResult {
