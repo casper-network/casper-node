@@ -12,11 +12,6 @@ use crate::{
 pub enum Event {
     #[from]
     ApiRequest(ApiRequest),
-    PutDeployResult {
-        deploy: Box<Deploy>,
-        result: storage::Result<()>,
-        main_responder: Responder<Result<(), (Deploy, storage::Error)>>,
-    },
     GetDeployResult {
         hash: DeployHash,
         result: Box<storage::Result<Deploy>>,
@@ -32,9 +27,6 @@ impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
             Event::ApiRequest(request) => write!(formatter, "{}", request),
-            Event::PutDeployResult { result, .. } => {
-                write!(formatter, "PutDeployResult: {:?}", result)
-            }
             Event::GetDeployResult { hash, result, .. } => {
                 write!(formatter, "GetDeployResult for {}: {:?}", hash, result)
             }
