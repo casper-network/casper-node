@@ -9,6 +9,7 @@ use std::{
 
 use futures::future::{BoxFuture, FutureExt};
 use rand::Rng;
+use tokio::time;
 use tracing::{debug, field};
 use tracing_futures::Instrument;
 
@@ -93,13 +94,30 @@ where
         Ok((node_id, node_ref))
     }
 
+    /// Removes a node from the network.
+    pub fn remove_node(&mut self, node_id: &R::NodeId) -> Option<Runner<R>> {
+        self.nodes.remove(node_id)
+    }
+
+    /// Crank the specified runner once, returning the number of events processed.
+    pub async fn crank<Rd: Rng + ?Sized>(&mut self, node_id: &R::NodeId, rng: &mut Rd) -> usize {
+        let runner = self.nodes.get_mut(node_id).unwrap();
+
+        let node_id = runner.reactor().node_id();
+        let span = tracing::error_span!("crank", node_id = %node_id);
+        if runner.try_crank(rng).instrument(span).await.is_some() {
+            1
+        } else {
+            0
+        }
+    }
+
     /// Crank all runners once, returning the number of events processed.
     pub async fn crank_all<Rd: Rng + ?Sized>(&mut self, rng: &mut Rd) -> usize {
         let mut event_count = 0;
         for node in self.nodes.values_mut() {
             let node_id = node.reactor().node_id();
-            let span = tracing::error_span!("crank", node_id = field::Empty);
-            span.record("node_id", &field::display(node_id));
+            let span = tracing::error_span!("crank", node_id = %node_id);
             event_count += if node.try_crank(rng).instrument(span).await.is_some() {
                 1
             } else {
@@ -112,18 +130,30 @@ where
 
     /// Process events on all nodes until all event queues are empty.
     ///
-    /// Exits if `at_least` time has passed twice between events that have been processed.
-    pub async fn settle<Rd: Rng + ?Sized>(&mut self, rng: &mut Rd, at_least: Duration) {
+    /// Returns `true` if `quiet_for` time has passed with no new events processed within the
+    /// specified timeout.
+    pub async fn settle<Rd: Rng + ?Sized>(
+        &mut self,
+        rng: &mut Rd,
+        quiet_for: Duration,
+        within: Duration,
+    ) -> bool {
+        time::timeout(within, self.settle_indefinitely(rng, quiet_for))
+            .await
+            .is_ok()
+    }
+
+    async fn settle_indefinitely<Rd: Rng + ?Sized>(&mut self, rng: &mut Rd, quiet_for: Duration) {
         let mut no_events = false;
         loop {
             if self.crank_all(rng).await == 0 {
-                // Stop once we have no pending events and haven't had any for `at_least` duration.
+                // Stop once we have no pending events and haven't had any for `quiet_for` time.
                 if no_events {
-                    debug!(?at_least, "network has settled after");
+                    debug!("network has been quiet for {:?}", quiet_for);
                     break;
                 } else {
                     no_events = true;
-                    tokio::time::delay_for(at_least).await;
+                    time::delay_for(quiet_for).await;
                 }
             } else {
                 no_events = false;
@@ -131,22 +161,33 @@ where
         }
     }
 
-    /// Runs the main loop of every reactor until a condition is true.
-    pub async fn settle_on<Rd, F>(&mut self, rng: &mut Rd, f: F)
+    /// Runs the main loop of every reactor until `condition` is true or until `within` has elapsed.
+    ///
+    /// Returns `true` if `condition` has been met within the specified timeout.
+    pub async fn settle_on<Rd, F>(&mut self, rng: &mut Rd, condition: F, within: Duration) -> bool
+    where
+        Rd: Rng + ?Sized,
+        F: Fn(&HashMap<R::NodeId, Runner<R>>) -> bool,
+    {
+        time::timeout(within, self.settle_on_indefinitely(rng, condition))
+            .await
+            .is_ok()
+    }
+
+    async fn settle_on_indefinitely<Rd, F>(&mut self, rng: &mut Rd, condition: F)
     where
         Rd: Rng + ?Sized,
         F: Fn(&HashMap<R::NodeId, Runner<R>>) -> bool,
     {
         loop {
-            // Check condition.
-            if f(&self.nodes) {
-                debug!("network settled");
+            if condition(&self.nodes) {
+                debug!("network settled on meeting condition");
                 break;
             }
 
             if self.crank_all(rng).await == 0 {
                 // No events processed, wait for a bit to avoid 100% cpu usage.
-                tokio::time::delay_for(POLL_INTERVAL).await;
+                time::delay_for(POLL_INTERVAL).await;
             }
         }
     }
@@ -154,6 +195,20 @@ where
     /// Returns the internal map of nodes.
     pub fn nodes(&self) -> &HashMap<R::NodeId, Runner<R>> {
         &self.nodes
+    }
+
+    /// Dispatch the given event on the given node.
+    pub async fn inject_event_on<Rd: Rng + ?Sized>(
+        &mut self,
+        node_id: &R::NodeId,
+        rng: &mut Rd,
+        event: R::Event,
+    ) {
+        let runner = self.nodes.get_mut(node_id).unwrap();
+        let node_id = runner.reactor().node_id();
+        let span = tracing::error_span!("inject", node_id = field::Empty);
+        span.record("node_id", &field::display(node_id));
+        runner.inject_event(rng, event).instrument(span).await
     }
 }
 

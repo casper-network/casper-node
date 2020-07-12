@@ -15,19 +15,29 @@
 //!
 //! ```rust
 //! # #![allow(dead_code)] // FIXME: Remove me
-//! # use std::{collections::HashMap, fmt::{self, Formatter, Debug, Display}, ops::AddAssign,
-//! #           time::Duration};
+//! # use std::{
+//! #     collections::HashMap,
+//! #     fmt::{self, Debug, Display, Formatter},
+//! #     ops::AddAssign,
+//! #     time::Duration,
+//! # };
 //! #
 //! # use derive_more::From;
 //! # use maplit::hashmap;
-//! # use rand::{Rng, rngs::OsRng};
+//! # use rand::{rngs::OsRng, Rng};
 //! #
-//! # use casperlabs_node::{components::{Component,
-//! #                       in_memory_network::{InMemoryNetwork, NetworkController, NodeId}},
-//! #                       effect::{EffectBuilder, EffectExt, Effects,
-//! #                       announcements::NetworkAnnouncement, requests::NetworkRequest},
-//! #                       reactor::{self, EventQueueHandle, wrap_effects},
-//! #                       testing::network::{Network, NetworkedReactor}};
+//! # use casperlabs_node::{
+//! #     components::{
+//! #         in_memory_network::{InMemoryNetwork, NetworkController, NodeId},
+//! #         Component,
+//! #     },
+//! #     effect::{
+//! #         announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, EffectExt,
+//! #         Effects,
+//! #     },
+//! #     reactor::{self, wrap_effects, EventQueueHandle},
+//! #     testing::network::{Network, NetworkedReactor},
+//! # };
 //! #
 //! # let mut runtime = tokio::runtime::Runtime::new().unwrap();
 //! #
@@ -199,11 +209,11 @@
 //! }
 //!
 //! impl NetworkedReactor for Reactor {
-//!   type NodeId = NodeId;
+//!     type NodeId = NodeId;
 //!
-//!   fn node_id(&self) -> NodeId {
-//!       self.net.node_id()
-//!   }
+//!     fn node_id(&self) -> NodeId {
+//!         self.net.node_id()
+//!     }
 //! }
 //!
 //! // We can finally run the tests:
@@ -268,12 +278,12 @@
 
 use std::{
     any::Any,
+    cell::RefCell,
     collections::{HashMap, HashSet},
     fmt::Display,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, RwLock},
 };
 
-use lazy_static::lazy_static;
 use rand::{seq::IteratorRandom, Rng};
 use tokio::sync::mpsc::{self, error::SendError};
 use tracing::{debug, error, info, warn};
@@ -284,19 +294,21 @@ use crate::{
         announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, EffectExt,
         Effects,
     },
+    logging,
     reactor::{EventQueueHandle, QueueKind},
+    tls::KeyFingerprint,
 };
+
+/// The node ID type used by the in-memory network.
+pub type NodeId = KeyFingerprint;
 
 type Network<P> = Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<(NodeId, P)>>>>;
 
-/// The node ID type used by the in-memory network.
-pub type NodeId = u64;
-
-lazy_static! {
+thread_local! {
     /// The currently active network as a thread local.
     ///
     /// The type is dynamic, every network can be of a distinct type when the payload `P` differs.
-    static ref ACTIVE_NETWORK: Mutex<Option<Box<dyn Any + Send + Sync>>> = Mutex::new(None);
+    static ACTIVE_NETWORK: RefCell<Option<Box<dyn Any>>> = RefCell::new(None);
 }
 
 /// The network controller is used to control the network topology (e.g. adding and removing nodes).
@@ -312,6 +324,7 @@ where
 {
     /// Create a new, empty network.
     fn new() -> Self {
+        let _ = logging::init();
         NetworkController {
             nodes: Default::default(),
         }
@@ -323,10 +336,9 @@ where
     ///
     /// Panics if the internal lock has been poisoned.
     pub fn create_active() {
+        let _ = logging::init();
         ACTIVE_NETWORK
-            .lock()
-            .expect("active network lock has been poisoned")
-            .replace(Box::new(Self::new()));
+            .with(|active_network| active_network.borrow_mut().replace(Box::new(Self::new())));
     }
 
     /// Removes the active network.
@@ -337,12 +349,13 @@ where
     /// removed or if there was no network at at all.
     pub fn remove_active() {
         assert!(
-            ACTIVE_NETWORK
-                .lock()
-                .expect("active network lock has been poisoned")
-                .take()
-                .expect("tried to remove non-existant network")
-                .is::<Self>(),
+            ACTIVE_NETWORK.with(|active_network| {
+                active_network
+                    .borrow_mut()
+                    .take()
+                    .expect("tried to remove non-existent network")
+                    .is::<Self>()
+            }),
             "removed network was of wrong type"
         );
     }
@@ -361,14 +374,36 @@ where
         R: Rng + ?Sized,
         REv: From<NetworkAnnouncement<NodeId, P>> + Send,
     {
-        ACTIVE_NETWORK
-            .lock()
-            .expect("active network lock has been poisoned")
-            .as_mut()
-            .expect("tried to create node without active network set")
-            .downcast_mut::<Self>()
-            .expect("active network has wrong message type")
-            .create_node_local(event_queue, rng)
+        ACTIVE_NETWORK.with(|active_network| {
+            active_network
+                .borrow_mut()
+                .as_mut()
+                .expect("tried to create node without active network set")
+                .downcast_mut::<Self>()
+                .expect("active network has wrong message type")
+                .create_node_local(event_queue, rng)
+        })
+    }
+
+    /// Removes an in-memory network component on the active network.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal lock has been poisoned, the active network is not of the correct
+    /// message type, or the node to remove doesn't exist.
+    pub fn remove_node(node_id: &NodeId) {
+        ACTIVE_NETWORK.with(|active_network| {
+            if let Some(active_network) = active_network.borrow_mut().as_mut() {
+                active_network
+                    .downcast_mut::<Self>()
+                    .expect("active network has wrong message type")
+                    .nodes
+                    .write()
+                    .expect("poisoned lock")
+                    .remove(node_id)
+                    .expect("node doesn't exist in network");
+            }
+        })
     }
 
     /// Creates a new networking node with a random node ID.
@@ -437,6 +472,10 @@ where
         dest: NodeId,
         payload: P,
     ) {
+        if dest == self.node_id {
+            panic!("can't send message to self");
+        }
+
         match nodes.get(&dest) {
             Some(sender) => {
                 if let Err(SendError((_, msg))) = sender.send((self.node_id, payload)) {
@@ -445,7 +484,7 @@ where
                     // We do nothing else, the message is just dropped.
                 }
             }
-            None => info!(%dest, %payload, "dropping message to non-existant recipient"),
+            None => info!(%dest, %payload, "dropping message to non-existent recipient"),
         }
     }
 }
@@ -468,6 +507,10 @@ where
                 payload,
                 responder,
             } => {
+                if dest == self.node_id {
+                    panic!("can't send message to self");
+                }
+
                 if let Ok(guard) = self.nodes.read() {
                     self.send(&guard, dest, payload);
                 } else {
@@ -478,7 +521,7 @@ where
             }
             NetworkRequest::Broadcast { payload, responder } => {
                 if let Ok(guard) = self.nodes.read() {
-                    for dest in guard.keys() {
+                    for dest in guard.keys().filter(|&node_id| node_id != &self.node_id) {
                         self.send(&guard, *dest, payload.clone());
                     }
                 } else {
@@ -496,7 +539,7 @@ where
                 if let Ok(guard) = self.nodes.read() {
                     let chosen: HashSet<_> = guard
                         .keys()
-                        .filter(|k| !exclude.contains(k))
+                        .filter(|&node_id| !exclude.contains(node_id) && node_id != &self.node_id)
                         .cloned()
                         .choose_multiple(rng, count)
                         .into_iter()

@@ -6,11 +6,10 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use derive_more::From;
-use futures::Future;
 use serde::{Deserialize, Serialize};
 use small_network::NodeId;
 
@@ -25,7 +24,6 @@ use crate::{
 use pnet::datalink;
 use rand::{rngs::OsRng, Rng};
 use reactor::{wrap_effects, Finalize};
-use tokio::time::{timeout, Timeout};
 use tracing::{debug, info};
 
 /// The networking port used by the tests for the root node.
@@ -155,23 +153,6 @@ fn network_is_complete(nodes: &HashMap<NodeId, Runner<TestReactor>>) -> bool {
         .all(|actual| actual == expected)
 }
 
-/// Helper trait to annotate timeouts more naturally.
-trait Within<T> {
-    /// Sets a timeout on a future.
-    ///
-    /// If the timeout occurs, the annotated future will be **cancelled**. Use with caution.
-    fn within(self, duration: Duration) -> Timeout<T>;
-}
-
-impl<T> Within<T> for T
-where
-    T: Future,
-{
-    fn within(self, duration: Duration) -> Timeout<T> {
-        timeout(duration, self)
-    }
-}
-
 fn gen_config(bind_port: u16) -> small_network::Config {
     // Bind everything to localhost.
     let bind_interface = "127.0.0.1".parse().unwrap();
@@ -203,29 +184,32 @@ async fn run_two_node_network_five_times() {
 
         let mut net = Network::new();
 
-        let start = std::time::Instant::now();
+        let start = Instant::now();
         net.add_node_with_config(gen_config(TEST_ROOT_NODE_PORT), &mut rng)
             .await
             .unwrap();
         net.add_node_with_config(gen_config(TEST_ROOT_NODE_PORT + 1), &mut rng)
             .await
             .unwrap();
-        let end = std::time::Instant::now();
+        let end = Instant::now();
 
         debug!(
             total_time_ms = (end - start).as_millis() as u64,
             "finished setting up networking nodes"
         );
 
-        net.settle_on(&mut rng, network_is_complete)
-            .within(Duration::from_millis(1000))
-            .await
-            .expect("network did not fully connect in time");
+        let timeout = Duration::from_secs(1);
+        assert!(
+            net.settle_on(&mut rng, network_is_complete, timeout).await,
+            "network did not fully connect in time"
+        );
 
-        net.settle(&mut rng, Duration::from_millis(25))
-            .within(Duration::from_millis(2000))
-            .await
-            .expect("network did not stay settled");
+        let quiet_for = Duration::from_millis(25);
+        let timeout = Duration::from_secs(2);
+        assert!(
+            net.settle(&mut rng, quiet_for, timeout).await,
+            "network did not stay settled"
+        );
 
         assert!(
             network_is_complete(net.nodes()),
@@ -273,5 +257,7 @@ async fn bind_to_real_network_interface() {
         .await
         .unwrap();
 
-    net.settle(&mut rng, Duration::from_millis(250)).await;
+    let quiet_for = Duration::from_millis(250);
+    let timeout = Duration::from_secs(2);
+    assert!(net.settle(&mut rng, quiet_for, timeout).await);
 }

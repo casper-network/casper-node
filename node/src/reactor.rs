@@ -245,6 +245,20 @@ where
         utils::leak(Scheduler::new(QueueKind::weights()))
     }
 
+    #[cfg(test)]
+    pub(crate) async fn inject_event<Rd: Rng + ?Sized>(&mut self, rng: &mut Rd, event: R::Event) {
+        let event_queue = EventQueueHandle::new(self.scheduler);
+        let effect_builder = EffectBuilder::new(event_queue);
+
+        let effects = self.reactor.dispatch_event(effect_builder, rng, event);
+
+        let effect_span = tracing::debug_span!("process injected effects", ev = self.event_count);
+
+        process_effects(self.scheduler, effects)
+            .instrument(effect_span)
+            .await;
+    }
+
     /// Processes a single event on the event queue.
     #[inline]
     pub async fn crank<Rd: Rng + ?Sized>(&mut self, rng: &mut Rd) {
