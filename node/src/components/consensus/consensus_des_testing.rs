@@ -42,7 +42,7 @@ impl<M: Clone + Debug> TargetedMessage<M> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub(crate) struct ValidatorId(pub(crate) u64);
 
 /// A validator in the test network.
@@ -314,15 +314,21 @@ where
     pub(crate) fn new<I: IntoIterator<Item = Validator<C, M, D>>>(
         validators: I,
         delivery_time_strategy: DS,
+        init_messages: Vec<QueueEntry<M>>,
     ) -> Self {
         let validators_map = validators
             .into_iter()
             .map(|validator| (validator.id, validator))
             .collect();
 
+        let mut q = Queue::default();
+        for m in init_messages.into_iter() {
+            q.push(m);
+        }
+
         VirtualNet {
             validators_map,
-            msg_queue: Queue::default(),
+            msg_queue: q,
             delivery_time_strategy,
         }
     }
@@ -435,7 +441,7 @@ mod virtual_net_tests {
         let validator_id = ValidatorId(1u64);
         let single_validator: Validator<C, u64, NoOpConsensus> =
             Validator::new(validator_id, false, NoOpConsensus);
-        let mut virtual_net = VirtualNet::new(vec![single_validator], NoOpDelay);
+        let mut virtual_net = VirtualNet::new(vec![single_validator], NoOpDelay, vec![]);
 
         let messages_num = 10;
         // We want to enqueue messages from the latest delivery time to the earliest.
@@ -469,7 +475,8 @@ mod virtual_net_tests {
         let second_validator: Validator<C, M, NoOpConsensus> =
             Validator::new(ValidatorId(2u64), false, NoOpConsensus);
 
-        let mut virtual_net = VirtualNet::new(vec![first_validator, second_validator], NoOpDelay);
+        let mut virtual_net =
+            VirtualNet::new(vec![first_validator, second_validator], NoOpDelay, vec![]);
         let mut rand = XorShiftRng::from_seed(rand::random());
 
         let message = Message::new(validator_id, 1u64);
