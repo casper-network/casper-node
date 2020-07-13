@@ -163,7 +163,7 @@ format:
 
 .PHONY: lint
 lint:
-	$(CARGO) clippy --all-targets --workspace -- -D warnings -A renamed_and_removed_lints
+	$(CARGO) clippy --all-targets --all-features --workspace -- -D warnings -A renamed_and_removed_lints
 
 .PHONY: audit
 audit:
