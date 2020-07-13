@@ -22,6 +22,7 @@ use crate::{
 
 /// A networking request.
 #[derive(Debug)]
+#[must_use]
 pub enum NetworkRequest<I, P> {
     /// Send a message on the network to a specific peer.
     SendMessage {
@@ -113,6 +114,7 @@ where
 // TODO: remove once all variants are used.
 /// A storage request.
 #[allow(dead_code)]
+#[must_use]
 pub enum StorageRequest<S: StorageType + 'static> {
     /// Store given block.
     PutBlock {
@@ -208,6 +210,7 @@ impl<S: StorageType> Display for StorageRequest<S> {
 #[allow(dead_code)] // FIXME: Remove once in use.
 /// Deploy-queue related requests.
 #[derive(Debug)]
+#[must_use]
 pub(crate) enum DeployQueueRequest {
     /// Add a deploy to the queue for inclusion into an upcoming block.
     QueueDeploy {
@@ -270,15 +273,14 @@ impl Display for DeployQueueRequest {
 /// An API request is an abstract request that does not concern itself with serialization or
 /// transport.
 #[derive(Debug)]
+#[must_use]
 pub enum ApiRequest {
-    /// Submit a deploy for storing.
-    ///
-    /// Returns the deploy along with an error message if it could not be stored.
+    /// Submit a deploy to be announced.
     SubmitDeploy {
-        /// The deploy to be stored.
+        /// The deploy to be announced.
         deploy: Box<Deploy>,
-        /// Responder to call with the result.
-        responder: Responder<Result<(), (Deploy, storage::Error)>>,
+        /// Responder to call.
+        responder: Responder<()>,
     },
     /// Return the specified deploy if it exists, else `None`.
     GetDeploy {
@@ -306,6 +308,7 @@ impl Display for ApiRequest {
 
 /// A contract runtime request.
 #[derive(Debug)]
+#[must_use]
 pub enum ContractRuntimeRequest {
     /// Commit genesis chainspec.
     CommitGenesis {
@@ -324,26 +327,6 @@ impl Display for ContractRuntimeRequest {
                 "commit genesis {}",
                 chainspec.genesis.protocol_version
             ),
-        }
-    }
-}
-
-/// Requests for the deploy broadcaster.
-#[derive(Debug)]
-pub enum DeployGossiperRequest {
-    /// A new `Deploy` received from a client via the HTTP server component.
-    PutFromClient {
-        /// The received deploy.
-        deploy: Box<Deploy>,
-    },
-}
-
-impl Display for DeployGossiperRequest {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            DeployGossiperRequest::PutFromClient { deploy, .. } => {
-                write!(formatter, "put from client: {}", deploy.id())
-            }
         }
     }
 }

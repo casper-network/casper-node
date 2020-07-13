@@ -9,7 +9,8 @@ use std::{
 
 use futures::future::{BoxFuture, FutureExt};
 use rand::Rng;
-use tracing::debug;
+use tracing::{debug, field};
+use tracing_futures::Instrument;
 
 use crate::reactor::{Finalize, Reactor, Runner};
 
@@ -96,7 +97,10 @@ where
     pub async fn crank_all<Rd: Rng + ?Sized>(&mut self, rng: &mut Rd) -> usize {
         let mut event_count = 0;
         for node in self.nodes.values_mut() {
-            event_count += if node.try_crank(rng).await.is_some() {
+            let node_id = node.reactor().node_id();
+            let span = tracing::error_span!("crank", node_id = field::Empty);
+            span.record("node_id", &field::display(node_id));
+            event_count += if node.try_crank(rng).instrument(span).await.is_some() {
                 1
             } else {
                 0

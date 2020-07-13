@@ -3,6 +3,7 @@ use std::fmt::{self, Debug};
 use tracing::warn;
 
 use super::{
+    highway::ValidVertex,
     state::State,
     validators::ValidatorIndex,
     vertex::{Vertex, WireVote},
@@ -21,7 +22,7 @@ use crate::{
 pub(crate) enum Effect<C: Context> {
     /// Newly vertex that should be gossiped to peers and added to the protocol state.
     // TODO: This should contain a `ValidVertex`, since we created it ourselves.
-    NewVertex(Vertex<C>),
+    NewVertex(ValidVertex<C>),
     /// `handle_timer` needs to be called at the specified time.
     ScheduleTimer(Timestamp),
     /// `propose` needs to be called with a value for a new block with the specified timestamp.
@@ -103,7 +104,7 @@ impl<C: Context> ActiveValidator<C> {
         } else if round_offset == self.witness_offset() {
             let panorama = state.panorama_cutoff(state.panorama(), timestamp);
             let witness_vote = self.new_vote(panorama, timestamp, None, state);
-            effects.push(Effect::NewVertex(Vertex::Vote(witness_vote)))
+            effects.push(Effect::NewVertex(ValidVertex(Vertex::Vote(witness_vote))))
         }
         effects
     }
@@ -120,7 +121,8 @@ impl<C: Context> ActiveValidator<C> {
         } else if self.should_send_confirmation(vhash, timestamp, state) {
             let panorama = self.confirmation_panorama(vhash, state);
             let confirmation_vote = self.new_vote(panorama, timestamp, None, state);
-            return vec![Effect::NewVertex(Vertex::Vote(confirmation_vote))];
+            let vv = ValidVertex(Vertex::Vote(confirmation_vote));
+            return vec![Effect::NewVertex(vv)];
         }
         vec![]
     }
@@ -139,7 +141,7 @@ impl<C: Context> ActiveValidator<C> {
         }
         let panorama = state.panorama_cutoff(state.panorama(), timestamp);
         let proposal_vote = self.new_vote(panorama, timestamp, Some(value), state);
-        vec![Effect::NewVertex(Vertex::Vote(proposal_vote))]
+        vec![Effect::NewVertex(ValidVertex(Vertex::Vote(proposal_vote)))]
     }
 
     /// Returns whether the incoming message is a proposal that we need to send a confirmation for.
@@ -246,7 +248,7 @@ mod tests {
 
     use super::{
         super::{
-            finality_detector::{FinalityDetector, FinalityResult},
+            finality_detector::{FinalityDetector, FinalityOutcome},
             state::{tests::*, Weight},
             vertex::Vertex,
         },
@@ -257,7 +259,7 @@ mod tests {
 
     impl Eff {
         fn unwrap_vote(self) -> SignedWireVote<TestContext> {
-            if let Eff::NewVertex(Vertex::Vote(swvote)) = self {
+            if let Eff::NewVertex(ValidVertex(Vertex::Vote(swvote))) = self {
                 swvote
             } else {
                 panic!("Unexpected effect: {:?}", self);
@@ -322,7 +324,7 @@ mod tests {
         state.add_vote(effects.next().unwrap().unwrap_vote())?;
         assert_eq!(None, effects.next());
 
-        assert_eq!(FinalityResult::None, fd.run(&state)); // Alice has not witnessed Bob's vote yet.
+        assert_eq!(FinalityOutcome::None, fd.run(&state)); // Alice has not witnessed Bob's vote yet.
 
         // Alice also sends her own witness message, completing the summit for her proposal.
         let mut effects = alice_av.handle_timer(426.into(), &state).into_iter();
@@ -332,7 +334,7 @@ mod tests {
 
         // Payment finalized! "One Pumpkin Spice Mochaccino for Corbyn!"
         assert_eq!(
-            FinalityResult::Finalized(0xC0FFEE, Vec::new()),
+            FinalityOutcome::Finalized(0xC0FFEE, Vec::new()),
             fd.run(&state)
         );
         Ok(())
