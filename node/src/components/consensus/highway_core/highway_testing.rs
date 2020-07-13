@@ -100,7 +100,7 @@ impl<C: Context> Ord for HighwayMessage<C> {
 
 /// Result of single `crank()` call.
 #[derive(Debug, Eq, PartialEq)]
-enum CrankOk {
+pub(crate) enum CrankOk {
     /// Test run is not done.
     Continue,
     /// Test run is finished.
@@ -108,7 +108,7 @@ enum CrankOk {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-enum TestRunError<C: Context> {
+pub(crate) enum TestRunError<C: Context> {
     /// VirtualNet was missing a validator when it was expected to exist.
     MissingValidator(ValidatorId),
     /// Sender sent a vertex for which it didn't have all dependencies.
@@ -139,13 +139,12 @@ impl<C: Context> Display for TestRunError<C> {
     }
 }
 
-pub(crate) struct HighwayTestHarness<M, C, D, DS>
+pub(crate) struct HighwayTestHarness<C, DS>
 where
-    M: MessageT,
     DS: Strategy<DeliverySchedule>,
     C: Context,
 {
-    virtual_net: VirtualNet<C::ConsensusValue, D, M, DS>,
+    virtual_net: VirtualNet<C::ConsensusValue, HighwayConsensus<C>, HighwayMessage<C>, DS>,
     /// The instant the network was created.
     start_time: u64,
     /// Consensus values to be proposed.
@@ -155,7 +154,7 @@ where
     consensus_values_num: usize,
 }
 
-impl<Ctx, DS> HighwayTestHarness<HighwayMessage<Ctx>, Ctx, HighwayConsensus<Ctx>, DS>
+impl<Ctx, DS> HighwayTestHarness<Ctx, DS>
 where
     Ctx: Context,
     DS: Strategy<DeliverySchedule>,
@@ -191,7 +190,7 @@ where
         if self
             .virtual_net
             .validators()
-            .all(|v| v.finalized_count() == self.consensus_values.len())
+            .all(|v| v.finalized_count() == self.consensus_values_num)
         {
             return Ok(CrankOk::Done);
         }

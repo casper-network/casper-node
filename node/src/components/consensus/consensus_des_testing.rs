@@ -55,8 +55,6 @@ where
     pub(crate) is_faulty: bool,
     /// Vector of consensus values finalized by the validator.
     finalized_values: Vec<C>,
-    /// Number of finalized values.
-    finalized_count: usize,
     /// Messages received by the validator.
     messages_received: Vec<Message<M>>,
     /// Messages produced by the validator.
@@ -74,7 +72,6 @@ where
             id,
             is_faulty,
             finalized_values: Vec::new(),
-            finalized_count: 0,
             messages_received: Vec::new(),
             messages_produced: Vec::new(),
             consensus,
@@ -91,7 +88,6 @@ where
 
     /// Adds vector of finalized consensus values to validator's finalized set.
     pub(crate) fn push_finalized(&mut self, finalized_values: Vec<C>) {
-        self.finalized_count += finalized_values.len();
         self.finalized_values.extend(finalized_values);
     }
 
@@ -119,7 +115,7 @@ where
     }
 
     pub(crate) fn finalized_count(&self) -> usize {
-        self.finalized_count
+        self.finalized_values.len()
     }
 }
 
@@ -358,7 +354,7 @@ where
     }
 
     pub(crate) fn validators_ids(&self) -> impl Iterator<Item = &ValidatorId> {
-        self.validators_map.keys().into_iter()
+        self.validators_map.keys()
     }
 
     pub(crate) fn get_validator_mut(

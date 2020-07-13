@@ -43,7 +43,7 @@ impl<C: Context> PreValidatedVertex<C> {
         &self.0
     }
 
-    #[allow(unused)]
+    #[cfg(test)]
     pub(crate) fn into_vertex(self) -> Vertex<C> {
         self.0
     }
