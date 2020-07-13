@@ -491,6 +491,7 @@ macro_rules! impl_to_from_bytes_for_array {
 
             #[cfg(feature = "no-unstable-features")]
             impl<T: FromBytes> FromBytes for [T; $N] {
+                #[allow(clippy::reversed_empty_ranges)]
                 fn from_bytes(mut bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
                     let mut result: MaybeUninit<[T; $N]> = MaybeUninit::uninit();
                     let result_ptr = result.as_mut_ptr() as *mut T;
