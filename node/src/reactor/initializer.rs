@@ -8,7 +8,6 @@ use std::{
 use derive_more::From;
 use rand::Rng;
 use thiserror::Error;
-use tracing::Span;
 
 use crate::{
     components::{
@@ -102,7 +101,6 @@ impl reactor::Reactor for Reactor {
         (chainspec_config_path, config): Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut Rd,
-        _span: &Span,
     ) -> Result<(Self, Effects<Self::Event>), Error> {
         let effect_builder = EffectBuilder::new(event_queue);
 

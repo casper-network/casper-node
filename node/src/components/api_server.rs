@@ -40,7 +40,8 @@ use crate::{
     components::storage::{self, Storage},
     crypto::hash::Digest,
     effect::{
-        requests::{ApiRequest, ContractRuntimeRequest, DeployGossiperRequest, StorageRequest},
+        announcements::ApiServerAnnouncement,
+        requests::{ApiRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     reactor::QueueKind,
@@ -67,7 +68,7 @@ impl ApiServer {
 impl<REv> Component<REv> for ApiServer
 where
     REv: From<StorageRequest<Storage>>
-        + From<DeployGossiperRequest>
+        + From<ApiServerAnnouncement>
         + From<ContractRuntimeRequest>
         + Send,
 {
@@ -80,13 +81,11 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::ApiRequest(ApiRequest::SubmitDeploy { deploy, responder }) => effect_builder
-                .put_deploy_to_storage(*deploy.clone())
-                .event(move |result| Event::PutDeployResult {
-                    deploy,
-                    result,
-                    main_responder: responder,
-                }),
+            Event::ApiRequest(ApiRequest::SubmitDeploy { deploy, responder }) => {
+                let mut effects = effect_builder.announce_deploy_received(deploy).ignore();
+                effects.extend(responder.respond(()).ignore());
+                effects
+            }
             Event::ApiRequest(ApiRequest::GetDeploy { hash, responder }) => effect_builder
                 .get_deploy_from_storage(hash)
                 .event(move |result| Event::GetDeployResult {
@@ -100,18 +99,6 @@ where
                     result: Box::new(result),
                     main_responder: responder,
                 }),
-            Event::PutDeployResult {
-                deploy,
-                result,
-                main_responder,
-            } => {
-                let cloned_deploy = deploy.clone();
-                let mut effects = main_responder
-                    .respond(result.map_err(|error| (*deploy, error)))
-                    .ignore();
-                effects.extend(effect_builder.gossip_deploy(cloned_deploy).ignore());
-                effects
-            }
             Event::GetDeployResult {
                 hash: _,
                 result,
@@ -190,7 +177,7 @@ where
         }
     };
 
-    let result = effect_builder
+    effect_builder
         .make_request(
             |responder| ApiRequest::SubmitDeploy {
                 deploy: Box::new(deploy),
@@ -200,17 +187,8 @@ where
         )
         .await;
 
-    match result {
-        Ok(()) => {
-            let json = reply::json(&"");
-            Ok(reply::with_status(json, StatusCode::OK))
-        }
-        Err((deploy, error)) => {
-            let error_reply = format!("Failed to store {}: {}", deploy.id(), error);
-            let json = reply::json(&error_reply);
-            Ok(reply::with_status(json, StatusCode::BAD_REQUEST))
-        }
-    }
+    let json = reply::json(&"");
+    Ok(reply::with_status(json, StatusCode::OK))
 }
 
 async fn parse_get_request<REv>(

@@ -10,7 +10,6 @@ use std::fmt::{self, Display, Formatter};
 use derive_more::From;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use tracing::Span;
 
 use crate::{
     components::{
@@ -23,11 +22,8 @@ use crate::{
         Component,
     },
     effect::{
-        announcements::NetworkAnnouncement,
-        requests::{
-            ApiRequest, ContractRuntimeRequest, DeployGossiperRequest, NetworkRequest,
-            StorageRequest,
-        },
+        announcements::{ApiServerAnnouncement, NetworkAnnouncement},
+        requests::{ApiRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest},
         EffectBuilder, Effects,
     },
     reactor::{self, initializer, EventQueueHandle},
@@ -84,6 +80,9 @@ pub enum Event {
     /// Deploy gossiper event.
     #[from]
     DeployGossiper(deploy_gossiper::Event),
+    /// Contract runtime event.
+    #[from]
+    ContractRuntime(contract_runtime::Event),
 
     // Requests
     /// Network request.
@@ -94,11 +93,9 @@ pub enum Event {
     /// Network announcement.
     #[from]
     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
-
-    // Contract Runtime
-    /// Contract runtime event.
+    /// API server announcement.
     #[from]
-    ContractRuntime(contract_runtime::Event),
+    ApiServerAnnouncement(ApiServerAnnouncement),
 }
 
 impl From<ApiRequest> for Event {
@@ -125,12 +122,6 @@ impl From<NetworkRequest<NodeId, deploy_gossiper::Message>> for Event {
     }
 }
 
-impl From<DeployGossiperRequest> for Event {
-    fn from(request: DeployGossiperRequest) -> Self {
-        Event::DeployGossiper(deploy_gossiper::Event::Request(request))
-    }
-}
-
 impl From<ContractRuntimeRequest> for Event {
     fn from(request: ContractRuntimeRequest) -> Event {
         Event::ContractRuntime(contract_runtime::Event::Request(request))
@@ -146,9 +137,10 @@ impl Display for Event {
             Event::ApiServer(event) => write!(f, "api server: {}", event),
             Event::Consensus(event) => write!(f, "consensus: {}", event),
             Event::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
+            Event::ContractRuntime(event) => write!(f, "contract runtime: {}", event),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
-            Event::ContractRuntime(event) => write!(f, "contract runtime: {}", event),
+            Event::ApiServerAnnouncement(ann) => write!(f, "api server announcement: {}", ann),
         }
     }
 }
@@ -169,13 +161,11 @@ impl Reactor {
     fn init(
         config: Config,
         event_queue: EventQueueHandle<Event>,
-        span: &Span,
         storage: Storage,
         contract_runtime: ContractRuntime,
     ) -> Result<(Self, Effects<Event>), Error> {
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, config.validator_net)?;
-        span.record("id", &tracing::field::display(net.node_id()));
 
         let (pinger, pinger_effects) = Pinger::new(effect_builder);
         let api_server = ApiServer::new(config.http_server, effect_builder);
@@ -211,11 +201,10 @@ impl reactor::Reactor for Reactor {
         config: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut R,
-        span: &Span,
     ) -> Result<(Self, Effects<Event>), Error> {
         let storage = Storage::new(&config.storage)?;
         let contract_runtime = ContractRuntime::new(&config.storage, config.contract_runtime)?;
-        Self::init(config, event_queue, span, storage, contract_runtime)
+        Self::init(config, event_queue, storage, contract_runtime)
     }
 
     fn dispatch_event<R: Rng + ?Sized>(
@@ -250,7 +239,11 @@ impl reactor::Reactor for Reactor {
                 self.deploy_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
-
+            Event::ContractRuntime(event) => reactor::wrap_effects(
+                Event::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, event),
+            ),
             // Requests:
             Event::NetworkRequest(req) => self.dispatch_event(
                 effect_builder,
@@ -281,11 +274,10 @@ impl reactor::Reactor for Reactor {
                 // Any incoming message is one for the pinger.
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
-            Event::ContractRuntime(event) => reactor::wrap_effects(
-                Event::ContractRuntime,
-                self.contract_runtime
-                    .handle_event(effect_builder, rng, event),
-            ),
+            Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
+                let event = deploy_gossiper::Event::DeployReceived { deploy };
+                self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
+            }
         }
     }
 }
@@ -293,10 +285,9 @@ impl reactor::Reactor for Reactor {
 impl reactor::ReactorExt<initializer::Reactor> for Reactor {
     fn new_from(
         event_queue: EventQueueHandle<Self::Event>,
-        span: &Span,
         initializer_reactor: initializer::Reactor,
     ) -> Result<(Self, Effects<Self::Event>), Error> {
         let (config, storage, contract_runtime) = initializer_reactor.destructure();
-        Self::init(config, event_queue, span, storage, contract_runtime)
+        Self::init(config, event_queue, storage, contract_runtime)
     }
 }

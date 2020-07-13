@@ -447,6 +447,7 @@ where
     }
 
     /// Returns the node id of this network node.
+    #[cfg(test)]
     pub(crate) fn node_id(&self) -> NodeId {
         self.cert.public_key_fingerprint()
     }

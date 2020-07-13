@@ -5,8 +5,11 @@
 
 use std::fmt::{self, Display, Formatter};
 
+use crate::types::Deploy;
+
 /// A networking layer announcement.
 #[derive(Debug)]
+#[must_use]
 pub enum NetworkAnnouncement<I, P> {
     /// A payload message has been received from a peer.
     MessageReceived {
@@ -26,6 +29,27 @@ where
         match self {
             NetworkAnnouncement::MessageReceived { sender, payload } => {
                 write!(formatter, "received from {}: {}", sender, payload)
+            }
+        }
+    }
+}
+
+/// An HTTP API server announcement.
+#[derive(Debug)]
+#[must_use]
+pub enum ApiServerAnnouncement {
+    /// A new deploy received.
+    DeployReceived {
+        /// The received deploy.
+        deploy: Box<Deploy>,
+    },
+}
+
+impl Display for ApiServerAnnouncement {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ApiServerAnnouncement::DeployReceived { deploy } => {
+                write!(formatter, "api server received {}", deploy.id())
             }
         }
     }

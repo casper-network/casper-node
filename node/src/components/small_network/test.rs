@@ -26,7 +26,7 @@ use pnet::datalink;
 use rand::{rngs::OsRng, Rng};
 use reactor::{wrap_effects, Finalize};
 use tokio::time::{timeout, Timeout};
-use tracing::{debug, field, info, Span};
+use tracing::{debug, info};
 
 /// The networking port used by the tests for the root node.
 const TEST_ROOT_NODE_PORT: u16 = 11223;
@@ -82,12 +82,8 @@ impl Reactor for TestReactor {
         cfg: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut R,
-        span: &Span,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let (net, effects) = SmallNetwork::new(event_queue, cfg)?;
-
-        let node_id = net.node_id();
-        span.record("id", &field::display(node_id));
 
         Ok((TestReactor { net }, wrap_effects(Event::SmallNet, effects)))
     }
