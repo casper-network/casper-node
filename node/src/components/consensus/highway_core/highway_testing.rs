@@ -313,11 +313,13 @@ where
         let finality_result = match recipient.consensus.run_finality() {
             FinalityOutcome::Finalized(v, equivocated_ids) => {
                 if !equivocated_ids.is_empty() {
+                    // https://casperlabs.atlassian.net/browse/HWY-120
                     unimplemented!("Equivocations detected but not handled.")
                 }
                 vec![v]
             }
             FinalityOutcome::None => vec![],
+            // https://casperlabs.atlassian.net/browse/HWY-119
             FinalityOutcome::FttExceeded => unimplemented!("Ftt exceeded but not handled."),
         };
 
@@ -586,6 +588,7 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
         }
 
         // TODO: This should be a weight of faulty validators, not count.
+        // https://casperlabs.atlassian.net/browse/HWY-117
         let faulty_num = if self.faulty_num > validators_num / 3 {
             return Err(BuilderError::TooManyFaultyNodes);
         } else {
@@ -600,6 +603,7 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
                 let weight = Weight((lower + upper) / 2);
                 (0..validators_num).into_iter().map(|_| weight).collect()
             }
+            // https://casperlabs.atlassian.net/browse/HWY-116
             Distribution::Poisson(_) => unimplemented!("Poisson distribution of weights"),
         };
 
@@ -681,7 +685,7 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
 
         let delivery_time_strategy = self
             .delivery_strategy
-            .unwrap_or_else(|| todo!("Add default strategy"));
+            .unwrap_or_else(|| todo!("Add default strategy")); // https://casperlabs.atlassian.net/browse/HWY-118
 
         let virtual_net = VirtualNet::new(validators, delivery_time_strategy, init_messages);
 
