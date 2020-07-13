@@ -2,7 +2,7 @@ use super::{
     active_validator::Effect,
     evidence::Evidence,
     finality_detector::{FinalityDetector, FinalityResult},
-    highway::{Highway, VertexError},
+    highway::{Highway, PreValidatedVertex, VertexError},
     validators::ValidatorIndex,
     vertex::{Dependency, Vertex},
 };
@@ -342,12 +342,7 @@ where
 
             match validator.consensus.highway.pre_validate_vertex(vertex) {
                 Err((v, error)) => Ok(Err((v, error))),
-                Ok(pvv) => match validator.consensus.highway.missing_dependency(&pvv) {
-                    None => Ok(Ok((pvv, vec![]))),
-                    Some(d) => self
-                        .synchronize_validator(d, recipient, sender)
-                        .map(|r| r.map(|hwm| (pvv, hwm))),
-                },
+                Ok(pvv) => self.synchronize_validator(recipient, sender, pvv),
             }
         }?;
 
@@ -384,13 +379,51 @@ where
         }
     }
 
+    /// Synchronizes missing dependencies of `pvv` that `recipient` is missing.
+    /// If an error occures during synchronization of one of `pvv`'s dependencies
+    /// it's returned and it's the original vertex mustn't be added to the state.
+    #[allow(clippy::type_complexity)]
+    fn synchronize_validator(
+        &mut self,
+        recipient: ValidatorId,
+        sender: ValidatorId,
+        pvv: PreValidatedVertex<Ctx>,
+    ) -> Result<
+        Result<(PreValidatedVertex<Ctx>, Vec<HighwayMessage<Ctx>>), (Vertex<Ctx>, VertexError)>,
+        TestRunError<Ctx>,
+    > {
+        let validator = self
+            .virtual_net
+            .get_validator_mut(&recipient)
+            .ok_or_else(|| TestRunError::MissingValidator(recipient))?;
+
+        let mut hwms: Vec<HighwayMessage<Ctx>> = todo!();
+
+        loop {
+            match validator.consensus.highway.missing_dependency(&pvv) {
+                None => return Ok(Ok((pvv, hwms))),
+                Some(d) => match self.synchronize_dependency(d, recipient, sender)? {
+                    Ok(hwm) => {
+                        // `hwm` represent messages produced while synchronizing `d`.
+                        hwms.extend(hwm)
+                    }
+                    Err(vertex_error) => {
+                        // An error occured when trying to synchronize a missing dependency.
+                        // We must stop the synchronization process and return it to the caller.
+                        return Ok(Err(vertex_error));
+                    }
+                },
+            }
+        }
+    }
+
     // Synchronizes `validator` in case of missing dependencies.
     //
     // If validator has missing dependencies then we have to add them first.
     // We don't want to test synchronization, and the Highway theory assumes
     // that when votes are added then all their dependencies are satisfied.
     #[allow(clippy::type_complexity)]
-    fn synchronize_validator(
+    fn synchronize_dependency(
         &mut self,
         missing_dependency: Dependency<Ctx>,
         recipient: ValidatorId,
