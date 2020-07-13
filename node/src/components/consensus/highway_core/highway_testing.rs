@@ -467,7 +467,7 @@ where
 
 enum Distribution {
     Uniform,
-    Poisson,
+    Poisson(f64),
 }
 
 enum BuilderError {
@@ -578,6 +578,7 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
 
         let consensus_values = self
             .consensus_values
+            .clone()
             .ok_or_else(|| BuilderError::EmptyConsensusValues)?;
 
         if self.weight_limits == (0, 0) {
@@ -593,7 +594,14 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
 
         let ftt = self.ftt.ok_or_else(|| BuilderError::EmptyFtt)?;
 
-        let weights: Vec<Weight> = todo!("Generate iterators of generated weights.");
+        let weights: Vec<Weight> = match self.weight_distribution {
+            Distribution::Uniform => {
+                let (lower, upper) = self.weight_limits;
+                let weight = Weight((lower + upper) / 2);
+                (0..validators_num).into_iter().map(|_| weight).collect()
+            }
+            Distribution::Poisson(_) => unimplemented!("Poisson distribution of weights"),
+        };
 
         let validator_ids = (0..validators_num)
             .map(|i| ValidatorId(i as u64))
@@ -602,24 +610,27 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
         assert_eq!(weights.len(), validator_ids.len());
 
         let validators: Validators<ValidatorId> = {
-            let zipped: Vec<(ValidatorId, Weight)> =
-                validator_ids.into_iter().zip(weights.into_iter()).collect();
+            let zipped: Vec<(ValidatorId, Weight)> = validator_ids
+                .clone()
+                .into_iter()
+                .zip(weights.into_iter())
+                .collect();
             Validators::from_iter(zipped)
         };
 
         let highway_consensus = |(vid, v_sec)| {
             let (highway, effects) = {
                 let highway_params: HighwayParams<C> = HighwayParams {
-                    instance_id: self.instance_id,
+                    instance_id: self.instance_id.clone(),
                     validators,
                 };
 
                 Highway::new(
                     highway_params,
-                    self.seed,
+                    self.seed.clone(),
                     vid,
                     v_sec,
-                    self.round_exp,
+                    self.round_exp.clone(),
                     self.start_time,
                 )
             };
@@ -637,8 +648,6 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
                     .collect::<Vec<_>>(),
             )
         };
-
-        let delivery_time_strategy = self.delivery_strategy.unwrap_or_else(|| unimplemented!());
 
         let (validators, init_messages) = {
             let mut validators = vec![];
@@ -669,6 +678,10 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
 
             (validators, init_messages)
         };
+
+        let delivery_time_strategy = self
+            .delivery_strategy
+            .unwrap_or_else(|| todo!("Add default strategy"));
 
         let virtual_net = VirtualNet::new(validators, delivery_time_strategy, init_messages);
 
