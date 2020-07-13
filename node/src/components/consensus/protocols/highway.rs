@@ -179,11 +179,13 @@ where
         self
     }
 
-    fn is_finished(&self) -> bool {
-        self.vertex_queue.is_empty() && self.synchronizer_effects_queue.is_empty()
-    }
-
-    fn into_results(self) -> Vec<ConsensusProtocolResult<I, C::ConsensusValue>> {
+    fn run(mut self) -> Vec<ConsensusProtocolResult<I, C::ConsensusValue>> {
+        while let Some(effect) = self.synchronizer_effects_queue.pop() {
+            self.process_synchronizer_effect(effect);
+            while let Some((sender, vertex)) = self.vertex_queue.pop() {
+                self.process_vertex(sender, vertex);
+            }
+        }
         self.results
     }
 
@@ -251,14 +253,6 @@ where
             }
         }
     }
-
-    fn process_item(&mut self) {
-        if let Some((sender, vertex)) = self.vertex_queue.pop() {
-            self.process_vertex(sender, vertex);
-        } else if let Some(effect) = self.synchronizer_effects_queue.pop() {
-            self.process_synchronizer_effect(effect);
-        }
-    }
 }
 
 impl<I, C: Context> ConsensusProtocol<I, C::ConsensusValue> for HighwayProtocol<I, C>
@@ -284,7 +278,6 @@ where
                         )]);
                     }
                 };
-                let mut queue = SynchronizerQueue::new(self).with_vertices(vec![(sender, pvv)]);
                 // TODO: Is there a danger that this takes too much time, and starves other
                 // components and events? Consider replacing the loop with a "callback" effect:
                 // Instead of handling `HighwayMessage::NewVertex(v)` directly, return a
@@ -292,10 +285,9 @@ where
                 // `Event::NewVertex(v)`, and call `add_vertex` when handling that event. For each
                 // returned vertex that needs to be requeued, also return an `EnqueueVertex`
                 // effect.
-                while !queue.is_finished() {
-                    queue.process_item();
-                }
-                queue.into_results()
+                SynchronizerQueue::new(self)
+                    .with_vertices(vec![(sender, pvv)])
+                    .run()
             }
             HighwayMessage::RequestDependency(dep) => {
                 if let Some(vv) = self.highway.get_dependency(&dep) {
@@ -338,11 +330,9 @@ where
     ) -> Result<Vec<ConsensusProtocolResult<I, C::ConsensusValue>>, Error> {
         if valid {
             let effects = self.synchronizer.on_consensus_value_synced(value);
-            let mut queue = SynchronizerQueue::new(self).with_synchronizer_effects(effects);
-            while !queue.is_finished() {
-                queue.process_item();
-            }
-            Ok(queue.into_results())
+            Ok(SynchronizerQueue::new(self)
+                .with_synchronizer_effects(effects)
+                .run())
         } else {
             todo!()
         }
