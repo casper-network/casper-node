@@ -321,6 +321,7 @@ where
 
     // Adds vertex to the validator's state.
     // Synchronizes its state if necessary.
+    #[allow(clippy::type_complexity)]
     fn add_vertex(
         &mut self,
         recipient: ValidatorId,
@@ -388,6 +389,7 @@ where
     // If validator has missing dependencies then we have to add them first.
     // We don't want to test synchronization, and the Highway theory assumes
     // that when votes are added then all their dependencies are satisfied.
+    #[allow(clippy::type_complexity)]
     fn synchronize_validator(
         &mut self,
         missing_dependency: Dependency<Ctx>,
@@ -415,7 +417,7 @@ where
                     TestRunError::SenderMissingDependency(sender, missing_dependency)
                 })?;
 
-                Vertex::Evidence(evidence.clone())
+                Vertex::Evidence(evidence)
             }
         };
 

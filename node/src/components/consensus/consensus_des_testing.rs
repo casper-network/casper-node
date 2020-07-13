@@ -192,7 +192,7 @@ mod queue_entry_tests {
         let m1 = QueueEntry::new(1.into(), recipient1, message.clone());
         let m2 = QueueEntry::new(2.into(), recipient1, message.clone());
         assert_eq!(m1.cmp(&m2), Ordering::Greater);
-        let m3 = QueueEntry::new(1.into(), recipient2, message.clone());
+        let m3 = QueueEntry::new(1.into(), recipient2, message);
         assert_eq!(m1.cmp(&m3), Ordering::Less);
     }
 }
