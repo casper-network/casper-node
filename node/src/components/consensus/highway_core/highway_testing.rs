@@ -399,14 +399,14 @@ where
         Result<(PreValidatedVertex<Ctx>, Vec<HighwayMessage<Ctx>>), (Vertex<Ctx>, VertexError)>,
         TestRunError<Ctx>,
     > {
-        let validator = self
-            .virtual_net
-            .get_validator_mut(&recipient)
-            .ok_or_else(|| TestRunError::MissingValidator(recipient))?;
-
-        let mut hwms: Vec<HighwayMessage<Ctx>> = todo!();
+        let mut hwms: Vec<HighwayMessage<Ctx>> = vec![];
 
         loop {
+            let validator = self
+                .virtual_net
+                .get_validator_mut(&recipient)
+                .ok_or_else(|| TestRunError::MissingValidator(recipient))?;
+
             match validator.consensus.highway.missing_dependency(&pvv) {
                 None => return Ok(Ok((pvv, hwms))),
                 Some(d) => match self.synchronize_dependency(d, recipient, sender)? {
