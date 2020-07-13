@@ -10,29 +10,29 @@ use std::{
 
 use semver::Version;
 
+use types::{Key, ProtocolVersion};
+
 use super::Responder;
 use crate::{
-    components::contract_runtime::{
-        core::engine_state::{
-            execution_result::ExecutionResult,
-            query::{QueryRequest, QueryResult},
-            upgrade::{UpgradeConfig, UpgradeResult},
-        },
-        shared::{additive_map::AdditiveMap, transform::Transform},
-        storage::global_state::CommitResult,
-    },
-    crypto::hash::Digest,
-};
-use crate::{
     components::{
-        contract_runtime::core::engine_state::{self, genesis::GenesisResult},
+        contract_runtime::{
+            core::engine_state::{
+                self,
+                execute_request::ExecuteRequest,
+                execution_result::ExecutionResult,
+                genesis::GenesisResult,
+                query::{QueryRequest, QueryResult},
+                upgrade::{UpgradeConfig, UpgradeResult},
+            },
+            shared::{additive_map::AdditiveMap, transform::Transform},
+            storage::global_state::CommitResult,
+        },
         storage::{self, StorageType, Value},
     },
+    crypto::hash::Digest,
     types::{BlockHash, Deploy, DeployHash, DeployHeader},
     Chainspec,
 };
-use engine_state::execute_request::ExecuteRequest;
-use types::{Key, ProtocolVersion};
 
 /// A networking request.
 #[derive(Debug)]

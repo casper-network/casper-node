@@ -1,5 +1,11 @@
-use std::{convert::TryInto, fs::File, io::Read, path::PathBuf, str};
+use std::{
+    fs,
+    path::PathBuf,
+    str,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
+use anyhow::Context;
 use reqwest::{Client, StatusCode};
 use structopt::StructOpt;
 
@@ -31,15 +37,24 @@ pub enum Args {
         #[structopt(parse(from_os_str), long)]
         /// Path to session code.
         session_code: PathBuf,
-        #[structopt(long, default_value = "0")]
-        /// Deploy's timestamp.
-        timestamp: u64,
-        #[structopt(long, default_value = "100")]
-        /// Gas price for running deploy.
+        #[structopt(long)]
+        /// Current time milliseconds.
+        timestamp: Option<u64>,
+        #[structopt(long, default_value = "10")]
+        /// Conversion rate between the cost of Wasm opcodes and the motes sent by the `payment_code`.
         gas_price: u64,
-        #[structopt(long, default_value = "1000")]
-        /// Time to live.
+        #[structopt(long, default_value = "0")]
+        /// Time to live of the deploy, in milliseconds. A deploy can only be included
+        /// in a block between `timestamp` and `timestamp + ttl`.
+        /// If this option is not present a default value will be assigned instead.
         ttl: u32,
+        /// If present, the deploy can only be included in a block on the right chain.
+        /// This can be used to preotect against accidental or malicious cross chain
+        /// deploys, in case the same account exists on multiple networks.
+        #[structopt(long, default_value = "Test")]
+        chain_name: String,
+        // TODO: There are also deploy dependencies, but this whole structure
+        // is subject to changes.
     },
     /// Retrieve a stored deploy.
     GetDeploy {
@@ -62,21 +77,23 @@ async fn main() -> anyhow::Result<()> {
     match Args::from_args() {
         Args::PutDeploy {
             node_address,
-            private_key,
+            secret_key,
             payment_code,
             session_code,
             timestamp,
             gas_price,
             ttl,
+            chain_name,
         } => {
             put_deploy(
                 node_address,
-                private_key,
+                secret_key,
                 payment_code,
                 session_code,
                 timestamp,
                 gas_price,
                 ttl,
+                chain_name,
             )
             .await
         }
@@ -92,23 +109,32 @@ fn get_file_bytes(filename: PathBuf) -> anyhow::Result<Vec<u8>> {
     fs::read(&filename).with_context(|| format!("Failed to read {}", filename.display()))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn put_deploy(
     node_address: String,
-    private_key: PathBuf,
+    secret_key: PathBuf,
     payment_code: PathBuf,
     session_code: PathBuf,
-    timestamp: u64,
+    timestamp: Option<u64>,
     gas_price: u64,
     ttl: u32,
+    chain_name: String,
 ) -> anyhow::Result<()> {
+    let timestamp = timestamp.unwrap_or_else(|| {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+    });
+
     let payment_bytes = get_file_bytes(payment_code)?;
     let session_bytes = get_file_bytes(session_code)?;
-    let private_key_bytes = get_file_bytes(private_key)?;
+    let secret_key_bytes = get_file_bytes(secret_key)?;
     let secret_key = SecretKey::ed25519_from_bytes(secret_key_bytes)?;
-    let public_key = PublicKey::from(&private_key);
+    let public_key = PublicKey::from(&secret_key);
 
     let msg = b"Message"; // TODO
-    let sig = asymmetric_key::sign(msg, &private_key, &public_key);
+    let sig = asymmetric_key::sign(msg, &secret_key, &public_key);
 
     let deploy_hash: Digest = [42; 32].into();
 
@@ -121,7 +147,7 @@ async fn put_deploy(
             body_hash: [1; 32].into(),
             ttl_millis: ttl,
             dependencies: vec![],
-            chain_name: "Chain name".to_string(),
+            chain_name,
         },
         ExecutableDeployItem::ModuleBytes {
             module_bytes: payment_bytes,

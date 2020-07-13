@@ -13,11 +13,14 @@ use derive_more::From;
 use lmdb::DatabaseFlags;
 use rand::Rng;
 use thiserror::Error;
+use tokio::task;
+use tracing::trace;
 
 use crate::{
     components::{
         contract_runtime::{
             core::engine_state::{EngineConfig, EngineState},
+            shared::newtypes::CorrelationId,
             storage::{
                 error::lmdb::Error as StorageLmdbError, global_state::lmdb::LmdbGlobalState,
                 protocol_data_store::lmdb::LmdbProtocolDataStore,
@@ -30,9 +33,6 @@ use crate::{
     StorageConfig,
 };
 pub use config::Config;
-use shared::newtypes::CorrelationId;
-use tokio::task;
-use tracing::debug;
 
 /// The contract runtime components.
 pub(crate) struct ContractRuntime {
@@ -73,7 +73,6 @@ where
         _rng: &mut R,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        debug!(?event, "handling event");
         match event {
             Event::Request(ContractRuntimeRequest::CommitGenesis {
                 chainspec,
@@ -86,7 +85,7 @@ where
                 execute_request,
                 responder,
             }) => {
-                debug!(?execute_request, "execute");
+                trace!(?execute_request, "execute");
                 let engine_state = Arc::clone(&self.engine_state);
                 async move {
                     let correlation_id = CorrelationId::new();
@@ -95,7 +94,7 @@ where
                     })
                     .await
                     .expect("should run");
-                    debug!(?result, "execute result");
+                    trace!(?result, "execute result");
                     responder.respond(result).await
                 }
                 .ignore()
@@ -106,7 +105,7 @@ where
                 effects,
                 responder,
             }) => {
-                debug!(?protocol_version, ?pre_state_hash, ?effects, "commit");
+                trace!(?protocol_version, ?pre_state_hash, ?effects, "commit");
                 let engine_state = Arc::clone(&self.engine_state);
                 async move {
                     let correlation_id = CorrelationId::new();
@@ -120,7 +119,7 @@ where
                     })
                     .await
                     .expect("should run");
-                    debug!(?result, "commit result");
+                    trace!(?result, "commit result");
                     responder.respond(result).await
                 }
                 .ignore()
@@ -129,7 +128,7 @@ where
                 upgrade_config,
                 responder,
             }) => {
-                debug!(?upgrade_config, "upgrade");
+                trace!(?upgrade_config, "upgrade");
                 let engine_state = Arc::clone(&self.engine_state);
                 async move {
                     let correlation_id = CorrelationId::new();
@@ -138,7 +137,7 @@ where
                     })
                     .await
                     .expect("should run");
-                    debug!(?result, "upgrade result");
+                    trace!(?result, "upgrade result");
                     responder.respond(result).await
                 }
                 .ignore()
@@ -147,7 +146,7 @@ where
                 query_request,
                 responder,
             }) => {
-                debug!(?query_request, "query");
+                trace!(?query_request, "query");
                 let engine_state = Arc::clone(&self.engine_state);
                 async move {
                     let correlation_id = CorrelationId::new();
@@ -156,7 +155,7 @@ where
                     })
                     .await
                     .expect("should run");
-                    debug!(?result, "query result");
+                    trace!(?result, "query result");
                     responder.respond(result).await
                 }
                 .ignore()

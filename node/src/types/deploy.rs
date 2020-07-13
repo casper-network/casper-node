@@ -1,4 +1,5 @@
 use std::{
+    array::TryFromSliceError,
     convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
 };
@@ -17,6 +18,7 @@ use crate::{
     },
     utils::DisplayIter,
 };
+use hex::FromHexError;
 
 // TODO - improve this if it's to be kept
 /// Error while encoding.
@@ -37,6 +39,18 @@ pub struct DecodingError;
 impl Display for DecodingError {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(formatter, "decoding error")
+    }
+}
+
+impl From<FromHexError> for DecodingError {
+    fn from(_: FromHexError) -> Self {
+        DecodingError
+    }
+}
+
+impl From<TryFromSliceError> for DecodingError {
+    fn from(_: TryFromSliceError) -> Self {
+        DecodingError
     }
 }
 
@@ -182,7 +196,7 @@ impl Display for Deploy {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "deploy[{}, {}, payment_code: {:?}, session_code: {:?}, approvals: {}]",
+            "deploy[{}, {}, payment_code: {}, session_code: {}, approvals: {}]",
             self.hash,
             self.header,
             self.payment,
@@ -202,15 +216,49 @@ mod json {
 
     use super::DecodingError;
     use crate::{
-        components::contract_runtime::core::engine_state::executable_deploy_item::ExecutableDeployItem,
+        components::contract_runtime::core::engine_state::executable_deploy_item,
         crypto::{
             asymmetric_key::{PublicKey, Signature},
             hash::Digest,
         },
     };
+    use types::ContractVersion;
 
     #[derive(Serialize, Deserialize)]
     pub(super) struct DeployHash(String);
+
+    #[derive(Serialize, Deserialize)]
+    pub enum ExecutableDeployItem {
+        ModuleBytes {
+            module_bytes: String,
+            args: String,
+        },
+        StoredContractByHash {
+            hash: String,
+            entry_point: String,
+            args: String,
+        },
+        StoredContractByName {
+            name: String,
+            entry_point: String,
+            args: String,
+        },
+        StoredVersionedContractByName {
+            name: String,
+            version: Option<ContractVersion>, // defaults to highest enabled version
+            entry_point: String,
+            args: String,
+        },
+        StoredVersionedContractByHash {
+            hash: String,
+            version: Option<ContractVersion>, // defaults to highest enabled version
+            entry_point: String,
+            args: String,
+        },
+        Transfer {
+            args: String,
+        },
+    }
 
     impl From<&super::DeployHash> for DeployHash {
         fn from(hash: &super::DeployHash) -> Self {
@@ -224,6 +272,125 @@ mod json {
         fn try_from(hash: DeployHash) -> Result<Self, Self::Error> {
             let hash = Digest::from_hex(&hash.0).map_err(|_| DecodingError)?;
             Ok(super::DeployHash(hash))
+        }
+    }
+
+    impl From<executable_deploy_item::ExecutableDeployItem> for ExecutableDeployItem {
+        fn from(executable_deploy_item: executable_deploy_item::ExecutableDeployItem) -> Self {
+            match executable_deploy_item {
+                executable_deploy_item::ExecutableDeployItem::ModuleBytes {
+                    module_bytes,
+                    args,
+                } => ExecutableDeployItem::ModuleBytes {
+                    module_bytes: hex::encode(&module_bytes),
+                    args: hex::encode(&args),
+                },
+                executable_deploy_item::ExecutableDeployItem::StoredContractByHash {
+                    hash,
+                    entry_point,
+                    args,
+                } => ExecutableDeployItem::StoredContractByHash {
+                    hash: hex::encode(&hash),
+                    entry_point,
+                    args: hex::encode(&args),
+                },
+                executable_deploy_item::ExecutableDeployItem::StoredContractByName {
+                    name,
+                    entry_point,
+                    args,
+                } => ExecutableDeployItem::StoredContractByName {
+                    name,
+                    entry_point,
+                    args: hex::encode(&args),
+                },
+                executable_deploy_item::ExecutableDeployItem::StoredVersionedContractByName {
+                    name,
+                    version,
+                    entry_point,
+                    args,
+                } => ExecutableDeployItem::StoredVersionedContractByName {
+                    name,
+                    version,
+                    entry_point,
+                    args: hex::encode(&args),
+                },
+                executable_deploy_item::ExecutableDeployItem::StoredVersionedContractByHash {
+                    hash,
+                    version,
+                    entry_point,
+                    args,
+                } => ExecutableDeployItem::StoredVersionedContractByHash {
+                    hash: hex::encode(&hash),
+                    version,
+                    entry_point,
+                    args: hex::encode(&args),
+                },
+                executable_deploy_item::ExecutableDeployItem::Transfer { args } => {
+                    ExecutableDeployItem::Transfer {
+                        args: hex::encode(&args),
+                    }
+                }
+            }
+        }
+    }
+
+    impl TryFrom<ExecutableDeployItem> for executable_deploy_item::ExecutableDeployItem {
+        type Error = DecodingError;
+        fn try_from(value: ExecutableDeployItem) -> Result<Self, Self::Error> {
+            let executable_deploy_item = match value {
+                ExecutableDeployItem::ModuleBytes { module_bytes, args } => {
+                    executable_deploy_item::ExecutableDeployItem::ModuleBytes {
+                        module_bytes: hex::decode(&module_bytes)?,
+                        args: hex::decode(&args)?,
+                    }
+                }
+                ExecutableDeployItem::StoredContractByHash {
+                    hash,
+                    entry_point,
+                    args,
+                } => executable_deploy_item::ExecutableDeployItem::StoredContractByHash {
+                    hash: hex::decode(&hash)?.as_slice().try_into()?,
+                    entry_point,
+                    args: hex::decode(&args)?,
+                },
+                ExecutableDeployItem::StoredContractByName {
+                    name,
+                    entry_point,
+                    args,
+                } => executable_deploy_item::ExecutableDeployItem::StoredContractByName {
+                    name,
+                    entry_point,
+                    args: hex::decode(&args)?,
+                },
+                ExecutableDeployItem::StoredVersionedContractByName {
+                    name,
+                    version,
+                    entry_point,
+                    args,
+                } => executable_deploy_item::ExecutableDeployItem::StoredVersionedContractByName {
+                    name,
+                    version,
+                    entry_point,
+                    args: hex::decode(&args)?,
+                },
+                ExecutableDeployItem::StoredVersionedContractByHash {
+                    hash,
+                    version,
+                    entry_point,
+                    args,
+                } => executable_deploy_item::ExecutableDeployItem::StoredVersionedContractByHash {
+                    hash: hex::decode(&hash)?.as_slice().try_into()?,
+                    version,
+                    entry_point,
+                    args: hex::decode(&args)?,
+                },
+                ExecutableDeployItem::Transfer { args } => {
+                    executable_deploy_item::ExecutableDeployItem::Transfer {
+                        args: hex::decode(&args)?,
+                    }
+                }
+            };
+            Ok(executable_deploy_item)
         }
     }
 
@@ -293,8 +460,8 @@ mod json {
             Deploy {
                 hash: (&deploy.hash).into(),
                 header: (&deploy.header).into(),
-                payment: deploy.payment.clone(),
-                session: deploy.session.clone(),
+                payment: deploy.payment.clone().into(),
+                session: deploy.session.clone().into(),
                 approvals: deploy.approvals.iter().map(hex::encode).collect(),
             }
         }
@@ -313,8 +480,8 @@ mod json {
             Ok(super::Deploy {
                 hash: deploy.hash.try_into()?,
                 header: deploy.header.try_into()?,
-                payment: deploy.payment,
-                session: deploy.session,
+                payment: deploy.payment.try_into()?,
+                session: deploy.session.try_into()?,
                 approvals,
             })
         }
