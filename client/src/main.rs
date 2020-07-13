@@ -23,8 +23,8 @@ pub enum Args {
         /// http://localhost:7777
         node_address: String,
         #[structopt(parse(from_os_str), long)]
-        /// Private key to sign deploys with.
-        private_key: PathBuf,
+        /// Secret key to sign deploys with.
+        secret_key: PathBuf,
         #[structopt(parse(from_os_str), long)]
         /// Path to payment code.
         payment_code: PathBuf,
@@ -89,10 +89,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn get_file_bytes(filename: PathBuf) -> anyhow::Result<Vec<u8>> {
-    let mut data = Vec::new();
-    let mut file = File::open(filename)?;
-    file.read_to_end(&mut data)?;
-    Ok(data)
+    fs::read(&filename).with_context(|| format!("Failed to read {}", filename.display()))
 }
 
 async fn put_deploy(
@@ -107,7 +104,7 @@ async fn put_deploy(
     let payment_bytes = get_file_bytes(payment_code)?;
     let session_bytes = get_file_bytes(session_code)?;
     let private_key_bytes = get_file_bytes(private_key)?;
-    let private_key = SecretKey::new_ed25519(private_key_bytes.as_slice().try_into()?);
+    let secret_key = SecretKey::ed25519_from_bytes(secret_key_bytes)?;
     let public_key = PublicKey::from(&private_key);
 
     let msg = b"Message"; // TODO

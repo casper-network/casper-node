@@ -44,11 +44,11 @@ pub enum ExecutableDeployItem {
 }
 
 impl Debug for ExecutableDeployItem {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ExecutableDeployItem::ModuleBytes { module_bytes, args } => f
                 .debug_struct("ModuleBytes")
-                .field("module_bytes", &format!("[ {} bytes ]", module_bytes.len()))
+                .field("module_bytes", &format!("[{} bytes]", module_bytes.len()))
                 .field("args", &hex::encode(&args))
                 .finish(),
             ExecutableDeployItem::StoredContractByHash {

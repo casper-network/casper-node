@@ -150,7 +150,7 @@ impl Deploy {
         Deploy::try_from(json)
     }
 
-    /// Returns the `ExecutableDeployItem` for session code.
+    /// Returns the `ExecutableDeployItem` for payment code.
     pub fn payment(&self) -> &ExecutableDeployItem {
         &self.payment
     }
