@@ -83,7 +83,7 @@ impl Debug for ExecutableDeployItem {
             ExecutableDeployItem::ModuleBytes { module_bytes, args } => f
                 .debug_struct("ModuleBytes")
                 .field("module_bytes", &format!("[{} bytes]", module_bytes.len()))
-                .field("args", &hex::encode(&args))
+                .field("args", &HexFmt(&args))
                 .finish(),
             ExecutableDeployItem::StoredContractByHash {
                 hash,
