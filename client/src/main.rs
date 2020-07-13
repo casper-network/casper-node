@@ -1,9 +1,4 @@
-use std::{
-    fs,
-    path::PathBuf,
-    str,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::{fs, path::PathBuf, str};
 
 use anyhow::Context;
 use reqwest::{Client, StatusCode};
@@ -15,7 +10,7 @@ use casperlabs_node::{
         asymmetric_key::{self, PublicKey, SecretKey},
         hash::Digest,
     },
-    types::{Deploy, DeployHeader},
+    types::{Deploy, DeployHeader, Timestamp},
 };
 
 const DEPLOY_API_PATH: &str = "deploys";
@@ -38,12 +33,12 @@ pub enum Args {
         /// Path to session code.
         session_code: PathBuf,
         #[structopt(long)]
-        /// Current time milliseconds.
-        timestamp: Option<u64>,
+        /// Current time in milliseconds since UNIX epoch.
+        timestamp: Option<Timestamp>,
         #[structopt(long, default_value = "10")]
         /// Conversion rate between the cost of Wasm opcodes and the motes sent by the `payment_code`.
         gas_price: u64,
-        #[structopt(long, default_value = "0")]
+        #[structopt(long, default_value = "3600000")]
         /// Time to live of the deploy, in milliseconds. A deploy can only be included
         /// in a block between `timestamp` and `timestamp + ttl`.
         /// If this option is not present a default value will be assigned instead.
@@ -115,17 +110,12 @@ async fn put_deploy(
     secret_key: PathBuf,
     payment_code: PathBuf,
     session_code: PathBuf,
-    timestamp: Option<u64>,
+    timestamp: Option<Timestamp>,
     gas_price: u64,
     ttl: u32,
     chain_name: String,
 ) -> anyhow::Result<()> {
-    let timestamp = timestamp.unwrap_or_else(|| {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64
-    });
+    let timestamp = timestamp.unwrap_or_else(Timestamp::now);
 
     let payment_bytes = get_file_bytes(payment_code)?;
     let session_bytes = get_file_bytes(session_code)?;
@@ -142,7 +132,7 @@ async fn put_deploy(
         deploy_hash.into(),
         DeployHeader {
             account: public_key,
-            timestamp,
+            timestamp: timestamp.millis(),
             gas_price,
             body_hash: [1; 32].into(),
             ttl_millis: ttl,

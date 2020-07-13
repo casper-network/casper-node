@@ -4,6 +4,7 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
 };
 
+use hex::FromHexError;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -18,7 +19,6 @@ use crate::{
     },
     utils::DisplayIter,
 };
-use hex::FromHexError;
 
 // TODO - improve this if it's to be kept
 /// Error while encoding.
