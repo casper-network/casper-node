@@ -1,8 +1,8 @@
 use super::{
     active_validator::Effect,
     evidence::Evidence,
-    finality_detector::{FinalityDetector, FinalityResult},
-    highway::{Highway, PreValidatedVertex, VertexError},
+    finality_detector::{FinalityDetector, FinalityOutcome},
+    highway::{Highway, PreValidatedVertex, ValidVertex, VertexError},
     validators::ValidatorIndex,
     vertex::{Dependency, Vertex},
 };
@@ -24,7 +24,7 @@ struct HighwayConsensus<C: Context> {
 }
 
 impl<C: Context> HighwayConsensus<C> {
-    fn run_finality(&mut self) -> FinalityResult<C::ConsensusValue, ValidatorIndex> {
+    fn run_finality(&mut self) -> FinalityOutcome<C::ConsensusValue, ValidatorIndex> {
         self.finality_detector.run(self.highway.state())
     }
 }
@@ -55,7 +55,9 @@ use HighwayMessage::*;
 impl<C: Context> From<Effect<C>> for HighwayMessage<C> {
     fn from(eff: Effect<C>) -> Self {
         match eff {
-            Effect::NewVertex(v) => NewVertex(v),
+            // The effect is `ValidVertex` but we want to gossip it to other
+            // validators so for them it's just `Vertex` that needs to be validated.
+            Effect::NewVertex(ValidVertex(v)) => NewVertex(v),
             Effect::ScheduleTimer(t) => Timer(t),
             Effect::RequestNewBlock(block_context) => RequestBlock(block_context),
         }
@@ -304,14 +306,14 @@ where
         recipient.push_messages_produced(messages.clone());
 
         let finality_result = match recipient.consensus.run_finality() {
-            FinalityResult::Finalized(v, equivocated_ids) => {
+            FinalityOutcome::Finalized(v, equivocated_ids) => {
                 if !equivocated_ids.is_empty() {
                     unimplemented!("Equivocations detected but not handled.")
                 }
                 vec![v]
             }
-            FinalityResult::None => vec![],
-            FinalityResult::FttExceeded => unimplemented!("Ftt exceeded but not handled."),
+            FinalityOutcome::None => vec![],
+            FinalityOutcome::FttExceeded => unimplemented!("Ftt exceeded but not handled."),
         };
 
         recipient.push_finalized(finality_result);
