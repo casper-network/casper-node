@@ -2,21 +2,25 @@ use super::{
     active_validator::Effect,
     evidence::Evidence,
     finality_detector::{FinalityDetector, FinalityOutcome},
-    highway::{Highway, PreValidatedVertex, ValidVertex, VertexError},
-    validators::ValidatorIndex,
+    highway::{Highway, HighwayParams, PreValidatedVertex, ValidVertex, VertexError},
+    validators::{ValidatorIndex, Validators},
     vertex::{Dependency, Vertex},
+    Weight,
 };
+
 use crate::{
     components::consensus::{
         consensus_des_testing::{
             DeliverySchedule, Message, MessageT, QueueEntry, Strategy, Target, TargetedMessage,
-            ValidatorId, VirtualNet,
+            Validator, ValidatorId, VirtualNet,
         },
-        traits::Context,
+        traits::{ConsensusValueT, Context},
         BlockContext,
     },
     types::Timestamp,
 };
+
+use std::iter::FromIterator;
 
 struct HighwayConsensus<C: Context> {
     highway: Highway<C>,
@@ -68,6 +72,7 @@ use rand::Rng;
 use std::{
     collections::VecDeque,
     fmt::{Display, Formatter},
+    marker::PhantomData,
 };
 
 impl<C: Context> PartialOrd for HighwayMessage<C> {
@@ -148,7 +153,7 @@ where
 {
     virtual_net: VirtualNet<C::ConsensusValue, HighwayConsensus<C>, HighwayMessage<C>, DS>,
     /// The instant the network was created.
-    start_time: u64,
+    start_time: Timestamp,
     /// Consensus values to be proposed.
     /// Order of values in the vector defines the order in which they will be proposed.
     consensus_values: VecDeque<C::ConsensusValue>,
@@ -161,20 +166,20 @@ where
     Ctx: Context,
     DS: Strategy<DeliverySchedule>,
 {
-    fn new(
+    fn new<T: Into<Timestamp>>(
         virtual_net: VirtualNet<
             Ctx::ConsensusValue,
             HighwayConsensus<Ctx>,
             HighwayMessage<Ctx>,
             DS,
         >,
-        start_time: u64,
+        start_time: T,
         consensus_values: VecDeque<Ctx::ConsensusValue>,
     ) -> Self {
         let cv_len = consensus_values.len();
         HighwayTestHarness {
             virtual_net,
-            start_time,
+            start_time: start_time.into(),
             consensus_values,
             consensus_values_num: cv_len,
         }
@@ -457,6 +462,226 @@ where
         };
 
         self.add_vertex(recipient, sender, vertex)
+    }
+}
+
+enum Distribution {
+    Uniform,
+    Poisson,
+}
+
+enum BuilderError {
+    EmptyValidatorNum,
+    EmptyConsensusValues,
+    WeightLimits,
+    TooManyFaultyNodes,
+    EmptyFtt,
+}
+
+struct HighwayTestHarnessBuilder<C: Context, DS: Strategy<DeliverySchedule>> {
+    /// Nmber of validators in the test run.
+    validator_num: Option<u8>,
+    /// Number of faulty validators (i.e. equivocators).
+    /// Defaults to 0.
+    faulty_num: u8,
+    /// FTT value for the finality detector.
+    /// If not given, defaults to 1/3 of total validators' weight.
+    ftt: Option<u64>,
+    /// Consensus values to be proposed by the nodes in the network.
+    consensus_values: Option<VecDeque<C::ConsensusValue>>,
+    /// Strategy for message delivery (delaying, dropping).
+    /// Defaults to sane impl.
+    delivery_strategy: Option<DS>,
+    /// Upper and lower limits for validators' weights.
+    weight_limits: (u64, u64),
+    /// Time when the test era starts at.
+    /// Defaults to 0.
+    start_time: Timestamp,
+    /// Type of discrete distribution of validators' weights.
+    /// Defaults to uniform.
+    weight_distribution: Distribution,
+    instance_id: C::InstanceId,
+    /// Seed for `Highway`.
+    /// Defaults to 0.
+    seed: u64,
+    /// Round exponent.
+    /// Defaults to 12.
+    round_exp: u8,
+}
+
+impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
+    HighwayTestHarnessBuilder<C, DS>
+{
+    fn new(instance_id: C::InstanceId) -> Self {
+        HighwayTestHarnessBuilder {
+            validator_num: None,
+            faulty_num: 0,
+            ftt: None,
+            consensus_values: None,
+            delivery_strategy: None,
+            weight_limits: (0, 0),
+            start_time: Timestamp::zero(),
+            weight_distribution: Distribution::Uniform,
+            instance_id,
+            seed: 0,
+            round_exp: 12,
+        }
+    }
+
+    pub(crate) fn validator_num(&mut self, validator_num: u8) {
+        self.validator_num = Some(validator_num)
+    }
+
+    pub(crate) fn faulty_num(&mut self, faulty_num: u8) {
+        self.faulty_num = faulty_num;
+    }
+
+    pub(crate) fn consensus_values(&mut self, cv: VecDeque<C::ConsensusValue>) {
+        assert!(!cv.is_empty());
+        self.consensus_values = Some(cv);
+    }
+
+    pub(crate) fn delivery_strategy(&mut self, ds: DS) {
+        self.delivery_strategy = Some(ds);
+    }
+
+    pub(crate) fn weight_limits(&mut self, lower: u64, upper: u64) {
+        // TODO: More checks?
+        assert!(lower <= upper);
+        self.weight_limits = (lower, upper);
+    }
+
+    pub(crate) fn weight_distribution(&mut self, wd: Distribution) {
+        self.weight_distribution = wd;
+    }
+
+    pub(crate) fn start_time<T: Into<Timestamp>>(&mut self, start_time: T) {
+        self.start_time = start_time.into();
+    }
+
+    pub(crate) fn seed(&mut self, seed: u64) {
+        self.seed = seed;
+    }
+
+    pub(crate) fn round_exp(&mut self, round_exp: u8) {
+        self.round_exp = round_exp;
+    }
+
+    pub(crate) fn ftt(&mut self, ftt: u64) {
+        self.ftt = Some(ftt);
+    }
+
+    fn build(self) -> Result<HighwayTestHarness<C, DS>, BuilderError> {
+        let validators_num = self
+            .validator_num
+            .ok_or_else(|| BuilderError::EmptyValidatorNum)?;
+
+        let consensus_values = self
+            .consensus_values
+            .ok_or_else(|| BuilderError::EmptyConsensusValues)?;
+
+        if self.weight_limits == (0, 0) {
+            return Err(BuilderError::WeightLimits);
+        }
+
+        // TODO: This should be a weight of faulty validators, not count.
+        let faulty_num = if self.faulty_num > validators_num / 3 {
+            return Err(BuilderError::TooManyFaultyNodes);
+        } else {
+            self.faulty_num
+        };
+
+        let ftt = self.ftt.ok_or_else(|| BuilderError::EmptyFtt)?;
+
+        let weights: Vec<Weight> = todo!("Generate iterators of generated weights.");
+
+        let validator_ids = (0..validators_num)
+            .map(|i| ValidatorId(i as u64))
+            .collect::<Vec<_>>();
+
+        assert_eq!(weights.len(), validator_ids.len());
+
+        let validators: Validators<ValidatorId> = {
+            let zipped: Vec<(ValidatorId, Weight)> =
+                validator_ids.into_iter().zip(weights.into_iter()).collect();
+            Validators::from_iter(zipped)
+        };
+
+        let highway_consensus = |(vid, v_sec)| {
+            let (highway, effects) = {
+                let highway_params: HighwayParams<C> = HighwayParams {
+                    instance_id: self.instance_id,
+                    validators,
+                };
+
+                Highway::new(
+                    highway_params,
+                    self.seed,
+                    vid,
+                    v_sec,
+                    self.round_exp,
+                    self.start_time,
+                )
+            };
+
+            let finality_detector = FinalityDetector::new(Weight(ftt));
+
+            (
+                HighwayConsensus {
+                    highway,
+                    finality_detector,
+                },
+                effects
+                    .into_iter()
+                    .map(HighwayMessage::from)
+                    .collect::<Vec<_>>(),
+            )
+        };
+
+        let delivery_time_strategy = self.delivery_strategy.unwrap_or_else(|| unimplemented!());
+
+        let (validators, init_messages) = {
+            let mut validators = vec![];
+            let mut init_messages = vec![];
+
+            let (faulty_ids, honest_ids) = validator_ids.split_at(faulty_num as usize);
+
+            let mut faulty: Vec<(ValidatorId, bool)> =
+                faulty_ids.iter().map(|vid| (*vid, true)).collect();
+            let honest: Vec<(ValidatorId, bool)> =
+                honest_ids.iter().map(|vid| (*vid, false)).collect();
+            faulty.extend(honest);
+
+            for (vid, is_faulty) in faulty.into_iter() {
+                let (consensus, msgs) = highway_consensus((vid, todo!("Validator secret")));
+                let validator = Validator::new(vid, is_faulty, consensus);
+                let qm: Vec<QueueEntry<HighwayMessage<C>>> = msgs
+                    .into_iter()
+                    .map(|hwm| {
+                        // These are messages crated on the start of the network.
+                        // They are sent from validator to himself.
+                        QueueEntry::new(self.start_time, vid, Message::new(vid, hwm))
+                    })
+                    .collect();
+                init_messages.extend(qm);
+                validators.push(validator);
+            }
+
+            (validators, init_messages)
+        };
+
+        let virtual_net = VirtualNet::new(validators, delivery_time_strategy, init_messages);
+
+        let cv_len = consensus_values.len();
+
+        let hwth = HighwayTestHarness {
+            virtual_net,
+            start_time: self.start_time,
+            consensus_values,
+            consensus_values_num: cv_len,
+        };
+
+        Ok(hwth)
     }
 }
 
