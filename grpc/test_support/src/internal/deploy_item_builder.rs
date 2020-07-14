@@ -1,8 +1,11 @@
 use std::{collections::BTreeSet, path::Path};
 
-use node::components::contract_runtime::core::{
-    engine_state::{deploy_item::DeployItem, executable_deploy_item::ExecutableDeployItem},
-    DeployHash,
+use node::{
+    components::contract_runtime::core::engine_state::{
+        deploy_item::DeployItem, executable_deploy_item::ExecutableDeployItem,
+    },
+    crypto::hash::Digest,
+    types::DeployHash,
 };
 use types::{
     account::AccountHash, bytesrepr::ToBytes, contracts::ContractVersion, ContractHash, HashAddr,
@@ -211,7 +214,8 @@ impl DeployItemBuilder {
     }
 
     pub fn with_deploy_hash(mut self, hash: [u8; 32]) -> Self {
-        self.deploy_item.deploy_hash = hash;
+        let digest: Digest = hash.into();
+        self.deploy_item.deploy_hash = digest.into();
         self
     }
 
@@ -231,7 +235,7 @@ impl DeployItemBuilder {
                 .expect("should have payment code"),
             gas_price: self.deploy_item.gas_price,
             authorization_keys: self.deploy_item.authorization_keys,
-            deploy_hash: self.deploy_item.deploy_hash,
+            deploy_hash: self.deploy_item.deploy_hash.inner().to_bytes(),
         }
     }
 

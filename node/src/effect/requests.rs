@@ -10,12 +10,26 @@ use std::{
 
 use semver::Version;
 
+use types::{Key, ProtocolVersion};
+
 use super::Responder;
 use crate::{
     components::{
-        contract_runtime::core::engine_state::{self, genesis::GenesisResult},
+        contract_runtime::{
+            core::engine_state::{
+                self,
+                execute_request::ExecuteRequest,
+                execution_result::ExecutionResult,
+                genesis::GenesisResult,
+                query::{QueryRequest, QueryResult},
+                upgrade::{UpgradeConfig, UpgradeResult},
+            },
+            shared::{additive_map::AdditiveMap, transform::Transform},
+            storage::global_state::CommitResult,
+        },
         storage::{self, StorageType, Value},
     },
+    crypto::hash::Digest,
     types::{BlockHash, Deploy, DeployHash, DeployHeader},
     Chainspec,
 };
@@ -317,6 +331,38 @@ pub enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<GenesisResult, engine_state::Error>>,
     },
+    /// An `ExecuteRequest` that contains multiple deploys that will be executed.
+    Execute {
+        /// Execution request containing deploys.
+        execute_request: ExecuteRequest,
+        /// Responder to call with the execution result.
+        responder: Responder<Result<Vec<ExecutionResult>, engine_state::RootNotFound>>,
+    },
+    /// A request to commit existing execution transforms.
+    Commit {
+        /// Current protocol version of the commit request.
+        protocol_version: ProtocolVersion,
+        /// A valid pre state hash.
+        pre_state_hash: Digest,
+        /// Effects obtained through `ExecutionResult`
+        effects: AdditiveMap<Key, Transform>,
+        /// Responder to call with the commit result.
+        responder: Responder<Result<CommitResult, engine_state::Error>>,
+    },
+    /// A request to run upgrade.
+    Upgrade {
+        /// Upgrade config.
+        upgrade_config: UpgradeConfig,
+        /// Responder to call with the upgrade result.
+        responder: Responder<Result<UpgradeResult, engine_state::Error>>,
+    },
+    /// A query request.
+    Query {
+        /// Query request.
+        query_request: QueryRequest,
+        /// Responder to call with the upgrade result.
+        responder: Responder<Result<QueryResult, engine_state::Error>>,
+    },
 }
 
 impl Display for ContractRuntimeRequest {
@@ -327,6 +373,32 @@ impl Display for ContractRuntimeRequest {
                 "commit genesis {}",
                 chainspec.genesis.protocol_version
             ),
+            ContractRuntimeRequest::Execute {
+                execute_request, ..
+            } => write!(
+                formatter,
+                "execute request: {}",
+                execute_request.parent_state_hash
+            ),
+
+            ContractRuntimeRequest::Commit {
+                protocol_version,
+                pre_state_hash,
+                effects,
+                ..
+            } => write!(
+                formatter,
+                "commit request: {} {} {:?}",
+                protocol_version, pre_state_hash, effects
+            ),
+
+            ContractRuntimeRequest::Upgrade { upgrade_config, .. } => {
+                write!(formatter, "upgrade request: {:?}", upgrade_config)
+            }
+
+            ContractRuntimeRequest::Query { query_request, .. } => {
+                write!(formatter, "query request: {:?}", query_request)
+            }
         }
     }
 }
