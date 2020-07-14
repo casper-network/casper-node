@@ -102,8 +102,10 @@ impl<C: Context> ActiveValidator<C> {
             effects.push(Effect::RequestNewBlock(bctx));
         } else if round_offset == self.witness_offset() {
             let panorama = state.panorama_cutoff(state.panorama(), timestamp);
-            let witness_vote = self.new_vote(panorama, timestamp, None, state);
-            effects.push(Effect::NewVertex(ValidVertex(Vertex::Vote(witness_vote))))
+            if !panorama.is_empty() {
+                let witness_vote = self.new_vote(panorama, timestamp, None, state);
+                effects.push(Effect::NewVertex(ValidVertex(Vertex::Vote(witness_vote))))
+            }
         }
         effects
     }
@@ -119,9 +121,11 @@ impl<C: Context> ActiveValidator<C> {
             warn!(%timestamp, "skipping outdated confirmation");
         } else if self.should_send_confirmation(vhash, timestamp, state) {
             let panorama = self.confirmation_panorama(vhash, state);
-            let confirmation_vote = self.new_vote(panorama, timestamp, None, state);
-            let vv = ValidVertex(Vertex::Vote(confirmation_vote));
-            return vec![Effect::NewVertex(vv)];
+            if !panorama.is_empty() {
+                let confirmation_vote = self.new_vote(panorama, timestamp, None, state);
+                let vv = ValidVertex(Vertex::Vote(confirmation_vote));
+                return vec![Effect::NewVertex(vv)];
+            }
         }
         vec![]
     }
