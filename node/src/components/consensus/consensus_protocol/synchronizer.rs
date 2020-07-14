@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
     iter,
@@ -225,7 +223,7 @@ where
 
     /// Must be called after consensus successfully handles the new vertex.
     /// That's b/c there might be other vertices that depend on this one and are waiting in a queue.
-    fn on_vertex_synced(&mut self, v: P::VId) -> Vec<SynchronizerEffect<I, P::Vertex>> {
+    pub(crate) fn on_vertex_synced(&mut self, v: P::VId) -> Vec<SynchronizerEffect<I, P::Vertex>> {
         let completed_dependencies = self.complete_vertex_dependency(v);
         completed_dependencies
             .into_iter()
@@ -233,6 +231,8 @@ where
             .collect()
     }
 
+    /// Mark `c` consensus value as downloaded.
+    /// Returns vertices that were dependant on it.
     pub(crate) fn on_consensus_value_synced(
         &mut self,
         c: &<P::Vertex as VertexTrait>::Value,

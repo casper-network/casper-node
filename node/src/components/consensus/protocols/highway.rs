@@ -325,6 +325,8 @@ where
         Ok(self.process_av_effects(effects))
     }
 
+    /// Marks `value` as valid.
+    /// Calls the synchronizer that `value` dependency has been satisfied.
     fn resolve_validity(
         &mut self,
         value: &C::ConsensusValue,
