@@ -180,13 +180,15 @@ where
     }
 
     fn run(mut self) -> Vec<ConsensusProtocolResult<I, C::ConsensusValue>> {
-        while let Some(effect) = self.synchronizer_effects_queue.pop() {
-            self.process_synchronizer_effect(effect);
-            while let Some((sender, vertex)) = self.vertex_queue.pop() {
+        loop {
+            if let Some(effect) = self.synchronizer_effects_queue.pop() {
+                self.process_synchronizer_effect(effect);
+            } else if let Some((sender, vertex)) = self.vertex_queue.pop() {
                 self.process_vertex(sender, vertex);
+            } else {
+                return self.results;
             }
         }
-        self.results
     }
 
     fn process_vertex(&mut self, sender: I, vertex: PreValidatedVertex<C>) {
