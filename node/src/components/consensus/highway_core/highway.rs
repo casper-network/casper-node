@@ -197,7 +197,6 @@ impl<C: Context> Highway<C> {
         match self.active_validator.as_mut() {
             None => {
                 // TODO: Error?
-                // At least add logging about the event.
                 warn!(%timestamp, "Observer node was called with `handle_timer` event.");
                 vec![]
             }
@@ -239,7 +238,7 @@ impl<C: Context> Highway<C> {
     fn do_pre_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
             Vertex::Vote(vote) => {
-                if !C::validate_signature(&vote.hash(), self.validator_pk(&vote), &vote.signature) {
+                if !C::verify_signature(&vote.hash(), self.validator_pk(&vote), &vote.signature) {
                     return Err(VoteError::Signature.into());
                 }
                 Ok(self.state.pre_validate_vote(vote)?)
