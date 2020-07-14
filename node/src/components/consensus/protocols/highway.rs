@@ -377,7 +377,7 @@ impl Context for HighwayContext {
         hash(data)
     }
 
-    fn validate_signature(hash: &Digest, public_key: &PublicKey, signature: &Signature) -> bool {
+    fn verify_signature(hash: &Digest, public_key: &PublicKey, signature: &Signature) -> bool {
         verify(hash, signature, public_key).is_ok()
     }
 }

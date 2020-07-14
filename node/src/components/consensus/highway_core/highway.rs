@@ -239,7 +239,7 @@ impl<C: Context> Highway<C> {
     fn do_pre_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
             Vertex::Vote(vote) => {
-                if !C::validate_signature(&vote.hash(), self.validator_pk(&vote), &vote.signature) {
+                if !C::verify_signature(&vote.hash(), self.validator_pk(&vote), &vote.signature) {
                     return Err(VoteError::Signature.into());
                 }
                 Ok(self.state.pre_validate_vote(vote)?)
