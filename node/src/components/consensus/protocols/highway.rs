@@ -335,7 +335,7 @@ where
                 .with_synchronizer_effects(effects)
                 .run())
         } else {
-            todo!()
+            todo!("Drop vertices that depend on the invalid consensus value.")
         }
     }
 }

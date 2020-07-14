@@ -111,13 +111,20 @@ where
         protocol_state: &P,
     ) -> Result<Vec<SynchronizerEffect<I, P::Vertex>>, anyhow::Error> {
         if let Some(missing_vid) = protocol_state.missing_dependency(&v) {
-            let dep_effects = self.sync_dependency(sender.clone(), missing_vid, v.clone());
-            let mut cv_effects = self.sync_consensus_values(sender, v);
-            cv_effects.push(dep_effects);
-            Ok(cv_effects)
+            let dep_effects = self.sync_dependency(sender, missing_vid, v.clone());
+            Ok(vec![dep_effects])
         } else {
+            // Downloading vertex `v` may resolve the dependency requests for other vertices.
             let mut completed_vertex_dependencies = self.on_vertex_synced(v.id());
-            completed_vertex_dependencies.push(SynchronizerEffect::Success(v));
+            // Once all vertex dependencies are satisfied, we need to make sure that
+            // we also have all the block's deploys.
+            match self.sync_consensus_values(sender, &v) {
+                Some(eff) => completed_vertex_dependencies.push(eff),
+                None => {
+                    // If it's a vote that has no consensus values it can be added to the state.
+                    completed_vertex_dependencies.push(SynchronizerEffect::Success(v))
+                }
+            }
             Ok(completed_vertex_dependencies)
         }
     }
@@ -126,6 +133,7 @@ where
     fn add_vertex_dependency(&mut self, v_id: P::VId, sender: I, v: P::Vertex) {
         let dependant_id = v.id();
         self.vertex_by_vid
+            // cv_effects.push(dep_effects);
             .entry(dependant_id.clone())
             .or_insert((sender, v));
         self.vertex_dependants
@@ -191,18 +199,12 @@ where
     fn sync_consensus_values(
         &mut self,
         sender: I,
-        v: P::Vertex,
-    ) -> Vec<SynchronizerEffect<I, P::Vertex>> {
-        match v.value() {
-            Some(cv) => {
-                self.add_consensus_value_dependency(cv.clone(), sender.clone(), &v);
-                vec![SynchronizerEffect::RequestConsensusValue(
-                    sender,
-                    cv.clone(),
-                )]
-            }
-            None => vec![],
-        }
+        v: &P::Vertex,
+    ) -> Option<SynchronizerEffect<I, P::Vertex>> {
+        v.value().map(|cv| {
+            self.add_consensus_value_dependency(cv.clone(), sender.clone(), v);
+            SynchronizerEffect::RequestConsensusValue(sender, cv.clone())
+        })
     }
 
     /// Synchronizes the dependency (single) of a newly received vertex.
@@ -238,7 +240,9 @@ where
         let completed_dependencies = self.complete_consensus_value_dependency(c);
         completed_dependencies
             .into_iter()
-            .map(|(s, v)| SynchronizerEffect::RequeueVertex(s, v))
+            // Because we sync consensus value dependencies only when we have sync'd
+            // all vertex dependencies, we can now consider `v` to have all dependencies resolved.
+            .map(|(_, v)| SynchronizerEffect::Success(v))
             .collect()
     }
 }
