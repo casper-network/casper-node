@@ -197,7 +197,6 @@ impl<C: Context> Highway<C> {
         match self.active_validator.as_mut() {
             None => {
                 // TODO: Error?
-                // At least add logging about the event.
                 warn!(%timestamp, "Observer node was called with `handle_timer` event.");
                 vec![]
             }

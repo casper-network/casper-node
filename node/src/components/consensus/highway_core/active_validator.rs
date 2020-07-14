@@ -21,7 +21,6 @@ use crate::{
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub(crate) enum Effect<C: Context> {
     /// Newly vertex that should be gossiped to peers and added to the protocol state.
-    // TODO: This should contain a `ValidVertex`, since we created it ourselves.
     NewVertex(ValidVertex<C>),
     /// `handle_timer` needs to be called at the specified time.
     ScheduleTimer(Timestamp),

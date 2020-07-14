@@ -107,7 +107,6 @@ impl<C: Context> Panorama<C> {
 /// A vote sent to or received from the network.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct Vote<C: Context> {
-    // TODO: Signature
     /// The list of latest messages and faults observed by the creator of this message.
     pub(crate) panorama: Panorama<C>,
     /// The number of earlier messages by the same creator.
