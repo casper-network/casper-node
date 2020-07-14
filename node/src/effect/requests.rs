@@ -225,7 +225,7 @@ impl<S: StorageType> Display for StorageRequest<S> {
 /// Deploy-queue related requests.
 #[derive(Debug)]
 #[must_use]
-pub(crate) enum DeployQueueRequest {
+pub enum DeployQueueRequest {
     /// Add a deploy to the queue for inclusion into an upcoming block.
     QueueDeploy {
         /// Hash of deploy to store.
@@ -236,6 +236,7 @@ pub(crate) enum DeployQueueRequest {
         responder: Responder<bool>,
     },
 
+    /// Request a list of deploys to propose in a new block.
     RequestForInclusion {
         /// The instant for which the deploy is requested.
         current_instant: u64,

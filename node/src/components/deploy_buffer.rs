@@ -8,6 +8,8 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
+use derive_more::From;
+
 use crate::{
     components::Component,
     effect::{requests::DeployQueueRequest, EffectBuilder, EffectExt, Effects},
@@ -50,8 +52,8 @@ impl DeployBuffer {
         &mut self,
         current_instant: u64,
         max_ttl: u32,
-        max_block_size_bytes: u64,
-        max_gas_limit: u64,
+        _max_block_size_bytes: u64, // TODO
+        _max_gas_limit: u64,        // TODO
         max_dependencies: u8,
         past: &HashSet<BlockHash>,
     ) -> HashSet<DeployHash> {
@@ -74,7 +76,7 @@ impl DeployBuffer {
                     &past_deploys,
                 ) && !past_deploys.contains(hash)
             })
-            .map(|(hash, deploy)| *hash)
+            .map(|(hash, _deploy)| *hash)
             .collect::<HashSet<_>>()
         // TODO: check gas and block size limits
     }
@@ -102,6 +104,7 @@ impl DeployBuffer {
     }
 
     /// Notifies the deploy buffer of a new block.
+    #[allow(unused)] // TODO
     pub(crate) fn added_block(&mut self, block: BlockHash, deploys: HashSet<DeployHash>) {
         let deploy_map = deploys
             .iter()
@@ -117,6 +120,7 @@ impl DeployBuffer {
     }
 
     /// Notifies the deploy buffer that a block has been finalized.
+    #[allow(unused)] // TODO
     pub(crate) fn finalized_block(&mut self, block: BlockHash) {
         if let Some(deploys) = self.processed.remove(&block) {
             self.collected_deploys
@@ -128,6 +132,7 @@ impl DeployBuffer {
     }
 
     /// Notifies the deploy buffer that a block has been orphaned.
+    #[allow(unused)] // TODO
     pub(crate) fn orphaned_block(&mut self, block: BlockHash) {
         if let Some(deploys) = self.processed.remove(&block) {
             self.collected_deploys.extend(deploys);
@@ -138,8 +143,9 @@ impl DeployBuffer {
 }
 
 /// An event for when using the deploy buffer as a component.
-#[derive(Debug)]
-pub(crate) enum Event {
+#[derive(Debug, From)]
+pub enum Event {
+    #[from]
     QueueRequest(DeployQueueRequest),
 }
 
@@ -156,8 +162,8 @@ impl<REv> Component<REv> for DeployBuffer {
 
     fn handle_event<R: rand::Rng + ?Sized>(
         &mut self,
-        effect_builder: EffectBuilder<REv>,
-        rng: &mut R,
+        _effect_builder: EffectBuilder<REv>,
+        _rng: &mut R,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -190,7 +196,7 @@ impl<REv> Component<REv> for DeployBuffer {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{HashMap, HashSet};
+    use std::collections::HashSet;
 
     use rand::random;
 
