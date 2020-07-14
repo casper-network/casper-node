@@ -15,8 +15,8 @@ pub(crate) enum SynchronizerEffect<I, V: VertexTrait> {
     RequestConsensusValue(I, V::Value),
     /// Effect for the reactor to requeue a vertex once its dependencies are downloaded.
     RequeueVertex(I, V),
-    /// Means that the vertex has been successfully added to the state
-    Success(V),
+    /// Means that the vertex has all dependencies successfully added to the state.
+    Ready(V),
 }
 
 /// Structure that tracks which vertices wait for what consensus value dependencies.
@@ -122,7 +122,7 @@ where
                 Some(eff) => completed_vertex_dependencies.push(eff),
                 None => {
                     // If it's a vote that has no consensus values it can be added to the state.
-                    completed_vertex_dependencies.push(SynchronizerEffect::Success(v))
+                    completed_vertex_dependencies.push(SynchronizerEffect::Ready(v))
                 }
             }
             Ok(completed_vertex_dependencies)
@@ -242,7 +242,7 @@ where
             .into_iter()
             // Because we sync consensus value dependencies only when we have sync'd
             // all vertex dependencies, we can now consider `v` to have all dependencies resolved.
-            .map(|(_, v)| SynchronizerEffect::Success(v))
+            .map(|(_, v)| SynchronizerEffect::Ready(v))
             .collect()
     }
 }

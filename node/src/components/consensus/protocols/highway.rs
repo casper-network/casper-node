@@ -219,7 +219,7 @@ where
                         sender,
                     ));
             }
-            SynchronizerEffect::Success(pvv) => {
+            SynchronizerEffect::Ready(pvv) => {
                 let vv = match self.hw_proto.highway.validate_vertex(pvv) {
                     Ok(vv) => vv,
                     Err((pvv, err)) => {
