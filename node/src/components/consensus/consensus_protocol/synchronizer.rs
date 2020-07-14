@@ -1,7 +1,4 @@
-use std::{
-    collections::{hash_map::Entry, HashMap, HashSet},
-    iter,
-};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 use super::protocol_state::{ProtocolState, VertexTrait};
 use crate::components::consensus::traits::NodeIdT;
@@ -122,12 +119,9 @@ where
             cv_effects.push(dep_effects);
             Ok(cv_effects)
         } else {
-            let vertices_with_completed_dependencies = self.complete_vertex_dependency(v.id());
-            Ok(vertices_with_completed_dependencies
-                .into_iter()
-                .map(|(sender, vertex)| SynchronizerEffect::RequeueVertex(sender, vertex))
-                .chain(iter::once(SynchronizerEffect::Success(v)))
-                .collect())
+            let mut completed_vertex_dependencies = self.on_vertex_synced(v.id());
+            completed_vertex_dependencies.push(SynchronizerEffect::Success(v));
+            Ok(completed_vertex_dependencies)
         }
     }
 
@@ -230,7 +224,7 @@ where
 
     /// Must be called after consensus successfully handles the new vertex.
     /// That's b/c there might be other vertices that depend on this one and are waiting in a queue.
-    pub(crate) fn on_vertex_synced(&mut self, v: P::VId) -> Vec<SynchronizerEffect<I, P::Vertex>> {
+    fn on_vertex_synced(&mut self, v: P::VId) -> Vec<SynchronizerEffect<I, P::Vertex>> {
         let completed_dependencies = self.complete_vertex_dependency(v);
         completed_dependencies
             .into_iter()
