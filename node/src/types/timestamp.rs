@@ -35,6 +35,11 @@ impl Timestamp {
     pub fn millis(&self) -> u64 {
         self.0
     }
+
+    /// Returns the difference between `self` and `other`, or `0` if `self` is earlier than `other`.
+    pub fn saturating_sub(self, other: Timestamp) -> TimeDiff {
+        TimeDiff(self.0.saturating_sub(other.0))
+    }
 }
 
 impl Display for Timestamp {
