@@ -147,7 +147,7 @@ where
                 .send_message(to, era_id.message(out_msg))
                 .ignore(),
             ConsensusProtocolResult::ScheduleTimer(timestamp) => {
-                let timediff = timestamp - Timestamp::now();
+                let timediff = timestamp.saturating_sub(Timestamp::now());
                 effect_builder
                     .set_timeout(timediff.into())
                     .event(move |_| Event::Timer { era_id, timestamp })
