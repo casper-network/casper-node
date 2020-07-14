@@ -15,9 +15,6 @@ pub(crate) enum SynchronizerEffect<I, V: VertexTrait> {
     RequestConsensusValue(I, V::Value),
     /// Effect for the reactor to requeue a vertex once its dependencies are downloaded.
     RequeueVertex(I, V),
-    /// Vertex addition failed for some reason.
-    /// TODO: Differentiate from attributable failures.
-    InvalidVertex(V, I, anyhow::Error),
     /// Means that the vertex has been successfully added to the state
     Success(V),
 }

@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::{
     components::consensus::{
@@ -249,9 +249,6 @@ where
                     .push(ConsensusProtocolResult::ValidateConsensusValue(
                         sender, value,
                     ));
-            }
-            SynchronizerEffect::InvalidVertex(v, sender, err) => {
-                warn!("Invalid vertex from {:?}: {:?}, {:?}", v, sender, err);
             }
         }
     }
