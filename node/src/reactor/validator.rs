@@ -16,6 +16,7 @@ use crate::{
         api_server::{self, ApiServer},
         consensus::{self, EraSupervisor},
         contract_runtime::{self, ContractRuntime},
+        deploy_buffer::{self, DeployBuffer},
         deploy_gossiper::{self, DeployGossiper},
         pinger::{self, Pinger},
         storage::{Storage, StorageType},
@@ -23,7 +24,9 @@ use crate::{
     },
     effect::{
         announcements::{ApiServerAnnouncement, NetworkAnnouncement},
-        requests::{ApiRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest},
+        requests::{
+            ApiRequest, ContractRuntimeRequest, DeployQueueRequest, NetworkRequest, StorageRequest,
+        },
         EffectBuilder, Effects,
     },
     reactor::{self, initializer, EventQueueHandle},
@@ -65,6 +68,9 @@ pub enum Event {
     /// Network event.
     #[from]
     Network(small_network::Event<Message>),
+    /// Deploy queue event.
+    #[from]
+    DeployQueue(deploy_buffer::Event),
     /// Pinger event.
     #[from]
     Pinger(pinger::Event),
@@ -88,6 +94,9 @@ pub enum Event {
     /// Network request.
     #[from]
     NetworkRequest(NetworkRequest<NodeId, Message>),
+    /// Deploy queue request.
+    #[from]
+    DeployQueueRequest(DeployQueueRequest),
 
     // Announcements
     /// Network announcement.
@@ -132,6 +141,7 @@ impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Network(event) => write!(f, "network: {}", event),
+            Event::DeployQueue(event) => write!(f, "deploy queue: {}", event),
             Event::Pinger(event) => write!(f, "pinger: {}", event),
             Event::Storage(event) => write!(f, "storage: {}", event),
             Event::ApiServer(event) => write!(f, "api server: {}", event),
@@ -139,6 +149,7 @@ impl Display for Event {
             Event::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
             Event::ContractRuntime(event) => write!(f, "contract runtime: {}", event),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
+            Event::DeployQueueRequest(req) => write!(f, "deploy queue request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
             Event::ApiServerAnnouncement(ann) => write!(f, "api server announcement: {}", ann),
         }
@@ -155,6 +166,7 @@ pub struct Reactor {
     api_server: ApiServer,
     consensus: EraSupervisor<NodeId>,
     deploy_gossiper: DeployGossiper,
+    deploy_buffer: DeployBuffer,
 }
 
 impl Reactor {
@@ -172,6 +184,7 @@ impl Reactor {
         let timestamp = Timestamp::now();
         let (consensus, consensus_effects) = EraSupervisor::new(timestamp, effect_builder);
         let deploy_gossiper = DeployGossiper::new(config.gossip);
+        let deploy_buffer = DeployBuffer::new();
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
         effects.extend(reactor::wrap_effects(Event::Pinger, pinger_effects));
@@ -186,6 +199,7 @@ impl Reactor {
                 consensus,
                 deploy_gossiper,
                 contract_runtime,
+                deploy_buffer,
             },
             effects,
         ))
@@ -217,6 +231,10 @@ impl reactor::Reactor for Reactor {
             Event::Network(event) => reactor::wrap_effects(
                 Event::Network,
                 self.net.handle_event(effect_builder, rng, event),
+            ),
+            Event::DeployQueue(event) => reactor::wrap_effects(
+                Event::DeployQueue,
+                self.deploy_buffer.handle_event(effect_builder, rng, event),
             ),
             Event::Pinger(event) => reactor::wrap_effects(
                 Event::Pinger,
@@ -250,6 +268,9 @@ impl reactor::Reactor for Reactor {
                 rng,
                 Event::Network(small_network::Event::from(req)),
             ),
+            Event::DeployQueueRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::DeployQueue(req.into()))
+            }
 
             // Announcements:
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
