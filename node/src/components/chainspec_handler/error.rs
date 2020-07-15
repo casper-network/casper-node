@@ -24,13 +24,13 @@ pub enum Error {
     #[error("decoding from hex error: {0}")]
     DecodingFromHex(#[from] hex::FromHexError),
 
-    /// Error while decoding a genesis account's key hash from base-64 format.
-    #[error("decoding from base-64 error: {0}")]
-    DecodingFromBase64(#[from] base64::DecodeError),
-
     /// Error while decoding Motes from a decimal format.
     #[error("decoding motes from base-10 error: {0}")]
     DecodingMotes(#[from] FromDecStrErr),
+
+    /// Error while decoding a genesis account's key hash from base-64 format.
+    #[error("crypto module error: {0}")]
+    Crypto(#[from] crate::crypto::Error),
 
     /// Decoding a genesis account's key hash yielded an invalid length byte array.
     #[error("expected hash length of {}, got {0}", ACCOUNT_HASH_LENGTH)]
