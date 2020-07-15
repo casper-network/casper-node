@@ -195,7 +195,7 @@ where
         match self
             .hw_proto
             .synchronizer
-            .add_vertex(sender, vertex, &self.hw_proto.highway)
+            .synchronize_vertex(sender, vertex, &self.hw_proto.highway)
         {
             Ok(effects) => self.synchronizer_effects_queue.extend(effects),
             Err(err) => todo!("error: {:?}", err),

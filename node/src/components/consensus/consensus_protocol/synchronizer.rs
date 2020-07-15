@@ -105,7 +105,14 @@ where
         }
     }
 
-    pub(crate) fn add_vertex(
+    /// Synchronizes vertex `v`.
+    ///
+    /// If protocol state is missing vertex dependencies of `v` returns vertex request effect.
+    /// If protocol state is sync'd, returns request to synchronize consensus value.
+    /// If all dependencies are satisfied, returns `Ready(v)` signaling that `v`
+    /// can be safely added to the protocol state and `RequeueVertex` effects for vertices
+    /// that were depending on `v`.
+    pub(crate) fn synchronize_vertex(
         &mut self,
         sender: I,
         v: P::Vertex,
@@ -113,7 +120,7 @@ where
     ) -> Result<Vec<SynchronizerEffect<I, P::Vertex>>, anyhow::Error> {
         if let Some(missing_vid) = protocol_state.missing_dependency(&v) {
             // If there are missing vertex dependencies, sync those first.
-            Ok(vec![self.sync_dependency(sender, missing_vid, v.clone())])
+            Ok(vec![self.sync_vertex(sender, missing_vid, v.clone())])
         } else {
             // Once all vertex dependencies are satisfied, we need to make sure that
             // we also have all the block's deploys.
@@ -211,7 +218,7 @@ where
     /// In practice, this method will produce an effect that will be passed on to the reactor for
     /// handling. Node passed in is the one that proposed the original vertex. It should also
     /// have the missing dependency.
-    fn sync_dependency(
+    fn sync_vertex(
         &mut self,
         node: I,
         missing_dependency: P::VId,
@@ -241,6 +248,7 @@ where
 
     /// Mark `c` consensus value as downloaded.
     /// Returns vertices that were dependant on it.
+    /// NOTE: Must be called only after all vertex dependencies are downloaded.
     pub(crate) fn on_consensus_value_synced(
         &mut self,
         c: &<P::Vertex as VertexTrait>::Value,
