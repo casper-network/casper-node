@@ -40,8 +40,6 @@ enum Event {
     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
 }
 
-// From<NetworkRequest<tls::KeyFingerprint, components::deploy_gossiper::message::Message>>
-
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         Debug::fmt(self, formatter)
