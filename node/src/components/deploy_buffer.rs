@@ -24,6 +24,19 @@ pub(crate) struct DeployBuffer {
     finalized: HashMap<BlockHash, HashMap<DeployHash, DeployHeader>>,
 }
 
+/// Limits for how many deploys to include in a block.
+#[derive(Debug, Clone)]
+pub struct BlockLimits {
+    /// Maximum block size in bytes.
+    ///
+    /// The total size of the deploys must not exceed this.
+    pub size_bytes: u64,
+    /// Gas limit for sum of deploys.
+    pub gas: u64,
+    // The maximum number of deploys.
+    pub deploy_count: u32,
+}
+
 impl DeployBuffer {
     /// Creates a new, empty deploy buffer instance.
     pub(crate) fn new() -> Self {
@@ -52,8 +65,7 @@ impl DeployBuffer {
         &mut self,
         current_instant: u64,
         max_ttl: u32,
-        _max_block_size_bytes: u64, // TODO
-        _max_gas_limit: u64,        // TODO
+        limits: BlockLimits,
         max_dependencies: u8,
         past: &HashSet<BlockHash>,
     ) -> HashSet<DeployHash> {
@@ -77,6 +89,7 @@ impl DeployBuffer {
                 ) && !past_deploys.contains(hash)
             })
             .map(|(hash, _deploy)| *hash)
+            .take(limits.deploy_count as usize)
             .collect::<HashSet<_>>()
         // TODO: check gas and block size limits
     }
@@ -175,8 +188,7 @@ impl<REv> Component<REv> for DeployBuffer {
             Event::QueueRequest(DeployQueueRequest::RequestForInclusion {
                 current_instant,
                 max_ttl,
-                max_block_size_bytes,
-                max_gas_limit,
+                limits,
                 max_dependencies,
                 past,
                 responder,
@@ -184,8 +196,7 @@ impl<REv> Component<REv> for DeployBuffer {
                 .respond(self.remaining_deploys(
                     current_instant,
                     max_ttl,
-                    max_block_size_bytes,
-                    max_gas_limit,
+                    limits,
                     max_dependencies,
                     &past,
                 ))
@@ -200,7 +211,7 @@ mod tests {
 
     use rand::random;
 
-    use super::DeployBuffer;
+    use super::{BlockLimits, DeployBuffer};
     use crate::{
         crypto::{asymmetric_key::PublicKey, hash::hash},
         types::{BlockHash, DeployHash, DeployHeader},
@@ -227,18 +238,14 @@ mod tests {
     ) -> HashSet<DeployHash> {
         let max_ttl = 200u32;
         // TODO:
-        let max_block_size = 0u64;
-        let max_gas_limit = 0u64;
+        let limits = BlockLimits {
+            size_bytes: 0u64,
+            gas: 0u64,
+            deploy_count: 3u32,
+        };
         let max_dependencies = 1u8;
 
-        buffer.remaining_deploys(
-            time,
-            max_ttl,
-            max_block_size,
-            max_gas_limit,
-            max_dependencies,
-            blocks,
-        )
+        buffer.remaining_deploys(time, max_ttl, limits, max_dependencies, blocks)
     }
 
     #[test]

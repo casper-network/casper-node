@@ -78,6 +78,7 @@ use crate::{
     components::{
         consensus::BlockContext,
         contract_runtime::core::engine_state::{self, genesis::GenesisResult},
+        deploy_buffer::BlockLimits,
         storage::{self, StorageType, Value},
     },
     reactor::{EventQueueHandle, QueueKind},
@@ -536,15 +537,18 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<DeployQueueRequest>,
     {
-        // TODO: Most of these parameters should probably be determined by the deploy buffer
-        // itself.
+        // TODO: The `EffectBuilder` shouldn't contain that much logic. Move to deploy buffer.
+        let limits = BlockLimits {
+            size_bytes: u64::MAX,
+            gas: u64::MAX,
+            deploy_count: 3, // TODO
+        };
         let deploys = self
             .make_request(
                 |responder| DeployQueueRequest::RequestForInclusion {
                     current_instant: block_context.timestamp().millis(),
                     max_ttl: u32::MAX,
-                    max_block_size_bytes: u64::MAX,
-                    max_gas_limit: u64::MAX,
+                    limits,
                     max_dependencies: u8::MAX,
                     past: Default::default(), // TODO
                     responder,

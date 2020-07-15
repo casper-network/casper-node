@@ -27,6 +27,7 @@ use crate::{
             shared::{additive_map::AdditiveMap, transform::Transform},
             storage::global_state::CommitResult,
         },
+        deploy_buffer::BlockLimits,
         storage::{self, StorageType, Value},
     },
     crypto::hash::Digest,
@@ -242,12 +243,8 @@ pub enum DeployQueueRequest {
         current_instant: u64, // TODO: timestamp: Timestamp,
         /// Maximum time to live.
         max_ttl: u32,
-        /// Maximum block size in bytes.
-        ///
-        /// The total size of the deploys must not exceed this.
-        max_block_size_bytes: u64,
-        /// Gas limit for sum of deploys.
-        max_gas_limit: u64,
+        /// Gas, size and count limits for deploys in a block.
+        limits: BlockLimits,
         /// Maximum number of dependencies.
         max_dependencies: u8,
         /// Set of block hashes pointing to blocks whose deploys should be excluded.
@@ -266,19 +263,22 @@ impl Display for DeployQueueRequest {
             DeployQueueRequest::RequestForInclusion {
                 current_instant,
                 max_ttl,
-                max_block_size_bytes,
-                max_gas_limit,
+                limits,
                 max_dependencies,
                 past,
-                responder: _
-            } => write!(formatter,
-                        "request for inclusion: instant {} ttl {} block_size {} gas_limit {} max_deps {} #past {}",
-                        current_instant,
-                        max_ttl,
-                        max_block_size_bytes,
-                        max_gas_limit,
-                        max_dependencies,
-                        past.len()),
+                responder: _,
+            } => write!(
+                formatter,
+                "request for inclusion: instant {} ttl {} block_size {} gas_limit {} \
+                        max_deps {} max_deploy_count {} #past {}",
+                current_instant,
+                max_ttl,
+                limits.size_bytes,
+                limits.gas,
+                max_dependencies,
+                limits.deploy_count,
+                past.len()
+            ),
         }
     }
 }
