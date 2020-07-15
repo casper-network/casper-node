@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::{
     components::consensus::{
@@ -195,7 +195,7 @@ where
         match self
             .hw_proto
             .synchronizer
-            .add_vertex(sender, vertex, &self.hw_proto.highway)
+            .synchronize_vertex(sender, vertex, &self.hw_proto.highway)
         {
             Ok(effects) => self.synchronizer_effects_queue.extend(effects),
             Err(err) => todo!("error: {:?}", err),
@@ -219,7 +219,7 @@ where
                         sender,
                     ));
             }
-            SynchronizerEffect::Success(pvv) => {
+            SynchronizerEffect::Ready(pvv) => {
                 let vv = match self.hw_proto.highway.validate_vertex(pvv) {
                     Ok(vv) => vv,
                     Err((pvv, err)) => {
@@ -249,9 +249,6 @@ where
                     .push(ConsensusProtocolResult::ValidateConsensusValue(
                         sender, value,
                     ));
-            }
-            SynchronizerEffect::InvalidVertex(v, sender, err) => {
-                warn!("Invalid vertex from {:?}: {:?}, {:?}", v, sender, err);
             }
         }
     }
@@ -325,6 +322,8 @@ where
         Ok(self.process_av_effects(effects))
     }
 
+    /// Marks `value` as valid.
+    /// Calls the synchronizer that `value` dependency has been satisfied.
     fn resolve_validity(
         &mut self,
         value: &C::ConsensusValue,
@@ -336,7 +335,7 @@ where
                 .with_synchronizer_effects(effects)
                 .run())
         } else {
-            todo!()
+            todo!("Drop vertices that depend on the invalid consensus value.")
         }
     }
 }
