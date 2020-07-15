@@ -140,7 +140,6 @@ where
     fn add_vertex_dependency(&mut self, v_id: P::VId, sender: I, v: P::Vertex) {
         let dependant_id = v.id();
         self.vertex_by_vid
-            // cv_effects.push(dep_effects);
             .entry(dependant_id.clone())
             .or_insert((sender, v));
         self.vertex_dependants
