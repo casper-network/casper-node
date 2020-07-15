@@ -54,3 +54,12 @@ impl Display for ApiServerAnnouncement {
         }
     }
 }
+/// A storage layer announcement.
+#[derive(Debug)]
+pub enum StorageAnnouncement<D> {
+    /// A deploy has been stored.
+    StoredDeploy {
+        /// ID or "hash" of the deploy that was added to the store.
+        deploy_hash: D,
+    },
+}
