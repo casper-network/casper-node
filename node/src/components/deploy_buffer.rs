@@ -8,6 +8,8 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
+use derive_more::From;
+
 use crate::{
     components::Component,
     effect::{requests::DeployQueueRequest, EffectBuilder, EffectExt, Effects},
@@ -20,6 +22,19 @@ pub(crate) struct DeployBuffer {
     collected_deploys: HashMap<DeployHash, DeployHeader>,
     processed: HashMap<BlockHash, HashMap<DeployHash, DeployHeader>>,
     finalized: HashMap<BlockHash, HashMap<DeployHash, DeployHeader>>,
+}
+
+/// Limits for how many deploys to include in a block.
+#[derive(Debug, Clone)]
+pub struct BlockLimits {
+    /// Maximum block size in bytes.
+    ///
+    /// The total size of the deploys must not exceed this.
+    pub size_bytes: u64,
+    /// Gas limit for sum of deploys.
+    pub gas: u64,
+    // The maximum number of deploys.
+    pub deploy_count: u32,
 }
 
 impl DeployBuffer {
@@ -50,8 +65,7 @@ impl DeployBuffer {
         &mut self,
         current_instant: u64,
         max_ttl: u32,
-        max_block_size_bytes: u64,
-        max_gas_limit: u64,
+        limits: BlockLimits,
         max_dependencies: u8,
         past: &HashSet<BlockHash>,
     ) -> HashSet<DeployHash> {
@@ -74,7 +88,8 @@ impl DeployBuffer {
                     &past_deploys,
                 ) && !past_deploys.contains(hash)
             })
-            .map(|(hash, deploy)| *hash)
+            .map(|(hash, _deploy)| *hash)
+            .take(limits.deploy_count as usize)
             .collect::<HashSet<_>>()
         // TODO: check gas and block size limits
     }
@@ -102,6 +117,7 @@ impl DeployBuffer {
     }
 
     /// Notifies the deploy buffer of a new block.
+    #[allow(unused)] // TODO
     pub(crate) fn added_block(&mut self, block: BlockHash, deploys: HashSet<DeployHash>) {
         let deploy_map = deploys
             .iter()
@@ -117,6 +133,7 @@ impl DeployBuffer {
     }
 
     /// Notifies the deploy buffer that a block has been finalized.
+    #[allow(unused)] // TODO
     pub(crate) fn finalized_block(&mut self, block: BlockHash) {
         if let Some(deploys) = self.processed.remove(&block) {
             self.collected_deploys
@@ -128,6 +145,7 @@ impl DeployBuffer {
     }
 
     /// Notifies the deploy buffer that a block has been orphaned.
+    #[allow(unused)] // TODO
     pub(crate) fn orphaned_block(&mut self, block: BlockHash) {
         if let Some(deploys) = self.processed.remove(&block) {
             self.collected_deploys.extend(deploys);
@@ -138,8 +156,9 @@ impl DeployBuffer {
 }
 
 /// An event for when using the deploy buffer as a component.
-#[derive(Debug)]
-pub(crate) enum Event {
+#[derive(Debug, From)]
+pub enum Event {
+    #[from]
     QueueRequest(DeployQueueRequest),
 }
 
@@ -156,8 +175,8 @@ impl<REv> Component<REv> for DeployBuffer {
 
     fn handle_event<R: rand::Rng + ?Sized>(
         &mut self,
-        effect_builder: EffectBuilder<REv>,
-        rng: &mut R,
+        _effect_builder: EffectBuilder<REv>,
+        _rng: &mut R,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -169,8 +188,7 @@ impl<REv> Component<REv> for DeployBuffer {
             Event::QueueRequest(DeployQueueRequest::RequestForInclusion {
                 current_instant,
                 max_ttl,
-                max_block_size_bytes,
-                max_gas_limit,
+                limits,
                 max_dependencies,
                 past,
                 responder,
@@ -178,8 +196,7 @@ impl<REv> Component<REv> for DeployBuffer {
                 .respond(self.remaining_deploys(
                     current_instant,
                     max_ttl,
-                    max_block_size_bytes,
-                    max_gas_limit,
+                    limits,
                     max_dependencies,
                     &past,
                 ))
@@ -190,11 +207,11 @@ impl<REv> Component<REv> for DeployBuffer {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{HashMap, HashSet};
+    use std::collections::HashSet;
 
     use rand::random;
 
-    use super::DeployBuffer;
+    use super::{BlockLimits, DeployBuffer};
     use crate::{
         crypto::{asymmetric_key::PublicKey, hash::hash},
         types::{BlockHash, DeployHash, DeployHeader},
@@ -221,18 +238,14 @@ mod tests {
     ) -> HashSet<DeployHash> {
         let max_ttl = 200u32;
         // TODO:
-        let max_block_size = 0u64;
-        let max_gas_limit = 0u64;
+        let limits = BlockLimits {
+            size_bytes: 0u64,
+            gas: 0u64,
+            deploy_count: 3u32,
+        };
         let max_dependencies = 1u8;
 
-        buffer.remaining_deploys(
-            time,
-            max_ttl,
-            max_block_size,
-            max_gas_limit,
-            max_dependencies,
-            blocks,
-        )
+        buffer.remaining_deploys(time, max_ttl, limits, max_dependencies, blocks)
     }
 
     #[test]
