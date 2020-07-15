@@ -23,10 +23,10 @@ use crate::{
         highway_core::highway::HighwayParams,
         protocols::highway::{HighwayContext, HighwayProtocol, HighwaySecret},
         traits::NodeIdT,
-        ConsensusMessage, Event,
+        ConsensusMessage, Event, ReactorEventT,
     },
     crypto::{asymmetric_key::generate_ed25519_keypair, hash::hash},
-    effect::{requests::NetworkRequest, EffectBuilder, EffectExt, Effects},
+    effect::{EffectBuilder, EffectExt, Effects},
     types::{ProtoBlock, Timestamp},
 };
 
@@ -83,13 +83,10 @@ impl<I> EraSupervisor<I>
 where
     I: NodeIdT,
 {
-    pub(crate) fn new<REv>(
+    pub(crate) fn new<REv: ReactorEventT<I>>(
         timestamp: Timestamp,
         effect_builder: EffectBuilder<REv>,
-    ) -> (Self, Effects<Event<I>>)
-    where
-        REv: From<Event<I>> + Send + From<NetworkRequest<I, ConsensusMessage>>,
-    {
+    ) -> (Self, Effects<Event<I>>) {
         // TODO: take all the parameters below from _somewhere_
         let (secret_key, public_key) = generate_ed25519_keypair();
         let params = HighwayParams {
@@ -117,14 +114,11 @@ where
         (era_supervisor, effects)
     }
 
-    fn handle_consensus_result<REv>(
+    fn handle_consensus_result<REv: ReactorEventT<I>>(
         era_id: EraId,
         effect_builder: EffectBuilder<REv>,
         consensus_result: ConsensusProtocolResult<I, ProtoBlock>,
-    ) -> Effects<Event<I>>
-    where
-        REv: From<Event<I>> + Send + From<NetworkRequest<I, ConsensusMessage>>,
-    {
+    ) -> Effects<Event<I>> {
         match consensus_result {
             ConsensusProtocolResult::InvalidIncomingMessage(msg, sender, error) => {
                 // TODO: we will probably want to disconnect from the sender here
@@ -191,7 +185,7 @@ where
         f: F,
     ) -> Effects<Event<I>>
     where
-        REv: From<Event<I>> + Send + From<NetworkRequest<I, ConsensusMessage>>,
+        REv: ReactorEventT<I>,
         F: FnOnce(
             &mut dyn ConsensusProtocol<I, ProtoBlock>,
         ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock>>, Error>,

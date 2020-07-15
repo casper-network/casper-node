@@ -11,13 +11,13 @@ use csv::ReaderBuilder;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use types::{
-    account::{AccountHash, ACCOUNT_HASH_LENGTH},
-    U512,
-};
+use types::U512;
 
 use super::{chainspec, Error};
-use crate::{components::contract_runtime::shared::wasm_costs::WasmCosts, types::Motes};
+use crate::{
+    components::contract_runtime::shared::wasm_costs::WasmCosts, crypto::asymmetric_key::PublicKey,
+    types::Motes,
+};
 
 const DEFAULT_CHAIN_NAME: &str = "casperlabs-devnet";
 const DEFAULT_MINT_INSTALLER_PATH: &str = "mint_install.wasm";
@@ -308,7 +308,8 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
 fn parse_accounts<P: AsRef<Path>>(file: P) -> Result<Vec<chainspec::GenesisAccount>, Error> {
     #[derive(Debug, Deserialize)]
     struct ParsedAccount {
-        account_hash: String,
+        public_key: String,
+        algorithm: String,
         balance: String,
         bonded_amount: String,
     }
@@ -319,31 +320,15 @@ fn parse_accounts<P: AsRef<Path>>(file: P) -> Result<Vec<chainspec::GenesisAccou
         let parsed: ParsedAccount = result?;
         let balance = Motes::new(U512::from_dec_str(&parsed.balance)?);
         let bonded_amount = Motes::new(U512::from_dec_str(&parsed.bonded_amount)?);
-        let account = chainspec::GenesisAccount::new(
-            AccountHash::new(string_to_array(parsed.account_hash)?),
+        let key_bytes = hex::decode(parsed.public_key)?;
+        let account = chainspec::GenesisAccount::with_public_key(
+            PublicKey::key_from_algorithm_name_and_bytes(&parsed.algorithm, key_bytes)?,
             balance,
             bonded_amount,
         );
         accounts.push(account);
     }
     Ok(accounts)
-}
-
-/// Parses a string into a 32-byte array.  The string must be either hex or base64 encoded.
-fn string_to_array(input: String) -> Result<[u8; ACCOUNT_HASH_LENGTH], Error> {
-    let decoded = if input.len() == 2 * ACCOUNT_HASH_LENGTH {
-        hex::decode(input)?
-    } else {
-        let decoded = base64::decode(input)?;
-        if decoded.len() != ACCOUNT_HASH_LENGTH {
-            return Err(Error::InvalidHashLength(decoded.len()));
-        }
-        decoded
-    };
-
-    let mut array = [0; ACCOUNT_HASH_LENGTH];
-    array.copy_from_slice(decoded.as_slice());
-    Ok(array)
 }
 
 #[cfg(test)]

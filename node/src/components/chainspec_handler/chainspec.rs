@@ -20,24 +20,47 @@ use serde::{Deserialize, Serialize};
 use types::{account::AccountHash, U512};
 
 use super::{config, Error};
-use crate::{components::contract_runtime::shared::wasm_costs::WasmCosts, types::Motes};
+use crate::{
+    components::contract_runtime::shared::wasm_costs::WasmCosts,
+    crypto::{asymmetric_key::PublicKey, hash::hash},
+    types::Motes,
+};
 
 /// An account that exists at genesis.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct GenesisAccount {
     account_hash: AccountHash,
+    public_key: Option<PublicKey>,
     balance: Motes,
     bonded_amount: Motes,
 }
 
 impl GenesisAccount {
-    /// Constructs a new `GenesisAccount`.
+    /// Constructs a new `GenesisAccount` with no public key.
     pub fn new(account_hash: AccountHash, balance: Motes, bonded_amount: Motes) -> Self {
         GenesisAccount {
+            public_key: None,
             account_hash,
             balance,
             bonded_amount,
         }
+    }
+
+    /// Constructs a new `GenesisAccount` with a given public key.
+    pub fn with_public_key(public_key: PublicKey, balance: Motes, bonded_amount: Motes) -> Self {
+        // TODO: include the PK variant when hashing
+        let account_hash = AccountHash::new(hash(public_key).to_bytes());
+        GenesisAccount {
+            public_key: Some(public_key),
+            account_hash,
+            balance,
+            bonded_amount,
+        }
+    }
+
+    /// Returns the account's public key.
+    pub fn public_key(&self) -> Option<PublicKey> {
+        self.public_key
     }
 
     /// Returns the account's hash.
@@ -58,11 +81,13 @@ impl GenesisAccount {
 
 impl Distribution<GenesisAccount> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisAccount {
+        let public_key = None;
         let account_hash = AccountHash::new(rng.gen());
         let balance = Motes::new(U512(rng.gen()));
         let bonded_amount = Motes::new(U512(rng.gen()));
 
         GenesisAccount {
+            public_key,
             account_hash,
             balance,
             bonded_amount,
@@ -182,8 +207,6 @@ mod tests {
 
     use tempfile::NamedTempFile;
 
-    use types::account::ACCOUNT_HASH_LENGTH;
-
     use super::*;
 
     const TEST_ROOT: &str = "resources/test/valid";
@@ -245,10 +268,6 @@ mod tests {
 
         assert_eq!(spec.genesis.accounts.len(), 4);
         for index in 0..4 {
-            assert_eq!(
-                spec.genesis.accounts[index].account_hash.value(),
-                [index as u8 + 1; ACCOUNT_HASH_LENGTH]
-            );
             assert_eq!(
                 spec.genesis.accounts[index].balance,
                 Motes::new(U512::from(index + 1))
