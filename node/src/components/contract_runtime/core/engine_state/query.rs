@@ -5,6 +5,7 @@ use types::Key;
 
 use crate::components::contract_runtime::core::tracking_copy::TrackingCopyQueryResult;
 
+#[derive(Debug)]
 pub enum QueryResult {
     RootNotFound,
     ValueNotFound(String),

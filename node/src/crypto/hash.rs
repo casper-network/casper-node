@@ -18,7 +18,7 @@ use types::bytesrepr::{self, FromBytes, ToBytes};
 use super::Error;
 
 /// The hash digest; a wrapped `u8` array.
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Default)]
 pub struct Digest([u8; Digest::LENGTH]);
 
 impl Digest {

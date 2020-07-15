@@ -41,7 +41,7 @@ use crate::{
     crypto::hash::Digest,
     effect::{
         announcements::ApiServerAnnouncement,
-        requests::{ApiRequest, StorageRequest},
+        requests::{ApiRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     reactor::QueueKind,
@@ -67,7 +67,10 @@ impl ApiServer {
 
 impl<REv> Component<REv> for ApiServer
 where
-    REv: From<StorageRequest<Storage>> + From<ApiServerAnnouncement> + Send,
+    REv: From<StorageRequest<Storage>>
+        + From<ApiServerAnnouncement>
+        + From<ContractRuntimeRequest>
+        + Send,
 {
     type Event = Event;
 
