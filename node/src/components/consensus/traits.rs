@@ -51,7 +51,7 @@ pub(crate) trait Context: Clone + Debug + Eq + Ord + Hash {
 
     fn hash(data: &[u8]) -> Self::Hash;
 
-    fn validate_signature(
+    fn verify_signature(
         hash: &Self::Hash,
         public_key: &Self::ValidatorId,
         signature: &<Self::ValidatorSecret as ValidatorSecret>::Signature,

@@ -80,12 +80,11 @@ use crate::{
         contract_runtime::core::engine_state::{self, genesis::GenesisResult},
         storage::{self, StorageType, Value},
     },
-    effect::requests::DeployGossiperRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{Deploy, ExecutedBlock, ProtoBlock},
     Chainspec,
 };
-use announcements::NetworkAnnouncement;
+use announcements::{ApiServerAnnouncement, NetworkAnnouncement};
 use requests::{ContractRuntimeRequest, MetricsRequest, NetworkRequest, StorageRequest};
 
 /// A pinned, boxed future that produces one or more events.
@@ -398,6 +397,19 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
+    /// Announce that the HTTP API server has received a deploy.
+    pub(crate) async fn announce_deploy_received(self, deploy: Box<Deploy>)
+    where
+        REv: From<ApiServerAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ApiServerAnnouncement::DeployReceived { deploy },
+                QueueKind::Api,
+            )
+            .await;
+    }
+
     /// Puts the given block into the linear block store.
     // TODO: remove once method is used.
     #[allow(dead_code)]
@@ -525,19 +537,6 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
-    }
-
-    /// Passes the given deploy to the `DeployGossiper` component to be gossiped.
-    pub(crate) async fn gossip_deploy(self, deploy: Box<Deploy>)
-    where
-        REv: From<DeployGossiperRequest>,
-    {
-        self.0
-            .schedule(
-                DeployGossiperRequest::PutFromClient { deploy },
-                QueueKind::Regular,
-            )
-            .await;
     }
 
     /// Passes the timestamp of a future block for which deploys are to be proposed.

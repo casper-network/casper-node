@@ -17,7 +17,7 @@ use crate::{
         Component,
     },
     effect::{
-        requests::{DeployGossiperRequest, NetworkRequest, StorageRequest},
+        requests::{NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     types::{Deploy, DeployHash},
@@ -38,8 +38,8 @@ impl<T> ReactorEvent for T where
 /// `DeployGossiper` events.
 #[derive(Debug)]
 pub enum Event {
-    /// A request to begin gossiping a new deploy received from a client.
-    Request(DeployGossiperRequest),
+    /// A new deploy has been received to be gossiped.
+    DeployReceived { deploy: Box<Deploy> },
     /// The network component gossiped to the included peers.
     GossipedTo {
         deploy_hash: DeployHash,
@@ -63,7 +63,7 @@ pub enum Event {
     /// result is `Ok`, the deploy hash should be gossiped onwards.
     PutToStoreResult {
         deploy_hash: DeployHash,
-        sender: NodeId,
+        maybe_sender: Option<NodeId>,
         result: storage::Result<()>,
     },
     /// The result of the `DeployGossiper` getting a deploy from the storage component.  If the
@@ -78,7 +78,9 @@ pub enum Event {
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Request(request) => write!(formatter, "{}", request),
+            Event::DeployReceived { deploy } => {
+                write!(formatter, "new deploy received: {}", deploy.id())
+            }
             Event::GossipedTo { deploy_hash, peers } => write!(
                 formatter,
                 "gossiped {} to {}",
@@ -178,22 +180,21 @@ impl DeployGossiper {
         }
     }
 
-    /// Handles a new deploy received from a client by starting to gossip it.
-    fn handle_put_from_client<REv: ReactorEvent>(
+    /// Handles a new deploy received from somewhere other than a peer (e.g. the HTTP API server).
+    fn handle_deploy_received<REv: ReactorEvent>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         deploy: Deploy,
     ) -> Effects<Event> {
-        if let Some(should_gossip) = self.table.new_complete_data(deploy.id(), None) {
-            self.gossip(
-                effect_builder,
-                *deploy.id(),
-                should_gossip.count,
-                should_gossip.exclude_peers,
-            )
-        } else {
-            Effects::new() // we already completed gossiping this deploy
-        }
+        // Put the deploy to the storage component.
+        let deploy_hash = *deploy.id();
+        effect_builder
+            .put_deploy_to_storage(deploy)
+            .event(move |result| Event::PutToStoreResult {
+                deploy_hash,
+                maybe_sender: None,
+                result,
+            })
     }
 
     /// Gossips the given deploy hash to `count` random peers excluding the indicated ones.
@@ -408,26 +409,27 @@ impl DeployGossiper {
         deploy: Deploy,
         sender: NodeId,
     ) -> Effects<Event> {
-        // Put the deploy to the storage component, and potentially start gossiping about it.
+        // Put the deploy to the storage component.
         let deploy_hash = *deploy.id();
         effect_builder
             .put_deploy_to_storage(deploy)
             .event(move |result| Event::PutToStoreResult {
                 deploy_hash,
-                sender,
+                maybe_sender: Some(sender),
                 result,
             })
     }
 
     /// Handles the `Ok` case for a `Result` of attempting to put the deploy to the storage
-    /// component having received it from the sender.
-    fn put_to_store<REv: ReactorEvent>(
+    /// component having received it from the sender (for the `Some` case) or from our own HTTP API
+    /// server (the `None` case).
+    fn handle_put_to_store_success<REv: ReactorEvent>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         deploy_hash: DeployHash,
-        sender: NodeId,
+        maybe_sender: Option<NodeId>,
     ) -> Effects<Event> {
-        if let Some(should_gossip) = self.table.new_complete_data(&deploy_hash, Some(sender)) {
+        if let Some(should_gossip) = self.table.new_complete_data(&deploy_hash, maybe_sender) {
             self.gossip(
                 effect_builder,
                 deploy_hash,
@@ -496,8 +498,8 @@ where
     ) -> Effects<Self::Event> {
         debug!(?event, "handling event");
         match event {
-            Event::Request(DeployGossiperRequest::PutFromClient { deploy }) => {
-                self.handle_put_from_client(effect_builder, *deploy)
+            Event::DeployReceived { deploy } => {
+                self.handle_deploy_received(effect_builder, *deploy)
             }
             Event::GossipedTo { deploy_hash, peers } => {
                 self.gossiped_to(effect_builder, deploy_hash, peers)
@@ -530,10 +532,12 @@ where
             },
             Event::PutToStoreResult {
                 deploy_hash,
-                sender,
+                maybe_sender,
                 result,
             } => match result {
-                Ok(()) => self.put_to_store(effect_builder, deploy_hash, sender),
+                Ok(()) => {
+                    self.handle_put_to_store_success(effect_builder, deploy_hash, maybe_sender)
+                }
                 Err(error) => self.failed_to_put_to_store(deploy_hash, error),
             },
             Event::GetFromStoreResult {

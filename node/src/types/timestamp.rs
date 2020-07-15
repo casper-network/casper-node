@@ -1,6 +1,8 @@
 use std::{
     fmt::{self, Display},
+    num::ParseIntError,
     ops::{Add, Div, Mul, Rem, Sub},
+    str::FromStr,
     time::{Duration, SystemTime},
 };
 
@@ -8,7 +10,7 @@ use derive_more::{Add, AddAssign, From, Sub, SubAssign};
 use serde::{Deserialize, Serialize};
 
 /// A timestamp type, representing a concrete moment in time.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 pub struct Timestamp(u64);
 
 /// A time difference between two timestamps.
@@ -33,11 +35,23 @@ impl Timestamp {
     pub fn millis(&self) -> u64 {
         self.0
     }
+
+    /// Returns the difference between `self` and `other`, or `0` if `self` is earlier than `other`.
+    pub fn saturating_sub(self, other: Timestamp) -> TimeDiff {
+        TimeDiff(self.0.saturating_sub(other.0))
+    }
 }
 
 impl Display for Timestamp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl FromStr for Timestamp {
+    type Err = ParseIntError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        u64::from_str(s).map(Timestamp)
     }
 }
 

@@ -542,7 +542,7 @@ pub(crate) mod tests {
             hasher.finish()
         }
 
-        fn validate_signature(
+        fn verify_signature(
             hash: &Self::Hash,
             public_key: &Self::ValidatorId,
             signature: &<Self::ValidatorSecret as ValidatorSecret>::Signature,

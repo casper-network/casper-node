@@ -80,7 +80,7 @@ impl ExecuteRequestBuilder {
         args: RuntimeArgs,
     ) -> Self {
         let mut rng = rand::thread_rng();
-        let deploy_hash: [u8; 32] = rng.gen();
+        let deploy_hash = rng.gen();
 
         let deploy = DeployItemBuilder::new()
             .with_address(sender)
@@ -102,7 +102,7 @@ impl ExecuteRequestBuilder {
         args: RuntimeArgs,
     ) -> Self {
         let mut rng = rand::thread_rng();
-        let deploy_hash: [u8; 32] = rng.gen();
+        let deploy_hash = rng.gen();
 
         let deploy = DeployItemBuilder::new()
             .with_address(sender)

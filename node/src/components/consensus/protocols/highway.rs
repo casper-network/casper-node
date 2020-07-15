@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::{
     components::consensus::{
@@ -179,19 +179,23 @@ where
         self
     }
 
-    fn is_finished(&self) -> bool {
-        self.vertex_queue.is_empty() && self.synchronizer_effects_queue.is_empty()
-    }
-
-    fn into_results(self) -> Vec<ConsensusProtocolResult<I, C::ConsensusValue>> {
-        self.results
+    fn run(mut self) -> Vec<ConsensusProtocolResult<I, C::ConsensusValue>> {
+        loop {
+            if let Some(effect) = self.synchronizer_effects_queue.pop() {
+                self.process_synchronizer_effect(effect);
+            } else if let Some((sender, vertex)) = self.vertex_queue.pop() {
+                self.process_vertex(sender, vertex);
+            } else {
+                return self.results;
+            }
+        }
     }
 
     fn process_vertex(&mut self, sender: I, vertex: PreValidatedVertex<C>) {
         match self
             .hw_proto
             .synchronizer
-            .add_vertex(sender, vertex, &self.hw_proto.highway)
+            .synchronize_vertex(sender, vertex, &self.hw_proto.highway)
         {
             Ok(effects) => self.synchronizer_effects_queue.extend(effects),
             Err(err) => todo!("error: {:?}", err),
@@ -215,7 +219,7 @@ where
                         sender,
                     ));
             }
-            SynchronizerEffect::Success(pvv) => {
+            SynchronizerEffect::Ready(pvv) => {
                 let vv = match self.hw_proto.highway.validate_vertex(pvv) {
                     Ok(vv) => vv,
                     Err((pvv, err)) => {
@@ -246,17 +250,6 @@ where
                         sender, value,
                     ));
             }
-            SynchronizerEffect::InvalidVertex(v, sender, err) => {
-                warn!("Invalid vertex from {:?}: {:?}, {:?}", v, sender, err);
-            }
-        }
-    }
-
-    fn process_item(&mut self) {
-        if let Some((sender, vertex)) = self.vertex_queue.pop() {
-            self.process_vertex(sender, vertex);
-        } else if let Some(effect) = self.synchronizer_effects_queue.pop() {
-            self.process_synchronizer_effect(effect);
         }
     }
 }
@@ -284,7 +277,6 @@ where
                         )]);
                     }
                 };
-                let mut queue = SynchronizerQueue::new(self).with_vertices(vec![(sender, pvv)]);
                 // TODO: Is there a danger that this takes too much time, and starves other
                 // components and events? Consider replacing the loop with a "callback" effect:
                 // Instead of handling `HighwayMessage::NewVertex(v)` directly, return a
@@ -292,10 +284,9 @@ where
                 // `Event::NewVertex(v)`, and call `add_vertex` when handling that event. For each
                 // returned vertex that needs to be requeued, also return an `EnqueueVertex`
                 // effect.
-                while !queue.is_finished() {
-                    queue.process_item();
-                }
-                queue.into_results()
+                SynchronizerQueue::new(self)
+                    .with_vertices(vec![(sender, pvv)])
+                    .run()
             }
             HighwayMessage::RequestDependency(dep) => {
                 if let Some(vv) = self.highway.get_dependency(&dep) {
@@ -331,6 +322,8 @@ where
         Ok(self.process_av_effects(effects))
     }
 
+    /// Marks `value` as valid.
+    /// Calls the synchronizer that `value` dependency has been satisfied.
     fn resolve_validity(
         &mut self,
         value: &C::ConsensusValue,
@@ -338,13 +331,11 @@ where
     ) -> Result<Vec<ConsensusProtocolResult<I, C::ConsensusValue>>, Error> {
         if valid {
             let effects = self.synchronizer.on_consensus_value_synced(value);
-            let mut queue = SynchronizerQueue::new(self).with_synchronizer_effects(effects);
-            while !queue.is_finished() {
-                queue.process_item();
-            }
-            Ok(queue.into_results())
+            Ok(SynchronizerQueue::new(self)
+                .with_synchronizer_effects(effects)
+                .run())
         } else {
-            todo!()
+            todo!("Drop vertices that depend on the invalid consensus value.")
         }
     }
 }
@@ -387,7 +378,7 @@ impl Context for HighwayContext {
         hash(data)
     }
 
-    fn validate_signature(hash: &Digest, public_key: &PublicKey, signature: &Signature) -> bool {
+    fn verify_signature(hash: &Digest, public_key: &PublicKey, signature: &Signature) -> bool {
         verify(hash, signature, public_key).is_ok()
     }
 }
