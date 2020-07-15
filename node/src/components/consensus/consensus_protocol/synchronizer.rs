@@ -15,7 +15,7 @@ pub(crate) enum SynchronizerEffect<I, V: VertexTrait> {
     RequestConsensusValue(I, V::Value),
     /// Effect for the reactor to requeue a vertex once its dependencies are downloaded.
     RequeueVertex(I, V),
-    /// Means that the vertex has all dependencies successfully added to the state.
+    /// Means that the vertex has all dependencies (vertices and consensus values) successfully added to the state.
     Ready(V),
 }
 
@@ -111,21 +111,22 @@ where
         protocol_state: &P,
     ) -> Result<Vec<SynchronizerEffect<I, P::Vertex>>, anyhow::Error> {
         if let Some(missing_vid) = protocol_state.missing_dependency(&v) {
-            let dep_effects = self.sync_dependency(sender, missing_vid, v.clone());
-            Ok(vec![dep_effects])
+            // If there are missing vertex dependencies, sync those first.
+            Ok(vec![self.sync_dependency(sender, missing_vid, v.clone())])
         } else {
-            // Downloading vertex `v` may resolve the dependency requests for other vertices.
-            let mut completed_vertex_dependencies = self.on_vertex_synced(v.id());
             // Once all vertex dependencies are satisfied, we need to make sure that
             // we also have all the block's deploys.
-            match self.sync_consensus_values(sender, &v) {
-                Some(eff) => completed_vertex_dependencies.push(eff),
+            let effects = match self.sync_consensus_values(sender, &v) {
+                Some(eff) => vec![eff],
                 None => {
+                    // Downloading vertex `v` may resolve the dependency requests for other vertices.
+                    let mut completed_vertex_dependencies = self.on_vertex_synced(v.id());
                     // If it's a vote that has no consensus values it can be added to the state.
-                    completed_vertex_dependencies.push(SynchronizerEffect::Ready(v))
+                    completed_vertex_dependencies.push(SynchronizerEffect::Ready(v));
+                    completed_vertex_dependencies
                 }
-            }
-            Ok(completed_vertex_dependencies)
+            };
+            Ok(effects)
         }
     }
 
@@ -223,7 +224,7 @@ where
 
     /// Must be called after consensus successfully handles the new vertex.
     /// That's b/c there might be other vertices that depend on this one and are waiting in a queue.
-    fn on_vertex_synced(&mut self, v: P::VId) -> Vec<SynchronizerEffect<I, P::Vertex>> {
+    pub(crate) fn on_vertex_synced(&mut self, v: P::VId) -> Vec<SynchronizerEffect<I, P::Vertex>> {
         let completed_dependencies = self.complete_vertex_dependency(v);
         completed_dependencies
             .into_iter()
@@ -242,7 +243,11 @@ where
             .into_iter()
             // Because we sync consensus value dependencies only when we have sync'd
             // all vertex dependencies, we can now consider `v` to have all dependencies resolved.
-            .map(|(_, v)| SynchronizerEffect::Ready(v))
+            .flat_map(|(_, v)| {
+                let mut vertex_dependants = self.on_vertex_synced(v.id());
+                vertex_dependants.push(SynchronizerEffect::Ready(v));
+                vertex_dependants
+            })
             .collect()
     }
 }
