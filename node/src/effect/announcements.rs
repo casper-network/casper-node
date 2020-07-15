@@ -63,3 +63,16 @@ pub enum StorageAnnouncement<D> {
         deploy_hash: D,
     },
 }
+
+impl<D> Display for StorageAnnouncement<D>
+where
+    D: Display,
+{
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            StorageAnnouncement::StoredDeploy { deploy_hash } => {
+                write!(formatter, "stored deploy {}", deploy_hash)
+            }
+        }
+    }
+}

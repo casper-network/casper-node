@@ -10,6 +10,7 @@ use std::fmt::{self, Display, Formatter};
 use derive_more::From;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 use crate::{
     components::{
@@ -23,7 +24,7 @@ use crate::{
         Component,
     },
     effect::{
-        announcements::{ApiServerAnnouncement, NetworkAnnouncement},
+        announcements::{ApiServerAnnouncement, NetworkAnnouncement, StorageAnnouncement},
         requests::{
             ApiRequest, ContractRuntimeRequest, DeployQueueRequest, NetworkRequest, StorageRequest,
         },
@@ -31,7 +32,7 @@ use crate::{
     },
     reactor::{self, initializer, EventQueueHandle},
     small_network::{self, NodeId},
-    types::Timestamp,
+    types::{DeployHash, Timestamp},
     SmallNetwork,
 };
 pub use config::Config;
@@ -102,6 +103,9 @@ pub enum Event {
     /// Network announcement.
     #[from]
     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
+    /// Storage announcement.
+    #[from]
+    StorageAnnouncement(StorageAnnouncement<DeployHash>),
     /// API server announcement.
     #[from]
     ApiServerAnnouncement(ApiServerAnnouncement),
@@ -152,6 +156,7 @@ impl Display for Event {
             Event::DeployQueueRequest(req) => write!(f, "deploy queue request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
             Event::ApiServerAnnouncement(ann) => write!(f, "api server announcement: {}", ann),
+            Event::StorageAnnouncement(ann) => write!(f, "storage announcement: {}", ann),
         }
     }
 }
@@ -270,6 +275,10 @@ impl reactor::Reactor for Reactor {
             ),
             Event::DeployQueueRequest(req) => {
                 self.dispatch_event(effect_builder, rng, Event::DeployQueue(req.into()))
+            }
+            Event::StorageAnnouncement(ann) => {
+                warn!(%ann, "dropped storage announcement");
+                Effects::new()
             }
 
             // Announcements:

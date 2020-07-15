@@ -8,6 +8,7 @@ use std::{
 use derive_more::From;
 use rand::Rng;
 use thiserror::Error;
+use tracing::debug;
 
 use crate::{
     components::{
@@ -17,10 +18,12 @@ use crate::{
         Component,
     },
     effect::{
+        announcements::StorageAnnouncement,
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, Effects,
     },
     reactor::{self, validator, EventQueueHandle},
+    types::DeployHash,
 };
 
 /// Top-level event for the reactor.
@@ -34,6 +37,10 @@ pub enum Event {
     /// Storage event.
     #[from]
     Storage(StorageRequest<Storage>),
+
+    /// Storage announcement.
+    #[from]
+    StorageAnnouncement(StorageAnnouncement<DeployHash>),
 
     /// Contract runtime event.
     #[from]
@@ -51,6 +58,9 @@ impl Display for Event {
         match self {
             Event::Chainspec(event) => write!(formatter, "chainspec: {}", event),
             Event::Storage(event) => write!(formatter, "storage: {}", event),
+            Event::StorageAnnouncement(announcement) => {
+                write!(formatter, "storage announcement: {}", announcement)
+            }
             Event::ContractRuntime(event) => write!(formatter, "contract runtime: {}", event),
         }
     }
@@ -139,6 +149,10 @@ impl reactor::Reactor for Reactor {
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
             ),
+            Event::StorageAnnouncement(announcement) => {
+                debug!(%announcement, "ignoring storing announcement");
+                Effects::new()
+            }
             Event::ContractRuntime(event) => reactor::wrap_effects(
                 Event::ContractRuntime,
                 self.contract_runtime
