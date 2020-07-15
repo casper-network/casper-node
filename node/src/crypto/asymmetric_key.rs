@@ -13,7 +13,8 @@ use serde::{Deserialize, Serialize};
 use super::Result;
 
 const ED25519_TAG: u8 = 0;
-const ED25519: &str = "ed25519";
+const ED25519: &str = "Ed25519";
+const ED25519_LOWERCASE: &str = "ed25519";
 
 /// A secret or private asymmetric key.
 #[derive(Serialize, Deserialize)]
@@ -77,8 +78,8 @@ impl PublicKey {
         name: N,
         bytes: T,
     ) -> Result<Self> {
-        match name.as_ref() {
-            ED25519 => Self::ed25519_from_bytes(bytes),
+        match &*name.as_ref().trim().to_lowercase() {
+            ED25519_LOWERCASE => Self::ed25519_from_bytes(bytes),
             _ => panic!("Invalid algorithm name!"),
         }
     }

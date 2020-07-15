@@ -36,7 +36,7 @@ pub struct GenesisAccount {
 }
 
 impl GenesisAccount {
-    /// Constructs a new `GenesisAccount` with a given public key.
+    /// Constructs a new `GenesisAccount` with no public key.
     pub fn new(account_hash: AccountHash, balance: Motes, bonded_amount: Motes) -> Self {
         GenesisAccount {
             public_key: None,
@@ -48,6 +48,7 @@ impl GenesisAccount {
 
     /// Constructs a new `GenesisAccount` with a given public key.
     pub fn with_public_key(public_key: PublicKey, balance: Motes, bonded_amount: Motes) -> Self {
+        // TODO: include the PK variant when hashing
         let account_hash = AccountHash::new(hash(public_key).to_bytes());
         GenesisAccount {
             public_key: Some(public_key),
