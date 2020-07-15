@@ -85,7 +85,7 @@ use crate::{
     Chainspec,
 };
 use announcements::{ApiServerAnnouncement, NetworkAnnouncement};
-use requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest};
+use requests::{ContractRuntimeRequest, DeployQueueRequest, NetworkRequest, StorageRequest};
 
 /// A pinned, boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
@@ -531,14 +531,33 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn request_proto_block(
         self,
         block_context: BlockContext, /* TODO: This `BlockContext` will probably be a different
-                                      * type
-                                      * than the context in the return value in the future */
-    ) -> (ProtoBlock, BlockContext) {
-        // TODO: actually return the relevant deploys and an actual random bit
+                                      * type than the context in the return value in the future */
+    ) -> (ProtoBlock, BlockContext)
+    where
+        REv: From<DeployQueueRequest>,
+    {
+        // TODO: Most of these parameters should probably be determined by the deploy buffer
+        // itself.
+        let deploys = self
+            .make_request(
+                |responder| DeployQueueRequest::RequestForInclusion {
+                    current_instant: block_context.timestamp().millis(),
+                    max_ttl: u32::MAX,
+                    max_block_size_bytes: u64::MAX,
+                    max_gas_limit: u64::MAX,
+                    max_dependencies: u8::MAX,
+                    past: Default::default(), // TODO
+                    responder,
+                },
+                QueueKind::Regular,
+            )
+            .await
+            .into_iter()
+            .collect();
         (
             ProtoBlock {
-                deploys: vec![],
-                random_bit: false,
+                deploys,
+                random_bit: false, // TODO
             },
             block_context,
         )

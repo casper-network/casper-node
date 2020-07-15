@@ -239,7 +239,7 @@ pub enum DeployQueueRequest {
     /// Request a list of deploys to propose in a new block.
     RequestForInclusion {
         /// The instant for which the deploy is requested.
-        current_instant: u64,
+        current_instant: u64, // TODO: timestamp: Timestamp,
         /// Maximum time to live.
         max_ttl: u32,
         /// Maximum block size in bytes.
