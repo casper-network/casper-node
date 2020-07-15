@@ -245,15 +245,19 @@ where
         utils::leak(Scheduler::new(QueueKind::weights()))
     }
 
+    /// Inject (schedule then process) effects created via a call to `create_effects` which is
+    /// itself passed an instance of an `EffectBuilder`.
     #[cfg(test)]
-    pub(crate) async fn inject_event<Rd: Rng + ?Sized>(&mut self, rng: &mut Rd, event: R::Event) {
+    pub(crate) async fn process_injected_effects<F>(&mut self, create_effects: F)
+    where
+        F: FnOnce(EffectBuilder<R::Event>) -> Effects<R::Event>,
+    {
         let event_queue = EventQueueHandle::new(self.scheduler);
         let effect_builder = EffectBuilder::new(event_queue);
 
-        let effects = self.reactor.dispatch_event(effect_builder, rng, event);
+        let effects = create_effects(effect_builder);
 
         let effect_span = tracing::debug_span!("process injected effects", ev = self.event_count);
-
         process_effects(self.scheduler, effects)
             .instrument(effect_span)
             .await;

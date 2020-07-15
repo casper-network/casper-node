@@ -16,7 +16,7 @@ use crate::{
         in_memory_network::{InMemoryNetwork, NetworkController, NodeId},
         storage::{self, Storage, StorageType},
     },
-    effect::announcements::NetworkAnnouncement,
+    effect::announcements::{ApiServerAnnouncement, NetworkAnnouncement},
     reactor::{self, EventQueueHandle, Reactor as ReactorTrait, Runner},
     testing::network::{Network, NetworkedReactor},
     types::Deploy,
@@ -38,11 +38,22 @@ enum Event {
     /// Network announcement.
     #[from]
     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
+    /// API server announcement.
+    #[from]
+    ApiServerAnnouncement(ApiServerAnnouncement),
 }
 
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        Debug::fmt(self, formatter)
+        match self {
+            Event::Storage(event) => write!(formatter, "storage: {}", event),
+            Event::DeployGossiper(event) => write!(formatter, "deploy gossiper: {}", event),
+            Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
+            Event::NetworkAnnouncement(ann) => write!(formatter, "network announcement: {}", ann),
+            Event::ApiServerAnnouncement(ann) => {
+                write!(formatter, "api server announcement: {}", ann)
+            }
+        }
     }
 }
 
@@ -123,6 +134,10 @@ impl ReactorTrait for Reactor {
                         .handle_event(effect_builder, rng, event),
                 )
             }
+            Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
+                let event = super::Event::DeployReceived { deploy };
+                self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
+            }
         }
     }
 }
@@ -133,6 +148,12 @@ impl NetworkedReactor for Reactor {
     fn node_id(&self) -> NodeId {
         self.network.node_id()
     }
+}
+
+fn create_deploy_received(
+    deploy: Box<Deploy>,
+) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
+    |effect_builder: EffectBuilder<Event>| effect_builder.announce_deploy_received(deploy).ignore()
 }
 
 #[tokio::test]
@@ -148,12 +169,8 @@ async fn should_gossip() {
     let mut rng = rand::thread_rng();
 
     // Add `network_size` nodes.
-    let network_size: usize = rng.gen_range(NETWORK_SIZE_MIN, NETWORK_SIZE_MAX + 1);
-    let mut node_ids = vec![];
-    for _ in 0..network_size {
-        let (node_id, _runner) = network.add_node(&mut rng).await.unwrap();
-        node_ids.push(node_id);
-    }
+    let network_size = rng.gen_range(NETWORK_SIZE_MIN, NETWORK_SIZE_MAX + 1);
+    let node_ids = network.add_nodes(&mut rng, network_size).await;
 
     // Create `deploy_count` random deploys.
     let deploy_count: usize = rng.gen_range(DEPLOY_COUNT_MIN, DEPLOY_COUNT_MAX + 1);
@@ -166,10 +183,9 @@ async fn should_gossip() {
 
     // Give each deploy to a randomly-chosen node to be gossiped.
     for deploy in deploys.drain(..) {
-        let event = Event::DeployGossiper(super::Event::DeployReceived { deploy });
         let index: usize = rng.gen_range(0, network_size);
         network
-            .inject_event_on(&node_ids[index], &mut rng, event)
+            .process_injected_effect_on(&node_ids[index], create_deploy_received(deploy))
             .await;
     }
 
@@ -203,11 +219,7 @@ async fn should_get_from_alternate_source() {
     let mut rng = rand::thread_rng();
 
     // Add `NETWORK_SIZE` nodes.
-    let mut node_ids = vec![];
-    for _ in 0..NETWORK_SIZE {
-        let (node_id, _runner) = network.add_node(&mut rng).await.unwrap();
-        node_ids.push(node_id);
-    }
+    let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
 
     // Create random deploy.
     let deploy = Box::new(rng.gen::<Deploy>());
@@ -215,19 +227,19 @@ async fn should_get_from_alternate_source() {
 
     // Give the deploy to nodes 0 and 1 to be gossiped.
     for node_id in node_ids.iter().take(2) {
-        let event = Event::DeployGossiper(super::Event::DeployReceived {
-            deploy: deploy.clone(),
-        });
-        network.inject_event_on(&node_id, &mut rng, event).await;
+        network
+            .process_injected_effect_on(&node_id, create_deploy_received(deploy.clone()))
+            .await;
     }
 
     // Run node 0 until it has sent the gossip request then remove it from the network.  This
-    // equates to three events:
-    // 1. Storage PutDeploy
-    // 2. DeployGossiper PutToStoreResult
-    // 3. NetworkRequest Gossip
+    // equates to four events:
+    // 1. ApiServe Announcement of new deploy
+    // 2. Storage PutDeploy
+    // 3. DeployGossiper PutToStoreResult
+    // 4. NetworkRequest Gossip
     let mut event_count = 0;
-    while event_count < 3 {
+    while event_count < 4 {
         event_count += network.crank(&node_ids[0], &mut rng).await;
         time::delay_for(POLL_DURATION).await;
     }
@@ -282,30 +294,28 @@ async fn should_timeout_gossip_response() {
     let infection_target = GossipTableConfig::default().infection_target();
 
     // Add `infection_target + 1` nodes.
-    let mut node_ids = vec![];
-    for _ in 0..(infection_target + 1) {
-        let (node_id, _runner) = network.add_node(&mut rng).await.unwrap();
-        node_ids.push(node_id);
-    }
+    let mut node_ids = network
+        .add_nodes(&mut rng, infection_target as usize + 1)
+        .await;
 
     // Create random deploy.
     let deploy = Box::new(rng.gen::<Deploy>());
     let deploy_id = *deploy.id();
 
     // Give the deploy to node 0 to be gossiped.
-    let event = Event::DeployGossiper(super::Event::DeployReceived {
-        deploy: deploy.clone(),
-    });
-    network.inject_event_on(&node_ids[0], &mut rng, event).await;
+    network
+        .process_injected_effect_on(&node_ids[0], create_deploy_received(deploy.clone()))
+        .await;
 
     // Run node 0 until it has sent the gossip requests then remove it from the network.  This
-    // equates to four events:
-    // 1. Storage PutDeploy
-    // 2. DeployGossiper PutToStoreResult
-    // 3. NetworkRequest Gossip
-    // 4. DeployGossiper GossipedTo
+    // equates to five events:
+    // 1. ApiServe Announcement of new deploy
+    // 2. Storage PutDeploy
+    // 3. DeployGossiper PutToStoreResult
+    // 4. NetworkRequest Gossip
+    // 5. DeployGossiper GossipedTo
     let mut event_count = 0;
-    while event_count < 4 {
+    while event_count < 5 {
         event_count += network.crank(&node_ids[0], &mut rng).await;
         time::delay_for(POLL_DURATION).await;
     }

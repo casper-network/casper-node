@@ -10,10 +10,13 @@ use std::{
 use futures::future::{BoxFuture, FutureExt};
 use rand::Rng;
 use tokio::time;
-use tracing::{debug, field};
+use tracing::debug;
 use tracing_futures::Instrument;
 
-use crate::reactor::{Finalize, Reactor, Runner};
+use crate::{
+    effect::{EffectBuilder, Effects},
+    reactor::{Finalize, Reactor, Runner},
+};
 
 /// A reactor with networking functionality.
 pub trait NetworkedReactor: Sized {
@@ -42,6 +45,7 @@ impl<R> Network<R>
 where
     R: Reactor + NetworkedReactor,
     R::Config: Default,
+    <R as Reactor>::Error: Debug,
 {
     /// Creates a new networking node on the network using the default root node port.
     ///
@@ -54,6 +58,20 @@ where
         rng: &mut Rd,
     ) -> Result<(R::NodeId, &mut Runner<R>), R::Error> {
         self.add_node_with_config(Default::default(), rng).await
+    }
+
+    /// Adds `count` new nodes to the network, and returns their IDs.
+    pub async fn add_nodes<Rd: Rng + ?Sized>(
+        &mut self,
+        rng: &mut Rd,
+        count: usize,
+    ) -> Vec<R::NodeId> {
+        let mut node_ids = vec![];
+        for _ in 0..count {
+            let (node_id, _runner) = self.add_node(rng).await.unwrap();
+            node_ids.push(node_id);
+        }
+        node_ids
     }
 }
 
@@ -197,18 +215,21 @@ where
         &self.nodes
     }
 
-    /// Dispatch the given event on the given node.
-    pub async fn inject_event_on<Rd: Rng + ?Sized>(
-        &mut self,
-        node_id: &R::NodeId,
-        rng: &mut Rd,
-        event: R::Event,
-    ) {
+    /// Create effects and dispatch them on the given node.
+    ///
+    /// The effects are created via a call to `create_effects` which is itself passed an instance of
+    /// an `EffectBuilder`.
+    pub async fn process_injected_effect_on<F>(&mut self, node_id: &R::NodeId, create_effects: F)
+    where
+        F: FnOnce(EffectBuilder<R::Event>) -> Effects<R::Event>,
+    {
         let runner = self.nodes.get_mut(node_id).unwrap();
         let node_id = runner.reactor().node_id();
-        let span = tracing::error_span!("inject", node_id = field::Empty);
-        span.record("node_id", &field::display(node_id));
-        runner.inject_event(rng, event).instrument(span).await
+        let span = tracing::error_span!("inject", node_id = %node_id);
+        runner
+            .process_injected_effects(create_effects)
+            .instrument(span)
+            .await
     }
 }
 
