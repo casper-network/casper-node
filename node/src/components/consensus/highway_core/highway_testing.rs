@@ -70,7 +70,7 @@ impl<C: Context> From<Effect<C>> for HighwayMessage<C> {
 
 use rand::Rng;
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     fmt::{Display, Formatter},
     marker::PhantomData,
 };
@@ -490,7 +490,7 @@ enum Distribution {
 }
 
 enum BuilderError {
-    EmptyValidatorNum,
+    NoValidators,
     EmptyConsensusValues,
     WeightLimits,
     TooManyFaultyNodes,
@@ -498,8 +498,8 @@ enum BuilderError {
 }
 
 struct HighwayTestHarnessBuilder<C: Context, DS> {
-    /// Nmber of validators in the test run.
-    validator_num: Option<u8>,
+    /// Validators (together with their secret keys) in the test run.
+    validators_secs: HashMap<C::ValidatorId, C::ValidatorSecret>,
     /// Number of faulty validators (i.e. equivocators).
     /// Defaults to 0.
     faulty_num: u8,
@@ -533,7 +533,7 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
 {
     fn new(instance_id: C::InstanceId) -> Self {
         HighwayTestHarnessBuilder {
-            validator_num: None,
+            validators_secs: HashMap::new(),
             faulty_num: 0,
             ftt: None,
             consensus_values: None,
@@ -547,8 +547,11 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
         }
     }
 
-    pub(crate) fn validator_num(mut self, validator_num: u8) -> Self {
-        self.validator_num = Some(validator_num);
+    pub(crate) fn validators(
+        mut self,
+        validators_secs: HashMap<C::ValidatorId, C::ValidatorSecret>,
+    ) -> Self {
+        self.validators_secs = validators_secs;
         self
     }
 
@@ -600,10 +603,12 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
         self
     }
 
-    fn build(self) -> Result<HighwayTestHarness<C, DS>, BuilderError> {
-        let validators_num = self
-            .validator_num
-            .ok_or_else(|| BuilderError::EmptyValidatorNum)?;
+    fn build(mut self) -> Result<HighwayTestHarness<C, DS>, BuilderError> {
+        if self.validators_secs.is_empty() {
+            return Err(BuilderError::NoValidators);
+        }
+
+        let validators_num = self.validators_secs.len() as u8;
 
         let consensus_values = self
             .consensus_values
@@ -616,19 +621,23 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
 
         // TODO: This should be a weight of faulty validators, not count.
         // https://casperlabs.atlassian.net/browse/HWY-117
-        let faulty_num = if self.faulty_num > validators_num / 3 {
+        let faulty_num = if self.faulty_num > (validators_num / 3) {
             return Err(BuilderError::TooManyFaultyNodes);
         } else {
             self.faulty_num
         };
 
         let ftt = self.ftt.ok_or_else(|| BuilderError::EmptyFtt)?;
+        let instance_id = self.instance_id.clone();
+        let seed = self.seed;
+        let round_exp = self.round_exp;
+        let start_time = self.start_time;
 
         let weights: Vec<Weight> = match self.weight_distribution {
             Distribution::Uniform => {
                 let (lower, upper) = self.weight_limits;
                 let weight = Weight((lower + upper) / 2);
-                (0..validators_num).into_iter().map(|_| weight).collect()
+                (0..validators_num).map(|_| weight).collect()
             }
             // https://casperlabs.atlassian.net/browse/HWY-116
             Distribution::Poisson(_) => unimplemented!("Poisson distribution of weights"),
@@ -649,21 +658,21 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
             Validators::from_iter(zipped)
         };
 
-        let highway_consensus = |(vid, v_sec)| {
+        let highway_consensus = |(vid, secrets): (
+            C::ValidatorId,
+            &mut HashMap<C::ValidatorId, C::ValidatorSecret>,
+        )| {
+            let v_sec = secrets
+                .remove(&vid)
+                .expect("Validator's secret key exists.");
+
             let (highway, effects) = {
                 let highway_params: HighwayParams<C> = HighwayParams {
-                    instance_id: self.instance_id.clone(),
-                    validators,
+                    instance_id: instance_id.clone(),
+                    validators: validators.clone(),
                 };
 
-                Highway::new(
-                    highway_params,
-                    self.seed.clone(),
-                    vid,
-                    v_sec,
-                    self.round_exp.clone(),
-                    self.start_time,
-                )
+                Highway::new(highway_params, seed, vid, v_sec, round_exp, start_time)
             };
 
             let finality_detector = FinalityDetector::new(Weight(ftt));
@@ -693,7 +702,7 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
             faulty.extend(honest);
 
             for (vid, is_faulty) in faulty.into_iter() {
-                let (consensus, msgs) = highway_consensus((vid, todo!("Validator secret")));
+                let (consensus, msgs) = highway_consensus((vid, &mut self.validators_secs));
                 let validator = Validator::new(vid, is_faulty, consensus);
                 let qm: Vec<QueueEntry<HighwayMessage<C>>> = msgs
                     .into_iter()
