@@ -97,6 +97,10 @@ impl ChainspecHandler {
     pub(crate) fn stopped_successfully(&self) -> bool {
         self.completed_successfully.unwrap_or_default()
     }
+
+    pub(crate) fn chainspec(&self) -> &Chainspec {
+        &self.chainspec
+    }
 }
 
 impl<REv> Component<REv> for ChainspecHandler

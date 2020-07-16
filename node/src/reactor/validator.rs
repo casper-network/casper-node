@@ -10,16 +10,18 @@ use std::fmt::{self, Display, Formatter};
 use derive_more::From;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use types::U512;
 
 use crate::{
     components::{
         api_server::{self, ApiServer},
+        chainspec_handler::ChainspecHandler,
         consensus::{self, EraSupervisor},
         contract_runtime::{self, ContractRuntime},
         deploy_buffer::{self, DeployBuffer},
         deploy_gossiper::{self, DeployGossiper},
         pinger::{self, Pinger},
-        storage::{Storage, StorageType},
+        storage::Storage,
         Component,
     },
     effect::{
@@ -175,6 +177,7 @@ impl Reactor {
         event_queue: EventQueueHandle<Event>,
         storage: Storage,
         contract_runtime: ContractRuntime,
+        chainspec_handler: ChainspecHandler,
     ) -> Result<(Self, Effects<Event>), Error> {
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, config.validator_net)?;
@@ -182,7 +185,18 @@ impl Reactor {
         let (pinger, pinger_effects) = Pinger::new(effect_builder);
         let api_server = ApiServer::new(config.http_server, effect_builder);
         let timestamp = Timestamp::now();
-        let (consensus, consensus_effects) = EraSupervisor::new(timestamp, effect_builder);
+        let (consensus, consensus_effects) = EraSupervisor::new(
+            timestamp,
+            effect_builder,
+            chainspec_handler
+                .chainspec()
+                .genesis
+                .accounts
+                .iter()
+                .filter_map(|account| account.public_key().map(|pk| (pk, account.bonded_amount())))
+                .filter(|(_, stake)| stake.value() > U512::zero())
+                .collect(),
+        );
         let deploy_gossiper = DeployGossiper::new(config.gossip);
         let deploy_buffer = DeployBuffer::new();
 
@@ -212,13 +226,13 @@ impl reactor::Reactor for Reactor {
     type Error = Error;
 
     fn new<R: Rng + ?Sized>(
-        config: Self::Config,
-        event_queue: EventQueueHandle<Self::Event>,
+        _config: Self::Config,
+        _event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut R,
     ) -> Result<(Self, Effects<Event>), Error> {
-        let storage = Storage::new(&config.storage)?;
-        let contract_runtime = ContractRuntime::new(&config.storage, config.contract_runtime)?;
-        Self::init(config, event_queue, storage, contract_runtime)
+        // doesn't work now that we need the chainspec handler here from somewhere
+        // also, looks like it's not used anywhere, anyway
+        todo!()
     }
 
     fn dispatch_event<R: Rng + ?Sized>(
@@ -308,7 +322,14 @@ impl reactor::ReactorExt<initializer::Reactor> for Reactor {
         event_queue: EventQueueHandle<Self::Event>,
         initializer_reactor: initializer::Reactor,
     ) -> Result<(Self, Effects<Self::Event>), Error> {
-        let (config, storage, contract_runtime) = initializer_reactor.destructure();
-        Self::init(config, event_queue, storage, contract_runtime)
+        let (config, storage, contract_runtime, chainspec_handler) =
+            initializer_reactor.destructure();
+        Self::init(
+            config,
+            event_queue,
+            storage,
+            contract_runtime,
+            chainspec_handler,
+        )
     }
 }

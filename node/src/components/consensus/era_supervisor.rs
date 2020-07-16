@@ -8,14 +8,15 @@
 use std::{
     collections::HashMap,
     fmt::{self, Debug, Formatter},
-    iter,
     time::Duration,
 };
 
 use anyhow::Error;
 use maplit::hashmap;
+use num_traits::{AsPrimitive, Zero};
 use serde::{Deserialize, Serialize};
 use tracing::error;
+use types::U512;
 
 use crate::{
     components::consensus::{
@@ -25,9 +26,12 @@ use crate::{
         traits::NodeIdT,
         ConsensusMessage, Event, ReactorEventT,
     },
-    crypto::{asymmetric_key::generate_ed25519_keypair, hash::hash},
+    crypto::{
+        asymmetric_key::{generate_ed25519_keypair, PublicKey},
+        hash::hash,
+    },
     effect::{EffectBuilder, EffectExt, Effects},
-    types::{ProtoBlock, Timestamp},
+    types::{Motes, ProtoBlock, Timestamp},
 };
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,12 +90,25 @@ where
     pub(crate) fn new<REv: ReactorEventT<I>>(
         timestamp: Timestamp,
         effect_builder: EffectBuilder<REv>,
+        validators: Vec<(PublicKey, Motes)>,
     ) -> (Self, Effects<Event<I>>) {
-        // TODO: take all the parameters below from _somewhere_
+        let sum_stakes: Motes = validators
+            .iter()
+            .map(|(_, stake)| *stake)
+            .fold(Motes::zero(), |a, b| a + b);
+        let weights = if sum_stakes.value() > U512::from(u64::MAX) {
+            todo!() // figure out how to map stakes exceeding the u64 range to weights
+        } else {
+            validators
+                .into_iter()
+                .map(|(key, stake)| (key, AsPrimitive::<u64>::as_(stake.value())))
+                .collect()
+        };
+        // TODO: take our actual key from _somewhere_
         let (secret_key, public_key) = generate_ed25519_keypair();
         let params = HighwayParams {
             instance_id: hash("test era 0"),
-            validators: iter::once((public_key, 100)).collect(),
+            validators: weights,
         };
         let (highway, effects) = HighwayProtocol::<I, HighwayContext>::new(
             params,

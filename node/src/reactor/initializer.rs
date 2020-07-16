@@ -87,8 +87,20 @@ impl Reactor {
         self.chainspec_handler.stopped_successfully()
     }
 
-    pub(super) fn destructure(self) -> (validator::Config, Storage, ContractRuntime) {
-        (self.config, self.storage, self.contract_runtime)
+    pub(super) fn destructure(
+        self,
+    ) -> (
+        validator::Config,
+        Storage,
+        ContractRuntime,
+        ChainspecHandler,
+    ) {
+        (
+            self.config,
+            self.storage,
+            self.contract_runtime,
+            self.chainspec_handler,
+        )
     }
 }
 
