@@ -20,7 +20,10 @@ use tokio::task;
 
 use crate::{
     components::Component,
-    effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
+    effect::{
+        announcements::StorageAnnouncement, requests::StorageRequest, EffectBuilder, EffectExt,
+        Effects,
+    },
     types::{Block, Deploy},
 };
 // Seems to be a false positive.
@@ -99,12 +102,13 @@ impl<REv, S> Component<REv> for S
 where
     S: StorageType,
     Self: Sized + 'static,
+    REv: From<StorageAnnouncement<S>> + Send,
 {
     type Event = StorageRequest<Self>;
 
     fn handle_event<R: Rng + ?Sized>(
         &mut self,
-        _effect_builder: EffectBuilder<REv>,
+        effect_builder: EffectBuilder<REv>,
         _rng: &mut R,
         event: Self::Event,
     ) -> Effects<Self::Event> {
@@ -148,10 +152,22 @@ where
             StorageRequest::PutDeploy { deploy, responder } => {
                 let deploy_store = self.deploy_store();
                 async move {
+                    // Create the effect, but do not return it.
+                    let announce_success = effect_builder.announce_deploy_stored(&deploy);
+
                     let result = task::spawn_blocking(move || deploy_store.put(*deploy))
                         .await
                         .expect("should run");
-                    responder.respond(result).await
+
+                    let was_ok = result.is_ok();
+
+                    // Tell the requestor the result of storing the deploy.
+                    responder.respond(result).await;
+
+                    if was_ok {
+                        // Now that we have stored the deploy, we also want to announce it.
+                        announce_success.await;
+                    }
                 }
                 .ignore()
             }
