@@ -1,0 +1,30 @@
+[package]
+name = "cargo-casperlabs"
+version = "0.9.0"
+authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
+edition = "2018"
+description = "Command line tool for creating a Wasm smart contract and tests for use on the CasperLabs network."
+readme = "README.md"
+documentation = "https://docs.rs/cargo-casperlabs"
+homepage = "https://casperlabs.io"
+repository = "https://github.com/CasperLabs/CasperLabs/tree/master/execution-engine/cargo-casperlabs"
+license-file = "../../LICENSE"
+include = [
+    "src/*.rs",
+    "wasm/mint_install.wasm",
+    "wasm/pos_install.wasm",
+    "wasm/standard_payment.wasm",
+    "wasm/standard_payment_install.wasm",
+    "Cargo.lock",
+    "Cargo.toml",
+]
+
+[dependencies]
+clap = "2"
+colour = "0.5"
+lazy_static = "1"
+
+[dev-dependencies]
+assert_cmd = "0.12"
+tempdir = "0.3.7"
+toml = "0.5.5"
