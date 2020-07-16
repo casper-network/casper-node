@@ -85,7 +85,7 @@ use crate::{
     types::{Deploy, ExecutedBlock, ProtoBlock},
     Chainspec,
 };
-use announcements::{ApiServerAnnouncement, NetworkAnnouncement};
+use announcements::{ApiServerAnnouncement, NetworkAnnouncement, StorageAnnouncement};
 use requests::{ContractRuntimeRequest, DeployQueueRequest, NetworkRequest, StorageRequest};
 
 /// A pinned, boxed future that produces one or more events.
@@ -371,7 +371,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Announce that a network message has been received.
+    /// Announces that a network message has been received.
     pub(crate) async fn announce_message_received<I, P>(self, sender: I, payload: P)
     where
         REv: From<NetworkAnnouncement<I, P>>,
@@ -395,6 +395,24 @@ impl<REv> EffectBuilder<REv> {
                 QueueKind::Api,
             )
             .await;
+    }
+
+    /// Announces that a (not necessarily new) deploy has been added to the store.
+    pub(crate) fn announce_deploy_stored<S>(self, deploy: &S::Deploy) -> impl Future<Output = ()>
+    where
+        S: StorageType,
+        REv: From<StorageAnnouncement<S>>,
+    {
+        let deploy_hash = *deploy.id();
+        let deploy_header = deploy.header().clone();
+
+        self.0.schedule(
+            StorageAnnouncement::StoredDeploy {
+                deploy_hash,
+                deploy_header,
+            },
+            QueueKind::Regular,
+        )
     }
 
     /// Puts the given block into the linear block store.
