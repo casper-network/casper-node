@@ -17,8 +17,11 @@ use crate::{
         storage::{self, Storage, StorageType},
     },
     effect::announcements::{ApiServerAnnouncement, NetworkAnnouncement},
-    reactor::{self, EventQueueHandle, Reactor as ReactorTrait, Runner},
-    testing::network::{Network, NetworkedReactor},
+    reactor::{self, EventQueueHandle, Runner},
+    testing::{
+        network::{Network, NetworkedReactor},
+        ConditionCheckReactor,
+    },
     types::Deploy,
 };
 
@@ -57,7 +60,6 @@ impl Display for Event {
     }
 }
 
-#[derive(Debug)]
 struct Reactor {
     network: InMemoryNetwork<Message>,
     storage: Storage,
@@ -71,7 +73,7 @@ impl Drop for Reactor {
     }
 }
 
-impl ReactorTrait for Reactor {
+impl reactor::Reactor for Reactor {
     type Event = Event;
     type Config = GossipTableConfig;
     type Error = storage::Error;
@@ -190,10 +192,11 @@ async fn should_gossip() {
     }
 
     // Check every node has every deploy stored locally.
-    let all_deploys_held = |nodes: &HashMap<NodeId, Runner<Reactor>>| {
+    let all_deploys_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
         nodes.values().all(|runner| {
             let hashes = runner
                 .reactor()
+                .inner()
                 .storage
                 .deploy_store()
                 .ids()
@@ -232,28 +235,38 @@ async fn should_get_from_alternate_source() {
             .await;
     }
 
-    // Run node 0 until it has sent the gossip request then remove it from the network.  This
-    // equates to four events:
-    // 1. ApiServe Announcement of new deploy
-    // 2. Storage PutDeploy
-    // 3. DeployGossiper PutToStoreResult
-    // 4. NetworkRequest Gossip
-    let mut event_count = 0;
-    while event_count < 4 {
-        event_count += network.crank(&node_ids[0], &mut rng).await;
-        time::delay_for(POLL_DURATION).await;
-    }
+    // Run node 0 until it has sent the gossip request then remove it from the network.
+    let made_gossip_request = |event: &Event| -> bool {
+        match event {
+            Event::NetworkRequest(NetworkRequest::Gossip { .. }) => true,
+            _ => false,
+        }
+    };
+    assert!(
+        network
+            .crank_until(&node_ids[0], &mut rng, made_gossip_request, TIMEOUT)
+            .await
+    );
     assert!(network.remove_node(&node_ids[0]).is_some());
     debug!("removed node {}", &node_ids[0]);
 
-    // Run node 2 until it receives the gossip request from node 0.  This equates to two events:
-    // 1. NetworkAnnouncement MessageReceived of node 0's gossip message
-    // 2. NetworkRequest SendMessage gossip response.
-    event_count = 0;
-    while event_count < 2 {
-        event_count += network.crank(&node_ids[2], &mut rng).await;
-        time::delay_for(POLL_DURATION).await;
-    }
+    // Run node 2 until it receives and responds to the gossip request from node 0.
+    let node_id_0 = node_ids[0];
+    let sent_gossip_response = move |event: &Event| -> bool {
+        match event {
+            Event::NetworkRequest(NetworkRequest::SendMessage {
+                dest,
+                payload: Message::GossipResponse { .. },
+                ..
+            }) => dest == &node_id_0,
+            _ => false,
+        }
+    };
+    assert!(
+        network
+            .crank_until(&node_ids[2], &mut rng, sent_gossip_response, TIMEOUT)
+            .await
+    );
 
     // Run nodes 1 and 2 until settled.  Node 2 will be waiting for the deploy from node 0.
     assert!(network.settle(&mut rng, POLL_DURATION, TIMEOUT).await);
@@ -266,10 +279,11 @@ async fn should_get_from_alternate_source() {
     debug!("advanced time by {} secs", secs_to_advance);
 
     // Check node 0 has the deploy stored locally.
-    let deploy_held = |nodes: &HashMap<NodeId, Runner<Reactor>>| {
+    let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
         let runner = nodes.get(&node_ids[2]).unwrap();
         runner
             .reactor()
+            .inner()
             .storage
             .deploy_store()
             .get(&deploy_id)
@@ -283,7 +297,7 @@ async fn should_get_from_alternate_source() {
 
 #[tokio::test]
 async fn should_timeout_gossip_response() {
-    const POLL_DURATION: Duration = Duration::from_millis(10);
+    const PAUSE_DURATION: Duration = Duration::from_millis(50);
     const TIMEOUT: Duration = Duration::from_secs(2);
 
     NetworkController::<Message>::create_active();
@@ -307,18 +321,20 @@ async fn should_timeout_gossip_response() {
         .process_injected_effect_on(&node_ids[0], create_deploy_received(deploy.clone()))
         .await;
 
-    // Run node 0 until it has sent the gossip requests then remove it from the network.  This
-    // equates to five events:
-    // 1. ApiServe Announcement of new deploy
-    // 2. Storage PutDeploy
-    // 3. DeployGossiper PutToStoreResult
-    // 4. NetworkRequest Gossip
-    // 5. DeployGossiper GossipedTo
-    let mut event_count = 0;
-    while event_count < 5 {
-        event_count += network.crank(&node_ids[0], &mut rng).await;
-        time::delay_for(POLL_DURATION).await;
-    }
+    // Run node 0 until it has sent the gossip requests.
+    let made_gossip_request = |event: &Event| -> bool {
+        match event {
+            Event::DeployGossiper(super::Event::GossipedTo { .. }) => true,
+            _ => false,
+        }
+    };
+    assert!(
+        network
+            .crank_until(&node_ids[0], &mut rng, made_gossip_request, TIMEOUT)
+            .await
+    );
+    // Give node 0 time to set the timeouts before advancing the clock.
+    time::delay_for(PAUSE_DURATION).await;
 
     // Replace all nodes except node 0 with new nodes.
     for node_id in node_ids.drain(1..) {
@@ -338,10 +354,11 @@ async fn should_timeout_gossip_response() {
     debug!("advanced time by {} secs", secs_to_advance);
 
     // Check every node has every deploy stored locally.
-    let deploy_held = |nodes: &HashMap<NodeId, Runner<Reactor>>| {
+    let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
         nodes.values().all(|runner| {
             runner
                 .reactor()
+                .inner()
                 .storage
                 .deploy_store()
                 .get(&deploy_id)

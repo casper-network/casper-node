@@ -19,7 +19,10 @@ use crate::{
     logging,
     reactor::{self, EventQueueHandle, Reactor, Runner},
     small_network::{self, SmallNetwork},
-    testing::network::{Network, NetworkedReactor},
+    testing::{
+        network::{Network, NetworkedReactor},
+        ConditionCheckReactor,
+    },
 };
 use pnet::datalink;
 use rand::{rngs::OsRng, Rng};
@@ -127,7 +130,9 @@ fn init_logging() {
 }
 
 /// Checks whether or not a given network is completely connected.
-fn network_is_complete(nodes: &HashMap<NodeId, Runner<TestReactor>>) -> bool {
+fn network_is_complete(
+    nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<TestReactor>>>,
+) -> bool {
     // We need at least one node.
     if nodes.is_empty() {
         return false;
@@ -135,13 +140,13 @@ fn network_is_complete(nodes: &HashMap<NodeId, Runner<TestReactor>>) -> bool {
 
     let expected: HashSet<_> = nodes
         .iter()
-        .map(|(_, runner)| runner.reactor().net.node_id())
+        .map(|(_, runner)| runner.reactor().inner().net.node_id())
         .collect();
 
     nodes
         .iter()
         .map(|(_, runner)| {
-            let net = &runner.reactor().net;
+            let net = &runner.reactor().inner().net;
             let mut actual = net.connected_nodes();
 
             // All nodes should be connected to every other node, except itself, so we add it to the

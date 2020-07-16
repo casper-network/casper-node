@@ -13,6 +13,7 @@ use tokio::time;
 use tracing::debug;
 use tracing_futures::Instrument;
 
+use super::ConditionCheckReactor;
 use crate::{
     effect::{EffectBuilder, Effects},
     reactor::{Finalize, Reactor, Runner},
@@ -38,7 +39,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 #[derive(Debug, Default)]
 pub struct Network<R: Reactor + NetworkedReactor> {
     /// Current network.
-    nodes: HashMap<<R as NetworkedReactor>::NodeId, Runner<R>>,
+    nodes: HashMap<<R as NetworkedReactor>::NodeId, Runner<ConditionCheckReactor<R>>>,
 }
 
 impl<R> Network<R>
@@ -53,17 +54,17 @@ where
     ///
     /// Panics if a duplicate node ID is being inserted. This should only happen in case a randomly
     /// generated ID collides.
-    pub async fn add_node<Rd: Rng + ?Sized>(
+    pub async fn add_node<RNG: Rng + ?Sized>(
         &mut self,
-        rng: &mut Rd,
-    ) -> Result<(R::NodeId, &mut Runner<R>), R::Error> {
+        rng: &mut RNG,
+    ) -> Result<(R::NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
         self.add_node_with_config(Default::default(), rng).await
     }
 
     /// Adds `count` new nodes to the network, and returns their IDs.
-    pub async fn add_nodes<Rd: Rng + ?Sized>(
+    pub async fn add_nodes<RNG: Rng + ?Sized>(
         &mut self,
-        rng: &mut Rd,
+        rng: &mut RNG,
         count: usize,
     ) -> Vec<R::NodeId> {
         let mut node_ids = vec![];
@@ -91,12 +92,12 @@ where
     /// # Panics
     ///
     /// Panics if a duplicate node ID is being inserted.
-    pub async fn add_node_with_config<Rd: Rng + ?Sized>(
+    pub async fn add_node_with_config<RNG: Rng + ?Sized>(
         &mut self,
         cfg: R::Config,
-        rng: &mut Rd,
-    ) -> Result<(R::NodeId, &mut Runner<R>), R::Error> {
-        let runner: Runner<R> = Runner::new(cfg, rng).await?;
+        rng: &mut RNG,
+    ) -> Result<(R::NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
+        let runner: Runner<ConditionCheckReactor<R>> = Runner::new(cfg, rng).await?;
 
         let node_id = runner.reactor().node_id();
 
@@ -113,12 +114,12 @@ where
     }
 
     /// Removes a node from the network.
-    pub fn remove_node(&mut self, node_id: &R::NodeId) -> Option<Runner<R>> {
+    pub fn remove_node(&mut self, node_id: &R::NodeId) -> Option<Runner<ConditionCheckReactor<R>>> {
         self.nodes.remove(node_id)
     }
 
     /// Crank the specified runner once, returning the number of events processed.
-    pub async fn crank<Rd: Rng + ?Sized>(&mut self, node_id: &R::NodeId, rng: &mut Rd) -> usize {
+    pub async fn crank<RNG: Rng + ?Sized>(&mut self, node_id: &R::NodeId, rng: &mut RNG) -> usize {
         let runner = self.nodes.get_mut(node_id).unwrap();
 
         let node_id = runner.reactor().node_id();
@@ -130,8 +131,57 @@ where
         }
     }
 
+    /// Crank only the specified runner until `condition` is true or until `within` has elapsed.
+    ///
+    /// Returns `true` if `condition` has been met within the specified timeout.
+    pub async fn crank_until<RNG, F>(
+        &mut self,
+        node_id: &R::NodeId,
+        rng: &mut RNG,
+        condition: F,
+        within: Duration,
+    ) -> bool
+    where
+        RNG: Rng + ?Sized,
+        F: Fn(&R::Event) -> bool + Send + 'static,
+    {
+        self.nodes
+            .get_mut(node_id)
+            .unwrap()
+            .reactor_mut()
+            .set_condition_checker(Box::new(condition));
+
+        time::timeout(within, self.crank_and_check_indefinitely(node_id, rng))
+            .await
+            .is_ok()
+    }
+
+    async fn crank_and_check_indefinitely<RNG: Rng + ?Sized>(
+        &mut self,
+        node_id: &R::NodeId,
+        rng: &mut RNG,
+    ) {
+        loop {
+            if self.crank(node_id, rng).await == 0 {
+                time::delay_for(POLL_INTERVAL).await;
+                continue;
+            }
+
+            if self
+                .nodes
+                .get(node_id)
+                .unwrap()
+                .reactor()
+                .condition_result()
+            {
+                debug!("{} met condition", node_id);
+                return;
+            }
+        }
+    }
+
     /// Crank all runners once, returning the number of events processed.
-    pub async fn crank_all<Rd: Rng + ?Sized>(&mut self, rng: &mut Rd) -> usize {
+    pub async fn crank_all<RNG: Rng + ?Sized>(&mut self, rng: &mut RNG) -> usize {
         let mut event_count = 0;
         for node in self.nodes.values_mut() {
             let node_id = node.reactor().node_id();
@@ -150,9 +200,9 @@ where
     ///
     /// Returns `true` if `quiet_for` time has passed with no new events processed within the
     /// specified timeout.
-    pub async fn settle<Rd: Rng + ?Sized>(
+    pub async fn settle<RNG: Rng + ?Sized>(
         &mut self,
-        rng: &mut Rd,
+        rng: &mut RNG,
         quiet_for: Duration,
         within: Duration,
     ) -> bool {
@@ -161,7 +211,7 @@ where
             .is_ok()
     }
 
-    async fn settle_indefinitely<Rd: Rng + ?Sized>(&mut self, rng: &mut Rd, quiet_for: Duration) {
+    async fn settle_indefinitely<RNG: Rng + ?Sized>(&mut self, rng: &mut RNG, quiet_for: Duration) {
         let mut no_events = false;
         loop {
             if self.crank_all(rng).await == 0 {
@@ -182,20 +232,20 @@ where
     /// Runs the main loop of every reactor until `condition` is true or until `within` has elapsed.
     ///
     /// Returns `true` if `condition` has been met within the specified timeout.
-    pub async fn settle_on<Rd, F>(&mut self, rng: &mut Rd, condition: F, within: Duration) -> bool
+    pub async fn settle_on<RNG, F>(&mut self, rng: &mut RNG, condition: F, within: Duration) -> bool
     where
-        Rd: Rng + ?Sized,
-        F: Fn(&HashMap<R::NodeId, Runner<R>>) -> bool,
+        RNG: Rng + ?Sized,
+        F: Fn(&HashMap<R::NodeId, Runner<ConditionCheckReactor<R>>>) -> bool,
     {
         time::timeout(within, self.settle_on_indefinitely(rng, condition))
             .await
             .is_ok()
     }
 
-    async fn settle_on_indefinitely<Rd, F>(&mut self, rng: &mut Rd, condition: F)
+    async fn settle_on_indefinitely<RNG, F>(&mut self, rng: &mut RNG, condition: F)
     where
-        Rd: Rng + ?Sized,
-        F: Fn(&HashMap<R::NodeId, Runner<R>>) -> bool,
+        RNG: Rng + ?Sized,
+        F: Fn(&HashMap<R::NodeId, Runner<ConditionCheckReactor<R>>>) -> bool,
     {
         loop {
             if condition(&self.nodes) {
@@ -211,7 +261,7 @@ where
     }
 
     /// Returns the internal map of nodes.
-    pub fn nodes(&self) -> &HashMap<R::NodeId, Runner<R>> {
+    pub fn nodes(&self) -> &HashMap<R::NodeId, Runner<ConditionCheckReactor<R>>> {
         &self.nodes
     }
 
