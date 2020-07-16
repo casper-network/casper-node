@@ -16,6 +16,7 @@ use std::{
 
 use rand::Rng;
 use serde::{de::DeserializeOwned, Serialize};
+use smallvec::smallvec;
 use tokio::task;
 
 use crate::{
@@ -40,9 +41,14 @@ use in_mem_chainspec_store::InMemChainspecStore;
 use in_mem_store::InMemStore;
 use lmdb_chainspec_store::LmdbChainspecStore;
 use lmdb_store::LmdbStore;
-use store::Store;
+use store::{Multiple, Store};
 
 pub(crate) type Storage = LmdbStorage<Block, Deploy>;
+
+pub(crate) type DeployResults<S> = Multiple<Result<<S as StorageType>::Deploy>>;
+pub(crate) type DeployHashes<S> = Multiple<<<S as StorageType>::Deploy as Value>::Id>;
+pub(crate) type DeployHeaderResults<S> =
+    Multiple<Result<<<S as StorageType>::Deploy as Value>::Header>>;
 
 const BLOCK_STORE_FILENAME: &str = "block_store.db";
 const DEPLOY_STORE_FILENAME: &str = "deploy_store.db";
@@ -129,10 +135,13 @@ where
             } => {
                 let block_store = self.block_store();
                 async move {
-                    let result = task::spawn_blocking(move || block_store.get(&block_hash))
+                    let mut result =
+                        task::spawn_blocking(move || block_store.get(smallvec![block_hash]))
+                            .await
+                            .expect("should run");
+                    responder
+                        .respond(result.pop().expect("can only contain one result"))
                         .await
-                        .expect("should run");
-                    responder.respond(result).await
                 }
                 .ignore()
             }
@@ -142,10 +151,14 @@ where
             } => {
                 let block_store = self.block_store();
                 async move {
-                    let result = task::spawn_blocking(move || block_store.get_header(&block_hash))
+                    let mut result = task::spawn_blocking(move || {
+                        block_store.get_headers(smallvec![block_hash])
+                    })
+                    .await
+                    .expect("should run");
+                    responder
+                        .respond(result.pop().expect("can only contain one result"))
                         .await
-                        .expect("should run");
-                    responder.respond(result).await
                 }
                 .ignore()
             }
@@ -171,27 +184,27 @@ where
                 }
                 .ignore()
             }
-            StorageRequest::GetDeploy {
-                deploy_hash,
+            StorageRequest::GetDeploys {
+                deploy_hashes,
                 responder,
             } => {
                 let deploy_store = self.deploy_store();
                 async move {
-                    let result = task::spawn_blocking(move || deploy_store.get(&deploy_hash))
+                    let result = task::spawn_blocking(move || deploy_store.get(deploy_hashes))
                         .await
                         .expect("should run");
                     responder.respond(result).await
                 }
                 .ignore()
             }
-            StorageRequest::GetDeployHeader {
-                deploy_hash,
+            StorageRequest::GetDeployHeaders {
+                deploy_hashes,
                 responder,
             } => {
                 let deploy_store = self.deploy_store();
                 async move {
                     let result =
-                        task::spawn_blocking(move || deploy_store.get_header(&deploy_hash))
+                        task::spawn_blocking(move || deploy_store.get_headers(deploy_hashes))
                             .await
                             .expect("should run");
                     responder.respond(result).await

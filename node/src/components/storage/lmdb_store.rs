@@ -3,9 +3,10 @@ use std::{fmt::Debug, marker::PhantomData, path::Path};
 use lmdb::{
     self, Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags,
 };
+use smallvec::smallvec;
 use tracing::info;
 
-use super::{Error, Result, Store, Value};
+use super::{Error, Multiple, Result, Store, Value};
 
 /// LMDB version of a store.
 #[derive(Debug)]
@@ -33,55 +34,81 @@ impl<V: Value> LmdbStore<V> {
 }
 
 impl<V: Value> LmdbStore<V> {
-    fn get_value(&self, id: &V::Id) -> Result<V> {
-        let id = bincode::serialize(id).map_err(|error| Error::from_serialization(*error))?;
-        let txn = self.env.begin_ro_txn()?;
-        let serialized_value = match txn.get(self.db, &id) {
-            Ok(value) => value,
-            Err(lmdb::Error::NotFound) => return Err(Error::NotFound),
-            Err(error) => return Err(error.into()),
-        };
-        let value = bincode::deserialize(serialized_value)
-            .map_err(|error| Error::from_deserialization(*error))?;
-        txn.commit()?;
-        Ok(value)
+    fn get_values(&self, ids: Multiple<V::Id>) -> Multiple<Result<V>> {
+        let mut serialized_ids = Multiple::new();
+        for id in &ids {
+            serialized_ids
+                .push(bincode::serialize(id).map_err(|error| Error::from_serialization(*error)));
+        }
+
+        let mut values = smallvec![];
+        let txn = self.env.begin_ro_txn().expect("should create ro txn");
+        for id in serialized_ids {
+            match id {
+                Ok(id) => {
+                    match txn.get(self.db, &id) {
+                        Ok(serialized_value) => {
+                            let value_result = bincode::deserialize(serialized_value)
+                                .map_err(|error| Error::from_deserialization(*error));
+                            values.push(value_result)
+                        }
+                        Err(lmdb::Error::NotFound) => {
+                            values.push(Err(Error::NotFound));
+                        }
+                        Err(error) => panic!("should get: {:?}", error),
+                    };
+                }
+                Err(error) => values.push(Err(error)),
+            }
+        }
+        txn.commit().expect("should commit txn");
+        values
     }
 }
 
 impl<V: Value> Store for LmdbStore<V> {
     type Value = V;
 
-    fn put(&self, value: V) -> Result<()> {
+    fn put(&self, value: V) -> Result<bool> {
         let id =
             bincode::serialize(value.id()).map_err(|error| Error::from_serialization(*error))?;
         let serialized_value =
             bincode::serialize(&value).map_err(|error| Error::from_serialization(*error))?;
-        let mut txn = self.env.begin_rw_txn()?;
-        txn.put(self.db, &id, &serialized_value, WriteFlags::empty())?;
-        txn.commit()?;
-        Ok(())
+        let mut txn = self.env.begin_rw_txn().expect("should create rw txn");
+        let result = match txn.put(self.db, &id, &serialized_value, WriteFlags::NO_OVERWRITE) {
+            Ok(()) => true,
+            Err(lmdb::Error::KeyExist) => false,
+            Err(error) => panic!("should put: {:?}", error),
+        };
+        txn.commit().expect("should commit txn");
+        Ok(result)
     }
 
-    fn get(&self, id: &V::Id) -> Result<V> {
-        self.get_value(id)
+    fn get(&self, ids: Multiple<V::Id>) -> Multiple<Result<V>> {
+        self.get_values(ids)
     }
 
-    fn get_header(&self, id: &V::Id) -> Result<V::Header> {
-        self.get_value(id).map(|value| value.take_header())
+    fn get_headers(&self, ids: Multiple<V::Id>) -> Multiple<Result<V::Header>> {
+        self.get_values(ids)
+            .into_iter()
+            .map(|value_result| value_result.map(Value::take_header))
+            .collect()
     }
 
     fn ids(&self) -> Result<Vec<V::Id>> {
-        let txn = self.env.begin_ro_txn()?;
+        let txn = self.env.begin_ro_txn().expect("should create ro txn");
         let mut ids = vec![];
         {
-            let mut cursor = txn.open_ro_cursor(self.db)?;
+            let mut cursor = txn
+                .open_ro_cursor(self.db)
+                .expect("should create ro cursor");
             for (id, _value) in cursor.iter() {
                 let id: V::Id = bincode::deserialize(id)
                     .map_err(|error| Error::from_deserialization(*error))?;
                 ids.push(id);
             }
         }
-        txn.commit()?;
+        txn.commit().expect("should commit txn");
         Ok(ids)
     }
 }

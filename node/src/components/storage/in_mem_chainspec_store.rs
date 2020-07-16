@@ -5,14 +5,9 @@ use std::{
 };
 
 use semver::Version;
-use thiserror::Error;
 
 use super::{ChainspecStore, Error, Result};
 use crate::Chainspec;
-
-#[derive(Error, Debug)]
-#[error("poisoned lock")]
-pub(super) struct PoisonedLock {}
 
 /// In-memory version of a store.
 #[derive(Debug)]
@@ -32,7 +27,8 @@ impl ChainspecStore for InMemChainspecStore {
     fn put(&self, chainspec: Chainspec) -> Result<()> {
         if let Entry::Vacant(entry) = self
             .inner
-            .write()?
+            .write()
+            .expect("should lock")
             .entry(chainspec.genesis.protocol_version.clone())
         {
             entry.insert(chainspec);
@@ -42,7 +38,8 @@ impl ChainspecStore for InMemChainspecStore {
 
     fn get(&self, version: Version) -> Result<Chainspec> {
         self.inner
-            .read()?
+            .read()
+            .expect("should lock")
             .get(&version)
             .cloned()
             .ok_or_else(|| Error::NotFound)

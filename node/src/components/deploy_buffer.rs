@@ -192,15 +192,21 @@ impl<REv> Component<REv> for DeployBuffer {
                 max_dependencies,
                 past,
                 responder,
-            }) => responder
-                .respond(self.remaining_deploys(
+            }) => {
+                let deploys = self.remaining_deploys(
                     current_instant,
                     max_ttl,
                     limits,
                     max_dependencies,
                     &past,
-                ))
-                .ignore(),
+                );
+                // TODO: This is a temporary workaround because we don't call `added_block` yet.
+                // To avoid proposing the same deploys again, we remove them from the buffer.
+                for deploy in &deploys {
+                    self.collected_deploys.remove(deploy);
+                }
+                responder.respond(deploys).ignore()
+            }
         }
     }
 }

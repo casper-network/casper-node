@@ -10,7 +10,7 @@ use std::fmt::{self, Display, Formatter};
 use derive_more::From;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use tracing::warn;
+use tracing::info;
 use types::U512;
 
 use crate::{
@@ -315,8 +315,15 @@ impl reactor::Reactor for Reactor {
                 let event = deploy_gossiper::Event::DeployReceived { deploy };
                 self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
             }
-            Event::StorageAnnouncement(ann) => {
-                warn!(%ann, "dropped storage announcement");
+            Event::StorageAnnouncement(StorageAnnouncement::StoredDeploy {
+                deploy_hash,
+                deploy_header,
+            }) => {
+                if self.deploy_buffer.add_deploy(deploy_hash, deploy_header) {
+                    info!("Added deploy {} to the buffer.", deploy_hash);
+                } else {
+                    info!("Deploy {} rejected from the buffer.", deploy_hash);
+                }
                 Effects::new()
             }
         }
