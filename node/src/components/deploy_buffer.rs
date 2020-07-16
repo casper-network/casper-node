@@ -77,7 +77,8 @@ impl DeployBuffer {
             .collect::<HashSet<_>>();
         // deploys_to_return = all deploys in collected_deploys that aren't in finalized blocks or
         // processed blocks from the set `past`
-        self.collected_deploys
+        let result = self
+            .collected_deploys
             .iter()
             .filter(|&(hash, deploy)| {
                 self.is_deploy_valid(
@@ -90,8 +91,13 @@ impl DeployBuffer {
             })
             .map(|(hash, _deploy)| *hash)
             .take(limits.deploy_count as usize)
-            .collect::<HashSet<_>>()
+            .collect::<HashSet<_>>();
         // TODO: check gas and block size limits
+        // TODO: These should probably go into `processed`, but we don't have a block hash yet.
+        for deploy in &result {
+            self.collected_deploys.remove(deploy);
+        }
+        result
     }
 
     /// Checks if a deploy is valid (for inclusion into the next block).
