@@ -480,7 +480,7 @@ enum BuilderError {
     EmptyFtt,
 }
 
-struct HighwayTestHarnessBuilder<C: Context, DS: Strategy<DeliverySchedule>> {
+struct HighwayTestHarnessBuilder<C: Context, DS> {
     /// Nmber of validators in the test run.
     validator_num: Option<u8>,
     /// Number of faulty validators (i.e. equivocators).
@@ -530,47 +530,57 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
         }
     }
 
-    pub(crate) fn validator_num(&mut self, validator_num: u8) {
-        self.validator_num = Some(validator_num)
+    pub(crate) fn validator_num(mut self, validator_num: u8) -> Self {
+        self.validator_num = Some(validator_num);
+        self
     }
 
-    pub(crate) fn faulty_num(&mut self, faulty_num: u8) {
+    pub(crate) fn faulty_num(mut self, faulty_num: u8) -> Self {
         self.faulty_num = faulty_num;
+        self
     }
 
-    pub(crate) fn consensus_values(&mut self, cv: VecDeque<C::ConsensusValue>) {
+    pub(crate) fn consensus_values(mut self, cv: Vec<C::ConsensusValue>) -> Self {
         assert!(!cv.is_empty());
-        self.consensus_values = Some(cv);
+        self.consensus_values = Some(VecDeque::from(cv));
+        self
     }
 
-    pub(crate) fn delivery_strategy(&mut self, ds: DS) {
+    pub(crate) fn delivery_strategy(mut self, ds: DS) -> Self {
         self.delivery_strategy = Some(ds);
+        self
     }
 
-    pub(crate) fn weight_limits(&mut self, lower: u64, upper: u64) {
+    pub(crate) fn weight_limits(mut self, lower: u64, upper: u64) -> Self {
         // TODO: More checks?
         assert!(lower <= upper);
         self.weight_limits = (lower, upper);
+        self
     }
 
-    pub(crate) fn weight_distribution(&mut self, wd: Distribution) {
+    pub(crate) fn weight_distribution(mut self, wd: Distribution) -> Self {
         self.weight_distribution = wd;
+        self
     }
 
-    pub(crate) fn start_time<T: Into<Timestamp>>(&mut self, start_time: T) {
+    pub(crate) fn start_time<T: Into<Timestamp>>(mut self, start_time: T) -> Self {
         self.start_time = start_time.into();
+        self
     }
 
-    pub(crate) fn seed(&mut self, seed: u64) {
+    pub(crate) fn seed(mut self, seed: u64) -> Self {
         self.seed = seed;
+        self
     }
 
-    pub(crate) fn round_exp(&mut self, round_exp: u8) {
+    pub(crate) fn round_exp(mut self, round_exp: u8) -> Self {
         self.round_exp = round_exp;
+        self
     }
 
-    pub(crate) fn ftt(&mut self, ftt: u64) {
+    pub(crate) fn ftt(mut self, ftt: u64) -> Self {
         self.ftt = Some(ftt);
+        self
     }
 
     fn build(self) -> Result<HighwayTestHarness<C, DS>, BuilderError> {
