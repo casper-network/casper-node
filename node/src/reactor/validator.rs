@@ -276,10 +276,6 @@ impl reactor::Reactor for Reactor {
             Event::DeployQueueRequest(req) => {
                 self.dispatch_event(effect_builder, rng, Event::DeployQueue(req.into()))
             }
-            Event::StorageAnnouncement(ann) => {
-                warn!(%ann, "dropped storage announcement");
-                Effects::new()
-            }
 
             // Announcements:
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
@@ -307,6 +303,10 @@ impl reactor::Reactor for Reactor {
             Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
                 let event = deploy_gossiper::Event::DeployReceived { deploy };
                 self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
+            }
+            Event::StorageAnnouncement(ann) => {
+                warn!(%ann, "dropped storage announcement");
+                Effects::new()
             }
         }
     }
