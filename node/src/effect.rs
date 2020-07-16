@@ -418,7 +418,7 @@ impl<REv> EffectBuilder<REv> {
     /// Puts the given block into the linear block store.
     // TODO: remove once method is used.
     #[allow(dead_code)]
-    pub(crate) async fn put_block_to_storage<S>(self, block: S::Block) -> storage::Result<()>
+    pub(crate) async fn put_block_to_storage<S>(self, block: S::Block) -> storage::Result<bool>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
@@ -476,7 +476,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given deploy into the deploy store.
-    pub(crate) async fn put_deploy_to_storage<S>(self, deploy: S::Deploy) -> storage::Result<()>
+    pub(crate) async fn put_deploy_to_storage<S>(self, deploy: S::Deploy) -> storage::Result<bool>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,

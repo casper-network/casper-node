@@ -64,7 +64,7 @@ pub enum Event {
     PutToStoreResult {
         deploy_hash: DeployHash,
         maybe_sender: Option<NodeId>,
-        result: storage::Result<()>,
+        result: storage::Result<bool>,
     },
     /// The result of the `DeployGossiper` getting a deploy from the storage component.  If the
     /// result is `Ok`, the deploy should be sent to the requesting peer.
@@ -535,7 +535,7 @@ where
                 maybe_sender,
                 result,
             } => match result {
-                Ok(()) => {
+                Ok(_) => {
                     self.handle_put_to_store_success(effect_builder, deploy_hash, maybe_sender)
                 }
                 Err(error) => self.failed_to_put_to_store(deploy_hash, error),

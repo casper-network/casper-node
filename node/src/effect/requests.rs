@@ -136,8 +136,9 @@ pub enum StorageRequest<S: StorageType + 'static> {
     PutBlock {
         /// Block to be stored.
         block: Box<S::Block>,
-        /// Responder to call with the result.
-        responder: Responder<storage::Result<()>>,
+        /// Responder to call with the result.  Returns true if the block was stored on this attempt
+        /// or false if it was previously stored.
+        responder: Responder<storage::Result<bool>>,
     },
     /// Retrieve block with given hash.
     GetBlock {
@@ -157,8 +158,9 @@ pub enum StorageRequest<S: StorageType + 'static> {
     PutDeploy {
         /// Deploy to store.
         deploy: Box<S::Deploy>,
-        /// Responder to call with the result.
-        responder: Responder<storage::Result<()>>,
+        /// Responder to call with the result.  Returns true if the deploy was stored on this
+        /// attempt or false if it was previously stored.
+        responder: Responder<storage::Result<bool>>,
     },
     /// Retrieve deploys with given hashes.
     GetDeploys {

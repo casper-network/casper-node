@@ -8,7 +8,9 @@ pub(super) type Multiple<T> = SmallVec<[T; 3]>;
 pub trait Store: Send + Sync {
     type Value: Value;
 
-    fn put(&self, block: Self::Value) -> Result<()>;
+    /// If the store did not have this value present, true is returned.  If the store did have this
+    /// value present, false is returned.
+    fn put(&self, block: Self::Value) -> Result<bool>;
     fn get(&self, ids: Multiple<<Self::Value as Value>::Id>) -> Multiple<Result<Self::Value>>;
     fn get_headers(
         &self,

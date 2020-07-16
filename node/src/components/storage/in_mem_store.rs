@@ -23,11 +23,12 @@ impl<V: Value> InMemStore<V> {
 impl<V: Value> Store for InMemStore<V> {
     type Value = V;
 
-    fn put(&self, value: V) -> Result<()> {
+    fn put(&self, value: V) -> Result<bool> {
         if let Entry::Vacant(entry) = self.inner.write().expect("should lock").entry(*value.id()) {
             entry.insert(value.clone());
+            return Ok(true);
         }
-        Ok(())
+        Ok(false)
     }
 
     fn get(&self, ids: Multiple<V::Id>) -> Multiple<Result<V>> {

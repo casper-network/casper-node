@@ -69,16 +69,19 @@ impl<V: Value> LmdbStore<V> {
 impl<V: Value> Store for LmdbStore<V> {
     type Value = V;
 
-    fn put(&self, value: V) -> Result<()> {
+    fn put(&self, value: V) -> Result<bool> {
         let id =
             bincode::serialize(value.id()).map_err(|error| Error::from_serialization(*error))?;
         let serialized_value =
             bincode::serialize(&value).map_err(|error| Error::from_serialization(*error))?;
         let mut txn = self.env.begin_rw_txn().expect("should create rw txn");
-        txn.put(self.db, &id, &serialized_value, WriteFlags::empty())
-            .expect("should put");
+        let result = match txn.put(self.db, &id, &serialized_value, WriteFlags::NO_OVERWRITE) {
+            Ok(()) => true,
+            Err(lmdb::Error::KeyExist) => false,
+            Err(error) => panic!("should put: {:?}", error),
+        };
         txn.commit().expect("should commit txn");
-        Ok(())
+        Ok(result)
     }
 
     fn get(&self, ids: Multiple<V::Id>) -> Multiple<Result<V>> {
