@@ -226,6 +226,10 @@ where
     pub(crate) fn push(&mut self, item: QueueEntry<M>) {
         self.0.push(item)
     }
+
+    pub(crate) fn clear(&mut self) {
+        self.0.clear();
+    }
 }
 
 #[cfg(test)]
@@ -410,6 +414,12 @@ where
     ) {
         let qe = QueueEntry::new(delivery_time, recipient, message);
         self.msg_queue.push(qe);
+    }
+
+    /// Drops all messages from the queue.
+    /// Should never be called during normal operation of the test.
+    pub(crate) fn empty_queue(&mut self) {
+        self.msg_queue.clear();
     }
 }
 

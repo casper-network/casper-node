@@ -465,6 +465,23 @@ where
 
         self.add_vertex(recipient, sender, vertex)
     }
+
+    /// Returns a `MutableHandle` on the `HighwayTestHarness` object
+    /// that allows for manipulating internal state of the test state.
+    fn mutable_handle(&mut self) -> MutableHandle<Ctx, DS> {
+        MutableHandle(self)
+    }
+}
+
+struct MutableHandle<'a, C: Context, DS: Strategy<DeliverySchedule>>(
+    &'a mut HighwayTestHarness<C, DS>,
+);
+
+impl<'a, C: Context, DS: Strategy<DeliverySchedule>> MutableHandle<'a, C, DS> {
+    /// Drops all messages from the queue.
+    fn clear_message_queue(&mut self) {
+        self.0.virtual_net.empty_queue();
+    }
 }
 
 enum Distribution {
