@@ -18,7 +18,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::Component,
-    effect::{requests::NetworkRequest, EffectBuilder, Effects},
+    effect::{
+        requests::{DeployQueueRequest, NetworkRequest},
+        EffectBuilder, Effects,
+    },
     types::{ExecutedBlock, ProtoBlock, Timestamp},
 };
 
@@ -116,10 +119,25 @@ impl<I: Debug> Display for Event<I> {
     }
 }
 
+/// A helper trait whose bounds represent the requirements for a reactor event that `EraSupervisor`
+/// can work with.
+pub trait ReactorEventT<I>:
+    From<Event<I>> + Send + From<NetworkRequest<I, ConsensusMessage>> + From<DeployQueueRequest>
+{
+}
+
+impl<REv, I> ReactorEventT<I> for REv where
+    REv: From<Event<I>>
+        + Send
+        + From<NetworkRequest<I, ConsensusMessage>>
+        + From<DeployQueueRequest>
+{
+}
+
 impl<I, REv> Component<REv> for EraSupervisor<I>
 where
     I: NodeIdT,
-    REv: From<Event<I>> + Send + From<NetworkRequest<I, ConsensusMessage>>,
+    REv: ReactorEventT<I>,
 {
     type Event = Event<I>;
 
