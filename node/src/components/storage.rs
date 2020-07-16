@@ -158,7 +158,7 @@ where
                         .await
                         .expect("should run");
 
-                    // Tell the requestor that saved the deploy we're good.
+                    // Tell the requestor the result of storing the deploy.
                     responder.respond(result).await;
 
                     // Now that we have stored the deploy, we also want to announce it.

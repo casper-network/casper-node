@@ -54,6 +54,7 @@ impl Display for ApiServerAnnouncement {
         }
     }
 }
+
 /// A storage layer announcement.
 #[derive(Debug)]
 pub enum StorageAnnouncement<D> {
