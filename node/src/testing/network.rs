@@ -120,7 +120,7 @@ where
 
     /// Crank the specified runner once, returning the number of events processed.
     pub async fn crank<RNG: Rng + ?Sized>(&mut self, node_id: &R::NodeId, rng: &mut RNG) -> usize {
-        let runner = self.nodes.get_mut(node_id).unwrap();
+        let runner = self.nodes.get_mut(node_id).expect("should find node");
 
         let node_id = runner.reactor().node_id();
         let span = tracing::error_span!("crank", node_id = %node_id);
