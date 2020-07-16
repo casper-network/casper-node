@@ -1,5 +1,6 @@
 use std::{
     fmt::{self, Display, Formatter},
+    iter::Sum,
     ops::{Add, Div, Mul, Sub},
 };
 
@@ -87,6 +88,15 @@ impl Zero for Motes {
 
     fn is_zero(&self) -> bool {
         self.0.is_zero()
+    }
+}
+
+impl Sum for Motes {
+    fn sum<I>(iter: I) -> Self
+    where
+        I: Iterator<Item = Self>,
+    {
+        iter.fold(Self::zero(), |a, b| a + b)
     }
 }
 

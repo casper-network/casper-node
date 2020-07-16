@@ -13,7 +13,7 @@ use std::{
 
 use anyhow::Error;
 use maplit::hashmap;
-use num_traits::{AsPrimitive, Zero};
+use num_traits::AsPrimitive;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 use types::U512;
@@ -92,14 +92,19 @@ where
         effect_builder: EffectBuilder<REv>,
         validators: Vec<(PublicKey, Motes)>,
     ) -> (Self, Effects<Event<I>>) {
-        let sum_stakes: Motes = validators
-            .iter()
-            .map(|(_, stake)| *stake)
-            .fold(Motes::zero(), |a, b| a + b);
+        let sum_stakes: Motes = validators.iter().map(|(_, stake)| *stake).sum();
         let weights = if sum_stakes.value() > U512::from(u64::MAX) {
-            todo!(
-                "Stakes exceeding the u64 range have to be mapped to weights somehow (see HWY-121)"
-            )
+            validators
+                .into_iter()
+                .map(|(key, stake)| {
+                    (
+                        key,
+                        AsPrimitive::<u64>::as_(
+                            stake.value() / (sum_stakes.value() / (u64::MAX / 2)),
+                        ),
+                    )
+                })
+                .collect()
         } else {
             validators
                 .into_iter()
