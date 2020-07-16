@@ -152,8 +152,8 @@ where
             StorageRequest::PutDeploy { deploy, responder } => {
                 let deploy_store = self.deploy_store();
                 async move {
-                    let deploy_id = *deploy.id();
-                    let deploy_header = deploy.header().clone();
+                    // Create the effect, but do not return it.
+                    let announce_success = effect_builder.announce_deploy_stored(&deploy);
 
                     let result = task::spawn_blocking(move || deploy_store.put(*deploy))
                         .await
@@ -166,9 +166,7 @@ where
 
                     if was_ok {
                         // Now that we have stored the deploy, we also want to announce it.
-                        effect_builder
-                            .announce_deploy_stored(deploy_id, deploy_header)
-                            .await;
+                        announce_success.await;
                     }
                 }
                 .ignore()

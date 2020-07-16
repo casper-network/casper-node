@@ -398,23 +398,21 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that a (not necessarily new) deploy has been added to the store.
-    pub(crate) async fn announce_deploy_stored<S>(
-        self,
-        deploy_hash: <S::Deploy as Value>::Id,
-        deploy_header: <S::Deploy as Value>::Header,
-    ) where
+    pub(crate) fn announce_deploy_stored<S>(self, deploy: &S::Deploy) -> impl Future<Output = ()>
+    where
         S: StorageType,
         REv: From<StorageAnnouncement<S>>,
     {
-        self.0
-            .schedule(
-                StorageAnnouncement::StoredDeploy {
-                    deploy_hash,
-                    deploy_header,
-                },
-                QueueKind::Regular,
-            )
-            .await;
+        let deploy_hash = *deploy.id();
+        let deploy_header = deploy.header().clone();
+
+        self.0.schedule(
+            StorageAnnouncement::StoredDeploy {
+                deploy_hash,
+                deploy_header,
+            },
+            QueueKind::Regular,
+        )
     }
 
     /// Puts the given block into the linear block store.
