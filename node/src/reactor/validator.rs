@@ -15,7 +15,7 @@ use types::U512;
 use crate::{
     components::{
         api_server::{self, ApiServer},
-        chainspec_handler::ChainspecHandler,
+        chainspec_handler::Chainspec,
         consensus::{self, EraSupervisor},
         contract_runtime::{self, ContractRuntime},
         deploy_buffer::{self, DeployBuffer},
@@ -177,7 +177,7 @@ impl Reactor {
         event_queue: EventQueueHandle<Event>,
         storage: Storage,
         contract_runtime: ContractRuntime,
-        chainspec_handler: ChainspecHandler,
+        chainspec: &Chainspec,
     ) -> Result<(Self, Effects<Event>), Error> {
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, config.validator_net)?;
@@ -185,18 +185,15 @@ impl Reactor {
         let (pinger, pinger_effects) = Pinger::new(effect_builder);
         let api_server = ApiServer::new(config.http_server, effect_builder);
         let timestamp = Timestamp::now();
-        let (consensus, consensus_effects) = EraSupervisor::new(
-            timestamp,
-            effect_builder,
-            chainspec_handler
-                .chainspec()
-                .genesis
-                .accounts
-                .iter()
-                .filter_map(|account| account.public_key().map(|pk| (pk, account.bonded_amount())))
-                .filter(|(_, stake)| stake.value() > U512::zero())
-                .collect(),
-        );
+        let validator_stakes = chainspec
+            .genesis
+            .accounts
+            .iter()
+            .filter_map(|account| account.public_key().map(|pk| (pk, account.bonded_amount())))
+            .filter(|(_, stake)| stake.value() > U512::zero())
+            .collect();
+        let (consensus, consensus_effects) =
+            EraSupervisor::new(timestamp, effect_builder, validator_stakes);
         let deploy_gossiper = DeployGossiper::new(config.gossip);
         let deploy_buffer = DeployBuffer::new();
 
@@ -329,7 +326,7 @@ impl reactor::ReactorExt<initializer::Reactor> for Reactor {
             event_queue,
             storage,
             contract_runtime,
-            chainspec_handler,
+            chainspec_handler.chainspec(),
         )
     }
 }

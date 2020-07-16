@@ -97,7 +97,9 @@ where
             .map(|(_, stake)| *stake)
             .fold(Motes::zero(), |a, b| a + b);
         let weights = if sum_stakes.value() > U512::from(u64::MAX) {
-            todo!() // figure out how to map stakes exceeding the u64 range to weights
+            todo!(
+                "Stakes exceeding the u64 range have to be mapped to weights somehow (see HWY-121)"
+            )
         } else {
             validators
                 .into_iter()
