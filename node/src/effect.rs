@@ -398,9 +398,10 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that a (not necessarily new) deploy has been added to the store.
-    pub(crate) async fn announce_deploy_stored<D>(self, deploy_hash: D)
+    pub(crate) async fn announce_deploy_stored<S>(self, deploy_hash: <S::Deploy as Value>::Id)
     where
-        REv: From<StorageAnnouncement<D>>,
+        S: StorageType,
+        REv: From<StorageAnnouncement<S>>,
     {
         self.0
             .schedule(

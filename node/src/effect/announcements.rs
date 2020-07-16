@@ -5,7 +5,10 @@
 
 use std::fmt::{self, Display, Formatter};
 
-use crate::types::Deploy;
+use crate::{
+    components::storage::{StorageType, Value},
+    types::Deploy,
+};
 
 /// A networking layer announcement.
 #[derive(Debug)]
@@ -57,17 +60,18 @@ impl Display for ApiServerAnnouncement {
 
 /// A storage layer announcement.
 #[derive(Debug)]
-pub enum StorageAnnouncement<D> {
+pub enum StorageAnnouncement<S: StorageType> {
     /// A deploy has been stored.
     StoredDeploy {
         /// ID or "hash" of the deploy that was added to the store.
-        deploy_hash: D,
+        deploy_hash: <S::Deploy as Value>::Id,
     },
 }
 
-impl<D> Display for StorageAnnouncement<D>
+impl<S> Display for StorageAnnouncement<S>
 where
-    D: Display,
+    S: StorageType,
+    <S::Deploy as Value>::Id: Display,
 {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {

@@ -23,7 +23,6 @@ use crate::{
         EffectBuilder, Effects,
     },
     reactor::{self, validator, EventQueueHandle},
-    types::DeployHash,
 };
 
 /// Top-level event for the reactor.
@@ -40,7 +39,7 @@ pub enum Event {
 
     /// Storage announcement.
     #[from]
-    StorageAnnouncement(StorageAnnouncement<DeployHash>),
+    StorageAnnouncement(StorageAnnouncement<Storage>),
 
     /// Contract runtime event.
     #[from]
@@ -58,9 +57,7 @@ impl Display for Event {
         match self {
             Event::Chainspec(event) => write!(formatter, "chainspec: {}", event),
             Event::Storage(event) => write!(formatter, "storage: {}", event),
-            Event::StorageAnnouncement(announcement) => {
-                write!(formatter, "storage announcement: {}", announcement)
-            }
+            Event::StorageAnnouncement(ann) => write!(formatter, "storage announcement: {}", ann),
             Event::ContractRuntime(event) => write!(formatter, "contract runtime: {}", event),
         }
     }
@@ -149,8 +146,8 @@ impl reactor::Reactor for Reactor {
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
             ),
-            Event::StorageAnnouncement(announcement) => {
-                debug!(%announcement, "ignoring storing announcement");
+            Event::StorageAnnouncement(ann) => {
+                debug!(%ann, "ignoring storing announcement");
                 Effects::new()
             }
             Event::ContractRuntime(event) => reactor::wrap_effects(

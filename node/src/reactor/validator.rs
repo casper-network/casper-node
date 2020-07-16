@@ -32,7 +32,7 @@ use crate::{
     },
     reactor::{self, initializer, EventQueueHandle},
     small_network::{self, NodeId},
-    types::{DeployHash, Timestamp},
+    types::Timestamp,
     SmallNetwork,
 };
 pub use config::Config;
@@ -105,7 +105,7 @@ pub enum Event {
     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
     /// Storage announcement.
     #[from]
-    StorageAnnouncement(StorageAnnouncement<DeployHash>),
+    StorageAnnouncement(StorageAnnouncement<Storage>),
     /// API server announcement.
     #[from]
     ApiServerAnnouncement(ApiServerAnnouncement),

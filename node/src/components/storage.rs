@@ -102,7 +102,7 @@ impl<REv, S> Component<REv> for S
 where
     S: StorageType,
     Self: Sized + 'static,
-    REv: From<StorageAnnouncement<<<S as StorageType>::Deploy as Value>::Id>> + Send,
+    REv: From<StorageAnnouncement<S>> + Send,
 {
     type Event = StorageRequest<Self>;
 
@@ -158,10 +158,12 @@ where
                         .await
                         .expect("should run");
 
+                    let was_ok = result.is_ok();
+
                     // Tell the requestor the result of storing the deploy.
                     responder.respond(result).await;
 
-                    if result.is_ok() {
+                    if was_ok {
                         // Now that we have stored the deploy, we also want to announce it.
                         effect_builder.announce_deploy_stored(deploy_id).await;
                     }
