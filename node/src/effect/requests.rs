@@ -10,12 +10,27 @@ use std::{
 
 use semver::Version;
 
+use types::{Key, ProtocolVersion};
+
 use super::Responder;
 use crate::{
     components::{
-        contract_runtime::core::engine_state::{self, genesis::GenesisResult},
+        contract_runtime::{
+            core::engine_state::{
+                self,
+                execute_request::ExecuteRequest,
+                execution_result::ExecutionResult,
+                genesis::GenesisResult,
+                query::{QueryRequest, QueryResult},
+                upgrade::{UpgradeConfig, UpgradeResult},
+            },
+            shared::{additive_map::AdditiveMap, transform::Transform},
+            storage::global_state::CommitResult,
+        },
+        deploy_buffer::BlockLimits,
         storage::{self, StorageType, Value},
     },
+    crypto::hash::Digest,
     types::{BlockHash, Deploy, DeployHash, DeployHeader},
     Chainspec,
 };
@@ -211,7 +226,7 @@ impl<S: StorageType> Display for StorageRequest<S> {
 /// Deploy-queue related requests.
 #[derive(Debug)]
 #[must_use]
-pub(crate) enum DeployQueueRequest {
+pub enum DeployQueueRequest {
     /// Add a deploy to the queue for inclusion into an upcoming block.
     QueueDeploy {
         /// Hash of deploy to store.
@@ -222,17 +237,14 @@ pub(crate) enum DeployQueueRequest {
         responder: Responder<bool>,
     },
 
+    /// Request a list of deploys to propose in a new block.
     RequestForInclusion {
         /// The instant for which the deploy is requested.
-        current_instant: u64,
+        current_instant: u64, // TODO: timestamp: Timestamp,
         /// Maximum time to live.
         max_ttl: u32,
-        /// Maximum block size in bytes.
-        ///
-        /// The total size of the deploys must not exceed this.
-        max_block_size_bytes: u64,
-        /// Gas limit for sum of deploys.
-        max_gas_limit: u64,
+        /// Gas, size and count limits for deploys in a block.
+        limits: BlockLimits,
         /// Maximum number of dependencies.
         max_dependencies: u8,
         /// Set of block hashes pointing to blocks whose deploys should be excluded.
@@ -251,19 +263,22 @@ impl Display for DeployQueueRequest {
             DeployQueueRequest::RequestForInclusion {
                 current_instant,
                 max_ttl,
-                max_block_size_bytes,
-                max_gas_limit,
+                limits,
                 max_dependencies,
                 past,
-                responder: _
-            } => write!(formatter,
-                        "request for inclusion: instant {} ttl {} block_size {} gas_limit {} max_deps {} #past {}",
-                        current_instant,
-                        max_ttl,
-                        max_block_size_bytes,
-                        max_gas_limit,
-                        max_dependencies,
-                        past.len()),
+                responder: _,
+            } => write!(
+                formatter,
+                "request for inclusion: instant {} ttl {} block_size {} gas_limit {} \
+                        max_deps {} max_deploy_count {} #past {}",
+                current_instant,
+                max_ttl,
+                limits.size_bytes,
+                limits.gas,
+                max_dependencies,
+                limits.deploy_count,
+                past.len()
+            ),
         }
     }
 }
@@ -317,6 +332,38 @@ pub enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<GenesisResult, engine_state::Error>>,
     },
+    /// An `ExecuteRequest` that contains multiple deploys that will be executed.
+    Execute {
+        /// Execution request containing deploys.
+        execute_request: ExecuteRequest,
+        /// Responder to call with the execution result.
+        responder: Responder<Result<Vec<ExecutionResult>, engine_state::RootNotFound>>,
+    },
+    /// A request to commit existing execution transforms.
+    Commit {
+        /// Current protocol version of the commit request.
+        protocol_version: ProtocolVersion,
+        /// A valid pre state hash.
+        pre_state_hash: Digest,
+        /// Effects obtained through `ExecutionResult`
+        effects: AdditiveMap<Key, Transform>,
+        /// Responder to call with the commit result.
+        responder: Responder<Result<CommitResult, engine_state::Error>>,
+    },
+    /// A request to run upgrade.
+    Upgrade {
+        /// Upgrade config.
+        upgrade_config: UpgradeConfig,
+        /// Responder to call with the upgrade result.
+        responder: Responder<Result<UpgradeResult, engine_state::Error>>,
+    },
+    /// A query request.
+    Query {
+        /// Query request.
+        query_request: QueryRequest,
+        /// Responder to call with the upgrade result.
+        responder: Responder<Result<QueryResult, engine_state::Error>>,
+    },
 }
 
 impl Display for ContractRuntimeRequest {
@@ -327,6 +374,32 @@ impl Display for ContractRuntimeRequest {
                 "commit genesis {}",
                 chainspec.genesis.protocol_version
             ),
+            ContractRuntimeRequest::Execute {
+                execute_request, ..
+            } => write!(
+                formatter,
+                "execute request: {}",
+                execute_request.parent_state_hash
+            ),
+
+            ContractRuntimeRequest::Commit {
+                protocol_version,
+                pre_state_hash,
+                effects,
+                ..
+            } => write!(
+                formatter,
+                "commit request: {} {} {:?}",
+                protocol_version, pre_state_hash, effects
+            ),
+
+            ContractRuntimeRequest::Upgrade { upgrade_config, .. } => {
+                write!(formatter, "upgrade request: {:?}", upgrade_config)
+            }
+
+            ContractRuntimeRequest::Query { query_request, .. } => {
+                write!(formatter, "query request: {:?}", query_request)
+            }
         }
     }
 }

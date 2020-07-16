@@ -14,6 +14,7 @@ use super::Result;
 
 const ED25519_TAG: u8 = 0;
 const ED25519: &str = "Ed25519";
+const ED25519_LOWERCASE: &str = "ed25519";
 
 /// A secret or private asymmetric key.
 #[derive(Serialize, Deserialize)]
@@ -70,6 +71,17 @@ impl PublicKey {
     /// Constructs a new Ed25519 variant from a byte array.
     pub fn new_ed25519(bytes: [u8; Self::ED25519_LENGTH]) -> Result<Self> {
         Ok(PublicKey::Ed25519(ed25519::PublicKey::from_bytes(&bytes)?))
+    }
+
+    /// Constructs a new key from the algorithm name and a byte slice.
+    pub fn key_from_algorithm_name_and_bytes<N: AsRef<str>, T: AsRef<[u8]>>(
+        name: N,
+        bytes: T,
+    ) -> Result<Self> {
+        match &*name.as_ref().trim().to_lowercase() {
+            ED25519_LOWERCASE => Self::ed25519_from_bytes(bytes),
+            _ => panic!("Invalid algorithm name!"),
+        }
     }
 
     /// Constructs a new Ed25519 variant from a byte slice.
