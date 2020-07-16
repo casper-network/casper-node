@@ -65,6 +65,9 @@ pub enum StorageAnnouncement<S: StorageType> {
     StoredDeploy {
         /// ID or "hash" of the deploy that was added to the store.
         deploy_hash: <S::Deploy as Value>::Id,
+
+        /// The header of the deploy that was added to the store.
+        deploy_header: <S::Deploy as Value>::Header,
     },
 }
 
@@ -75,7 +78,7 @@ where
 {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            StorageAnnouncement::StoredDeploy { deploy_hash } => {
+            StorageAnnouncement::StoredDeploy { deploy_hash, .. } => {
                 write!(formatter, "stored deploy {}", deploy_hash)
             }
         }

@@ -153,6 +153,7 @@ where
                 let deploy_store = self.deploy_store();
                 async move {
                     let deploy_id = *deploy.id();
+                    let deploy_header = deploy.header().clone();
 
                     let result = task::spawn_blocking(move || deploy_store.put(*deploy))
                         .await
@@ -165,7 +166,9 @@ where
 
                     if was_ok {
                         // Now that we have stored the deploy, we also want to announce it.
-                        effect_builder.announce_deploy_stored(deploy_id).await;
+                        effect_builder
+                            .announce_deploy_stored(deploy_id, deploy_header)
+                            .await;
                     }
                 }
                 .ignore()
