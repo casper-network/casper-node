@@ -394,11 +394,11 @@ impl DeployGossiper {
     ) -> Effects<Event> {
         // Get the deploy from the storage component then send it to `sender`.
         effect_builder
-            .get_deploy_from_storage(deploy_hash)
-            .event(move |result| Event::GetFromStoreResult {
+            .get_deploys_from_storage(smallvec![deploy_hash])
+            .event(move |mut results| Event::GetFromStoreResult {
                 deploy_hash,
                 requester: sender,
-                result: Box::new(result),
+                result: Box::new(results.pop().expect("can only contain one result")),
             })
     }
 

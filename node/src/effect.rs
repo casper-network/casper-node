@@ -79,7 +79,7 @@ use crate::{
         consensus::BlockContext,
         contract_runtime::core::engine_state::{self, genesis::GenesisResult},
         deploy_buffer::BlockLimits,
-        storage::{self, StorageType, Value},
+        storage::{self, DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     reactor::{EventQueueHandle, QueueKind},
     types::{Deploy, ExecutedBlock, ProtoBlock},
@@ -491,18 +491,18 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested deploy from the deploy store.
-    pub(crate) async fn get_deploy_from_storage<S>(
+    /// Gets the requested deploys from the deploy store.
+    pub(crate) async fn get_deploys_from_storage<S>(
         self,
-        deploy_hash: <S::Deploy as Value>::Id,
-    ) -> storage::Result<S::Deploy>
+        deploy_hashes: DeployHashes<S>,
+    ) -> DeployResults<S>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| StorageRequest::GetDeploy {
-                deploy_hash,
+            |responder| StorageRequest::GetDeploys {
+                deploy_hashes,
                 responder,
             },
             QueueKind::Regular,
@@ -510,20 +510,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested deploy header from the deploy store.
+    /// Gets the requested deploy headers from the deploy store.
     // TODO: remove once method is used.
     #[allow(dead_code)]
-    pub(crate) async fn get_deploy_header_from_storage<S>(
+    pub(crate) async fn get_deploy_headers_from_storage<S>(
         self,
-        deploy_hash: <S::Deploy as Value>::Id,
-    ) -> storage::Result<<S::Deploy as Value>::Header>
+        deploy_hashes: DeployHashes<S>,
+    ) -> DeployHeaderResults<S>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| StorageRequest::GetDeployHeader {
-                deploy_hash,
+            |responder| StorageRequest::GetDeployHeaders {
+                deploy_hashes,
                 responder,
             },
             QueueKind::Regular,
