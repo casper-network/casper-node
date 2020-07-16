@@ -1,10 +1,6 @@
-use std::{
-    error::Error as StdError, fmt::Debug, io, result::Result as StdResult, sync::PoisonError,
-};
+use std::{error::Error as StdError, fmt::Debug, io, result::Result as StdResult};
 
 use thiserror::Error;
-
-use super::in_mem_store::PoisonedLock;
 
 pub(crate) type Result<T> = StdResult<T, Error>;
 
@@ -50,11 +46,5 @@ impl Error {
 impl From<lmdb::Error> for Error {
     fn from(error: lmdb::Error) -> Self {
         Error::Internal(Box::new(error))
-    }
-}
-
-impl<T> From<PoisonError<T>> for Error {
-    fn from(_error: PoisonError<T>) -> Self {
-        Error::Internal(Box::new(PoisonedLock {}))
     }
 }
