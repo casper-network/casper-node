@@ -739,24 +739,100 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
 }
 
 mod test_harness {
-    use super::{DeliverySchedule, Strategy};
+    use super::{
+        DeliverySchedule, HighwayTestHarness, HighwayTestHarnessBuilder, Strategy, TestRunError,
+    };
+    use crate::{
+        components::consensus::{
+            consensus_des_testing::ValidatorId,
+            traits::{Context, ValidatorSecret},
+        },
+        types::TimeDiff,
+    };
+    use rand_core::SeedableRng;
+    use rand_xorshift::XorShiftRng;
+    use std::{
+        collections::{hash_map::DefaultHasher, HashMap},
+        hash::Hasher,
+    };
 
-    struct SmallDelay();
+    struct UniformNoDropping;
 
-    impl Strategy<DeliverySchedule> for SmallDelay {
-        fn map<R: rand::Rng>(&self, _rng: &mut R, i: DeliverySchedule) -> DeliverySchedule {
+    impl Strategy<DeliverySchedule> for UniformNoDropping {
+        fn map<R: rand::Rng>(&self, rng: &mut R, i: DeliverySchedule) -> DeliverySchedule {
             match i {
-                DeliverySchedule::Drop => DeliverySchedule::Drop,
+                DeliverySchedule::Drop => i,
                 DeliverySchedule::AtInstant(instant) => {
-                    DeliverySchedule::AtInstant(instant + 1.into())
+                    DeliverySchedule::AtInstant(instant + 5.into())
                 }
             }
         }
     }
 
+    #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub(crate) struct TestContext;
+
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    pub(crate) struct TestSecret(pub(crate) u32);
+
+    impl ValidatorSecret for TestSecret {
+        type Hash = u64;
+        type Signature = u64;
+
+        fn sign(&self, data: &Self::Hash) -> Self::Signature {
+            data + u64::from(self.0)
+        }
+    }
+
+    impl Context for TestContext {
+        type ConsensusValue = u32;
+        type ValidatorId = ValidatorId;
+        type ValidatorSecret = TestSecret;
+        type Signature = u64;
+        type Hash = u64;
+        type InstanceId = u64;
+
+        fn hash(data: &[u8]) -> Self::Hash {
+            let mut hasher = DefaultHasher::new();
+            hasher.write(data);
+            hasher.finish()
+        }
+
+        fn verify_signature(
+            hash: &Self::Hash,
+            public_key: &Self::ValidatorId,
+            signature: &<Self::ValidatorSecret as ValidatorSecret>::Signature,
+        ) -> bool {
+            let computed_signature = hash + public_key.0;
+            computed_signature == *signature
+        }
+    }
+
     #[test]
     fn on_empty_queue_error() {
-        unimplemented!()
+        let mut rand = XorShiftRng::from_seed(rand::random());
+        let validators = vec![(ValidatorId(0), TestSecret(0))].into_iter().collect();
+
+        let mut highway_test_harness: HighwayTestHarness<TestContext, UniformNoDropping> =
+            HighwayTestHarnessBuilder::new(0u64)
+                .validators(validators)
+                .consensus_values(vec![1])
+                .delivery_strategy(UniformNoDropping)
+                .weight_limits(1, 5)
+                .ftt(0)
+                .build()
+                .ok()
+                .expect("Construction was successful");
+
+        let mut mut_handle = highway_test_harness.mutable_handle();
+        mut_handle.clear_message_queue();
+        drop(mut_handle);
+
+        assert_eq!(
+            highway_test_harness.crank(&mut rand),
+            Err(TestRunError::NoMessages),
+            "Expected the test run to stop."
+        );
     }
 
     #[test]
