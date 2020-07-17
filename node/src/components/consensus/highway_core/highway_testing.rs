@@ -598,7 +598,6 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
             self.faulty_num
         };
 
-        let ftt = self.ftt.ok_or_else(|| BuilderError::EmptyFtt)?;
         let instance_id = self.instance_id.clone();
         let seed = self.seed;
         let round_exp = self.round_exp;
@@ -612,6 +611,14 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
             }
             // https://casperlabs.atlassian.net/browse/HWY-116
             Distribution::Poisson(_) => unimplemented!("Poisson distribution of weights"),
+        };
+
+        let ftt = match self.ftt {
+            None => {
+                let weights_sum = weights.iter().fold(0u64, |acc, el| acc + el.0);
+                weights_sum / 3
+            }
+            Some(ftt) => ftt,
         };
 
         let validator_ids = (0..validators_num)
