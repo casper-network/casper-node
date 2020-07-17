@@ -229,8 +229,17 @@ where
         self.consensus_values.pop_front()
     }
 
-    fn mut_handle(&mut self) -> &mut Self {
-        self
+    /// Helper for getting validator from the underlying virtual net.
+    fn validator_mut(
+        &mut self,
+        validator_id: &ValidatorId,
+    ) -> Result<
+        &mut Validator<Ctx::ConsensusValue, HighwayMessage<Ctx>, HighwayConsensus<Ctx>>,
+        TestRunError<Ctx>,
+    > {
+        self.virtual_net
+            .validator_mut(&validator_id)
+            .ok_or_else(|| TestRunError::MissingValidator(validator_id.clone()))
     }
 
     /// Processes a message sent to `validator_id`.
@@ -240,46 +249,29 @@ where
         validator_id: ValidatorId,
         message: Message<HighwayMessage<Ctx>>,
     ) -> Result<Vec<HighwayMessage<Ctx>>, TestRunError<Ctx>> {
-        // Using the same `recipient` instance in the whole method body is not possible due to compiler
-        // complaining about using `self` as mutable and immutable.
-        {
-            let recipient = self
-                .virtual_net
-                .get_validator_mut(&validator_id)
-                .ok_or_else(|| TestRunError::MissingValidator(validator_id))?;
-            recipient.push_messages_received(vec![message.clone()]);
-        }
+        self.validator_mut(&validator_id)?
+            .push_messages_received(vec![message.clone()]);
 
         let messages = {
             let sender_id = message.sender;
 
             let hwm = message.payload().clone();
             match hwm {
-                Timer(timestamp) => {
-                    let mut recipient = self
-                        .virtual_net
-                        .get_validator_mut(&validator_id)
-                        .ok_or_else(|| TestRunError::MissingValidator(validator_id))?;
+                Timer(timestamp) => self
+                    .validator_mut(&validator_id)?
+                    .consensus
+                    .highway
+                    .handle_timer(timestamp)
+                    .into_iter()
+                    .map(HighwayMessage::from)
+                    .collect(),
 
-                    recipient
-                        .consensus
-                        .highway
-                        .handle_timer(timestamp)
-                        .into_iter()
-                        .map(HighwayMessage::from)
-                        .collect()
-                }
                 NewVertex(v) => {
-                    let mut recipient = self
-                        .virtual_net
-                        .get_validator_mut(&validator_id)
-                        .ok_or_else(|| TestRunError::MissingValidator(validator_id))?;
-                    let recipient_id = recipient.id;
-                    match self.add_vertex(recipient_id, sender_id, v)? {
+                    match self.add_vertex(validator_id, sender_id, v)? {
                         Ok(msgs) => msgs,
                         Err((v, error)) => {
                             // TODO: Replace with tracing library and maybe add to sender state?
-                            println!("{:?} sent an invalid vertex {:?} to {:?} that resulted in {:?} error", sender_id, v, recipient_id, error);
+                            println!("{:?} sent an invalid vertex {:?} to {:?} that resulted in {:?} error", sender_id, v, validator_id, error);
                             vec![]
                         }
                     }
@@ -289,12 +281,7 @@ where
                         .next_consensus_value()
                         .ok_or_else(|| TestRunError::NoConsensusValues)?;
 
-                    let mut recipient = self
-                        .virtual_net
-                        .get_validator_mut(&validator_id)
-                        .ok_or_else(|| TestRunError::MissingValidator(validator_id))?;
-
-                    recipient
+                    self.validator_mut(&validator_id)?
                         .consensus
                         .highway
                         .propose(consensus_value, block_context)
@@ -305,10 +292,7 @@ where
             }
         };
 
-        let recipient = self
-            .virtual_net
-            .get_validator_mut(&validator_id)
-            .ok_or_else(|| TestRunError::MissingValidator(validator_id))?;
+        let recipient = self.validator_mut(&validator_id)?;
         recipient.push_messages_produced(messages.clone());
 
         let finality_result = match recipient.consensus.run_finality() {
@@ -347,7 +331,7 @@ where
         let sync_result = {
             let validator = self
                 .virtual_net
-                .get_validator_mut(&recipient)
+                .validator_mut(&recipient)
                 .ok_or_else(|| TestRunError::MissingValidator(recipient))?;
 
             match validator.consensus.highway.pre_validate_vertex(vertex) {
@@ -362,7 +346,7 @@ where
                 let add_vertex_effects: Vec<HighwayMessage<Ctx>> = {
                     let validator = self
                         .virtual_net
-                        .get_validator_mut(&recipient)
+                        .validator_mut(&recipient)
                         .ok_or_else(|| TestRunError::MissingValidator(recipient))?;
 
                     match validator
@@ -390,8 +374,8 @@ where
     }
 
     /// Synchronizes missing dependencies of `pvv` that `recipient` is missing.
-    /// If an error occures during synchronization of one of `pvv`'s dependencies
-    /// it's returned and it's the original vertex mustn't be added to the state.
+    /// If an error occurrs during synchronization of one of `pvv`'s dependencies
+    /// it's returned and the original vertex mustn't be added to the state.
     #[allow(clippy::type_complexity)]
     fn synchronize_validator(
         &mut self,
@@ -407,7 +391,7 @@ where
         loop {
             let validator = self
                 .virtual_net
-                .get_validator_mut(&recipient)
+                .validator_mut(&recipient)
                 .ok_or_else(|| TestRunError::MissingValidator(recipient))?;
 
             match validator.consensus.highway.missing_dependency(&pvv) {
@@ -418,7 +402,7 @@ where
                         hwms.extend(hwm)
                     }
                     Err(vertex_error) => {
-                        // An error occured when trying to synchronize a missing dependency.
+                        // An error occurred when trying to synchronize a missing dependency.
                         // We must stop the synchronization process and return it to the caller.
                         return Ok(Err(vertex_error));
                     }
@@ -440,29 +424,15 @@ where
         sender: ValidatorId,
     ) -> Result<Result<Vec<HighwayMessage<Ctx>>, (Vertex<Ctx>, VertexError)>, TestRunError<Ctx>>
     {
-        let senders_state = self
+        let vertex = self
             .virtual_net
-            .get_validator_mut(&sender)
+            .validator_mut(&sender)
             .ok_or_else(|| TestRunError::MissingValidator(sender))?
             .consensus
             .highway
-            .state();
-
-        let vertex = match missing_dependency {
-            Dependency::Vote(ref hash) => {
-                let swvote = senders_state.wire_vote(&hash).ok_or_else(|| {
-                    TestRunError::SenderMissingDependency(sender, missing_dependency)
-                })?;
-                Vertex::Vote(swvote)
-            }
-            Dependency::Evidence(ref idx) => {
-                let evidence = senders_state.opt_evidence(*idx).cloned().ok_or_else(|| {
-                    TestRunError::SenderMissingDependency(sender, missing_dependency)
-                })?;
-
-                Vertex::Evidence(evidence)
-            }
-        };
+            .get_dependency(&missing_dependency)
+            .map(|vv| vv.0)
+            .ok_or_else(|| TestRunError::SenderMissingDependency(sender, missing_dependency))?;
 
         self.add_vertex(recipient, sender, vertex)
     }
@@ -651,11 +621,8 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
         assert_eq!(weights.len(), validator_ids.len());
 
         let validators: Validators<ValidatorId> = {
-            let zipped: Vec<(ValidatorId, Weight)> = validator_ids
-                .clone()
-                .into_iter()
-                .zip(weights.into_iter())
-                .collect();
+            let zipped: Vec<(ValidatorId, Weight)> =
+                validator_ids.clone().into_iter().zip(weights).collect();
             Validators::from_iter(zipped)
         };
 
@@ -696,13 +663,12 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
 
             let (faulty_ids, honest_ids) = validator_ids.split_at(faulty_num as usize);
 
-            let mut faulty: Vec<(ValidatorId, bool)> =
-                faulty_ids.iter().map(|vid| (*vid, true)).collect();
-            let honest: Vec<(ValidatorId, bool)> =
-                honest_ids.iter().map(|vid| (*vid, false)).collect();
-            faulty.extend(honest);
-
-            for (vid, is_faulty) in faulty.into_iter() {
+            for (vid, is_faulty) in faulty_ids
+                .iter()
+                .map(|vid| (*vid, true))
+                .chain(honest_ids.iter().map(|vid| (*vid, false)))
+                .into_iter()
+            {
                 let (consensus, msgs) = highway_consensus((vid, &mut self.validators_secs));
                 let validator = Validator::new(vid, is_faulty, consensus);
                 let qm: Vec<QueueEntry<HighwayMessage<C>>> = msgs

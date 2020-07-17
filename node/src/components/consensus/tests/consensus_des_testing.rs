@@ -227,7 +227,7 @@ where
         self.validators_map.keys()
     }
 
-    pub(crate) fn get_validator_mut(
+    pub(crate) fn validator_mut(
         &mut self,
         validator_id: &ValidatorId,
     ) -> Option<&mut Validator<C, M, D>> {
