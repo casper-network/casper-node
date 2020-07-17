@@ -5,6 +5,10 @@ use crate::components::{contract_runtime, small_network, storage};
 /// Error type returned by the validator reactor.
 #[derive(Debug, Error)]
 pub enum Error {
+    /// Metrics-related error
+    #[error("prometheus (metrics) error: {0}")]
+    Metrics(#[from] prometheus::Error),
+
     /// `SmallNetwork` component error.
     #[error("small network error: {0}")]
     SmallNetwork(#[from] small_network::Error),

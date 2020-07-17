@@ -20,6 +20,7 @@
 //! #
 //! # use derive_more::From;
 //! # use maplit::hashmap;
+//! # use prometheus::Registry;
 //! # use rand::{Rng, rngs::OsRng};
 //! #
 //! # use casperlabs_node::{components::{Component,
@@ -164,12 +165,14 @@
 //! impl reactor::Reactor for Reactor {
 //!     type Event = Event;
 //!     type Config = ();
-//!     type Error = ();
+//!     type Error = anyhow::Error;
 //!
-//!     fn new<R: Rng + ?Sized>(_cfg: Self::Config,
+//!     fn new<R: Rng + ?Sized>(
+//!            _cfg: Self::Config,
+//!            _registry: &Registry,
 //!            event_queue: EventQueueHandle<Self::Event>,
 //!            rng: &mut R,
-//!     ) -> Result<(Self, Effects<Self::Event>), ()> {
+//!     ) -> Result<(Self, Effects<Self::Event>), anyhow::Error> {
 //!         let effect_builder = EffectBuilder::new(event_queue);
 //!         let (shouter, shouter_effect) = Shouter::new(effect_builder);
 //!

@@ -47,6 +47,7 @@ openssl = "0.10.29"
 parity-wasm = "0.41.0"
 parking_lot = "0.10.0"
 pem = "0.8.1"
+prometheus = "0.9.0"
 proptest = { version = "0.9.4", optional = true }
 pwasm-utils = "0.12.0"
 rand = "0.7.3"

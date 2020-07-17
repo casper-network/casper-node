@@ -6,6 +6,7 @@ use std::{
 };
 
 use derive_more::From;
+use prometheus::Registry;
 use rand::Rng;
 use thiserror::Error;
 use tracing::debug;
@@ -70,6 +71,10 @@ pub enum Error {
     #[error("config error: {0}")]
     ConfigError(String),
 
+    /// Metrics-related error
+    #[error("prometheus (metrics) error: {0}")]
+    Metrics(#[from] prometheus::Error),
+
     /// `ChainspecHandler` component error.
     #[error("chainspec error: {0}")]
     Chainspec(#[from] chainspec_handler::Error),
@@ -86,20 +91,16 @@ pub enum Error {
 /// Validator node reactor.
 #[derive(Debug)]
 pub struct Reactor {
-    config: validator::Config,
+    pub(super) config: validator::Config,
     chainspec_handler: ChainspecHandler,
-    storage: Storage,
-    contract_runtime: ContractRuntime,
+    pub(super) storage: Storage,
+    pub(super) contract_runtime: ContractRuntime,
 }
 
 impl Reactor {
     /// Returns whether the initialization process completed successfully or not.
     pub fn stopped_successfully(&self) -> bool {
         self.chainspec_handler.stopped_successfully()
-    }
-
-    pub(super) fn destructure(self) -> (validator::Config, Storage, ContractRuntime) {
-        (self.config, self.storage, self.contract_runtime)
     }
 }
 
@@ -110,6 +111,7 @@ impl reactor::Reactor for Reactor {
 
     fn new<Rd: Rng + ?Sized>(
         config: Self::Config,
+        _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut Rd,
     ) -> Result<(Self, Effects<Self::Event>), Error> {

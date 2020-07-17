@@ -8,6 +8,7 @@ mod error;
 use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
+use prometheus::Registry;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::info;
@@ -19,8 +20,9 @@ use crate::{
         contract_runtime::{self, ContractRuntime},
         deploy_buffer::{self, DeployBuffer},
         deploy_gossiper::{self, DeployGossiper},
+        metrics::Metrics,
         pinger::{self, Pinger},
-        storage::{Storage, StorageType},
+        storage::Storage,
         Component,
     },
     effect::{
@@ -28,7 +30,8 @@ use crate::{
             ApiServerAnnouncement, ConsensusAnnouncement, NetworkAnnouncement, StorageAnnouncement,
         },
         requests::{
-            ApiRequest, ContractRuntimeRequest, DeployQueueRequest, NetworkRequest, StorageRequest,
+            ApiRequest, ContractRuntimeRequest, DeployQueueRequest, MetricsRequest, NetworkRequest,
+            StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -100,6 +103,9 @@ pub enum Event {
     /// Deploy queue request.
     #[from]
     DeployQueueRequest(DeployQueueRequest),
+    /// Metrics request.
+    #[from]
+    MetricsRequest(MetricsRequest),
 
     // Announcements
     /// Network announcement.
@@ -159,6 +165,7 @@ impl Display for Event {
             Event::ContractRuntime(event) => write!(f, "contract runtime: {}", event),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
             Event::DeployQueueRequest(req) => write!(f, "deploy queue request: {}", req),
+            Event::MetricsRequest(req) => write!(f, "metrics request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
             Event::ApiServerAnnouncement(ann) => write!(f, "api server announcement: {}", ann),
             Event::ConsensusAnnouncement(ann) => write!(f, "consensus announcement: {}", ann),
@@ -170,6 +177,7 @@ impl Display for Event {
 /// Validator node reactor.
 #[derive(Debug)]
 pub struct Reactor {
+    metrics: Metrics,
     net: SmallNetwork<Event, Message>,
     pinger: Pinger,
     storage: Storage,
@@ -180,17 +188,33 @@ pub struct Reactor {
     deploy_buffer: DeployBuffer,
 }
 
-impl Reactor {
-    fn init(
-        config: Config,
-        event_queue: EventQueueHandle<Event>,
-        storage: Storage,
-        contract_runtime: ContractRuntime,
+impl reactor::Reactor for Reactor {
+    type Event = Event;
+
+    // The "configuration" is in fact the whole state of the initializer reactor, which we
+    // deconstruct and reuse.
+    type Config = initializer::Reactor;
+    type Error = Error;
+
+    fn new<R: Rng + ?Sized>(
+        initializer: Self::Config,
+        registry: &Registry,
+        event_queue: EventQueueHandle<Self::Event>,
+        _rng: &mut R,
     ) -> Result<(Self, Effects<Event>), Error> {
+        let initializer::Reactor {
+            config,
+            storage,
+            contract_runtime,
+            ..
+        } = initializer;
+
+        let metrics = Metrics::new(registry.clone());
+
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, config.validator_net)?;
 
-        let (pinger, pinger_effects) = Pinger::new(effect_builder);
+        let (pinger, pinger_effects) = Pinger::new(registry, effect_builder)?;
         let api_server = ApiServer::new(config.http_server, effect_builder);
         let timestamp = Timestamp::now();
         let (consensus, consensus_effects) =
@@ -204,6 +228,7 @@ impl Reactor {
 
         Ok((
             Reactor {
+                metrics,
                 net,
                 pinger,
                 storage,
@@ -215,22 +240,6 @@ impl Reactor {
             },
             effects,
         ))
-    }
-}
-
-impl reactor::Reactor for Reactor {
-    type Event = Event;
-    type Config = Config;
-    type Error = Error;
-
-    fn new<R: Rng + ?Sized>(
-        config: Self::Config,
-        event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut R,
-    ) -> Result<(Self, Effects<Event>), Error> {
-        let storage = Storage::new(&config.storage)?;
-        let contract_runtime = ContractRuntime::new(&config.storage, config.contract_runtime)?;
-        Self::init(config, event_queue, storage, contract_runtime)
     }
 
     fn dispatch_event<R: Rng + ?Sized>(
@@ -282,6 +291,9 @@ impl reactor::Reactor for Reactor {
             ),
             Event::DeployQueueRequest(req) => {
                 self.dispatch_event(effect_builder, rng, Event::DeployQueue(req.into()))
+            }
+            Event::MetricsRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::MetricsRequest(req))
             }
 
             // Announcements:
@@ -335,15 +347,5 @@ impl reactor::Reactor for Reactor {
                 Effects::new()
             }
         }
-    }
-}
-
-impl reactor::ReactorExt<initializer::Reactor> for Reactor {
-    fn new_from(
-        event_queue: EventQueueHandle<Self::Event>,
-        initializer_reactor: initializer::Reactor,
-    ) -> Result<(Self, Effects<Self::Event>), Error> {
-        let (config, storage, contract_runtime) = initializer_reactor.destructure();
-        Self::init(config, event_queue, storage, contract_runtime)
     }
 }
