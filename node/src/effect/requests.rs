@@ -31,7 +31,7 @@ use crate::{
         storage::{self, DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::hash::Digest,
-    types::{BlockHash, Deploy, DeployHash, DeployHeader},
+    types::{BlockHash, Deploy, DeployHash, DeployHeader, ExecutedBlock, FinalizedBlock},
     utils::DisplayIter,
     Chainspec,
 };
@@ -405,6 +405,29 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::Query { query_request, .. } => {
                 write!(formatter, "query request: {:?}", query_request)
             }
+        }
+    }
+}
+
+/// A contract runtime request.
+#[derive(Debug)]
+#[must_use]
+pub enum BlockExecutorRequest {
+    /// A request to execute finalized block.
+    ExecuteBlock {
+        /// The finalized block.
+        finalized_block: FinalizedBlock,
+        /// Responder to call with the result.
+        responder: Responder<ExecutedBlock>,
+    },
+}
+
+impl Display for BlockExecutorRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BlockExecutorRequest::ExecuteBlock {
+                finalized_block, ..
+            } => write!(f, "execute block {}", finalized_block),
         }
     }
 }

@@ -1,9 +1,16 @@
 use std::collections::BTreeSet;
+use std::iter::FromIterator;
 
 use types::account::AccountHash;
 
-use crate::components::contract_runtime::core::{
-    engine_state::executable_deploy_item::ExecutableDeployItem, DeployHash,
+use crate::{
+    components::{
+        contract_runtime::core::{
+            engine_state::executable_deploy_item::ExecutableDeployItem, DeployHash,
+        },
+        storage::Value,
+    },
+    types::Deploy,
 };
 
 type GasPrice = u64;
@@ -37,5 +44,19 @@ impl DeployItem {
             authorization_keys,
             deploy_hash,
         }
+    }
+}
+
+impl From<Deploy> for DeployItem {
+    fn from(deploy: Deploy) -> Self {
+        let account_hash = AccountHash::new([42; 32]);
+        DeployItem::new(
+            account_hash,
+            deploy.session().clone(),
+            deploy.payment().clone(),
+            deploy.header().gas_price,
+            BTreeSet::from_iter(vec![account_hash]),
+            deploy.id().inner().to_bytes(),
+        )
     }
 }

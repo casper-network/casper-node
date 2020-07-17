@@ -1,6 +1,7 @@
 use std::{fs, path::PathBuf, str};
 
 use anyhow::Context;
+use rand::Rng;
 use reqwest::{Client, StatusCode};
 use structopt::StructOpt;
 
@@ -126,7 +127,8 @@ async fn put_deploy(
     let msg = b"Message"; // TODO
     let sig = asymmetric_key::sign(msg, &secret_key, &public_key);
 
-    let deploy_hash: Digest = [42; 32].into();
+    let deploy_hash_bytes: [u8; 32] = rand::thread_rng().gen();
+    let deploy_hash: Digest = Digest::from(deploy_hash_bytes);
 
     let deploy: Deploy = Deploy::new(
         deploy_hash.into(),

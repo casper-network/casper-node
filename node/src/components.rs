@@ -9,6 +9,7 @@ pub mod contract_runtime;
 pub(crate) mod deploy_buffer;
 pub(crate) mod deploy_gossiper;
 // The  `in_memory_network` is public for use in doctests.
+pub(crate) mod block_executor;
 pub mod in_memory_network;
 pub(crate) mod pinger;
 pub(crate) mod small_network;

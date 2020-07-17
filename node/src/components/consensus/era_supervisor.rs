@@ -27,7 +27,7 @@ use crate::{
     },
     crypto::{asymmetric_key::PublicKey, asymmetric_key::SecretKey, hash::hash},
     effect::{EffectBuilder, EffectExt, Effects},
-    types::{ProtoBlock, Timestamp},
+    types::{FinalizedBlock, ProtoBlock, Timestamp},
 };
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -162,13 +162,13 @@ where
                     block_context,
                 }),
             ConsensusProtocolResult::FinalizedBlock(block) => {
-                let mut effects =
-                    effect_builder
-                        .execute_block(block.clone())
-                        .event(move |executed_block| Event::ExecutedBlock {
-                            era_id,
-                            executed_block,
-                        });
+                let mut effects = effect_builder
+                    // TODO: Creating FinalizedBlock is oversimplified and should be properly handled by consensus in future.
+                    .execute_block(FinalizedBlock::from(block.clone()))
+                    .event(move |executed_block| Event::ExecutedBlock {
+                        era_id,
+                        executed_block,
+                    });
                 effects.extend(
                     effect_builder
                         .announce_finalized_proto_block(block)

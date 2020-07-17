@@ -1,6 +1,7 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
 use derive_more::Display;
+use hex_fmt::HexList;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -41,11 +42,32 @@ impl ProtoBlock {
     }
 }
 
+/// The piece of information that wil become the content of a future block after it was finalized and before execution happened yet.
+#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct FinalizedBlock(pub ProtoBlock);
+
+impl Display for FinalizedBlock {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "finalized block deploys {:<8x}, random bit {} ",
+            HexList(&self.0.deploys),
+            self.0.random_bit
+        )
+    }
+}
+
+impl From<ProtoBlock> for FinalizedBlock {
+    fn from(proto_block: ProtoBlock) -> Self {
+        Self(proto_block)
+    }
+}
+
 /// A proto-block after execution, with the resulting post-state-hash
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ExecutedBlock {
-    /// The executed proto-block
-    pub proto_block: ProtoBlock,
+    /// The executed finalized block
+    pub finalized_block: FinalizedBlock,
     /// The root hash of the resulting state
     pub post_state_hash: Digest,
 }
