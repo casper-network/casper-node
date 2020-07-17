@@ -187,7 +187,8 @@ impl Reactor {
         let (pinger, pinger_effects) = Pinger::new(effect_builder);
         let api_server = ApiServer::new(config.http_server, effect_builder);
         let timestamp = Timestamp::now();
-        let (consensus, consensus_effects) = EraSupervisor::new(timestamp, effect_builder);
+        let (consensus, consensus_effects) =
+            EraSupervisor::new(timestamp, config.consensus, effect_builder)?;
         let deploy_gossiper = DeployGossiper::new(config.gossip);
         let deploy_buffer = DeployBuffer::new();
 

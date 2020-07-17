@@ -66,6 +66,10 @@ impl Display for Event {
 /// Error type returned by the initializer reactor.
 #[derive(Debug, Error)]
 pub enum Error {
+    /// `Config` error.
+    #[error("config error: {0}")]
+    ConfigError(String),
+
     /// `ChainspecHandler` component error.
     #[error("chainspec error: {0}")]
     Chainspec(#[from] chainspec_handler::Error),
@@ -101,11 +105,11 @@ impl Reactor {
 
 impl reactor::Reactor for Reactor {
     type Event = Event;
-    type Config = (PathBuf, validator::Config);
+    type Config = validator::Config;
     type Error = Error;
 
     fn new<Rd: Rng + ?Sized>(
-        (chainspec_config_path, config): Self::Config,
+        config: Self::Config,
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut Rd,
     ) -> Result<(Self, Effects<Self::Event>), Error> {
@@ -113,7 +117,12 @@ impl reactor::Reactor for Reactor {
 
         let storage = Storage::new(&config.storage)?;
         let contract_runtime = ContractRuntime::new(&config.storage, config.contract_runtime)?;
-
+        let chainspec_config_path: PathBuf = {
+            let ret = &config.node.chainspec_config_path;
+            ret.clone().ok_or_else(|| {
+                Error::ConfigError(String::from("missing chainspec_config_path value"))
+            })?
+        };
         let (chainspec_handler, chainspec_effects) =
             ChainspecHandler::new(chainspec_config_path, effect_builder)?;
 

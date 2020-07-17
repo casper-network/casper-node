@@ -1,3 +1,17 @@
+# ========================================================
+# Configuration options for a node.
+# ========================================================
+[node]
+chainspec_config_path = 'chainspec.toml'
+
+# ====================================
+# Configuration options for consensus
+# ====================================
+[consensus]
+# relative path to validator's secret key file used to sign consensus messages
+# (can be passed via cli)
+secret_key_path= ''
+
 # ====================================
 # Configuration options for networking
 # ====================================

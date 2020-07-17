@@ -35,6 +35,7 @@ pub(crate) use components::small_network::{self, SmallNetwork};
 pub use components::{
     api_server::Config as ApiServerConfig,
     chainspec_handler::{Chainspec, Error as ChainspecError, GenesisAccount},
+    consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
     small_network::{Config as SmallNetworkConfig, Error as SmallNetworkError},
     storage::{Config as StorageConfig, Error as StorageError},
