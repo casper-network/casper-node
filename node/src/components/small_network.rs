@@ -44,7 +44,7 @@ mod error;
 mod event;
 mod message;
 #[cfg(test)]
-mod test;
+mod tests;
 
 use std::{
     collections::{HashMap, HashSet},
