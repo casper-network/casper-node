@@ -8,8 +8,10 @@ mod error;
 use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
+use prometheus::Registry;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 use crate::{
     components::{
@@ -18,14 +20,18 @@ use crate::{
         contract_runtime::{self, ContractRuntime},
         deploy_buffer::{self, DeployBuffer},
         deploy_gossiper::{self, DeployGossiper},
+        metrics::Metrics,
         pinger::{self, Pinger},
-        storage::{Storage, StorageType},
+        storage::Storage,
         Component,
     },
     effect::{
-        announcements::{ApiServerAnnouncement, NetworkAnnouncement},
+        announcements::{
+            ApiServerAnnouncement, ConsensusAnnouncement, NetworkAnnouncement, StorageAnnouncement,
+        },
         requests::{
-            ApiRequest, ContractRuntimeRequest, DeployQueueRequest, NetworkRequest, StorageRequest,
+            ApiRequest, ContractRuntimeRequest, DeployQueueRequest, MetricsRequest, NetworkRequest,
+            StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -97,14 +103,23 @@ pub enum Event {
     /// Deploy queue request.
     #[from]
     DeployQueueRequest(DeployQueueRequest),
+    /// Metrics request.
+    #[from]
+    MetricsRequest(MetricsRequest),
 
     // Announcements
     /// Network announcement.
     #[from]
     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
+    /// Storage announcement.
+    #[from]
+    StorageAnnouncement(StorageAnnouncement<Storage>),
     /// API server announcement.
     #[from]
     ApiServerAnnouncement(ApiServerAnnouncement),
+    /// Consensus announcement.
+    #[from]
+    ConsensusAnnouncement(ConsensusAnnouncement),
 }
 
 impl From<ApiRequest> for Event {
@@ -150,8 +165,11 @@ impl Display for Event {
             Event::ContractRuntime(event) => write!(f, "contract runtime: {}", event),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
             Event::DeployQueueRequest(req) => write!(f, "deploy queue request: {}", req),
+            Event::MetricsRequest(req) => write!(f, "metrics request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
             Event::ApiServerAnnouncement(ann) => write!(f, "api server announcement: {}", ann),
+            Event::ConsensusAnnouncement(ann) => write!(f, "consensus announcement: {}", ann),
+            Event::StorageAnnouncement(ann) => write!(f, "storage announcement: {}", ann),
         }
     }
 }
@@ -159,6 +177,7 @@ impl Display for Event {
 /// Validator node reactor.
 #[derive(Debug)]
 pub struct Reactor {
+    metrics: Metrics,
     net: SmallNetwork<Event, Message>,
     pinger: Pinger,
     storage: Storage,
@@ -169,20 +188,37 @@ pub struct Reactor {
     deploy_buffer: DeployBuffer,
 }
 
-impl Reactor {
-    fn init(
-        config: Config,
-        event_queue: EventQueueHandle<Event>,
-        storage: Storage,
-        contract_runtime: ContractRuntime,
+impl reactor::Reactor for Reactor {
+    type Event = Event;
+
+    // The "configuration" is in fact the whole state of the initializer reactor, which we
+    // deconstruct and reuse.
+    type Config = initializer::Reactor;
+    type Error = Error;
+
+    fn new<R: Rng + ?Sized>(
+        initializer: Self::Config,
+        registry: &Registry,
+        event_queue: EventQueueHandle<Self::Event>,
+        _rng: &mut R,
     ) -> Result<(Self, Effects<Event>), Error> {
+        let initializer::Reactor {
+            config,
+            storage,
+            contract_runtime,
+            ..
+        } = initializer;
+
+        let metrics = Metrics::new(registry.clone());
+
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, config.validator_net)?;
 
-        let (pinger, pinger_effects) = Pinger::new(effect_builder);
+        let (pinger, pinger_effects) = Pinger::new(registry, effect_builder)?;
         let api_server = ApiServer::new(config.http_server, effect_builder);
         let timestamp = Timestamp::now();
-        let (consensus, consensus_effects) = EraSupervisor::new(timestamp, effect_builder);
+        let (consensus, consensus_effects) =
+            EraSupervisor::new(timestamp, config.consensus, effect_builder)?;
         let deploy_gossiper = DeployGossiper::new(config.gossip);
         let deploy_buffer = DeployBuffer::new();
 
@@ -192,6 +228,7 @@ impl Reactor {
 
         Ok((
             Reactor {
+                metrics,
                 net,
                 pinger,
                 storage,
@@ -203,22 +240,6 @@ impl Reactor {
             },
             effects,
         ))
-    }
-}
-
-impl reactor::Reactor for Reactor {
-    type Event = Event;
-    type Config = Config;
-    type Error = Error;
-
-    fn new<R: Rng + ?Sized>(
-        config: Self::Config,
-        event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut R,
-    ) -> Result<(Self, Effects<Event>), Error> {
-        let storage = Storage::new(&config.storage)?;
-        let contract_runtime = ContractRuntime::new(&config.storage, config.contract_runtime)?;
-        Self::init(config, event_queue, storage, contract_runtime)
     }
 
     fn dispatch_event<R: Rng + ?Sized>(
@@ -271,6 +292,9 @@ impl reactor::Reactor for Reactor {
             Event::DeployQueueRequest(req) => {
                 self.dispatch_event(effect_builder, rng, Event::DeployQueue(req.into()))
             }
+            Event::MetricsRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::MetricsRequest(req))
+            }
 
             // Announcements:
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
@@ -291,24 +315,37 @@ impl reactor::Reactor for Reactor {
                         })
                     }
                 };
-
-                // Any incoming message is one for the pinger.
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
                 let event = deploy_gossiper::Event::DeployReceived { deploy };
                 self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
             }
+            Event::ConsensusAnnouncement(consensus_announcement) => {
+                let reactor_event = Event::DeployQueue(match consensus_announcement {
+                    ConsensusAnnouncement::Proposed(block) => {
+                        deploy_buffer::Event::ProposedProtoBlock(block)
+                    }
+                    ConsensusAnnouncement::Finalized(block) => {
+                        deploy_buffer::Event::FinalizedProtoBlock(block)
+                    }
+                    ConsensusAnnouncement::Orphaned(block) => {
+                        deploy_buffer::Event::OrphanedProtoBlock(block)
+                    }
+                });
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            Event::StorageAnnouncement(StorageAnnouncement::StoredDeploy {
+                deploy_hash,
+                deploy_header,
+            }) => {
+                if self.deploy_buffer.add_deploy(deploy_hash, deploy_header) {
+                    info!("Added deploy {} to the buffer.", deploy_hash);
+                } else {
+                    info!("Deploy {} rejected from the buffer.", deploy_hash);
+                }
+                Effects::new()
+            }
         }
-    }
-}
-
-impl reactor::ReactorExt<initializer::Reactor> for Reactor {
-    fn new_from(
-        event_queue: EventQueueHandle<Self::Event>,
-        initializer_reactor: initializer::Reactor,
-    ) -> Result<(Self, Effects<Self::Event>), Error> {
-        let (config, storage, contract_runtime) = initializer_reactor.destructure();
-        Self::init(config, event_queue, storage, contract_runtime)
     }
 }

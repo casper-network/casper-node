@@ -23,9 +23,9 @@ use crate::{
         highway_core::highway::HighwayParams,
         protocols::highway::{HighwayContext, HighwayProtocol, HighwaySecret},
         traits::NodeIdT,
-        ConsensusMessage, Event, ReactorEventT,
+        Config, ConsensusMessage, Event, ReactorEventT,
     },
-    crypto::{asymmetric_key::generate_ed25519_keypair, hash::hash},
+    crypto::{asymmetric_key::PublicKey, asymmetric_key::SecretKey, hash::hash},
     effect::{EffectBuilder, EffectExt, Effects},
     types::{ProtoBlock, Timestamp},
 };
@@ -85,10 +85,18 @@ where
 {
     pub(crate) fn new<REv: ReactorEventT<I>>(
         timestamp: Timestamp,
+        config: Config,
         effect_builder: EffectBuilder<REv>,
-    ) -> (Self, Effects<Event<I>>) {
-        // TODO: take all the parameters below from _somewhere_
-        let (secret_key, public_key) = generate_ed25519_keypair();
+    ) -> Result<(Self, Effects<Event<I>>), Error> {
+        let secret_key_path = config.secret_key_path.ok_or_else(|| {
+            anyhow::Error::msg("invalid consensus config; secret_key_path is required")
+        })?;
+
+        let secret_signing_key = SecretKey::from_file(&secret_key_path)
+            .map_err(anyhow::Error::new)?
+            .ok_or_else(|| anyhow::Error::msg("invalid signing key"))?;
+
+        let public_key: PublicKey = From::from(&secret_signing_key);
         let params = HighwayParams {
             instance_id: hash("test era 0"),
             validators: iter::once((public_key, 100)).collect(),
@@ -97,7 +105,7 @@ where
             params,
             0, // TODO: get a proper seed ?
             public_key,
-            HighwaySecret::new(secret_key, public_key),
+            HighwaySecret::new(secret_signing_key, public_key),
             12, // 4.1 seconds; TODO: get a proper round exp
             timestamp,
         );
@@ -111,7 +119,7 @@ where
             .into_iter()
             .flat_map(|result| Self::handle_consensus_result(EraId(0), effect_builder, result))
             .collect();
-        (era_supervisor, effects)
+        Ok((era_supervisor, effects))
     }
 
     fn handle_consensus_result<REv: ReactorEventT<I>>(
@@ -153,12 +161,21 @@ where
                     proto_block,
                     block_context,
                 }),
-            ConsensusProtocolResult::FinalizedBlock(block) => effect_builder
-                .execute_block(block)
-                .event(move |executed_block| Event::ExecutedBlock {
-                    era_id,
-                    executed_block,
-                }),
+            ConsensusProtocolResult::FinalizedBlock(block) => {
+                let mut effects =
+                    effect_builder
+                        .execute_block(block.clone())
+                        .event(move |executed_block| Event::ExecutedBlock {
+                            era_id,
+                            executed_block,
+                        });
+                effects.extend(
+                    effect_builder
+                        .announce_finalized_proto_block(block)
+                        .ignore(),
+                );
+                effects
+            }
             ConsensusProtocolResult::ValidateConsensusValue(sender, proto_block) => effect_builder
                 .validate_proto_block(sender.clone(), proto_block)
                 .event(move |(is_valid, proto_block)| {

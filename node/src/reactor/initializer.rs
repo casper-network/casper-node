@@ -6,8 +6,10 @@ use std::{
 };
 
 use derive_more::From;
+use prometheus::Registry;
 use rand::Rng;
 use thiserror::Error;
+use tracing::debug;
 
 use crate::{
     components::{
@@ -17,6 +19,7 @@ use crate::{
         Component,
     },
     effect::{
+        announcements::StorageAnnouncement,
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, Effects,
     },
@@ -35,6 +38,10 @@ pub enum Event {
     #[from]
     Storage(StorageRequest<Storage>),
 
+    /// Storage announcement.
+    #[from]
+    StorageAnnouncement(StorageAnnouncement<Storage>),
+
     /// Contract runtime event.
     #[from]
     ContractRuntime(contract_runtime::Event),
@@ -51,6 +58,7 @@ impl Display for Event {
         match self {
             Event::Chainspec(event) => write!(formatter, "chainspec: {}", event),
             Event::Storage(event) => write!(formatter, "storage: {}", event),
+            Event::StorageAnnouncement(ann) => write!(formatter, "storage announcement: {}", ann),
             Event::ContractRuntime(event) => write!(formatter, "contract runtime: {}", event),
         }
     }
@@ -59,6 +67,14 @@ impl Display for Event {
 /// Error type returned by the initializer reactor.
 #[derive(Debug, Error)]
 pub enum Error {
+    /// `Config` error.
+    #[error("config error: {0}")]
+    ConfigError(String),
+
+    /// Metrics-related error
+    #[error("prometheus (metrics) error: {0}")]
+    Metrics(#[from] prometheus::Error),
+
     /// `ChainspecHandler` component error.
     #[error("chainspec error: {0}")]
     Chainspec(#[from] chainspec_handler::Error),
@@ -75,10 +91,10 @@ pub enum Error {
 /// Initializer node reactor.
 #[derive(Debug)]
 pub struct Reactor {
-    config: validator::Config,
+    pub(super) config: validator::Config,
     chainspec_handler: ChainspecHandler,
-    storage: Storage,
-    contract_runtime: ContractRuntime,
+    pub(super) storage: Storage,
+    pub(super) contract_runtime: ContractRuntime,
 }
 
 impl Reactor {
@@ -86,19 +102,16 @@ impl Reactor {
     pub fn stopped_successfully(&self) -> bool {
         self.chainspec_handler.stopped_successfully()
     }
-
-    pub(super) fn destructure(self) -> (validator::Config, Storage, ContractRuntime) {
-        (self.config, self.storage, self.contract_runtime)
-    }
 }
 
 impl reactor::Reactor for Reactor {
     type Event = Event;
-    type Config = (PathBuf, validator::Config);
+    type Config = validator::Config;
     type Error = Error;
 
     fn new<Rd: Rng + ?Sized>(
-        (chainspec_config_path, config): Self::Config,
+        config: Self::Config,
+        _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut Rd,
     ) -> Result<(Self, Effects<Self::Event>), Error> {
@@ -106,7 +119,12 @@ impl reactor::Reactor for Reactor {
 
         let storage = Storage::new(&config.storage)?;
         let contract_runtime = ContractRuntime::new(&config.storage, config.contract_runtime)?;
-
+        let chainspec_config_path: PathBuf = {
+            let ret = &config.node.chainspec_config_path;
+            ret.clone().ok_or_else(|| {
+                Error::ConfigError(String::from("missing chainspec_config_path value"))
+            })?
+        };
         let (chainspec_handler, chainspec_effects) =
             ChainspecHandler::new(chainspec_config_path, effect_builder)?;
 
@@ -139,6 +157,10 @@ impl reactor::Reactor for Reactor {
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
             ),
+            Event::StorageAnnouncement(ann) => {
+                debug!(%ann, "ignoring storing announcement");
+                Effects::new()
+            }
             Event::ContractRuntime(event) => reactor::wrap_effects(
                 Event::ContractRuntime,
                 self.contract_runtime

@@ -79,14 +79,18 @@ use crate::{
         consensus::BlockContext,
         contract_runtime::core::engine_state::{self, genesis::GenesisResult},
         deploy_buffer::BlockLimits,
-        storage::{self, StorageType, Value},
+        storage::{self, DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     reactor::{EventQueueHandle, QueueKind},
     types::{Deploy, ExecutedBlock, ProtoBlock},
     Chainspec,
 };
-use announcements::{ApiServerAnnouncement, NetworkAnnouncement};
-use requests::{ContractRuntimeRequest, DeployQueueRequest, NetworkRequest, StorageRequest};
+use announcements::{
+    ApiServerAnnouncement, ConsensusAnnouncement, NetworkAnnouncement, StorageAnnouncement,
+};
+use requests::{
+    ContractRuntimeRequest, DeployQueueRequest, MetricsRequest, NetworkRequest, StorageRequest,
+};
 
 /// A pinned, boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
@@ -310,6 +314,20 @@ impl<REv> EffectBuilder<REv> {
         Instant::now() - then
     }
 
+    /// Retrieve a snapshot of the nodes current metrics formatted as string.
+    ///
+    /// If an error occurred producing the metrics, `None` is returned.
+    pub(crate) async fn get_metrics(self) -> Option<String>
+    where
+        REv: From<MetricsRequest>,
+    {
+        self.make_request(
+            |responder| MetricsRequest::RenderNodeMetricsText { responder },
+            QueueKind::Api,
+        )
+        .await
+    }
+
     /// Sends a network message.
     ///
     /// The message is queued in "fire-and-forget" fashion, there is no guarantee that the peer
@@ -371,7 +389,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Announce that a network message has been received.
+    /// Announces that a network message has been received.
     pub(crate) async fn announce_message_received<I, P>(self, sender: I, payload: P)
     where
         REv: From<NetworkAnnouncement<I, P>>,
@@ -397,10 +415,28 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
+    /// Announces that a (not necessarily new) deploy has been added to the store.
+    pub(crate) fn announce_deploy_stored<S>(self, deploy: &S::Deploy) -> impl Future<Output = ()>
+    where
+        S: StorageType,
+        REv: From<StorageAnnouncement<S>>,
+    {
+        let deploy_hash = *deploy.id();
+        let deploy_header = deploy.header().clone();
+
+        self.0.schedule(
+            StorageAnnouncement::StoredDeploy {
+                deploy_hash,
+                deploy_header,
+            },
+            QueueKind::Regular,
+        )
+    }
+
     /// Puts the given block into the linear block store.
     // TODO: remove once method is used.
     #[allow(dead_code)]
-    pub(crate) async fn put_block_to_storage<S>(self, block: S::Block) -> storage::Result<()>
+    pub(crate) async fn put_block_to_storage<S>(self, block: S::Block) -> storage::Result<bool>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
@@ -458,7 +494,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given deploy into the deploy store.
-    pub(crate) async fn put_deploy_to_storage<S>(self, deploy: S::Deploy) -> storage::Result<()>
+    pub(crate) async fn put_deploy_to_storage<S>(self, deploy: S::Deploy) -> storage::Result<bool>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
@@ -473,18 +509,18 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested deploy from the deploy store.
-    pub(crate) async fn get_deploy_from_storage<S>(
+    /// Gets the requested deploys from the deploy store.
+    pub(crate) async fn get_deploys_from_storage<S>(
         self,
-        deploy_hash: <S::Deploy as Value>::Id,
-    ) -> storage::Result<S::Deploy>
+        deploy_hashes: DeployHashes<S>,
+    ) -> DeployResults<S>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| StorageRequest::GetDeploy {
-                deploy_hash,
+            |responder| StorageRequest::GetDeploys {
+                deploy_hashes,
                 responder,
             },
             QueueKind::Regular,
@@ -492,20 +528,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested deploy header from the deploy store.
+    /// Gets the requested deploy headers from the deploy store.
     // TODO: remove once method is used.
     #[allow(dead_code)]
-    pub(crate) async fn get_deploy_header_from_storage<S>(
+    pub(crate) async fn get_deploy_headers_from_storage<S>(
         self,
-        deploy_hash: <S::Deploy as Value>::Id,
-    ) -> storage::Result<<S::Deploy as Value>::Header>
+        deploy_hashes: DeployHashes<S>,
+    ) -> DeployHeaderResults<S>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| StorageRequest::GetDeployHeader {
-                deploy_hash,
+            |responder| StorageRequest::GetDeployHeaders {
+                deploy_hashes,
                 responder,
             },
             QueueKind::Regular,
@@ -582,6 +618,47 @@ impl<REv> EffectBuilder<REv> {
         // TODO: check with the deploy fetcher or something whether the deploys whose hashes are
         // contained in the proto-block actually exist
         (true, proto_block)
+    }
+
+    /// Announces that a proto block has been proposed and will either be finalized or orphaned
+    /// soon.
+    pub(crate) async fn announce_proposed_proto_block(self, proto_block: ProtoBlock)
+    where
+        REv: From<ConsensusAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ConsensusAnnouncement::Proposed(proto_block),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announces that a proto block has been finalized.
+    pub(crate) async fn announce_finalized_proto_block(self, proto_block: ProtoBlock)
+    where
+        REv: From<ConsensusAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ConsensusAnnouncement::Finalized(proto_block),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announces that a proto block has been orphaned.
+    #[allow(dead_code)] // TODO: Detect orphaned blocks.
+    pub(crate) async fn announce_orphaned_proto_block(self, proto_block: ProtoBlock)
+    where
+        REv: From<ConsensusAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ConsensusAnnouncement::Orphaned(proto_block),
+                QueueKind::Regular,
+            )
+            .await
     }
 
     /// Runs the genesis process on the contract runtime.

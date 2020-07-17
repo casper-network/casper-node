@@ -39,7 +39,7 @@ pub enum Event {
     PutToStoreResult {
         deploy_hash: DeployHash,
         maybe_sender: Option<NodeId>,
-        result: storage::Result<()>,
+        result: storage::Result<bool>,
     },
     /// The result of the `DeployGossiper` getting a deploy from the storage component.  If the
     /// result is `Ok`, the deploy should be sent to the requesting peer.

@@ -6,7 +6,10 @@ use std::{
 };
 
 use derive_more::From;
+use prometheus::Registry;
+use smallvec::smallvec;
 use tempfile::TempDir;
+use thiserror::Error;
 use tokio::time;
 use tracing::debug;
 
@@ -16,7 +19,7 @@ use crate::{
         in_memory_network::{InMemoryNetwork, NetworkController, NodeId},
         storage::{self, Storage, StorageType},
     },
-    effect::announcements::{ApiServerAnnouncement, NetworkAnnouncement},
+    effect::announcements::{ApiServerAnnouncement, NetworkAnnouncement, StorageAnnouncement},
     reactor::{self, EventQueueHandle, Runner},
     testing::{
         network::{Network, NetworkedReactor},
@@ -41,6 +44,9 @@ enum Event {
     /// Network announcement.
     #[from]
     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
+    /// Storage announcement.
+    #[from]
+    StorageAnnouncement(StorageAnnouncement<Storage>),
     /// API server announcement.
     #[from]
     ApiServerAnnouncement(ApiServerAnnouncement),
@@ -53,6 +59,7 @@ impl Display for Event {
             Event::DeployGossiper(event) => write!(formatter, "deploy gossiper: {}", event),
             Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(formatter, "network announcement: {}", ann),
+            Event::StorageAnnouncement(ann) => write!(formatter, "storage announcement: {}", ann),
             Event::ApiServerAnnouncement(ann) => {
                 write!(formatter, "api server announcement: {}", ann)
             }
@@ -60,6 +67,16 @@ impl Display for Event {
     }
 }
 
+/// Error type returned by the test reactor.
+#[derive(Debug, Error)]
+pub enum Error {
+    /// Metrics-related error
+    #[error("prometheus (metrics) error: {0}")]
+    Metrics(#[from] prometheus::Error),
+    /// `Storage` component error.
+    #[error("storage error: {0}")]
+    Storage(#[from] storage::Error),
+}
 struct Reactor {
     network: InMemoryNetwork<Message>,
     storage: Storage,
@@ -76,10 +93,11 @@ impl Drop for Reactor {
 impl reactor::Reactor for Reactor {
     type Event = Event;
     type Config = GossipTableConfig;
-    type Error = storage::Error;
+    type Error = Error;
 
     fn new<R: Rng + ?Sized>(
         config: Self::Config,
+        _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut R,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
@@ -136,6 +154,7 @@ impl reactor::Reactor for Reactor {
                         .handle_event(effect_builder, rng, event),
                 )
             }
+            Event::StorageAnnouncement(_) => Effects::new(),
             Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
                 let event = super::Event::DeployReceived { deploy };
                 self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
@@ -286,7 +305,9 @@ async fn should_get_from_alternate_source() {
             .inner()
             .storage
             .deploy_store()
-            .get(&deploy_id)
+            .get(smallvec![deploy_id])
+            .pop()
+            .expect("should only be a single result")
             .map(|retrieved_deploy| retrieved_deploy == *deploy)
             .unwrap_or_default()
     };
@@ -361,7 +382,9 @@ async fn should_timeout_gossip_response() {
                 .inner()
                 .storage
                 .deploy_store()
-                .get(&deploy_id)
+                .get(smallvec![deploy_id])
+                .pop()
+                .expect("should only be a single result")
                 .map(|retrieved_deploy| retrieved_deploy == *deploy)
                 .unwrap_or_default()
         })

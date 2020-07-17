@@ -1,6 +1,7 @@
 use std::fmt::{self, Debug, Formatter};
 
 use futures::future::BoxFuture;
+use prometheus::Registry;
 use rand::Rng;
 
 use super::network::NetworkedReactor;
@@ -55,10 +56,11 @@ impl<R: Reactor> Reactor for ConditionCheckReactor<R> {
 
     fn new<RNG: Rng + ?Sized>(
         config: Self::Config,
+        registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut RNG,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
-        let (reactor, effects) = R::new(config, event_queue, rng)?;
+        let (reactor, effects) = R::new(config, registry, event_queue, rng)?;
         Ok((
             Self {
                 reactor,

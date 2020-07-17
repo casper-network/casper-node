@@ -25,6 +25,7 @@ use crate::{
     },
 };
 use pnet::datalink;
+use prometheus::Registry;
 use rand::{rngs::OsRng, Rng};
 use reactor::{wrap_effects, Finalize};
 use tracing::{debug, info};
@@ -81,6 +82,7 @@ impl Reactor for TestReactor {
 
     fn new<R: Rng + ?Sized>(
         cfg: Self::Config,
+        _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut R,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {

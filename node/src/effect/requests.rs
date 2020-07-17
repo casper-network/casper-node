@@ -28,12 +28,31 @@ use crate::{
             storage::global_state::CommitResult,
         },
         deploy_buffer::BlockLimits,
-        storage::{self, StorageType, Value},
+        storage::{self, DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::hash::Digest,
     types::{BlockHash, Deploy, DeployHash, DeployHeader},
+    utils::DisplayIter,
     Chainspec,
 };
+
+/// A metrics request.
+#[derive(Debug)]
+pub enum MetricsRequest {
+    /// Render current node metrics as prometheus-formatted string.
+    RenderNodeMetricsText {
+        /// Resopnder returning the rendered metrics or `None`, if an internal error occurred.
+        responder: Responder<Option<String>>,
+    },
+}
+
+impl Display for MetricsRequest {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            MetricsRequest::RenderNodeMetricsText { .. } => write!(formatter, "get metrics text"),
+        }
+    }
+}
 
 /// A networking request.
 #[derive(Debug)]
@@ -135,8 +154,9 @@ pub enum StorageRequest<S: StorageType + 'static> {
     PutBlock {
         /// Block to be stored.
         block: Box<S::Block>,
-        /// Responder to call with the result.
-        responder: Responder<storage::Result<()>>,
+        /// Responder to call with the result.  Returns true if the block was stored on this attempt
+        /// or false if it was previously stored.
+        responder: Responder<storage::Result<bool>>,
     },
     /// Retrieve block with given hash.
     GetBlock {
@@ -156,22 +176,23 @@ pub enum StorageRequest<S: StorageType + 'static> {
     PutDeploy {
         /// Deploy to store.
         deploy: Box<S::Deploy>,
-        /// Responder to call with the result.
-        responder: Responder<storage::Result<()>>,
+        /// Responder to call with the result.  Returns true if the deploy was stored on this
+        /// attempt or false if it was previously stored.
+        responder: Responder<storage::Result<bool>>,
     },
-    /// Retrieve deploy with given hash.
-    GetDeploy {
-        /// Hash of deploy to be retrieved.
-        deploy_hash: <S::Deploy as Value>::Id,
-        /// Responder to call with the result.
-        responder: Responder<storage::Result<S::Deploy>>,
+    /// Retrieve deploys with given hashes.
+    GetDeploys {
+        /// Hashes of deploys to be retrieved.
+        deploy_hashes: DeployHashes<S>,
+        /// Responder to call with the results.
+        responder: Responder<DeployResults<S>>,
     },
-    /// Retrieve deploy header with given hash.
-    GetDeployHeader {
-        /// Hash of deploy header to be retrieved.
-        deploy_hash: <S::Deploy as Value>::Id,
-        /// Responder to call with the result.
-        responder: Responder<storage::Result<<S::Deploy as Value>::Header>>,
+    /// Retrieve deploy headers with given hashes.
+    GetDeployHeaders {
+        /// Hashes of deploy headers to be retrieved.
+        deploy_hashes: DeployHashes<S>,
+        /// Responder to call with the results.
+        responder: Responder<DeployHeaderResults<S>>,
     },
     /// List all deploy hashes.
     ListDeploys {
@@ -203,12 +224,14 @@ impl<S: StorageType> Display for StorageRequest<S> {
                 write!(formatter, "get {}", block_hash)
             }
             StorageRequest::PutDeploy { deploy, .. } => write!(formatter, "put {}", deploy),
-            StorageRequest::GetDeploy { deploy_hash, .. } => {
-                write!(formatter, "get {}", deploy_hash)
+            StorageRequest::GetDeploys { deploy_hashes, .. } => {
+                write!(formatter, "get {}", DisplayIter::new(deploy_hashes.iter()))
             }
-            StorageRequest::GetDeployHeader { deploy_hash, .. } => {
-                write!(formatter, "get {}", deploy_hash)
-            }
+            StorageRequest::GetDeployHeaders { deploy_hashes, .. } => write!(
+                formatter,
+                "get headers {}",
+                DisplayIter::new(deploy_hashes.iter())
+            ),
             StorageRequest::ListDeploys { .. } => write!(formatter, "list deploys"),
             StorageRequest::PutChainspec { chainspec, .. } => write!(
                 formatter,
@@ -309,6 +332,11 @@ pub enum ApiRequest {
         /// Responder to call with the result.
         responder: Responder<Result<Vec<DeployHash>, storage::Error>>,
     },
+    /// Return string formatted, prometheus compatible metrics or `None` if an error occured.
+    GetMetrics {
+        /// Responder to call with the result.
+        responder: Responder<Option<String>>,
+    },
 }
 
 impl Display for ApiRequest {
@@ -317,6 +345,7 @@ impl Display for ApiRequest {
             ApiRequest::SubmitDeploy { deploy, .. } => write!(formatter, "submit {}", *deploy),
             ApiRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
             ApiRequest::ListDeploys { .. } => write!(formatter, "list deploys"),
+            ApiRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
         }
     }
 }
