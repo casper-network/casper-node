@@ -23,6 +23,7 @@ use crate::{
     components::consensus::{highway_core::vertex::SignedWireVote, traits::Context},
     types::Timestamp,
 };
+use iter::Sum;
 
 /// A vote weight.
 #[derive(
@@ -42,6 +43,14 @@ use crate::{
     From,
 )]
 pub(crate) struct Weight(pub(crate) u64);
+
+impl<'a> Sum<&'a Weight> for Weight {
+    fn sum<I: Iterator<Item = &'a Weight>>(iter: I) -> Self {
+        let mut sum = 0u64;
+        iter.for_each(|w| sum += w.0);
+        Weight(sum)
+    }
+}
 
 impl Mul<u64> for Weight {
     type Output = Self;

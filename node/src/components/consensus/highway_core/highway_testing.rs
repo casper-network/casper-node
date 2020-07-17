@@ -615,13 +615,9 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
             Distribution::Poisson(_) => unimplemented!("Poisson distribution of weights"),
         };
 
-        let ftt = match self.ftt {
-            None => {
-                let weights_sum = weights.iter().fold(0u64, |acc, el| acc + el.0);
-                weights_sum / 3
-            }
-            Some(ftt) => ftt,
-        };
+        let ftt = self
+            .ftt
+            .unwrap_or_else(|| (weights.iter().sum::<Weight>().0 - 1) / 3);
 
         let validator_ids = (0..validators_num)
             .map(|i| ValidatorId(i as u64))
