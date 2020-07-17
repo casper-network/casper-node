@@ -3,22 +3,25 @@
 use std::{
     cmp::Ordering,
     fmt::{self, Debug, Display, Formatter},
+    fs,
     hash::{Hash, Hasher},
+    path::PathBuf,
 };
 
 use ed25519_dalek::{self as ed25519, ExpandedSecretKey};
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
+use signature::Signature as Sig;
 
 use super::Result;
-use signature::Signature as OtherSignature;
+use crate::crypto::Error as CryptoError;
 
 const ED25519_TAG: u8 = 0;
 const ED25519: &str = "Ed25519";
 const ED25519_LOWERCASE: &str = "ed25519";
 
 /// A secret or private asymmetric key.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum SecretKey {
     /// Ed25519 secret key.
     Ed25519(ed25519::SecretKey),
@@ -54,6 +57,16 @@ impl SecretKey {
     pub fn as_secret_slice(&self) -> &[u8] {
         match self {
             SecretKey::Ed25519(secret_key) => secret_key.as_ref(),
+        }
+    }
+
+    /// Attempt to read the secret key bytes from configured file path.
+    pub fn from_file(path: &PathBuf) -> Result<Option<Self>> {
+        let payload = fs::read_to_string(path).map_err(|_| CryptoError::FromFile)?;
+        let pem = pem::parse(payload)?;
+        match Self::ed25519_from_bytes(pem.contents) {
+            Ok(secret_key) => Ok(Some(secret_key)),
+            Err(error) => Err(error),
         }
     }
 }

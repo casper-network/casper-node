@@ -1,5 +1,5 @@
 //! The consensus component. Provides distributed consensus among the nodes in the network.
-
+mod config;
 mod consensus_protocol;
 mod era_supervisor;
 mod highway_core;
@@ -24,6 +24,7 @@ use crate::{
     },
     types::{ExecutedBlock, ProtoBlock, Timestamp},
 };
+pub use config::Config;
 
 pub(crate) use consensus_protocol::BlockContext;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
