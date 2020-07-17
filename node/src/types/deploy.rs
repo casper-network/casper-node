@@ -21,7 +21,7 @@ use crate::crypto::{
 use crate::{
     components::{
         contract_runtime::core::engine_state::executable_deploy_item::ExecutableDeployItem,
-        storage::Value,
+        gossiper::Item, storage::Value,
     },
     crypto::{
         asymmetric_key::{PublicKey, Signature},
@@ -185,6 +185,7 @@ impl Deploy {
     }
 }
 
+/// Trait to allow `Deploy`s to be used by the storage component.
 impl Value for Deploy {
     type Id = DeployHash;
     type Header = DeployHeader;
@@ -199,6 +200,15 @@ impl Value for Deploy {
 
     fn take_header(self) -> Self::Header {
         self.header
+    }
+}
+
+/// Trait to allow `Deploy`s to be used by the gossiper component.
+impl Item for Deploy {
+    type Id = DeployHash;
+
+    fn id(&self) -> &Self::Id {
+        &self.hash
     }
 }
 

@@ -37,13 +37,13 @@ enum Event {
     Storage(StorageRequest<Storage>),
     /// Deploy gossiper event.
     #[from]
-    DeployGossiper(super::Event),
+    DeployGossiper(super::Event<Deploy>),
     /// Network request.
     #[from]
-    NetworkRequest(NetworkRequest<NodeId, Message>),
+    NetworkRequest(NetworkRequest<NodeId, Message<Deploy>>),
     /// Network announcement.
     #[from]
-    NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
+    NetworkAnnouncement(NetworkAnnouncement<NodeId, Message<Deploy>>),
     /// Storage announcement.
     #[from]
     StorageAnnouncement(StorageAnnouncement<Storage>),
@@ -78,15 +78,15 @@ pub enum Error {
     Storage(#[from] storage::Error),
 }
 struct Reactor {
-    network: InMemoryNetwork<Message>,
+    network: InMemoryNetwork<Message<Deploy>>,
     storage: Storage,
-    deploy_gossiper: DeployGossiper,
+    deploy_gossiper: Gossiper<Deploy, Event>,
     _storage_tempdir: TempDir,
 }
 
 impl Drop for Reactor {
     fn drop(&mut self) {
-        NetworkController::<Message>::remove_node(&self.network.node_id())
+        NetworkController::<Message<Deploy>>::remove_node(&self.network.node_id())
     }
 }
 
@@ -106,7 +106,7 @@ impl reactor::Reactor for Reactor {
         let (storage_config, _storage_tempdir) = storage::Config::default_for_tests();
         let storage = Storage::new(&storage_config)?;
 
-        let deploy_gossiper = DeployGossiper::new(config);
+        let deploy_gossiper = Gossiper::new(config, put_deploy_to_store, get_deploy_from_store);
 
         let reactor = Reactor {
             network,
@@ -156,7 +156,7 @@ impl reactor::Reactor for Reactor {
             }
             Event::StorageAnnouncement(_) => Effects::new(),
             Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
-                let event = super::Event::DeployReceived { deploy };
+                let event = super::Event::ItemReceived { item: deploy };
                 self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
             }
         }
@@ -180,7 +180,7 @@ fn create_deploy_received(
 async fn run_gossip(network_size: usize, deploy_count: usize) {
     const TIMEOUT: Duration = Duration::from_secs(20);
 
-    NetworkController::<Message>::create_active();
+    NetworkController::<Message<Deploy>>::create_active();
     let mut network = Network::<Reactor>::new();
     let mut rng = rand::thread_rng();
 
@@ -220,7 +220,7 @@ async fn run_gossip(network_size: usize, deploy_count: usize) {
     };
     network.settle_on(&mut rng, all_deploys_held, TIMEOUT).await;
 
-    NetworkController::<Message>::remove_active();
+    NetworkController::<Message<Deploy>>::remove_active();
 }
 
 #[tokio::test]
@@ -241,7 +241,7 @@ async fn should_get_from_alternate_source() {
     const POLL_DURATION: Duration = Duration::from_millis(10);
     const TIMEOUT: Duration = Duration::from_secs(2);
 
-    NetworkController::<Message>::create_active();
+    NetworkController::<Message<Deploy>>::create_active();
     let mut network = Network::<Reactor>::new();
     let mut rng = rand::thread_rng();
 
@@ -314,7 +314,7 @@ async fn should_get_from_alternate_source() {
     };
     network.settle_on(&mut rng, deploy_held, TIMEOUT).await;
 
-    NetworkController::<Message>::remove_active();
+    NetworkController::<Message<Deploy>>::remove_active();
 }
 
 #[tokio::test]
@@ -322,7 +322,7 @@ async fn should_timeout_gossip_response() {
     const PAUSE_DURATION: Duration = Duration::from_millis(50);
     const TIMEOUT: Duration = Duration::from_secs(2);
 
-    NetworkController::<Message>::create_active();
+    NetworkController::<Message<Deploy>>::create_active();
     let mut network = Network::<Reactor>::new();
     let mut rng = rand::thread_rng();
 
@@ -390,5 +390,5 @@ async fn should_timeout_gossip_response() {
     };
     network.settle_on(&mut rng, deploy_held, TIMEOUT).await;
 
-    NetworkController::<Message>::remove_active();
+    NetworkController::<Message<Deploy>>::remove_active();
 }

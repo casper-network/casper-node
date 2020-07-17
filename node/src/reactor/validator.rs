@@ -19,7 +19,7 @@ use crate::{
         consensus::{self, EraSupervisor},
         contract_runtime::{self, ContractRuntime},
         deploy_buffer::{self, DeployBuffer},
-        deploy_gossiper::{self, DeployGossiper},
+        gossiper::{self, Gossiper},
         metrics::Metrics,
         pinger::{self, Pinger},
         storage::Storage,
@@ -37,7 +37,7 @@ use crate::{
     },
     reactor::{self, initializer, EventQueueHandle},
     small_network::{self, NodeId},
-    types::Timestamp,
+    types::{Deploy, Timestamp},
     SmallNetwork,
 };
 pub use config::Config;
@@ -54,7 +54,7 @@ pub enum Message {
     Consensus(consensus::ConsensusMessage),
     /// Deploy gossiper component message.
     #[from]
-    DeployGossiper(deploy_gossiper::Message),
+    DeployGossiper(gossiper::Message<Deploy>),
 }
 
 impl Display for Message {
@@ -91,7 +91,7 @@ pub enum Event {
     Consensus(consensus::Event<NodeId>),
     /// Deploy gossiper event.
     #[from]
-    DeployGossiper(deploy_gossiper::Event),
+    DeployGossiper(gossiper::Event<Deploy>),
     /// Contract runtime event.
     #[from]
     ContractRuntime(contract_runtime::Event),
@@ -140,8 +140,8 @@ impl From<NetworkRequest<NodeId, pinger::Message>> for Event {
     }
 }
 
-impl From<NetworkRequest<NodeId, deploy_gossiper::Message>> for Event {
-    fn from(request: NetworkRequest<NodeId, deploy_gossiper::Message>) -> Self {
+impl From<NetworkRequest<NodeId, gossiper::Message<Deploy>>> for Event {
+    fn from(request: NetworkRequest<NodeId, gossiper::Message<Deploy>>) -> Self {
         Event::NetworkRequest(request.map_payload(Message::from))
     }
 }
@@ -184,7 +184,7 @@ pub struct Reactor {
     contract_runtime: ContractRuntime,
     api_server: ApiServer,
     consensus: EraSupervisor<NodeId>,
-    deploy_gossiper: DeployGossiper,
+    deploy_gossiper: Gossiper<Deploy, Event>,
     deploy_buffer: DeployBuffer,
 }
 
@@ -219,7 +219,11 @@ impl reactor::Reactor for Reactor {
         let timestamp = Timestamp::now();
         let (consensus, consensus_effects) =
             EraSupervisor::new(timestamp, config.consensus, effect_builder)?;
-        let deploy_gossiper = DeployGossiper::new(config.gossip);
+        let deploy_gossiper = Gossiper::new(
+            config.gossip,
+            gossiper::put_deploy_to_store,
+            gossiper::get_deploy_from_store,
+        );
         let deploy_buffer = DeployBuffer::new();
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
@@ -309,16 +313,13 @@ impl reactor::Reactor for Reactor {
                         Event::Pinger(pinger::Event::MessageReceived { sender, msg })
                     }
                     Message::DeployGossiper(message) => {
-                        Event::DeployGossiper(deploy_gossiper::Event::MessageReceived {
-                            sender,
-                            message,
-                        })
+                        Event::DeployGossiper(gossiper::Event::MessageReceived { sender, message })
                     }
                 };
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
-                let event = deploy_gossiper::Event::DeployReceived { deploy };
+                let event = gossiper::Event::ItemReceived { item: deploy };
                 self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
             }
             Event::ConsensusAnnouncement(consensus_announcement) => {

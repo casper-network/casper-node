@@ -376,6 +376,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<NetworkRequest<I, P>>,
         I: Send + 'static,
+        P: Send,
     {
         self.make_request(
             |responder| NetworkRequest::Gossip {
