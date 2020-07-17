@@ -374,7 +374,7 @@ where
     }
 
     /// Synchronizes missing dependencies of `pvv` that `recipient` is missing.
-    /// If an error occurrs during synchronization of one of `pvv`'s dependencies
+    /// If an error occurs during synchronization of one of `pvv`'s dependencies
     /// it's returned and the original vertex mustn't be added to the state.
     #[allow(clippy::type_complexity)]
     fn synchronize_validator(
