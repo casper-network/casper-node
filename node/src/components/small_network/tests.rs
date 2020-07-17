@@ -206,17 +206,11 @@ async fn run_two_node_network_five_times() {
         );
 
         let timeout = Duration::from_secs(1);
-        assert!(
-            net.settle_on(&mut rng, network_is_complete, timeout).await,
-            "network did not fully connect in time"
-        );
+        net.settle_on(&mut rng, network_is_complete, timeout).await;
 
         let quiet_for = Duration::from_millis(25);
         let timeout = Duration::from_secs(2);
-        assert!(
-            net.settle(&mut rng, quiet_for, timeout).await,
-            "network did not stay settled"
-        );
+        net.settle(&mut rng, quiet_for, timeout).await;
 
         assert!(
             network_is_complete(net.nodes()),
@@ -266,5 +260,5 @@ async fn bind_to_real_network_interface() {
 
     let quiet_for = Duration::from_millis(250);
     let timeout = Duration::from_secs(2);
-    assert!(net.settle(&mut rng, quiet_for, timeout).await);
+    net.settle(&mut rng, quiet_for, timeout).await;
 }

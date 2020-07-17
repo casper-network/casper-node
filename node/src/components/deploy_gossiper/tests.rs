@@ -225,7 +225,7 @@ async fn should_gossip() {
             all_deploy_hashes == hashes
         })
     };
-    assert!(network.settle_on(&mut rng, all_deploys_held, TIMEOUT).await);
+    network.settle_on(&mut rng, all_deploys_held, TIMEOUT).await;
 
     NetworkController::<Message>::remove_active();
 }
@@ -261,11 +261,9 @@ async fn should_get_from_alternate_source() {
             _ => false,
         }
     };
-    assert!(
-        network
-            .crank_until(&node_ids[0], &mut rng, made_gossip_request, TIMEOUT)
-            .await
-    );
+    network
+        .crank_until(&node_ids[0], &mut rng, made_gossip_request, TIMEOUT)
+        .await;
     assert!(network.remove_node(&node_ids[0]).is_some());
     debug!("removed node {}", &node_ids[0]);
 
@@ -281,14 +279,12 @@ async fn should_get_from_alternate_source() {
             _ => false,
         }
     };
-    assert!(
-        network
-            .crank_until(&node_ids[2], &mut rng, sent_gossip_response, TIMEOUT)
-            .await
-    );
+    network
+        .crank_until(&node_ids[2], &mut rng, sent_gossip_response, TIMEOUT)
+        .await;
 
     // Run nodes 1 and 2 until settled.  Node 2 will be waiting for the deploy from node 0.
-    assert!(network.settle(&mut rng, POLL_DURATION, TIMEOUT).await);
+    network.settle(&mut rng, POLL_DURATION, TIMEOUT).await;
 
     // Advance time to trigger node 2's timeout causing it to request the deploy from node 1.
     let secs_to_advance = GossipTableConfig::default().get_remainder_timeout_secs();
@@ -311,7 +307,7 @@ async fn should_get_from_alternate_source() {
             .map(|retrieved_deploy| retrieved_deploy == *deploy)
             .unwrap_or_default()
     };
-    assert!(network.settle_on(&mut rng, deploy_held, TIMEOUT).await);
+    network.settle_on(&mut rng, deploy_held, TIMEOUT).await;
 
     NetworkController::<Message>::remove_active();
 }
@@ -349,11 +345,9 @@ async fn should_timeout_gossip_response() {
             _ => false,
         }
     };
-    assert!(
-        network
-            .crank_until(&node_ids[0], &mut rng, made_gossip_request, TIMEOUT)
-            .await
-    );
+    network
+        .crank_until(&node_ids[0], &mut rng, made_gossip_request, TIMEOUT)
+        .await;
     // Give node 0 time to set the timeouts before advancing the clock.
     time::delay_for(PAUSE_DURATION).await;
 
@@ -389,7 +383,7 @@ async fn should_timeout_gossip_response() {
                 .unwrap_or_default()
         })
     };
-    assert!(network.settle_on(&mut rng, deploy_held, TIMEOUT).await);
+    network.settle_on(&mut rng, deploy_held, TIMEOUT).await;
 
     NetworkController::<Message>::remove_active();
 }

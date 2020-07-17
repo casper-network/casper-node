@@ -142,8 +142,7 @@ where
         rng: &mut RNG,
         condition: F,
         within: Duration,
-    ) -> bool
-    where
+    ) where
         RNG: Rng + ?Sized,
         F: Fn(&R::Event) -> bool + Send + 'static,
     {
@@ -155,7 +154,7 @@ where
 
         time::timeout(within, self.crank_and_check_indefinitely(node_id, rng))
             .await
-            .is_ok()
+            .unwrap()
     }
 
     async fn crank_and_check_indefinitely<RNG: Rng + ?Sized>(
@@ -207,10 +206,10 @@ where
         rng: &mut RNG,
         quiet_for: Duration,
         within: Duration,
-    ) -> bool {
+    ) {
         time::timeout(within, self.settle_indefinitely(rng, quiet_for))
             .await
-            .is_ok()
+            .unwrap()
     }
 
     async fn settle_indefinitely<RNG: Rng + ?Sized>(&mut self, rng: &mut RNG, quiet_for: Duration) {
@@ -234,14 +233,14 @@ where
     /// Runs the main loop of every reactor until `condition` is true or until `within` has elapsed.
     ///
     /// Returns `true` if `condition` has been met within the specified timeout.
-    pub async fn settle_on<RNG, F>(&mut self, rng: &mut RNG, condition: F, within: Duration) -> bool
+    pub async fn settle_on<RNG, F>(&mut self, rng: &mut RNG, condition: F, within: Duration)
     where
         RNG: Rng + ?Sized,
         F: Fn(&HashMap<R::NodeId, Runner<ConditionCheckReactor<R>>>) -> bool,
     {
         time::timeout(within, self.settle_on_indefinitely(rng, condition))
             .await
-            .is_ok()
+            .unwrap()
     }
 
     async fn settle_on_indefinitely<RNG, F>(&mut self, rng: &mut RNG, condition: F)
