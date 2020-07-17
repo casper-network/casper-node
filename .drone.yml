@@ -64,7 +64,7 @@ steps:
 - name: cargo-audit
   <<: *buildenv
   commands:
-  - cargo install cargo-audit
+  - cargo install cargo-audit || true
   - cargo generate-lockfile
   - cargo audit
 
