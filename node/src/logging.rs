@@ -123,7 +123,7 @@ pub fn init() -> anyhow::Result<()> {
     // Setup a new tracing-subscriber writing to `stderr` for logging.
     tracing::subscriber::set_global_default(
         tracing_subscriber::fmt()
-            .with_writer(io::stderr)
+            .with_writer(io::stdout)
             .with_env_filter(EnvFilter::from_default_env())
             .fmt_fields(formatter)
             .event_format(FmtEvent {})

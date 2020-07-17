@@ -2,6 +2,7 @@ use std::{env, path::PathBuf};
 
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
 use tempfile::TempDir;
 use tracing::warn;
 
@@ -15,6 +16,7 @@ const DEFAULT_MAX_BLOCK_STORE_SIZE: usize = 483_183_820_800; // 450 GiB
 const DEFAULT_MAX_DEPLOY_STORE_SIZE: usize = 322_122_547_200; // 300 GiB
 const DEFAULT_MAX_CHAINSPEC_STORE_SIZE: usize = 1_073_741_824; // 1 GiB
 
+#[cfg(test)]
 const DEFAULT_TEST_MAX_DB_SIZE: usize = 52_428_800; // 50 MiB
 
 /// On-disk storage configuration.
@@ -55,7 +57,7 @@ pub struct Config {
 impl Config {
     /// Returns a default `Config` suitable for tests, along with a `TempDir` which must be kept
     /// alive for the duration of the test since its destructor removes the dir from the filesystem.
-    #[allow(unused)]
+    #[cfg(test)]
     pub(crate) fn default_for_tests() -> (Self, TempDir) {
         let tempdir = tempfile::tempdir().expect("should get tempdir");
         let path = Some(tempdir.path().to_path_buf());

@@ -88,7 +88,7 @@ pub enum Error {
     ContractRuntime(#[from] contract_runtime::ConfigError),
 }
 
-/// Validator node reactor.
+/// Initializer node reactor.
 #[derive(Debug)]
 pub struct Reactor {
     pub(super) config: validator::Config,
