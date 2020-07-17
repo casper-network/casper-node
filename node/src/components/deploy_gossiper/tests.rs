@@ -177,12 +177,7 @@ fn create_deploy_received(
     |effect_builder: EffectBuilder<Event>| effect_builder.announce_deploy_received(deploy).ignore()
 }
 
-#[tokio::test]
-async fn should_gossip() {
-    const NETWORK_SIZE_MIN: usize = 2;
-    const NETWORK_SIZE_MAX: usize = 20;
-    const DEPLOY_COUNT_MIN: usize = 1;
-    const DEPLOY_COUNT_MAX: usize = 30;
+async fn run_gossip(network_size: usize, deploy_count: usize) {
     const TIMEOUT: Duration = Duration::from_secs(20);
 
     NetworkController::<Message>::create_active();
@@ -190,11 +185,9 @@ async fn should_gossip() {
     let mut rng = rand::thread_rng();
 
     // Add `network_size` nodes.
-    let network_size = rng.gen_range(NETWORK_SIZE_MIN, NETWORK_SIZE_MAX + 1);
     let node_ids = network.add_nodes(&mut rng, network_size).await;
 
     // Create `deploy_count` random deploys.
-    let deploy_count: usize = rng.gen_range(DEPLOY_COUNT_MIN, DEPLOY_COUNT_MAX + 1);
     let (all_deploy_hashes, mut deploys): (BTreeSet<_>, Vec<_>) = iter::repeat_with(|| {
         let deploy = Box::new(rng.gen::<Deploy>());
         (*deploy.id(), deploy)
@@ -228,6 +221,18 @@ async fn should_gossip() {
     network.settle_on(&mut rng, all_deploys_held, TIMEOUT).await;
 
     NetworkController::<Message>::remove_active();
+}
+
+#[tokio::test]
+async fn should_gossip() {
+    const NETWORK_SIZES: [usize; 3] = [2, 5, 20];
+    const DEPLOY_COUNTS: [usize; 3] = [1, 10, 30];
+
+    for network_size in &NETWORK_SIZES {
+        for deploy_count in &DEPLOY_COUNTS {
+            run_gossip(*network_size, *deploy_count).await
+        }
+    }
 }
 
 #[tokio::test]
