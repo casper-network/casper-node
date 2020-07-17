@@ -8,7 +8,7 @@ use thiserror::Error;
 pub type Result<T> = result::Result<T, Error>;
 
 /// Cryptographic errors.
-#[derive(Clone, Copy, PartialEq, Debug, Error)]
+#[derive(Debug, Error)]
 pub enum Error {
     /// Error resulting from creating or using asymmetric key types.
     #[error("asymmetric key error: {0}")]

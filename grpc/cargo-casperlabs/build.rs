@@ -14,36 +14,42 @@ trait Package {
 struct MintInstall;
 
 impl Package for MintInstall {
-    const ROOT: &'static str = "../contracts/system/mint-install";
-    const CARGO_TOML: &'static str = "../contracts/system/mint-install/Cargo.toml";
-    const MAIN_RS: &'static str = "../contracts/system/mint-install/src/main.rs";
+    const ROOT: &'static str = "../../smart_contracts/contracts/system/mint-install";
+    const CARGO_TOML: &'static str =
+        "../../smart_contracts/contracts/system/mint-install/Cargo.toml";
+    const MAIN_RS: &'static str = "../../smart_contracts/contracts/system/mint-install/src/main.rs";
     const WASM_FILENAME: &'static str = "mint_install.wasm";
 }
 
 struct PosInstall;
 
 impl Package for PosInstall {
-    const ROOT: &'static str = "../contracts/system/pos-install";
-    const CARGO_TOML: &'static str = "../contracts/system/pos-install/Cargo.toml";
-    const MAIN_RS: &'static str = "../contracts/system/pos-install/src/main.rs";
+    const ROOT: &'static str = "../../smart_contracts/contracts/system/pos-install";
+    const CARGO_TOML: &'static str =
+        "../../smart_contracts/contracts/system/pos-install/Cargo.toml";
+    const MAIN_RS: &'static str = "../../smart_contracts/contracts/system/pos-install/src/main.rs";
     const WASM_FILENAME: &'static str = "pos_install.wasm";
 }
 
 struct StandardPayment;
 
 impl Package for StandardPayment {
-    const ROOT: &'static str = "../contracts/system/standard-payment";
-    const CARGO_TOML: &'static str = "../contracts/system/standard-payment/Cargo.toml";
-    const MAIN_RS: &'static str = "../contracts/system/standard-payment/src/bin/main.rs";
+    const ROOT: &'static str = "../../smart_contracts/contracts/system/standard-payment";
+    const CARGO_TOML: &'static str =
+        "../../smart_contracts/contracts/system/standard-payment/Cargo.toml";
+    const MAIN_RS: &'static str =
+        "../../smart_contracts/contracts/system/standard-payment/src/bin/main.rs";
     const WASM_FILENAME: &'static str = "standard_payment.wasm";
 }
 
 struct StandardPaymentInstall;
 
 impl Package for StandardPaymentInstall {
-    const ROOT: &'static str = "../contracts/system/standard-payment-install";
-    const CARGO_TOML: &'static str = "../contracts/system/standard-payment-install/Cargo.toml";
-    const MAIN_RS: &'static str = "../contracts/system/standard-payment-install/src/main.rs";
+    const ROOT: &'static str = "../../smart_contracts/contracts/system/standard-payment-install";
+    const CARGO_TOML: &'static str =
+        "../../smart_contracts/contracts/system/standard-payment-install/Cargo.toml";
+    const MAIN_RS: &'static str =
+        "../../smart_contracts/contracts/system/standard-payment-install/src/main.rs";
     const WASM_FILENAME: &'static str = "standard_payment_install.wasm";
 }
 
@@ -58,7 +64,7 @@ fn build_package<T: Package>() {
 
     // Full path to the cargo binary.
     let cargo = env::var("CARGO").expect("env var 'CARGO' should be set");
-    // Full path to the 'execution-engine/cargo-casperlabs' dir.
+    // Full path to the 'grpc/cargo-casperlabs' dir.
     let root_dir = PathBuf::from(
         env::var("CARGO_MANIFEST_DIR").expect("env var 'CARGO_MANIFEST_DIR' should be set"),
     );
@@ -120,14 +126,14 @@ fn main() {
         standard_payment_install_source_exists,
     ) {
         (true, true, true, true) => {
-            // We're building from within CasperLabs repo - build the contracts.
+            // We're building from within casperlabs-node repo - build the contracts.
             build_package::<MintInstall>();
             build_package::<PosInstall>();
             build_package::<StandardPayment>();
             build_package::<StandardPaymentInstall>();
         }
         (false, false, false, false) => {
-            // We're outside the CasperLabs repo - the compiled contracts should exist locally.
+            // We're outside the casperlabs-node repo - the compiled contracts should exist locally.
             assert_wasm_file_exists::<MintInstall>();
             assert_wasm_file_exists::<PosInstall>();
             assert_wasm_file_exists::<StandardPayment>();

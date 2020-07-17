@@ -11,6 +11,7 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 
 use super::Result;
+use signature::Signature as OtherSignature;
 
 const ED25519_TAG: u8 = 0;
 const ED25519: &str = "Ed25519";

@@ -169,7 +169,7 @@ mod tests {
         let mut toolchain_path = env::current_dir().unwrap().display().to_string();
         let index = toolchain_path.find(PATH_PREFIX).unwrap_or_else(|| {
             panic!(
-                "test should be run from within execution-engine workspace: {}",
+                "test should be run from within casperlabs-node workspace: {}",
                 toolchain_path
             )
         });
@@ -182,7 +182,7 @@ mod tests {
             .to_string();
 
         // If this fails, ensure `TOOLCHAIN` is updated to match the value in
-        // "execution-engine/rust-toolchain".
+        // "casperlabs-node/rust-toolchain".
         assert_eq!(&*expected_toolchain_value, TOOLCHAIN);
     }
 }

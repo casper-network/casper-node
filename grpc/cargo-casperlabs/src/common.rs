@@ -120,14 +120,14 @@ pub mod tests {
     const VERSION_FIELD_NAME: &str = "version";
     const PATH_PREFIX: &str = "/grpc/cargo-casperlabs";
 
-    /// Returns the absolute path of `relative_path` where this is relative to "execution-engine".
-    /// Panics if the current working directory is not within "execution-engine".
+    /// Returns the absolute path of `relative_path` where this is relative to "casperlabs-node".
+    /// Panics if the current working directory is not within "casperlabs-node".
     pub fn full_path_from_path_relative_to_ee(relative_path: &str) -> String {
         let mut full_path = env::current_dir().unwrap().display().to_string();
         let index = full_path.find(PATH_PREFIX).unwrap_or_else(|| {
             panic!(
-                "test should be run from within execution-engine workspace {} r{}",
-                full_path, relative_path
+                "test should be run from within casperlabs-node workspace: {}",
+                full_path
             )
         });
         full_path.replace_range(index + 1.., relative_path);

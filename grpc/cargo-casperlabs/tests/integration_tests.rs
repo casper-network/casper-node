@@ -49,7 +49,7 @@ fn output_from_command(mut command: Command) -> Output {
 }
 
 fn run_tool_and_resulting_tests(turbo: bool) {
-    // Run 'cargo-casperlabs <test dir>/<subdir> --workspace-path=<path to EE root>'
+    // Run 'cargo-casperlabs <test dir>/<subdir> --workspace-path=<path to casperlabs-node root>'
     let subdir = if turbo { TURBO } else { USE_SYSTEM_CONTRACTS };
     let test_dir = TEST_DIR.path().join(subdir);
     let mut tool_cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();

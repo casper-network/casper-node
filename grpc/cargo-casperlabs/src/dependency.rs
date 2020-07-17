@@ -11,7 +11,7 @@ use crate::ARGS;
 pub struct Dependency {
     name: String,
     version: String,
-    /// Path relative to "CasperLabs/execution-engine"
+    /// Path relative to "casperlabs-node"
     relative_path: String,
 }
 
