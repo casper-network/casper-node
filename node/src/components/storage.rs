@@ -16,11 +16,15 @@ use std::{
 
 use rand::Rng;
 use serde::{de::DeserializeOwned, Serialize};
+use smallvec::smallvec;
 use tokio::task;
 
 use crate::{
     components::Component,
-    effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
+    effect::{
+        announcements::StorageAnnouncement, requests::StorageRequest, EffectBuilder, EffectExt,
+        Effects,
+    },
     types::{Block, Deploy},
 };
 // Seems to be a false positive.
@@ -37,9 +41,14 @@ use in_mem_chainspec_store::InMemChainspecStore;
 use in_mem_store::InMemStore;
 use lmdb_chainspec_store::LmdbChainspecStore;
 use lmdb_store::LmdbStore;
-use store::Store;
+use store::{Multiple, Store};
 
 pub(crate) type Storage = LmdbStorage<Block, Deploy>;
+
+pub(crate) type DeployResults<S> = Multiple<Result<<S as StorageType>::Deploy>>;
+pub(crate) type DeployHashes<S> = Multiple<<<S as StorageType>::Deploy as Value>::Id>;
+pub(crate) type DeployHeaderResults<S> =
+    Multiple<Result<<<S as StorageType>::Deploy as Value>::Header>>;
 
 const BLOCK_STORE_FILENAME: &str = "block_store.db";
 const DEPLOY_STORE_FILENAME: &str = "deploy_store.db";
@@ -99,12 +108,13 @@ impl<REv, S> Component<REv> for S
 where
     S: StorageType,
     Self: Sized + 'static,
+    REv: From<StorageAnnouncement<S>> + Send,
 {
     type Event = StorageRequest<Self>;
 
     fn handle_event<R: Rng + ?Sized>(
         &mut self,
-        _effect_builder: EffectBuilder<REv>,
+        effect_builder: EffectBuilder<REv>,
         _rng: &mut R,
         event: Self::Event,
     ) -> Effects<Self::Event> {
@@ -125,10 +135,13 @@ where
             } => {
                 let block_store = self.block_store();
                 async move {
-                    let result = task::spawn_blocking(move || block_store.get(&block_hash))
+                    let mut result =
+                        task::spawn_blocking(move || block_store.get(smallvec![block_hash]))
+                            .await
+                            .expect("should run");
+                    responder
+                        .respond(result.pop().expect("can only contain one result"))
                         .await
-                        .expect("should run");
-                    responder.respond(result).await
                 }
                 .ignore()
             }
@@ -138,44 +151,60 @@ where
             } => {
                 let block_store = self.block_store();
                 async move {
-                    let result = task::spawn_blocking(move || block_store.get_header(&block_hash))
+                    let mut result = task::spawn_blocking(move || {
+                        block_store.get_headers(smallvec![block_hash])
+                    })
+                    .await
+                    .expect("should run");
+                    responder
+                        .respond(result.pop().expect("can only contain one result"))
                         .await
-                        .expect("should run");
-                    responder.respond(result).await
                 }
                 .ignore()
             }
             StorageRequest::PutDeploy { deploy, responder } => {
                 let deploy_store = self.deploy_store();
                 async move {
+                    // Create the effect, but do not return it.
+                    let announce_success = effect_builder.announce_deploy_stored(&deploy);
+
                     let result = task::spawn_blocking(move || deploy_store.put(*deploy))
                         .await
                         .expect("should run");
-                    responder.respond(result).await
+
+                    let was_ok = result.is_ok();
+
+                    // Tell the requestor the result of storing the deploy.
+                    responder.respond(result).await;
+
+                    if was_ok {
+                        // Now that we have stored the deploy, we also want to announce it.
+                        announce_success.await;
+                    }
                 }
                 .ignore()
             }
-            StorageRequest::GetDeploy {
-                deploy_hash,
+            StorageRequest::GetDeploys {
+                deploy_hashes,
                 responder,
             } => {
                 let deploy_store = self.deploy_store();
                 async move {
-                    let result = task::spawn_blocking(move || deploy_store.get(&deploy_hash))
+                    let result = task::spawn_blocking(move || deploy_store.get(deploy_hashes))
                         .await
                         .expect("should run");
                     responder.respond(result).await
                 }
                 .ignore()
             }
-            StorageRequest::GetDeployHeader {
-                deploy_hash,
+            StorageRequest::GetDeployHeaders {
+                deploy_hashes,
                 responder,
             } => {
                 let deploy_store = self.deploy_store();
                 async move {
                     let result =
-                        task::spawn_blocking(move || deploy_store.get_header(&deploy_hash))
+                        task::spawn_blocking(move || deploy_store.get_headers(deploy_hashes))
                             .await
                             .expect("should run");
                     responder.respond(result).await

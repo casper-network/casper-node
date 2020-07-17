@@ -33,23 +33,24 @@ impl ChainspecStore for LmdbChainspecStore {
             .map_err(|error| Error::from_serialization(*error))?;
         let serialized_value =
             bincode::serialize(&chainspec).map_err(|error| Error::from_serialization(*error))?;
-        let mut txn = self.env.begin_rw_txn()?;
-        txn.put(self.db, &id, &serialized_value, WriteFlags::empty())?;
-        txn.commit()?;
+        let mut txn = self.env.begin_rw_txn().expect("should create rw txn");
+        txn.put(self.db, &id, &serialized_value, WriteFlags::empty())
+            .expect("should put");
+        txn.commit().expect("should commit txn");
         Ok(())
     }
 
     fn get(&self, version: Version) -> Result<Chainspec> {
         let id = bincode::serialize(&version).map_err(|error| Error::from_serialization(*error))?;
-        let txn = self.env.begin_ro_txn()?;
+        let txn = self.env.begin_ro_txn().expect("should create ro txn");
         let serialized_value = match txn.get(self.db, &id) {
             Ok(value) => value,
             Err(lmdb::Error::NotFound) => return Err(Error::NotFound),
-            Err(error) => return Err(error.into()),
+            Err(error) => panic!("should get: {:?}", error),
         };
         let value = bincode::deserialize(serialized_value)
             .map_err(|error| Error::from_deserialization(*error))?;
-        txn.commit()?;
+        txn.commit().expect("should commit txn");
         Ok(value)
     }
 }

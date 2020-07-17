@@ -4,13 +4,7 @@ use std::{
     sync::RwLock,
 };
 
-use thiserror::Error;
-
-use super::{Error, Result, Store, Value};
-
-#[derive(Error, Debug)]
-#[error("poisoned lock")]
-pub(super) struct PoisonedLock {}
+use super::{Error, Multiple, Result, Store, Value};
 
 /// In-memory version of a store.
 #[derive(Debug)]
@@ -29,31 +23,41 @@ impl<V: Value> InMemStore<V> {
 impl<V: Value> Store for InMemStore<V> {
     type Value = V;
 
-    fn put(&self, value: V) -> Result<()> {
-        if let Entry::Vacant(entry) = self.inner.write()?.entry(*value.id()) {
+    fn put(&self, value: V) -> Result<bool> {
+        if let Entry::Vacant(entry) = self.inner.write().expect("should lock").entry(*value.id()) {
             entry.insert(value.clone());
+            return Ok(true);
         }
-        Ok(())
+        Ok(false)
     }
 
-    fn get(&self, id: &V::Id) -> Result<V> {
-        self.inner
-            .read()?
-            .get(id)
-            .cloned()
-            .ok_or_else(|| Error::NotFound)
+    fn get(&self, ids: Multiple<V::Id>) -> Multiple<Result<V>> {
+        let inner = self.inner.read().expect("should lock");
+        ids.iter()
+            .map(|id| inner.get(id).cloned().ok_or_else(|| Error::NotFound))
+            .collect()
     }
 
-    fn get_header(&self, id: &V::Id) -> Result<V::Header> {
-        self.inner
-            .read()?
-            .get(id)
-            .map(Value::header)
-            .cloned()
-            .ok_or_else(|| Error::NotFound)
+    fn get_headers(&self, ids: Multiple<V::Id>) -> Multiple<Result<V::Header>> {
+        let inner = self.inner.read().expect("should lock");
+        ids.iter()
+            .map(|id| {
+                inner
+                    .get(id)
+                    .map(Value::header)
+                    .cloned()
+                    .ok_or_else(|| Error::NotFound)
+            })
+            .collect()
     }
 
     fn ids(&self) -> Result<Vec<V::Id>> {
-        Ok(self.inner.read()?.keys().cloned().collect())
+        Ok(self
+            .inner
+            .read()
+            .expect("should lock")
+            .keys()
+            .cloned()
+            .collect())
     }
 }
