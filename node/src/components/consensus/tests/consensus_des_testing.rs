@@ -47,6 +47,7 @@ impl<M: Clone + Debug> TargetedMessage<M> {
 pub(crate) struct ValidatorId(pub(crate) u64);
 
 /// A validator in the test network.
+#[derive(Debug)]
 pub(crate) struct Validator<C, M, D>
 where
     M: Clone + Debug,
@@ -295,11 +296,7 @@ mod virtual_net_tests {
 
     struct NoOpDelay;
 
-    impl Strategy<DeliverySchedule> for NoOpDelay {
-        fn map<R: rand::Rng>(&self, _rng: &mut R, i: DeliverySchedule) -> DeliverySchedule {
-            i
-        }
-    }
+    impl Strategy<DeliverySchedule> for NoOpDelay {}
 
     type M = u64;
     type C = u64;
