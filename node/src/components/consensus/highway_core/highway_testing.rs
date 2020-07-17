@@ -11,9 +11,10 @@ use super::{
 use crate::{
     components::consensus::{
         tests::consensus_des_testing::{
-            DeliverySchedule, Message, MessageT, QueueEntry, Strategy, Target, TargetedMessage,
-            Validator, ValidatorId, VirtualNet,
+            DeliverySchedule, Message, Strategy, Target, TargetedMessage, Validator, ValidatorId,
+            VirtualNet,
         },
+        tests::queue::{MessageT, QueueEntry},
         traits::{ConsensusValueT, Context},
         BlockContext,
     },
