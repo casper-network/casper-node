@@ -26,6 +26,7 @@ use bytes::Bytes;
 use futures::FutureExt;
 use http::Response;
 use rand::Rng;
+use smallvec::smallvec;
 use tracing::{debug, info, warn};
 use warp::{
     body,
@@ -90,10 +91,10 @@ where
                 effects
             }
             Event::ApiRequest(ApiRequest::GetDeploy { hash, responder }) => effect_builder
-                .get_deploy_from_storage(hash)
-                .event(move |result| Event::GetDeployResult {
+                .get_deploys_from_storage(smallvec![hash])
+                .event(move |mut result| Event::GetDeployResult {
                     hash,
-                    result: Box::new(result),
+                    result: Box::new(result.pop().expect("can only contain one result")),
                     main_responder: responder,
                 }),
             Event::ApiRequest(ApiRequest::ListDeploys { responder }) => effect_builder

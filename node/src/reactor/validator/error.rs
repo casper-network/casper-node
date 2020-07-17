@@ -17,6 +17,10 @@ pub enum Error {
     #[error("storage error: {0}")]
     Storage(#[from] storage::Error),
 
+    /// `Consensus` component error.
+    #[error("consensus error: {0}")]
+    Consensus(#[from] anyhow::Error),
+
     /// `ContractRuntime` component error.
     #[error("contract runtime config error: {0}")]
     ContractRuntime(#[from] contract_runtime::ConfigError),

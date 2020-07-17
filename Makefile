@@ -53,6 +53,8 @@ SYSTEM_CONTRACTS_FEATURED := $(patsubst %, build-system-contract-featured-rs/%, 
 CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 CONTRACT_TARGET_DIR_AS    = target_as
 PACKAGED_SYSTEM_CONTRACTS = mint_install.wasm pos_install.wasm standard_payment_install.wasm
+TOOL_TARGET_DIR           = grpc/cargo-casperlabs/target
+TOOL_WASM_DIR             = grpc/cargo-casperlabs/wasm
 
 CRATES_WITH_DOCS_RS_MANIFEST_TABLE = \
 	contract \
@@ -199,6 +201,8 @@ check: \
 .PHONY: clean
 clean:
 	rm -rf $(CONTRACT_TARGET_DIR_AS)
+	rm -rf $(TOOL_TARGET_DIR)
+	rm -rf $(TOOL_WASM_DIR)
 	$(CARGO) clean
 
 .PHONY: deb

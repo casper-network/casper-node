@@ -9,11 +9,12 @@ use std::{
 };
 
 use derive_more::From;
+use tracing::error;
 
 use crate::{
     components::Component,
     effect::{requests::DeployQueueRequest, EffectBuilder, EffectExt, Effects},
-    types::{BlockHash, DeployHash, DeployHeader},
+    types::{BlockHash, DeployHash, DeployHeader, ProtoBlock},
 };
 
 /// Deploy buffer.
@@ -117,40 +118,44 @@ impl DeployBuffer {
     }
 
     /// Notifies the deploy buffer of a new block.
-    #[allow(unused)] // TODO
-    pub(crate) fn added_block(&mut self, block: BlockHash, deploys: HashSet<DeployHash>) {
-        let deploy_map = deploys
-            .iter()
+    pub(crate) fn added_block<I>(&mut self, block: BlockHash, deploys: I)
+    where
+        I: IntoIterator<Item = DeployHash>,
+    {
+        // TODO: This will ignore deploys that weren't in `collected_deploys`. They might be added
+        // later, and then would be proposed as duplicates.
+        let deploy_map: HashMap<_, _> = deploys
+            .into_iter()
             .filter_map(|deploy_hash| {
                 self.collected_deploys
-                    .get(deploy_hash)
-                    .map(|deploy| (*deploy_hash, deploy.clone()))
+                    .get(&deploy_hash)
+                    .map(|deploy| (deploy_hash, deploy.clone()))
             })
             .collect();
         self.collected_deploys
-            .retain(|deploy_hash, _| !deploys.contains(deploy_hash));
+            .retain(|deploy_hash, _| !deploy_map.contains_key(deploy_hash));
         self.processed.insert(block, deploy_map);
     }
 
     /// Notifies the deploy buffer that a block has been finalized.
-    #[allow(unused)] // TODO
     pub(crate) fn finalized_block(&mut self, block: BlockHash) {
         if let Some(deploys) = self.processed.remove(&block) {
             self.collected_deploys
                 .retain(|deploy_hash, _| !deploys.contains_key(deploy_hash));
             self.finalized.insert(block, deploys);
         } else {
-            panic!("finalized block that hasn't been processed!");
+            // TODO: Events are not guaranteed to be handled in order, so this could happen!
+            error!("finalized block that hasn't been processed!");
         }
     }
 
     /// Notifies the deploy buffer that a block has been orphaned.
-    #[allow(unused)] // TODO
     pub(crate) fn orphaned_block(&mut self, block: BlockHash) {
         if let Some(deploys) = self.processed.remove(&block) {
             self.collected_deploys.extend(deploys);
         } else {
-            panic!("orphaned block that hasn't been processed!");
+            // TODO: Events are not guaranteed to be handled in order, so this could happen!
+            error!("orphaned block that hasn't been processed!");
         }
     }
 }
@@ -160,12 +165,18 @@ impl DeployBuffer {
 pub enum Event {
     #[from]
     QueueRequest(DeployQueueRequest),
+    ProposedProtoBlock(ProtoBlock),
+    FinalizedProtoBlock(ProtoBlock),
+    OrphanedProtoBlock(ProtoBlock),
 }
 
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::QueueRequest(req) => write!(f, "dq request: {}", req),
+            Event::ProposedProtoBlock(block) => write!(f, "dq proposed proto block {}", block),
+            Event::FinalizedProtoBlock(block) => write!(f, "dq finalized proto block {}", block),
+            Event::OrphanedProtoBlock(block) => write!(f, "dq orphaned proto block {}", block),
         }
     }
 }
@@ -184,7 +195,7 @@ impl<REv> Component<REv> for DeployBuffer {
                 hash,
                 header,
                 responder,
-            }) => responder.respond(self.add_deploy(hash, header)).ignore(),
+            }) => return responder.respond(self.add_deploy(hash, header)).ignore(),
             Event::QueueRequest(DeployQueueRequest::RequestForInclusion {
                 current_instant,
                 max_ttl,
@@ -192,16 +203,21 @@ impl<REv> Component<REv> for DeployBuffer {
                 max_dependencies,
                 past,
                 responder,
-            }) => responder
-                .respond(self.remaining_deploys(
+            }) => {
+                let deploys = self.remaining_deploys(
                     current_instant,
                     max_ttl,
                     limits,
                     max_dependencies,
                     &past,
-                ))
-                .ignore(),
+                );
+                return responder.respond(deploys).ignore();
+            }
+            Event::ProposedProtoBlock(block) => self.added_block(block.hash(), block.deploys),
+            Event::FinalizedProtoBlock(block) => self.finalized_block(block.hash()),
+            Event::OrphanedProtoBlock(block) => self.orphaned_block(block.hash()),
         }
+        Effects::new()
     }
 }
 

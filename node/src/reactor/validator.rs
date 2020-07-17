@@ -11,6 +11,7 @@ use derive_more::From;
 use prometheus::Registry;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 use crate::{
     components::{
@@ -25,7 +26,9 @@ use crate::{
         Component,
     },
     effect::{
-        announcements::{ApiServerAnnouncement, NetworkAnnouncement},
+        announcements::{
+            ApiServerAnnouncement, ConsensusAnnouncement, NetworkAnnouncement, StorageAnnouncement,
+        },
         requests::{
             ApiRequest, ContractRuntimeRequest, DeployQueueRequest, MetricsRequest, NetworkRequest,
             StorageRequest,
@@ -108,9 +111,15 @@ pub enum Event {
     /// Network announcement.
     #[from]
     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
+    /// Storage announcement.
+    #[from]
+    StorageAnnouncement(StorageAnnouncement<Storage>),
     /// API server announcement.
     #[from]
     ApiServerAnnouncement(ApiServerAnnouncement),
+    /// Consensus announcement.
+    #[from]
+    ConsensusAnnouncement(ConsensusAnnouncement),
 }
 
 impl From<ApiRequest> for Event {
@@ -159,6 +168,8 @@ impl Display for Event {
             Event::MetricsRequest(req) => write!(f, "metrics request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
             Event::ApiServerAnnouncement(ann) => write!(f, "api server announcement: {}", ann),
+            Event::ConsensusAnnouncement(ann) => write!(f, "consensus announcement: {}", ann),
+            Event::StorageAnnouncement(ann) => write!(f, "storage announcement: {}", ann),
         }
     }
 }
@@ -206,7 +217,8 @@ impl reactor::Reactor for Reactor {
         let (pinger, pinger_effects) = Pinger::new(registry, effect_builder)?;
         let api_server = ApiServer::new(config.http_server, effect_builder);
         let timestamp = Timestamp::now();
-        let (consensus, consensus_effects) = EraSupervisor::new(timestamp, effect_builder);
+        let (consensus, consensus_effects) =
+            EraSupervisor::new(timestamp, config.consensus, effect_builder)?;
         let deploy_gossiper = DeployGossiper::new(config.gossip);
         let deploy_buffer = DeployBuffer::new();
 
@@ -303,13 +315,36 @@ impl reactor::Reactor for Reactor {
                         })
                     }
                 };
-
-                // Any incoming message is one for the pinger.
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
                 let event = deploy_gossiper::Event::DeployReceived { deploy };
                 self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
+            }
+            Event::ConsensusAnnouncement(consensus_announcement) => {
+                let reactor_event = Event::DeployQueue(match consensus_announcement {
+                    ConsensusAnnouncement::Proposed(block) => {
+                        deploy_buffer::Event::ProposedProtoBlock(block)
+                    }
+                    ConsensusAnnouncement::Finalized(block) => {
+                        deploy_buffer::Event::FinalizedProtoBlock(block)
+                    }
+                    ConsensusAnnouncement::Orphaned(block) => {
+                        deploy_buffer::Event::OrphanedProtoBlock(block)
+                    }
+                });
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            Event::StorageAnnouncement(StorageAnnouncement::StoredDeploy {
+                deploy_hash,
+                deploy_header,
+            }) => {
+                if self.deploy_buffer.add_deploy(deploy_hash, deploy_header) {
+                    info!("Added deploy {} to the buffer.", deploy_hash);
+                } else {
+                    info!("Deploy {} rejected from the buffer.", deploy_hash);
+                }
+                Effects::new()
             }
         }
     }
