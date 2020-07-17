@@ -785,7 +785,7 @@ mod test_harness {
                 .consensus_values(vec![1])
                 .delivery_strategy(UniformNoDropping)
                 .weight_limits(1, 5)
-                .ftt(0)
+                .ftt(1)
                 .build()
                 .ok()
                 .expect("Construction was successful");
