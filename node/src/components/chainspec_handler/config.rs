@@ -338,7 +338,7 @@ mod tests {
     use super::{chainspec::rewrite_with_absolute_paths, *};
 
     const PRODUCTION_DIR: &str = "resources/production";
-    const EXAMPLE_DIR: &str = "resources/example";
+    const LOCAL_DIR: &str = "resources/local";
     const TARGET_DIR: &str = "target/wasm32-unknown-unknown/release";
     const MINT: &str = "mint_install.wasm";
     const POS: &str = "pos_install.wasm";
@@ -356,7 +356,7 @@ mod tests {
     }
 
     #[test]
-    fn example_chainspec_should_parse() {
+    fn local_chainspec_should_parse() {
         let mint = PathBuf::from(format!(
             "{}/{}/{}",
             env!("CARGO_MANIFEST_DIR"),
@@ -380,12 +380,12 @@ mod tests {
             return;
         }
 
-        let example_path = format!(
+        let local_path = format!(
             "{}/../{}/{}",
             env!("CARGO_MANIFEST_DIR"),
-            EXAMPLE_DIR,
+            LOCAL_DIR,
             CHAINSPEC_CONFIG_NAME
         );
-        let _chainspec = Chainspec::from(&parse_toml(example_path).unwrap());
+        let _chainspec = Chainspec::from(&parse_toml(local_path).unwrap());
     }
 }

@@ -24,10 +24,10 @@ use crate::{
         highway_core::highway::HighwayParams,
         protocols::highway::{HighwayContext, HighwayProtocol, HighwaySecret},
         traits::NodeIdT,
-        ConsensusMessage, Event, ReactorEventT,
+        Config, ConsensusMessage, Event, ReactorEventT,
     },
     crypto::{
-        asymmetric_key::{generate_ed25519_keypair, PublicKey},
+        asymmetric_key::{PublicKey, SecretKey},
         hash::hash,
     },
     effect::{EffectBuilder, EffectExt, Effects},
@@ -89,9 +89,10 @@ where
 {
     pub(crate) fn new<REv: ReactorEventT<I>>(
         timestamp: Timestamp,
+        config: Config,
         effect_builder: EffectBuilder<REv>,
         validators: Vec<(PublicKey, Motes)>,
-    ) -> (Self, Effects<Event<I>>) {
+    ) -> Result<(Self, Effects<Event<I>>), Error> {
         let sum_stakes: Motes = validators.iter().map(|(_, stake)| *stake).sum();
         let weights = if sum_stakes.value() > U512::from(u64::MAX) {
             validators
@@ -111,8 +112,16 @@ where
                 .map(|(key, stake)| (key, AsPrimitive::<u64>::as_(stake.value())))
                 .collect()
         };
-        // TODO: take our actual key from _somewhere_
-        let (secret_key, public_key) = generate_ed25519_keypair();
+
+        let secret_key_path = config.secret_key_path.ok_or_else(|| {
+            anyhow::Error::msg("invalid consensus config; secret_key_path is required")
+        })?;
+
+        let secret_signing_key = SecretKey::from_file(&secret_key_path)
+            .map_err(anyhow::Error::new)?
+            .ok_or_else(|| anyhow::Error::msg("invalid signing key"))?;
+
+        let public_key: PublicKey = From::from(&secret_signing_key);
         let params = HighwayParams {
             instance_id: hash("test era 0"),
             validators: weights,
@@ -121,7 +130,7 @@ where
             params,
             0, // TODO: get a proper seed ?
             public_key,
-            HighwaySecret::new(secret_key, public_key),
+            HighwaySecret::new(secret_signing_key, public_key),
             12, // 4.1 seconds; TODO: get a proper round exp
             timestamp,
         );
@@ -135,7 +144,7 @@ where
             .into_iter()
             .flat_map(|result| Self::handle_consensus_result(EraId(0), effect_builder, result))
             .collect();
-        (era_supervisor, effects)
+        Ok((era_supervisor, effects))
     }
 
     fn handle_consensus_result<REv: ReactorEventT<I>>(

@@ -197,8 +197,12 @@ impl Reactor {
             .filter_map(|account| account.public_key().map(|pk| (pk, account.bonded_amount())))
             .filter(|(_, stake)| stake.value() > U512::zero())
             .collect();
-        let (consensus, consensus_effects) =
-            EraSupervisor::new(timestamp, effect_builder, validator_stakes);
+        let (consensus, consensus_effects) = EraSupervisor::new(
+            timestamp,
+            config.consensus,
+            effect_builder,
+            validator_stakes,
+        )?;
         let deploy_gossiper = DeployGossiper::new(config.gossip);
         let deploy_buffer = DeployBuffer::new();
 
