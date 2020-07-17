@@ -1,11 +1,11 @@
 # `cargo casperlabs`
 
-[![LOGO](https://raw.githubusercontent.com/CasperLabs/CasperLabs/master/CasperLabs_Logo_Horizontal_RGB.png)](https://casperlabs.io/)
+[![LOGO](../../images/CasperLabs_Logo_Horizontal_RGB.png)](https://casperlabs.io/)
 
-[![Build Status](https://drone-auto.casperlabs.io/api/badges/CasperLabs/CasperLabs/status.svg?branch=dev)](http://drone-auto.casperlabs.io/CasperLabs/CasperLabs)
+[![Build Status](https://drone-auto.casperlabs.io/api/badges/CasperLabs/casperlabs-node/status.svg?branch=master)](http://drone-auto.casperlabs.io/CasperLabs/CasperLabs)
 [![Crates.io](https://img.shields.io/crates/v/cargo-casperlabs)](https://crates.io/crates/cargo-casperlabs)
 [![Documentation](https://docs.rs/cargo-casperlabs/badge.svg)](https://docs.rs/cargo-casperlabs)
-[![License](https://img.shields.io/badge/license-COSL-blue.svg)](https://github.com/CasperLabs/casperlabs-node/blob/master/LICENSE)
+[![License](https://img.shields.io/badge/license-COSL-blue.svg)](../../LICENSE)
 
 A command line tool for creating a Wasm smart contract and tests for use on the CasperLabs network.
 
@@ -88,4 +88,4 @@ cargo test
 
 ## License
 
-Licensed under the [CasperLabs Open Source License (COSL)](https://github.com/CasperLabs/casperlabs-node/blob/master/LICENSE).
+Licensed under the [CasperLabs Open Source License (COSL)](../../LICENSE).

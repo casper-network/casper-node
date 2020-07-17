@@ -122,12 +122,12 @@ pub mod tests {
 
     /// Returns the absolute path of `relative_path` where this is relative to "casperlabs-node".
     /// Panics if the current working directory is not within "casperlabs-node".
-    pub fn full_path_from_path_relative_to_ee(relative_path: &str) -> String {
+    pub fn full_path_from_path_relative_to_workspace(relative_path: &str) -> String {
         let mut full_path = env::current_dir().unwrap().display().to_string();
         let index = full_path.find(PATH_PREFIX).unwrap_or_else(|| {
             panic!(
-                "test should be run from within casperlabs-node workspace: {}",
-                full_path
+                "test should be run from within casperlabs-node workspace: {} relative path: {}",
+                full_path, relative_path,
             )
         });
         full_path.replace_range(index + 1.., relative_path);
@@ -137,7 +137,7 @@ pub mod tests {
     /// Checks the version of the package specified by the Cargo.toml at `toml_path` is equal to
     /// the hard-coded one specified in `dep.version()`.
     pub fn check_package_version(dep: &Dependency, toml_path: &str) {
-        let toml_path = full_path_from_path_relative_to_ee(toml_path);
+        let toml_path = full_path_from_path_relative_to_workspace(toml_path);
 
         let raw_toml_contents =
             fs::read(&toml_path).unwrap_or_else(|_| panic!("should read {}", toml_path));
