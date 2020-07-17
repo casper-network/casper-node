@@ -49,7 +49,7 @@ impl DeployItem {
 
 impl From<Deploy> for DeployItem {
     fn from(deploy: Deploy) -> Self {
-        let account_hash = AccountHash::new([42; 32]);
+        let account_hash = deploy.header().account.to_account_hash();
         DeployItem::new(
             account_hash,
             deploy.session().clone(),
