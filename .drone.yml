@@ -54,6 +54,7 @@ steps:
   environment:
     RUSTFLAGS: '-D warnings'
   commands:
+  - make setup-rs
   - rustup component add clippy
   - cargo clippy --all-targets --all-features --workspace
 

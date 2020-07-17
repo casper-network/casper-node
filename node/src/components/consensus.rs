@@ -1,5 +1,5 @@
 //! The consensus component. Provides distributed consensus among the nodes in the network.
-
+mod config;
 mod consensus_protocol;
 mod era_supervisor;
 mod highway_core;
@@ -19,11 +19,13 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::Component,
     effect::{
+        announcements::ConsensusAnnouncement,
         requests::{DeployQueueRequest, NetworkRequest},
-        EffectBuilder, Effects,
+        EffectBuilder, EffectExt, Effects,
     },
     types::{ExecutedBlock, ProtoBlock, Timestamp},
 };
+pub use config::Config;
 
 pub(crate) use consensus_protocol::BlockContext;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
@@ -122,7 +124,11 @@ impl<I: Debug> Display for Event<I> {
 /// A helper trait whose bounds represent the requirements for a reactor event that `EraSupervisor`
 /// can work with.
 pub trait ReactorEventT<I>:
-    From<Event<I>> + Send + From<NetworkRequest<I, ConsensusMessage>> + From<DeployQueueRequest>
+    From<Event<I>>
+    + Send
+    + From<NetworkRequest<I, ConsensusMessage>>
+    + From<DeployQueueRequest>
+    + From<ConsensusAnnouncement>
 {
 }
 
@@ -131,6 +137,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + Send
         + From<NetworkRequest<I, ConsensusMessage>>
         + From<DeployQueueRequest>
+        + From<ConsensusAnnouncement>
 {
 }
 
@@ -163,9 +170,17 @@ where
                 era_id,
                 proto_block,
                 block_context,
-            } => self.delegate_to_era(era_id, effect_builder, move |consensus| {
-                consensus.propose(proto_block, block_context)
-            }),
+            } => {
+                let mut effects = effect_builder
+                    .announce_proposed_proto_block(proto_block.clone())
+                    .ignore();
+                effects.extend(
+                    self.delegate_to_era(era_id, effect_builder, move |consensus| {
+                        consensus.propose(proto_block, block_context)
+                    }),
+                );
+                effects
+            }
             Event::ExecutedBlock { .. } => {
                 // TODO: Finality signatures
                 Effects::new()
@@ -173,9 +188,17 @@ where
             Event::AcceptProtoBlock {
                 era_id,
                 proto_block,
-            } => self.delegate_to_era(era_id, effect_builder, |consensus| {
-                consensus.resolve_validity(&proto_block, true)
-            }),
+            } => {
+                let mut effects = self.delegate_to_era(era_id, effect_builder, |consensus| {
+                    consensus.resolve_validity(&proto_block, true)
+                });
+                effects.extend(
+                    effect_builder
+                        .announce_proposed_proto_block(proto_block)
+                        .ignore(),
+                );
+                effects
+            }
             Event::InvalidProtoBlock {
                 era_id,
                 sender: _sender,

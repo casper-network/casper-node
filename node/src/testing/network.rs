@@ -41,6 +41,7 @@ impl<R> Network<R>
 where
     R: Reactor + NetworkedReactor,
     R::Config: Default,
+    R::Error: From<prometheus::Error>,
 {
     /// Creates a new networking node on the network using the default root node port.
     ///
@@ -59,6 +60,7 @@ where
 impl<R> Network<R>
 where
     R: Reactor + NetworkedReactor,
+    R::Error: From<prometheus::Error> + From<R::Error>,
 {
     /// Creates a new network.
     pub fn new() -> Self {
@@ -161,6 +163,7 @@ impl<R> Finalize for Network<R>
 where
     R: Finalize + NetworkedReactor + Reactor + Send + 'static,
     R::NodeId: Send,
+    R::Error: From<prometheus::Error>,
 {
     fn finalize(self) -> BoxFuture<'static, ()> {
         // We support finalizing networks where the reactor itself can be finalized.
