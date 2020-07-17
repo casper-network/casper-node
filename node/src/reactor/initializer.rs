@@ -66,7 +66,7 @@ impl Display for Event {
 /// Error type returned by the initializer reactor.
 #[derive(Debug, Error)]
 pub enum Error {
-    /// `Crypto` error.
+    /// `Config` error.
     #[error("config error: {0}")]
     ConfigError(String),
 

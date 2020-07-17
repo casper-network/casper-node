@@ -47,7 +47,7 @@ pub enum Cli {
         config: Option<PathBuf>,
 
         #[structopt(short = "C", long)]
-        /// config entries (section, field, value)
+        /// config entries (section, key, value)
         config_ext: Vec<ConfigExt>,
     },
 }
