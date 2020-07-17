@@ -30,7 +30,7 @@ const DEPLOY_API_PATH: &str = "deploys";
 #[serde(rename_all = "snake_case")]
 enum DeployArgValue {
     /// Contains `CLValue` serialized into bytes in base16 form.
-    #[serde(rename = "raw_bytes", deserialize_with = "hex::deserialize")]
+    #[serde(deserialize_with = "hex::deserialize")]
     RawBytes(Vec<u8>),
 }
 

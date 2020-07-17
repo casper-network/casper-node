@@ -67,7 +67,7 @@ pub(crate) struct ChainspecHandler {
     chainspec: Chainspec,
     // If `Some`, we're finished.  The value of the bool indicates success (true) or not.
     completed_successfully: Option<bool>,
-    // If `Some` then gensis process returned a valid post state hash.
+    // If `Some` then genesis process returned a valid post state hash.
     post_state_hash: Option<Digest>,
 }
 
