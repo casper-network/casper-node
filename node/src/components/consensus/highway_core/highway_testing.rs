@@ -10,7 +10,7 @@ use super::{
 
 use crate::{
     components::consensus::{
-        consensus_des_testing::{
+        tests::consensus_des_testing::{
             DeliverySchedule, Message, MessageT, QueueEntry, Strategy, Target, TargetedMessage,
             Validator, ValidatorId, VirtualNet,
         },
@@ -744,7 +744,7 @@ mod test_harness {
     };
     use crate::{
         components::consensus::{
-            consensus_des_testing::ValidatorId,
+            tests::consensus_des_testing::ValidatorId,
             traits::{Context, ValidatorSecret},
         },
         types::TimeDiff,

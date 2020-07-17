@@ -9,7 +9,7 @@ mod traits;
 #[cfg(test)]
 #[allow(unused)]
 #[allow(dead_code)]
-mod consensus_des_testing;
+mod tests;
 
 use std::fmt::{self, Debug, Display, Formatter};
 
