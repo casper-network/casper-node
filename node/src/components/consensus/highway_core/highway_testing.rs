@@ -635,9 +635,7 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
             C::ValidatorId,
             &mut HashMap<C::ValidatorId, C::ValidatorSecret>,
         )| {
-            let v_sec = secrets
-                .remove(&vid)
-                .expect("Validator's secret key exists.");
+            let v_sec = secrets.remove(&vid).expect("Secret key should exist.");
 
             let (highway, effects) = {
                 let highway_params: HighwayParams<C> = HighwayParams {
