@@ -9,6 +9,7 @@ use std::{
 };
 
 use derive_more::From;
+use tracing::error;
 
 use crate::{
     components::Component,
@@ -144,7 +145,7 @@ impl DeployBuffer {
             self.finalized.insert(block, deploys);
         } else {
             // TODO: Events are not guaranteed to be handled in order, so this could happen!
-            panic!("finalized block that hasn't been processed!");
+            error!("finalized block that hasn't been processed!");
         }
     }
 
@@ -154,7 +155,7 @@ impl DeployBuffer {
             self.collected_deploys.extend(deploys);
         } else {
             // TODO: Events are not guaranteed to be handled in order, so this could happen!
-            panic!("orphaned block that hasn't been processed!");
+            error!("orphaned block that hasn't been processed!");
         }
     }
 }
