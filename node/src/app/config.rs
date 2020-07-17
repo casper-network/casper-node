@@ -45,7 +45,7 @@ mod tests {
     #[test]
     fn example_config_should_parse() {
         let config_path = format!(
-            "{}/../resources/example/config.toml",
+            "{}/../resources/local/config.toml",
             env!("CARGO_MANIFEST_DIR")
         );
         let _config: Config = super::load_from_file(config_path).unwrap();
