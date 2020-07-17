@@ -457,6 +457,7 @@ impl<'a, C: Context, DS: Strategy<DeliverySchedule>> MutableHandle<'a, C, DS> {
 
 enum Distribution {
     Uniform,
+    Constant,
     Poisson(f64),
 }
 
@@ -511,7 +512,7 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
             delivery_strategy: None,
             weight_limits: (0, 0),
             start_time: Timestamp::zero(),
-            weight_distribution: Distribution::Uniform,
+            weight_distribution: Distribution::Constant,
             instance_id,
             seed: 0,
             round_exp: 12,
@@ -604,11 +605,12 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
         let start_time = self.start_time;
 
         let weights: Vec<Weight> = match self.weight_distribution {
-            Distribution::Uniform => {
+            Distribution::Constant => {
                 let (lower, upper) = self.weight_limits;
                 let weight = Weight((lower + upper) / 2);
                 (0..validators_num).map(|_| weight).collect()
             }
+            Distribution::Uniform => unimplemented!(),
             // https://casperlabs.atlassian.net/browse/HWY-116
             Distribution::Poisson(_) => unimplemented!("Poisson distribution of weights"),
         };
