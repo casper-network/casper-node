@@ -41,7 +41,7 @@ impl<VID> Validator<VID> {
 }
 
 /// The validator IDs and weight map.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Validators<VID: Eq + Hash> {
     index_by_id: HashMap<VID, ValidatorIndex>,
     validators: Vec<Validator<VID>>,
