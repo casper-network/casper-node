@@ -32,6 +32,14 @@ impl<C: Context> HighwayConsensus<C> {
     fn run_finality(&mut self) -> FinalityOutcome<C::ConsensusValue, ValidatorIndex> {
         self.finality_detector.run(self.highway.state())
     }
+
+    pub(crate) fn highway(&self) -> &Highway<C> {
+        &self.highway
+    }
+
+    pub(crate) fn highway_mut(&mut self) -> &mut Highway<C> {
+        &mut self.highway
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -230,6 +238,7 @@ where
     }
 
     /// Helper for getting validator from the underlying virtual net.
+    #[allow(clippy::type_complexity)]
     fn validator_mut(
         &mut self,
         validator_id: &ValidatorId,
@@ -239,7 +248,19 @@ where
     > {
         self.virtual_net
             .validator_mut(&validator_id)
-            .ok_or_else(|| TestRunError::MissingValidator(validator_id.clone()))
+            .ok_or_else(|| TestRunError::MissingValidator(*validator_id))
+    }
+
+    fn call_validator<F>(
+        &mut self,
+        validator_id: &ValidatorId,
+        f: F,
+    ) -> Result<Vec<HighwayMessage<Ctx>>, TestRunError<Ctx>>
+    where
+        F: FnOnce(&mut Highway<Ctx>) -> Vec<Effect<Ctx>>,
+    {
+        let res = f(self.validator_mut(validator_id)?.consensus.highway_mut());
+        Ok(res.into_iter().map(HighwayMessage::from).collect())
     }
 
     /// Processes a message sent to `validator_id`.
@@ -258,13 +279,7 @@ where
             let hwm = message.payload().clone();
             match hwm {
                 Timer(timestamp) => self
-                    .validator_mut(&validator_id)?
-                    .consensus
-                    .highway
-                    .handle_timer(timestamp)
-                    .into_iter()
-                    .map(HighwayMessage::from)
-                    .collect(),
+                    .call_validator(&validator_id, |consensus| consensus.handle_timer(timestamp))?,
 
                 NewVertex(v) => {
                     match self.add_vertex(validator_id, sender_id, v)? {
@@ -281,13 +296,9 @@ where
                         .next_consensus_value()
                         .ok_or_else(|| TestRunError::NoConsensusValues)?;
 
-                    self.validator_mut(&validator_id)?
-                        .consensus
-                        .highway
-                        .propose(consensus_value, block_context)
-                        .into_iter()
-                        .map(HighwayMessage::from)
-                        .collect()
+                    self.call_validator(&validator_id, |consensus| {
+                        consensus.propose(consensus_value, block_context)
+                    })?
                 }
             }
         };
@@ -329,10 +340,7 @@ where
         // 4. add_valid_vertex
 
         let sync_result = {
-            let validator = self
-                .virtual_net
-                .validator_mut(&recipient)
-                .ok_or_else(|| TestRunError::MissingValidator(recipient))?;
+            let validator = self.validator_mut(&recipient)?;
 
             match validator.consensus.highway.pre_validate_vertex(vertex) {
                 Err((v, error)) => Ok(Err((v, error))),
@@ -344,25 +352,17 @@ where
             Err(vertex_error) => Ok(Err(vertex_error)),
             Ok((prevalidated_vertex, mut sync_effects)) => {
                 let add_vertex_effects: Vec<HighwayMessage<Ctx>> = {
-                    let validator = self
-                        .virtual_net
-                        .validator_mut(&recipient)
-                        .ok_or_else(|| TestRunError::MissingValidator(recipient))?;
-
-                    match validator
+                    match self
+                        .validator_mut(&recipient)?
                         .consensus
                         .highway
                         .validate_vertex(prevalidated_vertex)
                         .map_err(|(pvv, error)| (pvv.into_vertex(), error))
                     {
                         Err(vertex_error) => return Ok(Err(vertex_error)),
-                        Ok(valid_vertex) => validator
-                            .consensus
-                            .highway
-                            .add_valid_vertex(valid_vertex)
-                            .into_iter()
-                            .map(HighwayMessage::from)
-                            .collect(),
+                        Ok(valid_vertex) => self.call_validator(&recipient, |highway| {
+                            highway.add_valid_vertex(valid_vertex)
+                        })?,
                     }
                 };
 
@@ -667,7 +667,6 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
                 .iter()
                 .map(|vid| (*vid, true))
                 .chain(honest_ids.iter().map(|vid| (*vid, false)))
-                .into_iter()
             {
                 let (consensus, msgs) = highway_consensus((vid, &mut self.validators_secs));
                 let validator = Validator::new(vid, is_faulty, consensus);
