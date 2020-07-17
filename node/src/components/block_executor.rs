@@ -54,10 +54,6 @@ pub enum Event {
     DeploysExecutionResult {
         /// Finalized block used to request execution on.
         finalized_block: FinalizedBlock,
-        /// Execute request object.
-        // execute_request: ExecuteRequest,
-        /// Pre state hash used to execute deploys.
-        // pre_state_hash: Digest,
         /// Result of deploy execution.
         result: Result<Vec<ExecutionResult>, engine_state::RootNotFound>,
         /// Original responder passed with `Event::Request`.
