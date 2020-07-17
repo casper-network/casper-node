@@ -1,5 +1,6 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
+use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -21,12 +22,23 @@ use crate::{
 ///
 /// The word "proto" does _not_ refer to "protocol" or "protobuf"! It is just a prefix to highlight
 /// that this comes before a block in the linear, executed, finalized blockchain is produced.
-#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Display)]
+#[display(fmt = "proto block")] // TODO: print hash?
 pub struct ProtoBlock {
     /// The list of deploy hashes included in the block
     pub deploys: Vec<DeployHash>,
     /// A random bit needed for initializing a future era
     pub random_bit: bool,
+}
+
+impl ProtoBlock {
+    // TODO: Memoize?
+    // TODO: Should be a separate `ProtoBlockHash` type?
+    pub(crate) fn hash(&self) -> BlockHash {
+        BlockHash::new(hash::hash(
+            &bincode::serialize(self).expect("serialize ProtoBlock"),
+        ))
+    }
 }
 
 /// A proto-block after execution, with the resulting post-state-hash

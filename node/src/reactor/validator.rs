@@ -24,7 +24,9 @@ use crate::{
         Component,
     },
     effect::{
-        announcements::{ApiServerAnnouncement, NetworkAnnouncement, StorageAnnouncement},
+        announcements::{
+            ApiServerAnnouncement, ConsensusAnnouncement, NetworkAnnouncement, StorageAnnouncement,
+        },
         requests::{
             ApiRequest, ContractRuntimeRequest, DeployQueueRequest, NetworkRequest, StorageRequest,
         },
@@ -109,6 +111,9 @@ pub enum Event {
     /// API server announcement.
     #[from]
     ApiServerAnnouncement(ApiServerAnnouncement),
+    /// Consensus announcement.
+    #[from]
+    ConsensusAnnouncement(ConsensusAnnouncement),
 }
 
 impl From<ApiRequest> for Event {
@@ -156,6 +161,7 @@ impl Display for Event {
             Event::DeployQueueRequest(req) => write!(f, "deploy queue request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
             Event::ApiServerAnnouncement(ann) => write!(f, "api server announcement: {}", ann),
+            Event::ConsensusAnnouncement(ann) => write!(f, "consensus announcement: {}", ann),
             Event::StorageAnnouncement(ann) => write!(f, "storage announcement: {}", ann),
         }
     }
@@ -297,13 +303,25 @@ impl reactor::Reactor for Reactor {
                         })
                     }
                 };
-
-                // Any incoming message is one for the pinger.
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
                 let event = deploy_gossiper::Event::DeployReceived { deploy };
                 self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
+            }
+            Event::ConsensusAnnouncement(consensus_announcement) => {
+                let reactor_event = Event::DeployQueue(match consensus_announcement {
+                    ConsensusAnnouncement::Proposed(block) => {
+                        deploy_buffer::Event::ProposedProtoBlock(block)
+                    }
+                    ConsensusAnnouncement::Finalized(block) => {
+                        deploy_buffer::Event::FinalizedProtoBlock(block)
+                    }
+                    ConsensusAnnouncement::Orphaned(block) => {
+                        deploy_buffer::Event::OrphanedProtoBlock(block)
+                    }
+                });
+                self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::StorageAnnouncement(StorageAnnouncement::StoredDeploy {
                 deploy_hash,

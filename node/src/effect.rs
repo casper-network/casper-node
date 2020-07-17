@@ -85,7 +85,9 @@ use crate::{
     types::{Deploy, ExecutedBlock, ProtoBlock},
     Chainspec,
 };
-use announcements::{ApiServerAnnouncement, NetworkAnnouncement, StorageAnnouncement};
+use announcements::{
+    ApiServerAnnouncement, ConsensusAnnouncement, NetworkAnnouncement, StorageAnnouncement,
+};
 use requests::{ContractRuntimeRequest, DeployQueueRequest, NetworkRequest, StorageRequest};
 
 /// A pinned, boxed future that produces one or more events.
@@ -600,6 +602,47 @@ impl<REv> EffectBuilder<REv> {
         // TODO: check with the deploy fetcher or something whether the deploys whose hashes are
         // contained in the proto-block actually exist
         (true, proto_block)
+    }
+
+    /// Announces that a proto block has been proposed and will either be finalized or orphaned
+    /// soon.
+    pub(crate) async fn announce_proposed_proto_block(self, proto_block: ProtoBlock)
+    where
+        REv: From<ConsensusAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ConsensusAnnouncement::Proposed(proto_block),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announces that a proto block has been finalized.
+    pub(crate) async fn announce_finalized_proto_block(self, proto_block: ProtoBlock)
+    where
+        REv: From<ConsensusAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ConsensusAnnouncement::Finalized(proto_block),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announces that a proto block has been orphaned.
+    #[allow(dead_code)] // TODO: Detect orphaned blocks.
+    pub(crate) async fn announce_orphaned_proto_block(self, proto_block: ProtoBlock)
+    where
+        REv: From<ConsensusAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ConsensusAnnouncement::Orphaned(proto_block),
+                QueueKind::Regular,
+            )
+            .await
     }
 
     /// Runs the genesis process on the contract runtime.
