@@ -10,7 +10,7 @@ pub(crate) mod synchronizer;
 pub(crate) use protocol_state::{ProtocolState, VertexTrait};
 
 /// Information about the context in which a new block is created.
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
 pub struct BlockContext {
     timestamp: Timestamp,
 }

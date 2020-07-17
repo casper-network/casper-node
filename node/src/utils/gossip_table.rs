@@ -115,6 +115,11 @@ impl Config {
         })
     }
 
+    #[cfg(test)]
+    pub(crate) fn infection_target(&self) -> u8 {
+        self.infection_target
+    }
+
     pub(crate) fn gossip_request_timeout_secs(&self) -> u64 {
         self.gossip_request_timeout_secs
     }

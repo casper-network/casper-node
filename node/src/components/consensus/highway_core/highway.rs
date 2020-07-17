@@ -42,6 +42,11 @@ impl<C: Context> PreValidatedVertex<C> {
     pub(crate) fn vertex(&self) -> &Vertex<C> {
         &self.0
     }
+
+    #[cfg(test)]
+    pub(crate) fn into_vertex(self) -> Vertex<C> {
+        self.0
+    }
 }
 
 impl<C: Context> From<ValidVertex<C>> for PreValidatedVertex<C> {

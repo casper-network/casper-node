@@ -7,7 +7,7 @@ use std::fmt::{self, Display, Formatter};
 
 use crate::{
     components::storage::{StorageType, Value},
-    types::Deploy,
+    types::{Deploy, ProtoBlock},
 };
 
 /// A networking layer announcement.
@@ -80,6 +80,34 @@ where
         match self {
             StorageAnnouncement::StoredDeploy { deploy_hash, .. } => {
                 write!(formatter, "stored deploy {}", deploy_hash)
+            }
+        }
+    }
+}
+
+/// A consensus announcement.
+#[derive(Debug)]
+pub enum ConsensusAnnouncement {
+    /// A block was proposed and will either be finalized or orphaned soon.
+    Proposed(ProtoBlock),
+    /// A block was finalized.
+    // TODO: Replace with `FinalizedBlock`.
+    Finalized(ProtoBlock),
+    /// A block was orphaned.
+    Orphaned(ProtoBlock),
+}
+
+impl Display for ConsensusAnnouncement {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ConsensusAnnouncement::Proposed(block) => {
+                write!(formatter, "proposed proto block {}", block)
+            }
+            ConsensusAnnouncement::Finalized(block) => {
+                write!(formatter, "finalized proto block {}", block)
+            }
+            ConsensusAnnouncement::Orphaned(block) => {
+                write!(formatter, "orphaned proto block {}", block)
             }
         }
     }

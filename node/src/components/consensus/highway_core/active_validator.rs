@@ -227,8 +227,8 @@ impl<C: Context> ActiveValidator<C> {
         vec![Effect::ScheduleTimer(self.next_timer)]
     }
 
-    /// Returns the earliest timestamp where we can cast our next vote without equivocating, i.e. the
-    /// timestamp of our previous vote, or 0 if there is none.
+    /// Returns the earliest timestamp where we can cast our next vote without equivocating, i.e.
+    /// the timestamp of our previous vote, or 0 if there is none.
     fn earliest_vote_time(&self, state: &State<C>) -> Timestamp {
         let opt_own_vh = state.panorama().get(self.vidx).correct();
         opt_own_vh.map_or(Timestamp::zero(), |own_vh| state.vote(own_vh).timestamp)
