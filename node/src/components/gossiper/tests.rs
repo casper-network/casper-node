@@ -92,7 +92,7 @@ impl Drop for Reactor {
 
 impl reactor::Reactor for Reactor {
     type Event = Event;
-    type Config = GossipTableConfig;
+    type Config = Config;
     type Error = Error;
 
     fn new<R: Rng + ?Sized>(
@@ -292,7 +292,7 @@ async fn should_get_from_alternate_source() {
     network.settle(&mut rng, POLL_DURATION, TIMEOUT).await;
 
     // Advance time to trigger node 2's timeout causing it to request the deploy from node 1.
-    let secs_to_advance = GossipTableConfig::default().get_remainder_timeout_secs();
+    let secs_to_advance = Config::default().get_remainder_timeout_secs();
     time::pause();
     time::advance(Duration::from_secs(secs_to_advance)).await;
     time::resume();
@@ -327,7 +327,7 @@ async fn should_timeout_gossip_response() {
     let mut rng = rand::thread_rng();
 
     // The target number of peers to infect with a given piece of data.
-    let infection_target = GossipTableConfig::default().infection_target();
+    let infection_target = Config::default().infection_target();
 
     // Add `infection_target + 1` nodes.
     let mut node_ids = network
@@ -367,7 +367,7 @@ async fn should_timeout_gossip_response() {
     }
 
     // Advance time to trigger node 0's timeout causing it to gossip to the new nodes.
-    let secs_to_advance = GossipTableConfig::default().gossip_request_timeout_secs();
+    let secs_to_advance = Config::default().gossip_request_timeout_secs();
     time::pause();
     time::advance(Duration::from_secs(secs_to_advance)).await;
     time::resume();

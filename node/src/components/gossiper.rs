@@ -1,4 +1,7 @@
+mod config;
+mod error;
 mod event;
+mod gossip_table;
 mod message;
 mod tests;
 
@@ -21,11 +24,11 @@ use crate::{
         requests::{NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    utils::{GossipAction, GossipTable},
-    GossipTableConfig,
 };
-
+pub use config::Config;
+pub use error::Error;
 pub use event::Event;
+use gossip_table::{GossipAction, GossipTable};
 pub use message::Message;
 
 pub trait Item: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display {
@@ -127,7 +130,7 @@ where
     /// For an example of how `get_from_holder` should be implemented, see
     /// `gossiper::get_deploy_from_store()` which is used by `Gossiper<Deploy>`.
     pub(crate) fn new(
-        config: GossipTableConfig,
+        config: Config,
         put_to_holder: impl Fn(EffectBuilder<REv>, T, Option<NodeId>) -> Effects<Event<T>>
             + Send
             + 'static,
