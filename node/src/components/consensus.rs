@@ -9,7 +9,7 @@ mod traits;
 #[cfg(test)]
 #[allow(unused)]
 #[allow(dead_code)]
-mod highway_testing;
+mod tests;
 
 use std::fmt::{self, Debug, Display, Formatter};
 
