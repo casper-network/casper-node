@@ -5,6 +5,7 @@ use crate::{
     components::consensus::traits::{Context, ValidatorSecret},
     types::Timestamp,
 };
+use std::fmt::Debug;
 
 /// A dependency of a `Vertex` that can be satisfied by one or more other vertices.
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -77,7 +78,7 @@ impl<C: Context> SignedWireVote<C> {
 }
 
 /// A vote as it is sent over the wire, possibly containing a new block.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -88,6 +89,18 @@ pub(crate) struct WireVote<C: Context> {
     pub(crate) value: Option<C::ConsensusValue>,
     pub(crate) seq_number: u64,
     pub(crate) timestamp: Timestamp,
+}
+
+impl<C: Context> Debug for WireVote<C> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WireVote")
+            .field("hash", &self.hash())
+            .field("creator", &self.creator)
+            .field("seq_num", &self.seq_number)
+            .field("timestamp", &self.timestamp)
+            .field("panorama", &self.panorama)
+            .finish()
+    }
 }
 
 impl<C: Context> WireVote<C> {
