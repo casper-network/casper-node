@@ -5,7 +5,7 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     fs,
     hash::{Hash, Hasher},
-    path::PathBuf,
+    path::Path,
 };
 
 use ed25519_dalek::{self as ed25519, ExpandedSecretKey};
@@ -13,15 +13,16 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use signature::Signature as Sig;
 
-use super::Result;
-use crate::crypto::Error as CryptoError;
+use super::{Error, Result};
+use crate::crypto::hash::hash;
+use types::account::AccountHash;
 
 const ED25519_TAG: u8 = 0;
 const ED25519: &str = "Ed25519";
 const ED25519_LOWERCASE: &str = "ed25519";
 
 /// A secret or private asymmetric key.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
 pub enum SecretKey {
     /// Ed25519 secret key.
     Ed25519(ed25519::SecretKey),
@@ -61,13 +62,27 @@ impl SecretKey {
     }
 
     /// Attempt to read the secret key bytes from configured file path.
-    pub fn from_file(path: &PathBuf) -> Result<Option<Self>> {
-        let payload = fs::read_to_string(path).map_err(|_| CryptoError::FromFile)?;
+    pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self> {
+        let payload = fs::read_to_string(file.as_ref()).map_err(|error| Error::ReadFile {
+            file: file.as_ref().display().to_string(),
+            error_msg: error.to_string(),
+        })?;
         let pem = pem::parse(payload)?;
-        match Self::ed25519_from_bytes(pem.contents) {
-            Ok(secret_key) => Ok(Some(secret_key)),
-            Err(error) => Err(error),
+        Self::ed25519_from_bytes(pem.contents)
+    }
+}
+
+impl Debug for SecretKey {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            SecretKey::Ed25519(_) => write!(formatter, "SecretKey::{}(...)", ED25519),
         }
+    }
+}
+
+impl Display for SecretKey {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        Debug::fmt(self, formatter)
     }
 }
 
@@ -115,6 +130,26 @@ impl PublicKey {
         match self {
             PublicKey::Ed25519(_) => ED25519,
         }
+    }
+
+    /// Creates an `AccountHash` from a given `PublicKey` instance.
+    pub(crate) fn to_account_hash(&self) -> AccountHash {
+        // As explained here:
+        // https://casperlabs.atlassian.net/wiki/spaces/EN/pages/446431524/Design+for+supporting+multiple+signature+algorithms.
+        let (algorithm_name, pk_bytes) = match self {
+            PublicKey::Ed25519(bytes) => (ED25519_LOWERCASE, bytes.as_ref()),
+        };
+        // Prepare preimage based on the public key parameters
+        let preimage = {
+            let mut data = Vec::with_capacity(algorithm_name.len() + pk_bytes.len() + 1);
+            data.extend(algorithm_name.as_bytes());
+            data.push(0x00);
+            data.extend(pk_bytes);
+            data
+        };
+        // Hash the preimage data using blake2b256 and return it
+        let digest = hash(&preimage);
+        AccountHash::new(digest.to_bytes())
     }
 }
 
@@ -415,6 +450,15 @@ mod tests {
             let public_key_low = PublicKey::new_ed25519([1; PUBLIC_KEY_LENGTH]).unwrap();
             let public_key_high = PublicKey::new_ed25519([3; PUBLIC_KEY_LENGTH]).unwrap();
             check_ord_and_hash(public_key_low, public_key_high)
+        }
+
+        #[test]
+        fn public_key_to_account_hash() {
+            let public_key_high = PublicKey::new_ed25519([255; PUBLIC_KEY_LENGTH]).unwrap();
+            assert_ne!(
+                public_key_high.to_account_hash().as_ref(),
+                public_key_high.as_ref()
+            );
         }
 
         #[test]

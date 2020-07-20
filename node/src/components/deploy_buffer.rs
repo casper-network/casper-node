@@ -9,6 +9,7 @@ use std::{
 };
 
 use derive_more::From;
+use tracing::error;
 
 use crate::{
     components::Component,
@@ -116,7 +117,8 @@ impl DeployBuffer {
         ttl_valid && timestamp_valid && deploy_valid && num_deps_valid && all_deps_resolved()
     }
 
-    /// Notifies the deploy buffer of a new block.
+    /// Notifies the deploy buffer of a new block that has been proposed, so that the block's
+    /// deploys are not returned again by `remaining_deploys`.
     pub(crate) fn added_block<I>(&mut self, block: BlockHash, deploys: I)
     where
         I: IntoIterator<Item = DeployHash>,
@@ -144,7 +146,7 @@ impl DeployBuffer {
             self.finalized.insert(block, deploys);
         } else {
             // TODO: Events are not guaranteed to be handled in order, so this could happen!
-            panic!("finalized block that hasn't been processed!");
+            error!("finalized block that hasn't been processed!");
         }
     }
 
@@ -154,7 +156,7 @@ impl DeployBuffer {
             self.collected_deploys.extend(deploys);
         } else {
             // TODO: Events are not guaranteed to be handled in order, so this could happen!
-            panic!("orphaned block that hasn't been processed!");
+            error!("orphaned block that hasn't been processed!");
         }
     }
 }
@@ -164,8 +166,11 @@ impl DeployBuffer {
 pub enum Event {
     #[from]
     QueueRequest(DeployQueueRequest),
+    /// A proto block has been proposed. We should not propose duplicates of its deploys.
     ProposedProtoBlock(ProtoBlock),
+    /// A proto block has been finalized. We should never propose its deploys again.
     FinalizedProtoBlock(ProtoBlock),
+    /// A proto block has been orphaned. Its deploys should be re-proposed.
     OrphanedProtoBlock(ProtoBlock),
 }
 

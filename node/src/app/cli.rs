@@ -3,19 +3,19 @@
 //! Most configuration is done via config files (see [`config`](../config/index.html) for details).
 
 use std::{
-    io,
+    env, io,
     io::Write,
     path::{Path, PathBuf},
     str::FromStr,
 };
 
-use anyhow::bail;
+use anyhow::{self, bail, Context};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use regex::Regex;
 use structopt::StructOpt;
-use toml::Value;
-use tracing::info;
+use toml::{value::Table, Value};
+use tracing::{error, info, trace};
 
 use crate::config;
 use casperlabs_node::{
@@ -47,13 +47,14 @@ pub enum Cli {
         config: Option<PathBuf>,
 
         #[structopt(short = "C", long)]
-        /// config entries (section, key, value)
+        /// Overrides and extensions for configuration file entries in the form
+        /// <SECTION>.<KEY>=<VALUE>.  For example, '-C=node.chainspec_config_path=chainspec.toml'
         config_ext: Vec<ConfigExt>,
     },
 }
 
 #[derive(Debug)]
-/// Command line extension to be applied to toml based config file values.
+/// Command line extension to be applied to TOML-based config file values.
 pub struct ConfigExt {
     section: String,
     key: String,
@@ -61,14 +62,11 @@ pub struct ConfigExt {
 }
 
 impl ConfigExt {
-    /// Updates toml table with updated or extended kvp.
-    fn update_toml_table(&self, toml_value: &mut toml::Value) -> Option<()> {
+    /// Updates TOML table with updated or extended key value pairs.
+    fn update_toml_table(&self, toml_value: &mut Value) -> Option<()> {
         let table = toml_value.as_table_mut()?;
         if !table.contains_key(&self.section) {
-            table.insert(
-                self.section.clone(),
-                toml::Value::Table(toml::value::Table::new()),
-            );
+            table.insert(self.section.clone(), Value::Table(Table::new()));
         }
         let val = parse_toml_value(&self.value);
         table[&self.section]
@@ -79,39 +77,49 @@ impl ConfigExt {
 }
 
 impl FromStr for ConfigExt {
-    type Err = &'static str;
+    type Err = anyhow::Error;
 
-    /// Attempts to create a ConfigExt from a str patterned as
-    /// `section.key=value`
+    /// Attempts to create a ConfigExt from a str patterned as `section.key=value`
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         let re = Regex::new(r"^([^.]+)\.([^=]+)=(.+)$").unwrap();
-        if let Some(captures) = re.captures(input) {
-            Ok(ConfigExt {
-                section: captures.get(1).expect("section").as_str().to_owned(),
-                key: captures.get(2).expect("section").as_str().to_owned(),
-                value: captures.get(3).expect("section").as_str().to_owned(),
-            })
-        } else {
-            Err("could not parse config_ext (see README.md)")
-        }
+        let captures = re
+            .captures(input)
+            .context("could not parse config_ext (see README.md)")?;
+        Ok(ConfigExt {
+            section: captures
+                .get(1)
+                .context("failed to find section")?
+                .as_str()
+                .to_owned(),
+            key: captures
+                .get(2)
+                .context("failed to find key")?
+                .as_str()
+                .to_owned(),
+            value: captures
+                .get(3)
+                .context("failed to find value")?
+                .as_str()
+                .to_owned(),
+        })
     }
 }
 
-/// Convenience function to parse values passed via command
-/// line into appropriate `toml::Value` representations.
-fn parse_toml_value(raw: &str) -> toml::Value {
+/// Convenience function to parse values passed via command line into appropriate `toml::Value`
+/// representations.
+fn parse_toml_value(raw: &str) -> Value {
     if let Ok(value) = i64::from_str(raw) {
-        return toml::Value::Integer(value);
+        return Value::Integer(value);
     }
     if let Ok(value) = bool::from_str(raw) {
-        return toml::Value::Boolean(value);
+        return Value::Boolean(value);
     }
-    toml::Value::String(raw.to_string())
+    Value::String(raw.to_string())
 }
 
-/// Normalizes any config key ending with `_path` with a value that appears to be
-/// a relative path, relative to the config file path.
-fn normalize_relative_paths(config_path: PathBuf, config: &mut toml::Value) {
+/// Normalizes any config key ending with `path` and a value that appears to be a relative path,
+/// relative to the config file path.
+fn normalize_paths(maybe_config_dir: Option<PathBuf>, config: &mut Value) {
     let table = if let Value::Table(table) = config {
         table
     } else {
@@ -119,25 +127,68 @@ fn normalize_relative_paths(config_path: PathBuf, config: &mut toml::Value) {
     };
 
     for (_section, inner) in table {
-        let table = if let toml::Value::Table(table) = inner {
+        let table = if let Value::Table(table) = inner {
             table
         } else {
             continue;
         };
 
         for (k, v) in table {
-            // skip any key that does not appear to be a file path.
-            if !k.ends_with("_path") {
+            // Skip any key that does not appear to be a file path.
+            if !k.ends_with("path") {
                 continue;
             }
-            if let toml::Value::String(maybe_path) = v {
-                let path = Path::new(maybe_path);
+
+            if let Value::String(path_str) = v {
+                // Replace env vars in the provided path.
+                for (env_var_name, env_var_value) in env::vars() {
+                    *path_str = path_str.replace(&format!("${}", env_var_name), &env_var_value);
+                }
+
+                let path = Path::new(path_str);
                 if path.is_relative() {
-                    *maybe_path = config_path.join(path).display().to_string();
+                    if let Some(root_dir) = maybe_config_dir.as_ref() {
+                        *path_str = root_dir.join(path).display().to_string();
+                    }
                 }
             }
         }
     }
+}
+
+fn config_from_toml_table(toml_table: Value) -> anyhow::Result<validator::Config> {
+    // Parse the TOML table into a validator::Config.  Some values may be discarded if they don't
+    // match fields in the config structs.
+    let validator_config = toml_table.clone().try_into()?;
+
+    // Convert the parsed config back into a TOML table to compare it to the one passed in.
+    let actual_table: Table = toml::from_str(&toml::to_string(&validator_config)?)?;
+    let input_table = toml_table.as_table().unwrap();
+
+    for (section_name, section_values) in
+        input_table.iter().map(|(k, v)| (k, v.as_table().unwrap()))
+    {
+        // Print an error message for any section which has been ignored from the input table.
+        let actual_section_values = match actual_table.get(section_name) {
+            Some(values) => values.as_table().unwrap(),
+            None => {
+                error!(
+                    "ignoring config section {} with values {:?}",
+                    section_name, section_values
+                );
+                continue;
+            }
+        };
+
+        // Print an error message for any other key, value pairs ignored from the input table.
+        for (key, value) in section_values {
+            if !actual_section_values.contains_key(key) {
+                error!("ignoring config entry {}.{}={}", section_name, key, value);
+            }
+        }
+    }
+
+    Ok(validator_config)
 }
 
 impl Cli {
@@ -174,39 +225,33 @@ impl Cli {
                 let mut rng = ChaCha20Rng::from_entropy();
 
                 info!("resolving configuration");
-                // the app supports running without a config file, using default values
+                // The app supports running without a config file, using default values.
                 let maybe_config: Option<validator::Config> =
                     config.as_ref().map(config::load_from_file).transpose()?;
 
-                // get the toml table version of the config indicated from cli args,
-                // or from a new defaulted config instance if one is not provided
-                let mut config_table: toml::Value =
-                    toml::from_str(&toml::to_string(&maybe_config.unwrap_or_default()).unwrap())
-                        .unwrap();
+                // Get the TOML table version of the config indicated from CLI args, or from a new
+                // defaulted config instance if one is not provided.
+                let mut config_table: Value =
+                    toml::from_str(&toml::to_string(&maybe_config.unwrap_or_default())?)?;
 
-                // if any command line overrides to the config values are passed, apply them
+                // If any command line overrides to the config values are passed, apply them.
                 for item in config_ext {
                     item.update_toml_table(&mut config_table);
                 }
 
-                // if a config file path to a toml file was provided, normalize relative paths in
+                // If a config file path to a TOML file was provided, normalize relative paths in
                 // the config to the config file's path.
-                // If a config file path was not passed via cli and a default config instance is
+                // If a config file path was not passed via CLI and a default config instance is
                 // being used instead, do not normalize paths.
                 let maybe_root_path =
-                    config.map(|p| p.parent().unwrap().to_path_buf().canonicalize().unwrap());
+                    config.map(|p| p.canonicalize().unwrap().parent().unwrap().to_path_buf());
 
-                if let Some(root_path) = maybe_root_path {
-                    normalize_relative_paths(root_path, &mut config_table)
-                }
+                normalize_paths(maybe_root_path, &mut config_table);
 
-                // create validator config, including any overridden or normalized values
-                let validator_config = match config_table.try_into() {
-                    Ok(validator_config) => validator_config,
-                    Err(error) => {
-                        bail!(error);
-                    }
-                };
+                // Create validator config, including any overridden or normalized values.
+                let validator_config = config_from_toml_table(config_table)?;
+
+                trace!("{}", config::to_string(&validator_config)?);
 
                 let mut runner =
                     Runner::<initializer::Reactor>::new(validator_config, &mut rng).await?;
@@ -219,7 +264,7 @@ impl Cli {
                     bail!("failed to initialize successfully");
                 }
 
-                let mut runner = Runner::<validator::Reactor>::from(initializer).await?;
+                let mut runner = Runner::<validator::Reactor>::new(initializer, &mut rng).await?;
                 runner.run(&mut rng).await;
             }
         }

@@ -230,6 +230,12 @@ impl FromBytes for AccountHash {
     }
 }
 
+impl AsRef<[u8]> for AccountHash {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
 /// Errors that can occur while adding a new [`AccountHash`] to an account's associated keys map.
 #[derive(PartialEq, Eq, Fail, Debug, Copy, Clone)]
 #[repr(i32)]

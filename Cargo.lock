@@ -341,8 +341,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "casperlabs-node",
+ "casperlabs-types",
+ "hex",
  "rand 0.7.3",
  "reqwest",
+ "serde",
+ "serde_json",
  "structopt",
  "tokio 0.2.21",
 ]
@@ -463,6 +467,7 @@ dependencies = [
  "parking_lot 0.10.2",
  "pem",
  "pnet",
+ "prometheus",
  "proptest",
  "pwasm-utils",
  "rand 0.7.3",
@@ -1651,6 +1656,9 @@ name = "hex"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "644f9158b2f133fd50f5fb3242878846d9eb792e445c893805ff0e3824006e35"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "hex_fmt"
@@ -2896,6 +2904,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "prometheus"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd0ced56dee39a6e960c15c74dc48849d614586db2eaada6497477af7c7811cd"
+dependencies = [
+ "cfg-if",
+ "fnv",
+ "lazy_static",
+ "protobuf",
+ "spin",
+ "thiserror",
+]
+
+[[package]]
 name = "proptest"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3706,6 +3728,12 @@ dependencies = [
  "redox_syscall",
  "winapi 0.3.9",
 ]
+
+[[package]]
+name = "spin"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "standard-payment"

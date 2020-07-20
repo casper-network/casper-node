@@ -10,7 +10,7 @@ pub(crate) mod synchronizer;
 pub(crate) use protocol_state::{ProtocolState, VertexTrait};
 
 /// Information about the context in which a new block is created.
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
 pub struct BlockContext {
     timestamp: Timestamp,
 }
@@ -36,7 +36,8 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT> {
     /// Request deploys for a new block, whose timestamp will be the given `u64`.
     /// TODO: Add more details that are necessary for block creation.
     CreateNewBlock(BlockContext),
-    FinalizedBlock(C),
+    /// A block was finalized. The timestamp is from when the block was proposed.
+    FinalizedBlock(C, Timestamp),
     /// Request validation of the consensus value, contained in a message received from the given
     /// node.
     ///
