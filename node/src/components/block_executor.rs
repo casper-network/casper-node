@@ -7,7 +7,6 @@ use rand::Rng;
 use tracing::{debug, error, trace, warn};
 
 use super::{
-    chainspec_handler::ChainspecHandler,
     contract_runtime::{
         core::engine_state::{self, execute_request::ExecuteRequest},
         storage::global_state::CommitResult,
@@ -230,12 +229,6 @@ where
                 )
             }
         }
-    }
-}
-
-impl From<ChainspecHandler> for BlockExecutor {
-    fn from(chainspec_handler: ChainspecHandler) -> Self {
-        BlockExecutor::new(chainspec_handler.post_state_hash().unwrap())
     }
 }
 

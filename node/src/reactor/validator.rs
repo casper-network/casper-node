@@ -211,7 +211,10 @@ impl Reactor {
         let deploy_gossiper = DeployGossiper::new(config.gossip);
         let deploy_buffer = DeployBuffer::new();
         // Post state hash is expected to be present
-        let block_executor = BlockExecutor::from(chainspec_handler);
+        let post_state_hash = chainspec_handler
+            .post_state_hash()
+            .expect("should have post state hash");
+        let block_executor = BlockExecutor::new(post_state_hash);
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
         effects.extend(reactor::wrap_effects(Event::Pinger, pinger_effects));
