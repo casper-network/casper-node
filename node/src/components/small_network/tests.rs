@@ -21,7 +21,7 @@ use crate::{
     small_network::{self, SmallNetwork},
     testing::{
         network::{Network, NetworkedReactor},
-        ConditionCheckReactor,
+        unused_port_on_localhost, ConditionCheckReactor,
     },
 };
 use pnet::datalink;
@@ -29,9 +29,6 @@ use prometheus::Registry;
 use rand::{rngs::OsRng, Rng};
 use reactor::{wrap_effects, Finalize};
 use tracing::{debug, info};
-
-/// The networking port used by the tests for the root node.
-const TEST_ROOT_NODE_PORT: u16 = 11223;
 
 /// Test-reactor event.
 #[derive(Debug, From)]
@@ -160,14 +157,14 @@ fn network_is_complete(
         .all(|actual| actual == expected)
 }
 
-fn gen_config(bind_port: u16) -> small_network::Config {
+fn gen_config(bind_port: u16, root_port: u16) -> small_network::Config {
     // Bind everything to localhost.
     let bind_interface = "127.0.0.1".parse().unwrap();
 
     small_network::Config {
         bind_interface,
         bind_port,
-        root_addr: (bind_interface, TEST_ROOT_NODE_PORT).into(),
+        root_addr: (bind_interface, root_port).into(),
         // Fast retry, moderate amount of times. This is 10 seconds max (100 x 100 ms)
         max_outgoing_retries: Some(100),
         outgoing_retry_delay_millis: 100,
@@ -184,6 +181,9 @@ fn gen_config(bind_port: u16) -> small_network::Config {
 async fn run_two_node_network_five_times() {
     let mut rng = OsRng;
 
+    // The networking port used by the tests for the root node.
+    let root_node_port = unused_port_on_localhost();
+
     init_logging();
 
     for i in 0..5 {
@@ -192,10 +192,10 @@ async fn run_two_node_network_five_times() {
         let mut net = Network::new();
 
         let start = Instant::now();
-        net.add_node_with_config(gen_config(TEST_ROOT_NODE_PORT), &mut rng)
+        net.add_node_with_config(gen_config(root_node_port, root_node_port), &mut rng)
             .await
             .unwrap();
-        net.add_node_with_config(gen_config(TEST_ROOT_NODE_PORT + 1), &mut rng)
+        net.add_node_with_config(gen_config(root_node_port + 1, root_node_port), &mut rng)
             .await
             .unwrap();
         let end = Instant::now();
@@ -241,7 +241,7 @@ async fn bind_to_real_network_interface() {
         .next()
         .expect("found a interface with no ips")
         .ip();
-    let port = TEST_ROOT_NODE_PORT;
+    let port = unused_port_on_localhost();
 
     let local_net_config = small_network::Config {
         bind_interface: local_addr,
