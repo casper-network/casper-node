@@ -118,6 +118,7 @@ steps:
       - ./.cargo/registry/index/
       - ./.cargo/registry/cache/
       - ./.cargo/git/db/
+      - ./.cargo/.crates.toml
     restore: true
 
 - name: build-release-tag
