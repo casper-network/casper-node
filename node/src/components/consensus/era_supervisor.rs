@@ -31,7 +31,7 @@ use crate::{
         hash::hash,
     },
     effect::{EffectBuilder, EffectExt, Effects},
-    types::{Motes, ProtoBlock, Timestamp},
+    types::{FinalizedBlock, Motes, ProtoBlock, Timestamp},
 };
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -181,14 +181,13 @@ where
                     proto_block,
                     block_context,
                 }),
-            ConsensusProtocolResult::FinalizedBlock(block) => {
-                let mut effects =
-                    effect_builder
-                        .execute_block(block.clone())
-                        .event(move |executed_block| Event::ExecutedBlock {
-                            era_id,
-                            executed_block,
-                        });
+            ConsensusProtocolResult::FinalizedBlock(block, timestamp) => {
+                let mut effects = effect_builder
+                    .execute_block(FinalizedBlock::new(block.clone(), timestamp))
+                    .event(move |executed_block| Event::ExecutedBlock {
+                        era_id,
+                        executed_block,
+                    });
                 effects.extend(
                     effect_builder
                         .announce_finalized_proto_block(block)

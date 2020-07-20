@@ -197,10 +197,11 @@ where
         event_count
     }
 
-    /// Process events on all nodes until all event queues are empty.
+    /// Process events on all nodes until all event queues are empty for at least `quiet_for`.
     ///
-    /// Returns `true` if `quiet_for` time has passed with no new events processed within the
-    /// specified timeout.
+    /// # Panics
+    ///
+    /// Panics if after `within` the event queues are still not idle.
     pub async fn settle<RNG: Rng + ?Sized>(
         &mut self,
         rng: &mut RNG,
@@ -209,7 +210,12 @@ where
     ) {
         time::timeout(within, self.settle_indefinitely(rng, quiet_for))
             .await
-            .unwrap()
+            .unwrap_or_else(|_| {
+                panic!(format!(
+                    "network did not settle for {:?} within {:?}",
+                    quiet_for, within
+                ))
+            })
     }
 
     async fn settle_indefinitely<RNG: Rng + ?Sized>(&mut self, rng: &mut RNG, quiet_for: Duration) {
@@ -230,9 +236,11 @@ where
         }
     }
 
-    /// Runs the main loop of every reactor until `condition` is true or until `within` has elapsed.
+    /// Runs the main loop of every reactor until `condition` is true.
     ///
-    /// Returns `true` if `condition` has been met within the specified timeout.
+    /// # Panics
+    ///
+    /// If the `condition` is not reached inside of `within`, panics.
     pub async fn settle_on<RNG, F>(&mut self, rng: &mut RNG, condition: F, within: Duration)
     where
         RNG: Rng + ?Sized,
@@ -240,7 +248,12 @@ where
     {
         time::timeout(within, self.settle_on_indefinitely(rng, condition))
             .await
-            .unwrap()
+            .unwrap_or_else(|_| {
+                panic!(format!(
+                    "network did not settle on condition within {:?}",
+                    within
+                ))
+            })
     }
 
     async fn settle_on_indefinitely<RNG, F>(&mut self, rng: &mut RNG, condition: F)
