@@ -11,8 +11,7 @@ use super::{
 use crate::{
     components::consensus::{
         tests::consensus_des_testing::{
-            DeliverySchedule, Message, Strategy, Target, TargetedMessage, Validator, ValidatorId,
-            VirtualNet,
+            DeliverySchedule, Message, Target, TargetedMessage, Validator, ValidatorId, VirtualNet,
         },
         tests::queue::{MessageT, QueueEntry},
         traits::{ConsensusValueT, Context},
@@ -155,12 +154,28 @@ impl<C: Context> Display for TestRunError<C> {
     }
 }
 
-pub(crate) struct HighwayTestHarness<C, DS>
+enum Distribution {
+    Uniform,
+    Constant,
+    Poisson(f64),
+}
+
+trait DeliveryStrategy<C: Context> {
+    fn gen_delay<R: Rng>(
+        &self,
+        rng: &mut R,
+        message: &HighwayMessage<C>,
+        distributon: &Distribution,
+        base_delivery_timestamp: Timestamp,
+    ) -> DeliverySchedule;
+}
+
+struct HighwayTestHarness<C, DS>
 where
-    DS: Strategy<DeliverySchedule>,
     C: Context,
+    DS: DeliveryStrategy<C>,
 {
-    virtual_net: VirtualNet<C::ConsensusValue, HighwayConsensus<C>, HighwayMessage<C>, DS>,
+    virtual_net: VirtualNet<C::ConsensusValue, HighwayConsensus<C>, HighwayMessage<C>>,
     /// The instant the network was created.
     start_time: Timestamp,
     /// Consensus values to be proposed.
@@ -168,22 +183,23 @@ where
     consensus_values: VecDeque<C::ConsensusValue>,
     /// Number of consensus values that the test is started with.
     consensus_values_num: usize,
+    /// A strategy to pseudo randomly change the message delivery times.
+    delivery_time_strategy: DS,
+    /// Distribution of delivery times.
+    delivery_time_distribution: Distribution,
 }
 
 impl<Ctx, DS> HighwayTestHarness<Ctx, DS>
 where
     Ctx: Context,
-    DS: Strategy<DeliverySchedule>,
+    DS: DeliveryStrategy<Ctx>,
 {
     fn new<T: Into<Timestamp>>(
-        virtual_net: VirtualNet<
-            Ctx::ConsensusValue,
-            HighwayConsensus<Ctx>,
-            HighwayMessage<Ctx>,
-            DS,
-        >,
+        virtual_net: VirtualNet<Ctx::ConsensusValue, HighwayConsensus<Ctx>, HighwayMessage<Ctx>>,
         start_time: T,
         consensus_values: VecDeque<Ctx::ConsensusValue>,
+        delivery_time_distribution: Distribution,
+        delivery_time_strategy: DS,
     ) -> Self {
         let cv_len = consensus_values.len();
         HighwayTestHarness {
@@ -191,6 +207,8 @@ where
             start_time: start_time.into(),
             consensus_values,
             consensus_values_num: cv_len,
+            delivery_time_distribution,
+            delivery_time_strategy,
         }
     }
 
@@ -224,11 +242,24 @@ where
 
         let targeted_messages = messages
             .into_iter()
-            .map(|hwm| hwm.into_targeted(recipient))
+            .map(|hwm| {
+                let delivery = self.delivery_time_strategy.gen_delay(
+                    rand,
+                    &hwm,
+                    &self.delivery_time_distribution,
+                    delivery_time,
+                );
+                (hwm, delivery)
+            })
+            .filter_map(|(hwm, delivery)| match delivery {
+                DeliverySchedule::Drop => None,
+                DeliverySchedule::AtInstant(timestamp) => {
+                    Some((hwm.into_targeted(recipient), timestamp))
+                }
+            })
             .collect();
 
-        self.virtual_net
-            .dispatch_messages(rand, delivery_time, targeted_messages);
+        self.virtual_net.dispatch_messages(targeted_messages);
 
         Ok(CrankOk::Continue)
     }
@@ -444,21 +475,13 @@ where
     }
 }
 
-struct MutableHandle<'a, C: Context, DS: Strategy<DeliverySchedule>>(
-    &'a mut HighwayTestHarness<C, DS>,
-);
+struct MutableHandle<'a, C: Context, DS: DeliveryStrategy<C>>(&'a mut HighwayTestHarness<C, DS>);
 
-impl<'a, C: Context, DS: Strategy<DeliverySchedule>> MutableHandle<'a, C, DS> {
+impl<'a, C: Context, DS: DeliveryStrategy<C>> MutableHandle<'a, C, DS> {
     /// Drops all messages from the queue.
     fn clear_message_queue(&mut self) {
         self.0.virtual_net.empty_queue();
     }
-}
-
-enum Distribution {
-    Uniform,
-    Constant,
-    Poisson(f64),
 }
 
 enum BuilderError {
@@ -469,7 +492,7 @@ enum BuilderError {
     EmptyFtt,
 }
 
-struct HighwayTestHarnessBuilder<C: Context, DS> {
+struct HighwayTestHarnessBuilder<C: Context, DS: DeliveryStrategy<C>> {
     /// Validators (together with their secret keys) in the test run.
     validators_secs: HashMap<C::ValidatorId, C::ValidatorSecret>,
     /// Number of faulty validators (i.e. equivocators).
@@ -480,9 +503,9 @@ struct HighwayTestHarnessBuilder<C: Context, DS> {
     ftt: Option<u64>,
     /// Consensus values to be proposed by the nodes in the network.
     consensus_values: Option<VecDeque<C::ConsensusValue>>,
-    /// Strategy for message delivery (delaying, dropping).
-    /// Defaults to sane impl.
-    delivery_strategy: Option<DS>,
+    /// Distribution of message delivery (delaying, dropping) delays..
+    delivery_distribution: Distribution,
+    delivery_strategy: DS,
     /// Upper and lower limits for validators' weights.
     weight_limits: (u64, u64),
     /// Time when the test era starts at.
@@ -500,8 +523,27 @@ struct HighwayTestHarnessBuilder<C: Context, DS> {
     round_exp: u8,
 }
 
-impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
-    HighwayTestHarnessBuilder<C, DS>
+// Default strategy for message delivery.
+struct InstantDeliveryNoDropping;
+
+impl<C: Context> DeliveryStrategy<C> for InstantDeliveryNoDropping {
+    fn gen_delay<R: Rng>(
+        &self,
+        _rng: &mut R,
+        message: &HighwayMessage<C>,
+        _distributon: &Distribution,
+        base_delivery_timestamp: Timestamp,
+    ) -> DeliverySchedule {
+        match message {
+            RequestBlock(bc) => DeliverySchedule::AtInstant(bc.timestamp()),
+            Timer(t) => DeliverySchedule::AtInstant(t.clone()),
+            NewVertex(_) => DeliverySchedule::AtInstant(base_delivery_timestamp),
+        }
+    }
+}
+
+impl<C: Context<ValidatorId = ValidatorId>>
+    HighwayTestHarnessBuilder<C, InstantDeliveryNoDropping>
 {
     fn new(instance_id: C::InstanceId) -> Self {
         HighwayTestHarnessBuilder {
@@ -509,7 +551,8 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
             faulty_num: 0,
             ftt: None,
             consensus_values: None,
-            delivery_strategy: None,
+            delivery_distribution: Distribution::Constant,
+            delivery_strategy: InstantDeliveryNoDropping,
             weight_limits: (0, 0),
             start_time: Timestamp::zero(),
             weight_distribution: Distribution::Constant,
@@ -518,7 +561,11 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
             round_exp: 12,
         }
     }
+}
 
+impl<C: Context<ValidatorId = ValidatorId>, DS: DeliveryStrategy<C>>
+    HighwayTestHarnessBuilder<C, DS>
+{
     pub(crate) fn validators(
         mut self,
         validators_secs: HashMap<C::ValidatorId, C::ValidatorSecret>,
@@ -538,9 +585,24 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
         self
     }
 
-    pub(crate) fn delivery_strategy(mut self, ds: DS) -> Self {
-        self.delivery_strategy = Some(ds);
-        self
+    pub(crate) fn delivery_strategy<DS2: DeliveryStrategy<C>>(
+        self,
+        ds: DS2,
+    ) -> HighwayTestHarnessBuilder<C, DS2> {
+        HighwayTestHarnessBuilder {
+            validators_secs: self.validators_secs,
+            faulty_num: self.faulty_num,
+            ftt: self.ftt,
+            consensus_values: self.consensus_values,
+            delivery_distribution: self.delivery_distribution,
+            delivery_strategy: ds,
+            weight_limits: self.weight_limits,
+            start_time: self.start_time,
+            weight_distribution: self.weight_distribution,
+            instance_id: self.instance_id,
+            seed: self.seed,
+            round_exp: self.round_exp,
+        }
     }
 
     pub(crate) fn weight_limits(mut self, lower: u64, upper: u64) -> Self {
@@ -688,11 +750,11 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
             (validators, init_messages)
         };
 
-        let delivery_time_strategy = self
-            .delivery_strategy
-            .unwrap_or_else(|| todo!("Add default strategy")); // https://casperlabs.atlassian.net/browse/HWY-118
+        let delivery_time_strategy = self.delivery_strategy;
 
-        let virtual_net = VirtualNet::new(validators, delivery_time_strategy, init_messages);
+        let delivery_time_distribution = self.delivery_distribution;
+
+        let virtual_net = VirtualNet::new(validators, init_messages);
 
         let cv_len = consensus_values.len();
 
@@ -701,6 +763,8 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
             start_time: self.start_time,
             consensus_values,
             consensus_values_num: cv_len,
+            delivery_time_strategy,
+            delivery_time_distribution,
         };
 
         Ok(hwth)
@@ -709,7 +773,8 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: Strategy<DeliverySchedule>>
 
 mod test_harness {
     use super::{
-        DeliverySchedule, HighwayTestHarness, HighwayTestHarnessBuilder, Strategy, TestRunError,
+        DeliverySchedule, DeliveryStrategy, HighwayMessage, HighwayTestHarness,
+        HighwayTestHarnessBuilder, InstantDeliveryNoDropping, TestRunError,
     };
     use crate::{
         components::consensus::{
@@ -724,19 +789,6 @@ mod test_harness {
         collections::{hash_map::DefaultHasher, HashMap},
         hash::Hasher,
     };
-
-    struct UniformNoDropping;
-
-    impl Strategy<DeliverySchedule> for UniformNoDropping {
-        fn map<R: rand::Rng>(&self, rng: &mut R, i: DeliverySchedule) -> DeliverySchedule {
-            match i {
-                DeliverySchedule::Drop => i,
-                DeliverySchedule::AtInstant(instant) => {
-                    DeliverySchedule::AtInstant(instant + 5.into())
-                }
-            }
-        }
-    }
 
     #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub(crate) struct TestContext;
@@ -782,11 +834,10 @@ mod test_harness {
         let mut rand = XorShiftRng::from_seed(rand::random());
         let validators = vec![(ValidatorId(0), TestSecret(0))].into_iter().collect();
 
-        let mut highway_test_harness: HighwayTestHarness<TestContext, UniformNoDropping> =
+        let mut highway_test_harness: HighwayTestHarness<TestContext, InstantDeliveryNoDropping> =
             HighwayTestHarnessBuilder::new(0u64)
                 .validators(validators)
                 .consensus_values(vec![1])
-                .delivery_strategy(UniformNoDropping)
                 .weight_limits(1, 5)
                 .ftt(1)
                 .build()
@@ -804,8 +855,38 @@ mod test_harness {
         );
     }
 
-    // #[test]
-    // fn done_when_all_finalized() {
-    //     unimplemented!()
-    // }
+    #[test]
+    fn done_when_all_finalized() {
+        let mut rand = XorShiftRng::from_seed(rand::random());
+        let validators = vec![
+            (ValidatorId(0), TestSecret(0)),
+            // (ValidatorId(1), TestSecret(1)),
+        ]
+        .into_iter()
+        .collect();
+
+        let mut highway_test_harness: HighwayTestHarness<TestContext, InstantDeliveryNoDropping> =
+            HighwayTestHarnessBuilder::new(0u64)
+                .validators(validators)
+                .consensus_values(vec![1, 2, 3, 4, 5, 6])
+                .weight_limits(3, 5)
+                .ftt(1000)
+                .build()
+                .ok()
+                .expect("Construction was successful");
+
+        let mut crank_count = 0;
+        loop {
+            crank_count += 1;
+            let crank_res = highway_test_harness.crank(&mut rand);
+            if (crank_res.is_ok()) {
+                continue;
+            } else {
+                println!("{:?}", crank_res);
+                break;
+            }
+        }
+
+        println!("Done cranking. Count {:?}", crank_count);
+    }
 }

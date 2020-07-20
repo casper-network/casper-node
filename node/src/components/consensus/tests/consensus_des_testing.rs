@@ -121,16 +121,6 @@ where
     }
 }
 
-/// A trait defining strategy for randomly changing value of `i`.
-///
-/// Can be used to simulate network delays, message drops, invalid signatures,
-/// panoramas etc.
-pub(crate) trait Strategy<Item> {
-    fn map<R: Rng>(&self, rng: &mut R, i: Item) -> Item {
-        i
-    }
-}
-
 pub(crate) enum DeliverySchedule {
     AtInstant(Timestamp),
     Drop,
@@ -158,27 +148,22 @@ impl From<Timestamp> for DeliverySchedule {
     }
 }
 
-pub(crate) struct VirtualNet<C, D, M, DS>
+pub(crate) struct VirtualNet<C, D, M>
 where
     M: MessageT,
-    DS: Strategy<DeliverySchedule>,
 {
     /// Maps validator IDs to actual validator instances.
     validators_map: BTreeMap<ValidatorId, Validator<C, M, D>>,
     /// A collection of all network messages queued up for delivery.
     msg_queue: Queue<M>,
-    /// A strategy to pseudo randomly change the message delivery times.
-    delivery_time_strategy: DS,
 }
 
-impl<C, D, M, DS> VirtualNet<C, D, M, DS>
+impl<C, D, M> VirtualNet<C, D, M>
 where
     M: MessageT,
-    DS: Strategy<DeliverySchedule>,
 {
     pub(crate) fn new<I: IntoIterator<Item = Validator<C, M, D>>>(
         validators: I,
-        delivery_time_strategy: DS,
         init_messages: Vec<QueueEntry<M>>,
     ) -> Self {
         let validators_map = validators
@@ -194,23 +179,17 @@ where
         VirtualNet {
             validators_map,
             msg_queue: q,
-            delivery_time_strategy,
         }
     }
 
     /// Dispatches messages to their recipients.
-    pub(crate) fn dispatch_messages<R: Rng>(
-        &mut self,
-        rand: &mut R,
-        delivery_time: Timestamp,
-        messages: Vec<TargetedMessage<M>>,
-    ) {
-        for TargetedMessage { message, target } in messages {
+    pub(crate) fn dispatch_messages(&mut self, messages: Vec<(TargetedMessage<M>, Timestamp)>) {
+        for (TargetedMessage { message, target }, delivery_time) in messages {
             let recipients = match target {
                 Target::All => self.validators_ids().cloned().collect(),
                 Target::SingleValidator(recipient_id) => vec![recipient_id],
             };
-            self.send_messages(rand, recipients, message, delivery_time)
+            self.send_messages(recipients, message, delivery_time)
         }
     }
 
@@ -244,25 +223,14 @@ where
     }
 
     // Utility function for dispatching message to multiple recipients.
-    fn send_messages<R: Rng, I: IntoIterator<Item = ValidatorId>>(
+    fn send_messages<I: IntoIterator<Item = ValidatorId>>(
         &mut self,
-        rand: &mut R,
         recipients: I,
         message: Message<M>,
-        base_delivery_time: Timestamp,
+        delivery_time: Timestamp,
     ) {
         for validator_id in recipients {
-            let tampered_delivery_time = self
-                .delivery_time_strategy
-                .map(rand, base_delivery_time.into());
-            match tampered_delivery_time {
-                // Simulates dropping of the message.
-                // TODO: Add logging.
-                DeliverySchedule::Drop => (),
-                DeliverySchedule::AtInstant(dt) => {
-                    self.schedule_message(dt, validator_id, message.clone())
-                }
-            }
+            self.schedule_message(delivery_time, validator_id, message.clone())
         }
     }
 
@@ -287,16 +255,12 @@ where
 mod virtual_net_tests {
 
     use super::{
-        DeliverySchedule, Message, Strategy, Target, TargetedMessage, Timestamp, Validator,
-        ValidatorId, VirtualNet,
+        DeliverySchedule, Message, Target, TargetedMessage, Timestamp, Validator, ValidatorId,
+        VirtualNet,
     };
     use rand_core::SeedableRng;
     use rand_xorshift::XorShiftRng;
     use std::collections::{HashSet, VecDeque};
-
-    struct NoOpDelay;
-
-    impl Strategy<DeliverySchedule> for NoOpDelay {}
 
     type M = u64;
     type C = u64;
@@ -308,7 +272,7 @@ mod virtual_net_tests {
         let validator_id = ValidatorId(1u64);
         let single_validator: Validator<C, u64, NoOpConsensus> =
             Validator::new(validator_id, false, NoOpConsensus);
-        let mut virtual_net = VirtualNet::new(vec![single_validator], NoOpDelay, vec![]);
+        let mut virtual_net = VirtualNet::new(vec![single_validator], vec![]);
 
         let messages_num = 10;
         // We want to enqueue messages from the latest delivery time to the earliest.
@@ -342,14 +306,13 @@ mod virtual_net_tests {
         let second_validator: Validator<C, M, NoOpConsensus> =
             Validator::new(ValidatorId(2u64), false, NoOpConsensus);
 
-        let mut virtual_net =
-            VirtualNet::new(vec![first_validator, second_validator], NoOpDelay, vec![]);
+        let mut virtual_net = VirtualNet::new(vec![first_validator, second_validator], vec![]);
         let mut rand = XorShiftRng::from_seed(rand::random());
 
         let message = Message::new(validator_id, 1u64);
         let targeted_message = TargetedMessage::new(message.clone(), Target::All);
 
-        virtual_net.dispatch_messages(&mut rand, 2.into(), vec![targeted_message]);
+        virtual_net.dispatch_messages(vec![(targeted_message, 2.into())]);
 
         let queued_msgs =
             std::iter::successors(virtual_net.pop_message(), |_| virtual_net.pop_message())
