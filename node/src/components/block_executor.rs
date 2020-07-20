@@ -191,7 +191,7 @@ where
                         main_responder,
                     ),
                     Err(_) => {
-                        // NOTE: As for now a given state is expected to exists
+                        // NOTE: As for now a given state is expected to exist
                         panic!("root not found");
                     }
                 }
@@ -207,11 +207,11 @@ where
                         state_root,
                         bonded_validators,
                     }) => {
-                        debug!(?state_root, ?bonded_validators, "commit succeed");
+                        debug!(?state_root, ?bonded_validators, "commit succeeded");
                         // Update current post state hash as this will be used for next commit.
                         self.post_state_hash = state_root;
                     }
-                    Ok(result) => warn!(?result, "commit succeed in unexpected state"),
+                    Ok(result) => warn!(?result, "commit succeeded in unexpected state"),
                     Err(error) => {
                         error!(?error, "commit failed");
                     }
@@ -268,7 +268,7 @@ impl BlockExecutor {
         let mut result_iterator = execution_results.into_iter();
         let effect = match result_iterator.next() {
             Some(ExecutionResult::Success { effect, cost }) => {
-                debug!(?effect, %cost, "execution succeed");
+                debug!(?effect, %cost, "execution succeeded");
                 effect
             }
             Some(ExecutionResult::Failure {

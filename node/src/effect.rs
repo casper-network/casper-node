@@ -713,7 +713,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests a execution of deploys using a Contract Runtime.
+    /// Requests an execution of deploys using Contract Runtime.
     pub(crate) async fn request_execute(
         self,
         execute_request: ExecuteRequest,
