@@ -156,7 +156,8 @@ where
                     proto_block,
                     block_context,
                 }),
-            ConsensusProtocolResult::FinalizedBlock(block) => {
+            ConsensusProtocolResult::FinalizedBlock(block, _timestamp) => {
+                // TODO: Create a `FinalizedBlock` with timestamp here.
                 let mut effects =
                     effect_builder
                         .execute_block(block.clone())
