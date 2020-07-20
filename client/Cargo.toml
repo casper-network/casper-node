@@ -13,3 +13,7 @@ structopt = "0.3.14"
 tokio = { version = "0.2.20", features = ["macros", "rt-threaded", "sync", "tcp", "time", "blocking"] }
 casperlabs_node = { path = "../node", package = "casperlabs-node" }
 anyhow = "1.0.28"
+serde = { version = "1", default-features = false, features = ["derive"] }
+serde_json = "1.0.55"
+hex = { version = "0.4.2", features = ["serde"] }
+types = { path = "../types", package = "casperlabs-types", features = ["std"] }

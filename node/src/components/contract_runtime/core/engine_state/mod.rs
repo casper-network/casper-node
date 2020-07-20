@@ -79,6 +79,7 @@ use crate::{
     types::Motes,
     Chainspec, GenesisAccount,
 };
+use execution_result::ExecutionResults;
 
 // TODO?: MAX_PAYMENT && CONV_RATE values are currently arbitrary w/ real values
 // TBD gas * CONV_RATE = motes
@@ -725,7 +726,7 @@ where
         &self,
         correlation_id: CorrelationId,
         mut exec_request: ExecuteRequest,
-    ) -> Result<Vec<ExecutionResult>, RootNotFound> {
+    ) -> Result<ExecutionResults, RootNotFound> {
         // TODO: do not unwrap
         let wasm_costs = self
             .wasm_costs(exec_request.protocol_version)
@@ -734,9 +735,10 @@ where
         let executor = Executor::new(self.config);
         let preprocessor = Preprocessor::new(wasm_costs);
 
-        let mut results = Vec::new();
+        let deploys = exec_request.take_deploys();
+        let mut results = ExecutionResults::with_capacity(deploys.len());
 
-        for deploy_item in exec_request.take_deploys() {
+        for deploy_item in deploys {
             let result = match deploy_item {
                 Err(exec_result) => Ok(exec_result),
                 Ok(deploy_item) => match deploy_item.session {
@@ -761,7 +763,7 @@ where
                 },
             };
             match result {
-                Ok(result) => results.push(result),
+                Ok(result) => results.push_back(result),
                 Err(error) => {
                     return Err(error);
                 }
