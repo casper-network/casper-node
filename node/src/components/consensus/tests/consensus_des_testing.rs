@@ -13,7 +13,7 @@ use std::{
 /// Enum defining recipients of the message.
 pub(crate) enum Target {
     SingleValidator(ValidatorId),
-    All,
+    AllExcept(ValidatorId),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -186,7 +186,11 @@ where
     pub(crate) fn dispatch_messages(&mut self, messages: Vec<(TargetedMessage<M>, Timestamp)>) {
         for (TargetedMessage { message, target }, delivery_time) in messages {
             let recipients = match target {
-                Target::All => self.validators_ids().cloned().collect(),
+                Target::AllExcept(creator) => self
+                    .validators_ids()
+                    .filter(|id| **id != creator)
+                    .cloned()
+                    .collect(),
                 Target::SingleValidator(recipient_id) => vec![recipient_id],
             };
             self.send_messages(recipients, message, delivery_time)
@@ -301,16 +305,16 @@ mod virtual_net_tests {
     #[test]
     fn messages_are_dispatched() {
         let validator_id = ValidatorId(1u64);
-        let first_validator: Validator<C, M, NoOpConsensus> =
-            Validator::new(validator_id, false, NoOpConsensus);
-        let second_validator: Validator<C, M, NoOpConsensus> =
-            Validator::new(ValidatorId(2u64), false, NoOpConsensus);
+        let a: Validator<C, M, NoOpConsensus> = Validator::new(validator_id, false, NoOpConsensus);
+        let b = Validator::new(ValidatorId(2u64), false, NoOpConsensus);
+        let c = Validator::new(ValidatorId(3u64), false, NoOpConsensus);
 
-        let mut virtual_net = VirtualNet::new(vec![first_validator, second_validator], vec![]);
+        let mut virtual_net = VirtualNet::new(vec![a, b, c], vec![]);
         let mut rand = XorShiftRng::from_seed(rand::random());
 
         let message = Message::new(validator_id, 1u64);
-        let targeted_message = TargetedMessage::new(message.clone(), Target::All);
+        let targeted_message =
+            TargetedMessage::new(message.clone(), Target::AllExcept(validator_id.clone()));
 
         virtual_net.dispatch_messages(vec![(targeted_message, 2.into())]);
 
@@ -321,8 +325,11 @@ mod virtual_net_tests {
 
         assert_eq!(
             queued_msgs,
-            vec![(ValidatorId(2), message.clone()), (ValidatorId(1), message)],
-            "A broadcast message should be delivered to every node."
+            vec![
+                (ValidatorId(3), message.clone()),
+                (ValidatorId(2), message.clone())
+            ],
+            "A broadcast message should be delivered to every node but the creator."
         );
     }
 }

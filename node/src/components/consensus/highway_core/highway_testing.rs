@@ -54,7 +54,7 @@ impl<C: Context> HighwayMessage<C> {
 
         match self {
             Timer(_) => TargetedMessage::new(create_msg(self), Target::SingleValidator(creator)),
-            NewVertex(_) => TargetedMessage::new(create_msg(self), Target::All),
+            NewVertex(_) => TargetedMessage::new(create_msg(self), Target::AllExcept(creator)),
             RequestBlock(_) => {
                 TargetedMessage::new(create_msg(self), Target::SingleValidator(creator))
             }
