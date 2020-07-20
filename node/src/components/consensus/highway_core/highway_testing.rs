@@ -366,12 +366,16 @@ where
         recipient.push_messages_produced(messages.clone());
 
         let finality_result = match recipient.consensus.run_finality() {
-            FinalityOutcome::Finalized(v, equivocated_ids) => {
-                if !equivocated_ids.is_empty() {
+            FinalityOutcome::Finalized {
+                value,
+                new_equivocators,
+                timestamp,
+            } => {
+                if !new_equivocators.is_empty() {
                     // https://casperlabs.atlassian.net/browse/HWY-120
                     unimplemented!("Equivocations detected but not handled.")
                 }
-                vec![v]
+                vec![value]
             }
             FinalityOutcome::None => vec![],
             // https://casperlabs.atlassian.net/browse/HWY-119
