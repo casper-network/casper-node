@@ -26,7 +26,7 @@ pub(crate) fn unused_port_on_localhost() -> u16 {
 
     // This assertion can never fail, but the compiler should output a warning if the constants
     // combined exceed the valid values of `u16`.
-    assert!(PORT_LOWER_BOUND + PRIME < u16::MAX);
+    assert!(PORT_LOWER_BOUND + PRIME + 10 < u16::MAX);
 
     // Poor man's linear congurential random number generator:
     static RNG_STATE: AtomicU16 = AtomicU16::new(GENERATOR);
