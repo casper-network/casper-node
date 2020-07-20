@@ -799,7 +799,7 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: DeliveryStrategy<C>>
 
 mod test_harness {
     use super::{
-        DeliverySchedule, DeliveryStrategy, HighwayMessage, HighwayTestHarness,
+        CrankOk, DeliverySchedule, DeliveryStrategy, HighwayMessage, HighwayTestHarness,
         HighwayTestHarnessBuilder, InstantDeliveryNoDropping, TestRunError,
     };
     use crate::{
@@ -882,37 +882,28 @@ mod test_harness {
     }
 
     #[test]
-    fn done_when_all_finalized() {
+    fn done_when_all_finalized() -> Result<(), TestRunError<TestContext>> {
         let mut rand = XorShiftRng::from_seed(rand::random());
-        let validators = vec![
-            (ValidatorId(0), TestSecret(0)),
-            // (ValidatorId(1), TestSecret(1)),
-        ]
-        .into_iter()
-        .collect();
+        let validators = (0..10u32)
+            .map(|i| (ValidatorId(i as u64), TestSecret(i)))
+            .collect();
 
         let mut highway_test_harness: HighwayTestHarness<TestContext, InstantDeliveryNoDropping> =
             HighwayTestHarnessBuilder::new(0u64)
                 .validators(validators)
-                .consensus_values(vec![1, 2, 3, 4, 5, 6])
+                .consensus_values((0..10).collect())
                 .weight_limits(3, 5)
-                .ftt(1000)
                 .build()
                 .ok()
                 .expect("Construction was successful");
 
-        let mut crank_count = 0;
         loop {
-            crank_count += 1;
-            let crank_res = highway_test_harness.crank(&mut rand);
-            if (crank_res.is_ok()) {
-                continue;
-            } else {
-                println!("{:?}", crank_res);
-                break;
+            let crank_res = highway_test_harness.crank(&mut rand)?;
+            match crank_res {
+                CrankOk::Continue => continue,
+                CrankOk::Done => break,
             }
         }
-
-        println!("Done cranking. Count {:?}", crank_count);
+        Ok(())
     }
 }
