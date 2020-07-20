@@ -11,6 +11,7 @@ use std::{
 };
 
 /// Enum defining recipients of the message.
+#[derive(Debug)]
 pub(crate) enum Target {
     SingleValidator(ValidatorId),
     AllExcept(ValidatorId),
@@ -35,6 +36,16 @@ impl<M: Clone + Debug> Message<M> {
 pub(crate) struct TargetedMessage<M: Clone + Debug> {
     pub(crate) message: Message<M>,
     pub(crate) target: Target,
+}
+
+impl<M: Debug + Clone> Debug for TargetedMessage<M> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TargetedMessage")
+            .field("from", &self.message.sender)
+            .field("to", &self.target)
+            .field("payload", &self.message.payload)
+            .finish()
+    }
 }
 
 impl<M: Clone + Debug> TargetedMessage<M> {

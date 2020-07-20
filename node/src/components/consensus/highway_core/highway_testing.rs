@@ -41,11 +41,24 @@ impl<C: Context> HighwayConsensus<C> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 enum HighwayMessage<C: Context> {
     Timer(Timestamp),
     NewVertex(Vertex<C>),
     RequestBlock(BlockContext),
+}
+
+impl<C: Context> Debug for HighwayMessage<C> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Timer(t) => f.debug_tuple("Timer").field(&t.millis()).finish(),
+            RequestBlock(bc) => f
+                .debug_struct("RequestBlock")
+                .field("timestamp", &bc.timestamp().millis())
+                .finish(),
+            NewVertex(v) => f.debug_struct("NewVertex").field("vertex", &v).finish(),
+        }
+    }
 }
 
 impl<C: Context> HighwayMessage<C> {
@@ -79,7 +92,7 @@ impl<C: Context> From<Effect<C>> for HighwayMessage<C> {
 use rand::Rng;
 use std::{
     collections::{HashMap, VecDeque},
-    fmt::{Display, Formatter},
+    fmt::{Debug, Display, Formatter},
     marker::PhantomData,
 };
 

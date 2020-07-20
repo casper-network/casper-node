@@ -97,8 +97,8 @@ impl<C: Context> Debug for WireVote<C> {
             .field("hash", &self.hash())
             .field("creator", &self.creator)
             .field("seq_num", &self.seq_number)
-            .field("timestamp", &self.timestamp)
-            .field("panorama", &self.panorama)
+            .field("timestamp", &self.timestamp.millis())
+            .field("panorama", &self.panorama.0)
             .finish()
     }
 }
