@@ -267,7 +267,7 @@ async fn bind_to_real_network_interface() {
 /// Check that a network of varying sizes will connect all nodes properly.
 #[tokio::test]
 async fn check_varying_size_network_connects() {
-    let number_of_nodes = 2;
+    let number_of_nodes = 5;
     let timeout = Duration::from_secs(10);
     let quiet_for: Duration = Duration::from_millis(250);
 
@@ -292,6 +292,12 @@ async fn check_varying_size_network_connects() {
 
     // Afterwards, there should be no activity on the network.
     net.settle(&mut rng, quiet_for, timeout).await;
+
+    // This should not make a difference at all, but we're paranoid, so check again.
+    assert!(
+        network_is_complete(net.nodes()),
+        "network did not stay connected after being settled"
+    );
 
     // This test will run multiple times, so ensure we cleanup all ports.
     net.finalize().await;
