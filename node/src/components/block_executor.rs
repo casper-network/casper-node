@@ -23,7 +23,7 @@ use crate::{
     },
     types::{Deploy, ExecutedBlock, FinalizedBlock, Timestamp},
 };
-use engine_state::execution_result::ExecutionResult;
+use engine_state::execution_result::{ExecutionResult, ExecutionResults};
 use types::ProtocolVersion;
 
 /// The Block executor components.
@@ -55,7 +55,7 @@ pub enum Event {
         /// Finalized block used to request execution on.
         finalized_block: FinalizedBlock,
         /// Result of deploy execution.
-        result: Result<Vec<ExecutionResult>, engine_state::RootNotFound>,
+        result: Result<ExecutionResults, engine_state::RootNotFound>,
         /// Original responder passed with `Event::Request`.
         main_responder: Responder<ExecutedBlock>,
     },
@@ -64,7 +64,7 @@ pub enum Event {
         finalized_block: FinalizedBlock,
         commit_result: Result<CommitResult, engine_state::Error>,
         /// Results
-        results: Vec<ExecutionResult>,
+        results: ExecutionResults,
         /// Original responder passed with `Event::Request`.
         main_responder: Responder<ExecutedBlock>,
     },
@@ -259,14 +259,13 @@ impl BlockExecutor {
         &self,
         effect_builder: EffectBuilder<REv>,
         finalized_block: FinalizedBlock,
-        execution_results: Vec<ExecutionResult>,
+        mut execution_results: ExecutionResults,
         responder: Responder<ExecutedBlock>,
-    ) -> Effects<<Self as Component<REv>>::Event>
+    ) -> Effects<Event>
     where
         REv: From<Event> + From<StorageRequest<Storage>> + From<ContractRuntimeRequest> + Send,
     {
-        let mut result_iterator = execution_results.into_iter();
-        let effect = match result_iterator.next() {
+        let effect = match execution_results.pop_front() {
             Some(ExecutionResult::Success { effect, cost }) => {
                 debug!(?effect, %cost, "execution succeeded");
                 effect
@@ -300,7 +299,7 @@ impl BlockExecutor {
             .event(|commit_result| Event::CommitExecutionEffects {
                 finalized_block,
                 commit_result,
-                results: result_iterator.collect(),
+                results: execution_results,
                 main_responder: responder,
             })
     }

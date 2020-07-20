@@ -19,7 +19,6 @@ use crate::{
             core::engine_state::{
                 self,
                 execute_request::ExecuteRequest,
-                execution_result::ExecutionResult,
                 genesis::GenesisResult,
                 query::{QueryRequest, QueryResult},
                 upgrade::{UpgradeConfig, UpgradeResult},
@@ -35,6 +34,7 @@ use crate::{
     utils::DisplayIter,
     Chainspec,
 };
+use engine_state::execution_result::ExecutionResults;
 
 /// A networking request.
 #[derive(Debug)]
@@ -342,7 +342,7 @@ pub enum ContractRuntimeRequest {
         /// Execution request containing deploys.
         execute_request: ExecuteRequest,
         /// Responder to call with the execution result.
-        responder: Responder<Result<Vec<ExecutionResult>, engine_state::RootNotFound>>,
+        responder: Responder<Result<ExecutionResults, engine_state::RootNotFound>>,
     },
     /// A request to commit existing execution transforms.
     Commit {

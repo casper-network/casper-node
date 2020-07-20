@@ -93,7 +93,7 @@ use crate::{
 use announcements::{
     ApiServerAnnouncement, ConsensusAnnouncement, NetworkAnnouncement, StorageAnnouncement,
 };
-use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResult};
+use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
 use requests::{
     BlockExecutorRequest, ContractRuntimeRequest, DeployQueueRequest, NetworkRequest,
     StorageRequest,
@@ -717,7 +717,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn request_execute(
         self,
         execute_request: ExecuteRequest,
-    ) -> Result<Vec<ExecutionResult>, engine_state::RootNotFound>
+    ) -> Result<ExecutionResults, engine_state::RootNotFound>
     where
         REv: From<ContractRuntimeRequest>,
     {
