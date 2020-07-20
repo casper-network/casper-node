@@ -597,7 +597,7 @@ impl<REv> EffectBuilder<REv> {
         )
     }
 
-    /// Passes a finalized proto-block to the contract runtime for execution.
+    /// Passes a finalized proto-block to the block executor component to execute it.
     pub(crate) async fn execute_block(self, finalized_block: FinalizedBlock) -> ExecutedBlock
     where
         REv: From<BlockExecutorRequest>,

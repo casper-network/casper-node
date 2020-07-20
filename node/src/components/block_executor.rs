@@ -42,7 +42,7 @@ pub enum Event {
     #[from]
     Request(BlockExecutorRequest),
     /// Received all requested deploys.
-    FetchDeploysResult {
+    GetDeploysResult {
         /// Finalized block that is passed around from the original request in `Event::Request`.
         finalized_block: FinalizedBlock,
         /// Contents of deploys. All deploys are expected to be present in the storage layer.
@@ -61,7 +61,9 @@ pub enum Event {
     },
     /// Commit effects
     CommitExecutionEffects {
+        /// Finalized block used to request execution on.
         finalized_block: FinalizedBlock,
+        /// Commit result for execution request.
         commit_result: Result<CommitResult, engine_state::Error>,
         /// Results
         results: ExecutionResults,
@@ -74,7 +76,7 @@ impl Display for Event {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Event::Request(req) => write!(f, "{}", req),
-            Event::FetchDeploysResult {
+            Event::GetDeploysResult {
                 finalized_block,
                 deploys,
                 ..
@@ -148,7 +150,7 @@ where
                 // Get all deploys in order they appear in the finalized block.
                 effect_builder
                     .get_deploys_from_storage(deploy_hashes)
-                    .event(move |result| Event::FetchDeploysResult {
+                    .event(move |result| Event::GetDeploysResult {
                         finalized_block,
                         deploys: result
                             .into_iter()
@@ -161,7 +163,7 @@ where
                     })
             }
 
-            Event::FetchDeploysResult {
+            Event::GetDeploysResult {
                 finalized_block,
                 deploys,
                 main_responder,
@@ -196,6 +198,7 @@ where
                     }
                 }
             }
+
             Event::CommitExecutionEffects {
                 finalized_block,
                 commit_result,
@@ -214,6 +217,8 @@ where
                     Ok(result) => warn!(?result, "commit succeeded in unexpected state"),
                     Err(error) => {
                         error!(?error, "commit failed");
+                        // When commit fails we panic as well to avoid being out of sync in next block.
+                        panic!("unable to commit");
                     }
                 }
 
@@ -248,6 +253,7 @@ impl BlockExecutor {
 
         ExecuteRequest::new(
             self.post_state_hash,
+            // TODO: Use `BlockContext`'s timestamp as part of NDRS-175
             Timestamp::now().millis(),
             deploy_items,
             ProtocolVersion::V1_0_0,
