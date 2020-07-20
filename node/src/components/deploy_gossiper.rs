@@ -1,14 +1,13 @@
-use std::{
-    collections::HashSet,
-    fmt::{self, Display, Formatter},
-    time::Duration,
-};
+mod event;
+mod message;
+mod tests;
+
+use std::{collections::HashSet, time::Duration};
 
 use futures::FutureExt;
 use rand::Rng;
-use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
-use tracing::{debug, error, warn};
+use tracing::{debug, error};
 
 use crate::{
     components::{
@@ -21,9 +20,12 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     types::{Deploy, DeployHash},
-    utils::{DisplayIter, GossipAction, GossipTable},
+    utils::{GossipAction, GossipTable},
     GossipTableConfig,
 };
+
+pub use event::Event;
+pub use message::Message;
 
 trait ReactorEvent:
     From<Event> + From<NetworkRequest<NodeId, Message>> + From<StorageRequest<Storage>> + Send
@@ -33,133 +35,6 @@ trait ReactorEvent:
 impl<T> ReactorEvent for T where
     T: From<Event> + From<NetworkRequest<NodeId, Message>> + From<StorageRequest<Storage>> + Send
 {
-}
-
-/// `DeployGossiper` events.
-#[derive(Debug)]
-pub enum Event {
-    /// A new deploy has been received to be gossiped.
-    DeployReceived { deploy: Box<Deploy> },
-    /// The network component gossiped to the included peers.
-    GossipedTo {
-        deploy_hash: DeployHash,
-        peers: HashSet<NodeId>,
-    },
-    /// The timeout for waiting for a gossip response has elapsed and we should check the response
-    /// arrived.
-    CheckGossipTimeout {
-        deploy_hash: DeployHash,
-        peer: NodeId,
-    },
-    /// The timeout for waiting for the full deploy body has elapsed and we should check the
-    /// response arrived.
-    CheckGetFromPeerTimeout {
-        deploy_hash: DeployHash,
-        peer: NodeId,
-    },
-    /// An incoming gossip network message.
-    MessageReceived { sender: NodeId, message: Message },
-    /// The result of the `DeployGossiper` putting a deploy to the storage component.  If the
-    /// result is `Ok`, the deploy hash should be gossiped onwards.
-    PutToStoreResult {
-        deploy_hash: DeployHash,
-        maybe_sender: Option<NodeId>,
-        result: storage::Result<bool>,
-    },
-    /// The result of the `DeployGossiper` getting a deploy from the storage component.  If the
-    /// result is `Ok`, the deploy should be sent to the requesting peer.
-    GetFromStoreResult {
-        deploy_hash: DeployHash,
-        requester: NodeId,
-        result: Box<storage::Result<Deploy>>,
-    },
-}
-
-impl Display for Event {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Event::DeployReceived { deploy } => {
-                write!(formatter, "new deploy received: {}", deploy.id())
-            }
-            Event::GossipedTo { deploy_hash, peers } => write!(
-                formatter,
-                "gossiped {} to {}",
-                deploy_hash,
-                DisplayIter::new(peers)
-            ),
-            Event::CheckGossipTimeout { deploy_hash, peer } => write!(
-                formatter,
-                "check gossip timeout for {} with {}",
-                deploy_hash, peer
-            ),
-            Event::CheckGetFromPeerTimeout { deploy_hash, peer } => write!(
-                formatter,
-                "check get from peer timeout for {} with {}",
-                deploy_hash, peer
-            ),
-            Event::MessageReceived { sender, message } => {
-                write!(formatter, "{} received from {}", message, sender)
-            }
-            Event::PutToStoreResult {
-                deploy_hash,
-                result,
-                ..
-            } => {
-                if result.is_ok() {
-                    write!(formatter, "put {} to store", deploy_hash)
-                } else {
-                    write!(formatter, "failed to put {} to store", deploy_hash)
-                }
-            }
-            Event::GetFromStoreResult {
-                deploy_hash,
-                result,
-                ..
-            } => {
-                if result.is_ok() {
-                    write!(formatter, "got {} from store", deploy_hash)
-                } else {
-                    write!(formatter, "failed to get {} from store", deploy_hash)
-                }
-            }
-        }
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub enum Message {
-    /// Gossiped out to random peers to notify them of a `Deploy` we hold.
-    Gossip(DeployHash),
-    /// Response to a `Gossip` message.  If `is_already_held` is false, the recipient should treat
-    /// this as a `GetRequest` and send a `GetResponse` containing the `Deploy`.
-    GossipResponse {
-        deploy_hash: DeployHash,
-        is_already_held: bool,
-    },
-    /// Sent if a `Deploy` fails to arrive, either after sending a `GossipResponse` with
-    /// `is_already_held` set to false, or after a previous `GetRequest`.
-    GetRequest(DeployHash),
-    /// Sent in response to a `GetRequest`, or to a peer which responded to gossip indicating it
-    /// didn't already hold the full `Deploy`.
-    GetResponse(Box<Deploy>),
-}
-
-impl Display for Message {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Message::Gossip(deploy_hash) => write!(formatter, "gossip({})", deploy_hash),
-            Message::GossipResponse {
-                deploy_hash,
-                is_already_held,
-            } => write!(
-                formatter,
-                "gossip-response({}, {})",
-                deploy_hash, is_already_held
-            ),
-            Message::GetRequest(deploy_hash) => write!(formatter, "get-request({})", deploy_hash),
-            Message::GetResponse(deploy) => write!(formatter, "get-response({})", deploy.id()),
-        }
-    }
 }
 
 /// The component which gossips `Deploy`s to peers and handles incoming `Deploy`s which have been
@@ -222,7 +97,7 @@ impl DeployGossiper {
         // in the entry being removed.
         if peers.is_empty() {
             self.table.pause(&deploy_hash);
-            warn!(
+            debug!(
                 "paused gossiping {} since no more peers to gossip to",
                 deploy_hash
             );

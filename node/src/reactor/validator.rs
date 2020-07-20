@@ -8,6 +8,7 @@ mod error;
 use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
+use prometheus::Registry;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::info;
@@ -16,11 +17,11 @@ use crate::{
     components::{
         api_server::{self, ApiServer},
         block_executor::{self, BlockExecutor},
-        chainspec_handler::ChainspecHandler,
         consensus::{self, EraSupervisor},
         contract_runtime::{self, ContractRuntime},
         deploy_buffer::{self, DeployBuffer},
         deploy_gossiper::{self, DeployGossiper},
+        metrics::Metrics,
         pinger::{self, Pinger},
         storage::Storage,
         Component,
@@ -31,7 +32,7 @@ use crate::{
         },
         requests::{
             ApiRequest, BlockExecutorRequest, ContractRuntimeRequest, DeployQueueRequest,
-            NetworkRequest, StorageRequest,
+            MetricsRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -109,6 +110,9 @@ pub enum Event {
     /// Block executor request.
     #[from]
     BlockExecutorRequest(BlockExecutorRequest),
+    /// Metrics request.
+    #[from]
+    MetricsRequest(MetricsRequest),
 
     // Announcements
     /// Network announcement.
@@ -170,6 +174,7 @@ impl Display for Event {
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
             Event::DeployQueueRequest(req) => write!(f, "deploy queue request: {}", req),
             Event::BlockExecutorRequest(req) => write!(f, "block executor request: {}", req),
+            Event::MetricsRequest(req) => write!(f, "metrics request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
             Event::ApiServerAnnouncement(ann) => write!(f, "api server announcement: {}", ann),
             Event::ConsensusAnnouncement(ann) => write!(f, "consensus announcement: {}", ann),
@@ -181,6 +186,7 @@ impl Display for Event {
 /// Validator node reactor.
 #[derive(Debug)]
 pub struct Reactor {
+    metrics: Metrics,
     net: SmallNetwork<Event, Message>,
     pinger: Pinger,
     storage: Storage,
@@ -192,18 +198,34 @@ pub struct Reactor {
     block_executor: BlockExecutor,
 }
 
-impl Reactor {
-    fn init(
-        config: Config,
-        event_queue: EventQueueHandle<Event>,
-        storage: Storage,
-        contract_runtime: ContractRuntime,
-        chainspec_handler: ChainspecHandler,
+impl reactor::Reactor for Reactor {
+    type Event = Event;
+
+    // The "configuration" is in fact the whole state of the initializer reactor, which we
+    // deconstruct and reuse.
+    type Config = initializer::Reactor;
+    type Error = Error;
+
+    fn new<R: Rng + ?Sized>(
+        initializer: Self::Config,
+        registry: &Registry,
+        event_queue: EventQueueHandle<Self::Event>,
+        _rng: &mut R,
     ) -> Result<(Self, Effects<Event>), Error> {
+        let initializer::Reactor {
+            config,
+            chainspec_handler,
+            storage,
+            contract_runtime,
+            ..
+        } = initializer;
+
+        let metrics = Metrics::new(registry.clone());
+
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, config.validator_net)?;
 
-        let (pinger, pinger_effects) = Pinger::new(effect_builder);
+        let (pinger, pinger_effects) = Pinger::new(registry, effect_builder)?;
         let api_server = ApiServer::new(config.http_server, effect_builder);
         let timestamp = Timestamp::now();
         let (consensus, consensus_effects) =
@@ -222,6 +244,7 @@ impl Reactor {
 
         Ok((
             Reactor {
+                metrics,
                 net,
                 pinger,
                 storage,
@@ -234,22 +257,6 @@ impl Reactor {
             },
             effects,
         ))
-    }
-}
-
-impl reactor::Reactor for Reactor {
-    type Event = Event;
-    type Config = Config;
-    type Error = Error;
-
-    fn new<R: Rng + ?Sized>(
-        _config: Self::Config,
-        _event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut R,
-    ) -> Result<(Self, Effects<Event>), Error> {
-        // I can't create new validator here beacuse I don't have access to a valid chainspec handler.
-        // And this method is not used anyway.
-        unimplemented!();
     }
 
     fn dispatch_event<R: Rng + ?Sized>(
@@ -311,6 +318,9 @@ impl reactor::Reactor for Reactor {
                 rng,
                 Event::BlockExecutor(block_executor::Event::from(req)),
             ),
+            Event::MetricsRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::MetricsRequest(req))
+            }
 
             // Announcements:
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
@@ -363,22 +373,5 @@ impl reactor::Reactor for Reactor {
                 Effects::new()
             }
         }
-    }
-}
-
-impl reactor::ReactorExt<initializer::Reactor> for Reactor {
-    fn new_from(
-        event_queue: EventQueueHandle<Self::Event>,
-        initializer_reactor: initializer::Reactor,
-    ) -> Result<(Self, Effects<Self::Event>), Error> {
-        let (config, chainspec_handler, storage, contract_runtime) =
-            initializer_reactor.destructure();
-        Self::init(
-            config,
-            event_queue,
-            storage,
-            contract_runtime,
-            chainspec_handler,
-        )
     }
 }

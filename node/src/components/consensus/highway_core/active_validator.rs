@@ -337,7 +337,11 @@ mod tests {
 
         // Payment finalized! "One Pumpkin Spice Mochaccino for Corbyn!"
         assert_eq!(
-            FinalityOutcome::Finalized(0xC0FFEE, Vec::new()),
+            FinalityOutcome::Finalized {
+                value: 0xC0FFEE,
+                new_equivocators: Vec::new(),
+                timestamp: 416.into(),
+            },
             fd.run(&state)
         );
         Ok(())

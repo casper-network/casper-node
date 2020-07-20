@@ -4,6 +4,7 @@ use derive_more::Display;
 use hex_fmt::HexList;
 use serde::{Deserialize, Serialize};
 
+use super::Timestamp;
 use crate::{
     components::storage::Value,
     crypto::{
@@ -44,22 +45,29 @@ impl ProtoBlock {
 
 /// The piece of information that will become the content of a future block after it was finalized and before execution happened yet.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct FinalizedBlock(pub ProtoBlock);
+pub struct FinalizedBlock {
+    pub(crate) proto_block: ProtoBlock,
+    pub(crate) timestamp: Timestamp,
+}
+
+impl FinalizedBlock {
+    pub(crate) fn new(proto_block: ProtoBlock, timestamp: Timestamp) -> Self {
+        Self {
+            proto_block,
+            timestamp,
+        }
+    }
+}
 
 impl Display for FinalizedBlock {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "finalized block deploys {:<8x}, random bit {} ",
-            HexList(&self.0.deploys),
-            self.0.random_bit
+            "finalized block deploys {:<8x}, random bit {}, timestamp {}",
+            HexList(&self.proto_block.deploys),
+            self.proto_block.random_bit,
+            self.timestamp,
         )
-    }
-}
-
-impl From<ProtoBlock> for FinalizedBlock {
-    fn from(proto_block: ProtoBlock) -> Self {
-        Self(proto_block)
     }
 }
 

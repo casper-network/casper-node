@@ -5,9 +5,19 @@ use std::{
 };
 
 use hex::FromHexError;
+#[cfg(test)]
+use rand::{
+    distributions::{Alphanumeric, Distribution, Standard},
+    Rng,
+};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+#[cfg(test)]
+use crate::crypto::{
+    asymmetric_key::{self, SecretKey},
+    hash,
+};
 use crate::{
     components::{
         contract_runtime::core::engine_state::executable_deploy_item::ExecutableDeployItem,
@@ -209,6 +219,73 @@ impl Display for Deploy {
             self.session,
             DisplayIter::new(self.approvals.iter())
         )
+    }
+}
+
+#[cfg(test)]
+impl Distribution<Deploy> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Deploy {
+        let seed: u64 = rng.gen();
+        let hash = DeployHash::new(hash::hash(seed.to_le_bytes()));
+
+        let secret_key = SecretKey::generate_ed25519();
+        let account = PublicKey::from(&secret_key);
+
+        let timestamp = seed + 100;
+        let gas_price = seed + 101;
+        let body_hash = hash::hash(seed.overflowing_add(102).0.to_le_bytes());
+        let ttl_millis = seed as u32 + 103;
+
+        let dependencies = vec![
+            DeployHash::new(hash::hash(seed.overflowing_add(104).0.to_le_bytes())),
+            DeployHash::new(hash::hash(seed.overflowing_add(105).0.to_le_bytes())),
+            DeployHash::new(hash::hash(seed.overflowing_add(106).0.to_le_bytes())),
+        ];
+
+        let chain_name = std::iter::repeat_with(|| rng.sample(Alphanumeric))
+            .take(10)
+            .collect();
+
+        let header = DeployHeader {
+            account,
+            timestamp,
+            gas_price,
+            body_hash,
+            ttl_millis,
+            dependencies,
+            chain_name,
+        };
+
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: hash::hash(seed.overflowing_add(107).0.to_le_bytes())
+                .as_ref()
+                .to_vec(),
+            args: hash::hash(seed.overflowing_add(108).0.to_le_bytes())
+                .as_ref()
+                .to_vec(),
+        };
+        let session = ExecutableDeployItem::ModuleBytes {
+            module_bytes: hash::hash(seed.overflowing_add(109).0.to_le_bytes())
+                .as_ref()
+                .to_vec(),
+            args: hash::hash(seed.overflowing_add(1110).0.to_le_bytes())
+                .as_ref()
+                .to_vec(),
+        };
+
+        let approvals = vec![
+            asymmetric_key::sign(&[3], &secret_key, &account),
+            asymmetric_key::sign(&[4], &secret_key, &account),
+            asymmetric_key::sign(&[5], &secret_key, &account),
+        ];
+
+        Deploy {
+            hash,
+            header,
+            payment,
+            session,
+            approvals,
+        }
     }
 }
 

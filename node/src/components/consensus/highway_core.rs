@@ -39,6 +39,9 @@ pub(crate) mod vertex;
 
 mod block;
 mod evidence;
+#[cfg(test)]
+#[allow(unused)]
+mod highway_testing;
 mod state;
 mod tallies;
 mod validators;

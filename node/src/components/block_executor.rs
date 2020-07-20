@@ -135,7 +135,7 @@ where
             }) => {
                 debug!(?finalized_block, "execute block");
 
-                if finalized_block.0.deploys.is_empty() {
+                if finalized_block.proto_block.deploys.is_empty() {
                     // No deploys - short circuit and respond straight away using current state hash.
                     let executed_block = ExecutedBlock {
                         finalized_block,
@@ -144,7 +144,12 @@ where
                     return responder.respond(executed_block).ignore();
                 }
 
-                let deploy_hashes = finalized_block.0.deploys.clone().into_iter().collect();
+                let deploy_hashes = finalized_block
+                    .proto_block
+                    .deploys
+                    .clone()
+                    .into_iter()
+                    .collect();
 
                 // Get all deploys in order they appear in the finalized block.
                 effect_builder

@@ -95,8 +95,8 @@ use announcements::{
 };
 use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
 use requests::{
-    BlockExecutorRequest, ContractRuntimeRequest, DeployQueueRequest, NetworkRequest,
-    StorageRequest,
+    BlockExecutorRequest, ContractRuntimeRequest, DeployQueueRequest, MetricsRequest,
+    NetworkRequest, StorageRequest,
 };
 use types::{Key, ProtocolVersion};
 
@@ -320,6 +320,20 @@ impl<REv> EffectBuilder<REv> {
         let then = Instant::now();
         tokio::time::delay_for(timeout).await;
         Instant::now() - then
+    }
+
+    /// Retrieve a snapshot of the nodes current metrics formatted as string.
+    ///
+    /// If an error occurred producing the metrics, `None` is returned.
+    pub(crate) async fn get_metrics(self) -> Option<String>
+    where
+        REv: From<MetricsRequest>,
+    {
+        self.make_request(
+            |responder| MetricsRequest::RenderNodeMetricsText { responder },
+            QueueKind::Api,
+        )
+        .await
     }
 
     /// Sends a network message.

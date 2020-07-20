@@ -88,13 +88,8 @@ where
         config: Config,
         effect_builder: EffectBuilder<REv>,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
-        let secret_key_path = config.secret_key_path.ok_or_else(|| {
-            anyhow::Error::msg("invalid consensus config; secret_key_path is required")
-        })?;
-
-        let secret_signing_key = SecretKey::from_file(&secret_key_path)
-            .map_err(anyhow::Error::new)?
-            .ok_or_else(|| anyhow::Error::msg("invalid signing key"))?;
+        let secret_signing_key =
+            SecretKey::from_file(&config.secret_key_path).map_err(anyhow::Error::new)?;
 
         let public_key: PublicKey = From::from(&secret_signing_key);
         let params = HighwayParams {
@@ -161,10 +156,9 @@ where
                     proto_block,
                     block_context,
                 }),
-            ConsensusProtocolResult::FinalizedBlock(block) => {
+            ConsensusProtocolResult::FinalizedBlock(block, timestamp) => {
                 let mut effects = effect_builder
-                    // TODO: Creating FinalizedBlock is oversimplified and should be properly handled by consensus in future.
-                    .execute_block(FinalizedBlock::from(block.clone()))
+                    .execute_block(FinalizedBlock::new(block.clone(), timestamp))
                     .event(move |executed_block| Event::ExecutedBlock {
                         era_id,
                         executed_block,

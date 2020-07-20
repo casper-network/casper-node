@@ -6,11 +6,10 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use derive_more::From;
-use futures::Future;
 use serde::{Deserialize, Serialize};
 use small_network::NodeId;
 
@@ -20,12 +19,15 @@ use crate::{
     logging,
     reactor::{self, EventQueueHandle, Reactor, Runner},
     small_network::{self, SmallNetwork},
-    testing::network::{Network, NetworkedReactor},
+    testing::{
+        network::{Network, NetworkedReactor},
+        ConditionCheckReactor,
+    },
 };
 use pnet::datalink;
+use prometheus::Registry;
 use rand::{rngs::OsRng, Rng};
 use reactor::{wrap_effects, Finalize};
-use tokio::time::{timeout, Timeout};
 use tracing::{debug, info};
 
 /// The networking port used by the tests for the root node.
@@ -80,6 +82,7 @@ impl Reactor for TestReactor {
 
     fn new<R: Rng + ?Sized>(
         cfg: Self::Config,
+        _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut R,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
@@ -129,7 +132,9 @@ fn init_logging() {
 }
 
 /// Checks whether or not a given network is completely connected.
-fn network_is_complete(nodes: &HashMap<NodeId, Runner<TestReactor>>) -> bool {
+fn network_is_complete(
+    nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<TestReactor>>>,
+) -> bool {
     // We need at least one node.
     if nodes.is_empty() {
         return false;
@@ -137,13 +142,13 @@ fn network_is_complete(nodes: &HashMap<NodeId, Runner<TestReactor>>) -> bool {
 
     let expected: HashSet<_> = nodes
         .iter()
-        .map(|(_, runner)| runner.reactor().net.node_id())
+        .map(|(_, runner)| runner.reactor().inner().net.node_id())
         .collect();
 
     nodes
         .iter()
         .map(|(_, runner)| {
-            let net = &runner.reactor().net;
+            let net = &runner.reactor().inner().net;
             let mut actual = net.connected_nodes();
 
             // All nodes should be connected to every other node, except itself, so we add it to the
@@ -153,23 +158,6 @@ fn network_is_complete(nodes: &HashMap<NodeId, Runner<TestReactor>>) -> bool {
             actual
         })
         .all(|actual| actual == expected)
-}
-
-/// Helper trait to annotate timeouts more naturally.
-trait Within<T> {
-    /// Sets a timeout on a future.
-    ///
-    /// If the timeout occurs, the annotated future will be **cancelled**. Use with caution.
-    fn within(self, duration: Duration) -> Timeout<T>;
-}
-
-impl<T> Within<T> for T
-where
-    T: Future,
-{
-    fn within(self, duration: Duration) -> Timeout<T> {
-        timeout(duration, self)
-    }
 }
 
 fn gen_config(bind_port: u16) -> small_network::Config {
@@ -184,8 +172,8 @@ fn gen_config(bind_port: u16) -> small_network::Config {
         max_outgoing_retries: Some(100),
         outgoing_retry_delay_millis: 100,
         // Auto-generate cert and key.
-        cert: None,
-        secret_key: None,
+        cert_path: None,
+        secret_key_path: None,
     }
 }
 
@@ -203,29 +191,26 @@ async fn run_two_node_network_five_times() {
 
         let mut net = Network::new();
 
-        let start = std::time::Instant::now();
+        let start = Instant::now();
         net.add_node_with_config(gen_config(TEST_ROOT_NODE_PORT), &mut rng)
             .await
             .unwrap();
         net.add_node_with_config(gen_config(TEST_ROOT_NODE_PORT + 1), &mut rng)
             .await
             .unwrap();
-        let end = std::time::Instant::now();
+        let end = Instant::now();
 
         debug!(
             total_time_ms = (end - start).as_millis() as u64,
             "finished setting up networking nodes"
         );
 
-        net.settle_on(&mut rng, network_is_complete)
-            .within(Duration::from_millis(1000))
-            .await
-            .expect("network did not fully connect in time");
+        let timeout = Duration::from_secs(1);
+        net.settle_on(&mut rng, network_is_complete, timeout).await;
 
-        net.settle(&mut rng, Duration::from_millis(25))
-            .within(Duration::from_millis(2000))
-            .await
-            .expect("network did not stay settled");
+        let quiet_for = Duration::from_millis(25);
+        let timeout = Duration::from_secs(2);
+        net.settle(&mut rng, quiet_for, timeout).await;
 
         assert!(
             network_is_complete(net.nodes()),
@@ -264,8 +249,8 @@ async fn bind_to_real_network_interface() {
         root_addr: (local_addr, port).into(),
         max_outgoing_retries: Some(360),
         outgoing_retry_delay_millis: 10000,
-        cert: None,
-        secret_key: None,
+        cert_path: None,
+        secret_key_path: None,
     };
 
     let mut net = Network::<TestReactor>::new();
@@ -273,5 +258,7 @@ async fn bind_to_real_network_interface() {
         .await
         .unwrap();
 
-    net.settle(&mut rng, Duration::from_millis(250)).await;
+    let quiet_for = Duration::from_millis(250);
+    let timeout = Duration::from_secs(2);
+    net.settle(&mut rng, quiet_for, timeout).await;
 }
