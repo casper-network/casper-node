@@ -17,6 +17,7 @@ use std::{
 const PORT_LOWER_BOUND: u16 = 10_000;
 
 /// Create an unused port on localhost.
+#[allow(clippy::assertions_on_constants)]
 pub(crate) fn unused_port_on_localhost() -> u16 {
     // Prime used for the LCG.
     const PRIME: u16 = 54101;
