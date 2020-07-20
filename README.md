@@ -4,10 +4,10 @@ This is the core application for the CasperLabs blockchain.
 
 ## Running a validator node
 
-To run a validator node with the default configuration using the [local chainspec](resources/local/chainspec.toml):
+To run a validator node with the [local configuration options](resources/local/config.toml):
 
 ```
-cargo run --release -- validator -p=resources/local/chainspec.toml
+cargo run --release -- validator -c=resources/local/config.toml
 ```
 
 It is likely that the configuration requires editing however, so typically one will want to generate a configuration
@@ -16,21 +16,25 @@ file first, edit it and then run:
 ```
 cargo run --release -- generate-config > config.toml
 # ... edit config.toml
-cargo run --release -- validator -p=resources/local/chainspec.toml -c=config.toml
+cargo run --release -- validator -c=config.toml
 ```
 
-If using a config file as described above, it is also possible to override and extend the values in the config file
-from the command line using one or more args in the form of `-C <section>.<key>=<value>`, for instance:
+Note that all paths specified in the config file must be absolute paths or relative to the config file itself.  Paths
+may contain environment variables such as `$HOME`.
+
+It is also possible to specify individual config file options from the command line using one or more args in the form
+of `-C=<SECTION>.<KEY>=<VALUE>`.  These will override values set in a config file if provided, or will override the
+default values otherwise.
 
 ```
-cargo run --release -- validator -c=resources/local/config.toml -C consensus.secret_key_path=secret_keys/node-1.pem
+cargo run --release -- validator -c=resources/local/config.toml -C=consensus.secret_key_path=secret_keys/node-1.pem
 ```
 
 **NOTE:** If you want to run multiple instances on the same machine, ensure you modify the `[storage.path]` field of
 their configuration files to give each a unique path, or else instances will share database files.
 
-As well as the [local chainspec](resources/local/chainspec.toml), there is a commented
-[local config file](resources/local/config.toml) in the same folder.
+As well as the commented [local config file](resources/local/config.toml), there is a commented
+[local chainspec](resources/local/chainspec.toml) in the same folder.
 
 ## Logging
 
@@ -38,7 +42,7 @@ Logging can be enabled by setting the environment variable `RUST_LOG`.  This can
 from lowest priority to highest: `trace`, `debug`, `info`, `warn`, `error`:
 
 ```
-RUST_LOG=info cargo run --release -- validator -p=resources/local/chainspec.toml -c=config.toml
+RUST_LOG=info cargo run --release -- validator -c=resources/local/config.toml
 ```
 
 If the environment variable is unset, it is equivalent to setting `RUST_LOG=error`.
