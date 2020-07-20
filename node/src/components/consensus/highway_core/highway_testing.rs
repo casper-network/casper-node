@@ -562,7 +562,7 @@ impl<C: Context> DeliveryStrategy<C> for InstantDeliveryNoDropping {
     ) -> DeliverySchedule {
         match message {
             RequestBlock(bc) => DeliverySchedule::AtInstant(bc.timestamp()),
-            Timer(t) => DeliverySchedule::AtInstant(t.clone()),
+            Timer(t) => DeliverySchedule::AtInstant(*t),
             NewVertex(_) => DeliverySchedule::AtInstant(base_delivery_timestamp + 1.into()),
         }
     }

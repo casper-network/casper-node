@@ -325,7 +325,7 @@ mod virtual_net_tests {
 
         let message = Message::new(validator_id, 1u64);
         let targeted_message =
-            TargetedMessage::new(message.clone(), Target::AllExcept(validator_id.clone()));
+            TargetedMessage::new(message.clone(), Target::AllExcept(validator_id));
 
         virtual_net.dispatch_messages(vec![(targeted_message, 2.into())]);
 
@@ -336,10 +336,7 @@ mod virtual_net_tests {
 
         assert_eq!(
             queued_msgs,
-            vec![
-                (ValidatorId(3), message.clone()),
-                (ValidatorId(2), message.clone())
-            ],
+            vec![(ValidatorId(3), message.clone()), (ValidatorId(2), message)],
             "A broadcast message should be delivered to every node but the creator."
         );
     }
