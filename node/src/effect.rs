@@ -95,8 +95,8 @@ use announcements::{
 };
 use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
 use requests::{
-    BlockExecutorRequest, ContractRuntimeRequest, DeployQueueRequest, MetricsRequest,
-    NetworkRequest, StorageRequest,
+    BlockExecutorRequest, BlockValidatorRequest, ContractRuntimeRequest, DeployQueueRequest,
+    MetricsRequest, NetworkRequest, StorageRequest,
 };
 use types::{Key, ProtocolVersion};
 
@@ -629,12 +629,23 @@ impl<REv> EffectBuilder<REv> {
     /// Checks whether the deploys included in the proto-block exist on the network.
     pub(crate) async fn validate_proto_block<I>(
         self,
-        _sender: I,
+        sender: I,
         proto_block: ProtoBlock,
-    ) -> (bool, ProtoBlock) {
-        // TODO: check with the deploy fetcher or something whether the deploys whose hashes are
-        // contained in the proto-block actually exist
-        (true, proto_block)
+    ) -> (bool, ProtoBlock)
+    where
+        REv: From<BlockValidatorRequest<I>>,
+    {
+        let validation_result = self
+            .make_request(
+                |responder| BlockValidatorRequest {
+                    sender,
+                    proto_block: proto_block.clone(),
+                    responder,
+                },
+                QueueKind::Regular,
+            )
+            .await;
+        (validation_result, proto_block)
     }
 
     /// Announces that a proto block has been proposed and will either be finalized or orphaned
