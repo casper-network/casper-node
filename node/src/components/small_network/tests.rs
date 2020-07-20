@@ -11,14 +11,13 @@ use std::{
 
 use derive_more::From;
 use serde::{Deserialize, Serialize};
-use small_network::NodeId;
 
 use crate::{
     components::Component,
     effect::{announcements::NetworkAnnouncement, EffectBuilder, Effects},
     logging,
     reactor::{self, EventQueueHandle, Reactor, Runner},
-    small_network::{self, SmallNetwork},
+    small_network::{self, NodeId, SmallNetwork},
     testing::{
         network::{Network, NetworkedReactor},
         unused_port_on_localhost, ConditionCheckReactor,
@@ -267,38 +266,39 @@ async fn bind_to_real_network_interface() {
 /// Check that a network of varying sizes will connect all nodes properly.
 #[tokio::test]
 async fn check_varying_size_network_connects() {
-    let number_of_nodes = 5;
-    let timeout = Duration::from_secs(10);
+    init_logging();
+    let mut rng = OsRng;
     let quiet_for: Duration = Duration::from_millis(250);
 
-    init_logging();
+    // Try with a few predefined sets of network sizes.
+    for &number_of_nodes in &[2u16, 3, 5, 9, 15] {
+        let timeout = Duration::from_secs(3 * number_of_nodes as u64);
 
-    let mut rng = OsRng;
+        let mut net = Network::new();
 
-    let mut net = Network::new();
+        // Pick a random port in the higher ranges that is likely to be unused.
+        let root_port = unused_port_on_localhost();
 
-    // Pick a random port in the higher ranges that is likely to be unused.
-    let root_port = unused_port_on_localhost();
+        for i in 0..number_of_nodes {
+            // We use a `bind_port` of 0 to get a random port assigned.
+            net.add_node_with_config(gen_config(root_port + i, root_port), &mut rng)
+                .await
+                .unwrap();
+        }
 
-    for i in 0u16..number_of_nodes {
-        // We use a `bind_port` of 0 to get a random port assigned.
-        net.add_node_with_config(gen_config(root_port + i, root_port), &mut rng)
-            .await
-            .unwrap();
+        // The network should be fully connected.
+        net.settle_on(&mut rng, network_is_complete, timeout).await;
+
+        // Afterwards, there should be no activity on the network.
+        net.settle(&mut rng, quiet_for, timeout).await;
+
+        // This should not make a difference at all, but we're paranoid, so check again.
+        assert!(
+            network_is_complete(net.nodes()),
+            "network did not stay connected after being settled"
+        );
+
+        // This test will run multiple times, so ensure we cleanup all ports.
+        net.finalize().await;
     }
-
-    // The network should be fully connected.
-    net.settle_on(&mut rng, network_is_complete, timeout).await;
-
-    // Afterwards, there should be no activity on the network.
-    net.settle(&mut rng, quiet_for, timeout).await;
-
-    // This should not make a difference at all, but we're paranoid, so check again.
-    assert!(
-        network_is_complete(net.nodes()),
-        "network did not stay connected after being settled"
-    );
-
-    // This test will run multiple times, so ensure we cleanup all ports.
-    net.finalize().await;
 }
