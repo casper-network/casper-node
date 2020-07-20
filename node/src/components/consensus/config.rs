@@ -6,5 +6,5 @@ use std::path::PathBuf;
 #[serde(deny_unknown_fields)]
 pub struct Config {
     /// Path to secret key file.
-    pub secret_key_path: Option<PathBuf>,
+    pub secret_key_path: PathBuf,
 }

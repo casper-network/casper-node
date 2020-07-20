@@ -1,4 +1,4 @@
-use std::{env, path::PathBuf};
+use std::path::PathBuf;
 
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
@@ -73,14 +73,7 @@ impl Config {
 
     pub(crate) fn path(&self) -> PathBuf {
         match self.path {
-            Some(ref path) => {
-                // Replace env vars in the provided path.
-                let mut path_str = path.display().to_string();
-                for (env_var_name, env_var_value) in env::vars() {
-                    path_str = path_str.replace(&format!("${}", env_var_name), &env_var_value);
-                }
-                PathBuf::from(path_str)
-            }
+            Some(ref path) => path.clone(),
             None => Self::default_path(),
         }
     }
