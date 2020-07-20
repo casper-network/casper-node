@@ -8,14 +8,15 @@
 use std::{
     collections::HashMap,
     fmt::{self, Debug, Formatter},
-    iter,
     time::Duration,
 };
 
 use anyhow::Error;
 use maplit::hashmap;
+use num_traits::AsPrimitive;
 use serde::{Deserialize, Serialize};
 use tracing::error;
+use types::U512;
 
 use crate::{
     components::consensus::{
@@ -25,9 +26,12 @@ use crate::{
         traits::NodeIdT,
         Config, ConsensusMessage, Event, ReactorEventT,
     },
-    crypto::{asymmetric_key::PublicKey, asymmetric_key::SecretKey, hash::hash},
+    crypto::{
+        asymmetric_key::{PublicKey, SecretKey},
+        hash::hash,
+    },
     effect::{EffectBuilder, EffectExt, Effects},
-    types::{FinalizedBlock, ProtoBlock, Timestamp},
+    types::{FinalizedBlock, Motes, ProtoBlock, Timestamp},
 };
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -87,14 +91,35 @@ where
         timestamp: Timestamp,
         config: Config,
         effect_builder: EffectBuilder<REv>,
+        validators: Vec<(PublicKey, Motes)>,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
+        let sum_stakes: Motes = validators.iter().map(|(_, stake)| *stake).sum();
+        let weights = if sum_stakes.value() > U512::from(u64::MAX) {
+            validators
+                .into_iter()
+                .map(|(key, stake)| {
+                    (
+                        key,
+                        AsPrimitive::<u64>::as_(
+                            stake.value() / (sum_stakes.value() / (u64::MAX / 2)),
+                        ),
+                    )
+                })
+                .collect()
+        } else {
+            validators
+                .into_iter()
+                .map(|(key, stake)| (key, AsPrimitive::<u64>::as_(stake.value())))
+                .collect()
+        };
+
         let secret_signing_key =
             SecretKey::from_file(&config.secret_key_path).map_err(anyhow::Error::new)?;
 
         let public_key: PublicKey = From::from(&secret_signing_key);
         let params = HighwayParams {
             instance_id: hash("test era 0"),
-            validators: iter::once((public_key, 100)).collect(),
+            validators: weights,
         };
         let (highway, effects) = HighwayProtocol::<I, HighwayContext>::new(
             params,

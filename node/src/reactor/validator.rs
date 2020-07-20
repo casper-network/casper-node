@@ -12,6 +12,7 @@ use prometheus::Registry;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::info;
+use types::U512;
 
 use crate::{
     components::{
@@ -217,7 +218,6 @@ impl reactor::Reactor for Reactor {
             chainspec_handler,
             storage,
             contract_runtime,
-            ..
         } = initializer;
 
         let metrics = Metrics::new(registry.clone());
@@ -228,8 +228,20 @@ impl reactor::Reactor for Reactor {
         let (pinger, pinger_effects) = Pinger::new(registry, effect_builder)?;
         let api_server = ApiServer::new(config.http_server, effect_builder);
         let timestamp = Timestamp::now();
-        let (consensus, consensus_effects) =
-            EraSupervisor::new(timestamp, config.consensus, effect_builder)?;
+        let validator_stakes = chainspec_handler
+            .chainspec()
+            .genesis
+            .accounts
+            .iter()
+            .filter_map(|account| account.public_key().map(|pk| (pk, account.bonded_amount())))
+            .filter(|(_, stake)| stake.value() > U512::zero())
+            .collect();
+        let (consensus, consensus_effects) = EraSupervisor::new(
+            timestamp,
+            config.consensus,
+            effect_builder,
+            validator_stakes,
+        )?;
         let deploy_gossiper = DeployGossiper::new(config.gossip);
         let deploy_buffer = DeployBuffer::new();
         // Post state hash is expected to be present

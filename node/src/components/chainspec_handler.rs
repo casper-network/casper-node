@@ -105,6 +105,10 @@ impl ChainspecHandler {
     pub(crate) fn post_state_hash(self) -> Option<Digest> {
         self.post_state_hash
     }
+
+    pub(crate) fn chainspec(&self) -> &Chainspec {
+        &self.chainspec
+    }
 }
 
 impl<REv> Component<REv> for ChainspecHandler
