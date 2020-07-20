@@ -172,8 +172,8 @@ fn gen_config(bind_port: u16) -> small_network::Config {
         max_outgoing_retries: Some(100),
         outgoing_retry_delay_millis: 100,
         // Auto-generate cert and key.
-        cert: None,
-        secret_key: None,
+        cert_path: None,
+        secret_key_path: None,
     }
 }
 
@@ -249,8 +249,8 @@ async fn bind_to_real_network_interface() {
         root_addr: (local_addr, port).into(),
         max_outgoing_retries: Some(360),
         outgoing_retry_delay_millis: 10000,
-        cert: None,
-        secret_key: None,
+        cert_path: None,
+        secret_key_path: None,
     };
 
     let mut net = Network::<TestReactor>::new();

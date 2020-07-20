@@ -18,9 +18,14 @@ pub enum Error {
     /// Error resulting when decoding a type from a hex-encoded representation.
     #[error("parsing from hex: {0}")]
     FromHex(#[from] FromHexError),
-    /// Error reading from file.
-    #[error("error reading from file")]
-    FromFile,
+    /// Error while trying to read in a file.
+    #[error("error reading {file}: {error_msg}")]
+    ReadFile {
+        /// The file attempted to be read.
+        file: String,
+        /// The underlying error message.
+        error_msg: String,
+    },
     /// Error resulting when decoding a type from a base64 representation.
     #[error("decoding error: {0}")]
     FromBase64(#[from] DecodeError),

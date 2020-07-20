@@ -113,13 +113,8 @@ where
                 .collect()
         };
 
-        let secret_key_path = config.secret_key_path.ok_or_else(|| {
-            anyhow::Error::msg("invalid consensus config; secret_key_path is required")
-        })?;
-
-        let secret_signing_key = SecretKey::from_file(&secret_key_path)
-            .map_err(anyhow::Error::new)?
-            .ok_or_else(|| anyhow::Error::msg("invalid signing key"))?;
+        let secret_signing_key =
+            SecretKey::from_file(&config.secret_key_path).map_err(anyhow::Error::new)?;
 
         let public_key: PublicKey = From::from(&secret_signing_key);
         let params = HighwayParams {

@@ -1,9 +1,6 @@
 //! Reactor used to initialize a node.
 
-use std::{
-    fmt::{self, Display, Formatter},
-    path::PathBuf,
-};
+use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
 use prometheus::Registry;
@@ -119,14 +116,8 @@ impl reactor::Reactor for Reactor {
 
         let storage = Storage::new(&config.storage)?;
         let contract_runtime = ContractRuntime::new(&config.storage, config.contract_runtime)?;
-        let chainspec_config_path: PathBuf = {
-            let ret = &config.node.chainspec_config_path;
-            ret.clone().ok_or_else(|| {
-                Error::ConfigError(String::from("missing chainspec_config_path value"))
-            })?
-        };
         let (chainspec_handler, chainspec_effects) =
-            ChainspecHandler::new(chainspec_config_path, effect_builder)?;
+            ChainspecHandler::new(config.node.chainspec_config_path.clone(), effect_builder)?;
 
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
 
