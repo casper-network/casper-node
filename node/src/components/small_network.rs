@@ -143,7 +143,7 @@ where
         let server_span = tracing::info_span!("server");
 
         // First, we load or generate the TLS keys.
-        let (cert, secret_key) = match (&cfg.cert, &cfg.secret_key) {
+        let (cert, secret_key) = match (&cfg.cert_path, &cfg.secret_key_path) {
             // We're given a cert_file and a secret_key file. Just load them, additional checking
             // will be performed once we create the acceptor and connector.
             (Some(cert_file), Some(secret_key_file)) => (
