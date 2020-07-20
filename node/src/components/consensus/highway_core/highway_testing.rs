@@ -328,7 +328,14 @@ where
                         .ok_or_else(|| TestRunError::NoConsensusValues)?;
 
                     self.call_validator(&validator_id, |consensus| {
-                        consensus.propose(consensus_value, block_context)
+                        let mut effects = consensus.propose(consensus_value, block_context);
+                        let additional_effects = match &*effects {
+                            // We want to add the new vertex to creator's state immediately.
+                            [Effect::NewVertex(vv)] => consensus.add_valid_vertex(vv.clone()),
+                            _ => vec![],
+                        };
+                        effects.extend(additional_effects);
+                        effects
                     })?
                 }
             }
