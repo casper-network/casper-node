@@ -124,12 +124,16 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         match self.finality_detector.run(self.highway.state()) {
             FinalityOutcome::None => (),
             FinalityOutcome::FttExceeded => panic!("Too many faulty validators"),
-            FinalityOutcome::Finalized(block, equivocators) => {
-                if !equivocators.is_empty() {
+            FinalityOutcome::Finalized {
+                value: block,
+                new_equivocators,
+                timestamp,
+            } => {
+                if !new_equivocators.is_empty() {
                     // TODO: Add this information to the proto block for slashing.
-                    info!(?equivocators, "Observed new faulty validators");
+                    info!(?new_equivocators, "Observed new faulty validators");
                 }
-                results.push(ConsensusProtocolResult::FinalizedBlock(block));
+                results.push(ConsensusProtocolResult::FinalizedBlock(block, timestamp));
             }
         }
         results
