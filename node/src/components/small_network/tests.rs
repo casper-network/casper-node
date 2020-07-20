@@ -137,6 +137,7 @@ fn network_is_complete(
         return false;
     }
 
+    // We collect a set of expected nodes by getting all nodes in the network into a set.
     let expected: HashSet<_> = nodes
         .iter()
         .map(|(_, runner)| runner.reactor().inner().net.node_id())
@@ -261,4 +262,37 @@ async fn bind_to_real_network_interface() {
     let quiet_for = Duration::from_millis(250);
     let timeout = Duration::from_secs(2);
     net.settle(&mut rng, quiet_for, timeout).await;
+}
+
+/// Check that a network of varying sizes will connect all nodes properly.
+#[tokio::test]
+async fn check_varying_size_network_connects() {
+    let number_of_nodes = 2;
+    let timeout = Duration::from_secs(10);
+    let quiet_for: Duration = Duration::from_millis(250);
+
+    init_logging();
+
+    let mut rng = OsRng;
+
+    let mut net = Network::new();
+
+    // Pick a random port in the higher ranges that is likely to be unused.
+    let root_port = unused_port_on_localhost();
+
+    for i in 0u16..number_of_nodes {
+        // We use a `bind_port` of 0 to get a random port assigned.
+        net.add_node_with_config(gen_config(root_port + i, root_port), &mut rng)
+            .await
+            .unwrap();
+    }
+
+    // The network should be fully connected.
+    net.settle_on(&mut rng, network_is_complete, timeout).await;
+
+    // Afterwards, there should be no activity on the network.
+    net.settle(&mut rng, quiet_for, timeout).await;
+
+    // This test will run multiple times, so ensure we cleanup all ports.
+    net.finalize().await;
 }
