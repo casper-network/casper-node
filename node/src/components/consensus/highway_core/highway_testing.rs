@@ -304,7 +304,22 @@ where
         F: FnOnce(&mut Highway<Ctx>) -> Vec<Effect<Ctx>>,
     {
         let res = f(self.validator_mut(validator_id)?.consensus.highway_mut());
-        Ok(res.into_iter().map(HighwayMessage::from).collect())
+        let mut additional_effects = vec![];
+        for e in res.iter() {
+            if let Effect::NewVertex(vv) = e {
+                additional_effects.extend(
+                    self.validator_mut(validator_id)?
+                        .consensus
+                        .highway_mut()
+                        .add_valid_vertex(vv.clone()),
+                );
+            }
+        }
+        additional_effects.extend(res);
+        Ok(additional_effects
+            .into_iter()
+            .map(HighwayMessage::from)
+            .collect())
     }
 
     /// Processes a message sent to `validator_id`.
@@ -341,14 +356,7 @@ where
                         .ok_or_else(|| TestRunError::NoConsensusValues)?;
 
                     self.call_validator(&validator_id, |consensus| {
-                        let mut effects = consensus.propose(consensus_value, block_context);
-                        let additional_effects = match &*effects {
-                            // We want to add the new vertex to creator's state immediately.
-                            [Effect::NewVertex(vv)] => consensus.add_valid_vertex(vv.clone()),
-                            _ => vec![],
-                        };
-                        effects.extend(additional_effects);
-                        effects
+                        consensus.propose(consensus_value, block_context)
                     })?
                 }
             }
@@ -476,9 +484,7 @@ where
     ) -> Result<Result<Vec<HighwayMessage<Ctx>>, (Vertex<Ctx>, VertexError)>, TestRunError<Ctx>>
     {
         let vertex = self
-            .virtual_net
-            .validator_mut(&sender)
-            .ok_or_else(|| TestRunError::MissingValidator(sender))?
+            .validator_mut(&sender)?
             .consensus
             .highway
             .get_dependency(&missing_dependency)
