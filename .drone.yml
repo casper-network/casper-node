@@ -36,6 +36,7 @@ __cache: &cache
       - ./.cargo/registry/index/
       - ./.cargo/registry/cache/
       - ./.cargo/git/db/
+      - ./.cargo/.crates.toml
 
 kind: pipeline
 name: cargo
@@ -64,7 +65,7 @@ steps:
 - name: cargo-audit
   <<: *buildenv
   commands:
-  - cargo install cargo-audit || true
+  - cargo install cargo-audit
   - cargo generate-lockfile
   - cargo audit
 
