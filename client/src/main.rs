@@ -19,7 +19,7 @@ use casperlabs_node::{
     },
     types::{Deploy, DeployHeader, Timestamp},
 };
-use types::{
+use casperlabs_types::{
     bytesrepr::{self, ToBytes},
     CLValue, NamedArg, RuntimeArgs,
 };
