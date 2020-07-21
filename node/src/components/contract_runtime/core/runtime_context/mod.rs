@@ -11,12 +11,6 @@ use blake2::{
     VarBlake2b,
 };
 
-use crate::components::contract_runtime::shared::{
-    account::Account, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue,
-};
-use crate::components::contract_runtime::storage::{
-    global_state::StateReader, protocol_data::ProtocolData,
-};
 use types::{
     account::{
         AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
@@ -29,11 +23,15 @@ use types::{
     KEY_HASH_LENGTH,
 };
 
-use crate::components::contract_runtime::core::{
-    engine_state::execution_effect::ExecutionEffect,
-    execution::{AddressGenerator, Error},
-    tracking_copy::{AddResult, TrackingCopy},
-    Address,
+use crate::components::contract_runtime::{
+    core::{
+        engine_state::execution_effect::ExecutionEffect,
+        execution::{AddressGenerator, Error},
+        tracking_copy::{AddResult, TrackingCopy},
+        Address,
+    },
+    shared::{account::Account, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
+    storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
 
 #[cfg(test)]

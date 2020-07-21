@@ -2,8 +2,9 @@
 
 use types::{account::AccountHash, contracts::NamedKeys, AccessRights, Key, URef};
 
-use crate::components::contract_runtime::shared::wasm_costs::WasmCosts;
-use crate::components::contract_runtime::shared::{account::Account, stored_value::StoredValue};
+use crate::components::contract_runtime::shared::{
+    account::Account, stored_value::StoredValue, wasm_costs::WasmCosts,
+};
 
 /// Returns an account value paired with its key
 pub fn mocked_account(account_hash: AccountHash) -> Vec<(Key, StoredValue)> {

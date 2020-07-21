@@ -1,15 +1,17 @@
 use parity_wasm::elements;
 use thiserror::Error;
 
-use crate::components::contract_runtime::shared::{wasm_prep, TypeMismatch};
 use types::{
     account::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
     bytesrepr, system_contract_errors, AccessRights, ApiError, CLType, CLValueError,
     ContractPackageHash, ContractVersionKey, Key, URef,
 };
 
-use crate::components::contract_runtime::core::resolvers::error::ResolverError;
-use crate::components::contract_runtime::storage;
+use crate::components::contract_runtime::{
+    core::resolvers::error::ResolverError,
+    shared::{wasm_prep, TypeMismatch},
+    storage,
+};
 
 #[derive(Error, Debug, Clone)]
 pub enum Error {

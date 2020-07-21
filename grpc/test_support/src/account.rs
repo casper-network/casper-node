@@ -1,7 +1,6 @@
 use std::convert::TryFrom;
 
-use node::components::contract_runtime::shared;
-use node::components::contract_runtime::shared::stored_value::StoredValue;
+use node::components::contract_runtime::{shared, shared::stored_value::StoredValue};
 use types::{account::AccountHash, contracts::NamedKeys, URef};
 
 use crate::{Error, Result};

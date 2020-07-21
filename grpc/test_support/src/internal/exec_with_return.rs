@@ -1,19 +1,18 @@
 use std::{cell::RefCell, collections::BTreeSet, convert::TryInto, rc::Rc};
 
 use engine_grpc_server::engine_server::ipc_grpc::ExecutionEngineService;
-use node::components::contract_runtime::core::{
-    engine_state::{
-        executable_deploy_item::ExecutableDeployItem, execution_effect::ExecutionEffect,
-        EngineConfig, EngineState,
+use node::components::contract_runtime::{
+    core::{
+        engine_state::{
+            executable_deploy_item::ExecutableDeployItem, execution_effect::ExecutionEffect,
+            EngineConfig, EngineState,
+        },
+        execution::{self, AddressGenerator},
+        runtime::{self, Runtime},
+        runtime_context::RuntimeContext,
     },
-    execution::{self, AddressGenerator},
-    runtime::{self, Runtime},
-    runtime_context::RuntimeContext,
-};
-use node::components::contract_runtime::shared::wasm_prep::Preprocessor;
-use node::components::contract_runtime::shared::{gas::Gas, newtypes::CorrelationId};
-use node::components::contract_runtime::storage::{
-    global_state::StateProvider, protocol_data::ProtocolData,
+    shared::{gas::Gas, newtypes::CorrelationId, wasm_prep::Preprocessor},
+    storage::{global_state::StateProvider, protocol_data::ProtocolData},
 };
 use types::{
     account::AccountHash, bytesrepr::FromBytes, BlockTime, CLTyped, EntryPointType, Key, Phase,

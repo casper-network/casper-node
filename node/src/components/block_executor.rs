@@ -6,9 +6,16 @@ use derive_more::From;
 use rand::Rng;
 use tracing::{debug, error, trace, warn};
 
+use types::ProtocolVersion;
+
 use super::{
     contract_runtime::{
-        core::engine_state::{self, execute_request::ExecuteRequest},
+        core::engine_state::{
+            self,
+            execute_request::ExecuteRequest,
+            execution_result::{ExecutionResult, ExecutionResults},
+            RootNotFound,
+        },
         storage::global_state::CommitResult,
     },
     storage::Storage,
@@ -22,8 +29,6 @@ use crate::{
     },
     types::{Deploy, ExecutedBlock, FinalizedBlock, Timestamp},
 };
-use engine_state::execution_result::{ExecutionResult, ExecutionResults};
-use types::ProtocolVersion;
 
 /// The Block executor components.
 #[derive(Debug)]
@@ -54,7 +59,7 @@ pub enum Event {
         /// Finalized block used to request execution on.
         finalized_block: FinalizedBlock,
         /// Result of deploy execution.
-        result: Result<ExecutionResults, engine_state::RootNotFound>,
+        result: Result<ExecutionResults, RootNotFound>,
         /// Original responder passed with `Event::Request`.
         main_responder: Responder<ExecutedBlock>,
     },
@@ -136,7 +141,8 @@ where
                 debug!(?finalized_block, "execute block");
 
                 if finalized_block.proto_block.deploys.is_empty() {
-                    // No deploys - short circuit and respond straight away using current state hash.
+                    // No deploys - short circuit and respond straight away using current state
+                    // hash.
                     let executed_block = ExecutedBlock {
                         finalized_block,
                         post_state_hash: self.post_state_hash,
@@ -221,7 +227,8 @@ where
                     Ok(result) => warn!(?result, "commit succeeded in unexpected state"),
                     Err(error) => {
                         error!(?error, "commit failed");
-                        // When commit fails we panic as well to avoid being out of sync in next block.
+                        // When commit fails we panic as well to avoid being out of sync in next
+                        // block.
                         panic!("unable to commit");
                     }
                 }

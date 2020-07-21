@@ -9,11 +9,11 @@ use contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::mint::{Mint, RuntimeProvider, StorageProvider};
 use types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     contracts::Parameters,
+    mint::{Mint, RuntimeProvider, StorageProvider},
     system_contract_errors::mint::Error,
     CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
     Parameter, URef, U512,

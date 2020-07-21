@@ -4,10 +4,10 @@ use contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::standard_payment::{
-    AccountProvider, MintProvider, ProofOfStakeProvider, StandardPayment,
+use types::{
+    standard_payment::{AccountProvider, MintProvider, ProofOfStakeProvider, StandardPayment},
+    ApiError, RuntimeArgs, URef, U512,
 };
-use types::{ApiError, RuntimeArgs, URef, U512};
 
 const GET_PAYMENT_PURSE: &str = "get_payment_purse";
 pub const ARG_AMOUNT: &str = "amount";

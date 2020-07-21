@@ -154,8 +154,8 @@ pub enum StorageRequest<S: StorageType + 'static> {
     PutBlock {
         /// Block to be stored.
         block: Box<S::Block>,
-        /// Responder to call with the result.  Returns true if the block was stored on this attempt
-        /// or false if it was previously stored.
+        /// Responder to call with the result.  Returns true if the block was stored on this
+        /// attempt or false if it was previously stored.
         responder: Responder<storage::Result<bool>>,
     },
     /// Retrieve block with given hash.

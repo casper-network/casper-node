@@ -1,36 +1,37 @@
-use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{BTreeSet, HashMap, HashSet},
+    rc::Rc,
+};
 
 use parity_wasm::elements::Module;
 use tracing::warn;
 use wasmi::ModuleRef;
 
-use crate::components::contract_runtime::shared::{
-    account::Account, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue,
-};
-use crate::components::contract_runtime::storage::{
-    global_state::StateReader, protocol_data::ProtocolData,
-};
 use types::{
     account::AccountHash, bytesrepr::FromBytes, contracts::NamedKeys, AccessRights, BlockTime,
     CLTyped, CLValue, ContractPackage, EntryPoint, EntryPointType, Key, Phase, ProtocolVersion,
     RuntimeArgs,
 };
 
-use crate::components::contract_runtime::core::{
-    engine_state::{
-        execution_effect::ExecutionEffect, execution_result::ExecutionResult,
-        system_contract_cache::SystemContractCache, EngineConfig,
+use crate::components::contract_runtime::{
+    core::{
+        engine_state::{
+            execution_effect::ExecutionEffect, execution_result::ExecutionResult,
+            system_contract_cache::SystemContractCache, EngineConfig,
+        },
+        execution::{address_generator::AddressGenerator, Error},
+        runtime::{
+            extract_access_rights_from_keys, extract_access_rights_from_urefs, instance_and_memory,
+            Runtime,
+        },
+        runtime_context::{self, RuntimeContext},
+        tracking_copy::TrackingCopy,
+        Address,
     },
-    execution::{address_generator::AddressGenerator, Error},
-    runtime::{
-        extract_access_rights_from_keys, extract_access_rights_from_urefs, instance_and_memory,
-        Runtime,
-    },
-    runtime_context::{self, RuntimeContext},
-    tracking_copy::TrackingCopy,
-    Address,
+    shared::{account::Account, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
+    storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
-use std::collections::{HashMap, HashSet};
 
 macro_rules! on_fail_charge {
     ($fn:expr) => {

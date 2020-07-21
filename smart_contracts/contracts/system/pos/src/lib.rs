@@ -11,12 +11,13 @@ use contract::{
     contract_api::{runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::proof_of_stake::{
-    MintProvider, ProofOfStake, Queue, QueueProvider, RuntimeProvider, Stakes, StakesProvider,
-};
 use types::{
-    account::AccountHash, system_contract_errors::pos::Error, ApiError, BlockTime, CLValue, Key,
-    Phase, TransferResult, URef, U512,
+    account::AccountHash,
+    proof_of_stake::{
+        MintProvider, ProofOfStake, Queue, QueueProvider, RuntimeProvider, Stakes, StakesProvider,
+    },
+    system_contract_errors::pos::Error,
+    ApiError, BlockTime, CLValue, Key, Phase, TransferResult, URef, U512,
 };
 
 pub const METHOD_BOND: &str = "bond";

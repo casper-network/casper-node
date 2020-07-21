@@ -7,18 +7,6 @@ use std::{
 
 use rand::RngCore;
 
-use crate::components::contract_runtime::shared::{
-    account::{Account, AssociatedKeys},
-    additive_map::AdditiveMap,
-    gas::Gas,
-    newtypes::CorrelationId,
-    stored_value::StoredValue,
-    transform::Transform,
-};
-use crate::components::contract_runtime::storage::global_state::{
-    in_memory::{InMemoryGlobalState, InMemoryGlobalStateView},
-    CommitResult, StateProvider,
-};
 use types::{
     account::{
         AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, Weight,
@@ -29,9 +17,23 @@ use types::{
 };
 
 use super::{Address, Error, RuntimeContext};
-use crate::components::contract_runtime::core::{
-    execution::AddressGenerator, runtime::extract_access_rights_from_keys,
-    tracking_copy::TrackingCopy,
+use crate::components::contract_runtime::{
+    core::{
+        execution::AddressGenerator, runtime::extract_access_rights_from_keys,
+        tracking_copy::TrackingCopy,
+    },
+    shared::{
+        account::{Account, AssociatedKeys},
+        additive_map::AdditiveMap,
+        gas::Gas,
+        newtypes::CorrelationId,
+        stored_value::StoredValue,
+        transform::Transform,
+    },
+    storage::global_state::{
+        in_memory::{InMemoryGlobalState, InMemoryGlobalStateView},
+        CommitResult, StateProvider,
+    },
 };
 
 const DEPLOY_HASH: [u8; 32] = [1u8; 32];

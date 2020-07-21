@@ -16,36 +16,35 @@ use itertools::Itertools;
 use parity_wasm::elements::Module;
 use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef, Trap, TrapKind};
 
-use crate::components::contract_runtime::shared::{
-    account::Account, gas::Gas, stored_value::StoredValue,
-};
-use crate::components::contract_runtime::storage::{
-    global_state::StateReader, protocol_data::ProtocolData,
-};
-use types::mint::Mint;
-use types::proof_of_stake::ProofOfStake;
-use types::standard_payment::StandardPayment;
 use types::{
     account::{AccountHash, ActionType, Weight},
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
-        self, Contract, ContractPackage, EntryPoint, EntryPointAccess, EntryPoints, Group,
+        self, Contract, ContractPackage, ContractVersion, ContractVersions, DisabledVersions,
+        EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
     },
-    runtime_args, system_contract_errors,
+    mint::Mint,
+    proof_of_stake::ProofOfStake,
+    runtime_args,
+    standard_payment::StandardPayment,
+    system_contract_errors,
     system_contract_errors::mint,
     AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
     ContractVersionKey, ContractWasm, EntryPointType, Key, ProtocolVersion, RuntimeArgs,
     SystemContractType, TransferResult, TransferredTo, URef, U128, U256, U512,
 };
 
-use crate::components::contract_runtime::core::{
-    engine_state::{system_contract_cache::SystemContractCache, EngineConfig},
-    execution::Error,
-    resolvers::{create_module_resolver, memory_resolver::MemoryResolver},
-    runtime_context::{self, RuntimeContext},
-    Address,
+use crate::components::contract_runtime::{
+    core::{
+        engine_state::{system_contract_cache::SystemContractCache, EngineConfig},
+        execution::Error,
+        resolvers::{create_module_resolver, memory_resolver::MemoryResolver},
+        runtime_context::{self, RuntimeContext},
+        Address,
+    },
+    shared::{account::Account, gas::Gas, stored_value::StoredValue},
+    storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
-use contracts::{ContractVersion, ContractVersions, DisabledVersions, Groups, NamedKeys};
 use scoped_instrumenter::ScopedInstrumenter;
 
 pub struct Runtime<'a, R> {

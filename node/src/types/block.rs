@@ -43,7 +43,8 @@ impl ProtoBlock {
     }
 }
 
-/// The piece of information that will become the content of a future block after it was finalized and before execution happened yet.
+/// The piece of information that will become the content of a future block after it was finalized
+/// and before execution happened yet.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FinalizedBlock {
     pub(crate) proto_block: ProtoBlock,

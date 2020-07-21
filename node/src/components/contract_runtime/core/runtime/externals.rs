@@ -10,11 +10,12 @@ use types::{
     ContractHash, ContractPackageHash, ContractVersion, Group, Key, TransferredTo, URef, U512,
 };
 
-use crate::components::contract_runtime::shared::{gas::Gas, stored_value::StoredValue};
-use crate::components::contract_runtime::storage::global_state::StateReader;
-
 use super::{args::Args, scoped_instrumenter::ScopedInstrumenter, Error, Runtime};
-use crate::components::contract_runtime::core::resolvers::v1_function_index::FunctionIndex;
+use crate::components::contract_runtime::{
+    core::resolvers::v1_function_index::FunctionIndex,
+    shared::{gas::Gas, stored_value::StoredValue},
+    storage::global_state::StateReader,
+};
 
 impl<'a, R> Externals for Runtime<'a, R>
 where

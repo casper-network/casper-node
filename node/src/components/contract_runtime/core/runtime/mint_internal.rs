@@ -1,14 +1,16 @@
-use crate::components::contract_runtime::shared::stored_value::StoredValue;
-use crate::components::contract_runtime::storage::global_state::StateReader;
-use types::mint::{Mint, RuntimeProvider, StorageProvider};
 use types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
+    mint::{Mint, RuntimeProvider, StorageProvider},
     system_contract_errors::mint::Error,
     CLTyped, CLValue, Key, URef,
 };
 
-use crate::components::contract_runtime::core::{execution, runtime_context::RuntimeContext};
+use crate::components::contract_runtime::{
+    core::{execution, runtime_context::RuntimeContext},
+    shared::stored_value::StoredValue,
+    storage::global_state::StateReader,
+};
 
 impl<'a, R> RuntimeProvider for RuntimeContext<'a, R>
 where

@@ -293,10 +293,12 @@ pub(crate) mod tests {
         components::consensus::{
             highway_core::{
                 highway::{Highway, HighwayParams, VertexError, VoteError},
-                state::tests::{
-                    TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC, WEIGHTS,
+                state::{
+                    tests::{
+                        TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC, WEIGHTS,
+                    },
+                    State,
                 },
-                state::State,
                 validators::Validators,
                 vertex::{SignedWireVote, Vertex, WireVote},
                 vote::Panorama,

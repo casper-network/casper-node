@@ -3,17 +3,21 @@ use std::{
     fmt::Write,
 };
 
-use crate::components::contract_runtime::shared::stored_value::StoredValue;
-use crate::components::contract_runtime::storage::global_state::StateReader;
-use types::proof_of_stake::{
-    MintProvider, ProofOfStake, Queue, QueueProvider, RuntimeProvider, Stakes, StakesProvider,
-};
 use types::{
-    account::AccountHash, bytesrepr::ToBytes, system_contract_errors::pos::Error, ApiError,
-    BlockTime, CLValue, Key, Phase, TransferredTo, URef, U512,
+    account::AccountHash,
+    bytesrepr::ToBytes,
+    proof_of_stake::{
+        MintProvider, ProofOfStake, Queue, QueueProvider, RuntimeProvider, Stakes, StakesProvider,
+    },
+    system_contract_errors::pos::Error,
+    ApiError, BlockTime, CLValue, Key, Phase, TransferredTo, URef, U512,
 };
 
-use crate::components::contract_runtime::core::{execution, runtime::Runtime};
+use crate::components::contract_runtime::{
+    core::{execution, runtime::Runtime},
+    shared::stored_value::StoredValue,
+    storage::global_state::StateReader,
+};
 
 const BONDING_KEY: [u8; 32] = {
     let mut result = [0; 32];

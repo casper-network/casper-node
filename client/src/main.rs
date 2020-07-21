@@ -87,7 +87,8 @@ pub enum Args {
         /// Current time in milliseconds since UNIX epoch.
         timestamp: Option<Timestamp>,
         #[structopt(long, default_value = "10")]
-        /// Conversion rate between the cost of Wasm opcodes and the motes sent by the `payment_code`.
+        /// Conversion rate between the cost of Wasm opcodes and the motes sent by the
+        /// `payment_code`.
         gas_price: u64,
         #[structopt(long, default_value = "3600000")]
         /// Time to live of the deploy, in milliseconds. A deploy can only be included
@@ -99,8 +100,8 @@ pub enum Args {
         /// deploys, in case the same account exists on multiple networks.
         #[structopt(long, default_value = "Test")]
         chain_name: String,
-        // TODO: There are also deploy dependencies, but this whole structure
-        // is subject to changes.
+        /* TODO: There are also deploy dependencies, but this whole structure
+         * is subject to changes. */
     },
     /// Retrieve a stored deploy.
     GetDeploy {

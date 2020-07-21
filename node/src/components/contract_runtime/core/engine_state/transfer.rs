@@ -1,16 +1,17 @@
-use crate::components::contract_runtime::shared::{
-    account::Account, newtypes::CorrelationId, stored_value::StoredValue,
-};
-use crate::components::contract_runtime::storage::global_state::StateReader;
 use std::{cell::RefCell, rc::Rc};
+
 use types::{account::AccountHash, AccessRights, ApiError, Key, RuntimeArgs, URef, U512};
 
-use crate::components::contract_runtime::core::{
-    engine_state::Error,
-    execution::Error as ExecError,
-    tracking_copy::{TrackingCopy, TrackingCopyExt},
+use crate::components::contract_runtime::{
+    core::{
+        engine_state::Error,
+        execution::Error as ExecError,
+        tracking_copy::{TrackingCopy, TrackingCopyExt},
+    },
+    shared,
+    shared::{account::Account, newtypes::CorrelationId, stored_value::StoredValue},
+    storage::global_state::StateReader,
 };
-use crate::components::contract_runtime::shared;
 
 const SOURCE: &str = "source";
 const TARGET: &str = "target";

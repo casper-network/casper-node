@@ -22,8 +22,10 @@ use serde_json::Value;
 use engine_test_support::internal::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
 };
-use node::components::contract_runtime::core::engine_state::EngineConfig;
-use node::components::contract_runtime::shared::logging::{self, Settings};
+use node::components::contract_runtime::{
+    core::engine_state::EngineConfig,
+    shared::logging::{self, Settings},
+};
 use types::{runtime_args, ApiError, RuntimeArgs};
 
 use casperlabs_engine_tests::profiling;
