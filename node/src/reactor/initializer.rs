@@ -89,7 +89,7 @@ pub enum Error {
 #[derive(Debug)]
 pub struct Reactor {
     pub(super) config: validator::Config,
-    chainspec_handler: ChainspecHandler,
+    pub(super) chainspec_handler: ChainspecHandler,
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
 }

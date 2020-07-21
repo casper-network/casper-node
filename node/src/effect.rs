@@ -77,20 +77,28 @@ use tracing::error;
 use crate::{
     components::{
         consensus::BlockContext,
-        contract_runtime::core::engine_state::{self, genesis::GenesisResult},
+        contract_runtime::{
+            core::engine_state::{self, genesis::GenesisResult},
+            shared::{additive_map::AdditiveMap, transform::Transform},
+            storage::global_state::CommitResult,
+        },
         deploy_buffer::BlockLimits,
         storage::{self, DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
+    crypto::hash::Digest,
     reactor::{EventQueueHandle, QueueKind},
-    types::{Deploy, ExecutedBlock, ProtoBlock},
+    types::{Deploy, ExecutedBlock, FinalizedBlock, ProtoBlock},
     Chainspec,
 };
 use announcements::{
     ApiServerAnnouncement, ConsensusAnnouncement, NetworkAnnouncement, StorageAnnouncement,
 };
+use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
 use requests::{
-    ContractRuntimeRequest, DeployQueueRequest, MetricsRequest, NetworkRequest, StorageRequest,
+    BlockExecutorRequest, ContractRuntimeRequest, DeployQueueRequest, MetricsRequest,
+    NetworkRequest, StorageRequest,
 };
+use types::{Key, ProtocolVersion};
 
 /// A pinned, boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
@@ -603,10 +611,19 @@ impl<REv> EffectBuilder<REv> {
         )
     }
 
-    /// Passes a finalized proto-block to the contract runtime for execution.
-    pub(crate) async fn execute_block(self, _proto_block: ProtoBlock) -> ExecutedBlock {
-        // TODO: actually execute the block and return the relevant stuff
-        todo!()
+    /// Passes a finalized proto-block to the block executor component to execute it.
+    pub(crate) async fn execute_block(self, finalized_block: FinalizedBlock) -> ExecutedBlock
+    where
+        REv: From<BlockExecutorRequest>,
+    {
+        self.make_request(
+            |responder| BlockExecutorRequest::ExecuteBlock {
+                finalized_block,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
     }
 
     /// Checks whether the deploys included in the proto-block exist on the network.
@@ -705,6 +722,46 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetChainspec { version, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests an execution of deploys using Contract Runtime.
+    pub(crate) async fn request_execute(
+        self,
+        execute_request: ExecuteRequest,
+    ) -> Result<ExecutionResults, engine_state::RootNotFound>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::Execute {
+                execute_request,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests a commit of effects on the Contract Runtime component.
+    pub(crate) async fn request_commit(
+        self,
+        protocol_version: ProtocolVersion,
+        pre_state_hash: Digest,
+        effects: AdditiveMap<Key, Transform>,
+    ) -> Result<CommitResult, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::Commit {
+                protocol_version,
+                pre_state_hash,
+                effects,
+                responder,
+            },
             QueueKind::Regular,
         )
         .await

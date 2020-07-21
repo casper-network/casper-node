@@ -21,8 +21,7 @@ use types::{account::AccountHash, U512};
 
 use super::{config, Error};
 use crate::{
-    components::contract_runtime::shared::wasm_costs::WasmCosts,
-    crypto::{asymmetric_key::PublicKey, hash::hash},
+    components::contract_runtime::shared::wasm_costs::WasmCosts, crypto::asymmetric_key::PublicKey,
     types::Motes,
 };
 
@@ -48,8 +47,7 @@ impl GenesisAccount {
 
     /// Constructs a new `GenesisAccount` with a given public key.
     pub fn with_public_key(public_key: PublicKey, balance: Motes, bonded_amount: Motes) -> Self {
-        // TODO: include the PK variant when hashing
-        let account_hash = AccountHash::new(hash(public_key).to_bytes());
+        let account_hash = public_key.to_account_hash();
         GenesisAccount {
             public_key: Some(public_key),
             account_hash,
