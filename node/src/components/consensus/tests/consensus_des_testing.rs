@@ -268,14 +268,13 @@ where
 }
 
 mod virtual_net_tests {
+    use std::collections::{HashSet, VecDeque};
 
     use super::{
         DeliverySchedule, Message, Target, TargetedMessage, Timestamp, Validator, ValidatorId,
         VirtualNet,
     };
-    use rand_core::SeedableRng;
-    use rand_xorshift::XorShiftRng;
-    use std::collections::{HashSet, VecDeque};
+    use crate::testing::TestRng;
 
     type M = u64;
     type C = u64;
@@ -321,7 +320,6 @@ mod virtual_net_tests {
         let c = Validator::new(ValidatorId(3u64), false, NoOpConsensus);
 
         let mut virtual_net = VirtualNet::new(vec![a, b, c], vec![]);
-        let mut rand = XorShiftRng::from_seed(rand::random());
 
         let message = Message::new(validator_id, 1u64);
         let targeted_message =
