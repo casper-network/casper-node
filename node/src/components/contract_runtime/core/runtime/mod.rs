@@ -16,7 +16,7 @@ use itertools::Itertools;
 use parity_wasm::elements::Module;
 use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef, Trap, TrapKind};
 
-use types::{
+use casperlabs_types::{
     account::{AccountHash, ActionType, Weight},
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
@@ -3371,7 +3371,7 @@ mod tests {
         result,
     };
 
-    use types::{gens::*, CLType, CLValue, Key, URef};
+    use casperlabs_types::{gens::*, CLType, CLValue, Key, URef};
 
     use super::extract_urefs;
 

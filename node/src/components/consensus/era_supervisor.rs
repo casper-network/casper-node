@@ -12,11 +12,11 @@ use std::{
 };
 
 use anyhow::Error;
+use casperlabs_types::U512;
 use maplit::hashmap;
 use num_traits::AsPrimitive;
 use serde::{Deserialize, Serialize};
 use tracing::error;
-use types::U512;
 
 use crate::{
     components::consensus::{

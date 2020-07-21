@@ -1,7 +1,7 @@
 use parity_wasm::elements;
 use thiserror::Error;
 
-use types::{
+use casperlabs_types::{
     account::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
     bytesrepr, system_contract_errors, AccessRights, ApiError, CLType, CLValueError,
     ContractPackageHash, ContractVersionKey, Key, URef,

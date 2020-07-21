@@ -1,11 +1,11 @@
-use engine_test_support::{
+use casperlabs_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use types::{runtime_args, Key, RuntimeArgs, SemVer};
+use casperlabs_types::{runtime_args, Key, RuntimeArgs, SemVer};
 
 const CONTRACT_HEADERS: &str = "contract_headers.wasm";
 const PACKAGE_HASH_KEY: &str = "package_hash_key";

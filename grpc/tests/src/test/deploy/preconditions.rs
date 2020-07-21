@@ -1,14 +1,14 @@
 use assert_matches::assert_matches;
 
-use engine_test_support::{
+use casperlabs_engine_test_support::{
     internal::{
         utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::components::contract_runtime::core::engine_state::Error;
-use types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
+use casperlabs_node::components::contract_runtime::core::engine_state::Error;
+use casperlabs_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
 const ARG_AMOUNT: &str = "amount";

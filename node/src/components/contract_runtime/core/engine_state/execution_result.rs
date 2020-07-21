@@ -1,4 +1,4 @@
-use types::{bytesrepr::FromBytes, CLTyped, CLValue, Key};
+use casperlabs_types::{bytesrepr::FromBytes, CLTyped, CLValue, Key};
 
 use super::{error, execution_effect::ExecutionEffect, op::Op, CONV_RATE};
 use crate::{

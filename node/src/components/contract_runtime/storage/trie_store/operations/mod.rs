@@ -3,7 +3,7 @@ mod tests;
 
 use std::{cmp, collections::VecDeque, mem, time::Instant};
 
-use types::bytesrepr::{self, FromBytes, ToBytes};
+use casperlabs_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use crate::{
     components::contract_runtime::{
@@ -54,7 +54,7 @@ where
     T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<T::Error>,
-    E: From<S::Error> + From<types::bytesrepr::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
     let path: Vec<u8> = key.to_bytes()?;
 
@@ -232,7 +232,7 @@ where
     T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<T::Error>,
-    E: From<S::Error> + From<types::bytesrepr::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
     let start = Instant::now();
     let mut get_counter: i32 = 0;
@@ -637,7 +637,7 @@ where
     T: Readable<Handle = S::Handle> + Writable<Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<T::Error>,
-    E: From<S::Error> + From<types::bytesrepr::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
     let start = Instant::now();
     let mut put_counter: i32 = 0;
@@ -765,7 +765,7 @@ where
     V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
     T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<T::Error> + From<types::bytesrepr::Error>,
+    S::Error: From<T::Error> + From<bytesrepr::Error>,
 {
     type Item = Result<K, S::Error>;
 

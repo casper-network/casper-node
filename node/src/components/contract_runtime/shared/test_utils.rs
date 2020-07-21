@@ -1,6 +1,6 @@
 //! Some functions to use in tests.
 
-use types::{account::AccountHash, contracts::NamedKeys, AccessRights, Key, URef};
+use casperlabs_types::{account::AccountHash, contracts::NamedKeys, AccessRights, Key, URef};
 
 use crate::components::contract_runtime::shared::{
     account::Account, stored_value::StoredValue, wasm_costs::WasmCosts,

@@ -1,14 +1,14 @@
 use num_traits::cast::AsPrimitive;
 
-use engine_test_support::{
+use casperlabs_engine_test_support::{
     internal::{
         ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::components::contract_runtime::core::engine_state::CONV_RATE;
-use types::{contracts::CONTRACT_INITIAL_VERSION, runtime_args, RuntimeArgs, U512};
+use casperlabs_node::components::contract_runtime::core::engine_state::CONV_RATE;
+use casperlabs_types::{contracts::CONTRACT_INITIAL_VERSION, runtime_args, RuntimeArgs, U512};
 
 const ARG_TARGET: &str = "target_contract";
 const ARG_GAS_AMOUNT: &str = "gas_amount";

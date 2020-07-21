@@ -17,7 +17,7 @@ use rand::{
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use types::{account::AccountHash, U512};
+use casperlabs_types::{account::AccountHash, U512};
 
 use super::{config, Error};
 use crate::{

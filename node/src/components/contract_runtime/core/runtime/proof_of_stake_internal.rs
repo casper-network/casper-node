@@ -3,7 +3,7 @@ use std::{
     fmt::Write,
 };
 
-use types::{
+use casperlabs_types::{
     account::AccountHash,
     bytesrepr::ToBytes,
     proof_of_stake::{

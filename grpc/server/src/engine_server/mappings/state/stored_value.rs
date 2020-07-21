@@ -1,10 +1,11 @@
-use node::components::contract_runtime::shared::stored_value::StoredValue;
+use std::convert::{TryFrom, TryInto};
+
+use casperlabs_node::components::contract_runtime::shared::stored_value::StoredValue;
 
 use crate::engine_server::{
     mappings::ParsingError,
     state::{self, StoredValue_oneof_variants},
 };
-use std::convert::{TryFrom, TryInto};
 
 impl From<StoredValue> for state::StoredValue {
     fn from(value: StoredValue) -> Self {
@@ -62,7 +63,7 @@ impl TryFrom<state::StoredValue> for StoredValue {
 mod tests {
     use proptest::proptest;
 
-    use node::components::contract_runtime::shared::stored_value::gens;
+    use casperlabs_node::components::contract_runtime::shared::stored_value::gens;
 
     use super::*;
     use crate::engine_server::mappings::test_utils;

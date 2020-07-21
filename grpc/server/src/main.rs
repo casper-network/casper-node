@@ -16,7 +16,7 @@ use lmdb::DatabaseFlags;
 use log::{error, info, Level, LevelFilter};
 
 use casperlabs_engine_grpc_server::engine_server;
-use node::{
+use casperlabs_node::{
     components::contract_runtime::{
         core::engine_state::{EngineConfig, EngineState},
         shared::{

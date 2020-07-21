@@ -5,7 +5,7 @@ use std::{
 
 use parity_wasm::elements::Module;
 
-use types::ContractHash;
+use casperlabs_types::ContractHash;
 
 /// A cache of deserialized contracts.
 #[derive(Clone, Default, Debug)]
@@ -46,7 +46,7 @@ mod tests {
         engine_state::system_contract_cache::SystemContractCache,
         execution::{AddressGenerator, AddressGeneratorBuilder},
     };
-    use types::ContractHash;
+    use casperlabs_types::ContractHash;
 
     lazy_static! {
         static ref ADDRESS_GENERATOR: Mutex<AddressGenerator> = Mutex::new(

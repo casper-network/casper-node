@@ -1,8 +1,8 @@
-use engine_test_support::{
+use casperlabs_engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use types::{runtime_args, Key, RuntimeArgs};
+use casperlabs_types::{runtime_args, Key, RuntimeArgs};
 
 const CONTRACT_COUNTER_DEFINE: &str = "counter_define.wasm";
 const HASH_KEY_NAME: &str = "counter_package_hash";

@@ -1,8 +1,8 @@
-use engine_test_support::{
+use casperlabs_engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use types::{account::Weight, runtime_args, RuntimeArgs};
+use casperlabs_types::{account::Weight, runtime_args, RuntimeArgs};
 
 const CONTRACT_EE_539_REGRESSION: &str = "ee_539_regression.wasm";
 const ARG_KEY_MANAGEMENT_THRESHOLD: &str = "key_management_threshold";

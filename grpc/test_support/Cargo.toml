@@ -11,9 +11,10 @@ repository = "https://github.com/CasperLabs/CasperLabs/tree/master/execution-eng
 license-file = "../../LICENSE"
 
 [dependencies]
-contract = { version = "0.6.0", path = "../../smart_contracts/contract", package = "casperlabs-contract" }
-engine-grpc-server = { version = "0.20.0", path = "../server", package = "casperlabs-engine-grpc-server" }
-node = { path = "../../node", package = "casperlabs-node" }
+casperlabs-contract = { version = "0.6.0", path = "../../smart_contracts/contract" }
+casperlabs-engine-grpc-server = { version = "0.20.0", path = "../server" }
+casperlabs-node = { path = "../../node" }
+casperlabs-types = { version = "0.6.0", path = "../../types", features = ["std"] }
 grpc = "0.6.1"
 lazy_static = "1"
 lmdb = "0.8.0"
@@ -21,7 +22,6 @@ log = "0.4.8"
 num-traits = "0.2.10"
 rand = "0.7.2"
 protobuf = "=2.8"
-types = { version = "0.6.0", path = "../../types", package = "casperlabs-types", features = ["std"] }
 
 [dev-dependencies]
 version-sync = "0.8"
@@ -30,11 +30,11 @@ version-sync = "0.8"
 enable-bonding = []
 use-as-wasm = []
 use-system-contracts = []
-test-support = ["engine-grpc-server/test-support", "contract/test-support"]
+test-support = ["casperlabs-engine-grpc-server/test-support", "casperlabs-contract/test-support"]
 no-unstable-features = [
-    "contract/no-unstable-features",
-    "engine-grpc-server/no-unstable-features",
-    "types/no-unstable-features"
+    "casperlabs-contract/no-unstable-features",
+    "casperlabs-engine-grpc-server/no-unstable-features",
+    "casperlabs-types/no-unstable-features"
 ]
 
 [package.metadata.docs.rs]

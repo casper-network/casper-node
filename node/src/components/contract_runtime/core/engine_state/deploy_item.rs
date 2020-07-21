@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, iter::FromIterator};
 
-use types::account::AccountHash;
+use casperlabs_types::account::AccountHash;
 
 use crate::{
     components::{

@@ -1,8 +1,8 @@
-use engine_test_support::{
+use casperlabs_engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use types::{runtime_args, RuntimeArgs};
+use casperlabs_types::{runtime_args, RuntimeArgs};
 
 const CONTRACT_GET_BLOCKTIME: &str = "get_blocktime.wasm";
 const ARG_KNOWN_BLOCK_TIME: &str = "known_block_time";

@@ -11,7 +11,7 @@ use csv::ReaderBuilder;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use types::U512;
+use casperlabs_types::U512;
 
 use super::{chainspec, Error};
 use crate::{

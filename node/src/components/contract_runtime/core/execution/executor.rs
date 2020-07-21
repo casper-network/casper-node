@@ -8,7 +8,7 @@ use parity_wasm::elements::Module;
 use tracing::warn;
 use wasmi::ModuleRef;
 
-use types::{
+use casperlabs_types::{
     account::AccountHash, bytesrepr::FromBytes, contracts::NamedKeys, AccessRights, BlockTime,
     CLTyped, CLValue, ContractPackage, EntryPoint, EntryPointType, Key, Phase, ProtocolVersion,
     RuntimeArgs,

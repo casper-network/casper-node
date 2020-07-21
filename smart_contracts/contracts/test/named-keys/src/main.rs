@@ -6,11 +6,11 @@ extern crate alloc;
 use alloc::string::{String, ToString};
 use core::convert::TryInto;
 
-use contract::{
+use casperlabs_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{bytesrepr::ToBytes, ApiError, CLTyped, Key, U512};
+use casperlabs_types::{bytesrepr::ToBytes, ApiError, CLTyped, Key, U512};
 
 fn create_uref<T: CLTyped + ToBytes>(key_name: &str, value: T) {
     let key: Key = storage::new_uref(value).into();

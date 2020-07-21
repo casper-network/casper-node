@@ -10,7 +10,7 @@ use std::{
 
 use semver::Version;
 
-use types::{Key, ProtocolVersion};
+use casperlabs_types::{Key, ProtocolVersion};
 
 use super::Responder;
 use crate::{

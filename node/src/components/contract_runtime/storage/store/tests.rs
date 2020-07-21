@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use types::bytesrepr::{FromBytes, ToBytes};
+use casperlabs_types::bytesrepr::{FromBytes, ToBytes};
 
 use crate::components::contract_runtime::storage::{
     store::{Store, StoreExt},

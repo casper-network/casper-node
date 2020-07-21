@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::BTreeSet, convert::TryInto, rc::Rc};
 
-use engine_grpc_server::engine_server::ipc_grpc::ExecutionEngineService;
-use node::components::contract_runtime::{
+use casperlabs_engine_grpc_server::engine_server::ipc_grpc::ExecutionEngineService;
+use casperlabs_node::components::contract_runtime::{
     core::{
         engine_state::{
             executable_deploy_item::ExecutableDeployItem, execution_effect::ExecutionEffect,
@@ -14,7 +14,7 @@ use node::components::contract_runtime::{
     shared::{gas::Gas, newtypes::CorrelationId, wasm_prep::Preprocessor},
     storage::{global_state::StateProvider, protocol_data::ProtocolData},
 };
-use types::{
+use casperlabs_types::{
     account::AccountHash, bytesrepr::FromBytes, BlockTime, CLTyped, EntryPointType, Key, Phase,
     ProtocolVersion, RuntimeArgs, URef, U512,
 };

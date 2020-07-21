@@ -5,11 +5,11 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
-use contract::{
+use casperlabs_contract::{
     contract_api::{runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{account::AccountHash, ApiError, U512};
+use casperlabs_types::{account::AccountHash, ApiError, U512};
 
 const ARG_ACCOUNTS: &str = "accounts";
 const ARG_SEED_AMOUNT: &str = "seed_amount";

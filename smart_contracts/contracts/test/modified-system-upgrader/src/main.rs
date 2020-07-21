@@ -7,11 +7,11 @@ extern crate alloc;
 use alloc::boxed::Box;
 
 use alloc::collections::BTreeMap;
-use contract::{
+use casperlabs_contract::{
     contract_api::{runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{
+use casperlabs_types::{
     contracts::{NamedKeys, Parameters},
     CLType, CLValue, ContractHash, ContractVersion, EntryPoint, EntryPointAccess, EntryPointType,
     EntryPoints, Parameter, URef,

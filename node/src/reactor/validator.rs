@@ -7,12 +7,12 @@ mod error;
 
 use std::fmt::{self, Display, Formatter};
 
+use casperlabs_types::U512;
 use derive_more::From;
 use prometheus::Registry;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::info;
-use types::U512;
 
 use crate::{
     components::{

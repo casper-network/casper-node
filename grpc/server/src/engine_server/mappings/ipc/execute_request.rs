@@ -1,6 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
-use node::{
+use casperlabs_node::{
     components::contract_runtime::core::engine_state::{
         execute_request::ExecuteRequest, execution_result::ExecutionResult,
     },

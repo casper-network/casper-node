@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use contract::contract_api::{runtime, system};
-use types::{runtime_args, RuntimeArgs};
+use casperlabs_contract::contract_api::{runtime, system};
+use casperlabs_types::{runtime_args, RuntimeArgs};
 
 const SET_REFUND_PURSE: &str = "set_refund_purse";
 const ARG_PURSE: &str = "purse";

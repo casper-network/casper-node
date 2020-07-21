@@ -1,14 +1,14 @@
 use lazy_static::lazy_static;
 
-use engine_test_support::{
+use casperlabs_engine_test_support::{
     internal::{
         utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
         DEFAULT_PAYMENT,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::{types::Motes, GenesisAccount};
-use types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
+use casperlabs_node::{types::Motes, GenesisAccount};
+use casperlabs_types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_ENTRY_POINT: &str = "entry_point";

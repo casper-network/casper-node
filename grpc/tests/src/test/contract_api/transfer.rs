@@ -1,14 +1,14 @@
 use lazy_static::lazy_static;
 
-use engine_test_support::{
+use casperlabs_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
-use node::{components::contract_runtime::core::engine_state::CONV_RATE, types::Motes};
-use types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
+use casperlabs_node::{components::contract_runtime::core::engine_state::CONV_RATE, types::Motes};
+use casperlabs_types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";

@@ -1,7 +1,7 @@
 use std::convert::{TryFrom, TryInto};
 
-use node::components::contract_runtime::shared::transform::Transform;
-use types::Key;
+use casperlabs_node::components::contract_runtime::shared::transform::Transform;
+use casperlabs_types::Key;
 
 use crate::engine_server::{mappings::ParsingError, transforms::TransformEntry};
 
@@ -38,7 +38,8 @@ impl TryFrom<TransformEntry> for (Key, Transform) {
 mod tests {
     use proptest::proptest;
 
-    use node::components::contract_runtime::shared::transform;
+    use casperlabs_node::components::contract_runtime::shared::transform;
+    use casperlabs_types::gens;
 
     use super::*;
     use crate::engine_server::mappings::test_utils;
@@ -46,7 +47,7 @@ mod tests {
     proptest! {
         #[test]
         fn round_trip(
-            key in types::gens::key_arb(),
+            key in gens::key_arb(),
             transform in transform::gens::transform_arb()
         ) {
             test_utils::protobuf_round_trip::<(Key, Transform), TransformEntry>((key, transform));

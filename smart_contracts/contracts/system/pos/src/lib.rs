@@ -7,11 +7,11 @@ use alloc::{
     string::String,
 };
 
-use contract::{
+use casperlabs_contract::{
     contract_api::{runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{
+use casperlabs_types::{
     account::AccountHash,
     proof_of_stake::{
         MintProvider, ProofOfStake, Queue, QueueProvider, RuntimeProvider, Stakes, StakesProvider,

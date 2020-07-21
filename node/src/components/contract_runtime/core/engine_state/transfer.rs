@@ -1,6 +1,8 @@
 use std::{cell::RefCell, rc::Rc};
 
-use types::{account::AccountHash, AccessRights, ApiError, Key, RuntimeArgs, URef, U512};
+use casperlabs_types::{
+    account::AccountHash, AccessRights, ApiError, CLType, Key, RuntimeArgs, URef, U512,
+};
 
 use crate::components::contract_runtime::{
     core::{
@@ -67,7 +69,7 @@ impl TransferRuntimeArgsBuilder {
         let imputed_runtime_args = &self.inner;
         let arg_name = SOURCE;
         match imputed_runtime_args.get(arg_name) {
-            Some(cl_value) if *cl_value.cl_type() == types::CLType::URef => {
+            Some(cl_value) if *cl_value.cl_type() == CLType::URef => {
                 let uref: URef = match cl_value.clone().into_t() {
                     Ok(uref) => uref,
                     Err(error) => {
@@ -125,7 +127,7 @@ impl TransferRuntimeArgsBuilder {
         let imputed_runtime_args = &self.inner;
         let arg_name = TARGET;
         match imputed_runtime_args.get(arg_name) {
-            Some(cl_value) if *cl_value.cl_type() == types::CLType::URef => {
+            Some(cl_value) if *cl_value.cl_type() == CLType::URef => {
                 let uref: URef = match cl_value.clone().into_t() {
                     Ok(uref) => uref,
                     Err(error) => {
@@ -140,8 +142,7 @@ impl TransferRuntimeArgsBuilder {
                 Ok(TransferTargetMode::PurseExists(uref))
             }
             Some(cl_value)
-                if *cl_value.cl_type()
-                    == types::CLType::FixedList(Box::new(types::CLType::U8), 32) =>
+                if *cl_value.cl_type() == CLType::FixedList(Box::new(CLType::U8), 32) =>
             {
                 let account_key: Key = {
                     let hash = match cl_value.clone().into_t() {
@@ -167,7 +168,7 @@ impl TransferRuntimeArgsBuilder {
                     None => Err(Error::Exec(ExecError::Revert(ApiError::Transfer))),
                 }
             }
-            Some(cl_value) if *cl_value.cl_type() == types::CLType::Key => {
+            Some(cl_value) if *cl_value.cl_type() == CLType::Key => {
                 let account_key: Key = match cl_value.clone().into_t() {
                     Ok(key) => key,
                     Err(error) => {
@@ -197,7 +198,7 @@ impl TransferRuntimeArgsBuilder {
     fn resolve_amount(&self) -> Result<U512, Error> {
         let imputed_runtime_args = &self.inner;
         match imputed_runtime_args.get(AMOUNT) {
-            Some(amount_value) if *amount_value.cl_type() == types::CLType::U512 => {
+            Some(amount_value) if *amount_value.cl_type() == CLType::U512 => {
                 match amount_value.clone().into_t::<U512>() {
                     Ok(amount) => {
                         if amount == U512::zero() {
@@ -209,7 +210,7 @@ impl TransferRuntimeArgsBuilder {
                     Err(error) => Err(Error::Exec(ExecError::Revert(error.into()))),
                 }
             }
-            Some(amount_value) if *amount_value.cl_type() == types::CLType::U64 => {
+            Some(amount_value) if *amount_value.cl_type() == CLType::U64 => {
                 match amount_value.clone().into_t::<u64>() {
                     Ok(amount) => match amount {
                         0 => Err(Error::Exec(ExecError::Revert(ApiError::Transfer))),

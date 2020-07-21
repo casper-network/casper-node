@@ -9,19 +9,19 @@ extern crate alloc;
 use alloc::vec;
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use contract::{
+use casperlabs_contract::{
     self,
     contract_api::{self, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use contract_api::runtime;
-use types::{
+use casperlabs_types::{
     api_error,
     bytesrepr::{FromBytes, ToBytes},
     contracts::Parameters,
     CLType, CLTyped, ContractHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
     RuntimeArgs,
 };
+use contract_api::runtime;
 
 #[no_mangle]
 pub extern "C" fn do_nothing() {

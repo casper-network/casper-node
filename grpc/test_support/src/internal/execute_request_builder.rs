@@ -2,10 +2,10 @@ use std::convert::TryInto;
 
 use rand::Rng;
 
-use node::components::contract_runtime::core::engine_state::{
+use casperlabs_node::components::contract_runtime::core::engine_state::{
     deploy_item::DeployItem, execute_request::ExecuteRequest,
 };
-use types::{
+use casperlabs_types::{
     account::AccountHash, contracts::ContractVersion, runtime_args, ContractHash, ProtocolVersion,
     RuntimeArgs,
 };

@@ -1,7 +1,7 @@
 use std::convert::TryFrom;
 
-use node::components::contract_runtime::{shared, shared::stored_value::StoredValue};
-use types::{account::AccountHash, contracts::NamedKeys, URef};
+use casperlabs_node::components::contract_runtime::{shared, shared::stored_value::StoredValue};
+use casperlabs_types::{account::AccountHash, contracts::NamedKeys, URef};
 
 use crate::{Error, Result};
 

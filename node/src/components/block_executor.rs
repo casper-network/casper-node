@@ -6,7 +6,7 @@ use derive_more::From;
 use rand::Rng;
 use tracing::{debug, error, trace, warn};
 
-use types::ProtocolVersion;
+use casperlabs_types::ProtocolVersion;
 
 use super::{
     contract_runtime::{

@@ -10,7 +10,7 @@ use lazy_static::lazy_static;
 use log::kv::{self, Key, Value, Visitor};
 use serde::{Serialize, Serializer};
 
-use types::SemVer;
+use casperlabs_types::SemVer;
 
 use crate::components::contract_runtime::shared::{
     logging::{DEFAULT_MESSAGE_TEMPLATE, MESSAGE_TEMPLATE_KEY},

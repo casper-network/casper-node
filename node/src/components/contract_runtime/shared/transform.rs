@@ -8,7 +8,7 @@ use std::{
 
 use num::traits::{AsPrimitive, WrappingAdd};
 
-use types::{
+use casperlabs_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::NamedKeys,
     CLType, CLTyped, CLValue, CLValueError, U128, U256, U512,
@@ -310,7 +310,9 @@ pub mod gens {
 mod tests {
     use num::{Bounded, Num};
 
-    use types::{account::AccountHash, AccessRights, ContractWasm, Key, URef, U128, U256, U512};
+    use casperlabs_types::{
+        account::AccountHash, AccessRights, ContractWasm, Key, URef, U128, U256, U512,
+    };
 
     use super::*;
     use crate::components::contract_runtime::shared::account::{

@@ -1,10 +1,10 @@
 #![no_std]
 
-use contract::{
+use casperlabs_contract::{
     contract_api::{runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{account::AccountHash, ApiError, TransferredTo, U512};
+use casperlabs_types::{account::AccountHash, ApiError, TransferredTo, U512};
 
 #[repr(u16)]
 enum Error {

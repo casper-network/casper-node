@@ -5,11 +5,11 @@ extern crate alloc;
 
 use alloc::{format, string::String};
 
-use contract::{
+use casperlabs_contract::{
     contract_api::{account, runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{ApiError, Key, URef, U512};
+use casperlabs_types::{ApiError, Key, URef, U512};
 
 const PURSE_MAIN: &str = "purse:main";
 const PURSE_TRANSFER_RESULT: &str = "purse_transfer_result";

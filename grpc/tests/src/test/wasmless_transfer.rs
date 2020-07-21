@@ -1,16 +1,16 @@
 use lazy_static::lazy_static;
 
-use engine_test_support::{
+use casperlabs_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::components::contract_runtime::core::{
+use casperlabs_node::components::contract_runtime::core::{
     engine_state::Error as CoreError, execution::Error as ExecError,
 };
-use types::{
+use casperlabs_types::{
     account::AccountHash, runtime_args, AccessRights, ApiError, Key, RuntimeArgs, URef, U512,
 };
 
@@ -95,7 +95,7 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
             runtime_args! { ARG_TARGET => ACCOUNT_2_ADDR, ARG_AMOUNT => transfer_amount }
         }
         WasmlessTransfer::AccountToAccountByKey => {
-            runtime_args! { ARG_TARGET => types::Key::Account(ACCOUNT_2_ADDR), ARG_AMOUNT => transfer_amount }
+            runtime_args! { ARG_TARGET => Key::Account(ACCOUNT_2_ADDR), ARG_AMOUNT => transfer_amount }
         }
         WasmlessTransfer::PurseToPurse => {
             runtime_args! { ARG_SOURCE => account_1_purse, ARG_TARGET => account_2_purse, ARG_AMOUNT => transfer_amount }
