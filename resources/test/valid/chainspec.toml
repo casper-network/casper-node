@@ -20,6 +20,8 @@ max_payment_cost = '9'
 max_ttl_millis = 10
 max_dependencies = 11
 max_block_size = 12
+block_gas_limit = 13
+block_max_deploy_count = 14
 
 [wasm_costs]
 regular = 13
@@ -57,9 +59,11 @@ max_payment_cost = '34'
 max_ttl_millis = 35
 max_dependencies = 36
 max_block_size = 37
+block_gas_limit = 38
+block_max_deploy_count = 39
 
 [[upgrade]]
 protocol_version = '0.3.0'
 
 [upgrade.activation_point]
-rank = 38
+rank = 40

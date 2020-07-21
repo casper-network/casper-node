@@ -10,6 +10,7 @@ use std::{
     time::Duration,
 };
 
+use num_traits::Zero;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -101,6 +102,21 @@ pub(crate) struct DeployConfig {
     pub(crate) max_ttl: Duration,
     pub(crate) max_dependencies: u8,
     pub(crate) max_block_size: u32,
+    pub(crate) block_gas_limit: u64,
+    pub(crate) block_max_deploy_count: u32,
+}
+
+impl Default for DeployConfig {
+    fn default() -> Self {
+        DeployConfig {
+            max_payment_cost: Motes::zero(),
+            max_ttl: Duration::from_millis(86_400_000), // 1 day
+            max_dependencies: 10,
+            max_block_size: 10_485_760,
+            block_gas_limit: 10_000_000_000_000,
+            block_max_deploy_count: 3,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -113,6 +129,19 @@ pub(crate) struct HighwayConfig {
     pub(crate) entropy_duration: Duration,
     pub(crate) voting_period_duration: Duration,
     pub(crate) finality_threshold_percent: u8,
+}
+
+impl Default for HighwayConfig {
+    fn default() -> Self {
+        HighwayConfig {
+            genesis_era_start_timestamp: 1_583_712_000_000,
+            era_duration: Duration::from_millis(604_800_000), // 1 week
+            booking_duration: Duration::from_millis(864_000_000), // 10 days
+            entropy_duration: Duration::from_millis(10_800_000), // 3 hours
+            voting_period_duration: Duration::from_millis(172_800_000), // 2 days
+            finality_threshold_percent: 10,
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -311,6 +340,8 @@ mod tests {
         );
         assert_eq!(spec.genesis.deploy_config.max_dependencies, 11);
         assert_eq!(spec.genesis.deploy_config.max_block_size, 12);
+        assert_eq!(spec.genesis.deploy_config.block_gas_limit, 13);
+        assert_eq!(spec.genesis.deploy_config.block_max_deploy_count, 14);
 
         assert_eq!(spec.genesis.costs.regular, 13);
         assert_eq!(spec.genesis.costs.div, 14);
@@ -353,9 +384,14 @@ mod tests {
         );
         assert_eq!(upgrade0.new_deploy_config.unwrap().max_dependencies, 36);
         assert_eq!(upgrade0.new_deploy_config.unwrap().max_block_size, 37);
+        assert_eq!(upgrade0.new_deploy_config.unwrap().block_gas_limit, 38);
+        assert_eq!(
+            upgrade0.new_deploy_config.unwrap().block_max_deploy_count,
+            39
+        );
 
         let upgrade1 = &spec.upgrades[1];
-        assert_eq!(upgrade1.activation_point, ActivationPoint { rank: 38 });
+        assert_eq!(upgrade1.activation_point, ActivationPoint { rank: 40 });
         assert_eq!(upgrade1.protocol_version, Version::from((0, 3, 0)));
         assert!(upgrade1.upgrade_installer_bytes.is_none());
         assert!(upgrade1.upgrade_installer_args.is_none());

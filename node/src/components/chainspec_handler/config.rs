@@ -41,16 +41,13 @@ struct DeployConfig {
     max_ttl_millis: u64,
     max_dependencies: u8,
     max_block_size: u32,
+    block_gas_limit: u64,
+    block_max_deploy_count: u32,
 }
 
 impl Default for DeployConfig {
     fn default() -> Self {
-        DeployConfig {
-            max_payment_cost: String::from("0"),
-            max_ttl_millis: 86_400_000, // 1 day
-            max_dependencies: 10,
-            max_block_size: 10_485_760,
-        }
+        chainspec::DeployConfig::default().into()
     }
 }
 
@@ -61,6 +58,8 @@ impl From<chainspec::DeployConfig> for DeployConfig {
             max_ttl_millis: cfg.max_ttl.as_millis() as u64,
             max_dependencies: cfg.max_dependencies,
             max_block_size: cfg.max_block_size,
+            block_gas_limit: cfg.block_gas_limit,
+            block_max_deploy_count: cfg.block_max_deploy_count,
         }
     }
 }
@@ -75,6 +74,8 @@ impl TryFrom<DeployConfig> for chainspec::DeployConfig {
             max_ttl: Duration::from_millis(cfg.max_ttl_millis),
             max_dependencies: cfg.max_dependencies,
             max_block_size: cfg.max_block_size,
+            block_gas_limit: cfg.block_gas_limit,
+            block_max_deploy_count: cfg.block_max_deploy_count,
         })
     }
 }
@@ -118,13 +119,19 @@ struct HighwayConfig {
 
 impl Default for HighwayConfig {
     fn default() -> Self {
+        chainspec::HighwayConfig::default().into()
+    }
+}
+
+impl From<chainspec::HighwayConfig> for HighwayConfig {
+    fn from(cfg: chainspec::HighwayConfig) -> Self {
         HighwayConfig {
-            genesis_era_start_timestamp: 1_583_712_000_000,
-            era_duration_millis: 604_800_000,           // 1 week
-            booking_duration_millis: 864_000_000,       // 10 days
-            entropy_duration_millis: 10_800_000,        // 3 hours
-            voting_period_duration_millis: 172_800_000, // 2 days
-            finality_threshold_percent: 10,
+            genesis_era_start_timestamp: cfg.genesis_era_start_timestamp,
+            era_duration_millis: cfg.era_duration.as_millis() as u64,
+            booking_duration_millis: cfg.booking_duration.as_millis() as u64,
+            entropy_duration_millis: cfg.entropy_duration.as_millis() as u64,
+            voting_period_duration_millis: cfg.voting_period_duration.as_millis() as u64,
+            finality_threshold_percent: cfg.finality_threshold_percent,
         }
     }
 }
