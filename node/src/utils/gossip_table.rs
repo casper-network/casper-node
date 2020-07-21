@@ -69,6 +69,8 @@ pub enum Error {
 
 /// Configuration options for gossiping.
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
+// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
+#[serde(deny_unknown_fields)]
 pub struct Config {
     /// Target number of peers to infect with a given piece of data.
     infection_target: u8,

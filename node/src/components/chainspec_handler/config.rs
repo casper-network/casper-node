@@ -34,6 +34,8 @@ fn read_file<P: AsRef<Path>>(file: P) -> Result<Vec<u8>, Error> {
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
+#[serde(deny_unknown_fields)]
 struct DeployConfig {
     max_payment_cost: String,
     max_ttl_millis: u64,
@@ -103,6 +105,8 @@ impl Default for Genesis {
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
+// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
+#[serde(deny_unknown_fields)]
 struct HighwayConfig {
     genesis_era_start_timestamp: u64,
     era_duration_millis: u64,
