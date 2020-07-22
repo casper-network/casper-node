@@ -327,7 +327,7 @@ mod tests {
         state.add_vote(effects.next().unwrap().unwrap_vote())?;
         assert_eq!(None, effects.next());
 
-        assert_eq!(FinalityOutcome::None, fd.run(&state)); // Alice has not witnessed Bob's vote yet.
+        assert_eq!(FinalityOutcome::None, fd.run_on_state(&state)); // Alice has not witnessed Bob's vote yet.
 
         // Alice also sends her own witness message, completing the summit for her proposal.
         let mut effects = alice_av.handle_timer(426.into(), &state).into_iter();
@@ -342,7 +342,7 @@ mod tests {
                 new_equivocators: Vec::new(),
                 timestamp: 416.into(),
             },
-            fd.run(&state)
+            fd.run_on_state(&state)
         );
         Ok(())
     }

@@ -28,8 +28,8 @@ struct HighwayConsensus<C: Context> {
 }
 
 impl<C: Context> HighwayConsensus<C> {
-    fn run_finality(&mut self) -> FinalityOutcome<C::ConsensusValue, ValidatorIndex> {
-        self.finality_detector.run(self.highway.state())
+    fn run_finality(&mut self) -> FinalityOutcome<C::ConsensusValue, C::ValidatorId> {
+        self.finality_detector.run(&self.highway)
     }
 
     pub(crate) fn highway(&self) -> &Highway<C> {
