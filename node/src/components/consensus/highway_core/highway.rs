@@ -228,7 +228,11 @@ impl<C: Context> Highway<C> {
         }
     }
 
-    pub(crate) fn state(&self) -> &State<C> {
+    pub(crate) fn params(&self) -> &HighwayParams<C> {
+        &self.params
+    }
+
+    pub(super) fn state(&self) -> &State<C> {
         &self.state
     }
 
@@ -282,7 +286,7 @@ impl<C: Context> Highway<C> {
     fn validator_pk(&self, swvote: &SignedWireVote<C>) -> &C::ValidatorId {
         self.params
             .validators
-            .get_by_id(swvote.wire_vote.creator)
+            .get_by_index(swvote.wire_vote.creator)
             .id()
     }
 }

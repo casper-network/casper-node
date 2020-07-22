@@ -31,7 +31,7 @@ use crate::{
         hash::hash,
     },
     effect::{EffectBuilder, EffectExt, Effects},
-    types::{FinalizedBlock, Motes, ProtoBlock, Timestamp},
+    types::{FinalizedBlock, Instruction, Motes, ProtoBlock, Timestamp},
 };
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,7 +69,7 @@ impl Default for EraConfig {
 pub(crate) struct EraSupervisor<I> {
     // A map of active consensus protocols.
     // A value is a trait so that we can run different consensus protocol instances per era.
-    active_eras: HashMap<EraId, Box<dyn ConsensusProtocol<I, ProtoBlock>>>,
+    active_eras: HashMap<EraId, Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>>>,
     era_config: EraConfig,
 }
 
@@ -129,7 +129,7 @@ where
             12, // 4.1 seconds; TODO: get a proper round exp
             timestamp,
         );
-        let initial_era: Box<dyn ConsensusProtocol<I, ProtoBlock>> = Box::new(highway);
+        let initial_era: Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>> = Box::new(highway);
         let active_eras = hashmap! { EraId(0) => initial_era };
         let era_supervisor = Self {
             active_eras,
@@ -145,7 +145,7 @@ where
     fn handle_consensus_result<REv: ReactorEventT<I>>(
         era_id: EraId,
         effect_builder: EffectBuilder<REv>,
-        consensus_result: ConsensusProtocolResult<I, ProtoBlock>,
+        consensus_result: ConsensusProtocolResult<I, ProtoBlock, PublicKey>,
     ) -> Effects<Event<I>> {
         match consensus_result {
             ConsensusProtocolResult::InvalidIncomingMessage(msg, sender, error) => {
@@ -181,17 +181,34 @@ where
                     proto_block,
                     block_context,
                 }),
-            ConsensusProtocolResult::FinalizedBlock(block, timestamp) => {
+            ConsensusProtocolResult::FinalizedBlock {
+                value: proto_block,
+                new_equivocators,
+                timestamp,
+            } => {
+                // Announce the finalized proto block.
                 let mut effects = effect_builder
-                    .execute_block(FinalizedBlock::new(block.clone(), timestamp))
-                    .event(move |executed_block| Event::ExecutedBlock {
-                        era_id,
-                        executed_block,
-                    });
+                    .announce_finalized_proto_block(proto_block.clone())
+                    .ignore();
+                // Create instructions for slashing equivocators.
+                let instructions = new_equivocators
+                    .into_iter()
+                    .map(Instruction::Slash)
+                    .collect();
+                // TODO: Instructions for rewards.
+                // Request execution of the finalized block.
+                let fb = FinalizedBlock {
+                    proto_block,
+                    instructions,
+                    timestamp,
+                };
                 effects.extend(
                     effect_builder
-                        .announce_finalized_proto_block(block)
-                        .ignore(),
+                        .execute_block(fb)
+                        .event(move |executed_block| Event::ExecutedBlock {
+                            era_id,
+                            executed_block,
+                        }),
                 );
                 effects
             }
@@ -223,8 +240,8 @@ where
     where
         REv: ReactorEventT<I>,
         F: FnOnce(
-            &mut dyn ConsensusProtocol<I, ProtoBlock>,
-        ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock>>, Error>,
+            &mut dyn ConsensusProtocol<I, ProtoBlock, PublicKey>,
+        ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>>, Error>,
     {
         match self.active_eras.get_mut(&era_id) {
             None => todo!("Handle missing eras."),

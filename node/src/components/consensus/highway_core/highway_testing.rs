@@ -30,8 +30,8 @@ struct HighwayConsensus<C: Context> {
 }
 
 impl<C: Context> HighwayConsensus<C> {
-    fn run_finality(&mut self) -> FinalityOutcome<C::ConsensusValue, ValidatorIndex> {
-        self.finality_detector.run(self.highway.state())
+    fn run_finality(&mut self) -> FinalityOutcome<C::ConsensusValue, C::ValidatorId> {
+        self.finality_detector.run(&self.highway)
     }
 
     pub(crate) fn highway(&self) -> &Highway<C> {
@@ -805,6 +805,11 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: DeliveryStrategy<C>>
 }
 
 mod test_harness {
+    use std::{
+        collections::{hash_map::DefaultHasher, HashMap},
+        hash::Hasher,
+    };
+
     use super::{
         CrankOk, DeliverySchedule, DeliveryStrategy, HighwayMessage, HighwayTestHarness,
         HighwayTestHarnessBuilder, InstantDeliveryNoDropping, TestRunError,
@@ -814,13 +819,8 @@ mod test_harness {
             tests::consensus_des_testing::ValidatorId,
             traits::{Context, ValidatorSecret},
         },
+        testing::TestRng,
         types::TimeDiff,
-    };
-    use rand_core::SeedableRng;
-    use rand_xorshift::XorShiftRng;
-    use std::{
-        collections::{hash_map::DefaultHasher, HashMap},
-        hash::Hasher,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -864,7 +864,7 @@ mod test_harness {
 
     #[test]
     fn on_empty_queue_error() {
-        let mut rand = XorShiftRng::from_seed(rand::random());
+        let mut rng = TestRng::new();
         let validators = vec![(ValidatorId(0), TestSecret(0))].into_iter().collect();
 
         let mut highway_test_harness: HighwayTestHarness<TestContext, InstantDeliveryNoDropping> =
@@ -882,7 +882,7 @@ mod test_harness {
         drop(mut_handle);
 
         assert_eq!(
-            highway_test_harness.crank(&mut rand),
+            highway_test_harness.crank(&mut rng),
             Err(TestRunError::NoMessages),
             "Expected the test run to stop."
         );
@@ -890,7 +890,7 @@ mod test_harness {
 
     #[test]
     fn done_when_all_finalized() -> Result<(), TestRunError<TestContext>> {
-        let mut rand = XorShiftRng::from_seed(rand::random());
+        let mut rng = TestRng::new();
         let validators = (0..10u32)
             .map(|i| (ValidatorId(i as u64), TestSecret(i)))
             .collect();
@@ -905,7 +905,7 @@ mod test_harness {
                 .expect("Construction was successful");
 
         loop {
-            let crank_res = highway_test_harness.crank(&mut rand)?;
+            let crank_res = highway_test_harness.crank(&mut rng)?;
             match crank_res {
                 CrankOk::Continue => continue,
                 CrankOk::Done => break,
