@@ -481,6 +481,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested deploy using the `DeployFetcher`.
+    // TODO: remove once method is used.
     #[allow(dead_code)]
     pub(crate) async fn fetch_deploy<I>(
         self,

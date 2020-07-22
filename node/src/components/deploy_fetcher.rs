@@ -1,12 +1,12 @@
 mod event;
 mod message;
-// mod tests;
+mod tests;
 
 use std::{collections::HashMap, time::Duration};
 
 use rand::Rng;
 use smallvec::smallvec;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use crate::{
     components::{deploy_fetcher::event::DeployResponder, storage::Storage, Component},
@@ -48,7 +48,12 @@ impl DeployFetcher {
         }
     }
 
-    /// Asks a peer to provide a `Deploy` by `DeployHash`.
+    /// If `maybe_responder` is `Some`, we've been asked to fetch the deploy by another component of
+    /// this node.  We'll try to get it from our own storage component first, and if that fails,
+    /// we'll send an outbound request to `peer` for the deploy.
+    ///
+    /// If `maybe_responder` is `None`, we're handling an inbound network request from `peer`.
+    /// Outside of malicious behavior, we should have the deploy in our storage component.
     fn fetch<REv: ReactorEvent>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -90,11 +95,14 @@ impl DeployFetcher {
             let message = Message::GetResponse(Box::new(deploy));
             effect_builder.send_message(peer, message).ignore()
         } else {
+            let mut effects = Effects::new();
             if let Some(responders) = self.responders.remove(&(*deploy.id(), peer)) {
                 for responder in responders {
-                    responder
-                        .respond(Some(Box::new(deploy.to_owned())))
-                        .ignore::<Event>();
+                    effects.extend(
+                        responder
+                            .respond(Some(Box::new(deploy.to_owned())))
+                            .ignore(),
+                    );
                 }
             } else {
                 error!(
@@ -103,7 +111,7 @@ impl DeployFetcher {
                     peer
                 );
             }
-            Effects::new()
+            effects
         }
     }
 
@@ -112,26 +120,25 @@ impl DeployFetcher {
     fn failed_to_get_from_store<REv: ReactorEvent>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
+        request_direction: RequestDirection,
         deploy_hash: DeployHash,
         peer: NodeId,
     ) -> Effects<Event> {
-        let message = Message::GetRequest(deploy_hash);
-        let mut effects =
-            effect_builder
-                .send_message(peer, message)
-                .event(move |_| Event::FetchDeploy {
-                    deploy_hash,
-                    peer,
-                    maybe_responder: None,
-                });
+        if request_direction == RequestDirection::Inbound {
+            warn!("can't provide {} to {}", deploy_hash, peer);
+            Effects::new()
+        } else {
+            let message = Message::GetRequest(deploy_hash);
+            let mut effects = effect_builder.send_message(peer, message).ignore();
 
-        effects.extend(
-            effect_builder
-                .set_timeout(self.get_from_peer_timeout)
-                .event(move |_| Event::TimeoutPeer { deploy_hash, peer }),
-        );
+            effects.extend(
+                effect_builder
+                    .set_timeout(self.get_from_peer_timeout)
+                    .event(move |_| Event::TimeoutPeer { deploy_hash, peer }),
+            );
 
-        effects
+            effects
+        }
     }
 
     /// Handles getting the deploy from the peer.
@@ -142,15 +149,17 @@ impl DeployFetcher {
         peer: NodeId,
     ) -> Effects<Event> {
         // We did not have this deploy locally so store it.
-        let ret = effect_builder
+        let mut effects = effect_builder
             .put_deploy_to_storage(deploy.clone())
             .ignore();
 
         if let Some(responders) = self.responders.remove(&(*deploy.id(), peer)) {
             for responder in responders {
-                responder
-                    .respond(Some(Box::new(deploy.to_owned())))
-                    .ignore::<Event>();
+                effects.extend(
+                    responder
+                        .respond(Some(Box::new(deploy.to_owned())))
+                        .ignore(),
+                );
             }
         } else {
             error!(
@@ -159,17 +168,18 @@ impl DeployFetcher {
                 peer
             );
         }
-        ret
+        effects
     }
 
     /// Remove any remaining in flight fetch requests for provided deploy_hash and peer.
     fn timeout_peer(&mut self, deploy_hash: DeployHash, peer: NodeId) -> Effects<Event> {
+        let mut effects = Effects::new();
         if let Some(responders) = self.responders.remove(&(deploy_hash, peer)) {
             for responder in responders {
-                responder.respond(None).ignore::<Event>();
+                effects.extend(responder.respond(None).ignore());
             }
         };
-        Effects::new()
+        effects
     }
 }
 
@@ -190,8 +200,8 @@ where
             Event::FetchDeploy {
                 deploy_hash,
                 peer,
-                maybe_responder,
-            } => self.fetch(effect_builder, deploy_hash, peer, maybe_responder),
+                responder,
+            } => self.fetch(effect_builder, deploy_hash, peer, Some(responder)),
             Event::TimeoutPeer { deploy_hash, peer } => self.timeout_peer(deploy_hash, peer),
             Event::MessageReceived {
                 message,
@@ -209,7 +219,12 @@ where
                 result,
             } => match *result {
                 Ok(deploy) => self.got_from_store(effect_builder, request_direction, deploy, peer),
-                Err(_) => self.failed_to_get_from_store(effect_builder, deploy_hash, peer),
+                Err(_) => self.failed_to_get_from_store(
+                    effect_builder,
+                    request_direction,
+                    deploy_hash,
+                    peer,
+                ),
             },
             Event::PutToStoreResult {
                 deploy_hash,

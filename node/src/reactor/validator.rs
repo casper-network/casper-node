@@ -33,7 +33,7 @@ use crate::{
             ApiServerAnnouncement, ConsensusAnnouncement, NetworkAnnouncement, StorageAnnouncement,
         },
         requests::{
-            ApiRequest, BlockExecutorRequest, ContractRuntimeRequest, DeployQueueRequest,
+            ApiRequest, BlockExecutorRequest, ContractRuntimeRequest, DeployFetcherRequest, DeployQueueRequest,
             MetricsRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
@@ -113,6 +113,9 @@ pub enum Event {
     /// Network request.
     #[from]
     NetworkRequest(NetworkRequest<NodeId, Message>),
+    /// Deploy fetcher request.
+    #[from]
+    DeployFetcherRequest(DeployFetcherRequest<NodeId>),
     /// Deploy queue request.
     #[from]
     DeployQueueRequest(DeployQueueRequest),
@@ -188,6 +191,7 @@ impl Display for Event {
             Event::ContractRuntime(event) => write!(f, "contract runtime: {}", event),
             Event::BlockExecutor(event) => write!(f, "block executor: {}", event),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
+            Event::DeployFetcherRequest(req) => write!(f, "deploy fetcher request: {}", req),
             Event::DeployQueueRequest(req) => write!(f, "deploy queue request: {}", req),
             Event::BlockExecutorRequest(req) => write!(f, "block executor request: {}", req),
             Event::MetricsRequest(req) => write!(f, "metrics request: {}", req),
@@ -320,10 +324,9 @@ impl reactor::Reactor for Reactor {
                 Event::Consensus,
                 self.consensus.handle_event(effect_builder, rng, event),
             ),
-            Event::DeployFetcher(event) =>  reactor::wrap_effects(
+            Event::DeployFetcher(event) => reactor::wrap_effects(
                 Event::DeployFetcher,
-                self.deploy_fetcher
-                    .handle_event(effect_builder, rng, event),
+                self.deploy_fetcher.handle_event(effect_builder, rng, event),
             ),
             Event::DeployGossiper(event) => reactor::wrap_effects(
                 Event::DeployGossiper,
@@ -345,6 +348,9 @@ impl reactor::Reactor for Reactor {
                 rng,
                 Event::Network(small_network::Event::from(req)),
             ),
+            Event::DeployFetcherRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::DeployFetcher(req.into()))
+            }
             Event::DeployQueueRequest(req) => {
                 self.dispatch_event(effect_builder, rng, Event::DeployQueue(req.into()))
             }

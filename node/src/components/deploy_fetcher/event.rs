@@ -1,11 +1,8 @@
 use std::fmt::{self, Display, Formatter};
 
 use crate::{
-    components::{
-        deploy_fetcher::Message,
-        storage::Result,
-    },
-    effect::Responder,
+    components::{deploy_fetcher::Message, storage::Result},
+    effect::{requests::DeployFetcherRequest, Responder},
     small_network::NodeId,
     types::{Deploy, DeployHash},
 };
@@ -25,7 +22,7 @@ pub enum Event {
     FetchDeploy {
         deploy_hash: DeployHash,
         peer: NodeId,
-        maybe_responder: Option<DeployResponder>,
+        responder: DeployResponder,
     },
     /// The result of the `DeployFetcher` getting a deploy from the storage component.  If the
     /// result is not `Ok`, the deploy should be requested from the peer.
@@ -52,6 +49,22 @@ pub enum Event {
     },
 }
 
+impl From<DeployFetcherRequest<NodeId>> for Event {
+    fn from(request: DeployFetcherRequest<NodeId>) -> Self {
+        match request {
+            DeployFetcherRequest::FetchDeploy {
+                hash,
+                peer,
+                responder,
+            } => Event::FetchDeploy {
+                deploy_hash: hash,
+                peer,
+                responder,
+            },
+        }
+    }
+}
+
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -60,11 +73,9 @@ impl Display for Event {
                 "check get from peer timeout for {} with {}",
                 deploy_hash, peer
             ),
-            Event::FetchDeploy {
-                deploy_hash,
-                peer: _,
-                maybe_responder: _,
-            } => write!(formatter, "request to get deploy at hash {}", deploy_hash),
+            Event::FetchDeploy { deploy_hash, .. } => {
+                write!(formatter, "request to get deploy at hash {}", deploy_hash)
+            }
             Event::MessageReceived { sender, message } => {
                 write!(formatter, "{} received from {}", message, sender)
             }
