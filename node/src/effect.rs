@@ -87,7 +87,7 @@ use crate::{
     },
     crypto::hash::Digest,
     reactor::{EventQueueHandle, QueueKind},
-    types::{Deploy, ExecutedBlock, FinalizedBlock, ProtoBlock},
+    types::{Deploy, DeployHash, ExecutedBlock, FinalizedBlock, ProtoBlock},
     Chainspec,
 };
 use announcements::{
@@ -96,7 +96,7 @@ use announcements::{
 use casperlabs_types::{Key, ProtocolVersion};
 use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
 use requests::{
-    BlockExecutorRequest, ContractRuntimeRequest, DeployQueueRequest, MetricsRequest,
+    BlockExecutorRequest, ContractRuntimeRequest, DeployFetcherRequest, DeployQueueRequest, MetricsRequest,
     NetworkRequest, StorageRequest,
 };
 
@@ -473,6 +473,28 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetBlock {
                 block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested deploy using the `DeployFetcher`.
+    #[allow(dead_code)]
+    pub(crate) async fn fetch_deploy<I>(
+        self,
+        deploy_hash: DeployHash,
+        peer: I,
+    ) -> Option<Box<Deploy>>
+    where
+        REv: From<DeployFetcherRequest<I>>,
+        I: Send + 'static,
+    {
+        self.make_request(
+            |responder| DeployFetcherRequest::FetchDeploy {
+                hash: deploy_hash,
+                peer,
                 responder,
             },
             QueueKind::Regular,

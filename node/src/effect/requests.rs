@@ -433,6 +433,32 @@ impl Display for ContractRuntimeRequest {
     }
 }
 
+/// Deploy-fetcher related requests.
+#[derive(Debug)]
+#[must_use]
+pub enum DeployFetcherRequest<I> {
+    /// Return the specified deploy if it exists, else `None`.
+    FetchDeploy {
+        /// The hash of the deploy to be retrieved.
+        hash: DeployHash,
+        /// The peer id of the peer to be asked if the deploy is not held locally
+        peer: I,
+        /// Responder to call with the result.
+        responder: Responder<Option<Box<Deploy>>>,
+    },
+}
+
+impl<I> Display for DeployFetcherRequest<I> {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            DeployFetcherRequest::FetchDeploy { hash, .. } => {
+                write!(formatter, "request deploy {}", hash)
+            }
+        }
+    }
+}
+
+
 /// A contract runtime request.
 #[derive(Debug)]
 #[must_use]

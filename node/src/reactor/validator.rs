@@ -21,6 +21,7 @@ use crate::{
         consensus::{self, EraSupervisor},
         contract_runtime::{self, ContractRuntime},
         deploy_buffer::{self, DeployBuffer},
+        deploy_fetcher::{self, DeployFetcher},
         deploy_gossiper::{self, DeployGossiper},
         metrics::Metrics,
         pinger::{self, Pinger},
@@ -54,6 +55,9 @@ pub enum Message {
     /// Consensus component message.
     #[from]
     Consensus(consensus::ConsensusMessage),
+    /// Deploy fetcher component message.
+    #[from]
+    DeployFetcher(deploy_fetcher::Message),
     /// Deploy gossiper component message.
     #[from]
     DeployGossiper(deploy_gossiper::Message),
@@ -64,6 +68,7 @@ impl Display for Message {
         match self {
             Message::Pinger(pinger) => write!(f, "Pinger::{}", pinger),
             Message::Consensus(consensus) => write!(f, "Consensus::{}", consensus),
+            Message::DeployFetcher(message) => write!(f, "DeployFetcher::{}", message),
             Message::DeployGossiper(deploy) => write!(f, "DeployGossiper::{}", deploy),
         }
     }
@@ -91,6 +96,9 @@ pub enum Event {
     #[from]
     /// Consensus event.
     Consensus(consensus::Event<NodeId>),
+    /// Deploy fetcher event.
+    #[from]
+    DeployFetcher(deploy_fetcher::Event),
     /// Deploy gossiper event.
     #[from]
     DeployGossiper(deploy_gossiper::Event),
@@ -148,6 +156,12 @@ impl From<NetworkRequest<NodeId, pinger::Message>> for Event {
     }
 }
 
+impl From<NetworkRequest<NodeId, deploy_fetcher::Message>> for Event {
+    fn from(request: NetworkRequest<NodeId, deploy_fetcher::Message>) -> Self {
+        Event::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
 impl From<NetworkRequest<NodeId, deploy_gossiper::Message>> for Event {
     fn from(request: NetworkRequest<NodeId, deploy_gossiper::Message>) -> Self {
         Event::NetworkRequest(request.map_payload(Message::from))
@@ -169,6 +183,7 @@ impl Display for Event {
             Event::Storage(event) => write!(f, "storage: {}", event),
             Event::ApiServer(event) => write!(f, "api server: {}", event),
             Event::Consensus(event) => write!(f, "consensus: {}", event),
+            Event::DeployFetcher(event) => write!(f, "deploy fetcher: {}", event),
             Event::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
             Event::ContractRuntime(event) => write!(f, "contract runtime: {}", event),
             Event::BlockExecutor(event) => write!(f, "block executor: {}", event),
@@ -194,6 +209,7 @@ pub struct Reactor {
     contract_runtime: ContractRuntime,
     api_server: ApiServer,
     consensus: EraSupervisor<NodeId>,
+    deploy_fetcher: DeployFetcher,
     deploy_gossiper: DeployGossiper,
     deploy_buffer: DeployBuffer,
     block_executor: BlockExecutor,
@@ -242,6 +258,7 @@ impl reactor::Reactor for Reactor {
             effect_builder,
             validator_stakes,
         )?;
+        let deploy_fetcher = DeployFetcher::new(config.gossip);
         let deploy_gossiper = DeployGossiper::new(config.gossip);
         let deploy_buffer = DeployBuffer::new();
         // Post state hash is expected to be present
@@ -262,6 +279,7 @@ impl reactor::Reactor for Reactor {
                 storage,
                 api_server,
                 consensus,
+                deploy_fetcher,
                 deploy_gossiper,
                 contract_runtime,
                 deploy_buffer,
@@ -301,6 +319,11 @@ impl reactor::Reactor for Reactor {
             Event::Consensus(event) => reactor::wrap_effects(
                 Event::Consensus,
                 self.consensus.handle_event(effect_builder, rng, event),
+            ),
+            Event::DeployFetcher(event) =>  reactor::wrap_effects(
+                Event::DeployFetcher,
+                self.deploy_fetcher
+                    .handle_event(effect_builder, rng, event),
             ),
             Event::DeployGossiper(event) => reactor::wrap_effects(
                 Event::DeployGossiper,
@@ -345,6 +368,12 @@ impl reactor::Reactor for Reactor {
                     }
                     Message::Pinger(msg) => {
                         Event::Pinger(pinger::Event::MessageReceived { sender, msg })
+                    }
+                    Message::DeployFetcher(message) => {
+                        Event::DeployFetcher(deploy_fetcher::Event::MessageReceived {
+                            sender,
+                            message,
+                        })
                     }
                     Message::DeployGossiper(message) => {
                         Event::DeployGossiper(deploy_gossiper::Event::MessageReceived {
