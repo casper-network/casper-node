@@ -4,7 +4,7 @@ use lmdb::DatabaseFlags;
 use proptest::{collection::vec, prelude::proptest};
 use tempfile::tempdir;
 
-use types::{bytesrepr::ToBytes, Key};
+use casperlabs_types::{bytesrepr::ToBytes, Key};
 
 use crate::{
     components::contract_runtime::{

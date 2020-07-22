@@ -1,16 +1,16 @@
 use assert_matches::assert_matches;
-use contracts::CONTRACT_INITIAL_VERSION;
-use engine_test_support::{
+use casperlabs_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
+use casperlabs_node::components::contract_runtime::core::{engine_state::Error, execution};
+use casperlabs_types::{contracts, contracts::MAX_GROUPS, runtime_args, Group, Key, RuntimeArgs};
+use contracts::CONTRACT_INITIAL_VERSION;
 use lazy_static::lazy_static;
-use node::components::contract_runtime::core::{engine_state::Error, execution};
 use std::{collections::BTreeSet, iter::FromIterator};
-use types::{contracts, contracts::MAX_GROUPS, runtime_args, Group, Key, RuntimeArgs};
 
 const CONTRACT_GROUPS: &str = "manage_groups.wasm";
 const PACKAGE_HASH_KEY: &str = "package_hash_key";

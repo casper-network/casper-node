@@ -1,11 +1,11 @@
-use engine_test_support::{
+use casperlabs_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
         DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use types::{account::AccountHash, runtime_args, RuntimeArgs};
+use casperlabs_types::{account::AccountHash, runtime_args, RuntimeArgs};
 
 const PASS_INIT_REMOVE: &str = "init_remove";
 const PASS_TEST_REMOVE: &str = "test_remove";

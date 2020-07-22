@@ -1,7 +1,7 @@
-use node::components::contract_runtime::core::engine_state::{
+use casperlabs_node::components::contract_runtime::core::engine_state::{
     execution_effect::ExecutionEffect, op::Op,
 };
-use types::Key;
+use casperlabs_types::Key;
 
 use crate::engine_server::{
     ipc::{self, AddOp, NoOp, OpEntry, ReadOp, WriteOp},

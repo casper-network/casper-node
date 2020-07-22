@@ -3,7 +3,7 @@ use std::io::Error as IoError;
 use thiserror::Error;
 use uint::FromDecStrErr;
 
-use types::account::ACCOUNT_HASH_LENGTH;
+use casperlabs_types::account::ACCOUNT_HASH_LENGTH;
 
 /// Error while encoding or decoding the chainspec.
 #[derive(Debug, Error)]

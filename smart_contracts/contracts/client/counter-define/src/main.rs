@@ -7,12 +7,12 @@ use alloc::{string::String, vec, vec::Vec};
 use core::convert::TryInto;
 
 use alloc::boxed::Box;
-use contract::{
+use casperlabs_contract::{
     contract_api::{self, runtime, storage},
     ext_ffi,
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{
+use casperlabs_types::{
     api_error::{self},
     bytesrepr::{self},
     contracts::NamedKeys,

@@ -11,11 +11,11 @@ use std::{env, io, path::PathBuf};
 
 use clap::{crate_version, App, Arg};
 
-use engine_test_support::internal::{
+use casperlabs_engine_test_support::internal::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_PAYMENT,
 };
-use node::components::contract_runtime::core::engine_state::EngineConfig;
-use types::{runtime_args, RuntimeArgs, U512};
+use casperlabs_node::components::contract_runtime::core::engine_state::EngineConfig;
+use casperlabs_types::{runtime_args, RuntimeArgs, U512};
 
 use casperlabs_engine_tests::profiling;
 

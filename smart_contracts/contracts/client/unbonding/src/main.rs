@@ -3,8 +3,8 @@
 
 extern crate alloc;
 
-use contract::contract_api::{runtime, system};
-use types::{runtime_args, RuntimeArgs, U512};
+use casperlabs_contract::contract_api::{runtime, system};
+use casperlabs_types::{runtime_args, RuntimeArgs, U512};
 
 const UNBOND_METHOD_NAME: &str = "unbond";
 const ARG_AMOUNT: &str = "amount";

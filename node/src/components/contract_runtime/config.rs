@@ -8,6 +8,8 @@ const DEFAULT_ENABLE_BONDING: bool = false;
 
 /// Contract runtime configuration.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
+#[serde(deny_unknown_fields)]
 pub struct Config {
     /// Whether to use system contracts or not.  Defaults to false.
     use_system_contracts: Option<bool>,

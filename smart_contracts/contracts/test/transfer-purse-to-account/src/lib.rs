@@ -4,11 +4,11 @@ extern crate alloc;
 
 use alloc::format;
 
-use contract::{
+use casperlabs_contract::{
     contract_api::{account, runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{account::AccountHash, ApiError, Key, URef, U512};
+use casperlabs_types::{account::AccountHash, ApiError, Key, URef, U512};
 
 const TRANSFER_RESULT_UREF_NAME: &str = "transfer_result";
 const MAIN_PURSE_FINAL_BALANCE_UREF_NAME: &str = "final_balance";

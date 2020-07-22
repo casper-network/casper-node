@@ -17,12 +17,11 @@ use rand::{
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use types::{account::AccountHash, U512};
+use casperlabs_types::{account::AccountHash, U512};
 
 use super::{config, Error};
 use crate::{
-    components::contract_runtime::shared::wasm_costs::WasmCosts,
-    crypto::{asymmetric_key::PublicKey, hash::hash},
+    components::contract_runtime::shared::wasm_costs::WasmCosts, crypto::asymmetric_key::PublicKey,
     types::Motes,
 };
 
@@ -48,8 +47,7 @@ impl GenesisAccount {
 
     /// Constructs a new `GenesisAccount` with a given public key.
     pub fn with_public_key(public_key: PublicKey, balance: Motes, bonded_amount: Motes) -> Self {
-        // TODO: include the PK variant when hashing
-        let account_hash = AccountHash::new(hash(public_key).to_bytes());
+        let account_hash = public_key.to_account_hash();
         GenesisAccount {
             public_key: Some(public_key),
             account_hash,
@@ -96,6 +94,8 @@ impl Distribution<GenesisAccount> for Standard {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
+#[serde(deny_unknown_fields)]
 pub(crate) struct DeployConfig {
     pub(crate) max_payment_cost: Motes,
     pub(crate) max_ttl: Duration,
@@ -104,6 +104,8 @@ pub(crate) struct DeployConfig {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
+#[serde(deny_unknown_fields)]
 pub(crate) struct HighwayConfig {
     pub(crate) genesis_era_start_timestamp: u64,
     pub(crate) era_duration: Duration,
@@ -114,6 +116,8 @@ pub(crate) struct HighwayConfig {
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
+#[serde(deny_unknown_fields)]
 pub(crate) struct GenesisConfig {
     pub(crate) name: String,
     pub(crate) timestamp: u64,

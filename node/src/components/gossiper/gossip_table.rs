@@ -400,13 +400,12 @@ mod tests {
     use rand::Rng;
 
     use super::{super::config::DEFAULT_FINISHED_ENTRY_DURATION_SECS, *};
-    use crate::utils::DisplayIter;
+    use crate::{testing::TestRng, utils::DisplayIter};
 
     const EXPECTED_DEFAULT_INFECTION_TARGET: usize = 3;
     const EXPECTED_DEFAULT_HOLDERS_LIMIT: usize = 15;
 
-    fn random_node_ids() -> Vec<NodeId> {
-        let mut rng = rand::thread_rng();
+    fn random_node_ids(rng: &mut TestRng) -> Vec<NodeId> {
         iter::repeat_with(|| rng.gen::<NodeId>())
             .take(EXPECTED_DEFAULT_HOLDERS_LIMIT + 3)
             .collect()
@@ -434,9 +433,8 @@ mod tests {
 
     #[test]
     fn new_partial_data() {
-        let node_ids = random_node_ids();
-
-        let mut rng = rand::thread_rng();
+        let mut rng = TestRng::new();
+        let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
         let mut gossip_table = GossipTable::new(Config::default());
@@ -503,7 +501,7 @@ mod tests {
 
     #[test]
     fn should_noop_if_we_have_partial_data_and_get_gossip_response() {
-        let mut rng = rand::thread_rng();
+        let mut rng = TestRng::new();
         let node_id: NodeId = rng.gen();
         let data_id: u64 = rng.gen();
 
@@ -520,9 +518,8 @@ mod tests {
 
     #[test]
     fn new_complete_data() {
-        let node_ids = random_node_ids();
-
-        let mut rng = rand::thread_rng();
+        let mut rng = TestRng::new();
+        let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
         let mut gossip_table = GossipTable::new(Config::default());
@@ -596,9 +593,8 @@ mod tests {
 
     #[test]
     fn should_terminate_via_infection_limit() {
-        let node_ids = random_node_ids();
-
-        let mut rng = rand::thread_rng();
+        let mut rng = TestRng::new();
+        let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
         let mut gossip_table = GossipTable::new(Config::default());
@@ -632,9 +628,8 @@ mod tests {
 
     #[test]
     fn should_terminate_via_saturation() {
-        let node_ids = random_node_ids();
-
-        let mut rng = rand::thread_rng();
+        let mut rng = TestRng::new();
+        let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
         let mut gossip_table = GossipTable::new(Config::default());
@@ -668,9 +663,8 @@ mod tests {
 
     #[test]
     fn should_not_terminate_below_infection_limit_and_saturation() {
-        let node_ids = random_node_ids();
-
-        let mut rng = rand::thread_rng();
+        let mut rng = TestRng::new();
+        let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
         let mut gossip_table = GossipTable::new(Config::default());
@@ -698,9 +692,8 @@ mod tests {
 
     #[test]
     fn check_timeout_should_detect_holder() {
-        let node_ids = random_node_ids();
-
-        let mut rng = rand::thread_rng();
+        let mut rng = TestRng::new();
+        let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
         let mut gossip_table = GossipTable::new(Config::default());
@@ -728,9 +721,8 @@ mod tests {
         should_panic(expected = "shouldn't check timeout for a gossip response for partial data")
     )]
     fn check_timeout_should_panic_for_partial_copy() {
-        let node_ids = random_node_ids();
-
-        let mut rng = rand::thread_rng();
+        let mut rng = TestRng::new();
+        let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
         let mut gossip_table = GossipTable::new(Config::default());
@@ -740,9 +732,8 @@ mod tests {
 
     #[test]
     fn should_remove_holder_if_unresponsive() {
-        let node_ids = random_node_ids();
-
-        let mut rng = rand::thread_rng();
+        let mut rng = TestRng::new();
+        let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
         let mut gossip_table = GossipTable::new(Config::default());
@@ -796,9 +787,8 @@ mod tests {
 
     #[test]
     fn should_not_remove_holder_if_responsive() {
-        let node_ids = random_node_ids();
-
-        let mut rng = rand::thread_rng();
+        let mut rng = TestRng::new();
+        let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
         let mut gossip_table = GossipTable::new(Config::default());
@@ -817,9 +807,8 @@ mod tests {
 
     #[test]
     fn should_not_auto_resume_manually_paused() {
-        let node_ids = random_node_ids();
-
-        let mut rng = rand::thread_rng();
+        let mut rng = TestRng::new();
+        let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
         let mut gossip_table = GossipTable::new(Config::default());
@@ -842,9 +831,8 @@ mod tests {
 
     #[test]
     fn should_purge() {
-        let node_ids = random_node_ids();
-
-        let mut rng = rand::thread_rng();
+        let mut rng = TestRng::new();
+        let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
         let mut gossip_table = GossipTable::new(Config::default());

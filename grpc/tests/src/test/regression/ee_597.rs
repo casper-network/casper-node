@@ -1,10 +1,10 @@
-use engine_test_support::{
+use casperlabs_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use types::{ApiError, RuntimeArgs};
+use casperlabs_types::{ApiError, RuntimeArgs};
 
 const CONTRACT_EE_597_REGRESSION: &str = "ee_597_regression.wasm";
 

@@ -1,5 +1,4 @@
-use std::fmt::Debug;
-use std::hash::Hash;
+use std::{fmt::Debug, hash::Hash};
 
 pub(crate) trait VertexId: Debug + Clone + Hash + Eq + Ord {}
 impl<T> VertexId for T where T: Debug + Clone + Hash + Eq + Ord {}

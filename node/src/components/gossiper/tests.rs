@@ -23,7 +23,7 @@ use crate::{
     reactor::{self, EventQueueHandle, Runner},
     testing::{
         network::{Network, NetworkedReactor},
-        ConditionCheckReactor,
+        ConditionCheckReactor, TestRng,
     },
     types::Deploy,
 };
@@ -177,15 +177,14 @@ fn create_deploy_received(
     |effect_builder: EffectBuilder<Event>| effect_builder.announce_deploy_received(deploy).ignore()
 }
 
-async fn run_gossip(network_size: usize, deploy_count: usize) {
+async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize) {
     const TIMEOUT: Duration = Duration::from_secs(20);
 
     NetworkController::<Message<Deploy>>::create_active();
     let mut network = Network::<Reactor>::new();
-    let mut rng = rand::thread_rng();
 
     // Add `network_size` nodes.
-    let node_ids = network.add_nodes(&mut rng, network_size).await;
+    let node_ids = network.add_nodes(rng, network_size).await;
 
     // Create `deploy_count` random deploys.
     let (all_deploy_hashes, mut deploys): (BTreeSet<_>, Vec<_>) = iter::repeat_with(|| {
@@ -218,7 +217,7 @@ async fn run_gossip(network_size: usize, deploy_count: usize) {
             all_deploy_hashes == hashes
         })
     };
-    network.settle_on(&mut rng, all_deploys_held, TIMEOUT).await;
+    network.settle_on(rng, all_deploys_held, TIMEOUT).await;
 
     NetworkController::<Message<Deploy>>::remove_active();
 }
@@ -228,9 +227,11 @@ async fn should_gossip() {
     const NETWORK_SIZES: [usize; 3] = [2, 5, 20];
     const DEPLOY_COUNTS: [usize; 3] = [1, 10, 30];
 
+    let mut rng = TestRng::new();
+
     for network_size in &NETWORK_SIZES {
         for deploy_count in &DEPLOY_COUNTS {
-            run_gossip(*network_size, *deploy_count).await
+            run_gossip(&mut rng, *network_size, *deploy_count).await
         }
     }
 }
@@ -243,7 +244,7 @@ async fn should_get_from_alternate_source() {
 
     NetworkController::<Message<Deploy>>::create_active();
     let mut network = Network::<Reactor>::new();
-    let mut rng = rand::thread_rng();
+    let mut rng = TestRng::new();
 
     // Add `NETWORK_SIZE` nodes.
     let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
@@ -324,7 +325,7 @@ async fn should_timeout_gossip_response() {
 
     NetworkController::<Message<Deploy>>::create_active();
     let mut network = Network::<Reactor>::new();
-    let mut rng = rand::thread_rng();
+    let mut rng = TestRng::new();
 
     // The target number of peers to infect with a given piece of data.
     let infection_target = Config::default().infection_target();

@@ -1,6 +1,6 @@
 use std::mem;
 
-use types::ProtocolVersion;
+use casperlabs_types::ProtocolVersion;
 
 use super::{deploy_item::DeployItem, execution_result::ExecutionResult};
 use crate::crypto::hash::{self, Digest};

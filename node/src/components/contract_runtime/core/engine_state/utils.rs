@@ -1,4 +1,4 @@
-use types::{account::AccountHash, U512};
+use casperlabs_types::{account::AccountHash, U512};
 
 /// In PoS, the validators are stored under named keys with names formatted as
 /// "v_<hex-formatted-AccountHash>_<bond-amount>".  This function attempts to parse such a string
@@ -31,7 +31,7 @@ pub fn pos_validator_key_name_to_tuple(pos_key_name: &str) -> Option<(AccountHas
 mod tests {
     use hex_fmt::HexFmt;
 
-    use types::{account::AccountHash, U512};
+    use casperlabs_types::{account::AccountHash, U512};
 
     use super::pos_validator_key_name_to_tuple;
 

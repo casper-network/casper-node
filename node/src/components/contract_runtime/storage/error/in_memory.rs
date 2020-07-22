@@ -2,7 +2,7 @@ use std::sync;
 
 use thiserror::Error;
 
-use types::bytesrepr;
+use casperlabs_types::bytesrepr;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum Error {

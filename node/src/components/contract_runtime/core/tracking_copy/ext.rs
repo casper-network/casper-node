@@ -2,7 +2,7 @@ use std::convert::TryInto;
 
 use parity_wasm::elements::Module;
 
-use types::{
+use casperlabs_types::{
     account::AccountHash, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
     ContractWasm, ContractWasmHash, Key, U512,
 };

@@ -3,8 +3,8 @@
 #![no_std]
 #![no_main]
 
-use contract::contract_api::{runtime, system};
-use types::{account::AccountHash, ApiError, TransferredTo, U512};
+use casperlabs_contract::contract_api::{runtime, system};
+use casperlabs_types::{account::AccountHash, ApiError, TransferredTo, U512};
 
 const ARG_ACCOUNT1_ACCOUNT_HASH: &str = "account_1_account_hash";
 const ARG_ACCOUNT1_AMOUNT: &str = "account_1_amount";

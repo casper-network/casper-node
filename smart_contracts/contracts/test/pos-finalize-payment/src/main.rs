@@ -1,11 +1,11 @@
 #![no_std]
 #![no_main]
 
-use contract::{
+use casperlabs_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{account::AccountHash, runtime_args, ContractHash, RuntimeArgs, URef, U512};
+use casperlabs_types::{account::AccountHash, runtime_args, ContractHash, RuntimeArgs, URef, U512};
 
 pub const ARG_AMOUNT: &str = "amount";
 pub const ARG_AMOUNT_SPENT: &str = "amount_spent";

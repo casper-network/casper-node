@@ -10,7 +10,7 @@ use std::{
 
 use semver::Version;
 
-use types::{Key, ProtocolVersion};
+use casperlabs_types::{Key, ProtocolVersion};
 
 use super::Responder;
 use crate::{
@@ -19,7 +19,6 @@ use crate::{
             core::engine_state::{
                 self,
                 execute_request::ExecuteRequest,
-                execution_result::ExecutionResult,
                 genesis::GenesisResult,
                 query::{QueryRequest, QueryResult},
                 upgrade::{UpgradeConfig, UpgradeResult},
@@ -31,10 +30,11 @@ use crate::{
         storage::{self, DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::hash::Digest,
-    types::{BlockHash, Deploy, DeployHash, DeployHeader},
+    types::{BlockHash, Deploy, DeployHash, DeployHeader, ExecutedBlock, FinalizedBlock},
     utils::DisplayIter,
     Chainspec,
 };
+use engine_state::execution_result::ExecutionResults;
 
 /// A metrics request.
 #[derive(Debug)]
@@ -154,8 +154,8 @@ pub enum StorageRequest<S: StorageType + 'static> {
     PutBlock {
         /// Block to be stored.
         block: Box<S::Block>,
-        /// Responder to call with the result.  Returns true if the block was stored on this attempt
-        /// or false if it was previously stored.
+        /// Responder to call with the result.  Returns true if the block was stored on this
+        /// attempt or false if it was previously stored.
         responder: Responder<storage::Result<bool>>,
     },
     /// Retrieve block with given hash.
@@ -366,7 +366,7 @@ pub enum ContractRuntimeRequest {
         /// Execution request containing deploys.
         execute_request: ExecuteRequest,
         /// Responder to call with the execution result.
-        responder: Responder<Result<Vec<ExecutionResult>, engine_state::RootNotFound>>,
+        responder: Responder<Result<ExecutionResults, engine_state::RootNotFound>>,
     },
     /// A request to commit existing execution transforms.
     Commit {
@@ -429,6 +429,29 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::Query { query_request, .. } => {
                 write!(formatter, "query request: {:?}", query_request)
             }
+        }
+    }
+}
+
+/// A contract runtime request.
+#[derive(Debug)]
+#[must_use]
+pub enum BlockExecutorRequest {
+    /// A request to execute finalized block.
+    ExecuteBlock {
+        /// The finalized block.
+        finalized_block: FinalizedBlock,
+        /// Responder to call with the result.
+        responder: Responder<ExecutedBlock>,
+    },
+}
+
+impl Display for BlockExecutorRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BlockExecutorRequest::ExecuteBlock {
+                finalized_block, ..
+            } => write!(f, "execute block {}", finalized_block),
         }
     }
 }

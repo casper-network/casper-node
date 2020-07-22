@@ -1,4 +1,4 @@
-use types::{bytesrepr::FromBytes, CLTyped, CLValue, Key};
+use casperlabs_types::{bytesrepr::FromBytes, CLTyped, CLValue, Key};
 
 use super::{error, execution_effect::ExecutionEffect, op::Op, CONV_RATE};
 use crate::{
@@ -11,6 +11,7 @@ use crate::{
     },
     types::Motes,
 };
+use std::collections::VecDeque;
 
 fn make_payment_error_effects(
     max_payment_cost: Motes,
@@ -55,6 +56,9 @@ pub enum ExecutionResult {
     /// Execution was finished successfully
     Success { effect: ExecutionEffect, cost: Gas },
 }
+
+/// A type alias that represents multiple execution results.
+pub type ExecutionResults = VecDeque<ExecutionResult>;
 
 pub enum ForcedTransferResult {
     /// Payment code ran out of gas during execution

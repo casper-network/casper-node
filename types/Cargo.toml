@@ -10,12 +10,6 @@ homepage = "https://casperlabs.io"
 repository = "https://github.com/CasperLabs/CasperLabs/tree/master/execution-engine/types"
 license-file = "../../LICENSE"
 
-[features]
-default = ["base16/alloc", "serde/alloc"]
-std = ["base16/std"]
-gens = ["std", "proptest/std"]
-no-unstable-features = []
-
 [dependencies]
 base16 = { version = "0.2.1", default-features = false }
 bitflags = "1"
@@ -31,9 +25,15 @@ serde = { version = "1", default-features = false, features = ["derive"] }
 uint = { version = "0.8.3", default-features = false }
 
 [dev-dependencies]
+criterion = "0.3.3"
 proptest = "0.9.4"
 version-sync = "0.8"
-criterion = "0.3.3"
+
+[features]
+default = ["base16/alloc", "serde/alloc"]
+std = ["base16/std"]
+gens = ["std", "proptest/std"]
+no-unstable-features = []
 
 [[bench]]
 name = "bytesrepr_bench"

@@ -1,11 +1,11 @@
 use crate::components::contract_runtime::shared::wasm_costs::{
     WasmCosts, WASM_COSTS_SERIALIZED_LENGTH,
 };
-use std::collections::BTreeMap;
-use types::{
+use casperlabs_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     ContractHash, HashAddr, KEY_HASH_LENGTH,
 };
+use std::collections::BTreeMap;
 
 const PROTOCOL_DATA_SERIALIZED_LENGTH: usize = WASM_COSTS_SERIALIZED_LENGTH + 3 * KEY_HASH_LENGTH;
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
@@ -164,7 +164,7 @@ pub(crate) mod gens {
     use proptest::prop_compose;
 
     use crate::components::contract_runtime::shared::wasm_costs::gens as wasm_costs_gens;
-    use types::gens;
+    use casperlabs_types::gens;
 
     use super::ProtocolData;
 
@@ -190,7 +190,7 @@ mod tests {
     use proptest::proptest;
 
     use crate::components::contract_runtime::shared::wasm_costs::WasmCosts;
-    use types::{bytesrepr, ContractHash};
+    use casperlabs_types::{bytesrepr, ContractHash};
 
     use super::{gens, ProtocolData};
 

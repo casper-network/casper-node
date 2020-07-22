@@ -1,12 +1,13 @@
 use std::{
     fmt::{self, Display, Formatter},
+    iter::Sum,
     ops::{Add, Div, Mul, Sub},
 };
 
 use num::Zero;
 use serde::{Deserialize, Serialize};
 
-use types::U512;
+use casperlabs_types::U512;
 
 use crate::components::contract_runtime::shared::gas::Gas;
 
@@ -90,9 +91,18 @@ impl Zero for Motes {
     }
 }
 
+impl Sum for Motes {
+    fn sum<I>(iter: I) -> Self
+    where
+        I: Iterator<Item = Self>,
+    {
+        iter.fold(Self::zero(), |a, b| a + b)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use types::U512;
+    use casperlabs_types::U512;
 
     use super::Motes;
     use crate::components::contract_runtime::shared::gas::Gas;

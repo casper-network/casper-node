@@ -14,8 +14,10 @@
 //! When adding a section to the configuration, ensure that
 //!
 //! * it has an entry in the root configuration [`Config`](struct.Config.html),
-//! * `Default` is implemented (derived or manually) with sensible defaults, and
+//! * `Default` is implemented (derived or manually) with sensible defaults,
 //! * it is completely documented.
+//! * it is annotated with `#[serde(deny_unknown_fields)]` to ensure config files and command-line
+//!   overrides contain valid keys.
 
 use std::{fs, path::Path};
 

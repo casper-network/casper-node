@@ -1,12 +1,12 @@
 use num_traits::Zero;
 use std::collections::HashMap;
 
-use engine_test_support::{
+use casperlabs_engine_test_support::{
     internal::{utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS},
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::{types::Motes, GenesisAccount};
-use types::{account::AccountHash, RuntimeArgs, U512};
+use casperlabs_node::{types::Motes, GenesisAccount};
+use casperlabs_types::{account::AccountHash, RuntimeArgs, U512};
 
 const CONTRACT_LOCAL_STATE: &str = "do_nothing.wasm";
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);

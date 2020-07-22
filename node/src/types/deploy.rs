@@ -94,6 +94,12 @@ impl From<Digest> for DeployHash {
     }
 }
 
+impl AsRef<[u8]> for DeployHash {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
 /// The header portion of a [`Deploy`](struct.Deploy.html).
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct DeployHeader {
@@ -309,7 +315,7 @@ mod json {
             hash::Digest,
         },
     };
-    use types::ContractVersion;
+    use casperlabs_types::ContractVersion;
 
     #[derive(Serialize, Deserialize)]
     pub(super) struct DeployHash(String);

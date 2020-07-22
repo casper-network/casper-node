@@ -1,11 +1,12 @@
-use types::{
+use std::convert::{TryFrom, TryInto};
+
+use casperlabs_types::{
     contracts::{Contract, NamedKeys},
     ContractPackageHash, ContractWasmHash, EntryPoints,
 };
 
 use super::NamedKeyMap;
 use crate::engine_server::{mappings::ParsingError, state};
-use std::convert::{TryFrom, TryInto};
 
 impl From<Contract> for state::Contract {
     fn from(contract: Contract) -> Self {
@@ -69,12 +70,12 @@ impl TryFrom<state::Contract> for Contract {
 mod tests {
     use proptest::proptest;
 
+    use casperlabs_types::gens;
+
     use super::*;
     use crate::engine_server::mappings::test_utils;
-    use types::gens;
 
     proptest! {
-
         #[test]
         fn round_trip(contract in gens::contract_arb()) {
             test_utils::protobuf_round_trip::<Contract, state::Contract>(contract);

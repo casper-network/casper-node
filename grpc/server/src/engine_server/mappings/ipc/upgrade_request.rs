@@ -1,7 +1,7 @@
 use std::convert::{TryFrom, TryInto};
 
-use node::components::contract_runtime::core::engine_state::upgrade::UpgradeConfig;
-use types::ProtocolVersion;
+use casperlabs_node::components::contract_runtime::core::engine_state::upgrade::UpgradeConfig;
+use casperlabs_types::ProtocolVersion;
 
 use crate::engine_server::{ipc::UpgradeRequest, mappings::MappingError};
 
