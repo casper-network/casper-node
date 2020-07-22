@@ -100,8 +100,7 @@ pub enum Args {
         /// deploys, in case the same account exists on multiple networks.
         #[structopt(long, default_value = "Test")]
         chain_name: String,
-        /* TODO: There are also deploy dependencies, but this whole structure
-         * is subject to changes. */
+        // TODO: There are also deploy dependencies but this whole structure is subject to changes.
     },
     /// Retrieve a stored deploy.
     GetDeploy {
