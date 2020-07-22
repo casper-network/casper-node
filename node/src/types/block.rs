@@ -43,30 +43,59 @@ impl ProtoBlock {
     }
 }
 
-/// The piece of information that will become the content of a future block after it was finalized and before execution happened yet.
-#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct FinalizedBlock {
-    pub(crate) proto_block: ProtoBlock,
-    pub(crate) timestamp: Timestamp,
+/// Prints a number of picoseconds, rounding to s, ms, µs or ns if appropriate.
+fn fmt_picoseconds(ps: u64) -> String {
+    if ps < 10_000 {
+        format!("{} ps", ps)
+    } else if ps < 10_000_000 {
+        format!("{} ns", ps / 1_000)
+    } else if ps < 10_000_000_000 {
+        format!("{} µs", ps / 1_000_000)
+    } else if ps < 10_000_000_000_000 {
+        format!("{} ms", ps / 1_000_000_000)
+    } else {
+        format!("{} s", ps / 1_000_000_000_000)
+    }
 }
 
-impl FinalizedBlock {
-    pub(crate) fn new(proto_block: ProtoBlock, timestamp: Timestamp) -> Self {
-        Self {
-            proto_block,
-            timestamp,
-        }
-    }
+/// System transactions like slashing and rewards.
+#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Display)]
+pub enum Instruction {
+    /// A validator has equivocated and should be slashed.
+    #[display(fmt = "slash {}", "_0")]
+    Slash(PublicKey),
+    /// Block reward information has been computed for a validator, in picoseconds' worth of total
+    /// seigniorage. This includes the delegator reward.
+    #[display(fmt = "reward {}: {}", "_0, fmt_picoseconds(*_1)")]
+    Reward(PublicKey, u64),
+}
+
+/// The piece of information that will become the content of a future block after it was finalized
+/// and before execution happened yet.
+#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct FinalizedBlock {
+    /// The finalized proto block.
+    pub(crate) proto_block: ProtoBlock,
+    /// The timestamp from when the proto block was proposed.
+    pub(crate) timestamp: Timestamp,
+    /// Instructions for system transactions like slashing and rewards.
+    pub(crate) instructions: Vec<Instruction>,
 }
 
 impl Display for FinalizedBlock {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let instructions: Vec<_> = self
+            .instructions
+            .iter()
+            .map(Instruction::to_string)
+            .collect();
         write!(
             f,
-            "finalized block deploys {:<8x}, random bit {}, timestamp {}",
+            "finalized block deploys {:<8x}, random bit {}, timestamp {}, instructions: [{}]",
             HexList(&self.proto_block.deploys),
             self.proto_block.random_bit,
             self.timestamp,
+            instructions.join(", ")
         )
     }
 }

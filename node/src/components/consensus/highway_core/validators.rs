@@ -62,7 +62,7 @@ impl<VID: Eq + Hash> Validators<VID> {
 
     /// Returns validator at index.
     /// Expects that idx has been validated before calling this function.
-    pub(crate) fn get_by_id(&self, idx: ValidatorIndex) -> &Validator<VID> {
+    pub(crate) fn get_by_index(&self, idx: ValidatorIndex) -> &Validator<VID> {
         &self.validators.get(idx.0 as usize).unwrap()
     }
 
