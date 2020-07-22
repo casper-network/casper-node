@@ -22,7 +22,7 @@ use crate::{
 pub use event::{Event, RequestDirection};
 pub use message::Message;
 
-trait ReactorEvent:
+pub trait ReactorEvent:
     From<Event> + From<NetworkRequest<NodeId, Message>> + From<StorageRequest<Storage>> + Send
 {
 }
@@ -32,8 +32,7 @@ impl<T> ReactorEvent for T where
 {
 }
 
-/// The component which gossips `Deploy`s to peers and handles incoming `Deploy`s which have been
-/// gossiped to it.
+/// The component which fetches a `Deploy` from local storage or asks a peer if its not in storage.
 #[derive(Debug)]
 pub(crate) struct DeployFetcher {
     get_from_peer_timeout: Duration,
@@ -64,14 +63,25 @@ impl DeployFetcher {
         let request_direction = if let Some(responder) = maybe_responder {
             self.responders
                 .entry((deploy_hash, peer))
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(responder);
             RequestDirection::Outbound
         } else {
             RequestDirection::Inbound
         };
 
-        // Get the deploy from the storage component then send it to `sender`.
+        // Get the deploy from the storage component.
+        self.get_deploy_from_storage(effect_builder, request_direction, deploy_hash, peer)
+    }
+
+    /// Gets a `Deploy` from the storage component.
+    fn get_deploy_from_storage<REv: ReactorEvent>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        request_direction: RequestDirection,
+        deploy_hash: DeployHash,
+        peer: NodeId,
+    ) -> Effects<Event> {
         effect_builder
             .get_deploys_from_storage(smallvec![deploy_hash])
             .event(move |mut results| Event::GetFromStoreResult {
@@ -104,12 +114,6 @@ impl DeployFetcher {
                             .ignore(),
                     );
                 }
-            } else {
-                error!(
-                    "responder for deploy_hash {} peer {} does not exist",
-                    *deploy.id(),
-                    peer
-                );
             }
             effects
         }
@@ -141,34 +145,21 @@ impl DeployFetcher {
         }
     }
 
-    /// Handles getting the deploy from the peer.
+    /// Handles receiving a deploy from a peer.
     fn got_from_peer<REv: ReactorEvent>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         deploy: Deploy,
         peer: NodeId,
     ) -> Effects<Event> {
-        // We did not have this deploy locally so store it.
-        let mut effects = effect_builder
-            .put_deploy_to_storage(deploy.clone())
-            .ignore();
-
-        if let Some(responders) = self.responders.remove(&(*deploy.id(), peer)) {
-            for responder in responders {
-                effects.extend(
-                    responder
-                        .respond(Some(Box::new(deploy.to_owned())))
-                        .ignore(),
-                );
-            }
-        } else {
-            error!(
-                "responder for deploy_hash {} peer {} does not exist",
-                *deploy.id(),
-                peer
-            );
-        }
-        effects
+        let deploy_hash = *deploy.id();
+        effect_builder
+            .put_deploy_to_storage(deploy)
+            .event(move |result| Event::PutToStoreResult {
+                deploy_hash,
+                peer,
+                result,
+            })
     }
 
     /// Remove any remaining in flight fetch requests for provided deploy_hash and peer.
@@ -185,7 +176,7 @@ impl DeployFetcher {
 
 impl<REv> Component<REv> for DeployFetcher
 where
-    REv: Send + From<Event> + From<NetworkRequest<NodeId, Message>> + From<StorageRequest<Storage>>,
+    REv: ReactorEvent,
 {
     type Event = Event;
 
@@ -228,17 +219,26 @@ where
             },
             Event::PutToStoreResult {
                 deploy_hash,
-                maybe_sender: _,
+                peer,
                 result,
             } => match result {
-                Ok(_) => {
-                    // Does this component actually cares if this succeeds?
-                    Effects::new()
+                Ok(ret) => {
+                    if ret {
+                        self.get_deploy_from_storage(
+                            effect_builder,
+                            RequestDirection::Outbound,
+                            deploy_hash,
+                            peer,
+                        )
+                    } else {
+                        self.timeout_peer(deploy_hash, peer);
+                        Effects::new()
+                    }
                 }
                 Err(error) => {
                     error!(
-                        "received deploy {} but failed to put it to store: {}",
-                        deploy_hash, error
+                        "received deploy {} from peer {} but failed to put it to store: {}",
+                        deploy_hash, peer, error
                     );
                     Effects::new()
                 }

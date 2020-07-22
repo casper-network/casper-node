@@ -40,11 +40,10 @@ pub enum Event {
     },
     /// An incoming gossip network message.
     MessageReceived { sender: NodeId, message: Message },
-    /// The result of the `DeployFetcher` putting a deploy to the storage component.  If the
-    /// result is `Ok`, the deploy hash should be gossiped onwards.
+    /// The result of the `DeployFetcher` putting a deploy to the storage component.
     PutToStoreResult {
         deploy_hash: DeployHash,
-        maybe_sender: Option<NodeId>,
+        peer: NodeId,
         result: Result<bool>,
     },
 }
