@@ -665,7 +665,7 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: DeliveryStrategy<C>>
         self
     }
 
-    fn build(mut self) -> Result<HighwayTestHarness<C, DS>, BuilderError> {
+    fn build<R: Rng>(mut self, rng: &mut R) -> Result<HighwayTestHarness<C, DS>, BuilderError> {
         if self.validators_secs.is_empty() {
             return Err(BuilderError::NoValidators);
         }
@@ -878,7 +878,7 @@ mod test_harness {
                 .consensus_values(vec![1])
                 .weight_limits(1, 5)
                 .ftt(1)
-                .build()
+                .build(&mut rand)
                 .ok()
                 .expect("Construction was successful");
 
@@ -905,7 +905,7 @@ mod test_harness {
                 .validators(validators)
                 .consensus_values((0..10).collect())
                 .weight_limits(3, 5)
-                .build()
+                .build(&mut rand)
                 .ok()
                 .expect("Construction was successful");
 
