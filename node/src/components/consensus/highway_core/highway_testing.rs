@@ -716,9 +716,12 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: DeliveryStrategy<C>>
             Distribution::Poisson(_) => unimplemented!("Poisson distribution of weights"),
         };
 
-        let ftt = self
-            .ftt
-            .unwrap_or_else(|| (weights.iter().sum::<Weight>().0 - 1) / 3);
+        let weights_sum = weights.iter().sum::<Weight>().0;
+
+        // Network is not safe if weight of malicious validators is higher than ⅓.
+        let safe_ftt_limit = (weights_sum - 1) / 3;
+        // Random FTT that still creates secure network – where there's less equivocators than 1/3 of the weights.
+        let ftt = self.ftt.unwrap_or_else(|| rng.gen_range(1, safe_ftt_limit));
 
         let validator_ids = (0..validators_num)
             .map(|i| ValidatorId(i as u64))
