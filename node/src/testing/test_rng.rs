@@ -32,6 +32,11 @@ impl TestRng {
     /// Constructs a new `TestRng` using a seed generated from the env var `CL_TEST_SEED` if set or
     /// from cryptographically secure random data if not.
     ///
+    /// Note that `new()` or `default()` should only be called once per test.  If a test needs to
+    /// spawn multiple threads each with their own `TestRng`, then use `new()` to create a single,
+    /// master `TestRng`, then use it to create a seed per child thread.  The child `TestRng`s can
+    /// then be constructed in their own threads via `from_seed()`.
+    ///
     /// # Panics
     ///
     /// Panics if a `TestRng` has already been created on this thread.
@@ -42,6 +47,9 @@ impl TestRng {
         match env::var(CL_TEST_SEED) {
             Ok(seed_as_hex) => {
                 hex::decode_to_slice(&seed_as_hex, &mut seed).unwrap_or_else(|error| {
+                    THIS_THREAD_HAS_RNG.with(|flag| {
+                        *flag.borrow_mut() = false;
+                    });
                     panic!("can't parse '{}' as a TestRng seed: {}", seed_as_hex, error)
                 });
             }
@@ -55,7 +63,10 @@ impl TestRng {
         TestRng { seed, rng }
     }
 
-    /// Constructs a new `TestRng` using `seed`.
+    /// Constructs a new `TestRng` using `seed`.  This should be used in cases where a test needs to
+    /// spawn multiple threads each with their own `TestRng`.  A single, master `TestRng` should be
+    /// constructed before any child threads are spawned, and that one should be used to create
+    /// seeds for the child threads' `TestRng`s.
     ///
     /// # Panics
     ///
