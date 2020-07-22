@@ -636,8 +636,6 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: DeliveryStrategy<C>>
     }
 
     pub(crate) fn weight_limits(mut self, lower: u64, upper: u64) -> Self {
-        // TODO: More checks?
-        assert!(lower <= upper);
         self.weight_limits = (lower, upper);
         self
     }
@@ -695,6 +693,16 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: DeliveryStrategy<C>>
         let seed = self.seed;
         let round_exp = self.round_exp;
         let start_time = self.start_time;
+
+        let (lower, upper) = if self.weight_limits == (0, 0) {
+            return Err(BuilderError::WeightLimits);
+        } else {
+            let (l, u) = self.weight_limits;
+            if (l >= u) {
+                return Err(BuilderError::WeightLimits);
+            }
+            (l, u)
+        };
 
         let weights: Vec<Weight> = match self.weight_distribution {
             Distribution::Constant => {
