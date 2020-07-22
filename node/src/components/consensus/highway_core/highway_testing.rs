@@ -706,11 +706,12 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: DeliveryStrategy<C>>
 
         let weights: Vec<Weight> = match self.weight_distribution {
             Distribution::Constant => {
-                let (lower, upper) = self.weight_limits;
-                let weight = Weight((lower + upper) / 2);
+                let weight = Weight(rng.gen_range(lower, upper));
                 (0..validators_num).map(|_| weight).collect()
             }
-            Distribution::Uniform => unimplemented!(),
+            Distribution::Uniform => (0..validators_num)
+                .map(|_| Weight(rng.gen_range(lower, upper)))
+                .collect(),
             // https://casperlabs.atlassian.net/browse/HWY-116
             Distribution::Poisson(_) => unimplemented!("Poisson distribution of weights"),
         };
