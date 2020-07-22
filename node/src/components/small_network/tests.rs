@@ -10,24 +10,24 @@ use std::{
 };
 
 use derive_more::From;
+use pnet::datalink;
+use prometheus::Registry;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
+use tracing::{debug, info};
 
 use crate::{
     components::Component,
     effect::{announcements::NetworkAnnouncement, EffectBuilder, Effects},
     logging,
-    reactor::{self, EventQueueHandle, Reactor, Runner},
+    reactor::{self, EventQueueHandle, Finalize, Reactor, Runner},
     small_network::{self, NodeId, SmallNetwork},
     testing::{
+        self,
         network::{Network, NetworkedReactor},
-        unused_port_on_localhost, ConditionCheckReactor,
+        ConditionCheckReactor, TestRng,
     },
 };
-use pnet::datalink;
-use prometheus::Registry;
-use rand::{rngs::OsRng, Rng};
-use reactor::{wrap_effects, Finalize};
-use tracing::{debug, info};
 
 /// Test-reactor event.
 #[derive(Debug, From)]
@@ -69,7 +69,7 @@ impl Reactor for TestReactor {
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::SmallNet(ev) => wrap_effects(
+            Event::SmallNet(ev) => reactor::wrap_effects(
                 Event::SmallNet,
                 self.net.handle_event(effect_builder, rng, ev),
             ),
@@ -84,7 +84,10 @@ impl Reactor for TestReactor {
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let (net, effects) = SmallNetwork::new(event_queue, cfg)?;
 
-        Ok((TestReactor { net }, wrap_effects(Event::SmallNet, effects)))
+        Ok((
+            TestReactor { net },
+            reactor::wrap_effects(Event::SmallNet, effects),
+        ))
     }
 }
 
@@ -179,10 +182,10 @@ fn gen_config(bind_port: u16, root_port: u16) -> small_network::Config {
 /// Ensures that network cleanup and basic networking works.
 #[tokio::test]
 async fn run_two_node_network_five_times() {
-    let mut rng = OsRng;
+    let mut rng = TestRng::new();
 
     // The networking port used by the tests for the root node.
-    let root_node_port = unused_port_on_localhost();
+    let root_node_port = testing::unused_port_on_localhost();
 
     init_logging();
 
@@ -228,7 +231,7 @@ async fn run_two_node_network_five_times() {
 async fn bind_to_real_network_interface() {
     init_logging();
 
-    let mut rng = OsRng;
+    let mut rng = TestRng::new();
 
     let iface = datalink::interfaces()
         .into_iter()
@@ -241,7 +244,7 @@ async fn bind_to_real_network_interface() {
         .next()
         .expect("found a interface with no ips")
         .ip();
-    let port = unused_port_on_localhost();
+    let port = testing::unused_port_on_localhost();
 
     let local_net_config = small_network::Config {
         bind_interface: local_addr,
@@ -267,7 +270,9 @@ async fn bind_to_real_network_interface() {
 #[tokio::test]
 async fn check_varying_size_network_connects() {
     init_logging();
-    let mut rng = OsRng;
+
+    let mut rng = TestRng::new();
+
     let quiet_for: Duration = Duration::from_millis(250);
 
     // Try with a few predefined sets of network sizes.
@@ -277,7 +282,7 @@ async fn check_varying_size_network_connects() {
         let mut net = Network::new();
 
         // Pick a random port in the higher ranges that is likely to be unused.
-        let root_port = unused_port_on_localhost();
+        let root_port = testing::unused_port_on_localhost();
 
         for i in 0..number_of_nodes {
             // We use a `bind_port` of 0 to get a random port assigned.

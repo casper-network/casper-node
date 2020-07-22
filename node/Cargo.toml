@@ -85,7 +85,7 @@ fake_instant = "0.4.0"
 lazy_static = "1"
 pnet = "0.26.0"
 proptest = "0.9.4"
-rand_xorshift = { version = "~0.2.0" }
+rand_pcg = "0.2.1"
 rand_core = "0.5.1"
 tokio = { version = "0.2.20", features = ["test-util"] }
 
