@@ -458,7 +458,6 @@ impl<I> Display for DeployFetcherRequest<I> {
     }
 }
 
-
 /// A contract runtime request.
 #[derive(Debug)]
 #[must_use]

@@ -33,8 +33,8 @@ use crate::{
             ApiServerAnnouncement, ConsensusAnnouncement, NetworkAnnouncement, StorageAnnouncement,
         },
         requests::{
-            ApiRequest, BlockExecutorRequest, ContractRuntimeRequest, DeployFetcherRequest, DeployQueueRequest,
-            MetricsRequest, NetworkRequest, StorageRequest,
+            ApiRequest, BlockExecutorRequest, ContractRuntimeRequest, DeployFetcherRequest,
+            DeployQueueRequest, MetricsRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },

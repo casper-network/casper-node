@@ -96,8 +96,8 @@ use announcements::{
 use casperlabs_types::{Key, ProtocolVersion};
 use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
 use requests::{
-    BlockExecutorRequest, ContractRuntimeRequest, DeployFetcherRequest, DeployQueueRequest, MetricsRequest,
-    NetworkRequest, StorageRequest,
+    BlockExecutorRequest, ContractRuntimeRequest, DeployFetcherRequest, DeployQueueRequest,
+    MetricsRequest, NetworkRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
