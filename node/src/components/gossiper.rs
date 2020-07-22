@@ -37,18 +37,37 @@ pub trait Item: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Dis
     fn id(&self) -> &Self::Id;
 }
 
-pub(crate) fn put_deploy_to_store<T, REv>(
-    effect_builder: EffectBuilder<REv>,
-    deploy: crate::types::Deploy,
-    maybe_sender: Option<NodeId>,
-) -> Effects<Event<crate::types::Deploy>>
+/// A helper trait whose bounds represent the requirements for a reactor event that `Gossiper` can
+/// work with.
+pub trait ReactorEventT<T>:
+    From<Event<T>>
+    + From<NetworkRequest<NodeId, Message<T>>>
+    + From<StorageRequest<Storage>>
+    + Send
+    + 'static
 where
-    T: Item,
+    T: Item + 'static,
+    <T as Item>::Id: 'static,
+{
+}
+
+impl<REv, T> ReactorEventT<T> for REv
+where
+    T: Item + 'static,
+    <T as Item>::Id: 'static,
     REv: From<Event<T>>
         + From<NetworkRequest<NodeId, Message<T>>>
         + From<StorageRequest<Storage>>
-        + Send,
+        + Send
+        + 'static,
 {
+}
+
+pub(crate) fn put_deploy_to_storage<T: Item + 'static, REv: ReactorEventT<T>>(
+    effect_builder: EffectBuilder<REv>,
+    deploy: crate::types::Deploy,
+    maybe_sender: Option<NodeId>,
+) -> Effects<Event<crate::types::Deploy>> {
     let deploy_hash = *deploy.id();
     effect_builder
         .put_deploy_to_storage(deploy)
@@ -59,18 +78,11 @@ where
         })
 }
 
-pub(crate) fn get_deploy_from_store<T, REv>(
+pub(crate) fn get_deploy_from_storage<T: Item + 'static, REv: ReactorEventT<T>>(
     effect_builder: EffectBuilder<REv>,
     deploy_hash: crate::types::DeployHash,
     sender: NodeId,
-) -> Effects<Event<crate::types::Deploy>>
-where
-    T: Item,
-    REv: From<Event<T>>
-        + From<NetworkRequest<NodeId, Message<T>>>
-        + From<StorageRequest<Storage>>
-        + Send,
-{
+) -> Effects<Event<crate::types::Deploy>> {
     effect_builder
         .get_deploys_from_storage(smallvec![deploy_hash])
         .event(move |mut result| {
@@ -89,15 +101,7 @@ where
 
 /// The component which gossips to peers and handles incoming gossip messages from peers.
 #[allow(clippy::type_complexity)]
-pub(crate) struct Gossiper<T, REv>
-where
-    T: Item,
-    REv: From<Event<T>>
-        + From<NetworkRequest<NodeId, Message<T>>>
-        + From<StorageRequest<Storage>>
-        + Send
-        + 'static,
-{
+pub(crate) struct Gossiper<T: Item + 'static, REv: ReactorEventT<T>> {
     table: GossipTable<T::Id>,
     gossip_timeout: Duration,
     get_from_peer_timeout: Duration,
@@ -107,15 +111,7 @@ where
         Box<dyn Fn(EffectBuilder<REv>, T::Id, NodeId) -> Effects<Event<T>> + Send + 'static>,
 }
 
-impl<T, REv> Gossiper<T, REv>
-where
-    T: Item + 'static,
-    <T as Item>::Id: 'static,
-    REv: From<Event<T>>
-        + From<NetworkRequest<NodeId, Message<T>>>
-        + From<StorageRequest<Storage>>
-        + Send,
-{
+impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
     /// Constructs a new gossiper component.
     ///
     /// `put_to_holder` is called by the gossiper whenever a new complete item is received, via
@@ -423,14 +419,7 @@ where
     }
 }
 
-impl<T, REv> Component<REv> for Gossiper<T, REv>
-where
-    T: Item + 'static,
-    REv: From<Event<T>>
-        + From<NetworkRequest<NodeId, Message<T>>>
-        + From<StorageRequest<Storage>>
-        + Send,
-{
+impl<T: Item + 'static, REv: ReactorEventT<T>> Component<REv> for Gossiper<T, REv> {
     type Event = Event<T>;
 
     fn handle_event<R: Rng + ?Sized>(
@@ -484,14 +473,7 @@ where
     }
 }
 
-impl<T, REv> Debug for Gossiper<T, REv>
-where
-    T: Item,
-    REv: From<Event<T>>
-        + From<NetworkRequest<NodeId, Message<T>>>
-        + From<StorageRequest<Storage>>
-        + Send,
-{
+impl<T: Item + 'static, REv: ReactorEventT<T>> Debug for Gossiper<T, REv> {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         formatter
             .debug_struct("Gossiper")

@@ -106,7 +106,7 @@ impl reactor::Reactor for Reactor {
         let (storage_config, _storage_tempdir) = storage::Config::default_for_tests();
         let storage = Storage::new(&storage_config)?;
 
-        let deploy_gossiper = Gossiper::new(config, put_deploy_to_store, get_deploy_from_store);
+        let deploy_gossiper = Gossiper::new(config, put_deploy_to_storage, get_deploy_from_storage);
 
         let reactor = Reactor {
             network,

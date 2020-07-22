@@ -221,8 +221,8 @@ impl reactor::Reactor for Reactor {
             EraSupervisor::new(timestamp, config.consensus, effect_builder)?;
         let deploy_gossiper = Gossiper::new(
             config.gossip,
-            gossiper::put_deploy_to_store,
-            gossiper::get_deploy_from_store,
+            gossiper::put_deploy_to_storage,
+            gossiper::get_deploy_from_storage,
         );
         let deploy_buffer = DeployBuffer::new();
 
