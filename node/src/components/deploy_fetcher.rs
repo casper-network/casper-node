@@ -71,11 +71,11 @@ impl DeployFetcher {
         };
 
         // Get the deploy from the storage component.
-        self.get_deploy_from_storage(effect_builder, request_direction, deploy_hash, peer)
+        self.get_from_store(effect_builder, request_direction, deploy_hash, peer)
     }
 
     /// Gets a `Deploy` from the storage component.
-    fn get_deploy_from_storage<REv: ReactorEvent>(
+    fn get_from_store<REv: ReactorEvent>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         request_direction: RequestDirection,
@@ -224,7 +224,7 @@ where
             } => match result {
                 Ok(ret) => {
                     if ret {
-                        self.get_deploy_from_storage(
+                        self.get_from_store(
                             effect_builder,
                             RequestDirection::Outbound,
                             deploy_hash,
