@@ -1,7 +1,7 @@
 use std::result;
 
-use node::components::contract_runtime::shared::TypeMismatch;
-use types::CLValueError;
+use casperlabs_node::components::contract_runtime::shared::TypeMismatch;
+use casperlabs_types::CLValueError;
 
 /// The error type returned by any casperlabs-engine-test-support operation.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Hash, Debug)]

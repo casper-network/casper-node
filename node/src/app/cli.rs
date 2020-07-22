@@ -15,7 +15,7 @@ use rand_chacha::ChaCha20Rng;
 use regex::Regex;
 use structopt::StructOpt;
 use toml::{value::Table, Value};
-use tracing::{error, info, trace};
+use tracing::{info, trace};
 
 use crate::config;
 use casperlabs_node::{
@@ -156,41 +156,6 @@ fn normalize_paths(maybe_config_dir: Option<PathBuf>, config: &mut Value) {
     }
 }
 
-fn config_from_toml_table(toml_table: Value) -> anyhow::Result<validator::Config> {
-    // Parse the TOML table into a validator::Config.  Some values may be discarded if they don't
-    // match fields in the config structs.
-    let validator_config = toml_table.clone().try_into()?;
-
-    // Convert the parsed config back into a TOML table to compare it to the one passed in.
-    let actual_table: Table = toml::from_str(&toml::to_string(&validator_config)?)?;
-    let input_table = toml_table.as_table().unwrap();
-
-    for (section_name, section_values) in
-        input_table.iter().map(|(k, v)| (k, v.as_table().unwrap()))
-    {
-        // Print an error message for any section which has been ignored from the input table.
-        let actual_section_values = match actual_table.get(section_name) {
-            Some(values) => values.as_table().unwrap(),
-            None => {
-                error!(
-                    "ignoring config section {} with values {:?}",
-                    section_name, section_values
-                );
-                continue;
-            }
-        };
-
-        // Print an error message for any other key, value pairs ignored from the input table.
-        for (key, value) in section_values {
-            if !actual_section_values.contains_key(key) {
-                error!("ignoring config entry {}.{}={}", section_name, key, value);
-            }
-        }
-    }
-
-    Ok(validator_config)
-}
-
 impl Cli {
     /// Executes selected CLI command.
     pub async fn run(self) -> anyhow::Result<()> {
@@ -249,7 +214,7 @@ impl Cli {
                 normalize_paths(maybe_root_path, &mut config_table);
 
                 // Create validator config, including any overridden or normalized values.
-                let validator_config = config_from_toml_table(config_table)?;
+                let validator_config = config_table.try_into()?;
 
                 trace!("{}", config::to_string(&validator_config)?);
 

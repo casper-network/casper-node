@@ -12,22 +12,21 @@ use std::{
 
 use linked_hash_map::LinkedHashMap;
 
-use crate::components::contract_runtime::shared::{
-    additive_map::AdditiveMap,
-    newtypes::CorrelationId,
-    stored_value::StoredValue,
-    transform::{self, Transform},
-    TypeMismatch,
-};
-use crate::components::contract_runtime::storage::global_state::StateReader;
-use types::{bytesrepr, CLType, CLValueError, Key};
-
-use crate::components::contract_runtime::core::engine_state::{
-    execution_effect::ExecutionEffect, op::Op,
-};
+use casperlabs_types::{bytesrepr, CLType, CLValueError, Key};
 
 pub use self::ext::TrackingCopyExt;
 use self::meter::{heap_meter::HeapSize, Meter};
+use crate::components::contract_runtime::{
+    core::engine_state::{execution_effect::ExecutionEffect, op::Op},
+    shared::{
+        additive_map::AdditiveMap,
+        newtypes::CorrelationId,
+        stored_value::StoredValue,
+        transform::{self, Transform},
+        TypeMismatch,
+    },
+    storage::global_state::StateReader,
+};
 
 #[derive(Debug)]
 pub enum TrackingCopyQueryResult {
@@ -297,7 +296,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                     Err(error) => return Ok(AddResult::from(error)),
                 },
                 _ => {
-                    if *cl_value.cl_type() == types::named_key_type() {
+                    if *cl_value.cl_type() == casperlabs_types::named_key_type() {
                         match cl_value.into_t() {
                             Ok(name_and_key) => {
                                 let map = iter::once(name_and_key).collect();

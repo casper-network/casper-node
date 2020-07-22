@@ -24,7 +24,7 @@ use num_traits::Zero;
 use parity_wasm::elements::Module;
 use tracing::{debug, warn};
 
-use types::{
+use casperlabs_types::{
     account::AccountHash,
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},

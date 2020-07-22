@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use types::ProtocolVersion;
+use casperlabs_types::ProtocolVersion;
 
 #[derive(Error, Debug, Copy, Clone)]
 pub enum ResolverError {

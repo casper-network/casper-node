@@ -1,7 +1,7 @@
 use proptest::{arbitrary, array, collection, prop_oneof, strategy::Strategy};
 
 use crate::components::contract_runtime::shared::{make_array_newtype, newtypes::Blake2bHash};
-use types::{
+use casperlabs_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     gens, URef,
 };
@@ -281,7 +281,7 @@ fn create_0_leaf_trie(
 }
 
 mod empty_tries {
-    use types::newtypes::CorrelationId;
+    use casperlabs_types::newtypes::CorrelationId;
 
     use super::*;
     use crate::{
@@ -316,7 +316,7 @@ mod empty_tries {
 mod proptests {
     use proptest::{collection::vec, proptest};
 
-    use types::newtypes::CorrelationId;
+    use casperlabs_types::newtypes::CorrelationId;
 
     const DEFAULT_MIN_LENGTH: usize = 0;
     const DEFAULT_MAX_LENGTH: usize = 100;

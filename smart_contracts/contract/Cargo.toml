@@ -10,20 +10,20 @@ homepage = "https://casperlabs.io"
 repository = "https://github.com/CasperLabs/CasperLabs/tree/master/execution-engine/contract"
 license-file = "../../LICENSE"
 
+[dependencies]
+casperlabs-types = { version = "0.6.0", path = "../../types" }
+hex_fmt = "0.3.0"
+thiserror = "1.0.18"
+wee_alloc = "0.4.5"
+
+[dev-dependencies]
+version-sync = "0.8"
+
 [features]
 default = []
 std = ["casperlabs-types/std"]
 test-support = []
 no-unstable-features = ["std", "casperlabs-types/no-unstable-features"]
-
-[dependencies]
-casperlabs-types = { version = "0.6.0", path = "../../types" }
-thiserror = "1.0.18"
-hex_fmt = "0.3.0"
-wee_alloc = "0.4.5"
-
-[dev-dependencies]
-version-sync = "0.8"
 
 [package.metadata.docs.rs]
 features = ["no-unstable-features"]

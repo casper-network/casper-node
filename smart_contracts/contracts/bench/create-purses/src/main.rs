@@ -4,13 +4,11 @@
 #[macro_use]
 extern crate alloc;
 
-extern crate contract;
-
-use contract::{
+use casperlabs_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::U512;
+use casperlabs_types::U512;
 
 const ARG_TOTAL_PURSES: &str = "total_purses";
 const ARG_SEED_AMOUNT: &str = "seed_amount";

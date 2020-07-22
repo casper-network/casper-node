@@ -1,11 +1,13 @@
-use crate::components::contract_runtime::shared::stored_value::StoredValue;
-use crate::components::contract_runtime::storage::global_state::StateReader;
-use types::standard_payment::{
-    AccountProvider, MintProvider, ProofOfStakeProvider, StandardPayment,
+use casperlabs_types::{
+    standard_payment::{AccountProvider, MintProvider, ProofOfStakeProvider, StandardPayment},
+    system_contract_errors, ApiError, Key, RuntimeArgs, URef, U512,
 };
-use types::{system_contract_errors, ApiError, Key, RuntimeArgs, URef, U512};
 
-use crate::components::contract_runtime::core::{execution, runtime::Runtime};
+use crate::components::contract_runtime::{
+    core::{execution, runtime::Runtime},
+    shared::stored_value::StoredValue,
+    storage::global_state::StateReader,
+};
 
 pub(crate) const METHOD_GET_PAYMENT_PURSE: &str = "get_payment_purse";
 

@@ -305,7 +305,7 @@ mod json {
             hash::Digest,
         },
     };
-    use types::ContractVersion;
+    use casperlabs_types::ContractVersion;
 
     #[derive(Serialize, Deserialize)]
     pub(super) struct DeployHash(String);

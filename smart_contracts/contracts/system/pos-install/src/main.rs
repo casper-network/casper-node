@@ -3,27 +3,31 @@
 
 extern crate alloc;
 
-use alloc::{collections::BTreeMap, string::String, vec};
+use alloc::{
+    boxed::Box,
+    collections::BTreeMap,
+    string::{String, ToString},
+    vec,
+};
 
-use alloc::{boxed::Box, string::ToString};
-use contract::{
+use casperlabs_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use pos::{
-    ARG_ACCOUNT_KEY, ARG_AMOUNT, ARG_PURSE, METHOD_BOND, METHOD_FINALIZE_PAYMENT,
-    METHOD_GET_PAYMENT_PURSE, METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE, METHOD_UNBOND,
-};
-use types::proof_of_stake::Stakes;
-use types::{
+use casperlabs_types::{
     account::AccountHash,
     contracts::{
         EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys, Parameter,
         CONTRACT_INITIAL_VERSION,
     },
+    proof_of_stake::Stakes,
     runtime_args,
     system_contract_errors::mint,
     CLType, CLValue, ContractPackageHash, Key, RuntimeArgs, URef, U512,
+};
+use pos::{
+    ARG_ACCOUNT_KEY, ARG_AMOUNT, ARG_PURSE, METHOD_BOND, METHOD_FINALIZE_PAYMENT,
+    METHOD_GET_PAYMENT_PURSE, METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE, METHOD_UNBOND,
 };
 
 const PLACEHOLDER_KEY: Key = Key::Hash([0u8; 32]);

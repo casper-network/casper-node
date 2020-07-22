@@ -5,8 +5,8 @@ extern crate alloc;
 
 use alloc::string::String;
 
-use contract::contract_api::{runtime, storage};
-use types::ApiError;
+use casperlabs_contract::contract_api::{runtime, storage};
+use casperlabs_types::ApiError;
 
 #[no_mangle]
 pub extern "C" fn call() {

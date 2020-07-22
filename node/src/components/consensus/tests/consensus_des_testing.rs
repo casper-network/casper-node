@@ -1,14 +1,16 @@
-use super::queue::{MessageT, Queue, QueueEntry};
-use crate::types::Timestamp;
-use anyhow::anyhow;
-use rand::Rng;
-use std::cmp::Ordering;
 use std::{
+    cmp::Ordering,
     collections::{BTreeMap, BinaryHeap, VecDeque},
     fmt::{Debug, Display, Formatter},
     hash::Hash,
     time,
 };
+
+use anyhow::anyhow;
+use rand::Rng;
+
+use super::queue::{MessageT, Queue, QueueEntry};
+use crate::types::Timestamp;
 
 /// Enum defining recipients of the message.
 #[derive(Debug)]

@@ -5,8 +5,8 @@
 extern crate alloc;
 
 use alloc::collections::BTreeMap;
-use contract::contract_api::{runtime, storage};
-use types::{
+use casperlabs_contract::contract_api::{runtime, storage};
+use casperlabs_types::{
     contracts::Parameters, CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
 };
 

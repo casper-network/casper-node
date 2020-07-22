@@ -13,11 +13,11 @@ use alloc::{
 
 use core::{convert::TryInto, iter::FromIterator};
 
-use contract::{
+use casperlabs_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{
+use casperlabs_types::{
     contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
     CLType, ContractPackageHash, Key, Parameter, URef,
 };

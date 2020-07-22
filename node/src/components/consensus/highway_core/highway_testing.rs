@@ -1,3 +1,5 @@
+use std::iter::FromIterator;
+
 use super::{
     active_validator::Effect,
     evidence::Evidence,
@@ -7,20 +9,20 @@ use super::{
     vertex::{Dependency, Vertex},
     Weight,
 };
-
 use crate::{
     components::consensus::{
-        tests::consensus_des_testing::{
-            DeliverySchedule, Message, Target, TargetedMessage, Validator, ValidatorId, VirtualNet,
+        tests::{
+            consensus_des_testing::{
+                DeliverySchedule, Message, Target, TargetedMessage, Validator, ValidatorId,
+                VirtualNet,
+            },
+            queue::{MessageT, QueueEntry},
         },
-        tests::queue::{MessageT, QueueEntry},
         traits::{ConsensusValueT, Context},
         BlockContext,
     },
     types::Timestamp,
 };
-
-use std::iter::FromIterator;
 
 struct HighwayConsensus<C: Context> {
     highway: Highway<C>,
@@ -323,7 +325,8 @@ where
     }
 
     /// Processes a message sent to `validator_id`.
-    /// Returns a vector of messages produced by the `validator` in reaction to processing a message.
+    /// Returns a vector of messages produced by the `validator` in reaction to processing a
+    /// message.
     fn process_message(
         &mut self,
         validator_id: ValidatorId,

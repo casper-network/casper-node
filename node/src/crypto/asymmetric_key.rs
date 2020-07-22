@@ -15,7 +15,7 @@ use signature::Signature as Sig;
 
 use super::{Error, Result};
 use crate::crypto::hash::hash;
-use types::account::AccountHash;
+use casperlabs_types::account::AccountHash;
 
 const ED25519_TAG: u8 = 0;
 const ED25519: &str = "Ed25519";

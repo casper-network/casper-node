@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use types::{AccessRights, URef};
+use casperlabs_types::{AccessRights, URef};
 
 use crate::engine_server::{
     mappings::{self, ParsingError},
@@ -58,7 +58,7 @@ impl TryFrom<Key_URef> for URef {
 
 #[cfg(test)]
 mod tests {
-    use types::UREF_ADDR_LENGTH;
+    use casperlabs_types::UREF_ADDR_LENGTH;
 
     use super::*;
     use crate::engine_server::mappings::test_utils;

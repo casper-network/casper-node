@@ -1,4 +1,4 @@
-use types::SemVer;
+use casperlabs_types::SemVer;
 
 use crate::engine_server::state;
 

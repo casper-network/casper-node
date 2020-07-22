@@ -5,15 +5,15 @@ extern crate alloc;
 
 use alloc::{boxed::Box, string::ToString, vec};
 
-use contract::{
+use casperlabs_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use standard_payment::ARG_AMOUNT;
-use types::{
+use casperlabs_types::{
     contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys, Parameter},
     CLType, CLValue,
 };
+use standard_payment::ARG_AMOUNT;
 
 const METHOD_CALL: &str = "call";
 const HASH_KEY_NAME: &str = "standard_payment_hash";

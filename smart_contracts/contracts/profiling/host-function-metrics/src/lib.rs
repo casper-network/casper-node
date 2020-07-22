@@ -7,11 +7,11 @@ use core::iter::{self, FromIterator};
 
 use rand::{distributions::Alphanumeric, rngs::SmallRng, Rng, SeedableRng};
 
-use contract::{
+use casperlabs_contract::{
     contract_api::{account, runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{
+use casperlabs_types::{
     account::{AccountHash, ActionType, Weight},
     contracts::NamedKeys,
     runtime_args, ApiError, BlockTime, CLType, CLValue, ContractHash, ContractVersion, EntryPoint,

@@ -127,8 +127,9 @@ where
             let effects = match self.sync_consensus_values(sender, &v) {
                 Some(eff) => vec![eff],
                 None => {
-                    // Downloading vertex `v` may resolve the dependency requests for other vertices.
-                    // If it's a vote that has no consensus values it can be added to the state.
+                    // Downloading vertex `v` may resolve the dependency requests for other
+                    // vertices. If it's a vote that has no consensus values it
+                    // can be added to the state.
                     self.on_vertex_fully_synced(v)
                 }
             };

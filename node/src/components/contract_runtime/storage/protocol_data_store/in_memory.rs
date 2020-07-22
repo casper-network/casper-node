@@ -1,4 +1,4 @@
-use types::ProtocolVersion;
+use casperlabs_types::ProtocolVersion;
 
 use crate::components::contract_runtime::storage::{
     error::in_memory::Error,

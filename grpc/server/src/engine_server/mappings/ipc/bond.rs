@@ -1,6 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
-use types::{account::AccountHash, U512};
+use casperlabs_types::{account::AccountHash, U512};
 
 use crate::engine_server::{ipc::Bond, mappings::MappingError};
 
@@ -33,7 +33,7 @@ impl TryFrom<Bond> for (AccountHash, U512) {
 mod tests {
     use proptest::proptest;
 
-    use types::gens;
+    use casperlabs_types::gens;
 
     use super::*;
     use crate::engine_server::mappings::test_utils;

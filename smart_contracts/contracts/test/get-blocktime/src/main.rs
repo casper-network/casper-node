@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use contract::contract_api::runtime;
-use types::BlockTime;
+use casperlabs_contract::contract_api::runtime;
+use casperlabs_types::BlockTime;
 
 const ARG_KNOWN_BLOCK_TIME: &str = "known_block_time";
 

@@ -1,4 +1,4 @@
-use node::components::contract_runtime::shared::wasm_costs::WasmCosts;
+use casperlabs_node::components::contract_runtime::shared::wasm_costs::WasmCosts;
 
 use crate::engine_server::ipc::ChainSpec_CostTable_WasmCosts;
 
@@ -41,7 +41,7 @@ impl From<ChainSpec_CostTable_WasmCosts> for WasmCosts {
 mod tests {
     use proptest::proptest;
 
-    use node::components::contract_runtime::shared::wasm_costs::gens;
+    use casperlabs_node::components::contract_runtime::shared::wasm_costs::gens;
 
     use super::*;
     use crate::engine_server::mappings::test_utils;

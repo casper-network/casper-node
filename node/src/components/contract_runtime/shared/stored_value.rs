@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use types::{
+use casperlabs_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::ContractPackage,
     CLValue, Contract, ContractWasm,
@@ -205,11 +205,11 @@ impl FromBytes for StoredValue {
 pub mod gens {
     use proptest::prelude::*;
 
-    use types::gens::cl_value_arb;
+    use casperlabs_types::gens::cl_value_arb;
 
     use super::StoredValue;
     use crate::components::contract_runtime::shared::account::gens::account_arb;
-    use types::gens::{contract_arb, contract_package_arb, contract_wasm_arb};
+    use casperlabs_types::gens::{contract_arb, contract_package_arb, contract_wasm_arb};
 
     pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         prop_oneof![

@@ -13,7 +13,7 @@ use blake2::{
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 
-use types::bytesrepr::{self, FromBytes, ToBytes};
+use casperlabs_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use super::Error;
 

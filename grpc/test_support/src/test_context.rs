@@ -1,13 +1,13 @@
 use num_traits::identities::Zero;
 
-use node::{
+use casperlabs_node::{
     components::contract_runtime::core::engine_state::{
         genesis::GenesisConfig, run_genesis_request::RunGenesisRequest, CONV_RATE,
     },
     types::Motes,
     GenesisAccount,
 };
-use types::{AccessRights, Key, URef, U512};
+use casperlabs_types::{AccessRights, Key, URef, U512};
 
 use crate::{
     internal::{InMemoryWasmTestBuilder, DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH},

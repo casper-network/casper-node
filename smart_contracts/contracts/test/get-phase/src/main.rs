@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use contract::contract_api::runtime;
-use types::Phase;
+use casperlabs_contract::contract_api::runtime;
+use casperlabs_types::Phase;
 
 const ARG_PHASE: &str = "phase";
 

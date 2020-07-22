@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use contract::contract_api::{runtime, storage};
-use types::Key;
+use casperlabs_contract::contract_api::{runtime, storage};
+use casperlabs_types::Key;
 
 #[no_mangle]
 pub extern "C" fn call() {
