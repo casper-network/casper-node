@@ -42,7 +42,6 @@ struct DeployConfig {
     max_dependencies: u8,
     max_block_size: u32,
     block_gas_limit: u64,
-    block_max_deploy_count: u32,
 }
 
 impl Default for DeployConfig {
@@ -59,7 +58,6 @@ impl From<chainspec::DeployConfig> for DeployConfig {
             max_dependencies: cfg.max_dependencies,
             max_block_size: cfg.max_block_size,
             block_gas_limit: cfg.block_gas_limit,
-            block_max_deploy_count: cfg.block_max_deploy_count,
         }
     }
 }
@@ -75,7 +73,6 @@ impl TryFrom<DeployConfig> for chainspec::DeployConfig {
             max_dependencies: cfg.max_dependencies,
             max_block_size: cfg.max_block_size,
             block_gas_limit: cfg.block_gas_limit,
-            block_max_deploy_count: cfg.block_max_deploy_count,
         })
     }
 }

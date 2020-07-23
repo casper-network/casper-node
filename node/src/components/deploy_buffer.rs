@@ -150,7 +150,6 @@ impl DeployBuffer {
                     && !past_deploys.contains(hash)
             })
             .map(|(hash, _deploy)| *hash)
-            .take(deploy_config.block_max_deploy_count as usize)
             .collect::<HashSet<_>>()
         // TODO: check gas and block size limits
     }

@@ -54,8 +54,6 @@ max_dependencies = 10
 max_block_size = 10485760
 # The upper limit of total gas of all deploys in a block.
 block_gas_limit = 10000000000000
-# The maximum number of deploys permitted in a single block.
-block_max_deploy_count = 3
 
 [wasm_costs]
 # Default opcode cost.
