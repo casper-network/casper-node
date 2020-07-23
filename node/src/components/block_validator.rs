@@ -11,6 +11,7 @@ use std::{
 
 use derive_more::From;
 use rand::Rng;
+use tracing::warn;
 
 use crate::{
     components::Component,
@@ -129,6 +130,10 @@ where
                 } else {
                     for (proto_block, block_data) in block_states {
                         if block_data.missing_deploys.contains(&deploy) {
+                            warn!(
+                                "{} considered invalid due to inability to download {}",
+                                proto_block, deploy
+                            );
                             effects.extend(
                                 block_data
                                     .responder
