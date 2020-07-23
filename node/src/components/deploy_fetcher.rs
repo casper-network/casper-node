@@ -101,21 +101,11 @@ impl DeployFetcher {
         deploy: Deploy,
         peer: NodeId,
     ) -> Effects<Event> {
-        if request_direction == RequestDirection::Inbound {
-            let message = Message::GetResponse(Box::new(deploy));
-            effect_builder.send_message(peer, message).ignore()
-        } else {
-            let mut effects = Effects::new();
-            if let Some(responders) = self.responders.remove(&(*deploy.id(), peer)) {
-                for responder in responders {
-                    effects.extend(
-                        responder
-                            .respond(Some(Box::new(deploy.to_owned())))
-                            .ignore(),
-                    );
-                }
-            }
-            effects
+        match request_direction {
+            RequestDirection::Inbound => effect_builder
+                .send_message(peer, Message::GetResponse(Box::new(deploy)))
+                .ignore(),
+            RequestDirection::Outbound => self.signal(*deploy.id(), Some(deploy), peer),
         }
     }
 
@@ -152,24 +142,28 @@ impl DeployFetcher {
         deploy: Deploy,
         peer: NodeId,
     ) -> Effects<Event> {
-        let deploy_hash = *deploy.id();
         effect_builder
-            .put_deploy_to_storage(deploy)
+            .put_deploy_to_storage(deploy.clone())
             .event(move |result| Event::PutToStoreResult {
-                deploy_hash,
+                deploy,
                 peer,
                 result,
             })
     }
 
-    /// Remove any remaining in flight fetch requests for provided deploy_hash and peer.
-    fn timeout_peer(&mut self, deploy_hash: DeployHash, peer: NodeId) -> Effects<Event> {
+    /// Handles signalling responders with `Deploy` or `None`.
+    fn signal(
+        &mut self,
+        deploy_hash: DeployHash,
+        deploy: Option<Deploy>,
+        peer: NodeId,
+    ) -> Effects<Event> {
         let mut effects = Effects::new();
         if let Some(responders) = self.responders.remove(&(deploy_hash, peer)) {
             for responder in responders {
-                effects.extend(responder.respond(None).ignore());
+                effects.extend(responder.respond(deploy.to_owned().map(Box::new)).ignore());
             }
-        };
+        }
         effects
     }
 }
@@ -193,7 +187,7 @@ where
                 peer,
                 responder,
             } => self.fetch(effect_builder, deploy_hash, peer, Some(responder)),
-            Event::TimeoutPeer { deploy_hash, peer } => self.timeout_peer(deploy_hash, peer),
+            Event::TimeoutPeer { deploy_hash, peer } => self.signal(deploy_hash, None, peer),
             Event::MessageReceived {
                 message,
                 sender: peer,
@@ -218,20 +212,17 @@ where
                 ),
             },
             Event::PutToStoreResult {
-                deploy_hash,
+                deploy,
                 peer,
                 result,
             } => match result {
-                Ok(_) => self.get_from_store(
-                    effect_builder,
-                    RequestDirection::Outbound,
-                    deploy_hash,
-                    peer,
-                ),
+                Ok(_) => self.signal(*deploy.id(), Some(deploy), peer),
                 Err(error) => {
                     error!(
                         "received deploy {} from peer {} but failed to put it to store: {}",
-                        deploy_hash, peer, error
+                        *deploy.id(),
+                        peer,
+                        error
                     );
                     Effects::new()
                 }

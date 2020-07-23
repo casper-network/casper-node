@@ -42,7 +42,7 @@ pub enum Event {
     MessageReceived { sender: NodeId, message: Message },
     /// The result of the `DeployFetcher` putting a deploy to the storage component.
     PutToStoreResult {
-        deploy_hash: DeployHash,
+        deploy: Deploy,
         peer: NodeId,
         result: Result<bool>,
     },
@@ -78,15 +78,11 @@ impl Display for Event {
             Event::MessageReceived { sender, message } => {
                 write!(formatter, "{} received from {}", message, sender)
             }
-            Event::PutToStoreResult {
-                deploy_hash,
-                result,
-                ..
-            } => {
+            Event::PutToStoreResult { deploy, result, .. } => {
                 if result.is_ok() {
-                    write!(formatter, "put {} to store", deploy_hash)
+                    write!(formatter, "put {} to store", *deploy.id())
                 } else {
-                    write!(formatter, "failed to put {} to store", deploy_hash)
+                    write!(formatter, "failed to put {} to store", *deploy.id())
                 }
             }
             Event::GetFromStoreResult {
