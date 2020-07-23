@@ -222,18 +222,13 @@ where
                 peer,
                 result,
             } => match result {
-                Ok(ret) => {
-                    if ret {
-                        self.get_from_store(
-                            effect_builder,
-                            RequestDirection::Outbound,
-                            deploy_hash,
-                            peer,
-                        )
-                    } else {
-                        self.timeout_peer(deploy_hash, peer);
-                        Effects::new()
-                    }
+                Ok(_) => {
+                    self.get_from_store(
+                        effect_builder,
+                        RequestDirection::Outbound,
+                        deploy_hash,
+                        peer,
+                    )
                 }
                 Err(error) => {
                     error!(
