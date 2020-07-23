@@ -222,14 +222,12 @@ where
                 peer,
                 result,
             } => match result {
-                Ok(_) => {
-                    self.get_from_store(
-                        effect_builder,
-                        RequestDirection::Outbound,
-                        deploy_hash,
-                        peer,
-                    )
-                }
+                Ok(_) => self.get_from_store(
+                    effect_builder,
+                    RequestDirection::Outbound,
+                    deploy_hash,
+                    peer,
+                ),
                 Err(error) => {
                     error!(
                         "received deploy {} from peer {} but failed to put it to store: {}",
