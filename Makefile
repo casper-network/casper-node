@@ -57,16 +57,10 @@ TOOL_TARGET_DIR           = grpc/cargo-casperlabs/target
 TOOL_WASM_DIR             = grpc/cargo-casperlabs/wasm
 
 CRATES_WITH_DOCS_RS_MANIFEST_TABLE = \
-	contract \
-	engine-core \
-	engine-grpc-server \
-	engine-shared \
-	engine-storage \
-	engine-test-support \
-	engine-wasm-prep \
-	mint \
-	proof-of-stake \
-	standard-payment \
+	grpc/server \
+	grpc/test_support \
+	node \
+	smart_contracts/contract \
 	types
 
 CRATES_WITH_DOCS_RS_MANIFEST_TABLE := $(patsubst %, doc-stable/%, $(CRATES_WITH_DOCS_RS_MANIFEST_TABLE))
@@ -87,7 +81,7 @@ build-contract-rs/%:
 build-system-contract-featured-rs/%:
 	$(CARGO) build \
 	        --release $(filter-out --release, $(CARGO_FLAGS)) \
-	        --manifest-path "contracts/system/$*/Cargo.toml" $(if $(FEATURES),$(if $(filter $(HIGHWAY_CONTRACTS), $*),--features $(FEATURES))) \
+	        --manifest-path "smart_contracts/contracts/system/$*/Cargo.toml" $(if $(FEATURES),$(if $(filter $(HIGHWAY_CONTRACTS), $*),--features $(FEATURES))) \
 	        --target wasm32-unknown-unknown
 
 build-contracts-rs: \
@@ -191,6 +185,7 @@ check-rs: \
 
 .PHONY: check
 check: \
+	build-docs-stable-rs \
 	build \
 	check-format \
 	lint \
