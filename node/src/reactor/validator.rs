@@ -243,7 +243,7 @@ impl reactor::Reactor for Reactor {
             validator_stakes,
         )?;
         let deploy_gossiper = DeployGossiper::new(config.gossip);
-        let deploy_buffer = DeployBuffer::new();
+        let deploy_buffer = DeployBuffer::new(config.node.block_max_deploy_count as usize);
         // Post state hash is expected to be present
         let post_state_hash = chainspec_handler
             .post_state_hash()

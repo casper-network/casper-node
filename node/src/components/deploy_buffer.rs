@@ -75,8 +75,9 @@ impl Display for Event {
 }
 
 /// Deploy buffer.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub(crate) struct DeployBuffer {
+    block_max_deploy_count: usize,
     collected_deploys: HashMap<DeployHash, DeployHeader>,
     processed: HashMap<BlockHash, HashMap<DeployHash, DeployHeader>>,
     finalized: HashMap<BlockHash, HashMap<DeployHash, DeployHeader>>,
@@ -84,8 +85,13 @@ pub(crate) struct DeployBuffer {
 
 impl DeployBuffer {
     /// Creates a new, empty deploy buffer instance.
-    pub(crate) fn new() -> Self {
-        Default::default()
+    pub(crate) fn new(block_max_deploy_count: usize) -> Self {
+        DeployBuffer {
+            block_max_deploy_count,
+            collected_deploys: HashMap::new(),
+            processed: HashMap::new(),
+            finalized: HashMap::new(),
+        }
     }
 
     /// Adds a deploy to the deploy buffer.
@@ -150,6 +156,7 @@ impl DeployBuffer {
                     && !past_deploys.contains(hash)
             })
             .map(|(hash, _deploy)| *hash)
+            .take(self.block_max_deploy_count)
             .collect::<HashSet<_>>()
         // TODO: check gas and block size limits
     }
@@ -276,7 +283,7 @@ mod tests {
     use super::*;
     use crate::{
         crypto::{asymmetric_key::PublicKey, hash::hash},
-        types::{BlockHash, DeployHash, DeployHeader},
+        types::{BlockHash, DeployHash, DeployHeader, NodeConfig},
     };
 
     fn generate_deploy(timestamp: u64, ttl: u32) -> (DeployHash, DeployHeader) {
@@ -302,7 +309,7 @@ mod tests {
         let block_time3 = 220u64;
 
         let no_blocks = HashSet::new();
-        let mut buffer = DeployBuffer::new();
+        let mut buffer = DeployBuffer::new(NodeConfig::default().block_max_deploy_count as usize);
         let (hash1, deploy1) = generate_deploy(creation_time, ttl);
         let (hash2, deploy2) = generate_deploy(creation_time, ttl);
         let (hash3, deploy3) = generate_deploy(creation_time, ttl);
@@ -402,7 +409,7 @@ mod tests {
         deploy2.dependencies = vec![hash1];
 
         let mut blocks = HashSet::new();
-        let mut buffer = DeployBuffer::new();
+        let mut buffer = DeployBuffer::new(NodeConfig::default().block_max_deploy_count as usize);
 
         // add deploy2
         buffer.add_deploy(hash2, deploy2);
