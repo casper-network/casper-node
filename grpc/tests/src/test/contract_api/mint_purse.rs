@@ -1,8 +1,8 @@
-use engine_test_support::{
+use casperlabs_engine_test_support::{
     internal::{ExecuteRequestBuilder, WasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
+use casperlabs_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const CONTRACT_MINT_PURSE: &str = "mint_purse.wasm";
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";

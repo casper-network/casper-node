@@ -9,7 +9,7 @@ mod wasm_test_builder;
 use lazy_static::lazy_static;
 use num_traits::identities::Zero;
 
-use node::{
+use casperlabs_node::{
     components::contract_runtime::{
         core::engine_state::{
             genesis::{ExecConfig, GenesisConfig},
@@ -20,7 +20,7 @@ use node::{
     types::Motes,
     GenesisAccount,
 };
-use types::{account::AccountHash, ProtocolVersion, U512};
+use casperlabs_types::{account::AccountHash, ProtocolVersion, U512};
 
 use super::{DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE};
 pub use additive_map_diff::AdditiveMapDiff;

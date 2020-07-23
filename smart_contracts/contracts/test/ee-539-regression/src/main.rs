@@ -1,11 +1,11 @@
 #![no_std]
 #![no_main]
 
-use contract::{
+use casperlabs_contract::{
     contract_api::{account, runtime},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::account::{AccountHash, ActionType, Weight};
+use casperlabs_types::account::{AccountHash, ActionType, Weight};
 
 const ARG_KEY_MANAGEMENT_THRESHOLD: &str = "key_management_threshold";
 const ARG_DEPLOYMENT_THRESHOLD: &str = "deployment_threshold";

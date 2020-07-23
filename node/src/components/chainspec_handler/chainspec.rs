@@ -17,7 +17,7 @@ use rand::{
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use types::{account::AccountHash, U512};
+use casperlabs_types::{account::AccountHash, U512};
 
 use super::{config, Error};
 use crate::{
@@ -94,6 +94,8 @@ impl Distribution<GenesisAccount> for Standard {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
+#[serde(deny_unknown_fields)]
 pub(crate) struct DeployConfig {
     pub(crate) max_payment_cost: Motes,
     pub(crate) max_ttl: Duration,
@@ -102,6 +104,8 @@ pub(crate) struct DeployConfig {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
+#[serde(deny_unknown_fields)]
 pub(crate) struct HighwayConfig {
     pub(crate) genesis_era_start_timestamp: u64,
     pub(crate) era_duration: Duration,
@@ -112,6 +116,8 @@ pub(crate) struct HighwayConfig {
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
+#[serde(deny_unknown_fields)]
 pub(crate) struct GenesisConfig {
     pub(crate) name: String,
     pub(crate) timestamp: u64,

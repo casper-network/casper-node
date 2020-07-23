@@ -6,7 +6,7 @@ use crate::components::contract_runtime::{
     storage,
 };
 
-use types::{bytesrepr, system_contract_errors::mint, ProtocolVersion};
+use casperlabs_types::{bytesrepr, system_contract_errors::mint, ProtocolVersion};
 
 #[derive(Error, Debug)]
 pub enum Error {

@@ -4,8 +4,6 @@
 //! Consider a contract held in "contract.wasm" which stores an arbitrary `String` under a `Key`
 //! named "special_value":
 //! ```no_run
-//! # use contract as casperlabs_contract;
-//! # use types as casperlabs_types;
 //! use casperlabs_contract::contract_api::{runtime, storage};
 //! use casperlabs_types::Key;
 //! const KEY: &str = "special_value";
@@ -22,7 +20,6 @@
 //!
 //! The test could be written as follows:
 //! ```no_run
-//! # use types as casperlabs_types;
 //! use casperlabs_engine_test_support::{Code, Error, SessionBuilder, TestContextBuilder, Value};
 //! use casperlabs_types::{account::AccountHash, U512, RuntimeArgs, runtime_args};
 //!
@@ -74,11 +71,11 @@ mod test_context;
 mod value;
 
 pub use account::Account;
+pub use casperlabs_types::account::AccountHash;
 pub use code::Code;
 pub use error::{Error, Result};
 pub use session::{Session, SessionBuilder, SessionTransferInfo};
 pub use test_context::{TestContext, TestContextBuilder};
-pub use types::account::AccountHash;
 pub use value::Value;
 
 /// The address of a [`URef`](types::URef) (unforgeable reference) on the network.

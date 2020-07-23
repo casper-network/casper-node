@@ -6,7 +6,7 @@ use std::{
 
 use lazy_static::lazy_static;
 
-use node::{
+use casperlabs_node::{
     components::contract_runtime::{
         core::engine_state::{
             execution_result::ExecutionResult,
@@ -21,7 +21,7 @@ use node::{
     },
     GenesisAccount,
 };
-use types::Key;
+use casperlabs_types::Key;
 
 use crate::internal::{
     DEFAULT_CHAIN_NAME, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP,

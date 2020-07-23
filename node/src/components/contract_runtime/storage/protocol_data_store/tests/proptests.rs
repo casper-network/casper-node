@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, ops::RangeInclusive};
 use lmdb::DatabaseFlags;
 use proptest::{collection, prelude::proptest};
 
-use types::{gens as gens_ext, ProtocolVersion};
+use casperlabs_types::{gens as gens_ext, ProtocolVersion};
 
 use crate::components::contract_runtime::storage::{
     protocol_data::{gens, ProtocolData},

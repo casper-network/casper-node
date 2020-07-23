@@ -6,7 +6,7 @@ use crate::components::contract_runtime::shared::{
     stored_value::StoredValue,
     transform::Transform,
 };
-use types::{Key, ProtocolVersion};
+use casperlabs_types::{Key, ProtocolVersion};
 
 use crate::components::contract_runtime::storage::{
     error::{self, in_memory},
@@ -201,7 +201,7 @@ impl StateProvider for InMemoryGlobalState {
 
 #[cfg(test)]
 mod tests {
-    use types::{account::AccountHash, CLValue};
+    use casperlabs_types::{account::AccountHash, CLValue};
 
     use crate::crypto::hash;
 

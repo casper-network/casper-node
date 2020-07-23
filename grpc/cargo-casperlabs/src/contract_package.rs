@@ -46,7 +46,7 @@ pub extern "C" fn call() {
 }
 "#;
 
-const CONFIG_CONTENTS: &str = r#"[build]
+const CONFIG_TOML_CONTENTS: &str = r#"[build]
 target = "wasm32-unknown-unknown"
 "#;
 
@@ -54,7 +54,10 @@ lazy_static! {
     static ref CARGO_TOML: PathBuf = ARGS.root_path().join(PACKAGE_NAME).join("Cargo.toml");
     static ref RUST_TOOLCHAIN: PathBuf = ARGS.root_path().join(PACKAGE_NAME).join("rust-toolchain");
     static ref MAIN_RS: PathBuf = ARGS.root_path().join(PACKAGE_NAME).join("src/main.rs");
-    static ref CONFIG: PathBuf = ARGS.root_path().join(PACKAGE_NAME).join(".cargo/config");
+    static ref CONFIG_TOML: PathBuf = ARGS
+        .root_path()
+        .join(PACKAGE_NAME)
+        .join(".cargo/config.toml");
     static ref CARGO_TOML_ADDITIONAL_CONTENTS: String = format!(
         r#"{}
 {}
@@ -92,8 +95,8 @@ pub fn update_main_rs() {
     common::write_file(&*MAIN_RS, MAIN_RS_CONTENTS);
 }
 
-pub fn add_config() {
-    let folder = CONFIG.parent().expect("should have parent");
+pub fn add_config_toml() {
+    let folder = CONFIG_TOML.parent().expect("should have parent");
     common::create_dir_all(folder);
-    common::write_file(&*CONFIG, CONFIG_CONTENTS);
+    common::write_file(&*CONFIG_TOML, CONFIG_TOML_CONTENTS);
 }

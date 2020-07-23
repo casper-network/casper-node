@@ -47,7 +47,8 @@ pub trait ProofOfStake:
         Ok(())
     }
 
-    /// Unbonds a validator with provided `maybe_amount`. If `maybe_amount` is `None` then given validator will withdraw all funds.
+    /// Unbonds a validator with provided `maybe_amount`. If `maybe_amount` is `None` then given
+    /// validator will withdraw all funds.
     fn unbond(&mut self, validator: AccountHash, maybe_amount: Option<U512>) -> Result<()> {
         let pos_purse = internal::get_bonding_purse(self)?;
         let timestamp = self.get_block_time();

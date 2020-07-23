@@ -7,7 +7,7 @@ use casperlabs_node::{
     },
     crypto::hash,
 };
-use types::{
+use casperlabs_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     CLValue, Key,

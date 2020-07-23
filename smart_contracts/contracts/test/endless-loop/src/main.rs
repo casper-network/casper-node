@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use contract::contract_api::account;
+use casperlabs_contract::contract_api::account;
 
 #[no_mangle]
 pub extern "C" fn call() {

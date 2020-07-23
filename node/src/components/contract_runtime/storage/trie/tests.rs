@@ -49,7 +49,7 @@ mod pointer_block {
 mod proptests {
     use proptest::prelude::proptest;
 
-    use types::bytesrepr;
+    use casperlabs_types::bytesrepr;
 
     use crate::components::contract_runtime::storage::trie::gens::*;
 

@@ -6,9 +6,9 @@ extern crate alloc;
 
 use alloc::string::String;
 
-use contract::contract_api::{runtime, storage};
+use casperlabs_contract::contract_api::{runtime, storage};
 
-use types::{
+use casperlabs_types::{
     runtime_args, ApiError, CLType, ContractHash, ContractVersion, EntryPoint, EntryPointAccess,
     EntryPointType, EntryPoints, Parameter, RuntimeArgs,
 };

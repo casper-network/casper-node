@@ -1,6 +1,6 @@
 //! Core types for a Merkle Trie
 
-use types::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use casperlabs_types::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
 use crate::components::contract_runtime::shared::newtypes::Blake2bHash;
 
@@ -309,7 +309,7 @@ impl<K: FromBytes, V: FromBytes> FromBytes for Trie<K, V> {
 }
 
 pub(crate) mod operations {
-    use types::bytesrepr::{self, ToBytes};
+    use casperlabs_types::bytesrepr::{self, ToBytes};
 
     use crate::{
         components::contract_runtime::{shared::newtypes::Blake2bHash, storage::trie::Trie},

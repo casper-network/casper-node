@@ -93,12 +93,12 @@ use crate::{
 use announcements::{
     ApiServerAnnouncement, ConsensusAnnouncement, NetworkAnnouncement, StorageAnnouncement,
 };
+use casperlabs_types::{Key, ProtocolVersion};
 use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
 use requests::{
     BlockExecutorRequest, BlockValidatorRequest, ContractRuntimeRequest, DeployQueueRequest,
     MetricsRequest, NetworkRequest, StorageRequest,
 };
-use types::{Key, ProtocolVersion};
 
 /// A pinned, boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;

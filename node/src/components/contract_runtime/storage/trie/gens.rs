@@ -1,6 +1,6 @@
 use proptest::{collection::vec, option, prelude::*};
 
-use types::{gens::key_arb, Key};
+use casperlabs_types::{gens::key_arb, Key};
 
 use super::{Pointer, PointerBlock, Trie};
 use crate::{
