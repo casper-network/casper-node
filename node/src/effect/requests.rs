@@ -26,11 +26,10 @@ use crate::{
             shared::{additive_map::AdditiveMap, transform::Transform},
             storage::global_state::CommitResult,
         },
-        deploy_buffer::BlockLimits,
         storage::{self, DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::hash::Digest,
-    types::{BlockHash, Deploy, DeployHash, DeployHeader, ExecutedBlock, FinalizedBlock},
+    types::{BlockHash, Deploy, DeployHash, ExecutedBlock, FinalizedBlock},
     utils::DisplayIter,
     Chainspec,
 };
@@ -245,62 +244,33 @@ impl<S: StorageType> Display for StorageRequest<S> {
     }
 }
 
-#[allow(dead_code)] // FIXME: Remove once in use.
-/// Deploy-queue related requests.
+/// A `DeployBuffer` request.
 #[derive(Debug)]
 #[must_use]
-pub enum DeployQueueRequest {
-    /// Add a deploy to the queue for inclusion into an upcoming block.
-    QueueDeploy {
-        /// Hash of deploy to store.
-        hash: DeployHash,
-        /// Header of the deploy to store.
-        header: DeployHeader,
-        /// Responder to call with the result.
-        responder: Responder<bool>,
-    },
-
+pub enum DeployBufferRequest {
     /// Request a list of deploys to propose in a new block.
-    RequestForInclusion {
+    ListForInclusion {
         /// The instant for which the deploy is requested.
         current_instant: u64, // TODO: timestamp: Timestamp,
-        /// Maximum time to live.
-        max_ttl: u32,
-        /// Gas, size and count limits for deploys in a block.
-        limits: BlockLimits,
-        /// Maximum number of dependencies.
-        max_dependencies: u8,
         /// Set of block hashes pointing to blocks whose deploys should be excluded.
-        past: HashSet<BlockHash>,
+        past_blocks: HashSet<BlockHash>,
         /// Responder to call with the result.
         responder: Responder<HashSet<DeployHash>>,
     },
 }
 
-impl Display for DeployQueueRequest {
+impl Display for DeployBufferRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            DeployQueueRequest::QueueDeploy { hash, .. } => {
-                write!(formatter, "add deploy {} to queue", hash)
-            }
-            DeployQueueRequest::RequestForInclusion {
+            DeployBufferRequest::ListForInclusion {
                 current_instant,
-                max_ttl,
-                limits,
-                max_dependencies,
-                past,
+                past_blocks,
                 responder: _,
             } => write!(
                 formatter,
-                "request for inclusion: instant {} ttl {} block_size {} gas_limit {} \
-                        max_deps {} max_deploy_count {} #past {}",
+                "list for inclusion: instant {} past {}",
                 current_instant,
-                max_ttl,
-                limits.size_bytes,
-                limits.gas,
-                max_dependencies,
-                limits.deploy_count,
-                past.len()
+                past_blocks.len()
             ),
         }
     }

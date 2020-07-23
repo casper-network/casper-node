@@ -20,7 +20,7 @@ use crate::{
     components::Component,
     effect::{
         announcements::ConsensusAnnouncement,
-        requests::{BlockExecutorRequest, DeployQueueRequest, NetworkRequest},
+        requests::{BlockExecutorRequest, DeployBufferRequest, NetworkRequest},
         EffectBuilder, EffectExt, Effects,
     },
     types::{ExecutedBlock, ProtoBlock, Timestamp},
@@ -127,7 +127,7 @@ pub trait ReactorEventT<I>:
     From<Event<I>>
     + Send
     + From<NetworkRequest<I, ConsensusMessage>>
-    + From<DeployQueueRequest>
+    + From<DeployBufferRequest>
     + From<ConsensusAnnouncement>
     + From<BlockExecutorRequest>
 {
@@ -137,7 +137,7 @@ impl<REv, I> ReactorEventT<I> for REv where
     REv: From<Event<I>>
         + Send
         + From<NetworkRequest<I, ConsensusMessage>>
-        + From<DeployQueueRequest>
+        + From<DeployBufferRequest>
         + From<ConsensusAnnouncement>
         + From<BlockExecutorRequest>
 {
