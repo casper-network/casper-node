@@ -19,7 +19,7 @@ use crate::{
     GossipTableConfig,
 };
 
-pub use event::{Event, RequestDirection};
+pub use event::{Event, FetchResult, RequestDirection};
 pub use message::Message;
 
 pub trait ReactorEvent:
@@ -61,6 +61,7 @@ impl DeployFetcher {
         maybe_responder: Option<DeployResponder>,
     ) -> Effects<Event> {
         let request_direction = if let Some(responder) = maybe_responder {
+            // Capture responder for later signalling.
             self.responders
                 .entry((deploy_hash, peer))
                 .or_default()
@@ -105,7 +106,9 @@ impl DeployFetcher {
             RequestDirection::Inbound => effect_builder
                 .send_message(peer, Message::GetResponse(Box::new(deploy)))
                 .ignore(),
-            RequestDirection::Outbound => self.signal(*deploy.id(), Some(deploy), peer),
+            RequestDirection::Outbound => {
+                self.signal(*deploy.id(), Some(FetchResult::FromStore(deploy)), peer)
+            }
         }
     }
 
@@ -144,7 +147,7 @@ impl DeployFetcher {
     ) -> Effects<Event> {
         effect_builder
             .put_deploy_to_storage(deploy.clone())
-            .event(move |result| Event::PutToStoreResult {
+            .event(move |result| Event::StoredFromPeerResult {
                 deploy,
                 peer,
                 result,
@@ -155,13 +158,13 @@ impl DeployFetcher {
     fn signal(
         &mut self,
         deploy_hash: DeployHash,
-        deploy: Option<Deploy>,
+        result: Option<FetchResult>,
         peer: NodeId,
     ) -> Effects<Event> {
         let mut effects = Effects::new();
         if let Some(responders) = self.responders.remove(&(deploy_hash, peer)) {
             for responder in responders {
-                effects.extend(responder.respond(deploy.to_owned().map(Box::new)).ignore());
+                effects.extend(responder.respond(result.clone().map(Box::new)).ignore());
             }
         }
         effects
@@ -211,12 +214,16 @@ where
                     peer,
                 ),
             },
-            Event::PutToStoreResult {
+            Event::StoredFromPeerResult {
                 deploy,
                 peer,
                 result,
             } => match result {
-                Ok(_) => self.signal(*deploy.id(), Some(deploy), peer),
+                Ok(_) => self.signal(
+                    *deploy.id(),
+                    Some(FetchResult::FromPeer(deploy, peer)),
+                    peer,
+                ),
                 Err(error) => {
                     error!(
                         "received deploy {} from peer {} but failed to put it to store: {}",

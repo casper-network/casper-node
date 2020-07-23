@@ -83,6 +83,7 @@ use crate::{
             storage::global_state::CommitResult,
         },
         deploy_buffer::BlockLimits,
+        deploy_fetcher::FetchResult,
         storage::{self, DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::hash::Digest,
@@ -487,7 +488,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         deploy_hash: DeployHash,
         peer: I,
-    ) -> Option<Box<Deploy>>
+    ) -> Option<Box<FetchResult>>
     where
         REv: From<DeployFetcherRequest<I>>,
         I: Send + 'static,

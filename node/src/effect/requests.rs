@@ -27,6 +27,7 @@ use crate::{
             storage::global_state::CommitResult,
         },
         deploy_buffer::BlockLimits,
+        deploy_fetcher::FetchResult,
         storage::{self, DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::hash::Digest,
@@ -444,7 +445,7 @@ pub enum DeployFetcherRequest<I> {
         /// The peer id of the peer to be asked if the deploy is not held locally
         peer: I,
         /// Responder to call with the result.
-        responder: Responder<Option<Box<Deploy>>>,
+        responder: Responder<Option<Box<FetchResult>>>,
     },
 }
 
