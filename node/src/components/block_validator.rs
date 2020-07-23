@@ -14,7 +14,10 @@ use rand::Rng;
 
 use crate::{
     components::Component,
-    effect::{requests::BlockValidatorRequest, EffectBuilder, EffectExt, Effects, Responder},
+    effect::{
+        requests::{BlockValidatorRequest, DeployFetcherRequest},
+        EffectBuilder, EffectExt, Effects, Responder,
+    },
     types::{DeployHash, ProtoBlock},
 };
 
@@ -66,31 +69,42 @@ impl<I> BlockValidator<I> {
 
 impl<I, REv> Component<REv> for BlockValidator<I>
 where
-    REv: From<Event<I>> + From<BlockValidatorRequest<I>> + Send,
+    I: Clone + Send + 'static,
+    REv: From<Event<I>> + From<BlockValidatorRequest<I>> + From<DeployFetcherRequest<I>> + Send,
 {
     type Event = Event<I>;
 
     fn handle_event<R: Rng + ?Sized>(
         &mut self,
-        _effect_builder: EffectBuilder<REv>,
+        effect_builder: EffectBuilder<REv>,
         _rng: &mut R,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
             Event::Request(BlockValidatorRequest {
                 proto_block,
-                sender: _sender,
+                sender,
                 responder,
             }) => {
-                let missing_deploys = proto_block.deploys.iter().cloned().collect();
+                let missing_deploys: HashSet<_> = proto_block.deploys.iter().cloned().collect();
                 self.block_states.insert(
                     proto_block,
                     BlockData {
-                        missing_deploys,
+                        missing_deploys: missing_deploys.clone(),
                         responder,
                     },
                 );
-                todo!("ask the deploy fetcher for all the deploy hashes in the block")
+                missing_deploys
+                    .into_iter()
+                    .flat_map(|deploy_hash| {
+                        effect_builder
+                            .fetch_deploy(deploy_hash, sender.clone())
+                            .event(move |maybe_deploy| Event::DeployFetcherResponse {
+                                deploy: deploy_hash,
+                                downloaded_successfully: maybe_deploy.is_some(),
+                            })
+                    })
+                    .collect()
             }
             Event::DeployFetcherResponse {
                 deploy,
