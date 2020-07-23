@@ -114,3 +114,6 @@ assets = [
     ["./target/release/casperlabs-node","/usr/bin/casperlabs-node", "755"],
     ["./target/release/casperlabs-client","/usr/bin/casperlabs-client", "755"]
 ]
+
+[package.metadata.docs.rs]
+features = ["no-unstable-features"]

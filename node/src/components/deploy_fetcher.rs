@@ -148,7 +148,7 @@ impl DeployFetcher {
         effect_builder
             .put_deploy_to_storage(deploy.clone())
             .event(move |result| Event::StoredFromPeerResult {
-                deploy,
+                deploy: Box::new(deploy),
                 peer,
                 result,
             })
@@ -221,7 +221,7 @@ where
             } => match result {
                 Ok(_) => self.signal(
                     *deploy.id(),
-                    Some(FetchResult::FromPeer(deploy, peer)),
+                    Some(FetchResult::FromPeer(*deploy, peer)),
                     peer,
                 ),
                 Err(error) => {

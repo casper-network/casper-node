@@ -48,7 +48,7 @@ pub enum Event {
     MessageReceived { sender: NodeId, message: Message },
     /// The result of the `DeployFetcher` putting a deploy to the storage component.
     StoredFromPeerResult {
-        deploy: Deploy,
+        deploy: Box<Deploy>,
         peer: NodeId,
         result: Result<bool>,
     },

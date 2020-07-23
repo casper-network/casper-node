@@ -200,7 +200,7 @@ async fn should_fetch_from_peer() {
         .await;
     let stored_deploy = move |event: &Event| -> bool {
         match event {
-            Event::StorageAnnouncement(StorageAnnouncement::StoredDeploy { .. }) => true,
+            Event::StorageAnnouncement(StorageAnnouncement::StoredNewDeploy { .. }) => true,
             _ => false,
         }
     };
