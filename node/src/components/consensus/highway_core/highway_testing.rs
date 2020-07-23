@@ -694,11 +694,12 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: DeliveryStrategy<C>>
         let round_exp = self.round_exp;
         let start_time = self.start_time;
 
-        let (lower, upper) = if self.weight_limits == (0, 0) {
-            return Err(BuilderError::WeightLimits);
-        } else {
+        let (lower, upper) = {
             let (l, u) = self.weight_limits;
-            if (l >= u) {
+            // `rng.gen_range(x, y)` panics if `x >= y`
+            // and since `safe_ftt` is calculated as: `(weight_sum - 1) / 3`
+            // it may panic on `x` < 7 b/c it will round down to 1.
+            if (l >= u) || l < 7 {
                 return Err(BuilderError::WeightLimits);
             }
             (l, u)
@@ -880,8 +881,7 @@ mod test_harness {
             HighwayTestHarnessBuilder::new(0u64)
                 .validators(validators)
                 .consensus_values(vec![1])
-                .weight_limits(1, 5)
-                .ftt(1)
+                .weight_limits(7, 10)
                 .build(&mut rand)
                 .ok()
                 .expect("Construction was successful");
@@ -908,7 +908,7 @@ mod test_harness {
             HighwayTestHarnessBuilder::new(0u64)
                 .validators(validators)
                 .consensus_values((0..10).collect())
-                .weight_limits(3, 5)
+                .weight_limits(7, 10)
                 .build(&mut rand)
                 .ok()
                 .expect("Construction was successful");
