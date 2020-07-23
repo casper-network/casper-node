@@ -635,17 +635,15 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<BlockValidatorRequest<I>>,
     {
-        let validation_result = self
-            .make_request(
-                |responder| BlockValidatorRequest {
-                    sender,
-                    proto_block: proto_block.clone(),
-                    responder,
-                },
-                QueueKind::Regular,
-            )
-            .await;
-        (validation_result, proto_block)
+        self.make_request(
+            |responder| BlockValidatorRequest {
+                sender,
+                proto_block,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
     }
 
     /// Announces that a proto block has been proposed and will either be finalized or orphaned

@@ -467,16 +467,16 @@ pub struct BlockValidatorRequest<I> {
     /// The sender of the proto-block (useful for requesting missing deploys).
     pub(crate) sender: I,
     /// Responder to call with the result.
-    pub(crate) responder: Responder<bool>,
+    pub(crate) responder: Responder<(bool, ProtoBlock)>,
 }
 
-impl<I: Debug> Display for BlockValidatorRequest<I> {
+impl<I: Display> Display for BlockValidatorRequest<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let BlockValidatorRequest {
             proto_block,
             sender,
             ..
         } = self;
-        write!(f, "validate block {} from {:?}", proto_block, sender)
+        write!(f, "validate block {} from {}", proto_block, sender)
     }
 }

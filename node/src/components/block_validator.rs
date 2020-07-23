@@ -18,50 +18,34 @@ use crate::{
     types::{DeployHash, ProtoBlock},
 };
 
-/// Block executor component event.
+/// Block validator component event.
 #[derive(Debug, From)]
 pub enum Event<I> {
-    /// A request made of the Block executor component.
+    /// A request made of the Block validator component.
     #[from]
     Request(BlockValidatorRequest<I>),
     DeployFetcherResponse {
         deploy: DeployHash,
-        validation_successful: bool,
+        downloaded_successfully: bool,
     },
 }
 
-impl<I: Debug> Display for Event<I> {
+impl<I: Display> Display for Event<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Request(req) => write!(f, "{}", req),
             Event::DeployFetcherResponse {
                 deploy,
-                validation_successful,
-            } => write!(f, "deploy {} is valid: {}", deploy, validation_successful),
+                downloaded_successfully,
+            } => write!(f, "deploy {} is valid: {}", deploy, downloaded_successfully),
         }
-    }
-}
-
-#[derive(Clone, Debug)]
-struct MissingDeploys(HashSet<DeployHash>);
-
-impl MissingDeploys {
-    /// Removes the deploy from missing deploys, returns true if set is empty afterwards
-    fn got_deploy(&mut self, hash: &DeployHash) -> bool {
-        let _ = self.0.remove(hash);
-        self.0.is_empty()
-    }
-
-    /// Returns true if `hash` is still missing
-    fn has_deploy(&self, hash: &DeployHash) -> bool {
-        self.0.contains(hash)
     }
 }
 
 #[derive(Debug)]
 struct BlockData {
-    missing_deploys: MissingDeploys,
-    responder: Responder<bool>,
+    missing_deploys: HashSet<DeployHash>,
+    responder: Responder<(bool, ProtoBlock)>,
 }
 
 /// Block validator.
@@ -98,7 +82,7 @@ where
                 sender: _sender,
                 responder,
             }) => {
-                let missing_deploys = MissingDeploys(proto_block.deploys.iter().cloned().collect());
+                let missing_deploys = proto_block.deploys.iter().cloned().collect();
                 self.block_states.insert(
                     proto_block,
                     BlockData {
@@ -110,27 +94,39 @@ where
             }
             Event::DeployFetcherResponse {
                 deploy,
-                validation_successful,
+                downloaded_successfully,
             } => {
                 let block_states = mem::take(&mut self.block_states);
-                if validation_successful {
+                let mut effects: Effects<Self::Event> = Default::default();
+                if downloaded_successfully {
                     for (proto_block, mut block_data) in block_states {
-                        if block_data.missing_deploys.got_deploy(&deploy) {
-                            block_data.responder.respond(true).ignore::<Event<I>>();
+                        block_data.missing_deploys.remove(&deploy);
+                        if block_data.missing_deploys.is_empty() {
+                            effects.extend(
+                                block_data
+                                    .responder
+                                    .respond((true, proto_block))
+                                    .ignore::<Event<I>>(),
+                            );
                         } else {
                             self.block_states.insert(proto_block, block_data);
                         }
                     }
                 } else {
                     for (proto_block, block_data) in block_states {
-                        if block_data.missing_deploys.has_deploy(&deploy) {
-                            block_data.responder.respond(false).ignore::<Event<I>>();
+                        if block_data.missing_deploys.contains(&deploy) {
+                            effects.extend(
+                                block_data
+                                    .responder
+                                    .respond((false, proto_block))
+                                    .ignore::<Event<I>>(),
+                            );
                         } else {
                             self.block_states.insert(proto_block, block_data);
                         }
                     }
                 }
-                Default::default()
+                effects
             }
         }
     }
