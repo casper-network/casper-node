@@ -539,9 +539,9 @@ enum BuilderError {
 }
 
 struct HighwayTestHarnessBuilder<DS: DeliveryStrategy> {
-    /// Maximum number of validators in the network.
+    /// Maximum number of faulty validators in the network.
     /// Defaults to 10.
-    max_validators: u8,
+    max_faulty_validators: u8,
     /// Percentage of faulty validators' (i.e. equivocators) weight.
     /// Defaults to 0 (network is perfectly secure).
     faulty_weight: u64,
@@ -591,7 +591,7 @@ impl DeliveryStrategy for InstantDeliveryNoDropping {
 impl HighwayTestHarnessBuilder<InstantDeliveryNoDropping> {
     fn new() -> Self {
         HighwayTestHarnessBuilder {
-            max_validators: 10,
+            max_faulty_validators: 10,
             faulty_weight: 0,
             ftt: None,
             consensus_values: None,
@@ -609,7 +609,7 @@ impl HighwayTestHarnessBuilder<InstantDeliveryNoDropping> {
 impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
     /// Sets a percentage of weight that will be assigned to malicious nodes.
     /// `faulty_weight` must be a value between 0 (inclusive) and 100 (inclusive).
-    pub(crate) fn faulty_weight(mut self, faulty_weight: u64) -> Self {
+    pub(crate) fn faulty_weight_perc(mut self, faulty_weight: u64) -> Self {
         self.faulty_weight = faulty_weight;
         self
     }
@@ -628,7 +628,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
         ds: DS2,
     ) -> HighwayTestHarnessBuilder<DS2> {
         HighwayTestHarnessBuilder {
-            max_validators: self.max_validators,
+            max_faulty_validators: self.max_faulty_validators,
             faulty_weight: self.faulty_weight,
             ftt: self.ftt,
             consensus_values: self.consensus_values,
@@ -673,7 +673,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
     }
 
     fn max_faulty_validators(mut self, max_faulty_count: u8) -> Self {
-        self.max_validators = max_faulty_count;
+        self.max_faulty_validators = max_faulty_count;
         self
     }
 
@@ -706,7 +706,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
 
             if (self.faulty_weight == 0) {
                 // All validators are honest.
-                let validators_num = rng.gen_range(2, self.max_validators);
+                let validators_num = rng.gen_range(2, self.max_faulty_validators);
                 let honest_validators: Vec<Weight> = self
                     .weight_distribution
                     .gen_range_vec(rng, lower, upper, validators_num)
@@ -717,10 +717,10 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                 (vec![], honest_validators)
             } else {
                 // At least 2 validators total and at least one faulty.
-                let faulty_num = if self.max_validators == 1 {
+                let faulty_num = if self.max_faulty_validators == 1 {
                     1
                 } else {
-                    rng.gen_range(1, self.max_validators)
+                    rng.gen_range(1, self.max_faulty_validators)
                 };
 
                 assert!(
@@ -964,7 +964,7 @@ mod test_harness {
                 .max_faulty_validators(5)
                 .consensus_values((0..10).collect())
                 .weight_limits(5, 10)
-                .faulty_weight(5)
+                .faulty_weight_perc(5)
                 .build(&mut rand)
                 .ok()
                 .expect("Construction was successful");
