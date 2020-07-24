@@ -30,7 +30,7 @@ use crate::{
         storage::{self, DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::hash::Digest,
-    types::{BlockHash, Deploy, DeployHash, ExecutedBlock, FinalizedBlock},
+    types::{BlockHash, Deploy, DeployHash, ExecutedBlock, FinalizedBlock, ProtoBlock},
     utils::DisplayIter,
     Chainspec,
 };
@@ -449,5 +449,28 @@ impl Display for BlockExecutorRequest {
                 finalized_block, ..
             } => write!(f, "execute block {}", finalized_block),
         }
+    }
+}
+
+/// A block validator request.
+#[derive(Debug)]
+#[must_use]
+pub struct BlockValidatorRequest<I> {
+    /// The proto-block.
+    pub(crate) proto_block: ProtoBlock,
+    /// The sender of the proto-block (useful for requesting missing deploys).
+    pub(crate) sender: I,
+    /// Responder to call with the result.
+    pub(crate) responder: Responder<(bool, ProtoBlock)>,
+}
+
+impl<I: Display> Display for BlockValidatorRequest<I> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let BlockValidatorRequest {
+            proto_block,
+            sender,
+            ..
+        } = self;
+        write!(f, "validate block {} from {}", proto_block, sender)
     }
 }

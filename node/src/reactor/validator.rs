@@ -18,6 +18,7 @@ use crate::{
     components::{
         api_server::{self, ApiServer},
         block_executor::{self, BlockExecutor},
+        block_validator::{self, BlockValidator},
         consensus::{self, EraSupervisor},
         contract_runtime::{self, ContractRuntime},
         deploy_buffer::{self, DeployBuffer},
@@ -33,8 +34,9 @@ use crate::{
             ApiServerAnnouncement, ConsensusAnnouncement, NetworkAnnouncement, StorageAnnouncement,
         },
         requests::{
-            ApiRequest, BlockExecutorRequest, ContractRuntimeRequest, DeployBufferRequest,
-            DeployFetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
+            ApiRequest, BlockExecutorRequest, BlockValidatorRequest, ContractRuntimeRequest,
+            DeployBufferRequest, DeployFetcherRequest, MetricsRequest, NetworkRequest,
+            StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -108,6 +110,9 @@ pub enum Event {
     /// Block executor event.
     #[from]
     BlockExecutor(block_executor::Event),
+    /// Block validator event.
+    #[from]
+    BlockValidator(block_validator::Event<NodeId>),
 
     // Requests
     /// Network request.
@@ -122,6 +127,9 @@ pub enum Event {
     /// Block executor request.
     #[from]
     BlockExecutorRequest(BlockExecutorRequest),
+    /// Block validator request.
+    #[from]
+    BlockValidatorRequest(BlockValidatorRequest<NodeId>),
     /// Metrics request.
     #[from]
     MetricsRequest(MetricsRequest),
@@ -190,10 +198,12 @@ impl Display for Event {
             Event::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
             Event::ContractRuntime(event) => write!(f, "contract runtime: {}", event),
             Event::BlockExecutor(event) => write!(f, "block executor: {}", event),
+            Event::BlockValidator(event) => write!(f, "block validator: {}", event),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
             Event::DeployFetcherRequest(req) => write!(f, "deploy fetcher request: {}", req),
             Event::DeployBufferRequest(req) => write!(f, "deploy buffer request: {}", req),
             Event::BlockExecutorRequest(req) => write!(f, "block executor request: {}", req),
+            Event::BlockValidatorRequest(req) => write!(f, "block validator request: {}", req),
             Event::MetricsRequest(req) => write!(f, "metrics request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
             Event::ApiServerAnnouncement(ann) => write!(f, "api server announcement: {}", ann),
@@ -217,6 +227,7 @@ pub struct Reactor {
     deploy_gossiper: Gossiper<Deploy, Event>,
     deploy_buffer: DeployBuffer,
     block_executor: BlockExecutor,
+    block_validator: BlockValidator<NodeId>,
 }
 
 impl reactor::Reactor for Reactor {
@@ -274,6 +285,7 @@ impl reactor::Reactor for Reactor {
             .post_state_hash()
             .expect("should have post state hash");
         let block_executor = BlockExecutor::new(post_state_hash);
+        let block_validator = BlockValidator::<NodeId>::new();
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
         effects.extend(reactor::wrap_effects(Event::Pinger, pinger_effects));
@@ -292,6 +304,7 @@ impl reactor::Reactor for Reactor {
                 contract_runtime,
                 deploy_buffer,
                 block_executor,
+                block_validator,
             },
             effects,
         ))
@@ -346,6 +359,11 @@ impl reactor::Reactor for Reactor {
                 Event::BlockExecutor,
                 self.block_executor.handle_event(effect_builder, rng, event),
             ),
+            Event::BlockValidator(event) => reactor::wrap_effects(
+                Event::BlockValidator,
+                self.block_validator
+                    .handle_event(effect_builder, rng, event),
+            ),
 
             // Requests:
             Event::NetworkRequest(req) => self.dispatch_event(
@@ -363,6 +381,11 @@ impl reactor::Reactor for Reactor {
                 effect_builder,
                 rng,
                 Event::BlockExecutor(block_executor::Event::from(req)),
+            ),
+            Event::BlockValidatorRequest(req) => self.dispatch_event(
+                effect_builder,
+                rng,
+                Event::BlockValidator(block_validator::Event::from(req)),
             ),
             Event::MetricsRequest(req) => {
                 self.dispatch_event(effect_builder, rng, Event::MetricsRequest(req))

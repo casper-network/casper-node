@@ -96,8 +96,8 @@ use announcements::{
 use casperlabs_types::{Key, ProtocolVersion};
 use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
 use requests::{
-    BlockExecutorRequest, ContractRuntimeRequest, DeployBufferRequest, DeployFetcherRequest,
-    MetricsRequest, NetworkRequest, StorageRequest,
+    BlockExecutorRequest, BlockValidatorRequest, ContractRuntimeRequest, DeployBufferRequest,
+    DeployFetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -644,12 +644,21 @@ impl<REv> EffectBuilder<REv> {
     /// Checks whether the deploys included in the proto-block exist on the network.
     pub(crate) async fn validate_proto_block<I>(
         self,
-        _sender: I,
+        sender: I,
         proto_block: ProtoBlock,
-    ) -> (bool, ProtoBlock) {
-        // TODO: check with the deploy fetcher or something whether the deploys whose hashes are
-        // contained in the proto-block actually exist
-        (true, proto_block)
+    ) -> (bool, ProtoBlock)
+    where
+        REv: From<BlockValidatorRequest<I>>,
+    {
+        self.make_request(
+            |responder| BlockValidatorRequest {
+                sender,
+                proto_block,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
     }
 
     /// Announces that a proto block has been proposed and will either be finalized or orphaned

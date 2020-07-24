@@ -4,6 +4,7 @@
 //! Each component has a unified interface, expressed by the `Component` trait.
 pub(crate) mod api_server;
 pub(crate) mod block_executor;
+pub(crate) mod block_validator;
 pub(crate) mod chainspec_handler;
 pub(crate) mod consensus;
 pub mod contract_runtime;
