@@ -14,7 +14,7 @@ use crate::{
             DeliverySchedule, Message, Target, TargetedMessage, Validator, ValidatorId, VirtualNet,
         },
         tests::queue::{MessageT, QueueEntry},
-        traits::{ConsensusValueT, Context},
+        traits::{ConsensusValueT, Context, ValidatorSecret},
         BlockContext,
     },
     types::Timestamp,
@@ -93,11 +93,11 @@ impl From<Effect<TestContext>> for HighwayMessage {
 
 use rand::Rng;
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{hash_map::DefaultHasher, HashMap, VecDeque},
     fmt::{Debug, Display, Formatter},
+    hash::Hasher,
     marker::PhantomData,
 };
-use test_harness::{TestContext, TestSecret};
 
 impl PartialOrd for HighwayMessage {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -610,7 +610,7 @@ impl HighwayTestHarnessBuilder<InstantDeliveryNoDropping> {
 
 impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
     /// Sets a percentage of weight that will be assigned to malicious nodes.
-    /// `faulty_weight` must be a value between 0 (inclusive) and 100 (inclusive).
+    /// `faulty_weight` must be a value between 0 (inclusive) and 33 (inclusive).
     pub(crate) fn faulty_weight_perc(mut self, faulty_weight: u64) -> Self {
         self.faulty_weight = faulty_weight;
         self
@@ -873,6 +873,45 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct TestContext;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct TestSecret(pub(crate) u64);
+
+impl ValidatorSecret for TestSecret {
+    type Hash = u64;
+    type Signature = u64;
+
+    fn sign(&self, data: &Self::Hash) -> Self::Signature {
+        data + u64::from(self.0)
+    }
+}
+
+impl Context for TestContext {
+    type ConsensusValue = u32;
+    type ValidatorId = ValidatorId;
+    type ValidatorSecret = TestSecret;
+    type Signature = u64;
+    type Hash = u64;
+    type InstanceId = u64;
+
+    fn hash(data: &[u8]) -> Self::Hash {
+        let mut hasher = DefaultHasher::new();
+        hasher.write(data);
+        hasher.finish()
+    }
+
+    fn verify_signature(
+        hash: &Self::Hash,
+        public_key: &Self::ValidatorId,
+        signature: &<Self::ValidatorSecret as ValidatorSecret>::Signature,
+    ) -> bool {
+        let computed_signature = hash + public_key.0;
+        computed_signature == *signature
+    }
+}
+
 mod test_harness {
     use super::{
         CrankOk, DeliverySchedule, DeliveryStrategy, HighwayMessage, HighwayTestHarness,
@@ -891,45 +930,6 @@ mod test_harness {
         collections::{hash_map::DefaultHasher, HashMap},
         hash::Hasher,
     };
-
-    #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub(crate) struct TestContext;
-
-    #[derive(Clone, Debug, Eq, PartialEq)]
-    pub(crate) struct TestSecret(pub(crate) u64);
-
-    impl ValidatorSecret for TestSecret {
-        type Hash = u64;
-        type Signature = u64;
-
-        fn sign(&self, data: &Self::Hash) -> Self::Signature {
-            data + u64::from(self.0)
-        }
-    }
-
-    impl Context for TestContext {
-        type ConsensusValue = u32;
-        type ValidatorId = ValidatorId;
-        type ValidatorSecret = TestSecret;
-        type Signature = u64;
-        type Hash = u64;
-        type InstanceId = u64;
-
-        fn hash(data: &[u8]) -> Self::Hash {
-            let mut hasher = DefaultHasher::new();
-            hasher.write(data);
-            hasher.finish()
-        }
-
-        fn verify_signature(
-            hash: &Self::Hash,
-            public_key: &Self::ValidatorId,
-            signature: &<Self::ValidatorSecret as ValidatorSecret>::Signature,
-        ) -> bool {
-            let computed_signature = hash + public_key.0;
-            computed_signature == *signature
-        }
-    }
 
     #[test]
     fn on_empty_queue_error() {
