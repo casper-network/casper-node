@@ -33,21 +33,15 @@ use crate::{
 #[must_use]
 enum Event {
     #[from]
-    /// Storage event.
     Storage(StorageRequest<Storage>),
-    /// Deploy gossiper event.
     #[from]
     DeployGossiper(super::Event<Deploy>),
-    /// Network request.
     #[from]
     NetworkRequest(NetworkRequest<NodeId, Message<Deploy>>),
-    /// Network announcement.
     #[from]
     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message<Deploy>>),
-    /// Storage announcement.
     #[from]
     StorageAnnouncement(StorageAnnouncement<Storage>),
-    /// API server announcement.
     #[from]
     ApiServerAnnouncement(ApiServerAnnouncement),
 }
@@ -69,14 +63,13 @@ impl Display for Event {
 
 /// Error type returned by the test reactor.
 #[derive(Debug, Error)]
-pub enum Error {
-    /// Metrics-related error
+enum Error {
     #[error("prometheus (metrics) error: {0}")]
     Metrics(#[from] prometheus::Error),
-    /// `Storage` component error.
     #[error("storage error: {0}")]
     Storage(#[from] storage::Error),
 }
+
 struct Reactor {
     network: InMemoryNetwork<Message<Deploy>>,
     storage: Storage,

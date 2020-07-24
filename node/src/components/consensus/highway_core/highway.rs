@@ -342,6 +342,7 @@ pub(crate) mod tests {
             value: Some(0),
             seq_number: 0,
             timestamp: Timestamp::zero() + 1.into(),
+            next_round_exp: 12,
         };
         let invalid_signature = 1u64;
         let invalid_signature_vote = SignedWireVote {
