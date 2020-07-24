@@ -97,7 +97,7 @@ use std::{
     fmt::{Debug, Display, Formatter},
     marker::PhantomData,
 };
-use test_harness::TestContext;
+use test_harness::{TestContext, TestSecret};
 
 impl PartialOrd for HighwayMessage {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -532,7 +532,6 @@ impl<'a, DS: DeliveryStrategy> MutableHandle<'a, DS> {
 }
 
 enum BuilderError {
-    NoValidators,
     EmptyConsensusValues,
     WeightLimits,
     TooManyFaultyNodes(String),
@@ -540,9 +539,9 @@ enum BuilderError {
 }
 
 struct HighwayTestHarnessBuilder<DS: DeliveryStrategy> {
-    /// Validators (together with their secret keys) in the test run.
-    validators_secs:
-        HashMap<<TestContext as Context>::ValidatorId, <TestContext as Context>::ValidatorSecret>,
+    /// Maximum number of validators in the network.
+    /// Defaults to 10.
+    max_validators: u8,
     /// Percentage of faulty validators' (i.e. equivocators) weight.
     /// Defaults to 0 (network is perfectly secure).
     faulty_weight: u64,
@@ -592,7 +591,7 @@ impl DeliveryStrategy for InstantDeliveryNoDropping {
 impl HighwayTestHarnessBuilder<InstantDeliveryNoDropping> {
     fn new() -> Self {
         HighwayTestHarnessBuilder {
-            validators_secs: HashMap::new(),
+            max_validators: 10,
             faulty_weight: 0,
             ftt: None,
             consensus_values: None,
@@ -608,24 +607,9 @@ impl HighwayTestHarnessBuilder<InstantDeliveryNoDropping> {
 }
 
 impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
-    pub(crate) fn validators(
-        mut self,
-        validators_secs: HashMap<
-            <TestContext as Context>::ValidatorId,
-            <TestContext as Context>::ValidatorSecret,
-        >,
-    ) -> Self {
-        self.validators_secs = validators_secs;
-        self
-    }
-
     /// Sets a percentage of weight that will be assigned to malicious nodes.
     /// `faulty_weight` must be a value between 0 (inclusive) and 100 (inclusive).
     pub(crate) fn faulty_weight(mut self, faulty_weight: u64) -> Self {
-        assert!(
-            faulty_weight <= 33,
-            "Expected value between 0 (inclusive) and 33 (inclusive)"
-        );
         self.faulty_weight = faulty_weight;
         self
     }
@@ -644,7 +628,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
         ds: DS2,
     ) -> HighwayTestHarnessBuilder<DS2> {
         HighwayTestHarnessBuilder {
-            validators_secs: self.validators_secs,
+            max_validators: self.max_validators,
             faulty_weight: self.faulty_weight,
             ftt: self.ftt,
             consensus_values: self.consensus_values,
@@ -688,13 +672,12 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
         self
     }
 
+    fn max_faulty_validators(mut self, max_faulty_count: u8) -> Self {
+        self.max_validators = max_faulty_count;
+        self
+    }
+
     fn build<R: Rng>(mut self, rng: &mut R) -> Result<HighwayTestHarness<DS>, BuilderError> {
-        if self.validators_secs.is_empty() {
-            return Err(BuilderError::NoValidators);
-        }
-
-        let validators_num = self.validators_secs.len() as u8;
-
         let consensus_values = self
             .consensus_values
             .clone()
@@ -707,26 +690,23 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
 
         let (lower, upper) = {
             let (l, u) = self.weight_limits;
-            // `rng.gen_range(x, y)` panics if `x >= y`
-            // and since `safe_ftt` is calculated as: `(weight_sum - 1) / 3`
-            // it may panic on `x` < 7 b/c it will round down to 1.
-            if (l >= u) || l < 7 {
+            if l >= u {
                 return Err(BuilderError::WeightLimits);
             }
             (l, u)
         };
 
         let (faulty_weights, honest_weights): (Vec<Weight>, Vec<Weight>) = {
-            if (self.faulty_weight > 0 && validators_num == 1) {
+            if (self.faulty_weight > 33) {
                 return Err(BuilderError::TooManyFaultyNodes(
-                    "Network has only 1 validator, it cannot be malicious. \
-                        Provide more validators or set `fauluty_weight` to 0."
+                    "Total weight of all malicious validators cannot be more than 33% of all network weight."
                         .to_string(),
                 ));
             }
 
             if (self.faulty_weight == 0) {
                 // All validators are honest.
+                let validators_num = rng.gen_range(2, self.max_validators);
                 let honest_validators: Vec<Weight> = self
                     .weight_distribution
                     .gen_range_vec(rng, lower, upper, validators_num)
@@ -736,35 +716,35 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
 
                 (vec![], honest_validators)
             } else {
-                // At least 2 validators with some level of faults.
-                let honest_num = rng.gen_range(1, validators_num);
-                let faulty_num = validators_num - honest_num;
+                // At least 2 validators total and at least one faulty.
+                let faulty_num = if self.max_validators == 1 {
+                    1
+                } else {
+                    rng.gen_range(1, self.max_validators)
+                };
 
                 assert!(
                     faulty_num > 0,
                     "Expected that at least one validator to be malicious."
                 );
 
-                let honest_weights = self
+                let faulty_weights = self
                     .weight_distribution
-                    .gen_range_vec(rng, lower, upper, honest_num);
+                    .gen_range_vec(rng, lower, upper, faulty_num);
 
-                let faulty_weights: Vec<u64> = {
-                    // Weight of all malicious validators.
-                    let mut weight_limit: u64 =
-                        (self.faulty_weight / 100u64) * honest_weights.iter().sum::<u64>();
-                    let mut validators_left = faulty_num;
-                    let mut weights: Vec<u64> = vec![];
-                    // Generate weight as long as there are empty validator slots and there's a weight left.
-                    while validators_left > 0 {
-                        if validators_left == 1 {
-                            weights.push(weight_limit);
+                let honest_weights = {
+                    let faulty_sum = faulty_weights.iter().sum::<u64>();
+                    let mut weights_to_distribute: u64 =
+                        faulty_sum * 100 / self.faulty_weight - faulty_sum;
+                    let mut weights = vec![];
+                    while weights_to_distribute > 0 {
+                        let weight = if weights_to_distribute < upper {
+                            weights_to_distribute
                         } else {
-                            let weight: u64 = rng.gen_range(lower, weight_limit);
-                            weight_limit -= weight;
-                            weights.push(weight);
-                        }
-                        validators_left -= 1;
+                            rng.gen_range(lower, upper)
+                        };
+                        weights.push(weight);
+                        weights_to_distribute -= weight
                     }
                     weights
                 };
@@ -776,29 +756,36 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
             }
         };
 
-        let mut validator_ids = (0..validators_num).map(|i| ValidatorId(i as u64));
+        let validators_num = faulty_weights.len() + honest_weights.len();
+
+        let mut validator_ids: Vec<ValidatorId> =
+            (0..validators_num).map(|i| ValidatorId(i as u64)).collect();
+
+        let mut secrets = validator_ids
+            .iter()
+            .map(|vid| (*vid, TestSecret(vid.0)))
+            .collect();
 
         let weights_sum = faulty_weights
             .iter()
             .chain(honest_weights.iter())
             .sum::<Weight>();
 
-        let faulty_validators = validator_ids
-            .by_ref()
+        let mut validator_ids_iter = validator_ids.into_iter();
+
+        let faulty_validators = (&mut validator_ids_iter)
             .take(faulty_weights.len())
             .zip(faulty_weights)
             .collect::<Vec<_>>();
 
-        let honest_validators = validator_ids
-            .by_ref()
+        let honest_validators = validator_ids_iter
             .take(honest_weights.len())
             .zip(honest_weights)
             .collect::<Vec<_>>();
 
-        // Sanity check.
         assert_eq!(
             faulty_validators.len() + honest_validators.len(),
-            validators_num as usize,
+            validators_num
         );
 
         let validators: Validators<ValidatorId> = Validators::from_iter(
@@ -852,7 +839,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                 .map(|(vid, _)| (*vid, true))
                 .chain(honest_validators.iter().map(|(vid, _)| (*vid, false)))
             {
-                let (consensus, msgs) = highway_consensus((vid, &mut self.validators_secs));
+                let (consensus, msgs) = highway_consensus((vid, &mut secrets));
                 let validator = Validator::new(vid, is_faulty, consensus);
                 let qm: Vec<QueueEntry<HighwayMessage>> = msgs
                     .into_iter()
@@ -913,7 +900,7 @@ mod test_harness {
     pub(crate) struct TestContext;
 
     #[derive(Clone, Debug, Eq, PartialEq)]
-    pub(crate) struct TestSecret(pub(crate) u32);
+    pub(crate) struct TestSecret(pub(crate) u64);
 
     impl ValidatorSecret for TestSecret {
         type Hash = u64;
@@ -974,8 +961,10 @@ mod test_harness {
         let mut rand = XorShiftRng::from_seed(rand::random());
         let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
             HighwayTestHarnessBuilder::new()
+                .max_faulty_validators(5)
                 .consensus_values((0..10).collect())
-                .weight_limits(7, 10)
+                .weight_limits(5, 10)
+                .faulty_weight(5)
                 .build(&mut rand)
                 .ok()
                 .expect("Construction was successful");
