@@ -562,7 +562,6 @@ struct HighwayTestHarnessBuilder<DS: DeliveryStrategy> {
     /// Type of discrete distribution of validators' weights.
     /// Defaults to uniform.
     weight_distribution: Distribution,
-    instance_id: <TestContext as Context>::InstanceId,
     /// Seed for `Highway`.
     /// Defaults to 0.
     seed: u64,
@@ -591,7 +590,7 @@ impl DeliveryStrategy for InstantDeliveryNoDropping {
 }
 
 impl HighwayTestHarnessBuilder<InstantDeliveryNoDropping> {
-    fn new(instance_id: <TestContext as Context>::InstanceId) -> Self {
+    fn new() -> Self {
         HighwayTestHarnessBuilder {
             validators_secs: HashMap::new(),
             faulty_weight: 0,
@@ -602,7 +601,6 @@ impl HighwayTestHarnessBuilder<InstantDeliveryNoDropping> {
             weight_limits: (0, 0),
             start_time: Timestamp::zero(),
             weight_distribution: Distribution::Uniform,
-            instance_id,
             seed: 0,
             round_exp: 12,
         }
@@ -655,7 +653,6 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
             weight_limits: self.weight_limits,
             start_time: self.start_time,
             weight_distribution: self.weight_distribution,
-            instance_id: self.instance_id,
             seed: self.seed,
             round_exp: self.round_exp,
         }
@@ -703,7 +700,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
             .clone()
             .ok_or_else(|| BuilderError::EmptyConsensusValues)?;
 
-        let instance_id = self.instance_id.clone();
+        let instance_id = 0;
         let seed = self.seed;
         let round_exp = self.round_exp;
         let start_time = self.start_time;
@@ -954,11 +951,9 @@ mod test_harness {
     #[test]
     fn on_empty_queue_error() {
         let mut rand = XorShiftRng::from_seed(rand::random());
-        let validators = vec![(ValidatorId(0), TestSecret(0))].into_iter().collect();
 
         let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
-            HighwayTestHarnessBuilder::new(0u64)
-                .validators(validators)
+            HighwayTestHarnessBuilder::new()
                 .consensus_values(vec![1])
                 .weight_limits(7, 10)
                 .build(&mut rand)
@@ -977,13 +972,8 @@ mod test_harness {
     #[test]
     fn done_when_all_finalized() -> Result<(), TestRunError> {
         let mut rand = XorShiftRng::from_seed(rand::random());
-        let validators = (0..10u32)
-            .map(|i| (ValidatorId(i as u64), TestSecret(i)))
-            .collect();
-
         let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
-            HighwayTestHarnessBuilder::new(0u64)
-                .validators(validators)
+            HighwayTestHarnessBuilder::new()
                 .consensus_values((0..10).collect())
                 .weight_limits(7, 10)
                 .build(&mut rand)
