@@ -707,7 +707,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                     .weight_distribution
                     .gen_range_vec(rng, lower, upper, validators_num)
                     .into_iter()
-                    .map(|w| Weight(w))
+                    .map(Weight)
                     .collect();
 
                 (vec![], honest_validators)
@@ -805,7 +805,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
 
             let (highway, effects) = {
                 let highway_params: HighwayParams<TestContext> = HighwayParams {
-                    instance_id: instance_id.clone(),
+                    instance_id,
                     validators: validators.clone(),
                 };
 
@@ -884,7 +884,7 @@ impl ValidatorSecret for TestSecret {
     type Signature = u64;
 
     fn sign(&self, data: &Self::Hash) -> Self::Signature {
-        data + u64::from(self.0)
+        data + self.0
     }
 }
 
