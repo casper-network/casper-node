@@ -957,10 +957,10 @@ mod test_harness {
         let mut rand = XorShiftRng::from_seed(rand::random());
         let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
             HighwayTestHarnessBuilder::new()
-                .max_faulty_validators(5)
+                .max_faulty_validators(3)
                 .consensus_values_count(5)
                 .weight_limits(5, 10)
-                .faulty_weight_perc(5)
+                .faulty_weight_perc(20)
                 .build(&mut rand)
                 .ok()
                 .expect("Construction was successful");
