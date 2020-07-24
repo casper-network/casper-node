@@ -86,7 +86,7 @@ impl Drop for Reactor {
 
 impl reactor::Reactor for Reactor {
     type Event = Event;
-    type Config = GossipTableConfig;
+    type Config = GossipConfig;
     type Error = Error;
 
     fn new<R: Rng + ?Sized>(
@@ -389,7 +389,7 @@ async fn should_timeout_fetch_from_peer() {
         .await;
 
     // Advance time.
-    let secs_to_advance = GossipTableConfig::default().get_remainder_timeout_secs();
+    let secs_to_advance = GossipConfig::default().get_remainder_timeout_secs();
     time::pause();
     time::advance(Duration::from_secs(secs_to_advance)).await;
     time::resume();

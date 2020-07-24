@@ -16,7 +16,7 @@ use crate::{
     },
     small_network::NodeId,
     types::{Deploy, DeployHash},
-    GossipTableConfig,
+    GossipConfig,
 };
 
 pub use event::{Event, FetchResult, RequestDirection};
@@ -40,7 +40,7 @@ pub(crate) struct DeployFetcher {
 }
 
 impl DeployFetcher {
-    pub(crate) fn new(config: GossipTableConfig) -> Self {
+    pub(crate) fn new(config: GossipConfig) -> Self {
         DeployFetcher {
             get_from_peer_timeout: Duration::from_secs(config.get_remainder_timeout_secs()),
             responders: HashMap::new(),

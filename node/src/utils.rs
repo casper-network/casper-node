@@ -1,7 +1,6 @@
 //! Various functions that are not limited to a particular module, but are too small to warrant
 //! being factored out into standalone crates.
 
-pub(crate) mod gossip_table;
 mod round_robin;
 
 use std::{
@@ -12,7 +11,6 @@ use std::{
 use lazy_static::lazy_static;
 use libc::{c_long, sysconf, _SC_PAGESIZE};
 
-pub(crate) use gossip_table::{GossipAction, GossipTable};
 pub(crate) use round_robin::WeightedRoundRobin;
 
 /// Sensible default for many if not all systems.

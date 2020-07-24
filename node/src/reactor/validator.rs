@@ -23,7 +23,7 @@ use crate::{
         contract_runtime::{self, ContractRuntime},
         deploy_buffer::{self, DeployBuffer},
         deploy_fetcher::{self, DeployFetcher},
-        deploy_gossiper::{self, DeployGossiper},
+        gossiper::{self, Gossiper},
         metrics::Metrics,
         pinger::{self, Pinger},
         storage::Storage,
@@ -42,7 +42,7 @@ use crate::{
     },
     reactor::{self, initializer, EventQueueHandle},
     small_network::{self, NodeId},
-    types::Timestamp,
+    types::{Deploy, Timestamp},
     SmallNetwork,
 };
 pub use config::Config;
@@ -62,7 +62,7 @@ pub enum Message {
     DeployFetcher(deploy_fetcher::Message),
     /// Deploy gossiper component message.
     #[from]
-    DeployGossiper(deploy_gossiper::Message),
+    DeployGossiper(gossiper::Message<Deploy>),
 }
 
 impl Display for Message {
@@ -103,7 +103,7 @@ pub enum Event {
     DeployFetcher(deploy_fetcher::Event),
     /// Deploy gossiper event.
     #[from]
-    DeployGossiper(deploy_gossiper::Event),
+    DeployGossiper(gossiper::Event<Deploy>),
     /// Contract runtime event.
     #[from]
     ContractRuntime(contract_runtime::Event),
@@ -173,8 +173,8 @@ impl From<NetworkRequest<NodeId, deploy_fetcher::Message>> for Event {
     }
 }
 
-impl From<NetworkRequest<NodeId, deploy_gossiper::Message>> for Event {
-    fn from(request: NetworkRequest<NodeId, deploy_gossiper::Message>) -> Self {
+impl From<NetworkRequest<NodeId, gossiper::Message<Deploy>>> for Event {
+    fn from(request: NetworkRequest<NodeId, gossiper::Message<Deploy>>) -> Self {
         Event::NetworkRequest(request.map_payload(Message::from))
     }
 }
@@ -224,7 +224,7 @@ pub struct Reactor {
     api_server: ApiServer,
     consensus: EraSupervisor<NodeId>,
     deploy_fetcher: DeployFetcher,
-    deploy_gossiper: DeployGossiper,
+    deploy_gossiper: Gossiper<Deploy, Event>,
     deploy_buffer: DeployBuffer,
     block_executor: BlockExecutor,
     block_validator: BlockValidator<NodeId>,
@@ -274,7 +274,11 @@ impl reactor::Reactor for Reactor {
             validator_stakes,
         )?;
         let deploy_fetcher = DeployFetcher::new(config.gossip);
-        let deploy_gossiper = DeployGossiper::new(config.gossip);
+        let deploy_gossiper = Gossiper::new(
+            config.gossip,
+            gossiper::put_deploy_to_storage,
+            gossiper::get_deploy_from_storage,
+        );
         let deploy_buffer = DeployBuffer::new(config.node.block_max_deploy_count as usize);
         // Post state hash is expected to be present
         let post_state_hash = chainspec_handler
@@ -406,16 +410,13 @@ impl reactor::Reactor for Reactor {
                         })
                     }
                     Message::DeployGossiper(message) => {
-                        Event::DeployGossiper(deploy_gossiper::Event::MessageReceived {
-                            sender,
-                            message,
-                        })
+                        Event::DeployGossiper(gossiper::Event::MessageReceived { sender, message })
                     }
                 };
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
-                let event = deploy_gossiper::Event::DeployReceived { deploy };
+                let event = gossiper::Event::ItemReceived { item: deploy };
                 self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
             }
             Event::ConsensusAnnouncement(consensus_announcement) => {

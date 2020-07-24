@@ -10,7 +10,7 @@ pub(crate) mod consensus;
 pub mod contract_runtime;
 pub(crate) mod deploy_buffer;
 pub(crate) mod deploy_fetcher;
-pub(crate) mod deploy_gossiper;
+pub(crate) mod gossiper;
 // The  `in_memory_network` is public for use in doctests.
 #[cfg(test)]
 pub mod in_memory_network;
