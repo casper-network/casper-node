@@ -599,7 +599,7 @@ impl HighwayTestHarnessBuilder<InstantDeliveryNoDropping> {
             consensus_values_count: 10,
             delivery_distribution: Distribution::Uniform,
             delivery_strategy: InstantDeliveryNoDropping,
-            weight_limits: (0, 0),
+            weight_limits: (1, 100),
             start_time: Timestamp::zero(),
             weight_distribution: Distribution::Uniform,
             seed: 0,
