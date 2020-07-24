@@ -22,33 +22,35 @@ use crate::{
 
 use std::iter::FromIterator;
 
-struct HighwayConsensus<C: Context> {
-    highway: Highway<C>,
-    finality_detector: FinalityDetector<C>,
+struct HighwayConsensus {
+    highway: Highway<TestContext>,
+    finality_detector: FinalityDetector<TestContext>,
 }
 
-impl<C: Context> HighwayConsensus<C> {
-    fn run_finality(&mut self) -> FinalityOutcome<C::ConsensusValue, ValidatorIndex> {
+impl HighwayConsensus {
+    fn run_finality(
+        &mut self,
+    ) -> FinalityOutcome<<TestContext as Context>::ConsensusValue, ValidatorIndex> {
         self.finality_detector.run(self.highway.state())
     }
 
-    pub(crate) fn highway(&self) -> &Highway<C> {
+    pub(crate) fn highway(&self) -> &Highway<TestContext> {
         &self.highway
     }
 
-    pub(crate) fn highway_mut(&mut self) -> &mut Highway<C> {
+    pub(crate) fn highway_mut(&mut self) -> &mut Highway<TestContext> {
         &mut self.highway
     }
 }
 
 #[derive(Clone, Eq, PartialEq)]
-enum HighwayMessage<C: Context> {
+enum HighwayMessage {
     Timer(Timestamp),
-    NewVertex(Vertex<C>),
+    NewVertex(Vertex<TestContext>),
     RequestBlock(BlockContext),
 }
 
-impl<C: Context> Debug for HighwayMessage<C> {
+impl Debug for HighwayMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Timer(t) => f.debug_tuple("Timer").field(&t.millis()).finish(),
@@ -61,9 +63,9 @@ impl<C: Context> Debug for HighwayMessage<C> {
     }
 }
 
-impl<C: Context> HighwayMessage<C> {
-    fn into_targeted(self, creator: ValidatorId) -> TargetedMessage<HighwayMessage<C>> {
-        let create_msg = |hwm: HighwayMessage<C>| Message::new(creator, hwm);
+impl HighwayMessage {
+    fn into_targeted(self, creator: ValidatorId) -> TargetedMessage<HighwayMessage> {
+        let create_msg = |hwm: HighwayMessage| Message::new(creator, hwm);
 
         match self {
             Timer(_) => TargetedMessage::new(create_msg(self), Target::SingleValidator(creator)),
@@ -77,8 +79,8 @@ impl<C: Context> HighwayMessage<C> {
 
 use HighwayMessage::*;
 
-impl<C: Context> From<Effect<C>> for HighwayMessage<C> {
-    fn from(eff: Effect<C>) -> Self {
+impl From<Effect<TestContext>> for HighwayMessage {
+    fn from(eff: Effect<TestContext>) -> Self {
         match eff {
             // The effect is `ValidVertex` but we want to gossip it to other
             // validators so for them it's just `Vertex` that needs to be validated.
@@ -95,14 +97,15 @@ use std::{
     fmt::{Debug, Display, Formatter},
     marker::PhantomData,
 };
+use test_harness::TestContext;
 
-impl<C: Context> PartialOrd for HighwayMessage<C> {
+impl PartialOrd for HighwayMessage {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(&other))
     }
 }
 
-impl<C: Context> Ord for HighwayMessage<C> {
+impl Ord for HighwayMessage {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match (self, other) {
             (Timer(t1), Timer(t2)) => t1.cmp(&t2),
@@ -136,18 +139,18 @@ pub(crate) enum CrankOk {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub(crate) enum TestRunError<C: Context> {
+pub(crate) enum TestRunError {
     /// VirtualNet was missing a validator when it was expected to exist.
     MissingValidator(ValidatorId),
     /// Sender sent a vertex for which it didn't have all dependencies.
-    SenderMissingDependency(ValidatorId, Dependency<C>),
+    SenderMissingDependency(ValidatorId, Dependency<TestContext>),
     /// No more messages in the message queue.
     NoMessages,
     /// We run out of consensus values to propose before the end of a test.
     NoConsensusValues,
 }
 
-impl<C: Context> Display for TestRunError<C> {
+impl Display for TestRunError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             TestRunError::NoMessages => write!(
@@ -183,27 +186,27 @@ impl Distribution {
     }
 }
 
-trait DeliveryStrategy<C: Context> {
+trait DeliveryStrategy {
     fn gen_delay<R: Rng>(
         &self,
         rng: &mut R,
-        message: &HighwayMessage<C>,
+        message: &HighwayMessage,
         distributon: &Distribution,
         base_delivery_timestamp: Timestamp,
     ) -> DeliverySchedule;
 }
 
-struct HighwayTestHarness<C, DS>
+struct HighwayTestHarness<DS>
 where
-    C: Context,
-    DS: DeliveryStrategy<C>,
+    DS: DeliveryStrategy,
 {
-    virtual_net: VirtualNet<C::ConsensusValue, HighwayConsensus<C>, HighwayMessage<C>>,
+    virtual_net:
+        VirtualNet<<TestContext as Context>::ConsensusValue, HighwayConsensus, HighwayMessage>,
     /// The instant the network was created.
     start_time: Timestamp,
     /// Consensus values to be proposed.
     /// Order of values in the vector defines the order in which they will be proposed.
-    consensus_values: VecDeque<C::ConsensusValue>,
+    consensus_values: VecDeque<<TestContext as Context>::ConsensusValue>,
     /// Number of consensus values that the test is started with.
     consensus_values_num: usize,
     /// A strategy to pseudo randomly change the message delivery times.
@@ -212,15 +215,18 @@ where
     delivery_time_distribution: Distribution,
 }
 
-impl<Ctx, DS> HighwayTestHarness<Ctx, DS>
+impl<DS> HighwayTestHarness<DS>
 where
-    Ctx: Context,
-    DS: DeliveryStrategy<Ctx>,
+    DS: DeliveryStrategy,
 {
     fn new<T: Into<Timestamp>>(
-        virtual_net: VirtualNet<Ctx::ConsensusValue, HighwayConsensus<Ctx>, HighwayMessage<Ctx>>,
+        virtual_net: VirtualNet<
+            <TestContext as Context>::ConsensusValue,
+            HighwayConsensus,
+            HighwayMessage,
+        >,
         start_time: T,
-        consensus_values: VecDeque<Ctx::ConsensusValue>,
+        consensus_values: VecDeque<<TestContext as Context>::ConsensusValue>,
         delivery_time_distribution: Distribution,
         delivery_time_strategy: DS,
     ) -> Self {
@@ -240,7 +246,7 @@ where
     /// Pops one message from the message queue (if there are any)
     /// and pass it to the recipient validator for execution.
     /// Messages returned from the execution are scheduled for later delivery.
-    pub(crate) fn crank<R: Rng>(&mut self, rand: &mut R) -> Result<CrankOk, TestRunError<Ctx>> {
+    pub(crate) fn crank<R: Rng>(&mut self, rand: &mut R) -> Result<CrankOk, TestRunError> {
         // Stop the test when each node finalized all consensus values.
         // Note that we're not testing the order of finalization here.
         // TODO: Consider moving out all the assertions to client side.
@@ -287,7 +293,7 @@ where
         Ok(CrankOk::Continue)
     }
 
-    fn next_consensus_value(&mut self) -> Option<Ctx::ConsensusValue> {
+    fn next_consensus_value(&mut self) -> Option<<TestContext as Context>::ConsensusValue> {
         self.consensus_values.pop_front()
     }
 
@@ -297,8 +303,8 @@ where
         &mut self,
         validator_id: &ValidatorId,
     ) -> Result<
-        &mut Validator<Ctx::ConsensusValue, HighwayMessage<Ctx>, HighwayConsensus<Ctx>>,
-        TestRunError<Ctx>,
+        &mut Validator<<TestContext as Context>::ConsensusValue, HighwayMessage, HighwayConsensus>,
+        TestRunError,
     > {
         self.virtual_net
             .validator_mut(&validator_id)
@@ -309,9 +315,9 @@ where
         &mut self,
         validator_id: &ValidatorId,
         f: F,
-    ) -> Result<Vec<HighwayMessage<Ctx>>, TestRunError<Ctx>>
+    ) -> Result<Vec<HighwayMessage>, TestRunError>
     where
-        F: FnOnce(&mut Highway<Ctx>) -> Vec<Effect<Ctx>>,
+        F: FnOnce(&mut Highway<TestContext>) -> Vec<Effect<TestContext>>,
     {
         let res = f(self.validator_mut(validator_id)?.consensus.highway_mut());
         let mut additional_effects = vec![];
@@ -337,8 +343,8 @@ where
     fn process_message(
         &mut self,
         validator_id: ValidatorId,
-        message: Message<HighwayMessage<Ctx>>,
-    ) -> Result<Vec<HighwayMessage<Ctx>>, TestRunError<Ctx>> {
+        message: Message<HighwayMessage>,
+    ) -> Result<Vec<HighwayMessage>, TestRunError> {
         self.validator_mut(&validator_id)?
             .push_messages_received(vec![message.clone()]);
 
@@ -404,9 +410,8 @@ where
         &mut self,
         recipient: ValidatorId,
         sender: ValidatorId,
-        vertex: Vertex<Ctx>,
-    ) -> Result<Result<Vec<HighwayMessage<Ctx>>, (Vertex<Ctx>, VertexError)>, TestRunError<Ctx>>
-    {
+        vertex: Vertex<TestContext>,
+    ) -> Result<Result<Vec<HighwayMessage>, (Vertex<TestContext>, VertexError)>, TestRunError> {
         // 1. pre_validate_vertex
         // 2. missing_dependency
         // 3. validate_vertex
@@ -424,7 +429,7 @@ where
         match sync_result {
             Err(vertex_error) => Ok(Err(vertex_error)),
             Ok((prevalidated_vertex, mut sync_effects)) => {
-                let add_vertex_effects: Vec<HighwayMessage<Ctx>> = {
+                let add_vertex_effects: Vec<HighwayMessage> = {
                     match self
                         .validator_mut(&recipient)?
                         .consensus
@@ -454,12 +459,15 @@ where
         &mut self,
         recipient: ValidatorId,
         sender: ValidatorId,
-        pvv: PreValidatedVertex<Ctx>,
+        pvv: PreValidatedVertex<TestContext>,
     ) -> Result<
-        Result<(PreValidatedVertex<Ctx>, Vec<HighwayMessage<Ctx>>), (Vertex<Ctx>, VertexError)>,
-        TestRunError<Ctx>,
+        Result<
+            (PreValidatedVertex<TestContext>, Vec<HighwayMessage>),
+            (Vertex<TestContext>, VertexError),
+        >,
+        TestRunError,
     > {
-        let mut hwms: Vec<HighwayMessage<Ctx>> = vec![];
+        let mut hwms: Vec<HighwayMessage> = vec![];
 
         loop {
             let validator = self
@@ -492,11 +500,10 @@ where
     #[allow(clippy::type_complexity)]
     fn synchronize_dependency(
         &mut self,
-        missing_dependency: Dependency<Ctx>,
+        missing_dependency: Dependency<TestContext>,
         recipient: ValidatorId,
         sender: ValidatorId,
-    ) -> Result<Result<Vec<HighwayMessage<Ctx>>, (Vertex<Ctx>, VertexError)>, TestRunError<Ctx>>
-    {
+    ) -> Result<Result<Vec<HighwayMessage>, (Vertex<TestContext>, VertexError)>, TestRunError> {
         let vertex = self
             .validator_mut(&sender)?
             .consensus
@@ -510,14 +517,14 @@ where
 
     /// Returns a `MutableHandle` on the `HighwayTestHarness` object
     /// that allows for manipulating internal state of the test state.
-    fn mutable_handle(&mut self) -> MutableHandle<Ctx, DS> {
+    fn mutable_handle(&mut self) -> MutableHandle<DS> {
         MutableHandle(self)
     }
 }
 
-struct MutableHandle<'a, C: Context, DS: DeliveryStrategy<C>>(&'a mut HighwayTestHarness<C, DS>);
+struct MutableHandle<'a, DS: DeliveryStrategy>(&'a mut HighwayTestHarness<DS>);
 
-impl<'a, C: Context, DS: DeliveryStrategy<C>> MutableHandle<'a, C, DS> {
+impl<'a, DS: DeliveryStrategy> MutableHandle<'a, DS> {
     /// Drops all messages from the queue.
     fn clear_message_queue(&mut self) {
         self.0.virtual_net.empty_queue();
@@ -532,9 +539,10 @@ enum BuilderError {
     EmptyFtt,
 }
 
-struct HighwayTestHarnessBuilder<C: Context, DS: DeliveryStrategy<C>> {
+struct HighwayTestHarnessBuilder<DS: DeliveryStrategy> {
     /// Validators (together with their secret keys) in the test run.
-    validators_secs: HashMap<C::ValidatorId, C::ValidatorSecret>,
+    validators_secs:
+        HashMap<<TestContext as Context>::ValidatorId, <TestContext as Context>::ValidatorSecret>,
     /// Percentage of faulty validators' (i.e. equivocators) weight.
     /// Defaults to 0 (network is perfectly secure).
     faulty_weight: u64,
@@ -542,7 +550,7 @@ struct HighwayTestHarnessBuilder<C: Context, DS: DeliveryStrategy<C>> {
     /// If not given, defaults to 1/3 of total validators' weight.
     ftt: Option<u64>,
     /// Consensus values to be proposed by the nodes in the network.
-    consensus_values: Option<VecDeque<C::ConsensusValue>>,
+    consensus_values: Option<VecDeque<<TestContext as Context>::ConsensusValue>>,
     /// Distribution of message delivery (delaying, dropping) delays..
     delivery_distribution: Distribution,
     delivery_strategy: DS,
@@ -554,7 +562,7 @@ struct HighwayTestHarnessBuilder<C: Context, DS: DeliveryStrategy<C>> {
     /// Type of discrete distribution of validators' weights.
     /// Defaults to uniform.
     weight_distribution: Distribution,
-    instance_id: C::InstanceId,
+    instance_id: <TestContext as Context>::InstanceId,
     /// Seed for `Highway`.
     /// Defaults to 0.
     seed: u64,
@@ -566,11 +574,11 @@ struct HighwayTestHarnessBuilder<C: Context, DS: DeliveryStrategy<C>> {
 // Default strategy for message delivery.
 struct InstantDeliveryNoDropping;
 
-impl<C: Context> DeliveryStrategy<C> for InstantDeliveryNoDropping {
+impl DeliveryStrategy for InstantDeliveryNoDropping {
     fn gen_delay<R: Rng>(
         &self,
         _rng: &mut R,
-        message: &HighwayMessage<C>,
+        message: &HighwayMessage,
         _distributon: &Distribution,
         base_delivery_timestamp: Timestamp,
     ) -> DeliverySchedule {
@@ -582,10 +590,8 @@ impl<C: Context> DeliveryStrategy<C> for InstantDeliveryNoDropping {
     }
 }
 
-impl<C: Context<ValidatorId = ValidatorId>>
-    HighwayTestHarnessBuilder<C, InstantDeliveryNoDropping>
-{
-    fn new(instance_id: C::InstanceId) -> Self {
+impl HighwayTestHarnessBuilder<InstantDeliveryNoDropping> {
+    fn new(instance_id: <TestContext as Context>::InstanceId) -> Self {
         HighwayTestHarnessBuilder {
             validators_secs: HashMap::new(),
             faulty_weight: 0,
@@ -603,12 +609,13 @@ impl<C: Context<ValidatorId = ValidatorId>>
     }
 }
 
-impl<C: Context<ValidatorId = ValidatorId>, DS: DeliveryStrategy<C>>
-    HighwayTestHarnessBuilder<C, DS>
-{
+impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
     pub(crate) fn validators(
         mut self,
-        validators_secs: HashMap<C::ValidatorId, C::ValidatorSecret>,
+        validators_secs: HashMap<
+            <TestContext as Context>::ValidatorId,
+            <TestContext as Context>::ValidatorSecret,
+        >,
     ) -> Self {
         self.validators_secs = validators_secs;
         self
@@ -625,16 +632,19 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: DeliveryStrategy<C>>
         self
     }
 
-    pub(crate) fn consensus_values(mut self, cv: Vec<C::ConsensusValue>) -> Self {
+    pub(crate) fn consensus_values(
+        mut self,
+        cv: Vec<<TestContext as Context>::ConsensusValue>,
+    ) -> Self {
         assert!(!cv.is_empty());
         self.consensus_values = Some(VecDeque::from(cv));
         self
     }
 
-    pub(crate) fn delivery_strategy<DS2: DeliveryStrategy<C>>(
+    pub(crate) fn delivery_strategy<DS2: DeliveryStrategy>(
         self,
         ds: DS2,
-    ) -> HighwayTestHarnessBuilder<C, DS2> {
+    ) -> HighwayTestHarnessBuilder<DS2> {
         HighwayTestHarnessBuilder {
             validators_secs: self.validators_secs,
             faulty_weight: self.faulty_weight,
@@ -681,7 +691,7 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: DeliveryStrategy<C>>
         self
     }
 
-    fn build<R: Rng>(mut self, rng: &mut R) -> Result<HighwayTestHarness<C, DS>, BuilderError> {
+    fn build<R: Rng>(mut self, rng: &mut R) -> Result<HighwayTestHarness<DS>, BuilderError> {
         if self.validators_secs.is_empty() {
             return Err(BuilderError::NoValidators);
         }
@@ -805,13 +815,16 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: DeliveryStrategy<C>>
 
         // Local function creating an instance of `HighwayConsensus` for a single validator.
         let highway_consensus = |(vid, secrets): (
-            C::ValidatorId,
-            &mut HashMap<C::ValidatorId, C::ValidatorSecret>,
+            <TestContext as Context>::ValidatorId,
+            &mut HashMap<
+                <TestContext as Context>::ValidatorId,
+                <TestContext as Context>::ValidatorSecret,
+            >,
         )| {
             let v_sec = secrets.remove(&vid).expect("Secret key should exist.");
 
             let (highway, effects) = {
-                let highway_params: HighwayParams<C> = HighwayParams {
+                let highway_params: HighwayParams<TestContext> = HighwayParams {
                     instance_id: instance_id.clone(),
                     validators: validators.clone(),
                 };
@@ -844,7 +857,7 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: DeliveryStrategy<C>>
             {
                 let (consensus, msgs) = highway_consensus((vid, &mut self.validators_secs));
                 let validator = Validator::new(vid, is_faulty, consensus);
-                let qm: Vec<QueueEntry<HighwayMessage<C>>> = msgs
+                let qm: Vec<QueueEntry<HighwayMessage>> = msgs
                     .into_iter()
                     .map(|hwm| {
                         // These are messages crated on the start of the network.
@@ -943,7 +956,7 @@ mod test_harness {
         let mut rand = XorShiftRng::from_seed(rand::random());
         let validators = vec![(ValidatorId(0), TestSecret(0))].into_iter().collect();
 
-        let mut highway_test_harness: HighwayTestHarness<TestContext, InstantDeliveryNoDropping> =
+        let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
             HighwayTestHarnessBuilder::new(0u64)
                 .validators(validators)
                 .consensus_values(vec![1])
@@ -952,9 +965,7 @@ mod test_harness {
                 .ok()
                 .expect("Construction was successful");
 
-        let mut mut_handle = highway_test_harness.mutable_handle();
-        mut_handle.clear_message_queue();
-        drop(mut_handle);
+        highway_test_harness.mutable_handle().clear_message_queue();
 
         assert_eq!(
             highway_test_harness.crank(&mut rand),
@@ -964,13 +975,13 @@ mod test_harness {
     }
 
     #[test]
-    fn done_when_all_finalized() -> Result<(), TestRunError<TestContext>> {
+    fn done_when_all_finalized() -> Result<(), TestRunError> {
         let mut rand = XorShiftRng::from_seed(rand::random());
         let validators = (0..10u32)
             .map(|i| (ValidatorId(i as u64), TestSecret(i)))
             .collect();
 
-        let mut highway_test_harness: HighwayTestHarness<TestContext, InstantDeliveryNoDropping> =
+        let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
             HighwayTestHarnessBuilder::new(0u64)
                 .validators(validators)
                 .consensus_values((0..10).collect())
