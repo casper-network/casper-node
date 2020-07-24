@@ -169,8 +169,18 @@ impl<C: Context> Display for TestRunError<C> {
 
 enum Distribution {
     Uniform,
-    Constant,
     Poisson(f64),
+}
+
+impl Distribution {
+    /// Returns vector of `count` elements of random values between `lower` and `uppwer`.
+    fn gen_range_vec<R: Rng>(&self, rng: &mut R, lower: u64, upper: u64, count: u8) -> Vec<u64> {
+        match self {
+            Distribution::Uniform => (0..count).map(|_| rng.gen_range(lower, upper)).collect(),
+            // https://casperlabs.atlassian.net/browse/HWY-116
+            Distribution::Poisson(_) => unimplemented!("Poisson distribution of weights"),
+        }
+    }
 }
 
 trait DeliveryStrategy<C: Context> {
@@ -518,16 +528,16 @@ enum BuilderError {
     NoValidators,
     EmptyConsensusValues,
     WeightLimits,
-    TooManyFaultyNodes,
+    TooManyFaultyNodes(String),
     EmptyFtt,
 }
 
 struct HighwayTestHarnessBuilder<C: Context, DS: DeliveryStrategy<C>> {
     /// Validators (together with their secret keys) in the test run.
     validators_secs: HashMap<C::ValidatorId, C::ValidatorSecret>,
-    /// Number of faulty validators (i.e. equivocators).
-    /// Defaults to 0.
-    faulty_num: u8,
+    /// Percentage of faulty validators' (i.e. equivocators) weight.
+    /// Defaults to 0 (network is perfectly secure).
+    faulty_weight: u64,
     /// FTT value for the finality detector.
     /// If not given, defaults to 1/3 of total validators' weight.
     ftt: Option<u64>,
@@ -578,14 +588,14 @@ impl<C: Context<ValidatorId = ValidatorId>>
     fn new(instance_id: C::InstanceId) -> Self {
         HighwayTestHarnessBuilder {
             validators_secs: HashMap::new(),
-            faulty_num: 0,
+            faulty_weight: 0,
             ftt: None,
             consensus_values: None,
-            delivery_distribution: Distribution::Constant,
+            delivery_distribution: Distribution::Uniform,
             delivery_strategy: InstantDeliveryNoDropping,
             weight_limits: (0, 0),
             start_time: Timestamp::zero(),
-            weight_distribution: Distribution::Constant,
+            weight_distribution: Distribution::Uniform,
             instance_id,
             seed: 0,
             round_exp: 12,
@@ -604,8 +614,14 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: DeliveryStrategy<C>>
         self
     }
 
-    pub(crate) fn faulty_num(mut self, faulty_num: u8) -> Self {
-        self.faulty_num = faulty_num;
+    /// Sets a percentage of weight that will be assigned to malicious nodes.
+    /// `faulty_weight` must be a value between 0 (inclusive) and 100 (inclusive).
+    pub(crate) fn faulty_weight(mut self, faulty_weight: u64) -> Self {
+        assert!(
+            faulty_weight <= 33,
+            "Expected value between 0 (inclusive) and 33 (inclusive)"
+        );
+        self.faulty_weight = faulty_weight;
         self
     }
 
@@ -621,7 +637,7 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: DeliveryStrategy<C>>
     ) -> HighwayTestHarnessBuilder<C, DS2> {
         HighwayTestHarnessBuilder {
             validators_secs: self.validators_secs,
-            faulty_num: self.faulty_num,
+            faulty_weight: self.faulty_weight,
             ftt: self.ftt,
             consensus_values: self.consensus_values,
             delivery_distribution: self.delivery_distribution,
@@ -677,18 +693,6 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: DeliveryStrategy<C>>
             .clone()
             .ok_or_else(|| BuilderError::EmptyConsensusValues)?;
 
-        if self.weight_limits == (0, 0) {
-            return Err(BuilderError::WeightLimits);
-        }
-
-        // TODO: This should be a weight of faulty validators, not count.
-        // https://casperlabs.atlassian.net/browse/HWY-117
-        let faulty_num = if self.faulty_num > (validators_num / 3) {
-            return Err(BuilderError::TooManyFaultyNodes);
-        } else {
-            self.faulty_num
-        };
-
         let instance_id = self.instance_id.clone();
         let seed = self.seed;
         let round_exp = self.round_exp;
@@ -705,37 +709,101 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: DeliveryStrategy<C>>
             (l, u)
         };
 
-        let weights: Vec<Weight> = match self.weight_distribution {
-            Distribution::Constant => {
-                let weight = Weight(rng.gen_range(lower, upper));
-                (0..validators_num).map(|_| weight).collect()
+        let (faulty_weights, honest_weights): (Vec<Weight>, Vec<Weight>) = {
+            if (self.faulty_weight > 0 && validators_num == 1) {
+                return Err(BuilderError::TooManyFaultyNodes(
+                    "Network has only 1 validator, it cannot be malicious. \
+                        Provide more validators or set `fauluty_weight` to 0."
+                        .to_string(),
+                ));
             }
-            Distribution::Uniform => (0..validators_num)
-                .map(|_| Weight(rng.gen_range(lower, upper)))
-                .collect(),
-            // https://casperlabs.atlassian.net/browse/HWY-116
-            Distribution::Poisson(_) => unimplemented!("Poisson distribution of weights"),
+
+            if (self.faulty_weight == 0) {
+                // All validators are honest.
+                let honest_validators: Vec<Weight> = self
+                    .weight_distribution
+                    .gen_range_vec(rng, lower, upper, validators_num)
+                    .into_iter()
+                    .map(|w| Weight(w))
+                    .collect();
+
+                (vec![], honest_validators)
+            } else {
+                // At least 2 validators with some level of faults.
+                let honest_num = rng.gen_range(1, validators_num);
+                let faulty_num = validators_num - honest_num;
+
+                assert!(
+                    faulty_num > 0,
+                    "Expected that at least one validator to be malicious."
+                );
+
+                let honest_weights = self
+                    .weight_distribution
+                    .gen_range_vec(rng, lower, upper, honest_num);
+
+                let faulty_weights: Vec<u64> = {
+                    // Weight of all malicious validators.
+                    let mut weight_limit: u64 =
+                        (self.faulty_weight / 100u64) * honest_weights.iter().sum::<u64>();
+                    let mut validators_left = faulty_num;
+                    let mut weights: Vec<u64> = vec![];
+                    // Generate weight as long as there are empty validator slots and there's a weight left.
+                    while validators_left > 0 {
+                        if validators_left == 1 {
+                            weights.push(weight_limit);
+                        } else {
+                            let weight: u64 = rng.gen_range(lower, weight_limit);
+                            weight_limit -= weight;
+                            weights.push(weight);
+                        }
+                        validators_left -= 1;
+                    }
+                    weights
+                };
+
+                (
+                    faulty_weights.into_iter().map(Weight).collect(),
+                    honest_weights.into_iter().map(Weight).collect(),
+                )
+            }
         };
 
-        let weights_sum = weights.iter().sum::<Weight>().0;
+        let mut validator_ids = (0..validators_num).map(|i| ValidatorId(i as u64));
 
-        // Network is not safe if weight of malicious validators is higher than ⅓.
-        let safe_ftt_limit = (weights_sum - 1) / 3;
-        // Random FTT that still creates secure network – where there's less equivocators than 1/3 of the weights.
-        let ftt = self.ftt.unwrap_or_else(|| rng.gen_range(1, safe_ftt_limit));
+        let weights_sum = faulty_weights
+            .iter()
+            .chain(honest_weights.iter())
+            .sum::<Weight>();
 
-        let validator_ids = (0..validators_num)
-            .map(|i| ValidatorId(i as u64))
+        let faulty_validators = validator_ids
+            .by_ref()
+            .take(faulty_weights.len())
+            .zip(faulty_weights)
             .collect::<Vec<_>>();
 
-        assert_eq!(weights.len(), validator_ids.len());
+        let honest_validators = validator_ids
+            .by_ref()
+            .take(honest_weights.len())
+            .zip(honest_weights)
+            .collect::<Vec<_>>();
 
-        let validators: Validators<ValidatorId> = {
-            let zipped: Vec<(ValidatorId, Weight)> =
-                validator_ids.clone().into_iter().zip(weights).collect();
-            Validators::from_iter(zipped)
-        };
+        // Sanity check.
+        assert_eq!(
+            faulty_validators.len() + honest_validators.len(),
+            validators_num as usize,
+        );
 
+        let validators: Validators<ValidatorId> = Validators::from_iter(
+            faulty_validators
+                .clone()
+                .into_iter()
+                .chain(honest_validators.clone().into_iter()),
+        );
+
+        let ftt = self.ftt.unwrap_or_else(|| (weights_sum.0 - 1) / 3);
+
+        // Local function creating an instance of `HighwayConsensus` for a single validator.
         let highway_consensus = |(vid, secrets): (
             C::ValidatorId,
             &mut HashMap<C::ValidatorId, C::ValidatorSecret>,
@@ -769,12 +837,10 @@ impl<C: Context<ValidatorId = ValidatorId>, DS: DeliveryStrategy<C>>
             let mut validators = vec![];
             let mut init_messages = vec![];
 
-            let (faulty_ids, honest_ids) = validator_ids.split_at(faulty_num as usize);
-
-            for (vid, is_faulty) in faulty_ids
+            for (vid, is_faulty) in faulty_validators
                 .iter()
-                .map(|vid| (*vid, true))
-                .chain(honest_ids.iter().map(|vid| (*vid, false)))
+                .map(|(vid, _)| (*vid, true))
+                .chain(honest_validators.iter().map(|(vid, _)| (*vid, false)))
             {
                 let (consensus, msgs) = highway_consensus((vid, &mut self.validators_secs));
                 let validator = Validator::new(vid, is_faulty, consensus);
