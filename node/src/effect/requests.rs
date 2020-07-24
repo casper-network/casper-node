@@ -26,6 +26,7 @@ use crate::{
             shared::{additive_map::AdditiveMap, transform::Transform},
             storage::global_state::CommitResult,
         },
+        deploy_fetcher::FetchResult,
         storage::{self, DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::hash::Digest,
@@ -398,6 +399,31 @@ impl Display for ContractRuntimeRequest {
 
             ContractRuntimeRequest::Query { query_request, .. } => {
                 write!(formatter, "query request: {:?}", query_request)
+            }
+        }
+    }
+}
+
+/// Deploy-fetcher related requests.
+#[derive(Debug)]
+#[must_use]
+pub enum DeployFetcherRequest<I> {
+    /// Return the specified deploy if it exists, else `None`.
+    FetchDeploy {
+        /// The hash of the deploy to be retrieved.
+        hash: DeployHash,
+        /// The peer id of the peer to be asked if the deploy is not held locally
+        peer: I,
+        /// Responder to call with the result.
+        responder: Responder<Option<Box<FetchResult>>>,
+    },
+}
+
+impl<I> Display for DeployFetcherRequest<I> {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            DeployFetcherRequest::FetchDeploy { hash, .. } => {
+                write!(formatter, "request deploy {}", hash)
             }
         }
     }
