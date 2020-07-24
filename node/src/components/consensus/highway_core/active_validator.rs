@@ -7,7 +7,7 @@ use super::{
     state::State,
     validators::ValidatorIndex,
     vertex::{Vertex, WireVote},
-    vote::{Observation, Panorama},
+    vote::{self, Observation, Panorama, Vote},
 };
 
 use crate::{
@@ -48,8 +48,8 @@ pub(crate) struct ActiveValidator<C: Context> {
     vidx: ValidatorIndex,
     /// The validator's secret signing key.
     secret: C::ValidatorSecret,
-    /// The round exponent: Our subjective rounds are `1 << round_exp` milliseconds long.
-    round_exp: u8,
+    /// The initial round exponent: Our first round is `1 << round_exp` milliseconds long.
+    initial_round_exp: u8,
     /// The latest timer we scheduled.
     next_timer: Timestamp,
 }
@@ -58,7 +58,7 @@ impl<C: Context> Debug for ActiveValidator<C> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("ActiveValidator")
             .field("vidx", &self.vidx)
-            .field("round_exp", &self.round_exp)
+            .field("initial_round_exp", &self.initial_round_exp)
             .field("next_timer", &self.next_timer)
             .finish()
     }
@@ -69,14 +69,14 @@ impl<C: Context> ActiveValidator<C> {
     pub(crate) fn new(
         vidx: ValidatorIndex,
         secret: C::ValidatorSecret,
-        round_exp: u8,
+        initial_round_exp: u8,
         timestamp: Timestamp,
         state: &State<C>,
     ) -> (Self, Vec<Effect<C>>) {
         let mut av = ActiveValidator {
             vidx,
             secret,
-            round_exp,
+            initial_round_exp,
             next_timer: Timestamp::zero(),
         };
         let effects = av.schedule_timer(timestamp, state);
@@ -95,12 +95,12 @@ impl<C: Context> ActiveValidator<C> {
             warn!(%timestamp, "skipping outdated timer event");
             return effects;
         }
-        let round_offset = timestamp % self.round_len();
-        let round_id = timestamp - round_offset;
-        if round_offset == TimeDiff::from(0) && state.leader(round_id) == self.vidx {
+        let round_id = self.round_id(state, timestamp);
+        let round_len = self.round_len(state, timestamp);
+        if timestamp == round_id && state.leader(round_id) == self.vidx {
             let bctx = BlockContext::new(timestamp);
             effects.push(Effect::RequestNewBlock(bctx));
-        } else if round_offset == self.witness_offset() {
+        } else if timestamp == round_id + self.witness_offset(round_len) {
             let panorama = state.panorama_cutoff(state.panorama(), timestamp);
             if !panorama.is_empty() {
                 let witness_vote = self.new_vote(panorama, timestamp, None, state);
@@ -159,16 +159,14 @@ impl<C: Context> ActiveValidator<C> {
             warn!(%vote.timestamp, %timestamp, "added a vote with a future timestamp");
             return false;
         }
-        timestamp / self.round_len() == vote.timestamp / self.round_len() // Current round.
+        let round_exp = self.round_exp(state, timestamp);
+        timestamp >> round_exp == vote.timestamp >> round_exp // Current round.
             && state.leader(vote.timestamp) == vote.creator // The creator is the round's leader.
             && vote.creator != self.vidx // We didn't send it ourselves.
             && !state.has_evidence(vote.creator) // The creator is not faulty.
-            && state
-                .panorama()
-                .get(self.vidx)
-                .correct()
-                .map_or(true, |own_vh| {
-                    !state.sees_correct(&state.vote(own_vh).panorama, vhash)
+            && self.latest_vote(state)
+                .map_or(true, |vote| {
+                    !state.sees_correct(&vote.panorama, vhash)
                 }) // We haven't confirmed it already.
     }
 
@@ -206,24 +204,32 @@ impl<C: Context> ActiveValidator<C> {
             value,
             seq_number,
             timestamp,
-            next_round_exp: self.round_exp,
+            next_round_exp: self.initial_round_exp, // TODO: Adaptive round lengths.
         };
         SignedWireVote::new(wvote, &self.secret)
     }
 
     /// Returns a `ScheduleTimer` effect for the next time we need to be called.
+    ///
+    /// If the time is before the current round's witness vote, schedule the witness vote.
+    /// Otherwise, if we are the next round's leader, schedule the proposal vote.
+    /// Otherwise schedule the next round's witness vote.
     fn schedule_timer(&mut self, timestamp: Timestamp, state: &State<C>) -> Vec<Effect<C>> {
         if self.next_timer > timestamp {
             return Vec::new(); // We already scheduled the next call; nothing to do.
         }
-        let round_offset = timestamp % self.round_len();
-        let round_id = timestamp - round_offset;
-        self.next_timer = if round_offset < self.witness_offset() {
-            round_id + self.witness_offset()
-        } else if state.leader(round_id + self.round_len()) == self.vidx {
-            round_id + self.round_len()
+        let round_id = self.round_id(state, timestamp);
+        let round_len = self.round_len(state, timestamp);
+        self.next_timer = if timestamp < round_id + self.witness_offset(round_len) {
+            round_id + self.witness_offset(round_len)
         } else {
-            round_id + self.round_len() + self.witness_offset()
+            let next_round_id = round_id + round_len;
+            if state.leader(next_round_id) == self.vidx {
+                next_round_id
+            } else {
+                let next_round_len = self.round_len(state, next_round_id);
+                next_round_id + self.witness_offset(next_round_len)
+            }
         };
         vec![Effect::ScheduleTimer(self.next_timer)]
     }
@@ -231,18 +237,35 @@ impl<C: Context> ActiveValidator<C> {
     /// Returns the earliest timestamp where we can cast our next vote without equivocating, i.e.
     /// the timestamp of our previous vote, or 0 if there is none.
     fn earliest_vote_time(&self, state: &State<C>) -> Timestamp {
-        let opt_own_vh = state.panorama().get(self.vidx).correct();
-        opt_own_vh.map_or(Timestamp::zero(), |own_vh| state.vote(own_vh).timestamp)
+        self.latest_vote(state)
+            .map_or_else(Timestamp::zero, |vh| vh.timestamp)
     }
 
-    /// Returns the number of ticks after the beginning of a round when the witness votes are sent.
-    fn witness_offset(&self) -> TimeDiff {
-        self.round_len() * 2 / 3
+    /// Returns the most recent vote by this validator.
+    fn latest_vote<'a>(&self, state: &'a State<C>) -> Option<&'a Vote<C>> {
+        let vh = state.panorama().get(self.vidx).correct()?;
+        Some(state.vote(vh))
     }
 
-    /// The length of a round, in ticks.
-    fn round_len(&self) -> TimeDiff {
-        TimeDiff::from(1u64 << self.round_exp)
+    /// Returns the duration after the beginning of a round when the witness votes are sent.
+    fn witness_offset(&self, round_len: TimeDiff) -> TimeDiff {
+        round_len * 2 / 3
+    }
+
+    /// The round exponent of the round containing `timestamp`.
+    fn round_exp(&self, state: &State<C>, timestamp: Timestamp) -> u8 {
+        self.latest_vote(state)
+            .map_or(self.initial_round_exp, |vote| vote.round_exp_at(timestamp))
+    }
+
+    /// The length of the round containing `timestamp`.
+    fn round_len(&self, state: &State<C>, timestamp: Timestamp) -> TimeDiff {
+        TimeDiff::from(1 << self.round_exp(state, timestamp))
+    }
+
+    /// The ID, i.e. the beginning, of the round containing `timestamp`.
+    fn round_id(&self, state: &State<C>, timestamp: Timestamp) -> Timestamp {
+        vote::round_id(timestamp, self.round_exp(state, timestamp))
     }
 }
 
