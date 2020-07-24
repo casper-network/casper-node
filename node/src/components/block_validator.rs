@@ -5,11 +5,11 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    fmt::{self, Debug, Display, Formatter},
+    fmt::Debug,
     mem,
 };
 
-use derive_more::From;
+use derive_more::{Display, From};
 use rand::Rng;
 use tracing::warn;
 
@@ -23,27 +23,16 @@ use crate::{
 };
 
 /// Block validator component event.
-#[derive(Debug, From)]
+#[derive(Debug, From, Display)]
 pub enum Event<I> {
     /// A request made of the Block validator component.
     #[from]
     Request(BlockValidatorRequest<I>),
+    #[display(fmt = "deploy {} is valid: {}", deploy, downloaded_successfully)]
     DeployFetcherResponse {
         deploy: DeployHash,
         downloaded_successfully: bool,
     },
-}
-
-impl<I: Display> Display for Event<I> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Event::Request(req) => write!(f, "{}", req),
-            Event::DeployFetcherResponse {
-                deploy,
-                downloaded_successfully,
-            } => write!(f, "deploy {} is valid: {}", deploy, downloaded_successfully),
-        }
-    }
 }
 
 #[derive(Debug)]
