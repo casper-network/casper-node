@@ -231,6 +231,7 @@ impl<C: Context> State<C> {
             value,
             seq_number: vote.seq_number,
             timestamp: vote.timestamp,
+            next_round_exp: vote.next_round_exp,
         };
         Some(SignedWireVote {
             wire_vote: wvote,

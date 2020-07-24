@@ -82,7 +82,7 @@ use crate::{
             shared::{additive_map::AdditiveMap, transform::Transform},
             storage::global_state::CommitResult,
         },
-        deploy_buffer::BlockLimits,
+        deploy_fetcher::FetchResult,
         storage::{self, DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::hash::Digest,
@@ -96,8 +96,8 @@ use announcements::{
 use casperlabs_types::{Key, ProtocolVersion};
 use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
 use requests::{
-    BlockExecutorRequest, BlockValidatorRequest, ContractRuntimeRequest, DeployFetcherRequest,
-    DeployQueueRequest, MetricsRequest, NetworkRequest, StorageRequest,
+    BlockExecutorRequest, BlockValidatorRequest, ContractRuntimeRequest, DeployBufferRequest,
+    DeployFetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -410,7 +410,7 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
-    /// Announce that the HTTP API server has received a deploy.
+    /// Announces that the HTTP API server has received a deploy.
     pub(crate) async fn announce_deploy_received(self, deploy: Box<Deploy>)
     where
         REv: From<ApiServerAnnouncement>,
@@ -423,17 +423,17 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
-    /// Announces that a (not necessarily new) deploy has been added to the store.
+    /// Announces that a deploy not previously stored has now been stored.
     pub(crate) fn announce_deploy_stored<S>(self, deploy: &S::Deploy) -> impl Future<Output = ()>
     where
         S: StorageType,
         REv: From<StorageAnnouncement<S>>,
     {
         let deploy_hash = *deploy.id();
-        let deploy_header = deploy.header().clone();
+        let deploy_header = Box::new(deploy.header().clone());
 
         self.0.schedule(
-            StorageAnnouncement::StoredDeploy {
+            StorageAnnouncement::StoredNewDeploy {
                 deploy_hash,
                 deploy_header,
             },
@@ -487,7 +487,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         deploy_hash: DeployHash,
         peer: I,
-    ) -> Option<Box<Deploy>>
+    ) -> Option<Box<FetchResult>>
     where
         REv: From<DeployFetcherRequest<I>>,
         I: Send + 'static,
@@ -602,22 +602,13 @@ impl<REv> EffectBuilder<REv> {
                                       * type than the context in the return value in the future */
     ) -> (ProtoBlock, BlockContext)
     where
-        REv: From<DeployQueueRequest>,
+        REv: From<DeployBufferRequest>,
     {
-        // TODO: The `EffectBuilder` shouldn't contain that much logic. Move to deploy buffer.
-        let limits = BlockLimits {
-            size_bytes: u64::MAX,
-            gas: u64::MAX,
-            deploy_count: 3, // TODO
-        };
         let deploys = self
             .make_request(
-                |responder| DeployQueueRequest::RequestForInclusion {
+                |responder| DeployBufferRequest::ListForInclusion {
                     current_instant: block_context.timestamp().millis(),
-                    max_ttl: u32::MAX,
-                    limits,
-                    max_dependencies: u8::MAX,
-                    past: Default::default(), // TODO
+                    past_blocks: Default::default(), // TODO
                     responder,
                 },
                 QueueKind::Regular,
@@ -745,8 +736,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested chainspec from the chainspec store.
-    // TODO: remove once method is used.
-    #[allow(dead_code)]
     pub(crate) async fn get_chainspec<S>(self, version: Version) -> storage::Result<Chainspec>
     where
         S: StorageType + 'static,

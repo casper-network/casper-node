@@ -7,12 +7,12 @@ mod error;
 
 use std::fmt::{self, Display, Formatter};
 
-use casperlabs_types::U512;
 use derive_more::From;
 use prometheus::Registry;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+
+use casperlabs_types::U512;
 
 use crate::{
     components::{
@@ -35,7 +35,7 @@ use crate::{
         },
         requests::{
             ApiRequest, BlockExecutorRequest, BlockValidatorRequest, ContractRuntimeRequest,
-            DeployFetcherRequest, DeployQueueRequest, MetricsRequest, NetworkRequest,
+            DeployBufferRequest, DeployFetcherRequest, MetricsRequest, NetworkRequest,
             StorageRequest,
         },
         EffectBuilder, Effects,
@@ -83,9 +83,9 @@ pub enum Event {
     /// Network event.
     #[from]
     Network(small_network::Event<Message>),
-    /// Deploy queue event.
+    /// Deploy buffer event.
     #[from]
-    DeployQueue(deploy_buffer::Event),
+    DeployBuffer(deploy_buffer::Event),
     /// Pinger event.
     #[from]
     Pinger(pinger::Event),
@@ -121,9 +121,9 @@ pub enum Event {
     /// Deploy fetcher request.
     #[from]
     DeployFetcherRequest(DeployFetcherRequest<NodeId>),
-    /// Deploy queue request.
+    /// Deploy buffer request.
     #[from]
-    DeployQueueRequest(DeployQueueRequest),
+    DeployBufferRequest(DeployBufferRequest),
     /// Block executor request.
     #[from]
     BlockExecutorRequest(BlockExecutorRequest),
@@ -189,7 +189,7 @@ impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Network(event) => write!(f, "network: {}", event),
-            Event::DeployQueue(event) => write!(f, "deploy queue: {}", event),
+            Event::DeployBuffer(event) => write!(f, "deploy buffer: {}", event),
             Event::Pinger(event) => write!(f, "pinger: {}", event),
             Event::Storage(event) => write!(f, "storage: {}", event),
             Event::ApiServer(event) => write!(f, "api server: {}", event),
@@ -201,7 +201,7 @@ impl Display for Event {
             Event::BlockValidator(event) => write!(f, "block validator: {}", event),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
             Event::DeployFetcherRequest(req) => write!(f, "deploy fetcher request: {}", req),
-            Event::DeployQueueRequest(req) => write!(f, "deploy queue request: {}", req),
+            Event::DeployBufferRequest(req) => write!(f, "deploy buffer request: {}", req),
             Event::BlockExecutorRequest(req) => write!(f, "block executor request: {}", req),
             Event::BlockValidatorRequest(req) => write!(f, "block validator request: {}", req),
             Event::MetricsRequest(req) => write!(f, "metrics request: {}", req),
@@ -275,7 +275,7 @@ impl reactor::Reactor for Reactor {
         )?;
         let deploy_fetcher = DeployFetcher::new(config.gossip);
         let deploy_gossiper = DeployGossiper::new(config.gossip);
-        let deploy_buffer = DeployBuffer::new();
+        let deploy_buffer = DeployBuffer::new(config.node.block_max_deploy_count as usize);
         // Post state hash is expected to be present
         let post_state_hash = chainspec_handler
             .post_state_hash()
@@ -317,8 +317,8 @@ impl reactor::Reactor for Reactor {
                 Event::Network,
                 self.net.handle_event(effect_builder, rng, event),
             ),
-            Event::DeployQueue(event) => reactor::wrap_effects(
-                Event::DeployQueue,
+            Event::DeployBuffer(event) => reactor::wrap_effects(
+                Event::DeployBuffer,
                 self.deploy_buffer.handle_event(effect_builder, rng, event),
             ),
             Event::Pinger(event) => reactor::wrap_effects(
@@ -360,6 +360,7 @@ impl reactor::Reactor for Reactor {
                 self.block_validator
                     .handle_event(effect_builder, rng, event),
             ),
+
             // Requests:
             Event::NetworkRequest(req) => self.dispatch_event(
                 effect_builder,
@@ -369,8 +370,8 @@ impl reactor::Reactor for Reactor {
             Event::DeployFetcherRequest(req) => {
                 self.dispatch_event(effect_builder, rng, Event::DeployFetcher(req.into()))
             }
-            Event::DeployQueueRequest(req) => {
-                self.dispatch_event(effect_builder, rng, Event::DeployQueue(req.into()))
+            Event::DeployBufferRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::DeployBuffer(req.into()))
             }
             Event::BlockExecutorRequest(req) => self.dispatch_event(
                 effect_builder,
@@ -418,7 +419,7 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
             }
             Event::ConsensusAnnouncement(consensus_announcement) => {
-                let reactor_event = Event::DeployQueue(match consensus_announcement {
+                let reactor_event = Event::DeployBuffer(match consensus_announcement {
                     ConsensusAnnouncement::Proposed(block) => {
                         deploy_buffer::Event::ProposedProtoBlock(block)
                     }
@@ -431,16 +432,15 @@ impl reactor::Reactor for Reactor {
                 });
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
-            Event::StorageAnnouncement(StorageAnnouncement::StoredDeploy {
+            Event::StorageAnnouncement(StorageAnnouncement::StoredNewDeploy {
                 deploy_hash,
                 deploy_header,
             }) => {
-                if self.deploy_buffer.add_deploy(deploy_hash, deploy_header) {
-                    info!("Added deploy {} to the buffer.", deploy_hash);
-                } else {
-                    info!("Deploy {} rejected from the buffer.", deploy_hash);
-                }
-                Effects::new()
+                let event = deploy_buffer::Event::Buffer {
+                    hash: deploy_hash,
+                    header: deploy_header,
+                };
+                self.dispatch_event(effect_builder, rng, Event::DeployBuffer(event))
             }
         }
     }

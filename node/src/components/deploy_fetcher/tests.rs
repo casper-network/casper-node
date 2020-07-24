@@ -4,8 +4,10 @@ use std::fmt::{self, Debug, Display, Formatter};
 use derive_more::From;
 use futures::future::FutureExt;
 use prometheus::Registry;
+use rand::rngs::ThreadRng;
 use tempfile::TempDir;
 use thiserror::Error;
+use tokio::time;
 
 use super::*;
 use crate::{
@@ -24,6 +26,8 @@ use crate::{
     },
     types::Deploy,
 };
+
+const TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Top-level event for the reactor.
 #[derive(Debug, From)]
@@ -178,43 +182,43 @@ fn fetch_deploy(
     }
 }
 
-#[tokio::test]
-async fn should_fetch_from_peer() {
-    const NETWORK_SIZE: usize = 2;
-    const TIMEOUT: Duration = Duration::from_secs(1);
-
-    NetworkController::<Message>::create_active();
-    let mut network = Network::<Reactor>::new();
-    let mut rng = rand::thread_rng();
-
-    // Add two nodes.
-    let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
-
-    // Create a random deploy.
-    let deploy: Deploy = rng.gen();
-    let deploy_hash = *deploy.id();
-
-    // Store the deploy on node 0.
+/// Store a deploy on a target node.
+async fn store_deploy(
+    deploy: &Deploy,
+    node_id: &NodeId,
+    network: &mut Network<Reactor>,
+    mut rng: &mut ThreadRng,
+) {
     network
-        .process_injected_effect_on(&node_ids[0], put_deploy_to_storage(deploy.clone()))
-        .await;
-    let stored_deploy = move |event: &Event| -> bool {
-        match event {
-            Event::StorageAnnouncement(StorageAnnouncement::StoredDeploy { .. }) => true,
-            _ => false,
-        }
-    };
-    network
-        .crank_until(&node_ids[0], &mut rng, stored_deploy, TIMEOUT)
+        .process_injected_effect_on(node_id, put_deploy_to_storage(deploy.clone()))
         .await;
 
-    // Try to fetch the deploy from node 1.  It should fail to get it from its own storage component
-    // but provide it by getting it from node 0.
+    // cycle to storage
     network
-        .process_injected_effect_on(&node_ids[1], fetch_deploy(deploy_hash, node_ids[0]))
+        .crank_until(
+            node_id,
+            &mut rng,
+            move |event: &Event| -> bool {
+                match event {
+                    Event::StorageAnnouncement(StorageAnnouncement::StoredNewDeploy { .. }) => true,
+                    _ => false,
+                }
+            },
+            TIMEOUT,
+        )
         .await;
+}
+
+async fn assert_settled(
+    node_id: &NodeId,
+    deploy_hash: DeployHash,
+    network: &mut Network<Reactor>,
+    mut rng: ThreadRng,
+    timeout: Duration,
+    allow_timeout: bool,
+) {
     let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
-        let runner = nodes.get(&node_ids[1]).unwrap();
+        let runner = nodes.get(node_id).unwrap();
         runner
             .reactor()
             .inner()
@@ -225,7 +229,181 @@ async fn should_fetch_from_peer() {
             .expect("should only be a single result")
             .is_ok()
     };
-    network.settle_on(&mut rng, deploy_held, TIMEOUT).await;
+
+    if allow_timeout {
+        time::timeout(
+            timeout,
+            network.settle_on_indefinitely(&mut rng, deploy_held),
+        )
+        .await
+        .unwrap_or_default();
+    } else {
+        // Panics internally if unsuccessful.
+        network.settle_on(&mut rng, deploy_held, timeout).await;
+    }
+}
+
+#[tokio::test]
+async fn should_fetch_from_local() {
+    const NETWORK_SIZE: usize = 1;
+
+    NetworkController::<Message>::create_active();
+    let (mut network, mut rng, node_ids) = {
+        let mut network = Network::<Reactor>::new();
+        let mut rng = rand::thread_rng();
+        let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
+        (network, rng, node_ids)
+    };
+
+    // Create a random deploy.
+    let deploy: Deploy = rng.gen();
+
+    // Store deploy on a node.
+    let node_to_store_on = &node_ids[0];
+    store_deploy(&deploy, node_to_store_on, &mut network, &mut rng).await;
+
+    // Try to fetch the deploy from a node that holds it.
+    let node_id = &node_ids[0];
+    let deploy_hash = *deploy.id();
+    network
+        .process_injected_effect_on(node_id, fetch_deploy(deploy_hash, *node_id))
+        .await;
+
+    assert_settled(node_id, *deploy.id(), &mut network, rng, TIMEOUT, false).await;
+
+    NetworkController::<Message>::remove_active();
+}
+
+#[tokio::test]
+async fn should_fetch_from_peer() {
+    const NETWORK_SIZE: usize = 2;
+
+    NetworkController::<Message>::create_active();
+    let (mut network, mut rng, node_ids) = {
+        let mut network = Network::<Reactor>::new();
+        let mut rng = rand::thread_rng();
+        let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
+        (network, rng, node_ids)
+    };
+
+    // Create a random deploy.
+    let deploy: Deploy = rng.gen();
+
+    // Store deploy on a node.
+    let node_to_store_on = &node_ids[0];
+    store_deploy(&deploy, node_to_store_on, &mut network, &mut rng).await;
+
+    let node_id = &node_ids[0];
+    let peer = node_ids[1];
+    let deploy_hash = *deploy.id();
+
+    // Try to fetch the deploy from a node that does not hold it; should get from peer.
+    network
+        .process_injected_effect_on(node_id, fetch_deploy(deploy_hash, peer))
+        .await;
+
+    assert_settled(node_id, *deploy.id(), &mut network, rng, TIMEOUT, false).await;
+
+    NetworkController::<Message>::remove_active();
+}
+
+#[tokio::test]
+async fn should_timeout_fetch_from_peer() {
+    const NETWORK_SIZE: usize = 2;
+
+    NetworkController::<Message>::create_active();
+    let (mut network, mut rng, node_ids) = {
+        let mut network = Network::<Reactor>::new();
+        let mut rng = rand::thread_rng();
+        let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
+        (network, rng, node_ids)
+    };
+
+    // Create a random deploy.
+    let deploy: Deploy = rng.gen();
+    let deploy_hash = deploy.id();
+
+    let holding_node = node_ids[0];
+    let requesting_node = node_ids[1];
+
+    // Store deploy on holding node.
+    store_deploy(&deploy, &holding_node, &mut network, &mut rng).await;
+
+    // Initiate requesting node asking for deploy from holding node.
+    network
+        .process_injected_effect_on(
+            &requesting_node,
+            move |effect_builder: EffectBuilder<Event>| {
+                effect_builder
+                    .fetch_deploy(*deploy_hash, holding_node)
+                    .then(move |maybe_deploy| async move {
+                        // This is the final assert; we expect the request to time out
+                        // so this should be None on the requesting node.
+                        assert!(maybe_deploy.is_none());
+                    })
+                    .ignore()
+            },
+        )
+        .await;
+
+    // Crank until message sent from the requestor.
+    network
+        .crank_until(
+            &requesting_node,
+            &mut rng,
+            move |event: &Event| -> bool {
+                match event {
+                    Event::NetworkRequest(request) => match request {
+                        NetworkRequest::SendMessage { payload, .. } => match payload {
+                            Message::GetRequest(_) => true,
+                            _ => false,
+                        },
+                        _ => false,
+                    },
+                    _ => false,
+                }
+            },
+            TIMEOUT,
+        )
+        .await;
+
+    // Crank until the message is received by the holding node.
+    network
+        .crank_until(
+            &holding_node,
+            &mut rng,
+            move |event: &Event| -> bool {
+                match event {
+                    Event::NetworkRequest(request) => match request {
+                        NetworkRequest::SendMessage { payload, .. } => match payload {
+                            Message::GetResponse(_) => true,
+                            _ => false,
+                        },
+                        _ => false,
+                    },
+                    _ => false,
+                }
+            },
+            TIMEOUT,
+        )
+        .await;
+
+    // Advance time.
+    let secs_to_advance = GossipTableConfig::default().get_remainder_timeout_secs();
+    time::pause();
+    time::advance(Duration::from_secs(secs_to_advance)).await;
+    time::resume();
+
+    // Settle the network, allowing timeout to avoid panic.
+    assert_settled(
+        &requesting_node,
+        *deploy.id(),
+        &mut network,
+        rng,
+        TIMEOUT,
+        true,
+    )
+    .await;
 
     NetworkController::<Message>::remove_active();
 }

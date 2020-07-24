@@ -52,6 +52,8 @@ max_ttl_millis = 86400000
 max_dependencies = 10
 # Maximum block size in bytes.  0 means unlimited.
 max_block_size = 10485760
+# The upper limit of total gas of all deploys in a block.
+block_gas_limit = 10000000000000
 
 [wasm_costs]
 # Default opcode cost.

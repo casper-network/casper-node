@@ -89,16 +89,28 @@ pub(crate) struct WireVote<C: Context> {
     pub(crate) value: Option<C::ConsensusValue>,
     pub(crate) seq_number: u64,
     pub(crate) timestamp: Timestamp,
+    pub(crate) next_round_exp: u8,
 }
 
 impl<C: Context> Debug for WireVote<C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /// A type whose debug implementation prints ".." (without the quotes).
+        struct Ellipsis;
+
+        impl Debug for Ellipsis {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "..")
+            }
+        }
+
         f.debug_struct("WireVote")
-            .field("hash", &self.hash())
+            .field("hash()", &self.hash())
+            .field("value", &self.value.as_ref().map(|_| Ellipsis))
             .field("creator", &self.creator)
-            .field("seq_num", &self.seq_number)
+            .field("seq_number", &self.seq_number)
             .field("timestamp", &self.timestamp.millis())
             .field("panorama", &self.panorama.0)
+            .field("next_round_exp", &self.next_round_exp)
             .finish()
     }
 }

@@ -206,6 +206,7 @@ impl<C: Context> ActiveValidator<C> {
             value,
             seq_number,
             timestamp,
+            next_round_exp: self.round_exp,
         };
         SignedWireVote::new(wvote, &self.secret)
     }

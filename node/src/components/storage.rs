@@ -166,20 +166,20 @@ where
                 let deploy_store = self.deploy_store();
                 async move {
                     // Create the effect, but do not return it.
-                    let announce_success = effect_builder.announce_deploy_stored(&deploy);
+                    let announce_new_deploy = effect_builder.announce_deploy_stored(&deploy);
 
                     let result = task::spawn_blocking(move || deploy_store.put(*deploy))
                         .await
                         .expect("should run");
 
-                    let was_ok = result.is_ok();
+                    let stored_new_deploy = *result.as_ref().unwrap_or_else(|_| &false);
 
-                    // Tell the requestor the result of storing the deploy.
+                    // Tell the requester the result of storing the deploy.
                     responder.respond(result).await;
 
-                    if was_ok {
+                    if stored_new_deploy {
                         // Now that we have stored the deploy, we also want to announce it.
-                        announce_success.await;
+                        announce_new_deploy.await;
                     }
                 }
                 .ignore()

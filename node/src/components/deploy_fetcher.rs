@@ -19,7 +19,7 @@ use crate::{
     GossipTableConfig,
 };
 
-pub use event::{Event, RequestDirection};
+pub use event::{Event, FetchResult, RequestDirection};
 pub use message::Message;
 
 pub trait ReactorEvent:
@@ -61,6 +61,7 @@ impl DeployFetcher {
         maybe_responder: Option<DeployResponder>,
     ) -> Effects<Event> {
         let request_direction = if let Some(responder) = maybe_responder {
+            // Capture responder for later signalling.
             self.responders
                 .entry((deploy_hash, peer))
                 .or_default()
@@ -101,21 +102,13 @@ impl DeployFetcher {
         deploy: Deploy,
         peer: NodeId,
     ) -> Effects<Event> {
-        if request_direction == RequestDirection::Inbound {
-            let message = Message::GetResponse(Box::new(deploy));
-            effect_builder.send_message(peer, message).ignore()
-        } else {
-            let mut effects = Effects::new();
-            if let Some(responders) = self.responders.remove(&(*deploy.id(), peer)) {
-                for responder in responders {
-                    effects.extend(
-                        responder
-                            .respond(Some(Box::new(deploy.to_owned())))
-                            .ignore(),
-                    );
-                }
+        match request_direction {
+            RequestDirection::Inbound => effect_builder
+                .send_message(peer, Message::GetResponse(Box::new(deploy)))
+                .ignore(),
+            RequestDirection::Outbound => {
+                self.signal(*deploy.id(), Some(FetchResult::FromStore(deploy)), peer)
             }
-            effects
         }
     }
 
@@ -152,24 +145,28 @@ impl DeployFetcher {
         deploy: Deploy,
         peer: NodeId,
     ) -> Effects<Event> {
-        let deploy_hash = *deploy.id();
         effect_builder
-            .put_deploy_to_storage(deploy)
-            .event(move |result| Event::PutToStoreResult {
-                deploy_hash,
+            .put_deploy_to_storage(deploy.clone())
+            .event(move |result| Event::StoredFromPeerResult {
+                deploy: Box::new(deploy),
                 peer,
                 result,
             })
     }
 
-    /// Remove any remaining in flight fetch requests for provided deploy_hash and peer.
-    fn timeout_peer(&mut self, deploy_hash: DeployHash, peer: NodeId) -> Effects<Event> {
+    /// Handles signalling responders with `Deploy` or `None`.
+    fn signal(
+        &mut self,
+        deploy_hash: DeployHash,
+        result: Option<FetchResult>,
+        peer: NodeId,
+    ) -> Effects<Event> {
         let mut effects = Effects::new();
         if let Some(responders) = self.responders.remove(&(deploy_hash, peer)) {
             for responder in responders {
-                effects.extend(responder.respond(None).ignore());
+                effects.extend(responder.respond(result.clone().map(Box::new)).ignore());
             }
-        };
+        }
         effects
     }
 }
@@ -193,7 +190,7 @@ where
                 peer,
                 responder,
             } => self.fetch(effect_builder, deploy_hash, peer, Some(responder)),
-            Event::TimeoutPeer { deploy_hash, peer } => self.timeout_peer(deploy_hash, peer),
+            Event::TimeoutPeer { deploy_hash, peer } => self.signal(deploy_hash, None, peer),
             Event::MessageReceived {
                 message,
                 sender: peer,
@@ -217,28 +214,22 @@ where
                     peer,
                 ),
             },
-            Event::PutToStoreResult {
-                deploy_hash,
+            Event::StoredFromPeerResult {
+                deploy,
                 peer,
                 result,
             } => match result {
-                Ok(ret) => {
-                    if ret {
-                        self.get_from_store(
-                            effect_builder,
-                            RequestDirection::Outbound,
-                            deploy_hash,
-                            peer,
-                        )
-                    } else {
-                        self.timeout_peer(deploy_hash, peer);
-                        Effects::new()
-                    }
-                }
+                Ok(_) => self.signal(
+                    *deploy.id(),
+                    Some(FetchResult::FromPeer(*deploy, peer)),
+                    peer,
+                ),
                 Err(error) => {
                     error!(
                         "received deploy {} from peer {} but failed to put it to store: {}",
-                        deploy_hash, peer, error
+                        *deploy.id(),
+                        peer,
+                        error
                     );
                     Effects::new()
                 }
