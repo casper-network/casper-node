@@ -231,6 +231,7 @@ impl<C: Context> State<C> {
             value,
             seq_number: vote.seq_number,
             timestamp: vote.timestamp,
+            next_round_exp: vote.next_round_exp,
         };
         Some(SignedWireVote {
             wire_vote: wvote,
@@ -427,7 +428,7 @@ impl<C: Context> State<C> {
 
     /// Returns a vector of validator indexes that equivocated between block
     /// identified by `fhash` and its parent.
-    pub(crate) fn get_new_equivocators(&self, fhash: &C::Hash) -> Vec<ValidatorIndex> {
+    pub(super) fn get_new_equivocators(&self, fhash: &C::Hash) -> Vec<ValidatorIndex> {
         let cvote = self.vote(fhash);
         let mut equivocators: Vec<ValidatorIndex> = Vec::new();
         let fblock = self.block(fhash);

@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use contract::contract_api::{account, runtime, system};
-use types::{runtime_args, ContractHash, RuntimeArgs, URef, U512};
+use casperlabs_contract::contract_api::{account, runtime, system};
+use casperlabs_types::{runtime_args, ContractHash, RuntimeArgs, URef, U512};
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_PURSE: &str = "purse";

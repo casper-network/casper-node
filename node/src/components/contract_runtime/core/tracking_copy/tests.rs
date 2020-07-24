@@ -3,16 +3,7 @@ use std::{cell::Cell, iter, rc::Rc};
 use assert_matches::assert_matches;
 use proptest::prelude::*;
 
-use crate::components::contract_runtime::shared::{
-    account::{Account, AssociatedKeys},
-    newtypes::CorrelationId,
-    stored_value::{gens::stored_value_arb, StoredValue},
-    transform::Transform,
-};
-use crate::components::contract_runtime::storage::global_state::{
-    in_memory::InMemoryGlobalState, StateProvider, StateReader,
-};
-use types::{
+use casperlabs_types::{
     account::{AccountHash, Weight, ACCOUNT_HASH_LENGTH},
     contracts::NamedKeys,
     gens::*,
@@ -22,7 +13,16 @@ use types::{
 use super::{
     meter::count_meter::Count, AddResult, TrackingCopy, TrackingCopyCache, TrackingCopyQueryResult,
 };
-use crate::components::contract_runtime::core::engine_state::op::Op;
+use crate::components::contract_runtime::{
+    core::engine_state::op::Op,
+    shared::{
+        account::{Account, AssociatedKeys},
+        newtypes::CorrelationId,
+        stored_value::{gens::stored_value_arb, StoredValue},
+        transform::Transform,
+    },
+    storage::global_state::{in_memory::InMemoryGlobalState, StateProvider, StateReader},
+};
 
 struct CountingDb {
     count: Rc<Cell<i32>>,

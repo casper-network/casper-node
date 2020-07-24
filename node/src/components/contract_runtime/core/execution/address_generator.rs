@@ -5,7 +5,7 @@ use blake2::{
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaChaRng;
 
-use types::Phase;
+use casperlabs_types::Phase;
 
 use crate::components::contract_runtime::core::{Address, ADDRESS_LENGTH};
 
@@ -57,7 +57,7 @@ impl AddressGeneratorBuilder {
 
 #[cfg(test)]
 mod tests {
-    use types::Phase;
+    use casperlabs_types::Phase;
 
     use super::AddressGenerator;
 

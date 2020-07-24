@@ -7,7 +7,7 @@ use std::{
 use num::Zero;
 use serde::{Deserialize, Serialize};
 
-use types::U512;
+use casperlabs_types::U512;
 
 use crate::components::contract_runtime::shared::gas::Gas;
 
@@ -102,7 +102,7 @@ impl Sum for Motes {
 
 #[cfg(test)]
 mod tests {
-    use types::U512;
+    use casperlabs_types::U512;
 
     use super::Motes;
     use crate::components::contract_runtime::shared::gas::Gas;

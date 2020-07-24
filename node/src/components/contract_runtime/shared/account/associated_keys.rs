@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use types::{
+use casperlabs_types::{
     account::{
         AccountHash, AddKeyFailure, RemoveKeyFailure, UpdateKeyFailure, Weight, MAX_ASSOCIATED_KEYS,
     },
@@ -132,7 +132,7 @@ impl FromBytes for AssociatedKeys {
 pub mod gens {
     use proptest::prelude::*;
 
-    use types::gens::{account_hash_arb, weight_arb};
+    use casperlabs_types::gens::{account_hash_arb, weight_arb};
 
     use super::AssociatedKeys;
 
@@ -151,7 +151,7 @@ pub mod gens {
 mod tests {
     use std::{collections::BTreeSet, iter::FromIterator};
 
-    use types::{
+    use casperlabs_types::{
         account::{AccountHash, AddKeyFailure, Weight, ACCOUNT_HASH_LENGTH, MAX_ASSOCIATED_KEYS},
         bytesrepr,
     };

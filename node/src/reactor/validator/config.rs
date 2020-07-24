@@ -1,12 +1,14 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    types::NodeConfig, ApiServerConfig, ConsensusConfig, ContractRuntimeConfig, GossipTableConfig,
+    types::NodeConfig, ApiServerConfig, ConsensusConfig, ContractRuntimeConfig, GossipConfig,
     SmallNetworkConfig, StorageConfig, ROOT_VALIDATOR_LISTENING_PORT,
 };
 
 /// Root configuration.
 #[derive(Debug, Deserialize, Serialize)]
+// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
+#[serde(deny_unknown_fields)]
 pub struct Config {
     /// Node configuration.
     pub node: NodeConfig,
@@ -19,7 +21,7 @@ pub struct Config {
     /// On-disk storage configuration.
     pub storage: StorageConfig,
     /// Gossip protocol configuration.
-    pub gossip: GossipTableConfig,
+    pub gossip: GossipConfig,
     /// Contract runtime configuration.
     pub contract_runtime: ContractRuntimeConfig,
 }
@@ -32,7 +34,7 @@ impl Default for Config {
             validator_net: SmallNetworkConfig::default_on_port(ROOT_VALIDATOR_LISTENING_PORT),
             http_server: ApiServerConfig::default(),
             storage: StorageConfig::default(),
-            gossip: GossipTableConfig::default(),
+            gossip: GossipConfig::default(),
             contract_runtime: ContractRuntimeConfig::default(),
         }
     }

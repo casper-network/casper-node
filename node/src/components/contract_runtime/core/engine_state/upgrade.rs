@@ -1,11 +1,12 @@
 use std::fmt;
 
-use crate::components::contract_runtime::shared::wasm_costs::WasmCosts;
-use crate::components::contract_runtime::shared::{newtypes::Blake2bHash, TypeMismatch};
-use crate::components::contract_runtime::storage::global_state::CommitResult;
-use types::{bytesrepr, Key, ProtocolVersion};
+use casperlabs_types::{bytesrepr, Key, ProtocolVersion};
 
-use crate::components::contract_runtime::core::engine_state::execution_effect::ExecutionEffect;
+use crate::components::contract_runtime::{
+    core::engine_state::execution_effect::ExecutionEffect,
+    shared::{newtypes::Blake2bHash, wasm_costs::WasmCosts, TypeMismatch},
+    storage::global_state::CommitResult,
+};
 
 pub type ActivationPoint = u64;
 

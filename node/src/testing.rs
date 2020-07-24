@@ -5,13 +5,15 @@
 
 mod condition_check_reactor;
 pub mod network;
-
-pub(crate) use condition_check_reactor::ConditionCheckReactor;
+mod test_rng;
 
 use std::{
     collections::HashSet,
     sync::atomic::{AtomicU16, Ordering},
 };
+
+pub(crate) use condition_check_reactor::ConditionCheckReactor;
+pub(crate) use test_rng::TestRng;
 
 // Lower bound for the port, below there's a high chance of hitting a system service.
 const PORT_LOWER_BOUND: u16 = 10_000;

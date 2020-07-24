@@ -23,7 +23,7 @@ use crate::{
     reactor::{self, EventQueueHandle, Runner},
     testing::{
         network::{Network, NetworkedReactor},
-        ConditionCheckReactor,
+        ConditionCheckReactor, TestRng,
     },
     types::Deploy,
 };
@@ -33,21 +33,15 @@ use crate::{
 #[must_use]
 enum Event {
     #[from]
-    /// Storage event.
     Storage(StorageRequest<Storage>),
-    /// Deploy gossiper event.
     #[from]
-    DeployGossiper(super::Event),
-    /// Network request.
+    DeployGossiper(super::Event<Deploy>),
     #[from]
-    NetworkRequest(NetworkRequest<NodeId, Message>),
-    /// Network announcement.
+    NetworkRequest(NetworkRequest<NodeId, Message<Deploy>>),
     #[from]
-    NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
-    /// Storage announcement.
+    NetworkAnnouncement(NetworkAnnouncement<NodeId, Message<Deploy>>),
     #[from]
     StorageAnnouncement(StorageAnnouncement<Storage>),
-    /// API server announcement.
     #[from]
     ApiServerAnnouncement(ApiServerAnnouncement),
 }
@@ -69,30 +63,29 @@ impl Display for Event {
 
 /// Error type returned by the test reactor.
 #[derive(Debug, Error)]
-pub enum Error {
-    /// Metrics-related error
+enum Error {
     #[error("prometheus (metrics) error: {0}")]
     Metrics(#[from] prometheus::Error),
-    /// `Storage` component error.
     #[error("storage error: {0}")]
     Storage(#[from] storage::Error),
 }
+
 struct Reactor {
-    network: InMemoryNetwork<Message>,
+    network: InMemoryNetwork<Message<Deploy>>,
     storage: Storage,
-    deploy_gossiper: DeployGossiper,
+    deploy_gossiper: Gossiper<Deploy, Event>,
     _storage_tempdir: TempDir,
 }
 
 impl Drop for Reactor {
     fn drop(&mut self) {
-        NetworkController::<Message>::remove_node(&self.network.node_id())
+        NetworkController::<Message<Deploy>>::remove_node(&self.network.node_id())
     }
 }
 
 impl reactor::Reactor for Reactor {
     type Event = Event;
-    type Config = GossipTableConfig;
+    type Config = Config;
     type Error = Error;
 
     fn new<R: Rng + ?Sized>(
@@ -106,7 +99,7 @@ impl reactor::Reactor for Reactor {
         let (storage_config, _storage_tempdir) = storage::Config::default_for_tests();
         let storage = Storage::new(&storage_config)?;
 
-        let deploy_gossiper = DeployGossiper::new(config);
+        let deploy_gossiper = Gossiper::new(config, put_deploy_to_storage, get_deploy_from_storage);
 
         let reactor = Reactor {
             network,
@@ -156,7 +149,7 @@ impl reactor::Reactor for Reactor {
             }
             Event::StorageAnnouncement(_) => Effects::new(),
             Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
-                let event = super::Event::DeployReceived { deploy };
+                let event = super::Event::ItemReceived { item: deploy };
                 self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
             }
         }
@@ -177,15 +170,14 @@ fn create_deploy_received(
     |effect_builder: EffectBuilder<Event>| effect_builder.announce_deploy_received(deploy).ignore()
 }
 
-async fn run_gossip(network_size: usize, deploy_count: usize) {
+async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize) {
     const TIMEOUT: Duration = Duration::from_secs(20);
 
-    NetworkController::<Message>::create_active();
+    NetworkController::<Message<Deploy>>::create_active();
     let mut network = Network::<Reactor>::new();
-    let mut rng = rand::thread_rng();
 
     // Add `network_size` nodes.
-    let node_ids = network.add_nodes(&mut rng, network_size).await;
+    let node_ids = network.add_nodes(rng, network_size).await;
 
     // Create `deploy_count` random deploys.
     let (all_deploy_hashes, mut deploys): (BTreeSet<_>, Vec<_>) = iter::repeat_with(|| {
@@ -218,9 +210,9 @@ async fn run_gossip(network_size: usize, deploy_count: usize) {
             all_deploy_hashes == hashes
         })
     };
-    network.settle_on(&mut rng, all_deploys_held, TIMEOUT).await;
+    network.settle_on(rng, all_deploys_held, TIMEOUT).await;
 
-    NetworkController::<Message>::remove_active();
+    NetworkController::<Message<Deploy>>::remove_active();
 }
 
 #[tokio::test]
@@ -228,9 +220,11 @@ async fn should_gossip() {
     const NETWORK_SIZES: [usize; 3] = [2, 5, 20];
     const DEPLOY_COUNTS: [usize; 3] = [1, 10, 30];
 
+    let mut rng = TestRng::new();
+
     for network_size in &NETWORK_SIZES {
         for deploy_count in &DEPLOY_COUNTS {
-            run_gossip(*network_size, *deploy_count).await
+            run_gossip(&mut rng, *network_size, *deploy_count).await
         }
     }
 }
@@ -241,9 +235,9 @@ async fn should_get_from_alternate_source() {
     const POLL_DURATION: Duration = Duration::from_millis(10);
     const TIMEOUT: Duration = Duration::from_secs(2);
 
-    NetworkController::<Message>::create_active();
+    NetworkController::<Message<Deploy>>::create_active();
     let mut network = Network::<Reactor>::new();
-    let mut rng = rand::thread_rng();
+    let mut rng = TestRng::new();
 
     // Add `NETWORK_SIZE` nodes.
     let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
@@ -292,7 +286,7 @@ async fn should_get_from_alternate_source() {
     network.settle(&mut rng, POLL_DURATION, TIMEOUT).await;
 
     // Advance time to trigger node 2's timeout causing it to request the deploy from node 1.
-    let secs_to_advance = GossipTableConfig::default().get_remainder_timeout_secs();
+    let secs_to_advance = Config::default().get_remainder_timeout_secs();
     time::pause();
     time::advance(Duration::from_secs(secs_to_advance)).await;
     time::resume();
@@ -314,7 +308,7 @@ async fn should_get_from_alternate_source() {
     };
     network.settle_on(&mut rng, deploy_held, TIMEOUT).await;
 
-    NetworkController::<Message>::remove_active();
+    NetworkController::<Message<Deploy>>::remove_active();
 }
 
 #[tokio::test]
@@ -322,12 +316,12 @@ async fn should_timeout_gossip_response() {
     const PAUSE_DURATION: Duration = Duration::from_millis(50);
     const TIMEOUT: Duration = Duration::from_secs(2);
 
-    NetworkController::<Message>::create_active();
+    NetworkController::<Message<Deploy>>::create_active();
     let mut network = Network::<Reactor>::new();
-    let mut rng = rand::thread_rng();
+    let mut rng = TestRng::new();
 
     // The target number of peers to infect with a given piece of data.
-    let infection_target = GossipTableConfig::default().infection_target();
+    let infection_target = Config::default().infection_target();
 
     // Add `infection_target + 1` nodes.
     let mut node_ids = network
@@ -367,7 +361,7 @@ async fn should_timeout_gossip_response() {
     }
 
     // Advance time to trigger node 0's timeout causing it to gossip to the new nodes.
-    let secs_to_advance = GossipTableConfig::default().gossip_request_timeout_secs();
+    let secs_to_advance = Config::default().gossip_request_timeout_secs();
     time::pause();
     time::advance(Duration::from_secs(secs_to_advance)).await;
     time::resume();
@@ -390,5 +384,5 @@ async fn should_timeout_gossip_response() {
     };
     network.settle_on(&mut rng, deploy_held, TIMEOUT).await;
 
-    NetworkController::<Message>::remove_active();
+    NetworkController::<Message<Deploy>>::remove_active();
 }

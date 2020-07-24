@@ -21,7 +21,7 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<TestKey, TestValue>,
     S::Error: From<R::Error> + std::fmt::Debug,
-    E: From<R::Error> + From<S::Error> + From<types::bytesrepr::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
     let txn: R::ReadTransaction = environment.create_read_txn()?;
     let root = store

@@ -10,10 +10,13 @@ use super::{
 
 use crate::{
     components::consensus::{
-        tests::consensus_des_testing::{
-            DeliverySchedule, Message, Target, TargetedMessage, Validator, ValidatorId, VirtualNet,
+        tests::{
+            consensus_des_testing::{
+                DeliverySchedule, Message, Target, TargetedMessage, Validator, ValidatorId,
+                VirtualNet,
+            },
+            queue::{MessageT, QueueEntry},
         },
-        tests::queue::{MessageT, QueueEntry},
         traits::{ConsensusValueT, Context, ValidatorSecret},
         BlockContext,
     },
@@ -30,8 +33,11 @@ struct HighwayConsensus {
 impl HighwayConsensus {
     fn run_finality(
         &mut self,
-    ) -> FinalityOutcome<<TestContext as Context>::ConsensusValue, ValidatorIndex> {
-        self.finality_detector.run(self.highway.state())
+    ) -> FinalityOutcome<
+        <TestContext as Context>::ConsensusValue,
+        <TestContext as Context>::ValidatorId,
+    > {
+        self.finality_detector.run(&self.highway)
     }
 
     pub(crate) fn highway(&self) -> &Highway<TestContext> {
@@ -339,7 +345,8 @@ where
     }
 
     /// Processes a message sent to `validator_id`.
-    /// Returns a vector of messages produced by the `validator` in reaction to processing a message.
+    /// Returns a vector of messages produced by the `validator` in reaction to processing a
+    /// message.
     fn process_message(
         &mut self,
         validator_id: ValidatorId,
@@ -913,6 +920,11 @@ impl Context for TestContext {
 }
 
 mod test_harness {
+    use std::{
+        collections::{hash_map::DefaultHasher, HashMap},
+        hash::Hasher,
+    };
+
     use super::{
         CrankOk, DeliverySchedule, DeliveryStrategy, HighwayMessage, HighwayTestHarness,
         HighwayTestHarnessBuilder, InstantDeliveryNoDropping, TestRunError,
@@ -922,18 +934,13 @@ mod test_harness {
             tests::consensus_des_testing::ValidatorId,
             traits::{Context, ValidatorSecret},
         },
+        testing::TestRng,
         types::TimeDiff,
-    };
-    use rand_core::SeedableRng;
-    use rand_xorshift::XorShiftRng;
-    use std::{
-        collections::{hash_map::DefaultHasher, HashMap},
-        hash::Hasher,
     };
 
     #[test]
     fn on_empty_queue_error() {
-        let mut rand = XorShiftRng::from_seed(rand::random());
+        let mut rand = TestRng::new();
 
         let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
             HighwayTestHarnessBuilder::new()
@@ -954,7 +961,7 @@ mod test_harness {
 
     #[test]
     fn done_when_all_finalized() -> Result<(), TestRunError> {
-        let mut rand = XorShiftRng::from_seed(rand::random());
+        let mut rand = TestRng::new();
         let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
             HighwayTestHarnessBuilder::new()
                 .max_faulty_validators(3)

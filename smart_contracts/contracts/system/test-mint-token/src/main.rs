@@ -5,9 +5,9 @@ extern crate alloc;
 
 use alloc::string::String;
 
-use types::{runtime_args, ContractHash, RuntimeArgs, URef, U512};
+use casperlabs_types::{runtime_args, ContractHash, RuntimeArgs, URef, U512};
 
-use contract::contract_api::{runtime, system};
+use casperlabs_contract::contract_api::{runtime, system};
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_PURSE: &str = "purse";

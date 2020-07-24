@@ -9,7 +9,7 @@
 //! use casperlabs_node::components::contract_runtime::storage::trie::{Pointer, PointerBlock, Trie};
 //! use casperlabs_node::components::contract_runtime::storage::trie_store::in_memory::InMemoryTrieStore;
 //! use casperlabs_node::crypto::hash;
-//! use types::bytesrepr::ToBytes;
+//! use casperlabs_types::bytesrepr::ToBytes;
 //!
 //! // Create some leaves
 //! let leaf_1 = Trie::Leaf { key: vec![0u8, 0, 0], value: b"val_1".to_vec() };

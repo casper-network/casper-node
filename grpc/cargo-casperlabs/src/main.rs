@@ -144,7 +144,7 @@ fn main() {
     contract_package::update_cargo_toml();
     contract_package::add_rust_toolchain();
     contract_package::update_main_rs();
-    contract_package::add_config();
+    contract_package::add_config_toml();
 
     tests_package::run_cargo_new();
     tests_package::update_cargo_toml(ARGS.use_system_contracts());

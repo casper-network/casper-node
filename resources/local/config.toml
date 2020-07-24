@@ -6,6 +6,9 @@
 # Path (absolute, or relative to this config.toml) to the chainspec configuration file.
 chainspec_config_path = 'chainspec.toml'
 
+# The maximum number of deploys permitted in a single block.
+block_max_deploy_count = 3
+
 
 # ====================================
 # Configuration options for consensus

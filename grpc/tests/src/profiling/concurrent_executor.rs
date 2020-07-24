@@ -16,12 +16,14 @@ use crossbeam_channel::{Iter, Receiver, Sender};
 use grpc::{ClientStubExt, RequestOptions};
 use log::info;
 
-use engine_grpc_server::engine_server::{
+use casperlabs_engine_grpc_server::engine_server::{
     ipc::ExecuteRequest,
     ipc_grpc::{ExecutionEngineService, ExecutionEngineServiceClient},
 };
-use engine_test_support::internal::{DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_PAYMENT};
-use types::{runtime_args, RuntimeArgs, U512};
+use casperlabs_engine_test_support::internal::{
+    DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_PAYMENT,
+};
+use casperlabs_types::{runtime_args, RuntimeArgs, U512};
 
 use casperlabs_engine_tests::profiling;
 

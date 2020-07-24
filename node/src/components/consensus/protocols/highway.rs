@@ -68,7 +68,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         secret: C::ValidatorSecret,
         round_exp: u8,
         timestamp: Timestamp,
-    ) -> (Self, Vec<ConsensusProtocolResult<I, C::ConsensusValue>>) {
+    ) -> (Self, Vec<CpResult<I, C>>) {
         let ftt = (params.validators.total_weight() - Weight(1)) / 3; // TODO: From chain spec!
         let (highway, av_effects) =
             Highway::new(params, seed, our_id, secret, round_exp, timestamp);
@@ -84,17 +84,14 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
     fn process_av_effects<E: IntoIterator<Item = AvEffect<C>>>(
         &mut self,
         av_effects: E,
-    ) -> Vec<ConsensusProtocolResult<I, C::ConsensusValue>> {
+    ) -> Vec<CpResult<I, C>> {
         av_effects
             .into_iter()
             .flat_map(|effect| self.process_av_effect(effect))
             .collect()
     }
 
-    fn process_av_effect(
-        &mut self,
-        effect: AvEffect<C>,
-    ) -> Vec<ConsensusProtocolResult<I, C::ConsensusValue>> {
+    fn process_av_effect(&mut self, effect: AvEffect<C>) -> Vec<CpResult<I, C>> {
         match effect {
             AvEffect::NewVertex(vv) => self.process_new_vertex(vv),
             AvEffect::ScheduleTimer(timestamp) => {
@@ -106,10 +103,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         }
     }
 
-    fn process_new_vertex(
-        &mut self,
-        vv: ValidVertex<C>,
-    ) -> Vec<ConsensusProtocolResult<I, C::ConsensusValue>> {
+    fn process_new_vertex(&mut self, vv: ValidVertex<C>) -> Vec<CpResult<I, C>> {
         let msg = HighwayMessage::NewVertex(vv.clone().into());
         //TODO: Don't unwrap
         // Replace serde with generic serializer.
@@ -121,19 +115,19 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         let mut results = vec![ConsensusProtocolResult::CreatedGossipMessage(
             serialized_msg,
         )];
-        match self.finality_detector.run(self.highway.state()) {
+        match self.finality_detector.run(&self.highway) {
             FinalityOutcome::None => (),
             FinalityOutcome::FttExceeded => panic!("Too many faulty validators"),
             FinalityOutcome::Finalized {
-                value: block,
+                value,
                 new_equivocators,
                 timestamp,
             } => {
-                if !new_equivocators.is_empty() {
-                    // TODO: Add this information to the proto block for slashing.
-                    info!(?new_equivocators, "Observed new faulty validators");
-                }
-                results.push(ConsensusProtocolResult::FinalizedBlock(block, timestamp));
+                results.push(ConsensusProtocolResult::FinalizedBlock {
+                    value,
+                    new_equivocators,
+                    timestamp,
+                });
             }
         }
         results
@@ -150,10 +144,13 @@ enum HighwayMessage<C: Context> {
     RequestDependency(Dependency<C>),
 }
 
+type CpResult<I, C> =
+    ConsensusProtocolResult<I, <C as Context>::ConsensusValue, <C as Context>::ValidatorId>;
+
 struct SynchronizerQueue<'a, I, C: Context> {
     vertex_queue: Vec<(I, PreValidatedVertex<C>)>,
     synchronizer_effects_queue: Vec<SynchronizerEffect<I, PreValidatedVertex<C>>>,
-    results: Vec<ConsensusProtocolResult<I, C::ConsensusValue>>,
+    results: Vec<CpResult<I, C>>,
     hw_proto: &'a mut HighwayProtocol<I, C>,
 }
 
@@ -183,7 +180,7 @@ where
         self
     }
 
-    fn run(mut self) -> Vec<ConsensusProtocolResult<I, C::ConsensusValue>> {
+    fn run(mut self) -> Vec<CpResult<I, C>> {
         loop {
             if let Some(effect) = self.synchronizer_effects_queue.pop() {
                 self.process_synchronizer_effect(effect);
@@ -258,15 +255,12 @@ where
     }
 }
 
-impl<I, C: Context> ConsensusProtocol<I, C::ConsensusValue> for HighwayProtocol<I, C>
+impl<I, C: Context> ConsensusProtocol<I, C::ConsensusValue, C::ValidatorId>
+    for HighwayProtocol<I, C>
 where
     I: NodeIdT,
 {
-    fn handle_message(
-        &mut self,
-        sender: I,
-        msg: Vec<u8>,
-    ) -> Result<Vec<ConsensusProtocolResult<I, C::ConsensusValue>>, Error> {
+    fn handle_message(&mut self, sender: I, msg: Vec<u8>) -> Result<Vec<CpResult<I, C>>, Error> {
         let highway_message: HighwayMessage<C> = serde_json::from_slice(msg.as_slice()).unwrap();
         Ok(match highway_message {
             HighwayMessage::NewVertex(ref v) if self.highway.has_vertex(v) => vec![],
@@ -309,10 +303,7 @@ where
         })
     }
 
-    fn handle_timer(
-        &mut self,
-        timestamp: Timestamp,
-    ) -> Result<Vec<ConsensusProtocolResult<I, <C as Context>::ConsensusValue>>, Error> {
+    fn handle_timer(&mut self, timestamp: Timestamp) -> Result<Vec<CpResult<I, C>>, Error> {
         let effects = self.highway.handle_timer(timestamp);
         Ok(self.process_av_effects(effects))
     }
@@ -321,7 +312,7 @@ where
         &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
-    ) -> Result<Vec<ConsensusProtocolResult<I, <C as Context>::ConsensusValue>>, Error> {
+    ) -> Result<Vec<CpResult<I, C>>, Error> {
         let effects = self.highway.propose(value, block_context);
         Ok(self.process_av_effects(effects))
     }
@@ -332,7 +323,7 @@ where
         &mut self,
         value: &C::ConsensusValue,
         valid: bool,
-    ) -> Result<Vec<ConsensusProtocolResult<I, C::ConsensusValue>>, Error> {
+    ) -> Result<Vec<CpResult<I, C>>, Error> {
         if valid {
             let effects = self.synchronizer.on_consensus_value_synced(value);
             Ok(SynchronizerQueue::new(self)

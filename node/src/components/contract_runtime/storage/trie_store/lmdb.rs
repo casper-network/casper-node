@@ -9,7 +9,7 @@
 //! use casperlabs_node::components::contract_runtime::storage::trie::{Pointer, PointerBlock, Trie};
 //! use casperlabs_node::components::contract_runtime::storage::trie_store::lmdb::LmdbTrieStore;
 //! use casperlabs_node::crypto::hash;
-//! use types::bytesrepr::ToBytes;
+//! use casperlabs_types::bytesrepr::ToBytes;
 //! use lmdb::DatabaseFlags;
 //! use tempfile::tempdir;
 //!

@@ -1,10 +1,10 @@
-use engine_test_support::{
+use casperlabs_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use types::{runtime_args, ApiError, RuntimeArgs, U512};
+use casperlabs_types::{runtime_args, ApiError, RuntimeArgs, U512};
 
 const CONTRACT_GET_ARG: &str = "get_arg.wasm";
 const ARG0_VALUE: &str = "Hello, world!";

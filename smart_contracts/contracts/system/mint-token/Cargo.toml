@@ -12,5 +12,5 @@ doctest = false
 test = false
 
 [dependencies]
-contract = { path = "../../../contract", package = "casperlabs-contract" }
-types = { path = "../../../../types", package = "casperlabs-types" }
+casperlabs-contract = { path = "../../../contract" }
+casperlabs-types = { path = "../../../../types" }

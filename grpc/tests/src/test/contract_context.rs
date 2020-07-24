@@ -1,13 +1,13 @@
 use assert_matches::assert_matches;
-use engine_test_support::{
+use casperlabs_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use node::components::contract_runtime::core::{engine_state::Error, execution};
-use types::{contracts::CONTRACT_INITIAL_VERSION, runtime_args, Key, RuntimeArgs};
+use casperlabs_node::components::contract_runtime::core::{engine_state::Error, execution};
+use casperlabs_types::{contracts::CONTRACT_INITIAL_VERSION, runtime_args, Key, RuntimeArgs};
 
 const CONTRACT_HEADERS: &str = "contract_context.wasm";
 const PACKAGE_HASH_KEY: &str = "package_hash_key";

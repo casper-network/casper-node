@@ -5,8 +5,8 @@ extern crate alloc;
 
 use alloc::{string::String, vec::Vec};
 
-use contract::contract_api::runtime;
-use types::contracts::NamedKeys;
+use casperlabs_contract::contract_api::runtime;
+use casperlabs_types::contracts::NamedKeys;
 
 const ARG_INITIAL_NAMED_KEYS: &str = "initial_named_args";
 const ARG_NEW_NAMED_KEYS: &str = "new_named_keys";

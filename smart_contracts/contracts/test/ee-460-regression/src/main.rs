@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use contract::contract_api::{runtime, system};
-use types::{account::AccountHash, ApiError, U512};
+use casperlabs_contract::contract_api::{runtime, system};
+use casperlabs_types::{account::AccountHash, ApiError, U512};
 
 const ARG_AMOUNT: &str = "amount";
 

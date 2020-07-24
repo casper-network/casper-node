@@ -29,7 +29,7 @@ use std::{
 use grpc::{Error as GrpcError, RequestOptions, ServerBuilder, SingleResponse};
 use log::{info, warn, Level};
 
-use node::components::contract_runtime::{
+use casperlabs_node::components::contract_runtime::{
     core::{
         engine_state::{
             execute_request::ExecuteRequest,
@@ -47,7 +47,7 @@ use node::components::contract_runtime::{
     },
     storage::global_state::{CommitResult, StateProvider},
 };
-use types::{bytesrepr::ToBytes, ProtocolVersion};
+use casperlabs_types::{bytesrepr::ToBytes, ProtocolVersion};
 
 use self::{
     ipc::{

@@ -5,11 +5,11 @@ extern crate alloc;
 
 use alloc::string::ToString;
 
-use contract::{
+use casperlabs_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{ApiError, ContractHash, RuntimeArgs, URef};
+use casperlabs_types::{ApiError, ContractHash, RuntimeArgs, URef};
 
 #[no_mangle]
 pub extern "C" fn call() {

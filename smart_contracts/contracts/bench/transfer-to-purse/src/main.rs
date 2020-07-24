@@ -1,11 +1,11 @@
 #![no_std]
 #![no_main]
 
-use contract::{
+use casperlabs_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{URef, U512};
+use casperlabs_types::{URef, U512};
 
 const ARG_TARGET_PURSE: &str = "target_purse";
 const ARG_AMOUNT: &str = "amount";

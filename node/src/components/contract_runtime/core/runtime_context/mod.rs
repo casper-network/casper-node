@@ -11,13 +11,7 @@ use blake2::{
     VarBlake2b,
 };
 
-use crate::components::contract_runtime::shared::{
-    account::Account, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue,
-};
-use crate::components::contract_runtime::storage::{
-    global_state::StateReader, protocol_data::ProtocolData,
-};
-use types::{
+use casperlabs_types::{
     account::{
         AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
         UpdateKeyFailure, Weight,
@@ -29,11 +23,15 @@ use types::{
     KEY_HASH_LENGTH,
 };
 
-use crate::components::contract_runtime::core::{
-    engine_state::execution_effect::ExecutionEffect,
-    execution::{AddressGenerator, Error},
-    tracking_copy::{AddResult, TrackingCopy},
-    Address,
+use crate::components::contract_runtime::{
+    core::{
+        engine_state::execution_effect::ExecutionEffect,
+        execution::{AddressGenerator, Error},
+        tracking_copy::{AddResult, TrackingCopy},
+        Address,
+    },
+    shared::{account::Account, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
+    storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
 
 #[cfg(test)]
@@ -517,7 +515,7 @@ where
                     let uref: URef = cl_value.to_owned().into_t()?; // TODO: optimize?
                     self.validate_uref(&uref)
                 }
-                tuple @ CLType::Tuple2(_) if *tuple == types::named_key_type() => {
+                tuple @ CLType::Tuple2(_) if *tuple == casperlabs_types::named_key_type() => {
                     let (_name, key): (String, Key) = cl_value.to_owned().into_t()?; // TODO: optimize?
                     self.validate_key(&key)
                 }

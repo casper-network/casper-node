@@ -5,12 +5,14 @@ extern crate alloc;
 
 use alloc::string::String;
 
-use contract::{
+use casperlabs_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
 
-use types::{account::AccountHash, runtime_args, ApiError, ContractHash, RuntimeArgs, URef, U512};
+use casperlabs_types::{
+    account::AccountHash, runtime_args, ApiError, ContractHash, RuntimeArgs, URef, U512,
+};
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_PURSE: &str = "purse";

@@ -1,14 +1,16 @@
-use super::queue::{MessageT, Queue, QueueEntry};
-use crate::types::Timestamp;
-use anyhow::anyhow;
-use rand::Rng;
-use std::cmp::Ordering;
 use std::{
+    cmp::Ordering,
     collections::{BTreeMap, BinaryHeap, VecDeque},
     fmt::{Debug, Display, Formatter},
     hash::Hash,
     time,
 };
+
+use anyhow::anyhow;
+use rand::Rng;
+
+use super::queue::{MessageT, Queue, QueueEntry};
+use crate::types::Timestamp;
 
 /// Enum defining recipients of the message.
 #[derive(Debug)]
@@ -268,14 +270,13 @@ where
 }
 
 mod virtual_net_tests {
+    use std::collections::{HashSet, VecDeque};
 
     use super::{
         DeliverySchedule, Message, Target, TargetedMessage, Timestamp, Validator, ValidatorId,
         VirtualNet,
     };
-    use rand_core::SeedableRng;
-    use rand_xorshift::XorShiftRng;
-    use std::collections::{HashSet, VecDeque};
+    use crate::testing::TestRng;
 
     type M = u64;
     type C = u64;
@@ -321,7 +322,6 @@ mod virtual_net_tests {
         let c = Validator::new(ValidatorId(3u64), false, NoOpConsensus);
 
         let mut virtual_net = VirtualNet::new(vec![a, b, c], vec![]);
-        let mut rand = XorShiftRng::from_seed(rand::random());
 
         let message = Message::new(validator_id, 1u64);
         let targeted_message =

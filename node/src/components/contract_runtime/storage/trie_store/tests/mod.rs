@@ -2,7 +2,7 @@ mod concurrent;
 mod proptests;
 mod simple;
 
-use types::bytesrepr::ToBytes;
+use casperlabs_types::bytesrepr::ToBytes;
 
 use crate::{
     components::contract_runtime::{

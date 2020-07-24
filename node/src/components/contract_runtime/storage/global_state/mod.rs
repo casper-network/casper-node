@@ -11,7 +11,7 @@ use crate::components::contract_runtime::shared::{
     transform::{self, Transform},
     TypeMismatch,
 };
-use types::{account::AccountHash, bytesrepr, Key, ProtocolVersion, U512};
+use casperlabs_types::{account::AccountHash, bytesrepr, Key, ProtocolVersion, U512};
 
 use crate::components::contract_runtime::storage::{
     protocol_data::ProtocolData,
@@ -125,7 +125,7 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<Key, StoredValue>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<types::bytesrepr::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     H: BuildHasher,
 {
     let mut txn = environment.create_read_write_txn()?;
