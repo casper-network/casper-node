@@ -243,8 +243,11 @@ impl<C: Context> ActiveValidator<C> {
 
     /// Returns the most recent vote by this validator.
     fn latest_vote<'a>(&self, state: &'a State<C>) -> Option<&'a Vote<C>> {
-        let vh = state.panorama().get(self.vidx).correct()?;
-        Some(state.vote(vh))
+        state
+            .panorama()
+            .get(self.vidx)
+            .correct()
+            .map(|vh| state.vote(vh))
     }
 
     /// Returns the duration after the beginning of a round when the witness votes are sent.
