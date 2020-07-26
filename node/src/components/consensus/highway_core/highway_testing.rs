@@ -719,7 +719,8 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                 let honest_weights = {
                     let faulty_sum = faulty_weights.iter().sum::<u64>();
                     let mut weights_to_distribute: u64 =
-                        faulty_sum * 100 / self.faulty_percent - faulty_sum;
+                        (faulty_sum * 100 + self.faulty_percent - 1) / self.faulty_percent
+                            - faulty_sum;
                     let mut weights = vec![];
                     while weights_to_distribute > 0 {
                         let weight = if weights_to_distribute < upper {
@@ -924,7 +925,7 @@ mod test_harness {
         let mut rng = TestRng::new();
         let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
             HighwayTestHarnessBuilder::new()
-                .max_faulty_validators(3)
+                .max_faulty_validators(5)
                 .consensus_values_count(5)
                 .weight_limits(5, 10)
                 .faulty_weight_perc(20)
