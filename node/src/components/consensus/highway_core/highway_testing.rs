@@ -30,13 +30,10 @@ struct HighwayConsensus {
     finality_detector: FinalityDetector<TestContext>,
 }
 
+type ConsensusValue = u32;
+
 impl HighwayConsensus {
-    fn run_finality(
-        &mut self,
-    ) -> FinalityOutcome<
-        <TestContext as Context>::ConsensusValue,
-        <TestContext as Context>::ValidatorId,
-    > {
+    fn run_finality(&mut self) -> FinalityOutcome<ConsensusValue, ValidatorId> {
         self.finality_detector.run(&self.highway)
     }
 
@@ -206,13 +203,12 @@ struct HighwayTestHarness<DS>
 where
     DS: DeliveryStrategy,
 {
-    virtual_net:
-        VirtualNet<<TestContext as Context>::ConsensusValue, HighwayConsensus, HighwayMessage>,
+    virtual_net: VirtualNet<ConsensusValue, HighwayConsensus, HighwayMessage>,
     /// The instant the network was created.
     start_time: Timestamp,
     /// Consensus values to be proposed.
     /// Order of values in the vector defines the order in which they will be proposed.
-    consensus_values: VecDeque<<TestContext as Context>::ConsensusValue>,
+    consensus_values: VecDeque<ConsensusValue>,
     /// Number of consensus values that the test is started with.
     consensus_values_num: usize,
     /// A strategy to pseudo randomly change the message delivery times.
@@ -226,13 +222,9 @@ where
     DS: DeliveryStrategy,
 {
     fn new<T: Into<Timestamp>>(
-        virtual_net: VirtualNet<
-            <TestContext as Context>::ConsensusValue,
-            HighwayConsensus,
-            HighwayMessage,
-        >,
+        virtual_net: VirtualNet<ConsensusValue, HighwayConsensus, HighwayMessage>,
         start_time: T,
-        consensus_values: VecDeque<<TestContext as Context>::ConsensusValue>,
+        consensus_values: VecDeque<ConsensusValue>,
         delivery_time_distribution: Distribution,
         delivery_time_strategy: DS,
     ) -> Self {
@@ -299,7 +291,7 @@ where
         Ok(CrankOk::Continue)
     }
 
-    fn next_consensus_value(&mut self) -> Option<<TestContext as Context>::ConsensusValue> {
+    fn next_consensus_value(&mut self) -> Option<ConsensusValue> {
         self.consensus_values.pop_front()
     }
 
@@ -308,10 +300,8 @@ where
     fn validator_mut(
         &mut self,
         validator_id: &ValidatorId,
-    ) -> Result<
-        &mut Validator<<TestContext as Context>::ConsensusValue, HighwayMessage, HighwayConsensus>,
-        TestRunError,
-    > {
+    ) -> Result<&mut Validator<ConsensusValue, HighwayMessage, HighwayConsensus>, TestRunError>
+    {
         self.virtual_net
             .validator_mut(&validator_id)
             .ok_or_else(|| TestRunError::MissingValidator(*validator_id))
@@ -551,7 +541,7 @@ struct HighwayTestHarnessBuilder<DS: DeliveryStrategy> {
     max_faulty_validators: u8,
     /// Percentage of faulty validators' (i.e. equivocators) weight.
     /// Defaults to 0 (network is perfectly secure).
-    faulty_weight: u64,
+    faulty_percent: u64,
     /// FTT value for the finality detector.
     /// If not given, defaults to 1/3 of total validators' weight.
     ftt: Option<u64>,
@@ -601,7 +591,7 @@ impl HighwayTestHarnessBuilder<InstantDeliveryNoDropping> {
     fn new() -> Self {
         HighwayTestHarnessBuilder {
             max_faulty_validators: 10,
-            faulty_weight: 0,
+            faulty_percent: 0,
             ftt: None,
             consensus_values_count: 10,
             delivery_distribution: Distribution::Uniform,
@@ -619,7 +609,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
     /// Sets a percentage of weight that will be assigned to malicious nodes.
     /// `faulty_weight` must be a value between 0 (inclusive) and 33 (inclusive).
     pub(crate) fn faulty_weight_perc(mut self, faulty_weight: u64) -> Self {
-        self.faulty_weight = faulty_weight;
+        self.faulty_percent = faulty_weight;
         self
     }
 
@@ -635,7 +625,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
     ) -> HighwayTestHarnessBuilder<DS2> {
         HighwayTestHarnessBuilder {
             max_faulty_validators: self.max_faulty_validators,
-            faulty_weight: self.faulty_weight,
+            faulty_percent: self.faulty_percent,
             ftt: self.ftt,
             consensus_values_count: self.consensus_values_count,
             delivery_distribution: self.delivery_distribution,
@@ -700,16 +690,16 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
         };
 
         let (faulty_weights, honest_weights): (Vec<Weight>, Vec<Weight>) = {
-            if (self.faulty_weight > 33) {
+            if (self.faulty_percent > 33) {
                 return Err(BuilderError::TooManyFaultyNodes(
                     "Total weight of all malicious validators cannot be more than 33% of all network weight."
                         .to_string(),
                 ));
             }
 
-            if (self.faulty_weight == 0) {
+            if (self.faulty_percent == 0) {
                 // All validators are honest.
-                let validators_num = rng.gen_range(2, self.max_faulty_validators);
+                let validators_num = rng.gen_range(2, self.max_faulty_validators + 1);
                 let honest_validators: Vec<Weight> = self
                     .weight_distribution
                     .gen_range_vec(rng, lower, upper, validators_num)
@@ -720,16 +710,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                 (vec![], honest_validators)
             } else {
                 // At least 2 validators total and at least one faulty.
-                let faulty_num = if self.max_faulty_validators == 1 {
-                    1
-                } else {
-                    rng.gen_range(1, self.max_faulty_validators)
-                };
-
-                assert!(
-                    faulty_num > 0,
-                    "Expected that at least one validator to be malicious."
-                );
+                let faulty_num = rng.gen_range(1, self.max_faulty_validators + 1);
 
                 let faulty_weights = self
                     .weight_distribution
@@ -738,7 +719,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                 let honest_weights = {
                     let faulty_sum = faulty_weights.iter().sum::<u64>();
                     let mut weights_to_distribute: u64 =
-                        faulty_sum * 100 / self.faulty_weight - faulty_sum;
+                        faulty_sum * 100 / self.faulty_percent - faulty_sum;
                     let mut weights = vec![];
                     while weights_to_distribute > 0 {
                         let weight = if weights_to_distribute < upper {
@@ -759,44 +740,23 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
             }
         };
 
-        let validators_num = faulty_weights.len() + honest_weights.len();
-
-        let mut validator_ids: Vec<ValidatorId> =
-            (0..validators_num).map(|i| ValidatorId(i as u64)).collect();
-
-        let mut secrets = validator_ids
-            .iter()
-            .map(|vid| (*vid, TestSecret(vid.0)))
-            .collect();
-
         let weights_sum = faulty_weights
             .iter()
             .chain(honest_weights.iter())
             .sum::<Weight>();
 
-        let mut validator_ids_iter = validator_ids.into_iter();
-
-        let faulty_validators = (&mut validator_ids_iter)
-            .take(faulty_weights.len())
-            .zip(faulty_weights)
-            .collect::<Vec<_>>();
-
-        let honest_validators = validator_ids_iter
-            .take(honest_weights.len())
-            .zip(honest_weights)
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            faulty_validators.len() + honest_validators.len(),
-            validators_num
-        );
-
         let validators: Validators<ValidatorId> = Validators::from_iter(
-            faulty_validators
-                .clone()
-                .into_iter()
-                .chain(honest_validators.clone().into_iter()),
+            faulty_weights
+                .iter()
+                .chain(honest_weights.iter())
+                .enumerate()
+                .map(|(i, weight)| (ValidatorId(i as u64), *weight)),
         );
+
+        let mut secrets = validators
+            .enumerate()
+            .map(|(_, vid)| (*vid.id(), TestSecret(vid.id().0)))
+            .collect();
 
         let ftt = self.ftt.unwrap_or_else(|| (weights_sum.0 - 1) / 3);
 
@@ -833,15 +793,15 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
             )
         };
 
+        let faulty_num = faulty_weights.len();
+
         let (validators, init_messages) = {
-            let mut validators = vec![];
+            let mut validators_loc = vec![];
             let mut init_messages = vec![];
 
-            for (vid, is_faulty) in faulty_validators
-                .iter()
-                .map(|(vid, _)| (*vid, true))
-                .chain(honest_validators.iter().map(|(vid, _)| (*vid, false)))
-            {
+            for (_, validator) in validators.enumerate() {
+                let vid = *validator.id();
+                let is_faulty = vid.0 < faulty_num as u64;
                 let (consensus, msgs) = highway_consensus((vid, &mut secrets));
                 let validator = Validator::new(vid, is_faulty, consensus);
                 let qm: Vec<QueueEntry<HighwayMessage>> = msgs
@@ -853,10 +813,10 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                     })
                     .collect();
                 init_messages.extend(qm);
-                validators.push(validator);
+                validators_loc.push(validator);
             }
 
-            (validators, init_messages)
+            (validators_loc, init_messages)
         };
 
         let delivery_time_strategy = self.delivery_strategy;
@@ -940,20 +900,20 @@ mod test_harness {
 
     #[test]
     fn on_empty_queue_error() {
-        let mut rand = TestRng::new();
+        let mut rng = TestRng::new();
 
         let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
             HighwayTestHarnessBuilder::new()
                 .consensus_values_count(1)
                 .weight_limits(7, 10)
-                .build(&mut rand)
+                .build(&mut rng)
                 .ok()
                 .expect("Construction was successful");
 
         highway_test_harness.mutable_handle().clear_message_queue();
 
         assert_eq!(
-            highway_test_harness.crank(&mut rand),
+            highway_test_harness.crank(&mut rng),
             Err(TestRunError::NoMessages),
             "Expected the test run to stop."
         );
@@ -961,19 +921,19 @@ mod test_harness {
 
     #[test]
     fn done_when_all_finalized() -> Result<(), TestRunError> {
-        let mut rand = TestRng::new();
+        let mut rng = TestRng::new();
         let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
             HighwayTestHarnessBuilder::new()
                 .max_faulty_validators(3)
                 .consensus_values_count(5)
                 .weight_limits(5, 10)
                 .faulty_weight_perc(20)
-                .build(&mut rand)
+                .build(&mut rng)
                 .ok()
                 .expect("Construction was successful");
 
         loop {
-            let crank_res = highway_test_harness.crank(&mut rand)?;
+            let crank_res = highway_test_harness.crank(&mut rng)?;
             match crank_res {
                 CrankOk::Continue => continue,
                 CrankOk::Done => break,
