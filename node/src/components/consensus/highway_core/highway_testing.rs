@@ -945,7 +945,7 @@ mod test_harness {
     #[test]
     fn done_when_all_finalized() -> Result<(), TestRunError> {
         let mut rng = TestRng::new();
-        logging::init().ok();
+        logging::init_params(true).ok();
         let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
             HighwayTestHarnessBuilder::new()
                 .max_faulty_validators(3)

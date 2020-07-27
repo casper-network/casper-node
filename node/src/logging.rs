@@ -17,7 +17,18 @@ use tracing_subscriber::{
 
 /// This is used to implement tracing's `FormatEvent` so that we can customize the way tracing
 /// events are formatted.
-struct FmtEvent {}
+struct FmtEvent {
+    // Whether module segments should be shortened to first letter only.
+    single_letter: bool,
+}
+
+impl FmtEvent {
+    fn new(single_letter_module: bool) -> Self {
+        FmtEvent {
+            single_letter: single_letter_module,
+        }
+    }
+}
 
 impl<S, N> FormatEvent<S, N> for FmtEvent
 where
@@ -77,7 +88,23 @@ where
         }
 
         // print the module path, filename and line number with dimmed style
-        let module = meta.module_path().unwrap_or_default();
+        let module = {
+            let full_module_path = meta.module_path().unwrap_or_default();
+            if self.single_letter {
+                full_module_path
+                    .clone()
+                    .split("::")
+                    .into_iter()
+                    .map(|segment| {
+                        let (fl, _) = segment.split_at(1);
+                        fl
+                    })
+                    .collect::<Vec<_>>()
+                    .join("::")
+            } else {
+                full_module_path.to_owned()
+            }
+        };
 
         let file = meta
             .file()
@@ -104,13 +131,22 @@ where
     }
 }
 
+/// Initializes the logging system with the full module path in the log entries.
+pub fn init() -> anyhow::Result<()> {
+    init_params(false)
+}
+
 /// Initializes the logging system.
 ///
 /// This function should only be called once during the lifetime of the application. Do not call
 /// this outside of the application or testing code, the installed logger is global.
 ///
+/// If `single_letter_module` is set to `true` then short module path will be used:
+/// instead of `foo.bar.baz.bizz` it will output `f.b.b.b`.
+/// Only module path is affected, file name will still be printed in full.1
+///
 /// See the `README.md` for hints on how to configure logging at runtime.
-pub fn init() -> anyhow::Result<()> {
+pub fn init_params(single_letter_module: bool) -> anyhow::Result<()> {
     let formatter = format::debug_fn(|writer, field, value| {
         if field.name() == "message" {
             write!(writer, "{:?}", value)
@@ -126,7 +162,7 @@ pub fn init() -> anyhow::Result<()> {
             .with_writer(io::stdout)
             .with_env_filter(EnvFilter::from_default_env())
             .fmt_fields(formatter)
-            .event_format(FmtEvent {})
+            .event_format(FmtEvent::new(single_letter_module))
             .finish(),
     )?;
 
