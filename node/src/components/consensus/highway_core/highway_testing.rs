@@ -24,6 +24,7 @@ use crate::{
 };
 
 use std::iter::FromIterator;
+use tracing::{error, info, trace, warn};
 
 struct HighwayConsensus {
     highway: Highway<TestContext>,
@@ -96,6 +97,7 @@ impl From<Effect<TestContext>> for HighwayMessage {
 
 use rand::Rng;
 use std::{
+    cell::RefCell,
     collections::{hash_map::DefaultHasher, HashMap, VecDeque},
     fmt::{Debug, Display, Formatter},
     hash::Hasher,
@@ -265,6 +267,15 @@ where
             .pop_message()
             .ok_or(TestRunError::NoMessages)?;
 
+        let span = tracing::trace_span!("crank", validator = %recipient);
+        let _enter = span.enter();
+        trace!(
+            "Processing: tick {}, sender validator={}, payload {:?}",
+            delivery_time,
+            message.sender,
+            message.payload(),
+        );
+
         let messages = self.process_message(recipient, message)?;
 
         let targeted_messages = messages
@@ -279,9 +290,14 @@ where
                 (hwm, delivery)
             })
             .filter_map(|(hwm, delivery)| match delivery {
-                DeliverySchedule::Drop => None,
+                DeliverySchedule::Drop => {
+                    trace!("{:?} message is dropped.", hwm);
+                    None
+                }
                 DeliverySchedule::AtInstant(timestamp) => {
-                    Some((hwm.into_targeted(recipient), timestamp))
+                    let targeted = hwm.into_targeted(recipient);
+                    trace!("{:?} scheduled for {:?}", targeted, timestamp);
+                    Some((targeted, timestamp))
                 }
             })
             .collect();
@@ -318,6 +334,8 @@ where
         let res = f(self.validator_mut(validator_id)?.consensus.highway_mut());
         let mut additional_effects = vec![];
         for e in res.iter() {
+            // If validator produced a `NewVertex` effect,
+            // we want to add it to his state immediately.
             if let Effect::NewVertex(vv) = e {
                 additional_effects.extend(
                     self.validator_mut(validator_id)?
@@ -358,7 +376,7 @@ where
                         Ok(msgs) => msgs,
                         Err((v, error)) => {
                             // TODO: Replace with tracing library and maybe add to sender state?
-                            println!("{:?} sent an invalid vertex {:?} to {:?} that resulted in {:?} error", sender_id, v, validator_id, error);
+                            error!("{:?} sent an invalid vertex {:?} to {:?} that resulted in {:?} error", sender_id, v, validator_id, error);
                             vec![]
                         }
                     }
@@ -385,9 +403,11 @@ where
                 timestamp,
             } => {
                 if !new_equivocators.is_empty() {
+                    trace!("New equivocators detected: {:?}", new_equivocators);
                     // https://casperlabs.atlassian.net/browse/HWY-120
                     unimplemented!("Equivocations detected but not handled.")
                 }
+                trace!("Consensus value finalized: {:?}", value);
                 vec![value]
             }
             FinalityOutcome::None => vec![],
@@ -402,6 +422,7 @@ where
 
     // Adds vertex to the validator's state.
     // Synchronizes its state if necessary.
+    // From the POV of the test system, synchronization is immediate.
     #[allow(clippy::type_complexity)]
     fn add_vertex(
         &mut self,
@@ -895,14 +916,15 @@ mod test_harness {
             tests::consensus_des_testing::ValidatorId,
             traits::{Context, ValidatorSecret},
         },
+        logging,
         testing::TestRng,
         types::TimeDiff,
     };
+    use tracing::{span, warn, Level, Span};
 
     #[test]
     fn on_empty_queue_error() {
         let mut rng = TestRng::new();
-
         let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
             HighwayTestHarnessBuilder::new()
                 .consensus_values_count(1)
@@ -923,12 +945,13 @@ mod test_harness {
     #[test]
     fn done_when_all_finalized() -> Result<(), TestRunError> {
         let mut rng = TestRng::new();
+        logging::init().ok();
         let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
             HighwayTestHarnessBuilder::new()
-                .max_faulty_validators(5)
-                .consensus_values_count(5)
+                .max_faulty_validators(3)
+                .consensus_values_count(3)
                 .weight_limits(5, 10)
-                .faulty_weight_perc(20)
+                .faulty_weight_perc(0)
                 .build(&mut rng)
                 .ok()
                 .expect("Construction was successful");
