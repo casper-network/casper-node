@@ -19,7 +19,7 @@ impl CLTyped for ActiveBid {
 }
 
 impl ToBytes for ActiveBid {
-    fn to_bytes(&self) -> Result<Vec<u8>, types::bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
         result.extend(self.bid_purse.to_bytes()?);
         result.extend(self.bid_amount.to_bytes()?);

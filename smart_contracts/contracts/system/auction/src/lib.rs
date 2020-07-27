@@ -96,7 +96,7 @@ where
                 founding_validator.bonding_purse = bonding_purse;
                 founding_validator.staked_amount += quantity;
 
-                // Returns newly created purse, and it's updated stake amount
+                // Returns newly created purse, and its updated stake amount
                 (
                     founding_validator.bonding_purse,
                     founding_validator.staked_amount,

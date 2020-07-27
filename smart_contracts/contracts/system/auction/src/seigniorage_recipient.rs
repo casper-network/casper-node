@@ -2,12 +2,11 @@ use alloc::vec::Vec;
 
 use types::{
     account::AccountHash,
-    bytesrepr::{self, ToBytes},
+    bytesrepr::{self, FromBytes, ToBytes},
     CLType, CLTyped, U512,
 };
 
 use crate::DelegationRate;
-use bytesrepr::FromBytes;
 
 pub struct SeignorageRecipient {
     stake: U512,
@@ -22,7 +21,7 @@ impl CLTyped for SeignorageRecipient {
 }
 
 impl ToBytes for SeignorageRecipient {
-    fn to_bytes(&self) -> Result<Vec<u8>, types::bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
         result.extend(self.stake.to_bytes()?);
         result.extend(self.delegation_rate.to_bytes()?);

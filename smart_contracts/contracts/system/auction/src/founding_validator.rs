@@ -2,12 +2,11 @@ use alloc::{collections::BTreeMap, vec::Vec};
 
 use types::{
     account::AccountHash,
-    bytesrepr::{self, FromBytes},
+    bytesrepr::{self, FromBytes, ToBytes},
     CLType, CLTyped, URef, U512,
 };
 
 use crate::DelegationRate;
-use bytesrepr::ToBytes;
 
 pub struct FoundingValidator {
     pub bonding_purse: URef,
@@ -23,7 +22,7 @@ impl CLTyped for FoundingValidator {
 }
 
 impl ToBytes for FoundingValidator {
-    fn to_bytes(&self) -> Result<Vec<u8>, types::bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
         result.extend(self.bonding_purse.to_bytes()?);
         result.extend(self.staked_amount.to_bytes()?);
