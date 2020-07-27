@@ -95,12 +95,13 @@ impl<C: Context> ActiveValidator<C> {
             warn!(%timestamp, "skipping outdated timer event");
             return effects;
         }
-        let round_id = self.round_id(state, timestamp);
-        let round_len = self.round_len(state, timestamp);
-        if timestamp == round_id && state.leader(round_id) == self.vidx {
+        let r_exp = self.round_exp(state, timestamp);
+        let r_id = round_id(timestamp, r_exp);
+        let r_len = round_len(r_exp);
+        if timestamp == r_id && state.leader(r_id) == self.vidx {
             let bctx = BlockContext::new(timestamp);
             effects.push(Effect::RequestNewBlock(bctx));
-        } else if timestamp == round_id + self.witness_offset(round_len) {
+        } else if timestamp == r_id + self.witness_offset(r_len) {
             let panorama = state.panorama_cutoff(state.panorama(), timestamp);
             if !panorama.is_empty() {
                 let witness_vote = self.new_vote(panorama, timestamp, None, state);
@@ -159,8 +160,8 @@ impl<C: Context> ActiveValidator<C> {
             warn!(%vote.timestamp, %timestamp, "added a vote with a future timestamp");
             return false;
         }
-        let round_exp = self.round_exp(state, timestamp);
-        timestamp >> round_exp == vote.timestamp >> round_exp // Current round.
+        let r_exp = self.round_exp(state, timestamp);
+        timestamp >> r_exp == vote.timestamp >> r_exp // Current round.
             && state.leader(vote.timestamp) == vote.creator // The creator is the round's leader.
             && vote.creator != self.vidx // We didn't send it ourselves.
             && !state.has_evidence(vote.creator) // The creator is not faulty.
@@ -218,17 +219,18 @@ impl<C: Context> ActiveValidator<C> {
         if self.next_timer > timestamp {
             return Vec::new(); // We already scheduled the next call; nothing to do.
         }
-        let round_id = self.round_id(state, timestamp);
-        let round_len = self.round_len(state, timestamp);
-        self.next_timer = if timestamp < round_id + self.witness_offset(round_len) {
-            round_id + self.witness_offset(round_len)
+        let r_exp = self.round_exp(state, timestamp);
+        let r_id = round_id(timestamp, r_exp);
+        let r_len = round_len(r_exp);
+        self.next_timer = if timestamp < r_id + self.witness_offset(r_len) {
+            r_id + self.witness_offset(r_len)
         } else {
-            let next_round_id = round_id + round_len;
-            if state.leader(next_round_id) == self.vidx {
-                next_round_id
+            let next_r_id = r_id + r_len;
+            if state.leader(next_r_id) == self.vidx {
+                next_r_id
             } else {
-                let next_round_len = self.round_len(state, next_round_id);
-                next_round_id + self.witness_offset(next_round_len)
+                let next_r_exp = self.round_exp(state, next_r_id);
+                next_r_id + self.witness_offset(round_len(next_r_exp))
             }
         };
         vec![Effect::ScheduleTimer(self.next_timer)]
@@ -269,16 +271,10 @@ impl<C: Context> ActiveValidator<C> {
             }
         })
     }
+}
 
-    /// The length of the round containing `timestamp`.
-    fn round_len(&self, state: &State<C>, timestamp: Timestamp) -> TimeDiff {
-        TimeDiff::from(1 << self.round_exp(state, timestamp))
-    }
-
-    /// The ID, i.e. the beginning, of the round containing `timestamp`.
-    fn round_id(&self, state: &State<C>, timestamp: Timestamp) -> Timestamp {
-        round_id(timestamp, self.round_exp(state, timestamp))
-    }
+fn round_len(round_exp: u8) -> TimeDiff {
+    TimeDiff::from(1 << round_exp)
 }
 
 /// Returns the time at which the round with the given timestamp and round exponent began.
