@@ -7,7 +7,7 @@ use super::{
     state::State,
     validators::ValidatorIndex,
     vertex::{Vertex, WireVote},
-    vote::{self, Observation, Panorama, Vote},
+    vote::{Observation, Panorama, Vote},
 };
 
 use crate::{
@@ -48,8 +48,8 @@ pub(crate) struct ActiveValidator<C: Context> {
     vidx: ValidatorIndex,
     /// The validator's secret signing key.
     secret: C::ValidatorSecret,
-    /// The initial round exponent: Our first round is `1 << round_exp` milliseconds long.
-    initial_round_exp: u8,
+    /// The next round exponent: Our next round will be `1 << next_round_exp` milliseconds long.
+    next_round_exp: u8,
     /// The latest timer we scheduled.
     next_timer: Timestamp,
 }
@@ -58,7 +58,7 @@ impl<C: Context> Debug for ActiveValidator<C> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("ActiveValidator")
             .field("vidx", &self.vidx)
-            .field("initial_round_exp", &self.initial_round_exp)
+            .field("next_round_exp", &self.next_round_exp)
             .field("next_timer", &self.next_timer)
             .finish()
     }
@@ -69,14 +69,14 @@ impl<C: Context> ActiveValidator<C> {
     pub(crate) fn new(
         vidx: ValidatorIndex,
         secret: C::ValidatorSecret,
-        initial_round_exp: u8,
+        next_round_exp: u8,
         timestamp: Timestamp,
         state: &State<C>,
     ) -> (Self, Vec<Effect<C>>) {
         let mut av = ActiveValidator {
             vidx,
             secret,
-            initial_round_exp,
+            next_round_exp,
             next_timer: Timestamp::zero(),
         };
         let effects = av.schedule_timer(timestamp, state);
@@ -204,7 +204,7 @@ impl<C: Context> ActiveValidator<C> {
             value,
             seq_number,
             timestamp,
-            next_round_exp: self.initial_round_exp, // TODO: Adaptive round lengths.
+            round_exp: self.round_exp(state, timestamp),
         };
         SignedWireVote::new(wvote, &self.secret)
     }
@@ -256,9 +256,18 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// The round exponent of the round containing `timestamp`.
+    ///
+    /// This returns `self.next_round_exp`, if that is a valid round exponent for a vote cast at
+    /// `timestamp`. Otherwise it returns the round exponent of our latest vote.
     fn round_exp(&self, state: &State<C>, timestamp: Timestamp) -> u8 {
-        self.latest_vote(state)
-            .map_or(self.initial_round_exp, |vote| vote.round_exp_at(timestamp))
+        self.latest_vote(state).map_or(self.next_round_exp, |vote| {
+            let max_re = self.next_round_exp.max(vote.round_exp);
+            if timestamp < round_id(timestamp, max_re) {
+                self.next_round_exp
+            } else {
+                vote.round_exp
+            }
+        })
     }
 
     /// The length of the round containing `timestamp`.
@@ -268,8 +277,19 @@ impl<C: Context> ActiveValidator<C> {
 
     /// The ID, i.e. the beginning, of the round containing `timestamp`.
     fn round_id(&self, state: &State<C>, timestamp: Timestamp) -> Timestamp {
-        vote::round_id(timestamp, self.round_exp(state, timestamp))
+        round_id(timestamp, self.round_exp(state, timestamp))
     }
+}
+
+/// Returns the time at which the round with the given timestamp and round exponent began.
+///
+/// The boundaries of rounds with length `1 << round_exp` are multiples of that length, in
+/// milliseconds since the epoch. So the beginning of the current round is the greatest multiple
+/// of `1 << round_exp` that is less or equal to `timestamp`.
+fn round_id(timestamp: Timestamp, round_exp: u8) -> Timestamp {
+    // The greatest multiple less or equal to the timestamp is the timestamp with the last
+    // `round_exp` bits set to zero.
+    (timestamp >> round_exp) << round_exp
 }
 
 #[cfg(test)]

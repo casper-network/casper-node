@@ -125,10 +125,10 @@ pub(crate) struct Vote<C: Context> {
     /// Original signature of the `SignedWireVote`.
     pub(crate) signature: C::Signature,
     /// The round exponent of the current round, that this message belongs to.
+    ///
+    /// The current round consists of all timestamps that agree with this one in all but the last
+    /// `round_exp` bits.
     pub(crate) round_exp: u8,
-    /// The target round exponent. At the next timestamp with milliseconds divisible by the new
-    /// round length, this validator's round length will be `1 << next_round_exp` milliseconds.
-    pub(crate) next_round_exp: u8,
 }
 
 impl<C: Context> Vote<C> {
@@ -160,11 +160,6 @@ impl<C: Context> Vote<C> {
                 skip_idx.push(old_vote.skip_idx[i].clone());
             }
         }
-        // Compute this vote's round exponent, which determines the length of the round this vote
-        // belongs to. If there is no parent vote, use `next_round_exp`.
-        let round_exp = skip_idx.first().map_or(wvote.next_round_exp, |vh| {
-            state.vote(vh).round_exp_at(wvote.timestamp)
-        });
         let vote = Vote {
             panorama: wvote.panorama,
             seq_number: wvote.seq_number,
@@ -173,8 +168,7 @@ impl<C: Context> Vote<C> {
             skip_idx,
             timestamp: wvote.timestamp,
             signature,
-            round_exp,
-            next_round_exp: wvote.next_round_exp,
+            round_exp: wvote.round_exp,
         };
         (vote, wvote.value)
     }
@@ -183,30 +177,4 @@ impl<C: Context> Vote<C> {
     pub(crate) fn previous(&self) -> Option<&C::Hash> {
         self.skip_idx.first()
     }
-
-    /// Returns the round exponent that would apply to the next vote, if it were cast at
-    /// `timestamp`.
-    ///
-    /// Round exponents can only change at times that are divisible by both the old and new round
-    /// lengths, so this returns `self.next_round_exp` if there was such a point in time between
-    /// `self.timestamp` and `timestamp`, and otherwise `self.round_exp`.
-    pub(crate) fn round_exp_at(&self, timestamp: Timestamp) -> u8 {
-        let max_re = self.round_exp.max(self.next_round_exp);
-        if self.timestamp < round_id(timestamp, max_re) {
-            self.next_round_exp
-        } else {
-            self.round_exp
-        }
-    }
-}
-
-/// Returns the time at which the round with the given timestamp and round exponent began.
-///
-/// The boundaries of rounds with length `1 << round_exp` are multiples of that length, in
-/// milliseconds since the epoch. So the beginning of the current round is the greatest multiple
-/// of `1 << round_exp` that is less or equal to `timestamp`.
-pub(super) fn round_id(timestamp: Timestamp, round_exp: u8) -> Timestamp {
-    // The greatest multiple less or equal to the timestamp is the timestamp with the last
-    // `round_exp` bits set to zero.
-    (timestamp >> round_exp) << round_exp
 }

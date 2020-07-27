@@ -89,7 +89,7 @@ pub(crate) struct WireVote<C: Context> {
     pub(crate) value: Option<C::ConsensusValue>,
     pub(crate) seq_number: u64,
     pub(crate) timestamp: Timestamp,
-    pub(crate) next_round_exp: u8,
+    pub(crate) round_exp: u8,
 }
 
 impl<C: Context> Debug for WireVote<C> {
@@ -110,7 +110,7 @@ impl<C: Context> Debug for WireVote<C> {
             .field("seq_number", &self.seq_number)
             .field("timestamp", &self.timestamp.millis())
             .field("panorama", &self.panorama.0)
-            .field("next_round_exp", &self.next_round_exp)
+            .field("round_exp", &self.round_exp)
             .finish()
     }
 }

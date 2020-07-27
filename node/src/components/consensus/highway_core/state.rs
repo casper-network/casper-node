@@ -80,6 +80,8 @@ pub(crate) enum VoteError {
     Creator,
     #[error("The signature is invalid.")]
     Signature,
+    #[error("The round length is invalid.")]
+    RoundLength,
 }
 
 /// A passive instance of the Highway protocol, containing its local state.
@@ -231,7 +233,7 @@ impl<C: Context> State<C> {
             value,
             seq_number: vote.seq_number,
             timestamp: vote.timestamp,
-            next_round_exp: vote.next_round_exp,
+            round_exp: vote.round_exp,
         };
         Some(SignedWireVote {
             wire_vote: wvote,
@@ -346,14 +348,27 @@ impl<C: Context> State<C> {
         if !justifications.all(|vh| self.vote(vh).timestamp <= wvote.timestamp) {
             return Err(VoteError::Timestamps);
         }
-        // Check that the vote's sequence number is one more than the creator's previous one.
-        let expected_seq_number = match wvote.panorama.get(creator) {
+        match wvote.panorama.get(creator) {
             Observation::Faulty => return Err(VoteError::Panorama),
-            Observation::None => 0,
-            Observation::Correct(hash) => 1 + self.vote(hash).seq_number,
-        };
-        if wvote.seq_number != expected_seq_number {
-            return Err(VoteError::SequenceNumber);
+            Observation::None if wvote.seq_number == 0 => (),
+            Observation::None => return Err(VoteError::SequenceNumber),
+            Observation::Correct(hash) => {
+                let prev_vote = self.vote(hash);
+                // The sequence number must be one more than the previous vote's.
+                if wvote.seq_number != 1 + prev_vote.seq_number {
+                    return Err(VoteError::SequenceNumber);
+                }
+                // The round exponent must only change one step at a time, and not within a round.
+                if prev_vote.round_exp != wvote.round_exp {
+                    let max_re = prev_vote.round_exp.max(wvote.round_exp);
+                    if prev_vote.round_exp + 1 < max_re
+                        || wvote.round_exp + 1 < max_re
+                        || prev_vote.timestamp >> max_re == wvote.timestamp >> max_re
+                    {
+                        return Err(VoteError::RoundLength);
+                    }
+                }
+            }
         }
         Ok(())
     }
