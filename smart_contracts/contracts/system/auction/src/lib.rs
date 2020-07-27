@@ -12,7 +12,7 @@ mod seigniorage_recipient;
 
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use types::{account::AccountHash, URef, U512};
+use casperlabs_types::{account::AccountHash, URef, U512};
 
 use active_bid::{ActiveBid, ActiveBids};
 pub use entry_points::get_entry_points;
@@ -43,10 +43,9 @@ where
         todo!()
     }
 
-    /// Returns era_valResult::<(URef, U512)>::cl_typeidators. Publicly accessible, but intended
+    /// Returns era_validators. Publicly accessible, but intended
     /// for periodic use by the PoS contract to update its own internal data
-    /// structures recording current and past winners (this document will
-    /// not describe how).
+    /// structures recording current and past winners.
     fn read_winners(&mut self) -> Vec<AccountHash> {
         todo!()
     }
@@ -90,17 +89,13 @@ where
         let mut founder_validators: FoundingValidators = self
             .read(founder_validators_uref)?
             .ok_or(Error::MissingValue)?;
-        let (purse, new_quantity) = match founder_validators.get_mut(&account_hash) {
+        let new_quantity = match founder_validators.get_mut(&account_hash) {
             // Update `founder_validators` map since `account_hash` belongs to a validator.
             Some(founding_validator) => {
                 founding_validator.bonding_purse = bonding_purse;
                 founding_validator.staked_amount += quantity;
 
-                // Returns newly created purse, and its updated stake amount
-                (
-                    founding_validator.bonding_purse,
-                    founding_validator.staked_amount,
-                )
+                founding_validator.staked_amount
             }
             None => {
                 // Non-founder - updates `active_bids` table
@@ -110,8 +105,8 @@ where
                     .ok_or(Error::InvalidKeyVariant)?;
                 let mut active_bids: ActiveBids =
                     self.read(active_bids_uref)?.ok_or(Error::MissingValue)?;
-                // Returns newly created bid and its active bid
-                let (bid_purse, bid_amount) = {
+                // Returns active bid which could be updated in case given entry exists.
+                let bid_amount = {
                     let active_bid = active_bids
                         .entry(account_hash)
                         .and_modify(|active_bid| {
@@ -128,20 +123,20 @@ where
                                 delegation_rate,
                             }
                         });
-                    (active_bid.bid_purse, active_bid.bid_amount)
+                    active_bid.bid_amount
                 };
 
                 // Write updated active bids
                 self.write(active_bids_uref, active_bids);
 
-                (bid_purse, bid_amount)
+                bid_amount
             }
         };
 
         // Bonds whole amount from the newly created purse
         self.bond(quantity, bonding_purse);
 
-        Ok((purse, new_quantity))
+        Ok((bonding_purse, new_quantity))
     }
 
     /// For a non-founder validator, implements essentially the same logic as
@@ -202,7 +197,7 @@ where
     /// is intended to be called together with the slash function in the
     /// Mint contract.
     /// Access: PoS contractPL
-    fn squash_bid(&mut self, _validator_keys: &[AccountHash]) {
+    fn quash_bid(&mut self, _validator_keys: &[AccountHash]) {
         todo!()
     }
 

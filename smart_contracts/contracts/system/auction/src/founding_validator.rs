@@ -1,6 +1,6 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use types::{
+use casperlabs_types::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
     CLType, CLTyped, URef, U512,

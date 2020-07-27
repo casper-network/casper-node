@@ -1,6 +1,6 @@
 use core::result::Result as StdResult;
 
-use types::{bytesrepr, ApiError, CLType, CLTyped};
+use casperlabs_types::{bytesrepr, ApiError};
 
 #[repr(u16)]
 #[cfg_attr(test, derive(Debug))]
@@ -18,15 +18,9 @@ impl From<bytesrepr::Error> for Error {
     }
 }
 
-impl Into<ApiError> for Error {
-    fn into(self) -> ApiError {
-        ApiError::User(self as u16)
-    }
-}
-
-impl CLTyped for Error {
-    fn cl_type() -> CLType {
-        CLType::U32
+impl From<Error> for ApiError {
+    fn from(error: Error) -> Self {
+        ApiError::User(error as u16)
     }
 }
 

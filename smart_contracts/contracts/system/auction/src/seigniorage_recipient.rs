@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use types::{
+use casperlabs_types::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
     CLType, CLTyped, U512,
@@ -15,7 +15,7 @@ pub struct SeignorageRecipient {
 }
 
 impl CLTyped for SeignorageRecipient {
-    fn cl_type() -> types::CLType {
+    fn cl_type() -> CLType {
         CLType::Any
     }
 }

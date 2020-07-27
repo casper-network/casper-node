@@ -1,11 +1,11 @@
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{collections::BTreeMap, vec::Vec};
 use core::result::Result as StdResult;
 
-use contract::{
+use casperlabs_contract::{
     contract_api::{runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{
+use casperlabs_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     runtime_args, CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
@@ -13,6 +13,7 @@ use types::{
 };
 
 use crate::{
+    active_bid::ActiveBid,
     providers::{ProofOfStakeProvider, StorageProvider, SystemProvider},
     Auction, DelegationRate,
 };
@@ -110,6 +111,18 @@ pub extern "C" fn add_bid() {
 }
 
 #[no_mangle]
+pub extern "C" fn withdraw_bid() {
+    let account_hash = runtime::get_named_arg("account_hash");
+    let quantity = runtime::get_named_arg("quantity");
+
+    let result = AuctionContract
+        .withdraw_bid(account_hash, quantity)
+        .unwrap_or_revert();
+    let cl_value = CLValue::from_t(result).unwrap_or_revert();
+    runtime::ret(cl_value)
+}
+
+#[no_mangle]
 pub extern "C" fn delegate() {
     let delegator_account_hash = runtime::get_named_arg("delegator_account_hash");
     let source_purse = runtime::get_named_arg("source_purse");
@@ -144,10 +157,10 @@ pub extern "C" fn undelegate() {
 }
 
 #[no_mangle]
-pub extern "C" fn squash_bid() {
+pub extern "C" fn quash_bid() {
     let validator_keys: Vec<AccountHash> = runtime::get_named_arg("validator_keys");
 
-    AuctionContract.squash_bid(&validator_keys);
+    AuctionContract.quash_bid(&validator_keys);
 }
 
 #[no_mangle]
@@ -170,7 +183,7 @@ pub fn get_entry_points() -> EntryPoints {
     let entry_point = EntryPoint::new(
         "read_winners",
         vec![],
-        CLType::List(Box::new(AccountHash::cl_type())),
+        <Vec<AccountHash>>::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );
@@ -179,10 +192,7 @@ pub fn get_entry_points() -> EntryPoints {
     let entry_point = EntryPoint::new(
         "read_seigniorage_recipients",
         vec![],
-        CLType::Map {
-            key: Box::new(AccountHash::cl_type()),
-            value: Box::new(CLType::Any),
-        },
+        <BTreeMap<AccountHash, ActiveBid>>::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );
@@ -196,13 +206,7 @@ pub fn get_entry_points() -> EntryPoints {
             Parameter::new("delegation_rate", DelegationRate::cl_type()),
             Parameter::new("quantity", U512::cl_type()),
         ],
-        CLType::Result {
-            ok: Box::new(CLType::Tuple2([
-                Box::new(URef::cl_type()),
-                Box::new(U512::cl_type()),
-            ])),
-            err: Box::new(u32::cl_type()),
-        },
+        <(URef, U512)>::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );
@@ -214,7 +218,7 @@ pub fn get_entry_points() -> EntryPoints {
             Parameter::new("account_hash", AccountHash::cl_type()),
             Parameter::new("quantity", U512::cl_type()),
         ],
-        crate::Result::<(URef, U512)>::cl_type(),
+        <(URef, U512)>::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );
@@ -228,7 +232,7 @@ pub fn get_entry_points() -> EntryPoints {
             Parameter::new("validator_account_hash", AccountHash::cl_type()),
             Parameter::new("quantity", U512::cl_type()),
         ],
-        crate::Result::<(URef, U512)>::cl_type(),
+        <(URef, U512)>::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );
@@ -241,14 +245,14 @@ pub fn get_entry_points() -> EntryPoints {
             Parameter::new("validator_account_hash", AccountHash::cl_type()),
             Parameter::new("quantity", U512::cl_type()),
         ],
-        crate::Result::<(URef, U512)>::cl_type(),
+        <(URef, U512)>::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );
     entry_points.add_entry_point(entry_point);
 
     let entry_point = EntryPoint::new(
-        "squash_bid",
+        "quash_bid",
         vec![Parameter::new(
             "validator_keys",
             Vec::<AccountHash>::cl_type(),

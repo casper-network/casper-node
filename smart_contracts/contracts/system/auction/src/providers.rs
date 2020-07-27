@@ -1,4 +1,4 @@
-use types::{
+use casperlabs_types::{
     bytesrepr::{FromBytes, ToBytes},
     CLTyped, Key, URef, U512,
 };
