@@ -5,9 +5,10 @@ use crate::{
     components::consensus::{highway_core::vertex::SignedWireVote, traits::Context},
     types::Timestamp,
 };
+use std::fmt::Debug;
 
 /// The observed behavior of a validator at some point in time.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -19,6 +20,19 @@ pub(crate) enum Observation<C: Context> {
     Correct(C::Hash),
     /// The validator has been seen
     Faulty,
+}
+
+impl<C: Context> Debug for Observation<C>
+where
+    C::Hash: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Observation::None => write!(f, "N"),
+            Observation::Faulty => write!(f, "F"),
+            Observation::Correct(hash) => write!(f, "{:?}", hash),
+        }
+    }
 }
 
 impl<C: Context> Observation<C> {
