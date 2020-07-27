@@ -92,9 +92,7 @@ where
             let full_module_path = meta.module_path().unwrap_or_default();
             if self.single_letter {
                 full_module_path
-                    .clone()
                     .split("::")
-                    .into_iter()
                     .map(|segment| {
                         let (fl, _) = segment.split_at(1);
                         fl
