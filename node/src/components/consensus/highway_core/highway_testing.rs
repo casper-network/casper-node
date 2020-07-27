@@ -951,7 +951,7 @@ mod test_harness {
                 .max_faulty_validators(3)
                 .consensus_values_count(3)
                 .weight_limits(5, 10)
-                .faulty_weight_perc(0)
+                .faulty_weight_perc(30)
                 .build(&mut rng)
                 .ok()
                 .expect("Construction was successful");

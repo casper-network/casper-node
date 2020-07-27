@@ -93,10 +93,7 @@ where
             if self.single_letter {
                 full_module_path
                     .split("::")
-                    .map(|segment| {
-                        let (fl, _) = segment.split_at(1);
-                        fl
-                    })
+                    .map(|segment| &segment[..1])
                     .collect::<Vec<_>>()
                     .join("::")
             } else {
@@ -140,8 +137,8 @@ pub fn init() -> anyhow::Result<()> {
 /// this outside of the application or testing code, the installed logger is global.
 ///
 /// If `single_letter_module` is set to `true` then short module path will be used:
-/// instead of `foo.bar.baz.bizz` it will output `f.b.b.b`.
-/// Only module path is affected, file name will still be printed in full.1
+/// instead of `foo::bar::baz::bizz` it will output `f::b::b::b`.
+/// Only module path is affected, file name will still be printed in full.
 ///
 /// See the `README.md` for hints on how to configure logging at runtime.
 pub fn init_params(single_letter_module: bool) -> anyhow::Result<()> {
