@@ -61,13 +61,12 @@ impl Display for ApiServerAnnouncement {
 /// A storage layer announcement.
 #[derive(Debug)]
 pub enum StorageAnnouncement<S: StorageType> {
-    /// A deploy has been stored.
-    StoredDeploy {
+    /// A deploy which wasn't previously stored has been stored.
+    StoredNewDeploy {
         /// ID or "hash" of the deploy that was added to the store.
         deploy_hash: <S::Deploy as Value>::Id,
-
         /// The header of the deploy that was added to the store.
-        deploy_header: <S::Deploy as Value>::Header,
+        deploy_header: Box<<S::Deploy as Value>::Header>,
     },
 }
 
@@ -78,8 +77,8 @@ where
 {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            StorageAnnouncement::StoredDeploy { deploy_hash, .. } => {
-                write!(formatter, "stored deploy {}", deploy_hash)
+            StorageAnnouncement::StoredNewDeploy { deploy_hash, .. } => {
+                write!(formatter, "stored new deploy {}", deploy_hash)
             }
         }
     }

@@ -18,6 +18,7 @@ macro_rules! vote {
             value: $val,
             seq_number: $seq_num,
             timestamp: crate::types::Timestamp::zero(),
+            next_round_exp: 12,
         };
         crate::components::consensus::highway_core::vertex::SignedWireVote::new(wvote, &$secret)
     }};

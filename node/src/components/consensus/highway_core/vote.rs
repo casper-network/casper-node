@@ -124,6 +124,9 @@ pub(crate) struct Vote<C: Context> {
     pub(crate) timestamp: Timestamp,
     /// Original signature of the `SignedWireVote`.
     pub(crate) signature: C::Signature,
+    /// The target round exponent. At the next timestamp with milliseconds divisible by the new
+    /// round length, this validator's round length will be `1 << next_round_exp` milliseconds.
+    pub(crate) next_round_exp: u8,
 }
 
 impl<C: Context> Vote<C> {
@@ -164,6 +167,7 @@ impl<C: Context> Vote<C> {
             skip_idx,
             timestamp: swvote.wire_vote.timestamp,
             signature: swvote.signature,
+            next_round_exp: swvote.wire_vote.next_round_exp,
         };
         (vote, swvote.wire_vote.value)
     }

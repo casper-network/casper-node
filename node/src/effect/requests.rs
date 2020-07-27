@@ -26,11 +26,11 @@ use crate::{
             shared::{additive_map::AdditiveMap, transform::Transform},
             storage::global_state::CommitResult,
         },
-        deploy_buffer::BlockLimits,
+        deploy_fetcher::FetchResult,
         storage::{self, DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::hash::Digest,
-    types::{BlockHash, Deploy, DeployHash, DeployHeader, ExecutedBlock, FinalizedBlock},
+    types::{BlockHash, Deploy, DeployHash, ExecutedBlock, FinalizedBlock, ProtoBlock},
     utils::DisplayIter,
     Chainspec,
 };
@@ -245,62 +245,33 @@ impl<S: StorageType> Display for StorageRequest<S> {
     }
 }
 
-#[allow(dead_code)] // FIXME: Remove once in use.
-/// Deploy-queue related requests.
+/// A `DeployBuffer` request.
 #[derive(Debug)]
 #[must_use]
-pub enum DeployQueueRequest {
-    /// Add a deploy to the queue for inclusion into an upcoming block.
-    QueueDeploy {
-        /// Hash of deploy to store.
-        hash: DeployHash,
-        /// Header of the deploy to store.
-        header: DeployHeader,
-        /// Responder to call with the result.
-        responder: Responder<bool>,
-    },
-
+pub enum DeployBufferRequest {
     /// Request a list of deploys to propose in a new block.
-    RequestForInclusion {
+    ListForInclusion {
         /// The instant for which the deploy is requested.
         current_instant: u64, // TODO: timestamp: Timestamp,
-        /// Maximum time to live.
-        max_ttl: u32,
-        /// Gas, size and count limits for deploys in a block.
-        limits: BlockLimits,
-        /// Maximum number of dependencies.
-        max_dependencies: u8,
         /// Set of block hashes pointing to blocks whose deploys should be excluded.
-        past: HashSet<BlockHash>,
+        past_blocks: HashSet<BlockHash>,
         /// Responder to call with the result.
         responder: Responder<HashSet<DeployHash>>,
     },
 }
 
-impl Display for DeployQueueRequest {
+impl Display for DeployBufferRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            DeployQueueRequest::QueueDeploy { hash, .. } => {
-                write!(formatter, "add deploy {} to queue", hash)
-            }
-            DeployQueueRequest::RequestForInclusion {
+            DeployBufferRequest::ListForInclusion {
                 current_instant,
-                max_ttl,
-                limits,
-                max_dependencies,
-                past,
+                past_blocks,
                 responder: _,
             } => write!(
                 formatter,
-                "request for inclusion: instant {} ttl {} block_size {} gas_limit {} \
-                        max_deps {} max_deploy_count {} #past {}",
+                "list for inclusion: instant {} past {}",
                 current_instant,
-                max_ttl,
-                limits.size_bytes,
-                limits.gas,
-                max_dependencies,
-                limits.deploy_count,
-                past.len()
+                past_blocks.len()
             ),
         }
     }
@@ -433,6 +404,31 @@ impl Display for ContractRuntimeRequest {
     }
 }
 
+/// Deploy-fetcher related requests.
+#[derive(Debug)]
+#[must_use]
+pub enum DeployFetcherRequest<I> {
+    /// Return the specified deploy if it exists, else `None`.
+    FetchDeploy {
+        /// The hash of the deploy to be retrieved.
+        hash: DeployHash,
+        /// The peer id of the peer to be asked if the deploy is not held locally
+        peer: I,
+        /// Responder to call with the result.
+        responder: Responder<Option<Box<FetchResult>>>,
+    },
+}
+
+impl<I> Display for DeployFetcherRequest<I> {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            DeployFetcherRequest::FetchDeploy { hash, .. } => {
+                write!(formatter, "request deploy {}", hash)
+            }
+        }
+    }
+}
+
 /// A contract runtime request.
 #[derive(Debug)]
 #[must_use]
@@ -453,5 +449,28 @@ impl Display for BlockExecutorRequest {
                 finalized_block, ..
             } => write!(f, "execute block {}", finalized_block),
         }
+    }
+}
+
+/// A block validator request.
+#[derive(Debug)]
+#[must_use]
+pub struct BlockValidatorRequest<I> {
+    /// The proto-block.
+    pub(crate) proto_block: ProtoBlock,
+    /// The sender of the proto-block (useful for requesting missing deploys).
+    pub(crate) sender: I,
+    /// Responder to call with the result.
+    pub(crate) responder: Responder<(bool, ProtoBlock)>,
+}
+
+impl<I: Display> Display for BlockValidatorRequest<I> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let BlockValidatorRequest {
+            proto_block,
+            sender,
+            ..
+        } = self;
+        write!(f, "validate block {} from {}", proto_block, sender)
     }
 }
