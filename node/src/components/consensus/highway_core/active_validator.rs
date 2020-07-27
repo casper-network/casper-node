@@ -262,7 +262,7 @@ impl<C: Context> ActiveValidator<C> {
     fn round_exp(&self, state: &State<C>, timestamp: Timestamp) -> u8 {
         self.latest_vote(state).map_or(self.next_round_exp, |vote| {
             let max_re = self.next_round_exp.max(vote.round_exp);
-            if timestamp < round_id(timestamp, max_re) {
+            if vote.timestamp < round_id(timestamp, max_re) {
                 self.next_round_exp
             } else {
                 vote.round_exp
