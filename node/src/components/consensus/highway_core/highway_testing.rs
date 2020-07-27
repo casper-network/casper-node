@@ -23,6 +23,7 @@ use crate::{
     types::Timestamp,
 };
 
+use serde::{Deserialize, Serialize};
 use std::iter::FromIterator;
 use tracing::{error, info, trace, warn};
 
@@ -868,12 +869,34 @@ pub(crate) struct TestContext;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct TestSecret(pub(crate) u64);
 
+// Newtype wrapper for test signature.
+// Added so that we can use custom Debug impl.
+#[derive(Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+pub(crate) struct SignatureWrapper(u64);
+
+impl Debug for SignatureWrapper {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:10}", hex_fmt::HexFmt(self.0.to_le_bytes()))
+    }
+}
+
+// Newtype wrapper for test hash.
+// Added so that we can use custom Debug impl.
+#[derive(Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+pub(crate) struct HashWrapper(u64);
+
+impl Debug for HashWrapper {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:10}", hex_fmt::HexFmt(self.0.to_le_bytes()))
+    }
+}
+
 impl ValidatorSecret for TestSecret {
-    type Hash = u64;
-    type Signature = u64;
+    type Hash = HashWrapper;
+    type Signature = SignatureWrapper;
 
     fn sign(&self, data: &Self::Hash) -> Self::Signature {
-        data + self.0
+        SignatureWrapper(data.0 + self.0)
     }
 }
 
@@ -881,14 +904,14 @@ impl Context for TestContext {
     type ConsensusValue = u32;
     type ValidatorId = ValidatorId;
     type ValidatorSecret = TestSecret;
-    type Signature = u64;
-    type Hash = u64;
+    type Signature = SignatureWrapper;
+    type Hash = HashWrapper;
     type InstanceId = u64;
 
     fn hash(data: &[u8]) -> Self::Hash {
         let mut hasher = DefaultHasher::new();
         hasher.write(data);
-        hasher.finish()
+        HashWrapper(hasher.finish())
     }
 
     fn verify_signature(
@@ -896,8 +919,8 @@ impl Context for TestContext {
         public_key: &Self::ValidatorId,
         signature: &<Self::ValidatorSecret as ValidatorSecret>::Signature,
     ) -> bool {
-        let computed_signature = hash + public_key.0;
-        computed_signature == *signature
+        let computed_signature = hash.0 + public_key.0;
+        computed_signature == signature.0
     }
 }
 
