@@ -690,6 +690,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
     }
 
     pub(crate) fn ftt(mut self, ftt: u64) -> Self {
+        assert!(ftt < 100 && ftt > 0);
         self.ftt = Some(ftt);
         self
     }
@@ -785,7 +786,10 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
             .map(|(_, vid)| (*vid.id(), TestSecret(vid.id().0)))
             .collect();
 
-        let ftt = self.ftt.unwrap_or_else(|| (weights_sum.0 - 1) / 3);
+        let ftt = self
+            .ftt
+            .map(|p| p * weights_sum.0 / 100)
+            .unwrap_or_else(|| (weights_sum.0 - 1) / 3);
 
         // Local function creating an instance of `HighwayConsensus` for a single validator.
         let highway_consensus = |(vid, secrets): (
@@ -970,15 +974,15 @@ mod test_harness {
     }
 
     #[test]
-    fn done_when_all_finalized() -> Result<(), TestRunError> {
+    fn liveness_test_no_equivocations() -> Result<(), TestRunError> {
         let mut rng = TestRng::new();
         logging::init_params(true).ok();
         let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
             HighwayTestHarnessBuilder::new()
-                .max_faulty_validators(3)
-                .consensus_values_count(3)
-                .weight_limits(5, 10)
-                .faulty_weight_perc(30)
+                .max_faulty_validators(5)
+                .consensus_values_count(10)
+                .ftt(30)
+                .weight_limits(3, 10)
                 .build(&mut rng)
                 .ok()
                 .expect("Construction was successful");
