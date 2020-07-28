@@ -138,9 +138,11 @@ pub(crate) struct Vote<C: Context> {
     pub(crate) timestamp: Timestamp,
     /// Original signature of the `SignedWireVote`.
     pub(crate) signature: C::Signature,
-    /// The target round exponent. At the next timestamp with milliseconds divisible by the new
-    /// round length, this validator's round length will be `1 << next_round_exp` milliseconds.
-    pub(crate) next_round_exp: u8,
+    /// The round exponent of the current round, that this message belongs to.
+    ///
+    /// The current round consists of all timestamps that agree with this one in all but the last
+    /// `round_exp` bits.
+    pub(crate) round_exp: u8,
 }
 
 impl<C: Context> Vote<C> {
@@ -151,8 +153,12 @@ impl<C: Context> Vote<C> {
         fork_choice: Option<&C::Hash>,
         state: &State<C>,
     ) -> (Vote<C>, Option<C::ConsensusValue>) {
-        let block = if swvote.wire_vote.value.is_some() {
-            swvote.wire_vote.hash() // A vote with a new block votes for itself.
+        let SignedWireVote {
+            wire_vote: wvote,
+            signature,
+        } = swvote;
+        let block = if wvote.value.is_some() {
+            wvote.hash() // A vote with a new block votes for itself.
         } else {
             // If the vote didn't introduce a new block, it votes for the fork choice itself.
             // `Highway::add_vote` checks that the panorama is not empty.
@@ -161,29 +167,24 @@ impl<C: Context> Vote<C> {
                 .expect("nonempty panorama has nonempty fork choice")
         };
         let mut skip_idx = Vec::new();
-        if let Some(hash) = swvote
-            .wire_vote
-            .panorama
-            .get(swvote.wire_vote.creator)
-            .correct()
-        {
+        if let Some(hash) = wvote.panorama.get(wvote.creator).correct() {
             skip_idx.push(hash.clone());
-            for i in 0..swvote.wire_vote.seq_number.trailing_zeros() as usize {
+            for i in 0..wvote.seq_number.trailing_zeros() as usize {
                 let old_vote = state.vote(&skip_idx[i]);
                 skip_idx.push(old_vote.skip_idx[i].clone());
             }
         }
         let vote = Vote {
-            panorama: swvote.wire_vote.panorama,
-            seq_number: swvote.wire_vote.seq_number,
-            creator: swvote.wire_vote.creator,
+            panorama: wvote.panorama,
+            seq_number: wvote.seq_number,
+            creator: wvote.creator,
             block,
             skip_idx,
-            timestamp: swvote.wire_vote.timestamp,
-            signature: swvote.signature,
-            next_round_exp: swvote.wire_vote.next_round_exp,
+            timestamp: wvote.timestamp,
+            signature,
+            round_exp: wvote.round_exp,
         };
-        (vote, swvote.wire_vote.value)
+        (vote, wvote.value)
     }
 
     /// Returns the creator's previous message.
