@@ -17,14 +17,14 @@ use crate::{
     },
     effect::{
         announcements::{NetworkAnnouncement, StorageAnnouncement},
-        requests::DeployFetcherRequest,
+        requests::FetcherRequest,
     },
     reactor::{self, EventQueueHandle, Runner},
     testing::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor,
     },
-    types::Deploy,
+    types::{Deploy, DeployHash},
 };
 
 const TIMEOUT: Duration = Duration::from_secs(1);
@@ -36,11 +36,11 @@ enum Event {
     #[from]
     Storage(StorageRequest<Storage>),
     #[from]
-    DeployFetcher(super::Event),
+    DeployFetcher(super::Event<Deploy>),
+    #[from]
+    DeployFetcherRequest(FetcherRequest<NodeId, Deploy>),
     #[from]
     NetworkRequest(NetworkRequest<NodeId, Message>),
-    #[from]
-    DeployFetcherRequest(DeployFetcherRequest<NodeId>),
     #[from]
     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
     #[from]
@@ -51,13 +51,28 @@ impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Storage(event) => write!(formatter, "storage: {}", event),
-            Event::DeployFetcher(event) => write!(formatter, "deploy fetcher: {}", event),
+            Event::DeployFetcher(event) => write!(formatter, "fetcher: {}", event),
             Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
-            Event::DeployFetcherRequest(req) => {
-                write!(formatter, "deploy fetcher request: {}", req)
-            }
+            Event::DeployFetcherRequest(req) => write!(formatter, "fetcher request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(formatter, "network announcement: {}", ann),
             Event::StorageAnnouncement(ann) => write!(formatter, "storage announcement: {}", ann),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub enum Message {
+    /// Requesting item from peer.
+    GetDeployRequest(DeployHash),
+    /// Received item from peer.
+    GetDeployResponse(Box<Deploy>),
+}
+
+impl Display for Message {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Message::GetDeployRequest(id) => write!(formatter, "get-request({})", id),
+            Message::GetDeployResponse(item) => write!(formatter, "get-response({})", item.id()),
         }
     }
 }
@@ -74,7 +89,7 @@ enum Error {
 struct Reactor {
     network: InMemoryNetwork<Message>,
     storage: Storage,
-    deploy_fetcher: DeployFetcher,
+    deploy_fetcher: Fetcher<Deploy>,
     _storage_tempdir: TempDir,
 }
 
@@ -100,12 +115,12 @@ impl reactor::Reactor for Reactor {
         let (storage_config, _storage_tempdir) = storage::Config::default_for_tests();
         let storage = Storage::new(&storage_config)?;
 
-        let deploy_fetcher = DeployFetcher::new(config);
+        let fetcher = Fetcher::<Deploy>::new(config);
 
         let reactor = Reactor {
             network,
             storage,
-            deploy_fetcher,
+            deploy_fetcher: fetcher,
             _storage_tempdir,
         };
 
@@ -125,10 +140,13 @@ impl reactor::Reactor for Reactor {
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
             ),
-            Event::DeployFetcher(event) => reactor::wrap_effects(
-                Event::DeployFetcher,
-                self.deploy_fetcher.handle_event(effect_builder, rng, event),
-            ),
+            Event::DeployFetcher(deploy_event) => {
+                reactor::wrap_effects(
+                    Event::DeployFetcher,
+                    self.deploy_fetcher
+                        .handle_event(effect_builder, rng, deploy_event),
+                )
+            },
             Event::NetworkRequest(request) => reactor::wrap_effects(
                 Event::NetworkRequest,
                 self.network.handle_event(effect_builder, rng, request),
@@ -142,14 +160,30 @@ impl reactor::Reactor for Reactor {
                 sender,
                 payload,
             }) => {
-                let event = super::Event::MessageReceived {
-                    sender,
-                    message: payload,
+                let event = match payload {
+                    Message::GetDeployRequest(deploy_hash) => Some(super::Event::MessageReceived {
+                        sender,
+                        payload: super::Message::GetRequest(deploy_hash),
+                    }),
+                    Message::GetDeployResponse(deploy) => Some(super::Event::MessageReceived {
+                        sender,
+                        payload: super::Message::GetResponse(deploy),
+                    }),
+                    _ => None,
                 };
-                reactor::wrap_effects(
-                    From::from,
-                    self.deploy_fetcher.handle_event(effect_builder, rng, event),
-                )
+
+                match event {
+                    Some(deploy_event) => {
+                        reactor::wrap_effects(
+                            From::from,
+                            self.deploy_fetcher
+                                .handle_event(effect_builder, rng, deploy_event),
+                        )
+                    },
+                    None => {
+                        Effects::new()
+                    },
+                }
             }
             Event::StorageAnnouncement(_) => Effects::new(),
         }
@@ -355,7 +389,7 @@ async fn should_timeout_fetch_from_peer() {
                 match event {
                     Event::NetworkRequest(request) => match request {
                         NetworkRequest::SendMessage { payload, .. } => match payload {
-                            Message::GetRequest(_) => true,
+                            Message::GetDeployRequest(_) => true,
                             _ => false,
                         },
                         _ => false,
@@ -376,7 +410,7 @@ async fn should_timeout_fetch_from_peer() {
                 match event {
                     Event::NetworkRequest(request) => match request {
                         NetworkRequest::SendMessage { payload, .. } => match payload {
-                            Message::GetResponse(_) => true,
+                            Message::GetDeployResponse(_) => true,
                             _ => false,
                         },
                         _ => false,
