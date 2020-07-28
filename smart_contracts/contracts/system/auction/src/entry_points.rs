@@ -1,4 +1,4 @@
-use alloc::{collections::BTreeMap, vec::Vec};
+use alloc::vec::Vec;
 use core::result::Result as StdResult;
 
 use casperlabs_contract::{
@@ -7,15 +7,15 @@ use casperlabs_contract::{
 };
 use casperlabs_types::{
     account::AccountHash,
+    auction::{DelegationRate, SeigniorageRecipients},
     bytesrepr::{FromBytes, ToBytes},
     runtime_args, CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
     EntryPoints, Key, Parameter, RuntimeArgs, URef, U512,
 };
 
 use crate::{
-    active_bid::ActiveBid,
     providers::{ProofOfStakeProvider, StorageProvider, SystemProvider},
-    Auction, DelegationRate,
+    Auction,
 };
 
 const ARG_ACCOUNT_HASH: &str = "account_hash";
@@ -192,7 +192,7 @@ pub fn get_entry_points() -> EntryPoints {
     let entry_point = EntryPoint::new(
         "read_seigniorage_recipients",
         vec![],
-        <BTreeMap<AccountHash, ActiveBid>>::cl_type(),
+        SeigniorageRecipients::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );

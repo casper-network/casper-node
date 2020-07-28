@@ -26,6 +26,7 @@ extern crate std;
 mod access_rights;
 pub mod account;
 pub mod api_error;
+pub mod auction;
 mod block_time;
 pub mod bytesrepr;
 mod cl_type;

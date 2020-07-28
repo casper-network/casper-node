@@ -3,28 +3,24 @@
 #[macro_use]
 extern crate alloc;
 
-mod active_bid;
 mod entry_points;
 mod error;
-mod founding_validator;
 mod providers;
-mod seigniorage_recipient;
 
-use alloc::{collections::BTreeMap, vec::Vec};
+use alloc::vec::Vec;
 
-use casperlabs_types::{account::AccountHash, URef, U512};
+use casperlabs_types::{
+    account::AccountHash,
+    auction::{ActiveBid, ActiveBids, DelegationRate, FoundingValidators, SeigniorageRecipients},
+    URef, U512,
+};
 
-use active_bid::{ActiveBid, ActiveBids};
 pub use entry_points::get_entry_points;
 pub use error::{Error, Result};
-use founding_validator::FoundingValidators;
 use providers::{ProofOfStakeProvider, StorageProvider, SystemProvider};
-use seigniorage_recipient::SeignorageRecipient;
 
 const FOUNDER_VALIDATORS_KEY: &str = "founder_validators";
 const ACTIVE_BIDS_KEY: &str = "active_bids";
-
-type DelegationRate = u32;
 
 pub trait Auction: StorageProvider + ProofOfStakeProvider + SystemProvider
 where
@@ -55,7 +51,7 @@ where
     /// delegated quantities from delegators. This function is publicly
     /// accessible, but intended for system use by the PoS contract, because
     /// this data is necessary for distributing seigniorage.
-    fn read_seigniorage_recipients(&mut self) -> BTreeMap<AccountHash, SeignorageRecipient> {
+    fn read_seigniorage_recipients(&mut self) -> SeigniorageRecipients {
         todo!()
     }
 
