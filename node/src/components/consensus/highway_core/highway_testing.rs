@@ -792,37 +792,32 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
             .unwrap_or_else(|| (weights_sum.0 - 1) / 3);
 
         // Local function creating an instance of `HighwayConsensus` for a single validator.
-        let highway_consensus = |(vid, secrets): (
-            <TestContext as Context>::ValidatorId,
-            &mut HashMap<
-                <TestContext as Context>::ValidatorId,
-                <TestContext as Context>::ValidatorSecret,
-            >,
-        )| {
-            let v_sec = secrets.remove(&vid).expect("Secret key should exist.");
+        let highway_consensus =
+            |(vid, secrets): (ValidatorId, &mut HashMap<ValidatorId, TestSecret>)| {
+                let v_sec = secrets.remove(&vid).expect("Secret key should exist.");
 
-            let (highway, effects) = {
-                let highway_params: HighwayParams<TestContext> = HighwayParams {
-                    instance_id,
-                    validators: validators.clone(),
+                let (highway, effects) = {
+                    let highway_params: HighwayParams<TestContext> = HighwayParams {
+                        instance_id,
+                        validators: validators.clone(),
+                    };
+
+                    Highway::new(highway_params, seed, vid, v_sec, round_exp, start_time)
                 };
 
-                Highway::new(highway_params, seed, vid, v_sec, round_exp, start_time)
+                let finality_detector = FinalityDetector::new(Weight(ftt));
+
+                (
+                    HighwayConsensus {
+                        highway,
+                        finality_detector,
+                    },
+                    effects
+                        .into_iter()
+                        .map(HighwayMessage::from)
+                        .collect::<Vec<_>>(),
+                )
             };
-
-            let finality_detector = FinalityDetector::new(Weight(ftt));
-
-            (
-                HighwayConsensus {
-                    highway,
-                    finality_detector,
-                },
-                effects
-                    .into_iter()
-                    .map(HighwayMessage::from)
-                    .collect::<Vec<_>>(),
-            )
-        };
 
         let faulty_num = faulty_weights.len();
 
