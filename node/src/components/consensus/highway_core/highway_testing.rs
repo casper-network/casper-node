@@ -401,12 +401,16 @@ where
             FinalityOutcome::Finalized {
                 value,
                 new_equivocators,
+                rewards,
                 timestamp,
             } => {
                 if !new_equivocators.is_empty() {
                     trace!("New equivocators detected: {:?}", new_equivocators);
                     // https://casperlabs.atlassian.net/browse/HWY-120
                     unimplemented!("Equivocations detected but not handled.")
+                }
+                if !rewards.is_empty() {
+                    trace!("Rewards are not verified yet: {:?}", rewards);
                 }
                 trace!("Consensus value finalized: {:?}", value);
                 vec![value]

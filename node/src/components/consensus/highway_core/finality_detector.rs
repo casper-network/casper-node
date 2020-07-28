@@ -117,6 +117,12 @@ pub(crate) enum FinalityOutcome<C: Context> {
         value: C::ConsensusValue,
         /// The set of newly detected equivocators.
         new_equivocators: Vec<C::ValidatorId>,
+        /// Rewards, in picoseconds worth of total rewards per time.
+        ///
+        /// This is a measure of the value of each validator's contribution to consensus. Under
+        /// optimal conditions, "one second per second" is paid out. If validators misbehave, the
+        /// total can be less than that.
+        rewards: BTreeMap<C::ValidatorId, u64>,
         /// The timestamp at which this value was proposed.
         timestamp: Timestamp,
     },
@@ -167,6 +173,7 @@ impl<C: Context> FinalityDetector<C> {
         FinalityOutcome::Finalized {
             value: state.block(bhash).value.clone(),
             new_equivocators,
+            rewards: BTreeMap::new(), // TODO: Seigniorage calculation.
             timestamp: state.vote(bhash).timestamp,
         }
     }

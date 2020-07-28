@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{collections::BTreeMap, fmt::Debug};
 
 use anyhow::Error;
 
@@ -40,6 +40,7 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
     FinalizedBlock {
         value: C,
         new_equivocators: Vec<VID>,
+        rewards: BTreeMap<VID, u64>,
         timestamp: Timestamp,
     },
     /// Request validation of the consensus value, contained in a message received from the given
