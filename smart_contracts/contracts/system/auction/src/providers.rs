@@ -13,6 +13,7 @@ pub trait StorageProvider {
 
 pub trait ProofOfStakeProvider {
     fn bond(&mut self, amount: U512, purse: URef);
+    fn unbond(&mut self, amount: Option<U512>);
 }
 
 pub trait SystemProvider {

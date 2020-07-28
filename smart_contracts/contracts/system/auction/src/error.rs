@@ -11,7 +11,10 @@ pub enum Error {
     MissingValue,
     Serialization,
     Transfer,
+    InvalidQuantity,
+    BidNotFound,
 }
+
 impl From<bytesrepr::Error> for Error {
     fn from(_: bytesrepr::Error) -> Self {
         Error::Serialization

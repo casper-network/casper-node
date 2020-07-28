@@ -146,12 +146,66 @@ where
     /// The function returns a tuple of the (new) unbonding purse key and the new
     /// quantity of motes remaining in the bid. If the target bid does not exist,
     /// The arguments are the public key and amount of motes to remove.
-    fn withdraw_bid(
-        &mut self,
-        _account_hash: AccountHash,
-        _quantity: U512,
-    ) -> Result<(URef, U512)> {
-        todo!()
+    fn withdraw_bid(&mut self, account_hash: AccountHash, quantity: U512) -> Result<(URef, U512)> {
+        // Update bids or stakes
+        let founder_validators_key = self
+            .get_key(FOUNDER_VALIDATORS_KEY)
+            .ok_or(Error::MissingKey)?;
+        let founder_validators_uref = founder_validators_key
+            .into_uref()
+            .ok_or(Error::InvalidKeyVariant)?;
+        let mut founder_validators: FoundingValidators = self
+            .read(founder_validators_uref)?
+            .ok_or(Error::MissingValue)?;
+
+        let (bonding_purse, new_quantity) = match founder_validators.get_mut(&account_hash) {
+            Some(founding_validator) => {
+                // Carefully decrease bonded funds
+                let (bonding_purse, new_quantity) =
+                    match founding_validator.staked_amount.checked_sub(quantity) {
+                        Some(new_staked_amount) => {
+                            (founding_validator.bonding_purse, new_staked_amount)
+                        }
+                        None => {
+                            // Decreasing passed quantity would result in negative stake
+                            return Err(Error::InvalidQuantity);
+                        }
+                    };
+
+                self.write(founder_validators_uref, founder_validators);
+
+                (bonding_purse, new_quantity)
+            }
+            None => {
+                let active_bids_key = self.get_key(ACTIVE_BIDS_KEY).ok_or(Error::MissingKey)?;
+                let active_bids_uref = active_bids_key
+                    .into_uref()
+                    .ok_or(Error::InvalidKeyVariant)?;
+                let mut active_bids: ActiveBids =
+                    self.read(active_bids_uref)?.ok_or(Error::MissingValue)?;
+
+                let (bid_purse, new_amount) = match active_bids.get_mut(&account_hash) {
+                    Some(active_bid) => {
+                        let new_amount = active_bid
+                            .bid_amount
+                            .checked_sub(quantity)
+                            .ok_or(Error::InvalidQuantity)?;
+                        (active_bid.bid_purse, new_amount)
+                    }
+                    None => {
+                        // If the target bid does not exist, the function call returns an error
+                        return Err(Error::BidNotFound);
+                    }
+                };
+
+                self.write(active_bids_uref, active_bids);
+                (bid_purse, new_amount)
+            }
+        };
+
+        self.unbond(Some(quantity));
+
+        Ok((bonding_purse, new_quantity))
     }
 
     /// Adds a new delegator to delegators, or tops off a curren

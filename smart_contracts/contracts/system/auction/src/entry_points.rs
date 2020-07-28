@@ -23,6 +23,7 @@ const ARG_ACCOUNT_HASH: &str = "account_hash";
 const ARG_AMOUNT: &str = "amount";
 const ARG_PURSE: &str = "purse";
 const BOND: &str = "bond";
+const UNBOND: &str = "unbond";
 
 struct AuctionContract;
 
@@ -48,6 +49,14 @@ impl ProofOfStakeProvider for AuctionContract {
             ARG_PURSE => purse,
         };
         runtime::call_contract::<()>(contract_hash, BOND, args);
+    }
+
+    fn unbond(&mut self, amount: Option<U512>) {
+        let contract_hash = system::get_proof_of_stake();
+        let args = runtime_args! {
+            ARG_AMOUNT => amount,
+        };
+        runtime::call_contract::<()>(contract_hash, UNBOND, args);
     }
 }
 
