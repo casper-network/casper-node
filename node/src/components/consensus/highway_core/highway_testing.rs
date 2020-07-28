@@ -35,7 +35,7 @@ struct HighwayConsensus {
 type ConsensusValue = u32;
 
 impl HighwayConsensus {
-    fn run_finality(&mut self) -> FinalityOutcome<ConsensusValue, ValidatorId> {
+    fn run_finality(&mut self) -> FinalityOutcome<TestContext> {
         self.finality_detector.run(&self.highway)
     }
 
