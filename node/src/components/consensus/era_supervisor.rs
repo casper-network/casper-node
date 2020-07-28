@@ -184,6 +184,7 @@ where
             ConsensusProtocolResult::FinalizedBlock {
                 value: proto_block,
                 new_equivocators,
+                rewards,
                 timestamp,
             } => {
                 // Announce the finalized proto block.
@@ -191,11 +192,11 @@ where
                     .announce_finalized_proto_block(proto_block.clone())
                     .ignore();
                 // Create instructions for slashing equivocators.
-                let instructions = new_equivocators
+                let slash_iter = new_equivocators.into_iter().map(Instruction::Slash);
+                let reward_iter = rewards
                     .into_iter()
-                    .map(Instruction::Slash)
-                    .collect();
-                // TODO: Instructions for rewards.
+                    .map(|(vid, amount)| Instruction::Reward(vid, amount));
+                let instructions = slash_iter.chain(reward_iter).collect();
                 // Request execution of the finalized block.
                 let fb = FinalizedBlock {
                     proto_block,

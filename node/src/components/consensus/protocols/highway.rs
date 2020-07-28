@@ -121,11 +121,13 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
             FinalityOutcome::Finalized {
                 value,
                 new_equivocators,
+                rewards,
                 timestamp,
             } => {
                 results.push(ConsensusProtocolResult::FinalizedBlock {
                     value,
                     new_equivocators,
+                    rewards,
                     timestamp,
                 });
             }

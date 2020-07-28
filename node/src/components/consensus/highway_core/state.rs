@@ -168,14 +168,19 @@ impl<C: Context> State<C> {
         self.opt_block(hash).unwrap()
     }
 
-    /// Returns the list of validator weights.
-    pub(crate) fn weights(&self) -> &[Weight] {
-        &self.weights
-    }
-
     /// Returns the `idx`th validator's voting weight.
     pub(crate) fn weight(&self, idx: ValidatorIndex) -> Weight {
         self.weights[idx.0 as usize]
+    }
+
+    /// Returns the total weight of all known-faulty validators.
+    pub(crate) fn faulty_weight(&self) -> Weight {
+        self.panorama
+            .iter()
+            .zip(&self.weights)
+            .filter(|(obs, _)| **obs == Observation::Faulty)
+            .map(|(_, w)| *w)
+            .sum()
     }
 
     /// Returns the sum of all validators' voting weights.
