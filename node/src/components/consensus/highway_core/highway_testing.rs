@@ -23,7 +23,9 @@ use crate::{
     types::Timestamp,
 };
 
+use serde::{Deserialize, Serialize};
 use std::iter::FromIterator;
+use tracing::{error, info, trace, warn};
 
 struct HighwayConsensus {
     highway: Highway<TestContext>,
@@ -96,6 +98,7 @@ impl From<Effect<TestContext>> for HighwayMessage {
 
 use rand::Rng;
 use std::{
+    cell::RefCell,
     collections::{hash_map::DefaultHasher, HashMap, VecDeque},
     fmt::{Debug, Display, Formatter},
     hash::Hasher,
@@ -265,6 +268,15 @@ where
             .pop_message()
             .ok_or(TestRunError::NoMessages)?;
 
+        let span = tracing::trace_span!("crank", validator = %recipient);
+        let _enter = span.enter();
+        trace!(
+            "Processing: tick {}, sender validator={}, payload {:?}",
+            delivery_time,
+            message.sender,
+            message.payload(),
+        );
+
         let messages = self.process_message(recipient, message)?;
 
         let targeted_messages = messages
@@ -279,9 +291,14 @@ where
                 (hwm, delivery)
             })
             .filter_map(|(hwm, delivery)| match delivery {
-                DeliverySchedule::Drop => None,
+                DeliverySchedule::Drop => {
+                    trace!("{:?} message is dropped.", hwm);
+                    None
+                }
                 DeliverySchedule::AtInstant(timestamp) => {
-                    Some((hwm.into_targeted(recipient), timestamp))
+                    let targeted = hwm.into_targeted(recipient);
+                    trace!("{:?} scheduled for {:?}", targeted, timestamp);
+                    Some((targeted, timestamp))
                 }
             })
             .collect();
@@ -318,6 +335,8 @@ where
         let res = f(self.validator_mut(validator_id)?.consensus.highway_mut());
         let mut additional_effects = vec![];
         for e in res.iter() {
+            // If validator produced a `NewVertex` effect,
+            // we want to add it to his state immediately.
             if let Effect::NewVertex(vv) = e {
                 additional_effects.extend(
                     self.validator_mut(validator_id)?
@@ -358,7 +377,7 @@ where
                         Ok(msgs) => msgs,
                         Err((v, error)) => {
                             // TODO: Replace with tracing library and maybe add to sender state?
-                            println!("{:?} sent an invalid vertex {:?} to {:?} that resulted in {:?} error", sender_id, v, validator_id, error);
+                            error!("{:?} sent an invalid vertex {:?} to {:?} that resulted in {:?} error", sender_id, v, validator_id, error);
                             vec![]
                         }
                     }
@@ -385,9 +404,11 @@ where
                 timestamp,
             } => {
                 if !new_equivocators.is_empty() {
+                    trace!("New equivocators detected: {:?}", new_equivocators);
                     // https://casperlabs.atlassian.net/browse/HWY-120
                     unimplemented!("Equivocations detected but not handled.")
                 }
+                trace!("Consensus value finalized: {:?}", value);
                 vec![value]
             }
             FinalityOutcome::None => vec![],
@@ -402,6 +423,7 @@ where
 
     // Adds vertex to the validator's state.
     // Synchronizes its state if necessary.
+    // From the POV of the test system, synchronization is immediate.
     #[allow(clippy::type_complexity)]
     fn add_vertex(
         &mut self,
@@ -847,12 +869,34 @@ pub(crate) struct TestContext;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct TestSecret(pub(crate) u64);
 
+// Newtype wrapper for test signature.
+// Added so that we can use custom Debug impl.
+#[derive(Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+pub(crate) struct SignatureWrapper(u64);
+
+impl Debug for SignatureWrapper {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:10}", hex_fmt::HexFmt(self.0.to_le_bytes()))
+    }
+}
+
+// Newtype wrapper for test hash.
+// Added so that we can use custom Debug impl.
+#[derive(Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+pub(crate) struct HashWrapper(u64);
+
+impl Debug for HashWrapper {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:10}", hex_fmt::HexFmt(self.0.to_le_bytes()))
+    }
+}
+
 impl ValidatorSecret for TestSecret {
-    type Hash = u64;
-    type Signature = u64;
+    type Hash = HashWrapper;
+    type Signature = SignatureWrapper;
 
     fn sign(&self, data: &Self::Hash) -> Self::Signature {
-        data + self.0
+        SignatureWrapper(data.0 + self.0)
     }
 }
 
@@ -860,14 +904,14 @@ impl Context for TestContext {
     type ConsensusValue = u32;
     type ValidatorId = ValidatorId;
     type ValidatorSecret = TestSecret;
-    type Signature = u64;
-    type Hash = u64;
+    type Signature = SignatureWrapper;
+    type Hash = HashWrapper;
     type InstanceId = u64;
 
     fn hash(data: &[u8]) -> Self::Hash {
         let mut hasher = DefaultHasher::new();
         hasher.write(data);
-        hasher.finish()
+        HashWrapper(hasher.finish())
     }
 
     fn verify_signature(
@@ -875,8 +919,8 @@ impl Context for TestContext {
         public_key: &Self::ValidatorId,
         signature: &<Self::ValidatorSecret as ValidatorSecret>::Signature,
     ) -> bool {
-        let computed_signature = hash + public_key.0;
-        computed_signature == *signature
+        let computed_signature = hash.0 + public_key.0;
+        computed_signature == signature.0
     }
 }
 
@@ -895,14 +939,15 @@ mod test_harness {
             tests::consensus_des_testing::ValidatorId,
             traits::{Context, ValidatorSecret},
         },
+        logging,
         testing::TestRng,
         types::TimeDiff,
     };
+    use tracing::{span, warn, Level, Span};
 
     #[test]
     fn on_empty_queue_error() {
         let mut rng = TestRng::new();
-
         let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
             HighwayTestHarnessBuilder::new()
                 .consensus_values_count(1)
@@ -923,12 +968,13 @@ mod test_harness {
     #[test]
     fn done_when_all_finalized() -> Result<(), TestRunError> {
         let mut rng = TestRng::new();
+        logging::init_params(true).ok();
         let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
             HighwayTestHarnessBuilder::new()
-                .max_faulty_validators(5)
-                .consensus_values_count(5)
+                .max_faulty_validators(3)
+                .consensus_values_count(3)
                 .weight_limits(5, 10)
-                .faulty_weight_perc(20)
+                .faulty_weight_perc(30)
                 .build(&mut rng)
                 .ok()
                 .expect("Construction was successful");

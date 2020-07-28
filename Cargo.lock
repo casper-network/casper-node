@@ -131,6 +131,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "auction"
+version = "0.1.0"
+dependencies = [
+ "casperlabs-contract",
+ "casperlabs-types",
+]
+
+[[package]]
 name = "authorized-keys"
 version = "0.1.0"
 dependencies = [
