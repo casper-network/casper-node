@@ -422,9 +422,7 @@ pub enum FetcherRequest<I, T: FetcherItem> {
 impl<I, T: FetcherItem> Display for FetcherRequest<I, T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            FetcherRequest::Fetch { id, .. } => {
-                write!(formatter, "request item by id {}", id)
-            }
+            FetcherRequest::Fetch { id, .. } => write!(formatter, "request item by id {}", id),
         }
     }
 }

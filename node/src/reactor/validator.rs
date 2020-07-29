@@ -35,8 +35,7 @@ use crate::{
         },
         requests::{
             ApiRequest, BlockExecutorRequest, BlockValidatorRequest, ContractRuntimeRequest,
-            DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkRequest,
-            StorageRequest,
+            DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -404,10 +403,7 @@ impl reactor::Reactor for Reactor {
                         Event::Pinger(pinger::Event::MessageReceived { sender, msg })
                     }
                     Message::DeployFetcher(payload) => {
-                        Event::DeployFetcher(fetcher::Event::MessageReceived {
-                            sender,
-                            payload,
-                        })
+                        Event::DeployFetcher(fetcher::Event::MessageReceived { sender, payload })
                     }
                     Message::DeployGossiper(message) => {
                         Event::DeployGossiper(gossiper::Event::MessageReceived { sender, message })

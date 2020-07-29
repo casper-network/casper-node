@@ -29,6 +29,11 @@ use crate::{
 
 const TIMEOUT: Duration = Duration::from_secs(1);
 
+/// A proper implementation would have a Reactor level Message enum with a
+/// variant to hold a component's messages; but for the purposes of the set
+/// of tests in this file thus far one message type is currently sufficient.
+type TestMessage = Message<Deploy>;
+
 /// Top-level event for the reactor.
 #[derive(Debug, From)]
 #[must_use]
@@ -40,9 +45,9 @@ enum Event {
     #[from]
     DeployFetcherRequest(FetcherRequest<NodeId, Deploy>),
     #[from]
-    NetworkRequest(NetworkRequest<NodeId, Message<Deploy>>),
+    NetworkRequest(NetworkRequest<NodeId, TestMessage>),
     #[from]
-    NetworkAnnouncement(NetworkAnnouncement<NodeId, Message<Deploy>>),
+    NetworkAnnouncement(NetworkAnnouncement<NodeId, TestMessage>),
     #[from]
     StorageAnnouncement(StorageAnnouncement<Storage>),
 }
@@ -70,7 +75,7 @@ enum Error {
 }
 
 struct Reactor {
-    network: InMemoryNetwork<Message<Deploy>>,
+    network: InMemoryNetwork<TestMessage>,
     storage: Storage,
     deploy_fetcher: Fetcher<Deploy>,
     _storage_tempdir: TempDir,
@@ -78,7 +83,7 @@ struct Reactor {
 
 impl Drop for Reactor {
     fn drop(&mut self) {
-        NetworkController::<Message<Deploy>>::remove_node(&self.network.node_id())
+        NetworkController::<TestMessage>::remove_node(&self.network.node_id())
     }
 }
 
@@ -241,7 +246,7 @@ async fn assert_settled(
 async fn should_fetch_from_local() {
     const NETWORK_SIZE: usize = 1;
 
-    NetworkController::<Message<Deploy>>::create_active();
+    NetworkController::<TestMessage>::create_active();
     let (mut network, mut rng, node_ids) = {
         let mut network = Network::<Reactor>::new();
         let mut rng = rand::thread_rng();
@@ -265,14 +270,14 @@ async fn should_fetch_from_local() {
 
     assert_settled(node_id, *deploy.id(), &mut network, rng, TIMEOUT, false).await;
 
-    NetworkController::<Message<Deploy>>::remove_active();
+    NetworkController::<TestMessage>::remove_active();
 }
 
 #[tokio::test]
 async fn should_fetch_from_peer() {
     const NETWORK_SIZE: usize = 2;
 
-    NetworkController::<Message<Deploy>>::create_active();
+    NetworkController::<TestMessage>::create_active();
     let (mut network, mut rng, node_ids) = {
         let mut network = Network::<Reactor>::new();
         let mut rng = rand::thread_rng();
@@ -298,14 +303,14 @@ async fn should_fetch_from_peer() {
 
     assert_settled(node_id, *deploy.id(), &mut network, rng, TIMEOUT, false).await;
 
-    NetworkController::<Message<Deploy>>::remove_active();
+    NetworkController::<TestMessage>::remove_active();
 }
 
 #[tokio::test]
 async fn should_timeout_fetch_from_peer() {
     const NETWORK_SIZE: usize = 2;
 
-    NetworkController::<Message<Deploy>>::create_active();
+    NetworkController::<TestMessage>::create_active();
     let (mut network, mut rng, node_ids) = {
         let mut network = Network::<Reactor>::new();
         let mut rng = rand::thread_rng();
@@ -346,15 +351,14 @@ async fn should_timeout_fetch_from_peer() {
             &requesting_node,
             &mut rng,
             move |event: &Event| -> bool {
-                match event {
-                    Event::NetworkRequest(request) => match request {
-                        NetworkRequest::SendMessage { payload, .. } => match payload {
-                            Message::GetRequest(_) => true,
-                            _ => false,
-                        },
-                        _ => false,
-                    },
-                    _ => false,
+                if let Event::NetworkRequest(NetworkRequest::SendMessage {
+                    payload: Message::GetRequest(_),
+                    ..
+                }) = event
+                {
+                    true
+                } else {
+                    false
                 }
             },
             TIMEOUT,
@@ -399,5 +403,5 @@ async fn should_timeout_fetch_from_peer() {
     )
     .await;
 
-    NetworkController::<Message<Deploy>>::remove_active();
+    NetworkController::<TestMessage>::remove_active();
 }
