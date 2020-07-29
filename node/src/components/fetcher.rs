@@ -64,12 +64,12 @@ pub trait ItemFetcher<T: Item + 'static> {
 
     fn peer_timeout(&self) -> Duration;
 
-    /// If `maybe_responder` is `Some`, we've been asked to fetch the deploy by another component of
+    /// If `maybe_responder` is `Some`, we've been asked to fetch the item by another component of
     /// this node.  We'll try to get it from our own storage component first, and if that fails,
-    /// we'll send an outbound request to `peer` for the deploy.
+    /// we'll send an outbound request to `peer` for the item.
     ///
     /// If `maybe_responder` is `None`, we're handling an inbound network request from `peer`.
-    /// Outside of malicious behavior, we should have the deploy in our storage component.
+    /// Outside of malicious behavior, we should have the item in our storage component.
     fn fetch<REv: ReactorEventT<T>>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -99,7 +99,7 @@ pub trait ItemFetcher<T: Item + 'static> {
         peer: NodeId,
     ) -> Effects<Event<T>>;
 
-    /// Handles the `Ok` case for a `Result` of attempting to get the deploy from the storage
+    /// Handles the `Ok` case for a `Result` of attempting to get the item from the storage
     /// component in order to send it to the requester.
     fn got_from_store<REv: ReactorEventT<T>>(
         &mut self,
@@ -118,7 +118,7 @@ pub trait ItemFetcher<T: Item + 'static> {
         }
     }
 
-    /// Handles the `Err` case for a `Result` of attempting to get the deploy from the storage
+    /// Handles the `Err` case for a `Result` of attempting to get the item from the storage
     /// component.
     fn failed_to_get_from_store<REv: ReactorEventT<T>>(
         &mut self,
@@ -144,7 +144,7 @@ pub trait ItemFetcher<T: Item + 'static> {
         }
     }
 
-    /// Handles receiving a deploy from a peer.
+    /// Handles receiving an item from a peer.
     fn got_from_peer<REv: ReactorEventT<T>>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -152,7 +152,7 @@ pub trait ItemFetcher<T: Item + 'static> {
         peer: NodeId,
     ) -> Effects<Event<T>>;
 
-    /// Handles signalling responders with `Deploy` or `None`.
+    /// Handles signalling responders with the item or `None`.
     fn signal(
         &mut self,
         id: T::Id,
@@ -169,7 +169,7 @@ pub trait ItemFetcher<T: Item + 'static> {
     }
 }
 
-/// The component which fetches a item from local storage or asks a peer if its not in storage.
+/// The component which fetches an item from local storage or asks a peer if its not in storage.
 #[derive(Debug)]
 pub(crate) struct Fetcher<T: Item + 'static> {
     get_from_peer_timeout: Duration,
@@ -212,7 +212,7 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
             })
     }
 
-    /// Handles receiving a deploy from a peer.
+    /// Handles receiving a `Deploy` from a peer.
     fn got_from_peer<REv: ReactorEventT<Deploy>>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -271,7 +271,7 @@ where
                 Ok(_) => self.signal(*item.id(), Some(FetchResult::FromPeer(*item, peer)), peer),
                 Err(error) => {
                     error!(
-                        "received deploy {} from peer {} but failed to put it to store: {}",
+                        "received item {} from peer {} but failed to put it to store: {}",
                         *item.id(),
                         peer,
                         error
