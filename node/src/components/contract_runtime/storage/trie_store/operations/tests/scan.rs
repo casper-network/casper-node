@@ -1,9 +1,13 @@
-use crate::components::contract_runtime::shared::newtypes::Blake2bHash;
-
 use super::*;
-use crate::components::contract_runtime::storage::{
-    error::{self, in_memory},
-    trie_store::operations::{scan, TrieScan},
+use crate::{
+    components::contract_runtime::{
+        shared::newtypes::Blake2bHash,
+        storage::{
+            error::{self, in_memory},
+            trie_store::operations::{scan, TrieScan},
+        },
+    },
+    crypto::hash,
 };
 
 fn check_scan<'a, R, S, E>(
@@ -17,7 +21,7 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<TestKey, TestValue>,
     S::Error: From<R::Error> + std::fmt::Debug,
-    E: From<R::Error> + From<S::Error> + From<types::bytesrepr::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
     let txn: R::ReadTransaction = environment.create_read_txn()?;
     let root = store
@@ -34,7 +38,7 @@ where
     for (index, parent) in parents.into_iter().rev() {
         let expected_tip_hash = {
             let tip_bytes = tip.to_bytes().unwrap();
-            Blake2bHash::new(&tip_bytes)
+            hash::hash(&tip_bytes)
         };
         match parent {
             Trie::Leaf { .. } => panic!("parents should not contain any leaves"),

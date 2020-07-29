@@ -1,15 +1,18 @@
 use super::{
     active_validator::{ActiveValidator, Effect},
-    evidence::Evidence,
     state::{State, VoteError},
     validators::Validators,
-    vertex::{Dependency, Vertex, WireVote},
+    vertex::{Dependency, Vertex},
 };
 use thiserror::Error;
 use tracing::warn;
 
-use crate::components::consensus::highway_core::vertex::SignedWireVote;
-use crate::components::consensus::{consensus_protocol::BlockContext, traits::Context};
+use crate::{
+    components::consensus::{
+        consensus_protocol::BlockContext, highway_core::vertex::SignedWireVote, traits::Context,
+    },
+    types::Timestamp,
+};
 
 /// An error due to an invalid vertex.
 #[derive(Debug, Error, PartialEq)]
@@ -39,6 +42,29 @@ impl<C: Context> PreValidatedVertex<C> {
     pub(crate) fn vertex(&self) -> &Vertex<C> {
         &self.0
     }
+
+    #[cfg(test)]
+    pub(crate) fn into_vertex(self) -> Vertex<C> {
+        self.0
+    }
+}
+
+impl<C: Context> From<ValidVertex<C>> for PreValidatedVertex<C> {
+    fn from(vv: ValidVertex<C>) -> PreValidatedVertex<C> {
+        PreValidatedVertex(vv.0)
+    }
+}
+
+impl<C: Context> From<ValidVertex<C>> for Vertex<C> {
+    fn from(vv: ValidVertex<C>) -> Vertex<C> {
+        vv.0
+    }
+}
+
+impl<C: Context> From<PreValidatedVertex<C>> for Vertex<C> {
+    fn from(pvv: PreValidatedVertex<C>) -> Vertex<C> {
+        pvv.0
+    }
 }
 
 /// A vertex that has been validated: `Highway` has all its dependencies and can add it to its
@@ -47,21 +73,15 @@ impl<C: Context> PreValidatedVertex<C> {
 /// Note that this must only be added to the `Highway` instance that created it. Can cause a panic
 /// or inconsistent state otherwise.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct ValidVertex<C: Context>(Vertex<C>);
-
-impl<C: Context> ValidVertex<C> {
-    pub(crate) fn vertex(&self) -> &Vertex<C> {
-        &self.0
-    }
-}
+pub(crate) struct ValidVertex<C: Context>(pub(super) Vertex<C>);
 
 #[derive(Debug)]
 pub(crate) struct HighwayParams<C: Context> {
     /// The protocol instance ID. This needs to be unique, to prevent replay attacks.
     // TODO: Add this to every `WireVote`?
-    instance_id: C::InstanceId,
+    pub(crate) instance_id: C::InstanceId,
     /// The validator IDs and weight map.
-    validators: Validators<C::ValidatorId>,
+    pub(crate) validators: Validators<C::ValidatorId>,
 }
 
 /// A passive instance of the Highway protocol, containing its local state.
@@ -79,6 +99,32 @@ pub(crate) struct Highway<C: Context> {
 }
 
 impl<C: Context> Highway<C> {
+    /// Creates a new Highway instance
+    pub(crate) fn new(
+        params: HighwayParams<C>,
+        seed: u64,
+        our_id: C::ValidatorId,
+        secret: C::ValidatorSecret,
+        round_exp: u8,
+        timestamp: Timestamp,
+    ) -> (Self, Vec<Effect<C>>) {
+        let our_index = params.validators.get_index(&our_id);
+        let weights = params
+            .validators
+            .enumerate()
+            .map(|(_, val)| val.weight())
+            .collect::<Vec<_>>();
+        let state = State::new(&weights, seed);
+        let (av, effects) = ActiveValidator::new(our_index, secret, round_exp, timestamp, &state);
+        let instance = Self {
+            params,
+            state,
+            // TODO: Make it possible to create an instance without an active validator
+            active_validator: Some(av),
+        };
+        (instance, effects)
+    }
+
     /// Does initial validation. Returns an error if the vertex is invalid.
     pub(crate) fn pre_validate_vertex(
         &self,
@@ -122,12 +168,24 @@ impl<C: Context> Highway<C> {
         &mut self,
         ValidVertex(vertex): ValidVertex<C>,
     ) -> Vec<Effect<C>> {
-        match vertex {
-            Vertex::Vote(vote) => self.add_valid_vote(vote),
-            Vertex::Evidence(evidence) => {
-                self.state.add_evidence(evidence);
-                vec![]
+        if !self.has_vertex(&vertex) {
+            match vertex {
+                Vertex::Vote(vote) => self.add_valid_vote(vote),
+                Vertex::Evidence(evidence) => {
+                    self.state.add_evidence(evidence);
+                    vec![]
+                }
             }
+        } else {
+            vec![]
+        }
+    }
+
+    /// Returns whether the vertex is already part of this protocol state.
+    pub(crate) fn has_vertex(&self, vertex: &Vertex<C>) -> bool {
+        match vertex {
+            Vertex::Vote(vote) => self.state.has_vote(&vote.hash()),
+            Vertex::Evidence(evidence) => self.state.has_evidence(evidence.perpetrator()),
         }
     }
 
@@ -135,19 +193,19 @@ impl<C: Context> Highway<C> {
     ///
     /// If we send a vertex to a peer who is missing a dependency, they will ask us for it. In that
     /// case, `get_dependency` will always return `Some`, unless the peer is faulty.
-    pub(crate) fn get_dependency(&self, dependency: &Dependency<C>) -> Option<Vertex<C>> {
+    pub(crate) fn get_dependency(&self, dependency: &Dependency<C>) -> Option<ValidVertex<C>> {
         let state = &self.state;
         match dependency {
             Dependency::Vote(hash) => state.wire_vote(hash).map(Vertex::Vote),
             Dependency::Evidence(idx) => state.opt_evidence(*idx).cloned().map(Vertex::Evidence),
         }
+        .map(ValidVertex)
     }
 
-    pub(crate) fn handle_timer(&mut self, timestamp: u64) -> Vec<Effect<C>> {
+    pub(crate) fn handle_timer(&mut self, timestamp: Timestamp) -> Vec<Effect<C>> {
         match self.active_validator.as_mut() {
             None => {
                 // TODO: Error?
-                // At least add logging about the event.
                 warn!(%timestamp, "Observer node was called with `handle_timer` event.");
                 vec![]
             }
@@ -174,11 +232,15 @@ impl<C: Context> Highway<C> {
         }
     }
 
-    pub(crate) fn state(&self) -> &State<C> {
+    pub(crate) fn params(&self) -> &HighwayParams<C> {
+        &self.params
+    }
+
+    pub(super) fn state(&self) -> &State<C> {
         &self.state
     }
 
-    fn on_new_vote(&self, vhash: &C::Hash, timestamp: u64) -> Vec<Effect<C>> {
+    fn on_new_vote(&self, vhash: &C::Hash, timestamp: Timestamp) -> Vec<Effect<C>> {
         self.active_validator
             .as_ref()
             .map_or_else(Vec::new, |av| av.on_new_vote(vhash, timestamp, &self.state))
@@ -189,7 +251,7 @@ impl<C: Context> Highway<C> {
     fn do_pre_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
             Vertex::Vote(vote) => {
-                if !C::validate_signature(&vote.hash(), self.validator_pk(&vote), &vote.signature) {
+                if !C::verify_signature(&vote.hash(), self.validator_pk(&vote), &vote.signature) {
                     return Err(VoteError::Signature.into());
                 }
                 Ok(self.state.pre_validate_vote(vote)?)
@@ -209,7 +271,7 @@ impl<C: Context> Highway<C> {
     fn do_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
             Vertex::Vote(vote) => Ok(self.state.validate_vote(vote)?),
-            Vertex::Evidence(evidence) => Ok(()),
+            Vertex::Evidence(_evidence) => Ok(()),
         }
     }
 
@@ -226,25 +288,32 @@ impl<C: Context> Highway<C> {
 
     /// Returns validator ID of the `swvote` creator.
     fn validator_pk(&self, swvote: &SignedWireVote<C>) -> &C::ValidatorId {
-        self.params.validators.get_by_id(swvote.wire_vote.creator)
+        self.params
+            .validators
+            .get_by_index(swvote.wire_vote.creator)
+            .id()
     }
 }
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::components::consensus::{
-        highway_core::{
-            highway::{Highway, HighwayParams, VertexError, VoteError},
-            state::tests::{
-                AddVoteError, TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC,
-                WEIGHTS,
+    use crate::{
+        components::consensus::{
+            highway_core::{
+                highway::{Highway, HighwayParams, VertexError, VoteError},
+                state::{
+                    tests::{
+                        TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC, WEIGHTS,
+                    },
+                    State,
+                },
+                validators::Validators,
+                vertex::{SignedWireVote, Vertex, WireVote},
+                vote::Panorama,
             },
-            state::{State, Weight},
-            validators::Validators,
-            vertex::{SignedWireVote, Vertex, WireVote},
-            vote::Panorama,
+            traits::ValidatorSecret,
         },
-        traits::ValidatorSecret,
+        types::Timestamp,
     };
     use std::iter::FromIterator;
 
@@ -276,7 +345,8 @@ pub(crate) mod tests {
             creator: ALICE,
             value: Some(0),
             seq_number: 0,
-            timestamp: 1,
+            timestamp: Timestamp::zero() + 1.into(),
+            round_exp: 12,
         };
         let invalid_signature = 1u64;
         let invalid_signature_vote = SignedWireVote {

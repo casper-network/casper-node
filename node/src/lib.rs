@@ -20,15 +20,13 @@
     trivial_numeric_casts,
     unused_qualifications
 )]
-// Clippy is a little too trigger happy with these types, resulting in a lot of unnecessary
-// "boilerplate" type aliases being written.
-#![allow(clippy::type_complexity)]
 
 pub mod components;
 pub mod crypto;
 pub mod effect;
 pub mod logging;
 pub mod reactor;
+#[cfg(test)]
 pub mod testing;
 pub mod tls;
 pub mod types;
@@ -37,11 +35,14 @@ mod utils;
 pub(crate) use components::small_network::{self, SmallNetwork};
 pub use components::{
     api_server::Config as ApiServerConfig,
+    chainspec_handler::{Chainspec, Error as ChainspecError, GenesisAccount},
+    consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
+    gossiper::{Config as GossipConfig, Error as GossipError},
     small_network::{Config as SmallNetworkConfig, Error as SmallNetworkError},
     storage::{Config as StorageConfig, Error as StorageError},
 };
-pub use utils::gossip_table::{Config as GossipTableConfig, Error as GossipTableError};
+pub use utils::OS_PAGE_SIZE;
 
 /// The default listening port for the root node of the validator network.
 pub const ROOT_VALIDATOR_LISTENING_PORT: u16 = 34553;

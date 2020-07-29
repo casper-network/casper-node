@@ -44,7 +44,7 @@ mod error;
 mod event;
 mod message;
 #[cfg(test)]
-mod test;
+mod tests;
 
 use std::{
     collections::{HashMap, HashSet},
@@ -84,8 +84,8 @@ use self::{endpoint::EndpointUpdate, error::Result};
 use crate::{
     components::Component,
     effect::{
-        announcements::NetworkAnnouncement, requests::NetworkRequest, Effect, EffectBuilder,
-        EffectExt, EffectResultExt, Multiple,
+        announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, EffectExt,
+        EffectResultExt, Effects,
     },
     reactor::{EventQueueHandle, Finalize, QueueKind},
     tls::{self, KeyFingerprint, Signed, TlsCert},
@@ -107,8 +107,8 @@ pub(crate) struct SmallNetwork<REv: 'static, P> {
     cfg: Config,
     /// Server certificate.
     cert: Arc<TlsCert>,
-    /// Server private key.
-    private_key: Arc<PKey<Private>>,
+    /// Server secret key.
+    secret_key: Arc<PKey<Private>>,
     /// Handle to event queue.
     event_queue: EventQueueHandle<REv>,
     /// A list of known endpoints by node ID.
@@ -132,23 +132,23 @@ where
     P: Serialize + DeserializeOwned + Clone + Debug + Send + 'static,
     REv: Send + From<Event<P>>,
 {
+    #[allow(clippy::type_complexity)]
     pub(crate) fn new(
         event_queue: EventQueueHandle<REv>,
         cfg: Config,
-    ) -> Result<(SmallNetwork<REv, P>, Multiple<Effect<Event<P>>>)> {
+    ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         let span = tracing::debug_span!("net");
         let _enter = span.enter();
 
         let server_span = tracing::info_span!("server");
 
         // First, we load or generate the TLS keys.
-        let (cert, private_key) = match (&cfg.cert, &cfg.private_key) {
-            // We're given a cert_file and a private_key file. Just load them, additional checking
+        let (cert, secret_key) = match (&cfg.cert_path, &cfg.secret_key_path) {
+            // We're given a cert_file and a secret_key file. Just load them, additional checking
             // will be performed once we create the acceptor and connector.
-            (Some(cert_file), Some(private_key_file)) => (
+            (Some(cert_file), Some(secret_key_file)) => (
                 tls::load_cert(cert_file).context("could not load TLS certificate")?,
-                tls::load_private_key(private_key_file)
-                    .context("could not load TLS private key")?,
+                tls::load_private_key(secret_key_file).context("could not load TLS secret key")?,
             ),
 
             // Neither was passed, so we auto-generate a pair.
@@ -184,10 +184,10 @@ where
 
         let model = SmallNetwork {
             cfg,
-            signed_endpoints: hashmap! { our_fingerprint => Signed::new(&our_endpoint, &private_key)? },
+            signed_endpoints: hashmap! { our_fingerprint => Signed::new(&our_endpoint, &secret_key)? },
             endpoints: hashmap! { our_fingerprint => our_endpoint },
             cert: Arc::new(tls::validate_cert(cert).map_err(Error::OwnCertificateInvalid)?),
-            private_key: Arc::new(private_key),
+            secret_key: Arc::new(secret_key),
             event_queue,
             outgoing: HashMap::new(),
             shutdown: Some(server_shutdown_sender),
@@ -195,7 +195,7 @@ where
         };
 
         // Connect to the root node if we are not the root node.
-        let mut effects: Multiple<_> = Default::default();
+        let mut effects: Effects<_> = Effects::new();
         if !we_are_root {
             effects.extend(model.connect_to_root());
         } else {
@@ -206,11 +206,11 @@ where
     }
 
     /// Attempts to connect to the root node.
-    fn connect_to_root(&self) -> Multiple<Effect<Event<P>>> {
+    fn connect_to_root(&self) -> Effects<Event<P>> {
         connect_trusted(
             self.cfg.root_addr,
             self.cert.clone(),
-            self.private_key.clone(),
+            self.secret_key.clone(),
         )
         .result(
             move |(cert, transport)| Event::RootConnected { cert, transport },
@@ -328,10 +328,7 @@ where
 
     /// Updates internal endpoint store and if new, output a `BroadcastEndpoint` effect.
     #[inline]
-    fn update_and_broadcast_if_new(
-        &mut self,
-        signed: Signed<Endpoint>,
-    ) -> Multiple<Effect<Event<P>>> {
+    fn update_and_broadcast_if_new(&mut self, signed: Signed<Endpoint>) -> Effects<Event<P>> {
         let change = self.update_endpoint(signed);
         debug!(%change, "endpoint change");
 
@@ -344,7 +341,7 @@ where
                     None => {
                         info!(%node_id, endpoint=%cur, "new outgoing channel");
 
-                        connect_outgoing(cur, self.cert.clone(), self.private_key.clone()).result(
+                        connect_outgoing(cur, self.cert.clone(), self.secret_key.clone()).result(
                             move |transport| Event::OutgoingEstablished { node_id, transport },
                             move |error| Event::OutgoingFailed {
                                 node_id,
@@ -358,7 +355,7 @@ where
                         // will cause the sender task to exit and trigger a reconnect, so no action
                         // must be taken at this point.
 
-                        Multiple::new()
+                        Effects::new()
                     }
                 };
 
@@ -377,25 +374,21 @@ where
                     self.signed_endpoints[&node_id].clone(),
                 ));
 
-                Multiple::new()
+                Effects::new()
             }
             EndpointUpdate::Unchanged => {
                 // Nothing to do.
-                Multiple::new()
+                Effects::new()
             }
             EndpointUpdate::InvalidSignature { signed, err } => {
                 warn!(%err, ?signed, "received invalid endpoint");
-                Multiple::new()
+                Effects::new()
             }
         }
     }
 
     /// Sets up an established outgoing connection.
-    fn setup_outgoing(
-        &mut self,
-        node_id: NodeId,
-        transport: Transport,
-    ) -> Multiple<Effect<Event<P>>> {
+    fn setup_outgoing(&mut self, node_id: NodeId, transport: Transport) -> Effects<Event<P>> {
         // This connection is send-only, we only use the sink.
         let (sink, _stream) = framed::<P>(transport).split();
 
@@ -425,7 +418,7 @@ where
         effect_builder: EffectBuilder<REv>,
         node_id: NodeId,
         msg: Message<P>,
-    ) -> Multiple<Effect<Event<P>>>
+    ) -> Effects<Event<P>>
     where
         REv: From<NetworkAnnouncement<NodeId, P>>,
     {
@@ -454,6 +447,7 @@ where
     }
 
     /// Returns the node id of this network node.
+    #[cfg(test)]
     pub(crate) fn node_id(&self) -> NodeId {
         self.cert.public_key_fingerprint()
     }
@@ -496,7 +490,7 @@ where
         effect_builder: EffectBuilder<REv>,
         rng: &mut R,
         event: Self::Event,
-    ) -> Multiple<Effect<Self::Event>> {
+    ) -> Effects<Self::Event> {
         match event {
             Event::RootConnected { cert, transport } => {
                 // Create a pseudo-endpoint for the root node with the lowest priority (time 0)
@@ -523,7 +517,7 @@ where
             Event::IncomingNew { stream, addr } => {
                 debug!(%addr, "incoming connection, starting TLS handshake");
 
-                setup_tls(stream, self.cert.clone(), self.private_key.clone())
+                setup_tls(stream, self.cert.clone(), self.secret_key.clone())
                     .boxed()
                     .event(move |result| Event::IncomingHandshakeCompleted { result, addr })
             }
@@ -539,7 +533,7 @@ where
                     }
                     Err(err) => {
                         warn!(%addr, %err, "TLS handshake failed");
-                        Multiple::new()
+                        Effects::new()
                     }
                 }
             }
@@ -551,7 +545,7 @@ where
                     Ok(()) => info!(%addr, "connection closed"),
                     Err(err) => warn!(%addr, %err, "connection dropped"),
                 }
-                Multiple::new()
+                Effects::new()
             }
             Event::OutgoingEstablished { node_id, transport } => {
                 self.setup_outgoing(node_id, transport)
@@ -577,18 +571,18 @@ where
                         self.outgoing.remove(&node_id);
 
                         warn!(%attempt_count, %node_id, "gave up on outgoing connection");
-                        return Multiple::new();
+                        return Effects::new();
                     }
                 }
 
                 if let Some(endpoint) = self.endpoints.get(&node_id) {
                     let ep = endpoint.clone();
                     let cert = self.cert.clone();
-                    let private_key = self.private_key.clone();
+                    let secret_key = self.secret_key.clone();
 
                     effect_builder
                         .set_timeout(Duration::from_millis(self.cfg.outgoing_retry_delay_millis))
-                        .then(move |_| connect_outgoing(ep, cert, private_key))
+                        .then(move |_| connect_outgoing(ep, cert, secret_key))
                         .result(
                             move |transport| Event::OutgoingEstablished { node_id, transport },
                             move |error| Event::OutgoingFailed {
@@ -599,7 +593,7 @@ where
                         )
                 } else {
                     error!("endpoint disappeared");
-                    Multiple::new()
+                    Effects::new()
                 }
             }
             Event::NetworkRequest {
@@ -727,10 +721,10 @@ async fn server_task<P, REv>(
 async fn setup_tls(
     stream: TcpStream,
     cert: Arc<TlsCert>,
-    private_key: Arc<PKey<Private>>,
+    secret_key: Arc<PKey<Private>>,
 ) -> Result<(NodeId, Transport)> {
     let tls_stream = tokio_openssl::accept(
-        &tls::create_tls_acceptor(&cert.as_x509().as_ref(), &private_key.as_ref())
+        &tls::create_tls_acceptor(&cert.as_x509().as_ref(), &secret_key.as_ref())
             .map_err(Error::AcceptorCreation)?,
         stream,
     )
@@ -822,9 +816,9 @@ fn framed<P>(stream: Transport) -> FramedTransport<P> {
 async fn connect_outgoing(
     endpoint: Endpoint,
     cert: Arc<TlsCert>,
-    private_key: Arc<PKey<Private>>,
+    secret_key: Arc<PKey<Private>>,
 ) -> Result<Transport> {
-    let (server_cert, transport) = connect_trusted(endpoint.addr(), cert, private_key).await?;
+    let (server_cert, transport) = connect_trusted(endpoint.addr(), cert, secret_key).await?;
 
     let remote_id = server_cert.public_key_fingerprint();
 
@@ -839,9 +833,9 @@ async fn connect_outgoing(
 async fn connect_trusted(
     addr: SocketAddr,
     cert: Arc<TlsCert>,
-    private_key: Arc<PKey<Private>>,
+    secret_key: Arc<PKey<Private>>,
 ) -> Result<(TlsCert, Transport)> {
-    let mut config = tls::create_tls_connector(&cert.as_x509(), &private_key)
+    let mut config = tls::create_tls_connector(&cert.as_x509(), &secret_key)
         .context("could not create TLS connector")?
         .configure()
         .map_err(Error::ConnectorConfiguration)?;
@@ -869,7 +863,7 @@ where
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("SmallNetwork")
             .field("cert", &"<SSL cert>")
-            .field("private_key", &"<hidden>")
+            .field("secret_key", &"<hidden>")
             .field("event_queue", &"<event_queue>")
             .field("endpoints", &self.endpoints)
             .field("signed_endpoints", &self.signed_endpoints)

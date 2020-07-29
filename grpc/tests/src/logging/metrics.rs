@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use log::{Metadata, Record};
 
-use node::components::contract_runtime::shared::logging::TerminalLogger;
+use casperlabs_node::components::contract_runtime::shared::logging::TerminalLogger;
 
 struct Logger {
     terminal_logger: TerminalLogger,

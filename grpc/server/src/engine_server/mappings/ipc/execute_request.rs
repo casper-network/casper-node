@@ -1,9 +1,11 @@
 use std::convert::{TryFrom, TryInto};
 
-use node::components::contract_runtime::core::engine_state::{
-    execute_request::ExecuteRequest, execution_result::ExecutionResult,
+use casperlabs_node::{
+    components::contract_runtime::core::engine_state::{
+        execute_request::ExecuteRequest, execution_result::ExecutionResult,
+    },
+    crypto::hash::Digest,
 };
-use node::components::contract_runtime::shared::newtypes::BLAKE2B_DIGEST_LENGTH;
 
 use crate::engine_server::{ipc, mappings::MappingError};
 
@@ -14,7 +16,7 @@ impl TryFrom<ipc::ExecuteRequest> for ExecuteRequest {
         let parent_state_hash = {
             let parent_state_hash = request.take_parent_state_hash();
             let length = parent_state_hash.len();
-            if length != BLAKE2B_DIGEST_LENGTH {
+            if length != Digest::LENGTH {
                 let mut result = ipc::ExecuteResponse::new();
                 result.mut_missing_parent().set_hash(parent_state_hash);
                 return Err(result);

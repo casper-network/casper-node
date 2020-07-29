@@ -2,15 +2,17 @@ use std::convert::TryFrom;
 
 use lazy_static::lazy_static;
 
-use engine_test_support::{
+use casperlabs_engine_test_support::{
     internal::{
         ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
-use node::components::contract_runtime::shared::{stored_value::StoredValue, transform::Transform};
-use types::{
+use casperlabs_node::components::contract_runtime::shared::{
+    stored_value::StoredValue, transform::Transform,
+};
+use casperlabs_types::{
     account::AccountHash, runtime_args, ApiError, CLValue, Key, RuntimeArgs, TransferResult,
     TransferredTo, U512,
 };

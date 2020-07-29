@@ -11,10 +11,10 @@ doctest = false
 test = false
 
 [features]
-default = ["contract/test-support", "rand/small_rng"]
-std = ["contract/std", "types/std"]
+default = ["casperlabs-contract/test-support", "rand/small_rng"]
+std = ["casperlabs-contract/std", "casperlabs-types/std"]
 
 [dependencies]
-contract = { path = "../../../contract", package = "casperlabs-contract" }
-types = { path = "../../../../types", package = "casperlabs-types" }
+casperlabs-contract = { path = "../../../contract" }
+casperlabs-types = { path = "../../../../types" }
 rand = { version = "0.7", default-features = false }

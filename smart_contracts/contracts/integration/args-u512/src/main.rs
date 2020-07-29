@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use contract::contract_api::runtime;
-use types::{ApiError, U512};
+use casperlabs_contract::contract_api::runtime;
+use casperlabs_types::{ApiError, U512};
 
 const ARG_NUMBER: &str = "number";
 

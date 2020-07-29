@@ -1,7 +1,8 @@
 //! Core types for a Merkle Trie
 
-use crate::components::contract_runtime::shared::newtypes::{Blake2bHash, BLAKE2B_DIGEST_LENGTH};
-use types::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use casperlabs_types::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+
+use crate::components::contract_runtime::shared::newtypes::Blake2bHash;
 
 #[cfg(test)]
 pub mod gens;
@@ -48,15 +49,12 @@ impl ToBytes for Pointer {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
         ret.push(self.tag());
-
-        let mut hash_bytes = self.hash().to_bytes()?;
-        ret.append(&mut hash_bytes);
-
+        ret.extend(self.hash().as_ref());
         Ok(ret)
     }
 
     fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH + BLAKE2B_DIGEST_LENGTH
+        U8_SERIALIZED_LENGTH + Blake2bHash::LENGTH
     }
 }
 
@@ -311,9 +309,12 @@ impl<K: FromBytes, V: FromBytes> FromBytes for Trie<K, V> {
 }
 
 pub(crate) mod operations {
-    use crate::components::contract_runtime::shared::newtypes::Blake2bHash;
-    use crate::components::contract_runtime::storage::trie::Trie;
-    use types::bytesrepr::{self, ToBytes};
+    use casperlabs_types::bytesrepr::{self, ToBytes};
+
+    use crate::{
+        components::contract_runtime::{shared::newtypes::Blake2bHash, storage::trie::Trie},
+        crypto::hash,
+    };
 
     /// Creates a tuple containing an empty root hash and an empty root (a node
     /// with an empty pointer block)
@@ -323,6 +324,6 @@ pub(crate) mod operations {
             pointer_block: Default::default(),
         };
         let root_bytes: Vec<u8> = root.to_bytes()?;
-        Ok((Blake2bHash::new(&root_bytes), root))
+        Ok((hash::hash(&root_bytes), root))
     }
 }

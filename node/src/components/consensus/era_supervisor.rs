@@ -12,17 +12,26 @@ use std::{
 };
 
 use anyhow::Error;
+use casperlabs_types::U512;
+use maplit::hashmap;
+use num_traits::AsPrimitive;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
 use crate::{
     components::consensus::{
         consensus_protocol::{ConsensusProtocol, ConsensusProtocolResult},
+        highway_core::highway::HighwayParams,
+        protocols::highway::{HighwayContext, HighwayProtocol, HighwaySecret},
         traits::NodeIdT,
-        ConsensusMessage, Event,
+        Config, ConsensusMessage, Event, ReactorEventT,
     },
-    effect::{requests::NetworkRequest, Effect, EffectBuilder, EffectExt, Multiple},
-    types::ProtoBlock,
+    crypto::{
+        asymmetric_key::{PublicKey, SecretKey},
+        hash::hash,
+    },
+    effect::{EffectBuilder, EffectExt, Effects},
+    types::{FinalizedBlock, Instruction, Motes, ProtoBlock, Timestamp},
 };
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -60,7 +69,7 @@ impl Default for EraConfig {
 pub(crate) struct EraSupervisor<I> {
     // A map of active consensus protocols.
     // A value is a trait so that we can run different consensus protocol instances per era.
-    active_eras: HashMap<EraId, Box<dyn ConsensusProtocol<I, ProtoBlock>>>,
+    active_eras: HashMap<EraId, Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>>>,
     era_config: EraConfig,
 }
 
@@ -78,28 +87,73 @@ impl<I> EraSupervisor<I>
 where
     I: NodeIdT,
 {
-    pub(crate) fn new() -> Self {
-        Self {
-            active_eras: HashMap::new(),
+    pub(crate) fn new<REv: ReactorEventT<I>>(
+        timestamp: Timestamp,
+        config: Config,
+        effect_builder: EffectBuilder<REv>,
+        validators: Vec<(PublicKey, Motes)>,
+    ) -> Result<(Self, Effects<Event<I>>), Error> {
+        let sum_stakes: Motes = validators.iter().map(|(_, stake)| *stake).sum();
+        let weights = if sum_stakes.value() > U512::from(u64::MAX) {
+            validators
+                .into_iter()
+                .map(|(key, stake)| {
+                    (
+                        key,
+                        AsPrimitive::<u64>::as_(
+                            stake.value() / (sum_stakes.value() / (u64::MAX / 2)),
+                        ),
+                    )
+                })
+                .collect()
+        } else {
+            validators
+                .into_iter()
+                .map(|(key, stake)| (key, AsPrimitive::<u64>::as_(stake.value())))
+                .collect()
+        };
+
+        let secret_signing_key =
+            SecretKey::from_file(&config.secret_key_path).map_err(anyhow::Error::new)?;
+
+        let public_key: PublicKey = From::from(&secret_signing_key);
+        let params = HighwayParams {
+            instance_id: hash("test era 0"),
+            validators: weights,
+        };
+        let (highway, effects) = HighwayProtocol::<I, HighwayContext>::new(
+            params,
+            0, // TODO: get a proper seed ?
+            public_key,
+            HighwaySecret::new(secret_signing_key, public_key),
+            12, // 4.1 seconds; TODO: get a proper round exp
+            timestamp,
+        );
+        let initial_era: Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>> = Box::new(highway);
+        let active_eras = hashmap! { EraId(0) => initial_era };
+        let era_supervisor = Self {
+            active_eras,
             era_config: Default::default(),
-        }
+        };
+        let effects = effects
+            .into_iter()
+            .flat_map(|result| Self::handle_consensus_result(EraId(0), effect_builder, result))
+            .collect();
+        Ok((era_supervisor, effects))
     }
 
-    fn handle_consensus_result<REv>(
-        &self,
+    fn handle_consensus_result<REv: ReactorEventT<I>>(
         era_id: EraId,
         effect_builder: EffectBuilder<REv>,
-        consensus_result: ConsensusProtocolResult<I, ProtoBlock>,
-    ) -> Multiple<Effect<Event<I>>>
-    where
-        REv: From<Event<I>> + Send + From<NetworkRequest<I, ConsensusMessage>>,
-    {
+        consensus_result: ConsensusProtocolResult<I, ProtoBlock, PublicKey>,
+    ) -> Effects<Event<I>> {
         match consensus_result {
-            ConsensusProtocolResult::InvalidIncomingMessage(msg, error) => {
+            ConsensusProtocolResult::InvalidIncomingMessage(msg, sender, error) => {
                 // TODO: we will probably want to disconnect from the sender here
                 // TODO: Print a more readable representation of the message.
                 error!(
                     ?msg,
+                    ?sender,
                     ?error,
                     "invalid incoming message to consensus instance"
                 );
@@ -114,10 +168,11 @@ where
             ConsensusProtocolResult::CreatedTargetedMessage(out_msg, to) => effect_builder
                 .send_message(to, era_id.message(out_msg))
                 .ignore(),
-            ConsensusProtocolResult::ScheduleTimer(_timestamp) => {
-                // TODO: we need to get the current system time here somehow, in order to schedule
-                // a timer for the correct moment - and we don't want to use std::Instant
-                unimplemented!()
+            ConsensusProtocolResult::ScheduleTimer(timestamp) => {
+                let timediff = timestamp.saturating_sub(Timestamp::now());
+                effect_builder
+                    .set_timeout(timediff.into())
+                    .event(move |_| Event::Timer { era_id, timestamp })
             }
             ConsensusProtocolResult::CreateNewBlock(block_context) => effect_builder
                 .request_proto_block(block_context)
@@ -126,12 +181,38 @@ where
                     proto_block,
                     block_context,
                 }),
-            ConsensusProtocolResult::FinalizedBlock(block) => effect_builder
-                .execute_block(block)
-                .event(move |executed_block| Event::ExecutedBlock {
-                    era_id,
-                    executed_block,
-                }),
+            ConsensusProtocolResult::FinalizedBlock {
+                value: proto_block,
+                new_equivocators,
+                rewards,
+                timestamp,
+            } => {
+                // Announce the finalized proto block.
+                let mut effects = effect_builder
+                    .announce_finalized_proto_block(proto_block.clone())
+                    .ignore();
+                // Create instructions for slashing equivocators.
+                let slash_iter = new_equivocators.into_iter().map(Instruction::Slash);
+                let reward_iter = rewards
+                    .into_iter()
+                    .map(|(vid, amount)| Instruction::Reward(vid, amount));
+                let instructions = slash_iter.chain(reward_iter).collect();
+                // Request execution of the finalized block.
+                let fb = FinalizedBlock {
+                    proto_block,
+                    instructions,
+                    timestamp,
+                };
+                effects.extend(
+                    effect_builder
+                        .execute_block(fb)
+                        .event(move |executed_block| Event::ExecutedBlock {
+                            era_id,
+                            executed_block,
+                        }),
+                );
+                effects
+            }
             ConsensusProtocolResult::ValidateConsensusValue(sender, proto_block) => effect_builder
                 .validate_proto_block(sender.clone(), proto_block)
                 .event(move |(is_valid, proto_block)| {
@@ -156,23 +237,25 @@ where
         era_id: EraId,
         effect_builder: EffectBuilder<REv>,
         f: F,
-    ) -> Multiple<Effect<Event<I>>>
+    ) -> Effects<Event<I>>
     where
-        REv: From<Event<I>> + Send + From<NetworkRequest<I, ConsensusMessage>>,
+        REv: ReactorEventT<I>,
         F: FnOnce(
-            &mut dyn ConsensusProtocol<I, ProtoBlock>,
-        ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock>>, Error>,
+            &mut dyn ConsensusProtocol<I, ProtoBlock, PublicKey>,
+        ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>>, Error>,
     {
         match self.active_eras.get_mut(&era_id) {
             None => todo!("Handle missing eras."),
             Some(consensus) => match f(&mut **consensus) {
                 Ok(results) => results
                     .into_iter()
-                    .flat_map(|result| self.handle_consensus_result(era_id, effect_builder, result))
+                    .flat_map(|result| {
+                        Self::handle_consensus_result(era_id, effect_builder, result)
+                    })
                     .collect(),
                 Err(error) => {
                     error!(%error, ?era_id, "got error from era id {:?}: {:?}", era_id, error);
-                    Default::default()
+                    Effects::new()
                 }
             },
         }

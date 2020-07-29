@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use contract::{contract_api::runtime, unwrap_or_revert::UnwrapOrRevert};
-use types::{contracts::DEFAULT_ENTRY_POINT_NAME, ApiError, RuntimeArgs};
+use casperlabs_contract::{contract_api::runtime, unwrap_or_revert::UnwrapOrRevert};
+use casperlabs_types::{contracts::DEFAULT_ENTRY_POINT_NAME, ApiError, RuntimeArgs};
 
 const LIST_NAMED_KEYS_KEY: &str = "list_named_keys";
 

@@ -20,11 +20,13 @@
 mod config;
 mod event;
 
-use std::{error::Error as StdError, net::SocketAddr, str};
+use std::{borrow::Cow, error::Error as StdError, net::SocketAddr, str};
 
 use bytes::Bytes;
+use futures::FutureExt;
 use http::Response;
 use rand::Rng;
+use smallvec::smallvec;
 use tracing::{debug, info, warn};
 use warp::{
     body,
@@ -40,8 +42,9 @@ use crate::{
     components::storage::{self, Storage},
     crypto::hash::Digest,
     effect::{
-        requests::{ApiRequest, DeployGossiperRequest, StorageRequest},
-        Effect, EffectBuilder, EffectExt, Multiple,
+        announcements::ApiServerAnnouncement,
+        requests::{ApiRequest, ContractRuntimeRequest, MetricsRequest, StorageRequest},
+        EffectBuilder, EffectExt, Effects,
     },
     reactor::QueueKind,
     types::{DecodingError, Deploy, DeployHash},
@@ -50,30 +53,28 @@ pub use config::Config;
 pub(crate) use event::Event;
 
 const DEPLOYS_API_PATH: &str = "deploys";
+const METRICS_API_PATH: &str = "metrics";
 
 #[derive(Debug)]
 pub(crate) struct ApiServer {}
 
 impl ApiServer {
-    pub(crate) fn new<REv>(
-        config: Config,
-        effect_builder: EffectBuilder<REv>,
-    ) -> (Self, Multiple<Effect<Event>>)
+    pub(crate) fn new<REv>(config: Config, effect_builder: EffectBuilder<REv>) -> Self
     where
         REv: From<Event> + From<ApiRequest> + From<StorageRequest<Storage>> + Send,
     {
-        let effects = Multiple::new();
-        let api_server = ApiServer {};
-
         tokio::spawn(run_server(config, effect_builder));
-
-        (api_server, effects)
+        ApiServer {}
     }
 }
 
 impl<REv> Component<REv> for ApiServer
 where
-    REv: From<StorageRequest<Storage>> + From<DeployGossiperRequest> + Send,
+    REv: From<ApiServerAnnouncement>
+        + From<ContractRuntimeRequest>
+        + From<MetricsRequest>
+        + From<StorageRequest<Storage>>
+        + Send,
 {
     type Event = Event;
 
@@ -82,20 +83,18 @@ where
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,
         event: Self::Event,
-    ) -> Multiple<Effect<Self::Event>> {
+    ) -> Effects<Self::Event> {
         match event {
-            Event::ApiRequest(ApiRequest::SubmitDeploy { deploy, responder }) => effect_builder
-                .put_deploy_to_storage(*deploy.clone())
-                .event(move |result| Event::PutDeployResult {
-                    deploy,
-                    result,
-                    main_responder: responder,
-                }),
+            Event::ApiRequest(ApiRequest::SubmitDeploy { deploy, responder }) => {
+                let mut effects = effect_builder.announce_deploy_received(deploy).ignore();
+                effects.extend(responder.respond(()).ignore());
+                effects
+            }
             Event::ApiRequest(ApiRequest::GetDeploy { hash, responder }) => effect_builder
-                .get_deploy_from_storage(hash)
-                .event(move |result| Event::GetDeployResult {
+                .get_deploys_from_storage(smallvec![hash])
+                .event(move |mut result| Event::GetDeployResult {
                     hash,
-                    result: Box::new(result),
+                    result: Box::new(result.pop().expect("can only contain one result")),
                     main_responder: responder,
                 }),
             Event::ApiRequest(ApiRequest::ListDeploys { responder }) => effect_builder
@@ -104,18 +103,12 @@ where
                     result: Box::new(result),
                     main_responder: responder,
                 }),
-            Event::PutDeployResult {
-                deploy,
-                result,
-                main_responder,
-            } => {
-                let cloned_deploy = deploy.clone();
-                let mut effects = main_responder
-                    .respond(result.map_err(|error| (*deploy, error)))
-                    .ignore();
-                effects.extend(effect_builder.gossip_deploy(cloned_deploy).ignore());
-                effects
-            }
+            Event::ApiRequest(ApiRequest::GetMetrics { responder }) => effect_builder
+                .get_metrics()
+                .event(move |text| Event::GetMetricsResult {
+                    text,
+                    main_responder: responder,
+                }),
             Event::GetDeployResult {
                 hash: _,
                 result,
@@ -125,6 +118,10 @@ where
                 result,
                 main_responder,
             } => main_responder.respond(*result).ignore(),
+            Event::GetMetricsResult {
+                text,
+                main_responder,
+            } => main_responder.respond(text).ignore(),
         }
     }
 }
@@ -144,10 +141,29 @@ where
         .and(warp::path::tail())
         .and_then(move |hex_digest| parse_get_request(effect_builder, hex_digest));
 
+    let get_metrics = warp::get()
+        .and(warp::path(METRICS_API_PATH))
+        .and_then(move || {
+            effect_builder
+                .make_request(
+                    |responder| ApiRequest::GetMetrics { responder },
+                    QueueKind::Api,
+                )
+                .map(|text_opt| match text_opt {
+                    Some(text) => {
+                        Ok::<_, Rejection>(reply::with_status(Cow::from(text), StatusCode::OK))
+                    }
+                    None => Ok(reply::with_status(
+                        Cow::from("failed to collect metrics. sorry!"),
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                    )),
+                })
+        });
+
     let mut server_addr = SocketAddr::from((config.bind_interface, config.bind_port));
 
     debug!(%server_addr, "starting HTTP server");
-    match warp::serve(post_deploy.or(get_deploy)).try_bind_ephemeral(server_addr) {
+    match warp::serve(post_deploy.or(get_deploy).or(get_metrics)).try_bind_ephemeral(server_addr) {
         Ok((addr, server_fut)) => {
             info!(%addr, "started HTTP server");
             return server_fut.await;
@@ -194,7 +210,7 @@ where
         }
     };
 
-    let result = effect_builder
+    effect_builder
         .make_request(
             |responder| ApiRequest::SubmitDeploy {
                 deploy: Box::new(deploy),
@@ -204,17 +220,8 @@ where
         )
         .await;
 
-    match result {
-        Ok(()) => {
-            let json = reply::json(&"");
-            Ok(reply::with_status(json, StatusCode::OK))
-        }
-        Err((deploy, error)) => {
-            let error_reply = format!("Failed to store {}: {}", deploy.id(), error);
-            let json = reply::json(&error_reply);
-            Ok(reply::with_status(json, StatusCode::BAD_REQUEST))
-        }
-    }
+    let json = reply::json(&"");
+    Ok(reply::with_status(json, StatusCode::OK))
 }
 
 async fn parse_get_request<REv>(

@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use contract::contract_api::runtime;
-use types::account::AccountHash;
+use casperlabs_contract::contract_api::runtime;
+use casperlabs_types::account::AccountHash;
 
 const ARG_ACCOUNT: &str = "account";
 

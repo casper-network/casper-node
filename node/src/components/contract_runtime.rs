@@ -5,57 +5,58 @@ pub mod shared;
 pub mod storage;
 
 use std::{
-    fmt::{Debug, Display},
-    path::PathBuf,
+    fmt::{self, Debug, Display, Formatter},
     sync::Arc,
 };
 
+use derive_more::From;
 use lmdb::DatabaseFlags;
 use rand::Rng;
-use serde::{Deserialize, Serialize};
+use thiserror::Error;
+use tokio::task;
+use tracing::trace;
 
-use crate::components::contract_runtime::core::engine_state::{EngineConfig, EngineState};
-use crate::components::contract_runtime::storage::protocol_data_store::lmdb::LmdbProtocolDataStore;
-use crate::components::contract_runtime::storage::{
-    global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
-    trie_store::lmdb::LmdbTrieStore,
+use crate::{
+    components::{
+        contract_runtime::{
+            core::engine_state::{EngineConfig, EngineState},
+            shared::newtypes::CorrelationId,
+            storage::{
+                error::lmdb::Error as StorageLmdbError, global_state::lmdb::LmdbGlobalState,
+                protocol_data_store::lmdb::LmdbProtocolDataStore,
+                transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore,
+            },
+        },
+        Component,
+    },
+    effect::{requests::ContractRuntimeRequest, EffectBuilder, EffectExt, Effects},
+    StorageConfig,
 };
-
-use crate::components::Component;
-use crate::effect::{Effect, EffectBuilder, Multiple};
-use crate::StorageConfig;
 pub use config::Config;
 
 /// The contract runtime components.
 pub(crate) struct ContractRuntime {
-    #[allow(dead_code)]
-    engine_state: EngineState<LmdbGlobalState>,
+    engine_state: Arc<EngineState<LmdbGlobalState>>,
 }
 
 impl Debug for ContractRuntime {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("ContractRuntime").finish()
     }
 }
 
-/// Contract runtime message used by the pinger.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub(crate) struct Message;
-
-/// Pinger component event.
-#[derive(Debug)]
+/// Contract runtime component event.
+#[derive(Debug, From)]
 pub enum Event {
-    /// Foo
-    Foo,
-    /// Bar
-    Bar,
+    /// A request made of the contract runtime component.
+    #[from]
+    Request(ContractRuntimeRequest),
 }
 
 impl Display for Event {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Foo => write!(f, "foo"),
-            Event::Bar => write!(f, "bar"),
+            Event::Request(request) => write!(f, "{}", request),
         }
     }
 }
@@ -71,64 +72,136 @@ where
         _effect_builder: EffectBuilder<REv>,
         _rng: &mut R,
         event: Self::Event,
-    ) -> Multiple<Effect<Self::Event>> {
+    ) -> Effects<Self::Event> {
         match event {
-            Event::Foo => todo!("foo"),
-            Event::Bar => todo!("bar"),
+            Event::Request(ContractRuntimeRequest::CommitGenesis {
+                chainspec,
+                responder,
+            }) => {
+                let result = self.engine_state.commit_genesis(*chainspec);
+                responder.respond(result).ignore()
+            }
+            Event::Request(ContractRuntimeRequest::Execute {
+                execute_request,
+                responder,
+            }) => {
+                trace!(?execute_request, "execute");
+                let engine_state = Arc::clone(&self.engine_state);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        engine_state.run_execute(correlation_id, execute_request)
+                    })
+                    .await
+                    .expect("should run");
+                    trace!(?result, "execute result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            Event::Request(ContractRuntimeRequest::Commit {
+                protocol_version,
+                pre_state_hash,
+                effects,
+                responder,
+            }) => {
+                trace!(?protocol_version, ?pre_state_hash, ?effects, "commit");
+                let engine_state = Arc::clone(&self.engine_state);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        engine_state.apply_effect(
+                            correlation_id,
+                            protocol_version,
+                            pre_state_hash,
+                            effects,
+                        )
+                    })
+                    .await
+                    .expect("should run");
+                    trace!(?result, "commit result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            Event::Request(ContractRuntimeRequest::Upgrade {
+                upgrade_config,
+                responder,
+            }) => {
+                trace!(?upgrade_config, "upgrade");
+                let engine_state = Arc::clone(&self.engine_state);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        engine_state.commit_upgrade(correlation_id, upgrade_config)
+                    })
+                    .await
+                    .expect("should run");
+                    trace!(?result, "upgrade result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            Event::Request(ContractRuntimeRequest::Query {
+                query_request,
+                responder,
+            }) => {
+                trace!(?query_request, "query");
+                let engine_state = Arc::clone(&self.engine_state);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        engine_state.run_query(correlation_id, query_request)
+                    })
+                    .await
+                    .expect("should run");
+                    trace!(?result, "query result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
         }
     }
 }
 
-/// Builds and returns engine global state
-fn get_engine_state(
-    data_dir: PathBuf,
-    map_size: usize,
-    engine_config: EngineConfig,
-) -> EngineState<LmdbGlobalState> {
-    let environment = {
-        let ret = LmdbEnvironment::new(&data_dir, map_size).expect("should have lmdb environment");
-        Arc::new(ret)
-    };
-
-    let trie_store = {
-        let ret = LmdbTrieStore::new(&environment, None, DatabaseFlags::empty())
-            .expect("should have trie store");
-        Arc::new(ret)
-    };
-
-    let protocol_data_store = {
-        let ret = LmdbProtocolDataStore::new(&environment, None, DatabaseFlags::empty())
-            .expect("should have protocol data store");
-        Arc::new(ret)
-    };
-
-    let global_state = LmdbGlobalState::empty(environment, trie_store, protocol_data_store)
-        .expect("should have global state");
-
-    EngineState::new(global_state, engine_config)
+/// Error returned from mis-configuring the contract runtime component.
+#[derive(Debug, Error)]
+pub enum ConfigError {
+    /// Error initializing the LMDB environment.
+    #[error("failed to initialize LMDB environment for contract runtime: {0}")]
+    Lmdb(#[from] StorageLmdbError),
 }
 
 impl ContractRuntime {
-    /// Create and initialize a new pinger.
-    pub(crate) fn new<REv: From<Event> + Send>(
+    pub(crate) fn new(
         storage_config: &StorageConfig,
         contract_runtime_config: Config,
-        _effect_builder: EffectBuilder<REv>,
-    ) -> (Self, Multiple<Effect<Event>>) {
+    ) -> Result<Self, ConfigError> {
+        let path = storage_config.path();
+        let environment = Arc::new(LmdbEnvironment::new(
+            path.as_path(),
+            contract_runtime_config.max_global_state_size(),
+        )?);
+
+        let trie_store = Arc::new(LmdbTrieStore::new(
+            &environment,
+            None,
+            DatabaseFlags::empty(),
+        )?);
+
+        let protocol_data_store = Arc::new(LmdbProtocolDataStore::new(
+            &environment,
+            None,
+            DatabaseFlags::empty(),
+        )?);
+
+        let global_state = LmdbGlobalState::empty(environment, trie_store, protocol_data_store)?;
         let engine_config = EngineConfig::new()
-            .with_use_system_contracts(contract_runtime_config.use_system_contracts)
-            .with_enable_bonding(contract_runtime_config.enable_bonding);
+            .with_use_system_contracts(contract_runtime_config.use_system_contracts())
+            .with_enable_bonding(contract_runtime_config.enable_bonding());
 
-        let engine_state = get_engine_state(
-            storage_config.path.clone(),
-            contract_runtime_config.map_size,
-            engine_config,
-        );
+        let engine_state = Arc::new(EngineState::new(global_state, engine_config));
 
-        let contract_runtime = ContractRuntime { engine_state };
-
-        let init = Multiple::new();
-
-        (contract_runtime, init)
+        Ok(ContractRuntime { engine_state })
     }
 }

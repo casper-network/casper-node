@@ -35,6 +35,28 @@
 //! While it is technically possible to turn any future into an effect, it is advisable to only use
 //! the effects explicitly listed in this module through traits to create them. Post-processing on
 //! effects to turn them into events should also be kept brief.
+//!
+//! ## Announcements and effects
+//!
+//! Some effects can be further classified into either announcements or requests, although these
+//! properties are not reflected in the type system.
+//!
+//! **Announcements** are events emitted by components that are essentially "fire-and-forget"; the
+//! component will never expect an answer for these and does not rely on them being handled. It is
+//! also conceivable that they are being cloned and dispatched to multiple components by the
+//! reactor.
+//!
+//! A good example is the arrival of a new deploy passed in by a client. Depending on the setup it
+//! may be stored, buffered or, in certain testing setups, just discarded. None of this is a concern
+//! of the component that talks to the client and deserializes the incoming deploy though, which
+//! considers the deploy no longer its concern after it has returned an announcement effect.
+//!
+//! **Requests** are complex effects that are used when a component needs something from
+//! outside of itself (typically to be provided by another component); a request requires an
+//! eventual response.
+//!
+//! A request **must** have a `Responder` field, which a handler of a request **must** call at
+//! some point. Failing to do so will result in a resource leak.
 
 pub mod announcements;
 pub mod requests;
@@ -48,31 +70,49 @@ use std::{
 };
 
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
+use semver::Version;
 use smallvec::{smallvec, SmallVec};
 use tracing::error;
 
 use crate::{
     components::{
         consensus::BlockContext,
-        storage::{self, StorageType, Value},
+        contract_runtime::{
+            core::engine_state::{self, genesis::GenesisResult},
+            shared::{additive_map::AdditiveMap, transform::Transform},
+            storage::global_state::CommitResult,
+        },
+        deploy_fetcher::FetchResult,
+        storage::{self, DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
-    effect::requests::DeployGossiperRequest,
+    crypto::hash::Digest,
     reactor::{EventQueueHandle, QueueKind},
-    types::{Deploy, ExecutedBlock, ProtoBlock},
+    types::{Deploy, DeployHash, ExecutedBlock, FinalizedBlock, ProtoBlock},
+    Chainspec,
 };
-use announcements::NetworkAnnouncement;
-use requests::{NetworkRequest, StorageRequest};
+use announcements::{
+    ApiServerAnnouncement, ConsensusAnnouncement, NetworkAnnouncement, StorageAnnouncement,
+};
+use casperlabs_types::{Key, ProtocolVersion};
+use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
+use requests::{
+    BlockExecutorRequest, BlockValidatorRequest, ContractRuntimeRequest, DeployBufferRequest,
+    DeployFetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
+};
 
 /// A pinned, boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
 
-/// Intended to hold a small collection of [`Effect`](type.Effect.html)s.
+/// Multiple effects in a container.
+pub type Effects<Ev> = Multiple<Effect<Ev>>;
+
+/// A small collection of rarely more than two items.
 ///
 /// Stored in a `SmallVec` to avoid allocations in case there are less than three items grouped. The
 /// size of two items is chosen because one item is the most common use case, and large items are
 /// typically boxed. In the latter case two pointers and one enum variant discriminator is almost
 /// the same size as an empty vec, which is two pointers.
-pub type Multiple<T> = SmallVec<[T; 2]>;
+type Multiple<T> = SmallVec<[T; 2]>;
 
 /// A responder satisfying a request.
 pub struct Responder<T>(oneshot::Sender<T>);
@@ -109,14 +149,14 @@ pub trait EffectExt: Future + Send {
     /// Finalizes a future into an effect that returns an event.
     ///
     /// The function `f` is used to translate the returned value from an effect into an event.
-    fn event<U, F>(self, f: F) -> Multiple<Effect<U>>
+    fn event<U, F>(self, f: F) -> Effects<U>
     where
         F: FnOnce(Self::Output) -> U + 'static + Send,
         U: 'static,
         Self: Sized;
 
     /// Finalizes a future into an effect that runs but drops the result.
-    fn ignore<Ev>(self) -> Multiple<Effect<Ev>>;
+    fn ignore<Ev>(self) -> Effects<Ev>;
 }
 
 /// Effect extension for futures, used to convert futures returning a `Result` into two different
@@ -131,7 +171,7 @@ pub trait EffectResultExt {
     ///
     /// The function `f_ok` is used to translate the returned value from an effect into an event,
     /// while the function `f_err` does the same for a potential error.
-    fn result<U, F, G>(self, f_ok: F, f_err: G) -> Multiple<Effect<U>>
+    fn result<U, F, G>(self, f_ok: F, f_err: G) -> Effects<U>
     where
         F: FnOnce(Self::Value) -> U + 'static + Send,
         G: FnOnce(Self::Error) -> U + 'static + Send,
@@ -148,7 +188,7 @@ pub trait EffectOptionExt {
     ///
     /// The function `f_some` is used to translate the returned value from an effect into an event,
     /// while the function `f_none` does the same for a returned `None`.
-    fn option<U, F, G>(self, f_some: F, f_none: G) -> Multiple<Effect<U>>
+    fn option<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
     where
         F: FnOnce(Self::Value) -> U + 'static + Send,
         G: FnOnce() -> U + 'static + Send,
@@ -159,7 +199,7 @@ impl<T: ?Sized> EffectExt for T
 where
     T: Future + Send + 'static + Sized,
 {
-    fn event<U, F>(self, f: F) -> Multiple<Effect<U>>
+    fn event<U, F>(self, f: F) -> Effects<U>
     where
         F: FnOnce(Self::Output) -> U + 'static + Send,
         U: 'static,
@@ -167,7 +207,7 @@ where
         smallvec![self.map(f).map(|item| smallvec![item]).boxed()]
     }
 
-    fn ignore<Ev>(self) -> Multiple<Effect<Ev>> {
+    fn ignore<Ev>(self) -> Effects<Ev> {
         smallvec![self.map(|_| Multiple::new()).boxed()]
     }
 }
@@ -180,7 +220,7 @@ where
     type Value = V;
     type Error = E;
 
-    fn result<U, F, G>(self, f_ok: F, f_err: G) -> Multiple<Effect<U>>
+    fn result<U, F, G>(self, f_ok: F, f_err: G) -> Effects<U>
     where
         F: FnOnce(V) -> U + 'static + Send,
         G: FnOnce(E) -> U + 'static + Send,
@@ -200,7 +240,7 @@ where
 {
     type Value = V;
 
-    fn option<U, F, G>(self, f_some: F, f_none: G) -> Multiple<Effect<U>>
+    fn option<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
     where
         F: FnOnce(V) -> U + 'static + Send,
         G: FnOnce() -> U + 'static + Send,
@@ -282,6 +322,20 @@ impl<REv> EffectBuilder<REv> {
         Instant::now() - then
     }
 
+    /// Retrieve a snapshot of the nodes current metrics formatted as string.
+    ///
+    /// If an error occurred producing the metrics, `None` is returned.
+    pub(crate) async fn get_metrics(self) -> Option<String>
+    where
+        REv: From<MetricsRequest>,
+    {
+        self.make_request(
+            |responder| MetricsRequest::RenderNodeMetricsText { responder },
+            QueueKind::Api,
+        )
+        .await
+    }
+
     /// Sends a network message.
     ///
     /// The message is queued in "fire-and-forget" fashion, there is no guarantee that the peer
@@ -330,6 +384,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<NetworkRequest<I, P>>,
         I: Send + 'static,
+        P: Send,
     {
         self.make_request(
             |responder| NetworkRequest::Gossip {
@@ -343,7 +398,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Announce that a network message has been received.
+    /// Announces that a network message has been received.
     pub(crate) async fn announce_message_received<I, P>(self, sender: I, payload: P)
     where
         REv: From<NetworkAnnouncement<I, P>>,
@@ -356,10 +411,41 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
+    /// Announces that the HTTP API server has received a deploy.
+    pub(crate) async fn announce_deploy_received(self, deploy: Box<Deploy>)
+    where
+        REv: From<ApiServerAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ApiServerAnnouncement::DeployReceived { deploy },
+                QueueKind::Api,
+            )
+            .await;
+    }
+
+    /// Announces that a deploy not previously stored has now been stored.
+    pub(crate) fn announce_deploy_stored<S>(self, deploy: &S::Deploy) -> impl Future<Output = ()>
+    where
+        S: StorageType,
+        REv: From<StorageAnnouncement<S>>,
+    {
+        let deploy_hash = *deploy.id();
+        let deploy_header = Box::new(deploy.header().clone());
+
+        self.0.schedule(
+            StorageAnnouncement::StoredNewDeploy {
+                deploy_hash,
+                deploy_header,
+            },
+            QueueKind::Regular,
+        )
+    }
+
     /// Puts the given block into the linear block store.
     // TODO: remove once method is used.
     #[allow(dead_code)]
-    pub(crate) async fn put_block_to_storage<S>(self, block: S::Block) -> storage::Result<()>
+    pub(crate) async fn put_block_to_storage<S>(self, block: S::Block) -> storage::Result<bool>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
@@ -395,6 +481,29 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets the requested deploy using the `DeployFetcher`.
+    // TODO: remove once method is used.
+    #[allow(dead_code)]
+    pub(crate) async fn fetch_deploy<I>(
+        self,
+        deploy_hash: DeployHash,
+        peer: I,
+    ) -> Option<Box<FetchResult>>
+    where
+        REv: From<DeployFetcherRequest<I>>,
+        I: Send + 'static,
+    {
+        self.make_request(
+            |responder| DeployFetcherRequest::FetchDeploy {
+                hash: deploy_hash,
+                peer,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Gets the requested block header from the linear block store.
     // TODO: remove once method is used.
     #[allow(dead_code)]
@@ -417,7 +526,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given deploy into the deploy store.
-    pub(crate) async fn put_deploy_to_storage<S>(self, deploy: S::Deploy) -> storage::Result<()>
+    pub(crate) async fn put_deploy_to_storage<S>(self, deploy: S::Deploy) -> storage::Result<bool>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
@@ -432,18 +541,18 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested deploy from the deploy store.
-    pub(crate) async fn get_deploy_from_storage<S>(
+    /// Gets the requested deploys from the deploy store.
+    pub(crate) async fn get_deploys_from_storage<S>(
         self,
-        deploy_hash: <S::Deploy as Value>::Id,
-    ) -> storage::Result<S::Deploy>
+        deploy_hashes: DeployHashes<S>,
+    ) -> DeployResults<S>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| StorageRequest::GetDeploy {
-                deploy_hash,
+            |responder| StorageRequest::GetDeploys {
+                deploy_hashes,
                 responder,
             },
             QueueKind::Regular,
@@ -451,20 +560,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested deploy header from the deploy store.
+    /// Gets the requested deploy headers from the deploy store.
     // TODO: remove once method is used.
     #[allow(dead_code)]
-    pub(crate) async fn get_deploy_header_from_storage<S>(
+    pub(crate) async fn get_deploy_headers_from_storage<S>(
         self,
-        deploy_hash: <S::Deploy as Value>::Id,
-    ) -> storage::Result<<S::Deploy as Value>::Header>
+        deploy_hashes: DeployHashes<S>,
+    ) -> DeployHeaderResults<S>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| StorageRequest::GetDeployHeader {
-                deploy_hash,
+            |responder| StorageRequest::GetDeployHeaders {
+                deploy_hashes,
                 responder,
             },
             QueueKind::Regular,
@@ -485,52 +594,198 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Passes the given deploy to the `DeployGossiper` component to be gossiped.
-    pub(crate) async fn gossip_deploy(self, deploy: Box<Deploy>)
-    where
-        REv: From<DeployGossiperRequest>,
-    {
-        self.0
-            .schedule(
-                DeployGossiperRequest::PutFromClient { deploy },
-                QueueKind::Regular,
-            )
-            .await;
-    }
-
-    /// Passes the timestamp of a future block for which deploys are to be proposed
+    /// Passes the timestamp of a future block for which deploys are to be proposed.
     // TODO: Add an argument (`BlockContext`?) that contains all information necessary to select
     // deploys, e.g. the ancestors' deploys.
     pub(crate) async fn request_proto_block(
         self,
         block_context: BlockContext, /* TODO: This `BlockContext` will probably be a different
-                                      * type
-                                      * than the context in the return value in the future */
-    ) -> (ProtoBlock, BlockContext) {
-        // TODO: actually return the relevant deploys and an actual random bit
+                                      * type than the context in the return value in the future */
+    ) -> (ProtoBlock, BlockContext)
+    where
+        REv: From<DeployBufferRequest>,
+    {
+        let deploys = self
+            .make_request(
+                |responder| DeployBufferRequest::ListForInclusion {
+                    current_instant: block_context.timestamp().millis(),
+                    past_blocks: Default::default(), // TODO
+                    responder,
+                },
+                QueueKind::Regular,
+            )
+            .await
+            .into_iter()
+            .collect();
         (
             ProtoBlock {
-                deploys: vec![],
-                random_bit: false,
+                deploys,
+                random_bit: false, // TODO
             },
             block_context,
         )
     }
 
-    /// Passes a finalized proto-block to the contract runtime for execution
-    pub(crate) async fn execute_block(self, _proto_block: ProtoBlock) -> ExecutedBlock {
-        // TODO: actually execute the block and return the relevant stuff
-        todo!()
+    /// Passes a finalized proto-block to the block executor component to execute it.
+    pub(crate) async fn execute_block(self, finalized_block: FinalizedBlock) -> ExecutedBlock
+    where
+        REv: From<BlockExecutorRequest>,
+    {
+        self.make_request(
+            |responder| BlockExecutorRequest::ExecuteBlock {
+                finalized_block,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
     }
 
-    /// Checks whether the deploys included in the proto-block exist on the network
+    /// Checks whether the deploys included in the proto-block exist on the network.
     pub(crate) async fn validate_proto_block<I>(
         self,
-        _sender: I,
+        sender: I,
         proto_block: ProtoBlock,
-    ) -> (bool, ProtoBlock) {
-        // TODO: check with the deploy fetcher or something whether the deploys whose hashes are
-        // contained in the proto-block actually exist
-        (true, proto_block)
+    ) -> (bool, ProtoBlock)
+    where
+        REv: From<BlockValidatorRequest<I>>,
+    {
+        self.make_request(
+            |responder| BlockValidatorRequest {
+                sender,
+                proto_block,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Announces that a proto block has been proposed and will either be finalized or orphaned
+    /// soon.
+    pub(crate) async fn announce_proposed_proto_block(self, proto_block: ProtoBlock)
+    where
+        REv: From<ConsensusAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ConsensusAnnouncement::Proposed(proto_block),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announces that a proto block has been finalized.
+    pub(crate) async fn announce_finalized_proto_block(self, proto_block: ProtoBlock)
+    where
+        REv: From<ConsensusAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ConsensusAnnouncement::Finalized(proto_block),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announces that a proto block has been orphaned.
+    #[allow(dead_code)] // TODO: Detect orphaned blocks.
+    pub(crate) async fn announce_orphaned_proto_block(self, proto_block: ProtoBlock)
+    where
+        REv: From<ConsensusAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ConsensusAnnouncement::Orphaned(proto_block),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Runs the genesis process on the contract runtime.
+    pub(crate) async fn commit_genesis(
+        self,
+        chainspec: Chainspec,
+    ) -> Result<GenesisResult, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::CommitGenesis {
+                chainspec: Box::new(chainspec),
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Puts the given chainspec into the chainspec store.
+    pub(crate) async fn put_chainspec<S>(self, chainspec: Chainspec) -> storage::Result<()>
+    where
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
+    {
+        self.make_request(
+            |responder| StorageRequest::PutChainspec {
+                chainspec: Box::new(chainspec),
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested chainspec from the chainspec store.
+    pub(crate) async fn get_chainspec<S>(self, version: Version) -> storage::Result<Chainspec>
+    where
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetChainspec { version, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests an execution of deploys using Contract Runtime.
+    pub(crate) async fn request_execute(
+        self,
+        execute_request: ExecuteRequest,
+    ) -> Result<ExecutionResults, engine_state::RootNotFound>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::Execute {
+                execute_request,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests a commit of effects on the Contract Runtime component.
+    pub(crate) async fn request_commit(
+        self,
+        protocol_version: ProtocolVersion,
+        pre_state_hash: Digest,
+        effects: AdditiveMap<Key, Transform>,
+    ) -> Result<CommitResult, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::Commit {
+                protocol_version,
+                pre_state_hash,
+                effects,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
     }
 }

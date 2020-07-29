@@ -1,6 +1,10 @@
 //! Cryptographic hash type and function.
 
-use std::fmt::{self, Debug, Display, Formatter};
+use std::{
+    array::TryFromSliceError,
+    convert::TryFrom,
+    fmt::{self, Debug, Display, Formatter, LowerHex, UpperHex},
+};
 
 use blake2::{
     digest::{Input, VariableOutput},
@@ -9,23 +13,30 @@ use blake2::{
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 
-use super::Result;
+use casperlabs_types::bytesrepr::{self, FromBytes, ToBytes};
+
+use super::Error;
 
 /// The hash digest; a wrapped `u8` array.
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Default)]
 pub struct Digest([u8; Digest::LENGTH]);
 
 impl Digest {
     /// Length of `Digest` in bytes.
     pub const LENGTH: usize = 32;
 
-    /// Returns the wrapped `u8` array.
+    /// Returns a copy of the wrapped `u8` array.
     pub fn to_bytes(&self) -> [u8; Digest::LENGTH] {
         self.0
     }
 
+    /// Returns a copy of the wrapped `u8` array as a `Vec`
+    pub fn to_vec(&self) -> Vec<u8> {
+        self.0.to_vec()
+    }
+
     /// Returns a `Digest` parsed from a hex-encoded `Digest`.
-    pub fn from_hex<T: AsRef<[u8]>>(hex_input: T) -> Result<Self> {
+    pub fn from_hex<T: AsRef<[u8]>>(hex_input: T) -> Result<Self, Error> {
         let mut inner = [0; Digest::LENGTH];
         hex::decode_to_slice(hex_input, &mut inner)?;
         Ok(Digest(inner))
@@ -38,6 +49,20 @@ impl AsRef<[u8]> for Digest {
     }
 }
 
+impl From<[u8; Digest::LENGTH]> for Digest {
+    fn from(inner: [u8; Digest::LENGTH]) -> Self {
+        Digest(inner)
+    }
+}
+
+impl<'a> TryFrom<&'a [u8]> for Digest {
+    type Error = TryFromSliceError;
+
+    fn try_from(slice: &[u8]) -> Result<Digest, Self::Error> {
+        <[u8; Digest::LENGTH]>::try_from(slice).map(Digest)
+    }
+}
+
 impl Debug for Digest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "{}", HexFmt(&self.0))
@@ -47,6 +72,41 @@ impl Debug for Digest {
 impl Display for Digest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "{:10}", HexFmt(&self.0))
+    }
+}
+impl LowerHex for Digest {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        if formatter.alternate() {
+            write!(formatter, "0x{}", HexFmt(&self.0))
+        } else {
+            write!(formatter, "{}", HexFmt(&self.0))
+        }
+    }
+}
+
+impl UpperHex for Digest {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        if formatter.alternate() {
+            write!(formatter, "0x{:X}", HexFmt(&self.0))
+        } else {
+            write!(formatter, "{:X}", HexFmt(&self.0))
+        }
+    }
+}
+
+impl ToBytes for Digest {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for Digest {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        <[u8; Digest::LENGTH]>::from_bytes(bytes).map(|(inner, rem)| (Digest(inner), rem))
     }
 }
 
@@ -112,5 +172,45 @@ mod test {
             let input = String::from_iter(iter::repeat('f').take(63).chain(iter::once(char)));
             assert!(Digest::from_hex(input).is_err());
         }
+    }
+
+    #[test]
+    fn should_display_digest_in_hex() {
+        let hash = Digest([0u8; 32]);
+        let hash_hex = format!("{:?}", hash);
+        assert_eq!(
+            hash_hex,
+            "0000000000000000000000000000000000000000000000000000000000000000"
+        );
+    }
+
+    #[test]
+    fn should_print_digest_lower_hex() {
+        let hash = Digest([10u8; 32]);
+        let hash_lower_hex = format!("{:x}", hash);
+        assert_eq!(
+            hash_lower_hex,
+            "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+        )
+    }
+
+    #[test]
+    fn should_print_digest_upper_hex() {
+        let hash = Digest([10u8; 32]);
+        let hash_lower_hex = format!("{:X}", hash);
+        assert_eq!(
+            hash_lower_hex,
+            "0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A"
+        )
+    }
+
+    #[test]
+    fn alternate_should_prepend_0x() {
+        let hash = Digest([0u8; 32]);
+        let hash_hex_alt = format!("{:#x}", hash);
+        assert_eq!(
+            hash_hex_alt,
+            "0x0000000000000000000000000000000000000000000000000000000000000000"
+        )
     }
 }

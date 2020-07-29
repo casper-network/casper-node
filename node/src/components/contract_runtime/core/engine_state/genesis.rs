@@ -6,20 +6,24 @@ use rand::{
     Rng,
 };
 
-use crate::components::contract_runtime::shared::wasm_costs::WasmCosts;
-use crate::components::contract_runtime::shared::{
-    motes::Motes, newtypes::Blake2bHash, TypeMismatch,
-};
-use crate::components::contract_runtime::storage::global_state::CommitResult;
-use types::{account::AccountHash, bytesrepr, Key, ProtocolVersion, U512};
+use casperlabs_types::{account::AccountHash, bytesrepr, Key, ProtocolVersion};
 
-use crate::components::contract_runtime::core::engine_state::execution_effect::ExecutionEffect;
+use super::execution_effect::ExecutionEffect;
+use crate::{
+    components::contract_runtime::{
+        shared::{newtypes::Blake2bHash, wasm_costs::WasmCosts, TypeMismatch},
+        storage::global_state::CommitResult,
+    },
+    types::Motes,
+    GenesisAccount,
+};
 
 pub const PLACEHOLDER_KEY: Key = Key::Hash([0u8; 32]);
 pub const POS_BONDING_PURSE: &str = "pos_bonding_purse";
 pub const POS_PAYMENT_PURSE: &str = "pos_payment_purse";
 pub const POS_REWARDS_PURSE: &str = "pos_rewards_purse";
 
+#[derive(Debug)]
 pub enum GenesisResult {
     RootNotFound,
     KeyNotFound(Key),
@@ -41,9 +45,8 @@ impl fmt::Display for GenesisResult {
             }
             GenesisResult::Serialization(error) => write!(f, "Serialization error: {:?}", error),
             GenesisResult::Success {
-                post_state_hash,
-                effect,
-            } => write!(f, "Success: {} {:?}", post_state_hash, effect),
+                post_state_hash, ..
+            } => write!(f, "Success, yielding post-state hash {}", post_state_hash),
         }
     }
 }
@@ -63,54 +66,6 @@ impl GenesisResult {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct GenesisAccount {
-    account_hash: AccountHash,
-    balance: Motes,
-    bonded_amount: Motes,
-}
-
-impl GenesisAccount {
-    pub fn new(account_hash: AccountHash, balance: Motes, bonded_amount: Motes) -> Self {
-        GenesisAccount {
-            account_hash,
-            balance,
-            bonded_amount,
-        }
-    }
-
-    pub fn account_hash(&self) -> AccountHash {
-        self.account_hash
-    }
-
-    pub fn balance(&self) -> Motes {
-        self.balance
-    }
-
-    pub fn bonded_amount(&self) -> Motes {
-        self.bonded_amount
-    }
-}
-
-impl Distribution<GenesisAccount> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisAccount {
-        let account_hash = AccountHash::new(rng.gen());
-
-        let mut u512_array = [0u8; 64];
-        rng.fill_bytes(u512_array.as_mut());
-        let balance = Motes::new(U512::from(u512_array.as_ref()));
-
-        rng.fill_bytes(u512_array.as_mut());
-        let bonded_amount = Motes::new(U512::from(u512_array.as_ref()));
-
-        GenesisAccount {
-            account_hash,
-            balance,
-            bonded_amount,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenesisConfig {
     name: String,
@@ -120,7 +75,6 @@ pub struct GenesisConfig {
 }
 
 impl GenesisConfig {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         name: String,
         timestamp: u64,
@@ -208,6 +162,7 @@ impl ExecConfig {
             wasm_costs,
         }
     }
+
     pub fn mint_installer_bytes(&self) -> &[u8] {
         self.mint_installer_bytes.as_slice()
     }

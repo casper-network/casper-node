@@ -4,10 +4,10 @@ use std::{
     mem,
 };
 
-use node::components::contract_runtime::shared::account::{
+use casperlabs_node::components::contract_runtime::shared::account::{
     Account, ActionThresholds, AssociatedKeys,
 };
-use types::account::{AccountHash, Weight};
+use casperlabs_types::account::{AccountHash, Weight};
 
 use super::NamedKeyMap;
 use crate::engine_server::{
@@ -142,7 +142,7 @@ fn weight_from(value: u32, value_name: &str) -> Result<Weight, ParsingError> {
 mod tests {
     use proptest::proptest;
 
-    use node::components::contract_runtime::shared::account::gens;
+    use casperlabs_node::components::contract_runtime::shared::account::gens;
 
     use super::*;
     use crate::engine_server::mappings::test_utils;

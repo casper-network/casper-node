@@ -1,0 +1,153 @@
+# ================================
+# Configuration options for a node
+# ================================
+[node]
+
+# Path (absolute, or relative to this config.toml) to the chainspec configuration file.
+chainspec_config_path = 'chainspec.toml'
+
+# The maximum number of deploys permitted in a single block.
+block_max_deploy_count = 3
+
+
+# ====================================
+# Configuration options for consensus
+# ====================================
+[consensus]
+
+# Path (absolute, or relative to this config.toml) to validator's secret key file used to sign
+# consensus messages.
+secret_key_path = 'secret_key.pem'
+
+
+# ====================================
+# Configuration options for networking
+# ====================================
+[validator_net]
+
+# Interface to bind to.
+#
+# If it is the same as that in `root_addr` and the `bind_port` is non-zero and the same as that in
+# `root_addr`, attempt to become the root node for this particular small network.
+bind_interface = '127.0.0.1'
+
+# Port to bind to when not the root node.  Use 0 for a random port.
+bind_port = 0
+
+# Address to connect to join the network.
+root_addr = '127.0.0.1:34553'
+
+# Optional path to certificate file.
+#cert_path = 'path/to/certificate'
+
+# Optional path to secret key for certificate.
+#secret_key_path = 'path/to/secret/key'
+
+# Maximum number of retries before removing an outgoing node.  Unlimited if unset.
+max_outgoing_retries = 360
+
+# Number of milliseconds to delay between each reconnection attempt.
+outgoing_retry_delay_millis = 10000
+
+
+# =============================================
+# Configuration options for the HTTP API server
+# =============================================
+[http_server]
+
+# Interface to bind to.  Defaults to loopback address.
+bind_interface = '127.0.0.1'
+
+# Port to bind to.  Use 0 for a random port.
+bind_port = 0
+
+
+# ===============================================
+# Configuration options for the storage component
+# ===============================================
+[storage]
+
+# Optional path (absolute, or relative to this config.toml) to the folder where any files created
+# or read by the storage component will exist.
+#
+# If the folder doesn't exist, it and any required parents will be created.
+#
+# If unset, defaults to:
+# * Linux: `$XDG_DATA_HOME/casperlabs-node` or `$HOME/.local/share/casperlabs-node`, e.g.
+#   /home/alice/.local/share/casperlabs-node
+# * macOS: `$HOME/Library/Application Support/io.CasperLabs.casperlabs-node`, e.g.
+#   /Users/Alice/Library/Application Support/io.CasperLabs.casperlabs-node
+# * Windows: `{FOLDERID_RoamingAppData}\CasperLabs\casperlabs-node\data` e.g.
+#   C:\Users\Alice\AppData\Roaming\CasperLabs\casperlabs-node\data
+path = '$HOME/.local/share/casperlabs-node/example/'
+
+# Optional maximum size of the database to use for the block store.
+#
+# If unset, defaults to 483,183,820,800 == 450 GiB.
+#
+# The size should be a multiple of the OS page size.
+#max_block_store_size = 483183820800
+
+# Optional maximum size of the database to use for the deploy store.
+#
+# If unset, defaults to 322,122,547,200 == 300 GiB.
+#
+# The size should be a multiple of the OS page size.
+#max_deploy_store_size = 322122547200
+
+# Optional maximum size of the database to use for the chainspec store.
+#
+# If unset, defaults to 1,073,741,824 == 1 GiB.
+#
+# The size should be a multiple of the OS page size.
+#max_chainspec_store_size = 1073741824
+
+
+# ===================================
+# Configuration options for gossiping
+# ===================================
+[gossip]
+
+# Target number of peers to infect with a given piece of data.
+infection_target = 3
+
+# The saturation limit as a percentage, with a maximum value of 99.  Used as a termination
+# condition.
+#
+# Example: assume the `infection_target` is 3, the `saturation_limit_percent` is 80, and we don't
+# manage to newly infect 3 peers.  We will stop gossiping once we know of more than 15 holders
+# excluding us since 80% saturation would imply 3 new infections in 15 peers.
+saturation_limit_percent = 80
+
+# The maximum duration in seconds for which to keep finished entries.
+#
+# The longer they are retained, the lower the likelihood of re-gossiping a piece of data.  However,
+# the longer they are retained, the larger the list of finished entries can grow.
+finished_entry_duration_secs = 3600
+
+# The timeout duration in seconds for a single gossip request, i.e. for a single gossip message
+# sent from this node, it will be considered timed out if the expected response from that peer is
+# not received within this specified duration.
+gossip_request_timeout_secs = 10
+
+# The timeout duration in seconds for retrieving the remaining part(s) of newly-discovered data
+# from a peer which gossiped information about that data to this node.
+get_remainder_timeout_secs = 60
+
+# ========================================================
+# Configuration options for the contract runtime component
+# ========================================================
+[contract_runtime]
+
+# Optional setting to use system contracts or not.  If unset, defaults to false.
+#use_system_contracts = false
+
+# Optional setting to enable bonding or not.  If unset, defaults to false.
+#enable_bonding = false
+
+# Optional maximum size of the database to use for the global state store.
+#
+# If unset, defaults to 805,306,368,000 == 750 GiB.
+#
+# The size should be a multiple of the OS page size.
+#max_global_state_size = 805306368000

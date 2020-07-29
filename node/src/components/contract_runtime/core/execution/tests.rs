@@ -1,6 +1,6 @@
 use crate::components::contract_runtime::shared::{gas::Gas, transform::Transform};
+use casperlabs_types::{Key, U512};
 use tracing::warn;
-use types::{Key, U512};
 
 use super::Error;
 use crate::components::contract_runtime::core::engine_state::{

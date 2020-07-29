@@ -5,11 +5,11 @@ extern crate alloc;
 
 use alloc::string::String;
 
-use contract::{
+use casperlabs_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{Key, URef, U512};
+use casperlabs_types::{Key, URef, U512};
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_NAME: &str = "name";

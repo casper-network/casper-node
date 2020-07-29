@@ -6,7 +6,7 @@ use crate::components::contract_runtime::shared::{
     stored_value::StoredValue,
     transform::Transform,
 };
-use types::{Key, ProtocolVersion};
+use casperlabs_types::{Key, ProtocolVersion};
 
 use crate::components::contract_runtime::storage::{
     error,
@@ -164,11 +164,14 @@ mod tests {
     use lmdb::DatabaseFlags;
     use tempfile::tempdir;
 
-    use types::{account::AccountHash, CLValue};
+    use casperlabs_types::{account::AccountHash, CLValue};
 
-    use crate::components::contract_runtime::storage::{
-        trie_store::operations::{write, WriteResult},
-        TEST_MAP_SIZE,
+    use crate::{
+        components::contract_runtime::storage::{
+            trie_store::operations::{write, WriteResult},
+            DEFAULT_TEST_MAX_DB_SIZE,
+        },
+        crypto::hash,
     };
 
     use super::*;
@@ -213,7 +216,8 @@ mod tests {
         let correlation_id = CorrelationId::new();
         let _temp_dir = tempdir().unwrap();
         let environment = Arc::new(
-            LmdbEnvironment::new(&_temp_dir.path().to_path_buf(), *TEST_MAP_SIZE).unwrap(),
+            LmdbEnvironment::new(&_temp_dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE)
+                .unwrap(),
         );
         let trie_store =
             Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
@@ -262,7 +266,7 @@ mod tests {
     #[test]
     fn checkout_fails_if_unknown_hash_is_given() {
         let (state, _) = create_test_state();
-        let fake_hash: Blake2bHash = [1u8; 32].into();
+        let fake_hash: Blake2bHash = hash::hash(&[1u8; 32]);
         let result = state.checkout(fake_hash).unwrap();
         assert!(result.is_none());
     }

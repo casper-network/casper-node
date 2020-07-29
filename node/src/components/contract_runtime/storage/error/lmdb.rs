@@ -3,7 +3,7 @@ use std::sync;
 use lmdb as lmdb_external;
 use thiserror::Error;
 
-use types::bytesrepr;
+use casperlabs_types::bytesrepr;
 
 use super::in_memory;
 

@@ -4,12 +4,14 @@ version = "0.1.0"
 authors = ["Marc Brinkmann <marc@casperlabs.io>", "Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+anyhow = "1.0.28"
+casperlabs-node = { path = "../node" }
+casperlabs-types = { path = "../types", features = ["std"] }
+hex = { version = "0.4.2", features = ["serde"] }
 rand = "0.7.3"
 reqwest = "0.10.6"
+serde = { version = "1", default-features = false, features = ["derive"] }
+serde_json = "1.0.55"
 structopt = "0.3.14"
 tokio = { version = "0.2.20", features = ["macros", "rt-threaded", "sync", "tcp", "time", "blocking"] }
-casperlabs_node = { path = "../node", package = "casperlabs-node" }
-anyhow = "1.0.28"

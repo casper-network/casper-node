@@ -9,24 +9,29 @@ use std::{collections::HashMap, convert};
 use lmdb::DatabaseFlags;
 use tempfile::{tempdir, TempDir};
 
-use crate::components::contract_runtime::shared::newtypes::{Blake2bHash, CorrelationId};
-use types::bytesrepr::{self, FromBytes, ToBytes};
+use casperlabs_types::bytesrepr::{self, FromBytes, ToBytes};
 
-use crate::components::contract_runtime::storage::{
-    error::{self, in_memory},
-    transaction_source::{
-        in_memory::InMemoryEnvironment, lmdb::LmdbEnvironment, Readable, Transaction,
-        TransactionSource,
+use crate::{
+    components::contract_runtime::{
+        shared::newtypes::{Blake2bHash, CorrelationId},
+        storage::{
+            error::{self, in_memory},
+            transaction_source::{
+                in_memory::InMemoryEnvironment, lmdb::LmdbEnvironment, Readable, Transaction,
+                TransactionSource,
+            },
+            trie::{Pointer, Trie},
+            trie_store::{
+                self,
+                in_memory::InMemoryTrieStore,
+                lmdb::LmdbTrieStore,
+                operations::{self, read, write, ReadResult, WriteResult},
+                TrieStore,
+            },
+            DEFAULT_TEST_MAX_DB_SIZE,
+        },
     },
-    trie::{Pointer, Trie},
-    trie_store::{
-        self,
-        in_memory::InMemoryTrieStore,
-        lmdb::LmdbTrieStore,
-        operations::{self, read, write, ReadResult, WriteResult},
-        TrieStore,
-    },
-    TEST_MAP_SIZE,
+    crypto::hash,
 };
 
 const TEST_KEY_LENGTH: usize = 7;
@@ -93,7 +98,7 @@ struct HashedTrie<K, V> {
 impl<K: ToBytes, V: ToBytes> HashedTrie<K, V> {
     pub fn new(trie: Trie<K, V>) -> Result<Self, bytesrepr::Error> {
         let trie_bytes = trie.to_bytes()?;
-        let hash = Blake2bHash::new(&trie_bytes);
+        let hash = hash::hash(&trie_bytes);
         Ok(HashedTrie { hash, trie })
     }
 }
@@ -489,7 +494,7 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<types::bytesrepr::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
     if tries.is_empty() {
         return Ok(());
@@ -516,7 +521,8 @@ impl LmdbTestContext {
         V: FromBytes + ToBytes,
     {
         let _temp_dir = tempdir()?;
-        let environment = LmdbEnvironment::new(&_temp_dir.path().to_path_buf(), *TEST_MAP_SIZE)?;
+        let environment =
+            LmdbEnvironment::new(&_temp_dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE)?;
         let store = LmdbTrieStore::new(&environment, None, DatabaseFlags::empty())?;
         put_tries::<_, _, _, _, error::Error>(&environment, &store, tries)?;
         Ok(LmdbTestContext {
@@ -577,7 +583,7 @@ where
     T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<T::Error>,
-    E: From<S::Error> + From<types::bytesrepr::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
     let mut ret = Vec::new();
 
@@ -606,7 +612,7 @@ where
     T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<T::Error>,
-    E: From<S::Error> + From<types::bytesrepr::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
     let expected = {
         let mut tmp = leaves
@@ -641,7 +647,7 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<types::bytesrepr::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
     let txn: R::ReadTransaction = environment.create_read_txn()?;
 
@@ -682,7 +688,7 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<types::bytesrepr::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
     let mut results = Vec::new();
     if leaves.is_empty() {
@@ -724,7 +730,7 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<types::bytesrepr::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
     let txn = environment.create_read_txn()?;
     for (index, root_hash) in root_hashes.iter().enumerate() {
@@ -770,7 +776,7 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<types::bytesrepr::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
     let mut results = Vec::new();
     if pairs.is_empty() {
@@ -806,7 +812,7 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<types::bytesrepr::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
     let mut states = states.to_vec();
 

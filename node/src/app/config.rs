@@ -14,8 +14,10 @@
 //! When adding a section to the configuration, ensure that
 //!
 //! * it has an entry in the root configuration [`Config`](struct.Config.html),
-//! * `Default` is implemented (derived or manually) with sensible defaults, and
+//! * `Default` is implemented (derived or manually) with sensible defaults,
 //! * it is completely documented.
+//! * it is annotated with `#[serde(deny_unknown_fields)]` to ensure config files and command-line
+//!   overrides contain valid keys.
 
 use std::{fs, path::Path};
 
@@ -36,4 +38,18 @@ pub fn load_from_file<P: AsRef<Path>, C: DeserializeOwned>(config_path: P) -> an
 /// Creates a TOML-formatted string from a given configuration.
 pub fn to_string<C: Serialize>(cfg: &C) -> anyhow::Result<String> {
     toml::to_string_pretty(cfg).with_context(|| "Failed to serialize default configuration")
+}
+
+#[cfg(test)]
+mod tests {
+    use casperlabs_node::reactor::validator::Config;
+
+    #[test]
+    fn example_config_should_parse() {
+        let config_path = format!(
+            "{}/../resources/local/config.toml",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let _config: Config = super::load_from_file(config_path).unwrap();
+    }
 }

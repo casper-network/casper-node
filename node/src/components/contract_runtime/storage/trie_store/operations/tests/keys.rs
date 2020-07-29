@@ -148,7 +148,7 @@ mod full_tries {
 #[cfg(debug_assertions)]
 mod keys_iterator {
     use crate::components::contract_runtime::shared::newtypes::{Blake2bHash, CorrelationId};
-    use types::bytesrepr;
+    use casperlabs_types::bytesrepr;
 
     use crate::components::contract_runtime::storage::{
         transaction_source::TransactionSource,

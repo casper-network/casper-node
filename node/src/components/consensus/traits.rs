@@ -24,7 +24,7 @@ pub(crate) trait HashT:
 impl<H> HashT for H where H: Eq + Ord + Clone + Debug + Hash + Serialize + DeserializeOwned {}
 
 /// A validator's secret signing key.
-pub(crate) trait ValidatorSecret: Debug + Eq + Clone {
+pub(crate) trait ValidatorSecret {
     type Hash;
 
     type Signature: Eq + PartialEq + Clone + Debug + Hash + Serialize + DeserializeOwned;
@@ -41,7 +41,9 @@ pub(crate) trait Context: Clone + Debug + Eq + Ord + Hash {
     /// Unique identifiers for validators.
     type ValidatorId: ValidatorIdT;
     /// A validator's secret signing key.
-    type ValidatorSecret: ValidatorSecret<Hash = Self::Hash>;
+    type ValidatorSecret: ValidatorSecret<Hash = Self::Hash, Signature = Self::Signature>;
+    /// A signature type.
+    type Signature: Clone + Debug + Eq + Hash + Serialize + DeserializeOwned;
     /// Unique identifiers for votes.
     type Hash: HashT;
     /// The ID of a consensus protocol instance.
@@ -49,7 +51,7 @@ pub(crate) trait Context: Clone + Debug + Eq + Ord + Hash {
 
     fn hash(data: &[u8]) -> Self::Hash;
 
-    fn validate_signature(
+    fn verify_signature(
         hash: &Self::Hash,
         public_key: &Self::ValidatorId,
         signature: &<Self::ValidatorSecret as ValidatorSecret>::Signature,

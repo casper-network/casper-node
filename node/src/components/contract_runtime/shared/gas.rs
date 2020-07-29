@@ -2,9 +2,9 @@ use std::fmt;
 
 use num::Zero;
 
-use types::U512;
+use casperlabs_types::U512;
 
-use crate::components::contract_runtime::shared::motes::Motes;
+use crate::types::Motes;
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Gas(U512);
@@ -84,9 +84,9 @@ impl Zero for Gas {
 
 #[cfg(test)]
 mod tests {
-    use types::U512;
+    use casperlabs_types::U512;
 
-    use crate::components::contract_runtime::shared::{gas::Gas, motes::Motes};
+    use crate::{components::contract_runtime::shared::gas::Gas, types::Motes};
 
     #[test]
     fn should_be_able_to_get_instance_of_gas() {

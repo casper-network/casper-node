@@ -12,11 +12,11 @@ doctest = false
 test = false
 
 [features]
-std = ["contract/std", "types/std"]
+std = ["casperlabs-contract/std", "casperlabs-types/std"]
 enable-bonding = ["pos/enable-bonding"]
 
 [dependencies]
 base16 = { version = "0.2.1", default-features = false }
-contract = { path = "../../../contract", package = "casperlabs-contract" }
+casperlabs-contract = { path = "../../../contract" }
 pos = { path = "../pos" }
-types = { path = "../../../../types", package = "casperlabs-types" }
+casperlabs-types = { path = "../../../../types" }

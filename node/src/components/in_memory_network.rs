@@ -15,20 +15,30 @@
 //!
 //! ```rust
 //! # #![allow(dead_code)] // FIXME: Remove me
-//! # use std::{collections::HashMap, fmt::{self, Formatter, Debug, Display}, ops::AddAssign,
-//! #           time::Duration};
+//! # use std::{
+//! #     collections::HashMap,
+//! #     fmt::{self, Debug, Display, Formatter},
+//! #     ops::AddAssign,
+//! #     time::Duration,
+//! # };
 //! #
 //! # use derive_more::From;
 //! # use maplit::hashmap;
-//! # use rand::Rng;
-//! # use tracing::Span;
+//! # use prometheus::Registry;
+//! # use rand::{rngs::OsRng, Rng};
 //! #
-//! # use casperlabs_node::{components::{Component,
-//! #                       in_memory_network::{InMemoryNetwork, NetworkController, NodeId}},
-//! #                       effect::{Effect, EffectBuilder, EffectExt, Multiple,
-//! #                       announcements::NetworkAnnouncement, requests::NetworkRequest},
-//! #                       reactor::{self, EventQueueHandle, wrap_effects},
-//! #                       testing::network::{Network, NetworkedReactor}};
+//! # use casperlabs_node::{
+//! #     components::{
+//! #         in_memory_network::{InMemoryNetwork, NetworkController, NodeId},
+//! #         Component,
+//! #     },
+//! #     effect::{
+//! #         announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, EffectExt,
+//! #         Effects,
+//! #     },
+//! #     reactor::{self, wrap_effects, EventQueueHandle},
+//! #     testing::network::{Network, NetworkedReactor},
+//! # };
 //! #
 //! # let mut runtime = tokio::runtime::Runtime::new().unwrap();
 //! #
@@ -79,7 +89,7 @@
 //! impl Shouter {
 //!     /// Creates a new shouter.
 //!     fn new<REv: Send, I: 'static, P: 'static>(effect_builder: EffectBuilder<REv>)
-//!             -> (Self, Multiple<Effect<ShouterEvent<I, P>>>) {
+//!             -> (Self, Effects<ShouterEvent<I, P>>) {
 //!         (Shouter {
 //!             whispers: Vec::new(),
 //!             shouts: Vec::new(),
@@ -98,12 +108,12 @@
 //!                                      effect_builder: EffectBuilder<REv>,
 //!                                      _rng: &mut R,
 //!                                      event: Self::Event
-//!     ) -> Multiple<Effect<Self::Event>> {
+//!     ) -> Effects<Self::Event> {
 //!         match event {
 //!             ShouterEvent::Net(NetworkAnnouncement::MessageReceived { sender, payload }) => {
 //!                 // Record the message we received.
 //!                 self.received.push((sender, payload));
-//!                 Default::default()
+//!                 Effects::new()
 //!             }
 //!             ShouterEvent::ReadyToSend => {
 //!                 // If we need to whisper something, do so.
@@ -118,7 +128,7 @@
 //!                     return effect_builder.broadcast_message(msg)
 //!                         .event(|_| ShouterEvent::ReadyToSend);
 //!                 }
-//!                 Default::default()
+//!                 Effects::new()
 //!             }
 //!         }
 //!     }
@@ -165,47 +175,48 @@
 //! impl reactor::Reactor for Reactor {
 //!     type Event = Event;
 //!     type Config = ();
-//!     type Error = ();
+//!     type Error = anyhow::Error;
 //!
-//!     fn new(_cfg: Self::Config,
+//!     fn new<R: Rng + ?Sized>(
+//!            _cfg: Self::Config,
+//!            _registry: &Registry,
 //!            event_queue: EventQueueHandle<Self::Event>,
-//!            _span: &Span
-//!     ) -> Result<(Self, Multiple<Effect<Self::Event>>), ()> {
+//!            rng: &mut R,
+//!     ) -> Result<(Self, Effects<Self::Event>), anyhow::Error> {
 //!         let effect_builder = EffectBuilder::new(event_queue);
 //!         let (shouter, shouter_effect) = Shouter::new(effect_builder);
 //!
 //!         Ok((Reactor {
-//!             // TODO: Consider whether we want to move RNG access all the way up, if possible.
-//!             net: NetworkController::create_node(event_queue, &mut rand::thread_rng()),
+//!             net: NetworkController::create_node(event_queue, rng),
 //!             shouter,
 //!         }, wrap_effects(From::from, shouter_effect)))
 //!     }
 //!
-//!     fn dispatch_event(&mut self,
+//!     fn dispatch_event<R: Rng + ?Sized>(&mut self,
 //!                       effect_builder: EffectBuilder<Event>,
+//!                       rng: &mut R,
 //!                       event: Event
-//!     ) -> Multiple<Effect<Event>> {
-//!          let mut rng = rand::thread_rng(); // FIXME: RNGs should be passed in.
+//!     ) -> Effects<Event> {
 //!          match event {
 //!              Event::Announcement(anc) => { wrap_effects(From::from,
-//!                  self.shouter.handle_event(effect_builder, &mut rng, anc.into())
+//!                  self.shouter.handle_event(effect_builder, rng, anc.into())
 //!              )}
 //!              Event::Request(req) => { wrap_effects(From::from,
-//!                  self.net.handle_event(effect_builder, &mut rng, req.into())
+//!                  self.net.handle_event(effect_builder, rng, req.into())
 //!              )}
 //!              Event::Shouter(ev) => { wrap_effects(From::from,
-//!                  self.shouter.handle_event(effect_builder, &mut rng, ev)
+//!                  self.shouter.handle_event(effect_builder, rng, ev)
 //!              )}
 //!          }
 //!     }
 //! }
 //!
 //! impl NetworkedReactor for Reactor {
-//!   type NodeId = NodeId;
+//!     type NodeId = NodeId;
 //!
-//!   fn node_id(&self) -> NodeId {
-//!       self.net.node_id()
-//!   }
+//!     fn node_id(&self) -> NodeId {
+//!         self.net.node_id()
+//!     }
 //! }
 //!
 //! // We can finally run the tests:
@@ -219,22 +230,23 @@
 //!
 //! // We can now create the network of nodes, using the `testing::Network` and insert three nodes.
 //! // Each node is given some data to send.
+//! let mut rng = OsRng;
 //! let mut net = Network::<Reactor>::new();
-//! let (id1, n1) = net.add_node().await.unwrap();
+//! let (id1, n1) = net.add_node(&mut rng).await.unwrap();
 //! n1.reactor_mut().shouter.shouts.push(1);
 //! n1.reactor_mut().shouter.shouts.push(2);
 //! n1.reactor_mut().shouter.whispers.push(3);
 //! n1.reactor_mut().shouter.whispers.push(4);
 //!
-//! let (id2, n2) = net.add_node().await.unwrap();
+//! let (id2, n2) = net.add_node(&mut rng).await.unwrap();
 //! n2.reactor_mut().shouter.shouts.push(6);
 //! n2.reactor_mut().shouter.whispers.push(4);
 //!
-//! let (id3, n3) = net.add_node().await.unwrap();
+//! let (id3, n3) = net.add_node(&mut rng).await.unwrap();
 //! n3.reactor_mut().shouter.whispers.push(8);
 //! n3.reactor_mut().shouter.shouts.push(1);
 //!
-//! net.settle(Duration::from_secs(1)).await;
+//! net.settle(&mut rng, Duration::from_secs(1)).await;
 //! assert_eq!(net.nodes().len(), TEST_NODE_COUNT);
 //!
 //! let mut global_count = HashMap::<Message, usize>::new();
@@ -269,12 +281,12 @@
 
 use std::{
     any::Any,
+    cell::RefCell,
     collections::{HashMap, HashSet},
     fmt::Display,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, RwLock},
 };
 
-use lazy_static::lazy_static;
 use rand::{seq::IteratorRandom, Rng};
 use tokio::sync::mpsc::{self, error::SendError};
 use tracing::{debug, error, info, warn};
@@ -282,22 +294,24 @@ use tracing::{debug, error, info, warn};
 use crate::{
     components::Component,
     effect::{
-        announcements::NetworkAnnouncement, requests::NetworkRequest, Effect, EffectBuilder,
-        EffectExt, Multiple,
+        announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, EffectExt,
+        Effects,
     },
+    logging,
     reactor::{EventQueueHandle, QueueKind},
+    tls::KeyFingerprint,
 };
+
+/// The node ID type used by the in-memory network.
+pub type NodeId = KeyFingerprint;
 
 type Network<P> = Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<(NodeId, P)>>>>;
 
-/// The node ID type used by the in-memory network.
-pub type NodeId = u64;
-
-lazy_static! {
+thread_local! {
     /// The currently active network as a thread local.
     ///
     /// The type is dynamic, every network can be of a distinct type when the payload `P` differs.
-    static ref ACTIVE_NETWORK: Mutex<Option<Box<dyn Any + Send + Sync>>> = Mutex::new(None);
+    static ACTIVE_NETWORK: RefCell<Option<Box<dyn Any>>> = RefCell::new(None);
 }
 
 /// The network controller is used to control the network topology (e.g. adding and removing nodes).
@@ -313,6 +327,7 @@ where
 {
     /// Create a new, empty network.
     fn new() -> Self {
+        let _ = logging::init();
         NetworkController {
             nodes: Default::default(),
         }
@@ -324,10 +339,9 @@ where
     ///
     /// Panics if the internal lock has been poisoned.
     pub fn create_active() {
+        let _ = logging::init();
         ACTIVE_NETWORK
-            .lock()
-            .expect("active network lock has been poisoned")
-            .replace(Box::new(Self::new()));
+            .with(|active_network| active_network.borrow_mut().replace(Box::new(Self::new())));
     }
 
     /// Removes the active network.
@@ -338,12 +352,13 @@ where
     /// removed or if there was no network at at all.
     pub fn remove_active() {
         assert!(
-            ACTIVE_NETWORK
-                .lock()
-                .expect("active network lock has been poisoned")
-                .take()
-                .expect("tried to remove non-existant network")
-                .is::<Self>(),
+            ACTIVE_NETWORK.with(|active_network| {
+                active_network
+                    .borrow_mut()
+                    .take()
+                    .expect("tried to remove non-existent network")
+                    .is::<Self>()
+            }),
             "removed network was of wrong type"
         );
     }
@@ -359,17 +374,39 @@ where
         rng: &mut R,
     ) -> InMemoryNetwork<P>
     where
-        R: Rng,
+        R: Rng + ?Sized,
         REv: From<NetworkAnnouncement<NodeId, P>> + Send,
     {
-        ACTIVE_NETWORK
-            .lock()
-            .expect("active network lock has been poisoned")
-            .as_mut()
-            .expect("tried to create node without active network set")
-            .downcast_mut::<Self>()
-            .expect("active network has wrong message type")
-            .create_node_local(event_queue, rng)
+        ACTIVE_NETWORK.with(|active_network| {
+            active_network
+                .borrow_mut()
+                .as_mut()
+                .expect("tried to create node without active network set")
+                .downcast_mut::<Self>()
+                .expect("active network has wrong message type")
+                .create_node_local(event_queue, rng)
+        })
+    }
+
+    /// Removes an in-memory network component on the active network.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal lock has been poisoned, the active network is not of the correct
+    /// message type, or the node to remove doesn't exist.
+    pub fn remove_node(node_id: &NodeId) {
+        ACTIVE_NETWORK.with(|active_network| {
+            if let Some(active_network) = active_network.borrow_mut().as_mut() {
+                active_network
+                    .downcast_mut::<Self>()
+                    .expect("active network has wrong message type")
+                    .nodes
+                    .write()
+                    .expect("poisoned lock")
+                    .remove(node_id)
+                    .expect("node doesn't exist in network");
+            }
+        })
     }
 
     /// Creates a new networking node with a random node ID.
@@ -381,7 +418,7 @@ where
         rng: &mut R,
     ) -> InMemoryNetwork<P>
     where
-        R: Rng,
+        R: Rng + ?Sized,
         REv: From<NetworkAnnouncement<NodeId, P>> + Send,
     {
         InMemoryNetwork::new(event_queue, rng.gen(), self.nodes.clone())
@@ -438,6 +475,10 @@ where
         dest: NodeId,
         payload: P,
     ) {
+        if dest == self.node_id {
+            panic!("can't send message to self");
+        }
+
         match nodes.get(&dest) {
             Some(sender) => {
                 if let Err(SendError((_, msg))) = sender.send((self.node_id, payload)) {
@@ -446,7 +487,7 @@ where
                     // We do nothing else, the message is just dropped.
                 }
             }
-            None => info!(%dest, %payload, "dropping message to non-existant recipient"),
+            None => info!(%dest, %payload, "dropping message to non-existent recipient"),
         }
     }
 }
@@ -462,13 +503,17 @@ where
         _effect_builder: EffectBuilder<REv>,
         rng: &mut R,
         event: Self::Event,
-    ) -> Multiple<Effect<Self::Event>> {
+    ) -> Effects<Self::Event> {
         match event {
             NetworkRequest::SendMessage {
                 dest,
                 payload,
                 responder,
             } => {
+                if dest == self.node_id {
+                    panic!("can't send message to self");
+                }
+
                 if let Ok(guard) = self.nodes.read() {
                     self.send(&guard, dest, payload);
                 } else {
@@ -479,7 +524,7 @@ where
             }
             NetworkRequest::Broadcast { payload, responder } => {
                 if let Ok(guard) = self.nodes.read() {
-                    for dest in guard.keys() {
+                    for dest in guard.keys().filter(|&node_id| node_id != &self.node_id) {
                         self.send(&guard, *dest, payload.clone());
                     }
                 } else {
@@ -497,7 +542,7 @@ where
                 if let Ok(guard) = self.nodes.read() {
                     let chosen: HashSet<_> = guard
                         .keys()
-                        .filter(|k| !exclude.contains(k))
+                        .filter(|&node_id| !exclude.contains(node_id) && node_id != &self.node_id)
                         .cloned()
                         .choose_multiple(rng, count)
                         .into_iter()

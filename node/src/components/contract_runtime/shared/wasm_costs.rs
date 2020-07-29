@@ -1,14 +1,15 @@
 use std::collections::BTreeMap;
 
 use pwasm_utils::rules::{InstructionType, Metering, Set};
+use serde::{Deserialize, Serialize};
 
-use types::bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
+use casperlabs_types::bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
 
 const NUM_FIELDS: usize = 10;
 pub const WASM_COSTS_SERIALIZED_LENGTH: usize = NUM_FIELDS * U32_SERIALIZED_LENGTH;
 
 // Taken (partially) from parity-ethereum
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct WasmCosts {
     /// Default opcode cost
     pub regular: u32,
@@ -48,6 +49,23 @@ impl WasmCosts {
         Set::new(self.regular, meterings)
             .with_grow_cost(self.grow_mem)
             .with_forbidden_floats()
+    }
+}
+
+impl Default for WasmCosts {
+    fn default() -> Self {
+        WasmCosts {
+            regular: 1,
+            div: 16,
+            mul: 4,
+            mem: 2,
+            initial_mem: 4096,
+            grow_mem: 8192,
+            memcpy: 1,
+            max_stack_height: 65536,
+            opcodes_mul: 3,
+            opcodes_div: 8,
+        }
     }
 }
 
@@ -139,7 +157,7 @@ pub mod gens {
 mod tests {
     use proptest::proptest;
 
-    use types::bytesrepr;
+    use casperlabs_types::bytesrepr;
 
     use super::gens;
     use crate::components::contract_runtime::shared::wasm_costs::WasmCosts;

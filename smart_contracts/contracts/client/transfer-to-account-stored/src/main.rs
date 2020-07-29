@@ -4,8 +4,8 @@
 #[macro_use]
 extern crate alloc;
 
-use contract::contract_api::{runtime, storage};
-use types::{
+use casperlabs_contract::contract_api::{runtime, storage};
+use casperlabs_types::{
     account::AccountHash, CLType, CLTyped, ContractHash, ContractVersion, EntryPoint,
     EntryPointAccess, EntryPointType, EntryPoints, Parameter,
 };

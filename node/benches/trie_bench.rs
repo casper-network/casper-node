@@ -1,10 +1,13 @@
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 
-use casperlabs_node::components::contract_runtime::shared::{
-    newtypes::Blake2bHash, stored_value::StoredValue,
+use casperlabs_node::{
+    components::contract_runtime::{
+        shared::stored_value::StoredValue,
+        storage::trie::{Pointer, PointerBlock, Trie},
+    },
+    crypto::hash,
 };
-use casperlabs_node::components::contract_runtime::storage::trie::{Pointer, PointerBlock, Trie};
-use types::{
+use casperlabs_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     CLValue, Key,
@@ -46,7 +49,7 @@ fn deserialize_trie_node(b: &mut Bencher) {
 fn serialize_trie_node_pointer(b: &mut Bencher) {
     let node = Trie::<Key, StoredValue>::Extension {
         affix: (0..255).collect(),
-        pointer: Pointer::NodePointer(Blake2bHash::new(&[0; 32])),
+        pointer: Pointer::NodePointer(hash::hash(&[0; 32])),
     };
 
     b.iter(|| ToBytes::to_bytes(black_box(&node)));
@@ -55,7 +58,7 @@ fn serialize_trie_node_pointer(b: &mut Bencher) {
 fn deserialize_trie_node_pointer(b: &mut Bencher) {
     let node = Trie::<Key, StoredValue>::Extension {
         affix: (0..255).collect(),
-        pointer: Pointer::NodePointer(Blake2bHash::new(&[0; 32])),
+        pointer: Pointer::NodePointer(hash::hash(&[0; 32])),
     };
     let node_bytes = node.to_bytes().unwrap();
 

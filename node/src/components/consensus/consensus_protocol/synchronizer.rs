@@ -1,9 +1,6 @@
-use std::{
-    collections::{hash_map::Entry, HashMap, HashSet},
-    iter,
-};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 
-use super::protocol_state::{AddVertexOk, ProtocolState, VertexTrait};
+use super::protocol_state::{ProtocolState, VertexTrait};
 use crate::components::consensus::traits::NodeIdT;
 
 /// Note that we might be requesting download of the duplicate element
@@ -18,11 +15,9 @@ pub(crate) enum SynchronizerEffect<I, V: VertexTrait> {
     RequestConsensusValue(I, V::Value),
     /// Effect for the reactor to requeue a vertex once its dependencies are downloaded.
     RequeueVertex(I, V),
-    /// Vertex addition failed for some reason.
-    /// TODO: Differentiate from attributable failures.
-    InvalidVertex(V, I, anyhow::Error),
-    /// Means that the vertex has been successfully added to the state
-    Success(V),
+    /// Means that the vertex has all dependencies (vertices and consensus values)
+    /// successfully added to the state.
+    Ready(V),
 }
 
 /// Structure that tracks which vertices wait for what consensus value dependencies.
@@ -102,7 +97,7 @@ where
     I: NodeIdT,
     P: ProtocolState,
 {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         DagSynchronizerState {
             consensus_value_deps: ConsensusValueDependencies::new(),
             vertex_dependants: HashMap::new(),
@@ -110,26 +105,35 @@ where
         }
     }
 
-    pub(crate) fn add_vertex(
+    /// Synchronizes vertex `v`.
+    ///
+    /// If protocol state is missing vertex dependencies of `v` returns vertex request effect.
+    /// If protocol state is sync'd, returns request to synchronize consensus value.
+    /// If all dependencies are satisfied, returns `Ready(v)` signaling that `v`
+    /// can be safely added to the protocol state and `RequeueVertex` effects for vertices
+    /// that were depending on `v`.
+    pub(crate) fn synchronize_vertex(
         &mut self,
         sender: I,
         v: P::Vertex,
-        protocol_state: &mut P,
+        protocol_state: &P,
     ) -> Result<Vec<SynchronizerEffect<I, P::Vertex>>, anyhow::Error> {
-        match protocol_state.add_vertex(v.clone()) {
-            Ok(AddVertexOk::MissingDependency(missing_vid)) => {
-                self.add_vertex_dependency(missing_vid.clone(), sender.clone(), v);
-                Ok(vec![SynchronizerEffect::RequestVertex(sender, missing_vid)])
-            }
-            Ok(AddVertexOk::Success(_vid)) => {
-                let vertices_with_completed_dependencies = self.complete_vertex_dependency(v.id());
-                Ok(vertices_with_completed_dependencies
-                    .into_iter()
-                    .map(|(sender, vertex)| SynchronizerEffect::RequeueVertex(sender, vertex))
-                    .chain(iter::once(SynchronizerEffect::Success(v)))
-                    .collect())
-            }
-            Err(error) => Err(anyhow::anyhow!("{:?}", error)),
+        if let Some(missing_vid) = protocol_state.missing_dependency(&v) {
+            // If there are missing vertex dependencies, sync those first.
+            Ok(vec![self.sync_vertex(sender, missing_vid, v.clone())])
+        } else {
+            // Once all vertex dependencies are satisfied, we need to make sure that
+            // we also have all the block's deploys.
+            let effects = match self.sync_consensus_values(sender, &v) {
+                Some(eff) => vec![eff],
+                None => {
+                    // Downloading vertex `v` may resolve the dependency requests for other
+                    // vertices. If it's a vote that has no consensus values it
+                    // can be added to the state.
+                    self.on_vertex_fully_synced(v)
+                }
+            };
+            Ok(effects)
         }
     }
 
@@ -201,21 +205,20 @@ where
     /// dependency.
     fn sync_consensus_values(
         &mut self,
-        node: I,
-        c: <P::Vertex as VertexTrait>::Value,
         sender: I,
-        v: P::Vertex,
-    ) -> SynchronizerEffect<I, P::Vertex> {
-        self.add_consensus_value_dependency(c.clone(), sender, &v);
-
-        SynchronizerEffect::RequestConsensusValue(node, c)
+        v: &P::Vertex,
+    ) -> Option<SynchronizerEffect<I, P::Vertex>> {
+        v.value().map(|cv| {
+            self.add_consensus_value_dependency(cv.clone(), sender.clone(), v);
+            SynchronizerEffect::RequestConsensusValue(sender, cv.clone())
+        })
     }
 
     /// Synchronizes the dependency (single) of a newly received vertex.
     /// In practice, this method will produce an effect that will be passed on to the reactor for
     /// handling. Node passed in is the one that proposed the original vertex. It should also
     /// have the missing dependency.
-    fn sync_dependency(
+    fn sync_vertex(
         &mut self,
         node: I,
         missing_dependency: P::VId,
@@ -225,16 +228,27 @@ where
         SynchronizerEffect::RequestVertex(node, missing_dependency)
     }
 
-    /// Must be called after consensus successfully handles the new vertex.
-    /// That's b/c there might be other vertices that depend on this one and are waiting in a queue.
-    fn on_vertex_synced(&mut self, v: P::VId) -> Vec<SynchronizerEffect<I, P::Vertex>> {
-        let completed_dependencies = self.complete_vertex_dependency(v);
-        completed_dependencies
-            .into_iter()
-            .map(|(s, v)| SynchronizerEffect::RequeueVertex(s, v))
-            .collect()
+    /// Vertex `v` has been fully sync'd – both protocol state dependencies
+    /// and consensus values have been downloaded.
+    /// Returns vector of synchronizer effects to be handled.
+    pub(crate) fn on_vertex_fully_synced(
+        &mut self,
+        v: P::Vertex,
+    ) -> Vec<SynchronizerEffect<I, P::Vertex>> {
+        let v_id = v.id();
+        let mut effects = vec![SynchronizerEffect::Ready(v)];
+        let completed_dependencies = self.complete_vertex_dependency(v_id);
+        effects.extend(
+            completed_dependencies
+                .into_iter()
+                .map(|(s, v)| SynchronizerEffect::RequeueVertex(s, v)),
+        );
+        effects
     }
 
+    /// Mark `c` consensus value as downloaded.
+    /// Returns vertices that were dependant on it.
+    /// NOTE: Must be called only after all vertex dependencies are downloaded.
     pub(crate) fn on_consensus_value_synced(
         &mut self,
         c: &<P::Vertex as VertexTrait>::Value,
@@ -242,7 +256,9 @@ where
         let completed_dependencies = self.complete_consensus_value_dependency(c);
         completed_dependencies
             .into_iter()
-            .map(|(s, v)| SynchronizerEffect::RequeueVertex(s, v))
+            // Because we sync consensus value dependencies only when we have sync'd
+            // all vertex dependencies, we can now consider `v` to have all dependencies resolved.
+            .flat_map(|(_, v)| self.on_vertex_fully_synced(v))
             .collect()
     }
 }

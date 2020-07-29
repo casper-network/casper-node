@@ -1,10 +1,11 @@
 use crate::components::contract_runtime::shared::{
     newtypes::Blake2bHash, stored_value::StoredValue,
 };
-use types::Key;
+use casperlabs_types::Key;
 
 use crate::components::contract_runtime::core::tracking_copy::TrackingCopyQueryResult;
 
+#[derive(Debug)]
 pub enum QueryResult {
     RootNotFound,
     ValueNotFound(String),

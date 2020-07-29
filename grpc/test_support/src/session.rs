@@ -1,7 +1,7 @@
 use rand::Rng;
 
-use node::components::contract_runtime::core::engine_state::execute_request::ExecuteRequest;
-use types::{runtime_args, ProtocolVersion, RuntimeArgs, URef, U512};
+use casperlabs_node::components::contract_runtime::core::engine_state::execute_request::ExecuteRequest;
+use casperlabs_types::{runtime_args, ProtocolVersion, RuntimeArgs, URef, U512};
 
 use crate::{
     internal::{DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_PAYMENT},

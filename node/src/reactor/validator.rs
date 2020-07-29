@@ -8,28 +8,41 @@ mod error;
 use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
-use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
+use prometheus::Registry;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
-use tracing::Span;
+
+use casperlabs_types::U512;
 
 use crate::{
     components::{
         api_server::{self, ApiServer},
+        block_executor::{self, BlockExecutor},
+        block_validator::{self, BlockValidator},
         consensus::{self, EraSupervisor},
         contract_runtime::{self, ContractRuntime},
-        deploy_gossiper::{self, DeployGossiper},
+        deploy_buffer::{self, DeployBuffer},
+        deploy_fetcher::{self, DeployFetcher},
+        gossiper::{self, Gossiper},
+        metrics::Metrics,
         pinger::{self, Pinger},
-        storage::{Storage, StorageType},
+        storage::Storage,
         Component,
     },
     effect::{
-        announcements::NetworkAnnouncement,
-        requests::{ApiRequest, DeployGossiperRequest, NetworkRequest, StorageRequest},
-        Effect, EffectBuilder, Multiple,
+        announcements::{
+            ApiServerAnnouncement, ConsensusAnnouncement, NetworkAnnouncement, StorageAnnouncement,
+        },
+        requests::{
+            ApiRequest, BlockExecutorRequest, BlockValidatorRequest, ContractRuntimeRequest,
+            DeployBufferRequest, DeployFetcherRequest, MetricsRequest, NetworkRequest,
+            StorageRequest,
+        },
+        EffectBuilder, Effects,
     },
-    reactor::{self, EventQueueHandle},
+    reactor::{self, initializer, EventQueueHandle},
     small_network::{self, NodeId},
+    types::{Deploy, Timestamp},
     SmallNetwork,
 };
 pub use config::Config;
@@ -44,9 +57,12 @@ pub enum Message {
     /// Consensus component message.
     #[from]
     Consensus(consensus::ConsensusMessage),
+    /// Deploy fetcher component message.
+    #[from]
+    DeployFetcher(deploy_fetcher::Message),
     /// Deploy gossiper component message.
     #[from]
-    DeployGossiper(deploy_gossiper::Message),
+    DeployGossiper(gossiper::Message<Deploy>),
 }
 
 impl Display for Message {
@@ -54,6 +70,7 @@ impl Display for Message {
         match self {
             Message::Pinger(pinger) => write!(f, "Pinger::{}", pinger),
             Message::Consensus(consensus) => write!(f, "Consensus::{}", consensus),
+            Message::DeployFetcher(message) => write!(f, "DeployFetcher::{}", message),
             Message::DeployGossiper(deploy) => write!(f, "DeployGossiper::{}", deploy),
         }
     }
@@ -66,6 +83,9 @@ pub enum Event {
     /// Network event.
     #[from]
     Network(small_network::Event<Message>),
+    /// Deploy buffer event.
+    #[from]
+    DeployBuffer(deploy_buffer::Event),
     /// Pinger event.
     #[from]
     Pinger(pinger::Event),
@@ -78,24 +98,55 @@ pub enum Event {
     #[from]
     /// Consensus event.
     Consensus(consensus::Event<NodeId>),
+    /// Deploy fetcher event.
+    #[from]
+    DeployFetcher(deploy_fetcher::Event),
     /// Deploy gossiper event.
     #[from]
-    DeployGossiper(deploy_gossiper::Event),
+    DeployGossiper(gossiper::Event<Deploy>),
+    /// Contract runtime event.
+    #[from]
+    ContractRuntime(contract_runtime::Event),
+    /// Block executor event.
+    #[from]
+    BlockExecutor(block_executor::Event),
+    /// Block validator event.
+    #[from]
+    BlockValidator(block_validator::Event<NodeId>),
 
     // Requests
     /// Network request.
     #[from]
     NetworkRequest(NetworkRequest<NodeId, Message>),
+    /// Deploy fetcher request.
+    #[from]
+    DeployFetcherRequest(DeployFetcherRequest<NodeId>),
+    /// Deploy buffer request.
+    #[from]
+    DeployBufferRequest(DeployBufferRequest),
+    /// Block executor request.
+    #[from]
+    BlockExecutorRequest(BlockExecutorRequest),
+    /// Block validator request.
+    #[from]
+    BlockValidatorRequest(BlockValidatorRequest<NodeId>),
+    /// Metrics request.
+    #[from]
+    MetricsRequest(MetricsRequest),
 
     // Announcements
     /// Network announcement.
     #[from]
     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
-
-    // Contract Runtime
-    /// Contract runtime event.
+    /// Storage announcement.
     #[from]
-    ContractRuntime(contract_runtime::Event),
+    StorageAnnouncement(StorageAnnouncement<Storage>),
+    /// API server announcement.
+    #[from]
+    ApiServerAnnouncement(ApiServerAnnouncement),
+    /// Consensus announcement.
+    #[from]
+    ConsensusAnnouncement(ConsensusAnnouncement),
 }
 
 impl From<ApiRequest> for Event {
@@ -116,119 +167,229 @@ impl From<NetworkRequest<NodeId, pinger::Message>> for Event {
     }
 }
 
-impl From<NetworkRequest<NodeId, deploy_gossiper::Message>> for Event {
-    fn from(request: NetworkRequest<NodeId, deploy_gossiper::Message>) -> Self {
+impl From<NetworkRequest<NodeId, deploy_fetcher::Message>> for Event {
+    fn from(request: NetworkRequest<NodeId, deploy_fetcher::Message>) -> Self {
         Event::NetworkRequest(request.map_payload(Message::from))
     }
 }
 
-impl From<DeployGossiperRequest> for Event {
-    fn from(request: DeployGossiperRequest) -> Self {
-        Event::DeployGossiper(deploy_gossiper::Event::Request(request))
+impl From<NetworkRequest<NodeId, gossiper::Message<Deploy>>> for Event {
+    fn from(request: NetworkRequest<NodeId, gossiper::Message<Deploy>>) -> Self {
+        Event::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
+impl From<ContractRuntimeRequest> for Event {
+    fn from(request: ContractRuntimeRequest) -> Event {
+        Event::ContractRuntime(contract_runtime::Event::Request(request))
+    }
+}
+
+impl Display for Event {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Event::Network(event) => write!(f, "network: {}", event),
+            Event::DeployBuffer(event) => write!(f, "deploy buffer: {}", event),
+            Event::Pinger(event) => write!(f, "pinger: {}", event),
+            Event::Storage(event) => write!(f, "storage: {}", event),
+            Event::ApiServer(event) => write!(f, "api server: {}", event),
+            Event::Consensus(event) => write!(f, "consensus: {}", event),
+            Event::DeployFetcher(event) => write!(f, "deploy fetcher: {}", event),
+            Event::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
+            Event::ContractRuntime(event) => write!(f, "contract runtime: {}", event),
+            Event::BlockExecutor(event) => write!(f, "block executor: {}", event),
+            Event::BlockValidator(event) => write!(f, "block validator: {}", event),
+            Event::NetworkRequest(req) => write!(f, "network request: {}", req),
+            Event::DeployFetcherRequest(req) => write!(f, "deploy fetcher request: {}", req),
+            Event::DeployBufferRequest(req) => write!(f, "deploy buffer request: {}", req),
+            Event::BlockExecutorRequest(req) => write!(f, "block executor request: {}", req),
+            Event::BlockValidatorRequest(req) => write!(f, "block validator request: {}", req),
+            Event::MetricsRequest(req) => write!(f, "metrics request: {}", req),
+            Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
+            Event::ApiServerAnnouncement(ann) => write!(f, "api server announcement: {}", ann),
+            Event::ConsensusAnnouncement(ann) => write!(f, "consensus announcement: {}", ann),
+            Event::StorageAnnouncement(ann) => write!(f, "storage announcement: {}", ann),
+        }
     }
 }
 
 /// Validator node reactor.
 #[derive(Debug)]
 pub struct Reactor {
+    metrics: Metrics,
     net: SmallNetwork<Event, Message>,
     pinger: Pinger,
     storage: Storage,
+    contract_runtime: ContractRuntime,
     api_server: ApiServer,
     consensus: EraSupervisor<NodeId>,
-    deploy_gossiper: DeployGossiper,
-    rng: ChaCha20Rng,
-    contract_runtime: ContractRuntime,
+    deploy_fetcher: DeployFetcher,
+    deploy_gossiper: Gossiper<Deploy, Event>,
+    deploy_buffer: DeployBuffer,
+    block_executor: BlockExecutor,
+    block_validator: BlockValidator<NodeId>,
 }
 
 impl reactor::Reactor for Reactor {
     type Event = Event;
-    type Config = Config;
+
+    // The "configuration" is in fact the whole state of the initializer reactor, which we
+    // deconstruct and reuse.
+    type Config = initializer::Reactor;
     type Error = Error;
 
-    fn new(
-        cfg: Self::Config,
+    fn new<R: Rng + ?Sized>(
+        initializer: Self::Config,
+        registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        span: &Span,
-    ) -> Result<(Self, Multiple<Effect<Event>>), Error> {
-        let effect_builder = EffectBuilder::new(event_queue);
-        let (net, net_effects) = SmallNetwork::new(event_queue, cfg.validator_net)?;
-        span.record("id", &tracing::field::display(net.node_id()));
+        _rng: &mut R,
+    ) -> Result<(Self, Effects<Event>), Error> {
+        let initializer::Reactor {
+            config,
+            chainspec_handler,
+            storage,
+            contract_runtime,
+        } = initializer;
 
-        let (pinger, pinger_effects) = Pinger::new(effect_builder);
-        let storage = Storage::new(&cfg.storage)?;
-        let (api_server, api_server_effects) = ApiServer::new(cfg.http_server, effect_builder);
-        let consensus = EraSupervisor::new();
-        let deploy_gossiper = DeployGossiper::new(cfg.gossip);
-        let (contract_runtime, contract_runtime_effects) =
-            ContractRuntime::new(&cfg.storage, cfg.contract_runtime, effect_builder);
+        let metrics = Metrics::new(registry.clone());
+
+        let effect_builder = EffectBuilder::new(event_queue);
+        let (net, net_effects) = SmallNetwork::new(event_queue, config.validator_net)?;
+
+        let (pinger, pinger_effects) = Pinger::new(registry, effect_builder)?;
+        let api_server = ApiServer::new(config.http_server, effect_builder);
+        let timestamp = Timestamp::now();
+        let validator_stakes = chainspec_handler
+            .chainspec()
+            .genesis
+            .accounts
+            .iter()
+            .filter_map(|account| account.public_key().map(|pk| (pk, account.bonded_amount())))
+            .filter(|(_, stake)| stake.value() > U512::zero())
+            .collect();
+        let (consensus, consensus_effects) = EraSupervisor::new(
+            timestamp,
+            config.consensus,
+            effect_builder,
+            validator_stakes,
+        )?;
+        let deploy_fetcher = DeployFetcher::new(config.gossip);
+        let deploy_gossiper = Gossiper::new(
+            config.gossip,
+            gossiper::put_deploy_to_storage,
+            gossiper::get_deploy_from_storage,
+        );
+        let deploy_buffer = DeployBuffer::new(config.node.block_max_deploy_count as usize);
+        // Post state hash is expected to be present
+        let post_state_hash = chainspec_handler
+            .post_state_hash()
+            .expect("should have post state hash");
+        let block_executor = BlockExecutor::new(post_state_hash);
+        let block_validator = BlockValidator::<NodeId>::new();
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
         effects.extend(reactor::wrap_effects(Event::Pinger, pinger_effects));
-        effects.extend(reactor::wrap_effects(Event::ApiServer, api_server_effects));
-        effects.extend(reactor::wrap_effects(
-            Event::ContractRuntime,
-            contract_runtime_effects,
-        ));
-
-        let rng = ChaCha20Rng::from_entropy();
+        effects.extend(reactor::wrap_effects(Event::Consensus, consensus_effects));
 
         Ok((
             Reactor {
+                metrics,
                 net,
                 pinger,
                 storage,
                 api_server,
                 consensus,
+                deploy_fetcher,
                 deploy_gossiper,
-                rng,
                 contract_runtime,
+                deploy_buffer,
+                block_executor,
+                block_validator,
             },
             effects,
         ))
     }
 
-    fn dispatch_event(
+    fn dispatch_event<R: Rng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
+        rng: &mut R,
         event: Event,
-    ) -> Multiple<Effect<Self::Event>> {
+    ) -> Effects<Self::Event> {
         match event {
             Event::Network(event) => reactor::wrap_effects(
                 Event::Network,
-                self.net.handle_event(effect_builder, &mut self.rng, event),
+                self.net.handle_event(effect_builder, rng, event),
+            ),
+            Event::DeployBuffer(event) => reactor::wrap_effects(
+                Event::DeployBuffer,
+                self.deploy_buffer.handle_event(effect_builder, rng, event),
             ),
             Event::Pinger(event) => reactor::wrap_effects(
                 Event::Pinger,
-                self.pinger
-                    .handle_event(effect_builder, &mut self.rng, event),
+                self.pinger.handle_event(effect_builder, rng, event),
             ),
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
-                self.storage
-                    .handle_event(effect_builder, &mut self.rng, event),
+                self.storage.handle_event(effect_builder, rng, event),
             ),
             Event::ApiServer(event) => reactor::wrap_effects(
                 Event::ApiServer,
-                self.api_server
-                    .handle_event(effect_builder, &mut self.rng, event),
+                self.api_server.handle_event(effect_builder, rng, event),
             ),
             Event::Consensus(event) => reactor::wrap_effects(
                 Event::Consensus,
-                self.consensus
-                    .handle_event(effect_builder, &mut self.rng, event),
+                self.consensus.handle_event(effect_builder, rng, event),
+            ),
+            Event::DeployFetcher(event) => reactor::wrap_effects(
+                Event::DeployFetcher,
+                self.deploy_fetcher.handle_event(effect_builder, rng, event),
             ),
             Event::DeployGossiper(event) => reactor::wrap_effects(
                 Event::DeployGossiper,
                 self.deploy_gossiper
-                    .handle_event(effect_builder, &mut self.rng, event),
+                    .handle_event(effect_builder, rng, event),
+            ),
+            Event::ContractRuntime(event) => reactor::wrap_effects(
+                Event::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, event),
+            ),
+            Event::BlockExecutor(event) => reactor::wrap_effects(
+                Event::BlockExecutor,
+                self.block_executor.handle_event(effect_builder, rng, event),
+            ),
+            Event::BlockValidator(event) => reactor::wrap_effects(
+                Event::BlockValidator,
+                self.block_validator
+                    .handle_event(effect_builder, rng, event),
             ),
 
             // Requests:
             Event::NetworkRequest(req) => self.dispatch_event(
                 effect_builder,
+                rng,
                 Event::Network(small_network::Event::from(req)),
             ),
+            Event::DeployFetcherRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::DeployFetcher(req.into()))
+            }
+            Event::DeployBufferRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::DeployBuffer(req.into()))
+            }
+            Event::BlockExecutorRequest(req) => self.dispatch_event(
+                effect_builder,
+                rng,
+                Event::BlockExecutor(block_executor::Event::from(req)),
+            ),
+            Event::BlockValidatorRequest(req) => self.dispatch_event(
+                effect_builder,
+                rng,
+                Event::BlockValidator(block_validator::Event::from(req)),
+            ),
+            Event::MetricsRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::MetricsRequest(req))
+            }
 
             // Announcements:
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
@@ -242,34 +403,46 @@ impl reactor::Reactor for Reactor {
                     Message::Pinger(msg) => {
                         Event::Pinger(pinger::Event::MessageReceived { sender, msg })
                     }
-                    Message::DeployGossiper(message) => {
-                        Event::DeployGossiper(deploy_gossiper::Event::MessageReceived {
+                    Message::DeployFetcher(message) => {
+                        Event::DeployFetcher(deploy_fetcher::Event::MessageReceived {
                             sender,
                             message,
                         })
                     }
+                    Message::DeployGossiper(message) => {
+                        Event::DeployGossiper(gossiper::Event::MessageReceived { sender, message })
+                    }
                 };
-
-                // Any incoming message is one for the pinger.
-                self.dispatch_event(effect_builder, reactor_event)
+                self.dispatch_event(effect_builder, rng, reactor_event)
             }
-            Event::ContractRuntime(event) => todo!("handle contract runtime event: {:?}", event),
-        }
-    }
-}
-
-impl Display for Event {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Event::Network(event) => write!(f, "network: {}", event),
-            Event::Pinger(event) => write!(f, "pinger: {}", event),
-            Event::Storage(event) => write!(f, "storage: {}", event),
-            Event::ApiServer(event) => write!(f, "api server: {}", event),
-            Event::Consensus(event) => write!(f, "consensus: {}", event),
-            Event::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
-            Event::NetworkRequest(req) => write!(f, "network request: {}", req),
-            Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
-            Event::ContractRuntime(event) => write!(f, "contract runtime: {}", event),
+            Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
+                let event = gossiper::Event::ItemReceived { item: deploy };
+                self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
+            }
+            Event::ConsensusAnnouncement(consensus_announcement) => {
+                let reactor_event = Event::DeployBuffer(match consensus_announcement {
+                    ConsensusAnnouncement::Proposed(block) => {
+                        deploy_buffer::Event::ProposedProtoBlock(block)
+                    }
+                    ConsensusAnnouncement::Finalized(block) => {
+                        deploy_buffer::Event::FinalizedProtoBlock(block)
+                    }
+                    ConsensusAnnouncement::Orphaned(block) => {
+                        deploy_buffer::Event::OrphanedProtoBlock(block)
+                    }
+                });
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            Event::StorageAnnouncement(StorageAnnouncement::StoredNewDeploy {
+                deploy_hash,
+                deploy_header,
+            }) => {
+                let event = deploy_buffer::Event::Buffer {
+                    hash: deploy_hash,
+                    header: deploy_header,
+                };
+                self.dispatch_event(effect_builder, rng, Event::DeployBuffer(event))
+            }
         }
     }
 }

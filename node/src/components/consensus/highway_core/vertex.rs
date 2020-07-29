@@ -1,9 +1,11 @@
-use std::iter;
-
 use serde::{Deserialize, Serialize};
 
 use super::{evidence::Evidence, validators::ValidatorIndex, vote::Panorama};
-use crate::components::consensus::traits::{Context, ValidatorSecret};
+use crate::{
+    components::consensus::traits::{Context, ValidatorSecret},
+    types::Timestamp,
+};
+use std::fmt::Debug;
 
 /// A dependency of a `Vertex` that can be satisfied by one or more other vertices.
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -58,7 +60,7 @@ impl<C: Context> Vertex<C> {
 ))]
 pub(crate) struct SignedWireVote<C: Context> {
     pub(crate) wire_vote: WireVote<C>,
-    pub(crate) signature: <C::ValidatorSecret as ValidatorSecret>::Signature,
+    pub(crate) signature: C::Signature,
 }
 
 impl<C: Context> SignedWireVote<C> {
@@ -76,7 +78,7 @@ impl<C: Context> SignedWireVote<C> {
 }
 
 /// A vote as it is sent over the wire, possibly containing a new block.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -86,7 +88,31 @@ pub(crate) struct WireVote<C: Context> {
     pub(crate) creator: ValidatorIndex,
     pub(crate) value: Option<C::ConsensusValue>,
     pub(crate) seq_number: u64,
-    pub(crate) timestamp: u64,
+    pub(crate) timestamp: Timestamp,
+    pub(crate) round_exp: u8,
+}
+
+impl<C: Context> Debug for WireVote<C> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /// A type whose debug implementation prints ".." (without the quotes).
+        struct Ellipsis;
+
+        impl Debug for Ellipsis {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "..")
+            }
+        }
+
+        f.debug_struct("WireVote")
+            .field("hash()", &self.hash())
+            .field("value", &self.value.as_ref().map(|_| Ellipsis))
+            .field("creator", &self.creator)
+            .field("seq_number", &self.seq_number)
+            .field("timestamp", &self.timestamp.millis())
+            .field("panorama", &self.panorama.0)
+            .field("round_exp", &self.round_exp)
+            .finish()
+    }
 }
 
 impl<C: Context> WireVote<C> {

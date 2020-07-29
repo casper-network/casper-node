@@ -7,6 +7,7 @@ use core::{
 };
 
 use failure::Fail;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -154,7 +155,7 @@ pub type AccountHashBytes = [u8; ACCOUNT_HASH_LENGTH];
 
 /// A newtype wrapping a [`AccountHashBytes`] which is the raw bytes of
 /// the AccountHash, a hash of Public Key and Algorithm
-#[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
 pub struct AccountHash(AccountHashBytes);
 
 impl AccountHash {
@@ -226,6 +227,12 @@ impl FromBytes for AccountHash {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let (bytes, rem) = <[u8; 32]>::from_bytes(bytes)?;
         Ok((AccountHash::new(bytes), rem))
+    }
+}
+
+impl AsRef<[u8]> for AccountHash {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
     }
 }
 

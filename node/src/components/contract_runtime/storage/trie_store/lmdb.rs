@@ -8,8 +8,8 @@
 //! use casperlabs_node::components::contract_runtime::storage::transaction_source::lmdb::LmdbEnvironment;
 //! use casperlabs_node::components::contract_runtime::storage::trie::{Pointer, PointerBlock, Trie};
 //! use casperlabs_node::components::contract_runtime::storage::trie_store::lmdb::LmdbTrieStore;
-//! use casperlabs_node::components::contract_runtime::shared::newtypes::Blake2bHash;
-//! use types::bytesrepr::ToBytes;
+//! use casperlabs_node::crypto::hash;
+//! use casperlabs_types::bytesrepr::ToBytes;
 //! use lmdb::DatabaseFlags;
 //! use tempfile::tempdir;
 //!
@@ -18,8 +18,8 @@
 //! let leaf_2 = Trie::Leaf { key: vec![1u8, 0, 0], value: b"val_2".to_vec() };
 //!
 //! // Get their hashes
-//! let leaf_1_hash = Blake2bHash::new(&leaf_1.to_bytes().unwrap());
-//! let leaf_2_hash = Blake2bHash::new(&leaf_2.to_bytes().unwrap());
+//! let leaf_1_hash = hash::hash(&leaf_1.to_bytes().unwrap());
+//! let leaf_2_hash = hash::hash(&leaf_2.to_bytes().unwrap());
 //!
 //! // Create a node
 //! let node: Trie<Vec<u8>, Vec<u8>> = {
@@ -31,7 +31,7 @@
 //! };
 //!
 //! // Get its hash
-//! let node_hash = Blake2bHash::new(&node.to_bytes().unwrap());
+//! let node_hash = hash::hash(&node.to_bytes().unwrap());
 //!
 //! // Create the environment and the store. For both the in-memory and
 //! // LMDB-backed implementations, the environment is the source of

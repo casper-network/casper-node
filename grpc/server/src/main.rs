@@ -14,19 +14,22 @@ use clap::{App, Arg, ArgMatches};
 use dirs::home_dir;
 use lmdb::DatabaseFlags;
 use log::{error, info, Level, LevelFilter};
-use node::components::contract_runtime::core::engine_state::{EngineConfig, EngineState};
-
-use node::components::contract_runtime::shared::{
-    logging::{self, Settings, Style},
-    page_size, socket,
-};
-use node::components::contract_runtime::storage::{
-    global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
-    trie_store::lmdb::LmdbTrieStore,
-};
 
 use casperlabs_engine_grpc_server::engine_server;
-use node::components::contract_runtime::storage::protocol_data_store::lmdb::LmdbProtocolDataStore;
+use casperlabs_node::{
+    components::contract_runtime::{
+        core::engine_state::{EngineConfig, EngineState},
+        shared::{
+            logging::{self, Settings, Style},
+            socket,
+        },
+        storage::{
+            global_state::lmdb::LmdbGlobalState, protocol_data_store::lmdb::LmdbProtocolDataStore,
+            transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore,
+        },
+    },
+    OS_PAGE_SIZE,
+};
 
 // exe / proc
 const PROC_NAME: &str = "casperlabs-engine-grpc-server";
@@ -282,7 +285,7 @@ fn get_data_dir(arg_matches: &ArgMatches) -> PathBuf {
 
 ///  Parses pages argument and returns map size
 fn get_map_size(arg_matches: &ArgMatches) -> usize {
-    let page_size = *page_size::PAGE_SIZE;
+    let page_size = *OS_PAGE_SIZE;
     let pages = arg_matches
         .value_of(ARG_PAGES)
         .map_or(Ok(DEFAULT_PAGES), usize::from_str)

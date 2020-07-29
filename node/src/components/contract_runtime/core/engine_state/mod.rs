@@ -24,22 +24,7 @@ use num_traits::Zero;
 use parity_wasm::elements::Module;
 use tracing::{debug, warn};
 
-use crate::components::contract_runtime::shared::wasm_costs::WasmCosts;
-use crate::components::contract_runtime::shared::wasm_prep::{self, Preprocessor};
-use crate::components::contract_runtime::shared::{
-    account::Account,
-    additive_map::AdditiveMap,
-    gas::Gas,
-    motes::Motes,
-    newtypes::{Blake2bHash, CorrelationId},
-    stored_value::StoredValue,
-    transform::Transform,
-};
-use crate::components::contract_runtime::storage::{
-    global_state::{CommitResult, StateProvider, StateReader},
-    protocol_data::ProtocolData,
-};
-use types::{
+use casperlabs_types::{
     account::AccountHash,
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
@@ -51,31 +36,50 @@ use types::{
     U512,
 };
 
+use self::{
+    deploy_item::DeployItem,
+    executable_deploy_item::ExecutableDeployItem,
+    execute_request::ExecuteRequest,
+    execution_result::{ExecutionResult, ForcedTransferResult},
+    genesis::{ExecConfig, GenesisResult, POS_PAYMENT_PURSE, POS_REWARDS_PURSE},
+    query::{QueryRequest, QueryResult},
+    system_contract_cache::SystemContractCache,
+    transfer::TransferTargetMode,
+    upgrade::{UpgradeConfig, UpgradeResult},
+};
 pub use self::{
     engine_config::EngineConfig,
     error::{Error, RootNotFound},
     transfer::TransferRuntimeArgsBuilder,
 };
-use crate::components::contract_runtime::core::{
-    engine_state::{
-        deploy_item::DeployItem,
-        error::Error::MissingSystemContract,
-        executable_deploy_item::ExecutableDeployItem,
-        execute_request::ExecuteRequest,
-        execution_result::{ExecutionResult, ForcedTransferResult},
-        genesis::{
-            ExecConfig, GenesisAccount, GenesisResult, POS_PAYMENT_PURSE, POS_REWARDS_PURSE,
+use crate::{
+    components::contract_runtime::{
+        core::{
+            execution::{
+                self, AddressGenerator, AddressGeneratorBuilder, DirectSystemContractCall, Executor,
+            },
+            tracking_copy::{TrackingCopy, TrackingCopyExt},
         },
-        query::{QueryRequest, QueryResult},
-        system_contract_cache::SystemContractCache,
-        transfer::TransferTargetMode,
-        upgrade::{UpgradeConfig, UpgradeResult},
+        shared::{
+            account::Account,
+            additive_map::AdditiveMap,
+            gas::Gas,
+            newtypes::{Blake2bHash, CorrelationId},
+            stored_value::StoredValue,
+            transform::Transform,
+            wasm_costs::WasmCosts,
+            wasm_prep::{self, Preprocessor},
+        },
+        storage::{
+            global_state::{CommitResult, StateProvider, StateReader},
+            protocol_data::ProtocolData,
+        },
     },
-    execution::{
-        self, AddressGenerator, AddressGeneratorBuilder, DirectSystemContractCall, Executor,
-    },
-    tracking_copy::{TrackingCopy, TrackingCopyExt},
+    crypto::hash,
+    types::Motes,
+    Chainspec, GenesisAccount,
 };
+use execution_result::ExecutionResults;
 
 // TODO?: MAX_PAYMENT && CONV_RATE values are currently arbitrary w/ real values
 // TBD gas * CONV_RATE = motes
@@ -159,7 +163,33 @@ where
         }
     }
 
-    pub fn commit_genesis(
+    pub(crate) fn commit_genesis(&self, chainspec: Chainspec) -> Result<GenesisResult, Error> {
+        let correlation_id = CorrelationId::new();
+        let serialized_chainspec =
+            bincode::serialize(&chainspec).map_err(|error| Error::from_serialization(*error))?;
+        let genesis_config_hash = hash::hash(&serialized_chainspec);
+        let protocol_version = ProtocolVersion::from_parts(
+            chainspec.genesis.protocol_version.major as u32,
+            chainspec.genesis.protocol_version.minor as u32,
+            chainspec.genesis.protocol_version.patch as u32,
+        );
+
+        let ee_config = ExecConfig::new(
+            chainspec.genesis.mint_installer_bytes,
+            chainspec.genesis.pos_installer_bytes,
+            chainspec.genesis.standard_payment_installer_bytes,
+            chainspec.genesis.accounts,
+            chainspec.genesis.costs,
+        );
+        self.commit_genesis_old(
+            correlation_id,
+            genesis_config_hash,
+            protocol_version,
+            &ee_config,
+        )
+    }
+
+    pub fn commit_genesis_old(
         &self,
         correlation_id: CorrelationId,
         genesis_config_hash: Blake2bHash,
@@ -205,11 +235,11 @@ where
         // RPC call
 
         let hash_address_generator = {
-            let generator = AddressGenerator::new(&genesis_config_hash.value(), phase);
+            let generator = AddressGenerator::new(genesis_config_hash.as_ref(), phase);
             Rc::new(RefCell::new(generator))
         };
         let uref_address_generator = {
-            let generator = AddressGenerator::new(&genesis_config_hash.value(), phase);
+            let generator = AddressGenerator::new(genesis_config_hash.as_ref(), phase);
             Rc::new(RefCell::new(generator))
         };
 
@@ -219,7 +249,7 @@ where
             let mint_installer_module = preprocessor.preprocess(mint_installer_bytes)?;
             let args = RuntimeArgs::new();
             let authorization_keys: BTreeSet<AccountHash> = BTreeSet::new();
-            let install_deploy_hash = genesis_config_hash.into();
+            let install_deploy_hash = genesis_config_hash.to_bytes();
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
             let tracking_copy = Rc::clone(&tracking_copy);
@@ -262,7 +292,7 @@ where
             let tracking_copy = Rc::clone(&tracking_copy);
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
-            let install_deploy_hash = genesis_config_hash.into();
+            let install_deploy_hash = genesis_config_hash.to_bytes();
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             // Constructs a partial protocol data with already known uref to pass the validation
@@ -310,7 +340,9 @@ where
 
         let standard_payment_hash: ContractHash = {
             let standard_payment_installer_bytes = {
-                // NOTE: Before integration node wasn't updated to pass the bytes, so we were bundling it. This debug_assert can be removed once integration with genesis works.
+                // NOTE: Before integration node wasn't updated to pass the bytes, so we were
+                // bundling it. This debug_assert can be removed once integration with genesis
+                // works.
                 debug_assert!(
                     !ee_config.standard_payment_installer_bytes().is_empty(),
                     "Caller is required to pass the standard_payment_installer bytes"
@@ -322,7 +354,7 @@ where
                 preprocessor.preprocess(standard_payment_installer_bytes)?;
             let args = RuntimeArgs::new();
             let authorization_keys = BTreeSet::new();
-            let install_deploy_hash = genesis_config_hash.into();
+            let install_deploy_hash = genesis_config_hash.to_bytes();
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
             let tracking_copy = Rc::clone(&tracking_copy);
@@ -418,7 +450,7 @@ where
                 let hash_address_generator = Rc::clone(&hash_address_generator);
                 let uref_address_generator = {
                     let generator = AddressGeneratorBuilder::new()
-                        .seed_with(&genesis_config_hash.value())
+                        .seed_with(genesis_config_hash.as_ref())
                         .seed_with(&account_hash.to_bytes()?)
                         .seed_with(&[phase as u8])
                         .build();
@@ -598,18 +630,18 @@ where
                         .value()
                         .into_bytes()?
                         .to_vec();
-                    Blake2bHash::new(&bytes).into()
+                    hash::hash(&bytes).to_bytes()
                 };
 
                 // upgrade has no gas limit; approximating with MAX
                 let gas_limit = Gas::new(std::u64::MAX.into());
                 let phase = Phase::System;
                 let hash_address_generator = {
-                    let generator = AddressGenerator::new(&pre_state_hash.value(), phase);
+                    let generator = AddressGenerator::new(pre_state_hash.as_ref(), phase);
                     Rc::new(RefCell::new(generator))
                 };
                 let uref_address_generator = {
-                    let generator = AddressGenerator::new(&pre_state_hash.value(), phase);
+                    let generator = AddressGenerator::new(pre_state_hash.as_ref(), phase);
                     Rc::new(RefCell::new(generator))
                 };
                 let tracking_copy = Rc::clone(&tracking_copy);
@@ -694,7 +726,7 @@ where
         &self,
         correlation_id: CorrelationId,
         mut exec_request: ExecuteRequest,
-    ) -> Result<Vec<ExecutionResult>, RootNotFound> {
+    ) -> Result<ExecutionResults, RootNotFound> {
         // TODO: do not unwrap
         let wasm_costs = self
             .wasm_costs(exec_request.protocol_version)
@@ -703,9 +735,10 @@ where
         let executor = Executor::new(self.config);
         let preprocessor = Preprocessor::new(wasm_costs);
 
-        let mut results = Vec::new();
+        let deploys = exec_request.take_deploys();
+        let mut results = ExecutionResults::with_capacity(deploys.len());
 
-        for deploy_item in exec_request.take_deploys() {
+        for deploy_item in deploys {
             let result = match deploy_item {
                 Err(exec_result) => Ok(exec_result),
                 Ok(deploy_item) => match deploy_item.session {
@@ -730,7 +763,7 @@ where
                 },
             };
             match result {
-                Ok(result) => results.push(result),
+                Ok(result) => results.push_back(result),
                 Err(error) => {
                     return Err(error);
                 }
@@ -1750,7 +1783,7 @@ where
 
         let contract = match reader.read(correlation_id, &proof_of_stake_key)? {
             Some(StoredValue::Contract(contract)) => contract,
-            _ => return Err(MissingSystemContract(PROOF_OF_STAKE.to_string())),
+            _ => return Err(Error::MissingSystemContract(PROOF_OF_STAKE.to_string())),
         };
 
         let bonded_validators = contract

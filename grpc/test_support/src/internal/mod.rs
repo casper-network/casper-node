@@ -9,13 +9,18 @@ mod wasm_test_builder;
 use lazy_static::lazy_static;
 use num_traits::identities::Zero;
 
-use node::components::contract_runtime::core::engine_state::{
-    genesis::{ExecConfig, GenesisAccount, GenesisConfig},
-    run_genesis_request::RunGenesisRequest,
+use casperlabs_node::{
+    components::contract_runtime::{
+        core::engine_state::{
+            genesis::{ExecConfig, GenesisConfig},
+            run_genesis_request::RunGenesisRequest,
+        },
+        shared::{newtypes::Blake2bHash, test_utils, wasm_costs::WasmCosts},
+    },
+    types::Motes,
+    GenesisAccount,
 };
-use node::components::contract_runtime::shared::wasm_costs::WasmCosts;
-use node::components::contract_runtime::shared::{motes::Motes, newtypes::Blake2bHash, test_utils};
-use types::{account::AccountHash, ProtocolVersion, U512};
+use casperlabs_types::{account::AccountHash, ProtocolVersion, U512};
 
 use super::{DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE};
 pub use additive_map_diff::AdditiveMapDiff;

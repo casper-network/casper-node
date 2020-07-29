@@ -53,22 +53,14 @@ SYSTEM_CONTRACTS_FEATURED := $(patsubst %, build-system-contract-featured-rs/%, 
 CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 CONTRACT_TARGET_DIR_AS    = target_as
 PACKAGED_SYSTEM_CONTRACTS = mint_install.wasm pos_install.wasm standard_payment_install.wasm
-TOOL_TARGET_DIR           = cargo-casperlabs/target
-TOOL_WASM_DIR             = cargo-casperlabs/wasm
-ENGINE_CORE_TARGET_DIR    = engine-core/target
-ENGINE_CORE_WASM_DIR      = engine-core/wasm
+TOOL_TARGET_DIR           = grpc/cargo-casperlabs/target
+TOOL_WASM_DIR             = grpc/cargo-casperlabs/wasm
 
 CRATES_WITH_DOCS_RS_MANIFEST_TABLE = \
-	contract \
-	engine-core \
-	engine-grpc-server \
-	engine-shared \
-	engine-storage \
-	engine-test-support \
-	engine-wasm-prep \
-	mint \
-	proof-of-stake \
-	standard-payment \
+	grpc/server \
+	grpc/test_support \
+	node \
+	smart_contracts/contract \
 	types
 
 CRATES_WITH_DOCS_RS_MANIFEST_TABLE := $(patsubst %, doc-stable/%, $(CRATES_WITH_DOCS_RS_MANIFEST_TABLE))
@@ -89,7 +81,7 @@ build-contract-rs/%:
 build-system-contract-featured-rs/%:
 	$(CARGO) build \
 	        --release $(filter-out --release, $(CARGO_FLAGS)) \
-	        --manifest-path "contracts/system/$*/Cargo.toml" $(if $(FEATURES),$(if $(filter $(HIGHWAY_CONTRACTS), $*),--features $(FEATURES))) \
+	        --manifest-path "smart_contracts/contracts/system/$*/Cargo.toml" $(if $(FEATURES),$(if $(filter $(HIGHWAY_CONTRACTS), $*),--features $(FEATURES))) \
 	        --target wasm32-unknown-unknown
 
 build-contracts-rs: \
@@ -129,8 +121,8 @@ build-contracts-as: \
 build-contracts: build-contracts-rs build-contracts-as
 
 .PHONY: test-rs
-test-rs:
-	$(CARGO) test $(CARGO_FLAGS) --all -- --nocapture
+test-rs: build-system-contracts
+	$(CARGO) test $(CARGO_FLAGS) --workspace -- --nocapture
 
 .PHONY: test-as
 test-as: setup-as
@@ -167,7 +159,7 @@ format:
 
 .PHONY: lint
 lint:
-	$(CARGO) clippy --all-targets --all -- -D warnings -A renamed_and_removed_lints
+	$(CARGO) clippy --all-targets --all-features --workspace -- -D warnings -A renamed_and_removed_lints
 
 .PHONY: audit
 audit:
@@ -193,6 +185,7 @@ check-rs: \
 
 .PHONY: check
 check: \
+	build-docs-stable-rs \
 	build \
 	check-format \
 	lint \
@@ -202,12 +195,9 @@ check: \
 
 .PHONY: clean
 clean:
-	rm -f comm/.rpm
 	rm -rf $(CONTRACT_TARGET_DIR_AS)
 	rm -rf $(TOOL_TARGET_DIR)
 	rm -rf $(TOOL_WASM_DIR)
-	rm -rf $(ENGINE_CORE_TARGET_DIR)
-	rm -rf $(ENGINE_CORE_WASM_DIR)
 	$(CARGO) clean
 
 .PHONY: deb

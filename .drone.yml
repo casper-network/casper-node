@@ -24,6 +24,7 @@ __buildenv: &buildenv
     CARGO_HOME: ".cargo"
 
 # Anchor for cache plugin
+# Caching based on https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
 __cache: &cache
   image: drillster/drone-volume-cache
   volumes:
@@ -31,8 +32,11 @@ __cache: &cache
     path: /cache
   settings:
     mount:
-      - ./target
-      - ./.cargo
+      - ./.cargo/bin/
+      - ./.cargo/registry/index/
+      - ./.cargo/registry/cache/
+      - ./.cargo/git/db/
+      - ./.cargo/.crates.toml
 
 kind: pipeline
 name: cargo
@@ -47,20 +51,29 @@ steps:
   <<: *buildenv
   commands:
   - rustup component add rustfmt
-  - cargo fmt -- --check
+  - cargo fmt --all -- --check
 
 - name: cargo-clippy
   <<: *buildenv
   environment:
     RUSTFLAGS: '-D warnings'
   commands:
+  - make setup-rs
   - rustup component add clippy
-  - cargo clippy --all-targets --workspace
+  - cargo clippy --all-targets --all-features --workspace
+
+- name: cargo-audit
+  <<: *buildenv
+  commands:
+  - cargo install cargo-audit
+  - cargo generate-lockfile
+  - cargo audit
 
 - name: cargo-test
   <<: *buildenv
   commands:
-  - cargo test
+  - make setup
+  - make test
 
 - name: rebuild-cache
   <<: *cache
@@ -101,8 +114,11 @@ steps:
     path: /cache
   settings:
     mount:
-      - ./target
-      - ./.cargo
+      - ./.cargo/bin/
+      - ./.cargo/registry/index/
+      - ./.cargo/registry/cache/
+      - ./.cargo/git/db/
+      - ./.cargo/.crates.toml
     restore: true
 
 - name: build-release-tag

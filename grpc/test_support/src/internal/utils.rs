@@ -6,17 +6,22 @@ use std::{
 
 use lazy_static::lazy_static;
 
-use node::components::contract_runtime::core::engine_state::{
-    execution_result::ExecutionResult,
-    genesis::{ExecConfig, GenesisAccount, GenesisConfig},
-    run_genesis_request::RunGenesisRequest,
-    Error,
+use casperlabs_node::{
+    components::contract_runtime::{
+        core::engine_state::{
+            execution_result::ExecutionResult,
+            genesis::{ExecConfig, GenesisConfig},
+            run_genesis_request::RunGenesisRequest,
+            Error,
+        },
+        shared::{
+            account::Account, additive_map::AdditiveMap, gas::Gas, stored_value::StoredValue,
+            transform::Transform,
+        },
+    },
+    GenesisAccount,
 };
-use node::components::contract_runtime::shared::{
-    account::Account, additive_map::AdditiveMap, gas::Gas, stored_value::StoredValue,
-    transform::Transform,
-};
-use types::Key;
+use casperlabs_types::Key;
 
 use crate::internal::{
     DEFAULT_CHAIN_NAME, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP,

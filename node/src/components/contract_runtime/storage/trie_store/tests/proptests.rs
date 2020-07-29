@@ -1,20 +1,22 @@
-use std::ops::RangeInclusive;
+use std::{collections::BTreeMap, ops::RangeInclusive};
 
 use lmdb::DatabaseFlags;
 use proptest::{collection::vec, prelude::proptest};
 use tempfile::tempdir;
 
-use crate::components::contract_runtime::shared::{
-    newtypes::Blake2bHash, stored_value::StoredValue,
-};
-use types::{bytesrepr::ToBytes, Key};
+use casperlabs_types::{bytesrepr::ToBytes, Key};
 
-use crate::components::contract_runtime::storage::{
-    store::tests as store_tests,
-    trie::{gens::trie_arb, Trie},
-    TEST_MAP_SIZE,
+use crate::{
+    components::contract_runtime::{
+        shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+        storage::{
+            store::tests as store_tests,
+            trie::{gens::trie_arb, Trie},
+            DEFAULT_TEST_MAX_DB_SIZE,
+        },
+    },
+    crypto::hash,
 };
-use std::collections::BTreeMap;
 
 const DEFAULT_MIN_LENGTH: usize = 1;
 const DEFAULT_MAX_LENGTH: usize = 4;
@@ -40,7 +42,7 @@ fn in_memory_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
 
     let inputs: BTreeMap<Blake2bHash, Trie<Key, StoredValue>> = inputs
         .into_iter()
-        .map(|trie| (Blake2bHash::new(&trie.to_bytes().unwrap()), trie))
+        .map(|trie| (hash::hash(&trie.to_bytes().unwrap()), trie))
         .collect();
 
     store_tests::roundtrip_succeeds(&env, &store, inputs).unwrap()
@@ -52,12 +54,13 @@ fn lmdb_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
     };
 
     let tmp_dir = tempdir().unwrap();
-    let env = LmdbEnvironment::new(&tmp_dir.path().to_path_buf(), *TEST_MAP_SIZE).unwrap();
+    let env =
+        LmdbEnvironment::new(&tmp_dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE).unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
 
     let inputs: BTreeMap<Blake2bHash, Trie<Key, StoredValue>> = inputs
         .into_iter()
-        .map(|trie| (Blake2bHash::new(&trie.to_bytes().unwrap()), trie))
+        .map(|trie| (hash::hash(&trie.to_bytes().unwrap()), trie))
         .collect();
 
     let ret = store_tests::roundtrip_succeeds(&env, &store, inputs).unwrap();

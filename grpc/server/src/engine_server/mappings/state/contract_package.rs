@@ -2,7 +2,8 @@ use std::{
     collections::BTreeSet,
     convert::{TryFrom, TryInto},
 };
-use types::{
+
+use casperlabs_types::{
     contracts::{ContractVersions, DisabledVersions, Groups},
     ContractPackage, ContractVersionKey, EntryPoint, EntryPointAccess, EntryPointType, Group,
     Parameter,
@@ -194,12 +195,12 @@ impl TryFrom<state::ContractVersionKey> for ContractVersionKey {
 mod tests {
     use proptest::proptest;
 
+    use casperlabs_types::gens;
+
     use super::*;
     use crate::engine_server::mappings::test_utils;
-    use types::gens;
 
     proptest! {
-
         #[test]
         fn round_trip(contract in gens::contract_package_arb()) {
             test_utils::protobuf_round_trip::<ContractPackage, state::ContractPackage>(contract);

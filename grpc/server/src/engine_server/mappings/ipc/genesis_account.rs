@@ -1,8 +1,7 @@
 use std::convert::{TryFrom, TryInto};
 
-use node::components::contract_runtime::core::engine_state::genesis::GenesisAccount;
-use node::components::contract_runtime::shared::motes::Motes;
-use types::account::AccountHash;
+use casperlabs_node::{types::Motes, GenesisAccount};
+use casperlabs_types::account::AccountHash;
 
 use crate::engine_server::{
     ipc::ChainSpec_GenesisConfig_ExecConfig_GenesisAccount, mappings::MappingError,

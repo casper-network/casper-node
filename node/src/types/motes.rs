@@ -1,27 +1,37 @@
-use std::fmt;
+use std::{
+    fmt::{self, Display, Formatter},
+    iter::Sum,
+    ops::{Add, Div, Mul, Sub},
+};
 
 use num::Zero;
+use serde::{Deserialize, Serialize};
 
-use types::U512;
+use casperlabs_types::U512;
 
 use crate::components::contract_runtime::shared::gas::Gas;
 
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+/// The smallest division of a CasperLabs token.
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct Motes(U512);
 
 impl Motes {
+    /// Constructs a new `Motes`.
     pub fn new(value: U512) -> Motes {
         Motes(value)
     }
 
+    /// Performs checked addition.
     pub fn checked_add(&self, rhs: Self) -> Option<Self> {
         self.0.checked_add(rhs.value()).map(Self::new)
     }
 
+    /// Returns the wrapped value.
     pub fn value(&self) -> U512 {
         self.0
     }
 
+    /// Constructs `Motes` from the given amount of gas at the given conversion rate.
     pub fn from_gas(gas: Gas, conv_rate: u64) -> Option<Self> {
         gas.value()
             .checked_mul(U512::from(conv_rate))
@@ -29,13 +39,13 @@ impl Motes {
     }
 }
 
-impl fmt::Display for Motes {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Display for Motes {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{:?}", self.0)
     }
 }
 
-impl std::ops::Add for Motes {
+impl Add for Motes {
     type Output = Motes;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -44,7 +54,7 @@ impl std::ops::Add for Motes {
     }
 }
 
-impl std::ops::Sub for Motes {
+impl Sub for Motes {
     type Output = Motes;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -53,7 +63,7 @@ impl std::ops::Sub for Motes {
     }
 }
 
-impl std::ops::Div for Motes {
+impl Div for Motes {
     type Output = Motes;
 
     fn div(self, rhs: Self) -> Self::Output {
@@ -62,7 +72,7 @@ impl std::ops::Div for Motes {
     }
 }
 
-impl std::ops::Mul for Motes {
+impl Mul for Motes {
     type Output = Motes;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -81,11 +91,21 @@ impl Zero for Motes {
     }
 }
 
+impl Sum for Motes {
+    fn sum<I>(iter: I) -> Self
+    where
+        I: Iterator<Item = Self>,
+    {
+        iter.fold(Self::zero(), |a, b| a + b)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use types::U512;
+    use casperlabs_types::U512;
 
-    use crate::components::contract_runtime::shared::{gas::Gas, motes::Motes};
+    use super::Motes;
+    use crate::components::contract_runtime::shared::gas::Gas;
 
     #[test]
     fn should_be_able_to_get_instance_of_motes() {

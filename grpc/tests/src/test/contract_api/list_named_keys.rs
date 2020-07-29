@@ -1,8 +1,10 @@
-use engine_test_support::{
+use casperlabs_engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use types::{account::AccountHash, contracts::NamedKeys, runtime_args, Key, RuntimeArgs};
+use casperlabs_types::{
+    account::AccountHash, contracts::NamedKeys, runtime_args, Key, RuntimeArgs,
+};
 
 const CONTRACT_LIST_NAMED_KEYS: &str = "list_named_keys.wasm";
 const NEW_NAME_ACCOUNT: &str = "Account";

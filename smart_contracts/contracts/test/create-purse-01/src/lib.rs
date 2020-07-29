@@ -4,7 +4,7 @@ extern crate alloc;
 
 use alloc::string::String;
 
-use contract::contract_api::{runtime, system};
+use casperlabs_contract::contract_api::{runtime, system};
 
 const ARG_PURSE_NAME: &str = "purse_name";
 

@@ -1,11 +1,11 @@
-use engine_test_support::{
+use casperlabs_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use types::{runtime_args, Phase, RuntimeArgs};
+use casperlabs_types::{runtime_args, Phase, RuntimeArgs};
 
 const ARG_PHASE: &str = "phase";
 

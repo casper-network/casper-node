@@ -9,13 +9,14 @@ use std::{
     time::Duration,
 };
 
+use prometheus::{IntCounter, Registry};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use crate::{
     components::{small_network::NodeId, Component},
-    effect::{requests::NetworkRequest, Effect, EffectBuilder, EffectExt, Multiple},
+    effect::{requests::NetworkRequest, EffectBuilder, EffectExt, Effects},
     utils::DisplayIter,
 };
 
@@ -28,6 +29,31 @@ pub(crate) struct Pinger {
     responsive_nodes: HashSet<NodeId>,
     /// Increasing ping counter.
     ping_counter: u32,
+    /// Pinger metrics.
+    metrics: PingerMetrics,
+}
+
+/// Metrics for the pinger component.
+#[derive(Debug)]
+struct PingerMetrics {
+    /// Number of pings sent out.
+    pings_sent: IntCounter,
+    /// Number of pongs received.
+    pongs_received: IntCounter,
+}
+
+impl PingerMetrics {
+    fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        let pings_sent = IntCounter::new("pinger_pings_sent", "number of pings received")?;
+        let pongs_received = IntCounter::new("pinger_pongs_received", "number of pongs received")?;
+        registry.register(Box::new(pings_sent.clone()))?;
+        registry.register(Box::new(pongs_received.clone()))?;
+
+        Ok(PingerMetrics {
+            pings_sent,
+            pongs_received,
+        })
+    }
 }
 
 /// Interval in which to send pings.
@@ -80,7 +106,7 @@ where
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,
         event: Self::Event,
-    ) -> Multiple<Effect<Self::Event>> {
+    ) -> Effects<Self::Event> {
         match event {
             Event::Timer => self.send_pings(effect_builder),
             Event::MessageReceived {
@@ -96,6 +122,9 @@ where
                 sender,
                 msg: Message::Pong(counter),
             } => {
+                // We count all pongs, even if they're stale.
+                self.metrics.pongs_received.inc();
+
                 // We've received a pong, if it is valid (same counter value), process it.
                 if counter == self.ping_counter {
                     self.responsive_nodes.insert(sender);
@@ -103,7 +132,7 @@ where
                     info!("received stale ping({}) from {}", counter, sender);
                 }
 
-                Default::default()
+                Effects::new()
             }
         }
     }
@@ -112,24 +141,26 @@ where
 impl Pinger {
     /// Create and initialize a new pinger.
     pub(crate) fn new<REv: From<Event> + Send + From<NetworkRequest<NodeId, Message>>>(
+        registry: &Registry,
         effect_builder: EffectBuilder<REv>,
-    ) -> (Self, Multiple<Effect<Event>>) {
+    ) -> Result<(Self, Effects<Event>), prometheus::Error> {
         let mut pinger = Pinger {
             responsive_nodes: HashSet::new(),
             ping_counter: 0,
+            metrics: PingerMetrics::new(registry)?,
         };
 
         // We send out a round of pings immediately on construction.
         let init = pinger.send_pings(effect_builder);
 
-        (pinger, init)
+        Ok((pinger, init))
     }
 
     /// Broadcast a ping and set a timer for the next broadcast.
     fn send_pings<REv: From<Event> + Send + From<NetworkRequest<NodeId, Message>>>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-    ) -> Multiple<Effect<Event>> {
+    ) -> Effects<Event> {
         info!(
             "starting new ping round, previously saw {{{}}}",
             DisplayIter::new(self.responsive_nodes.iter())
@@ -138,9 +169,10 @@ impl Pinger {
         // We increment the counter and clear pings beforehand, thus causing all pongs that are
         // still in flight to be timeouts.
         self.ping_counter += 1;
+        self.metrics.pings_sent.inc();
         self.responsive_nodes.clear();
 
-        let mut effects: Multiple<Effect<Event>> = Default::default();
+        let mut effects: Effects<Event> = Effects::new();
         effects.extend(
             effect_builder
                 .broadcast_message(Message::Ping(self.ping_counter))

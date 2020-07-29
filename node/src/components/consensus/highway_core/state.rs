@@ -2,12 +2,11 @@ use std::{
     cmp::Ordering,
     collections::HashMap,
     convert::identity,
-    fmt::{self, Display, Formatter},
     iter,
-    ops::Mul,
+    ops::{Div, Mul},
 };
 
-use derive_more::{Add, AddAssign, Sub, SubAssign, Sum};
+use derive_more::{Add, AddAssign, From, Sub, SubAssign, Sum};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
@@ -20,20 +19,52 @@ use super::{
     vertex::{Dependency, WireVote},
     vote::{Observation, Panorama, Vote},
 };
-use crate::components::consensus::highway_core::vertex::SignedWireVote;
-use crate::components::consensus::traits::Context;
+use crate::{
+    components::consensus::{highway_core::vertex::SignedWireVote, traits::Context},
+    types::Timestamp,
+};
+use iter::Sum;
 
 /// A vote weight.
 #[derive(
-    Copy, Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord, Add, Sub, AddAssign, SubAssign, Sum,
+    Copy,
+    Clone,
+    Default,
+    Debug,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Add,
+    Sub,
+    AddAssign,
+    SubAssign,
+    Sum,
+    From,
 )]
 pub(crate) struct Weight(pub(crate) u64);
+
+impl<'a> Sum<&'a Weight> for Weight {
+    fn sum<I: Iterator<Item = &'a Weight>>(iter: I) -> Self {
+        let mut sum = 0u64;
+        iter.for_each(|w| sum += w.0);
+        Weight(sum)
+    }
+}
 
 impl Mul<u64> for Weight {
     type Output = Self;
 
     fn mul(self, rhs: u64) -> Self {
         Weight(self.0 * rhs)
+    }
+}
+
+impl Div<u64> for Weight {
+    type Output = Self;
+
+    fn div(self, rhs: u64) -> Self {
+        Weight(self.0 / rhs)
     }
 }
 
@@ -49,6 +80,8 @@ pub(crate) enum VoteError {
     Creator,
     #[error("The signature is invalid.")]
     Signature,
+    #[error("The round length is invalid.")]
+    RoundLength,
 }
 
 /// A passive instance of the Highway protocol, containing its local state.
@@ -135,14 +168,19 @@ impl<C: Context> State<C> {
         self.opt_block(hash).unwrap()
     }
 
-    /// Returns the list of validator weights.
-    pub(crate) fn weights(&self) -> &[Weight] {
-        &self.weights
-    }
-
     /// Returns the `idx`th validator's voting weight.
     pub(crate) fn weight(&self, idx: ValidatorIndex) -> Weight {
         self.weights[idx.0 as usize]
+    }
+
+    /// Returns the total weight of all known-faulty validators.
+    pub(crate) fn faulty_weight(&self) -> Weight {
+        self.panorama
+            .iter()
+            .zip(&self.weights)
+            .filter(|(obs, _)| **obs == Observation::Faulty)
+            .map(|(_, w)| *w)
+            .sum()
     }
 
     /// Returns the sum of all validators' voting weights.
@@ -156,8 +194,8 @@ impl<C: Context> State<C> {
     }
 
     /// Returns the leader in the specified time slot.
-    pub(crate) fn leader(&self, timestamp: u64) -> ValidatorIndex {
-        let mut rng = ChaCha8Rng::seed_from_u64(self.seed.wrapping_add(timestamp));
+    pub(crate) fn leader(&self, timestamp: Timestamp) -> ValidatorIndex {
+        let mut rng = ChaCha8Rng::seed_from_u64(self.seed.wrapping_add(timestamp.millis()));
         // TODO: `rand` doesn't seem to document how it generates this. Needs to be portable.
         // We select a random one out of the `total_weight` weight units, starting numbering at 1.
         let r = Weight(rng.gen_range(1, self.total_weight().0 + 1));
@@ -200,6 +238,7 @@ impl<C: Context> State<C> {
             value,
             seq_number: vote.seq_number,
             timestamp: vote.timestamp,
+            round_exp: vote.round_exp,
         };
         Some(SignedWireVote {
             wire_vote: wvote,
@@ -274,7 +313,7 @@ impl<C: Context> State<C> {
 
     /// Returns the panorama seeing all votes seen by `pan` with a timestamp no later than
     /// `timestamp`. Accusations are preserved regardless of the evidence's timestamp.
-    pub(crate) fn panorama_cutoff(&self, pan: &Panorama<C>, timestamp: u64) -> Panorama<C> {
+    pub(crate) fn panorama_cutoff(&self, pan: &Panorama<C>, timestamp: Timestamp) -> Panorama<C> {
         let obs_cutoff = |obs: &Observation<C>| match obs {
             Observation::Correct(vhash) => self
                 .swimlane(vhash)
@@ -314,14 +353,27 @@ impl<C: Context> State<C> {
         if !justifications.all(|vh| self.vote(vh).timestamp <= wvote.timestamp) {
             return Err(VoteError::Timestamps);
         }
-        // Check that the vote's sequence number is one more than the creator's previous one.
-        let expected_seq_number = match wvote.panorama.get(creator) {
+        match wvote.panorama.get(creator) {
             Observation::Faulty => return Err(VoteError::Panorama),
-            Observation::None => 0,
-            Observation::Correct(hash) => 1 + self.vote(hash).seq_number,
-        };
-        if wvote.seq_number != expected_seq_number {
-            return Err(VoteError::SequenceNumber);
+            Observation::None if wvote.seq_number == 0 => (),
+            Observation::None => return Err(VoteError::SequenceNumber),
+            Observation::Correct(hash) => {
+                let prev_vote = self.vote(hash);
+                // The sequence number must be one more than the previous vote's.
+                if wvote.seq_number != 1 + prev_vote.seq_number {
+                    return Err(VoteError::SequenceNumber);
+                }
+                // The round exponent must only change one step at a time, and not within a round.
+                if prev_vote.round_exp != wvote.round_exp {
+                    let max_re = prev_vote.round_exp.max(wvote.round_exp);
+                    if prev_vote.round_exp + 1 < max_re
+                        || wvote.round_exp + 1 < max_re
+                        || prev_vote.timestamp >> max_re == wvote.timestamp >> max_re
+                    {
+                        return Err(VoteError::RoundLength);
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -396,7 +448,7 @@ impl<C: Context> State<C> {
 
     /// Returns a vector of validator indexes that equivocated between block
     /// identified by `fhash` and its parent.
-    pub(crate) fn get_new_equivocators(&self, fhash: &C::Hash) -> Vec<ValidatorIndex> {
+    pub(super) fn get_new_equivocators(&self, fhash: &C::Hash) -> Vec<ValidatorIndex> {
         let cvote = self.vote(fhash);
         let mut equivocators: Vec<ValidatorIndex> = Vec::new();
         let fblock = self.block(fhash);
@@ -510,6 +562,7 @@ pub(crate) mod tests {
         type ConsensusValue = u32;
         type ValidatorId = u32;
         type ValidatorSecret = TestSecret;
+        type Signature = u64;
         type Hash = u64;
         type InstanceId = u64;
 
@@ -519,7 +572,7 @@ pub(crate) mod tests {
             hasher.finish()
         }
 
-        fn validate_signature(
+        fn verify_signature(
             hash: &Self::Hash,
             public_key: &Self::ValidatorId,
             signature: &<Self::ValidatorSecret as ValidatorSecret>::Signature,

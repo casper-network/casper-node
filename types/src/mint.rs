@@ -12,7 +12,8 @@ const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
 
 /// Mint trait.
 pub trait Mint: RuntimeProvider + StorageProvider {
-    /// Mint new token with given `initial_balance` balance. Returns new purse on success, otherwise an error.
+    /// Mint new token with given `initial_balance` balance. Returns new purse on success, otherwise
+    /// an error.
     fn mint(&mut self, initial_balance: U512) -> Result<URef, Error> {
         let caller = self.get_caller();
         if !initial_balance.is_zero() && caller != SYSTEM_ACCOUNT {

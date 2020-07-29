@@ -1,9 +1,9 @@
+use casperlabs_types::Key;
+
+use super::op::Op;
 use crate::components::contract_runtime::shared::{
     additive_map::AdditiveMap, transform::Transform,
 };
-use types::Key;
-
-use super::op::Op;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ExecutionEffect {

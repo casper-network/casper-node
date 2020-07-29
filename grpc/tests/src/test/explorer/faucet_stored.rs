@@ -1,11 +1,11 @@
-use engine_test_support::{
+use casperlabs_engine_test_support::{
     internal::{
         utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
         DEFAULT_ACCOUNT_KEY, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
+use casperlabs_types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
 
 const FAUCET: &str = "faucet";
 const CALL_FAUCET: &str = "call_faucet";

@@ -2,10 +2,10 @@ use std::convert::TryInto;
 
 use rand::Rng;
 
-use node::components::contract_runtime::core::engine_state::{
+use casperlabs_node::components::contract_runtime::core::engine_state::{
     deploy_item::DeployItem, execute_request::ExecuteRequest,
 };
-use types::{
+use casperlabs_types::{
     account::AccountHash, contracts::ContractVersion, runtime_args, ContractHash, ProtocolVersion,
     RuntimeArgs,
 };
@@ -80,7 +80,7 @@ impl ExecuteRequestBuilder {
         args: RuntimeArgs,
     ) -> Self {
         let mut rng = rand::thread_rng();
-        let deploy_hash: [u8; 32] = rng.gen();
+        let deploy_hash = rng.gen();
 
         let deploy = DeployItemBuilder::new()
             .with_address(sender)
@@ -102,7 +102,7 @@ impl ExecuteRequestBuilder {
         args: RuntimeArgs,
     ) -> Self {
         let mut rng = rand::thread_rng();
-        let deploy_hash: [u8; 32] = rng.gen();
+        let deploy_hash = rng.gen();
 
         let deploy = DeployItemBuilder::new()
             .with_address(sender)

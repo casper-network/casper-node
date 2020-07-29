@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 
 /// Small network configuration.
 #[derive(Debug, Deserialize, Serialize)]
+// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
+#[serde(deny_unknown_fields)]
 pub struct Config {
     /// Interface to bind to.
     ///
@@ -21,10 +23,10 @@ pub struct Config {
     pub root_addr: SocketAddr,
 
     /// Path to certificate file.
-    pub cert: Option<PathBuf>,
+    pub cert_path: Option<PathBuf>,
 
-    /// Path to private key for certificate.
-    pub private_key: Option<PathBuf>,
+    /// Path to secret key for certificate.
+    pub secret_key_path: Option<PathBuf>,
 
     /// Maximum number of retries before removing an outgoing node. Unlimited if `None`.
     pub max_outgoing_retries: Option<u32>,
@@ -40,8 +42,8 @@ impl Config {
             bind_interface: Ipv4Addr::LOCALHOST.into(),
             bind_port: 0,
             root_addr: (Ipv4Addr::LOCALHOST, port).into(),
-            cert: None,
-            private_key: None,
+            cert_path: None,
+            secret_key_path: None,
             max_outgoing_retries: Some(360),
             outgoing_retry_delay_millis: 10_000,
         }

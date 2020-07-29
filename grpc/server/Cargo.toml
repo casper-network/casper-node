@@ -19,6 +19,8 @@ include = [
 ]
 
 [dependencies]
+casperlabs-node = { version = "0.1.0", path = "../../node", features = ["gens"] }
+casperlabs-types = { version = "0.6.0", path = "../../types", features = ["std", "gens"] }
 clap = "2"
 ctrlc = "3"
 dirs = "2"
@@ -26,9 +28,6 @@ grpc = "0.6.1"
 lmdb = "0.8"
 log = "0.4.8"
 protobuf = "=2.8"
-
-types = { version = "0.6.0", path = "../../types", package = "casperlabs-types", features = ["std", "gens"] }
-node = { path = "../../node", package = "casperlabs-node", features = ["gens"] }
 
 [build-dependencies]
 protoc-rust-grpc = "0.6.1"
@@ -39,10 +38,8 @@ rand = "0.7.2"
 proptest = "0.9.4"
 
 [features]
-test-support = ["node/test-support"]
-no-unstable-features = [
-    "types/no-unstable-features",
-]
+test-support = ["casperlabs-node/test-support"]
+no-unstable-features = ["casperlabs-types/no-unstable-features"]
 
 [[bin]]
 name = "casperlabs-engine-grpc-server"

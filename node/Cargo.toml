@@ -16,74 +16,84 @@ default-run = "casperlabs-node"
 ansi_term = "0.12.1"
 anyhow = "1.0.28"
 base16 = "0.2.1"
+base64 = "0.12.3"
 bincode = "1.2.1"
 blake2 = { version = "0.8.1", default-features = false }
 bytes = "0.5.4"
+casperlabs-types = { version = "0.6.0", path = "../types", features = ["std", "gens"] }
+chrono = "0.4.10"
+csv = "1.1.3"
 derive_more = "0.99.7"
 directories = "2.0.2"
 ed25519-dalek = { version = "1.0.0-pre.3", default-features = false, features = ["rand", "serde", "u64_backend"] }
 either = "1.5.3"
 enum-iterator = "0.6.0"
-thiserror = "1.0.18"
 futures = "0.3.5"
 getrandom = "0.1.14"
 hex = "0.4.2"
 hex_fmt = "0.3.0"
+hostname = "0.3.0"
 http = "0.2.1"
 itertools = "0.8.2"
 lazy_static = "1.4.0"
+libc = "0.2.66"
 linked-hash-map = "0.5.2"
 lmdb = "0.8.0"
+log = { version = "0.4.8", features = ["std", "serde", "kv_unstable"] }
 maplit = "1.0.2"
+num = { version = "0.2.0", default-features = false }
 num-derive = "0.3.0"
 num-traits = "0.2.10"
 openssl = "0.10.29"
 parity-wasm = "0.41.0"
+parking_lot = "0.10.0"
+pem = "0.8.1"
+prometheus = "0.9.0"
+proptest = { version = "0.9.4", optional = true }
 pwasm-utils = "0.12.0"
 rand = "0.7.3"
 rand_chacha = "0.2.2"
+regex = "1.3.9"
 rmp-serde = "0.14.3"
+semver = { version = "0.10.0", features = ["serde"] }
 serde = { version = "1.0.110", features = ["derive"] }
-serde_json = "1.0.55"
 serde-big-array = "0.3.0"
+serde_json = "1.0.55"
+signature = "1.1.0"
 smallvec = "1.4.0"
 structopt = "0.3.14"
 tempfile = "3.1.0"
-tokio = { version = "0.2.20", features = ["macros", "rt-threaded", "sync", "tcp", "time", "blocking"] }
+thiserror = "1.0.18"
+tokio = { version = "0.2.20", features = ["blocking", "macros", "rt-threaded", "sync", "tcp", "time"] }
 tokio-openssl = "0.4.0"
 tokio-serde = { version = "0.6.1", features = ["messagepack"] }
 tokio-util = { version = "0.3.1", features = ["codec"] }
 toml = "0.5.6"
 tracing = "0.1.14"
+tracing-futures = "0.2.4"
 tracing-subscriber = "0.2.5"
+uint = "0.8.3"
+uuid = { version = "0.8.1", features = ["serde", "v4"] }
+wabt = "0.10.0"
 warp = "0.2.3"
 wasmi = "0.6.2"
-types = { path = "../types", package = "casperlabs-types", features = ["std", "gens"] }
-chrono = "0.4.10"
-hostname = "0.3.0"
-libc = "0.2.66"
-log = { version = "0.4.8", features = ["std", "serde", "kv_unstable"] }
-num = { version = "0.2.0", default-features = false }
-proptest = { version = "0.9.4", optional = true }
-uuid = { version = "0.8.1", features = ["serde", "v4"] }
-wabt = "0.9.2"
-parking_lot = "0.10.0"
 
 [dev-dependencies]
 assert_matches = "1.3.0"
+criterion = "0.3.3"
+fake_instant = "0.4.0"
 lazy_static = "1"
 pnet = "0.26.0"
 proptest = "0.9.4"
-fake_instant = "0.4.0"
-rand_xorshift = { version = "~0.2.0" }
+rand_pcg = "0.2.1"
 rand_core = "0.5.1"
-criterion = "0.3.3"
+tokio = { version = "0.2.20", features = ["test-util"] }
 
 [features]
 vendored-openssl = ['openssl/vendored']
 test-support = []
 no-unstable-features = [
-    "types/no-unstable-features",
+    "casperlabs-types/no-unstable-features",
 ]
 gens = ["proptest"]
 
@@ -104,3 +114,6 @@ assets = [
     ["./target/release/casperlabs-node","/usr/bin/casperlabs-node", "755"],
     ["./target/release/casperlabs-client","/usr/bin/casperlabs-client", "755"]
 ]
+
+[package.metadata.docs.rs]
+features = ["no-unstable-features"]

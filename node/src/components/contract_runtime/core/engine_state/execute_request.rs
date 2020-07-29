@@ -1,13 +1,13 @@
 use std::mem;
 
-use crate::components::contract_runtime::shared::newtypes::Blake2bHash;
-use types::ProtocolVersion;
+use casperlabs_types::ProtocolVersion;
 
 use super::{deploy_item::DeployItem, execution_result::ExecutionResult};
+use crate::crypto::hash::{self, Digest};
 
 #[derive(Debug)]
 pub struct ExecuteRequest {
-    pub parent_state_hash: Blake2bHash,
+    pub parent_state_hash: Digest,
     pub block_time: u64,
     pub deploys: Vec<Result<DeployItem, ExecutionResult>>,
     pub protocol_version: ProtocolVersion,
@@ -15,7 +15,7 @@ pub struct ExecuteRequest {
 
 impl ExecuteRequest {
     pub fn new(
-        parent_state_hash: Blake2bHash,
+        parent_state_hash: Digest,
         block_time: u64,
         deploys: Vec<Result<DeployItem, ExecutionResult>>,
         protocol_version: ProtocolVersion,
@@ -36,7 +36,7 @@ impl ExecuteRequest {
 impl Default for ExecuteRequest {
     fn default() -> Self {
         Self {
-            parent_state_hash: [0u8; 32].into(),
+            parent_state_hash: hash::hash(&[]),
             block_time: 0,
             deploys: vec![],
             protocol_version: Default::default(),

@@ -12,7 +12,7 @@ doctest = false
 test = false
 
 [features]
-std = ["contract/std"]
+std = ["casperlabs-contract/std"]
 
 [dependencies]
-contract = { path = "../../../contract", package = "casperlabs-contract" }
+casperlabs-contract = { path = "../../../contract" }

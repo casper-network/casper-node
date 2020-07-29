@@ -1,12 +1,12 @@
-use engine_grpc_server::engine_server::{
+use casperlabs_engine_grpc_server::engine_server::{
     ipc::{
-        ChainSpec_ActivationPoint, ChainSpec_CostTable_WasmCosts, ChainSpec_UpgradePoint,
-        DeployCode, UpgradeRequest,
+        ChainSpec_ActivationPoint, ChainSpec_CostTable, ChainSpec_CostTable_WasmCosts,
+        ChainSpec_UpgradePoint, DeployCode, UpgradeRequest,
     },
     state,
 };
-use node::components::contract_runtime::shared::wasm_costs::WasmCosts;
-use types::ProtocolVersion;
+use casperlabs_node::components::contract_runtime::shared::wasm_costs::WasmCosts;
+use casperlabs_types::ProtocolVersion;
 
 pub struct UpgradeRequestBuilder {
     pre_state_hash: Vec<u8>,
@@ -73,8 +73,7 @@ impl UpgradeRequestBuilder {
         match self.new_costs {
             None => {}
             Some(new_costs) => {
-                let mut cost_table =
-                    engine_grpc_server::engine_server::ipc::ChainSpec_CostTable::new();
+                let mut cost_table = ChainSpec_CostTable::new();
                 cost_table.set_wasm(new_costs);
                 upgrade_point.set_new_costs(cost_table);
             }

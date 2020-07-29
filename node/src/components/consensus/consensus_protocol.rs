@@ -1,23 +1,16 @@
-// TODO: Remove when all code is used
-#![allow(dead_code)]
-use std::fmt::Debug;
+use std::{collections::BTreeMap, fmt::Debug};
 
 use anyhow::Error;
 
-use crate::components::consensus::traits::ConsensusValueT;
+use crate::{components::consensus::traits::ConsensusValueT, types::Timestamp};
 
 mod protocol_state;
 pub(crate) mod synchronizer;
 
-pub(crate) use protocol_state::{AddVertexOk, ProtocolState, VertexTrait};
-
-// TODO: Use `Timestamp` instead of `u64`.
-// Implement `Add`, `Sub` etc.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Timestamp(pub(crate) u64);
+pub(crate) use protocol_state::{ProtocolState, VertexTrait};
 
 /// Information about the context in which a new block is created.
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
 pub struct BlockContext {
     timestamp: Timestamp,
 }
@@ -35,15 +28,21 @@ impl BlockContext {
 }
 
 #[derive(Debug)]
-pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT> {
+pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
     CreatedGossipMessage(Vec<u8>),
     CreatedTargetedMessage(Vec<u8>, I),
-    InvalidIncomingMessage(Vec<u8>, Error),
+    InvalidIncomingMessage(Vec<u8>, I, Error),
     ScheduleTimer(Timestamp),
     /// Request deploys for a new block, whose timestamp will be the given `u64`.
     /// TODO: Add more details that are necessary for block creation.
     CreateNewBlock(BlockContext),
-    FinalizedBlock(C),
+    /// A block was finalized. The timestamp is from when the block was proposed.
+    FinalizedBlock {
+        value: C,
+        new_equivocators: Vec<VID>,
+        rewards: BTreeMap<VID, u64>,
+        timestamp: Timestamp,
+    },
     /// Request validation of the consensus value, contained in a message received from the given
     /// node.
     ///
@@ -54,26 +53,26 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT> {
 }
 
 /// An API for a single instance of the consensus.
-pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT> {
+pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID> {
     /// Handles an incoming message (like NewVote, RequestDependency).
     fn handle_message(
         &mut self,
         sender: I,
         msg: Vec<u8>,
-    ) -> Result<Vec<ConsensusProtocolResult<I, C>>, Error>;
+    ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
 
     /// Triggers consensus' timer.
     fn handle_timer(
         &mut self,
         timerstamp: Timestamp,
-    ) -> Result<Vec<ConsensusProtocolResult<I, C>>, Error>;
+    ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
 
     /// Proposes a new value for consensus.
     fn propose(
-        &self,
+        &mut self,
         value: C,
         block_context: BlockContext,
-    ) -> Result<Vec<ConsensusProtocolResult<I, C>>, Error>;
+    ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
 
     /// Marks the `value` as valid or invalid, based on validation requested via
     /// `ConsensusProtocolResult::ValidateConsensusvalue`.
@@ -81,7 +80,7 @@ pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT> {
         &mut self,
         value: &C,
         valid: bool,
-    ) -> Result<Vec<ConsensusProtocolResult<I, C>>, Error>;
+    ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
 }
 
 #[cfg(test)]
@@ -122,35 +121,22 @@ mod example {
     #[derive(Debug)]
     struct Error;
 
-    impl<I, P: ProtocolState> ConsensusProtocol<I, ProtoBlock> for DagSynchronizerState<I, P> {
-        fn handle_message(
-            &mut self,
-            _sender: I,
-            _msg: Vec<u8>,
-        ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock>>, anyhow::Error> {
+    type CpResult<I> = Result<Vec<ConsensusProtocolResult<I, ProtoBlock, VIdU64>>, anyhow::Error>;
+
+    impl<I, P: ProtocolState> ConsensusProtocol<I, ProtoBlock, VIdU64> for DagSynchronizerState<I, P> {
+        fn handle_message(&mut self, _sender: I, _msg: Vec<u8>) -> CpResult<I> {
             unimplemented!()
         }
 
-        fn handle_timer(
-            &mut self,
-            _timestamp: Timestamp,
-        ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock>>, anyhow::Error> {
+        fn handle_timer(&mut self, _timestamp: Timestamp) -> CpResult<I> {
             unimplemented!()
         }
 
-        fn resolve_validity(
-            &mut self,
-            _value: &ProtoBlock,
-            _valid: bool,
-        ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock>>, anyhow::Error> {
+        fn resolve_validity(&mut self, _value: &ProtoBlock, _valid: bool) -> CpResult<I> {
             unimplemented!()
         }
 
-        fn propose(
-            &self,
-            _value: ProtoBlock,
-            _block_context: BlockContext,
-        ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock>>, anyhow::Error> {
+        fn propose(&mut self, _value: ProtoBlock, _block_context: BlockContext) -> CpResult<I> {
             unimplemented!()
         }
     }

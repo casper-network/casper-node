@@ -8,9 +8,7 @@ fn radix_is_256() {
 }
 
 mod pointer_block {
-    use crate::components::contract_runtime::shared::newtypes::Blake2bHash;
-
-    use crate::components::contract_runtime::storage::trie::*;
+    use crate::{components::contract_runtime::storage::trie::*, crypto::hash};
 
     /// A defense against changes to [`RADIX`](history::trie::RADIX).
     #[test]
@@ -20,7 +18,7 @@ mod pointer_block {
 
     #[test]
     fn assignment_and_indexing() {
-        let test_hash = Blake2bHash::new(b"TrieTrieAgain");
+        let test_hash = hash::hash(b"TrieTrieAgain");
         let leaf_pointer = Some(Pointer::LeafPointer(test_hash));
         let mut pointer_block = PointerBlock::new();
         pointer_block[0] = leaf_pointer;
@@ -34,7 +32,7 @@ mod pointer_block {
     #[test]
     #[should_panic]
     fn assignment_off_end() {
-        let test_hash = Blake2bHash::new(b"TrieTrieAgain");
+        let test_hash = hash::hash(b"TrieTrieAgain");
         let leaf_pointer = Some(Pointer::LeafPointer(test_hash));
         let mut pointer_block = PointerBlock::new();
         pointer_block[RADIX] = leaf_pointer;
@@ -51,7 +49,7 @@ mod pointer_block {
 mod proptests {
     use proptest::prelude::proptest;
 
-    use types::bytesrepr;
+    use casperlabs_types::bytesrepr;
 
     use crate::components::contract_runtime::storage::trie::gens::*;
 
