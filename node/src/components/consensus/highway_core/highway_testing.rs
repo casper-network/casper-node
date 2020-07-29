@@ -284,8 +284,8 @@ where
                     None
                 }
                 DeliverySchedule::AtInstant(timestamp) => {
+                    trace!("{:?} scheduled for {:?}", hwm, timestamp);
                     let targeted = hwm.into_targeted(recipient);
-                    trace!("{:?} scheduled for {:?}", targeted, timestamp);
                     Some((targeted, timestamp))
                 }
             })
@@ -372,8 +372,11 @@ where
                     .call_validator(&validator_id, |consensus| consensus.handle_timer(timestamp))?,
 
                 NewVertex(v) => {
-                    match self.add_vertex(validator_id, sender_id, v)? {
-                        Ok(msgs) => msgs,
+                    match self.add_vertex(validator_id, sender_id, v.clone())? {
+                        Ok(msgs) => {
+                            trace!("{:?} successfuly added to the state.", v);
+                            msgs
+                        }
                         Err((v, error)) => {
                             // TODO: Replace with tracing library and maybe add to sender state?
                             error!("{:?} sent an invalid vertex {:?} to {:?} that resulted in {:?} error", sender_id, v, validator_id, error);
@@ -424,7 +427,7 @@ where
         Ok(messages)
     }
 
-    // Adds vertex to the validator's state.
+    // Adds vertex to the `recipient` validator state.
     // Synchronizes its state if necessary.
     // From the POV of the test system, synchronization is immediate.
     #[allow(clippy::type_complexity)]
