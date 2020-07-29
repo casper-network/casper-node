@@ -163,6 +163,7 @@ impl<C: Context> ActiveValidator<C> {
         let r_exp = self.round_exp(state, timestamp);
         timestamp >> r_exp == vote.timestamp >> r_exp // Current round.
             && state.leader(vote.timestamp) == vote.creator // The creator is the round's leader.
+            && vote.timestamp == round_id(vote.timestamp, vote.round_exp) // Check if it's a lambda message.
             && vote.creator != self.vidx // We didn't send it ourselves.
             && !state.has_evidence(vote.creator) // The creator is not faulty.
             && self.latest_vote(state)
