@@ -247,17 +247,6 @@ where
     /// and pass it to the recipient validator for execution.
     /// Messages returned from the execution are scheduled for later delivery.
     pub(crate) fn crank<R: Rng>(&mut self, rand: &mut R) -> Result<CrankOk, TestRunError> {
-        // Stop the test when each node finalized all consensus values.
-        // Note that we're not testing the order of finalization here.
-        // TODO: Consider moving out all the assertions to client side.
-        if self
-            .virtual_net
-            .validators()
-            .all(|v| v.finalized_count() == self.consensus_values_num)
-        {
-            return Ok(CrankOk::Done);
-        }
-
         let QueueEntry {
             delivery_time,
             recipient,
@@ -304,7 +293,18 @@ where
 
         self.virtual_net.dispatch_messages(targeted_messages);
 
-        Ok(CrankOk::Continue)
+        // Stop the test when each node finalized all consensus values.
+        // Note that we're not testing the order of finalization here.
+        // TODO: Consider moving out all the assertions to client side.
+        if self
+            .virtual_net
+            .validators()
+            .all(|v| v.finalized_count() == self.consensus_values_num)
+        {
+            return Ok(CrankOk::Done);
+        } else {
+            Ok(CrankOk::Continue)
+        }
     }
 
     fn next_consensus_value(&mut self) -> Option<ConsensusValue> {
