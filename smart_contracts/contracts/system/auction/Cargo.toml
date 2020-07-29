@@ -15,4 +15,3 @@ std = ["casperlabs-contract/std", "casperlabs-types/std"]
 [dependencies]
 casperlabs-contract = { path = "../../../contract" }
 casperlabs-types = { path = "../../../../types" }
-itertools = "0.9"

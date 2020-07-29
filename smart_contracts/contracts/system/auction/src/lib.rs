@@ -8,14 +8,13 @@ mod error;
 mod internal;
 mod providers;
 
-use alloc::{collections::BinaryHeap, vec::Vec};
+use alloc::{collections::BTreeMap, vec::Vec};
 
 use casperlabs_types::{
     account::AccountHash,
     auction::{ActiveBid, DelegationRate, SeigniorageRecipients},
     URef, U512,
 };
-use itertools::Itertools;
 
 pub use entry_points::get_entry_points;
 pub use error::{Error, Result};
@@ -325,38 +324,30 @@ where
             .into_iter()
             .map(|(validator_account_hash, amount)| (validator_account_hash, amount.staked_amount));
 
-        // Collect validator's entries from both maps into a single vector.
-        let mut all_scores: Vec<_> = active_bids_scores
-            .chain(founder_validators_scores)
-            .collect();
-
-        // Sort by account hashes
-        all_scores.sort_by(|(lhs, _), (rhs, _)| lhs.cmp(rhs));
+        // Validator's entries from both maps as a single iterable.
+        let all_scores = active_bids_scores.chain(founder_validators_scores);
 
         // All the scores are then grouped by the account hash to calculate a sum of each consecutive scores for each validator.
-        // Output of this operation is collected into a binary heap to sort it while
-        let mut scores: BinaryHeap<(U512, AccountHash)> = all_scores
-            .into_iter()
-            .group_by(|(account_hash, _amount)| *account_hash)
-            .into_iter()
-            .map(|(key, group)| {
-                (
-                    // Sums consecutive values
-                    group.map(|(_, amount)| amount).sum(),
-                    key,
-                )
-            })
-            .collect();
-
-        // Take N greatest elements from the heap
-        // NOTE: In future we can use into_iter_sorted() which is currently a nightly feature
-        let mut era_validators = Vec::with_capacity(AUCTION_SLOTS);
-        for _ in 0..AUCTION_SLOTS {
-            match scores.pop() {
-                Some((_score, account_hash)) => era_validators.push(account_hash),
-                None => break,
-            }
+        let mut scores = BTreeMap::new();
+        for (account_hash, score) in all_scores {
+            scores
+                .entry(account_hash)
+                .and_modify(|acc| *acc += score)
+                .or_insert_with(|| score);
         }
+
+        // Compute new era validators.
+        let era_validators = {
+            let mut scores: Vec<_> = scores.into_iter().collect();
+            // Sort the results in descending order
+            scores.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
+            // Get top N winners
+            scores
+                .into_iter()
+                .map(|(account_hash, _score)| account_hash)
+                .take(AUCTION_SLOTS)
+                .collect()
+        };
 
         internal::set_era_validators(self, era_validators)
     }
