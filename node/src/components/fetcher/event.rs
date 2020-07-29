@@ -13,7 +13,7 @@ pub enum FetchResult<T: Item> {
     FromPeer(T, NodeId),
 }
 
-pub(crate) type FetchResponder<T: Item> = Responder<Option<Box<FetchResult<T>>>>;
+pub(crate) type FetchResponder<T> = Responder<Option<Box<FetchResult<T>>>>;
 
 #[derive(Debug, PartialEq)]
 pub enum RequestDirection {
@@ -39,10 +39,7 @@ pub enum Event<T: Item> {
         result: Box<Result<T>>,
     },
     /// The timeout has elapsed and we should clean up state.
-    TimeoutPeer {
-        id: T::Id,
-        peer: NodeId,
-    },
+    TimeoutPeer { id: T::Id, peer: NodeId },
     /// An incoming network message.
     MessageReceived { sender: NodeId, payload: Message<T> },
     /// The result of the `Fetcher` putting a deploy to the storage component.
@@ -77,12 +74,11 @@ impl<T: Item> Display for Event<T> {
                 "check get from peer timeout for {} with {}",
                 id, peer
             ),
-            Event::Fetch { id, .. } => {
-                write!(formatter, "request to fetch item at hash {}", id)
-            }
-            Event::MessageReceived { sender, payload: message } => {
-                write!(formatter, "{} received from {}", message, sender)
-            }
+            Event::Fetch { id, .. } => write!(formatter, "request to fetch item at hash {}", id),
+            Event::MessageReceived {
+                sender,
+                payload: message,
+            } => write!(formatter, "{} received from {}", message, sender),
             Event::StoredFromPeerResult { item, result, .. } => {
                 if result.is_ok() {
                     write!(formatter, "put {} to store", *item.id())
@@ -90,11 +86,7 @@ impl<T: Item> Display for Event<T> {
                     write!(formatter, "failed to put {} to store", *item.id())
                 }
             }
-            Event::GetFromStoreResult {
-                id,
-                result,
-                ..
-            } => {
+            Event::GetFromStoreResult { id, result, .. } => {
                 if result.is_ok() {
                     write!(formatter, "got {} from store", id)
                 } else {

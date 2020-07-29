@@ -79,7 +79,7 @@ pub trait ItemFetcher<T: Item + 'static> {
     ) -> Effects<Event<T>> {
         let request_direction = if let Some(responder) = maybe_responder {
             // Capture responder for later signalling.
-            let mut responders = self.responders();
+            let responders = self.responders();
             responders.entry((id, peer)).or_default().push(responder);
             RequestDirection::Outbound
         } else {
@@ -230,7 +230,9 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
 }
 
 impl<T: Item + 'static, REv: ReactorEventT<T>> Component<REv> for Fetcher<T>
-    where Fetcher<T> : ItemFetcher<T> {
+where
+    Fetcher<T>: ItemFetcher<T>,
+{
     type Event = Event<T>;
 
     fn handle_event<R: Rng + ?Sized>(
