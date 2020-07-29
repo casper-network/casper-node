@@ -108,7 +108,7 @@ impl<C: Context> Debug for WireVote<C> {
         f.debug_struct("WireVote")
             .field("hash()", &self.hash())
             .field("value", &self.value.as_ref().map(|_| Ellipsis))
-            .field("creator", &self.creator)
+            .field("creator_idx", &self.creator.0)
             .field("seq_number", &self.seq_number)
             .field("timestamp", &self.timestamp.millis())
             .field("panorama", &self.panorama.0)
