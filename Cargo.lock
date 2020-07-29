@@ -347,15 +347,17 @@ dependencies = [
 name = "casperlabs-client"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "base64 0.12.3",
  "casperlabs-node",
  "casperlabs-types",
+ "clap",
+ "futures 0.3.5",
  "hex",
+ "lazy_static",
  "rand 0.7.3",
  "reqwest",
  "serde",
  "serde_json",
- "structopt",
  "tokio 0.2.22",
 ]
 
