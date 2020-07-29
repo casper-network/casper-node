@@ -168,12 +168,16 @@ impl<C: Context> Highway<C> {
         &mut self,
         ValidVertex(vertex): ValidVertex<C>,
     ) -> Vec<Effect<C>> {
-        match vertex {
-            Vertex::Vote(vote) => self.add_valid_vote(vote),
-            Vertex::Evidence(evidence) => {
-                self.state.add_evidence(evidence);
-                vec![]
+        if !self.has_vertex(&vertex) {
+            match vertex {
+                Vertex::Vote(vote) => self.add_valid_vote(vote),
+                Vertex::Evidence(evidence) => {
+                    self.state.add_evidence(evidence);
+                    vec![]
+                }
             }
+        } else {
+            vec![]
         }
     }
 
