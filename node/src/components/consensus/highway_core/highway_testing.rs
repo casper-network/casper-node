@@ -73,9 +73,8 @@ impl HighwayMessage {
         let create_msg = |hwm: HighwayMessage| Message::new(creator, hwm);
 
         match self {
-            Timer(_) => TargetedMessage::new(create_msg(self), Target::SingleValidator(creator)),
             NewVertex(_) => TargetedMessage::new(create_msg(self), Target::AllExcept(creator)),
-            RequestBlock(_) => {
+            Timer(_) | RequestBlock(_) => {
                 TargetedMessage::new(create_msg(self), Target::SingleValidator(creator))
             }
         }
