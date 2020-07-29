@@ -90,7 +90,7 @@ pub extern "C" fn release_founder() {
 
 #[no_mangle]
 pub extern "C" fn read_winners() {
-    let result = AuctionContract.read_winners();
+    let result = AuctionContract.read_winners().unwrap_or_revert();
 
     let cl_value = CLValue::from_t(result).unwrap_or_revert();
     runtime::ret(cl_value)
@@ -169,12 +169,14 @@ pub extern "C" fn undelegate() {
 pub extern "C" fn quash_bid() {
     let validator_keys: Vec<AccountHash> = runtime::get_named_arg("validator_keys");
 
-    AuctionContract.quash_bid(&validator_keys);
+    AuctionContract
+        .quash_bid(&validator_keys)
+        .unwrap_or_revert();
 }
 
 #[no_mangle]
 pub extern "C" fn run_auction() {
-    AuctionContract.run_auction();
+    AuctionContract.run_auction().unwrap_or_revert()
 }
 
 pub fn get_entry_points() -> EntryPoints {
@@ -254,7 +256,7 @@ pub fn get_entry_points() -> EntryPoints {
             Parameter::new("validator_account_hash", AccountHash::cl_type()),
             Parameter::new("quantity", U512::cl_type()),
         ],
-        <(URef, U512)>::cl_type(),
+        U512::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );

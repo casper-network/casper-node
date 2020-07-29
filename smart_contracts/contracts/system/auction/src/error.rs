@@ -13,6 +13,8 @@ pub enum Error {
     Transfer,
     InvalidQuantity,
     BidNotFound,
+    ValidatorNotFound,
+    DelegatorNotFound,
 }
 
 impl From<bytesrepr::Error> for Error {
