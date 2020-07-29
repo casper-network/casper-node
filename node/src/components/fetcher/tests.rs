@@ -371,15 +371,14 @@ async fn should_timeout_fetch_from_peer() {
             &holding_node,
             &mut rng,
             move |event: &Event| -> bool {
-                match event {
-                    Event::NetworkRequest(request) => match request {
-                        NetworkRequest::SendMessage { payload, .. } => match payload {
-                            Message::GetResponse(_) => true,
-                            _ => false,
-                        },
-                        _ => false,
-                    },
-                    _ => false,
+                if let Event::NetworkRequest(NetworkRequest::SendMessage {
+                    payload: Message::GetResponse(_),
+                    ..
+                }) = event
+                {
+                    true
+                } else {
+                    false
                 }
             },
             TIMEOUT,
