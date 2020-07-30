@@ -190,7 +190,8 @@ pub extern "C" fn quash_bid() {
 
 #[no_mangle]
 pub extern "C" fn run_auction() {
-    AuctionContract.run_auction().unwrap_or_revert()
+    // AuctionContract.run_auction().unwrap_or_revert()
+    assert!(false);
 }
 
 pub fn get_entry_points() -> EntryPoints {

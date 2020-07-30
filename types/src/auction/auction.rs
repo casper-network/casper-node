@@ -1,4 +1,4 @@
-use alloc::collections::BTreeMap;
+use alloc::{collections::BTreeMap, vec::Vec};
 
 use super::{
     internal,
@@ -25,10 +25,6 @@ const AUCTION_SLOTS: usize = 5;
 /// Bondign auctions contract implementation.
 pub trait Auction: StorageProvider + ProofOfStakeProvider + SystemProvider
 where
-    // <Self as StorageProvider>::Error: From<Error>,
-    // <Self as SystemProvider>::Error: From<Error>,
-    // <Self as StorageProvider>::Error: From<Error>,
-    // <Self as SystemProvider>::Error: From<Error>,
     Error: From<<Self as StorageProvider>::Error>
         + From<<Self as SystemProvider>::Error>
         + From<<Self as ProofOfStakeProvider>::Error>,

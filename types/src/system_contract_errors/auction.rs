@@ -1,7 +1,8 @@
 //! Home of the Auction contract's [`Error`] type.
-use failure::Fail;
-
+use alloc::vec::Vec;
 use core::result::Result as StdResult;
+
+use failure::Fail;
 
 use crate::{bytesrepr, CLType, CLTyped};
 use bytesrepr::{ToBytes, U8_SERIALIZED_LENGTH};

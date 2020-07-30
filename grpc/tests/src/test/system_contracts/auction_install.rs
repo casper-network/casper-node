@@ -61,8 +61,7 @@ fn should_run_auction_install_contract() {
         DEFAULT_BLOCK_TIME,
         DEPLOY_HASH_2,
         "install",
-        runtime_args! {
-        },
+        runtime_args! {},
         vec![],
     );
     let (auction_hash, _ret_urefs, effect): (ContractHash, _, _) =
