@@ -1,4 +1,4 @@
-use std::result;
+use std::{io, path::PathBuf, result};
 
 use base64::DecodeError;
 use ed25519_dalek::SignatureError;
@@ -10,7 +10,7 @@ use thiserror::Error;
 pub type Result<T> = result::Result<T, Error>;
 
 /// Cryptographic errors.
-#[derive(Clone, PartialEq, Debug, Error)]
+#[derive(Debug, Error)]
 pub enum Error {
     /// Error resulting from creating or using asymmetric key types.
     #[error("asymmetric key error: {0}")]
@@ -18,13 +18,14 @@ pub enum Error {
     /// Error resulting when decoding a type from a hex-encoded representation.
     #[error("parsing from hex: {0}")]
     FromHex(#[from] FromHexError),
-    /// Error while trying to read in a file.
-    #[error("error reading {file}: {error_msg}")]
-    ReadFile {
+    /// Error trying to read a private key.
+    #[error("error loading private key from file \"{0}\": {error}", .path.display())]
+    PrivateKeyLoad {
         /// The file attempted to be read.
-        file: String,
+        path: PathBuf,
         /// The underlying error message.
-        error_msg: String,
+        #[source]
+        error: io::Error,
     },
     /// Error resulting when decoding a type from a base64 representation.
     #[error("decoding error: {0}")]

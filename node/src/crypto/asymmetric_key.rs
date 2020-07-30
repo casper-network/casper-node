@@ -63,9 +63,10 @@ impl SecretKey {
 
     /// Attempt to read the secret key bytes from configured file path.
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self> {
-        let payload = fs::read_to_string(file.as_ref()).map_err(|error| Error::ReadFile {
-            file: file.as_ref().display().to_string(),
-            error_msg: error.to_string(),
+        let path = file.as_ref();
+        let payload = fs::read_to_string(path).map_err(|error| Error::PrivateKeyLoad {
+            path: path.to_owned(),
+            error,
         })?;
         let pem = pem::parse(payload)?;
         Self::ed25519_from_bytes(pem.contents)
