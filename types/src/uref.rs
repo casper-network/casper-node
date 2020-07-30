@@ -1,7 +1,9 @@
 use alloc::{format, string::String, vec::Vec};
 use core::{
+    array::TryFromSliceError,
     convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
+    num::ParseIntError,
 };
 
 use hex_fmt::HexFmt;
@@ -14,8 +16,38 @@ pub const UREF_ADDR_LENGTH: usize = 32;
 /// The number of bytes in a serialized [`URef`] where the [`AccessRights`] are not `None`.
 pub const UREF_SERIALIZED_LENGTH: usize = UREF_ADDR_LENGTH + ACCESS_RIGHTS_SERIALIZED_LENGTH;
 
+const PREFIX: &str = "uref-";
+
 /// The address of a [`URef`](types::URef) (unforgeable reference) on the network.
 pub type URefAddr = [u8; UREF_ADDR_LENGTH];
+
+#[derive(Debug)]
+pub enum FromStrError {
+    InvalidPrefix,
+    MissingSuffix,
+    InvalidAccessRights,
+    Hex(base16::DecodeError),
+    Int(ParseIntError),
+    Address(TryFromSliceError),
+}
+
+impl From<base16::DecodeError> for FromStrError {
+    fn from(error: base16::DecodeError) -> Self {
+        FromStrError::Hex(error)
+    }
+}
+
+impl From<ParseIntError> for FromStrError {
+    fn from(error: ParseIntError) -> Self {
+        FromStrError::Int(error)
+    }
+}
+
+impl From<TryFromSliceError> for FromStrError {
+    fn from(error: TryFromSliceError) -> Self {
+        FromStrError::Address(error)
+    }
+}
 
 /// Represents an unforgeable reference, containing an address in the network's global storage and
 /// the [`AccessRights`] of the reference.
@@ -81,16 +113,33 @@ impl URef {
 
     /// Formats the address and access rights of the [`URef`] in an unique way that could be used as
     /// a name when storing the given `URef` in a global state.
-    pub fn as_string(&self) -> String {
+    pub fn to_formatted_string(&self) -> String {
         // Extract bits as numerical value, with no flags marked as 0.
         let access_rights_bits = self.access_rights().bits();
         // Access rights is represented as octal, which means that max value of u8 can
         // be represented as maximum of 3 octal digits.
         format!(
-            "uref-{}-{:03o}",
+            "{}{}-{:03o}",
+            PREFIX,
             base16::encode_lower(&self.addr()),
             access_rights_bits
         )
+    }
+
+    /// Parses a string formatted as per `Self::as_string()` into a `URef`.
+    pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
+        let remainder = input
+            .strip_prefix(PREFIX)
+            .ok_or_else(|| FromStrError::InvalidPrefix)?;
+        let parts = remainder.splitn(2, '-').collect::<Vec<_>>();
+        if parts.len() != 2 {
+            return Err(FromStrError::MissingSuffix);
+        }
+        let addr = URefAddr::try_from(base16::decode(parts[0])?.as_ref())?;
+        let access_rights_value = u8::from_str_radix(parts[1], 8)?;
+        let access_rights = AccessRights::from_bits(access_rights_value)
+            .ok_or_else(|| FromStrError::InvalidAccessRights)?;
+        Ok(URef(addr, access_rights))
     }
 }
 
@@ -153,19 +202,62 @@ mod tests {
         let addr_array = [0u8; 32];
         let uref_a = URef::new(addr_array, AccessRights::READ);
         assert_eq!(
-            uref_a.as_string(),
+            uref_a.to_formatted_string(),
             "uref-0000000000000000000000000000000000000000000000000000000000000000-001"
         );
         let uref_b = URef::new(addr_array, AccessRights::WRITE);
         assert_eq!(
-            uref_b.as_string(),
+            uref_b.to_formatted_string(),
             "uref-0000000000000000000000000000000000000000000000000000000000000000-002"
         );
 
         let uref_c = uref_b.remove_access_rights();
         assert_eq!(
-            uref_c.as_string(),
+            uref_c.to_formatted_string(),
             "uref-0000000000000000000000000000000000000000000000000000000000000000-000"
         );
+    }
+
+    fn round_trip(uref: URef) {
+        let string = uref.to_formatted_string();
+        let parsed_uref = URef::from_formatted_str(&string).unwrap();
+        assert_eq!(uref, parsed_uref);
+    }
+
+    #[test]
+    fn uref_from_str() {
+        round_trip(URef::new([0; 32], AccessRights::NONE));
+        round_trip(URef::new([255; 32], AccessRights::READ_ADD_WRITE));
+
+        let invalid_prefix =
+            "ref-0000000000000000000000000000000000000000000000000000000000000000-000";
+        assert!(URef::from_formatted_str(invalid_prefix).is_err());
+
+        let invalid_prefix =
+            "uref0000000000000000000000000000000000000000000000000000000000000000-000";
+        assert!(URef::from_formatted_str(invalid_prefix).is_err());
+
+        let short_addr = "uref-00000000000000000000000000000000000000000000000000000000000000-000";
+        assert!(URef::from_formatted_str(short_addr).is_err());
+
+        let long_addr =
+            "uref-000000000000000000000000000000000000000000000000000000000000000000-000";
+        assert!(URef::from_formatted_str(long_addr).is_err());
+
+        let invalid_hex =
+            "uref-000000000000000000000000000000000000000000000000000000000000000g-000";
+        assert!(URef::from_formatted_str(invalid_hex).is_err());
+
+        let invalid_suffix_separator =
+            "uref-0000000000000000000000000000000000000000000000000000000000000000:000";
+        assert!(URef::from_formatted_str(invalid_suffix_separator).is_err());
+
+        let invalid_suffix =
+            "uref-0000000000000000000000000000000000000000000000000000000000000000-abc";
+        assert!(URef::from_formatted_str(invalid_suffix).is_err());
+
+        let invalid_access_rights =
+            "uref-0000000000000000000000000000000000000000000000000000000000000000-200";
+        assert!(URef::from_formatted_str(invalid_access_rights).is_err());
     }
 }

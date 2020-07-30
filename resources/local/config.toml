@@ -59,7 +59,7 @@ outgoing_retry_delay_millis = 10000
 bind_interface = '127.0.0.1'
 
 # Port to bind to.  Use 0 for a random port.
-bind_port = 0
+bind_port = 7777
 
 
 # ===============================================

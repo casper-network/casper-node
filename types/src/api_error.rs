@@ -716,12 +716,12 @@ mod tests {
 
     #[test]
     fn error_values() {
-        assert_eq!(65_024_u32, ApiError::Mint(0).into()); // MINT_ERROR_OFFSET == 65,024
-        assert_eq!(65_279_u32, ApiError::Mint(u8::MAX).into());
-        assert_eq!(65_280_u32, ApiError::ProofOfStake(0).into()); // POS_ERROR_OFFSET == 65,280
-        assert_eq!(65_535_u32, ApiError::ProofOfStake(u8::MAX).into());
-        assert_eq!(65_536_u32, ApiError::User(0).into()); // u16::MAX + 1
-        assert_eq!(131_071_u32, ApiError::User(u16::MAX).into()); // 2 * u16::MAX + 1
+        assert_eq!(65_024_u32, u32::from(ApiError::Mint(0))); // MINT_ERROR_OFFSET == 65,024
+        assert_eq!(65_279_u32, u32::from(ApiError::Mint(u8::MAX)));
+        assert_eq!(65_280_u32, u32::from(ApiError::ProofOfStake(0))); // POS_ERROR_OFFSET == 65,280
+        assert_eq!(65_535_u32, u32::from(ApiError::ProofOfStake(u8::MAX)));
+        assert_eq!(65_536_u32, u32::from(ApiError::User(0))); // u16::MAX + 1
+        assert_eq!(131_071_u32, u32::from(ApiError::User(u16::MAX))); // 2 * u16::MAX + 1
     }
 
     #[test]

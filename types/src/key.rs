@@ -1,17 +1,24 @@
 use alloc::{format, string::String, vec::Vec};
-use core::fmt::{self, Debug, Display, Formatter};
+use core::{
+    array::TryFromSliceError,
+    convert::TryFrom,
+    fmt::{self, Debug, Display, Formatter},
+};
 
 use hex_fmt::HexFmt;
 
 use crate::{
-    account::AccountHash,
+    account::{AccountHash, TryFromSliceForAccountHashError},
     bytesrepr::{self, Error, FromBytes, ToBytes},
-    URef, UREF_SERIALIZED_LENGTH,
+    uref::{self, URef, UREF_SERIALIZED_LENGTH},
 };
 
 const ACCOUNT_ID: u8 = 0;
 const HASH_ID: u8 = 1;
 const UREF_ID: u8 = 2;
+
+const ACCOUNT_PREFIX: &str = "account-account_hash-";
+const HASH_PREFIX: &str = "hash-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -53,6 +60,39 @@ pub enum Key {
     URef(URef),
 }
 
+#[derive(Debug)]
+pub enum FromStrError {
+    InvalidPrefix,
+    Hex(base16::DecodeError),
+    Account(TryFromSliceForAccountHashError),
+    Hash(TryFromSliceError),
+    URef(uref::FromStrError),
+}
+
+impl From<base16::DecodeError> for FromStrError {
+    fn from(error: base16::DecodeError) -> Self {
+        FromStrError::Hex(error)
+    }
+}
+
+impl From<TryFromSliceForAccountHashError> for FromStrError {
+    fn from(error: TryFromSliceForAccountHashError) -> Self {
+        FromStrError::Account(error)
+    }
+}
+
+impl From<TryFromSliceError> for FromStrError {
+    fn from(error: TryFromSliceError) -> Self {
+        FromStrError::Hash(error)
+    }
+}
+
+impl From<uref::FromStrError> for FromStrError {
+    fn from(error: uref::FromStrError) -> Self {
+        FromStrError::URef(error)
+    }
+}
+
 impl Key {
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
@@ -79,14 +119,28 @@ impl Key {
     }
 
     /// Returns a human-readable version of `self`, with the inner bytes encoded to Base16.
-    pub fn as_string(&self) -> String {
+    pub fn to_formatted_string(&self) -> String {
         match self {
             Key::Account(account_hash) => format!(
-                "account-account_hash-{}",
+                "{}{}",
+                ACCOUNT_PREFIX,
                 base16::encode_lower(&account_hash.value())
             ),
-            Key::Hash(addr) => format!("hash-{}", base16::encode_lower(addr)),
-            Key::URef(uref) => uref.as_string(),
+            Key::Hash(addr) => format!("{}{}", HASH_PREFIX, base16::encode_lower(addr)),
+            Key::URef(uref) => uref.to_formatted_string(),
+        }
+    }
+
+    /// Parses a string formatted as per `Self::as_string()` into a `Key`.
+    pub fn from_formatted_str(input: &str) -> Result<Key, FromStrError> {
+        if let Some(hex) = input.strip_prefix(ACCOUNT_PREFIX) {
+            Ok(Key::Account(AccountHash::try_from(&base16::decode(hex)?)?))
+        } else if let Some(hex) = input.strip_prefix(HASH_PREFIX) {
+            Ok(Key::Hash(HashAddr::try_from(
+                base16::decode(hex)?.as_ref(),
+            )?))
+        } else {
+            Ok(Key::URef(URef::from_formatted_str(input)?))
         }
     }
 
@@ -339,5 +393,39 @@ mod tests {
 
         let key_uref = Key::URef(URef::new([42; BLAKE2B_DIGEST_LENGTH], AccessRights::READ));
         assert!(key_uref.serialized_length() <= Key::max_serialized_length());
+    }
+
+    fn round_trip(key: Key) {
+        let string = key.to_formatted_string();
+        let parsed_key = Key::from_formatted_str(&string).unwrap();
+        assert_eq!(key, parsed_key);
+    }
+
+    #[test]
+    fn key_from_str() {
+        round_trip(Key::Account(AccountHash::new([0; BLAKE2B_DIGEST_LENGTH])));
+        round_trip(Key::Hash([42; KEY_HASH_LENGTH]));
+        round_trip(Key::URef(URef::new(
+            [255; BLAKE2B_DIGEST_LENGTH],
+            AccessRights::READ,
+        )));
+
+        let invalid_prefix = "a-0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(Key::from_formatted_str(invalid_prefix).is_err());
+
+        let invalid_prefix = "hash0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(Key::from_formatted_str(invalid_prefix).is_err());
+
+        let short_addr = "00000000000000000000000000000000000000000000000000000000000000";
+        assert!(Key::from_formatted_str(&format!("{}{}", ACCOUNT_PREFIX, short_addr)).is_err());
+        assert!(Key::from_formatted_str(&format!("{}{}", HASH_PREFIX, short_addr)).is_err());
+
+        let long_addr = "000000000000000000000000000000000000000000000000000000000000000000";
+        assert!(Key::from_formatted_str(&format!("{}{}", ACCOUNT_PREFIX, long_addr)).is_err());
+        assert!(Key::from_formatted_str(&format!("{}{}", HASH_PREFIX, long_addr)).is_err());
+
+        let invalid_hex = "000000000000000000000000000000000000000000000000000000000000000g";
+        assert!(Key::from_formatted_str(&format!("{}{}", ACCOUNT_PREFIX, invalid_hex)).is_err());
+        assert!(Key::from_formatted_str(&format!("{}{}", HASH_PREFIX, invalid_hex)).is_err());
     }
 }

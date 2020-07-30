@@ -123,7 +123,7 @@ impl Display for DeployHeader {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "deploy-header[account: {}, timestamp: {}, gas_price: {}, body_hash: {}, ttl_millis: {}, dependencies: {}, chain_name: {}]",
+            "deploy-header[account: {}, timestamp: {}, gas_price: {}, body_hash: {}, ttl_millis: {}, dependencies: [{}], chain_name: {}]",
             self.account,
             self.timestamp,
             self.gas_price,
