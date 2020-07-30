@@ -253,7 +253,7 @@ where
     /// Pops one message from the message queue (if there are any)
     /// and pass it to the recipient validator for execution.
     /// Messages returned from the execution are scheduled for later delivery.
-    pub(crate) fn crank<R: Rng>(&mut self, rand: &mut R) -> Result<CrankOk, TestRunError> {
+    pub(crate) fn crank<R: Rng>(&mut self, rand: &mut R) -> Result<(), TestRunError> {
         let QueueEntry {
             delivery_time,
             recipient,
@@ -299,19 +299,7 @@ where
             .collect();
 
         self.virtual_net.dispatch_messages(targeted_messages);
-
-        // Stop the test when each node finalized all consensus values.
-        // Note that we're not testing the order of finalization here.
-        // TODO: Consider moving out all the assertions to client side.
-        if self
-            .virtual_net
-            .validators()
-            .all(|v| v.finalized_count() == self.consensus_values_num)
-        {
-            return Ok(CrankOk::Done);
-        } else {
-            Ok(CrankOk::Continue)
-        }
+        Ok(())
     }
 
     fn next_consensus_value(&mut self) -> Option<ConsensusValue> {
@@ -563,6 +551,20 @@ where
     fn mutable_handle(&mut self) -> MutableHandle<DS> {
         MutableHandle(self)
     }
+}
+
+fn crank_until<F, R: Rng, DS: DeliveryStrategy>(
+    htt: &mut HighwayTestHarness<DS>,
+    rng: &mut R,
+    f: F,
+) -> Result<(), TestRunError>
+where
+    F: Fn(&HighwayTestHarness<DS>) -> bool,
+{
+    while !f(htt) {
+        htt.crank(rng)?;
+    }
+    Ok(())
 }
 
 struct MutableHandle<'a, DS: DeliveryStrategy>(&'a mut HighwayTestHarness<DS>);
@@ -989,8 +991,8 @@ mod test_harness {
     };
 
     use super::{
-        CrankOk, DeliverySchedule, DeliveryStrategy, HighwayMessage, HighwayTestHarness,
-        HighwayTestHarnessBuilder, InstantDeliveryNoDropping, TestRunError,
+        crank_until, CrankOk, DeliverySchedule, DeliveryStrategy, HighwayMessage,
+        HighwayTestHarness, HighwayTestHarnessBuilder, InstantDeliveryNoDropping, TestRunError,
     };
     use crate::{
         components::consensus::{
@@ -1039,13 +1041,14 @@ mod test_harness {
             .ok()
             .expect("Construction was successful");
 
-        loop {
-            let crank_res = highway_test_harness.crank(&mut rng).unwrap();
-            match crank_res {
-                CrankOk::Continue => continue,
-                CrankOk::Done => break,
-            }
-        }
+        crank_until(&mut highway_test_harness, &mut rng, |hth| {
+            // Stop the test when each node finalized all consensus values.
+            // Note that we're not testing the order of finalization here.
+            hth.virtual_net
+                .validators()
+                .all(|v| v.finalized_count() == cv_count as usize)
+        })
+        .unwrap();
 
         highway_test_harness
             .mutable_handle()
