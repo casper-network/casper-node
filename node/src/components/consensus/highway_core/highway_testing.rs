@@ -976,8 +976,7 @@ impl Validator<ConsensusValue, HighwayMessage, HighwayConsensus> {
             .messages_produced()
             .cloned()
             .filter(|hwm| hwm.is_new_vertex())
-            .collect::<Vec<_>>()
-            .len();
+            .count();
         // Add one in case it's just one round – 1 message.
         // 1/2=0 but 3/2=1 b/c of the rounding.
         (vertices_count as u8 + 1) / 2
