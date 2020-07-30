@@ -21,7 +21,7 @@ lazy_static! {
     pub static ref OS_PAGE_SIZE: usize = {
         // https://www.gnu.org/software/libc/manual/html_node/Sysconf.html
         let value: c_long = unsafe { sysconf(_SC_PAGESIZE) };
-        if value < 0 {
+        if value <= 0 {
             DEFAULT_PAGE_SIZE
         } else {
             value as usize
