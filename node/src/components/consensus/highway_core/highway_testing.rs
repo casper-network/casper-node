@@ -208,6 +208,7 @@ trait DeliveryStrategy {
     ) -> DeliverySchedule;
 }
 
+type HighwayValidator = Validator<ConsensusValue, HighwayMessage, HighwayConsensus>;
 struct HighwayTestHarness<DS>
 where
     DS: DeliveryStrategy,
@@ -311,8 +312,7 @@ where
     fn validator_mut(
         &mut self,
         validator_id: &ValidatorId,
-    ) -> Result<&mut Validator<ConsensusValue, HighwayMessage, HighwayConsensus>, TestRunError>
-    {
+    ) -> Result<&mut HighwayValidator, TestRunError> {
         self.virtual_net
             .validator_mut(&validator_id)
             .ok_or_else(|| TestRunError::MissingValidator(*validator_id))
@@ -575,9 +575,7 @@ impl<'a, DS: DeliveryStrategy> MutableHandle<'a, DS> {
         self.0.virtual_net.empty_queue();
     }
 
-    fn validators(
-        &self,
-    ) -> impl Iterator<Item = &Validator<ConsensusValue, HighwayMessage, HighwayConsensus>> {
+    fn validators(&self) -> impl Iterator<Item = &HighwayValidator> {
         self.0.virtual_net.validators()
     }
 }
@@ -811,11 +809,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
 
         trace!(
             "Weights: {:?}",
-            validators
-                .enumerate()
-                .map(|(_, v)| v)
-                .cloned()
-                .collect::<Vec<_>>()
+            validators.enumerate().map(|(_, v)| v).collect::<Vec<_>>()
         );
 
         let mut secrets = validators
