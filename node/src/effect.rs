@@ -154,9 +154,9 @@ impl<T> Drop for Responder<T> {
         if self.0.is_some() {
             // This is usually a very serious error, as another component will now be stuck.
             error!(
-                "Responder<{}> dropped without being responded to. \
-                 This is always a bug and will likely cause another component to be stuck!",
-                type_name::<T>()
+                "{} dropped without being responded to --- \
+                 this is always a bug and will likely cause another component to be stuck!",
+                self
             );
         }
     }
@@ -321,8 +321,11 @@ impl<REv> EffectBuilder<REv> {
 
         receiver.await.unwrap_or_else(|err| {
             // The channel should never be closed, ever.
-            error!(%err, "request oneshot closed, this should not happen");
-            unreachable!()
+            error!(%err, ?queue_kind, "request for {} channel closed, this is a serious bug --- \
+                   a component will likely be stuck from now on ", type_name::<T>());
+
+            // We cannot produce any value to satisfy the request, so all that's left is panicking.
+            panic!("request not answerable");
         })
     }
 
