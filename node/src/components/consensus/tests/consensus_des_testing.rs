@@ -59,6 +59,12 @@ impl<M: Clone + Debug> TargetedMessage<M> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub(crate) struct ValidatorId(pub(crate) u64);
 
+impl Display for ValidatorId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// A validator in the test network.
 #[derive(Debug)]
 pub(crate) struct Validator<C, M, D>

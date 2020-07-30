@@ -168,12 +168,16 @@ impl<C: Context> Highway<C> {
         &mut self,
         ValidVertex(vertex): ValidVertex<C>,
     ) -> Vec<Effect<C>> {
-        match vertex {
-            Vertex::Vote(vote) => self.add_valid_vote(vote),
-            Vertex::Evidence(evidence) => {
-                self.state.add_evidence(evidence);
-                vec![]
+        if !self.has_vertex(&vertex) {
+            match vertex {
+                Vertex::Vote(vote) => self.add_valid_vote(vote),
+                Vertex::Evidence(evidence) => {
+                    self.state.add_evidence(evidence);
+                    vec![]
+                }
             }
+        } else {
+            vec![]
         }
     }
 
@@ -342,7 +346,7 @@ pub(crate) mod tests {
             value: Some(0),
             seq_number: 0,
             timestamp: Timestamp::zero() + 1.into(),
-            next_round_exp: 12,
+            round_exp: 12,
         };
         let invalid_signature = 1u64;
         let invalid_signature_vote = SignedWireVote {

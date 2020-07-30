@@ -6,11 +6,13 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use derive_more::{Add, AddAssign, From, Sub, SubAssign};
+use derive_more::{Add, AddAssign, From, Shl, Shr, Sub, SubAssign};
 use serde::{Deserialize, Serialize};
 
 /// A timestamp type, representing a concrete moment in time.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash, Shr, Shl,
+)]
 pub struct Timestamp(u64);
 
 /// A time difference between two timestamps.
