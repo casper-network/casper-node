@@ -25,7 +25,7 @@ use crate::{
     GossipConfig,
 };
 
-pub use event::{Event, FetchResult, RequestDirection};
+pub use event::{Event, FetchResult, RequestOrigin};
 pub use message::Message;
 
 pub trait Item: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display {
@@ -81,9 +81,9 @@ pub trait ItemFetcher<T: Item + 'static> {
             // Capture responder for later signalling.
             let responders = self.responders();
             responders.entry((id, peer)).or_default().push(responder);
-            RequestDirection::Outbound
+            RequestOrigin::Internal
         } else {
-            RequestDirection::Inbound
+            RequestOrigin::External
         };
 
         // Get the item from the storage component.
@@ -94,7 +94,7 @@ pub trait ItemFetcher<T: Item + 'static> {
     fn get_from_store<REv: ReactorEventT<T>>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        request_direction: RequestDirection,
+        request_origin: RequestOrigin,
         id: T::Id,
         peer: NodeId,
     ) -> Effects<Event<T>>;
@@ -104,15 +104,15 @@ pub trait ItemFetcher<T: Item + 'static> {
     fn got_from_store<REv: ReactorEventT<T>>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        request_direction: RequestDirection,
+        request_origin: RequestOrigin,
         item: T,
         peer: NodeId,
     ) -> Effects<Event<T>> {
-        match request_direction {
-            RequestDirection::Inbound => effect_builder
+        match request_origin {
+            RequestOrigin::External => effect_builder
                 .send_message(peer, Message::GetResponse(Box::new(item)))
                 .ignore(),
-            RequestDirection::Outbound => {
+            RequestOrigin::Internal => {
                 self.signal(*item.id(), Some(FetchResult::FromStore(item)), peer)
             }
         }
@@ -123,11 +123,11 @@ pub trait ItemFetcher<T: Item + 'static> {
     fn failed_to_get_from_store<REv: ReactorEventT<T>>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        request_direction: RequestDirection,
+        request_origin: RequestOrigin,
         id: T::Id,
         peer: NodeId,
     ) -> Effects<Event<T>> {
-        if request_direction == RequestDirection::Inbound {
+        if request_origin == RequestOrigin::External {
             warn!("can't provide {} to {}", id, peer);
             Effects::new()
         } else {
@@ -198,14 +198,14 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
     fn get_from_store<REv: ReactorEventT<Deploy>>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        request_direction: RequestDirection,
+        request_origin: RequestOrigin,
         id: DeployHash,
         peer: NodeId,
     ) -> Effects<Event<Deploy>> {
         effect_builder
             .get_deploys_from_storage(smallvec![id])
             .event(move |mut results| Event::GetFromStoreResult {
-                request_direction,
+                request_origin,
                 id,
                 peer,
                 result: Box::new(results.pop().expect("can only contain one result")),
@@ -257,15 +257,13 @@ where
                 Message::GetResponse(item) => self.got_from_peer(effect_builder, *item, peer),
             },
             Event::GetFromStoreResult {
-                request_direction,
+                request_origin,
                 id,
                 peer,
                 result,
             } => match *result {
-                Ok(item) => self.got_from_store(effect_builder, request_direction, item, peer),
-                Err(_) => {
-                    self.failed_to_get_from_store(effect_builder, request_direction, id, peer)
-                }
+                Ok(item) => self.got_from_store(effect_builder, request_origin, item, peer),
+                Err(_) => self.failed_to_get_from_store(effect_builder, request_origin, id, peer),
             },
             Event::StoredFromPeerResult { item, peer, result } => match result {
                 Ok(_) => self.signal(*item.id(), Some(FetchResult::FromPeer(*item, peer)), peer),

@@ -16,9 +16,9 @@ pub enum FetchResult<T: Item> {
 pub(crate) type FetchResponder<T> = Responder<Option<Box<FetchResult<T>>>>;
 
 #[derive(Debug, PartialEq)]
-pub enum RequestDirection {
-    Inbound,
-    Outbound,
+pub enum RequestOrigin {
+    External,
+    Internal,
 }
 
 /// `Fetcher` events.
@@ -33,7 +33,7 @@ pub enum Event<T: Item> {
     /// The result of the `Fetcher` getting a item from the storage component.  If the
     /// result is not `Ok`, the item should be requested from the peer.
     GetFromStoreResult {
-        request_direction: RequestDirection,
+        request_origin: RequestOrigin,
         id: T::Id,
         peer: NodeId,
         result: Box<Result<T>>,
