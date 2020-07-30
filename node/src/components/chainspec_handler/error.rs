@@ -1,9 +1,9 @@
-use std::io::Error as IoError;
-
 use thiserror::Error;
 use uint::FromDecStrErr;
 
 use casperlabs_types::account::ACCOUNT_HASH_LENGTH;
+
+use crate::utils::ReadFileError;
 
 /// Error while encoding or decoding the chainspec.
 #[derive(Debug, Error)]
@@ -36,12 +36,23 @@ pub enum Error {
     #[error("expected hash length of {}, got {0}", ACCOUNT_HASH_LENGTH)]
     InvalidHashLength(usize),
 
-    /// Error while trying to read in a config file.
-    #[error("error reading {file}: {error}")]
-    ReadFile {
-        /// The file attempted to be read.
-        file: String,
-        /// The underlying error.
-        error: IoError,
-    },
+    /// Error loading the upgrade installer.
+    #[error("could not load upgrade installer: {0}")]
+    LoadUpgradeInstaller(ReadFileError),
+
+    /// Error loading the chainspec.
+    #[error("could not load chainspec: {0}")]
+    LoadChainspec(ReadFileError),
+
+    /// Error loading the mint installer.
+    #[error("could not load mint installer: {0}")]
+    LoadMintInstaller(ReadFileError),
+
+    /// Error loading the pos installer.
+    #[error("could not load pos installer: {0}")]
+    LoadPosInstaller(ReadFileError),
+
+    /// Error loading the standard payment installer.
+    #[error("could not load standard payment installer: {0}")]
+    LoadStandardPaymentInstaller(ReadFileError),
 }
