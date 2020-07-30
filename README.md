@@ -7,7 +7,7 @@ This is the core application for the CasperLabs blockchain.
 To run a validator node with the [local configuration options](resources/local/config.toml):
 
 ```
-cargo run --release -- validator --config resources/local/config.toml
+cargo run --release -- validator -c=resources/local/config.toml
 ```
 
 It is likely that the configuration requires editing however, so typically one will want to generate a configuration
@@ -16,7 +16,7 @@ file first, edit it and then run:
 ```
 cargo run --release -- generate-config > config.toml
 # ... edit config.toml
-cargo run --release -- validator --config config.toml
+cargo run --release -- validator -c=config.toml
 ```
 
 Note that all paths specified in the config file must be absolute paths or relative to the config file itself.  Paths
@@ -27,7 +27,7 @@ of `-C=<SECTION>.<KEY>=<VALUE>`.  These will override values set in a config fil
 default values otherwise.
 
 ```
-cargo run --release -- validator --config resources/local/config.toml -C consensus.secret_key_path=secret_keys/node-1.pem
+cargo run --release -- validator -c=resources/local/config.toml -C=consensus.secret_key_path=secret_keys/node-1.pem
 ```
 
 **NOTE:** If you want to run multiple instances on the same machine, ensure you modify the `[storage.path]` field of
@@ -42,7 +42,7 @@ Logging can be enabled by setting the environment variable `RUST_LOG`.  This can
 from lowest priority to highest: `trace`, `debug`, `info`, `warn`, `error`:
 
 ```
-RUST_LOG=info cargo run --release -- validator --config resources/local/config.toml
+RUST_LOG=info cargo run --release -- validator -c=resources/local/config.toml
 ```
 
 If the environment variable is unset, it is equivalent to setting `RUST_LOG=error`.
