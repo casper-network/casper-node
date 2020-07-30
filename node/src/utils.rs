@@ -6,10 +6,13 @@ mod round_robin;
 use std::{
     cell::RefCell,
     fmt::{self, Display, Formatter},
+    fs, io,
+    path::{Path, PathBuf},
 };
 
 use lazy_static::lazy_static;
 use libc::{c_long, sysconf, _SC_PAGESIZE};
+use thiserror::Error;
 
 pub(crate) use round_robin::WeightedRoundRobin;
 
@@ -67,4 +70,26 @@ where
             write!(f, "DisplayIter:GONE")
         }
     }
+}
+
+/// Error reading a file.
+#[derive(Debug, Error)]
+#[error("could not read {0}: {error}", .path.display())]
+pub struct ReadFileError {
+    /// Path that failed to be read.
+    path: PathBuf,
+    /// The underlying OS error.
+    #[source]
+    error: io::Error,
+}
+
+/// Read complete at `path` into memory.
+///
+/// Wraps `fs::read`, but preserves the filename for better error printing.
+pub(crate) fn read_file<P: AsRef<Path>>(filename: P) -> Result<Vec<u8>, ReadFileError> {
+    let path = filename.as_ref();
+    fs::read(path).map_err(|error| ReadFileError {
+        path: path.to_owned(),
+        error,
+    })
 }

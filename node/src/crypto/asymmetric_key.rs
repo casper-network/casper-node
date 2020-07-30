@@ -3,7 +3,6 @@
 use std::{
     cmp::Ordering,
     fmt::{self, Debug, Display, Formatter},
-    fs,
     hash::{Hash, Hasher},
     path::Path,
 };
@@ -14,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use signature::Signature as Sig;
 
 use super::{Error, Result};
-use crate::crypto::hash::hash;
+use crate::{crypto::hash::hash, utils::read_file};
 use casperlabs_types::account::AccountHash;
 
 const ED25519_TAG: u8 = 0;
@@ -63,12 +62,7 @@ impl SecretKey {
 
     /// Attempt to read the secret key bytes from configured file path.
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self> {
-        let path = file.as_ref();
-        let payload = fs::read_to_string(path).map_err(|error| Error::PrivateKeyLoad {
-            path: path.to_owned(),
-            error,
-        })?;
-        let pem = pem::parse(payload)?;
+        let pem = pem::parse(read_file(file).map_err(Error::PrivateKeyLoad)?)?;
         Self::ed25519_from_bytes(pem.contents)
     }
 }

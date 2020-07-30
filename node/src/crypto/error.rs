@@ -1,10 +1,12 @@
-use std::{io, path::PathBuf, result};
+use std::result;
 
 use base64::DecodeError;
 use ed25519_dalek::SignatureError;
 use hex::FromHexError;
 use pem::PemError;
 use thiserror::Error;
+
+use crate::utils::ReadFileError;
 
 /// A specialized `std::result::Result` type for cryptographic errors.
 pub type Result<T> = result::Result<T, Error>;
@@ -19,14 +21,8 @@ pub enum Error {
     #[error("parsing from hex: {0}")]
     FromHex(#[from] FromHexError),
     /// Error trying to read a private key.
-    #[error("error loading private key from file \"{0}\": {error}", .path.display())]
-    PrivateKeyLoad {
-        /// The file attempted to be read.
-        path: PathBuf,
-        /// The underlying error message.
-        #[source]
-        error: io::Error,
-    },
+    #[error("private key load failed: {0}")]
+    PrivateKeyLoad(ReadFileError),
     /// Error resulting when decoding a type from a base64 representation.
     #[error("decoding error: {0}")]
     FromBase64(#[from] DecodeError),
