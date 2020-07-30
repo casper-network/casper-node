@@ -48,10 +48,10 @@ To create a new `Deploy` and send it to the node for execution and storing:
 ```
 cargo run --release -- put-deploy \
     --secret-key=$HOME/.client_keys/secret_key.pem \
-    --standard-payment=100000000 \
+    --payment-amount=100000000 \
     --session-path=<PATH/TO/COMPILED/WASM> \
-    --session-arg=seed:U64='12345' \
-    --session-arg=my_uref:URef='uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007'
+    --session-arg=seed:u64='12345' \
+    --session-arg=my_uref:uref='uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007'
 ```
 
 To see how to format session code args and payment code args:

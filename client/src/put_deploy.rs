@@ -73,31 +73,31 @@ mod show_arg_examples {
         let array = <[u8; 32]>::try_from(bytes.as_ref()).unwrap();
 
         println!("Examples for passing values via --session-arg or --payment-arg:");
-        println!("name_01:Bool='false'");
-        println!("name_02:I32='-1'");
-        println!("name_03:I64='-2'");
-        println!("name_04:U8='3'");
-        println!("name_05:U32='4'");
-        println!("name_06:U64='5'");
-        println!("name_07:U128='6'");
-        println!("name_08:U256='7'");
-        println!("name_09:U512='8'");
-        println!("name_10:Unit=''");
-        println!("name_11:String='a value'");
+        println!("name_01:bool='false'");
+        println!("name_02:i32='-1'");
+        println!("name_03:i64='-2'");
+        println!("name_04:u8='3'");
+        println!("name_05:u32='4'");
+        println!("name_06:u64='5'");
+        println!("name_07:u128='6'");
+        println!("name_08:u256='7'");
+        println!("name_09:u512='8'");
+        println!("name_10:unit=''");
+        println!("name_11:string='a value'");
         println!(
-            "key_account_name:Key='{}'",
+            "key_account_name:key='{}'",
             Key::Account(AccountHash::new(array)).to_formatted_string()
         );
         println!(
-            "key_hash_name:Key='{}'",
+            "key_hash_name:key='{}'",
             Key::Hash(array).to_formatted_string()
         );
         println!(
-            "key_uref_name:Key='{}'",
+            "key_uref_name:key='{}'",
             Key::URef(URef::new(array, AccessRights::NONE)).to_formatted_string()
         );
         println!(
-            "uref_name:URef='{}'",
+            "uref_name:uref='{}'",
             URef::new(array, AccessRights::READ_ADD_WRITE).to_formatted_string()
         );
 
@@ -235,7 +235,7 @@ mod session {
         Arg::with_name(ARG_NAME)
             .short(ARG_SHORT)
             .long(ARG_NAME)
-            .required(true)
+            .required_unless(show_arg_examples::ARG_NAME)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
             .display_order(DisplayOrder::SessionCode as usize)
@@ -258,19 +258,19 @@ mod arg_simple {
 
     lazy_static! {
         static ref SUPPORTED_TYPES: Vec<(&'static str, CLType)> = vec![
-            ("Bool", CLType::Bool),
-            ("I32", CLType::I32),
-            ("I64", CLType::I64),
-            ("U8", CLType::U8),
-            ("U32", CLType::U32),
-            ("U64", CLType::U64),
-            ("U128", CLType::U128),
-            ("U256", CLType::U256),
-            ("U512", CLType::U512),
-            ("Unit", CLType::Unit),
-            ("String", CLType::String),
-            ("Key", CLType::Key),
-            ("URef", CLType::URef),
+            ("bool", CLType::Bool),
+            ("i32", CLType::I32),
+            ("i64", CLType::I64),
+            ("u8", CLType::U8),
+            ("u32", CLType::U32),
+            ("u64", CLType::U64),
+            ("u128", CLType::U128),
+            ("u256", CLType::U256),
+            ("u512", CLType::U512),
+            ("unit", CLType::Unit),
+            ("string", CLType::String),
+            ("key", CLType::Key),
+            ("uref", CLType::URef),
         ];
         static ref SUPPORTED_LIST: String = {
             let mut msg = String::new();
@@ -349,7 +349,7 @@ mod arg_simple {
         if parts.len() != 3 {
             panic!("arg {} should be formatted as {}", arg, ARG_VALUE_NAME);
         }
-        let cl_type = match parts[1] {
+        let cl_type = match parts[1].to_lowercase() {
             t if t == SUPPORTED_TYPES[0].0 => SUPPORTED_TYPES[0].1.clone(),
             t if t == SUPPORTED_TYPES[1].0 => SUPPORTED_TYPES[1].1.clone(),
             t if t == SUPPORTED_TYPES[2].0 => SUPPORTED_TYPES[2].1.clone(),
@@ -570,19 +570,19 @@ mod payment {
     }
 }
 
-/// Handles providing the arg for and retrieval of the standard-payment arg.
+/// Handles providing the arg for and retrieval of the payment-amount arg.
 mod standard_payment {
     use super::*;
 
     const STANDARD_PAYMENT_ARG_NAME: &str = "amount";
 
-    pub(super) const ARG_NAME: &str = "standard-payment";
+    pub(super) const ARG_NAME: &str = "payment-amount";
     const ARG_VALUE_NAME: &str = "AMOUNT";
     const ARG_SHORT: &str = "p";
     const ARG_HELP: &str =
         "If provided, uses the standard-payment system contract rather than custom payment Wasm. \
         The value is the 'amount' arg of the standard-payment contract. This arg is incompatible \
-        with all other payment args";
+        with all other --payment-xxx args";
 
     pub(super) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -643,7 +643,7 @@ impl PutDeploy {
 
         // Get the payment code and args options.
         let module_bytes =
-            payment::get(matches).expect("should have standard-payment or payment-path");
+            payment::get(matches).expect("should have payment-amount or payment-path");
 
         let payment_args = Self::args_from_simple_or_complex(
             arg_simple::payment::get(matches),
@@ -666,10 +666,14 @@ impl<'a, 'b> crate::Subcommand<'a, 'b> for PutDeploy {
             .about(Self::ABOUT)
             .display_order(display_order)
             .arg(show_arg_examples::arg())
-            .arg(common::node_address::arg(
-                DisplayOrder::NodeAddress as usize,
-            ))
-            .arg(common::secret_key::arg(DisplayOrder::SecretKey as usize))
+            .arg(
+                common::node_address::arg(DisplayOrder::NodeAddress as usize)
+                    .required_unless(show_arg_examples::ARG_NAME),
+            )
+            .arg(
+                common::secret_key::arg(DisplayOrder::SecretKey as usize)
+                    .required_unless(show_arg_examples::ARG_NAME),
+            )
             .arg(timestamp::arg())
             .arg(ttl::arg())
             .arg(gas_price::arg())
@@ -695,11 +699,12 @@ impl<'a, 'b> crate::Subcommand<'a, 'b> for PutDeploy {
                     .arg(args_complex::payment::ARG_NAME)
                     .required(false),
             )
-            // Group standard-payment and payment-path so that we can require only one of these.
+            // Group payment-amount, payment-path and show-arg-examples so that we can require only one of these.
             .group(
                 ArgGroup::with_name("required-payment-options")
                     .arg(standard_payment::ARG_NAME)
                     .arg(payment::ARG_NAME)
+                    .arg(show_arg_examples::ARG_NAME)
                     .required(true),
             )
         // TODO: There are also deploy dependencies but this whole structure is subject to changes.
