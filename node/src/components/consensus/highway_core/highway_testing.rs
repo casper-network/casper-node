@@ -79,6 +79,13 @@ impl HighwayMessage {
             }
         }
     }
+
+    fn is_new_vertex(&self) -> bool {
+        match self {
+            NewVertex(_) => true,
+            _ => false,
+        }
+    }
 }
 
 use HighwayMessage::*;
@@ -193,7 +200,7 @@ impl Distribution {
 
 trait DeliveryStrategy {
     fn gen_delay<R: Rng>(
-        &self,
+        &mut self,
         rng: &mut R,
         message: &HighwayMessage,
         distributon: &Distribution,
@@ -566,6 +573,12 @@ impl<'a, DS: DeliveryStrategy> MutableHandle<'a, DS> {
     fn clear_message_queue(&mut self) {
         self.0.virtual_net.empty_queue();
     }
+
+    fn validators(
+        &self,
+    ) -> impl Iterator<Item = &Validator<ConsensusValue, HighwayMessage, HighwayConsensus>> {
+        self.0.virtual_net.validators()
+    }
 }
 
 enum BuilderError {
@@ -613,7 +626,7 @@ struct InstantDeliveryNoDropping;
 
 impl DeliveryStrategy for InstantDeliveryNoDropping {
     fn gen_delay<R: Rng>(
-        &self,
+        &mut self,
         _rng: &mut R,
         message: &HighwayMessage,
         _distributon: &Distribution,
@@ -795,6 +808,15 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                 .map(|(i, weight)| (ValidatorId(i as u64), *weight)),
         );
 
+        trace!(
+            "Weights: {:?}",
+            validators
+                .enumerate()
+                .map(|(_, v)| v)
+                .cloned()
+                .collect::<Vec<_>>()
+        );
+
         let mut secrets = validators
             .enumerate()
             .map(|(_, vid)| (*vid.id(), TestSecret(vid.id().0)))
@@ -945,9 +967,25 @@ impl Context for TestContext {
     }
 }
 
+impl Validator<ConsensusValue, HighwayMessage, HighwayConsensus> {
+    fn rounds_participated_in(&self) -> u8 {
+        // Validator produces two `NewVertex` type messages per round.
+        // It may produce just one before lambda message is finalized.
+        let vertices_count = self
+            .messages_produced()
+            .cloned()
+            .filter(|hwm| hwm.is_new_vertex())
+            .collect::<Vec<_>>()
+            .len();
+        // Add one in case it's just one round – 1 message.
+        // 1/2=0 but 3/2=1 b/c of the rounding.
+        (vertices_count as u8 + 1) / 2
+    }
+}
+
 mod test_harness {
     use std::{
-        collections::{hash_map::DefaultHasher, HashMap},
+        collections::{hash_map::DefaultHasher, HashMap, HashSet},
         hash::Hasher,
     };
 
@@ -957,6 +995,7 @@ mod test_harness {
     };
     use crate::{
         components::consensus::{
+            highway_core::{validators::ValidatorIndex, vertex::Vertex},
             tests::consensus_des_testing::ValidatorId,
             traits::{Context, ValidatorSecret},
         },
@@ -987,26 +1026,40 @@ mod test_harness {
     }
 
     #[test]
-    fn liveness_test_no_equivocations() -> Result<(), TestRunError> {
-        let mut rng = TestRng::new();
+    fn liveness_test_no_faults() {
         logging::init_params(true).ok();
-        let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
-            HighwayTestHarnessBuilder::new()
-                .max_faulty_validators(5)
-                .consensus_values_count(10)
-                .ftt(30)
-                .weight_limits(3, 10)
-                .build(&mut rng)
-                .ok()
-                .expect("Construction was successful");
+
+        let mut rng = TestRng::new();
+        let cv_count = 3;
+
+        let mut highway_test_harness = HighwayTestHarnessBuilder::new()
+            .max_faulty_validators(3)
+            .consensus_values_count(cv_count)
+            .weight_limits(3, 10)
+            .build(&mut rng)
+            .ok()
+            .expect("Construction was successful");
 
         loop {
-            let crank_res = highway_test_harness.crank(&mut rng)?;
+            let crank_res = highway_test_harness.crank(&mut rng).unwrap();
             match crank_res {
                 CrankOk::Continue => continue,
                 CrankOk::Done => break,
             }
         }
-        Ok(())
+
+        highway_test_harness
+            .mutable_handle()
+            .validators()
+            .filter(|v| v.fault().is_none())
+            .for_each(|v| {
+                assert_eq!(
+                    v.rounds_participated_in(),
+                    cv_count,
+                    "Expected that validator={} participated in {} rounds.",
+                    v.id,
+                    cv_count
+                )
+            });
     }
 }
