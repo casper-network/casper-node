@@ -404,15 +404,15 @@ impl Display for ContractRuntimeRequest {
     }
 }
 
-/// Deploy-fetcher related requests.
+/// Fetcher related requests.
 #[derive(Debug)]
 #[must_use]
 pub enum FetcherRequest<I, T: FetcherItem> {
-    /// Return the specified deploy if it exists, else `None`.
+    /// Return the specified item if it exists, else `None`.
     Fetch {
-        /// The hash of the deploy to be retrieved.
+        /// The ID of the item to be retrieved.
         id: T::Id,
-        /// The peer id of the peer to be asked if the deploy is not held locally
+        /// The peer id of the peer to be asked if the item is not held locally
         peer: I,
         /// Responder to call with the result.
         responder: Responder<Option<Box<FetchResult<T>>>>,

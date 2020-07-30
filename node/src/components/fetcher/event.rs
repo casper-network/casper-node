@@ -42,7 +42,7 @@ pub enum Event<T: Item> {
     TimeoutPeer { id: T::Id, peer: NodeId },
     /// An incoming network message.
     MessageReceived { sender: NodeId, payload: Message<T> },
-    /// The result of the `Fetcher` putting a deploy to the storage component.
+    /// The result of the `Fetcher` putting an item to the storage component.
     StoredFromPeerResult {
         item: Box<T>,
         peer: NodeId,
