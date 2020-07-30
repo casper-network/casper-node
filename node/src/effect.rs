@@ -116,19 +116,23 @@ type Multiple<T> = SmallVec<[T; 2]>;
 
 /// A responder satisfying a request.
 #[must_use]
-pub struct Responder<T>(oneshot::Sender<T>);
+pub struct Responder<T>(Option<oneshot::Sender<T>>);
 
 impl<T: 'static + Send> Responder<T> {
     fn new(sender: oneshot::Sender<T>) -> Self {
-        Responder(sender)
+        Responder(Some(sender))
     }
 }
 
 impl<T> Responder<T> {
     /// Send `data` to the origin of the request.
-    pub async fn respond(self, data: T) {
-        if self.0.send(data).is_err() {
-            error!("could not send response to request down oneshot channel");
+    pub async fn respond(mut self, data: T) {
+        if let Some(sender) = self.0.take() {
+            if sender.send(data).is_err() {
+                error!("could not send response to request down oneshot channel");
+            }
+        } else {
+            error!("tried to send a value down a responder channel, but it was already used");
         }
     }
 }
@@ -142,6 +146,17 @@ impl<T> Debug for Responder<T> {
 impl<T> Display for Responder<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "responder({})", type_name::<T>(),)
+    }
+}
+
+impl<T> Drop for Responder<T> {
+    fn drop(&mut self) {
+        if self.0.is_some() {
+            panic!(
+                "Responder<{}> dropped without being responded to.",
+                type_name::<T>()
+            );
+        }
     }
 }
 
