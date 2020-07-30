@@ -56,6 +56,8 @@ use rand::{
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
+use crate::utils::read_file;
+
 // This is inside a private module so that the generated `BigArray` does not form part of this
 // crate's public API, and hence also doesn't appear in the rustdocs.
 mod big_array {
@@ -554,16 +556,14 @@ pub(crate) fn validate_cert(cert: X509) -> Result<TlsCert, ValidationError> {
 
 /// Loads a certificate from a file.
 pub(crate) fn load_cert<P: AsRef<Path>>(src: P) -> anyhow::Result<X509> {
-    let pem = fs::read(src.as_ref())
-        .with_context(|| format!("failed to load certificate {:?}", src.as_ref()))?;
+    let pem = read_file(src.as_ref()).with_context(|| "failed to load certificate")?;
 
     Ok(X509::from_pem(&pem).context("parsing certificate")?)
 }
 
 /// Loads a private key from a file.
 pub(crate) fn load_private_key<P: AsRef<Path>>(src: P) -> anyhow::Result<PKey<Private>> {
-    let pem = fs::read(src.as_ref())
-        .with_context(|| format!("failed to load private key {:?}", src.as_ref()))?;
+    let pem = read_file(src.as_ref()).with_context(|| "failed to load private key")?;
 
     // TODO: It might be that we need to call `PKey::private_key_from_pkcs8` instead.
     Ok(PKey::private_key_from_pem(&pem).context("parsing private key")?)

@@ -1,6 +1,6 @@
 use std::{
     convert::{TryFrom, TryInto},
-    fs::{self, File},
+    fs::File,
     path::PathBuf,
     str,
 };
@@ -18,6 +18,7 @@ use casperlabs_node::{
         hash::Digest,
     },
     types::{Deploy, DeployHeader, Timestamp},
+    utils::read_file,
 };
 use casperlabs_types::{
     bytesrepr::{self, ToBytes},
@@ -155,10 +156,6 @@ async fn main() -> anyhow::Result<()> {
     }
 }
 
-fn get_file_bytes(filename: PathBuf) -> anyhow::Result<Vec<u8>> {
-    fs::read(&filename).with_context(|| format!("Failed to read {}", filename.display()))
-}
-
 fn get_runtime_args_from_file(filename: PathBuf) -> anyhow::Result<RuntimeArgs> {
     let reader = File::open(&filename)?;
     // Received structured args in json format.
@@ -187,13 +184,13 @@ async fn put_deploy(
 ) -> anyhow::Result<()> {
     let timestamp = timestamp.unwrap_or_else(Timestamp::now);
 
-    let payment_bytes = get_file_bytes(payment_code)?;
+    let payment_bytes = read_file(payment_code)?;
     let payment_runtime_args = get_runtime_args_from_file(payment_args)?;
 
-    let session_bytes = get_file_bytes(session_code)?;
+    let session_bytes = read_file(session_code)?;
     let session_runtime_args = get_runtime_args_from_file(session_args)?;
 
-    let secret_key_bytes = get_file_bytes(secret_key)?;
+    let secret_key_bytes = read_file(secret_key)?;
     let secret_key = SecretKey::ed25519_from_bytes(secret_key_bytes)?;
     let public_key = PublicKey::from(&secret_key);
 

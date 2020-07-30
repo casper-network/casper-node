@@ -86,7 +86,7 @@ pub struct ReadFileError {
 /// Read complete at `path` into memory.
 ///
 /// Wraps `fs::read`, but preserves the filename for better error printing.
-pub(crate) fn read_file<P: AsRef<Path>>(filename: P) -> Result<Vec<u8>, ReadFileError> {
+pub fn read_file<P: AsRef<Path>>(filename: P) -> Result<Vec<u8>, ReadFileError> {
     let path = filename.as_ref();
     fs::read(path).map_err(|error| ReadFileError {
         path: path.to_owned(),
