@@ -152,8 +152,10 @@ impl<T> Display for Responder<T> {
 impl<T> Drop for Responder<T> {
     fn drop(&mut self) {
         if self.0.is_some() {
-            panic!(
-                "Responder<{}> dropped without being responded to.",
+            // This is usually a very serious error, as another component will now be stuck.
+            error!(
+                "Responder<{}> dropped without being responded to. \
+                 This is always a bug and will likely cause another component to be stuck!",
                 type_name::<T>()
             );
         }
