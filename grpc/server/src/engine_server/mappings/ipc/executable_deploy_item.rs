@@ -17,11 +17,14 @@ impl TryFrom<DeployPayload_oneof_payload> for ExecutableDeployItem {
                     args: pb_deploy_code.args,
                 }
             }
-            DeployPayload_oneof_payload::stored_contract_hash(pb_stored_contract_hash) => {
-                let mut contract_hash = [0u8; 32];
-                contract_hash.copy_from_slice(&pb_stored_contract_hash.hash);
+            DeployPayload_oneof_payload::stored_contract_hash(mut pb_stored_contract_hash) => {
+                let hash_bytes = pb_stored_contract_hash.take_hash();
+                let hash = hash_bytes
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| MappingError::invalid_hash_length(hash_bytes.len()))?;
                 ExecutableDeployItem::StoredContractByHash {
-                    hash: contract_hash,
+                    hash,
                     entry_point: pb_stored_contract_hash.entry_point_name,
                     args: pb_stored_contract_hash.args,
                 }
@@ -136,5 +139,31 @@ impl From<ExecutableDeployItem> for DeployPayload {
             }
         }
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_not_panic_for_invalid_hash() {
+        let bad_hash = b"This string is definetely longer than 32 bytes";
+
+        let mut deploy_payload = DeployPayload::new();
+
+        let inner = deploy_payload.mut_stored_contract_hash();
+        inner.set_hash(bad_hash.to_vec());
+        inner.set_entry_point_name("EntryPoint".to_string());
+        inner.set_args(b"".to_vec()); // Empty
+
+        let err = ExecutableDeployItem::try_from(deploy_payload.payload.unwrap()).unwrap_err();
+        assert_eq!(
+            err,
+            MappingError::InvalidHashLength {
+                actual: bad_hash.len(),
+                expected: 32
+            }
+        );
     }
 }
