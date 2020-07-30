@@ -23,7 +23,7 @@ pub(crate) fn vec_to_array(input: Vec<u8>, input_name: &str) -> Result<[u8; 32],
         .map_err(|_| format!("{} must be 32 bytes.", input_name).into())
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum MappingError {
     InvalidStateHashLength { expected: usize, actual: usize },
     InvalidAccountHashLength { expected: usize, actual: usize },
