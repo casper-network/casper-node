@@ -82,7 +82,7 @@ use crate::{
             shared::{additive_map::AdditiveMap, transform::Transform},
             storage::global_state::CommitResult,
         },
-        deploy_fetcher::FetchResult,
+        fetcher::FetchResult,
         storage::{self, DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::hash::Digest,
@@ -97,7 +97,7 @@ use casperlabs_types::{Key, ProtocolVersion};
 use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
 use requests::{
     BlockExecutorRequest, BlockValidatorRequest, ContractRuntimeRequest, DeployBufferRequest,
-    DeployFetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
+    FetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -488,14 +488,14 @@ impl<REv> EffectBuilder<REv> {
         self,
         deploy_hash: DeployHash,
         peer: I,
-    ) -> Option<Box<FetchResult>>
+    ) -> Option<Box<FetchResult<Deploy>>>
     where
-        REv: From<DeployFetcherRequest<I>>,
+        REv: From<FetcherRequest<I, Deploy>>,
         I: Send + 'static,
     {
         self.make_request(
-            |responder| DeployFetcherRequest::FetchDeploy {
-                hash: deploy_hash,
+            |responder| FetcherRequest::Fetch {
+                id: deploy_hash,
                 peer,
                 responder,
             },

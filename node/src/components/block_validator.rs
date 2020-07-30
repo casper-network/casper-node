@@ -16,10 +16,10 @@ use tracing::warn;
 use crate::{
     components::Component,
     effect::{
-        requests::{BlockValidatorRequest, DeployFetcherRequest},
+        requests::{BlockValidatorRequest, FetcherRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{DeployHash, ProtoBlock},
+    types::{Deploy, DeployHash, ProtoBlock},
 };
 
 /// Block validator component event.
@@ -28,9 +28,9 @@ pub enum Event<I> {
     /// A request made of the Block validator component.
     #[from]
     Request(BlockValidatorRequest<I>),
-    #[display(fmt = "deploy {} is valid: {}", deploy, downloaded_successfully)]
+    #[display(fmt = "deploy {} is valid: {}", deploy_hash, downloaded_successfully)]
     DeployFetcherResponse {
-        deploy: DeployHash,
+        deploy_hash: DeployHash,
         downloaded_successfully: bool,
     },
 }
@@ -60,7 +60,7 @@ impl<I> BlockValidator<I> {
 impl<I, REv> Component<REv> for BlockValidator<I>
 where
     I: Clone + Send + 'static,
-    REv: From<Event<I>> + From<BlockValidatorRequest<I>> + From<DeployFetcherRequest<I>> + Send,
+    REv: From<Event<I>> + From<BlockValidatorRequest<I>> + From<FetcherRequest<I, Deploy>> + Send,
 {
     type Event = Event<I>;
 
@@ -90,21 +90,21 @@ where
                         effect_builder
                             .fetch_deploy(deploy_hash, sender.clone())
                             .event(move |maybe_deploy| Event::DeployFetcherResponse {
-                                deploy: deploy_hash,
+                                deploy_hash,
                                 downloaded_successfully: maybe_deploy.is_some(),
                             })
                     })
                     .collect()
             }
             Event::DeployFetcherResponse {
-                deploy,
+                deploy_hash,
                 downloaded_successfully,
             } => {
                 let block_states = mem::take(&mut self.block_states);
                 let mut effects: Effects<Self::Event> = Default::default();
                 if downloaded_successfully {
                     for (proto_block, mut block_data) in block_states {
-                        block_data.missing_deploys.remove(&deploy);
+                        block_data.missing_deploys.remove(&deploy_hash);
                         if block_data.missing_deploys.is_empty() {
                             effects.extend(
                                 block_data
@@ -118,10 +118,10 @@ where
                     }
                 } else {
                     for (proto_block, block_data) in block_states {
-                        if block_data.missing_deploys.contains(&deploy) {
+                        if block_data.missing_deploys.contains(&deploy_hash) {
                             warn!(
                                 "{} considered invalid due to inability to download {}",
-                                proto_block, deploy
+                                proto_block, deploy_hash
                             );
                             effects.extend(
                                 block_data
