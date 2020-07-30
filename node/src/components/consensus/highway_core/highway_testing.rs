@@ -12,8 +12,8 @@ use crate::{
     components::consensus::{
         tests::{
             consensus_des_testing::{
-                DeliverySchedule, Message, Target, TargetedMessage, Validator, ValidatorId,
-                VirtualNet,
+                DeliverySchedule, FaultType, Message, Target, TargetedMessage, Validator,
+                ValidatorId, VirtualNet,
             },
             queue::{MessageT, QueueEntry},
         },
@@ -331,25 +331,37 @@ where
     where
         F: FnOnce(&mut Highway<TestContext>) -> Vec<Effect<TestContext>>,
     {
-        let res = f(self.validator_mut(validator_id)?.consensus.highway_mut());
-        let mut additional_effects = vec![];
-        for e in res.iter() {
+        let validator = self.validator_mut(validator_id)?;
+        let res = f(validator.consensus.highway_mut());
+        let mut effects = vec![];
+        for e in res.into_iter() {
             // If validator produced a `NewVertex` effect,
             // we want to add it to his state immediately.
-            if let Effect::NewVertex(vv) = e {
-                additional_effects.extend(
-                    self.validator_mut(validator_id)?
+            if let Effect::NewVertex(vv) = &e {
+                effects.extend(
+                    validator
                         .consensus
                         .highway_mut()
                         .add_valid_vertex(vv.clone()),
                 );
             }
+
+            match validator.fault() {
+                None => effects.push(e),
+                Some(FaultType::Mute) => {
+                    // If validator is `FaultType::Mute` it shouldn't send a `NewVertex` in response.
+                    // Other effects – like `Timer` or `RequestBlock` should still be returned and scheduled.
+                    match e {
+                        Effect::NewVertex(ValidVertex(v)) => {
+                            warn!("{:} is mute. {:?} won't be gossiped.", validator.id, v)
+                        }
+                        Effect::ScheduleTimer(_) | Effect::RequestNewBlock(_) => effects.push(e),
+                    }
+                }
+                Some(e) => unimplemented!("{:?} is not handled.", e),
+            }
         }
-        additional_effects.extend(res);
-        Ok(additional_effects
-            .into_iter()
-            .map(HighwayMessage::from)
-            .collect())
+        Ok(effects.into_iter().map(HighwayMessage::from).collect())
     }
 
     /// Processes a message sent to `validator_id`.
@@ -829,9 +841,13 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
 
             for (_, validator) in validators.enumerate() {
                 let vid = *validator.id();
-                let is_faulty = vid.0 < faulty_num as u64;
+                let fault = if (vid.0 < faulty_num as u64) {
+                    Some(FaultType::Mute)
+                } else {
+                    None
+                };
                 let (consensus, msgs) = highway_consensus((vid, &mut secrets));
-                let validator = Validator::new(vid, is_faulty, consensus);
+                let validator = Validator::new(vid, fault, consensus);
                 let qm: Vec<QueueEntry<HighwayMessage>> = msgs
                     .into_iter()
                     .map(|hwm| {
