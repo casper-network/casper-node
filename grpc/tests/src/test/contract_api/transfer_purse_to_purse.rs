@@ -82,7 +82,7 @@ fn should_run_purse_to_purse_transfer() {
         .as_uref()
         .unwrap()
         .remove_access_rights()
-        .as_string();
+        .to_formatted_string();
 
     let mint_contract_hash = builder.get_mint_contract_hash();
     let mint_contract = builder
@@ -172,7 +172,7 @@ fn should_run_purse_to_purse_transfer_with_error() {
         .as_uref()
         .unwrap()
         .remove_access_rights()
-        .as_string();
+        .to_formatted_string();
 
     let mint_contract_uref = builder.get_mint_contract_hash();
     let mint_contract = builder

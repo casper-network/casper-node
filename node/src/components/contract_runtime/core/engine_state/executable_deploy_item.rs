@@ -49,30 +49,68 @@ pub enum ExecutableDeployItem {
 impl Display for ExecutableDeployItem {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ExecutableDeployItem::ModuleBytes { module_bytes, args } => {
-                write!(f, "execute module bytes {:10}, args {:10}", HexFmt(&module_bytes), HexFmt(&args))
+            ExecutableDeployItem::ModuleBytes { module_bytes, .. } => {
+                write!(f, "module-bytes [{} bytes]", module_bytes.len())
             }
-            ExecutableDeployItem::StoredContractByHash { hash, entry_point, args } => {
-                write!(f, "execute stored contract by hash {}, entry point {}, args {:10}", HexFmt(&hash), entry_point, HexFmt(&args))
-            }
-            ExecutableDeployItem::StoredContractByName { name, entry_point, args } => {
-                write!(f, "execute stored contract by name {}, entry point {}, args {:10}", name, entry_point, HexFmt(&args))
-            }
-            ExecutableDeployItem::StoredVersionedContractByName { name, version: Some(ver), entry_point, args } => {
-                write!(f, "execute stored versioned contract {}, version {}, entry point {}, args {:10}", name, ver, entry_point, HexFmt(&args))
-            }
-            ExecutableDeployItem::StoredVersionedContractByName { name, version: None, entry_point, args } => {
-                write!(f, "execute stored versioned contract {}, latest version, entry point {}, args {:10}", name, entry_point, HexFmt(&args))
-            }
-            ExecutableDeployItem::StoredVersionedContractByHash { hash, version: Some(ver), entry_point, args } => {
-                write!(f, "execute stored versioned contract by hash {}, version {}, entry point {}, args {:10}", HexFmt(&hash), ver, entry_point, HexFmt(&args))
-            }
-            ExecutableDeployItem::StoredVersionedContractByHash { hash, version: None, entry_point, args } => {
-                write!(f, "execute stored versioned contract by hash {}, latest version, entry point {}, args {:10}", HexFmt(&hash), entry_point, HexFmt(&args))
-            }
-            ExecutableDeployItem::Transfer { args } => {
-                write!(f, "execute transfer args {:10}", HexFmt(&args))
-            }
+            ExecutableDeployItem::StoredContractByHash {
+                hash, entry_point, ..
+            } => write!(
+                f,
+                "stored-contract-by-hash: {:10}, entry-point: {}",
+                HexFmt(hash),
+                entry_point,
+            ),
+            ExecutableDeployItem::StoredContractByName {
+                name, entry_point, ..
+            } => write!(
+                f,
+                "stored-contract-by-name: {}, entry-point: {}",
+                name, entry_point,
+            ),
+            ExecutableDeployItem::StoredVersionedContractByName {
+                name,
+                version: Some(ver),
+                entry_point,
+                ..
+            } => write!(
+                f,
+                "stored-versioned-contract: {}, version: {}, entry-point: {}",
+                name, ver, entry_point,
+            ),
+            ExecutableDeployItem::StoredVersionedContractByName {
+                name,
+                version: None,
+                entry_point,
+                ..
+            } => write!(
+                f,
+                "stored-versioned-contract: {}, version: latest, entry-point: {}",
+                name, entry_point,
+            ),
+            ExecutableDeployItem::StoredVersionedContractByHash {
+                hash,
+                version: Some(ver),
+                entry_point,
+                ..
+            } => write!(
+                f,
+                "stored-versioned-contract-by-hash: {:10}, version: {}, entry-point: {}",
+                HexFmt(hash),
+                ver,
+                entry_point,
+            ),
+            ExecutableDeployItem::StoredVersionedContractByHash {
+                hash,
+                version: None,
+                entry_point,
+                ..
+            } => write!(
+                f,
+                "stored-versioned-contract-by-hash: {:10}, version: latest, entry-point: {}",
+                HexFmt(hash),
+                entry_point,
+            ),
+            ExecutableDeployItem::Transfer { args } => write!(f, "transfer-args {}", HexFmt(&args)),
         }
     }
 }
@@ -91,7 +129,7 @@ impl Debug for ExecutableDeployItem {
                 args,
             } => f
                 .debug_struct("StoredContractByHash")
-                .field("hash", &HexFmt(&hash))
+                .field("hash", &HexFmt(hash))
                 .field("entry_point", &entry_point)
                 .field("args", &HexFmt(&args))
                 .finish(),
@@ -124,7 +162,7 @@ impl Debug for ExecutableDeployItem {
                 args,
             } => f
                 .debug_struct("StoredVersionedContractByHash")
-                .field("hash", &HexFmt(&hash))
+                .field("hash", &HexFmt(hash))
                 .field("version", version)
                 .field("entry_point", &entry_point)
                 .field("args", &HexFmt(&args))
