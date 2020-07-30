@@ -1,18 +1,17 @@
 use alloc::vec::Vec;
 
-use casperlabs_types::{
+use crate::{
     account::AccountHash,
     auction::{ActiveBids, Delegators, FoundingValidators},
     bytesrepr::{FromBytes, ToBytes},
+    system_contract_errors::auction::{Error, Result},
     CLTyped,
 };
 
-use crate::{providers::StorageProvider, Error, Result};
-
-const FOUNDER_VALIDATORS_KEY: &str = "founder_validators";
-const ACTIVE_BIDS_KEY: &str = "active_bids";
-const DELEGATORS_KEY: &str = "delegators";
-const ERA_VALIDATORS_KEY: &str = "era_validators";
+use super::{
+    auction::{ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_VALIDATORS_KEY, FOUNDER_VALIDATORS_KEY},
+    providers::StorageProvider,
+};
 
 fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T>
 where
@@ -34,7 +33,7 @@ where
 {
     let key = provider.get_key(name).ok_or(Error::MissingKey)?;
     let uref = key.into_uref().ok_or(Error::InvalidKeyVariant)?;
-    provider.write(uref, value);
+    provider.write(uref, value)?;
     Ok(())
 }
 

@@ -23,6 +23,7 @@ const DEFAULT_CHAIN_NAME: &str = "casperlabs-devnet";
 const DEFAULT_MINT_INSTALLER_PATH: &str = "mint_install.wasm";
 const DEFAULT_POS_INSTALLER_PATH: &str = "pos_install.wasm";
 const DEFAULT_STANDARD_PAYMENT_INSTALLER_PATH: &str = "standard_payment_install.wasm";
+const DEFAULT_AUCTION_INSTALLER_PATH: &str = "auction_install.wasm";
 const DEFAULT_ACCOUNTS_CSV_PATH: &str = "accounts.csv";
 const DEFAULT_UPGRADE_INSTALLER_PATH: &str = "upgrade_install.wasm";
 
@@ -85,6 +86,7 @@ struct Genesis {
     mint_installer_path: String,
     pos_installer_path: String,
     standard_payment_installer_path: String,
+    auction_installer_path: String,
     accounts_path: String,
 }
 
@@ -97,6 +99,7 @@ impl Default for Genesis {
             mint_installer_path: String::from(DEFAULT_MINT_INSTALLER_PATH),
             pos_installer_path: String::from(DEFAULT_POS_INSTALLER_PATH),
             standard_payment_installer_path: String::from(DEFAULT_STANDARD_PAYMENT_INSTALLER_PATH),
+            auction_installer_path: String::from(DEFAULT_AUCTION_INSTALLER_PATH),
             accounts_path: String::from(DEFAULT_ACCOUNTS_CSV_PATH),
         }
     }
@@ -198,6 +201,7 @@ impl From<&chainspec::Chainspec> for Chainspec {
             mint_installer_path: String::from(DEFAULT_MINT_INSTALLER_PATH),
             pos_installer_path: String::from(DEFAULT_POS_INSTALLER_PATH),
             standard_payment_installer_path: String::from(DEFAULT_STANDARD_PAYMENT_INSTALLER_PATH),
+            auction_installer_path: String::from(DEFAULT_AUCTION_INSTALLER_PATH),
             accounts_path: String::from(DEFAULT_ACCOUNTS_CSV_PATH),
         };
 
@@ -275,6 +279,9 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
     let standard_payment_path = get_path(root, chainspec.genesis.standard_payment_installer_path);
     let standard_payment_installer_bytes = read_file(standard_payment_path)?;
 
+    let auction_path = get_path(root, chainspec.genesis.auction_installer_path);
+    let auction_installer_bytes = read_file(auction_path)?;
+
     let accounts_path = get_path(root, chainspec.genesis.accounts_path);
     let accounts = parse_accounts(accounts_path)?;
     let highway_config = chainspec::HighwayConfig {
@@ -295,6 +302,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         mint_installer_bytes,
         pos_installer_bytes,
         standard_payment_installer_bytes,
+        auction_installer_bytes,
         accounts,
         costs: chainspec.wasm_costs,
         deploy_config: chainspec.deploys.try_into()?,

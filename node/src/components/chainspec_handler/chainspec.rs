@@ -152,6 +152,7 @@ pub(crate) struct GenesisConfig {
     pub(crate) mint_installer_bytes: Vec<u8>,
     pub(crate) pos_installer_bytes: Vec<u8>,
     pub(crate) standard_payment_installer_bytes: Vec<u8>,
+    pub(crate) auction_installer_bytes: Vec<u8>,
     pub(crate) accounts: Vec<GenesisAccount>,
     pub(crate) costs: WasmCosts,
     pub(crate) deploy_config: DeployConfig,

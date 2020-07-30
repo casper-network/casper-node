@@ -217,6 +217,28 @@ impl Executor {
                         };
                     }
                 }
+            } else if runtime.is_auction(base_key) {
+                match runtime.call_host_auction(
+                    protocol_version,
+                    entry_point.name(),
+                    &mut runtime.context().named_keys().to_owned(),
+                    &args,
+                    Default::default(),
+                ) {
+                    Ok(_value) => {
+                        return ExecutionResult::Success {
+                            effect: runtime.context().effect(),
+                            cost: runtime.context().gas_counter(),
+                        }
+                    }
+                    Err(error) => {
+                        return ExecutionResult::Failure {
+                            error: error.into(),
+                            effect: effects_snapshot,
+                            cost: runtime.context().gas_counter(),
+                        }
+                    }
+                }
             }
         }
 

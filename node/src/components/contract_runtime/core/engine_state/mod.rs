@@ -178,6 +178,7 @@ where
             chainspec.genesis.mint_installer_bytes,
             chainspec.genesis.pos_installer_bytes,
             chainspec.genesis.standard_payment_installer_bytes,
+            chainspec.genesis.auction_installer_bytes,
             chainspec.genesis.accounts,
             chainspec.genesis.costs,
         );
@@ -380,12 +381,54 @@ where
             )?
         };
 
+        let auction_hash: ContractHash = {
+            let auction_installer_bytes = {
+                // NOTE: Before integration node wasn't updated to pass the bytes, so we were
+                // bundling it. This debug_assert can be removed once integration with genesis
+                // works.
+                debug_assert!(
+                    !ee_config.auction_installer_bytes().is_empty(),
+                    "Caller is required to pass the auction_installer bytes"
+                );
+                &ee_config.auction_installer_bytes()
+            };
+
+            let auction_installer_module = preprocessor.preprocess(auction_installer_bytes)?;
+            let args = RuntimeArgs::new();
+            let authorization_keys = BTreeSet::new();
+            let install_deploy_hash = genesis_config_hash.to_bytes();
+            let hash_address_generator = Rc::clone(&hash_address_generator);
+            let uref_address_generator = Rc::clone(&uref_address_generator);
+            let tracking_copy = Rc::clone(&tracking_copy);
+            let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
+
+            executor.exec_wasm_direct(
+                auction_installer_module,
+                ENTRY_POINT_NAME_INSTALL,
+                args,
+                &mut virtual_system_account,
+                authorization_keys,
+                blocktime,
+                install_deploy_hash,
+                gas_limit,
+                hash_address_generator,
+                uref_address_generator,
+                protocol_version,
+                correlation_id,
+                tracking_copy,
+                phase,
+                protocol_data,
+                system_contract_cache,
+            )?
+        };
+
         // Spec #2: Associate given CostTable with given ProtocolVersion.
         let protocol_data = ProtocolData::new(
             wasm_costs,
             mint_hash,
             proof_of_stake_hash,
             standard_payment_hash,
+            auction_hash,
         );
 
         self.state
@@ -572,6 +615,7 @@ where
             current_protocol_data.mint(),
             current_protocol_data.proof_of_stake(),
             current_protocol_data.standard_payment(),
+            current_protocol_data.auction(),
         );
 
         self.state

@@ -142,6 +142,7 @@ pub struct ExecConfig {
     mint_installer_bytes: Vec<u8>,
     proof_of_stake_installer_bytes: Vec<u8>,
     standard_payment_installer_bytes: Vec<u8>,
+    auction_installer_bytes: Vec<u8>,
     accounts: Vec<GenesisAccount>,
     wasm_costs: WasmCosts,
 }
@@ -151,6 +152,7 @@ impl ExecConfig {
         mint_installer_bytes: Vec<u8>,
         proof_of_stake_installer_bytes: Vec<u8>,
         standard_payment_installer_bytes: Vec<u8>,
+        auction_installer_bytes: Vec<u8>,
         accounts: Vec<GenesisAccount>,
         wasm_costs: WasmCosts,
     ) -> ExecConfig {
@@ -158,6 +160,7 @@ impl ExecConfig {
             mint_installer_bytes,
             proof_of_stake_installer_bytes,
             standard_payment_installer_bytes,
+            auction_installer_bytes,
             accounts,
             wasm_costs,
         }
@@ -173,6 +176,10 @@ impl ExecConfig {
 
     pub fn standard_payment_installer_bytes(&self) -> &[u8] {
         self.standard_payment_installer_bytes.as_slice()
+    }
+
+    pub fn auction_installer_bytes(&self) -> &[u8] {
+        self.auction_installer_bytes.as_slice()
     }
 
     pub fn wasm_costs(&self) -> WasmCosts {
@@ -215,6 +222,9 @@ impl Distribution<ExecConfig> for Standard {
         let standard_payment_installer_bytes =
             iter::repeat(()).map(|_| rng.gen()).take(count).collect();
 
+        count = rng.gen_range(1000, 10_000);
+        let auction_installer_bytes = iter::repeat(()).map(|_| rng.gen()).take(count).collect();
+
         count = rng.gen_range(1, 10);
         let accounts = iter::repeat(()).map(|_| rng.gen()).take(count).collect();
 
@@ -235,6 +245,7 @@ impl Distribution<ExecConfig> for Standard {
             mint_installer_bytes,
             proof_of_stake_installer_bytes,
             standard_payment_installer_bytes,
+            auction_installer_bytes,
             accounts,
             wasm_costs,
         }

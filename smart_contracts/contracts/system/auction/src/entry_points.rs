@@ -7,16 +7,26 @@ use casperlabs_contract::{
 };
 use casperlabs_types::{
     account::AccountHash,
+    auction::{
+        Auction, {ProofOfStakeProvider, StorageProvider, SystemProvider},
+    },
     auction::{DelegationRate, SeigniorageRecipients},
     bytesrepr::{FromBytes, ToBytes},
-    runtime_args, CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Key, Parameter, RuntimeArgs, URef, U512,
+    runtime_args,
+    system_contract_errors::auction::Error,
+    CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
+    Parameter, RuntimeArgs, URef, U512,
 };
 
-use crate::{
-    providers::{ProofOfStakeProvider, StorageProvider, SystemProvider},
-    Auction,
-};
+const METHOD_RELEASE_FOUNDER: &str = "release_founder";
+const METHOD_READ_WINNERS: &str = "read_winners";
+const METHOD_READ_SEIGNIORAGE_RECIPIENTS: &str = "read_seigniorage_recipients";
+const METHOD_ADD_BID: &str = "add_bid";
+const METHOD_WITHDRAW_BID: &str = "withdraw_bid";
+const METHOD_DELEGATE: &str = "delegate";
+const METHOD_UNDELEGATE: &str = "undelegate";
+const METHOD_QUASH_BID: &str = "quash_bid";
+const METHOD_RUN_AUCTION: &str = "run_auction";
 
 const ARG_ACCOUNT_HASH: &str = "account_hash";
 
@@ -28,7 +38,8 @@ const UNBOND: &str = "unbond";
 struct AuctionContract;
 
 impl StorageProvider for AuctionContract {
-    type Error = crate::Error;
+    type Error = Error;
+
     fn get_key(&mut self, name: &str) -> Option<Key> {
         runtime::get_key(name)
     }
@@ -36,32 +47,36 @@ impl StorageProvider for AuctionContract {
     fn read<T: FromBytes + CLTyped>(&mut self, uref: URef) -> Result<Option<T>, Self::Error> {
         Ok(storage::read(uref)?)
     }
-    fn write<T: ToBytes + CLTyped>(&mut self, uref: URef, value: T) {
+
+    fn write<T: ToBytes + CLTyped>(&mut self, uref: URef, value: T) -> Result<(), Self::Error> {
         storage::write(uref, value);
+        Ok(())
     }
 }
 
 impl ProofOfStakeProvider for AuctionContract {
-    fn bond(&mut self, amount: U512, purse: URef) {
+    type Error = Error;
+
+    fn bond(&mut self, amount: U512, purse: URef) -> Result<(), Self::Error> {
         let contract_hash = system::get_proof_of_stake();
         let args = runtime_args! {
             ARG_AMOUNT => amount,
             ARG_PURSE => purse,
         };
-        runtime::call_contract::<()>(contract_hash, BOND, args);
+        Ok(runtime::call_contract(contract_hash, BOND, args))
     }
 
-    fn unbond(&mut self, amount: Option<U512>) {
+    fn unbond(&mut self, amount: Option<U512>) -> Result<(), Self::Error> {
         let contract_hash = system::get_proof_of_stake();
         let args = runtime_args! {
             ARG_AMOUNT => amount,
         };
-        runtime::call_contract::<()>(contract_hash, UNBOND, args);
+        Ok(runtime::call_contract(contract_hash, UNBOND, args))
     }
 }
 
 impl SystemProvider for AuctionContract {
-    type Error = crate::Error;
+    type Error = Error;
     fn create_purse(&mut self) -> URef {
         system::create_purse()
     }
@@ -71,8 +86,7 @@ impl SystemProvider for AuctionContract {
         target: URef,
         amount: U512,
     ) -> StdResult<(), Self::Error> {
-        system::transfer_from_purse_to_purse(source, target, amount)
-            .map_err(|_| crate::Error::Transfer)
+        system::transfer_from_purse_to_purse(source, target, amount).map_err(|_| Error::Transfer)
     }
 }
 
@@ -183,7 +197,7 @@ pub fn get_entry_points() -> EntryPoints {
     let mut entry_points = EntryPoints::new();
 
     let entry_point = EntryPoint::new(
-        "release_founder",
+        METHOD_RELEASE_FOUNDER,
         vec![Parameter::new(ARG_ACCOUNT_HASH, AccountHash::cl_type())],
         CLType::Bool,
         EntryPointAccess::Public,
@@ -192,7 +206,7 @@ pub fn get_entry_points() -> EntryPoints {
     entry_points.add_entry_point(entry_point);
 
     let entry_point = EntryPoint::new(
-        "read_winners",
+        METHOD_READ_WINNERS,
         vec![],
         <Vec<AccountHash>>::cl_type(),
         EntryPointAccess::Public,
@@ -201,7 +215,7 @@ pub fn get_entry_points() -> EntryPoints {
     entry_points.add_entry_point(entry_point);
 
     let entry_point = EntryPoint::new(
-        "read_seigniorage_recipients",
+        METHOD_READ_SEIGNIORAGE_RECIPIENTS,
         vec![],
         SeigniorageRecipients::cl_type(),
         EntryPointAccess::Public,
@@ -210,7 +224,7 @@ pub fn get_entry_points() -> EntryPoints {
     entry_points.add_entry_point(entry_point);
 
     let entry_point = EntryPoint::new(
-        "add_bid",
+        METHOD_ADD_BID,
         vec![
             Parameter::new("account_hash", AccountHash::cl_type()),
             Parameter::new("source_purse", URef::cl_type()),
@@ -224,7 +238,7 @@ pub fn get_entry_points() -> EntryPoints {
     entry_points.add_entry_point(entry_point);
 
     let entry_point = EntryPoint::new(
-        "withdraw_bid",
+        METHOD_WITHDRAW_BID,
         vec![
             Parameter::new("account_hash", AccountHash::cl_type()),
             Parameter::new("quantity", U512::cl_type()),
@@ -236,7 +250,7 @@ pub fn get_entry_points() -> EntryPoints {
     entry_points.add_entry_point(entry_point);
 
     let entry_point = EntryPoint::new(
-        "delegate",
+        METHOD_DELEGATE,
         vec![
             Parameter::new("delegator_account_hash", AccountHash::cl_type()),
             Parameter::new("source_purse", URef::cl_type()),
@@ -250,7 +264,7 @@ pub fn get_entry_points() -> EntryPoints {
     entry_points.add_entry_point(entry_point);
 
     let entry_point = EntryPoint::new(
-        "undelegate",
+        METHOD_UNDELEGATE,
         vec![
             Parameter::new("delegator_account_hash", AccountHash::cl_type()),
             Parameter::new("validator_account_hash", AccountHash::cl_type()),
@@ -263,7 +277,7 @@ pub fn get_entry_points() -> EntryPoints {
     entry_points.add_entry_point(entry_point);
 
     let entry_point = EntryPoint::new(
-        "quash_bid",
+        METHOD_QUASH_BID,
         vec![Parameter::new(
             "validator_keys",
             Vec::<AccountHash>::cl_type(),
@@ -275,7 +289,7 @@ pub fn get_entry_points() -> EntryPoints {
     entry_points.add_entry_point(entry_point);
 
     let entry_point = EntryPoint::new(
-        "run_auction",
+        METHOD_RUN_AUCTION,
         vec![],
         CLType::Unit,
         EntryPointAccess::Public,

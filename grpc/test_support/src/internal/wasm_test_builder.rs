@@ -92,6 +92,8 @@ pub struct WasmTestBuilder<S> {
     pos_contract_hash: Option<ContractHash>,
     /// Standard payment contract key
     standard_payment_hash: Option<ContractHash>,
+    /// Auction contract key
+    auction_contract_hash: Option<ContractHash>,
 }
 
 impl<S> WasmTestBuilder<S> {
@@ -124,6 +126,7 @@ impl Default for InMemoryWasmTestBuilder {
             mint_contract_hash: None,
             pos_contract_hash: None,
             standard_payment_hash: None,
+            auction_contract_hash: None,
         }
     }
 }
@@ -145,6 +148,7 @@ impl<S> Clone for WasmTestBuilder<S> {
             mint_contract_hash: self.mint_contract_hash,
             pos_contract_hash: self.pos_contract_hash,
             standard_payment_hash: self.standard_payment_hash,
+            auction_contract_hash: self.auction_contract_hash,
         }
     }
 }
@@ -213,6 +217,7 @@ impl LmdbWasmTestBuilder {
             mint_contract_hash: None,
             pos_contract_hash: None,
             standard_payment_hash: None,
+            auction_contract_hash: None,
         }
     }
 
@@ -274,6 +279,7 @@ impl LmdbWasmTestBuilder {
             mint_contract_hash: None,
             pos_contract_hash: None,
             standard_payment_hash: None,
+            auction_contract_hash: None,
         }
     }
 
@@ -309,6 +315,7 @@ where
             mint_contract_hash: result.0.mint_contract_hash,
             pos_contract_hash: result.0.pos_contract_hash,
             standard_payment_hash: result.0.standard_payment_hash,
+            auction_contract_hash: result.0.auction_contract_hash,
             genesis_transforms: result.0.genesis_transforms,
         }
     }
@@ -354,6 +361,7 @@ where
         self.mint_contract_hash = Some(protocol_data.mint());
         self.pos_contract_hash = Some(protocol_data.proof_of_stake());
         self.standard_payment_hash = Some(protocol_data.standard_payment());
+        self.auction_contract_hash = Some(protocol_data.auction());
         self.genesis_account = Some(genesis_account);
         self.genesis_transforms = Some(transforms);
         self
@@ -551,6 +559,11 @@ where
     pub fn get_standard_payment_contract_hash(&self) -> ContractHash {
         self.standard_payment_hash
             .expect("Unable to obtain standard payment contract. Please run genesis first.")
+    }
+
+    pub fn get_auction_contract_hash(&self) -> ContractHash {
+        self.auction_contract_hash
+            .expect("Unable to obtain auction contract. Please run genesis first.")
     }
 
     pub fn get_genesis_transforms(&self) -> &AdditiveMap<Key, Transform> {

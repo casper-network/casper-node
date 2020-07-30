@@ -1,4 +1,5 @@
 mod args;
+mod auction_internal;
 mod externals;
 mod mint_internal;
 mod proof_of_stake_internal;
@@ -18,6 +19,7 @@ use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef, Trap, TrapKind
 
 use casperlabs_types::{
     account::{AccountHash, ActionType, Weight},
+    auction::Auction,
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
         self, Contract, ContractPackage, ContractVersion, ContractVersions, DisabledVersions,
@@ -1650,6 +1652,10 @@ where
         key.into_seed() == self.protocol_data().proof_of_stake()
     }
 
+    pub fn is_auction(&self, key: Key) -> bool {
+        key.into_seed() == self.protocol_data().auction()
+    }
+
     fn get_named_argument<T: FromBytes + CLTyped>(
         args: &RuntimeArgs,
         name: &str,
@@ -1885,6 +1891,174 @@ where
     pub fn call_host_standard_payment(&mut self) -> Result<(), Error> {
         let amount: U512 = Self::get_named_argument(&self.context.args(), "amount")?;
         self.pay(amount).map_err(Self::reverter)
+    }
+
+    pub fn call_host_auction(
+        &mut self,
+        protocol_version: ProtocolVersion,
+        entry_point_name: &str,
+        named_keys: &mut NamedKeys,
+        runtime_args: &RuntimeArgs,
+        extra_keys: &[Key],
+    ) -> Result<CLValue, Error> {
+        const METHOD_RELEASE_FOUNDER: &str = "release_founder";
+        const METHOD_READ_WINNERS: &str = "read_winners";
+        const METHOD_READ_SEIGNIORAGE_RECIPIENTS: &str = "read_seigniorage_recipients";
+        const METHOD_ADD_BID: &str = "add_bid";
+        const METHOD_WITHDRAW_BID: &str = "withdraw_bid";
+        const METHOD_DELEGATE: &str = "delegate";
+        const METHOD_UNDELEGATE: &str = "undelegate";
+        const METHOD_QUASH_BID: &str = "quash_bid";
+        const METHOD_RUN_AUCTION: &str = "run_auction";
+
+        let state = self.context.state();
+        let access_rights = {
+            let mut keys: Vec<Key> = named_keys.values().cloned().collect();
+            keys.extend(extra_keys);
+            keys.push(self.get_mint_contract().into());
+            keys.push(self.get_pos_contract().into());
+            extract_access_rights_from_keys(keys)
+        };
+        let authorization_keys = self.context.authorization_keys().to_owned();
+        let account = self.context.account();
+        let base_key = self.protocol_data().proof_of_stake().into();
+        let blocktime = self.context.get_blocktime();
+        let deploy_hash = self.context.get_deploy_hash();
+        let gas_limit = self.context.gas_limit();
+        let gas_counter = self.context.gas_counter();
+        let fn_store_id = self.context.hash_address_generator();
+        let address_generator = self.context.uref_address_generator();
+        let correlation_id = self.context.correlation_id();
+        let phase = self.context.phase();
+        let protocol_data = self.context.protocol_data();
+
+        let runtime_context = RuntimeContext::new(
+            state,
+            EntryPointType::Contract,
+            named_keys,
+            access_rights,
+            runtime_args.to_owned(),
+            authorization_keys,
+            account,
+            base_key,
+            blocktime,
+            deploy_hash,
+            gas_limit,
+            gas_counter,
+            fn_store_id,
+            address_generator,
+            protocol_version,
+            correlation_id,
+            phase,
+            protocol_data,
+        );
+
+        let mut runtime = Runtime::new(
+            self.config,
+            SystemContractCache::clone(&self.system_contract_cache),
+            self.memory.clone(),
+            self.module.clone(),
+            runtime_context,
+        );
+
+        let ret: CLValue = match entry_point_name {
+            METHOD_RELEASE_FOUNDER => {
+                let account_hash = Self::get_named_argument(&runtime_args, "account_hash")?;
+
+                let result = runtime.release_founder(account_hash);
+
+                CLValue::from_t(result).map_err(Self::reverter)?
+            }
+
+            METHOD_READ_WINNERS => {
+                let result = runtime.read_winners().map_err(Self::reverter)?;
+
+                CLValue::from_t(result).map_err(Self::reverter)?
+            }
+
+            METHOD_READ_SEIGNIORAGE_RECIPIENTS => {
+                let result = runtime.read_seigniorage_recipients();
+
+                CLValue::from_t(result).map_err(Self::reverter)?
+            }
+
+            METHOD_ADD_BID => {
+                let account_hash = Self::get_named_argument(&runtime_args, "account_hash")?;
+                let source_purse = Self::get_named_argument(&runtime_args, "source_purse")?;
+                let delegation_rate = Self::get_named_argument(&runtime_args, "delegation_rate")?;
+                let quantity = Self::get_named_argument(&runtime_args, "quantity")?;
+
+                let result = self
+                    .add_bid(account_hash, source_purse, delegation_rate, quantity)
+                    .map_err(Self::reverter)?;
+
+                CLValue::from_t(result).map_err(Self::reverter)?
+            }
+
+            METHOD_WITHDRAW_BID => {
+                let account_hash = Self::get_named_argument(&runtime_args, "account_hash")?;
+                let quantity = Self::get_named_argument(&runtime_args, "quantity")?;
+
+                let result = self
+                    .withdraw_bid(account_hash, quantity)
+                    .map_err(Self::reverter)?;
+                CLValue::from_t(result).map_err(Self::reverter)?
+            }
+
+            METHOD_DELEGATE => {
+                let delegator_account_hash =
+                    Self::get_named_argument(&runtime_args, "delegator_account_hash")?;
+                let source_purse = Self::get_named_argument(&runtime_args, "source_purse")?;
+                let validator_account_hash =
+                    Self::get_named_argument(&runtime_args, "validator_account_hash")?;
+                let quantity = Self::get_named_argument(&runtime_args, "quantity")?;
+
+                let result = self
+                    .delegate(
+                        delegator_account_hash,
+                        source_purse,
+                        validator_account_hash,
+                        quantity,
+                    )
+                    .map_err(Self::reverter)?;
+
+                CLValue::from_t(result).map_err(Self::reverter)?
+            }
+
+            METHOD_UNDELEGATE => {
+                let delegator_account_hash =
+                    Self::get_named_argument(&runtime_args, "delegator_account_hash")?;
+                let validator_account_hash =
+                    Self::get_named_argument(&runtime_args, "validator_account_hash")?;
+                let quantity = Self::get_named_argument(&runtime_args, "quantity")?;
+
+                let result = self
+                    .undelegate(delegator_account_hash, validator_account_hash, quantity)
+                    .map_err(Self::reverter)?;
+
+                CLValue::from_t(result).map_err(Self::reverter)?
+            }
+
+            METHOD_QUASH_BID => {
+                let validator_keys: Vec<AccountHash> =
+                    Self::get_named_argument(&runtime_args, "validator_keys")?;
+
+                let result = runtime.quash_bid(&validator_keys).map_err(Self::reverter)?;
+
+                CLValue::from_t(result).map_err(Self::reverter)?
+            }
+
+            METHOD_RUN_AUCTION => {
+                let result = runtime.run_auction().map_err(Self::reverter)?;
+                CLValue::from_t(result).map_err(Self::reverter)?
+            }
+
+            _ => CLValue::from_t(()).map_err(Self::reverter)?,
+        };
+        let urefs = extract_urefs(&ret)?;
+        let access_rights = extract_access_rights_from_urefs(urefs);
+        self.context.access_rights_extend(access_rights);
+        Ok(ret)
     }
 
     /// Calls contract living under a `key`, with supplied `args`.
@@ -2807,6 +2981,13 @@ where
         self.context.protocol_data().standard_payment()
     }
 
+    /// Looks up the public auction contract key in the context's protocol data.
+    ///
+    /// Returned URef is already attenuated depending on the calling account.
+    fn get_auction_contract(&self) -> ContractHash {
+        self.context.protocol_data().auction()
+    }
+
     /// Calls the "create" method on the mint contract at the given mint
     /// contract key
     fn mint_create(&mut self, mint_contract_hash: ContractHash) -> Result<URef, Error> {
@@ -3061,6 +3242,7 @@ where
             Ok(SystemContractType::Mint) => self.get_mint_contract(),
             Ok(SystemContractType::ProofOfStake) => self.get_pos_contract(),
             Ok(SystemContractType::StandardPayment) => self.get_standard_payment_contract(),
+            Ok(SystemContractType::Auction) => self.get_auction_contract(),
             Err(error) => return Ok(Err(error)),
         };
 

@@ -278,6 +278,8 @@ message ChainSpec {
             bytes pos_installer = 2;
             // wasm bytes for installing the standard payment system contract
             bytes standard_payment_installer = 3;
+            // wasm bytes for installing the auction system contract
+            bytes auction_installer = 6;
             // genesis account information
             repeated GenesisAccount accounts = 4;
             // costs at genesis

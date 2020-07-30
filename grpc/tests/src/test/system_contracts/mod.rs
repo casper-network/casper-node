@@ -1,3 +1,4 @@
+mod auction_install;
 mod genesis;
 mod mint_install;
 mod pos_install;
