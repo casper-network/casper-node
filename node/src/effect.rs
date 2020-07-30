@@ -115,6 +115,7 @@ pub type Effects<Ev> = Multiple<Effect<Ev>>;
 type Multiple<T> = SmallVec<[T; 2]>;
 
 /// A responder satisfying a request.
+#[must_use]
 pub struct Responder<T>(oneshot::Sender<T>);
 
 impl<T: 'static + Send> Responder<T> {
