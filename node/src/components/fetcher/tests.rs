@@ -17,17 +17,22 @@ use crate::{
     },
     effect::{
         announcements::{NetworkAnnouncement, StorageAnnouncement},
-        requests::DeployFetcherRequest,
+        requests::FetcherRequest,
     },
     reactor::{self, EventQueueHandle, Runner},
     testing::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor,
     },
-    types::Deploy,
+    types::{Deploy, DeployHash},
 };
 
 const TIMEOUT: Duration = Duration::from_secs(1);
+
+/// A proper implementation would have a Reactor level Message enum with a
+/// variant to hold a component's messages; but for the purposes of the set
+/// of tests in this file thus far one message type is currently sufficient.
+type TestMessage = Message<Deploy>;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From)]
@@ -36,13 +41,13 @@ enum Event {
     #[from]
     Storage(StorageRequest<Storage>),
     #[from]
-    DeployFetcher(super::Event),
+    DeployFetcher(super::Event<Deploy>),
     #[from]
-    NetworkRequest(NetworkRequest<NodeId, Message>),
+    DeployFetcherRequest(FetcherRequest<NodeId, Deploy>),
     #[from]
-    DeployFetcherRequest(DeployFetcherRequest<NodeId>),
+    NetworkRequest(NetworkRequest<NodeId, TestMessage>),
     #[from]
-    NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
+    NetworkAnnouncement(NetworkAnnouncement<NodeId, TestMessage>),
     #[from]
     StorageAnnouncement(StorageAnnouncement<Storage>),
 }
@@ -51,11 +56,9 @@ impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Storage(event) => write!(formatter, "storage: {}", event),
-            Event::DeployFetcher(event) => write!(formatter, "deploy fetcher: {}", event),
+            Event::DeployFetcher(event) => write!(formatter, "fetcher: {}", event),
             Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
-            Event::DeployFetcherRequest(req) => {
-                write!(formatter, "deploy fetcher request: {}", req)
-            }
+            Event::DeployFetcherRequest(req) => write!(formatter, "fetcher request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(formatter, "network announcement: {}", ann),
             Event::StorageAnnouncement(ann) => write!(formatter, "storage announcement: {}", ann),
         }
@@ -72,15 +75,15 @@ enum Error {
 }
 
 struct Reactor {
-    network: InMemoryNetwork<Message>,
+    network: InMemoryNetwork<TestMessage>,
     storage: Storage,
-    deploy_fetcher: DeployFetcher,
+    deploy_fetcher: Fetcher<Deploy>,
     _storage_tempdir: TempDir,
 }
 
 impl Drop for Reactor {
     fn drop(&mut self) {
-        NetworkController::<Message>::remove_node(&self.network.node_id())
+        NetworkController::<TestMessage>::remove_node(&self.network.node_id())
     }
 }
 
@@ -100,12 +103,12 @@ impl reactor::Reactor for Reactor {
         let (storage_config, _storage_tempdir) = storage::Config::default_for_tests();
         let storage = Storage::new(&storage_config)?;
 
-        let deploy_fetcher = DeployFetcher::new(config);
+        let fetcher = Fetcher::<Deploy>::new(config);
 
         let reactor = Reactor {
             network,
             storage,
-            deploy_fetcher,
+            deploy_fetcher: fetcher,
             _storage_tempdir,
         };
 
@@ -125,9 +128,10 @@ impl reactor::Reactor for Reactor {
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
             ),
-            Event::DeployFetcher(event) => reactor::wrap_effects(
+            Event::DeployFetcher(deploy_event) => reactor::wrap_effects(
                 Event::DeployFetcher,
-                self.deploy_fetcher.handle_event(effect_builder, rng, event),
+                self.deploy_fetcher
+                    .handle_event(effect_builder, rng, deploy_event),
             ),
             Event::NetworkRequest(request) => reactor::wrap_effects(
                 Event::NetworkRequest,
@@ -142,14 +146,9 @@ impl reactor::Reactor for Reactor {
                 sender,
                 payload,
             }) => {
-                let event = super::Event::MessageReceived {
-                    sender,
-                    message: payload,
-                };
-                reactor::wrap_effects(
-                    From::from,
-                    self.deploy_fetcher.handle_event(effect_builder, rng, event),
-                )
+                let reactor_event =
+                    Event::DeployFetcher(super::Event::MessageReceived { sender, payload });
+                self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::StorageAnnouncement(_) => Effects::new(),
         }
@@ -247,7 +246,7 @@ async fn assert_settled(
 async fn should_fetch_from_local() {
     const NETWORK_SIZE: usize = 1;
 
-    NetworkController::<Message>::create_active();
+    NetworkController::<TestMessage>::create_active();
     let (mut network, mut rng, node_ids) = {
         let mut network = Network::<Reactor>::new();
         let mut rng = rand::thread_rng();
@@ -271,14 +270,14 @@ async fn should_fetch_from_local() {
 
     assert_settled(node_id, *deploy.id(), &mut network, rng, TIMEOUT, false).await;
 
-    NetworkController::<Message>::remove_active();
+    NetworkController::<TestMessage>::remove_active();
 }
 
 #[tokio::test]
 async fn should_fetch_from_peer() {
     const NETWORK_SIZE: usize = 2;
 
-    NetworkController::<Message>::create_active();
+    NetworkController::<TestMessage>::create_active();
     let (mut network, mut rng, node_ids) = {
         let mut network = Network::<Reactor>::new();
         let mut rng = rand::thread_rng();
@@ -304,14 +303,14 @@ async fn should_fetch_from_peer() {
 
     assert_settled(node_id, *deploy.id(), &mut network, rng, TIMEOUT, false).await;
 
-    NetworkController::<Message>::remove_active();
+    NetworkController::<TestMessage>::remove_active();
 }
 
 #[tokio::test]
 async fn should_timeout_fetch_from_peer() {
     const NETWORK_SIZE: usize = 2;
 
-    NetworkController::<Message>::create_active();
+    NetworkController::<TestMessage>::create_active();
     let (mut network, mut rng, node_ids) = {
         let mut network = Network::<Reactor>::new();
         let mut rng = rand::thread_rng();
@@ -352,15 +351,14 @@ async fn should_timeout_fetch_from_peer() {
             &requesting_node,
             &mut rng,
             move |event: &Event| -> bool {
-                match event {
-                    Event::NetworkRequest(request) => match request {
-                        NetworkRequest::SendMessage { payload, .. } => match payload {
-                            Message::GetRequest(_) => true,
-                            _ => false,
-                        },
-                        _ => false,
-                    },
-                    _ => false,
+                if let Event::NetworkRequest(NetworkRequest::SendMessage {
+                    payload: Message::GetRequest(_),
+                    ..
+                }) = event
+                {
+                    true
+                } else {
+                    false
                 }
             },
             TIMEOUT,
@@ -373,15 +371,14 @@ async fn should_timeout_fetch_from_peer() {
             &holding_node,
             &mut rng,
             move |event: &Event| -> bool {
-                match event {
-                    Event::NetworkRequest(request) => match request {
-                        NetworkRequest::SendMessage { payload, .. } => match payload {
-                            Message::GetResponse(_) => true,
-                            _ => false,
-                        },
-                        _ => false,
-                    },
-                    _ => false,
+                if let Event::NetworkRequest(NetworkRequest::SendMessage {
+                    payload: Message::GetResponse(_),
+                    ..
+                }) = event
+                {
+                    true
+                } else {
+                    false
                 }
             },
             TIMEOUT,
@@ -405,5 +402,5 @@ async fn should_timeout_fetch_from_peer() {
     )
     .await;
 
-    NetworkController::<Message>::remove_active();
+    NetworkController::<TestMessage>::remove_active();
 }
