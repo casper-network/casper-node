@@ -17,8 +17,8 @@ The CasperLabs Testnet is live.
 ## Get Started with Smart Contracts
 - [Writing Smart Contracts](https://docs.casperlabs.io/en/latest/dapp-dev-guide/index.html)
 - [Rust Smart Contract SDK](https://crates.io/crates/cargo-casperlabs)
-- [Rust Smart Contract API Docs (v0.5.1)](https://docs.rs/casperlabs-contract/0.5.1/casperlabs_contract/contract_api/index.html)
-- [Assemblyscript Smart Contract API (https://www.npmjs.com/package/@casperlabs/contract)
+- [Rust Smart Contract API Docs](https://docs.rs/casperlabs-contract/latest/casperlabs_contract/contract_api/index.html)
+- [AssemblyScript Smart Contract API](https://www.npmjs.com/package/@casperlabs/contract)
 
 ## Community
 
