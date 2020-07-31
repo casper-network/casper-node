@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{
-    active_validator::round_id, evidence::Evidence, validators::ValidatorIndex, vote::Panorama,
-};
+use super::{evidence::Evidence, state, validators::ValidatorIndex, vote::Panorama};
 use crate::{
     components::consensus::traits::{Context, ValidatorSecret},
     types::Timestamp,
@@ -113,7 +111,7 @@ impl<C: Context> Debug for WireVote<C> {
             .field("timestamp", &self.timestamp.millis())
             .field("panorama", &self.panorama.0)
             .field("round_exp", &self.round_exp)
-            .field("round_id()", &round_id(self.timestamp, self.round_exp))
+            .field("round_id()", &self.round_id())
             .finish()
     }
 }
@@ -124,5 +122,10 @@ impl<C: Context> WireVote<C> {
     pub(crate) fn hash(&self) -> C::Hash {
         // TODO: Use serialize_into to avoid allocation?
         <C as Context>::hash(&bincode::serialize(self).expect("serialize WireVote"))
+    }
+
+    /// Returns the time at which the round containing this vote began.
+    pub(crate) fn round_id(&self) -> Timestamp {
+        state::round_id(self.timestamp, self.round_exp)
     }
 }

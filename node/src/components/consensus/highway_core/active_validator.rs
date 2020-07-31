@@ -96,7 +96,7 @@ impl<C: Context> ActiveValidator<C> {
             return effects;
         }
         let r_exp = self.round_exp(state, timestamp);
-        let r_id = round_id(timestamp, r_exp);
+        let r_id = state::round_id(timestamp, r_exp);
         let r_len = state::round_len(r_exp);
         if timestamp == r_id && state.leader(r_id) == self.vidx {
             let bctx = BlockContext::new(timestamp);
@@ -163,7 +163,7 @@ impl<C: Context> ActiveValidator<C> {
         let r_exp = self.round_exp(state, timestamp);
         timestamp >> r_exp == vote.timestamp >> r_exp // Current round.
             && state.leader(vote.timestamp) == vote.creator // The creator is the round's leader.
-            && vote.timestamp == round_id(vote.timestamp, vote.round_exp) // Check if it's a lambda message.
+            && vote.timestamp == state::round_id(vote.timestamp, vote.round_exp) // Check if it's a lambda message.
             && vote.creator != self.vidx // We didn't send it ourselves.
             && !state.has_evidence(vote.creator) // The creator is not faulty.
             && self.latest_vote(state)
@@ -221,7 +221,7 @@ impl<C: Context> ActiveValidator<C> {
             return Vec::new(); // We already scheduled the next call; nothing to do.
         }
         let r_exp = self.round_exp(state, timestamp);
-        let r_id = round_id(timestamp, r_exp);
+        let r_id = state::round_id(timestamp, r_exp);
         let r_len = state::round_len(r_exp);
         self.next_timer = if timestamp < r_id + self.witness_offset(r_len) {
             r_id + self.witness_offset(r_len)
@@ -265,24 +265,13 @@ impl<C: Context> ActiveValidator<C> {
     fn round_exp(&self, state: &State<C>, timestamp: Timestamp) -> u8 {
         self.latest_vote(state).map_or(self.next_round_exp, |vote| {
             let max_re = self.next_round_exp.max(vote.round_exp);
-            if vote.timestamp < round_id(timestamp, max_re) {
+            if vote.timestamp < state::round_id(timestamp, max_re) {
                 self.next_round_exp
             } else {
                 vote.round_exp
             }
         })
     }
-}
-
-/// Returns the time at which the round with the given timestamp and round exponent began.
-///
-/// The boundaries of rounds with length `1 << round_exp` are multiples of that length, in
-/// milliseconds since the epoch. So the beginning of the current round is the greatest multiple
-/// of `1 << round_exp` that is less or equal to `timestamp`.
-pub(super) fn round_id(timestamp: Timestamp, round_exp: u8) -> Timestamp {
-    // The greatest multiple less or equal to the timestamp is the timestamp with the last
-    // `round_exp` bits set to zero.
-    (timestamp >> round_exp) << round_exp
 }
 
 #[cfg(test)]

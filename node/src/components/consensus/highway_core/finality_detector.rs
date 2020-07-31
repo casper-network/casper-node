@@ -6,7 +6,7 @@ use super::{
     highway::Highway,
     state::{self, State, Weight},
     validators::ValidatorIndex,
-    vote::{Panorama, Vote},
+    vote::{Observation, Panorama, Vote},
 };
 use crate::{components::consensus::traits::Context, types::Timestamp};
 
@@ -18,29 +18,31 @@ struct Section<'a, C: Context> {
     sequence_numbers: BTreeMap<ValidatorIndex, u64>,
     /// A reference to the protocol state this section belongs to.
     state: &'a State<C>,
-    /// The panorama that defines which votes are eligible for the summit.
-    // TODO: Should be `BTreeMap`, not `Panorama`!
-    panorama: &'a Panorama<C>,
+    // The latest votes that are eligible for the summit.
+    latest: &'a BTreeMap<ValidatorIndex, &'a C::Hash>,
 }
 
 impl<'a, C: Context> Section<'a, C> {
     /// Creates a section assigning to each validator their level-0 vote, i.e. the oldest vote in
     /// their current streak of votes for `candidate` (and descendants), or `None` if their latest
     /// vote is not for `candidate`.
-    fn level0(candidate: &'a C::Hash, state: &'a State<C>, panorama: &'a Panorama<C>) -> Self {
+    fn level0(
+        candidate: &'a C::Hash,
+        state: &'a State<C>,
+        latest: &'a BTreeMap<ValidatorIndex, &'a C::Hash>,
+    ) -> Self {
         let height = state.block(candidate).height;
-        let to_lvl0vote = |(idx, vhash): (ValidatorIndex, &'a C::Hash)| {
+        let to_lvl0vote = |(&idx, &vhash): (&ValidatorIndex, &&'a C::Hash)| {
             state
                 .swimlane(vhash)
                 .take_while(|(_, vote)| state.find_ancestor(&vote.block, height) == Some(candidate))
                 .last()
                 .map(|(_, vote)| (idx, vote.seq_number))
         };
-        let correct_votes = panorama.enumerate_correct();
         Section {
-            sequence_numbers: correct_votes.filter_map(to_lvl0vote).collect(),
+            sequence_numbers: latest.iter().filter_map(to_lvl0vote).collect(),
             state,
-            panorama,
+            latest,
         }
     }
 
@@ -68,9 +70,8 @@ impl<'a, C: Context> Section<'a, C> {
     ) -> (Vec<ValidatorIndex>, Vec<ValidatorIndex>) {
         let mut pruned = Vec::new();
         loop {
-            let sees_quorum = |&idx: &ValidatorIndex| {
-                let vhash = self.panorama.get(idx).correct().unwrap();
-                self.seen_weight(self.state.vote(vhash), &committee) >= quorum
+            let sees_quorum = |idx: &ValidatorIndex| {
+                self.seen_weight(self.state.vote(self.latest[idx]), &committee) >= quorum
             };
             let (new_committee, new_pruned): (Vec<_>, Vec<_>) =
                 committee.iter().cloned().partition(sees_quorum);
@@ -85,29 +86,27 @@ impl<'a, C: Context> Section<'a, C> {
     /// The maximal quorum for which this is a committee, i.e. the minimum seen weight of the
     /// members.
     fn committee_quorum(&self, committee: &[ValidatorIndex]) -> Option<Weight> {
-        let seen_weight = |idx: &ValidatorIndex| {
-            let vhash = self.panorama.get(*idx).correct().unwrap();
-            self.seen_weight(self.state.vote(vhash), committee)
-        };
+        let seen_weight =
+            |idx: &ValidatorIndex| self.seen_weight(self.state.vote(self.latest[idx]), committee);
         committee.iter().map(seen_weight).min()
     }
 
     /// Returns the section containing the earliest vote of each of the `committee` members that
     /// can see a quorum of votes by `committee` members in `self`.
     fn next_from_committee(&self, quorum: Weight, committee: &[ValidatorIndex]) -> Self {
-        let find_first_lvl_n = |&idx: &ValidatorIndex| {
+        let find_first_lvl_n = |idx: &ValidatorIndex| {
             let (_, vote) = self
                 .state
-                .swimlane(self.panorama.get(idx).correct().unwrap())
+                .swimlane(self.latest[idx])
                 .take_while(|(_, vote)| self.seen_weight(vote, &committee) >= quorum)
                 .last()
                 .unwrap();
-            (idx, vote.seq_number)
+            (*idx, vote.seq_number)
         };
         Section {
             sequence_numbers: committee.iter().map(find_first_lvl_n).collect(),
             state: self.state,
-            panorama: self.panorama,
+            latest: self.latest,
         }
     }
 
@@ -242,7 +241,8 @@ impl<C: Context> FinalityDetector<C> {
     ) -> usize {
         let total_w = state.total_weight();
         let quorum = self.quorum_for_lvl(target_lvl, total_w) - fault_w;
-        let sec0 = Section::level0(candidate, &state, state.panorama());
+        let latest = state.panorama().enumerate_correct().collect();
+        let sec0 = Section::level0(candidate, &state, &latest);
         let sections_iter = iter::successors(Some(sec0), |sec| sec.next(quorum));
         sections_iter.skip(1).take(target_lvl).count()
     }
@@ -303,6 +303,8 @@ fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> BTreeMap<Va
     rewards
 }
 
+/// Adds the rewards for finalizing the block with hash `proposal_h`.
+// TODO: Add a minimum round exponent, to enforce an upper limit for total rewards.
 fn add_rewards_for<C: Context>(
     rewards: &mut BTreeMap<ValidatorIndex, u64>,
     state: &State<C>,
@@ -310,32 +312,60 @@ fn add_rewards_for<C: Context>(
     proposal_h: &C::Hash,
 ) {
     let fault_w = state.faulty_weight_in(panorama);
-    // TODO: Smaller panorama: Only in-round votes. (Not a valid panorama? Doesn't matter?)
-    let section = Section::level0(proposal_h, state, panorama);
-    let (mut committee, _pruned) = section.prune_committee(
-        Weight(1),
-        section.sequence_numbers.keys().cloned().collect(),
-    );
+    let proposal_vote = state.vote(proposal_h);
+    let r_id = proposal_vote.round_id();
+
+    // Only consider messages in round `r_id` for the summit. To compute the assigned weight, we
+    // also include validators who didn't send a message in that round, but were supposed to.
+    let mut assigned_weight = Weight(0);
+    let mut latest = BTreeMap::new();
+    for (idx, obs) in panorama.enumerate() {
+        // Find the validator's latest vote in or before round `r_id`.
+        let opt_vote = match obs {
+            Observation::Faulty => continue, // Faulty validator aren't assigned to any round.
+            Observation::None => None,
+            Observation::Correct(latest_vh) => state
+                .swimlane(latest_vh)
+                .find(|&(_, vote)| vote.round_id() <= r_id),
+        };
+        match opt_vote {
+            None => (), // No vote in or before round `r_id`. This is considered assigned.
+            Some((vh, vote)) if vote.round_exp <= r_id.trailing_zeros() => {
+                if vote.timestamp >= r_id {
+                    latest.insert(idx, vh); // This vote is in round `r_id`. Validator took part.
+                }
+            }
+            Some((_, _)) => continue, // Validator is not assigned to this round.
+        }
+        assigned_weight += state.weight(idx);
+    }
+
+    // Find all level-1 summits. For each validator, store the highest quorum it is a part of.
+    let section = Section::level0(proposal_h, state, &latest);
+    let (mut committee, _) = section.prune_committee(Weight(1), latest.keys().cloned().collect());
     let mut max_quorum = BTreeMap::new();
     while let Some(quorum) = section.committee_quorum(&committee) {
+        // The current committee is a level-1 summit with `quorum`. Try to go higher:
         let (new_committee, pruned) = section.prune_committee(quorum + Weight(1), committee);
         committee = new_committee;
+        // Pruned validators are not part of any summit with a higher quorum than this.
         for vidx in &pruned {
-            max_quorum.insert(*vidx, quorum + fault_w);
+            max_quorum.insert(*vidx, quorum);
         }
     }
+
+    // Add the block rewards for each validator who is a member of at least one summit.
     for (vidx, quorum) in max_quorum {
-        // If the summit's quorum is not greater than 50%, rewards are reduced.
-        let finality_factor = if quorum * 2 > state.total_weight() {
+        // If the summit's quorum was not enough to finalize the block, rewards are reduced.
+        let finality_factor = if (quorum - fault_w) * 2 > state.total_weight() {
             1_000_000_000_000
         } else {
             u128::from(state.forgiveness_factor())
         };
-        // TODO: Add a minimum round exponent, to enforce an upper limit for total rewards.
-        let num = finality_factor * u128::from(quorum);
-        // TODO: "assigned * total" instead of "total * total" weight.
-        let denom = u128::from(state.total_weight()) * u128::from(state.total_weight());
-        *rewards.entry(vidx).or_insert(0) += (u128::from(state.weight(vidx)) * num / denom) as u64;
+        // Rewards are proportional to the quorum and to the validator's weight.
+        let num = finality_factor * u128::from(quorum) * u128::from(state.weight(vidx));
+        let denom = u128::from(assigned_weight) * u128::from(state.total_weight());
+        *rewards.entry(vidx).or_insert(0) += (num / denom) as u64;
     }
 }
 

@@ -587,6 +587,17 @@ pub(super) fn round_len(round_exp: u8) -> TimeDiff {
     TimeDiff::from(1 << round_exp)
 }
 
+/// Returns the time at which the round with the given timestamp and round exponent began.
+///
+/// The boundaries of rounds with length `1 << round_exp` are multiples of that length, in
+/// milliseconds since the epoch. So the beginning of the current round is the greatest multiple
+/// of `1 << round_exp` that is less or equal to `timestamp`.
+pub(super) fn round_id(timestamp: Timestamp, round_exp: u8) -> Timestamp {
+    // The greatest multiple less or equal to the timestamp is the timestamp with the last
+    // `round_exp` bits set to zero.
+    (timestamp >> round_exp) << round_exp
+}
+
 /// Returns the earliest time at which rewards for a block introduced by this vote can be paid.
 pub(super) fn reward_time<C: Context>(vote: &Vote<C>) -> Timestamp {
     vote.timestamp + round_len(vote.round_exp) * REWARD_DELAY
