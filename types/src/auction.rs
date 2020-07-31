@@ -16,6 +16,6 @@ pub use auction_provider::{
 pub use delegator::{DelegatedAmounts, Delegators};
 pub use era_validators::EraValidators;
 pub use founding_validator::{FoundingValidator, FoundingValidators};
-pub use providers::{ProofOfStakeProvider, StorageProvider, SystemProvider};
+pub use providers::{MintProvider, ProofOfStakeProvider, StorageProvider, SystemProvider};
 pub use seigniorage_recipient::{SeigniorageRecipient, SeigniorageRecipients};
 pub use types::DelegationRate;

@@ -8,7 +8,7 @@ use casperlabs_contract::{
 use casperlabs_types::{
     account::AccountHash,
     auction::{
-        AuctionProvider, {ProofOfStakeProvider, StorageProvider, SystemProvider},
+        AuctionProvider, MintProvider, {ProofOfStakeProvider, StorageProvider, SystemProvider},
     },
     auction::{DelegationRate, SeigniorageRecipients},
     bytesrepr::{FromBytes, ToBytes},
@@ -34,6 +34,7 @@ const ARG_AMOUNT: &str = "amount";
 const ARG_PURSE: &str = "purse";
 const BOND: &str = "bond";
 const UNBOND: &str = "unbond";
+const RELEASE_FOUNDER_STAKE: &str = "release_founder_stake";
 
 struct AuctionContract;
 
@@ -87,6 +88,18 @@ impl SystemProvider for AuctionContract {
         amount: U512,
     ) -> StdResult<(), Self::Error> {
         system::transfer_from_purse_to_purse(source, target, amount).map_err(|_| Error::Transfer)
+    }
+}
+
+impl MintProvider for AuctionContract {
+    type Error = Error;
+    fn release_founder_stake(&mut self, account_hash: AccountHash) -> StdResult<bool, Self::Error> {
+        let contract_hash = system::get_mint();
+        let args = runtime_args! {
+            ARG_ACCOUNT_HASH => account_hash,
+        };
+        let result = runtime::call_contract(contract_hash, RELEASE_FOUNDER_STAKE, args);
+        Ok(result)
     }
 }
 

@@ -47,6 +47,9 @@ pub enum Error {
     /// Raised when system is unable to unbond.
     #[fail(display = "Unbonding error")]
     Unbonding = 11,
+    /// Raised when Mint contract is unable to release founder stake.
+    #[fail(display = "Unable to release founder stake")]
+    ReleaseFounderStake = 12,
 }
 
 impl CLTyped for Error {

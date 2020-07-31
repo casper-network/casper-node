@@ -2,7 +2,7 @@ use alloc::{collections::BTreeMap, vec::Vec};
 
 use super::{
     internal,
-    providers::{ProofOfStakeProvider, StorageProvider, SystemProvider},
+    providers::{MintProvider, ProofOfStakeProvider, StorageProvider, SystemProvider},
     SeigniorageRecipient,
 };
 use crate::{
@@ -24,11 +24,13 @@ pub const ERA_VALIDATORS_KEY: &str = "era_validators";
 const AUCTION_SLOTS: usize = 5;
 
 /// Bondign auctions contract implementation.
-pub trait AuctionProvider: StorageProvider + ProofOfStakeProvider + SystemProvider
+pub trait AuctionProvider:
+    StorageProvider + ProofOfStakeProvider + SystemProvider + MintProvider
 where
     Error: From<<Self as StorageProvider>::Error>
         + From<<Self as SystemProvider>::Error>
-        + From<<Self as ProofOfStakeProvider>::Error>,
+        + From<<Self as ProofOfStakeProvider>::Error>
+        + From<<Self as MintProvider>::Error>,
 {
     /// Access: node
     /// Upon progression to the set era marking the release of founding stakes,
@@ -39,8 +41,21 @@ where
     /// release_founder_stake in the Mint contract. Upon receipt of True,
     /// it also flips the relevant field to True in the validator’s entry
     /// within founding_validators. Otherwise the function aborts.
-    fn release_founder(&mut self, _account_hash: AccountHash) -> bool {
-        todo!()
+    fn release_founder(&mut self, account_hash: AccountHash) -> Result<bool> {
+        let mut founding_validators = internal::get_founder_validators(self)?;
+
+        match founding_validators.get_mut(&account_hash) {
+            None => return Ok(false),
+            Some(founding_validator) => {
+                founding_validator.winner = true;
+            }
+        }
+
+        self.release_founder_stake(account_hash)?;
+
+        internal::set_founder_validators(self, founding_validators)?;
+
+        Ok(true)
     }
 
     /// Returns era_validators. Publicly accessible, but intended

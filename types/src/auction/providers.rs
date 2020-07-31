@@ -1,4 +1,5 @@
 use crate::{
+    account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::Error,
     CLTyped, Key, URef, U512,
@@ -29,6 +30,15 @@ pub trait ProofOfStakeProvider {
 
     /// Unbond specified amount.
     fn unbond(&mut self, amount: Option<U512>) -> Result<(), Self::Error>;
+}
+
+/// Provides functionality of a mint contract.
+pub trait MintProvider {
+    /// Error representation for Mint errors.
+    type Error: From<Error>;
+
+    /// Sets the Bool field in the tuple representing a founding validator's stake to True, enabling this validator to unbond.
+    fn release_founder_stake(&mut self, account_hash: AccountHash) -> Result<bool, Self::Error>;
 }
 
 /// Provides functionality of a system.
