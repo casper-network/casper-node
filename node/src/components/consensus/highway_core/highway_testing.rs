@@ -1004,8 +1004,18 @@ mod test_harness {
     }
 
     // Test that validators have finalized consensus values in the same order.
-    fn assert_finalization_order(finalized_values: Vec<Vec<ConsensusValue>>) {
+    fn assert_finalization_order(
+        finalized_values: Vec<Vec<ConsensusValue>>,
+        expected_number: usize,
+    ) {
         let reference_order = finalized_values.get(0).cloned().unwrap();
+
+        assert_eq!(
+            reference_order.len(),
+            expected_number,
+            "Expected to finalize {} consensus values.",
+            expected_number
+        );
 
         finalized_values
             .into_iter()
@@ -1071,6 +1081,7 @@ mod test_harness {
                 )
             });
 
-        assert_finalization_order(finalized_values);
+        assert_finalization_order(finalized_values, cv_count as usize);
+    }
     }
 }
