@@ -93,3 +93,14 @@ pub fn read_file<P: AsRef<Path>>(filename: P) -> Result<Vec<u8>, ReadFileError> 
         error,
     })
 }
+
+/// Read a complete `path` into memory and convert to string.
+///
+/// Wraps `fs::read_to_string`, but preserves the filename for better error printing.
+pub fn read_file_to_string<P: AsRef<Path>>(filename: P) -> Result<String, ReadFileError> {
+    let path = filename.as_ref();
+    fs::read_to_string(path).map_err(|error| ReadFileError {
+        path: path.to_owned(),
+        error,
+    })
+}

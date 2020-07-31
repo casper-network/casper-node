@@ -65,6 +65,12 @@ impl Display for ValidatorId {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+pub(crate) enum FaultType {
+    Mute,
+    InvalidMessages,
+}
+
 /// A validator in the test network.
 #[derive(Debug)]
 pub(crate) struct Validator<C, M, D>
@@ -72,8 +78,8 @@ where
     M: Clone + Debug,
 {
     pub(crate) id: ValidatorId,
-    /// Whether a validator should produce equivocations.
-    pub(crate) is_faulty: bool,
+    /// Whether validator is faulty.
+    pub(crate) fault: Option<FaultType>,
     /// Vector of consensus values finalized by the validator.
     finalized_values: Vec<C>,
     /// Messages received by the validator.
@@ -88,10 +94,10 @@ impl<C, M, D> Validator<C, M, D>
 where
     M: Clone + Debug,
 {
-    pub(crate) fn new(id: ValidatorId, is_faulty: bool, consensus: D) -> Self {
+    pub(crate) fn new(id: ValidatorId, fault: Option<FaultType>, consensus: D) -> Self {
         Validator {
             id,
-            is_faulty,
+            fault,
             finalized_values: Vec::new(),
             messages_received: Vec::new(),
             messages_produced: Vec::new(),
@@ -99,8 +105,8 @@ where
         }
     }
 
-    pub(crate) fn is_faulty(&self) -> bool {
-        self.is_faulty
+    pub(crate) fn fault(&self) -> Option<FaultType> {
+        self.fault
     }
 
     pub(crate) fn validator_id(&self) -> ValidatorId {
@@ -293,7 +299,7 @@ mod virtual_net_tests {
     fn messages_are_enqueued_in_order() {
         let validator_id = ValidatorId(1u64);
         let single_validator: Validator<C, u64, NoOpConsensus> =
-            Validator::new(validator_id, false, NoOpConsensus);
+            Validator::new(validator_id, None, NoOpConsensus);
         let mut virtual_net = VirtualNet::new(vec![single_validator], vec![]);
 
         let messages_num = 10;
@@ -323,9 +329,9 @@ mod virtual_net_tests {
     #[test]
     fn messages_are_dispatched() {
         let validator_id = ValidatorId(1u64);
-        let a: Validator<C, M, NoOpConsensus> = Validator::new(validator_id, false, NoOpConsensus);
-        let b = Validator::new(ValidatorId(2u64), false, NoOpConsensus);
-        let c = Validator::new(ValidatorId(3u64), false, NoOpConsensus);
+        let a: Validator<C, M, NoOpConsensus> = Validator::new(validator_id, None, NoOpConsensus);
+        let b = Validator::new(ValidatorId(2u64), None, NoOpConsensus);
+        let c = Validator::new(ValidatorId(3u64), None, NoOpConsensus);
 
         let mut virtual_net = VirtualNet::new(vec![a, b, c], vec![]);
 

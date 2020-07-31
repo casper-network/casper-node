@@ -22,7 +22,7 @@ use crate::{
         consensus::{self, EraSupervisor},
         contract_runtime::{self, ContractRuntime},
         deploy_buffer::{self, DeployBuffer},
-        deploy_fetcher::{self, DeployFetcher},
+        fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
         metrics::Metrics,
         pinger::{self, Pinger},
@@ -35,8 +35,7 @@ use crate::{
         },
         requests::{
             ApiRequest, BlockExecutorRequest, BlockValidatorRequest, ContractRuntimeRequest,
-            DeployBufferRequest, DeployFetcherRequest, MetricsRequest, NetworkRequest,
-            StorageRequest,
+            DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -59,7 +58,7 @@ pub enum Message {
     Consensus(consensus::ConsensusMessage),
     /// Deploy fetcher component message.
     #[from]
-    DeployFetcher(deploy_fetcher::Message),
+    DeployFetcher(fetcher::Message<Deploy>),
     /// Deploy gossiper component message.
     #[from]
     DeployGossiper(gossiper::Message<Deploy>),
@@ -100,7 +99,7 @@ pub enum Event {
     Consensus(consensus::Event<NodeId>),
     /// Deploy fetcher event.
     #[from]
-    DeployFetcher(deploy_fetcher::Event),
+    DeployFetcher(fetcher::Event<Deploy>),
     /// Deploy gossiper event.
     #[from]
     DeployGossiper(gossiper::Event<Deploy>),
@@ -120,7 +119,7 @@ pub enum Event {
     NetworkRequest(NetworkRequest<NodeId, Message>),
     /// Deploy fetcher request.
     #[from]
-    DeployFetcherRequest(DeployFetcherRequest<NodeId>),
+    DeployFetcherRequest(FetcherRequest<NodeId, Deploy>),
     /// Deploy buffer request.
     #[from]
     DeployBufferRequest(DeployBufferRequest),
@@ -167,8 +166,8 @@ impl From<NetworkRequest<NodeId, pinger::Message>> for Event {
     }
 }
 
-impl From<NetworkRequest<NodeId, deploy_fetcher::Message>> for Event {
-    fn from(request: NetworkRequest<NodeId, deploy_fetcher::Message>) -> Self {
+impl From<NetworkRequest<NodeId, fetcher::Message<Deploy>>> for Event {
+    fn from(request: NetworkRequest<NodeId, fetcher::Message<Deploy>>) -> Self {
         Event::NetworkRequest(request.map_payload(Message::from))
     }
 }
@@ -223,7 +222,7 @@ pub struct Reactor {
     contract_runtime: ContractRuntime,
     api_server: ApiServer,
     consensus: EraSupervisor<NodeId>,
-    deploy_fetcher: DeployFetcher,
+    deploy_fetcher: Fetcher<Deploy>,
     deploy_gossiper: Gossiper<Deploy, Event>,
     deploy_buffer: DeployBuffer,
     block_executor: BlockExecutor,
@@ -273,7 +272,7 @@ impl reactor::Reactor for Reactor {
             effect_builder,
             validator_stakes,
         )?;
-        let deploy_fetcher = DeployFetcher::new(config.gossip);
+        let deploy_fetcher = Fetcher::new(config.gossip);
         let deploy_gossiper = Gossiper::new(
             config.gossip,
             gossiper::put_deploy_to_storage,
@@ -403,11 +402,8 @@ impl reactor::Reactor for Reactor {
                     Message::Pinger(msg) => {
                         Event::Pinger(pinger::Event::MessageReceived { sender, msg })
                     }
-                    Message::DeployFetcher(message) => {
-                        Event::DeployFetcher(deploy_fetcher::Event::MessageReceived {
-                            sender,
-                            message,
-                        })
+                    Message::DeployFetcher(payload) => {
+                        Event::DeployFetcher(fetcher::Event::MessageReceived { sender, payload })
                     }
                     Message::DeployGossiper(message) => {
                         Event::DeployGossiper(gossiper::Event::MessageReceived { sender, message })

@@ -17,18 +17,35 @@ pub enum Error {
     /// Error resulting from creating or using asymmetric key types.
     #[error("asymmetric key error: {0}")]
     AsymmetricKey(String),
+
     /// Error resulting when decoding a type from a hex-encoded representation.
     #[error("parsing from hex: {0}")]
     FromHex(#[from] FromHexError),
+
     /// Error trying to read a private key.
     #[error("private key load failed: {0}")]
     PrivateKeyLoad(ReadFileError),
+
+    /// Error trying to read a public key.
+    #[error("public key load failed: {0}")]
+    PublicKeyLoad(ReadFileError),
+
     /// Error resulting when decoding a type from a base64 representation.
     #[error("decoding error: {0}")]
     FromBase64(#[from] DecodeError),
+
     /// Pem format error.
     #[error("pem error: {0}")]
     FromPem(String),
+
+    /// Error while trying to write a file.
+    #[error("error writing {file}: {error_msg}")]
+    WriteFile {
+        /// The file attempted to be written.
+        file: String,
+        /// The underlying error message.
+        error_msg: String,
+    },
 }
 
 impl From<SignatureError> for Error {

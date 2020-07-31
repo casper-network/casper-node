@@ -21,7 +21,7 @@ use crate::crypto::{
 use crate::{
     components::{
         contract_runtime::core::engine_state::executable_deploy_item::ExecutableDeployItem,
-        gossiper::Item, storage::Value,
+        fetcher::Item as FetcherItem, gossiper::Item as GossiperItem, storage::Value,
     },
     crypto::{
         asymmetric_key::{PublicKey, Signature},
@@ -123,7 +123,7 @@ impl Display for DeployHeader {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "deploy-header[account: {}, timestamp: {}, gas_price: {}, body_hash: {}, ttl_millis: {}, dependencies: {}, chain_name: {}]",
+            "deploy-header[account: {}, timestamp: {}, gas_price: {}, body_hash: {}, ttl_millis: {}, dependencies: [{}], chain_name: {}]",
             self.account,
             self.timestamp,
             self.gas_price,
@@ -209,8 +209,17 @@ impl Value for Deploy {
     }
 }
 
-/// Trait to allow `Deploy`s to be used by the gossiper component.
-impl Item for Deploy {
+/// Trait to allow `Deploy`s to be used by the `Gossiper` component.
+impl GossiperItem for Deploy {
+    type Id = DeployHash;
+
+    fn id(&self) -> &Self::Id {
+        &self.hash
+    }
+}
+
+/// Trait to allow `Deploy`s to be used by the `Fetcher` component.
+impl FetcherItem for Deploy {
     type Id = DeployHash;
 
     fn id(&self) -> &Self::Id {

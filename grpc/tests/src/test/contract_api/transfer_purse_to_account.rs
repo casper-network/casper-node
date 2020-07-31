@@ -96,7 +96,7 @@ fn should_run_purse_to_account_transfer() {
     let new_purse = new_account.main_purse();
     // This is the new lookup key that will be present in AddKeys for a mint
     // contract uref
-    let new_purse_key = new_purse.remove_access_rights().as_string();
+    let new_purse_key = new_purse.remove_access_rights().to_formatted_string();
 
     // Obtain transforms for a mint account
     let mint_contract_hash = builder.get_mint_contract_hash();
