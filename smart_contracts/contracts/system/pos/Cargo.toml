@@ -4,6 +4,18 @@ version = "0.1.0"
 authors = ["Andreas Fackler <andreas@casperlabs.io>"]
 edition = "2018"
 
+[lib]
+bench = false
+doctest = false
+test = false
+
+[[bin]]
+name = "pos"
+path = "src/bin/main.rs"
+bench = false
+doctest = false
+test = false
+
 [features]
 std = ["casperlabs-contract/std", "casperlabs-types/std"]
 enable-bonding = []

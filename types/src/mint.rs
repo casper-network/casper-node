@@ -22,7 +22,7 @@ pub trait Mint: RuntimeProvider + StorageProvider {
 
         let balance_key: Key = self.new_uref(initial_balance).into();
         let purse_uref: URef = self.new_uref(());
-        let purse_uref_name = purse_uref.remove_access_rights().as_string();
+        let purse_uref_name = purse_uref.remove_access_rights().to_formatted_string();
 
         // store balance uref so that the runtime knows the mint has full access
         self.put_key(&purse_uref_name, balance_key);

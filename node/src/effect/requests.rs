@@ -26,7 +26,7 @@ use crate::{
             shared::{additive_map::AdditiveMap, transform::Transform},
             storage::global_state::CommitResult,
         },
-        deploy_fetcher::FetchResult,
+        fetcher::{FetchResult, Item as FetcherItem},
         storage::{self, DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::hash::Digest,
@@ -404,27 +404,25 @@ impl Display for ContractRuntimeRequest {
     }
 }
 
-/// Deploy-fetcher related requests.
+/// Fetcher related requests.
 #[derive(Debug)]
 #[must_use]
-pub enum DeployFetcherRequest<I> {
-    /// Return the specified deploy if it exists, else `None`.
-    FetchDeploy {
-        /// The hash of the deploy to be retrieved.
-        hash: DeployHash,
-        /// The peer id of the peer to be asked if the deploy is not held locally
+pub enum FetcherRequest<I, T: FetcherItem> {
+    /// Return the specified item if it exists, else `None`.
+    Fetch {
+        /// The ID of the item to be retrieved.
+        id: T::Id,
+        /// The peer id of the peer to be asked if the item is not held locally
         peer: I,
         /// Responder to call with the result.
-        responder: Responder<Option<Box<FetchResult>>>,
+        responder: Responder<Option<Box<FetchResult<T>>>>,
     },
 }
 
-impl<I> Display for DeployFetcherRequest<I> {
+impl<I, T: FetcherItem> Display for FetcherRequest<I, T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            DeployFetcherRequest::FetchDeploy { hash, .. } => {
-                write!(formatter, "request deploy {}", hash)
-            }
+            FetcherRequest::Fetch { id, .. } => write!(formatter, "request item by id {}", id),
         }
     }
 }
