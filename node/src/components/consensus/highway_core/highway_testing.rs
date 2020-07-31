@@ -1083,5 +1083,41 @@ mod test_harness {
 
         assert_finalization_order(finalized_values, cv_count as usize);
     }
+
+    #[test]
+    fn liveness_test_some_mute() {
+        logging::init_params(true).ok();
+
+        let mut rng = TestRng::new();
+        let cv_count = 10;
+        let fault_perc = 30;
+
+        let mut highway_test_harness = HighwayTestHarnessBuilder::new()
+            .max_faulty_validators(3)
+            .faulty_weight_perc(fault_perc)
+            .consensus_values_count(cv_count)
+            .weight_limits(3, 10)
+            .build(&mut rng)
+            .ok()
+            .expect("Construction was successful");
+
+        crank_until(&mut highway_test_harness, &mut rng, |hth| {
+            // Stop the test when each node finalized expected number of consensus values.
+            // Note that we're not testing the order of finalization here.
+            // It will be tested later – it's not the condition for stopping the test run.
+            hth.virtual_net
+                .validators()
+                .all(|v| v.finalized_count() == cv_count as usize)
+        })
+        .unwrap();
+
+        let handle = highway_test_harness.mutable_handle();
+        let mut validators = handle.validators();
+
+        let finalized_values: Vec<Vec<ConsensusValue>> = validators
+            .map(|v| v.finalized_values().cloned().collect::<Vec<_>>())
+            .collect();
+
+        assert_finalization_order(finalized_values, cv_count as usize);
     }
 }
