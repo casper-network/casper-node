@@ -23,6 +23,11 @@ pub const METHOD_MINT: &str = "mint";
 pub const METHOD_CREATE: &str = "create";
 pub const METHOD_BALANCE: &str = "balance";
 pub const METHOD_TRANSFER: &str = "transfer";
+pub const METHOD_BOND: &str = "bond";
+pub const METHOD_UNBOND: &str = "unbond";
+pub const METHOD_UNBOND_TIMER_ADVANCE: &str = "unbond_timer_advance";
+pub const METHOD_SLASH: &str = "slash";
+pub const METHOD_RELEASE_FOUNDER_STAKE: &str = "release_founder_stake";
 
 pub const ARG_AMOUNT: &str = "amount";
 pub const ARG_PURSE: &str = "purse";
@@ -38,6 +43,9 @@ impl RuntimeProvider for MintContract {
 
     fn put_key(&mut self, name: &str, key: Key) {
         runtime::put_key(name, key)
+    }
+    fn get_key(&self, name: &str) -> Option<Key> {
+        runtime::get_key(name)
     }
 }
 
@@ -107,6 +115,53 @@ pub fn transfer() {
     runtime::ret(ret);
 }
 
+pub fn bond() {
+    let mut mint_contract = MintContract;
+    let account_hash = runtime::get_named_arg("account_hash");
+    let source_purse = runtime::get_named_arg("source_purse");
+    let quantity = runtime::get_named_arg("quantity");
+    let result = mint_contract
+        .bond(account_hash, source_purse, quantity)
+        .unwrap_or_revert();
+    let ret = CLValue::from_t(result).unwrap_or_revert();
+    runtime::ret(ret);
+}
+
+pub fn unbond() {
+    let mut mint_contract = MintContract;
+    let account_hash = runtime::get_named_arg("account_hash");
+    let source_purse = runtime::get_named_arg("source_purse");
+    let quantity = runtime::get_named_arg("quantity");
+    let result = mint_contract
+        .unbond(account_hash, source_purse, quantity)
+        .unwrap_or_revert();
+    let ret = CLValue::from_t(result).unwrap_or_revert();
+    runtime::ret(ret)
+}
+
+pub fn unbond_timer_advance() {
+    let mut mint_contract = MintContract;
+    mint_contract.unbond_timer_advance().unwrap_or_revert();
+}
+
+pub fn slash() {
+    let mut mint_contract = MintContract;
+    let validator_account_hashes = runtime::get_named_arg("validator_account_hashes");
+    mint_contract
+        .slash(validator_account_hashes)
+        .unwrap_or_revert();
+}
+
+pub fn release_founder_stake() {
+    let mut mint_contract = MintContract;
+    let validator_account_hash = runtime::get_named_arg("validator_account_hash");
+    let result = mint_contract
+        .release_founder_stake(validator_account_hash)
+        .unwrap_or_revert();
+    let ret = CLValue::from_t(result).unwrap_or_revert();
+    runtime::ret(ret)
+}
+
 pub fn get_entry_points() -> EntryPoints {
     let mut entry_points = EntryPoints::new();
 
@@ -151,6 +206,51 @@ pub fn get_entry_points() -> EntryPoints {
             ok: Box::new(CLType::Unit),
             err: Box::new(CLType::U8),
         },
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_BOND,
+        vec![],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_UNBOND,
+        vec![],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_UNBOND_TIMER_ADVANCE,
+        vec![],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_SLASH,
+        vec![],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_RELEASE_FOUNDER_STAKE,
+        vec![],
+        CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );

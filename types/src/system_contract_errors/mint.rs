@@ -38,6 +38,9 @@ pub enum Error {
     /// Purse not found while trying to get balance.
     #[fail(display = "Purse not found")]
     PurseNotFound = 7,
+    /// Unable to obtain a key by its name.
+    #[fail(display = "Missing key")]
+    MissingKey = 8,
 }
 
 impl From<PurseError> for Error {

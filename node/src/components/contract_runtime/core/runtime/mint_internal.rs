@@ -25,6 +25,9 @@ where
         // TODO: update RuntimeProvider to better handle errors
         self.put_key(name.to_string(), key).expect("should put key")
     }
+    fn get_key(&self, name: &str) -> Option<Key> {
+        self.named_keys_get(name).cloned()
+    }
 }
 
 // TODO: update Mint + StorageProvider to better handle errors

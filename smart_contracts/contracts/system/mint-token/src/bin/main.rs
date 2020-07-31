@@ -20,3 +20,28 @@ pub extern "C" fn balance() {
 pub extern "C" fn transfer() {
     mint_token::transfer();
 }
+
+#[no_mangle]
+pub extern "C" fn bond() {
+    mint_token::bond();
+}
+
+#[no_mangle]
+pub extern "C" fn unbond() {
+    mint_token::unbond();
+}
+
+#[no_mangle]
+pub extern "C" fn unbond_timer_advance() {
+    mint_token::unbond_timer_advance();
+}
+
+#[no_mangle]
+pub extern "C" fn slash() {
+    mint_token::slash();
+}
+
+#[no_mangle]
+pub extern "C" fn release_founder_stake() {
+    mint_token::release_founder_stake();
+}

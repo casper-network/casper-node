@@ -2,6 +2,7 @@
 mod runtime_provider;
 mod storage_provider;
 
+use alloc::{collections::BTreeMap, vec::Vec};
 use core::convert::TryFrom;
 
 use crate::{account::AccountHash, system_contract_errors::mint::Error, Key, URef, U512};
@@ -9,6 +10,21 @@ use crate::{account::AccountHash, system_contract_errors::mint::Error, Key, URef
 pub use crate::mint::{runtime_provider::RuntimeProvider, storage_provider::StorageProvider};
 
 const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
+
+/// Bidders mapped to their bidding purses and tokens contained therein. Delegators' tokens
+/// are kept in the validator bid purses, available for withdrawal up to the delegated number
+/// of tokens. Withdrawal moves the tokens to a delegator-controlled unbonding purse.
+pub type BidPurses = BTreeMap<AccountHash, (URef, U512)>;
+
+/// Founding validators mapped to their staking purses and tokens contained therein. These
+/// function much like the regular bidding purses, but have a field indicating whether any tokens
+/// may be unbonded.
+pub type FounderPurses = BTreeMap<AccountHash, (URef, U512, bool)>;
+
+/// Validators and delegators mapped to their purses, tokens and expiration timer in eras. At the
+/// beginning of each era, node software updates the timer until it reaches 0, at which point
+/// tokens may be transferred to a different purse.
+pub type UnbondingPurses = BTreeMap<AccountHash, (AccountHash, U512, u8)>;
 
 /// Mint trait.
 pub trait Mint: RuntimeProvider + StorageProvider {
@@ -69,5 +85,65 @@ pub trait Mint: RuntimeProvider + StorageProvider {
         self.write(source_balance, source_value - amount)?;
         self.add(target_balance, amount)?;
         Ok(())
+    }
+
+    /// Creates a new purse in bid_purses corresponding to a validator’s key, or tops off an
+    /// existing one.
+    ///
+    /// Returns the bid purse's key and current quantity of motes.
+    fn bond(
+        &mut self,
+        _account_hash: AccountHash,
+        _source_purse: URef,
+        _quantity: U512,
+    ) -> Result<(URef, U512), Error> {
+        let bid_purses_uref = self
+            .get_key("bid_purses")
+            .and_then(Key::into_uref)
+            .ok_or(Error::MissingKey)?;
+
+        let mut _bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
+        // bid_purses.entry(&account_hash).
+
+        todo!("bond")
+    }
+
+    /// Creates a new purse in unbonding_purses given a validator's key and quantity, returning the new purse's key and the quantity of motes remaining in the validator's bid purse.
+    fn unbond(
+        &mut self,
+        _account_hash: AccountHash,
+        _source_purse: URef,
+        _quantity: U512,
+    ) -> Result<(URef, U512), Error> {
+        let bid_purses_uref = self
+            .get_key("bid_purses")
+            .and_then(Key::into_uref)
+            .ok_or(Error::MissingKey)?;
+
+        let mut _bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
+
+        todo!("unbond")
+    }
+
+    /// In the first block of each era, the node submits a special deploy that calls this function,
+    /// decrementing the number of eras until unlock for every value in unbonding_purses.
+    fn unbond_timer_advance(&mut self) -> Result<(), Error> {
+        todo!("unbond_timer_advance");
+    }
+
+    /// In the first block of each era, the node submits a special deploy that calls this function, decrementing the number of eras until unlock for every value in unbonding_purses.
+    fn slash(&mut self, _validator_account_hashes: Vec<AccountHash>) -> Result<(), Error> {
+        // Present version of this document does not specify how unbonding delegators are to be
+        // slashed (this will require some modifications to the spec).
+        todo!("slash")
+    }
+
+    /// Sets the Bool field in the tuple representing a founding validator’s stake to True,
+    /// enabling this validator to unbond.
+    fn release_founder_stake(
+        &mut self,
+        _validator_account_hash: AccountHash,
+    ) -> Result<bool, Error> {
+        todo!("release_founder_stake")
     }
 }
