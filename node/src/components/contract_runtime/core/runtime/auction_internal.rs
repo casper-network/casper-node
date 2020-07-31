@@ -1,5 +1,5 @@
 use casperlabs_types::{
-    auction::{Auction, ProofOfStakeProvider, StorageProvider, SystemProvider},
+    auction::{AuctionProvider, ProofOfStakeProvider, StorageProvider, SystemProvider},
     bytesrepr::{FromBytes, ToBytes},
     runtime_args,
     system_contract_errors::auction::Error,
@@ -103,7 +103,7 @@ where
     }
 }
 
-impl<'a, R> Auction for Runtime<'a, R>
+impl<'a, R> AuctionProvider for Runtime<'a, R>
 where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,

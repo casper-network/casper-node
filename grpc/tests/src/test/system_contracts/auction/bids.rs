@@ -2,7 +2,6 @@ use casperlabs_engine_test_support::{
     internal::{ExecuteRequestBuilder, WasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_node::components::contract_runtime::core::engine_state::EngineConfig;
 use casperlabs_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";

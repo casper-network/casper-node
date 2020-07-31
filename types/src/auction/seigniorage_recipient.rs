@@ -1,6 +1,6 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use super::types::DelegationRate;
+use super::{types::DelegationRate, DelegatedAmounts};
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
@@ -9,11 +9,14 @@ use crate::{
 
 /// The seigniorage recipient details.
 #[cfg_attr(test, derive(Debug))]
-#[derive(PartialEq)]
+#[derive(Default, PartialEq)]
 pub struct SeigniorageRecipient {
-    stake: U512,
-    delegation_rate: DelegationRate,
-    delegators: Vec<(AccountHash, U512)>,
+    /// Total staked amounts
+    pub stake: U512,
+    /// Accumulated delegation rates.
+    pub delegation_rate: DelegationRate,
+    /// List of delegators and their accumulated bids.
+    pub delegators: DelegatedAmounts,
 }
 
 impl CLTyped for SeigniorageRecipient {
@@ -59,6 +62,9 @@ pub type SeigniorageRecipients = BTreeMap<AccountHash, SeigniorageRecipient>;
 
 #[cfg(test)]
 mod tests {
+    use alloc::collections::BTreeMap;
+    use core::iter::FromIterator;
+
     use super::SeigniorageRecipient;
     use crate::{account::AccountHash, auction::DelegationRate, bytesrepr, U512};
 
@@ -67,11 +73,11 @@ mod tests {
         let seigniorage_recipient = SeigniorageRecipient {
             stake: U512::max_value(),
             delegation_rate: DelegationRate::max_value(),
-            delegators: vec![
+            delegators: BTreeMap::from_iter(vec![
                 (AccountHash::new([42; 32]), U512::one()),
                 (AccountHash::new([43; 32]), U512::max_value()),
                 (AccountHash::new([44; 32]), U512::zero()),
-            ],
+            ]),
         };
         bytesrepr::test_serialization_roundtrip(&seigniorage_recipient);
     }

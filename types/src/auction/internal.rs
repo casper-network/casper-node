@@ -9,7 +9,9 @@ use crate::{
 };
 
 use super::{
-    auction::{ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_VALIDATORS_KEY, FOUNDER_VALIDATORS_KEY},
+    auction_provider::{
+        ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_VALIDATORS_KEY, FOUNDER_VALIDATORS_KEY,
+    },
     providers::StorageProvider,
 };
 

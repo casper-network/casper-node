@@ -19,7 +19,7 @@ use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef, Trap, TrapKind
 
 use casperlabs_types::{
     account::{AccountHash, ActionType, Weight},
-    auction::Auction,
+    auction::AuctionProvider,
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
         self, Contract, ContractPackage, ContractVersion, ContractVersions, DisabledVersions,
@@ -2043,14 +2043,14 @@ where
                 let validator_keys: Vec<AccountHash> =
                     Self::get_named_argument(&runtime_args, "validator_keys")?;
 
-                let result = runtime.quash_bid(&validator_keys).map_err(Self::reverter)?;
+                runtime.quash_bid(&validator_keys).map_err(Self::reverter)?;
 
-                CLValue::from_t(result).map_err(Self::reverter)?
+                CLValue::from_t(()).map_err(Self::reverter)?
             }
 
             METHOD_RUN_AUCTION => {
-                let result = runtime.run_auction().map_err(Self::reverter)?;
-                CLValue::from_t(result).map_err(Self::reverter)?
+                runtime.run_auction().map_err(Self::reverter)?;
+                CLValue::from_t(()).map_err(Self::reverter)?
             }
 
             _ => CLValue::from_t(()).map_err(Self::reverter)?,

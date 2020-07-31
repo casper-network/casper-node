@@ -3,6 +3,7 @@ use alloc::{collections::BTreeMap, vec::Vec};
 use super::{
     internal,
     providers::{ProofOfStakeProvider, StorageProvider, SystemProvider},
+    SeigniorageRecipient,
 };
 use crate::{
     account::AccountHash,
@@ -23,7 +24,7 @@ pub const ERA_VALIDATORS_KEY: &str = "era_validators";
 const AUCTION_SLOTS: usize = 5;
 
 /// Bondign auctions contract implementation.
-pub trait Auction: StorageProvider + ProofOfStakeProvider + SystemProvider
+pub trait AuctionProvider: StorageProvider + ProofOfStakeProvider + SystemProvider
 where
     Error: From<<Self as StorageProvider>::Error>
         + From<<Self as SystemProvider>::Error>
@@ -54,8 +55,45 @@ where
     /// delegated quantities from delegators. This function is publicly
     /// accessible, but intended for system use by the PoS contract, because
     /// this data is necessary for distributing seigniorage.
-    fn read_seigniorage_recipients(&mut self) -> SeigniorageRecipients {
-        todo!()
+    fn read_seigniorage_recipients(&mut self) -> Result<SeigniorageRecipients> {
+        // `era_validators` are assumed to be computed already by calling "run_auction" entrypoint.
+        let era_validators = internal::get_era_validators(self)?;
+
+        let founder_validators = internal::get_founder_validators(self)?;
+        let active_bids = internal::get_active_bids(self)?;
+        let mut delegators = internal::get_delegators(self)?;
+
+        let mut seigniorage_recipients = SeigniorageRecipients::new();
+
+        // each validator...
+        for era_validator in era_validators {
+            let mut seigniorage_recipient = SeigniorageRecipient::default();
+            // ... mapped to their bids
+            match (
+                founder_validators.get(&era_validator),
+                active_bids.get(&era_validator),
+            ) {
+                (Some(founding_validator), None) => {
+                    seigniorage_recipient.stake += founding_validator.staked_amount;
+                    seigniorage_recipient.delegation_rate += founding_validator.delegation_rate;
+                }
+                (None, Some(active_bid)) => {
+                    seigniorage_recipient.stake += active_bid.bid_amount;
+                    seigniorage_recipient.delegation_rate += active_bid.delegation_rate;
+                }
+                _ => {
+                    // It has to be either of those but can't be in both, or neither or those
+                }
+            }
+
+            if let Some(delegator_map) = delegators.remove(&era_validator) {
+                seigniorage_recipient.delegators = delegator_map;
+            }
+
+            seigniorage_recipients.insert(era_validator, seigniorage_recipient);
+        }
+
+        Ok(seigniorage_recipients)
     }
 
     /// For a non-founder validator, this adds, or modifies, an entry in the
@@ -215,9 +253,9 @@ where
             let mut delegators = internal::get_delegators(self)?;
 
             let new_quantity = *delegators
-                .entry(delegator_account_hash)
-                .or_default()
                 .entry(validator_account_hash)
+                .or_default()
+                .entry(delegator_account_hash)
                 .and_modify(|delegator| *delegator += quantity)
                 .or_insert_with(|| quantity);
 
@@ -250,10 +288,10 @@ where
 
         let mut delegators = internal::get_delegators(self)?;
         let delegators_map = delegators
-            .get_mut(&delegator_account_hash)
+            .get_mut(&validator_account_hash)
             .ok_or(Error::DelegatorNotFound)?;
         let amount = delegators_map
-            .get_mut(&validator_account_hash)
+            .get_mut(&delegator_account_hash)
             .ok_or(Error::ValidatorNotFound)?;
 
         let new_amount = amount.checked_sub(quantity).ok_or(Error::InvalidQuantity)?;

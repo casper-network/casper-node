@@ -8,7 +8,7 @@ use casperlabs_contract::{
 use casperlabs_types::{
     account::AccountHash,
     auction::{
-        Auction, {ProofOfStakeProvider, StorageProvider, SystemProvider},
+        AuctionProvider, {ProofOfStakeProvider, StorageProvider, SystemProvider},
     },
     auction::{DelegationRate, SeigniorageRecipients},
     bytesrepr::{FromBytes, ToBytes},
@@ -90,7 +90,7 @@ impl SystemProvider for AuctionContract {
     }
 }
 
-impl Auction for AuctionContract {}
+impl AuctionProvider for AuctionContract {}
 
 #[no_mangle]
 pub extern "C" fn release_founder() {
@@ -112,7 +112,9 @@ pub extern "C" fn read_winners() {
 
 #[no_mangle]
 pub extern "C" fn read_seigniorage_recipients() {
-    let result = AuctionContract.read_seigniorage_recipients();
+    let result = AuctionContract
+        .read_seigniorage_recipients()
+        .unwrap_or_revert();
 
     let cl_value = CLValue::from_t(result).unwrap_or_revert();
     runtime::ret(cl_value)
