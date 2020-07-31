@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use super::{evidence::Evidence, validators::ValidatorIndex, vote::Panorama};
+use super::{
+    active_validator::round_id, evidence::Evidence, validators::ValidatorIndex, vote::Panorama,
+};
 use crate::{
     components::consensus::traits::{Context, ValidatorSecret},
     types::Timestamp,
@@ -106,11 +108,12 @@ impl<C: Context> Debug for WireVote<C> {
         f.debug_struct("WireVote")
             .field("hash()", &self.hash())
             .field("value", &self.value.as_ref().map(|_| Ellipsis))
-            .field("creator", &self.creator)
+            .field("creator.0", &self.creator.0)
             .field("seq_number", &self.seq_number)
             .field("timestamp", &self.timestamp.millis())
             .field("panorama", &self.panorama.0)
             .field("round_exp", &self.round_exp)
+            .field("round_id()", &round_id(self.timestamp, self.round_exp))
             .finish()
     }
 }
