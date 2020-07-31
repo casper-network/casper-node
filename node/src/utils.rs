@@ -83,12 +83,37 @@ pub struct ReadFileError {
     error: io::Error,
 }
 
+/// Error writing a file
+#[derive(Debug, Error)]
+#[error("could not write to {0}: {error}", .path.display())]
+pub struct WriteFileError {
+    /// Path that failed to be written to.
+    path: PathBuf,
+    /// The underlying OS error.
+    #[source]
+    error: io::Error,
+}
+
 /// Read complete at `path` into memory.
 ///
 /// Wraps `fs::read`, but preserves the filename for better error printing.
 pub fn read_file<P: AsRef<Path>>(filename: P) -> Result<Vec<u8>, ReadFileError> {
     let path = filename.as_ref();
     fs::read(path).map_err(|error| ReadFileError {
+        path: path.to_owned(),
+        error,
+    })
+}
+
+/// Write data to `path`.
+///
+/// Wraps `fs::write`, but preserves the filename for better error printing.
+pub fn write_file<P: AsRef<Path>, B: AsRef<[u8]>>(
+    filename: P,
+    data: B,
+) -> Result<(), WriteFileError> {
+    let path = filename.as_ref();
+    fs::write(path, data.as_ref()).map_err(|error| WriteFileError {
         path: path.to_owned(),
         error,
     })

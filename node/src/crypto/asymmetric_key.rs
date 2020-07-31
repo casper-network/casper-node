@@ -3,7 +3,6 @@
 use std::{
     cmp::Ordering,
     fmt::{self, Debug, Display, Formatter},
-    fs,
     hash::{Hash, Hasher},
     path::Path,
 };
@@ -17,7 +16,7 @@ use signature::Signature as Sig;
 use super::{Error, Result};
 use crate::{
     crypto::hash::hash,
-    utils::{read_file, read_file_to_string},
+    utils::{read_file, read_file_to_string, write_file},
 };
 use casperlabs_types::account::AccountHash;
 
@@ -73,10 +72,8 @@ impl SecretKey {
             tag: PEM_SECRET_KEY_TAG.to_string(),
             contents: self.as_secret_slice().to_vec(),
         };
-        fs::write(file.as_ref(), pem::encode(&pem)).map_err(|error| Error::WriteFile {
-            file: file.as_ref().display().to_string(),
-            error_msg: error.to_string(),
-        })
+
+        write_file(file, pem::encode(&pem)).map_err(Error::PrivateKeySave)
     }
 
     /// Attempt to read the secret key bytes from configured file path.
@@ -168,10 +165,8 @@ impl PublicKey {
             tag: PEM_PUBLIC_KEY_TAG.to_string(),
             contents: self.as_ref().to_vec(),
         };
-        fs::write(file.as_ref(), pem::encode(&pem)).map_err(|error| Error::WriteFile {
-            file: file.as_ref().display().to_string(),
-            error_msg: error.to_string(),
-        })
+
+        write_file(file, pem::encode(&pem)).map_err(Error::PublicKeySave)
     }
 
     /// Attempt to read the public key bytes from configured file path.

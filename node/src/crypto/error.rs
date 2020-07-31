@@ -6,7 +6,7 @@ use hex::FromHexError;
 use pem::PemError;
 use thiserror::Error;
 
-use crate::utils::ReadFileError;
+use crate::utils::{ReadFileError, WriteFileError};
 
 /// A specialized `std::result::Result` type for cryptographic errors.
 pub type Result<T> = result::Result<T, Error>;
@@ -38,14 +38,13 @@ pub enum Error {
     #[error("pem error: {0}")]
     FromPem(String),
 
-    /// Error while trying to write a file.
-    #[error("error writing {file}: {error_msg}")]
-    WriteFile {
-        /// The file attempted to be written.
-        file: String,
-        /// The underlying error message.
-        error_msg: String,
-    },
+    /// Error trying to write a private key.
+    #[error("private key save failed: {0}")]
+    PrivateKeySave(WriteFileError),
+
+    /// Error trying to write a public key.
+    #[error("public key save failed: {0}")]
+    PublicKeySave(WriteFileError),
 }
 
 impl From<SignatureError> for Error {
