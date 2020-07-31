@@ -1008,7 +1008,8 @@ mod test_harness {
         finalized_values: Vec<Vec<ConsensusValue>>,
         expected_number: usize,
     ) {
-        let reference_order = finalized_values.get(0).cloned().unwrap();
+        let mut iter = finalized_values.into_iter();
+        let reference_order = iter.next().unwrap();
 
         assert_eq!(
             reference_order.len(),
@@ -1017,9 +1018,7 @@ mod test_harness {
             expected_number
         );
 
-        finalized_values
-            .into_iter()
-            .for_each(|v| assert_eq!(v, reference_order));
+        iter.for_each(|v| assert_eq!(v, reference_order));
     }
 
     #[test]
