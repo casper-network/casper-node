@@ -73,12 +73,12 @@ impl SecretKey {
             contents: self.as_secret_slice().to_vec(),
         };
 
-        write_file(file, pem::encode(&pem)).map_err(Error::PrivateKeySave)
+        write_file(file, pem::encode(&pem)).map_err(Error::SecretKeySave)
     }
 
     /// Attempt to read the secret key bytes from configured file path.
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self> {
-        let pem = pem::parse(read_file(file).map_err(Error::PrivateKeyLoad)?)?;
+        let pem = pem::parse(read_file(file).map_err(Error::SecretKeyLoad)?)?;
 
         if pem.tag != PEM_SECRET_KEY_TAG {
             return Err(Error::FromPem(format!(

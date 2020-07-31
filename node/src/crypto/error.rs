@@ -22,9 +22,9 @@ pub enum Error {
     #[error("parsing from hex: {0}")]
     FromHex(#[from] FromHexError),
 
-    /// Error trying to read a private key.
-    #[error("private key load failed: {0}")]
-    PrivateKeyLoad(ReadFileError),
+    /// Error trying to read a secret key.
+    #[error("secret key load failed: {0}")]
+    SecretKeyLoad(ReadFileError),
 
     /// Error trying to read a public key.
     #[error("public key load failed: {0}")]
@@ -38,9 +38,9 @@ pub enum Error {
     #[error("pem error: {0}")]
     FromPem(String),
 
-    /// Error trying to write a private key.
-    #[error("private key save failed: {0}")]
-    PrivateKeySave(WriteFileError),
+    /// Error trying to write a secret key.
+    #[error("secret key save failed: {0}")]
+    SecretKeySave(WriteFileError),
 
     /// Error trying to write a public key.
     #[error("public key save failed: {0}")]
