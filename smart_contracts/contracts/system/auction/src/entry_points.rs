@@ -64,7 +64,8 @@ impl ProofOfStakeProvider for AuctionContract {
             ARG_AMOUNT => amount,
             ARG_PURSE => purse,
         };
-        Ok(runtime::call_contract(contract_hash, BOND, args))
+        runtime::call_contract::<()>(contract_hash, BOND, args);
+        Ok(())
     }
 
     fn unbond(&mut self, amount: Option<U512>) -> Result<(), Self::Error> {
@@ -72,7 +73,8 @@ impl ProofOfStakeProvider for AuctionContract {
         let args = runtime_args! {
             ARG_AMOUNT => amount,
         };
-        Ok(runtime::call_contract(contract_hash, UNBOND, args))
+        runtime::call_contract::<()>(contract_hash, UNBOND, args);
+        Ok(())
     }
 }
 

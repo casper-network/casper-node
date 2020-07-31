@@ -7,7 +7,7 @@ use casperlabs_types::{
 };
 use std::collections::BTreeMap;
 
-const PROTOCOL_DATA_SERIALIZED_LENGTH: usize = WASM_COSTS_SERIALIZED_LENGTH + 3 * KEY_HASH_LENGTH;
+const PROTOCOL_DATA_SERIALIZED_LENGTH: usize = WASM_COSTS_SERIALIZED_LENGTH + 4 * KEY_HASH_LENGTH;
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
 
 /// Represents a protocol's data. Intended to be associated with a given protocol version.

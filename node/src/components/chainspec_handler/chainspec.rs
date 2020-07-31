@@ -265,6 +265,11 @@ mod tests {
                     "standard_payment_installer_path = '{}/standard_payment.wasm'",
                     test_root
                 )
+            } else if line.starts_with("auction_installer_path") {
+                format!(
+                    "auction_installer_path = '{}/auction_install.wasm'",
+                    test_root
+                )
             } else if line.starts_with("accounts_path") {
                 format!("accounts_path = '{}/accounts.csv'", test_root)
             } else if line.starts_with("upgrade_installer_path") {

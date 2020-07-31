@@ -17,6 +17,9 @@ pos_installer_path = '../../target/wasm32-unknown-unknown/release/pos_install.wa
 # Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the Standard
 # Payment system contract.
 standard_payment_installer_path = '../../target/wasm32-unknown-unknown/release/standard_payment_install.wasm'
+# Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the Auction
+# system contract.
+auction_installer_path = 'auction_install.wasm'
 # Path (absolute, or relative to this chainspec.toml) to the CSV file containing initial account balances and bonds.
 accounts_path = 'accounts.csv'
 
