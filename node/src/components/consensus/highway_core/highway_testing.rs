@@ -32,7 +32,7 @@ struct HighwayConsensus {
     finality_detector: FinalityDetector<TestContext>,
 }
 
-type ConsensusValue = u32;
+type ConsensusValue = Vec<u32>;
 
 impl HighwayConsensus {
     fn run_finality(&mut self) -> FinalityOutcome<TestContext> {
@@ -158,8 +158,6 @@ pub(crate) enum TestRunError {
     SenderMissingDependency(ValidatorId, Dependency<TestContext>),
     /// No more messages in the message queue.
     NoMessages,
-    /// We run out of consensus values to propose before the end of a test.
-    NoConsensusValues,
 }
 
 impl Display for TestRunError {
@@ -177,7 +175,6 @@ impl Display for TestRunError {
             TestRunError::MissingValidator(id) => {
                 write!(f, "Virtual net is missing validator {:?}.", id)
             }
-            TestRunError::NoConsensusValues => write!(f, "No consensus values to propose."),
         }
     }
 }
@@ -304,8 +301,8 @@ where
         Ok(())
     }
 
-    fn next_consensus_value(&mut self) -> Option<ConsensusValue> {
-        self.consensus_values.pop_front()
+    fn next_consensus_value(&mut self) -> ConsensusValue {
+        self.consensus_values.pop_front().unwrap_or_default()
     }
 
     /// Helper for getting validator from the underlying virtual net.
@@ -392,9 +389,7 @@ where
                     }
                 }
                 RequestBlock(block_context) => {
-                    let consensus_value = self
-                        .next_consensus_value()
-                        .ok_or_else(|| TestRunError::NoConsensusValues)?;
+                    let consensus_value = self.next_consensus_value();
 
                     self.call_validator(&validator_id, |consensus| {
                         consensus.propose(consensus_value, block_context)
@@ -728,7 +723,9 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
     }
 
     fn build<R: Rng>(mut self, rng: &mut R) -> Result<HighwayTestHarness<DS>, BuilderError> {
-        let consensus_values = (0..self.consensus_values_count as u32).collect::<VecDeque<u32>>();
+        let consensus_values = (0..self.consensus_values_count as u32)
+            .map(|el| vec![el])
+            .collect::<VecDeque<Vec<u32>>>();
 
         let instance_id = 0;
         let seed = self.seed;
@@ -940,7 +937,7 @@ impl ValidatorSecret for TestSecret {
 }
 
 impl Context for TestContext {
-    type ConsensusValue = u32;
+    type ConsensusValue = Vec<u32>;
     type ValidatorId = ValidatorId;
     type ValidatorSecret = TestSecret;
     type Signature = SignatureWrapper;
