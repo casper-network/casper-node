@@ -68,7 +68,6 @@ impl Display for ValidatorId {
 #[derive(Debug, Copy, Clone)]
 pub(crate) enum FaultType {
     Mute,
-    Equivocate,
     InvalidMessages,
 }
 
