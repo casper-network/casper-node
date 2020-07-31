@@ -1,9 +1,9 @@
 use std::{
     cmp::Ordering,
-    collections::HashMap,
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     convert::identity,
     iter,
-    ops::{Div, Mul},
+    ops::{Div, Mul, RangeBounds},
 };
 
 use derive_more::{Add, AddAssign, From, Sub, SubAssign, Sum};
@@ -21,7 +21,7 @@ use super::{
 };
 use crate::{
     components::consensus::{highway_core::vertex::SignedWireVote, traits::Context},
-    types::Timestamp,
+    types::{TimeDiff, Timestamp},
 };
 use iter::Sum;
 
@@ -68,6 +68,12 @@ impl Div<u64> for Weight {
     }
 }
 
+impl From<Weight> for u128 {
+    fn from(Weight(w): Weight) -> u128 {
+        u128::from(w)
+    }
+}
+
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum VoteError {
     #[error("The vote's panorama is inconsistent.")]
@@ -83,6 +89,13 @@ pub(crate) enum VoteError {
     #[error("The round length is invalid.")]
     RoundLength,
 }
+
+/// The delay after which rewards are calculated.
+///
+/// Rewards for a round in which a block B was proposed are paid out in the first block whose
+/// timestamp greater than `REWARD_DELAY * t` after B's timestamp, where `t` is the round length of
+/// `B` itself.
+const REWARD_DELAY: u64 = 8;
 
 /// A passive instance of the Highway protocol, containing its local state.
 ///
@@ -101,12 +114,17 @@ pub(crate) struct State<C: Context> {
     votes: HashMap<C::Hash, Vote<C>>,
     /// All blocks, by hash.
     blocks: HashMap<C::Hash, Block<C>>,
+    /// All block hashes, by the earliest time at which rewards for the blocks' rounds can be paid.
+    reward_index: BTreeMap<Timestamp, BTreeSet<C::Hash>>,
     /// Evidence to prove a validator malicious, by index.
     evidence: HashMap<ValidatorIndex, Evidence<C>>,
     /// The full panorama, corresponding to the complete protocol state.
     panorama: Panorama<C>,
     /// The random seed.
     seed: u64,
+    /// The fraction of the block reward, in trillionths, that are paid out even if the heaviest
+    /// summit does not exceed half the total weight.
+    forgiveness_factor: u64,
 }
 
 impl<C: Context> State<C> {
@@ -122,8 +140,10 @@ impl<C: Context> State<C> {
             cumulative_w,
             votes: HashMap::new(),
             blocks: HashMap::new(),
+            reward_index: BTreeMap::new(),
             evidence: HashMap::new(),
             panorama: Panorama::new(weights.len()),
+            forgiveness_factor: 200_000_000_000, // TODO: Make configurable. Builder?
             seed,
         }
     }
@@ -173,9 +193,31 @@ impl<C: Context> State<C> {
         self.weights[idx.0 as usize]
     }
 
+    /// Returns the fraction of the block reward, in trillionths, that are paid out even if the
+    /// heaviest summit does not exceed half the total weight.
+    pub(crate) fn forgiveness_factor(&self) -> u64 {
+        self.forgiveness_factor
+    }
+
+    /// Returns an iterator over all hashes of blocks whose earliest timestamp for reward payout is
+    /// in the specified range.
+    pub(crate) fn rewards_range<RB>(&self, range: RB) -> impl Iterator<Item = &C::Hash>
+    where
+        RB: RangeBounds<Timestamp>,
+    {
+        self.reward_index
+            .range(range)
+            .flat_map(|(_, blocks)| blocks)
+    }
+
     /// Returns the total weight of all known-faulty validators.
     pub(crate) fn faulty_weight(&self) -> Weight {
-        self.panorama
+        self.faulty_weight_in(&self.panorama)
+    }
+
+    /// Returns the total weight of all validators marked faulty in this panorama.
+    pub(crate) fn faulty_weight_in(&self, panorama: &Panorama<C>) -> Weight {
+        panorama
             .iter()
             .zip(&self.weights)
             .filter(|(obs, _)| **obs == Observation::Faulty)
@@ -218,6 +260,10 @@ impl<C: Context> State<C> {
         let (vote, opt_value) = Vote::new(swvote, fork_choice.as_ref(), self);
         if let Some(value) = opt_value {
             let block = Block::new(fork_choice, value, self);
+            self.reward_index
+                .entry(reward_time(&vote))
+                .or_default()
+                .insert(hash.clone());
             self.blocks.insert(hash.clone(), block);
         }
         self.votes.insert(hash, vote);
@@ -436,6 +482,31 @@ impl<C: Context> State<C> {
         })
     }
 
+    /// Returns an iterator over all votes that are seen by `pan` and are not seen by any vote
+    /// that satisfies `f`.
+    pub(crate) fn justifications_without<'a, F>(
+        &'a self,
+        pan: &'a Panorama<C>,
+        f: F,
+    ) -> impl Iterator<Item = &'a C::Hash>
+    where
+        F: Fn(&C::Hash) -> bool,
+    {
+        let mut pending: VecDeque<&'a C::Hash> = pan.iter_correct().collect();
+        let mut added: HashSet<&'a C::Hash> = pending.iter().cloned().collect();
+        let mut visited = HashSet::new();
+        iter::from_fn(move || {
+            let next = pending.pop_front()?;
+            visited.insert(next);
+            for vh in self.vote(next).panorama.iter_correct() {
+                if added.insert(vh) && !f(vh) {
+                    pending.push_back(vh);
+                }
+            }
+            Some(next)
+        })
+    }
+
     /// Returns `true` if `pan` sees the creator of `hash` as correct, and sees that vote.
     pub(crate) fn sees_correct(&self, pan: &Panorama<C>, hash: &C::Hash) -> bool {
         let vote = self.vote(hash);
@@ -509,6 +580,16 @@ impl<C: Context> State<C> {
             _ => None,
         }
     }
+}
+
+/// Returns the round length, given the round exponent.
+pub(super) fn round_len(round_exp: u8) -> TimeDiff {
+    TimeDiff::from(1 << round_exp)
+}
+
+/// Returns the earliest time at which rewards for a block introduced by this vote can be paid.
+pub(super) fn reward_time<C: Context>(vote: &Vote<C>) -> Timestamp {
+    vote.timestamp + round_len(vote.round_exp) * REWARD_DELAY
 }
 
 /// Returns the base-2 logarithm of `x`, rounded down,

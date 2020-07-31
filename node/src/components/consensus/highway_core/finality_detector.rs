@@ -1,10 +1,12 @@
 use std::{collections::BTreeMap, iter};
 
+use itertools::Itertools;
+
 use super::{
     highway::Highway,
-    state::{State, Weight},
+    state::{self, State, Weight},
     validators::ValidatorIndex,
-    vote::Vote,
+    vote::{Panorama, Vote},
 };
 use crate::{components::consensus::traits::Context, types::Timestamp};
 
@@ -16,13 +18,16 @@ struct Section<'a, C: Context> {
     sequence_numbers: BTreeMap<ValidatorIndex, u64>,
     /// A reference to the protocol state this section belongs to.
     state: &'a State<C>,
+    /// The panorama that defines which votes are eligible for the summit.
+    // TODO: Should be `BTreeMap`, not `Panorama`!
+    panorama: &'a Panorama<C>,
 }
 
 impl<'a, C: Context> Section<'a, C> {
     /// Creates a section assigning to each validator their level-0 vote, i.e. the oldest vote in
     /// their current streak of votes for `candidate` (and descendants), or `None` if their latest
     /// vote is not for `candidate`.
-    fn level0(candidate: &'a C::Hash, state: &'a State<C>) -> Self {
+    fn level0(candidate: &'a C::Hash, state: &'a State<C>, panorama: &'a Panorama<C>) -> Self {
         let height = state.block(candidate).height;
         let to_lvl0vote = |(idx, vhash): (ValidatorIndex, &'a C::Hash)| {
             state
@@ -31,17 +36,19 @@ impl<'a, C: Context> Section<'a, C> {
                 .last()
                 .map(|(_, vote)| (idx, vote.seq_number))
         };
-        let correct_votes = state.panorama().enumerate_correct();
+        let correct_votes = panorama.enumerate_correct();
         Section {
             sequence_numbers: correct_votes.filter_map(to_lvl0vote).collect(),
             state,
+            panorama,
         }
     }
 
     /// Returns a section `s` of votes each of which can see a quorum of votes in `self` by
     /// validators that are part of `s`.
     fn next(&self, quorum: Weight) -> Option<Self> {
-        let committee = self.pruned_committee(quorum);
+        let (committee, _pruned) =
+            self.prune_committee(quorum, self.sequence_numbers.keys().cloned().collect());
         if committee.is_empty() {
             None
         } else {
@@ -49,21 +56,40 @@ impl<'a, C: Context> Section<'a, C> {
         }
     }
 
-    /// Returns the greatest committee of validators whose latest votes can see a quorum of votes
-    /// by the committee in `self`.
-    fn pruned_committee(&self, quorum: Weight) -> Vec<ValidatorIndex> {
-        let mut committee: Vec<ValidatorIndex> = self.sequence_numbers.keys().cloned().collect();
+    /// Returns the greatest subset of the `committee` of validators whose latest votes can see a
+    /// quorum of votes by the subset in `self`.
+    ///
+    /// The first returned value is the pruned committee, the second one are the validators that
+    /// were pruned.
+    fn prune_committee(
+        &self,
+        quorum: Weight,
+        mut committee: Vec<ValidatorIndex>,
+    ) -> (Vec<ValidatorIndex>, Vec<ValidatorIndex>) {
+        let mut pruned = Vec::new();
         loop {
-            let old_comm = committee;
             let sees_quorum = |&idx: &ValidatorIndex| {
-                let vhash = self.state.panorama().get(idx).correct().unwrap();
-                self.seen_weight(self.state.vote(vhash), &old_comm) >= quorum
+                let vhash = self.panorama.get(idx).correct().unwrap();
+                self.seen_weight(self.state.vote(vhash), &committee) >= quorum
             };
-            committee = old_comm.iter().cloned().filter(sees_quorum).collect();
-            if committee == old_comm {
-                return committee;
+            let (new_committee, new_pruned): (Vec<_>, Vec<_>) =
+                committee.iter().cloned().partition(sees_quorum);
+            if new_pruned.is_empty() {
+                return (new_committee, pruned);
             }
+            pruned.extend(new_pruned);
+            committee = new_committee;
         }
+    }
+
+    /// The maximal quorum for which this is a committee, i.e. the minimum seen weight of the
+    /// members.
+    fn committee_quorum(&self, committee: &[ValidatorIndex]) -> Option<Weight> {
+        let seen_weight = |idx: &ValidatorIndex| {
+            let vhash = self.panorama.get(*idx).correct().unwrap();
+            self.seen_weight(self.state.vote(vhash), committee)
+        };
+        committee.iter().map(seen_weight).min()
     }
 
     /// Returns the section containing the earliest vote of each of the `committee` members that
@@ -72,7 +98,7 @@ impl<'a, C: Context> Section<'a, C> {
         let find_first_lvl_n = |&idx: &ValidatorIndex| {
             let (_, vote) = self
                 .state
-                .swimlane(self.state.panorama().get(idx).correct().unwrap())
+                .swimlane(self.panorama.get(idx).correct().unwrap())
                 .take_while(|(_, vote)| self.seen_weight(vote, &committee) >= quorum)
                 .last()
                 .unwrap();
@@ -81,6 +107,7 @@ impl<'a, C: Context> Section<'a, C> {
         Section {
             sequence_numbers: committee.iter().map(find_first_lvl_n).collect(),
             state: self.state,
+            panorama: self.panorama,
         }
     }
 
@@ -117,11 +144,8 @@ pub(crate) enum FinalityOutcome<C: Context> {
         value: C::ConsensusValue,
         /// The set of newly detected equivocators.
         new_equivocators: Vec<C::ValidatorId>,
-        /// Rewards, in picoseconds worth of total rewards per time.
-        ///
-        /// This is a measure of the value of each validator's contribution to consensus. Under
-        /// optimal conditions, "one second per second" is paid out. If validators misbehave, the
-        /// total can be less than that.
+        /// Rewards, in trillionths (10^-12) of the total reward for one block.
+        /// This is a measure of the value of each validator's contribution to consensus.
         rewards: BTreeMap<C::ValidatorId, u64>,
         /// The timestamp at which this value was proposed.
         timestamp: Timestamp,
@@ -165,15 +189,14 @@ impl<C: Context> FinalityDetector<C> {
         } else {
             return FinalityOutcome::None;
         };
-        let new_equivocators = state
-            .get_new_equivocators(bhash)
-            .into_iter()
-            .map(|vidx| highway.params().validators.get_by_index(vidx).id().clone())
-            .collect();
+        let to_id =
+            |vidx: ValidatorIndex| highway.params().validators.get_by_index(vidx).id().clone();
+        let new_equivocators_iter = state.get_new_equivocators(bhash).into_iter();
+        let rewards_iter = compute_rewards(state, bhash).into_iter();
         FinalityOutcome::Finalized {
             value: state.block(bhash).value.clone(),
-            new_equivocators,
-            rewards: BTreeMap::new(), // TODO: Seigniorage calculation.
+            new_equivocators: new_equivocators_iter.map(to_id).collect(),
+            rewards: rewards_iter.map(|(vidx, r)| (to_id(vidx), r)).collect(),
             timestamp: state.vote(bhash).timestamp,
         }
     }
@@ -219,7 +242,7 @@ impl<C: Context> FinalityDetector<C> {
     ) -> usize {
         let total_w = state.total_weight();
         let quorum = self.quorum_for_lvl(target_lvl, total_w) - fault_w;
-        let sec0 = Section::level0(candidate, &state);
+        let sec0 = Section::level0(candidate, &state, state.panorama());
         let sections_iter = iter::successors(Some(sec0), |sec| sec.next(quorum));
         sections_iter.skip(1).take(target_lvl).count()
     }
@@ -231,7 +254,7 @@ impl<C: Context> FinalityDetector<C> {
         //        = total_w / 2 + 2^lvl * ftt / 2 / (2^lvl - 1)
         //        = ((2^lvl - 1) total_w + 2^lvl ftt) / (2 * 2^lvl - 2))
         let pow_lvl = 1u128 << lvl;
-        let numerator = (pow_lvl - 1) * (total_w.0 as u128) + pow_lvl * (self.ftt.0 as u128);
+        let numerator = (pow_lvl - 1) * u128::from(total_w) + pow_lvl * u128::from(self.ftt);
         let denominator = 2 * pow_lvl - 2;
         // Since this is a lower bound for the quorum, we round up when dividing.
         Weight(((numerator + denominator - 1) / denominator) as u64)
@@ -251,6 +274,72 @@ impl<C: Context> FinalityDetector<C> {
     }
 }
 
+/// Returns the map of rewards to be paid out when the block `bhash` gets finalized.
+fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> BTreeMap<ValidatorIndex, u64> {
+    let payout_block = state.block(bhash);
+    let payout_vote = state.vote(bhash);
+    let panorama = &payout_vote.panorama;
+    let opt_parent_vote = payout_block.parent().map(|h| state.vote(h));
+    let newly_seen_iter = state
+        .justifications_without(panorama, |vh| {
+            // TODO: Not just "correct".
+            opt_parent_vote.map_or(false, |vote| state.sees_correct(&vote.panorama, vh))
+        })
+        .filter(|vh| {
+            state.opt_block(vh).is_some()
+                && state::reward_time(state.vote(vh)) < payout_vote.timestamp
+        });
+    let rewards_range_iter = state
+        .rewards_range(
+            opt_parent_vote.map_or_else(Timestamp::zero, |vote| vote.timestamp)
+                ..(payout_vote.timestamp),
+        )
+        .filter(|bh| state.sees_correct(panorama, bh)); // TODO: Not just "correct"!
+    let blocks = newly_seen_iter.chain(rewards_range_iter).unique();
+    let mut rewards = BTreeMap::new();
+    for bh in blocks {
+        add_rewards_for(&mut rewards, state, panorama, bh);
+    }
+    rewards
+}
+
+fn add_rewards_for<C: Context>(
+    rewards: &mut BTreeMap<ValidatorIndex, u64>,
+    state: &State<C>,
+    panorama: &Panorama<C>,
+    proposal_h: &C::Hash,
+) {
+    let fault_w = state.faulty_weight_in(panorama);
+    // TODO: Smaller panorama: Only in-round votes. (Not a valid panorama? Doesn't matter?)
+    let section = Section::level0(proposal_h, state, panorama);
+    let (mut committee, _pruned) = section.prune_committee(
+        Weight(1),
+        section.sequence_numbers.keys().cloned().collect(),
+    );
+    let mut max_quorum = BTreeMap::new();
+    while let Some(quorum) = section.committee_quorum(&committee) {
+        let (new_committee, pruned) = section.prune_committee(quorum + Weight(1), committee);
+        committee = new_committee;
+        for vidx in &pruned {
+            max_quorum.insert(*vidx, quorum + fault_w);
+        }
+    }
+    for (vidx, quorum) in max_quorum {
+        // If the summit's quorum is not greater than 50%, rewards are reduced.
+        let finality_factor = if quorum * 2 > state.total_weight() {
+            1_000_000_000_000
+        } else {
+            u128::from(state.forgiveness_factor())
+        };
+        // TODO: Add a minimum round exponent, to enforce an upper limit for total rewards.
+        let num = finality_factor * u128::from(quorum);
+        // TODO: "assigned * total" instead of "total * total" weight.
+        let denom = u128::from(state.total_weight()) * u128::from(state.total_weight());
+        *rewards.entry(vidx).or_insert(0) += (u128::from(state.weight(vidx)) * num / denom) as u64;
+    }
+}
+
+#[allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
 #[cfg(test)]
 mod tests {
     use super::{

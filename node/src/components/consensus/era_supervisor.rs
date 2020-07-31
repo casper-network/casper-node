@@ -193,10 +193,12 @@ where
                     .ignore();
                 // Create instructions for slashing equivocators.
                 let slash_iter = new_equivocators.into_iter().map(Instruction::Slash);
-                let reward_iter = rewards
-                    .into_iter()
-                    .map(|(vid, amount)| Instruction::Reward(vid, amount));
-                let instructions = slash_iter.chain(reward_iter).collect();
+                let opt_rewards = if rewards.is_empty() {
+                    None
+                } else {
+                    Some(Instruction::Rewards(rewards))
+                };
+                let instructions = slash_iter.chain(opt_rewards).collect();
                 // Request execution of the finalized block.
                 let fb = FinalizedBlock {
                     proto_block,

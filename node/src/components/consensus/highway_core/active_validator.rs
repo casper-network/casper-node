@@ -4,7 +4,7 @@ use tracing::warn;
 
 use super::{
     highway::ValidVertex,
-    state::State,
+    state::{self, State},
     validators::ValidatorIndex,
     vertex::{Vertex, WireVote},
     vote::{Observation, Panorama, Vote},
@@ -97,7 +97,7 @@ impl<C: Context> ActiveValidator<C> {
         }
         let r_exp = self.round_exp(state, timestamp);
         let r_id = round_id(timestamp, r_exp);
-        let r_len = round_len(r_exp);
+        let r_len = state::round_len(r_exp);
         if timestamp == r_id && state.leader(r_id) == self.vidx {
             let bctx = BlockContext::new(timestamp);
             effects.push(Effect::RequestNewBlock(bctx));
@@ -222,7 +222,7 @@ impl<C: Context> ActiveValidator<C> {
         }
         let r_exp = self.round_exp(state, timestamp);
         let r_id = round_id(timestamp, r_exp);
-        let r_len = round_len(r_exp);
+        let r_len = state::round_len(r_exp);
         self.next_timer = if timestamp < r_id + self.witness_offset(r_len) {
             r_id + self.witness_offset(r_len)
         } else {
@@ -231,7 +231,7 @@ impl<C: Context> ActiveValidator<C> {
                 next_r_id
             } else {
                 let next_r_exp = self.round_exp(state, next_r_id);
-                next_r_id + self.witness_offset(round_len(next_r_exp))
+                next_r_id + self.witness_offset(state::round_len(next_r_exp))
             }
         };
         vec![Effect::ScheduleTimer(self.next_timer)]
@@ -272,10 +272,6 @@ impl<C: Context> ActiveValidator<C> {
             }
         })
     }
-}
-
-fn round_len(round_exp: u8) -> TimeDiff {
-    TimeDiff::from(1 << round_exp)
 }
 
 /// Returns the time at which the round with the given timestamp and round exponent began.
