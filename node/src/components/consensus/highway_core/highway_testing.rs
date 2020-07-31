@@ -209,6 +209,7 @@ trait DeliveryStrategy {
 }
 
 type HighwayValidator = Validator<ConsensusValue, HighwayMessage, HighwayConsensus>;
+
 struct HighwayTestHarness<DS>
 where
     DS: DeliveryStrategy,
@@ -962,21 +963,6 @@ impl Context for TestContext {
     }
 }
 
-impl Validator<ConsensusValue, HighwayMessage, HighwayConsensus> {
-    fn rounds_participated_in(&self) -> u8 {
-        // Validator produces two `NewVertex` type messages per round.
-        // It may produce just one before lambda message is finalized.
-        let vertices_count = self
-            .messages_produced()
-            .cloned()
-            .filter(|hwm| hwm.is_new_vertex())
-            .count();
-        // Add one in case it's just one round – 1 message.
-        // 1/2=0 but 3/2=1 b/c of the rounding.
-        (vertices_count as u8 + 1) / 2
-    }
-}
-
 mod test_harness {
     use std::{
         collections::{hash_map::DefaultHasher, HashMap, HashSet},
@@ -984,8 +970,9 @@ mod test_harness {
     };
 
     use super::{
-        crank_until, CrankOk, DeliverySchedule, DeliveryStrategy, HighwayMessage,
-        HighwayTestHarness, HighwayTestHarnessBuilder, InstantDeliveryNoDropping, TestRunError,
+        crank_until, ConsensusValue, CrankOk, DeliverySchedule, DeliveryStrategy, HighwayMessage,
+        HighwayTestHarness, HighwayTestHarnessBuilder, HighwayValidator, InstantDeliveryNoDropping,
+        TestRunError,
     };
     use crate::{
         components::consensus::{
@@ -1019,12 +1006,21 @@ mod test_harness {
         );
     }
 
+    // Test that validators have finalized consensus values in the same order.
+    fn assert_finalization_order(finalized_values: Vec<Vec<ConsensusValue>>) {
+        let reference_order = finalized_values.get(0).cloned().unwrap();
+
+        finalized_values
+            .into_iter()
+            .for_each(|v| assert_eq!(v, reference_order));
+    }
+
     #[test]
     fn liveness_test_no_faults() {
         logging::init_params(true).ok();
 
         let mut rng = TestRng::new();
-        let cv_count = 3;
+        let cv_count = 10;
 
         let mut highway_test_harness = HighwayTestHarnessBuilder::new()
             .max_faulty_validators(3)
@@ -1035,26 +1031,49 @@ mod test_harness {
             .expect("Construction was successful");
 
         crank_until(&mut highway_test_harness, &mut rng, |hth| {
-            // Stop the test when each node finalized all consensus values.
+            // Stop the test when each node finalized expected number of consensus values.
             // Note that we're not testing the order of finalization here.
+            // It will be tested later – it's not the condition for stopping the test run.
             hth.virtual_net
                 .validators()
                 .all(|v| v.finalized_count() == cv_count as usize)
         })
         .unwrap();
 
-        highway_test_harness
-            .mutable_handle()
-            .validators()
-            .filter(|v| v.fault().is_none())
-            .for_each(|v| {
+        let handle = highway_test_harness.mutable_handle();
+        let mut validators = handle.validators();
+
+        let (finalized_values, vertices_produced): (Vec<Vec<ConsensusValue>>, Vec<usize>) =
+            validators
+                .map(|v| {
+                    (
+                        v.finalized_values().cloned().collect::<Vec<_>>(),
+                        v.messages_produced()
+                            .cloned()
+                            .filter(|hwm| hwm.is_new_vertex())
+                            .count(),
+                    )
+                })
+                .unzip();
+
+        vertices_produced
+            .into_iter()
+            .enumerate()
+            .for_each(|(v_idx, vertices_count)| {
+                // NOTE: Works only when all validators are honest and correct (no "mute" validators).
+                // Validator produces two `NewVertex` type messages per round.
+                // It may produce just one before lambda message is finalized.
+                // Add one in case it's just one round (one consensus value) – 1 message.
+                // 1/2=0 but 3/2=1 b/c of the rounding.
+                let rounds_participated_in = (vertices_count as u8 + 1) / 2;
+
                 assert_eq!(
-                    v.rounds_participated_in(),
-                    cv_count,
+                    rounds_participated_in, cv_count,
                     "Expected that validator={} participated in {} rounds.",
-                    v.id,
-                    cv_count
+                    v_idx, cv_count
                 )
             });
+
+        assert_finalization_order(finalized_values);
     }
 }
