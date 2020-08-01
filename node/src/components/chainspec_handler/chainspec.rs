@@ -234,11 +234,12 @@ pub(super) use tests::rewrite_with_absolute_paths;
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, io::Write};
+    use std::io::Write;
 
     use tempfile::NamedTempFile;
 
     use super::*;
+    use crate::utils::read_file_to_string;
 
     const TEST_ROOT: &str = "resources/test/valid";
     const CHAINSPEC_CONFIG_NAME: &str = "chainspec.toml";
@@ -249,7 +250,7 @@ mod tests {
         chainspec_dir: &str,
     ) -> NamedTempFile {
         let original_contents =
-            fs::read_to_string(format!("{}/{}", chainspec_dir, CHAINSPEC_CONFIG_NAME)).unwrap();
+            read_file_to_string(format!("{}/{}", chainspec_dir, CHAINSPEC_CONFIG_NAME)).unwrap();
 
         // Replace relative paths with absolute ones.
         let test_root = format!("{}/../{}", env!("CARGO_MANIFEST_DIR"), TEST_ROOT,);
