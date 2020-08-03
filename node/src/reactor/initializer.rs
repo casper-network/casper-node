@@ -108,14 +108,15 @@ impl reactor::Reactor for Reactor {
 
     fn new<Rd: Rng + ?Sized>(
         config: Self::Config,
-        _registry: &Registry,
+        registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut Rd,
     ) -> Result<(Self, Effects<Self::Event>), Error> {
         let effect_builder = EffectBuilder::new(event_queue);
 
         let storage = Storage::new(&config.storage)?;
-        let contract_runtime = ContractRuntime::new(&config.storage, config.contract_runtime)?;
+        let contract_runtime =
+            ContractRuntime::new(&config.storage, config.contract_runtime, registry)?;
         let (chainspec_handler, chainspec_effects) =
             ChainspecHandler::new(config.node.chainspec_config_path.clone(), effect_builder)?;
 
