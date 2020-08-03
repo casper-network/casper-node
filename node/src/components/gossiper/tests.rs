@@ -19,7 +19,7 @@ use crate::{
         in_memory_network::{InMemoryNetwork, NetworkController, NodeId},
         storage::{self, Storage, StorageType},
     },
-    effect::announcements::{ApiServerAnnouncement, NetworkAnnouncement, StorageAnnouncement},
+    effect::announcements::{ApiServerAnnouncement, NetworkAnnouncement},
     reactor::{self, EventQueueHandle, Runner},
     testing::{
         network::{Network, NetworkedReactor},

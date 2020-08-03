@@ -62,7 +62,7 @@ impl Config {
     #[cfg(test)]
     pub(crate) fn default_for_tests() -> (Self, TempDir) {
         let tempdir = tempfile::tempdir().expect("should get tempdir");
-        let path = Some(tempdir.path().to_path_buf());
+        let path = Some(tempdir.path().join("lmdb"));
 
         let config = Config {
             path,

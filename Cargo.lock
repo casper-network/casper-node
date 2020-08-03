@@ -520,6 +520,7 @@ dependencies = [
  "serde",
  "serde-big-array",
  "serde_json",
+ "serde_repr",
  "signature",
  "smallvec 1.4.1",
  "structopt",
@@ -2994,9 +2995,9 @@ dependencies = [
 
 [[package]]
 name = "proptest"
-version = "0.9.6"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01c477819b845fe023d33583ebf10c9f62518c8d79a0960ba5c36d6ac8a55a5b"
+checksum = "2520fe6373cf6a3a61e2d200e987c183778ade8d9248ac3e6614ab0edfe4a0c1"
 dependencies = [
  "bit-set",
  "bitflags 1.2.1",
@@ -3004,9 +3005,9 @@ dependencies = [
  "lazy_static",
  "num-traits",
  "quick-error",
- "rand 0.6.5",
- "rand_chacha 0.1.1",
- "rand_xorshift",
+ "rand 0.7.3",
+ "rand_chacha 0.2.2",
+ "rand_xorshift 0.2.0",
  "regex-syntax",
  "rusty-fork",
  "tempfile",
@@ -3162,7 +3163,7 @@ dependencies = [
  "rand_jitter",
  "rand_os",
  "rand_pcg 0.1.2",
- "rand_xorshift",
+ "rand_xorshift 0.1.1",
  "winapi 0.3.9",
 ]
 
@@ -3302,6 +3303,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cbf7e9e623549b0e21f6e97cf8ecf247c1a8fd2e8a992ae265314300b2455d5c"
 dependencies = [
  "rand_core 0.3.1",
+]
+
+[[package]]
+name = "rand_xorshift"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77d416b86801d23dde1aa643023b775c3a462efc0ed96443add11546cdf1dca8"
+dependencies = [
+ "rand_core 0.5.1",
 ]
 
 [[package]]
@@ -3505,9 +3515,9 @@ dependencies = [
 
 [[package]]
 name = "rusty-fork"
-version = "0.2.2"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3dd93264e10c577503e926bd1430193eeb5d21b059148910082245309b424fae"
+checksum = "cb3dcc6e454c328bb824492db107ab7c0ae8fcffe4ad210136ef014458c1bc4f"
 dependencies = [
  "fnv",
  "quick-error",
@@ -3667,6 +3677,17 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "serde_repr"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2dc6b7951b17b051f3210b063f12cc17320e2fe30ae05b0fe2a3abb068551c76"
+dependencies = [
+ "proc-macro2 1.0.19",
+ "quote 1.0.7",
+ "syn 1.0.36",
 ]
 
 [[package]]
@@ -4690,9 +4711,9 @@ checksum = "373c8a200f9e67a0c95e62a4f52fbf80c23b4381c05a17845531982fa99e6b33"
 
 [[package]]
 name = "uint"
-version = "0.8.3"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "173cd16430c206dc1a430af8a89a0e9c076cf15cb42b4aedb10e8cc8fee73681"
+checksum = "429ffcad8c8c15f874578c7337d156a3727eb4a1c2374c0ae937ad9a9b748c80"
 dependencies = [
  "byteorder",
  "crunchy",

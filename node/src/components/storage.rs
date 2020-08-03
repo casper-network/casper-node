@@ -1,6 +1,7 @@
 mod chainspec_store;
 mod config;
 mod error;
+mod event;
 mod in_mem_chainspec_store;
 mod in_mem_store;
 mod lmdb_chainspec_store;
@@ -14,18 +15,22 @@ use std::{
     sync::Arc,
 };
 
+use futures::{future::Either, TryFutureExt};
 use rand::Rng;
+use semver::Version;
 use serde::{de::DeserializeOwned, Serialize};
 use smallvec::smallvec;
 use tokio::task;
+use tracing::{debug, error};
 
 use crate::{
-    components::Component,
+    components::{chainspec_handler::Chainspec, small_network::NodeId, Component},
     effect::{
-        announcements::StorageAnnouncement, requests::StorageRequest, EffectBuilder, EffectExt,
-        Effects,
+        requests::{NetworkRequest, StorageRequest},
+        EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{Block, Deploy},
+    reactor::validator::Message,
+    types::{Block, Deploy, Item},
 };
 // Seems to be a false positive.
 #[allow(unreachable_pub)]
@@ -37,6 +42,7 @@ use chainspec_store::ChainspecStore;
 #[allow(unreachable_pub)]
 pub use error::Error;
 pub(crate) use error::Result;
+pub use event::Event;
 use in_mem_chainspec_store::InMemChainspecStore;
 use in_mem_store::InMemStore;
 use lmdb_chainspec_store::LmdbChainspecStore;
@@ -45,10 +51,10 @@ use store::{Multiple, Store};
 
 pub(crate) type Storage = LmdbStorage<Block, Deploy>;
 
-pub(crate) type DeployResults<S> = Multiple<Result<<S as StorageType>::Deploy>>;
+pub(crate) type DeployResults<S> = Multiple<Option<<S as StorageType>::Deploy>>;
 pub(crate) type DeployHashes<S> = Multiple<<<S as StorageType>::Deploy as Value>::Id>;
 pub(crate) type DeployHeaderResults<S> =
-    Multiple<Result<<<S as StorageType>::Deploy as Value>::Header>>;
+    Multiple<Option<<<S as StorageType>::Deploy as Value>::Header>>;
 
 const BLOCK_STORE_FILENAME: &str = "block_store.db";
 const DEPLOY_STORE_FILENAME: &str = "deploy_store.db";
@@ -94,7 +100,7 @@ pub trait Value: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Di
 /// the reactor - it can simply use a concrete type which implements this trait.
 pub trait StorageType {
     type Block: Value;
-    type Deploy: Value;
+    type Deploy: Value + Item;
 
     fn block_store(&self) -> Arc<dyn Store<Value = Self::Block>>;
     fn deploy_store(&self) -> Arc<dyn Store<Value = Self::Deploy>>;
@@ -102,15 +108,231 @@ pub trait StorageType {
     fn new(config: &Config) -> Result<Self>
     where
         Self: Sized;
+
+    fn get_deploy_for_peer<REv>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        deploy_hash: <Self::Deploy as Value>::Id,
+        peer: NodeId,
+    ) -> Effects<Event<Self>>
+    where
+        REv: From<NetworkRequest<NodeId, Message>> + Send,
+        Self: Sized,
+    {
+        let deploy_store = self.deploy_store();
+        let deploy_hashes = smallvec![deploy_hash];
+        async move {
+            task::spawn_blocking(move || deploy_store.get(deploy_hashes))
+                .await
+                .expect("should run")
+                .pop()
+                .expect("can only contain one result")
+        }
+        .map_err(move |error| debug!("failed to get {} for {}: {}", deploy_hash, peer, error))
+        .map_ok(move |maybe_deploy| match maybe_deploy {
+            Some(deploy) => Either::Left(
+                async move { Message::new_get_response(&deploy) }
+                    .map_err(|error| error!("failed to create get-response: {}", error))
+                    .map_ok(move |message| effect_builder.send_message(peer, message)),
+            ),
+            None => {
+                Either::Right(async move { debug!("failed to get {} for {}", deploy_hash, peer) })
+            }
+        })
+        .ignore()
+    }
+
+    fn put_block(&self, block: Box<Self::Block>, responder: Responder<bool>) -> Effects<Event<Self>>
+    where
+        Self: Sized,
+    {
+        let block_store = self.block_store();
+        let block_hash = *block.id();
+        async move {
+            let result = task::spawn_blocking(move || block_store.put(*block))
+                .await
+                .expect("should run")
+                .unwrap_or_else(|error| panic!("failed to put {}: {}", block_hash, error));
+            responder.respond(result).await
+        }
+        .ignore()
+    }
+
+    fn get_block(
+        &self,
+        block_hash: <Self::Block as Value>::Id,
+        responder: Responder<Option<Self::Block>>,
+    ) -> Effects<Event<Self>>
+    where
+        Self: Sized,
+    {
+        let block_store = self.block_store();
+        async move {
+            let mut results = task::spawn_blocking(move || block_store.get(smallvec![block_hash]))
+                .await
+                .expect("should run");
+            let result = results
+                .pop()
+                .expect("can only contain one result")
+                .unwrap_or_else(|error| panic!("failed to get {}: {}", block_hash, error));
+            responder.respond(result).await
+        }
+        .ignore()
+    }
+
+    fn get_block_header(
+        &self,
+        block_hash: <Self::Block as Value>::Id,
+        responder: Responder<Option<<Self::Block as Value>::Header>>,
+    ) -> Effects<Event<Self>>
+    where
+        Self: Sized,
+    {
+        let block_store = self.block_store();
+        async move {
+            let mut results =
+                task::spawn_blocking(move || block_store.get_headers(smallvec![block_hash]))
+                    .await
+                    .expect("should run");
+            let result = results
+                .pop()
+                .expect("can only contain one result")
+                .unwrap_or_else(|error| panic!("failed to get header {}: {}", block_hash, error));
+            responder.respond(result).await
+        }
+        .ignore()
+    }
+
+    fn put_deploy(
+        &self,
+        deploy: Box<Self::Deploy>,
+        responder: Responder<bool>,
+    ) -> Effects<Event<Self>>
+    where
+        Self: Sized,
+    {
+        let deploy_store = self.deploy_store();
+        let deploy_hash = *Value::id(&*deploy);
+        async move {
+            let result = task::spawn_blocking(move || deploy_store.put(*deploy))
+                .await
+                .expect("should run")
+                .unwrap_or_else(|error| panic!("failed to put {}: {}", deploy_hash, error));
+            responder.respond(result).await;
+        }
+        .ignore()
+    }
+
+    fn get_deploys(
+        &self,
+        deploy_hashes: DeployHashes<Self>,
+        responder: Responder<DeployResults<Self>>,
+    ) -> Effects<Event<Self>>
+    where
+        Self: Sized,
+    {
+        let deploy_store = self.deploy_store();
+        async move {
+            let results = task::spawn_blocking(move || deploy_store.get(deploy_hashes))
+                .await
+                .expect("should run")
+                .into_iter()
+                .map(|result| {
+                    result.unwrap_or_else(|error| panic!("failed to get deploy: {}", error))
+                })
+                .collect();
+            responder.respond(results).await
+        }
+        .ignore()
+    }
+
+    fn get_deploy_headers(
+        &self,
+        deploy_hashes: DeployHashes<Self>,
+        responder: Responder<DeployHeaderResults<Self>>,
+    ) -> Effects<Event<Self>>
+    where
+        Self: Sized,
+    {
+        let deploy_store = self.deploy_store();
+        async move {
+            let results = task::spawn_blocking(move || deploy_store.get_headers(deploy_hashes))
+                .await
+                .expect("should run")
+                .into_iter()
+                .map(|result| {
+                    result.unwrap_or_else(|error| panic!("failed to get deploy header: {}", error))
+                })
+                .collect();
+            responder.respond(results).await
+        }
+        .ignore()
+    }
+
+    fn list_deploys(
+        &self,
+        responder: Responder<Vec<<Self::Deploy as Value>::Id>>,
+    ) -> Effects<Event<Self>>
+    where
+        Self: Sized,
+    {
+        let deploy_store = self.deploy_store();
+        async move {
+            let result = task::spawn_blocking(move || deploy_store.ids())
+                .await
+                .expect("should run")
+                .unwrap_or_else(|error| panic!("failed to list deploys: {}", error));
+            responder.respond(result).await
+        }
+        .ignore()
+    }
+
+    fn put_chainspec(
+        &self,
+        chainspec: Box<Chainspec>,
+        responder: Responder<()>,
+    ) -> Effects<Event<Self>>
+    where
+        Self: Sized,
+    {
+        let chainspec_store = self.chainspec_store();
+        async move {
+            task::spawn_blocking(move || chainspec_store.put(*chainspec))
+                .await
+                .expect("should run")
+                .unwrap_or_else(|error| panic!("failed to put chainspec: {}", error));
+            responder.respond(()).await
+        }
+        .ignore()
+    }
+
+    fn get_chainspec(
+        &self,
+        version: Version,
+        responder: Responder<Option<Chainspec>>,
+    ) -> Effects<Event<Self>>
+    where
+        Self: Sized,
+    {
+        let chainspec_store = self.chainspec_store();
+        async move {
+            let result = task::spawn_blocking(move || chainspec_store.get(version))
+                .await
+                .expect("should run")
+                .unwrap_or_else(|error| panic!("failed to get chainspec: {}", error));
+            responder.respond(result).await
+        }
+        .ignore()
+    }
 }
 
 impl<REv, S> Component<REv> for S
 where
+    REv: From<NetworkRequest<NodeId, Message>> + Send,
     S: StorageType,
     Self: Sized + 'static,
-    REv: From<StorageAnnouncement<S>> + Send,
 {
-    type Event = StorageRequest<Self>;
+    type Event = Event<S>;
 
     fn handle_event<R: Rng + ?Sized>(
         &mut self,
@@ -119,130 +341,40 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            StorageRequest::PutBlock { block, responder } => {
-                let block_store = self.block_store();
-                async move {
-                    let result = task::spawn_blocking(move || block_store.put(*block))
-                        .await
-                        .expect("should run");
-                    responder.respond(result).await
-                }
-                .ignore()
+            Event::GetDeployForPeer { deploy_hash, peer } => {
+                self.get_deploy_for_peer(effect_builder, deploy_hash, peer)
             }
-            StorageRequest::GetBlock {
+            Event::Request(StorageRequest::PutBlock { block, responder }) => {
+                self.put_block(block, responder)
+            }
+            Event::Request(StorageRequest::GetBlock {
                 block_hash,
                 responder,
-            } => {
-                let block_store = self.block_store();
-                async move {
-                    let mut result =
-                        task::spawn_blocking(move || block_store.get(smallvec![block_hash]))
-                            .await
-                            .expect("should run");
-                    responder
-                        .respond(result.pop().expect("can only contain one result"))
-                        .await
-                }
-                .ignore()
-            }
-            StorageRequest::GetBlockHeader {
+            }) => self.get_block(block_hash, responder),
+            Event::Request(StorageRequest::GetBlockHeader {
                 block_hash,
                 responder,
-            } => {
-                let block_store = self.block_store();
-                async move {
-                    let mut result = task::spawn_blocking(move || {
-                        block_store.get_headers(smallvec![block_hash])
-                    })
-                    .await
-                    .expect("should run");
-                    responder
-                        .respond(result.pop().expect("can only contain one result"))
-                        .await
-                }
-                .ignore()
+            }) => self.get_block_header(block_hash, responder),
+            Event::Request(StorageRequest::PutDeploy { deploy, responder }) => {
+                self.put_deploy(deploy, responder)
             }
-            StorageRequest::PutDeploy { deploy, responder } => {
-                let deploy_store = self.deploy_store();
-                async move {
-                    // Create the effect, but do not return it.
-                    let announce_new_deploy = effect_builder.announce_deploy_stored(&deploy);
-
-                    let result = task::spawn_blocking(move || deploy_store.put(*deploy))
-                        .await
-                        .expect("should run");
-
-                    let stored_new_deploy = *result.as_ref().unwrap_or_else(|_| &false);
-
-                    // Tell the requester the result of storing the deploy.
-                    responder.respond(result).await;
-
-                    if stored_new_deploy {
-                        // Now that we have stored the deploy, we also want to announce it.
-                        announce_new_deploy.await;
-                    }
-                }
-                .ignore()
-            }
-            StorageRequest::GetDeploys {
+            Event::Request(StorageRequest::GetDeploys {
                 deploy_hashes,
                 responder,
-            } => {
-                let deploy_store = self.deploy_store();
-                async move {
-                    let result = task::spawn_blocking(move || deploy_store.get(deploy_hashes))
-                        .await
-                        .expect("should run");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            StorageRequest::GetDeployHeaders {
+            }) => self.get_deploys(deploy_hashes, responder),
+            Event::Request(StorageRequest::GetDeployHeaders {
                 deploy_hashes,
                 responder,
-            } => {
-                let deploy_store = self.deploy_store();
-                async move {
-                    let result =
-                        task::spawn_blocking(move || deploy_store.get_headers(deploy_hashes))
-                            .await
-                            .expect("should run");
-                    responder.respond(result).await
-                }
-                .ignore()
+            }) => self.get_deploy_headers(deploy_hashes, responder),
+            Event::Request(StorageRequest::ListDeploys { responder }) => {
+                self.list_deploys(responder)
             }
-            StorageRequest::ListDeploys { responder } => {
-                let deploy_store = self.deploy_store();
-                async move {
-                    let result = task::spawn_blocking(move || deploy_store.ids())
-                        .await
-                        .expect("should run");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            StorageRequest::PutChainspec {
+            Event::Request(StorageRequest::PutChainspec {
                 chainspec,
                 responder,
-            } => {
-                let chainspec_store = self.chainspec_store();
-                async move {
-                    let result = task::spawn_blocking(move || chainspec_store.put(*chainspec))
-                        .await
-                        .expect("should run");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            StorageRequest::GetChainspec { version, responder } => {
-                let chainspec_store = self.chainspec_store();
-                async move {
-                    let result = task::spawn_blocking(move || chainspec_store.get(version))
-                        .await
-                        .expect("should run");
-                    responder.respond(result).await
-                }
-                .ignore()
+            }) => self.put_chainspec(chainspec, responder),
+            Event::Request(StorageRequest::GetChainspec { version, responder }) => {
+                self.get_chainspec(version, responder)
             }
         }
     }
@@ -257,7 +389,7 @@ pub(crate) struct InMemStorage<B: Value, D: Value> {
 }
 
 #[allow(trivial_casts)]
-impl<B: Value + 'static, D: Value + 'static> StorageType for InMemStorage<B, D> {
+impl<B: Value + 'static, D: Value + Item + 'static> StorageType for InMemStorage<B, D> {
     type Block = B;
     type Deploy = D;
 
@@ -291,7 +423,7 @@ pub struct LmdbStorage<B: Value, D: Value> {
 }
 
 #[allow(trivial_casts)]
-impl<B: Value + 'static, D: Value + 'static> StorageType for LmdbStorage<B, D> {
+impl<B: Value + 'static, D: Value + Item + 'static> StorageType for LmdbStorage<B, D> {
     type Block = B;
     type Deploy = D;
 

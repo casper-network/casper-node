@@ -25,6 +25,8 @@ use crate::{
     components::contract_runtime::shared::wasm_costs::WasmCosts, crypto::asymmetric_key::PublicKey,
     types::Motes,
 };
+#[cfg(test)]
+use crate::{testing::TestRng, types::Timestamp};
 
 /// An account that exists at genesis.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -117,6 +119,28 @@ impl Default for DeployConfig {
     }
 }
 
+#[cfg(test)]
+impl DeployConfig {
+    /// Generates a random instance using a `TestRng`.
+    pub fn random(rng: &mut TestRng) -> Self {
+        let max_payment_cost = Motes::new(U512::from(
+            rng.gen_range::<_, u64, u64>(1_000_000, 1_000_000_000),
+        ));
+        let max_ttl = Duration::from_millis(rng.gen_range(60_000, 3_600_000));
+        let max_dependencies = rng.gen();
+        let max_block_size = rng.gen_range(1_000_000, 1_000_000_000);
+        let block_gas_limit = rng.gen_range(100_000_000_000, 1_000_000_000_000_000);
+
+        DeployConfig {
+            max_payment_cost,
+            max_ttl,
+            max_dependencies,
+            max_block_size,
+            block_gas_limit,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
@@ -138,6 +162,28 @@ impl Default for HighwayConfig {
             entropy_duration: Duration::from_millis(10_800_000), // 3 hours
             voting_period_duration: Duration::from_millis(172_800_000), // 2 days
             finality_threshold_percent: 10,
+        }
+    }
+}
+
+#[cfg(test)]
+impl HighwayConfig {
+    /// Generates a random instance using a `TestRng`.
+    pub fn random(rng: &mut TestRng) -> Self {
+        let genesis_era_start_timestamp = Timestamp::now().millis();
+        let era_duration = Duration::from_millis(rng.gen_range(600_000, 604_800_000));
+        let booking_duration = Duration::from_millis(rng.gen_range(600_000, 864_000_000));
+        let entropy_duration = Duration::from_millis(rng.gen_range(600_000, 10_800_000));
+        let voting_period_duration = Duration::from_millis(rng.gen_range(600_000, 172_800_000));
+        let finality_threshold_percent = rng.gen_range(0, 101);
+
+        HighwayConfig {
+            genesis_era_start_timestamp,
+            era_duration,
+            booking_duration,
+            entropy_duration,
+            voting_period_duration,
+            finality_threshold_percent,
         }
     }
 }
@@ -188,6 +234,40 @@ impl Debug for GenesisConfig {
     }
 }
 
+#[cfg(test)]
+impl GenesisConfig {
+    /// Generates a random instance using a `TestRng`.
+    pub fn random(rng: &mut TestRng) -> Self {
+        let name = rng.gen::<char>().to_string();
+        let timestamp = rng.gen::<u8>() as u64;
+        let protocol_version = Version::new(
+            rng.gen_range(0, 10),
+            rng.gen::<u8>() as u64,
+            rng.gen::<u8>() as u64,
+        );
+        let mint_installer_bytes = vec![rng.gen()];
+        let pos_installer_bytes = vec![rng.gen()];
+        let standard_payment_installer_bytes = vec![rng.gen()];
+        let accounts = vec![rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen()];
+        let costs = WasmCosts::random(rng);
+        let deploy_config = DeployConfig::random(rng);
+        let highway_config = HighwayConfig::random(rng);
+
+        GenesisConfig {
+            name,
+            timestamp,
+            protocol_version,
+            mint_installer_bytes,
+            pos_installer_bytes,
+            standard_payment_installer_bytes,
+            accounts,
+            costs,
+            deploy_config,
+            highway_config,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ActivationPoint {
     pub(crate) rank: u64,
@@ -201,6 +281,50 @@ pub(crate) struct UpgradePoint {
     pub(crate) upgrade_installer_args: Option<Vec<u8>>,
     pub(crate) new_costs: Option<WasmCosts>,
     pub(crate) new_deploy_config: Option<DeployConfig>,
+}
+
+#[cfg(test)]
+impl UpgradePoint {
+    /// Generates a random instance using a `TestRng`.
+    pub fn random(rng: &mut TestRng) -> Self {
+        let activation_point = ActivationPoint {
+            rank: rng.gen::<u8>() as u64,
+        };
+        let protocol_version = Version::new(
+            rng.gen_range(10, 20),
+            rng.gen::<u8>() as u64,
+            rng.gen::<u8>() as u64,
+        );
+        let upgrade_installer_bytes = if rng.gen() {
+            Some(vec![rng.gen()])
+        } else {
+            None
+        };
+        let upgrade_installer_args = if rng.gen() {
+            Some(vec![rng.gen()])
+        } else {
+            None
+        };
+        let new_costs = if rng.gen() {
+            Some(WasmCosts::random(rng))
+        } else {
+            None
+        };
+        let new_deploy_config = if rng.gen() {
+            Some(DeployConfig::random(rng))
+        } else {
+            None
+        };
+
+        UpgradePoint {
+            activation_point,
+            protocol_version,
+            upgrade_installer_bytes,
+            upgrade_installer_args,
+            new_costs,
+            new_deploy_config,
+        }
+    }
 }
 
 /// A collection of configuration settings describing the state of the system at genesis and
@@ -226,6 +350,14 @@ impl Chainspec {
     /// these paths can either be absolute or relative to the folder containing `chainspec_path`.
     pub fn from_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<Self, Error> {
         config::parse_toml(chainspec_path)
+    }
+
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let genesis = GenesisConfig::random(rng);
+        let upgrades = vec![UpgradePoint::random(rng), UpgradePoint::random(rng)];
+        Chainspec { genesis, upgrades }
     }
 }
 

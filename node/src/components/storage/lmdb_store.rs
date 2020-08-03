@@ -34,7 +34,7 @@ impl<V: Value> LmdbStore<V> {
 }
 
 impl<V: Value> LmdbStore<V> {
-    fn get_values(&self, ids: Multiple<V::Id>) -> Multiple<Result<V>> {
+    fn get_values(&self, ids: Multiple<V::Id>) -> Multiple<Result<Option<V>>> {
         let mut serialized_ids = Multiple::new();
         for id in &ids {
             serialized_ids
@@ -49,11 +49,12 @@ impl<V: Value> LmdbStore<V> {
                     match txn.get(self.db, &id) {
                         Ok(serialized_value) => {
                             let value_result = bincode::deserialize(serialized_value)
+                                .map(Some)
                                 .map_err(|error| Error::from_deserialization(*error));
                             values.push(value_result)
                         }
                         Err(lmdb::Error::NotFound) => {
-                            values.push(Err(Error::NotFound));
+                            values.push(Ok(None));
                         }
                         Err(error) => panic!("should get: {:?}", error),
                     };
@@ -84,14 +85,14 @@ impl<V: Value> Store for LmdbStore<V> {
         Ok(result)
     }
 
-    fn get(&self, ids: Multiple<V::Id>) -> Multiple<Result<V>> {
+    fn get(&self, ids: Multiple<V::Id>) -> Multiple<Result<Option<V>>> {
         self.get_values(ids)
     }
 
-    fn get_headers(&self, ids: Multiple<V::Id>) -> Multiple<Result<V::Header>> {
+    fn get_headers(&self, ids: Multiple<V::Id>) -> Multiple<Result<Option<V::Header>>> {
         self.get_values(ids)
             .into_iter()
-            .map(|value_result| value_result.map(Value::take_header))
+            .map(|value_result| value_result.map(|maybe_value| maybe_value.map(Value::take_header)))
             .collect()
     }
 

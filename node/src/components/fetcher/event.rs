@@ -1,25 +1,19 @@
 use std::fmt::{self, Display, Formatter};
 
-use super::{Item, Message};
+use super::Item;
 use crate::{
-    components::storage::Result,
     effect::{requests::FetcherRequest, Responder},
     small_network::NodeId,
+    utils::Source,
 };
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum FetchResult<T: Item> {
-    FromStore(T),
-    FromPeer(T, NodeId),
+    FromStorage(Box<T>),
+    FromPeer(Box<T>, NodeId),
 }
 
-pub(crate) type FetchResponder<T> = Responder<Option<Box<FetchResult<T>>>>;
-
-#[derive(Debug, PartialEq)]
-pub enum RequestOrigin {
-    External,
-    Internal,
-}
+pub(crate) type FetchResponder<T> = Responder<Option<FetchResult<T>>>;
 
 /// `Fetcher` events.
 #[derive(Debug)]
@@ -31,23 +25,19 @@ pub enum Event<T: Item> {
         responder: FetchResponder<T>,
     },
     /// The result of the `Fetcher` getting a item from the storage component.  If the
-    /// result is not `Ok`, the item should be requested from the peer.
-    GetFromStoreResult {
-        request_origin: RequestOrigin,
+    /// result is `None`, the item should be requested from the peer.
+    GetFromStorageResult {
         id: T::Id,
         peer: NodeId,
-        result: Box<Result<T>>,
+        maybe_item: Box<Option<T>>,
+    },
+    /// An announcement from a different component that we have accepted and stored the given item.
+    GotRemotely {
+        item: Box<T>,
+        source: Source<NodeId>,
     },
     /// The timeout has elapsed and we should clean up state.
     TimeoutPeer { id: T::Id, peer: NodeId },
-    /// An incoming network message.
-    MessageReceived { sender: NodeId, payload: Message<T> },
-    /// The result of the `Fetcher` putting an item to the storage component.
-    StoredFromPeerResult {
-        item: Box<T>,
-        peer: NodeId,
-        result: Result<bool>,
-    },
 }
 
 impl<T: Item> From<FetcherRequest<NodeId, T>> for Event<T> {
@@ -69,30 +59,22 @@ impl<T: Item> From<FetcherRequest<NodeId, T>> for Event<T> {
 impl<T: Item> Display for Event<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Event::Fetch { id, .. } => write!(formatter, "request to fetch item at hash {}", id),
+            Event::GetFromStorageResult { id, maybe_item, .. } => {
+                if maybe_item.is_some() {
+                    write!(formatter, "got {} from storage", id)
+                } else {
+                    write!(formatter, "failed to fetch {} from storage", id)
+                }
+            }
+            Event::GotRemotely { item, source } => {
+                write!(formatter, "got {} from {}", item.id(), source)
+            }
             Event::TimeoutPeer { id, peer } => write!(
                 formatter,
                 "check get from peer timeout for {} with {}",
                 id, peer
             ),
-            Event::Fetch { id, .. } => write!(formatter, "request to fetch item at hash {}", id),
-            Event::MessageReceived {
-                sender,
-                payload: message,
-            } => write!(formatter, "{} received from {}", message, sender),
-            Event::StoredFromPeerResult { item, result, .. } => {
-                if result.is_ok() {
-                    write!(formatter, "put {} to store", *item.id())
-                } else {
-                    write!(formatter, "failed to put {} to store", *item.id())
-                }
-            }
-            Event::GetFromStoreResult { id, result, .. } => {
-                if result.is_ok() {
-                    write!(formatter, "got {} from store", id)
-                } else {
-                    write!(formatter, "failed to fetch {} from store", id)
-                }
-            }
         }
     }
 }

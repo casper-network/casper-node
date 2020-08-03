@@ -129,3 +129,31 @@ pub fn read_file_to_string<P: AsRef<Path>>(filename: P) -> Result<String, ReadFi
         error,
     })
 }
+
+/// The source of a piece of data.
+#[derive(Copy, Clone, Debug)]
+pub enum Source<I> {
+    /// A peer with the wrapped ID.
+    Peer(I),
+    /// A client.
+    Client,
+}
+
+impl<I: Copy> Source<I> {
+    /// If `self` represents a peer, returns its ID, otherwise returns `None`.
+    pub fn node_id(&self) -> Option<I> {
+        match self {
+            Source::Peer(node_id) => Some(*node_id),
+            Source::Client => None,
+        }
+    }
+}
+
+impl<I: Display> Display for Source<I> {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Source::Peer(node_id) => Display::fmt(node_id, formatter),
+            Source::Client => write!(formatter, "client"),
+        }
+    }
+}

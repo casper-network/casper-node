@@ -2,7 +2,7 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
 use derive_more::From;
-use futures::future::FutureExt;
+use futures::FutureExt;
 use prometheus::Registry;
 use rand::rngs::ThreadRng;
 use tempfile::TempDir;
@@ -15,10 +15,7 @@ use crate::{
         in_memory_network::{InMemoryNetwork, NetworkController, NodeId},
         storage::{self, Storage, StorageType},
     },
-    effect::{
-        announcements::{NetworkAnnouncement, StorageAnnouncement},
-        requests::FetcherRequest,
-    },
+    effect::{announcements::NetworkAnnouncement, requests::FetcherRequest},
     reactor::{self, EventQueueHandle, Runner},
     testing::{
         network::{Network, NetworkedReactor},

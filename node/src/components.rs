@@ -8,6 +8,7 @@ pub(crate) mod block_validator;
 pub(crate) mod chainspec_handler;
 pub(crate) mod consensus;
 pub mod contract_runtime;
+pub(crate) mod deploy_acceptor;
 pub(crate) mod deploy_buffer;
 pub(crate) mod fetcher;
 pub(crate) mod gossiper;

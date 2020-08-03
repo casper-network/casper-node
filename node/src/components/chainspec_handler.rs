@@ -14,7 +14,7 @@ use tracing::{debug, error, info, trace};
 use crate::{
     components::{
         contract_runtime::core::engine_state::{self, genesis::GenesisResult},
-        storage::{self, Storage},
+        storage::Storage,
         Component,
     },
     crypto::hash::Digest,
@@ -35,10 +35,7 @@ pub use error::Error;
 #[derive(Debug)]
 pub enum Event {
     /// The result of the `ChainspecHandler` putting a `Chainspec` to the storage component.
-    PutToStoreResult {
-        version: Version,
-        result: storage::Result<()>,
-    },
+    PutToStorage { version: Version },
     /// The result of contract runtime running the genesis process.
     CommitGenesisResult(Result<GenesisResult, engine_state::Error>),
 }
@@ -46,12 +43,8 @@ pub enum Event {
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::PutToStoreResult { version, result } => {
-                if result.is_ok() {
-                    write!(formatter, "put chainspec {} to store", version)
-                } else {
-                    write!(formatter, "failed to put chainspec {} from store", version)
-                }
+            Event::PutToStorage { version } => {
+                write!(formatter, "put chainspec {} to storage", version)
             }
             Event::CommitGenesisResult(result) => match result {
                 Ok(genesis_result) => {
@@ -84,7 +77,7 @@ impl ChainspecHandler {
         let version = chainspec.genesis.protocol_version.clone();
         let effects = effect_builder
             .put_chainspec(chainspec.clone())
-            .event(|result| Event::PutToStoreResult { version, result });
+            .event(|_| Event::PutToStorage { version });
         Ok((
             ChainspecHandler {
                 chainspec,
@@ -125,19 +118,12 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::PutToStoreResult { version, result } => match result {
-                Ok(()) => {
-                    debug!("stored chainspec {}", version);
-                    effect_builder
-                        .commit_genesis(self.chainspec.clone())
-                        .event(Event::CommitGenesisResult)
-                }
-                Err(error) => {
-                    error!("failed to store chainspec {}: {}", version, error);
-                    self.completed_successfully = Some(false);
-                    Effects::new()
-                }
-            },
+            Event::PutToStorage { version } => {
+                debug!("stored chainspec {}", version);
+                effect_builder
+                    .commit_genesis(self.chainspec.clone())
+                    .event(Event::CommitGenesisResult)
+            }
             Event::CommitGenesisResult(result) => {
                 match result {
                     Ok(genesis_result) => match genesis_result {

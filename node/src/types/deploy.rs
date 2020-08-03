@@ -6,28 +6,30 @@ use std::{
 
 use hex::FromHexError;
 #[cfg(test)]
-use rand::{
-    distributions::{Alphanumeric, Distribution, Standard},
-    Rng,
-};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-#[cfg(test)]
-use crate::crypto::{
-    asymmetric_key::{self, SecretKey},
-    hash,
-};
+use super::{Item, Tag};
 use crate::{
     components::{
         contract_runtime::core::engine_state::executable_deploy_item::ExecutableDeployItem,
-        fetcher::Item as FetcherItem, gossiper::Item as GossiperItem, storage::Value,
+        storage::Value,
     },
     crypto::{
         asymmetric_key::{PublicKey, Signature},
         hash::Digest,
     },
     utils::DisplayIter,
+};
+#[cfg(test)]
+use crate::{
+    crypto::{
+        asymmetric_key::{self, SecretKey},
+        hash,
+    },
+    testing::TestRng,
+    types::Timestamp,
 };
 
 // TODO - improve this if it's to be kept
@@ -119,6 +121,13 @@ pub struct DeployHeader {
     pub chain_name: String,
 }
 
+impl DeployHeader {
+    /// Returns the timestamp of when the deploy expires, i.e. `self.timestamp + self.ttl_millis`.
+    pub fn expires(&self) -> u64 {
+        self.timestamp.saturating_add(self.ttl_millis as u64)
+    }
+}
+
 impl Display for DeployHeader {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
@@ -189,71 +198,20 @@ impl Deploy {
     pub fn session(&self) -> &ExecutableDeployItem {
         &self.session
     }
-}
 
-/// Trait to allow `Deploy`s to be used by the storage component.
-impl Value for Deploy {
-    type Id = DeployHash;
-    type Header = DeployHeader;
-
-    fn id(&self) -> &Self::Id {
-        &self.hash
-    }
-
-    fn header(&self) -> &Self::Header {
-        &self.header
-    }
-
-    fn take_header(self) -> Self::Header {
-        self.header
-    }
-}
-
-/// Trait to allow `Deploy`s to be used by the `Gossiper` component.
-impl GossiperItem for Deploy {
-    type Id = DeployHash;
-
-    fn id(&self) -> &Self::Id {
-        &self.hash
-    }
-}
-
-/// Trait to allow `Deploy`s to be used by the `Fetcher` component.
-impl FetcherItem for Deploy {
-    type Id = DeployHash;
-
-    fn id(&self) -> &Self::Id {
-        &self.hash
-    }
-}
-
-impl Display for Deploy {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(
-            formatter,
-            "deploy[{}, {}, payment_code: {}, session_code: {}, approvals: {}]",
-            self.hash,
-            self.header,
-            self.payment,
-            self.session,
-            DisplayIter::new(self.approvals.iter())
-        )
-    }
-}
-
-#[cfg(test)]
-impl Distribution<Deploy> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Deploy {
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
         let seed: u64 = rng.gen();
         let hash = DeployHash::new(hash::hash(seed.to_le_bytes()));
 
-        let secret_key = SecretKey::generate_ed25519();
+        let secret_key = SecretKey::random(rng);
         let account = PublicKey::from(&secret_key);
 
-        let timestamp = seed + 100;
-        let gas_price = seed + 101;
-        let body_hash = hash::hash(seed.overflowing_add(102).0.to_le_bytes());
-        let ttl_millis = seed as u32 + 103;
+        let timestamp = Timestamp::now().millis();
+        let gas_price = rng.gen_range(1, 100);
+        let body_hash = hash::hash(rng.gen::<u64>().to_le_bytes());
+        let ttl_millis = rng.gen_range(60_000, 3_600_000);
 
         let dependencies = vec![
             DeployHash::new(hash::hash(seed.overflowing_add(104).0.to_le_bytes())),
@@ -261,9 +219,7 @@ impl Distribution<Deploy> for Standard {
             DeployHash::new(hash::hash(seed.overflowing_add(106).0.to_le_bytes())),
         ];
 
-        let chain_name = std::iter::repeat_with(|| rng.sample(Alphanumeric))
-            .take(10)
-            .collect();
+        let chain_name = String::from("casperlabs-example");
 
         let header = DeployHeader {
             account,
@@ -305,6 +261,47 @@ impl Distribution<Deploy> for Standard {
             session,
             approvals,
         }
+    }
+}
+
+/// Trait to allow `Deploy`s to be used by the storage component.
+impl Value for Deploy {
+    type Id = DeployHash;
+    type Header = DeployHeader;
+
+    fn id(&self) -> &Self::Id {
+        &self.hash
+    }
+
+    fn header(&self) -> &Self::Header {
+        &self.header
+    }
+
+    fn take_header(self) -> Self::Header {
+        self.header
+    }
+}
+
+impl Item for Deploy {
+    type Id = DeployHash;
+    const TAG: Tag = Tag::Deploy;
+
+    fn id(&self) -> &Self::Id {
+        &self.hash
+    }
+}
+
+impl Display for Deploy {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(
+            formatter,
+            "deploy[{}, {}, payment_code: {}, session_code: {}, approvals: {}]",
+            self.hash,
+            self.header,
+            self.payment,
+            self.session,
+            DisplayIter::new(self.approvals.iter())
+        )
     }
 }
 
@@ -593,36 +590,12 @@ mod json {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crypto::asymmetric_key::{self, SecretKey};
+    use crate::testing::TestRng;
 
     #[test]
     fn json_roundtrip() {
-        let secret_key = SecretKey::generate_ed25519();
-        let public_key = PublicKey::from(&secret_key);
-
-        let deploy_hash: Digest = [1; 32].into();
-
-        let deploy = Deploy::new(
-            DeployHash::from(deploy_hash),
-            DeployHeader {
-                account: PublicKey::new_ed25519([42; 32]).unwrap(),
-                timestamp: 100,
-                gas_price: 101,
-                body_hash: [43; 32].into(),
-                ttl_millis: 102,
-                dependencies: vec![],
-                chain_name: "Foo".to_owned(),
-            },
-            ExecutableDeployItem::ModuleBytes {
-                module_bytes: b"This is WASM of a module".to_vec(),
-                args: b"foo".to_vec(),
-            },
-            ExecutableDeployItem::ModuleBytes {
-                module_bytes: b"This is WASM of a module".to_vec(),
-                args: b"bar".to_vec(),
-            },
-            vec![asymmetric_key::sign(b"Message", &secret_key, &public_key)],
-        );
+        let mut rng = TestRng::new();
+        let deploy = Deploy::random(&mut rng);
         let json = deploy.to_json().unwrap();
         let decoded = Deploy::from_json(&json).unwrap();
         assert_eq!(deploy, decoded);

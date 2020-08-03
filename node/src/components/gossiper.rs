@@ -3,18 +3,16 @@ mod error;
 mod event;
 mod gossip_table;
 mod message;
-mod tests;
+// mod tests;
 
 use std::{
     collections::HashSet,
-    fmt::{self, Debug, Display, Formatter},
-    hash::Hash,
+    fmt::{self, Debug, Formatter},
     time::Duration,
 };
 
 use futures::FutureExt;
 use rand::Rng;
-use serde::{de::DeserializeOwned, Serialize};
 use smallvec::smallvec;
 use tracing::{debug, error};
 
@@ -24,6 +22,9 @@ use crate::{
         requests::{NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
+    reactor::validator::Message as ValidatorMessage,
+    types::{Deploy, DeployHash, Item},
+    utils::Source,
 };
 pub use config::Config;
 pub use error::Error;
@@ -31,17 +32,12 @@ pub use event::Event;
 use gossip_table::{GossipAction, GossipTable};
 pub use message::Message;
 
-pub trait Item: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display {
-    type Id: Copy + Eq + Hash + Debug + Display + Serialize + DeserializeOwned + Send + Sync;
-
-    fn id(&self) -> &Self::Id;
-}
-
 /// A helper trait whose bounds represent the requirements for a reactor event that `Gossiper` can
 /// work with.
 pub trait ReactorEventT<T>:
     From<Event<T>>
     + From<NetworkRequest<NodeId, Message<T>>>
+    + From<NetworkRequest<NodeId, ValidatorMessage>>
     + From<StorageRequest<Storage>>
     + Send
     + 'static
@@ -57,37 +53,26 @@ where
     <T as Item>::Id: 'static,
     REv: From<Event<T>>
         + From<NetworkRequest<NodeId, Message<T>>>
+        + From<NetworkRequest<NodeId, ValidatorMessage>>
         + From<StorageRequest<Storage>>
         + Send
         + 'static,
 {
 }
 
-pub(crate) fn put_deploy_to_storage<T: Item + 'static, REv: ReactorEventT<T>>(
-    effect_builder: EffectBuilder<REv>,
-    deploy: crate::types::Deploy,
-    maybe_sender: Option<NodeId>,
-) -> Effects<Event<crate::types::Deploy>> {
-    let deploy_hash = *deploy.id();
-    effect_builder
-        .put_deploy_to_storage(deploy)
-        .event(move |result| Event::PutToHolderResult {
-            item_id: deploy_hash,
-            maybe_sender,
-            result: result.map(|_| ()).map_err(|error| format!("{}", error)),
-        })
-}
-
 pub(crate) fn get_deploy_from_storage<T: Item + 'static, REv: ReactorEventT<T>>(
     effect_builder: EffectBuilder<REv>,
-    deploy_hash: crate::types::DeployHash,
+    deploy_hash: DeployHash,
     sender: NodeId,
-) -> Effects<Event<crate::types::Deploy>> {
+) -> Effects<Event<Deploy>> {
     effect_builder
         .get_deploys_from_storage(smallvec![deploy_hash])
-        .event(move |mut result| {
-            let result = if result.len() == 1 {
-                result.pop().unwrap().map_err(|error| format!("{}", error))
+        .event(move |mut results| {
+            let result = if results.len() == 1 {
+                results
+                    .pop()
+                    .unwrap()
+                    .ok_or_else(|| String::from("failed to get deploy from storage"))
             } else {
                 Err(String::from("expected a single result"))
             };
@@ -105,8 +90,6 @@ pub(crate) struct Gossiper<T: Item + 'static, REv: ReactorEventT<T>> {
     table: GossipTable<T::Id>,
     gossip_timeout: Duration,
     get_from_peer_timeout: Duration,
-    put_to_holder:
-        Box<dyn Fn(EffectBuilder<REv>, T, Option<NodeId>) -> Effects<Event<T>> + Send + 'static>,
     get_from_holder:
         Box<dyn Fn(EffectBuilder<REv>, T::Id, NodeId) -> Effects<Event<T>> + Send + 'static>,
 }
@@ -127,9 +110,6 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
     /// `gossiper::get_deploy_from_store()` which is used by `Gossiper<Deploy>`.
     pub(crate) fn new(
         config: Config,
-        put_to_holder: impl Fn(EffectBuilder<REv>, T, Option<NodeId>) -> Effects<Event<T>>
-            + Send
-            + 'static,
         get_from_holder: impl Fn(EffectBuilder<REv>, T::Id, NodeId) -> Effects<Event<T>>
             + Send
             + 'static,
@@ -138,19 +118,27 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             table: GossipTable::new(config),
             gossip_timeout: Duration::from_secs(config.gossip_request_timeout_secs()),
             get_from_peer_timeout: Duration::from_secs(config.get_remainder_timeout_secs()),
-            put_to_holder: Box::new(put_to_holder),
             get_from_holder: Box::new(get_from_holder),
         }
     }
 
-    /// Handles a new item received from somewhere other than a peer (e.g. the HTTP API server).
+    /// Handles a new item received from a peer or client.
     fn handle_item_received(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        item: T,
+        item_id: T::Id,
+        source: Source<NodeId>,
     ) -> Effects<Event<T>> {
-        // Put the item to the component responsible for holding it.
-        (self.put_to_holder)(effect_builder, item, None)
+        if let Some(should_gossip) = self.table.new_complete_data(&item_id, source.node_id()) {
+            self.gossip(
+                effect_builder,
+                item_id,
+                should_gossip.count,
+                should_gossip.exclude_peers,
+            )
+        } else {
+            Effects::new()
+        }
     }
 
     /// Gossips the given item ID to `count` random peers excluding the indicated ones.
@@ -238,7 +226,15 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 // The previous peer failed to provide the item, so we still need to get it.  Send
                 // a `GetRequest` to a different holder and set a timeout to check we got the
                 // response.
-                let request = Message::GetRequest(item_id);
+                let request = match ValidatorMessage::new_get_request::<T>(&item_id) {
+                    Ok(request) => request,
+                    Err(error) => {
+                        error!("failed to create get-request: {}", error);
+                        // Treat this as if the holder didn't respond - i.e. try to get from a
+                        // different holder.
+                        return self.check_get_from_peer_timeout(effect_builder, item_id, holder);
+                    }
+                };
                 let mut effects = effect_builder.send_message(holder, request).ignore();
                 effects.extend(
                     effect_builder
@@ -320,8 +316,9 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         let action = if is_already_held {
             self.table.already_infected(&item_id, sender)
         } else {
-            // `sender` doesn't hold the full item; treat this as a `GetRequest`.
-            effects.extend(self.handle_get_request(effect_builder, item_id, sender));
+            // `sender` doesn't hold the full item; get the item from the component responsible for
+            // holding it, then send it to `sender`.
+            effects.extend((self.get_from_holder)(effect_builder, item_id, sender));
             self.table.we_infected(&item_id, sender)
         };
 
@@ -341,60 +338,6 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         effects
     }
 
-    /// Handles an incoming `GetRequest` from a peer on the network.
-    fn handle_get_request(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        item_id: T::Id,
-        sender: NodeId,
-    ) -> Effects<Event<T>> {
-        // Get the item from the component responsible for holding it, then send it to `sender`.
-        (self.get_from_holder)(effect_builder, item_id, sender)
-    }
-
-    /// Handles an incoming `GetResponse` from a peer on the network.
-    fn handle_get_response(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        item: T,
-        sender: NodeId,
-    ) -> Effects<Event<T>> {
-        // Put the item to the component responsible for holding it.
-        (self.put_to_holder)(effect_builder, item, Some(sender))
-    }
-
-    /// Handles the `Ok` case for a `Result` of attempting to put the item to the component
-    /// responsible for holding it, having received it from the sender (for the `Some` case) or from
-    /// our own HTTP API server (the `None` case).
-    fn handle_put_to_holder_success(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        item_id: T::Id,
-        maybe_sender: Option<NodeId>,
-    ) -> Effects<Event<T>> {
-        if let Some(should_gossip) = self.table.new_complete_data(&item_id, maybe_sender) {
-            self.gossip(
-                effect_builder,
-                item_id,
-                should_gossip.count,
-                should_gossip.exclude_peers,
-            )
-        } else {
-            Effects::new()
-        }
-    }
-
-    /// Handles the `Err` case for a `Result` of attempting to put the item to the component
-    /// responsible for holding it.
-    fn failed_to_put_to_holder(&mut self, item_id: T::Id, error: String) -> Effects<Event<T>> {
-        self.table.pause(&item_id);
-        error!(
-            "paused gossiping {} since failed to put to holder component: {}",
-            item_id, error
-        );
-        Effects::new()
-    }
-
     /// Handles the `Ok` case for a `Result` of attempting to get the item from the component
     /// responsible for holding it, in order to send it to the requester.
     fn got_from_holder(
@@ -403,8 +346,13 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         item: T,
         requester: NodeId,
     ) -> Effects<Event<T>> {
-        let message = Message::GetResponse(Box::new(item));
-        effect_builder.send_message(requester, message).ignore()
+        match ValidatorMessage::new_get_response(&item) {
+            Ok(message) => effect_builder.send_message(requester, message).ignore(),
+            Err(error) => {
+                error!("failed to create get-response: {}", error);
+                Effects::new()
+            }
+        }
     }
 
     /// Handles the `Err` case for a `Result` of attempting to get the item from the component
@@ -430,7 +378,9 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Component<REv> for Gossiper<T, RE
     ) -> Effects<Self::Event> {
         debug!(?event, "handling event");
         match event {
-            Event::ItemReceived { item } => self.handle_item_received(effect_builder, *item),
+            Event::ItemReceived { item_id, source } => {
+                self.handle_item_received(effect_builder, item_id, source)
+            }
             Event::GossipedTo { item_id, peers } => {
                 self.gossiped_to(effect_builder, item_id, peers)
             }
@@ -446,20 +396,6 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Component<REv> for Gossiper<T, RE
                     item_id,
                     is_already_held,
                 } => self.handle_gossip_response(effect_builder, item_id, is_already_held, sender),
-                Message::GetRequest(item_id) => {
-                    self.handle_get_request(effect_builder, item_id, sender)
-                }
-                Message::GetResponse(item) => {
-                    self.handle_get_response(effect_builder, *item, sender)
-                }
-            },
-            Event::PutToHolderResult {
-                item_id,
-                maybe_sender,
-                result,
-            } => match result {
-                Ok(()) => self.handle_put_to_holder_success(effect_builder, item_id, maybe_sender),
-                Err(error) => self.failed_to_put_to_holder(item_id, error),
             },
             Event::GetFromHolderResult {
                 item_id,
