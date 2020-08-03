@@ -96,7 +96,7 @@ use announcements::{
 use casperlabs_types::{Key, ProtocolVersion};
 use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
 use requests::{
-    BlockExecutorRequest, BlockValidatorRequest, ContractRuntimeRequest, DeployBufferRequest,
+    BlockExecutorRequest, BlockValidationRequest, ContractRuntimeRequest, DeployBufferRequest,
     FetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
 };
 
@@ -669,10 +669,10 @@ impl<REv> EffectBuilder<REv> {
         proto_block: ProtoBlock,
     ) -> (bool, ProtoBlock)
     where
-        REv: From<BlockValidatorRequest<I>>,
+        REv: From<BlockValidationRequest<I>>,
     {
         self.make_request(
-            |responder| BlockValidatorRequest {
+            |responder| BlockValidationRequest {
                 sender,
                 proto_block,
                 responder,
