@@ -18,6 +18,7 @@ use tracing_subscriber::{
 
 /// Logging configuration.
 #[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct LoggingConfig {
     /// Output format for log.
     format: LoggingFormat,
