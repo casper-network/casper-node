@@ -34,7 +34,7 @@ use crate::{
             ApiServerAnnouncement, ConsensusAnnouncement, NetworkAnnouncement, StorageAnnouncement,
         },
         requests::{
-            ApiRequest, BlockExecutorRequest, BlockValidatorRequest, ContractRuntimeRequest,
+            ApiRequest, BlockExecutorRequest, BlockValidationRequest, ContractRuntimeRequest,
             DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
@@ -128,7 +128,7 @@ pub enum Event {
     BlockExecutorRequest(BlockExecutorRequest),
     /// Block validator request.
     #[from]
-    BlockValidatorRequest(BlockValidatorRequest<NodeId>),
+    BlockValidatorRequest(BlockValidationRequest<NodeId>),
     /// Metrics request.
     #[from]
     MetricsRequest(MetricsRequest),
