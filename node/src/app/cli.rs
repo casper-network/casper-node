@@ -181,15 +181,6 @@ impl Cli {
                 io::stdout().write_all(cfg_str.as_bytes())?;
             }
             Cli::Validator { config, config_ext } => {
-                logging::init()?;
-
-                // We use a `ChaCha20Rng` for the production node. For one, we want to completely
-                // eliminate any chance of runtime failures, regardless of how small (these
-                // exist with `OsRng`). Additionally, we want to limit the number of syscalls for
-                // performance reasons.
-                let mut rng = ChaCha20Rng::from_entropy();
-
-                info!("resolving configuration");
                 // The app supports running without a config file, using default values.
                 let maybe_config: Option<validator::Config> =
                     config.as_ref().map(config::load_from_file).transpose()?;
@@ -214,9 +205,15 @@ impl Cli {
                 normalize_paths(maybe_root_path, &mut config_table);
 
                 // Create validator config, including any overridden or normalized values.
-                let validator_config = config_table.try_into()?;
-
+                let validator_config: validator::Config = config_table.try_into()?;
+                logging::init_with_config(&validator_config.logging)?;
                 trace!("{}", config::to_string(&validator_config)?);
+
+                // We use a `ChaCha20Rng` for the production node. For one, we want to completely
+                // eliminate any chance of runtime failures, regardless of how small (these
+                // exist with `OsRng`). Additionally, we want to limit the number of syscalls for
+                // performance reasons.
+                let mut rng = ChaCha20Rng::from_entropy();
 
                 let mut runner =
                     Runner::<initializer::Reactor>::new(validator_config, &mut rng).await?;
