@@ -60,7 +60,7 @@ where
 }
 
 pub trait ItemFetcher<T: Item + 'static> {
-    fn responders(&mut self) -> &mut HashMap<(T::Id, NodeId), Vec<FetchResponder<T>>>;
+    fn responders(&mut self) -> &mut HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>;
 
     fn peer_timeout(&self) -> Duration;
 
@@ -80,7 +80,12 @@ pub trait ItemFetcher<T: Item + 'static> {
         let request_direction = if let Some(responder) = maybe_responder {
             // Capture responder for later signalling.
             let responders = self.responders();
-            responders.entry((id, peer)).or_default().push(responder);
+            responders
+                .entry(id)
+                .or_default()
+                .entry(peer)
+                .or_default()
+                .push(responder);
             RequestOrigin::Internal
         } else {
             RequestOrigin::External
@@ -160,9 +165,24 @@ pub trait ItemFetcher<T: Item + 'static> {
         peer: NodeId,
     ) -> Effects<Event<T>> {
         let mut effects = Effects::new();
-        if let Some(responders) = self.responders().remove(&(id, peer)) {
-            for responder in responders {
-                effects.extend(responder.respond(result.clone().map(Box::new)).ignore());
+        match result {
+            Some(ret) => {
+                // signal all responders waiting for this item
+                if let Some(all_responders) = self.responders().remove(&id) {
+                    for (_, responders) in all_responders {
+                        for responder in responders {
+                            effects.extend(responder.respond(Some(Box::new(ret.clone()))).ignore());
+                        }
+                    }
+                }
+            }
+            None => {
+                // remove only the peer specific responders for this id
+                if let Some(responders) = self.responders().entry(id).or_default().remove(&peer) {
+                    for responder in responders {
+                        effects.extend(responder.respond(None).ignore());
+                    }
+                }
             }
         }
         effects
@@ -173,7 +193,7 @@ pub trait ItemFetcher<T: Item + 'static> {
 #[derive(Debug)]
 pub(crate) struct Fetcher<T: Item + 'static> {
     get_from_peer_timeout: Duration,
-    responders: HashMap<(T::Id, NodeId), Vec<FetchResponder<T>>>,
+    responders: HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>,
 }
 
 impl<T: Item> Fetcher<T> {
@@ -186,7 +206,9 @@ impl<T: Item> Fetcher<T> {
 }
 
 impl ItemFetcher<Deploy> for Fetcher<Deploy> {
-    fn responders(&mut self) -> &mut HashMap<(DeployHash, NodeId), Vec<FetchResponder<Deploy>>> {
+    fn responders(
+        &mut self,
+    ) -> &mut HashMap<DeployHash, HashMap<NodeId, Vec<FetchResponder<Deploy>>>> {
         &mut self.responders
     }
 
