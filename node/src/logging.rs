@@ -38,6 +38,8 @@ pub struct LoggingConfig {
 enum LoggingFormat {
     /// Text format.
     Text,
+    /// JSON format.
+    Json,
 }
 
 impl Default for LoggingFormat {
@@ -189,15 +191,25 @@ pub fn init_with_config(config: &LoggingConfig) -> anyhow::Result<()> {
     })
     .delimited("; ");
 
-    // Setup a new tracing-subscriber writing to `stderr` for logging.
-    tracing::subscriber::set_global_default(
-        tracing_subscriber::fmt()
-            .with_writer(io::stdout)
-            .with_env_filter(EnvFilter::from_default_env())
-            .fmt_fields(formatter)
-            .event_format(FmtEvent::new(config.abbreviate_modules))
-            .finish(),
-    )?;
+    match config.format {
+        // Setup a new tracing-subscriber writing to `stdout` for logging.
+        LoggingFormat::Text => tracing::subscriber::set_global_default(
+            tracing_subscriber::fmt()
+                .with_writer(io::stdout)
+                .with_env_filter(EnvFilter::from_default_env())
+                .fmt_fields(formatter)
+                .event_format(FmtEvent::new(config.abbreviate_modules))
+                .finish(),
+        )?,
+        // JSON logging writes to `stdout` as well but uses the JSON format.
+        LoggingFormat::Json => tracing::subscriber::set_global_default(
+            tracing_subscriber::fmt()
+                .with_writer(io::stdout)
+                .with_env_filter(EnvFilter::from_default_env())
+                .json()
+                .finish(),
+        )?,
+    }
 
     Ok(())
 }
