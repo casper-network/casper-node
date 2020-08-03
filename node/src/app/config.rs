@@ -19,19 +19,20 @@
 //! * it is annotated with `#[serde(deny_unknown_fields)]` to ensure config files and command-line
 //!   overrides contain valid keys.
 
-use std::{fs, path::Path};
+use std::path::Path;
 
 use anyhow::Context;
 use serde::{de::DeserializeOwned, Serialize};
 
+use casperlabs_node::utils::read_file;
+
 /// Loads a TOML-formatted configuration from a given file.
 pub fn load_from_file<P: AsRef<Path>, C: DeserializeOwned>(config_path: P) -> anyhow::Result<C> {
     let path_ref = config_path.as_ref();
-    let config: C =
-        toml::from_str(&fs::read_to_string(path_ref).with_context(|| {
-            format!("Failed to read configuration file {}", path_ref.display())
-        })?)
-        .with_context(|| format!("Failed to parse configuration file {}", path_ref.display()))?;
+    let config: C = toml::from_slice(
+        &read_file(path_ref).with_context(|| "failed to read configuration file")?,
+    )
+    .with_context(|| format!("Failed to parse configuration file {}", path_ref.display()))?;
     Ok(config)
 }
 

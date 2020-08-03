@@ -6,11 +6,13 @@ use hex::FromHexError;
 use pem::PemError;
 use thiserror::Error;
 
+use crate::utils::{ReadFileError, WriteFileError};
+
 /// A specialized `std::result::Result` type for cryptographic errors.
 pub type Result<T> = result::Result<T, Error>;
 
 /// Cryptographic errors.
-#[derive(Clone, PartialEq, Debug, Error)]
+#[derive(Debug, Error)]
 pub enum Error {
     /// Error resulting from creating or using asymmetric key types.
     #[error("asymmetric key error: {0}")]
@@ -20,6 +22,14 @@ pub enum Error {
     #[error("parsing from hex: {0}")]
     FromHex(#[from] FromHexError),
 
+    /// Error trying to read a secret key.
+    #[error("secret key load failed: {0}")]
+    SecretKeyLoad(ReadFileError),
+
+    /// Error trying to read a public key.
+    #[error("public key load failed: {0}")]
+    PublicKeyLoad(ReadFileError),
+
     /// Error resulting when decoding a type from a base64 representation.
     #[error("decoding error: {0}")]
     FromBase64(#[from] DecodeError),
@@ -28,23 +38,13 @@ pub enum Error {
     #[error("pem error: {0}")]
     FromPem(String),
 
-    /// Error while trying to read in a file.
-    #[error("error reading {file}: {error_msg}")]
-    ReadFile {
-        /// The file attempted to be read.
-        file: String,
-        /// The underlying error message.
-        error_msg: String,
-    },
+    /// Error trying to write a secret key.
+    #[error("secret key save failed: {0}")]
+    SecretKeySave(WriteFileError),
 
-    /// Error while trying to write a file.
-    #[error("error writing {file}: {error_msg}")]
-    WriteFile {
-        /// The file attempted to be written.
-        file: String,
-        /// The underlying error message.
-        error_msg: String,
-    },
+    /// Error trying to write a public key.
+    #[error("public key save failed: {0}")]
+    PublicKeySave(WriteFileError),
 }
 
 impl From<SignatureError> for Error {
