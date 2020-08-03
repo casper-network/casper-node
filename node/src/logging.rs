@@ -4,6 +4,7 @@ use std::{fmt, io};
 
 use ansi_term::{Color, Style};
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::{
     fmt::{
@@ -119,22 +120,33 @@ where
         let module = {
             let full_module_path = meta.module_path().unwrap_or_default();
             if self.abbreviate_modules {
-                full_module_path
-                    .split("::")
-                    .map(|segment| &segment[..1])
-                    .collect::<Vec<_>>()
-                    .join("::")
+                // Use a smallvec for going up to six levels deep.
+                let mut parts: SmallVec<[&str; 6]> = full_module_path.split("::").collect();
+
+                let count = parts.len();
+                // Abbreviate all but last segment.
+                if count > 1 {
+                    for part in parts.iter_mut().take(count - 1) {
+                        assert!(part.is_ascii());
+                        *part = &part[0..1];
+                    }
+                }
+                // Use a single `:` to join the abbreviated modules to make the output even shorter.
+                parts.join(":")
             } else {
                 full_module_path.to_owned()
             }
         };
 
-        let file = meta
-            .file()
-            .unwrap_or_default()
-            .rsplitn(2, '/')
-            .next()
-            .unwrap_or_default();
+        let file = if !self.abbreviate_modules {
+            meta.file()
+                .unwrap_or_default()
+                .rsplitn(2, '/')
+                .next()
+                .unwrap_or_default()
+        } else {
+            ""
+        };
 
         let line = meta.line().unwrap_or_default();
 
