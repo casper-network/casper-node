@@ -207,6 +207,7 @@ impl Cli {
                 // Create validator config, including any overridden or normalized values.
                 let validator_config: validator::Config = config_table.try_into()?;
                 logging::init_with_config(&validator_config.logging)?;
+                info!(version = %env!("CARGO_PKG_VERSION"), "node starting up");
                 trace!("{}", config::to_string(&validator_config)?);
 
                 // We use a `ChaCha20Rng` for the production node. For one, we want to completely
