@@ -96,7 +96,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "tried to decrease in-flight to negative value")]
     fn panics_on_underflow() {
         let mut kc = KeyedCounter::new();
         assert_eq!(kc.inc(&'a'), 1);
@@ -105,7 +105,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "tried to decrease in-flight to negative value")]
     fn panics_on_immediate_underflow() {
         let mut kc = KeyedCounter::new();
         kc.dec(&'a');
