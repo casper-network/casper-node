@@ -1,11 +1,10 @@
 pub mod in_memory;
 pub mod lmdb;
 
-use std::{collections::HashMap, fmt, hash::BuildHasher, time::Instant};
+use std::{collections::HashMap, fmt, hash::BuildHasher};
 
 use crate::components::contract_runtime::shared::{
     additive_map::AdditiveMap,
-    logging::{log_duration, log_metric},
     newtypes::{Blake2bHash, CorrelationId},
     stored_value::StoredValue,
     transform::{self, Transform},
@@ -21,15 +20,7 @@ use crate::components::contract_runtime::storage::{
         operations::{read, write, ReadResult, WriteResult},
         TrieStore,
     },
-    GAUGE_METRIC_KEY,
 };
-
-const GLOBAL_STATE_COMMIT_READS: &str = "global_state_commit_reads";
-const GLOBAL_STATE_COMMIT_WRITES: &str = "global_state_commit_writes";
-const GLOBAL_STATE_COMMIT_DURATION: &str = "global_state_commit_duration";
-const GLOBAL_STATE_COMMIT_READ_DURATION: &str = "global_state_commit_read_duration";
-const GLOBAL_STATE_COMMIT_WRITE_DURATION: &str = "global_state_commit_write_duration";
-const COMMIT: &str = "commit";
 
 /// A reader of state
 pub trait StateReader<K, V> {
@@ -137,21 +128,8 @@ where
         return Ok(CommitResult::RootNotFound);
     };
 
-    let start = Instant::now();
-    let mut reads: i32 = 0;
-    let mut writes: i32 = 0;
-
     for (key, transform) in effects.into_iter() {
         let read_result = read::<_, _, _, _, E>(correlation_id, &txn, store, &state_root, &key)?;
-
-        log_duration(
-            correlation_id,
-            GLOBAL_STATE_COMMIT_READ_DURATION,
-            COMMIT,
-            start.elapsed(),
-        );
-
-        reads += 1;
 
         let value = match (read_result, transform) {
             (ReadResult::NotFound, Transform::Write(new_value)) => new_value,
@@ -168,17 +146,9 @@ where
         let write_result =
             write::<_, _, _, _, E>(correlation_id, &mut txn, store, &state_root, &key, &value)?;
 
-        log_duration(
-            correlation_id,
-            GLOBAL_STATE_COMMIT_WRITE_DURATION,
-            COMMIT,
-            start.elapsed(),
-        );
-
         match write_result {
             WriteResult::Written(root_hash) => {
                 state_root = root_hash;
-                writes += 1;
             }
             WriteResult::AlreadyExists => (),
             _x @ WriteResult::RootNotFound => panic!(stringify!(_x)),
@@ -186,29 +156,6 @@ where
     }
 
     txn.commit()?;
-
-    log_duration(
-        correlation_id,
-        GLOBAL_STATE_COMMIT_DURATION,
-        COMMIT,
-        start.elapsed(),
-    );
-
-    log_metric(
-        correlation_id,
-        GLOBAL_STATE_COMMIT_READS,
-        COMMIT,
-        GAUGE_METRIC_KEY,
-        f64::from(reads),
-    );
-
-    log_metric(
-        correlation_id,
-        GLOBAL_STATE_COMMIT_WRITES,
-        COMMIT,
-        GAUGE_METRIC_KEY,
-        f64::from(writes),
-    );
 
     let bonded_validators = Default::default();
 

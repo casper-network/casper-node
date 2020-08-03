@@ -10,7 +10,6 @@ pub mod transaction_source;
 pub mod trie;
 pub mod trie_store;
 
-pub(crate) const GAUGE_METRIC_KEY: &str = "gauge";
 const MAX_DBS: u32 = 2;
 
 #[cfg(test)]
