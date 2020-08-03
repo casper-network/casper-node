@@ -280,21 +280,29 @@ fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> BTreeMap<Va
     let payout_vote = state.vote(bhash);
     let panorama = &payout_vote.panorama;
     let opt_parent_vote = payout_block.parent().map(|h| state.vote(h));
+
+    // Returns `true` if the vote carried a block and enough time has passed to pay out rewards.
+    let is_rewardable_block = |vh: &&C::Hash| {
+        state.opt_block(vh).is_some() && state::reward_time(state.vote(vh)) < payout_vote.timestamp
+    };
+    // Returns `true` if the vote was already seen by the previous block.
+    let is_seen_by_parent = |vh: &C::Hash| {
+        // TODO: Not just "correct".
+        opt_parent_vote.map_or(false, |vote| state.sees_correct(&vote.panorama, vh))
+    };
+    // All rewardable blocks not seen by the parent: Rewards for these can be paid now.
     let newly_seen_iter = state
-        .justifications_without(panorama, |vh| {
-            // TODO: Not just "correct".
-            opt_parent_vote.map_or(false, |vote| state.sees_correct(&vote.panorama, vh))
-        })
-        .filter(|vh| {
-            state.opt_block(vh).is_some()
-                && state::reward_time(state.vote(vh)) < payout_vote.timestamp
-        });
+        .justifications_without(panorama, is_seen_by_parent)
+        .filter(is_rewardable_block);
+
+    let parent_time = opt_parent_vote.map_or_else(Timestamp::zero, |vote| vote.timestamp);
+    // The blocks that weren't rewardable at the parent's timestamp yet, but are now, and are seen.
     let rewards_range_iter = state
-        .rewards_range(
-            opt_parent_vote.map_or_else(Timestamp::zero, |vote| vote.timestamp)
-                ..(payout_vote.timestamp),
-        )
+        .rewards_range(parent_time..payout_vote.timestamp)
         .filter(|bh| state.sees_correct(panorama, bh)); // TODO: Not just "correct"!
+
+    // All blocks we should pay rewards for, i.e. that are old enough, and that were either not
+    // seen by the parent, or not old enough at the parent's timestamp yet.
     let blocks = newly_seen_iter.chain(rewards_range_iter).unique();
     let mut rewards = BTreeMap::new();
     for bh in blocks {
