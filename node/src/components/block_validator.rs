@@ -98,8 +98,8 @@ where
                 responder,
             }) => {
                 // No matter the current state, we will request the deploys inside this protoblock
-                // for now. Duplicate requests must still be answered, but are hopefully
-                // deduplicated by the fetcher.
+                // for now. Duplicate requests must still be answered, but are
+                // de-duplicated by the fetcher.
                 let effects = proto_block
                     .deploys
                     .iter()
