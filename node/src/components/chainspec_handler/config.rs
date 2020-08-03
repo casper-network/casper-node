@@ -2,7 +2,6 @@
 
 use std::{
     convert::{TryFrom, TryInto},
-    fs,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -16,7 +15,7 @@ use casperlabs_types::U512;
 use super::{chainspec, Error};
 use crate::{
     components::contract_runtime::shared::wasm_costs::WasmCosts, crypto::asymmetric_key::PublicKey,
-    types::Motes,
+    types::Motes, utils::read_file,
 };
 
 const DEFAULT_CHAIN_NAME: &str = "casperlabs-devnet";
@@ -25,13 +24,6 @@ const DEFAULT_POS_INSTALLER_PATH: &str = "pos_install.wasm";
 const DEFAULT_STANDARD_PAYMENT_INSTALLER_PATH: &str = "standard_payment_install.wasm";
 const DEFAULT_ACCOUNTS_CSV_PATH: &str = "accounts.csv";
 const DEFAULT_UPGRADE_INSTALLER_PATH: &str = "upgrade_install.wasm";
-
-fn read_file<P: AsRef<Path>>(file: P) -> Result<Vec<u8>, Error> {
-    fs::read(file.as_ref()).map_err(|error| super::Error::ReadFile {
-        file: file.as_ref().display().to_string(),
-        error,
-    })
-}
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -161,7 +153,8 @@ impl TryFrom<UpgradePoint> for chainspec::UpgradePoint {
         let upgrade_installer_bytes = upgrade_point
             .upgrade_installer_path
             .map(read_file)
-            .transpose()?;
+            .transpose()
+            .map_err(Error::LoadUpgradeInstaller)?;
         // TODO - read this in?
         let upgrade_installer_args = None;
 
@@ -258,7 +251,8 @@ fn get_path<P: AsRef<Path>>(root: &Path, file: P) -> PathBuf {
 }
 
 pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec::Chainspec, Error> {
-    let chainspec: Chainspec = toml::from_slice(&read_file(chainspec_path.as_ref())?)?;
+    let chainspec: Chainspec =
+        toml::from_slice(&read_file(chainspec_path.as_ref()).map_err(Error::LoadChainspec)?)?;
 
     // let root = chainspec_path.as_ref().parent().map_or_else(PathBuf::new, PathBuf::from);
     let root = chainspec_path
@@ -267,13 +261,14 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         .unwrap_or_else(|| Path::new(""));
 
     let mint_path = get_path(root, chainspec.genesis.mint_installer_path);
-    let mint_installer_bytes = read_file(mint_path)?;
+    let mint_installer_bytes = read_file(mint_path).map_err(Error::LoadMintInstaller)?;
 
     let pos_path = get_path(root, chainspec.genesis.pos_installer_path);
-    let pos_installer_bytes = read_file(pos_path)?;
+    let pos_installer_bytes = read_file(pos_path).map_err(Error::LoadPosInstaller)?;
 
     let standard_payment_path = get_path(root, chainspec.genesis.standard_payment_installer_path);
-    let standard_payment_installer_bytes = read_file(standard_payment_path)?;
+    let standard_payment_installer_bytes =
+        read_file(standard_payment_path).map_err(Error::LoadStandardPaymentInstaller)?;
 
     let accounts_path = get_path(root, chainspec.genesis.accounts_path);
     let accounts = parse_accounts(accounts_path)?;

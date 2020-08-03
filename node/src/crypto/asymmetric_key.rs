@@ -3,7 +3,6 @@
 use std::{
     cmp::Ordering,
     fmt::{self, Debug, Display, Formatter},
-    fs,
     hash::{Hash, Hasher},
     path::Path,
 };
@@ -15,7 +14,10 @@ use serde::{Deserialize, Serialize};
 use signature::Signature as Sig;
 
 use super::{Error, Result};
-use crate::crypto::hash::hash;
+use crate::{
+    crypto::hash::hash,
+    utils::{read_file, read_file_to_string, write_file},
+};
 use casperlabs_types::account::AccountHash;
 
 const ED25519_TAG: u8 = 0;
@@ -70,25 +72,21 @@ impl SecretKey {
             tag: PEM_SECRET_KEY_TAG.to_string(),
             contents: self.as_secret_slice().to_vec(),
         };
-        fs::write(file.as_ref(), pem::encode(&pem)).map_err(|error| Error::WriteFile {
-            file: file.as_ref().display().to_string(),
-            error_msg: error.to_string(),
-        })
+
+        write_file(file, pem::encode(&pem)).map_err(Error::SecretKeySave)
     }
 
     /// Attempt to read the secret key bytes from configured file path.
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self> {
-        let payload = fs::read_to_string(file.as_ref()).map_err(|error| Error::ReadFile {
-            file: file.as_ref().display().to_string(),
-            error_msg: error.to_string(),
-        })?;
-        let pem = pem::parse(payload)?;
+        let pem = pem::parse(read_file(file).map_err(Error::SecretKeyLoad)?)?;
+
         if pem.tag != PEM_SECRET_KEY_TAG {
             return Err(Error::FromPem(format!(
                 "invalid tag: expected {}, got {}",
                 PEM_SECRET_KEY_TAG, pem.tag
             )));
         }
+
         Self::ed25519_from_bytes(pem.contents)
     }
 }
@@ -167,18 +165,15 @@ impl PublicKey {
             tag: PEM_PUBLIC_KEY_TAG.to_string(),
             contents: self.as_ref().to_vec(),
         };
-        fs::write(file.as_ref(), pem::encode(&pem)).map_err(|error| Error::WriteFile {
-            file: file.as_ref().display().to_string(),
-            error_msg: error.to_string(),
-        })
+
+        write_file(file, pem::encode(&pem)).map_err(Error::PublicKeySave)
     }
 
     /// Attempt to read the public key bytes from configured file path.
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self> {
-        let payload = fs::read_to_string(file.as_ref()).map_err(|error| Error::ReadFile {
-            file: file.as_ref().display().to_string(),
-            error_msg: error.to_string(),
-        })?;
+        let path = file.as_ref();
+        let payload = read_file_to_string(path).map_err(Error::PublicKeyLoad)?;
+
         let pem = pem::parse(payload)?;
         if pem.tag != PEM_PUBLIC_KEY_TAG {
             return Err(Error::FromPem(format!(

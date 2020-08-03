@@ -30,7 +30,7 @@ pub mod reactor;
 pub mod testing;
 pub mod tls;
 pub mod types;
-mod utils;
+pub mod utils;
 
 pub(crate) use components::small_network::{self, SmallNetwork};
 pub use components::{
