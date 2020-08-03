@@ -453,18 +453,20 @@ impl Display for BlockExecutorRequest {
 /// A block validator request.
 #[derive(Debug)]
 #[must_use]
-pub struct BlockValidatorRequest<I> {
-    /// The proto-block.
+pub struct BlockValidationRequest<I> {
+    /// The proto-block to be validated.
     pub(crate) proto_block: ProtoBlock,
-    /// The sender of the proto-block (useful for requesting missing deploys).
+    /// The sender of the proto-block, which will be asked to provide all missing deploys.
     pub(crate) sender: I,
     /// Responder to call with the result.
+    ///
+    /// Indicates whether or not validation was successful and returns `proto_block` unchanged.
     pub(crate) responder: Responder<(bool, ProtoBlock)>,
 }
 
-impl<I: Display> Display for BlockValidatorRequest<I> {
+impl<I: Display> Display for BlockValidationRequest<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let BlockValidatorRequest {
+        let BlockValidationRequest {
             proto_block,
             sender,
             ..
