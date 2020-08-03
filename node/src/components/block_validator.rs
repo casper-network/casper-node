@@ -156,12 +156,9 @@ where
                 self.validation_states.retain(|key, state| {
                     if state.missing_deploys.is_empty() {
                         // This one is done and valid.
-                        state
-                            .responders
-                            .drain(0..(state.responders.len()))
-                            .for_each(|responder| {
-                                effects.extend(responder.respond((true, key.clone())).ignore());
-                            });
+                        state.responders.drain(..).for_each(|responder| {
+                            effects.extend(responder.respond((true, key.clone())).ignore());
+                        });
                         false
                     } else {
                         true
@@ -185,12 +182,9 @@ where
                 self.validation_states.retain(|key, state| {
                     if state.missing_deploys.contains(&deploy_hash) {
                         // This validation state contains a failed deploy hash, it can never succeed.
-                        state
-                            .responders
-                            .drain(0..(state.responders.len()))
-                            .for_each(|responder| {
-                                effects.extend(responder.respond((false, key.clone())).ignore());
-                            });
+                        state.responders.drain(..).for_each(|responder| {
+                            effects.extend(responder.respond((false, key.clone())).ignore());
+                        });
                         false
                     } else {
                         true
