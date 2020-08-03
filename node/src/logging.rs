@@ -26,7 +26,7 @@ pub struct LoggingConfig {
     /// Abbreviate module names.
     ///
     /// If set, human-readable formats will abbreviate module names, `foo::bar::baz::bizz` will turn
-    /// into `f::b::b::b`.
+    /// into `f:b:b:bizz`.
     abbreviate_modules: bool,
 }
 
