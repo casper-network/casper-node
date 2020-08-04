@@ -4,7 +4,7 @@ use itertools::Itertools;
 
 use super::{
     highway::Highway,
-    state::{self, State, Weight},
+    state::{State, Weight},
     validators::ValidatorIndex,
     vote::{Observation, Panorama, Vote},
 };
@@ -276,36 +276,24 @@ impl<C: Context> FinalityDetector<C> {
 
 /// Returns the map of rewards to be paid out when the block `bhash` gets finalized.
 fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> BTreeMap<ValidatorIndex, u64> {
+    // The newly finalized block, in which the rewards are paid out.
     let payout_block = state.block(bhash);
+    // The vote that introduced the payout block.
     let payout_vote = state.vote(bhash);
+    // The panorama of the payout block: Rewards must only use this panorama, since it defines
+    // what everyone who has the block can already see.
     let panorama = &payout_vote.panorama;
+    // The vote that introduced the payout block's parent.
     let opt_parent_vote = payout_block.parent().map(|h| state.vote(h));
-
-    // Returns `true` if the vote carried a block and enough time has passed to pay out rewards.
-    let is_rewardable_block = |vh: &&C::Hash| {
-        state.opt_block(vh).is_some() && state::reward_time(state.vote(vh)) < payout_vote.timestamp
-    };
-    // Returns `true` if the vote was already seen by the previous block.
-    let is_seen_by_parent = |vh: &C::Hash| {
-        // TODO: Not just "correct".
-        opt_parent_vote.map_or(false, |vote| state.sees_correct(&vote.panorama, vh))
-    };
-    // All rewardable blocks not seen by the parent: Rewards for these can be paid now.
-    let newly_seen_iter = state
-        .justifications_without(panorama, is_seen_by_parent)
-        .filter(is_rewardable_block);
-
+    // The parent's timestamp, or 0.
     let parent_time = opt_parent_vote.map_or_else(Timestamp::zero, |vote| vote.timestamp);
-    // The blocks that weren't rewardable at the parent's timestamp yet, but are now, and are seen.
-    let rewards_range_iter = state
-        .rewards_range(parent_time..payout_vote.timestamp)
-        .filter(|bh| state.sees_correct(panorama, bh)); // TODO: Not just "correct"!
-
-    // All blocks we should pay rewards for, i.e. that are old enough, and that were either not
-    // seen by the parent, or not old enough at the parent's timestamp yet.
-    let blocks = newly_seen_iter.chain(rewards_range_iter).unique();
+    // Only summits for blocks for which rewards are scheduled between the previous and current
+    // timestamps are rewarded, and only if they are ancestors of the payout block.
+    let range = parent_time..payout_vote.timestamp;
+    let is_ancestor =
+        |bh: &&C::Hash| Some(*bh) == state.find_ancestor(bhash, state.block(bh).height);
     let mut rewards = BTreeMap::new();
-    for bh in blocks {
+    for bh in state.rewards_range(range).filter(is_ancestor).unique() {
         add_rewards_for(&mut rewards, state, panorama, bh);
     }
     rewards

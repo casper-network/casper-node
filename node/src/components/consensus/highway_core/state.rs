@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap},
     convert::identity,
     iter,
     ops::{Div, Mul, RangeBounds},
@@ -479,31 +479,6 @@ impl<C: Context> State<C> {
             let vote = self.vote(current);
             next = vote.previous();
             Some((current, vote))
-        })
-    }
-
-    /// Returns an iterator over all votes that are seen by `pan` and are not seen by any vote
-    /// that satisfies `f`.
-    pub(crate) fn justifications_without<'a, F>(
-        &'a self,
-        pan: &'a Panorama<C>,
-        f: F,
-    ) -> impl Iterator<Item = &'a C::Hash>
-    where
-        F: Fn(&C::Hash) -> bool,
-    {
-        let mut pending: VecDeque<&'a C::Hash> = pan.iter_correct().collect();
-        let mut added: HashSet<&'a C::Hash> = pending.iter().cloned().collect();
-        let mut visited = HashSet::new();
-        iter::from_fn(move || {
-            let next = pending.pop_front()?;
-            visited.insert(next);
-            for vh in self.vote(next).panorama.iter_correct() {
-                if added.insert(vh) && !f(vh) {
-                    pending.push_back(vh);
-                }
-            }
-            Some(next)
         })
     }
 
