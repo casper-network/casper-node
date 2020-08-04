@@ -117,9 +117,10 @@ pub fn transfer() {
 
 pub fn bond() {
     let mut mint_contract = MintContract;
-    let account_hash = runtime::get_named_arg("account_hash");
-    let source_purse = runtime::get_named_arg("source_purse");
-    let quantity = runtime::get_named_arg("quantity");
+    let account_hash = runtime::get_caller();
+
+    let source_purse = runtime::get_named_arg(ARG_PURSE);
+    let quantity = runtime::get_named_arg(ARG_AMOUNT);
     let result = mint_contract
         .bond(account_hash, source_purse, quantity)
         .unwrap_or_revert();
@@ -129,11 +130,10 @@ pub fn bond() {
 
 pub fn unbond() {
     let mut mint_contract = MintContract;
-    let account_hash = runtime::get_named_arg("account_hash");
-    let source_purse = runtime::get_named_arg("source_purse");
-    let quantity = runtime::get_named_arg("quantity");
+    let account_hash = runtime::get_caller();
+    let quantity = runtime::get_named_arg(ARG_AMOUNT);
     let result = mint_contract
-        .unbond(account_hash, source_purse, quantity)
+        .unbond(account_hash, quantity)
         .unwrap_or_revert();
     let ret = CLValue::from_t(result).unwrap_or_revert();
     runtime::ret(ret)
@@ -213,7 +213,10 @@ pub fn get_entry_points() -> EntryPoints {
 
     let entry_point = EntryPoint::new(
         METHOD_BOND,
-        vec![],
+        vec![
+            Parameter::new(ARG_PURSE, CLType::URef),
+            Parameter::new(ARG_AMOUNT, CLType::U512),
+        ],
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Contract,

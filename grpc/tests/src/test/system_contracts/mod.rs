@@ -1,6 +1,7 @@
 mod auction;
 mod auction_install;
 mod genesis;
+mod mint_bonding;
 mod mint_install;
 mod pos_install;
 mod proof_of_stake;

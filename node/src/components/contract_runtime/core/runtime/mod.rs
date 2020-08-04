@@ -1690,6 +1690,8 @@ where
         const METHOD_UNBOND_TIMER_ADVANCE: &str = "unbond_timer_advance";
         const METHOD_SLASH: &str = "slash";
         const METHOD_RELEASE_FOUNDER_STAKE: &str = "release_founder_stake";
+        const ARG_AMOUNT: &str = "amount";
+        const ARG_PURSE: &str = "purse";
 
         let state = self.context.state();
         let access_rights = {
@@ -1736,7 +1738,7 @@ where
         let ret: CLValue = match entry_point_name {
             // Type: `fn mint(amount: U512) -> Result<URef, Error>`
             METHOD_MINT => {
-                let amount: U512 = Self::get_named_argument(&runtime_args, "amount")?;
+                let amount: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
                 let result: Result<URef, mint::Error> = mint_context.mint(amount);
                 CLValue::from_t(result)?
             }
@@ -1756,16 +1758,15 @@ where
             METHOD_TRANSFER => {
                 let source: URef = Self::get_named_argument(&runtime_args, "source")?;
                 let target: URef = Self::get_named_argument(&runtime_args, "target")?;
-                let amount: U512 = Self::get_named_argument(&runtime_args, "amount")?;
+                let amount: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
                 let result: Result<(), mint::Error> = mint_context.transfer(source, target, amount);
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
             // Type: `fn bond(account_hash: AccountHash, source_purse: URef, quantity: U512) -> Result<(URef, U512), Error>`
             METHOD_BOND => {
-                let account_hash: AccountHash =
-                    Self::get_named_argument(&runtime_args, "account_hash")?;
-                let source_purse: URef = Self::get_named_argument(&runtime_args, "source_purse")?;
-                let quantity: U512 = Self::get_named_argument(&runtime_args, "quantity")?;
+                let account_hash: AccountHash = self.context.get_caller();
+                let source_purse: URef = Self::get_named_argument(&runtime_args, ARG_PURSE)?;
+                let quantity: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
                 let result = mint_context
                     .bond(account_hash, source_purse, quantity)
                     .map_err(Self::reverter)?;
@@ -1773,12 +1774,10 @@ where
             }
             // Type: `fn unbond(account_hash: AccountHash, source_purse: URef, quantity: U512) -> Result<(URef, U512), Error>`
             METHOD_UNBOND => {
-                let account_hash: AccountHash =
-                    Self::get_named_argument(&runtime_args, "account_hash")?;
-                let source_purse: URef = Self::get_named_argument(&runtime_args, "source_purse")?;
-                let quantity: U512 = Self::get_named_argument(&runtime_args, "quantity")?;
+                let account_hash: AccountHash = self.context.get_caller();
+                let quantity: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
                 let result = mint_context
-                    .unbond(account_hash, source_purse, quantity)
+                    .unbond(account_hash, quantity)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)?
             }

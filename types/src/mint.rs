@@ -1,30 +1,40 @@
 //! Contains implementation of a Mint contract functionality.
 mod runtime_provider;
 mod storage_provider;
+mod unbonding_purse;
 
 use alloc::{collections::BTreeMap, vec::Vec};
 use core::convert::TryFrom;
 
 use crate::{account::AccountHash, system_contract_errors::mint::Error, Key, URef, U512};
 
-pub use crate::mint::{runtime_provider::RuntimeProvider, storage_provider::StorageProvider};
+pub use crate::mint::{
+    runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+    unbonding_purse::UnbondingPurses,
+};
+use unbonding_purse::UnbondingPurse;
 
 const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
 
 /// Bidders mapped to their bidding purses and tokens contained therein. Delegators' tokens
 /// are kept in the validator bid purses, available for withdrawal up to the delegated number
 /// of tokens. Withdrawal moves the tokens to a delegator-controlled unbonding purse.
-pub type BidPurses = BTreeMap<AccountHash, (URef, U512)>;
+pub type BidPurses = BTreeMap<AccountHash, URef>;
 
 /// Founding validators mapped to their staking purses and tokens contained therein. These
 /// function much like the regular bidding purses, but have a field indicating whether any tokens
 /// may be unbonded.
-pub type FounderPurses = BTreeMap<AccountHash, (URef, U512, bool)>;
+pub type FounderPurses = BTreeMap<AccountHash, (URef, bool)>;
 
-/// Validators and delegators mapped to their purses, tokens and expiration timer in eras. At the
-/// beginning of each era, node software updates the timer until it reaches 0, at which point
-/// tokens may be transferred to a different purse.
-pub type UnbondingPurses = BTreeMap<AccountHash, (AccountHash, U512, u8)>;
+/// Name of bid purses named key.
+pub const BID_PURSES_KEY: &str = "bid_purses";
+/// Name of founder purses named key.
+pub const FOUNDER_PURSES_KEY: &str = "founder_purses";
+/// Name of unbonding purses key.
+pub const UNBONDING_PURSES_KEY: &str = "unbonding_purses";
+const _REWARD_PURSES: &str = "reward_purses";
+const DEFAULT_LOCK_IN_DURATION: u8 = 10;
+const DEFAULT_WITHDRAWAL_ERA: u16 = 14;
 
 /// Mint trait.
 pub trait Mint: RuntimeProvider + StorageProvider {
@@ -93,57 +103,166 @@ pub trait Mint: RuntimeProvider + StorageProvider {
     /// Returns the bid purse's key and current quantity of motes.
     fn bond(
         &mut self,
-        _account_hash: AccountHash,
-        _source_purse: URef,
-        _quantity: U512,
+        account_hash: AccountHash,
+        source_purse: URef,
+        quantity: U512,
     ) -> Result<(URef, U512), Error> {
         let bid_purses_uref = self
-            .get_key("bid_purses")
+            .get_key(BID_PURSES_KEY)
             .and_then(Key::into_uref)
             .ok_or(Error::MissingKey)?;
 
-        let mut _bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
-        // bid_purses.entry(&account_hash).
+        let mut bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
 
-        todo!("bond")
+        let bond_purse = match bid_purses.get(&account_hash) {
+            Some(purse) => *purse,
+            None => {
+                let new_purse = self.mint(U512::zero())?;
+                bid_purses.insert(account_hash, new_purse);
+                self.write(bid_purses_uref, bid_purses)?;
+                new_purse
+            }
+        };
+
+        self.transfer(source_purse, bond_purse, quantity)?;
+
+        let total_amount = self.balance(bond_purse)?.unwrap();
+
+        Ok((bond_purse, total_amount))
     }
 
     /// Creates a new purse in unbonding_purses given a validator's key and quantity, returning the new purse's key and the quantity of motes remaining in the validator's bid purse.
-    fn unbond(
-        &mut self,
-        _account_hash: AccountHash,
-        _source_purse: URef,
-        _quantity: U512,
-    ) -> Result<(URef, U512), Error> {
+    fn unbond(&mut self, account_hash: AccountHash, quantity: U512) -> Result<(URef, U512), Error> {
         let bid_purses_uref = self
-            .get_key("bid_purses")
+            .get_key(BID_PURSES_KEY)
             .and_then(Key::into_uref)
             .ok_or(Error::MissingKey)?;
 
-        let mut _bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
+        let bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
 
-        todo!("unbond")
+        let bid_purse = bid_purses
+            .get(&account_hash)
+            .copied()
+            .ok_or(Error::BondNotFound)?;
+        // Creates new unbonding purse with requested tokens
+        let unbond_purse = self.mint(U512::zero())?;
+        self.transfer(bid_purse, unbond_purse, quantity)?;
+
+        // Update `unbonding_purses` data
+        let unbonding_purses_uref = self
+            .get_key(UNBONDING_PURSES_KEY)
+            .and_then(Key::into_uref)
+            .ok_or(Error::MissingKey)?;
+        let mut unbonding_purses: UnbondingPurses =
+            self.read(unbonding_purses_uref)?.ok_or(Error::Storage)?;
+        let new_unbonding_purse = UnbondingPurse {
+            purse: unbond_purse,
+            origin: account_hash,
+            era_of_withdrawal: DEFAULT_WITHDRAWAL_ERA,
+            expiration_timer: DEFAULT_LOCK_IN_DURATION,
+        };
+        unbonding_purses
+            .entry(account_hash)
+            .and_modify(|unbonding_list| unbonding_list.push(new_unbonding_purse))
+            .or_insert_with(|| [new_unbonding_purse].to_vec());
+        self.write(unbonding_purses_uref, unbonding_purses)?;
+
+        // Remaining motes in the validator's bid purse
+        let remaining_bond = self.balance(bid_purse)?.unwrap();
+        Ok((unbond_purse, remaining_bond))
     }
 
     /// In the first block of each era, the node submits a special deploy that calls this function,
     /// decrementing the number of eras until unlock for every value in unbonding_purses.
     fn unbond_timer_advance(&mut self) -> Result<(), Error> {
-        todo!("unbond_timer_advance");
+        // Update `unbonding_purses` data
+        let unbonding_purses_uref = self
+            .get_key(UNBONDING_PURSES_KEY)
+            .and_then(Key::into_uref)
+            .ok_or(Error::MissingKey)?;
+        let mut unbonding_purses: UnbondingPurses =
+            self.read(unbonding_purses_uref)?.ok_or(Error::Storage)?;
+        for unbonding_list in unbonding_purses.values_mut() {
+            for unbonding_purse in unbonding_list {
+                if unbonding_purse.expiration_timer > 0 {
+                    // Advance timer for each unbond in the list
+                    unbonding_purse.expiration_timer -= 1;
+                }
+                // Expiration timer == 0 -> tokens are unlocked
+            }
+        }
+        self.write(unbonding_purses_uref, unbonding_purses)?;
+        Ok(())
     }
 
     /// In the first block of each era, the node submits a special deploy that calls this function, decrementing the number of eras until unlock for every value in unbonding_purses.
-    fn slash(&mut self, _validator_account_hashes: Vec<AccountHash>) -> Result<(), Error> {
+    fn slash(&mut self, validator_account_hashes: Vec<AccountHash>) -> Result<(), Error> {
         // Present version of this document does not specify how unbonding delegators are to be
         // slashed (this will require some modifications to the spec).
-        todo!("slash")
+        let bid_purses_uref = self
+            .get_key(BID_PURSES_KEY)
+            .and_then(Key::into_uref)
+            .ok_or(Error::MissingKey)?;
+
+        let mut bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
+
+        let unbonding_purses_uref = self
+            .get_key(UNBONDING_PURSES_KEY)
+            .and_then(Key::into_uref)
+            .ok_or(Error::MissingKey)?;
+        let mut unbonding_purses: UnbondingPurses =
+            self.read(unbonding_purses_uref)?.ok_or(Error::Storage)?;
+
+        let mut bid_purses_modified = false;
+        let mut unbonding_purses_modified = false;
+        for validator_account_hash in validator_account_hashes {
+            if let Some(_bid_purse) = bid_purses.remove(&validator_account_hash) {
+                bid_purses_modified = true;
+            }
+
+            if let Some(unbonding_list) = unbonding_purses.get_mut(&validator_account_hash) {
+                let size_before = unbonding_list.len();
+
+                unbonding_list.retain(|element| element.origin != validator_account_hash);
+
+                unbonding_purses_modified = size_before != unbonding_list.len();
+            }
+        }
+
+        if bid_purses_modified {
+            self.write(bid_purses_uref, bid_purses)?;
+        }
+
+        if unbonding_purses_modified {
+            self.write(unbonding_purses_uref, unbonding_purses)?;
+        }
+
+        Ok(())
     }
 
     /// Sets the Bool field in the tuple representing a founding validator’s stake to True,
     /// enabling this validator to unbond.
     fn release_founder_stake(
         &mut self,
-        _validator_account_hash: AccountHash,
+        validator_account_hash: AccountHash,
     ) -> Result<bool, Error> {
-        todo!("release_founder_stake")
+        let founder_purses_uref = self
+            .get_key(FOUNDER_PURSES_KEY)
+            .and_then(Key::into_uref)
+            .ok_or(Error::MissingKey)?;
+        let mut founder_purses: FounderPurses =
+            self.read(founder_purses_uref)?.ok_or(Error::Storage)?;
+
+        if let Some((_founder_purse, unbond_status)) =
+            founder_purses.get_mut(&validator_account_hash)
+        {
+            if !*unbond_status {
+                *unbond_status = true;
+                self.write(founder_purses_uref, founder_purses)?;
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
     }
 }

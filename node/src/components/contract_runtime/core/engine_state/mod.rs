@@ -244,11 +244,20 @@ where
             Rc::new(RefCell::new(generator))
         };
 
+        // Spec #6: Compute initially bonded validators as the contents of accounts_path
+        // filtered to non-zero staked amounts.
+        let bonded_validators: BTreeMap<AccountHash, U512> = ee_config
+            .get_bonded_validators()
+            .map(|(k, v)| (k, v.value()))
+            .collect();
+
         // Spec #5: Execute the wasm code from the mint installer bytes
         let (mint_package_hash, mint_hash): (ContractPackageHash, ContractHash) = {
             let mint_installer_bytes = ee_config.mint_installer_bytes();
             let mint_installer_module = preprocessor.preprocess(mint_installer_bytes)?;
-            let args = RuntimeArgs::new();
+            let args = runtime_args! {
+                "genesis_validators" => bonded_validators.clone(),
+            };
             let authorization_keys: BTreeSet<AccountHash> = BTreeSet::new();
             let install_deploy_hash = genesis_config_hash.to_bytes();
             let hash_address_generator = Rc::clone(&hash_address_generator);
@@ -283,13 +292,6 @@ where
             ContractPackageHash,
             ContractHash,
         ) = {
-            // Spec #6: Compute initially bonded validators as the contents of accounts_path
-            // filtered to non-zero staked amounts.
-            let bonded_validators: BTreeMap<AccountHash, U512> = ee_config
-                .get_bonded_validators()
-                .map(|(k, v)| (k, v.value()))
-                .collect();
-
             let tracking_copy = Rc::clone(&tracking_copy);
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
