@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use super::{state::State, validators::ValidatorIndex};
+use super::{
+    state::{self, State},
+    validators::ValidatorIndex,
+};
 use crate::{
     components::consensus::{highway_core::vertex::SignedWireVote, traits::Context},
     types::Timestamp,
@@ -190,5 +193,10 @@ impl<C: Context> Vote<C> {
     /// Returns the creator's previous message.
     pub(crate) fn previous(&self) -> Option<&C::Hash> {
         self.skip_idx.first()
+    }
+
+    /// Returns the time at which the round containing this vote began.
+    pub(crate) fn round_id(&self) -> Timestamp {
+        state::round_id(self.timestamp, self.round_exp)
     }
 }

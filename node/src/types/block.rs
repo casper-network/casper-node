@@ -1,4 +1,7 @@
-use std::fmt::{self, Debug, Display, Formatter};
+use std::{
+    collections::BTreeMap,
+    fmt::{self, Debug, Display, Formatter},
+};
 
 use derive_more::Display;
 use hex_fmt::HexList;
@@ -43,31 +46,16 @@ impl ProtoBlock {
     }
 }
 
-/// Prints a number of picoseconds, rounding to s, ms, µs or ns if appropriate.
-fn fmt_picoseconds(ps: u64) -> String {
-    if ps < 10_000 {
-        format!("{} ps", ps)
-    } else if ps < 10_000_000 {
-        format!("{} ns", ps / 1_000)
-    } else if ps < 10_000_000_000 {
-        format!("{} µs", ps / 1_000_000)
-    } else if ps < 10_000_000_000_000 {
-        format!("{} ms", ps / 1_000_000_000)
-    } else {
-        format!("{} s", ps / 1_000_000_000_000)
-    }
-}
-
 /// System transactions like slashing and rewards.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Display)]
 pub enum Instruction {
     /// A validator has equivocated and should be slashed.
     #[display(fmt = "slash {}", "_0")]
     Slash(PublicKey),
-    /// Block reward information has been computed for a validator, in picoseconds' worth of total
-    /// seigniorage. This includes the delegator reward.
-    #[display(fmt = "reward {}: {}", "_0, fmt_picoseconds(*_1)")]
-    Reward(PublicKey, u64),
+    /// Block reward information, in trillionths (10^-12) of the total reward for one block.
+    /// This includes the delegator reward.
+    #[display(fmt = "rewards: {:?}", "_0")]
+    Rewards(BTreeMap<PublicKey, u64>),
 }
 
 /// The piece of information that will become the content of a future block after it was finalized

@@ -42,6 +42,11 @@ impl Timestamp {
     pub fn saturating_sub(self, other: Timestamp) -> TimeDiff {
         TimeDiff(self.0.saturating_sub(other.0))
     }
+
+    /// Returns the number of trailing zeros in the number of milliseconds since the epoch.
+    pub fn trailing_zeros(&self) -> u8 {
+        self.0.trailing_zeros() as u8
+    }
 }
 
 impl Display for Timestamp {

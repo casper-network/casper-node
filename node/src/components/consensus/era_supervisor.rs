@@ -192,11 +192,13 @@ where
                     .announce_finalized_proto_block(proto_block.clone())
                     .ignore();
                 // Create instructions for slashing equivocators.
-                let slash_iter = new_equivocators.into_iter().map(Instruction::Slash);
-                let reward_iter = rewards
+                let mut instructions: Vec<_> = new_equivocators
                     .into_iter()
-                    .map(|(vid, amount)| Instruction::Reward(vid, amount));
-                let instructions = slash_iter.chain(reward_iter).collect();
+                    .map(Instruction::Slash)
+                    .collect();
+                if !rewards.is_empty() {
+                    instructions.push(Instruction::Rewards(rewards));
+                };
                 // Request execution of the finalized block.
                 let fb = FinalizedBlock {
                     proto_block,
