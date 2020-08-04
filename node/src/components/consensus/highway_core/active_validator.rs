@@ -103,7 +103,7 @@ impl<C: Context> ActiveValidator<C> {
             effects.push(Effect::RequestNewBlock(bctx));
         } else if timestamp == r_id + self.witness_offset(r_len) {
             let panorama = state.panorama_cutoff(state.panorama(), timestamp);
-            if !panorama.is_empty() {
+            if panorama.has_correct() {
                 let witness_vote = self.new_vote(panorama, timestamp, None, state);
                 effects.push(Effect::NewVertex(ValidVertex(Vertex::Vote(witness_vote))))
             }
@@ -122,7 +122,7 @@ impl<C: Context> ActiveValidator<C> {
             warn!(%timestamp, "skipping outdated confirmation");
         } else if self.should_send_confirmation(vhash, timestamp, state) {
             let panorama = self.confirmation_panorama(vhash, state);
-            if !panorama.is_empty() {
+            if panorama.has_correct() {
                 let confirmation_vote = self.new_vote(panorama, timestamp, None, state);
                 let vv = ValidVertex(Vertex::Vote(confirmation_vote));
                 return vec![Effect::NewVertex(vv)];
@@ -179,13 +179,13 @@ impl<C: Context> ActiveValidator<C> {
         if let Some(prev_hash) = state.panorama().get(self.vidx).correct().cloned() {
             let own_vote = state.vote(&prev_hash);
             panorama = state.merge_panoramas(&vote.panorama, &own_vote.panorama);
-            panorama.update(self.vidx, Observation::Correct(prev_hash));
+            panorama[self.vidx] = Observation::Correct(prev_hash);
         } else {
             panorama = vote.panorama.clone();
         }
-        panorama.update(vote.creator, Observation::Correct(vhash.clone()));
+        panorama[vote.creator] = Observation::Correct(vhash.clone());
         for faulty_v in state.faulty_validators() {
-            panorama.update(faulty_v, Observation::Faulty);
+            panorama[faulty_v] = Observation::Faulty;
         }
         panorama
     }

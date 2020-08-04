@@ -1,5 +1,12 @@
-use std::{collections::HashMap, hash::Hash, iter::FromIterator};
+use std::{
+    collections::HashMap,
+    hash::Hash,
+    iter::FromIterator,
+    ops::{Index, IndexMut},
+    slice,
+};
 
+use derive_more::{AsRef, From, IntoIterator};
 use serde::{Deserialize, Serialize};
 
 use super::Weight;
@@ -87,6 +94,57 @@ impl<VID: Ord + Hash + Clone, W: Into<Weight>> FromIterator<(VID, W)> for Valida
             index_by_id,
             validators,
         }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, IntoIterator, AsRef, From)]
+// TODO: Make field private!
+pub(crate) struct ValidatorMap<T>(Vec<T>);
+
+impl<T> ValidatorMap<T> {
+    /// Returns the value for the given validator. Panics if the index is out of range.
+    pub(crate) fn get(&self, idx: ValidatorIndex) -> &T {
+        &self.0[idx.0 as usize]
+    }
+
+    /// Returns the number of values. This must equal the number of validators.
+    pub(crate) fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns an iterator over all values.
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &T> {
+        self.0.iter()
+    }
+
+    /// Returns an iterator over all values, by validator index.
+    pub(crate) fn enumerate(&self) -> impl Iterator<Item = (ValidatorIndex, &T)> {
+        self.iter()
+            .enumerate()
+            .map(|(idx, value)| (ValidatorIndex(idx as u32), value))
+    }
+}
+
+impl<T> Index<ValidatorIndex> for ValidatorMap<T> {
+    type Output = T;
+
+    fn index(&self, vidx: ValidatorIndex) -> &T {
+        &self.0[vidx.0 as usize]
+    }
+}
+
+impl<T> IndexMut<ValidatorIndex> for ValidatorMap<T> {
+    fn index_mut(&mut self, vidx: ValidatorIndex) -> &mut T {
+        &mut self.0[vidx.0 as usize]
+    }
+}
+
+impl<'a, T> IntoIterator for &'a ValidatorMap<T> {
+    type Item = &'a T;
+    type IntoIter = slice::Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
     }
 }
 

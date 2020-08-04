@@ -7,6 +7,7 @@ use std::{
 };
 
 use derive_more::{Add, AddAssign, From, Sub, SubAssign, Sum};
+use itertools::Itertools;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
@@ -353,8 +354,8 @@ impl<C: Context> State<C> {
             (Observation::Correct(vh0), obs1) if self.sees_correct(pan1, vh0) => obs1.clone(),
             (Observation::Correct(_), Observation::Correct(_)) => Observation::Faulty,
         };
-        let observations = pan0.iter().zip(&pan1.0).map(merge_obs).collect();
-        Panorama(observations)
+        let observations = pan0.iter().zip(pan1).map(merge_obs).collect_vec();
+        Panorama::from(observations)
     }
 
     /// Returns the panorama seeing all votes seen by `pan` with a timestamp no later than
@@ -368,7 +369,7 @@ impl<C: Context> State<C> {
                 .map_or(Observation::None, Observation::Correct),
             obs @ Observation::None | obs @ Observation::Faulty => obs.clone(),
         };
-        Panorama(pan.iter().map(obs_cutoff).collect())
+        Panorama::from(pan.iter().map(obs_cutoff).collect_vec())
     }
 
     /// Returns an error if `swvote` is invalid. This can be called even if the dependencies are
@@ -379,7 +380,7 @@ impl<C: Context> State<C> {
         if creator.0 as usize >= self.weights.len() {
             return Err(VoteError::Creator);
         }
-        if (wvote.value.is_none() && wvote.panorama.is_empty())
+        if (wvote.value.is_none() && !wvote.panorama.has_correct())
             || wvote.panorama.len() != self.weights.len()
         {
             return Err(VoteError::Panorama);
@@ -447,7 +448,7 @@ impl<C: Context> State<C> {
                 Observation::Faulty
             }
         };
-        self.panorama.update(wvote.creator, new_obs);
+        self.panorama[wvote.creator] = new_obs;
     }
 
     /// Returns the hash of the message with the given sequence number from the creator of `hash`,
@@ -530,7 +531,7 @@ impl<C: Context> State<C> {
     /// Returns whether `pan_l` can possibly come later in time than `pan_r`, i.e. it can see
     /// every honest message and every fault seen by `other`.
     fn panorama_geq(&self, pan_l: &Panorama<C>, pan_r: &Panorama<C>) -> bool {
-        let mut pairs_iter = pan_l.0.iter().zip(&pan_r.0);
+        let mut pairs_iter = pan_l.iter().zip(pan_r);
         pairs_iter.all(|(obs_l, obs_r)| self.obs_geq(obs_l, obs_r))
     }
 

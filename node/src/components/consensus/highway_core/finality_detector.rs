@@ -145,6 +145,9 @@ pub(crate) enum FinalityOutcome<C: Context> {
         new_equivocators: Vec<C::ValidatorId>,
         /// Rewards, in trillionths (10^-12) of the total reward for one block.
         /// This is a measure of the value of each validator's contribution to consensus.
+        ///
+        /// 1 trillion was chosen as a denominator here because it allows very precise fractions of
+        /// a block reward while still leaving space for millions of full rewards in a `u64`.
         rewards: BTreeMap<C::ValidatorId, u64>,
         /// The timestamp at which this value was proposed.
         timestamp: Timestamp,
