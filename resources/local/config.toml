@@ -10,6 +10,18 @@ chainspec_config_path = 'chainspec.toml'
 block_max_deploy_count = 3
 
 
+# =================================
+# Configuration options for logging
+# =================================
+[logging]
+
+# Abbreviate module names in text ouptut.
+abbreviate_modules = false
+
+# Output format. Change this to JSON if you want to parse your logs.
+format = "text"
+
+
 # ====================================
 # Configuration options for consensus
 # ====================================

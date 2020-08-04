@@ -4,12 +4,11 @@ mod settings;
 mod structured_message;
 mod terminal_logger;
 
-use std::{collections::BTreeMap, time::Duration};
+use std::collections::BTreeMap;
 
 use log::{self, Level, LevelFilter, Log, SetLoggerError};
 
 pub use self::terminal_logger::TerminalLogger;
-use crate::components::contract_runtime::shared::newtypes::CorrelationId;
 pub use settings::{Settings, Style};
 
 #[doc(hidden)]
@@ -60,47 +59,6 @@ pub fn log_details(
     _log_level: Level,
     _message_format: String,
     _properties: BTreeMap<&str, String>,
-) {
-    // TODO: Metrics story https://casperlabs.atlassian.net/browse/NDRS-120
-}
-
-/// Logs the duration of a specific operation.
-///
-/// # Arguments
-///
-/// * `correlation_id` - a shared identifier used to group metrics
-/// * `metric` - the name of the metric
-/// * `tag` - a grouping tag for the metric
-/// * `duration` - in seconds
-#[inline]
-pub fn log_duration(correlation_id: CorrelationId, metric: &str, tag: &str, duration: Duration) {
-    let duration_in_seconds: f64 = duration.as_secs_f64();
-
-    log_metric(
-        correlation_id,
-        metric,
-        tag,
-        "duration_in_seconds",
-        duration_in_seconds,
-    )
-}
-
-/// Logs the details of the specified metric.
-///
-/// # Arguments
-///
-/// * `correlation_id` - a shared identifier used to group metrics
-/// * `metric` - the name of the metric
-/// * `tag` - a grouping tag for the metric
-/// * `metric_key` - property key for metric's value
-/// * `metric_value` - numeric value of metric
-#[inline]
-pub fn log_metric(
-    _correlation_id: CorrelationId,
-    _metric: &str,
-    _tag: &str,
-    _metric_key: &str,
-    _metric_value: f64,
 ) {
     // TODO: Metrics story https://casperlabs.atlassian.net/browse/NDRS-120
 }

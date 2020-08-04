@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    types::NodeConfig, ApiServerConfig, ConsensusConfig, ContractRuntimeConfig, GossipConfig,
-    SmallNetworkConfig, StorageConfig, ROOT_VALIDATOR_LISTENING_PORT,
+    logging::LoggingConfig, types::NodeConfig, ApiServerConfig, ConsensusConfig,
+    ContractRuntimeConfig, GossipConfig, SmallNetworkConfig, StorageConfig,
+    ROOT_VALIDATOR_LISTENING_PORT,
 };
 
 /// Root configuration.
@@ -12,6 +13,8 @@ use crate::{
 pub struct Config {
     /// Node configuration.
     pub node: NodeConfig,
+    /// Logging configuration.
+    pub logging: LoggingConfig,
     /// Consensus configuration.
     pub consensus: ConsensusConfig,
     /// Network configuration for the validator-only network.
@@ -30,6 +33,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             node: NodeConfig::default(),
+            logging: LoggingConfig::default(),
             consensus: ConsensusConfig::default(),
             validator_net: SmallNetworkConfig::default_on_port(ROOT_VALIDATOR_LISTENING_PORT),
             http_server: ApiServerConfig::default(),

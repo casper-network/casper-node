@@ -1023,7 +1023,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_no_faults() {
-        logging::init_params(true).ok();
+        logging::init().ok();
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1085,7 +1085,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_some_mute() {
-        logging::init_params(true).ok();
+        logging::init().ok();
 
         let mut rng = TestRng::new();
         let cv_count = 10;
