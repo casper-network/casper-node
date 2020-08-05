@@ -80,12 +80,6 @@ impl<C: Context> Panorama<C> {
     pub(crate) fn iter_correct(&self) -> impl Iterator<Item = &C::Hash> {
         self.iter().filter_map(Observation::correct)
     }
-
-    /// Returns an iterator over all correct latest votes, by validator index.
-    pub(crate) fn enumerate_correct(&self) -> impl Iterator<Item = (ValidatorIndex, &C::Hash)> {
-        self.enumerate()
-            .filter_map(|(idx, obs)| obs.correct().map(|vhash| (idx, vhash)))
-    }
 }
 
 /// A vote sent to or received from the network.

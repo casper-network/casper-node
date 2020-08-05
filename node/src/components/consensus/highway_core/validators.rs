@@ -98,7 +98,6 @@ impl<VID: Ord + Hash + Clone, W: Into<Weight>> FromIterator<(VID, W)> for Valida
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, IntoIterator, AsRef, From)]
-// TODO: Make field private!
 pub(crate) struct ValidatorMap<T>(Vec<T>);
 
 impl<T> ValidatorMap<T> {
@@ -123,6 +122,26 @@ impl<T> ValidatorMap<T> {
             .enumerate()
             .map(|(idx, value)| (ValidatorIndex(idx as u32), value))
     }
+
+    /// Binary searches this sorted `ValidatorMap` for `x`.
+    ///
+    /// If the value is found, `Ok` is returned, containing the index, otherwise `Err`, with the
+    /// first index at which the value is greater than `x`.
+    pub fn binary_search(&self, x: &T) -> Result<ValidatorIndex, ValidatorIndex>
+    where
+        T: Ord,
+    {
+        self.0
+            .binary_search(x)
+            .map(|i| ValidatorIndex(i as u32))
+            .map_err(|i| ValidatorIndex(i as u32))
+    }
+}
+
+impl<T> FromIterator<T> for ValidatorMap<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(ii: I) -> ValidatorMap<T> {
+        ValidatorMap(ii.into_iter().collect())
+    }
 }
 
 impl<T> Index<ValidatorIndex> for ValidatorMap<T> {
@@ -145,6 +164,15 @@ impl<'a, T> IntoIterator for &'a ValidatorMap<T> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
+    }
+}
+
+impl<T> ValidatorMap<Option<T>> {
+    /// Returns the keys of all validators whose value is `Some`.
+    pub(crate) fn keys_some<'a>(&'a self) -> impl Iterator<Item = ValidatorIndex> + 'a {
+        self.enumerate()
+            .filter(|(_, opt)| opt.is_some())
+            .map(|(vidx, _)| vidx)
     }
 }
 

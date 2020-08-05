@@ -16,7 +16,7 @@ use super::{
     block::Block,
     evidence::Evidence,
     tallies::Tallies,
-    validators::ValidatorIndex,
+    validators::{ValidatorIndex, ValidatorMap},
     vertex::{Dependency, WireVote},
     vote::{Observation, Panorama, Vote},
 };
@@ -106,10 +106,10 @@ const REWARD_DELAY: u64 = 8;
 #[derive(Debug)]
 pub(crate) struct State<C: Context> {
     /// The validator's voting weights.
-    weights: Vec<Weight>,
+    weights: ValidatorMap<Weight>,
     /// Cumulative validator weights: Entry `i` contains the sum of the weights of validators `0`
     /// through `i`.
-    cumulative_w: Vec<Weight>,
+    cumulative_w: ValidatorMap<Weight>,
     /// All votes imported so far, by hash.
     // TODO: HashMaps prevent deterministic tests.
     votes: HashMap<C::Hash, Vote<C>>,
@@ -137,7 +137,7 @@ impl<C: Context> State<C> {
         };
         let cumulative_w = weights.iter().map(add).collect();
         State {
-            weights: weights.to_vec(),
+            weights: ValidatorMap::from(weights.to_vec()),
             cumulative_w,
             votes: HashMap::new(),
             blocks: HashMap::new(),
@@ -191,7 +191,7 @@ impl<C: Context> State<C> {
 
     /// Returns the `idx`th validator's voting weight.
     pub(crate) fn weight(&self, idx: ValidatorIndex) -> Weight {
-        self.weights[idx.0 as usize]
+        self.weights[idx]
     }
 
     /// Returns the fraction of the block reward, in trillionths, that are paid out even if the
@@ -228,7 +228,7 @@ impl<C: Context> State<C> {
 
     /// Returns the sum of all validators' voting weights.
     pub(crate) fn total_weight(&self) -> Weight {
-        *self.cumulative_w.last().unwrap()
+        *self.cumulative_w.as_ref().last().unwrap()
     }
 
     /// Returns the complete protocol state's latest panorama.
@@ -246,8 +246,7 @@ impl<C: Context> State<C> {
         // `cumulative_w[i]` denotes the last weight unit that belongs to validator `i`.
         // `binary_search` returns the first `i` with `cumulative_w[i] >= r`, i.e. the validator
         // who owns the randomly selected weight unit.
-        let idx = self.cumulative_w.binary_search(&r).unwrap_or_else(identity);
-        ValidatorIndex(idx as u32)
+        self.cumulative_w.binary_search(&r).unwrap_or_else(identity)
     }
 
     /// Adds the vote to the protocol state.
