@@ -5,23 +5,29 @@ mod queue_provider;
 mod runtime_provider;
 mod stakes;
 mod stakes_provider;
+mod auction_provider;
 
 use core::marker::Sized;
+use alloc::collections::BTreeMap;
 
 use crate::{
     account::AccountHash,
     system_contract_errors::pos::{Error, Result},
     AccessRights, TransferredTo, URef, U512,
+
 };
 
 pub use crate::proof_of_stake::{
     mint_provider::MintProvider, queue::Queue, queue_provider::QueueProvider,
     runtime_provider::RuntimeProvider, stakes::Stakes, stakes_provider::StakesProvider,
+    auction_provider::AuctionProvider,
 };
+
+use crate::auction::DELEGATION_RATE_DENOMINATOR;
 
 /// Proof of stake functionality implementation.
 pub trait ProofOfStake:
-    MintProvider + QueueProvider + RuntimeProvider + StakesProvider + Sized
+    MintProvider + QueueProvider + RuntimeProvider + StakesProvider + AuctionProvider + Sized
 {
     /// Bonds a `validator` with `amount` of tokens from a `source` purse.
     fn bond_old(&mut self, validator: AccountHash, amount: U512, source: URef) -> Result<()> {
@@ -87,6 +93,49 @@ pub trait ProofOfStake:
     /// Finalize payment with `amount_spent` and a given `account`.
     fn finalize_payment(&mut self, amount_spent: U512, account: AccountHash) -> Result<()> {
         internal::finalize_payment(self, amount_spent, account)
+    }
+
+    fn distribute(&mut self, reward_factors: BTreeMap<AccountHash, u64>) -> Result<()> {
+        // let era_validators = self.read_winners();
+        let seigniorage_recipients = self.read_seigniorage_recipients();
+        let base_round_reward = U512::from(self.read_base_round_reward());
+
+        // let unique_check_lhs: BTreeSet<&AccountHash> = reward_factors.keys().collect();
+        // let unique_check_rhs: BTreeSet<&AccountHash> = seigniorage_recipients.keys().collect();
+
+        if reward_factors.keys().ne(seigniorage_recipients.keys()) {
+            return Err(Error::MismatchedEraValidators);
+        }
+
+        for (account_hash, reward_factor) in reward_factors {
+            let seigniorage_recipient = seigniorage_recipients.get(&account_hash).unwrap();
+
+            // Compute and mint rewards for the current validator
+            let reward: U512 = base_round_reward * reward_factor;
+
+            let total_stake = seigniorage_recipient.stake;
+            // TODO: There should be no seigniorage recipient with 0 total_stake. Decide if the following is enough.
+            if total_stake.is_zero() {
+                continue;
+            }
+
+            let total_delegated_amount: U512 = seigniorage_recipient.delegators.values().cloned().sum();
+            // let validators_stake: U512 = total_stake - total_delegated_amount;
+            // Compute delegators' part
+            let mut delegators_part: U512 = reward * total_delegated_amount / total_stake;
+            let commission: U512 = delegators_part * seigniorage_recipient.delegation_rate / DELEGATION_RATE_DENOMINATOR;
+            delegators_part = delegators_part - commission;
+            
+            // Validator receives the rest
+            let validators_part: U512 = reward - delegators_part;
+            // Mint and transfer validator's part to the validator
+            let tmp_purse = self.mint(validators_part);
+            let rewards_purse = internal::get_rewards_purse(self)?;
+            self.transfer_purse_to_purse(tmp_purse, rewards_purse, validators_part).map_err(|_| Error::Transfer)?;
+            // Distribute delegators' part
+            self.distribute_to_delegators(account_hash, delegators_part)?;
+        }
+        Ok(())
     }
 }
 

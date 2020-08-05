@@ -14,10 +14,10 @@ use casperlabs_contract::{
 use casperlabs_types::{
     account::AccountHash,
     proof_of_stake::{
-        MintProvider, ProofOfStake, Queue, QueueProvider, RuntimeProvider, Stakes, StakesProvider,
+        MintProvider, ProofOfStake, Queue, QueueProvider, RuntimeProvider, Stakes, StakesProvider, AuctionProvider,
     },
     system_contract_errors::pos::Error,
-    ApiError, BlockTime, CLValue, Key, Phase, TransferResult, URef, U512,
+    ApiError, BlockTime, CLValue, Key, Phase, TransferResult, URef, U512, auction::SeigniorageRecipients,
 };
 
 pub const METHOD_BOND: &str = "bond";
@@ -33,6 +33,7 @@ const UNBONDING_KEY: u8 = 2;
 pub const ARG_AMOUNT: &str = "amount";
 pub const ARG_PURSE: &str = "purse";
 pub const ARG_ACCOUNT_KEY: &str = "account";
+pub const ARG_REWARD_FACTORS: &str = "reward_factors";
 
 pub struct ProofOfStakeContract;
 
@@ -58,6 +59,19 @@ impl MintProvider for ProofOfStakeContract {
     fn balance(&mut self, purse: URef) -> Option<U512> {
         system::get_balance(purse)
     }
+}
+
+impl AuctionProvider for ProofOfStakeContract {
+    fn read_winners(&mut self) -> BTreeSet<AccountHash> {
+        todo!()
+    }
+    fn read_seigniorage_recipients(&mut self) -> SeigniorageRecipients {
+        todo!()
+    }
+    fn distribute_to_delegators(&mut self, validator_account_hash: AccountHash, amount: U512) -> Result<(), Error> {
+        todo!()
+    }
+    
 }
 
 impl QueueProvider for ProofOfStakeContract {
@@ -226,4 +240,13 @@ pub fn finalize_payment() {
     pos_contract
         .finalize_payment(amount_spent, account)
         .unwrap_or_revert();
+}
+
+pub fn distribute_rewards() {
+    let mut pos_contract = ProofOfStakeContract;
+
+    let reward_factors: BTreeMap<AccountHash, u64> = runtime::get_named_arg(ARG_REWARD_FACTORS);
+    pos_contract
+    .distribute(reward_factors)
+    .unwrap_or_revert();
 }

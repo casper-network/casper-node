@@ -7,10 +7,10 @@ use casperlabs_types::{
     account::AccountHash,
     bytesrepr::ToBytes,
     proof_of_stake::{
-        MintProvider, ProofOfStake, Queue, QueueProvider, RuntimeProvider, Stakes, StakesProvider,
+        AuctionProvider, MintProvider, ProofOfStake, Queue, QueueProvider, RuntimeProvider, Stakes, StakesProvider,
     },
     system_contract_errors::pos::Error,
-    ApiError, BlockTime, CLValue, Key, Phase, TransferredTo, URef, U512,
+    ApiError, BlockTime, CLValue, Key, Phase, TransferredTo, URef, U512, auction::SeigniorageRecipients,
 };
 
 use crate::components::contract_runtime::{
@@ -209,6 +209,23 @@ where
                 .expect("should put key")
         }
     }
+}
+
+impl<'a, R> AuctionProvider for Runtime<'a, R>
+where
+    R: StateReader<Key, StoredValue>,
+    R::Error: Into<execution::Error>,
+{
+    fn read_winners(&mut self) -> BTreeSet<AccountHash> {
+        todo!()
+    }
+    fn read_seigniorage_recipients(&mut self) -> SeigniorageRecipients {
+        todo!()
+    }
+    fn distribute_to_delegators(&mut self, validator_account_hash: AccountHash, amount: U512) -> Result<(), Error> {
+        todo!()
+    }
+    
 }
 
 impl<'a, R> ProofOfStake for Runtime<'a, R>

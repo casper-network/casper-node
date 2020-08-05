@@ -105,6 +105,13 @@ pub enum Error {
     /// deploy, but was called by the session code.
     #[fail(display = "Set refund purse was called outside payment")]
     SetRefundPurseCalledOutsidePayment,
+    /// The validators returned by the consensus component should match
+    /// current era validators when distributing rewards.
+    #[fail(display = "Mismatched era validator sets to distribute rewards")]
+    MismatchedEraValidators,
+    /// Error for when calling transfer functions 
+    #[fail(display = "Failed to transfer")]
+    Transfer,
 }
 
 impl CLTyped for Error {

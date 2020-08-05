@@ -20,4 +20,4 @@ pub use providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvid
 pub use seigniorage_recipient::{
     SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
 };
-pub use types::DelegationRate;
+pub use types::{CommissionRate, COMMISSION_RATE_DENOMINATOR};
