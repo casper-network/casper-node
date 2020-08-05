@@ -393,17 +393,15 @@ fn round_participation<'a, C: Context>(
             .swimlane(latest_vh)
             .find(|&(_, vote)| vote.round_id() <= r_id),
     };
-    match opt_vote {
-        None => RoundParticipation::No,
-        Some((vh, vote)) if vote.round_exp <= r_id.trailing_zeros() => {
-            if vote.timestamp >= r_id {
-                RoundParticipation::Yes(vh)
-            } else {
-                RoundParticipation::No
-            }
+    opt_vote.map_or(RoundParticipation::No, |(vh, vote)| {
+        if vote.round_exp > r_id.trailing_zeros() {
+            RoundParticipation::Unassigned
+        } else if vote.timestamp < r_id {
+            RoundParticipation::No
+        } else {
+            RoundParticipation::Yes(vh)
         }
-        Some((_, _)) => RoundParticipation::Unassigned,
-    }
+    })
 }
 
 #[allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
