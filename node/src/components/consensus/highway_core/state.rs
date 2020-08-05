@@ -133,6 +133,8 @@ pub(crate) struct State<C: Context> {
     /// The fraction of the block reward, in trillionths, that are paid out even if the heaviest
     /// summit does not exceed half the total weight.
     forgiveness_factor: u64,
+    /// The minimum round exponent. `1 << min_round_exp` milliseconds is the minimum round length.
+    min_round_exp: u8,
 }
 
 impl<C: Context> State<C> {
@@ -151,8 +153,9 @@ impl<C: Context> State<C> {
             reward_index: BTreeMap::new(),
             evidence: HashMap::new(),
             panorama: Panorama::new(weights.len()),
-            forgiveness_factor: BLOCK_REWARD / 5, // TODO: Make configurable. Builder?
             seed,
+            forgiveness_factor: BLOCK_REWARD / 5, // TODO: Make configurable. Builder?
+            min_round_exp: 4,
         }
     }
 
@@ -391,6 +394,9 @@ impl<C: Context> State<C> {
         if creator.0 as usize >= self.weights.len() {
             return Err(VoteError::Creator);
         }
+        if wvote.round_exp < self.min_round_exp {
+            return Err(VoteError::RoundLength);
+        }
         if (wvote.value.is_none() && !wvote.panorama.has_correct())
             || wvote.panorama.len() != self.weights.len()
         {
@@ -434,6 +440,12 @@ impl<C: Context> State<C> {
             }
         }
         Ok(())
+    }
+
+    /// Returns the minimum round exponent. `1 << self.min_round_exp()` milliseconds is the minimum
+    /// round length.
+    pub(super) fn min_round_exp(&self) -> u8 {
+        self.min_round_exp
     }
 
     /// Updates `self.panorama` with an incoming vote. Panics if dependencies are missing.

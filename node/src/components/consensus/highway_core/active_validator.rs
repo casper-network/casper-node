@@ -69,10 +69,18 @@ impl<C: Context> ActiveValidator<C> {
     pub(crate) fn new(
         vidx: ValidatorIndex,
         secret: C::ValidatorSecret,
-        next_round_exp: u8,
+        mut next_round_exp: u8,
         timestamp: Timestamp,
         state: &State<C>,
     ) -> (Self, Vec<Effect<C>>) {
+        if next_round_exp < state.min_round_exp() {
+            warn!(
+                "using minimum value {} instead of round exponent {}",
+                state.min_round_exp(),
+                next_round_exp,
+            );
+            next_round_exp = state.min_round_exp();
+        }
         let mut av = ActiveValidator {
             vidx,
             secret,
