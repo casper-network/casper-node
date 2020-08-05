@@ -2,11 +2,11 @@ use std::{
     collections::HashMap,
     hash::Hash,
     iter::FromIterator,
-    ops::{Index, IndexMut},
-    slice,
+    ops::{Add, Index, IndexMut},
+    slice, vec,
 };
 
-use derive_more::{AsRef, From, IntoIterator};
+use derive_more::{AsRef, From};
 use serde::{Deserialize, Serialize};
 
 use super::Weight;
@@ -97,7 +97,7 @@ impl<VID: Ord + Hash + Clone, W: Into<Weight>> FromIterator<(VID, W)> for Valida
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, IntoIterator, AsRef, From)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, AsRef, From)]
 pub(crate) struct ValidatorMap<T>(Vec<T>);
 
 impl<T> ValidatorMap<T> {
@@ -138,6 +138,14 @@ impl<T> ValidatorMap<T> {
     }
 }
 
+impl<T> IntoIterator for ValidatorMap<T> {
+    type Item = T;
+    type IntoIter = vec::IntoIter<T>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
 impl<T> FromIterator<T> for ValidatorMap<T> {
     fn from_iter<I: IntoIterator<Item = T>>(ii: I) -> ValidatorMap<T> {
         ValidatorMap(ii.into_iter().collect())
@@ -164,6 +172,17 @@ impl<'a, T> IntoIterator for &'a ValidatorMap<T> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
+    }
+}
+
+impl<Rhs, T: Copy + Add<Rhs, Output = T>> Add<ValidatorMap<Rhs>> for ValidatorMap<T> {
+    type Output = ValidatorMap<T>;
+    fn add(mut self, rhs: ValidatorMap<Rhs>) -> Self::Output {
+        self.0
+            .iter_mut()
+            .zip(rhs)
+            .for_each(|(lhs_val, rhs_val)| *lhs_val = *lhs_val + rhs_val);
+        self
     }
 }
 

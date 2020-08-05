@@ -194,6 +194,11 @@ impl<C: Context> State<C> {
         self.weights[idx]
     }
 
+    /// Returns the map of validator weights.
+    pub(crate) fn weights(&self) -> &ValidatorMap<Weight> {
+        &self.weights
+    }
+
     /// Returns the fraction of the block reward, in trillionths, that are paid out even if the
     /// heaviest summit does not exceed half the total weight.
     pub(crate) fn forgiveness_factor(&self) -> u64 {

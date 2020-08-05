@@ -202,11 +202,12 @@ impl<C: Context> FinalityDetector<C> {
         let to_id =
             |vidx: ValidatorIndex| highway.params().validators.get_by_index(vidx).id().clone();
         let new_equivocators_iter = state.get_new_equivocators(bhash).into_iter();
-        let rewards_iter = compute_rewards(state, bhash).into_iter();
+        let rewards = compute_rewards(state, bhash);
+        let rewards_iter = rewards.enumerate();
         FinalityOutcome::Finalized {
             value: state.block(bhash).value.clone(),
             new_equivocators: new_equivocators_iter.map(to_id).collect(),
-            rewards: rewards_iter.map(|(vidx, r)| (to_id(vidx), r)).collect(),
+            rewards: rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect(),
             timestamp: state.vote(bhash).timestamp,
         }
     }
@@ -286,7 +287,7 @@ impl<C: Context> FinalityDetector<C> {
 }
 
 /// Returns the map of rewards to be paid out when the block `bhash` gets finalized.
-fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> BTreeMap<ValidatorIndex, u64> {
+fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> ValidatorMap<u64> {
     // The newly finalized block, in which the rewards are paid out.
     let payout_block = state.block(bhash);
     // The vote that introduced the payout block.
@@ -303,21 +304,22 @@ fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> BTreeMap<Va
     let range = parent_time..payout_vote.timestamp;
     let is_ancestor =
         |bh: &&C::Hash| Some(*bh) == state.find_ancestor(bhash, state.block(bh).height);
-    let mut rewards = BTreeMap::new();
-    for bh in state.rewards_range(range).filter(is_ancestor).unique() {
-        add_rewards_for(&mut rewards, state, panorama, bh);
-    }
-    rewards
+    state
+        .rewards_range(range)
+        .filter(is_ancestor)
+        .unique()
+        .fold(ValidatorMap::from(vec![0; panorama.len()]), |sum, bh| {
+            sum + compute_rewards_for(state, panorama, bh)
+        })
 }
 
-/// Adds the rewards for finalizing the block with hash `proposal_h`.
+/// Returns the rewards for finalizing the block with hash `proposal_h`.
 // TODO: Add a minimum round exponent, to enforce an upper limit for total rewards.
-fn add_rewards_for<C: Context>(
-    rewards: &mut BTreeMap<ValidatorIndex, u64>,
+fn compute_rewards_for<C: Context>(
     state: &State<C>,
     panorama: &Panorama<C>,
     proposal_h: &C::Hash,
-) {
+) -> ValidatorMap<u64> {
     let fault_w = state.faulty_weight_in(panorama);
     let proposal_vote = state.vote(proposal_h);
     let r_id = proposal_vote.round_id();
@@ -350,30 +352,34 @@ fn add_rewards_for<C: Context>(
     // Find all level-1 summits. For each validator, store the highest quorum it is a part of.
     let section = Section::level0(proposal_h, state, &latest);
     let (mut committee, _) = section.prune_committee(Weight(1), latest.keys_some().collect());
-    let mut max_quorum = BTreeMap::new();
+    let mut max_quorum = ValidatorMap::from(vec![Weight(0); latest.len()]);
     while let Some(quorum) = section.committee_quorum(&committee) {
         // The current committee is a level-1 summit with `quorum`. Try to go higher:
         let (new_committee, pruned) = section.prune_committee(quorum + Weight(1), committee);
         committee = new_committee;
         // Pruned validators are not part of any summit with a higher quorum than this.
         for vidx in pruned {
-            max_quorum.insert(vidx, quorum);
+            max_quorum[vidx] = quorum;
         }
     }
 
-    // Add the block rewards for each validator who is a member of at least one summit.
-    for (vidx, quorum) in max_quorum {
-        // If the summit's quorum was not enough to finalize the block, rewards are reduced.
-        let finality_factor = if (quorum - fault_w) * 2 > state.total_weight() {
-            1_000_000_000_000
-        } else {
-            u128::from(state.forgiveness_factor())
-        };
-        // Rewards are proportional to the quorum and to the validator's weight.
-        let num = finality_factor * u128::from(quorum) * u128::from(state.weight(vidx));
-        let denom = u128::from(assigned_weight) * u128::from(state.total_weight());
-        *rewards.entry(vidx).or_insert(0) += (num / denom) as u64;
-    }
+    // Collect the block rewards for each validator who is a member of at least one summit.
+    max_quorum
+        .iter()
+        .zip(state.weights())
+        .map(|(quorum, weight)| {
+            // If the summit's quorum was not enough to finalize the block, rewards are reduced.
+            let finality_factor = if *quorum * 2 > state.total_weight() + fault_w * 2 {
+                1_000_000_000_000
+            } else {
+                u128::from(state.forgiveness_factor())
+            };
+            // Rewards are proportional to the quorum and to the validator's weight.
+            let num = finality_factor * u128::from(*quorum) * u128::from(*weight);
+            let denom = u128::from(assigned_weight) * u128::from(state.total_weight());
+            (num / denom) as u64
+        })
+        .collect()
 }
 
 #[allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
