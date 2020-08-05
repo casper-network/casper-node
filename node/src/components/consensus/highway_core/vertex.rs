@@ -109,7 +109,7 @@ impl<C: Context> Debug for WireVote<C> {
             .field("creator.0", &self.creator.0)
             .field("seq_number", &self.seq_number)
             .field("timestamp", &self.timestamp.millis())
-            .field("panorama", &self.panorama.0)
+            .field("panorama", self.panorama.as_ref())
             .field("round_exp", &self.round_exp)
             .field("round_id()", &self.round_id())
             .finish()

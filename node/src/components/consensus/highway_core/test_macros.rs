@@ -3,7 +3,9 @@
 /// Creates a panorama from a list of either observations or vote hashes. Vote hashes are converted
 /// to `Correct` observations.
 macro_rules! panorama {
-    ($($obs:expr),*) => {crate::components::consensus::highway_core::vote::Panorama(vec![$($obs.into()),*])};
+    ($($obs:expr),*) => {
+        crate::components::consensus::highway_core::vote::Panorama::from(vec![$($obs.into()),*])
+    };
 }
 
 /// Creates a vote with the given creator, sequence number and panorama.

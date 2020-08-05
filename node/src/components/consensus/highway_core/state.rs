@@ -7,6 +7,7 @@ use std::{
 };
 
 use derive_more::{Add, AddAssign, From, Sub, SubAssign, Sum};
+use itertools::Itertools;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
@@ -15,7 +16,7 @@ use super::{
     block::Block,
     evidence::Evidence,
     tallies::Tallies,
-    validators::ValidatorIndex,
+    validators::{ValidatorIndex, ValidatorMap},
     vertex::{Dependency, WireVote},
     vote::{Observation, Panorama, Vote},
 };
@@ -97,6 +98,13 @@ pub(crate) enum VoteError {
 /// `B` itself.
 const REWARD_DELAY: u64 = 8;
 
+/// A number representing the maximum total reward for finalizing one block.
+///
+/// Validator rewards for finalization must add up to this number or less.
+/// 1 trillion was chosen here because it allows very precise fractions of a block reward while
+/// still leaving space for millions of full rewards in a `u64`.
+pub(crate) const BLOCK_REWARD: u64 = 1_000_000_000_000;
+
 /// A passive instance of the Highway protocol, containing its local state.
 ///
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
@@ -105,10 +113,10 @@ const REWARD_DELAY: u64 = 8;
 #[derive(Debug)]
 pub(crate) struct State<C: Context> {
     /// The validator's voting weights.
-    weights: Vec<Weight>,
+    weights: ValidatorMap<Weight>,
     /// Cumulative validator weights: Entry `i` contains the sum of the weights of validators `0`
     /// through `i`.
-    cumulative_w: Vec<Weight>,
+    cumulative_w: ValidatorMap<Weight>,
     /// All votes imported so far, by hash.
     // TODO: HashMaps prevent deterministic tests.
     votes: HashMap<C::Hash, Vote<C>>,
@@ -136,14 +144,14 @@ impl<C: Context> State<C> {
         };
         let cumulative_w = weights.iter().map(add).collect();
         State {
-            weights: weights.to_vec(),
+            weights: ValidatorMap::from(weights.to_vec()),
             cumulative_w,
             votes: HashMap::new(),
             blocks: HashMap::new(),
             reward_index: BTreeMap::new(),
             evidence: HashMap::new(),
             panorama: Panorama::new(weights.len()),
-            forgiveness_factor: 200_000_000_000, // TODO: Make configurable. Builder?
+            forgiveness_factor: BLOCK_REWARD / 5, // TODO: Make configurable. Builder?
             seed,
         }
     }
@@ -190,7 +198,12 @@ impl<C: Context> State<C> {
 
     /// Returns the `idx`th validator's voting weight.
     pub(crate) fn weight(&self, idx: ValidatorIndex) -> Weight {
-        self.weights[idx.0 as usize]
+        self.weights[idx]
+    }
+
+    /// Returns the map of validator weights.
+    pub(crate) fn weights(&self) -> &ValidatorMap<Weight> {
+        &self.weights
     }
 
     /// Returns the fraction of the block reward, in trillionths, that are paid out even if the
@@ -227,7 +240,7 @@ impl<C: Context> State<C> {
 
     /// Returns the sum of all validators' voting weights.
     pub(crate) fn total_weight(&self) -> Weight {
-        *self.cumulative_w.last().unwrap()
+        *self.cumulative_w.as_ref().last().unwrap()
     }
 
     /// Returns the complete protocol state's latest panorama.
@@ -245,8 +258,7 @@ impl<C: Context> State<C> {
         // `cumulative_w[i]` denotes the last weight unit that belongs to validator `i`.
         // `binary_search` returns the first `i` with `cumulative_w[i] >= r`, i.e. the validator
         // who owns the randomly selected weight unit.
-        let idx = self.cumulative_w.binary_search(&r).unwrap_or_else(identity);
-        ValidatorIndex(idx as u32)
+        self.cumulative_w.binary_search(&r).unwrap_or_else(identity)
     }
 
     /// Adds the vote to the protocol state.
@@ -353,8 +365,8 @@ impl<C: Context> State<C> {
             (Observation::Correct(vh0), obs1) if self.sees_correct(pan1, vh0) => obs1.clone(),
             (Observation::Correct(_), Observation::Correct(_)) => Observation::Faulty,
         };
-        let observations = pan0.iter().zip(&pan1.0).map(merge_obs).collect();
-        Panorama(observations)
+        let observations = pan0.iter().zip(pan1).map(merge_obs).collect_vec();
+        Panorama::from(observations)
     }
 
     /// Returns the panorama seeing all votes seen by `pan` with a timestamp no later than
@@ -368,7 +380,7 @@ impl<C: Context> State<C> {
                 .map_or(Observation::None, Observation::Correct),
             obs @ Observation::None | obs @ Observation::Faulty => obs.clone(),
         };
-        Panorama(pan.iter().map(obs_cutoff).collect())
+        Panorama::from(pan.iter().map(obs_cutoff).collect_vec())
     }
 
     /// Returns an error if `swvote` is invalid. This can be called even if the dependencies are
@@ -379,7 +391,7 @@ impl<C: Context> State<C> {
         if creator.0 as usize >= self.weights.len() {
             return Err(VoteError::Creator);
         }
-        if (wvote.value.is_none() && wvote.panorama.is_empty())
+        if (wvote.value.is_none() && !wvote.panorama.has_correct())
             || wvote.panorama.len() != self.weights.len()
         {
             return Err(VoteError::Panorama);
@@ -447,7 +459,7 @@ impl<C: Context> State<C> {
                 Observation::Faulty
             }
         };
-        self.panorama.update(wvote.creator, new_obs);
+        self.panorama[wvote.creator] = new_obs;
     }
 
     /// Returns the hash of the message with the given sequence number from the creator of `hash`,
@@ -530,7 +542,7 @@ impl<C: Context> State<C> {
     /// Returns whether `pan_l` can possibly come later in time than `pan_r`, i.e. it can see
     /// every honest message and every fault seen by `other`.
     fn panorama_geq(&self, pan_l: &Panorama<C>, pan_r: &Panorama<C>) -> bool {
-        let mut pairs_iter = pan_l.0.iter().zip(&pan_r.0);
+        let mut pairs_iter = pan_l.iter().zip(pan_r);
         pairs_iter.all(|(obs_l, obs_r)| self.obs_geq(obs_l, obs_r))
     }
 
