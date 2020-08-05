@@ -3,7 +3,7 @@ mod error;
 mod event;
 mod gossip_table;
 mod message;
-// mod tests;
+mod tests;
 
 use std::{
     collections::HashSet,

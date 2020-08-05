@@ -16,16 +16,20 @@ use tracing::debug;
 use super::*;
 use crate::{
     components::{
+        chainspec_handler::Chainspec,
+        deploy_acceptor::{self, DeployAcceptor},
         in_memory_network::{InMemoryNetwork, NetworkController, NodeId},
         storage::{self, Storage, StorageType},
     },
-    effect::announcements::{ApiServerAnnouncement, NetworkAnnouncement},
-    reactor::{self, EventQueueHandle, Runner},
+    effect::announcements::{
+        ApiServerAnnouncement, DeployAcceptorAnnouncement, NetworkAnnouncement,
+    },
+    reactor::{self, validator::Message as ValidatorMessage, EventQueueHandle, Runner},
     testing::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
     },
-    types::Deploy,
+    types::{Deploy, Tag},
 };
 
 /// Top-level event for the reactor.
@@ -33,29 +37,46 @@ use crate::{
 #[must_use]
 enum Event {
     #[from]
-    Storage(StorageRequest<Storage>),
+    Storage(storage::Event<Storage>),
+    #[from]
+    DeployAcceptor(deploy_acceptor::Event),
     #[from]
     DeployGossiper(super::Event<Deploy>),
     #[from]
-    NetworkRequest(NetworkRequest<NodeId, Message<Deploy>>),
+    NetworkRequest(NetworkRequest<NodeId, ValidatorMessage>),
     #[from]
-    NetworkAnnouncement(NetworkAnnouncement<NodeId, Message<Deploy>>),
-    #[from]
-    StorageAnnouncement(StorageAnnouncement<Storage>),
+    NetworkAnnouncement(NetworkAnnouncement<NodeId, ValidatorMessage>),
     #[from]
     ApiServerAnnouncement(ApiServerAnnouncement),
+    #[from]
+    DeployAcceptorAnnouncement(DeployAcceptorAnnouncement<NodeId>),
+}
+
+impl From<StorageRequest<Storage>> for Event {
+    fn from(request: StorageRequest<Storage>) -> Self {
+        Event::Storage(storage::Event::Request(request))
+    }
+}
+
+impl From<NetworkRequest<NodeId, Message<Deploy>>> for Event {
+    fn from(request: NetworkRequest<NodeId, Message<Deploy>>) -> Self {
+        Event::NetworkRequest(request.map_payload(ValidatorMessage::from))
+    }
 }
 
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Storage(event) => write!(formatter, "storage: {}", event),
+            Event::DeployAcceptor(event) => write!(formatter, "deploy acceptor: {}", event),
             Event::DeployGossiper(event) => write!(formatter, "deploy gossiper: {}", event),
             Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(formatter, "network announcement: {}", ann),
-            Event::StorageAnnouncement(ann) => write!(formatter, "storage announcement: {}", ann),
             Event::ApiServerAnnouncement(ann) => {
                 write!(formatter, "api server announcement: {}", ann)
+            }
+            Event::DeployAcceptorAnnouncement(ann) => {
+                write!(formatter, "deploy-acceptor announcement: {}", ann)
             }
         }
     }
@@ -66,20 +87,19 @@ impl Display for Event {
 enum Error {
     #[error("prometheus (metrics) error: {0}")]
     Metrics(#[from] prometheus::Error),
-    #[error("storage error: {0}")]
-    Storage(#[from] storage::Error),
 }
 
 struct Reactor {
-    network: InMemoryNetwork<Message<Deploy>>,
+    network: InMemoryNetwork<ValidatorMessage>,
     storage: Storage,
+    deploy_acceptor: DeployAcceptor,
     deploy_gossiper: Gossiper<Deploy, Event>,
     _storage_tempdir: TempDir,
 }
 
 impl Drop for Reactor {
     fn drop(&mut self) {
-        NetworkController::<Message<Deploy>>::remove_node(&self.network.node_id())
+        NetworkController::<ValidatorMessage>::remove_node(&self.network.node_id())
     }
 }
 
@@ -97,13 +117,15 @@ impl reactor::Reactor for Reactor {
         let network = NetworkController::create_node(event_queue, rng);
 
         let (storage_config, _storage_tempdir) = storage::Config::default_for_tests();
-        let storage = Storage::new(&storage_config)?;
+        let storage = Storage::new(&storage_config).unwrap();
 
-        let deploy_gossiper = Gossiper::new(config, put_deploy_to_storage, get_deploy_from_storage);
+        let deploy_acceptor = DeployAcceptor::new();
+        let deploy_gossiper = Gossiper::new(config, get_deploy_from_storage);
 
         let reactor = Reactor {
             network,
             storage,
+            deploy_acceptor,
             deploy_gossiper,
             _storage_tempdir,
         };
@@ -120,9 +142,20 @@ impl reactor::Reactor for Reactor {
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
+            Event::Storage(storage::Event::Request(StorageRequest::GetChainspec {
+                responder,
+                ..
+            })) => responder
+                .respond(Some(Chainspec::from_resources_local()))
+                .ignore(),
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
+            ),
+            Event::DeployAcceptor(event) => reactor::wrap_effects(
+                Event::DeployAcceptor,
+                self.deploy_acceptor
+                    .handle_event(effect_builder, rng, event),
             ),
             Event::DeployGossiper(event) => reactor::wrap_effects(
                 Event::DeployGossiper,
@@ -137,21 +170,71 @@ impl reactor::Reactor for Reactor {
                 sender,
                 payload,
             }) => {
-                let event = super::Event::MessageReceived {
-                    sender,
-                    message: payload,
+                let reactor_event = match payload {
+                    ValidatorMessage::GetRequest { tag, serialized_id } => match tag {
+                        Tag::Deploy => {
+                            let deploy_hash = match bincode::deserialize(&serialized_id) {
+                                Ok(hash) => hash,
+                                Err(error) => {
+                                    error!(
+                                        "failed to decode {:?} from {}: {}",
+                                        serialized_id, sender, error
+                                    );
+                                    return Effects::new();
+                                }
+                            };
+                            Event::Storage(storage::Event::GetDeployForPeer {
+                                deploy_hash,
+                                peer: sender,
+                            })
+                        }
+                    },
+                    ValidatorMessage::GetResponse {
+                        tag,
+                        serialized_item,
+                    } => match tag {
+                        Tag::Deploy => {
+                            let deploy = match bincode::deserialize(&serialized_item) {
+                                Ok(deploy) => Box::new(deploy),
+                                Err(error) => {
+                                    error!("failed to decode deploy from {}: {}", sender, error);
+                                    return Effects::new();
+                                }
+                            };
+                            Event::DeployAcceptor(deploy_acceptor::Event::Accept {
+                                deploy,
+                                source: Source::Peer(sender),
+                            })
+                        }
+                    },
+                    ValidatorMessage::DeployGossiper(message) => {
+                        Event::DeployGossiper(super::Event::MessageReceived { sender, message })
+                    }
+                    msg => panic!("should not get {}", msg),
                 };
-                reactor::wrap_effects(
-                    From::from,
-                    self.deploy_gossiper
-                        .handle_event(effect_builder, rng, event),
-                )
+                self.dispatch_event(effect_builder, rng, reactor_event)
             }
-            Event::StorageAnnouncement(_) => Effects::new(),
             Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
-                let event = super::Event::ItemReceived { item: deploy };
+                let event = deploy_acceptor::Event::Accept {
+                    deploy,
+                    source: Source::<NodeId>::Client,
+                };
+                self.dispatch_event(effect_builder, rng, Event::DeployAcceptor(event))
+            }
+            Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::AcceptedNewDeploy {
+                deploy,
+                source,
+            }) => {
+                let event = super::Event::ItemReceived {
+                    item_id: *deploy.id(),
+                    source,
+                };
                 self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
             }
+            Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
+                deploy: _,
+                source: _,
+            }) => Effects::new(),
         }
     }
 }
@@ -164,7 +247,7 @@ impl NetworkedReactor for Reactor {
     }
 }
 
-fn create_deploy_received(
+fn announce_deploy_received(
     deploy: Box<Deploy>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     |effect_builder: EffectBuilder<Event>| effect_builder.announce_deploy_received(deploy).ignore()
@@ -172,8 +255,9 @@ fn create_deploy_received(
 
 async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize) {
     const TIMEOUT: Duration = Duration::from_secs(20);
+    const QUIET_FOR: Duration = Duration::from_millis(50);
 
-    NetworkController::<Message<Deploy>>::create_active();
+    NetworkController::<ValidatorMessage>::create_active();
     let mut network = Network::<Reactor>::new();
 
     // Add `network_size` nodes.
@@ -181,7 +265,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
 
     // Create `deploy_count` random deploys.
     let (all_deploy_hashes, mut deploys): (BTreeSet<_>, Vec<_>) = iter::repeat_with(|| {
-        let deploy = Box::new(rng.gen::<Deploy>());
+        let deploy = Box::new(Deploy::random(rng));
         (*deploy.id(), deploy)
     })
     .take(deploy_count)
@@ -191,7 +275,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
     for deploy in deploys.drain(..) {
         let index: usize = rng.gen_range(0, network_size);
         network
-            .process_injected_effect_on(&node_ids[index], create_deploy_received(deploy))
+            .process_injected_effect_on(&node_ids[index], announce_deploy_received(deploy))
             .await;
     }
 
@@ -212,7 +296,10 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
     };
     network.settle_on(rng, all_deploys_held, TIMEOUT).await;
 
-    NetworkController::<Message<Deploy>>::remove_active();
+    // Ensure all responders are called before dropping the network.
+    network.settle(rng, QUIET_FOR, TIMEOUT).await;
+
+    NetworkController::<ValidatorMessage>::remove_active();
 }
 
 #[tokio::test]
@@ -235,7 +322,7 @@ async fn should_get_from_alternate_source() {
     const POLL_DURATION: Duration = Duration::from_millis(10);
     const TIMEOUT: Duration = Duration::from_secs(2);
 
-    NetworkController::<Message<Deploy>>::create_active();
+    NetworkController::<ValidatorMessage>::create_active();
     let mut network = Network::<Reactor>::new();
     let mut rng = TestRng::new();
 
@@ -243,13 +330,13 @@ async fn should_get_from_alternate_source() {
     let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
 
     // Create random deploy.
-    let deploy = Box::new(rng.gen::<Deploy>());
+    let deploy = Box::new(Deploy::random(&mut rng));
     let deploy_id = *deploy.id();
 
     // Give the deploy to nodes 0 and 1 to be gossiped.
     for node_id in node_ids.iter().take(2) {
         network
-            .process_injected_effect_on(&node_id, create_deploy_received(deploy.clone()))
+            .process_injected_effect_on(&node_id, announce_deploy_received(deploy.clone()))
             .await;
     }
 
@@ -272,7 +359,7 @@ async fn should_get_from_alternate_source() {
         match event {
             Event::NetworkRequest(NetworkRequest::SendMessage {
                 dest,
-                payload: Message::GossipResponse { .. },
+                payload: ValidatorMessage::DeployGossiper(Message::GossipResponse { .. }),
                 ..
             }) => dest == &node_id_0,
             _ => false,
@@ -303,12 +390,13 @@ async fn should_get_from_alternate_source() {
             .get(smallvec![deploy_id])
             .pop()
             .expect("should only be a single result")
+            .expect("should not error while getting")
             .map(|retrieved_deploy| retrieved_deploy == *deploy)
             .unwrap_or_default()
     };
     network.settle_on(&mut rng, deploy_held, TIMEOUT).await;
 
-    NetworkController::<Message<Deploy>>::remove_active();
+    NetworkController::<ValidatorMessage>::remove_active();
 }
 
 #[tokio::test]
@@ -316,7 +404,7 @@ async fn should_timeout_gossip_response() {
     const PAUSE_DURATION: Duration = Duration::from_millis(50);
     const TIMEOUT: Duration = Duration::from_secs(2);
 
-    NetworkController::<Message<Deploy>>::create_active();
+    NetworkController::<ValidatorMessage>::create_active();
     let mut network = Network::<Reactor>::new();
     let mut rng = TestRng::new();
 
@@ -329,12 +417,12 @@ async fn should_timeout_gossip_response() {
         .await;
 
     // Create random deploy.
-    let deploy = Box::new(rng.gen::<Deploy>());
+    let deploy = Box::new(Deploy::random(&mut rng));
     let deploy_id = *deploy.id();
 
     // Give the deploy to node 0 to be gossiped.
     network
-        .process_injected_effect_on(&node_ids[0], create_deploy_received(deploy.clone()))
+        .process_injected_effect_on(&node_ids[0], announce_deploy_received(deploy.clone()))
         .await;
 
     // Run node 0 until it has sent the gossip requests.
@@ -378,11 +466,12 @@ async fn should_timeout_gossip_response() {
                 .get(smallvec![deploy_id])
                 .pop()
                 .expect("should only be a single result")
+                .expect("should not error while getting")
                 .map(|retrieved_deploy| retrieved_deploy == *deploy)
                 .unwrap_or_default()
         })
     };
     network.settle_on(&mut rng, deploy_held, TIMEOUT).await;
 
-    NetworkController::<Message<Deploy>>::remove_active();
+    NetworkController::<ValidatorMessage>::remove_active();
 }
