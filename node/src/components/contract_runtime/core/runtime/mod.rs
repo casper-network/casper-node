@@ -1952,16 +1952,6 @@ where
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
     ) -> Result<CLValue, Error> {
-        const METHOD_RELEASE_FOUNDER: &str = "release_founder";
-        const METHOD_READ_WINNERS: &str = "read_winners";
-        const METHOD_READ_SEIGNIORAGE_RECIPIENTS: &str = "read_seigniorage_recipients";
-        const METHOD_ADD_BID: &str = "add_bid";
-        const METHOD_WITHDRAW_BID: &str = "withdraw_bid";
-        const METHOD_DELEGATE: &str = "delegate";
-        const METHOD_UNDELEGATE: &str = "undelegate";
-        const METHOD_QUASH_BID: &str = "quash_bid";
-        const METHOD_RUN_AUCTION: &str = "run_auction";
-
         let state = self.context.state();
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
@@ -2013,7 +2003,7 @@ where
         );
 
         let ret: CLValue = match entry_point_name {
-            METHOD_RELEASE_FOUNDER => {
+            auction::METHOD_RELEASE_FOUNDER => {
                 let account_hash =
                     Self::get_named_argument(&runtime_args, auction::ARG_ACCOUNT_HASH)?;
 
@@ -2022,19 +2012,19 @@ where
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
 
-            METHOD_READ_WINNERS => {
+            auction::METHOD_READ_WINNERS => {
                 let result = runtime.read_winners().map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
 
-            METHOD_READ_SEIGNIORAGE_RECIPIENTS => {
+            auction::METHOD_READ_SEIGNIORAGE_RECIPIENTS => {
                 let result = runtime.read_seigniorage_recipients();
 
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
 
-            METHOD_ADD_BID => {
+            auction::METHOD_ADD_BID => {
                 let account_hash =
                     Self::get_named_argument(&runtime_args, auction::ARG_ACCOUNT_HASH)?;
                 let source_purse =
@@ -2050,7 +2040,7 @@ where
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
 
-            METHOD_WITHDRAW_BID => {
+            auction::METHOD_WITHDRAW_BID => {
                 let account_hash =
                     Self::get_named_argument(&runtime_args, auction::ARG_ACCOUNT_HASH)?;
                 let quantity = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
@@ -2061,7 +2051,7 @@ where
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
 
-            METHOD_DELEGATE => {
+            auction::METHOD_DELEGATE => {
                 let delegator_account_hash =
                     Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR_ACCOUNT_HASH)?;
                 let source_purse =
@@ -2082,7 +2072,7 @@ where
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
 
-            METHOD_UNDELEGATE => {
+            auction::METHOD_UNDELEGATE => {
                 let delegator_account_hash =
                     Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR_ACCOUNT_HASH)?;
                 let validator_account_hash =
@@ -2096,7 +2086,7 @@ where
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
 
-            METHOD_QUASH_BID => {
+            auction::METHOD_QUASH_BID => {
                 let validator_keys: Vec<AccountHash> =
                     Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_KEYS)?;
 
@@ -2105,7 +2095,7 @@ where
                 CLValue::from_t(()).map_err(Self::reverter)?
             }
 
-            METHOD_RUN_AUCTION => {
+            auction::METHOD_RUN_AUCTION => {
                 runtime.run_auction().map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)?
             }

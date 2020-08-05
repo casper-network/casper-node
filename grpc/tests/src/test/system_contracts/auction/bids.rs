@@ -4,7 +4,7 @@ use casperlabs_engine_test_support::{
 };
 use casperlabs_types::{
     account::AccountHash,
-    auction::{ActiveBids, DelegationRate, ARG_AMOUNT, ARG_DELEGATION_RATE},
+    auction::{ActiveBids, DelegationRate, ARG_AMOUNT, ARG_DELEGATION_RATE, METHOD_WITHDRAW_BID, METHOD_ADD_BID},
     bytesrepr::FromBytes,
     runtime_args, CLTyped, ContractHash, RuntimeArgs, U512,
 };
@@ -74,7 +74,7 @@ fn should_run_add_bid() {
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
-            ARG_ENTRY_POINT => "add_bid",
+            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
         },
@@ -99,7 +99,7 @@ fn should_run_add_bid() {
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
-            ARG_ENTRY_POINT => "add_bid",
+            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(BID_AMOUNT_2),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_2,
         },
@@ -124,7 +124,7 @@ fn should_run_add_bid() {
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
-            ARG_ENTRY_POINT => "withdraw_bid",
+            ARG_ENTRY_POINT => METHOD_WITHDRAW_BID,
             ARG_AMOUNT => U512::from(WITHDRAW_BID_AMOUNT_2),
         },
     )
