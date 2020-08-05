@@ -395,7 +395,13 @@ fn round_participation<'a, C: Context>(
     };
     match opt_vote {
         None => RoundParticipation::No,
-        Some((vh, vote)) if vote.round_exp <= r_id.trailing_zeros() => RoundParticipation::Yes(vh),
+        Some((vh, vote)) if vote.round_exp <= r_id.trailing_zeros() => {
+            if vote.timestamp >= r_id {
+                RoundParticipation::Yes(vh)
+            } else {
+                RoundParticipation::No
+            }
+        }
         Some((_, _)) => RoundParticipation::Unassigned,
     }
 }
