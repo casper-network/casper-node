@@ -395,8 +395,10 @@ fn round_participation<'a, C: Context>(
     };
     opt_vote.map_or(RoundParticipation::No, |(vh, vote)| {
         if vote.round_exp > r_id.trailing_zeros() {
+            // Round length doesn't divide `r_id`, so the validator was not assigned to that round.
             RoundParticipation::Unassigned
         } else if vote.timestamp < r_id {
+            // The latest vote in or before `r_id` was before `r_id`, so they didn't participate.
             RoundParticipation::No
         } else {
             RoundParticipation::Yes(vh)
