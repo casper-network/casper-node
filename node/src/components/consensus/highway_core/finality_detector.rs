@@ -7,7 +7,7 @@ use itertools::Itertools;
 
 use super::{
     highway::Highway,
-    state::{State, Weight},
+    state::{self, State, Weight},
     validators::{ValidatorIndex, ValidatorMap},
     vote::{Observation, Panorama, Vote},
 };
@@ -151,11 +151,10 @@ pub(crate) enum FinalityOutcome<C: Context> {
         value: C::ConsensusValue,
         /// The set of newly detected equivocators.
         new_equivocators: Vec<C::ValidatorId>,
-        /// Rewards, in trillionths (10^-12) of the total reward for one block.
-        /// This is a measure of the value of each validator's contribution to consensus.
+        /// Rewards for finalization of earlier blocks.
         ///
-        /// 1 trillion was chosen as a denominator here because it allows very precise fractions of
-        /// a block reward while still leaving space for millions of full rewards in a `u64`.
+        /// This is a measure of the value of each validator's contribution to consensus, in
+        /// fractions of a maximum `BLOCK_REWARD`.
         rewards: BTreeMap<C::ValidatorId, u64>,
         /// The timestamp at which this value was proposed.
         timestamp: Timestamp,
@@ -370,12 +369,12 @@ fn compute_rewards_for<C: Context>(
         .map(|(quorum, weight)| {
             // If the summit's quorum was not enough to finalize the block, rewards are reduced.
             let finality_factor = if *quorum * 2 > state.total_weight() + fault_w * 2 {
-                1_000_000_000_000
+                state::BLOCK_REWARD
             } else {
-                u128::from(state.forgiveness_factor())
+                state.forgiveness_factor()
             };
             // Rewards are proportional to the quorum and to the validator's weight.
-            let num = finality_factor * u128::from(*quorum) * u128::from(*weight);
+            let num = u128::from(finality_factor) * u128::from(*quorum) * u128::from(*weight);
             let denom = u128::from(assigned_weight) * u128::from(state.total_weight());
             (num / denom) as u64
         })

@@ -98,6 +98,13 @@ pub(crate) enum VoteError {
 /// `B` itself.
 const REWARD_DELAY: u64 = 8;
 
+/// A number representing the maximum total reward for finalizing one block.
+///
+/// Validator rewards for finalization must add up to this number or less.
+/// 1 trillion was chosen here because it allows very precise fractions of a block reward while
+/// still leaving space for millions of full rewards in a `u64`.
+pub(crate) const BLOCK_REWARD: u64 = 1_000_000_000_000;
+
 /// A passive instance of the Highway protocol, containing its local state.
 ///
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
@@ -144,7 +151,7 @@ impl<C: Context> State<C> {
             reward_index: BTreeMap::new(),
             evidence: HashMap::new(),
             panorama: Panorama::new(weights.len()),
-            forgiveness_factor: 200_000_000_000, // TODO: Make configurable. Builder?
+            forgiveness_factor: BLOCK_REWARD / 5, // TODO: Make configurable. Builder?
             seed,
         }
     }
