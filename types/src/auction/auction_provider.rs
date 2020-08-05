@@ -2,7 +2,7 @@ use alloc::{collections::BTreeMap, vec::Vec};
 
 use super::{
     internal,
-    providers::{MintProvider, ProofOfStakeProvider, StorageProvider, SystemProvider},
+    providers::{MintProvider, StorageProvider, SystemProvider},
     SeigniorageRecipient,
 };
 use crate::{
@@ -24,12 +24,10 @@ pub const ERA_VALIDATORS_KEY: &str = "era_validators";
 const AUCTION_SLOTS: usize = 5;
 
 /// Bondign auctions contract implementation.
-pub trait AuctionProvider:
-    StorageProvider + ProofOfStakeProvider + SystemProvider + MintProvider
+pub trait AuctionProvider: StorageProvider + SystemProvider + MintProvider
 where
     Error: From<<Self as StorageProvider>::Error>
         + From<<Self as SystemProvider>::Error>
-        + From<<Self as ProofOfStakeProvider>::Error>
         + From<<Self as MintProvider>::Error>,
 {
     /// Access: node
@@ -42,7 +40,10 @@ where
     /// it also flips the relevant field to True in the validator’s entry
     /// within founding_validators. Otherwise the function aborts.
     fn release_founder(&mut self, account_hash: AccountHash) -> Result<bool> {
+        // Called by node
         let mut founding_validators = internal::get_founder_validators(self)?;
+
+        // TODO: It should be aware of current time. Era makes more sense.
 
         match founding_validators.get_mut(&account_hash) {
             None => return Ok(false),
@@ -89,12 +90,12 @@ where
                 active_bids.get(&era_validator),
             ) {
                 (Some(founding_validator), None) => {
-                    seigniorage_recipient.stake += founding_validator.staked_amount;
-                    seigniorage_recipient.delegation_rate += founding_validator.delegation_rate;
+                    seigniorage_recipient.stake = founding_validator.staked_amount;
+                    seigniorage_recipient.delegation_rate = founding_validator.delegation_rate;
                 }
                 (None, Some(active_bid)) => {
-                    seigniorage_recipient.stake += active_bid.bid_amount;
-                    seigniorage_recipient.delegation_rate += active_bid.delegation_rate;
+                    seigniorage_recipient.stake = active_bid.bid_amount;
+                    seigniorage_recipient.delegation_rate = active_bid.delegation_rate;
                 }
                 _ => {
                     // It has to be either of those but can't be in both, or neither or those
@@ -127,9 +128,8 @@ where
         quantity: U512,
     ) -> Result<(URef, U512)> {
         // Creates new purse with desired amount taken from `source_purse`
-        let bonding_purse = self.create_purse();
-        self.transfer_from_purse_to_purse(source_purse, bonding_purse, quantity)
-            .map_err(Error::from)?;
+        // Bonds whole amount from the newly created purse
+        let (bonding_purse, _total_amount) = self.bond(quantity, source_purse)?;
 
         // Update bids or stakes
         let mut founder_validators = internal::get_founder_validators(self)?;
@@ -138,6 +138,7 @@ where
             // Update `founder_validators` map since `account_hash` belongs to a validator.
             Some(founding_validator) => {
                 founding_validator.bonding_purse = bonding_purse;
+                founding_validator.delegation_rate = delegation_rate;
                 founding_validator.staked_amount += quantity;
 
                 founding_validator.staked_amount
@@ -173,9 +174,6 @@ where
             }
         };
 
-        // Bonds whole amount from the newly created purse
-        self.bond(quantity, bonding_purse)?;
-
         Ok((bonding_purse, new_quantity))
     }
 
@@ -194,49 +192,40 @@ where
         // Update bids or stakes
         let mut founder_validators = internal::get_founder_validators(self)?;
 
-        let (bonding_purse, new_quantity) = match founder_validators.get_mut(&account_hash) {
+        let (unbonding_purse, _total_quantity) = self.unbond(quantity)?;
+
+        let new_quantity = match founder_validators.get_mut(&account_hash) {
             Some(founding_validator) => {
                 // Carefully decrease bonded funds
-                let (bonding_purse, new_quantity) =
-                    match founding_validator.staked_amount.checked_sub(quantity) {
-                        Some(new_staked_amount) => {
-                            (founding_validator.bonding_purse, new_staked_amount)
-                        }
-                        None => {
-                            // Decreasing passed quantity would result in negative stake
-                            return Err(Error::InvalidQuantity);
-                        }
-                    };
+
+                let new_staked_amount = founding_validator
+                    .staked_amount
+                    .checked_sub(quantity)
+                    .ok_or(Error::InvalidQuantity)?;
 
                 internal::set_founder_validators(self, founder_validators)?;
 
-                (bonding_purse, new_quantity)
+                new_staked_amount
             }
             None => {
                 let mut active_bids = internal::get_active_bids(self)?;
 
-                let (bid_purse, new_amount) = match active_bids.get_mut(&account_hash) {
-                    Some(active_bid) => {
-                        let new_amount = active_bid
-                            .bid_amount
-                            .checked_sub(quantity)
-                            .ok_or(Error::InvalidQuantity)?;
-                        (active_bid.bid_purse, new_amount)
-                    }
-                    None => {
-                        // If the target bid does not exist, the function call returns an error
-                        return Err(Error::BidNotFound);
-                    }
-                };
+                // If the target bid does not exist, the function call returns an error
+                let active_bid = active_bids
+                    .get_mut(&account_hash)
+                    .ok_or(Error::BidNotFound)?;
+                let new_amount = active_bid
+                    .bid_amount
+                    .checked_sub(quantity)
+                    .ok_or(Error::InvalidQuantity)?;
 
                 internal::set_active_bids(self, active_bids)?;
-                (bid_purse, new_amount)
+
+                new_amount
             }
         };
 
-        self.unbond(Some(quantity))?;
-
-        Ok((bonding_purse, new_quantity))
+        Ok((unbonding_purse, new_quantity))
     }
 
     /// Adds a new delegator to delegators, or tops off a current
@@ -296,6 +285,9 @@ where
         quantity: U512,
     ) -> Result<U512> {
         let active_bids = internal::get_active_bids(self)?;
+
+        // TODO: unbond first
+
         // Return early if target validator is not in `active_bids`
         let _active_bid = active_bids
             .get(&validator_account_hash)
@@ -369,6 +361,8 @@ where
     fn run_auction(&mut self) -> Result<()> {
         let active_bids = internal::get_active_bids(self)?;
         let founder_validators = internal::get_founder_validators(self)?;
+
+        // TODO: include founding validators with winners == true
 
         // Prepare two iterables containing account hashes with their amounts.
         let active_bids_scores =

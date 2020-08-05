@@ -19,7 +19,7 @@ use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef, Trap, TrapKind
 
 use casperlabs_types::{
     account::{AccountHash, ActionType, Weight},
-    auction::AuctionProvider,
+    auction::{self, AuctionProvider},
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
         self, Contract, ContractPackage, ContractVersion, ContractVersions, DisabledVersions,
@@ -1800,7 +1800,7 @@ where
             // Type: `fn release_founder_stake(validator_account_hash: AccountHash) -> Result<bool, Error>`
             METHOD_RELEASE_FOUNDER_STAKE => {
                 let validator_account_hash: AccountHash =
-                    Self::get_named_argument(&runtime_args, "validator_account_hash")?;
+                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_ACCOUNT_HASH)?;
                 let result = mint_context
                     .release_founder_stake(validator_account_hash)
                     .map_err(Self::reverter)?;
@@ -2014,7 +2014,8 @@ where
 
         let ret: CLValue = match entry_point_name {
             METHOD_RELEASE_FOUNDER => {
-                let account_hash = Self::get_named_argument(&runtime_args, "account_hash")?;
+                let account_hash =
+                    Self::get_named_argument(&runtime_args, auction::ARG_ACCOUNT_HASH)?;
 
                 let result = runtime.release_founder(account_hash);
 
@@ -2034,10 +2035,13 @@ where
             }
 
             METHOD_ADD_BID => {
-                let account_hash = Self::get_named_argument(&runtime_args, "account_hash")?;
-                let source_purse = Self::get_named_argument(&runtime_args, "source_purse")?;
-                let delegation_rate = Self::get_named_argument(&runtime_args, "delegation_rate")?;
-                let quantity = Self::get_named_argument(&runtime_args, "quantity")?;
+                let account_hash =
+                    Self::get_named_argument(&runtime_args, auction::ARG_ACCOUNT_HASH)?;
+                let source_purse =
+                    Self::get_named_argument(&runtime_args, auction::ARG_SOURCE_PURSE)?;
+                let delegation_rate =
+                    Self::get_named_argument(&runtime_args, auction::ARG_DELEGATION_RATE)?;
+                let quantity = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = self
                     .add_bid(account_hash, source_purse, delegation_rate, quantity)
@@ -2047,8 +2051,9 @@ where
             }
 
             METHOD_WITHDRAW_BID => {
-                let account_hash = Self::get_named_argument(&runtime_args, "account_hash")?;
-                let quantity = Self::get_named_argument(&runtime_args, "quantity")?;
+                let account_hash =
+                    Self::get_named_argument(&runtime_args, auction::ARG_ACCOUNT_HASH)?;
+                let quantity = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = self
                     .withdraw_bid(account_hash, quantity)
@@ -2058,11 +2063,12 @@ where
 
             METHOD_DELEGATE => {
                 let delegator_account_hash =
-                    Self::get_named_argument(&runtime_args, "delegator_account_hash")?;
-                let source_purse = Self::get_named_argument(&runtime_args, "source_purse")?;
+                    Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR_ACCOUNT_HASH)?;
+                let source_purse =
+                    Self::get_named_argument(&runtime_args, auction::ARG_SOURCE_PURSE)?;
                 let validator_account_hash =
-                    Self::get_named_argument(&runtime_args, "validator_account_hash")?;
-                let quantity = Self::get_named_argument(&runtime_args, "quantity")?;
+                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_ACCOUNT_HASH)?;
+                let quantity = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = self
                     .delegate(
@@ -2078,10 +2084,10 @@ where
 
             METHOD_UNDELEGATE => {
                 let delegator_account_hash =
-                    Self::get_named_argument(&runtime_args, "delegator_account_hash")?;
+                    Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR_ACCOUNT_HASH)?;
                 let validator_account_hash =
-                    Self::get_named_argument(&runtime_args, "validator_account_hash")?;
-                let quantity = Self::get_named_argument(&runtime_args, "quantity")?;
+                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_ACCOUNT_HASH)?;
+                let quantity = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = self
                     .undelegate(delegator_account_hash, validator_account_hash, quantity)
@@ -2092,7 +2098,7 @@ where
 
             METHOD_QUASH_BID => {
                 let validator_keys: Vec<AccountHash> =
-                    Self::get_named_argument(&runtime_args, "validator_keys")?;
+                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_KEYS)?;
 
                 runtime.quash_bid(&validator_keys).map_err(Self::reverter)?;
 

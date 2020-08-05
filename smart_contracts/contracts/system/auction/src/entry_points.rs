@@ -8,7 +8,8 @@ use casperlabs_contract::{
 use casperlabs_types::{
     account::AccountHash,
     auction::{
-        AuctionProvider, MintProvider, {ProofOfStakeProvider, StorageProvider, SystemProvider},
+        AuctionProvider, MintProvider, ARG_ACCOUNT_HASH, ARG_AMOUNT, ARG_DELEGATION_RATE,
+        ARG_PURSE, {StorageProvider, SystemProvider},
     },
     auction::{DelegationRate, SeigniorageRecipients},
     bytesrepr::{FromBytes, ToBytes},
@@ -28,10 +29,6 @@ const METHOD_UNDELEGATE: &str = "undelegate";
 const METHOD_QUASH_BID: &str = "quash_bid";
 const METHOD_RUN_AUCTION: &str = "run_auction";
 
-const ARG_ACCOUNT_HASH: &str = "account_hash";
-
-const ARG_AMOUNT: &str = "amount";
-const ARG_PURSE: &str = "purse";
 const BOND: &str = "bond";
 const UNBOND: &str = "unbond";
 const RELEASE_FOUNDER_STAKE: &str = "release_founder_stake";
@@ -55,33 +52,13 @@ impl StorageProvider for AuctionContract {
     }
 }
 
-impl ProofOfStakeProvider for AuctionContract {
-    type Error = Error;
-
-    fn bond(&mut self, amount: U512, purse: URef) -> Result<(), Self::Error> {
-        let contract_hash = system::get_proof_of_stake();
-        let args = runtime_args! {
-            ARG_AMOUNT => amount,
-            ARG_PURSE => purse,
-        };
-        runtime::call_contract::<()>(contract_hash, BOND, args);
-        Ok(())
-    }
-
-    fn unbond(&mut self, amount: Option<U512>) -> Result<(), Self::Error> {
-        let contract_hash = system::get_proof_of_stake();
-        let args = runtime_args! {
-            ARG_AMOUNT => amount,
-        };
-        runtime::call_contract::<()>(contract_hash, UNBOND, args);
-        Ok(())
-    }
-}
-
 impl SystemProvider for AuctionContract {
     type Error = Error;
     fn create_purse(&mut self) -> URef {
         system::create_purse()
+    }
+    fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Self::Error> {
+        Ok(system::get_balance(purse))
     }
     fn transfer_from_purse_to_purse(
         &mut self,
@@ -95,6 +72,25 @@ impl SystemProvider for AuctionContract {
 
 impl MintProvider for AuctionContract {
     type Error = Error;
+
+    fn bond(&mut self, amount: U512, purse: URef) -> Result<(URef, U512), Self::Error> {
+        let contract_hash = system::get_mint();
+        let args = runtime_args! {
+            ARG_AMOUNT => amount,
+            ARG_PURSE => purse,
+        };
+
+        Ok(runtime::call_contract(contract_hash, BOND, args))
+    }
+
+    fn unbond(&mut self, amount: U512) -> Result<(URef, U512), Self::Error> {
+        let contract_hash = system::get_mint();
+        let args = runtime_args! {
+            ARG_AMOUNT => amount,
+        };
+        Ok(runtime::call_contract(contract_hash, UNBOND, args))
+    }
+
     fn release_founder_stake(&mut self, account_hash: AccountHash) -> StdResult<bool, Self::Error> {
         let contract_hash = system::get_mint();
         let args = runtime_args! {
@@ -139,8 +135,8 @@ pub extern "C" fn read_seigniorage_recipients() {
 pub extern "C" fn add_bid() {
     let account_hash = runtime::get_named_arg("account_hash");
     let source_purse = runtime::get_named_arg("source_purse");
-    let delegation_rate = runtime::get_named_arg("delegation_rate");
-    let quantity = runtime::get_named_arg("quantity");
+    let delegation_rate = runtime::get_named_arg(ARG_DELEGATION_RATE);
+    let quantity = runtime::get_named_arg(ARG_AMOUNT);
 
     let result = AuctionContract
         .add_bid(account_hash, source_purse, delegation_rate, quantity)
@@ -153,7 +149,7 @@ pub extern "C" fn add_bid() {
 #[no_mangle]
 pub extern "C" fn withdraw_bid() {
     let account_hash = runtime::get_named_arg("account_hash");
-    let quantity = runtime::get_named_arg("quantity");
+    let quantity = runtime::get_named_arg(ARG_AMOUNT);
 
     let result = AuctionContract
         .withdraw_bid(account_hash, quantity)
@@ -167,7 +163,7 @@ pub extern "C" fn delegate() {
     let delegator_account_hash = runtime::get_named_arg("delegator_account_hash");
     let source_purse = runtime::get_named_arg("source_purse");
     let validator_account_hash = runtime::get_named_arg("validator_account_hash");
-    let quantity = runtime::get_named_arg("quantity");
+    let quantity = runtime::get_named_arg(ARG_AMOUNT);
 
     let result = AuctionContract
         .delegate(
@@ -186,7 +182,7 @@ pub extern "C" fn delegate() {
 pub extern "C" fn undelegate() {
     let delegator_account_hash = runtime::get_named_arg("delegator_account_hash");
     let validator_account_hash = runtime::get_named_arg("validator_account_hash");
-    let quantity = runtime::get_named_arg("quantity");
+    let quantity = runtime::get_named_arg(ARG_AMOUNT);
 
     let result = AuctionContract
         .undelegate(delegator_account_hash, validator_account_hash, quantity)
@@ -245,8 +241,8 @@ pub fn get_entry_points() -> EntryPoints {
         vec![
             Parameter::new("account_hash", AccountHash::cl_type()),
             Parameter::new("source_purse", URef::cl_type()),
-            Parameter::new("delegation_rate", DelegationRate::cl_type()),
-            Parameter::new("quantity", U512::cl_type()),
+            Parameter::new(ARG_DELEGATION_RATE, DelegationRate::cl_type()),
+            Parameter::new(ARG_AMOUNT, U512::cl_type()),
         ],
         <(URef, U512)>::cl_type(),
         EntryPointAccess::Public,
@@ -258,7 +254,7 @@ pub fn get_entry_points() -> EntryPoints {
         METHOD_WITHDRAW_BID,
         vec![
             Parameter::new("account_hash", AccountHash::cl_type()),
-            Parameter::new("quantity", U512::cl_type()),
+            Parameter::new(ARG_AMOUNT, U512::cl_type()),
         ],
         <(URef, U512)>::cl_type(),
         EntryPointAccess::Public,
@@ -272,7 +268,7 @@ pub fn get_entry_points() -> EntryPoints {
             Parameter::new("delegator_account_hash", AccountHash::cl_type()),
             Parameter::new("source_purse", URef::cl_type()),
             Parameter::new("validator_account_hash", AccountHash::cl_type()),
-            Parameter::new("quantity", U512::cl_type()),
+            Parameter::new(ARG_AMOUNT, U512::cl_type()),
         ],
         <(URef, U512)>::cl_type(),
         EntryPointAccess::Public,
@@ -285,7 +281,7 @@ pub fn get_entry_points() -> EntryPoints {
         vec![
             Parameter::new("delegator_account_hash", AccountHash::cl_type()),
             Parameter::new("validator_account_hash", AccountHash::cl_type()),
-            Parameter::new("quantity", U512::cl_type()),
+            Parameter::new(ARG_AMOUNT, U512::cl_type()),
         ],
         U512::cl_type(),
         EntryPointAccess::Public,

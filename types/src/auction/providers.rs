@@ -20,22 +20,16 @@ pub trait StorageProvider {
     fn write<T: ToBytes + CLTyped>(&mut self, uref: URef, value: T) -> Result<(), Self::Error>;
 }
 
-/// Provides functionality of a proof of stake contract.
-pub trait ProofOfStakeProvider {
-    /// Error representation for PoS errors.
-    type Error: From<Error>;
-
-    /// Bond specified amount from a purse.
-    fn bond(&mut self, amount: U512, purse: URef) -> Result<(), Self::Error>;
-
-    /// Unbond specified amount.
-    fn unbond(&mut self, amount: Option<U512>) -> Result<(), Self::Error>;
-}
-
 /// Provides functionality of a mint contract.
 pub trait MintProvider {
     /// Error representation for Mint errors.
     type Error: From<Error>;
+
+    /// Bond specified amount from a purse.
+    fn bond(&mut self, amount: U512, purse: URef) -> Result<(URef, U512), Self::Error>;
+
+    /// Unbond specified amount.
+    fn unbond(&mut self, amount: U512) -> Result<(URef, U512), Self::Error>;
 
     /// Sets the Bool field in the tuple representing a founding validator's stake to True, enabling this validator to unbond.
     fn release_founder_stake(&mut self, account_hash: AccountHash) -> Result<bool, Self::Error>;
@@ -48,6 +42,9 @@ pub trait SystemProvider {
 
     /// Creates new purse.
     fn create_purse(&mut self) -> URef;
+
+    /// Gets purse balance.
+    fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Self::Error>;
 
     /// Transfers specified `amount` of tokens from `source` purse into a `target` purse.
     fn transfer_from_purse_to_purse(

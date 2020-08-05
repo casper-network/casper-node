@@ -154,6 +154,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "auction-bids"
+version = "0.1.0"
+dependencies = [
+ "casperlabs-contract",
+ "casperlabs-types",
+]
+
+[[package]]
 name = "auction-install"
 version = "0.1.0"
 dependencies = [

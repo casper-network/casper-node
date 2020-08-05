@@ -50,6 +50,9 @@ pub enum Error {
     /// Raised when Mint contract is unable to release founder stake.
     #[fail(display = "Unable to release founder stake")]
     ReleaseFounderStake = 12,
+    /// Raised when the system is unable to determine purse balance.
+    #[fail(display = "Unable to get purse balance")]
+    GetBalance = 13,
 }
 
 impl CLTyped for Error {

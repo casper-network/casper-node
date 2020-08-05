@@ -1,8 +1,6 @@
 use casperlabs_types::{
     account::AccountHash,
-    auction::{
-        AuctionProvider, MintProvider, ProofOfStakeProvider, StorageProvider, SystemProvider,
-    },
+    auction::{AuctionProvider, MintProvider, StorageProvider, SystemProvider},
     bytesrepr::{FromBytes, ToBytes},
     runtime_args,
     system_contract_errors::auction::Error,
@@ -52,6 +50,9 @@ where
     fn create_purse(&mut self) -> URef {
         Runtime::create_purse(self).unwrap()
     }
+    fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Self::Error> {
+        Runtime::get_balance(self, purse).map_err(|_| Error::GetBalance)
+    }
     fn transfer_from_purse_to_purse(
         &mut self,
         source: URef,
@@ -64,14 +65,14 @@ where
     }
 }
 
-impl<'a, R> ProofOfStakeProvider for Runtime<'a, R>
+impl<'a, R> MintProvider for Runtime<'a, R>
 where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
     type Error = Error;
 
-    fn bond(&mut self, amount: U512, purse: URef) -> Result<(), Self::Error> {
+    fn bond(&mut self, amount: U512, purse: URef) -> Result<(URef, U512), Self::Error> {
         const ARG_AMOUNT: &str = "amount";
         const ARG_PURSE: &str = "purse";
 
@@ -82,14 +83,13 @@ where
 
         let mint_contract_hash = self.get_mint_contract();
 
-        let _result = self
+        let result = self
             .call_contract(mint_contract_hash, "bond", args_values)
             .map_err(|_| Error::Bonding)?;
-        debug_assert_eq!(_result, CLValue::from_t(()).unwrap());
-        Ok(())
+        Ok(result.into_t().map_err(|_| Error::Bonding)?)
     }
 
-    fn unbond(&mut self, amount: Option<U512>) -> Result<(), Self::Error> {
+    fn unbond(&mut self, amount: U512) -> Result<(URef, U512), Self::Error> {
         const ARG_AMOUNT: &str = "amount";
 
         let args_values: RuntimeArgs = runtime_args! {
@@ -98,20 +98,12 @@ where
 
         let mint_contract_hash = self.get_mint_contract();
 
-        let _result = self
+        let result = self
             .call_contract(mint_contract_hash, "unbond", args_values)
             .map_err(|_| Error::Unbonding)?;
-        debug_assert_eq!(_result, CLValue::from_t(()).unwrap());
-        Ok(())
+        Ok(result.into_t().map_err(|_| Error::Unbonding)?)
     }
-}
 
-impl<'a, R> MintProvider for Runtime<'a, R>
-where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
-{
-    type Error = Error;
     fn release_founder_stake(&mut self, account_hash: AccountHash) -> Result<bool, Self::Error> {
         const ARG_ACCOUNT_HASH: &str = "account_hash";
 
