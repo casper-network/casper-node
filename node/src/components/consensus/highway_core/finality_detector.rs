@@ -328,22 +328,10 @@ fn compute_rewards_for<C: Context>(
     let mut assigned_weight = Weight(0);
     let mut latest = ValidatorMap::from(vec![None; panorama.len()]);
     for (idx, obs) in panorama.enumerate() {
-        // Find the validator's latest vote in or before round `r_id`.
-        let opt_vote = match obs {
-            Observation::Faulty => continue, // Faulty validator aren't assigned to any round.
-            Observation::None => None,
-            Observation::Correct(latest_vh) => state
-                .swimlane(latest_vh)
-                .find(|&(_, vote)| vote.round_id() <= r_id),
-        };
-        match opt_vote {
-            None => (), // No vote in or before round `r_id`. This is considered assigned.
-            Some((vh, vote)) if vote.round_exp <= r_id.trailing_zeros() => {
-                if vote.timestamp >= r_id {
-                    latest[idx] = Some(vh); // This vote is in round `r_id`. Validator took part.
-                }
-            }
-            Some((_, _)) => continue, // Validator is not assigned to this round.
+        match round_participation(state, obs, r_id) {
+            RoundParticipation::Unassigned => continue,
+            RoundParticipation::No => (),
+            RoundParticipation::Yes(latest_vh) => latest[idx] = Some(latest_vh),
         }
         assigned_weight += state.weight(idx);
     }
@@ -379,6 +367,37 @@ fn compute_rewards_for<C: Context>(
             (num / denom) as u64
         })
         .collect()
+}
+
+/// Information about how a validator participated in a particular round.
+enum RoundParticipation<'a, C: Context> {
+    /// The validator was not assigned: The round ID was not the beginning of one of their rounds.
+    Unassigned,
+    /// The validator was assigned but did not create any messages in that round.
+    No,
+    /// The validator participated, and this is their latest message in that round.
+    Yes(&'a C::Hash),
+}
+
+/// Returns information about the participation of a validator with `obs` in round `r_id`.
+fn round_participation<'a, C: Context>(
+    state: &'a State<C>,
+    obs: &'a Observation<C>,
+    r_id: Timestamp,
+) -> RoundParticipation<'a, C> {
+    // Find the validator's latest vote in or before round `r_id`.
+    let opt_vote = match obs {
+        Observation::Faulty => return RoundParticipation::Unassigned,
+        Observation::None => return RoundParticipation::No,
+        Observation::Correct(latest_vh) => state
+            .swimlane(latest_vh)
+            .find(|&(_, vote)| vote.round_id() <= r_id),
+    };
+    match opt_vote {
+        None => RoundParticipation::No,
+        Some((vh, vote)) if vote.round_exp <= r_id.trailing_zeros() => RoundParticipation::Yes(vh),
+        Some((_, _)) => RoundParticipation::Unassigned,
+    }
 }
 
 #[allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
