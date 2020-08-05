@@ -380,7 +380,10 @@ mod tests {
     use tempfile::NamedTempFile;
 
     use super::*;
-    use crate::utils::read_file_to_string;
+    use crate::{
+        testing::{self, TestRng},
+        utils::read_file_to_string,
+    };
 
     const TEST_ROOT: &str = "resources/test/valid";
     const CHAINSPEC_CONFIG_NAME: &str = "chainspec.toml";
@@ -554,5 +557,12 @@ mod tests {
         // Check the parsed chainspec.
         let spec = Chainspec::from_toml(chainspec_config.path()).unwrap();
         check_spec(spec);
+    }
+
+    #[test]
+    fn rmp_serde_roundtrip() {
+        let mut rng = TestRng::new();
+        let chainspec = Chainspec::random(&mut rng);
+        testing::rmp_serde_roundtrip(&chainspec);
     }
 }

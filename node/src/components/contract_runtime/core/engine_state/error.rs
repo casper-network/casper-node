@@ -38,10 +38,10 @@ pub enum Error {
     MissingSystemContract(String),
     #[error("Bytesrepr error: {0}")]
     Bytesrepr(String),
-    #[error("bincode serialization: {0}")]
-    BincodeSerialization(#[source] bincode::ErrorKind),
-    #[error("bincode deserialization: {0}")]
-    BincodeDeserialization(#[source] bincode::ErrorKind),
+    #[error("rmp-serde serialization: {0}")]
+    RmpSerdeSerialization(#[from] rmp_serde::encode::Error),
+    #[error("rmp-serde deserialization: {0}")]
+    RmpSerdeDeserialization(#[from] rmp_serde::decode::Error),
     #[error("Mint error: {0}")]
     Mint(String),
     #[error("Unsupported key type: {0}")]
@@ -50,18 +50,6 @@ pub enum Error {
     InvalidUpgradeResult,
     #[error("Unsupported deploy item variant: {0}")]
     InvalidDeployItemVariant(String),
-}
-
-impl Error {
-    pub(crate) fn from_serialization(error: bincode::ErrorKind) -> Self {
-        Error::BincodeSerialization(error)
-    }
-
-    // TODO - remove lint relaxation, or remove method if not required
-    #[allow(dead_code)]
-    pub(crate) fn from_deserialization(error: bincode::ErrorKind) -> Self {
-        Error::BincodeDeserialization(error)
-    }
 }
 
 impl From<execution::Error> for Error {

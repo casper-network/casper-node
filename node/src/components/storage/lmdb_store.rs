@@ -37,8 +37,7 @@ impl<V: Value> LmdbStore<V> {
     fn get_values(&self, ids: Multiple<V::Id>) -> Multiple<Result<Option<V>>> {
         let mut serialized_ids = Multiple::new();
         for id in &ids {
-            serialized_ids
-                .push(bincode::serialize(id).map_err(|error| Error::from_serialization(*error)));
+            serialized_ids.push(rmp_serde::to_vec(id).map_err(Error::from));
         }
 
         let mut values = smallvec![];
@@ -48,9 +47,9 @@ impl<V: Value> LmdbStore<V> {
                 Ok(id) => {
                     match txn.get(self.db, &id) {
                         Ok(serialized_value) => {
-                            let value_result = bincode::deserialize(serialized_value)
+                            let value_result = rmp_serde::from_read_ref(serialized_value)
                                 .map(Some)
-                                .map_err(|error| Error::from_deserialization(*error));
+                                .map_err(Error::from);
                             values.push(value_result)
                         }
                         Err(lmdb::Error::NotFound) => {
@@ -71,10 +70,8 @@ impl<V: Value> Store for LmdbStore<V> {
     type Value = V;
 
     fn put(&self, value: V) -> Result<bool> {
-        let id =
-            bincode::serialize(value.id()).map_err(|error| Error::from_serialization(*error))?;
-        let serialized_value =
-            bincode::serialize(&value).map_err(|error| Error::from_serialization(*error))?;
+        let id = rmp_serde::to_vec(value.id())?;
+        let serialized_value = rmp_serde::to_vec(&value)?;
         let mut txn = self.env.begin_rw_txn().expect("should create rw txn");
         let result = match txn.put(self.db, &id, &serialized_value, WriteFlags::NO_OVERWRITE) {
             Ok(()) => true,
@@ -104,8 +101,7 @@ impl<V: Value> Store for LmdbStore<V> {
                 .open_ro_cursor(self.db)
                 .expect("should create ro cursor");
             for (id, _value) in cursor.iter() {
-                let id: V::Id = bincode::deserialize(id)
-                    .map_err(|error| Error::from_deserialization(*error))?;
+                let id: V::Id = rmp_serde::from_read_ref(id)?;
                 ids.push(id);
             }
         }
