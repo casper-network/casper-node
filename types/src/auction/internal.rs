@@ -1,5 +1,6 @@
 use crate::{
-    auction::{ActiveBids, Delegators, FoundingValidators},
+    account::AccountHash,
+    auction::{ActiveBids, DelegationsMap, FoundingValidators},
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::{Error, Result},
     CLTyped,
@@ -71,22 +72,40 @@ where
     write_to(provider, ACTIVE_BIDS_KEY, active_bids)
 }
 
-pub fn get_delegators<P: StorageProvider + ?Sized>(provider: &mut P) -> Result<Delegators>
+pub fn get_delegations_map<P: StorageProvider + ?Sized>(provider: &mut P) -> Result<DelegationsMap>
 where
     Error: From<P::Error>,
 {
-    read_from(provider, DELEGATORS_KEY)
+    read_from(provider, DELEGATIONS_MAP_KEY)
 }
 
-pub fn set_delegators<P: StorageProvider + ?Sized>(
+pub fn set_delegations_map<P: StorageProvider + ?Sized>(
     provider: &mut P,
-    delegators: Delegators,
+    delegations_map: DelegationsMap,
 ) -> Result<()>
 where
     Error: From<P::Error>,
 {
-    write_to(provider, DELEGATORS_KEY, delegators)
+    write_to(provider, DELEGATIONS_MAP_KEY, delegations_map)
 }
+
+pub fn get_tally_map<P: StorageProvider + ?Sized>(provider: &mut P) -> Result<TallyMap>
+where
+    Error: From<P::Error>,
+{
+    read_from(provider, TALLY_MAP_KEY)
+}
+
+pub fn set_tally<P: StorageProvider + ?Sized>(
+    provider: &mut P,
+    tally: TallyMap,
+) -> Result<()>
+where
+    Error: From<P::Error>,
+{
+    write_to(provider, TALLY_MAP_KEY, tally)
+}
+
 
 pub fn get_era_validators<P: StorageProvider + ?Sized>(provider: &mut P) -> Result<EraValidators>
 where

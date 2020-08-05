@@ -119,11 +119,11 @@ pub trait ProofOfStake:
                 continue;
             }
 
-            let total_delegated_amount: U512 = seigniorage_recipient.delegators.values().cloned().sum();
+            let total_delegated_amount: U512 = seigniorage_recipient.delegations.values().cloned().sum();
             // let validators_stake: U512 = total_stake - total_delegated_amount;
             // Compute delegators' part
             let mut delegators_part: U512 = reward * total_delegated_amount / total_stake;
-            let commission: U512 = delegators_part * seigniorage_recipient.delegation_rate / DELEGATION_RATE_DENOMINATOR;
+            let commission: U512 = delegators_part * seigniorage_recipient.commission_rate / DELEGATION_RATE_DENOMINATOR;
             delegators_part = delegators_part - commission;
             
             // Validator receives the rest

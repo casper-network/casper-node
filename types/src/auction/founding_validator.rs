@@ -6,6 +6,8 @@ use crate::{
     CLType, CLTyped, PublicKey, URef, U512,
 };
 
+use super::types::CommissionRate;
+
 /// An entry in a founding validator map.
 #[derive(PartialEq, Debug)]
 pub struct FoundingValidator {
@@ -13,8 +15,8 @@ pub struct FoundingValidator {
     pub bonding_purse: URef,
     /// The total amount of staked tokens.
     pub staked_amount: U512,
-    /// Delegation rate
-    pub delegation_rate: DelegationRate,
+    /// Commission rate
+    pub commission_rate: CommissionRate,
     /// A flag that represents a winning entry.
     pub funds_locked: bool,
 }
@@ -25,7 +27,7 @@ impl FoundingValidator {
         Self {
             bonding_purse,
             staked_amount,
-            delegation_rate: 0,
+            commission_rate: 0,
             funds_locked: true,
         }
     }
@@ -84,14 +86,14 @@ pub type FoundingValidators = BTreeMap<PublicKey, FoundingValidator>;
 #[cfg(test)]
 mod tests {
     use super::FoundingValidator;
-    use crate::{auction::DelegationRate, bytesrepr, AccessRights, URef, U512};
+    use crate::{auction::CommissionRate, bytesrepr, AccessRights, URef, U512};
 
     #[test]
     fn serialization_roundtrip() {
         let founding_validator = FoundingValidator {
             bonding_purse: URef::new([42; 32], AccessRights::READ_ADD_WRITE),
             staked_amount: U512::one(),
-            delegation_rate: DelegationRate::max_value(),
+            commission_rate: CommissionRate::max_value(),
             funds_locked: true,
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);

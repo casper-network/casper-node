@@ -9,7 +9,7 @@ use super::{
 };
 use crate::{
     account::AccountHash,
-    auction::{ActiveBid, DelegationRate},
+    auction::{ActiveBid, CommissionRate},
     system_contract_errors::auction::{Error, Result},
     PublicKey, URef, U512,
 };
@@ -89,7 +89,7 @@ where
         &mut self,
         public_key: PublicKey,
         source_purse: URef,
-        delegation_rate: DelegationRate,
+        delegation_rate: CommissionRate,
         quantity: U512,
     ) -> Result<(URef, U512)> {
         // Creates new purse with desired amount taken from `source_purse`
@@ -223,7 +223,7 @@ where
             self.bond(delegator_public_key, quantity, source_purse)?;
 
         let new_quantity = {
-            let mut delegators = internal::get_delegators(self)?;
+            let mut delegators = internal::get_delegations_map(self)?;
 
             let new_quantity = *delegators
                 .entry(validator_public_key)
@@ -232,7 +232,7 @@ where
                 .and_modify(|delegator| *delegator += quantity)
                 .or_insert_with(|| quantity);
 
-            internal::set_delegators(self, delegators)?;
+            internal::set_delegations_map(self, delegators)?;
 
             new_quantity
         };
@@ -262,7 +262,7 @@ where
             .get(&validator_public_key)
             .ok_or(Error::ValidatorNotFound)?;
 
-        let mut delegators = internal::get_delegators(self)?;
+        let mut delegators = internal::get_delegations_map(self)?;
         let delegators_map = delegators
             .get_mut(&validator_public_key)
             .ok_or(Error::DelegatorNotFound)?;
@@ -284,7 +284,7 @@ where
             debug_assert!(_value.is_zero());
         }
 
-        internal::set_delegators(self, delegators)?;
+        internal::set_delegations_map(self, delegators)?;
 
         Ok(new_amount)
     }
@@ -451,6 +451,30 @@ where
         internal::set_era_id(self, era_id)?;
 
         internal::set_era_validators(self, era_validators)
+    }
+
+    /// Distributes rewards to the delegators associated with `validator_account_hash`
+    fn distribute_to_delegators(&mut self, validator_account_hash: AccountHash, amount: U512) -> Result<()> {
+        // let delegations_map= internal::get_delegations(self)?;
+        // let delegations = delegations_map.get(&validator_account_hash).unwrap();
+
+        // let tally_map= internal::get_tally(self)?;
+        // let tally = tally_map.get(&validator_account_hash).unwrap();
+
+        let total_stake_map= internal::get_total_stake(self)?;
+        let total_stake = total_stake_map.get(&validator_account_hash).unwrap();
+
+        if total_stake == 0 {
+            todo!(); // throw error
+        } 
+
+        let reward_per_stake_map = internal::get_reward_per_stake(self)?;
+        let reward_per_stake = reward_per_stake_map.get(&validator_account_hash).unwrap();
+
+        // for (account_hash, rewards) in delegations {
+
+        // }
+
     }
 
     /// Reads current era id.

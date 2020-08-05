@@ -14,7 +14,7 @@ use casperlabs_types::{
         METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS, METHOD_RUN_AUCTION,
         METHOD_UNDELEGATE, METHOD_WITHDRAW_BID, {StorageProvider, SystemProvider},
     },
-    auction::{DelegationRate, SeigniorageRecipients},
+    auction::{CommissionRate, SeigniorageRecipients},
     bytesrepr::{FromBytes, ToBytes},
     runtime_args,
     system_contract_errors::auction::Error,
@@ -218,7 +218,7 @@ pub fn get_entry_points() -> EntryPoints {
         vec![
             Parameter::new(ARG_PUBLIC_KEY, AccountHash::cl_type()),
             Parameter::new(ARG_SOURCE_PURSE, URef::cl_type()),
-            Parameter::new(ARG_DELEGATION_RATE, DelegationRate::cl_type()),
+            Parameter::new(ARG_DELEGATION_RATE, CommissionRate::cl_type()),
             Parameter::new(ARG_AMOUNT, U512::cl_type()),
         ],
         <(URef, U512)>::cl_type(),

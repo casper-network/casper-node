@@ -1,6 +1,6 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use super::types::DelegationRate;
+use super::types::CommissionRate;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     CLType, CLTyped, PublicKey, URef, U512,
@@ -15,7 +15,7 @@ pub struct ActiveBid {
     /// Total amount of bid.
     pub bid_amount: U512,
     /// Rate of delegation.
-    pub delegation_rate: DelegationRate,
+    pub delegation_rate: CommissionRate,
 }
 
 impl CLTyped for ActiveBid {
@@ -64,14 +64,14 @@ pub type ActiveBids = BTreeMap<PublicKey, ActiveBid>;
 #[cfg(test)]
 mod tests {
     use super::ActiveBid;
-    use crate::{auction::DelegationRate, bytesrepr, AccessRights, URef, U512};
+    use crate::{auction::CommissionRate, bytesrepr, AccessRights, URef, U512};
 
     #[test]
     fn serialization_roundtrip() {
         let active_bid = ActiveBid {
             bid_purse: URef::new([42; 32], AccessRights::READ_ADD_WRITE),
             bid_amount: U512::max_value(),
-            delegation_rate: DelegationRate::max_value(),
+            delegation_rate: CommissionRate::max_value(),
         };
         bytesrepr::test_serialization_roundtrip(&active_bid);
     }
