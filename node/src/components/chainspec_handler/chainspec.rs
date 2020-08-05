@@ -359,6 +359,15 @@ impl Chainspec {
         let upgrades = vec![UpgradePoint::random(rng), UpgradePoint::random(rng)];
         Chainspec { genesis, upgrades }
     }
+
+    /// Constructs a chainspec from the chainspec.toml in 'resources/local'.
+    #[cfg(test)]
+    pub fn from_resources_local() -> Self {
+        const PATH: &str = "resources/local/chainspec.toml";
+
+        let path = format!("{}/../{}", env!("CARGO_MANIFEST_DIR"), PATH);
+        Chainspec::from_toml(path).unwrap()
+    }
 }
 
 #[cfg(test)]

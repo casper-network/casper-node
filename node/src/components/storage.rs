@@ -15,7 +15,7 @@ use std::{
     sync::Arc,
 };
 
-use futures::{future::Either, TryFutureExt};
+use futures::TryFutureExt;
 use rand::Rng;
 use semver::Version;
 use serde::{de::DeserializeOwned, Serialize};
@@ -129,15 +129,15 @@ pub trait StorageType {
                 .expect("can only contain one result")
         }
         .map_err(move |error| debug!("failed to get {} for {}: {}", deploy_hash, peer, error))
-        .map_ok(move |maybe_deploy| match maybe_deploy {
-            Some(deploy) => Either::Left(
-                async move { Message::new_get_response(&deploy) }
-                    .map_err(|error| error!("failed to create get-response: {}", error))
-                    .map_ok(move |message| effect_builder.send_message(peer, message)),
-            ),
-            None => {
-                Either::Right(async move { debug!("failed to get {} for {}", deploy_hash, peer) })
+        .and_then(move |maybe_deploy| async move {
+            match maybe_deploy {
+                Some(deploy) => match Message::new_get_response(&deploy) {
+                    Ok(message) => effect_builder.send_message(peer, message).await,
+                    Err(error) => error!("failed to create get-response: {}", error),
+                },
+                None => debug!("failed to get {} for {}", deploy_hash, peer),
             }
+            Ok(())
         })
         .ignore()
     }

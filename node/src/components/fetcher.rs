@@ -1,5 +1,5 @@
 mod event;
-// mod tests;
+mod tests;
 
 use std::{collections::HashMap, fmt::Debug, time::Duration};
 
@@ -128,23 +128,25 @@ pub trait ItemFetcher<T: Item + 'static> {
         peer: NodeId,
     ) -> Effects<Event<T>> {
         let mut effects = Effects::new();
+        let mut all_responders = self.responders().remove(&id).unwrap_or_default();
         match result {
             Some(ret) => {
                 // signal all responders waiting for this item
-                if let Some(all_responders) = self.responders().remove(&id) {
-                    for (_, responders) in all_responders {
-                        for responder in responders {
-                            effects.extend(responder.respond(Some(ret.clone())).ignore());
-                        }
+                for (_, responders) in all_responders {
+                    for responder in responders {
+                        effects.extend(responder.respond(Some(ret.clone())).ignore());
                     }
                 }
             }
             None => {
                 // remove only the peer specific responders for this id
-                if let Some(responders) = self.responders().entry(id).or_default().remove(&peer) {
+                if let Some(responders) = all_responders.remove(&peer) {
                     for responder in responders {
                         effects.extend(responder.respond(None).ignore());
                     }
+                }
+                if !all_responders.is_empty() {
+                    self.responders().insert(id, all_responders);
                 }
             }
         }
