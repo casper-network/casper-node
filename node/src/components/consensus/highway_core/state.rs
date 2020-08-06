@@ -149,6 +149,10 @@ impl<C: Context> State<C> {
         I: IntoIterator,
         I::Item: Borrow<Weight>,
     {
+        assert!(
+            ff_num <= ff_denom,
+            "forgiveness factor must be at most 100%"
+        );
         let weights = ValidatorMap::from(weights.into_iter().map(|w| *w.borrow()).collect_vec());
         let mut sum = Weight(0);
         let add = |w: &Weight| {

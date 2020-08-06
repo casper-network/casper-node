@@ -71,11 +71,9 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         round_exp: u8, // TODO: Configure initial and minimum round exponent separately.
         timestamp: Timestamp,
     ) -> (Self, Vec<CpResult<I, C>>) {
-        let ftt = (validators.total_weight() - Weight(1)) / 3; // TODO: From chain spec!
-        let mut highway = Highway::builder(instance_id, validators, seed)
-            .minimum_round_exponent(round_exp)
-            .forgiveness_factor(1, 5) // TODO: From chain spec!
-            .build();
+        // TODO: Get `ftt`, forgiveness factor and minimum round length from chain spec.
+        let ftt = (validators.total_weight() - Weight(1)) / 3;
+        let mut highway = Highway::new(instance_id, validators, seed, (1, 5), 12);
         let av_effects = highway.activate_validator(our_id, secret, round_exp, timestamp);
         let mut instance = HighwayProtocol {
             synchronizer: DagSynchronizerState::new(),

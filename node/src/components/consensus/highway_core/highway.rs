@@ -4,7 +4,7 @@ use tracing::warn;
 use super::{
     active_validator::{ActiveValidator, Effect},
     state::{State, VoteError},
-    validators::Validators,
+    validators::{Validator, Validators},
     vertex::{Dependency, Vertex},
 };
 use crate::{
@@ -75,59 +75,6 @@ impl<C: Context> From<PreValidatedVertex<C>> for Vertex<C> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ValidVertex<C: Context>(pub(super) Vertex<C>);
 
-/// A builder to configure options and construct a `Highway` instance.
-///
-/// All participants must agree on the complete set of options.
-pub(crate) struct HighwayBuilder<C: Context> {
-    /// The protocol instance ID. This needs to be unique, to prevent replay attacks.
-    instance_id: C::InstanceId,
-    /// The validator IDs and weight map.
-    validators: Validators<C::ValidatorId>,
-    /// The seed for the pseudorandom leader sequence.
-    seed: u64,
-    /// The fraction of a full block reward that validators receive if they fail to fully finalize
-    /// a block within a round.
-    forgiveness_factor: (u16, u16),
-    /// The minimum round exponent. `1 << min_round_exp` milliseconds is the minimum round length.
-    min_round_exp: u8,
-}
-
-impl<C: Context> HighwayBuilder<C> {
-    /// Sets the fraction of a full block reward that validators receive if they fail to fully
-    /// finalize a block within a round. If this is `2, 5`, they receive two fifths of the
-    /// regular reward.
-    pub(crate) fn forgiveness_factor(mut self, numerator: u16, denominator: u16) -> Self {
-        if numerator > denominator {
-            warn!("forgiveness factor should be at most 100%");
-        }
-        self.forgiveness_factor = (numerator, denominator);
-        self
-    }
-
-    /// Sets the minimum round exponent. `1 << min_round_exp` milliseconds is the minimum round
-    /// length.
-    pub(crate) fn minimum_round_exponent(mut self, min_round_exp: u8) -> Self {
-        self.min_round_exp = min_round_exp;
-        self
-    }
-
-    /// Creates and returns a new `Highway` instance with an empty protocol state.
-    pub(crate) fn build(self) -> Highway<C> {
-        let state = State::new(
-            self.validators.enumerate().map(|(_, val)| val.weight()),
-            self.seed,
-            self.forgiveness_factor,
-            self.min_round_exp,
-        );
-        Highway {
-            instance_id: self.instance_id,
-            validators: self.validators,
-            state,
-            active_validator: None,
-        }
-    }
-}
-
 /// A passive instance of the Highway protocol, containing its local state.
 ///
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
@@ -146,21 +93,36 @@ pub(crate) struct Highway<C: Context> {
 }
 
 impl<C: Context> Highway<C> {
-    /// Creates a new `HighwayBuilder`. All participants must agree on the protocol parameters.
+    /// Creates a new `Highway` instance. All participants must agree on the protocol parameters.
     ///
-    /// The `instance_id` needs to be unique for every execution of the protocol (e.g. for every
-    /// era) to prevent replay attacks.
-    pub(crate) fn builder(
+    /// Arguments:
+    ///
+    /// * `instance_id`: A unique identifier for every execution of the protocol (e.g. for every
+    ///   era) to prevent replay attacks.
+    /// * `validators`: The set of validators and their weights.
+    /// * `seed`: The seed for the pseudorandom sequence of round leaders.
+    /// * `forgiveness_factor`: The fraction `(numerator, denominator)` of a full block reward that
+    ///   validators receive if they fail to fully finalize a block within a round.
+    /// * `min_round_exp`: The minimum round exponent. `1 << min_round_exp` milliseconds is the
+    ///   minimum round length, and therefore the minimum delay between a block and its child.
+    pub(crate) fn new(
         instance_id: C::InstanceId,
         validators: Validators<C::ValidatorId>,
         seed: u64,
-    ) -> HighwayBuilder<C> {
-        HighwayBuilder {
+        forgiveness_factor: (u16, u16),
+        min_round_exp: u8,
+    ) -> Highway<C> {
+        let state = State::new(
+            validators.iter().map(Validator::weight),
+            seed,
+            forgiveness_factor,
+            min_round_exp,
+        );
+        Highway {
             instance_id,
             validators,
-            seed,
-            forgiveness_factor: (1, 5),
-            min_round_exp: 12,
+            state,
+            active_validator: None,
         }
     }
 
