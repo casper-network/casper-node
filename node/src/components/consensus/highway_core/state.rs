@@ -138,7 +138,12 @@ pub(crate) struct State<C: Context> {
 }
 
 impl<C: Context> State<C> {
-    pub(crate) fn new(weights: &[Weight], seed: u64) -> State<C> {
+    pub(crate) fn new(
+        weights: &[Weight],
+        seed: u64,
+        (ff_num, ff_denom): (u16, u16),
+        min_round_exp: u8,
+    ) -> State<C> {
         let mut sum = Weight(0);
         let add = |w: &Weight| {
             sum += *w;
@@ -154,8 +159,8 @@ impl<C: Context> State<C> {
             evidence: HashMap::new(),
             panorama: Panorama::new(weights.len()),
             seed,
-            forgiveness_factor: BLOCK_REWARD / 5, // TODO: Make configurable. Builder?
-            min_round_exp: 4,
+            forgiveness_factor: BLOCK_REWARD * u64::from(ff_num) / u64::from(ff_denom),
+            min_round_exp,
         }
     }
 
@@ -705,6 +710,12 @@ pub(crate) mod tests {
     }
 
     impl State<TestContext> {
+        /// Returns a new `State` with `TestContext`, a 20% forgiveness factor and minimum round
+        /// exponent 4.
+        pub(crate) fn new_test(weights: &[Weight], seed: u64) -> Self {
+            State::new(weights, seed, (1, 5), 4)
+        }
+
         /// Adds the vote to the protocol state, or returns an error if it is invalid.
         /// Panics if dependencies are not satisfied.
         pub(crate) fn add_vote(
@@ -721,7 +732,7 @@ pub(crate) mod tests {
 
     #[test]
     fn add_vote() -> Result<(), AddVoteError<TestContext>> {
-        let mut state = State::new(WEIGHTS, 0);
+        let mut state = State::new_test(WEIGHTS, 0);
 
         // Create votes as follows; a0, b0 are blocks:
         //
@@ -770,7 +781,7 @@ pub(crate) mod tests {
 
     #[test]
     fn find_in_swimlane() -> Result<(), AddVoteError<TestContext>> {
-        let mut state = State::new(WEIGHTS, 0);
+        let mut state = State::new_test(WEIGHTS, 0);
         let mut a = Vec::new();
         let vote = vote!(ALICE, ALICE_SEC, 0; N, N, N; Some(0xA));
         a.push(vote.hash());
@@ -798,7 +809,7 @@ pub(crate) mod tests {
 
     #[test]
     fn fork_choice() -> Result<(), AddVoteError<TestContext>> {
-        let mut state = State::new(WEIGHTS, 0);
+        let mut state = State::new_test(WEIGHTS, 0);
 
         // Create blocks with scores as follows:
         //

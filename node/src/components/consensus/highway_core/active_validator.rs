@@ -319,7 +319,7 @@ mod tests {
     #[test]
     #[allow(clippy::unreadable_literal)] // 0xC0FFEE is more readable than 0x00C0_FFEE.
     fn active_validator() -> Result<(), AddVoteError<TestContext>> {
-        let mut state = State::<TestContext>::new(&[Weight(3), Weight(4)], 0);
+        let mut state = State::new_test(&[Weight(3), Weight(4)], 0);
         let mut fd = FinalityDetector::new(Weight(2));
 
         // We start at time 410, with round length 16, so the first leader tick is 416, and the

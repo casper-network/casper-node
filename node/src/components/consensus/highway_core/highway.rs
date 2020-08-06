@@ -114,7 +114,7 @@ impl<C: Context> Highway<C> {
             .enumerate()
             .map(|(_, val)| val.weight())
             .collect::<Vec<_>>();
-        let state = State::new(&weights, seed);
+        let state = State::new(&weights, seed, (1, 5), 4); // TODO: Make configurable!
         let (av, effects) = ActiveValidator::new(our_index, secret, round_exp, timestamp, &state);
         let instance = Self {
             params,
@@ -319,7 +319,7 @@ pub(crate) mod tests {
 
     #[test]
     fn invalid_signature_error() {
-        let state: State<TestContext> = State::new(WEIGHTS, 0);
+        let state: State<TestContext> = State::new_test(WEIGHTS, 0);
         let validators = {
             let vid_weights: Vec<(u32, u64)> =
                 vec![(ALICE_SEC, ALICE), (BOB_SEC, BOB), (CAROL_SEC, CAROL)]
