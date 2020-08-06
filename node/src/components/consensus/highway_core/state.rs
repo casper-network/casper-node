@@ -1,4 +1,5 @@
 use std::{
+    borrow::Borrow,
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet, HashMap},
     convert::identity,
@@ -133,26 +134,44 @@ pub(crate) struct State<C: Context> {
     /// The fraction of the block reward, in trillionths, that are paid out even if the heaviest
     /// summit does not exceed half the total weight.
     forgiveness_factor: u64,
+    /// The minimum round exponent. `1 << min_round_exp` milliseconds is the minimum round length.
+    min_round_exp: u8,
 }
 
 impl<C: Context> State<C> {
-    pub(crate) fn new(weights: &[Weight], seed: u64) -> State<C> {
+    pub(crate) fn new<I>(
+        weights: I,
+        seed: u64,
+        (ff_num, ff_denom): (u16, u16),
+        min_round_exp: u8,
+    ) -> State<C>
+    where
+        I: IntoIterator,
+        I::Item: Borrow<Weight>,
+    {
+        assert!(
+            ff_num <= ff_denom,
+            "forgiveness factor must be at most 100%"
+        );
+        let weights = ValidatorMap::from(weights.into_iter().map(|w| *w.borrow()).collect_vec());
         let mut sum = Weight(0);
         let add = |w: &Weight| {
             sum += *w;
             sum
         };
         let cumulative_w = weights.iter().map(add).collect();
+        let panorama = Panorama::new(weights.len());
         State {
-            weights: ValidatorMap::from(weights.to_vec()),
+            weights,
             cumulative_w,
             votes: HashMap::new(),
             blocks: HashMap::new(),
             reward_index: BTreeMap::new(),
             evidence: HashMap::new(),
-            panorama: Panorama::new(weights.len()),
-            forgiveness_factor: BLOCK_REWARD / 5, // TODO: Make configurable. Builder?
+            panorama,
             seed,
+            forgiveness_factor: BLOCK_REWARD * u64::from(ff_num) / u64::from(ff_denom),
+            min_round_exp,
         }
     }
 
@@ -391,6 +410,9 @@ impl<C: Context> State<C> {
         if creator.0 as usize >= self.weights.len() {
             return Err(VoteError::Creator);
         }
+        if wvote.round_exp < self.min_round_exp {
+            return Err(VoteError::RoundLength);
+        }
         if (wvote.value.is_none() && !wvote.panorama.has_correct())
             || wvote.panorama.len() != self.weights.len()
         {
@@ -434,6 +456,12 @@ impl<C: Context> State<C> {
             }
         }
         Ok(())
+    }
+
+    /// Returns the minimum round exponent. `1 << self.min_round_exp()` milliseconds is the minimum
+    /// round length.
+    pub(super) fn min_round_exp(&self) -> u8 {
+        self.min_round_exp
     }
 
     /// Updates `self.panorama` with an incoming vote. Panics if dependencies are missing.
@@ -693,6 +721,12 @@ pub(crate) mod tests {
     }
 
     impl State<TestContext> {
+        /// Returns a new `State` with `TestContext`, a 20% forgiveness factor and minimum round
+        /// exponent 4.
+        pub(crate) fn new_test(weights: &[Weight], seed: u64) -> Self {
+            State::new(weights, seed, (1, 5), 4)
+        }
+
         /// Adds the vote to the protocol state, or returns an error if it is invalid.
         /// Panics if dependencies are not satisfied.
         pub(crate) fn add_vote(
@@ -709,7 +743,7 @@ pub(crate) mod tests {
 
     #[test]
     fn add_vote() -> Result<(), AddVoteError<TestContext>> {
-        let mut state = State::new(WEIGHTS, 0);
+        let mut state = State::new_test(WEIGHTS, 0);
 
         // Create votes as follows; a0, b0 are blocks:
         //
@@ -758,7 +792,7 @@ pub(crate) mod tests {
 
     #[test]
     fn find_in_swimlane() -> Result<(), AddVoteError<TestContext>> {
-        let mut state = State::new(WEIGHTS, 0);
+        let mut state = State::new_test(WEIGHTS, 0);
         let mut a = Vec::new();
         let vote = vote!(ALICE, ALICE_SEC, 0; N, N, N; Some(0xA));
         a.push(vote.hash());
@@ -786,7 +820,7 @@ pub(crate) mod tests {
 
     #[test]
     fn fork_choice() -> Result<(), AddVoteError<TestContext>> {
-        let mut state = State::new(WEIGHTS, 0);
+        let mut state = State::new_test(WEIGHTS, 0);
 
         // Create blocks with scores as follows:
         //
