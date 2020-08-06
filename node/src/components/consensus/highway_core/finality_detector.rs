@@ -198,8 +198,7 @@ impl<C: Context> FinalityDetector<C> {
         } else {
             return FinalityOutcome::None;
         };
-        let to_id =
-            |vidx: ValidatorIndex| highway.params().validators.get_by_index(vidx).id().clone();
+        let to_id = |vidx: ValidatorIndex| highway.validators().get_by_index(vidx).id().clone();
         let new_equivocators_iter = state.get_new_equivocators(bhash).into_iter();
         let rewards = compute_rewards(state, bhash);
         let rewards_iter = rewards.enumerate();
@@ -416,7 +415,7 @@ mod tests {
 
     #[test]
     fn finality_detector() -> Result<(), AddVoteError<TestContext>> {
-        let mut state = State::new(&[Weight(5), Weight(4), Weight(1)], 0);
+        let mut state = State::new_test(&[Weight(5), Weight(4), Weight(1)], 0);
 
         // Create blocks with scores as follows:
         //
@@ -463,7 +462,7 @@ mod tests {
 
     #[test]
     fn equivocators() -> Result<(), AddVoteError<TestContext>> {
-        let mut state = State::new(&[Weight(5), Weight(4), Weight(1)], 0);
+        let mut state = State::new_test(&[Weight(5), Weight(4), Weight(1)], 0);
         let mut fd4 = FinalityDetector::new(Weight(4)); // Fault tolerance 4.
 
         // Create blocks with scores as follows:
@@ -497,7 +496,7 @@ mod tests {
         assert_eq!(Some(&a2), fd4.next_finalized(&state, 1.into()));
 
         // Test that an initial block reports equivocators as well.
-        let mut bstate: State<TestContext> = State::new(&[Weight(5), Weight(4), Weight(1)], 0);
+        let mut bstate: State<TestContext> = State::new_test(&[Weight(5), Weight(4), Weight(1)], 0);
         let mut fde4 = FinalityDetector::new(Weight(4)); // Fault tolerance 4.
         add_vote!(bstate, _c0, CAROL, CAROL_SEC, 0; N, N, N; 0xB0);
         add_vote!(bstate, _c0_prime, CAROL, CAROL_SEC, 0; N, N, N; 0xB0);

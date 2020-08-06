@@ -4,7 +4,7 @@ use std::{
     sync::RwLock,
 };
 
-use super::{Error, Multiple, Result, Store, Value};
+use super::{Multiple, Result, Store, Value};
 
 /// In-memory version of a store.
 #[derive(Debug)]
@@ -31,23 +31,15 @@ impl<V: Value> Store for InMemStore<V> {
         Ok(false)
     }
 
-    fn get(&self, ids: Multiple<V::Id>) -> Multiple<Result<V>> {
+    fn get(&self, ids: Multiple<V::Id>) -> Multiple<Result<Option<V>>> {
         let inner = self.inner.read().expect("should lock");
-        ids.iter()
-            .map(|id| inner.get(id).cloned().ok_or_else(|| Error::NotFound))
-            .collect()
+        ids.iter().map(|id| Ok(inner.get(id).cloned())).collect()
     }
 
-    fn get_headers(&self, ids: Multiple<V::Id>) -> Multiple<Result<V::Header>> {
+    fn get_headers(&self, ids: Multiple<V::Id>) -> Multiple<Result<Option<V::Header>>> {
         let inner = self.inner.read().expect("should lock");
         ids.iter()
-            .map(|id| {
-                inner
-                    .get(id)
-                    .map(Value::header)
-                    .cloned()
-                    .ok_or_else(|| Error::NotFound)
-            })
+            .map(|id| Ok(inner.get(id).map(Value::header).cloned()))
             .collect()
     }
 

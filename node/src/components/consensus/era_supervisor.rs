@@ -20,7 +20,6 @@ use tracing::error;
 use crate::{
     components::consensus::{
         consensus_protocol::{ConsensusProtocol, ConsensusProtocolResult},
-        highway_core::highway::HighwayParams,
         protocols::highway::{HighwayContext, HighwayProtocol, HighwaySecret},
         traits::NodeIdT,
         Config, ConsensusMessage, Event, ReactorEventT,
@@ -90,7 +89,7 @@ where
         timestamp: Timestamp,
         config: Config,
         effect_builder: EffectBuilder<REv>,
-        validators: Vec<(PublicKey, Motes)>,
+        validator_stakes: Vec<(PublicKey, Motes)>,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
         let secret_signing_key =
             SecretKey::from_file(&config.secret_key_path).map_err(anyhow::Error::new)?;
@@ -104,7 +103,7 @@ where
             effect_builder,
             EraId(0),
             timestamp,
-            validators,
+            validator_stakes,
             secret_signing_key,
         );
 
@@ -116,41 +115,34 @@ where
         effect_builder: EffectBuilder<REv>,
         era_id: EraId,
         timestamp: Timestamp,
-        validators: Vec<(PublicKey, Motes)>,
+        validator_stakes: Vec<(PublicKey, Motes)>,
         secret_signing_key: SecretKey,
     ) -> Effects<Event<I>> {
         if self.active_eras.contains_key(&era_id) {
             panic!("{:?} already exists", era_id);
         }
-
-        let sum_stakes: Motes = validators.iter().map(|(_, stake)| *stake).sum();
-        let weights = if sum_stakes.value() > U512::from(u64::MAX) {
-            validators
+        let sum_stakes: Motes = validator_stakes.iter().map(|(_, stake)| *stake).sum();
+        let validators = if sum_stakes.value() > U512::from(u64::MAX) {
+            validator_stakes
                 .into_iter()
                 .map(|(key, stake)| {
-                    (
-                        key,
-                        AsPrimitive::<u64>::as_(
-                            stake.value() / (sum_stakes.value() / (u64::MAX / 2)),
-                        ),
-                    )
+                    let weight = stake.value() / (sum_stakes.value() / (u64::MAX / 2));
+                    (key, AsPrimitive::<u64>::as_(weight))
                 })
                 .collect()
         } else {
-            validators
+            validator_stakes
                 .into_iter()
                 .map(|(key, stake)| (key, AsPrimitive::<u64>::as_(stake.value())))
                 .collect()
         };
 
-        let params = HighwayParams {
-            instance_id: hash(format!("Highway era {}", era_id.0)),
-            validators: weights,
-        };
         let public_key = PublicKey::from(&secret_signing_key);
+        let instance_id = hash(format!("Highway era {}", era_id.0));
         let (highway, effects) = HighwayProtocol::<I, HighwayContext>::new(
-            params,
-            0, // TODO: get a proper seed?
+            instance_id,
+            validators,
+            0, // TODO: get a proper seed ?
             public_key,
             HighwaySecret::new(secret_signing_key, public_key),
             12, // 4.1 seconds; TODO: get a proper round exp

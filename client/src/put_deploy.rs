@@ -199,7 +199,7 @@ mod chain_name {
 
     const ARG_NAME: &str = "chain-name";
     const ARG_VALUE_NAME: &str = "NAME";
-    const ARG_DEFAULT: &str = "Test";
+    const ARG_DEFAULT: &str = "casperlabs-example";
     const ARG_HELP: &str =
         "Name of the chain, to avoid the deploy from being accidentally or maliciously included in \
         a different chain";
@@ -760,7 +760,7 @@ impl<'a, 'b> crate::Subcommand<'a, 'b> for PutDeploy {
         });
 
         if response.status() == StatusCode::OK {
-            println!("Stored deploy with deploy-hash:\n{:?}", deploy_hash);
+            println!("Node received deploy with deploy-hash:\n{:?}", deploy_hash);
         } else {
             eprintln!("Storing {} failed\n{:?}", deploy_hash, response);
             process::exit(1);

@@ -24,4 +24,14 @@ pub enum Error {
     /// `ContractRuntime` component error.
     #[error("contract runtime config error: {0}")]
     ContractRuntime(#[from] contract_runtime::ConfigError),
+
+    /// Failed to serialize data.
+    #[error("serialization: {0}")]
+    Serialization(#[source] bincode::ErrorKind),
+}
+
+impl Error {
+    pub(crate) fn from_serialization(error: bincode::ErrorKind) -> Self {
+        Error::Serialization(error)
+    }
 }

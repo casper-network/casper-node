@@ -35,6 +35,7 @@ mod test_macros;
 pub(crate) mod active_validator;
 pub(crate) mod finality_detector;
 pub(crate) mod highway;
+pub(crate) mod validators;
 pub(crate) mod vertex;
 
 mod block;
@@ -44,7 +45,6 @@ mod evidence;
 mod highway_testing;
 mod state;
 mod tallies;
-mod validators;
 mod vote;
 
 pub(crate) use state::Weight;

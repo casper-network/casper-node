@@ -73,11 +73,9 @@ impl<VID: Eq + Hash> Validators<VID> {
         &self.validators.get(idx.0 as usize).unwrap()
     }
 
-    pub(crate) fn enumerate(&self) -> impl Iterator<Item = (ValidatorIndex, &Validator<VID>)> {
-        self.validators
-            .iter()
-            .enumerate()
-            .map(|(idx, v)| (ValidatorIndex(idx as u32), v))
+    /// Returns an iterator over all validators, sorted by ID.
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &Validator<VID>> {
+        self.validators.iter()
     }
 }
 

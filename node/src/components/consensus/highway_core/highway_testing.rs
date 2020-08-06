@@ -2,11 +2,16 @@ use super::{
     active_validator::Effect,
     evidence::Evidence,
     finality_detector::{FinalityDetector, FinalityOutcome},
-    highway::{Highway, HighwayParams, PreValidatedVertex, ValidVertex, VertexError},
+    highway::{Highway, PreValidatedVertex, ValidVertex, VertexError},
     validators::{ValidatorIndex, Validators},
     vertex::{Dependency, Vertex},
     Weight,
 };
+
+use itertools::Itertools;
+use serde::{Deserialize, Serialize};
+use std::iter::FromIterator;
+use tracing::{error, info, trace, warn};
 
 use crate::{
     components::consensus::{
@@ -23,16 +28,15 @@ use crate::{
     types::Timestamp,
 };
 
-use serde::{Deserialize, Serialize};
-use std::iter::FromIterator;
-use tracing::{error, info, trace, warn};
-
 struct HighwayConsensus {
     highway: Highway<TestContext>,
     finality_detector: FinalityDetector<TestContext>,
 }
 
 type ConsensusValue = Vec<u32>;
+
+const TEST_FORGIVENESS_FACTOR: (u16, u16) = (2, 5);
+const TEST_MIN_ROUND_EXP: u8 = 12;
 
 impl HighwayConsensus {
     fn run_finality(&mut self) -> FinalityOutcome<TestContext> {
@@ -807,12 +811,12 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
 
         trace!(
             "Weights: {:?}",
-            validators.enumerate().map(|(_, v)| v).collect::<Vec<_>>()
+            validators.iter().map(|v| v).collect::<Vec<_>>()
         );
 
         let mut secrets = validators
-            .enumerate()
-            .map(|(_, vid)| (*vid.id(), TestSecret(vid.id().0)))
+            .iter()
+            .map(|validator| (*validator.id(), TestSecret(validator.id().0)))
             .collect();
 
         let ftt = self
@@ -825,14 +829,14 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
             |(vid, secrets): (ValidatorId, &mut HashMap<ValidatorId, TestSecret>)| {
                 let v_sec = secrets.remove(&vid).expect("Secret key should exist.");
 
-                let (highway, effects) = {
-                    let highway_params: HighwayParams<TestContext> = HighwayParams {
-                        instance_id,
-                        validators: validators.clone(),
-                    };
-
-                    Highway::new(highway_params, seed, vid, v_sec, round_exp, start_time)
-                };
+                let mut highway = Highway::new(
+                    instance_id,
+                    validators.clone(),
+                    seed,
+                    TEST_FORGIVENESS_FACTOR,
+                    TEST_MIN_ROUND_EXP,
+                );
+                let effects = highway.activate_validator(vid, v_sec, round_exp, start_time);
 
                 let finality_detector = FinalityDetector::new(Weight(ftt));
 
@@ -841,10 +845,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                         highway,
                         finality_detector,
                     },
-                    effects
-                        .into_iter()
-                        .map(HighwayMessage::from)
-                        .collect::<Vec<_>>(),
+                    effects.into_iter().map(HighwayMessage::from).collect_vec(),
                 )
             };
 
@@ -854,7 +855,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
             let mut validators_loc = vec![];
             let mut init_messages = vec![];
 
-            for (_, validator) in validators.enumerate() {
+            for validator in validators.iter() {
                 let vid = *validator.id();
                 let fault = if (vid.0 < faulty_num as u64) {
                     Some(FaultType::Mute)

@@ -74,6 +74,9 @@ use semver::Version;
 use smallvec::{smallvec, SmallVec};
 use tracing::error;
 
+use casperlabs_types::{Key, ProtocolVersion};
+use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
+
 use crate::{
     components::{
         consensus::BlockContext,
@@ -86,18 +89,17 @@ use crate::{
             storage::global_state::CommitResult,
         },
         fetcher::FetchResult,
-        storage::{self, DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
+        storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::{asymmetric_key::PublicKey, hash::Digest},
     reactor::{EventQueueHandle, QueueKind},
     types::{Deploy, DeployHash, ExecutedBlock, FinalizedBlock, ProtoBlock},
+    utils::Source,
     Chainspec,
 };
 use announcements::{
-    ApiServerAnnouncement, ConsensusAnnouncement, NetworkAnnouncement, StorageAnnouncement,
+    ApiServerAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement, NetworkAnnouncement,
 };
-use casperlabs_types::{Key, ProtocolVersion};
-use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
 use requests::{
     BlockExecutorRequest, BlockValidationRequest, ContractRuntimeRequest, DeployBufferRequest,
     FetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
@@ -448,20 +450,32 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
-    /// Announces that a deploy not previously stored has now been stored.
-    pub(crate) fn announce_deploy_stored<S>(self, deploy: &S::Deploy) -> impl Future<Output = ()>
+    /// Announces that a deploy not previously stored has now been accepted and stored.
+    pub(crate) fn announce_new_deploy_accepted<I>(
+        self,
+        deploy: Box<Deploy>,
+        source: Source<I>,
+    ) -> impl Future<Output = ()>
     where
-        S: StorageType,
-        REv: From<StorageAnnouncement<S>>,
+        REv: From<DeployAcceptorAnnouncement<I>>,
     {
-        let deploy_hash = *deploy.id();
-        let deploy_header = Box::new(deploy.header().clone());
-
         self.0.schedule(
-            StorageAnnouncement::StoredNewDeploy {
-                deploy_hash,
-                deploy_header,
-            },
+            DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
+            QueueKind::Regular,
+        )
+    }
+
+    /// Announces that an invalid deploy has been received.
+    pub(crate) fn announce_invalid_deploy<I>(
+        self,
+        deploy: Box<Deploy>,
+        source: Source<I>,
+    ) -> impl Future<Output = ()>
+    where
+        REv: From<DeployAcceptorAnnouncement<I>>,
+    {
+        self.0.schedule(
+            DeployAcceptorAnnouncement::InvalidDeploy { deploy, source },
             QueueKind::Regular,
         )
     }
@@ -469,16 +483,13 @@ impl<REv> EffectBuilder<REv> {
     /// Puts the given block into the linear block store.
     // TODO: remove once method is used.
     #[allow(dead_code)]
-    pub(crate) async fn put_block_to_storage<S>(self, block: S::Block) -> storage::Result<bool>
+    pub(crate) async fn put_block_to_storage<S>(self, block: Box<S::Block>) -> bool
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| StorageRequest::PutBlock {
-                block: Box::new(block),
-                responder,
-            },
+            |responder| StorageRequest::PutBlock { block, responder },
             QueueKind::Regular,
         )
         .await
@@ -490,7 +501,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_block_from_storage<S>(
         self,
         block_hash: <S::Block as Value>::Id,
-    ) -> storage::Result<S::Block>
+    ) -> Option<S::Block>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
@@ -505,36 +516,13 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested deploy using the `DeployFetcher`.
-    // TODO: remove once method is used.
-    #[allow(dead_code)]
-    pub(crate) async fn fetch_deploy<I>(
-        self,
-        deploy_hash: DeployHash,
-        peer: I,
-    ) -> Option<Box<FetchResult<Deploy>>>
-    where
-        REv: From<FetcherRequest<I, Deploy>>,
-        I: Send + 'static,
-    {
-        self.make_request(
-            |responder| FetcherRequest::Fetch {
-                id: deploy_hash,
-                peer,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Gets the requested block header from the linear block store.
     // TODO: remove once method is used.
     #[allow(dead_code)]
     pub(crate) async fn get_block_header_from_storage<S>(
         self,
         block_hash: <S::Block as Value>::Id,
-    ) -> storage::Result<<S::Block as Value>::Header>
+    ) -> Option<<S::Block as Value>::Header>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
@@ -550,16 +538,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given deploy into the deploy store.
-    pub(crate) async fn put_deploy_to_storage<S>(self, deploy: S::Deploy) -> storage::Result<bool>
+    pub(crate) async fn put_deploy_to_storage<S>(self, deploy: Box<S::Deploy>) -> bool
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| StorageRequest::PutDeploy {
-                deploy: Box::new(deploy),
-                responder,
-            },
+            |responder| StorageRequest::PutDeploy { deploy, responder },
             QueueKind::Regular,
         )
         .await
@@ -606,13 +591,36 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Lists all deploy hashes held in the deploy store.
-    pub(crate) async fn list_deploys<S>(self) -> storage::Result<Vec<<S::Deploy as Value>::Id>>
+    pub(crate) async fn list_deploys<S>(self) -> Vec<<S::Deploy as Value>::Id>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
     {
         self.make_request(
             |responder| StorageRequest::ListDeploys { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested deploy using the `DeployFetcher`.
+    // TODO: remove once method is used.
+    #[allow(dead_code)]
+    pub(crate) async fn fetch_deploy<I>(
+        self,
+        deploy_hash: DeployHash,
+        peer: I,
+    ) -> Option<FetchResult<Deploy>>
+    where
+        REv: From<FetcherRequest<I, Deploy>>,
+        I: Send + 'static,
+    {
+        self.make_request(
+            |responder| FetcherRequest::Fetch {
+                id: deploy_hash,
+                peer,
+                responder,
+            },
             QueueKind::Regular,
         )
         .await
@@ -745,7 +753,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given chainspec into the chainspec store.
-    pub(crate) async fn put_chainspec<S>(self, chainspec: Chainspec) -> storage::Result<()>
+    pub(crate) async fn put_chainspec<S>(self, chainspec: Chainspec)
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
@@ -761,7 +769,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested chainspec from the chainspec store.
-    pub(crate) async fn get_chainspec<S>(self, version: Version) -> storage::Result<Chainspec>
+    pub(crate) async fn get_chainspec<S>(self, version: Version) -> Option<Chainspec>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,

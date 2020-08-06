@@ -256,7 +256,7 @@ where
             })
     }
 
-    pub async fn settle_on_indefinitely<RNG, F>(&mut self, rng: &mut RNG, condition: F)
+    async fn settle_on_indefinitely<RNG, F>(&mut self, rng: &mut RNG, condition: F)
     where
         RNG: Rng + ?Sized,
         F: Fn(&HashMap<R::NodeId, Runner<ConditionCheckReactor<R>>>) -> bool,
