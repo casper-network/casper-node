@@ -1,12 +1,12 @@
-use super::{
-    active_validator::{ActiveValidator, Effect},
-    state::{State, VoteError},
-    validators::Validators,
-    vertex::{Dependency, Vertex},
-};
 use thiserror::Error;
 use tracing::warn;
 
+use super::{
+    active_validator::{ActiveValidator, Effect},
+    state::{State, VoteError},
+    validators::{Validator, Validators},
+    vertex::{Dependency, Vertex},
+};
 use crate::{
     components::consensus::{
         consensus_protocol::BlockContext, highway_core::vertex::SignedWireVote, traits::Context,
@@ -75,15 +75,6 @@ impl<C: Context> From<PreValidatedVertex<C>> for Vertex<C> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ValidVertex<C: Context>(pub(super) Vertex<C>);
 
-#[derive(Debug)]
-pub(crate) struct HighwayParams<C: Context> {
-    /// The protocol instance ID. This needs to be unique, to prevent replay attacks.
-    // TODO: Add this to every `WireVote`?
-    pub(crate) instance_id: C::InstanceId,
-    /// The validator IDs and weight map.
-    pub(crate) validators: Validators<C::ValidatorId>,
-}
-
 /// A passive instance of the Highway protocol, containing its local state.
 ///
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
@@ -91,38 +82,67 @@ pub(crate) struct HighwayParams<C: Context> {
 /// determine the outcome of the consensus process.
 #[derive(Debug)]
 pub(crate) struct Highway<C: Context> {
-    /// The parameters that remain constant for the duration of this consensus instance.
-    params: HighwayParams<C>,
+    /// The protocol instance ID. This needs to be unique, to prevent replay attacks.
+    instance_id: C::InstanceId,
+    /// The validator IDs and weight map.
+    validators: Validators<C::ValidatorId>,
     /// The abstract protocol state.
     state: State<C>,
+    /// The state of an active validator, who is participanting and creating new vertices.
     active_validator: Option<ActiveValidator<C>>,
 }
 
 impl<C: Context> Highway<C> {
-    /// Creates a new Highway instance
+    /// Creates a new `Highway` instance. All participants must agree on the protocol parameters.
+    ///
+    /// Arguments:
+    ///
+    /// * `instance_id`: A unique identifier for every execution of the protocol (e.g. for every
+    ///   era) to prevent replay attacks.
+    /// * `validators`: The set of validators and their weights.
+    /// * `seed`: The seed for the pseudorandom sequence of round leaders.
+    /// * `forgiveness_factor`: The fraction `(numerator, denominator)` of a full block reward that
+    ///   validators receive if they fail to fully finalize a block within a round.
+    /// * `min_round_exp`: The minimum round exponent. `1 << min_round_exp` milliseconds is the
+    ///   minimum round length, and therefore the minimum delay between a block and its child.
     pub(crate) fn new(
-        params: HighwayParams<C>,
+        instance_id: C::InstanceId,
+        validators: Validators<C::ValidatorId>,
         seed: u64,
-        our_id: C::ValidatorId,
+        forgiveness_factor: (u16, u16),
+        min_round_exp: u8,
+    ) -> Highway<C> {
+        let state = State::new(
+            validators.iter().map(Validator::weight),
+            seed,
+            forgiveness_factor,
+            min_round_exp,
+        );
+        Highway {
+            instance_id,
+            validators,
+            state,
+            active_validator: None,
+        }
+    }
+
+    /// Turns this instance from a passive observer into an active validator that proposes new
+    /// blocks and creates and signs new vertices.
+    pub(crate) fn activate_validator(
+        &mut self,
+        id: C::ValidatorId,
         secret: C::ValidatorSecret,
         round_exp: u8,
-        timestamp: Timestamp,
-    ) -> (Self, Vec<Effect<C>>) {
-        let our_index = params.validators.get_index(&our_id);
-        let weights = params
-            .validators
-            .enumerate()
-            .map(|(_, val)| val.weight())
-            .collect::<Vec<_>>();
-        let state = State::new(&weights, seed);
-        let (av, effects) = ActiveValidator::new(our_index, secret, round_exp, timestamp, &state);
-        let instance = Self {
-            params,
-            state,
-            // TODO: Make it possible to create an instance without an active validator
-            active_validator: Some(av),
-        };
-        (instance, effects)
+        start_time: Timestamp,
+    ) -> Vec<Effect<C>> {
+        assert!(
+            self.active_validator.is_none(),
+            "activate_validator called twice"
+        );
+        let idx = self.validators.get_index(&id);
+        let (av, effects) = ActiveValidator::new(idx, secret, round_exp, start_time, &self.state);
+        self.active_validator = Some(av);
+        effects
     }
 
     /// Does initial validation. Returns an error if the vertex is invalid.
@@ -232,8 +252,8 @@ impl<C: Context> Highway<C> {
         }
     }
 
-    pub(crate) fn params(&self) -> &HighwayParams<C> {
-        &self.params
+    pub(crate) fn validators(&self) -> &Validators<C::ValidatorId> {
+        &self.validators
     }
 
     pub(super) fn state(&self) -> &State<C> {
@@ -257,7 +277,7 @@ impl<C: Context> Highway<C> {
                 Ok(self.state.pre_validate_vote(vote)?)
             }
             Vertex::Evidence(evidence) => {
-                if self.params.validators.contains(evidence.perpetrator()) {
+                if self.validators.contains(evidence.perpetrator()) {
                     Ok(())
                 } else {
                     Err(EvidenceError::UnknownPerpetrator.into())
@@ -288,10 +308,7 @@ impl<C: Context> Highway<C> {
 
     /// Returns validator ID of the `swvote` creator.
     fn validator_pk(&self, swvote: &SignedWireVote<C>) -> &C::ValidatorId {
-        self.params
-            .validators
-            .get_by_index(swvote.wire_vote.creator)
-            .id()
+        self.validators.get_by_index(swvote.wire_vote.creator).id()
     }
 }
 
@@ -300,7 +317,7 @@ pub(crate) mod tests {
     use crate::{
         components::consensus::{
             highway_core::{
-                highway::{Highway, HighwayParams, VertexError, VoteError},
+                highway::{Highway, VertexError, VoteError},
                 state::{
                     tests::{
                         TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC, WEIGHTS,
@@ -319,7 +336,7 @@ pub(crate) mod tests {
 
     #[test]
     fn invalid_signature_error() {
-        let state: State<TestContext> = State::new(WEIGHTS, 0);
+        let state: State<TestContext> = State::new_test(WEIGHTS, 0);
         let validators = {
             let vid_weights: Vec<(u32, u64)> =
                 vec![(ALICE_SEC, ALICE), (BOB_SEC, BOB), (CAROL_SEC, CAROL)]
@@ -331,12 +348,9 @@ pub(crate) mod tests {
                     .collect();
             Validators::from_iter(vid_weights)
         };
-        let params = HighwayParams {
+        let mut highway = Highway {
             instance_id: 1u64,
             validators,
-        };
-        let mut highway = Highway {
-            params,
             state,
             active_validator: None,
         };

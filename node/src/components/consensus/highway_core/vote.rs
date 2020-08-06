@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     state::{self, State},
-    validators::ValidatorIndex,
+    validators::{ValidatorIndex, ValidatorMap},
 };
 use crate::{
     components::consensus::{highway_core::vertex::SignedWireVote, traits::Context},
@@ -63,61 +63,22 @@ impl<C: Context> Observation<C> {
 }
 
 /// The observed behavior of all validators at some point in time.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-pub(crate) struct Panorama<C: Context>(pub(crate) Vec<Observation<C>>);
+pub(crate) type Panorama<C> = ValidatorMap<Observation<C>>;
 
 impl<C: Context> Panorama<C> {
     /// Creates a new, empty panorama.
     pub(crate) fn new(num_validators: usize) -> Panorama<C> {
-        Panorama(vec![Observation::None; num_validators])
+        Panorama::from(vec![Observation::None; num_validators])
     }
 
-    /// Returns the observation for the given validator. Panics if the index is out of range.
-    pub(crate) fn get(&self, idx: ValidatorIndex) -> &Observation<C> {
-        &self.0[idx.0 as usize]
-    }
-
-    /// Returns `true` if there is no correct observation yet.
-    pub(crate) fn is_empty(&self) -> bool {
-        !self.iter().any(Observation::is_correct)
+    /// Returns `true` if there is at least one correct observation.
+    pub(crate) fn has_correct(&self) -> bool {
+        self.iter().any(Observation::is_correct)
     }
 
     /// Returns an iterator over all hashes of the honest validators' latest messages.
     pub(crate) fn iter_correct(&self) -> impl Iterator<Item = &C::Hash> {
         self.iter().filter_map(Observation::correct)
-    }
-
-    /// Returns an iterator over all observations.
-    pub(crate) fn iter(&self) -> impl Iterator<Item = &Observation<C>> {
-        self.0.iter()
-    }
-
-    /// Returns an iterator over all observations, by validator index.
-    pub(crate) fn enumerate(&self) -> impl Iterator<Item = (ValidatorIndex, &Observation<C>)> {
-        self.iter()
-            .enumerate()
-            .map(|(idx, obs)| (ValidatorIndex(idx as u32), obs))
-    }
-
-    /// Returns an iterator over all correct latest votes, by validator index.
-    pub(crate) fn enumerate_correct(&self) -> impl Iterator<Item = (ValidatorIndex, &C::Hash)> {
-        self.enumerate()
-            .filter_map(|(idx, obs)| obs.correct().map(|vhash| (idx, vhash)))
-    }
-
-    /// Updates this panorama by adding one vote. Assumes that all justifications of that vote are
-    /// already seen.
-    pub(crate) fn update(&mut self, idx: ValidatorIndex, obs: Observation<C>) {
-        self.0[idx.0 as usize] = obs;
-    }
-
-    /// Returns the number of entries in the panorama. This must equal the number of validators.
-    pub(crate) fn len(&self) -> usize {
-        self.0.len()
     }
 }
 
