@@ -459,30 +459,27 @@ where
 
         match sync_result {
             Err(vertex_error) => Ok(Err(vertex_error)),
-            Ok((prevalidated_vertex, mut sync_effects)) => {
+            Ok(prevalidated_vertex) => {
                 let add_vertex_effects: Vec<HighwayMessage> = {
                     match self
                         .validator_mut(&recipient)?
                         .consensus
                         .highway
                         .validate_vertex(prevalidated_vertex)
-                        .map_err(|(pvv, error)| (pvv.into_vertex(), error))
                     {
-                        Err(vertex_error) => return Ok(Err(vertex_error)),
+                        Err((pvv, error)) => return Ok(Err((pvv.into_vertex(), error))),
                         Ok(valid_vertex) => self.call_validator(&recipient, |highway| {
                             highway.add_valid_vertex(valid_vertex)
                         })?,
                     }
                 };
 
-                sync_effects.extend(add_vertex_effects);
-
-                Ok(Ok(sync_effects))
+                Ok(Ok(add_vertex_effects))
             }
         }
     }
 
-    /// Synchronizes missing dependencies of `pvv` that `recipient` is missing.
+    /// Synchronizes all missing dependencies of `pvv` that `recipient` is missing.
     /// If an error occurs during synchronization of one of `pvv`'s dependencies
     /// it's returned and the original vertex mustn't be added to the state.
     #[allow(clippy::type_complexity)]
@@ -492,27 +489,20 @@ where
         sender: ValidatorId,
         pvv: PreValidatedVertex<TestContext>,
     ) -> Result<
-        Result<
-            (PreValidatedVertex<TestContext>, Vec<HighwayMessage>),
-            (Vertex<TestContext>, VertexError),
-        >,
+        Result<PreValidatedVertex<TestContext>, (Vertex<TestContext>, VertexError)>,
         TestRunError,
     > {
-        let mut hwms: Vec<HighwayMessage> = vec![];
-
+        // There may be more than one dependency missing and we want to sync all of them.
         loop {
             let validator = self
                 .virtual_net
-                .validator_mut(&recipient)
+                .validator(&recipient)
                 .ok_or_else(|| TestRunError::MissingValidator(recipient))?;
 
             match validator.consensus.highway.missing_dependency(&pvv) {
-                None => return Ok(Ok((pvv, hwms))),
+                None => return Ok(Ok(pvv)),
                 Some(d) => match self.synchronize_dependency(d, recipient, sender)? {
-                    Ok(hwm) => {
-                        // `hwm` represent messages produced while synchronizing `d`.
-                        hwms.extend(hwm)
-                    }
+                    Ok(()) => continue,
                     Err(vertex_error) => {
                         // An error occurred when trying to synchronize a missing dependency.
                         // We must stop the synchronization process and return it to the caller.
@@ -534,7 +524,7 @@ where
         missing_dependency: Dependency<TestContext>,
         recipient: ValidatorId,
         sender: ValidatorId,
-    ) -> Result<Result<Vec<HighwayMessage>, (Vertex<TestContext>, VertexError)>, TestRunError> {
+    ) -> Result<Result<(), (Vertex<TestContext>, VertexError)>, TestRunError> {
         let vertex = self
             .validator_mut(&sender)?
             .consensus
@@ -543,7 +533,17 @@ where
             .map(|vv| vv.0)
             .ok_or_else(|| TestRunError::SenderMissingDependency(sender, missing_dependency))?;
 
-        self.add_vertex(recipient, sender, vertex)
+        match self.add_vertex(recipient, sender, vertex)? {
+            Ok(messages) => {
+                if !messages.is_empty() {
+                    error!("Syncing produced effects. There should be no effects produced while syncing.");
+                    panic!("Syncing produced effects.")
+                } else {
+                    Ok(Ok(()))
+                }
+            }
+            Err(err) => Ok(Err(err)),
+        }
     }
 
     /// Returns a `MutableHandle` on the `HighwayTestHarness` object
