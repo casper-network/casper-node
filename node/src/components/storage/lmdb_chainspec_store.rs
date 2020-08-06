@@ -40,17 +40,17 @@ impl ChainspecStore for LmdbChainspecStore {
         Ok(())
     }
 
-    fn get(&self, version: Version) -> Result<Chainspec> {
+    fn get(&self, version: Version) -> Result<Option<Chainspec>> {
         let id = bincode::serialize(&version).map_err(|error| Error::from_serialization(*error))?;
         let txn = self.env.begin_ro_txn().expect("should create ro txn");
         let serialized_value = match txn.get(self.db, &id) {
             Ok(value) => value,
-            Err(lmdb::Error::NotFound) => return Err(Error::NotFound),
+            Err(lmdb::Error::NotFound) => return Ok(None),
             Err(error) => panic!("should get: {:?}", error),
         };
         let value = bincode::deserialize(serialized_value)
             .map_err(|error| Error::from_deserialization(*error))?;
         txn.commit().expect("should commit txn");
-        Ok(value)
+        Ok(Some(value))
     }
 }

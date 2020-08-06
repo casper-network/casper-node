@@ -20,13 +20,13 @@ hex_fmt = "0.3.0"
 num-derive = { version = "0.3.0", default-features = false }
 num-integer = { version = "0.1.42", default-features = false }
 num-traits = { version = "0.2.10", default-features = false }
-proptest = { version = "0.9.4", optional = true }
+proptest = { version = "0.10.0", optional = true }
 serde = { version = "1", default-features = false, features = ["derive"] }
 uint = { version = "0.8.3", default-features = false }
 
 [dev-dependencies]
 criterion = "0.3.3"
-proptest = "0.9.4"
+proptest = "0.10.0"
 version-sync = "0.8"
 
 [features]

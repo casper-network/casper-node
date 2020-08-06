@@ -15,12 +15,6 @@ pub enum Message<T: Item> {
         item_id: T::Id,
         is_already_held: bool,
     },
-    /// Sent if an item fails to arrive, either after sending a `GossipResponse` with
-    /// `is_already_held` set to false, or after a previous `GetRequest`.
-    GetRequest(T::Id),
-    /// Sent in response to a `GetRequest`, or to a peer which responded to gossip indicating it
-    /// didn't already hold the full item.
-    GetResponse(Box<T>),
 }
 
 impl<T: Item> Display for Message<T> {
@@ -35,8 +29,6 @@ impl<T: Item> Display for Message<T> {
                 "gossip-response({}, {})",
                 item_id, is_already_held
             ),
-            Message::GetRequest(item_id) => write!(formatter, "get-request({})", item_id),
-            Message::GetResponse(item) => write!(formatter, "get-response({})", item.id()),
         }
     }
 }

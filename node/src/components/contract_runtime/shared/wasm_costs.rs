@@ -1,9 +1,14 @@
 use std::collections::BTreeMap;
 
 use pwasm_utils::rules::{InstructionType, Metering, Set};
+#[cfg(test)]
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use casperlabs_types::bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
+
+#[cfg(test)]
+use crate::testing::TestRng;
 
 const NUM_FIELDS: usize = 10;
 pub const WASM_COSTS_SERIALIZED_LENGTH: usize = NUM_FIELDS * U32_SERIALIZED_LENGTH;
@@ -49,6 +54,23 @@ impl WasmCosts {
         Set::new(self.regular, meterings)
             .with_grow_cost(self.grow_mem)
             .with_forbidden_floats()
+    }
+
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        WasmCosts {
+            regular: rng.gen(),
+            div: rng.gen(),
+            mul: rng.gen(),
+            mem: rng.gen(),
+            initial_mem: rng.gen(),
+            grow_mem: rng.gen(),
+            memcpy: rng.gen(),
+            max_stack_height: rng.gen(),
+            opcodes_mul: rng.gen(),
+            opcodes_div: rng.gen(),
+        }
     }
 }
 

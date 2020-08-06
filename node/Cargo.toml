@@ -49,7 +49,7 @@ parity-wasm = "0.41.0"
 parking_lot = "0.10.0"
 pem = "0.8.1"
 prometheus = "0.9.0"
-proptest = { version = "0.9.4", optional = true }
+proptest = { version = "0.10.0", optional = true }
 pwasm-utils = "0.12.0"
 rand = "0.7.3"
 rand_chacha = "0.2.2"
@@ -59,6 +59,7 @@ semver = { version = "0.10.0", features = ["serde"] }
 serde = { version = "1.0.110", features = ["derive"] }
 serde-big-array = "0.3.0"
 serde_json = "1.0.55"
+serde_repr = "0.1.6"
 signature = "1.1.0"
 smallvec = "1.4.0"
 structopt = "0.3.14"
@@ -75,7 +76,7 @@ tracing-subscriber = { version = "0.2.10", features = ["fmt", "json"] }
 uint = "0.8.3"
 uuid = { version = "0.8.1", features = ["serde", "v4"] }
 wabt = "0.10.0"
-warp = "0.2.3"
+warp = "0.2.4"
 wasmi = "0.6.2"
 backtrace = "0.3.50"
 
@@ -85,7 +86,7 @@ criterion = "0.3.3"
 fake_instant = "0.4.0"
 lazy_static = "1"
 pnet = "0.26.0"
-proptest = "0.9.4"
+proptest = "0.10.0"
 rand_pcg = "0.2.1"
 rand_core = "0.5.1"
 tokio = { version = "0.2.20", features = ["test-util"] }

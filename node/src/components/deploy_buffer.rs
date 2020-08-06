@@ -13,11 +13,7 @@ use semver::Version;
 use tracing::{error, info};
 
 use crate::{
-    components::{
-        chainspec_handler::DeployConfig,
-        storage::{self, Storage},
-        Component,
-    },
+    components::{chainspec_handler::DeployConfig, storage::Storage, Component},
     effect::{
         requests::{DeployBufferRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
@@ -44,7 +40,7 @@ pub enum Event {
     OrphanedProtoBlock(ProtoBlock),
     /// The result of the `DeployBuffer` getting the chainspec from the storage component.
     GetChainspecResult {
-        result: Box<storage::Result<Chainspec>>,
+        maybe_chainspec: Box<Option<Chainspec>>,
         current_instant: u64,
         past_blocks: HashSet<BlockHash>,
         responder: Responder<HashSet<DeployHash>>,
@@ -65,11 +61,15 @@ impl Display for Event {
             Event::OrphanedProtoBlock(block) => {
                 write!(f, "deploy-buffer orphaned proto block {}", block)
             }
-            Event::GetChainspecResult { result, .. } => write!(
-                f,
-                "deploy-buffer get chainspec - succeeded: {}",
-                result.is_ok()
-            ),
+            Event::GetChainspecResult {
+                maybe_chainspec, ..
+            } => {
+                if maybe_chainspec.is_some() {
+                    write!(f, "deploy-buffer got chainspec")
+                } else {
+                    write!(f, "deploy-buffer failed to get chainspec")
+                }
+            }
         }
     }
 }
@@ -126,8 +126,8 @@ impl DeployBuffer {
         let version = Version::from((1, 0, 0));
         effect_builder
             .get_chainspec(version)
-            .event(move |result| Event::GetChainspecResult {
-                result: Box::new(result),
+            .event(move |maybe_chainspec| Event::GetChainspecResult {
+                maybe_chainspec: Box::new(maybe_chainspec),
                 current_instant,
                 past_blocks,
                 responder,
@@ -256,12 +256,12 @@ where
             Event::FinalizedProtoBlock(block) => self.finalized_block(block.hash()),
             Event::OrphanedProtoBlock(block) => self.orphaned_block(block.hash()),
             Event::GetChainspecResult {
-                result,
+                maybe_chainspec,
                 current_instant,
                 past_blocks,
                 responder,
             } => {
-                let chainspec = result.expect("should return chainspec");
+                let chainspec = maybe_chainspec.expect("should return chainspec");
                 let deploys = self.remaining_deploys(
                     chainspec.genesis.deploy_config,
                     current_instant,

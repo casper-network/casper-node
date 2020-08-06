@@ -6,7 +6,7 @@ use std::{
 
 use semver::Version;
 
-use super::{ChainspecStore, Error, Result};
+use super::{ChainspecStore, Result};
 use crate::Chainspec;
 
 /// In-memory version of a store.
@@ -36,12 +36,12 @@ impl ChainspecStore for InMemChainspecStore {
         Ok(())
     }
 
-    fn get(&self, version: Version) -> Result<Chainspec> {
-        self.inner
+    fn get(&self, version: Version) -> Result<Option<Chainspec>> {
+        Ok(self
+            .inner
             .read()
             .expect("should lock")
             .get(&version)
-            .cloned()
-            .ok_or_else(|| Error::NotFound)
+            .cloned())
     }
 }

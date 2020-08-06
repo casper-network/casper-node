@@ -6,8 +6,8 @@
 use std::fmt::{self, Display, Formatter};
 
 use crate::{
-    components::storage::{StorageType, Value},
     types::{Deploy, ProtoBlock},
+    utils::Source,
 };
 
 /// A networking layer announcement.
@@ -58,27 +58,37 @@ impl Display for ApiServerAnnouncement {
     }
 }
 
-/// A storage layer announcement.
+/// A `DeployAcceptor` announcement.
 #[derive(Debug)]
-pub enum StorageAnnouncement<S: StorageType> {
-    /// A deploy which wasn't previously stored has been stored.
-    StoredNewDeploy {
-        /// ID or "hash" of the deploy that was added to the store.
-        deploy_hash: <S::Deploy as Value>::Id,
-        /// The header of the deploy that was added to the store.
-        deploy_header: Box<<S::Deploy as Value>::Header>,
+pub enum DeployAcceptorAnnouncement<I> {
+    /// A deploy which wasn't previously stored on this node has been accepted and stored.
+    AcceptedNewDeploy {
+        /// The new deploy.
+        deploy: Box<Deploy>,
+        /// The source (peer or client) of the deploy.
+        source: Source<I>,
+    },
+
+    /// An invalid deploy was received.
+    InvalidDeploy {
+        /// The invalid deploy.
+        deploy: Box<Deploy>,
+        /// The source (peer or client) of the deploy.
+        source: Source<I>,
     },
 }
 
-impl<S> Display for StorageAnnouncement<S>
-where
-    S: StorageType,
-    <S::Deploy as Value>::Id: Display,
-{
+impl<I: Display> Display for DeployAcceptorAnnouncement<I> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            StorageAnnouncement::StoredNewDeploy { deploy_hash, .. } => {
-                write!(formatter, "stored new deploy {}", deploy_hash)
+            DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source } => write!(
+                formatter,
+                "accepted new deploy {} from {}",
+                deploy.id(),
+                source
+            ),
+            DeployAcceptorAnnouncement::InvalidDeploy { deploy, source } => {
+                write!(formatter, "invalid deploy {} from {}", deploy.id(), source)
             }
         }
     }

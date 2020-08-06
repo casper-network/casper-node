@@ -39,7 +39,7 @@ use warp::{
 
 use super::Component;
 use crate::{
-    components::storage::{self, Storage},
+    components::storage::Storage,
     crypto::hash::Digest,
     effect::{
         announcements::ApiServerAnnouncement,
@@ -100,7 +100,7 @@ where
             Event::ApiRequest(ApiRequest::ListDeploys { responder }) => effect_builder
                 .list_deploys()
                 .event(move |result| Event::ListDeploysResult {
-                    result: Box::new(result),
+                    result,
                     main_responder: responder,
                 }),
             Event::ApiRequest(ApiRequest::GetMetrics { responder }) => effect_builder
@@ -117,7 +117,7 @@ where
             Event::ListDeploysResult {
                 result,
                 main_responder,
-            } => main_responder.respond(*result).ignore(),
+            } => main_responder.respond(result).ignore(),
             Event::GetMetricsResult {
                 text,
                 main_responder,
@@ -244,7 +244,7 @@ async fn handle_list_deploys_request<REv>(
 where
     REv: From<Event> + From<ApiRequest> + From<StorageRequest<Storage>> + Send,
 {
-    let result = effect_builder
+    let deploy_hashes = effect_builder
         .make_request(
             |responder| ApiRequest::ListDeploys { responder },
             QueueKind::Api,
@@ -257,18 +257,13 @@ where
         )
     };
 
+    let hex_hashes = deploy_hashes
+        .into_iter()
+        .map(|deploy_hash| hex::encode(deploy_hash.inner()))
+        .collect::<Vec<_>>();
     // TODO - paginate these?
-    let (body, status) = match result {
-        Ok(deploy_hashes) => {
-            let hex_hashes = deploy_hashes
-                .into_iter()
-                .map(|deploy_hash| hex::encode(deploy_hash.inner()))
-                .collect::<Vec<_>>();
-            match serde_json::to_string(&hex_hashes) {
-                Ok(body) => (body, StatusCode::OK),
-                Err(error) => (error_body(&error), StatusCode::INTERNAL_SERVER_ERROR),
-            }
-        }
+    let (body, status) = match serde_json::to_string(&hex_hashes) {
+        Ok(body) => (body, StatusCode::OK),
         Err(error) => (error_body(&error), StatusCode::INTERNAL_SERVER_ERROR),
     };
 
@@ -304,7 +299,7 @@ where
         }
     };
 
-    let result = effect_builder
+    let maybe_deploy = effect_builder
         .make_request(
             |responder| ApiRequest::GetDeploy {
                 hash: DeployHash::new(digest),
@@ -322,13 +317,12 @@ where
         )
     };
 
-    let (body, status) = match result {
-        Ok(deploy) => match deploy.to_json() {
+    let (body, status) = match maybe_deploy {
+        Some(deploy) => match deploy.to_json() {
             Ok(deploy_as_json) => (deploy_as_json, StatusCode::OK),
             Err(error) => (error_body(&error), StatusCode::INTERNAL_SERVER_ERROR),
         },
-        Err(storage::Error::NotFound) => ("null".to_string(), StatusCode::OK),
-        Err(error) => (error_body(&error), StatusCode::INTERNAL_SERVER_ERROR),
+        None => ("null".to_string(), StatusCode::OK),
     };
 
     Ok(Response::builder()
