@@ -13,7 +13,8 @@ use crate::{
         highway_core::{
             active_validator::Effect as AvEffect,
             finality_detector::{FinalityDetector, FinalityOutcome},
-            highway::{Highway, HighwayParams, PreValidatedVertex, ValidVertex},
+            highway::{Highway, PreValidatedVertex, ValidVertex},
+            validators::Validators,
             vertex::{Dependency, Vertex},
             Weight,
         },
@@ -62,16 +63,18 @@ pub(crate) struct HighwayProtocol<I, C: Context> {
 
 impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
     pub(crate) fn new(
-        params: HighwayParams<C>,
+        instance_id: C::InstanceId,
+        validators: Validators<C::ValidatorId>,
         seed: u64,
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
-        round_exp: u8,
+        round_exp: u8, // TODO: Configure initial and minimum round exponent separately.
         timestamp: Timestamp,
     ) -> (Self, Vec<CpResult<I, C>>) {
-        let ftt = (params.validators.total_weight() - Weight(1)) / 3; // TODO: From chain spec!
-        let (highway, av_effects) =
-            Highway::new(params, seed, our_id, secret, round_exp, timestamp);
+        // TODO: Get `ftt`, forgiveness factor and minimum round length from chain spec.
+        let ftt = (validators.total_weight() - Weight(1)) / 3;
+        let mut highway = Highway::new(instance_id, validators, seed, (1, 5), 12);
+        let av_effects = highway.activate_validator(our_id, secret, round_exp, timestamp);
         let mut instance = HighwayProtocol {
             synchronizer: DagSynchronizerState::new(),
             finality_detector: FinalityDetector::new(ftt),

@@ -23,7 +23,6 @@ use std::{
     io::ErrorKind,
     iter::FromIterator,
     marker::{Send, Sync},
-    time::Instant,
 };
 
 use grpc::{Error as GrpcError, RequestOptions, ServerBuilder, SingleResponse};
@@ -42,7 +41,7 @@ use casperlabs_node::components::contract_runtime::{
         execution,
     },
     shared::{
-        logging::{self, log_duration},
+        logging::{self},
         newtypes::{Blake2bHash, CorrelationId},
     },
     storage::global_state::{CommitResult, StateProvider},
@@ -58,18 +57,6 @@ use self::{
     ipc_grpc::{ExecutionEngineService, ExecutionEngineServiceServer},
     mappings::{ParsingError, TransformMap},
 };
-
-const METRIC_DURATION_COMMIT: &str = "commit_duration";
-const METRIC_DURATION_EXEC: &str = "exec_duration";
-const METRIC_DURATION_QUERY: &str = "query_duration";
-const METRIC_DURATION_GENESIS: &str = "genesis_duration";
-const METRIC_DURATION_UPGRADE: &str = "upgrade_duration";
-
-const TAG_RESPONSE_COMMIT: &str = "commit_response";
-const TAG_RESPONSE_EXEC: &str = "exec_response";
-const TAG_RESPONSE_QUERY: &str = "query_response";
-const TAG_RESPONSE_GENESIS: &str = "genesis_response";
-const TAG_RESPONSE_UPGRADE: &str = "upgrade_response";
 
 const UNIMPLEMENTED: &str = "unimplemented";
 
@@ -91,7 +78,6 @@ where
         _request_options: RequestOptions,
         query_request: ipc::QueryRequest,
     ) -> SingleResponse<QueryResponse> {
-        let start = Instant::now();
         let correlation_id = CorrelationId::new();
 
         let request: QueryRequest = match query_request.try_into() {
@@ -101,12 +87,6 @@ where
                 warn!("{}", log_message);
                 let mut result = ipc::QueryResponse::new();
                 result.set_failure(log_message);
-                log_duration(
-                    correlation_id,
-                    METRIC_DURATION_QUERY,
-                    TAG_RESPONSE_QUERY,
-                    start.elapsed(),
-                );
                 return SingleResponse::completed(result);
             }
         };
@@ -157,13 +137,6 @@ where
             }
         };
 
-        log_duration(
-            correlation_id,
-            METRIC_DURATION_QUERY,
-            TAG_RESPONSE_QUERY,
-            start.elapsed(),
-        );
-
         SingleResponse::completed(response)
     }
 
@@ -172,7 +145,6 @@ where
         _request_options: RequestOptions,
         exec_request: ipc::ExecuteRequest,
     ) -> SingleResponse<ExecuteResponse> {
-        let start = Instant::now();
         let correlation_id = CorrelationId::new();
 
         let exec_request: ExecuteRequest = match exec_request.try_into() {
@@ -189,12 +161,6 @@ where
             Err(error) => {
                 info!("deploy results error: RootNotFound");
                 exec_response.mut_missing_parent().set_hash(error.to_vec());
-                log_duration(
-                    correlation_id,
-                    METRIC_DURATION_EXEC,
-                    TAG_RESPONSE_EXEC,
-                    start.elapsed(),
-                );
                 return SingleResponse::completed(exec_response);
             }
         };
@@ -203,12 +169,6 @@ where
         exec_response
             .mut_success()
             .set_deploy_results(FromIterator::from_iter(protobuf_results_iter));
-        log_duration(
-            correlation_id,
-            METRIC_DURATION_EXEC,
-            TAG_RESPONSE_EXEC,
-            start.elapsed(),
-        );
         SingleResponse::completed(exec_response)
     }
 
@@ -217,7 +177,6 @@ where
         _request_options: RequestOptions,
         mut commit_request: CommitRequest,
     ) -> SingleResponse<CommitResponse> {
-        let start = Instant::now();
         let correlation_id = CorrelationId::new();
 
         // TODO
@@ -310,13 +269,6 @@ where
             ret
         };
 
-        log_duration(
-            correlation_id,
-            METRIC_DURATION_COMMIT,
-            TAG_RESPONSE_COMMIT,
-            start.elapsed(),
-        );
-
         SingleResponse::completed(commit_response)
     }
 
@@ -325,7 +277,6 @@ where
         _request_options: RequestOptions,
         run_genesis_request: ipc::RunGenesisRequest,
     ) -> SingleResponse<GenesisResponse> {
-        let start = Instant::now();
         let correlation_id = CorrelationId::new();
 
         let run_genesis_request: RunGenesisRequest = match run_genesis_request.try_into() {
@@ -380,13 +331,6 @@ where
             }
         };
 
-        log_duration(
-            correlation_id,
-            METRIC_DURATION_GENESIS,
-            TAG_RESPONSE_GENESIS,
-            start.elapsed(),
-        );
-
         SingleResponse::completed(genesis_response)
     }
 
@@ -395,7 +339,6 @@ where
         _request_options: RequestOptions,
         upgrade_request: UpgradeRequest,
     ) -> SingleResponse<UpgradeResponse> {
-        let start = Instant::now();
         let correlation_id = CorrelationId::new();
 
         let upgrade_config: UpgradeConfig = match upgrade_request.try_into() {
@@ -406,13 +349,6 @@ where
 
                 let mut upgrade_response = UpgradeResponse::new();
                 upgrade_response.mut_failed_deploy().set_message(err_msg);
-
-                log_duration(
-                    correlation_id,
-                    METRIC_DURATION_UPGRADE,
-                    TAG_RESPONSE_UPGRADE,
-                    start.elapsed(),
-                );
 
                 return SingleResponse::completed(upgrade_response);
             }
@@ -447,13 +383,6 @@ where
                 ret
             }
         };
-
-        log_duration(
-            correlation_id,
-            METRIC_DURATION_UPGRADE,
-            TAG_RESPONSE_UPGRADE,
-            start.elapsed(),
-        );
 
         SingleResponse::completed(upgrade_response)
     }

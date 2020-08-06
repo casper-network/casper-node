@@ -12,7 +12,6 @@ use std::{
 };
 
 use backtrace::Backtrace;
-
 use structopt::StructOpt;
 
 use cli::Cli;
@@ -28,8 +27,11 @@ fn panic_hook(info: &PanicInfo) {
     // Print panic info
     if let Some(s) = info.payload().downcast_ref::<&str>() {
         eprintln!("node panicked: {}", s);
+    // TODO - use `info.message()` once https://github.com/rust-lang/rust/issues/66745 is fixed
+    // } else if let Some(message) = info.message() {
+    //     eprintln!("{}", message);
     } else {
-        eprintln!("node panicked");
+        eprintln!("{}", info);
     }
 
     // Abort after a panic, even if only a worker thread panicked.

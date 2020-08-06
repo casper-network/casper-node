@@ -3,7 +3,6 @@ use std::fmt::{self, Display, Formatter};
 use derive_more::From;
 
 use crate::{
-    components::storage,
     effect::{requests::ApiRequest, Responder},
     types::{Deploy, DeployHash},
 };
@@ -14,12 +13,12 @@ pub enum Event {
     ApiRequest(ApiRequest),
     GetDeployResult {
         hash: DeployHash,
-        result: Box<storage::Result<Deploy>>,
-        main_responder: Responder<storage::Result<Deploy>>,
+        result: Box<Option<Deploy>>,
+        main_responder: Responder<Option<Deploy>>,
     },
     ListDeploysResult {
-        result: Box<storage::Result<Vec<DeployHash>>>,
-        main_responder: Responder<storage::Result<Vec<DeployHash>>>,
+        result: Vec<DeployHash>,
+        main_responder: Responder<Vec<DeployHash>>,
     },
     GetMetricsResult {
         text: Option<String>,

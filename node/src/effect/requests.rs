@@ -26,11 +26,11 @@ use crate::{
             shared::{additive_map::AdditiveMap, transform::Transform},
             storage::global_state::CommitResult,
         },
-        fetcher::{FetchResult, Item as FetcherItem},
-        storage::{self, DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
+        fetcher::FetchResult,
+        storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::hash::Digest,
-    types::{BlockHash, Deploy, DeployHash, ExecutedBlock, FinalizedBlock, ProtoBlock},
+    types::{BlockHash, Deploy, DeployHash, ExecutedBlock, FinalizedBlock, Item, ProtoBlock},
     utils::DisplayIter,
     Chainspec,
 };
@@ -156,21 +156,23 @@ pub enum StorageRequest<S: StorageType + 'static> {
         block: Box<S::Block>,
         /// Responder to call with the result.  Returns true if the block was stored on this
         /// attempt or false if it was previously stored.
-        responder: Responder<storage::Result<bool>>,
+        responder: Responder<bool>,
     },
     /// Retrieve block with given hash.
     GetBlock {
         /// Hash of block to be retrieved.
         block_hash: <S::Block as Value>::Id,
-        /// Responder to call with the result.
-        responder: Responder<storage::Result<S::Block>>,
+        /// Responder to call with the result.  Returns `None` is the block doesn't exist in local
+        /// storage.
+        responder: Responder<Option<S::Block>>,
     },
     /// Retrieve block header with given hash.
     GetBlockHeader {
         /// Hash of block to get header of.
         block_hash: <S::Block as Value>::Id,
-        /// Responder to call with the result.
-        responder: Responder<storage::Result<<S::Block as Value>::Header>>,
+        /// Responder to call with the result.  Returns `None` is the block header doesn't exist in
+        /// local storage.
+        responder: Responder<Option<<S::Block as Value>::Header>>,
     },
     /// Store given deploy.
     PutDeploy {
@@ -178,7 +180,7 @@ pub enum StorageRequest<S: StorageType + 'static> {
         deploy: Box<S::Deploy>,
         /// Responder to call with the result.  Returns true if the deploy was stored on this
         /// attempt or false if it was previously stored.
-        responder: Responder<storage::Result<bool>>,
+        responder: Responder<bool>,
     },
     /// Retrieve deploys with given hashes.
     GetDeploys {
@@ -197,21 +199,21 @@ pub enum StorageRequest<S: StorageType + 'static> {
     /// List all deploy hashes.
     ListDeploys {
         /// Responder to call with the result.
-        responder: Responder<storage::Result<Vec<<S::Deploy as Value>::Id>>>,
+        responder: Responder<Vec<<S::Deploy as Value>::Id>>,
     },
     /// Store given chainspec.
     PutChainspec {
         /// Chainspec.
         chainspec: Box<Chainspec>,
         /// Responder to call with the result.
-        responder: Responder<storage::Result<()>>,
+        responder: Responder<()>,
     },
     /// Retrieve chainspec with given version.
     GetChainspec {
         /// Version.
         version: Version,
         /// Responder to call with the result.
-        responder: Responder<storage::Result<Chainspec>>,
+        responder: Responder<Option<Chainspec>>,
     },
 }
 
@@ -296,12 +298,12 @@ pub enum ApiRequest {
         /// The hash of the deploy to be retrieved.
         hash: DeployHash,
         /// Responder to call with the result.
-        responder: Responder<Result<Deploy, storage::Error>>,
+        responder: Responder<Option<Deploy>>,
     },
     /// Return the list of all deploy hashes stored on this node.
     ListDeploys {
         /// Responder to call with the result.
-        responder: Responder<Result<Vec<DeployHash>, storage::Error>>,
+        responder: Responder<Vec<DeployHash>>,
     },
     /// Return string formatted, prometheus compatible metrics or `None` if an error occured.
     GetMetrics {
@@ -407,7 +409,7 @@ impl Display for ContractRuntimeRequest {
 /// Fetcher related requests.
 #[derive(Debug)]
 #[must_use]
-pub enum FetcherRequest<I, T: FetcherItem> {
+pub enum FetcherRequest<I, T: Item> {
     /// Return the specified item if it exists, else `None`.
     Fetch {
         /// The ID of the item to be retrieved.
@@ -415,11 +417,11 @@ pub enum FetcherRequest<I, T: FetcherItem> {
         /// The peer id of the peer to be asked if the item is not held locally
         peer: I,
         /// Responder to call with the result.
-        responder: Responder<Option<Box<FetchResult<T>>>>,
+        responder: Responder<Option<FetchResult<T>>>,
     },
 }
 
-impl<I, T: FetcherItem> Display for FetcherRequest<I, T> {
+impl<I, T: Item> Display for FetcherRequest<I, T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             FetcherRequest::Fetch { id, .. } => write!(formatter, "request item by id {}", id),
@@ -453,18 +455,20 @@ impl Display for BlockExecutorRequest {
 /// A block validator request.
 #[derive(Debug)]
 #[must_use]
-pub struct BlockValidatorRequest<I> {
-    /// The proto-block.
+pub struct BlockValidationRequest<I> {
+    /// The proto-block to be validated.
     pub(crate) proto_block: ProtoBlock,
-    /// The sender of the proto-block (useful for requesting missing deploys).
+    /// The sender of the proto-block, which will be asked to provide all missing deploys.
     pub(crate) sender: I,
     /// Responder to call with the result.
+    ///
+    /// Indicates whether or not validation was successful and returns `proto_block` unchanged.
     pub(crate) responder: Responder<(bool, ProtoBlock)>,
 }
 
-impl<I: Display> Display for BlockValidatorRequest<I> {
+impl<I: Display> Display for BlockValidationRequest<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let BlockValidatorRequest {
+        let BlockValidationRequest {
             proto_block,
             sender,
             ..

@@ -3,6 +3,8 @@
 use std::{fmt, io};
 
 use ansi_term::{Color, Style};
+use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::{
     fmt::{
@@ -15,18 +17,47 @@ use tracing_subscriber::{
     EnvFilter,
 };
 
+/// Logging configuration.
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LoggingConfig {
+    /// Output format for log.
+    format: LoggingFormat,
+    /// Abbreviate module names.
+    ///
+    /// If set, human-readable formats will abbreviate module names, `foo::bar::baz::bizz` will turn
+    /// into `f:b:b:bizz`.
+    abbreviate_modules: bool,
+}
+
+/// Logging output format.
+///
+/// Defaults to "text"".
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum LoggingFormat {
+    /// Text format.
+    Text,
+    /// JSON format.
+    Json,
+}
+
+impl Default for LoggingFormat {
+    fn default() -> Self {
+        LoggingFormat::Text
+    }
+}
+
 /// This is used to implement tracing's `FormatEvent` so that we can customize the way tracing
 /// events are formatted.
 struct FmtEvent {
     // Whether module segments should be shortened to first letter only.
-    single_letter: bool,
+    abbreviate_modules: bool,
 }
 
 impl FmtEvent {
-    fn new(single_letter_module: bool) -> Self {
-        FmtEvent {
-            single_letter: single_letter_module,
-        }
+    fn new(abbreviate_modules: bool) -> Self {
+        FmtEvent { abbreviate_modules }
     }
 }
 
@@ -90,23 +121,34 @@ where
         // print the module path, filename and line number with dimmed style
         let module = {
             let full_module_path = meta.module_path().unwrap_or_default();
-            if self.single_letter {
-                full_module_path
-                    .split("::")
-                    .map(|segment| &segment[..1])
-                    .collect::<Vec<_>>()
-                    .join("::")
+            if self.abbreviate_modules {
+                // Use a smallvec for going up to six levels deep.
+                let mut parts: SmallVec<[&str; 6]> = full_module_path.split("::").collect();
+
+                let count = parts.len();
+                // Abbreviate all but last segment.
+                if count > 1 {
+                    for part in parts.iter_mut().take(count - 1) {
+                        assert!(part.is_ascii());
+                        *part = &part[0..1];
+                    }
+                }
+                // Use a single `:` to join the abbreviated modules to make the output even shorter.
+                parts.join(":")
             } else {
                 full_module_path.to_owned()
             }
         };
 
-        let file = meta
-            .file()
-            .unwrap_or_default()
-            .rsplitn(2, '/')
-            .next()
-            .unwrap_or_default();
+        let file = if !self.abbreviate_modules {
+            meta.file()
+                .unwrap_or_default()
+                .rsplitn(2, '/')
+                .next()
+                .unwrap_or_default()
+        } else {
+            ""
+        };
 
         let line = meta.line().unwrap_or_default();
 
@@ -126,9 +168,11 @@ where
     }
 }
 
-/// Initializes the logging system with the full module path in the log entries.
+/// Initializes the logging system with the default parameters.
+///
+/// See `init_params` for details.
 pub fn init() -> anyhow::Result<()> {
-    init_params(false)
+    init_with_config(&Default::default())
 }
 
 /// Initializes the logging system.
@@ -136,12 +180,8 @@ pub fn init() -> anyhow::Result<()> {
 /// This function should only be called once during the lifetime of the application. Do not call
 /// this outside of the application or testing code, the installed logger is global.
 ///
-/// If `single_letter_module` is set to `true` then short module path will be used:
-/// instead of `foo::bar::baz::bizz` it will output `f::b::b::b`.
-/// Only module path is affected, file name will still be printed in full.
-///
 /// See the `README.md` for hints on how to configure logging at runtime.
-pub fn init_params(single_letter_module: bool) -> anyhow::Result<()> {
+pub fn init_with_config(config: &LoggingConfig) -> anyhow::Result<()> {
     let formatter = format::debug_fn(|writer, field, value| {
         if field.name() == "message" {
             write!(writer, "{:?}", value)
@@ -151,15 +191,25 @@ pub fn init_params(single_letter_module: bool) -> anyhow::Result<()> {
     })
     .delimited("; ");
 
-    // Setup a new tracing-subscriber writing to `stderr` for logging.
-    tracing::subscriber::set_global_default(
-        tracing_subscriber::fmt()
-            .with_writer(io::stdout)
-            .with_env_filter(EnvFilter::from_default_env())
-            .fmt_fields(formatter)
-            .event_format(FmtEvent::new(single_letter_module))
-            .finish(),
-    )?;
+    match config.format {
+        // Setup a new tracing-subscriber writing to `stdout` for logging.
+        LoggingFormat::Text => tracing::subscriber::set_global_default(
+            tracing_subscriber::fmt()
+                .with_writer(io::stdout)
+                .with_env_filter(EnvFilter::from_default_env())
+                .fmt_fields(formatter)
+                .event_format(FmtEvent::new(config.abbreviate_modules))
+                .finish(),
+        )?,
+        // JSON logging writes to `stdout` as well but uses the JSON format.
+        LoggingFormat::Json => tracing::subscriber::set_global_default(
+            tracing_subscriber::fmt()
+                .with_writer(io::stdout)
+                .with_env_filter(EnvFilter::from_default_env())
+                .json()
+                .finish(),
+        )?,
+    }
 
     Ok(())
 }

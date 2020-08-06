@@ -6,18 +6,17 @@ use derive_more::From;
 use prometheus::Registry;
 use rand::Rng;
 use thiserror::Error;
-use tracing::debug;
 
 use crate::{
     components::{
         chainspec_handler::{self, ChainspecHandler},
         contract_runtime::{self, ContractRuntime},
+        small_network::NodeId,
         storage::{self, Storage, StorageType},
         Component,
     },
     effect::{
-        announcements::StorageAnnouncement,
-        requests::{ContractRuntimeRequest, StorageRequest},
+        requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
         EffectBuilder, Effects,
     },
     reactor::{self, validator, EventQueueHandle},
@@ -33,15 +32,17 @@ pub enum Event {
 
     /// Storage event.
     #[from]
-    Storage(StorageRequest<Storage>),
-
-    /// Storage announcement.
-    #[from]
-    StorageAnnouncement(StorageAnnouncement<Storage>),
+    Storage(storage::Event<Storage>),
 
     /// Contract runtime event.
     #[from]
     ContractRuntime(contract_runtime::Event),
+}
+
+impl From<StorageRequest<Storage>> for Event {
+    fn from(request: StorageRequest<Storage>) -> Self {
+        Event::Storage(storage::Event::Request(request))
+    }
 }
 
 impl From<ContractRuntimeRequest> for Event {
@@ -50,12 +51,17 @@ impl From<ContractRuntimeRequest> for Event {
     }
 }
 
+impl From<NetworkRequest<NodeId, validator::Message>> for Event {
+    fn from(_request: NetworkRequest<NodeId, validator::Message>) -> Self {
+        unreachable!("no network traffic happens during initialization")
+    }
+}
+
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Chainspec(event) => write!(formatter, "chainspec: {}", event),
             Event::Storage(event) => write!(formatter, "storage: {}", event),
-            Event::StorageAnnouncement(ann) => write!(formatter, "storage announcement: {}", ann),
             Event::ContractRuntime(event) => write!(formatter, "contract runtime: {}", event),
         }
     }
@@ -108,14 +114,15 @@ impl reactor::Reactor for Reactor {
 
     fn new<Rd: Rng + ?Sized>(
         config: Self::Config,
-        _registry: &Registry,
+        registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut Rd,
     ) -> Result<(Self, Effects<Self::Event>), Error> {
         let effect_builder = EffectBuilder::new(event_queue);
 
         let storage = Storage::new(&config.storage)?;
-        let contract_runtime = ContractRuntime::new(&config.storage, config.contract_runtime)?;
+        let contract_runtime =
+            ContractRuntime::new(&config.storage, config.contract_runtime, registry)?;
         let (chainspec_handler, chainspec_effects) =
             ChainspecHandler::new(config.node.chainspec_config_path.clone(), effect_builder)?;
 
@@ -148,10 +155,6 @@ impl reactor::Reactor for Reactor {
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
             ),
-            Event::StorageAnnouncement(ann) => {
-                debug!(%ann, "ignoring storing announcement");
-                Effects::new()
-            }
             Event::ContractRuntime(event) => reactor::wrap_effects(
                 Event::ContractRuntime,
                 self.contract_runtime

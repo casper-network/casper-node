@@ -1,12 +1,14 @@
 use std::{
+    borrow::Borrow,
     cmp::Ordering,
-    collections::HashMap,
+    collections::{BTreeMap, BTreeSet, HashMap},
     convert::identity,
     iter,
-    ops::{Div, Mul},
+    ops::{Div, Mul, RangeBounds},
 };
 
 use derive_more::{Add, AddAssign, From, Sub, SubAssign, Sum};
+use itertools::Itertools;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
@@ -15,13 +17,13 @@ use super::{
     block::Block,
     evidence::Evidence,
     tallies::Tallies,
-    validators::ValidatorIndex,
+    validators::{ValidatorIndex, ValidatorMap},
     vertex::{Dependency, WireVote},
     vote::{Observation, Panorama, Vote},
 };
 use crate::{
     components::consensus::{highway_core::vertex::SignedWireVote, traits::Context},
-    types::Timestamp,
+    types::{TimeDiff, Timestamp},
 };
 use iter::Sum;
 
@@ -68,6 +70,12 @@ impl Div<u64> for Weight {
     }
 }
 
+impl From<Weight> for u128 {
+    fn from(Weight(w): Weight) -> u128 {
+        u128::from(w)
+    }
+}
+
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum VoteError {
     #[error("The vote's panorama is inconsistent.")]
@@ -84,6 +92,20 @@ pub(crate) enum VoteError {
     RoundLength,
 }
 
+/// The delay after which rewards are calculated.
+///
+/// Rewards for a round in which a block B was proposed are paid out in the first block whose
+/// timestamp greater than `REWARD_DELAY * t` after B's timestamp, where `t` is the round length of
+/// `B` itself.
+const REWARD_DELAY: u64 = 8;
+
+/// A number representing the maximum total reward for finalizing one block.
+///
+/// Validator rewards for finalization must add up to this number or less.
+/// 1 trillion was chosen here because it allows very precise fractions of a block reward while
+/// still leaving space for millions of full rewards in a `u64`.
+pub(crate) const BLOCK_REWARD: u64 = 1_000_000_000_000;
+
 /// A passive instance of the Highway protocol, containing its local state.
 ///
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
@@ -92,39 +114,64 @@ pub(crate) enum VoteError {
 #[derive(Debug)]
 pub(crate) struct State<C: Context> {
     /// The validator's voting weights.
-    weights: Vec<Weight>,
+    weights: ValidatorMap<Weight>,
     /// Cumulative validator weights: Entry `i` contains the sum of the weights of validators `0`
     /// through `i`.
-    cumulative_w: Vec<Weight>,
+    cumulative_w: ValidatorMap<Weight>,
     /// All votes imported so far, by hash.
     // TODO: HashMaps prevent deterministic tests.
     votes: HashMap<C::Hash, Vote<C>>,
     /// All blocks, by hash.
     blocks: HashMap<C::Hash, Block<C>>,
+    /// All block hashes, by the earliest time at which rewards for the blocks' rounds can be paid.
+    reward_index: BTreeMap<Timestamp, BTreeSet<C::Hash>>,
     /// Evidence to prove a validator malicious, by index.
     evidence: HashMap<ValidatorIndex, Evidence<C>>,
     /// The full panorama, corresponding to the complete protocol state.
     panorama: Panorama<C>,
     /// The random seed.
     seed: u64,
+    /// The fraction of the block reward, in trillionths, that are paid out even if the heaviest
+    /// summit does not exceed half the total weight.
+    forgiveness_factor: u64,
+    /// The minimum round exponent. `1 << min_round_exp` milliseconds is the minimum round length.
+    min_round_exp: u8,
 }
 
 impl<C: Context> State<C> {
-    pub(crate) fn new(weights: &[Weight], seed: u64) -> State<C> {
+    pub(crate) fn new<I>(
+        weights: I,
+        seed: u64,
+        (ff_num, ff_denom): (u16, u16),
+        min_round_exp: u8,
+    ) -> State<C>
+    where
+        I: IntoIterator,
+        I::Item: Borrow<Weight>,
+    {
+        assert!(
+            ff_num <= ff_denom,
+            "forgiveness factor must be at most 100%"
+        );
+        let weights = ValidatorMap::from(weights.into_iter().map(|w| *w.borrow()).collect_vec());
         let mut sum = Weight(0);
         let add = |w: &Weight| {
             sum += *w;
             sum
         };
         let cumulative_w = weights.iter().map(add).collect();
+        let panorama = Panorama::new(weights.len());
         State {
-            weights: weights.to_vec(),
+            weights,
             cumulative_w,
             votes: HashMap::new(),
             blocks: HashMap::new(),
+            reward_index: BTreeMap::new(),
             evidence: HashMap::new(),
-            panorama: Panorama::new(weights.len()),
+            panorama,
             seed,
+            forgiveness_factor: BLOCK_REWARD * u64::from(ff_num) / u64::from(ff_denom),
+            min_round_exp,
         }
     }
 
@@ -170,12 +217,39 @@ impl<C: Context> State<C> {
 
     /// Returns the `idx`th validator's voting weight.
     pub(crate) fn weight(&self, idx: ValidatorIndex) -> Weight {
-        self.weights[idx.0 as usize]
+        self.weights[idx]
+    }
+
+    /// Returns the map of validator weights.
+    pub(crate) fn weights(&self) -> &ValidatorMap<Weight> {
+        &self.weights
+    }
+
+    /// Returns the fraction of the block reward, in trillionths, that are paid out even if the
+    /// heaviest summit does not exceed half the total weight.
+    pub(crate) fn forgiveness_factor(&self) -> u64 {
+        self.forgiveness_factor
+    }
+
+    /// Returns an iterator over all hashes of blocks whose earliest timestamp for reward payout is
+    /// in the specified range.
+    pub(crate) fn rewards_range<RB>(&self, range: RB) -> impl Iterator<Item = &C::Hash>
+    where
+        RB: RangeBounds<Timestamp>,
+    {
+        self.reward_index
+            .range(range)
+            .flat_map(|(_, blocks)| blocks)
     }
 
     /// Returns the total weight of all known-faulty validators.
     pub(crate) fn faulty_weight(&self) -> Weight {
-        self.panorama
+        self.faulty_weight_in(&self.panorama)
+    }
+
+    /// Returns the total weight of all validators marked faulty in this panorama.
+    pub(crate) fn faulty_weight_in(&self, panorama: &Panorama<C>) -> Weight {
+        panorama
             .iter()
             .zip(&self.weights)
             .filter(|(obs, _)| **obs == Observation::Faulty)
@@ -185,7 +259,7 @@ impl<C: Context> State<C> {
 
     /// Returns the sum of all validators' voting weights.
     pub(crate) fn total_weight(&self) -> Weight {
-        *self.cumulative_w.last().unwrap()
+        *self.cumulative_w.as_ref().last().unwrap()
     }
 
     /// Returns the complete protocol state's latest panorama.
@@ -203,8 +277,7 @@ impl<C: Context> State<C> {
         // `cumulative_w[i]` denotes the last weight unit that belongs to validator `i`.
         // `binary_search` returns the first `i` with `cumulative_w[i] >= r`, i.e. the validator
         // who owns the randomly selected weight unit.
-        let idx = self.cumulative_w.binary_search(&r).unwrap_or_else(identity);
-        ValidatorIndex(idx as u32)
+        self.cumulative_w.binary_search(&r).unwrap_or_else(identity)
     }
 
     /// Adds the vote to the protocol state.
@@ -218,6 +291,10 @@ impl<C: Context> State<C> {
         let (vote, opt_value) = Vote::new(swvote, fork_choice.as_ref(), self);
         if let Some(value) = opt_value {
             let block = Block::new(fork_choice, value, self);
+            self.reward_index
+                .entry(reward_time(&vote))
+                .or_default()
+                .insert(hash.clone());
             self.blocks.insert(hash.clone(), block);
         }
         self.votes.insert(hash, vote);
@@ -307,8 +384,8 @@ impl<C: Context> State<C> {
             (Observation::Correct(vh0), obs1) if self.sees_correct(pan1, vh0) => obs1.clone(),
             (Observation::Correct(_), Observation::Correct(_)) => Observation::Faulty,
         };
-        let observations = pan0.iter().zip(&pan1.0).map(merge_obs).collect();
-        Panorama(observations)
+        let observations = pan0.iter().zip(pan1).map(merge_obs).collect_vec();
+        Panorama::from(observations)
     }
 
     /// Returns the panorama seeing all votes seen by `pan` with a timestamp no later than
@@ -322,7 +399,7 @@ impl<C: Context> State<C> {
                 .map_or(Observation::None, Observation::Correct),
             obs @ Observation::None | obs @ Observation::Faulty => obs.clone(),
         };
-        Panorama(pan.iter().map(obs_cutoff).collect())
+        Panorama::from(pan.iter().map(obs_cutoff).collect_vec())
     }
 
     /// Returns an error if `swvote` is invalid. This can be called even if the dependencies are
@@ -333,7 +410,10 @@ impl<C: Context> State<C> {
         if creator.0 as usize >= self.weights.len() {
             return Err(VoteError::Creator);
         }
-        if (wvote.value.is_none() && wvote.panorama.is_empty())
+        if wvote.round_exp < self.min_round_exp {
+            return Err(VoteError::RoundLength);
+        }
+        if (wvote.value.is_none() && !wvote.panorama.has_correct())
             || wvote.panorama.len() != self.weights.len()
         {
             return Err(VoteError::Panorama);
@@ -378,6 +458,12 @@ impl<C: Context> State<C> {
         Ok(())
     }
 
+    /// Returns the minimum round exponent. `1 << self.min_round_exp()` milliseconds is the minimum
+    /// round length.
+    pub(super) fn min_round_exp(&self) -> u8 {
+        self.min_round_exp
+    }
+
     /// Updates `self.panorama` with an incoming vote. Panics if dependencies are missing.
     ///
     /// If the new vote is valid, it will just add `Observation::Correct(wvote.hash())` to the
@@ -401,7 +487,7 @@ impl<C: Context> State<C> {
                 Observation::Faulty
             }
         };
-        self.panorama.update(wvote.creator, new_obs);
+        self.panorama[wvote.creator] = new_obs;
     }
 
     /// Returns the hash of the message with the given sequence number from the creator of `hash`,
@@ -484,7 +570,7 @@ impl<C: Context> State<C> {
     /// Returns whether `pan_l` can possibly come later in time than `pan_r`, i.e. it can see
     /// every honest message and every fault seen by `other`.
     fn panorama_geq(&self, pan_l: &Panorama<C>, pan_r: &Panorama<C>) -> bool {
-        let mut pairs_iter = pan_l.0.iter().zip(&pan_r.0);
+        let mut pairs_iter = pan_l.iter().zip(pan_r);
         pairs_iter.all(|(obs_l, obs_r)| self.obs_geq(obs_l, obs_r))
     }
 
@@ -509,6 +595,27 @@ impl<C: Context> State<C> {
             _ => None,
         }
     }
+}
+
+/// Returns the round length, given the round exponent.
+pub(super) fn round_len(round_exp: u8) -> TimeDiff {
+    TimeDiff::from(1 << round_exp)
+}
+
+/// Returns the time at which the round with the given timestamp and round exponent began.
+///
+/// The boundaries of rounds with length `1 << round_exp` are multiples of that length, in
+/// milliseconds since the epoch. So the beginning of the current round is the greatest multiple
+/// of `1 << round_exp` that is less or equal to `timestamp`.
+pub(super) fn round_id(timestamp: Timestamp, round_exp: u8) -> Timestamp {
+    // The greatest multiple less or equal to the timestamp is the timestamp with the last
+    // `round_exp` bits set to zero.
+    (timestamp >> round_exp) << round_exp
+}
+
+/// Returns the earliest time at which rewards for a block introduced by this vote can be paid.
+pub(super) fn reward_time<C: Context>(vote: &Vote<C>) -> Timestamp {
+    vote.timestamp + round_len(vote.round_exp) * REWARD_DELAY
 }
 
 /// Returns the base-2 logarithm of `x`, rounded down,
@@ -614,6 +721,12 @@ pub(crate) mod tests {
     }
 
     impl State<TestContext> {
+        /// Returns a new `State` with `TestContext`, a 20% forgiveness factor and minimum round
+        /// exponent 4.
+        pub(crate) fn new_test(weights: &[Weight], seed: u64) -> Self {
+            State::new(weights, seed, (1, 5), 4)
+        }
+
         /// Adds the vote to the protocol state, or returns an error if it is invalid.
         /// Panics if dependencies are not satisfied.
         pub(crate) fn add_vote(
@@ -630,7 +743,7 @@ pub(crate) mod tests {
 
     #[test]
     fn add_vote() -> Result<(), AddVoteError<TestContext>> {
-        let mut state = State::new(WEIGHTS, 0);
+        let mut state = State::new_test(WEIGHTS, 0);
 
         // Create votes as follows; a0, b0 are blocks:
         //
@@ -679,7 +792,7 @@ pub(crate) mod tests {
 
     #[test]
     fn find_in_swimlane() -> Result<(), AddVoteError<TestContext>> {
-        let mut state = State::new(WEIGHTS, 0);
+        let mut state = State::new_test(WEIGHTS, 0);
         let mut a = Vec::new();
         let vote = vote!(ALICE, ALICE_SEC, 0; N, N, N; Some(0xA));
         a.push(vote.hash());
@@ -707,7 +820,7 @@ pub(crate) mod tests {
 
     #[test]
     fn fork_choice() -> Result<(), AddVoteError<TestContext>> {
-        let mut state = State::new(WEIGHTS, 0);
+        let mut state = State::new_test(WEIGHTS, 0);
 
         // Create blocks with scores as follows:
         //

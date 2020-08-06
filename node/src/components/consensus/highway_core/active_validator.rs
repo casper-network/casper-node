@@ -4,7 +4,7 @@ use tracing::warn;
 
 use super::{
     highway::ValidVertex,
-    state::State,
+    state::{self, State},
     validators::ValidatorIndex,
     vertex::{Vertex, WireVote},
     vote::{Observation, Panorama, Vote},
@@ -69,10 +69,18 @@ impl<C: Context> ActiveValidator<C> {
     pub(crate) fn new(
         vidx: ValidatorIndex,
         secret: C::ValidatorSecret,
-        next_round_exp: u8,
+        mut next_round_exp: u8,
         timestamp: Timestamp,
         state: &State<C>,
     ) -> (Self, Vec<Effect<C>>) {
+        if next_round_exp < state.min_round_exp() {
+            warn!(
+                "using minimum value {} instead of round exponent {}",
+                state.min_round_exp(),
+                next_round_exp,
+            );
+            next_round_exp = state.min_round_exp();
+        }
         let mut av = ActiveValidator {
             vidx,
             secret,
@@ -96,14 +104,14 @@ impl<C: Context> ActiveValidator<C> {
             return effects;
         }
         let r_exp = self.round_exp(state, timestamp);
-        let r_id = round_id(timestamp, r_exp);
-        let r_len = round_len(r_exp);
+        let r_id = state::round_id(timestamp, r_exp);
+        let r_len = state::round_len(r_exp);
         if timestamp == r_id && state.leader(r_id) == self.vidx {
             let bctx = BlockContext::new(timestamp);
             effects.push(Effect::RequestNewBlock(bctx));
         } else if timestamp == r_id + self.witness_offset(r_len) {
             let panorama = state.panorama_cutoff(state.panorama(), timestamp);
-            if !panorama.is_empty() {
+            if panorama.has_correct() {
                 let witness_vote = self.new_vote(panorama, timestamp, None, state);
                 effects.push(Effect::NewVertex(ValidVertex(Vertex::Vote(witness_vote))))
             }
@@ -122,7 +130,7 @@ impl<C: Context> ActiveValidator<C> {
             warn!(%timestamp, "skipping outdated confirmation");
         } else if self.should_send_confirmation(vhash, timestamp, state) {
             let panorama = self.confirmation_panorama(vhash, state);
-            if !panorama.is_empty() {
+            if panorama.has_correct() {
                 let confirmation_vote = self.new_vote(panorama, timestamp, None, state);
                 let vv = ValidVertex(Vertex::Vote(confirmation_vote));
                 return vec![Effect::NewVertex(vv)];
@@ -163,7 +171,7 @@ impl<C: Context> ActiveValidator<C> {
         let r_exp = self.round_exp(state, timestamp);
         timestamp >> r_exp == vote.timestamp >> r_exp // Current round.
             && state.leader(vote.timestamp) == vote.creator // The creator is the round's leader.
-            && vote.timestamp == round_id(vote.timestamp, vote.round_exp) // Check if it's a lambda message.
+            && vote.timestamp == state::round_id(vote.timestamp, vote.round_exp) // Check if it's a lambda message.
             && vote.creator != self.vidx // We didn't send it ourselves.
             && !state.has_evidence(vote.creator) // The creator is not faulty.
             && self.latest_vote(state)
@@ -179,13 +187,13 @@ impl<C: Context> ActiveValidator<C> {
         if let Some(prev_hash) = state.panorama().get(self.vidx).correct().cloned() {
             let own_vote = state.vote(&prev_hash);
             panorama = state.merge_panoramas(&vote.panorama, &own_vote.panorama);
-            panorama.update(self.vidx, Observation::Correct(prev_hash));
+            panorama[self.vidx] = Observation::Correct(prev_hash);
         } else {
             panorama = vote.panorama.clone();
         }
-        panorama.update(vote.creator, Observation::Correct(vhash.clone()));
+        panorama[vote.creator] = Observation::Correct(vhash.clone());
         for faulty_v in state.faulty_validators() {
-            panorama.update(faulty_v, Observation::Faulty);
+            panorama[faulty_v] = Observation::Faulty;
         }
         panorama
     }
@@ -221,8 +229,8 @@ impl<C: Context> ActiveValidator<C> {
             return Vec::new(); // We already scheduled the next call; nothing to do.
         }
         let r_exp = self.round_exp(state, timestamp);
-        let r_id = round_id(timestamp, r_exp);
-        let r_len = round_len(r_exp);
+        let r_id = state::round_id(timestamp, r_exp);
+        let r_len = state::round_len(r_exp);
         self.next_timer = if timestamp < r_id + self.witness_offset(r_len) {
             r_id + self.witness_offset(r_len)
         } else {
@@ -231,7 +239,7 @@ impl<C: Context> ActiveValidator<C> {
                 next_r_id
             } else {
                 let next_r_exp = self.round_exp(state, next_r_id);
-                next_r_id + self.witness_offset(round_len(next_r_exp))
+                next_r_id + self.witness_offset(state::round_len(next_r_exp))
             }
         };
         vec![Effect::ScheduleTimer(self.next_timer)]
@@ -265,28 +273,13 @@ impl<C: Context> ActiveValidator<C> {
     fn round_exp(&self, state: &State<C>, timestamp: Timestamp) -> u8 {
         self.latest_vote(state).map_or(self.next_round_exp, |vote| {
             let max_re = self.next_round_exp.max(vote.round_exp);
-            if vote.timestamp < round_id(timestamp, max_re) {
+            if vote.timestamp < state::round_id(timestamp, max_re) {
                 self.next_round_exp
             } else {
                 vote.round_exp
             }
         })
     }
-}
-
-fn round_len(round_exp: u8) -> TimeDiff {
-    TimeDiff::from(1 << round_exp)
-}
-
-/// Returns the time at which the round with the given timestamp and round exponent began.
-///
-/// The boundaries of rounds with length `1 << round_exp` are multiples of that length, in
-/// milliseconds since the epoch. So the beginning of the current round is the greatest multiple
-/// of `1 << round_exp` that is less or equal to `timestamp`.
-pub(super) fn round_id(timestamp: Timestamp, round_exp: u8) -> Timestamp {
-    // The greatest multiple less or equal to the timestamp is the timestamp with the last
-    // `round_exp` bits set to zero.
-    (timestamp >> round_exp) << round_exp
 }
 
 #[cfg(test)]
@@ -326,7 +319,7 @@ mod tests {
     #[test]
     #[allow(clippy::unreadable_literal)] // 0xC0FFEE is more readable than 0x00C0_FFEE.
     fn active_validator() -> Result<(), AddVoteError<TestContext>> {
-        let mut state = State::<TestContext>::new(&[Weight(3), Weight(4)], 0);
+        let mut state = State::new_test(&[Weight(3), Weight(4)], 0);
         let mut fd = FinalityDetector::new(Weight(2));
 
         // We start at time 410, with round length 16, so the first leader tick is 416, and the

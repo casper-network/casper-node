@@ -8,9 +8,11 @@ mod error;
 use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
+use hex_fmt::HexFmt;
 use prometheus::Registry;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use casperlabs_types::U512;
 
@@ -21,27 +23,30 @@ use crate::{
         block_validator::{self, BlockValidator},
         consensus::{self, EraSupervisor},
         contract_runtime::{self, ContractRuntime},
+        deploy_acceptor::{self, DeployAcceptor},
         deploy_buffer::{self, DeployBuffer},
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
         metrics::Metrics,
         pinger::{self, Pinger},
-        storage::Storage,
+        storage::{self, Storage, Value},
         Component,
     },
     effect::{
         announcements::{
-            ApiServerAnnouncement, ConsensusAnnouncement, NetworkAnnouncement, StorageAnnouncement,
+            ApiServerAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
+            NetworkAnnouncement,
         },
         requests::{
-            ApiRequest, BlockExecutorRequest, BlockValidatorRequest, ContractRuntimeRequest,
+            ApiRequest, BlockExecutorRequest, BlockValidationRequest, ContractRuntimeRequest,
             DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
     reactor::{self, initializer, EventQueueHandle},
     small_network::{self, NodeId},
-    types::{Deploy, Timestamp},
+    types::{Deploy, Item, Tag, Timestamp},
+    utils::Source,
     SmallNetwork,
 };
 pub use config::Config;
@@ -56,12 +61,41 @@ pub enum Message {
     /// Consensus component message.
     #[from]
     Consensus(consensus::ConsensusMessage),
-    /// Deploy fetcher component message.
-    #[from]
-    DeployFetcher(fetcher::Message<Deploy>),
     /// Deploy gossiper component message.
     #[from]
     DeployGossiper(gossiper::Message<Deploy>),
+    /// Request to get an item from a peer.
+    GetRequest {
+        /// The type tag of the requested item.
+        tag: Tag,
+        /// The serialized ID of the requested item.
+        serialized_id: Vec<u8>,
+    },
+    /// Response to a `GetRequest`.
+    GetResponse {
+        /// The type tag of the contained item.
+        tag: Tag,
+        /// The serialized item.
+        serialized_item: Vec<u8>,
+    },
+}
+
+impl Message {
+    pub(crate) fn new_get_request<T: Item>(id: &T::Id) -> Result<Self, Error> {
+        Ok(Message::GetRequest {
+            tag: T::TAG,
+            serialized_id: bincode::serialize(id)
+                .map_err(|error| Error::from_serialization(*error))?,
+        })
+    }
+
+    pub(crate) fn new_get_response<T: Item>(item: &T) -> Result<Self, Error> {
+        Ok(Message::GetResponse {
+            tag: T::TAG,
+            serialized_item: bincode::serialize(item)
+                .map_err(|error| Error::from_serialization(*error))?,
+        })
+    }
 }
 
 impl Display for Message {
@@ -69,8 +103,14 @@ impl Display for Message {
         match self {
             Message::Pinger(pinger) => write!(f, "Pinger::{}", pinger),
             Message::Consensus(consensus) => write!(f, "Consensus::{}", consensus),
-            Message::DeployFetcher(message) => write!(f, "DeployFetcher::{}", message),
             Message::DeployGossiper(deploy) => write!(f, "DeployGossiper::{}", deploy),
+            Message::GetRequest { tag, serialized_id } => {
+                write!(f, "GetRequest({}-{:10})", tag, HexFmt(serialized_id))
+            }
+            Message::GetResponse {
+                tag,
+                serialized_item,
+            } => write!(f, "GetResponse({}-{:10})", tag, HexFmt(serialized_item)),
         }
     }
 }
@@ -90,13 +130,16 @@ pub enum Event {
     Pinger(pinger::Event),
     #[from]
     /// Storage event.
-    Storage(StorageRequest<Storage>),
+    Storage(storage::Event<Storage>),
     #[from]
     /// API server event.
     ApiServer(api_server::Event),
     #[from]
     /// Consensus event.
     Consensus(consensus::Event<NodeId>),
+    /// Deploy acceptor event.
+    #[from]
+    DeployAcceptor(deploy_acceptor::Event),
     /// Deploy fetcher event.
     #[from]
     DeployFetcher(fetcher::Event<Deploy>),
@@ -128,7 +171,7 @@ pub enum Event {
     BlockExecutorRequest(BlockExecutorRequest),
     /// Block validator request.
     #[from]
-    BlockValidatorRequest(BlockValidatorRequest<NodeId>),
+    BlockValidatorRequest(BlockValidationRequest<NodeId>),
     /// Metrics request.
     #[from]
     MetricsRequest(MetricsRequest),
@@ -137,15 +180,21 @@ pub enum Event {
     /// Network announcement.
     #[from]
     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
-    /// Storage announcement.
-    #[from]
-    StorageAnnouncement(StorageAnnouncement<Storage>),
     /// API server announcement.
     #[from]
     ApiServerAnnouncement(ApiServerAnnouncement),
+    /// DeployAcceptor announcement.
+    #[from]
+    DeployAcceptorAnnouncement(DeployAcceptorAnnouncement<NodeId>),
     /// Consensus announcement.
     #[from]
     ConsensusAnnouncement(ConsensusAnnouncement),
+}
+
+impl From<StorageRequest<Storage>> for Event {
+    fn from(request: StorageRequest<Storage>) -> Self {
+        Event::Storage(storage::Event::Request(request))
+    }
 }
 
 impl From<ApiRequest> for Event {
@@ -162,12 +211,6 @@ impl From<NetworkRequest<NodeId, consensus::ConsensusMessage>> for Event {
 
 impl From<NetworkRequest<NodeId, pinger::Message>> for Event {
     fn from(request: NetworkRequest<NodeId, pinger::Message>) -> Self {
-        Event::NetworkRequest(request.map_payload(Message::from))
-    }
-}
-
-impl From<NetworkRequest<NodeId, fetcher::Message<Deploy>>> for Event {
-    fn from(request: NetworkRequest<NodeId, fetcher::Message<Deploy>>) -> Self {
         Event::NetworkRequest(request.map_payload(Message::from))
     }
 }
@@ -193,6 +236,7 @@ impl Display for Event {
             Event::Storage(event) => write!(f, "storage: {}", event),
             Event::ApiServer(event) => write!(f, "api server: {}", event),
             Event::Consensus(event) => write!(f, "consensus: {}", event),
+            Event::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
             Event::DeployFetcher(event) => write!(f, "deploy fetcher: {}", event),
             Event::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
             Event::ContractRuntime(event) => write!(f, "contract runtime: {}", event),
@@ -206,8 +250,10 @@ impl Display for Event {
             Event::MetricsRequest(req) => write!(f, "metrics request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
             Event::ApiServerAnnouncement(ann) => write!(f, "api server announcement: {}", ann),
+            Event::DeployAcceptorAnnouncement(ann) => {
+                write!(f, "deploy acceptor announcement: {}", ann)
+            }
             Event::ConsensusAnnouncement(ann) => write!(f, "consensus announcement: {}", ann),
-            Event::StorageAnnouncement(ann) => write!(f, "storage announcement: {}", ann),
         }
     }
 }
@@ -222,6 +268,7 @@ pub struct Reactor {
     contract_runtime: ContractRuntime,
     api_server: ApiServer,
     consensus: EraSupervisor<NodeId>,
+    deploy_acceptor: DeployAcceptor,
     deploy_fetcher: Fetcher<Deploy>,
     deploy_gossiper: Gossiper<Deploy, Event>,
     deploy_buffer: DeployBuffer,
@@ -263,7 +310,11 @@ impl reactor::Reactor for Reactor {
             .genesis
             .accounts
             .iter()
-            .filter_map(|account| account.public_key().map(|pk| (pk, account.bonded_amount())))
+            .filter_map(|account| {
+                account
+                    .public_key()
+                    .map(|pub_key| (pub_key, account.bonded_amount()))
+            })
             .filter(|(_, stake)| stake.value() > U512::zero())
             .collect();
         let (consensus, consensus_effects) = EraSupervisor::new(
@@ -272,12 +323,9 @@ impl reactor::Reactor for Reactor {
             effect_builder,
             validator_stakes,
         )?;
+        let deploy_acceptor = DeployAcceptor::new();
         let deploy_fetcher = Fetcher::new(config.gossip);
-        let deploy_gossiper = Gossiper::new(
-            config.gossip,
-            gossiper::put_deploy_to_storage,
-            gossiper::get_deploy_from_storage,
-        );
+        let deploy_gossiper = Gossiper::new(config.gossip, gossiper::get_deploy_from_storage);
         let deploy_buffer = DeployBuffer::new(config.node.block_max_deploy_count as usize);
         // Post state hash is expected to be present
         let post_state_hash = chainspec_handler
@@ -296,11 +344,12 @@ impl reactor::Reactor for Reactor {
                 net,
                 pinger,
                 storage,
+                contract_runtime,
                 api_server,
                 consensus,
+                deploy_acceptor,
                 deploy_fetcher,
                 deploy_gossiper,
-                contract_runtime,
                 deploy_buffer,
                 block_executor,
                 block_validator,
@@ -339,6 +388,11 @@ impl reactor::Reactor for Reactor {
             Event::Consensus(event) => reactor::wrap_effects(
                 Event::Consensus,
                 self.consensus.handle_event(effect_builder, rng, event),
+            ),
+            Event::DeployAcceptor(event) => reactor::wrap_effects(
+                Event::DeployAcceptor,
+                self.deploy_acceptor
+                    .handle_event(effect_builder, rng, event),
             ),
             Event::DeployFetcher(event) => reactor::wrap_effects(
                 Event::DeployFetcher,
@@ -402,19 +456,92 @@ impl reactor::Reactor for Reactor {
                     Message::Pinger(msg) => {
                         Event::Pinger(pinger::Event::MessageReceived { sender, msg })
                     }
-                    Message::DeployFetcher(payload) => {
-                        Event::DeployFetcher(fetcher::Event::MessageReceived { sender, payload })
-                    }
                     Message::DeployGossiper(message) => {
                         Event::DeployGossiper(gossiper::Event::MessageReceived { sender, message })
                     }
+                    Message::GetRequest { tag, serialized_id } => match tag {
+                        Tag::Deploy => {
+                            let deploy_hash = match bincode::deserialize(&serialized_id) {
+                                Ok(hash) => hash,
+                                Err(error) => {
+                                    error!(
+                                        "failed to decode {:?} from {}: {}",
+                                        serialized_id, sender, error
+                                    );
+                                    return Effects::new();
+                                }
+                            };
+                            Event::Storage(storage::Event::GetDeployForPeer {
+                                deploy_hash,
+                                peer: sender,
+                            })
+                        }
+                    },
+                    Message::GetResponse {
+                        tag,
+                        serialized_item,
+                    } => match tag {
+                        Tag::Deploy => {
+                            let deploy = match bincode::deserialize(&serialized_item) {
+                                Ok(deploy) => Box::new(deploy),
+                                Err(error) => {
+                                    error!("failed to decode deploy from {}: {}", sender, error);
+                                    return Effects::new();
+                                }
+                            };
+                            Event::DeployAcceptor(deploy_acceptor::Event::Accept {
+                                deploy,
+                                source: Source::Peer(sender),
+                            })
+                        }
+                    },
                 };
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
-                let event = gossiper::Event::ItemReceived { item: deploy };
-                self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
+                let event = deploy_acceptor::Event::Accept {
+                    deploy,
+                    source: Source::<NodeId>::Client,
+                };
+                self.dispatch_event(effect_builder, rng, Event::DeployAcceptor(event))
             }
+            Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::AcceptedNewDeploy {
+                deploy,
+                source,
+            }) => {
+                let event = deploy_buffer::Event::Buffer {
+                    hash: *deploy.id(),
+                    header: Box::new(deploy.header().clone()),
+                };
+                let mut effects =
+                    self.dispatch_event(effect_builder, rng, Event::DeployBuffer(event));
+
+                let event = gossiper::Event::ItemReceived {
+                    item_id: *deploy.id(),
+                    source,
+                };
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    Event::DeployGossiper(event),
+                ));
+
+                let event = fetcher::Event::GotRemotely {
+                    item: deploy,
+                    source,
+                };
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    Event::DeployFetcher(event),
+                ));
+
+                effects
+            }
+            Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
+                deploy: _,
+                source: _,
+            }) => Effects::new(),
             Event::ConsensusAnnouncement(consensus_announcement) => {
                 let reactor_event = Event::DeployBuffer(match consensus_announcement {
                     ConsensusAnnouncement::Proposed(block) => {
@@ -428,16 +555,6 @@ impl reactor::Reactor for Reactor {
                     }
                 });
                 self.dispatch_event(effect_builder, rng, reactor_event)
-            }
-            Event::StorageAnnouncement(StorageAnnouncement::StoredNewDeploy {
-                deploy_hash,
-                deploy_header,
-            }) => {
-                let event = deploy_buffer::Event::Buffer {
-                    hash: deploy_hash,
-                    header: deploy_header,
-                };
-                self.dispatch_event(effect_builder, rng, Event::DeployBuffer(event))
             }
         }
     }
