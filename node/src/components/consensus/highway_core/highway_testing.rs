@@ -2,11 +2,16 @@ use super::{
     active_validator::Effect,
     evidence::Evidence,
     finality_detector::{FinalityDetector, FinalityOutcome},
-    highway::{Highway, HighwayParams, PreValidatedVertex, ValidVertex, VertexError},
+    highway::{Highway, PreValidatedVertex, ValidVertex, VertexError},
     validators::{ValidatorIndex, Validators},
     vertex::{Dependency, Vertex},
     Weight,
 };
+
+use itertools::Itertools;
+use serde::{Deserialize, Serialize};
+use std::iter::FromIterator;
+use tracing::{error, info, trace, warn};
 
 use crate::{
     components::consensus::{
@@ -22,10 +27,6 @@ use crate::{
     },
     types::Timestamp,
 };
-
-use serde::{Deserialize, Serialize};
-use std::iter::FromIterator;
-use tracing::{error, info, trace, warn};
 
 struct HighwayConsensus {
     highway: Highway<TestContext>,
@@ -825,14 +826,8 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
             |(vid, secrets): (ValidatorId, &mut HashMap<ValidatorId, TestSecret>)| {
                 let v_sec = secrets.remove(&vid).expect("Secret key should exist.");
 
-                let (highway, effects) = {
-                    let highway_params: HighwayParams<TestContext> = HighwayParams {
-                        instance_id,
-                        validators: validators.clone(),
-                    };
-
-                    Highway::new(highway_params, seed, vid, v_sec, round_exp, start_time)
-                };
+                let mut highway = Highway::builder(instance_id, validators.clone(), seed).build();
+                let effects = highway.activate_validator(vid, v_sec, round_exp, start_time);
 
                 let finality_detector = FinalityDetector::new(Weight(ftt));
 
@@ -841,10 +836,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                         highway,
                         finality_detector,
                     },
-                    effects
-                        .into_iter()
-                        .map(HighwayMessage::from)
-                        .collect::<Vec<_>>(),
+                    effects.into_iter().map(HighwayMessage::from).collect_vec(),
                 )
             };
 

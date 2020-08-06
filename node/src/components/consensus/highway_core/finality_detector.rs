@@ -198,8 +198,7 @@ impl<C: Context> FinalityDetector<C> {
         } else {
             return FinalityOutcome::None;
         };
-        let to_id =
-            |vidx: ValidatorIndex| highway.params().validators.get_by_index(vidx).id().clone();
+        let to_id = |vidx: ValidatorIndex| highway.validators().get_by_index(vidx).id().clone();
         let new_equivocators_iter = state.get_new_equivocators(bhash).into_iter();
         let rewards = compute_rewards(state, bhash);
         let rewards_iter = rewards.enumerate();

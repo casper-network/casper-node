@@ -1,4 +1,5 @@
 use std::{
+    borrow::Borrow,
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet, HashMap},
     convert::identity,
@@ -138,26 +139,32 @@ pub(crate) struct State<C: Context> {
 }
 
 impl<C: Context> State<C> {
-    pub(crate) fn new(
-        weights: &[Weight],
+    pub(crate) fn new<I>(
+        weights: I,
         seed: u64,
         (ff_num, ff_denom): (u16, u16),
         min_round_exp: u8,
-    ) -> State<C> {
+    ) -> State<C>
+    where
+        I: IntoIterator,
+        I::Item: Borrow<Weight>,
+    {
+        let weights = ValidatorMap::from(weights.into_iter().map(|w| *w.borrow()).collect_vec());
         let mut sum = Weight(0);
         let add = |w: &Weight| {
             sum += *w;
             sum
         };
         let cumulative_w = weights.iter().map(add).collect();
+        let panorama = Panorama::new(weights.len());
         State {
-            weights: ValidatorMap::from(weights.to_vec()),
+            weights,
             cumulative_w,
             votes: HashMap::new(),
             blocks: HashMap::new(),
             reward_index: BTreeMap::new(),
             evidence: HashMap::new(),
-            panorama: Panorama::new(weights.len()),
+            panorama,
             seed,
             forgiveness_factor: BLOCK_REWARD * u64::from(ff_num) / u64::from(ff_denom),
             min_round_exp,
