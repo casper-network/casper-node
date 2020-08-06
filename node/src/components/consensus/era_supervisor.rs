@@ -13,7 +13,6 @@ use std::{
 
 use anyhow::Error;
 use casperlabs_types::U512;
-use maplit::hashmap;
 use num_traits::AsPrimitive;
 use serde::{Deserialize, Serialize};
 use tracing::error;
@@ -93,6 +92,39 @@ where
         effect_builder: EffectBuilder<REv>,
         validators: Vec<(PublicKey, Motes)>,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
+        let secret_signing_key =
+            SecretKey::from_file(&config.secret_key_path).map_err(anyhow::Error::new)?;
+
+        let mut era_supervisor = Self {
+            active_eras: Default::default(),
+            era_config: Default::default(),
+        };
+
+        let effects = era_supervisor.new_era(
+            effect_builder,
+            EraId(0),
+            timestamp,
+            validators,
+            secret_signing_key,
+        );
+
+        Ok((era_supervisor, effects))
+    }
+
+    fn new_era<REv: ReactorEventT<I>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        era_id: EraId,
+        timestamp: Timestamp,
+        validators: Vec<(PublicKey, Motes)>,
+        secret_signing_key: SecretKey,
+    ) -> Effects<Event<I>> {
+        if self.active_eras.contains_key(&era_id) {
+            error!(?era_id, "era already exists");
+            // TODO - should panic?
+            return Effects::new();
+        }
+
         let sum_stakes: Motes = validators.iter().map(|(_, stake)| *stake).sum();
         let weights = if sum_stakes.value() > U512::from(u64::MAX) {
             validators
@@ -113,33 +145,26 @@ where
                 .collect()
         };
 
-        let secret_signing_key =
-            SecretKey::from_file(&config.secret_key_path).map_err(anyhow::Error::new)?;
-
-        let public_key: PublicKey = From::from(&secret_signing_key);
         let params = HighwayParams {
-            instance_id: hash("test era 0"),
+            instance_id: hash(format!("test era {}", era_id.0)), // TODO: get a proper ID?
             validators: weights,
         };
+        let public_key = PublicKey::from(&secret_signing_key);
         let (highway, effects) = HighwayProtocol::<I, HighwayContext>::new(
             params,
-            0, // TODO: get a proper seed ?
+            0, // TODO: get a proper seed?
             public_key,
             HighwaySecret::new(secret_signing_key, public_key),
             12, // 4.1 seconds; TODO: get a proper round exp
             timestamp,
         );
-        let initial_era: Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>> = Box::new(highway);
-        let active_eras = hashmap! { EraId(0) => initial_era };
-        let era_supervisor = Self {
-            active_eras,
-            era_config: Default::default(),
-        };
-        let effects = effects
+
+        let _ = self.active_eras.insert(era_id, Box::new(highway));
+
+        effects
             .into_iter()
             .flat_map(|result| Self::handle_consensus_result(EraId(0), effect_builder, result))
-            .collect();
-        Ok((era_supervisor, effects))
+            .collect()
     }
 
     fn handle_consensus_result<REv: ReactorEventT<I>>(
