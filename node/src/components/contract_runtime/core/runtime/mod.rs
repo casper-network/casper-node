@@ -1689,7 +1689,6 @@ where
         const METHOD_UNBOND: &str = "unbond";
         const METHOD_UNBOND_TIMER_ADVANCE: &str = "unbond_timer_advance";
         const METHOD_SLASH: &str = "slash";
-        const METHOD_RELEASE_FOUNDER_STAKE: &str = "release_founder_stake";
         const ARG_AMOUNT: &str = "amount";
         const ARG_PURSE: &str = "purse";
 
@@ -1796,15 +1795,6 @@ where
                     .slash(validator_account_hashes)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)?
-            }
-            // Type: `fn release_founder_stake(validator_account_hash: AccountHash) -> Result<bool, Error>`
-            METHOD_RELEASE_FOUNDER_STAKE => {
-                let validator_account_hash: AccountHash =
-                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_ACCOUNT_HASH)?;
-                let result = mint_context
-                    .release_founder_stake(validator_account_hash)
-                    .map_err(Self::reverter)?;
-                CLValue::from_t(result).map_err(Self::reverter)?
             }
             _ => CLValue::from_t(()).map_err(Self::reverter)?,
         };

@@ -6,7 +6,14 @@ use casperlabs_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR,
 };
 use casperlabs_node::components::contract_runtime::core::engine_state::EngineConfig;
-use casperlabs_types::{account::AccountHash, runtime_args, ContractHash, RuntimeArgs, U512};
+use casperlabs_types::{
+    account::AccountHash,
+    auction::{
+        ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_INDEX_KEY, ERA_VALIDATORS_KEY, FOUNDER_VALIDATORS_KEY,
+    },
+    runtime_args, ContractHash, RuntimeArgs, U512,
+};
+use std::collections::BTreeMap;
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const TRANSFER_AMOUNT: u64 = 250_000_000 + 1000;
@@ -14,12 +21,7 @@ const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 const DEPLOY_HASH_2: [u8; 32] = [2u8; 32];
 
 // one named_key for each validator and three for the purses
-const EXPECTED_KNOWN_KEYS_LEN: usize = 4;
-
-const FOUNDER_VALIDATORS_KEY: &str = "founder_validators";
-const ACTIVE_BIDS_KEY: &str = "active_bids";
-const DELEGATORS_KEY: &str = "delegators";
-const ERA_VALIDATORS_KEY: &str = "era_validators";
+const EXPECTED_KNOWN_KEYS_LEN: usize = 5;
 
 #[ignore]
 #[test]
@@ -51,7 +53,16 @@ fn should_run_auction_install_contract() {
         .as_contract()
         .expect("should be contract");
 
+    let mint_hash = builder.get_mint_contract_hash();
+
+    let mint_stored_value = builder
+        .query(None, mint_hash.into(), &[])
+        .expect("should query mint hash");
+    let mint = mint_stored_value.as_contract().expect("should be contract");
+
     let _auction_hash = auction.contract_package_hash();
+
+    let genesis_validators: BTreeMap<AccountHash, U512> = BTreeMap::new();
 
     let res = exec_with_return::exec(
         engine_config,
@@ -61,7 +72,10 @@ fn should_run_auction_install_contract() {
         DEFAULT_BLOCK_TIME,
         DEPLOY_HASH_2,
         "install",
-        runtime_args! {},
+        runtime_args! {
+            "mint_contract_package_hash" => mint.contract_package_hash(),
+            "genesis_validators" => genesis_validators,
+        },
         vec![],
     );
     let (auction_hash, _ret_urefs, effect): (ContractHash, _, _) =
@@ -82,4 +96,5 @@ fn should_run_auction_install_contract() {
     assert!(named_keys.contains_key(ACTIVE_BIDS_KEY));
     assert!(named_keys.contains_key(DELEGATORS_KEY));
     assert!(named_keys.contains_key(ERA_VALIDATORS_KEY));
+    assert!(named_keys.contains_key(ERA_INDEX_KEY));
 }

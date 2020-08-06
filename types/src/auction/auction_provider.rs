@@ -1,9 +1,10 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
 use super::{
+    era_validators::ValidatorWeights,
     internal,
     providers::{MintProvider, StorageProvider, SystemProvider},
-    SeigniorageRecipient,
+    EraValidators, SeigniorageRecipient,
 };
 use crate::{
     account::AccountHash,
@@ -12,16 +13,10 @@ use crate::{
     URef, U512,
 };
 
-/// Storage for `FoundingValidators`.
-pub const FOUNDER_VALIDATORS_KEY: &str = "founder_validators";
-/// Storage for `ActiveBids`.
-pub const ACTIVE_BIDS_KEY: &str = "active_bids";
-/// Storage for `Delegators`.
-pub const DELEGATORS_KEY: &str = "delegators";
-/// Storage for `EraValidators`.
-pub const ERA_VALIDATORS_KEY: &str = "era_validators";
-
 const AUCTION_SLOTS: usize = 5;
+
+/// Number of eras before an auction actually defines the set of validators.
+const AUCTION_DELAY: u64 = 3;
 
 /// Bondign auctions contract implementation.
 pub trait AuctionProvider: StorageProvider + SystemProvider + MintProvider
@@ -48,11 +43,9 @@ where
         match founding_validators.get_mut(&account_hash) {
             None => return Ok(false),
             Some(founding_validator) => {
-                founding_validator.winner = true;
+                founding_validator.winner = false;
             }
         }
-
-        self.release_founder_stake(account_hash)?;
 
         internal::set_founder_validators(self, founding_validators)?;
 
@@ -62,7 +55,7 @@ where
     /// Returns era_validators. Publicly accessible, but intended
     /// for periodic use by the PoS contract to update its own internal data
     /// structures recording current and past winners.
-    fn read_winners(&mut self) -> Result<Vec<AccountHash>> {
+    fn read_winners(&mut self) -> Result<EraValidators> {
         internal::get_era_validators(self)
     }
 
@@ -81,8 +74,14 @@ where
 
         let mut seigniorage_recipients = SeigniorageRecipients::new();
 
+        if era_validators.is_empty() {
+            return Ok(seigniorage_recipients);
+        }
+
+        let (_era, last_era_validators) = era_validators.into_iter().next_back().unwrap();
+
         // each validator...
-        for era_validator in era_validators {
+        for (era_validator, _weight) in last_era_validators {
             let mut seigniorage_recipient = SeigniorageRecipient::default();
             // ... mapped to their bids
             match (
@@ -378,6 +377,7 @@ where
                 });
         let founder_validators_scores = founder_validators
             .into_iter()
+            .filter(|(_validator_account_hash, founding_validator)| founding_validator.winner)
             .map(|(validator_account_hash, amount)| (validator_account_hash, amount.staked_amount));
 
         // Validator's entries from both maps as a single iterable.
@@ -392,18 +392,21 @@ where
                 .or_insert_with(|| score);
         }
 
-        // Compute new era validators.
-        let era_validators = {
+        // Compute new winning validators.
+        let validator_weights: ValidatorWeights = {
             let mut scores: Vec<_> = scores.into_iter().collect();
             // Sort the results in descending order
             scores.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
             // Get top N winners
-            scores
-                .into_iter()
-                .map(|(account_hash, _score)| account_hash)
-                .take(AUCTION_SLOTS)
-                .collect()
+            scores.into_iter().take(AUCTION_SLOTS).collect()
         };
+
+        let mut era_index = internal::get_era_index(self)?;
+
+        let mut era_validators = internal::get_era_validators(self)?;
+        era_validators.insert(era_index % AUCTION_DELAY, validator_weights);
+        era_index += 1;
+        internal::set_era_index(self, era_index)?;
 
         internal::set_era_validators(self, era_validators)
     }

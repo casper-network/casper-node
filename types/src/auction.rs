@@ -12,11 +12,9 @@ mod types;
 
 pub use active_bid::{ActiveBid, ActiveBids};
 pub use args::*;
-pub use auction_provider::{
-    AuctionProvider, ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_VALIDATORS_KEY, FOUNDER_VALIDATORS_KEY,
-};
+pub use auction_provider::AuctionProvider;
 pub use delegator::{DelegatedAmounts, Delegators};
-pub use era_validators::EraValidators;
+pub use era_validators::{EraIndex, EraValidators};
 pub use founding_validator::{FoundingValidator, FoundingValidators};
 pub use providers::{MintProvider, StorageProvider, SystemProvider};
 pub use seigniorage_recipient::{SeigniorageRecipient, SeigniorageRecipients};

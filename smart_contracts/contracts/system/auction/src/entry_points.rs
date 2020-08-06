@@ -11,9 +11,8 @@ use casperlabs_types::{
         AuctionProvider, MintProvider, ARG_ACCOUNT_HASH, ARG_AMOUNT, ARG_DELEGATION_RATE,
         ARG_DELEGATOR_ACCOUNT_HASH, ARG_PURSE, ARG_SOURCE_PURSE, ARG_VALIDATOR_ACCOUNT_HASH,
         ARG_VALIDATOR_KEYS, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_QUASH_BID,
-        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS, METHOD_RELEASE_FOUNDER,
-        METHOD_RUN_AUCTION, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
-        {StorageProvider, SystemProvider},
+        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS, METHOD_RUN_AUCTION,
+        METHOD_UNDELEGATE, METHOD_WITHDRAW_BID, {StorageProvider, SystemProvider},
     },
     auction::{DelegationRate, SeigniorageRecipients},
     bytesrepr::{FromBytes, ToBytes},
@@ -25,7 +24,6 @@ use casperlabs_types::{
 
 const BOND: &str = "bond";
 const UNBOND: &str = "unbond";
-const RELEASE_FOUNDER_STAKE: &str = "release_founder_stake";
 
 struct AuctionContract;
 
@@ -84,28 +82,9 @@ impl MintProvider for AuctionContract {
         };
         Ok(runtime::call_contract(contract_hash, UNBOND, args))
     }
-
-    fn release_founder_stake(&mut self, account_hash: AccountHash) -> StdResult<bool, Self::Error> {
-        let contract_hash = system::get_mint();
-        let args = runtime_args! {
-            ARG_ACCOUNT_HASH => account_hash,
-        };
-        let result = runtime::call_contract(contract_hash, RELEASE_FOUNDER_STAKE, args);
-        Ok(result)
-    }
 }
 
 impl AuctionProvider for AuctionContract {}
-
-#[no_mangle]
-pub extern "C" fn release_founder() {
-    let account_hash = runtime::get_named_arg(ARG_ACCOUNT_HASH);
-
-    let result = AuctionContract.release_founder(account_hash);
-
-    let cl_value = CLValue::from_t(result).unwrap_or_revert();
-    runtime::ret(cl_value);
-}
 
 #[no_mangle]
 pub extern "C" fn read_winners() {
@@ -203,14 +182,6 @@ pub extern "C" fn run_auction() {
 pub fn get_entry_points() -> EntryPoints {
     let mut entry_points = EntryPoints::new();
 
-    let entry_point = EntryPoint::new(
-        METHOD_RELEASE_FOUNDER,
-        vec![Parameter::new(ARG_ACCOUNT_HASH, AccountHash::cl_type())],
-        CLType::Bool,
-        EntryPointAccess::Public,
-        EntryPointType::Contract,
-    );
-    entry_points.add_entry_point(entry_point);
     let entry_point = EntryPoint::new(
         METHOD_READ_WINNERS,
         vec![],

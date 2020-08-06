@@ -22,6 +22,18 @@ pub struct FoundingValidator {
     pub winner: bool,
 }
 
+impl FoundingValidator {
+    /// Creates new instance of `FoundingValidator`.
+    pub fn new(bonding_purse: URef, staked_amount: U512) -> Self {
+        Self {
+            bonding_purse,
+            staked_amount,
+            delegation_rate: 0,
+            winner: true,
+        }
+    }
+}
+
 impl CLTyped for FoundingValidator {
     fn cl_type() -> CLType {
         CLType::Any

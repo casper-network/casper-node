@@ -40,8 +40,3 @@ pub extern "C" fn unbond_timer_advance() {
 pub extern "C" fn slash() {
     mint_token::slash();
 }
-
-#[no_mangle]
-pub extern "C" fn release_founder_stake() {
-    mint_token::release_founder_stake();
-}

@@ -1,7 +1,4 @@
-use alloc::vec::Vec;
-
 use crate::{
-    account::AccountHash,
     auction::{ActiveBids, Delegators, FoundingValidators},
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::{Error, Result},
@@ -9,10 +6,8 @@ use crate::{
 };
 
 use super::{
-    auction_provider::{
-        ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_VALIDATORS_KEY, FOUNDER_VALIDATORS_KEY,
-    },
-    providers::StorageProvider,
+    providers::StorageProvider, EraValidators, ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_INDEX_KEY,
+    ERA_VALIDATORS_KEY, FOUNDER_VALIDATORS_KEY,
 };
 
 fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T>
@@ -92,7 +87,7 @@ where
     write_to(provider, DELEGATORS_KEY, delegators)
 }
 
-pub fn get_era_validators<P: StorageProvider + ?Sized>(provider: &mut P) -> Result<Vec<AccountHash>>
+pub fn get_era_validators<P: StorageProvider + ?Sized>(provider: &mut P) -> Result<EraValidators>
 where
     Error: From<P::Error>,
 {
@@ -101,10 +96,24 @@ where
 
 pub fn set_era_validators<P: StorageProvider + ?Sized>(
     provider: &mut P,
-    era_validators: Vec<AccountHash>,
+    era_validators: EraValidators,
 ) -> Result<()>
 where
     Error: From<P::Error>,
 {
     write_to(provider, ERA_VALIDATORS_KEY, era_validators)
+}
+
+pub fn get_era_index<P: StorageProvider + ?Sized>(provider: &mut P) -> Result<u64>
+where
+    Error: From<P::Error>,
+{
+    Ok(read_from(provider, ERA_INDEX_KEY)?)
+}
+
+pub fn set_era_index<P: StorageProvider + ?Sized>(provider: &mut P, era_index: u64) -> Result<()>
+where
+    Error: From<P::Error>,
+{
+    write_to(provider, ERA_INDEX_KEY, era_index)
 }

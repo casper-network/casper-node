@@ -35,3 +35,14 @@ pub const METHOD_UNDELEGATE: &str = "undelegate";
 pub const METHOD_QUASH_BID: &str = "quash_bid";
 /// Named constant for method `run_auction`.
 pub const METHOD_RUN_AUCTION: &str = "run_auction";
+
+/// Storage for `FoundingValidators`.
+pub const FOUNDER_VALIDATORS_KEY: &str = "founder_validators";
+/// Storage for `ActiveBids`.
+pub const ACTIVE_BIDS_KEY: &str = "active_bids";
+/// Storage for `Delegators`.
+pub const DELEGATORS_KEY: &str = "delegators";
+/// Storage for `EraValidators`.
+pub const ERA_VALIDATORS_KEY: &str = "era_validators";
+/// Storage for `EraIndex`.
+pub const ERA_INDEX_KEY: &str = "era_index";

@@ -9,7 +9,7 @@ use casperlabs_node::{types::Motes, GenesisAccount};
 use casperlabs_types::{
     account::AccountHash,
     bytesrepr::FromBytes,
-    mint::{BidPurses, FounderPurses, UnbondingPurses},
+    mint::{BidPurses, UnbondingPurses},
     runtime_args, ApiError, CLTyped, ContractHash, RuntimeArgs, U512,
 };
 
@@ -25,7 +25,6 @@ const TEST_BOND: &str = "bond";
 const TEST_BOND_FROM_MAIN_PURSE: &str = "bond-from-main-purse";
 const TEST_SEED_NEW_ACCOUNT: &str = "seed_new_account";
 const TEST_UNBOND: &str = "unbond";
-const TEST_RELEASE: &str = "release";
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -280,60 +279,5 @@ fn should_fail_unbonding_validator_without_bonding_first() {
         error_message.contains(&format!("{:?}", ApiError::Mint(9))),
         "error {:?}",
         error_message
-    );
-}
-
-#[ignore]
-#[test]
-fn should_release_founder_validator_stake() {
-    let validator = AccountHash::new([42; 32]);
-
-    let accounts = {
-        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account = GenesisAccount::new(
-            validator,
-            Motes::new(GENESIS_VALIDATOR_STAKE.into()) * Motes::new(2.into()),
-            Motes::new(GENESIS_VALIDATOR_STAKE.into()),
-        );
-        tmp.push(account);
-        tmp
-    };
-
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
-
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
-
-    let mint = builder.get_mint_contract_hash();
-
-    let exec_request_3 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_MINT_BONDING,
-        runtime_args! {
-            ARG_ENTRY_POINT => TEST_RELEASE,
-            "validator_account_hash" => validator,
-        },
-    )
-    .build();
-
-    // Locked funds
-    let founder_purses: FounderPurses = get_value(&mut builder, mint, "founder_purses");
-    let (purse, release_status) = founder_purses.get(&validator).unwrap();
-    assert_eq!(*release_status, false); // locked
-    assert_eq!(
-        builder.get_purse_balance(*purse),
-        U512::from(GENESIS_VALIDATOR_STAKE)
-    );
-
-    builder.exec(exec_request_3).expect_success().commit();
-
-    let founder_purses: FounderPurses = get_value(&mut builder, mint, "founder_purses");
-
-    let (purse, release_status) = founder_purses.get(&validator).unwrap();
-    assert_eq!(*release_status, true); // unlocked
-    assert_eq!(
-        builder.get_purse_balance(*purse),
-        U512::from(GENESIS_VALIDATOR_STAKE)
     );
 }

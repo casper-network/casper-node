@@ -462,13 +462,15 @@ fn should_fail_bonding_with_insufficient_funds() {
     )
     .build();
 
-    let result = InMemoryWasmTestBuilder::default()
-        .run_genesis(&run_genesis_request)
-        .exec(exec_request_1)
-        .commit()
-        .exec(exec_request_2)
-        .commit()
-        .finish();
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+
+    builder.exec(exec_request_1).commit();
+
+    builder.exec(exec_request_2).commit();
+
+    let result = builder.finish();
 
     let response = result
         .builder()

@@ -19,11 +19,9 @@ const ARG_PURSE: &str = "purse";
 const ARG_ENTRY_POINT: &str = "entry_point";
 const ARG_BOND: &str = "bond";
 const ARG_UNBOND: &str = "unbond";
-const ARG_RELEASE: &str = "release";
 const ARG_ACCOUNT_HASH: &str = "account_hash";
 const TEST_BOND_FROM_MAIN_PURSE: &str = "bond-from-main-purse";
 const TEST_SEED_NEW_ACCOUNT: &str = "seed_new_account";
-const METHOD_RELEASE_FOUNDER_STAKE: &str = "release_founder_stake";
 
 #[repr(u16)]
 enum Error {
@@ -38,7 +36,6 @@ pub extern "C" fn call() {
     match command.as_str() {
         ARG_BOND => bond(),
         ARG_UNBOND => unbond(),
-        ARG_RELEASE => release(),
         TEST_BOND_FROM_MAIN_PURSE => bond_from_main_purse(),
         TEST_SEED_NEW_ACCOUNT => seed_new_account(),
         _ => runtime::revert(ApiError::User(Error::UnknownCommand as u16)),
@@ -83,19 +80,6 @@ fn unbonding(mint: ContractHash, unbond_amount: U512) -> (URef, U512) {
         ARG_AMOUNT => unbond_amount,
     };
     runtime::call_contract(mint, ARG_UNBOND, args)
-}
-
-fn release() {
-    let account_hash = runtime::get_named_arg("validator_account_hash");
-    release_founder_stake(account_hash);
-}
-
-fn release_founder_stake(account_hash: AccountHash) {
-    let args = runtime_args! {
-        "validator_account_hash" => account_hash,
-    };
-    let _result: bool =
-        runtime::call_contract(system::get_mint(), METHOD_RELEASE_FOUNDER_STAKE, args);
 }
 
 fn seed_new_account() {

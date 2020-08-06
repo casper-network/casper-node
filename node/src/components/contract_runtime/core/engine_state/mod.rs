@@ -307,7 +307,7 @@ where
                 preprocessor.preprocess(proof_of_stake_installer_bytes)?;
             let args = runtime_args! {
                 "mint_contract_package_hash" => mint_package_hash,
-                "genesis_validators" => bonded_validators,
+                "genesis_validators" => bonded_validators.clone(),
             };
             let authorization_keys: BTreeSet<AccountHash> = BTreeSet::new();
 
@@ -396,7 +396,10 @@ where
             };
 
             let auction_installer_module = preprocessor.preprocess(auction_installer_bytes)?;
-            let args = RuntimeArgs::new();
+            let args = runtime_args! {
+                "mint_contract_package_hash" => mint_package_hash,
+                "genesis_validators" => bonded_validators,
+            };
             let authorization_keys = BTreeSet::new();
             let install_deploy_hash = genesis_config_hash.to_bytes();
             let hash_address_generator = Rc::clone(&hash_address_generator);

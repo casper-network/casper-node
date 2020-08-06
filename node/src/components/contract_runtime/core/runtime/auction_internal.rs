@@ -1,10 +1,9 @@
 use casperlabs_types::{
-    account::AccountHash,
     auction::{AuctionProvider, MintProvider, StorageProvider, SystemProvider},
     bytesrepr::{FromBytes, ToBytes},
     runtime_args,
     system_contract_errors::auction::Error,
-    CLType, CLTyped, CLValue, Key, RuntimeArgs, URef, U512,
+    CLTyped, CLValue, Key, RuntimeArgs, URef, U512,
 };
 
 use super::Runtime;
@@ -102,22 +101,6 @@ where
             .call_contract(mint_contract_hash, "unbond", args_values)
             .map_err(|_| Error::Unbonding)?;
         Ok(result.into_t().map_err(|_| Error::Unbonding)?)
-    }
-
-    fn release_founder_stake(&mut self, account_hash: AccountHash) -> Result<bool, Self::Error> {
-        const ARG_ACCOUNT_HASH: &str = "account_hash";
-
-        let args_values: RuntimeArgs = runtime_args! {
-            ARG_ACCOUNT_HASH => account_hash,
-        };
-
-        let mint_contract_hash = self.get_mint_contract();
-
-        let result = self
-            .call_contract(mint_contract_hash, "release_founder_stake", args_values)
-            .map_err(|_| Error::ReleaseFounderStake)?;
-        debug_assert_eq!(result.cl_type(), &CLType::Bool);
-        Ok(result.into_t().unwrap())
     }
 }
 

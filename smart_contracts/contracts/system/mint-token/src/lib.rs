@@ -152,16 +152,6 @@ pub fn slash() {
         .unwrap_or_revert();
 }
 
-pub fn release_founder_stake() {
-    let mut mint_contract = MintContract;
-    let validator_account_hash = runtime::get_named_arg("validator_account_hash");
-    let result = mint_contract
-        .release_founder_stake(validator_account_hash)
-        .unwrap_or_revert();
-    let ret = CLValue::from_t(result).unwrap_or_revert();
-    runtime::ret(ret)
-}
-
 pub fn get_entry_points() -> EntryPoints {
     let mut entry_points = EntryPoints::new();
 
@@ -243,15 +233,6 @@ pub fn get_entry_points() -> EntryPoints {
 
     let entry_point = EntryPoint::new(
         METHOD_SLASH,
-        vec![],
-        CLType::Unit,
-        EntryPointAccess::Public,
-        EntryPointType::Contract,
-    );
-    entry_points.add_entry_point(entry_point);
-
-    let entry_point = EntryPoint::new(
-        METHOD_RELEASE_FOUNDER_STAKE,
         vec![],
         CLType::Unit,
         EntryPointAccess::Public,

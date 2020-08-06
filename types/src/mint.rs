@@ -239,30 +239,4 @@ pub trait Mint: RuntimeProvider + StorageProvider {
 
         Ok(())
     }
-
-    /// Sets the Bool field in the tuple representing a founding validator’s stake to True,
-    /// enabling this validator to unbond.
-    fn release_founder_stake(
-        &mut self,
-        validator_account_hash: AccountHash,
-    ) -> Result<bool, Error> {
-        let founder_purses_uref = self
-            .get_key(FOUNDER_PURSES_KEY)
-            .and_then(Key::into_uref)
-            .ok_or(Error::MissingKey)?;
-        let mut founder_purses: FounderPurses =
-            self.read(founder_purses_uref)?.ok_or(Error::Storage)?;
-
-        if let Some((_founder_purse, unbond_status)) =
-            founder_purses.get_mut(&validator_account_hash)
-        {
-            if !*unbond_status {
-                *unbond_status = true;
-                self.write(founder_purses_uref, founder_purses)?;
-                return Ok(true);
-            }
-        }
-
-        Ok(false)
-    }
 }

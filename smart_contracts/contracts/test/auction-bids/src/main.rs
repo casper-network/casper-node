@@ -11,8 +11,8 @@ use casperlabs_types::{
     account::AccountHash,
     auction::{
         DelegationRate, ARG_ACCOUNT_HASH, ARG_DELEGATOR_ACCOUNT_HASH, ARG_SOURCE_PURSE,
-        ARG_VALIDATOR_ACCOUNT_HASH, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_UNDELEGATE,
-        METHOD_WITHDRAW_BID,
+        ARG_VALIDATOR_ACCOUNT_HASH, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_RUN_AUCTION,
+        METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
     },
     runtime_args, ApiError, RuntimeArgs, URef, U512,
 };
@@ -24,6 +24,7 @@ const ARG_AMOUNT: &str = "amount";
 const ARG_DELEGATION_RATE: &str = "delegation_rate";
 const ARG_DELEGATE: &str = "delegate";
 const ARG_UNDELEGATE: &str = "undelegate";
+const ARG_RUN_AUCTION: &str = "run_auction";
 
 #[repr(u16)]
 enum Error {
@@ -39,6 +40,7 @@ pub extern "C" fn call() {
         ARG_WITHDRAW_BID => withdraw_bid(),
         ARG_DELEGATE => delegate(),
         ARG_UNDELEGATE => undelegate(),
+        ARG_RUN_AUCTION => run_auction(),
         _ => runtime::revert(ApiError::User(Error::UnknownCommand as u16)),
     }
 }
@@ -99,4 +101,10 @@ fn undelegate() {
     };
 
     let _total_amount: U512 = runtime::call_contract(auction, METHOD_UNDELEGATE, args);
+}
+
+fn run_auction() {
+    let auction = system::get_auction();
+    let args = runtime_args! {};
+    runtime::call_contract::<()>(auction, METHOD_RUN_AUCTION, args);
 }
