@@ -120,9 +120,7 @@ where
         secret_signing_key: SecretKey,
     ) -> Effects<Event<I>> {
         if self.active_eras.contains_key(&era_id) {
-            error!(?era_id, "era already exists");
-            // TODO - should panic?
-            return Effects::new();
+            panic!("{:?} already exists", era_id);
         }
 
         let sum_stakes: Motes = validators.iter().map(|(_, stake)| *stake).sum();
@@ -146,7 +144,7 @@ where
         };
 
         let params = HighwayParams {
-            instance_id: hash(format!("test era {}", era_id.0)), // TODO: get a proper ID?
+            instance_id: hash(format!("Highway era {}", era_id.0)),
             validators: weights,
         };
         let public_key = PublicKey::from(&secret_signing_key);
