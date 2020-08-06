@@ -18,7 +18,7 @@ const AUCTION_SLOTS: usize = 5;
 /// Number of eras before an auction actually defines the set of validators.
 const AUCTION_DELAY: u64 = 3;
 
-/// Bondign auctions contract implementation.
+/// Bonding auctions contract implementation.
 pub trait AuctionProvider: StorageProvider + SystemProvider + MintProvider
 where
     Error: From<<Self as StorageProvider>::Error>
