@@ -63,7 +63,7 @@ pub mod requests;
 
 use std::{
     any::type_name,
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     future::Future,
     time::{Duration, Instant},
@@ -81,14 +81,17 @@ use crate::{
     components::{
         consensus::BlockContext,
         contract_runtime::{
-            core::engine_state::{self, genesis::GenesisResult},
+            core::{
+                engine_state::{self, genesis::GenesisResult},
+                execution,
+            },
             shared::{additive_map::AdditiveMap, transform::Transform},
             storage::global_state::CommitResult,
         },
         fetcher::FetchResult,
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
-    crypto::hash::Digest,
+    crypto::{asymmetric_key::PublicKey, hash::Digest},
     reactor::{EventQueueHandle, QueueKind},
     types::{Deploy, DeployHash, ExecutedBlock, FinalizedBlock, ProtoBlock},
     utils::Source,
@@ -816,5 +819,25 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
+    }
+
+    /// Returns a map of validators for given `era` to their weights as known from `root_hash`.
+    ///
+    /// This operation is read only.
+    #[allow(dead_code)]
+    pub(crate) async fn get_validators(
+        self,
+        _root_hash: Digest,
+        _era: u64,
+    ) -> Result<Option<HashMap<PublicKey, u64>>, execution::Error> {
+        todo!("get_validators")
+    }
+
+    /// Runs auction using the system smart contract.
+    ///
+    /// Contract is ran on a given pre state hash and returns fully committed post state hash.
+    #[allow(dead_code)]
+    pub(crate) async fn run_auction(self, _root_hash: Digest) -> Result<Digest, execution::Error> {
+        todo!("run_auction")
     }
 }
