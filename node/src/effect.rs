@@ -640,7 +640,7 @@ impl<REv> EffectBuilder<REv> {
         let deploys = self
             .make_request(
                 |responder| DeployBufferRequest::ListForInclusion {
-                    current_instant: block_context.timestamp().millis(),
+                    current_instant: block_context.timestamp(),
                     past_blocks: Default::default(), // TODO
                     responder,
                 },
