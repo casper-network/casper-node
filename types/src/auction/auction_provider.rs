@@ -249,9 +249,7 @@ where
             .get(&validator_account_hash)
             .ok_or(Error::ValidatorNotFound)?;
 
-        let bonding_purse = self.create_purse();
-        self.transfer_from_purse_to_purse(source_purse, bonding_purse, quantity)?;
-        self.bond(quantity, bonding_purse)?;
+        let (bonding_purse, _total_amount) = self.bond(quantity, source_purse)?;
 
         let new_quantity = {
             let mut delegators = internal::get_delegators(self)?;
@@ -286,7 +284,7 @@ where
     ) -> Result<U512> {
         let active_bids = internal::get_active_bids(self)?;
 
-        // TODO: unbond first
+        let (_unbonding_purse, _total_amount) = self.unbond(quantity)?;
 
         // Return early if target validator is not in `active_bids`
         let _active_bid = active_bids
@@ -297,11 +295,18 @@ where
         let delegators_map = delegators
             .get_mut(&validator_account_hash)
             .ok_or(Error::DelegatorNotFound)?;
-        let amount = delegators_map
-            .get_mut(&delegator_account_hash)
-            .ok_or(Error::ValidatorNotFound)?;
 
-        let new_amount = amount.checked_sub(quantity).ok_or(Error::InvalidQuantity)?;
+        let new_amount = {
+            let amount = delegators_map
+                .get_mut(&delegator_account_hash)
+                .ok_or(Error::ValidatorNotFound)?;
+
+            let new_amount = amount.checked_sub(quantity).ok_or(Error::InvalidQuantity)?;
+
+            *amount = new_amount;
+            new_amount
+        };
+
         if new_amount.is_zero() {
             // Inner map's mapped value should be zero as we subtracted mutable value.
             let _value = delegators_map.remove(&validator_account_hash).unwrap();
