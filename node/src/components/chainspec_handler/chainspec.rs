@@ -178,6 +178,7 @@ impl HighwayConfig {
         let entropy_duration = Duration::from_millis(rng.gen_range(600_000, 10_800_000));
         let voting_period_duration = Duration::from_millis(rng.gen_range(600_000, 172_800_000));
         let finality_threshold_percent = rng.gen_range(0, 101);
+        let minimum_round_exponent = rng.gen_range(0, 20);
 
         HighwayConfig {
             genesis_era_start_timestamp,
@@ -186,6 +187,7 @@ impl HighwayConfig {
             entropy_duration,
             voting_period_duration,
             finality_threshold_percent,
+            minimum_round_exponent,
         }
     }
 }
