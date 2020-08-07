@@ -229,6 +229,12 @@ where
     delivery_time_distribution: Distribution,
 }
 
+type TestResult<T> = Result<T, TestRunError>;
+
+// Outer `Err` (from `TestResult`) represents an unexpected error in test framework, global error.
+// Inner `Result` is a local result, it's error is also local.
+type TestRunResult<T> = TestResult<Result<T, (Vertex<TestContext>, VertexError)>>;
+
 impl<DS> HighwayTestHarness<DS>
 where
     DS: DeliveryStrategy,
@@ -256,7 +262,7 @@ where
     /// Pops one message from the message queue (if there are any)
     /// and pass it to the recipient validator for execution.
     /// Messages returned from the execution are scheduled for later delivery.
-    pub(crate) fn crank<R: Rng>(&mut self, rand: &mut R) -> Result<(), TestRunError> {
+    pub(crate) fn crank<R: Rng>(&mut self, rand: &mut R) -> TestResult<()> {
         let QueueEntry {
             delivery_time,
             recipient,
@@ -311,10 +317,7 @@ where
 
     /// Helper for getting validator from the underlying virtual net.
     #[allow(clippy::type_complexity)]
-    fn validator_mut(
-        &mut self,
-        validator_id: &ValidatorId,
-    ) -> Result<&mut HighwayValidator, TestRunError> {
+    fn validator_mut(&mut self, validator_id: &ValidatorId) -> TestResult<&mut HighwayValidator> {
         self.virtual_net
             .validator_mut(&validator_id)
             .ok_or_else(|| TestRunError::MissingValidator(*validator_id))
@@ -324,7 +327,7 @@ where
         &mut self,
         validator_id: &ValidatorId,
         f: F,
-    ) -> Result<Vec<HighwayMessage>, TestRunError>
+    ) -> TestResult<Vec<HighwayMessage>>
     where
         F: FnOnce(&mut Highway<TestContext>) -> Vec<Effect<TestContext>>,
     {
@@ -368,7 +371,7 @@ where
         &mut self,
         validator_id: ValidatorId,
         message: Message<HighwayMessage>,
-    ) -> Result<Vec<HighwayMessage>, TestRunError> {
+    ) -> TestResult<Vec<HighwayMessage>> {
         self.validator_mut(&validator_id)?
             .push_messages_received(vec![message.clone()]);
 
@@ -411,7 +414,7 @@ where
     }
 
     /// Runs finality detector.
-    fn run_finality_detector(&mut self, validator_id: &ValidatorId) -> Result<(), TestRunError> {
+    fn run_finality_detector(&mut self, validator_id: &ValidatorId) -> TestResult<()> {
         let recipient = self.validator_mut(validator_id)?;
 
         let finality_result = match recipient.consensus.run_finality() {
@@ -451,7 +454,7 @@ where
         recipient: ValidatorId,
         sender: ValidatorId,
         vertex: Vertex<TestContext>,
-    ) -> Result<Result<Vec<HighwayMessage>, (Vertex<TestContext>, VertexError)>, TestRunError> {
+    ) -> TestRunResult<Vec<HighwayMessage>> {
         // 1. pre_validate_vertex
         // 2. missing_dependency
         // 3. validate_vertex
@@ -497,10 +500,7 @@ where
         recipient: ValidatorId,
         sender: ValidatorId,
         pvv: PreValidatedVertex<TestContext>,
-    ) -> Result<
-        Result<PreValidatedVertex<TestContext>, (Vertex<TestContext>, VertexError)>,
-        TestRunError,
-    > {
+    ) -> TestRunResult<PreValidatedVertex<TestContext>> {
         // There may be more than one dependency missing and we want to sync all of them.
         loop {
             let validator = self
@@ -533,7 +533,7 @@ where
         missing_dependency: Dependency<TestContext>,
         recipient: ValidatorId,
         sender: ValidatorId,
-    ) -> Result<Result<(), (Vertex<TestContext>, VertexError)>, TestRunError> {
+    ) -> TestRunResult<()> {
         let vertex = self
             .validator_mut(&sender)?
             .consensus
@@ -566,7 +566,7 @@ fn crank_until<F, R: Rng, DS: DeliveryStrategy>(
     htt: &mut HighwayTestHarness<DS>,
     rng: &mut R,
     f: F,
-) -> Result<(), TestRunError>
+) -> TestResult<()>
 where
     F: Fn(&HighwayTestHarness<DS>) -> bool,
 {
