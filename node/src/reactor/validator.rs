@@ -322,6 +322,7 @@ impl reactor::Reactor for Reactor {
             config.consensus,
             effect_builder,
             validator_stakes,
+            &chainspec_handler.chainspec().genesis.highway_config,
         )?;
         let deploy_acceptor = DeployAcceptor::new();
         let deploy_fetcher = Fetcher::new(config.gossip);
