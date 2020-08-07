@@ -285,24 +285,23 @@ where
 
         let targeted_messages = messages
             .into_iter()
-            .map(|hwm| {
+            .filter_map(|hwm| {
                 let delivery = self.delivery_time_strategy.gen_delay(
                     rand,
                     &hwm,
                     &self.delivery_time_distribution,
                     delivery_time,
                 );
-                (hwm, delivery)
-            })
-            .filter_map(|(hwm, delivery)| match delivery {
-                DeliverySchedule::Drop => {
-                    trace!("{:?} message is dropped.", hwm);
-                    None
-                }
-                DeliverySchedule::AtInstant(timestamp) => {
-                    trace!("{:?} scheduled for {:?}", hwm, timestamp);
-                    let targeted = hwm.into_targeted(recipient);
-                    Some((targeted, timestamp))
+                match delivery {
+                    DeliverySchedule::Drop => {
+                        trace!("{:?} message is dropped.", hwm);
+                        None
+                    }
+                    DeliverySchedule::AtInstant(timestamp) => {
+                        trace!("{:?} scheduled for {:?}", hwm, timestamp);
+                        let targeted = hwm.into_targeted(recipient);
+                        Some((targeted, timestamp))
+                    }
                 }
             })
             .collect();
