@@ -89,7 +89,7 @@ where
         &mut self,
         public_key: PublicKey,
         source_purse: URef,
-        delegation_rate: CommissionRate,
+        commission_rate: CommissionRate,
         quantity: U512,
     ) -> Result<(URef, U512)> {
         // Creates new purse with desired amount taken from `source_purse`
@@ -119,14 +119,14 @@ where
                             // Update existing entry
                             active_bid.bid_amount += quantity;
                             active_bid.bid_purse = bonding_purse;
-                            active_bid.delegation_rate = delegation_rate;
+                            active_bid.delegation_rate = commission_rate;
                         })
                         .or_insert_with(|| {
                             // Create new entry in active bids
                             ActiveBid {
                                 bid_purse: bonding_purse,
                                 bid_amount: quantity,
-                                delegation_rate,
+                                delegation_rate: commission_rate,
                             }
                         });
                     active_bid.bid_amount
@@ -454,26 +454,31 @@ where
     }
 
     /// Distributes rewards to the delegators associated with `validator_account_hash`
-    fn distribute_to_delegators(&mut self, validator_account_hash: AccountHash, amount: U512) -> Result<()> {
-        // let delegations_map= internal::get_delegations(self)?;
-        // let delegations = delegations_map.get(&validator_account_hash).unwrap();
+    fn distribute_to_delegators(&mut self, validator_account_hash: AccountHash, purse: URef) -> Result<()> {
+        let total_delegator_stake_map= internal::get_total_delegator_stake_map(self)?;
+        let total_delegator_stake = *total_delegator_stake_map.get(&validator_account_hash).unwrap();
 
-        // let tally_map= internal::get_tally(self)?;
-        // let tally = tally_map.get(&validator_account_hash).unwrap();
+        let amount = self.get_balance(purse).unwrap();
 
-        let total_stake_map= internal::get_total_stake(self)?;
-        let total_stake = total_stake_map.get(&validator_account_hash).unwrap();
-
-        if total_stake == 0 {
-            todo!(); // throw error
+        // Throw and error if the validator has no delegations
+        if total_delegator_stake.eq(&U512::zero()) {
+            return Err(Error::MissingDelegations);
         } 
 
-        let reward_per_stake_map = internal::get_reward_per_stake(self)?;
-        let reward_per_stake = reward_per_stake_map.get(&validator_account_hash).unwrap();
+        let mut reward_per_stake_map = internal::get_reward_per_stake_map(self)?;
+        let mut reward_per_stake = *reward_per_stake_map.get(&validator_account_hash).unwrap();
 
-        // for (account_hash, rewards) in delegations {
+        // Update reward per stake according to pull-based distribution formulation
+        reward_per_stake = reward_per_stake + amount / total_delegator_stake;
+        reward_per_stake_map.insert(validator_account_hash, reward_per_stake);
+        internal::set_reward_per_stake_map(self, reward_per_stake_map).unwrap();
 
-        // }
+        // Get the reward pool purse for the validator
+        let delegator_reward_pool_map = internal::get_delegator_reward_pool_map(self).unwrap();
+        let delegator_reward_pool = *delegator_reward_pool_map.get(&validator_account_hash).unwrap();
+
+        // Transfer the reward to the reward pool purse
+        self.transfer_from_purse_to_purse(purse, delegator_reward_pool, amount).unwrap_or_default();
 
     }
 
@@ -481,5 +486,4 @@ where
     fn read_era_id(&mut self) -> Result<EraId> {
         internal::get_era_id(self)
     }
-
 }

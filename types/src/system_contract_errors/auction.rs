@@ -59,6 +59,10 @@ pub enum Error {
     /// Raised whenever a validator's funds are still lock in but an attempt to withdraw was made.
     #[fail(display = "Validator's funds are locked")]
     ValidatorFundsLocked = 15,
+    /// Raised when rewards are to be distributed to delegators, but the validator has no delegations.
+    #[fail(display = "Validators has not received any delegations")]
+    MissingDelegations = 16,
+
 }
 
 impl CLTyped for Error {

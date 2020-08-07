@@ -98,8 +98,8 @@ pub extern "C" fn install() {
             storage::new_uref(ActiveBids::new()).into(),
         );
         named_keys.insert(
-            DELEGATORS_KEY.into(),
-            storage::new_uref(Delegators::new()).into(),
+            DELEGATIONS_MAP_KEY.into(),
+            storage::new_uref(DelegationsMap::new()).into(),
         );
         named_keys.insert(
             ERA_VALIDATORS_KEY.into(),
