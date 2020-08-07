@@ -97,7 +97,7 @@ where
                     seigniorage_recipient.delegation_rate = active_bid.delegation_rate;
                 }
                 _ => {
-                    // It has to be either of those but can't be in both, or neither or those
+                    // It has to be either of those but can't be in both, or neither of those
                 }
             }
 
