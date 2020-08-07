@@ -405,6 +405,15 @@ where
         let recipient = self.validator_mut(&validator_id)?;
         recipient.push_messages_produced(messages.clone());
 
+        self.run_finality_detector(&validator_id);
+
+        Ok(messages)
+    }
+
+    /// Runs finality detector.
+    fn run_finality_detector(&mut self, validator_id: &ValidatorId) -> Result<(), TestRunError> {
+        let recipient = self.validator_mut(validator_id)?;
+
         let finality_result = match recipient.consensus.run_finality() {
             FinalityOutcome::Finalized {
                 value,
@@ -430,7 +439,7 @@ where
 
         recipient.push_finalized(finality_result);
 
-        Ok(messages)
+        Ok(())
     }
 
     // Adds vertex to the `recipient` validator state.
