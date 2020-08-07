@@ -187,8 +187,10 @@ where
     /// released, and fails if they are not. Additionally, the relevant data
     /// structure is founding_validators, rather than active_bids.
     ///
-    /// The function returns a tuple of the (new) unbonding purse key and the new
-    /// quantity of motes remaining in the bid. If the target bid does not exist,
+    /// The function returns a tuple of the (new) unbonding purse key and the
+    /// new quantity of motes remaining in the bid. If the target bid does not
+    /// exist, the function call returns a designated “failure” purse and does nothing.
+    ///
     /// The arguments are the public key and amount of motes to remove.
     fn withdraw_bid(&mut self, account_hash: AccountHash, quantity: U512) -> Result<(URef, U512)> {
         // Update bids or stakes
