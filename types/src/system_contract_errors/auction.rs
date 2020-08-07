@@ -53,6 +53,12 @@ pub enum Error {
     /// Raised when the system is unable to determine purse balance.
     #[fail(display = "Unable to get purse balance")]
     GetBalance = 13,
+    /// Raised when an entry point is called from invalid account context.
+    #[fail(display = "Invalid context")]
+    InvalidContext = 14,
+    /// Raised whenever a validator's funds are still lock in but an attempt to withdraw was made.
+    #[fail(display = "Validator's funds are locked")]
+    ValidatorFundsLocked = 15,
 }
 
 impl CLTyped for Error {

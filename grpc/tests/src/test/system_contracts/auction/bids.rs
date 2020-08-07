@@ -9,8 +9,9 @@ use casperlabs_node::{types::Motes, GenesisAccount};
 use casperlabs_types::{
     account::AccountHash,
     auction::{
-        ActiveBids, DelegationRate, Delegators, EraValidators, FoundingValidators, ARG_AMOUNT,
-        ARG_DELEGATION_RATE, ARG_VALIDATOR_ACCOUNT_HASH,
+        ActiveBids, DelegationRate, Delegators, EraValidators, FoundingValidators,
+        SeigniorageRecipients, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_VALIDATOR_ACCOUNT_HASH,
+        FOUNDING_VALIDATORS_KEY,
     },
     bytesrepr::FromBytes,
     runtime_args, CLTyped, ContractHash, RuntimeArgs, U512,
@@ -34,6 +35,7 @@ const ARG_WITHDRAW_BID: &str = "withdraw_bid";
 const ARG_DELEGATE: &str = "delegate";
 const ARG_UNDELEGATE: &str = "undelegate";
 const ARG_RUN_AUCTION: &str = "run_auction";
+const ARG_READ_SEIGNIORAGE_RECIPIENTS: &str = "read_seigniorage_recipients";
 
 const DELEGATE_AMOUNT_1: u64 = 125_000;
 const DELEGATE_AMOUNT_2: u64 = 15_000;
@@ -360,7 +362,7 @@ fn should_calculate_era_validators() {
 
     let auction_hash = builder.get_auction_contract_hash();
     let founding_validators: FoundingValidators =
-        get_value(&mut builder, auction_hash, "founder_validators");
+        get_value(&mut builder, auction_hash, FOUNDING_VALIDATORS_KEY);
     assert_eq!(founding_validators.len(), 2);
 
     builder.exec(transfer_request_1).commit().expect_success();
@@ -401,4 +403,82 @@ fn should_calculate_era_validators() {
         .get(&0)
         .expect("should have era_index==0 entry");
     assert_eq!(validator_weights.len(), 3, "{:?}", validator_weights); // 1 non founding validator + 2 genesis validators "winners"
+}
+
+#[ignore]
+#[test]
+fn should_get_first_seigniorage_recipients() {
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let account_1 = GenesisAccount::new(
+            ACCOUNT_1_ADDR,
+            Motes::new(ACCOUNT_1_BALANCE.into()),
+            Motes::new(ACCOUNT_1_BOND.into()),
+        );
+        let account_2 = GenesisAccount::new(
+            ACCOUNT_2_ADDR,
+            Motes::new(ACCOUNT_2_BALANCE.into()),
+            Motes::new(ACCOUNT_2_BOND.into()),
+        );
+        tmp.push(account_1);
+        tmp.push(account_2);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+
+    let transfer_request_1 = ExecuteRequestBuilder::standard(
+        DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            "target" => SYSTEM_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let auction_hash = builder.get_auction_contract_hash();
+    let founding_validators: FoundingValidators =
+        get_value(&mut builder, auction_hash, FOUNDING_VALIDATORS_KEY);
+    assert_eq!(founding_validators.len(), 2);
+
+    builder.exec(transfer_request_1).commit().expect_success();
+
+    // non-founding validator request
+    let exec_request_1 = ExecuteRequestBuilder::standard(
+        SYSTEM_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_ENTRY_POINT => ARG_READ_SEIGNIORAGE_RECIPIENTS,
+        },
+    )
+    .build();
+
+    builder.exec(exec_request_1).commit().expect_success();
+
+    let account = builder.get_account(SYSTEM_ADDR).unwrap();
+    let key = account
+        .named_keys()
+        .get("seigniorage_recipients_result")
+        .copied()
+        .unwrap();
+    let stored_value = builder.query(None, key, &[]).unwrap();
+    let seigniorage_recipients: SeigniorageRecipients = stored_value
+        .as_cl_value()
+        .cloned()
+        .unwrap()
+        .into_t()
+        .unwrap();
+    assert_eq!(seigniorage_recipients.len(), 2);
+
+    // let era_validators: EraValidators = get_value(&mut builder, auction_hash, "era_validators");
+    // assert_eq!(era_validators.len(), 1, "{:?}", era_validators); // eraindex==1 - ran once
+    // let validator_weights = era_validators
+    //     .get(&0)
+    //     .expect("should have era_index==0 entry");
+    // assert_eq!(validator_weights.len(), 3, "{:?}", validator_weights); // 1 non founding validator + 2 genesis validators "winners"
 }

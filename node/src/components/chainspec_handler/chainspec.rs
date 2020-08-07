@@ -249,6 +249,7 @@ impl GenesisConfig {
         let mint_installer_bytes = vec![rng.gen()];
         let pos_installer_bytes = vec![rng.gen()];
         let standard_payment_installer_bytes = vec![rng.gen()];
+        let auction_installer_bytes = vec![rng.gen()];
         let accounts = vec![rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen()];
         let costs = WasmCosts::random(rng);
         let deploy_config = DeployConfig::random(rng);
@@ -261,6 +262,7 @@ impl GenesisConfig {
             mint_installer_bytes,
             pos_installer_bytes,
             standard_payment_installer_bytes,
+            auction_installer_bytes,
             accounts,
             costs,
             deploy_config,

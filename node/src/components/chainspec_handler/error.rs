@@ -55,4 +55,8 @@ pub enum Error {
     /// Error loading the standard payment installer.
     #[error("could not load standard payment installer: {0}")]
     LoadStandardPaymentInstaller(ReadFileError),
+
+    /// Error loading the auction installer.
+    #[error("could not load auction installer: {0}")]
+    LoadAuctionInstaller(ReadFileError),
 }

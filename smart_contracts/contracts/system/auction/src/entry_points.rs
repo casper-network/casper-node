@@ -8,11 +8,12 @@ use casperlabs_contract::{
 use casperlabs_types::{
     account::AccountHash,
     auction::{
-        AuctionProvider, MintProvider, ARG_ACCOUNT_HASH, ARG_AMOUNT, ARG_DELEGATION_RATE,
-        ARG_DELEGATOR_ACCOUNT_HASH, ARG_PURSE, ARG_SOURCE_PURSE, ARG_VALIDATOR_ACCOUNT_HASH,
-        ARG_VALIDATOR_KEYS, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_QUASH_BID,
-        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS, METHOD_RUN_AUCTION,
-        METHOD_UNDELEGATE, METHOD_WITHDRAW_BID, {StorageProvider, SystemProvider},
+        AuctionProvider, MintProvider, RuntimeProvider, ARG_ACCOUNT_HASH, ARG_AMOUNT,
+        ARG_DELEGATION_RATE, ARG_DELEGATOR_ACCOUNT_HASH, ARG_PURSE, ARG_SOURCE_PURSE,
+        ARG_VALIDATOR_ACCOUNT_HASH, ARG_VALIDATOR_KEYS, METHOD_ADD_BID, METHOD_DELEGATE,
+        METHOD_QUASH_BID, METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS,
+        METHOD_RUN_AUCTION, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
+        {StorageProvider, SystemProvider},
     },
     auction::{DelegationRate, SeigniorageRecipients},
     bytesrepr::{FromBytes, ToBytes},
@@ -81,6 +82,12 @@ impl MintProvider for AuctionContract {
             ARG_AMOUNT => amount,
         };
         Ok(runtime::call_contract(contract_hash, UNBOND, args))
+    }
+}
+
+impl RuntimeProvider for AuctionContract {
+    fn get_caller(&self) -> AccountHash {
+        runtime::get_caller()
     }
 }
 

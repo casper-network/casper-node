@@ -1,8 +1,15 @@
 use crate::{
+    account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::Error,
     CLTyped, Key, URef, U512,
 };
+
+/// Provider of runtime host functionality.
+pub trait RuntimeProvider {
+    /// This method should return the caller of the current context.
+    fn get_caller(&self) -> AccountHash;
+}
 
 /// Provides functionality of a contract storage.
 pub trait StorageProvider {

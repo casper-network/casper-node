@@ -12,9 +12,9 @@ use casperlabs_types::{
     account::AccountHash,
     auction::{
         ActiveBids, Delegators, EraIndex, EraValidators, FoundingValidator, FoundingValidators,
-        ERA_INDEX_KEY,
+        ValidatorWeights, ERA_INDEX_KEY,
     },
-    auction::{ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_VALIDATORS_KEY, FOUNDER_VALIDATORS_KEY},
+    auction::{ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY},
     contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
     runtime_args,
     system_contract_errors::mint,
@@ -45,14 +45,25 @@ pub extern "C" fn install() {
         let genesis_validators: BTreeMap<AccountHash, U512> =
             runtime::get_named_arg(ARG_GENESIS_VALIDATORS);
 
+        // List of validators for initial era.
+        let mut initial_validator_weights = ValidatorWeights::new();
+
         for (validator_account_hash, amount) in genesis_validators {
             let bonding_purse = mint_purse(mint_package_hash, amount);
             let founding_validator = FoundingValidator::new(bonding_purse, amount);
             founding_validators.insert(validator_account_hash, founding_validator);
+            initial_validator_weights.insert(validator_account_hash, amount);
         }
 
+        // Starting era validators
+        let era_index: EraIndex = 0; // Initial era index
+        named_keys.insert(ERA_INDEX_KEY.into(), storage::new_uref(era_index).into());
+
+        let mut era_validators = EraValidators::new();
+        era_validators.insert(era_index, initial_validator_weights);
+
         named_keys.insert(
-            FOUNDER_VALIDATORS_KEY.into(),
+            FOUNDING_VALIDATORS_KEY.into(),
             storage::new_uref(founding_validators).into(),
         );
         named_keys.insert(
@@ -65,12 +76,8 @@ pub extern "C" fn install() {
         );
         named_keys.insert(
             ERA_VALIDATORS_KEY.into(),
-            storage::new_uref(EraValidators::new()).into(),
+            storage::new_uref(era_validators).into(),
         );
-
-        let era_index: EraIndex = 0;
-
-        named_keys.insert(ERA_INDEX_KEY.into(), storage::new_uref(era_index).into());
 
         named_keys
     };

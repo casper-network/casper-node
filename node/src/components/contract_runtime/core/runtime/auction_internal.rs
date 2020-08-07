@@ -1,5 +1,5 @@
 use casperlabs_types::{
-    auction::{AuctionProvider, MintProvider, StorageProvider, SystemProvider},
+    auction::{AuctionProvider, MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
     bytesrepr::{FromBytes, ToBytes},
     runtime_args,
     system_contract_errors::auction::Error,
@@ -101,6 +101,16 @@ where
             .call_contract(mint_contract_hash, "unbond", args_values)
             .map_err(|_| Error::Unbonding)?;
         Ok(result.into_t().map_err(|_| Error::Unbonding)?)
+    }
+}
+
+impl<'a, R> RuntimeProvider for Runtime<'a, R>
+where
+    R: StateReader<Key, StoredValue>,
+    R::Error: Into<execution::Error>,
+{
+    fn get_caller(&self) -> casperlabs_types::account::AccountHash {
+        self.context.get_caller()
     }
 }
 

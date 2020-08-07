@@ -275,7 +275,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         read_file(standard_payment_path).map_err(Error::LoadStandardPaymentInstaller)?;
 
     let auction_path = get_path(root, chainspec.genesis.auction_installer_path);
-    let auction_installer_bytes = read_file(auction_path)?;
+    let auction_installer_bytes = read_file(auction_path).map_err(Error::LoadAuctionInstaller)?;
 
     let accounts_path = get_path(root, chainspec.genesis.accounts_path);
     let accounts = parse_accounts(accounts_path)?;

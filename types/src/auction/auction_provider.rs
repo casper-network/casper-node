@@ -3,7 +3,7 @@ use alloc::{collections::BTreeMap, vec::Vec};
 use super::{
     era_validators::ValidatorWeights,
     internal,
-    providers::{MintProvider, StorageProvider, SystemProvider},
+    providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
     EraValidators, SeigniorageRecipient,
 };
 use crate::{
@@ -18,25 +18,31 @@ const AUCTION_SLOTS: usize = 5;
 /// Number of eras before an auction actually defines the set of validators.
 const AUCTION_DELAY: u64 = 3;
 
+const SYSTEM_ADDR: AccountHash = AccountHash::new([0; 32]);
+
 /// Bonding auctions contract implementation.
-pub trait AuctionProvider: StorageProvider + SystemProvider + MintProvider
+pub trait AuctionProvider:
+    StorageProvider + SystemProvider + MintProvider + RuntimeProvider
 where
     Error: From<<Self as StorageProvider>::Error>
         + From<<Self as SystemProvider>::Error>
         + From<<Self as MintProvider>::Error>,
 {
     /// Access: node
-    /// Upon progression to the set era marking the release of founding stakes,
-    /// node software embeds a deploy in the first block of the relevant era
-    /// to trigger this function. The founding_validators data structure is
-    /// checked, returning False if the validator is not found and aborting.
-    /// If the validator is found, the function first calls
-    /// release_founder_stake in the Mint contract. Upon receipt of True,
-    /// it also flips the relevant field to True in the validator’s entry
-    /// within founding_validators. Otherwise the function aborts.
+    /// Node software will trigger this function once a new era is detected.
+    /// The founding_validators data structure is checked, returning False
+    /// if the validator is not found and aborting. If the validator is
+    /// found, the function first calls release_founder_stake in the Mint
+    /// contract. Upon receipt of True, it also flips the relevant field
+    /// to True in the validator’s entry within founding_validators.
+    /// Otherwise the function aborts.
     fn release_founder(&mut self, account_hash: AccountHash) -> Result<bool> {
+        if self.get_caller() != SYSTEM_ADDR {
+            return Err(Error::InvalidContext);
+        }
+
         // Called by node
-        let mut founding_validators = internal::get_founder_validators(self)?;
+        let mut founding_validators = internal::get_founding_validators(self)?;
 
         // TODO: It should be aware of current time. Era makes more sense.
 
@@ -47,7 +53,7 @@ where
             }
         }
 
-        internal::set_founder_validators(self, founding_validators)?;
+        internal::set_founding_validators(self, founding_validators)?;
 
         Ok(true)
     }
@@ -68,24 +74,21 @@ where
         // `era_validators` are assumed to be computed already by calling "run_auction" entrypoint.
         let era_validators = internal::get_era_validators(self)?;
 
-        let founder_validators = internal::get_founder_validators(self)?;
+        let founding_validators = internal::get_founding_validators(self)?;
         let active_bids = internal::get_active_bids(self)?;
         let mut delegators = internal::get_delegators(self)?;
 
         let mut seigniorage_recipients = SeigniorageRecipients::new();
 
-        if era_validators.is_empty() {
-            return Ok(seigniorage_recipients);
-        }
-
-        let (_era, last_era_validators) = era_validators.into_iter().next_back().unwrap();
+        let era_index = internal::get_era_index(self)?;
+        let last_era_validators = era_validators.get(&era_index).unwrap();
 
         // each validator...
-        for (era_validator, _weight) in last_era_validators {
+        for era_validator in last_era_validators.keys() {
             let mut seigniorage_recipient = SeigniorageRecipient::default();
             // ... mapped to their bids
             match (
-                founder_validators.get(&era_validator),
+                founding_validators.get(&era_validator),
                 active_bids.get(&era_validator),
             ) {
                 (Some(founding_validator), None) => {
@@ -105,7 +108,7 @@ where
                 seigniorage_recipient.delegators = delegator_map;
             }
 
-            seigniorage_recipients.insert(era_validator, seigniorage_recipient);
+            seigniorage_recipients.insert(*era_validator, seigniorage_recipient);
         }
 
         Ok(seigniorage_recipients)
@@ -131,10 +134,10 @@ where
         let (bonding_purse, _total_amount) = self.bond(quantity, source_purse)?;
 
         // Update bids or stakes
-        let mut founder_validators = internal::get_founder_validators(self)?;
+        let mut founding_validators = internal::get_founding_validators(self)?;
 
-        let new_quantity = match founder_validators.get_mut(&account_hash) {
-            // Update `founder_validators` map since `account_hash` belongs to a validator.
+        let new_quantity = match founding_validators.get_mut(&account_hash) {
+            // Update `founding_validators` map since `account_hash` belongs to a validator.
             Some(founding_validator) => {
                 founding_validator.bonding_purse = bonding_purse;
                 founding_validator.delegation_rate = delegation_rate;
@@ -189,12 +192,10 @@ where
     /// The arguments are the public key and amount of motes to remove.
     fn withdraw_bid(&mut self, account_hash: AccountHash, quantity: U512) -> Result<(URef, U512)> {
         // Update bids or stakes
-        let mut founder_validators = internal::get_founder_validators(self)?;
+        let mut founding_validators = internal::get_founding_validators(self)?;
 
-        let (unbonding_purse, _total_quantity) = self.unbond(quantity)?;
-
-        let new_quantity = match founder_validators.get_mut(&account_hash) {
-            Some(founding_validator) => {
+        let new_quantity = match founding_validators.get_mut(&account_hash) {
+            Some(founding_validator) if !founding_validator.winner => {
                 // Carefully decrease bonded funds
 
                 let new_staked_amount = founding_validator
@@ -202,9 +203,14 @@ where
                     .checked_sub(quantity)
                     .ok_or(Error::InvalidQuantity)?;
 
-                internal::set_founder_validators(self, founder_validators)?;
+                internal::set_founding_validators(self, founding_validators)?;
 
                 new_staked_amount
+            }
+            Some(_founding_validator) => {
+                // If validator is still locked-up (or with an autowin status), no withdrawals
+                // are allowed.
+                return Err(Error::ValidatorFundsLocked);
             }
             None => {
                 let mut active_bids = internal::get_active_bids(self)?;
@@ -223,6 +229,8 @@ where
                 new_amount
             }
         };
+
+        let (unbonding_purse, _total_quantity) = self.unbond(quantity)?;
 
         Ok((unbonding_purse, new_quantity))
     }
@@ -323,8 +331,8 @@ where
     /// Mint contract.
     /// Access: PoS contractPL
     fn quash_bid(&mut self, validator_account_hashes: &[AccountHash]) -> Result<()> {
-        // Clean up inside `founder_validators`
-        let mut founding_validators = internal::get_founder_validators(self)?;
+        // Clean up inside `founding_validators`
+        let mut founding_validators = internal::get_founding_validators(self)?;
 
         let mut modified_founding_validators = 0usize;
 
@@ -335,7 +343,7 @@ where
         }
 
         if modified_founding_validators > 0 {
-            internal::set_founder_validators(self, founding_validators)?;
+            internal::set_founding_validators(self, founding_validators)?;
         }
 
         // Clean up inside `active_bids`
@@ -357,14 +365,18 @@ where
         Ok(())
     }
 
-    /// block. Takes active_bids and delegators to construct a list of
-    /// validators' total bids (their own added to their delegators') ordered
-    /// by size from largest to smallest, then takes the top N (number of
-    /// auction slots) bidders and replaced era_validators with these.   
-    /// Access: node
+    /// This function is called by a special deploy in the booking block. Takes active_bids
+    /// and delegators to construct a list of validators' total bids (their own added to
+    /// their delegators') ordered by size from largest to smallest, then takes the top N
+    /// (number of auction slots) bidders and replaced era_validators with these.
+    ///
+    /// Accessed by: node
     fn run_auction(&mut self) -> Result<()> {
+        if self.get_caller() != SYSTEM_ADDR {
+            return Err(Error::InvalidContext);
+        }
         let active_bids = internal::get_active_bids(self)?;
-        let founder_validators = internal::get_founder_validators(self)?;
+        let founding_validators = internal::get_founding_validators(self)?;
 
         // TODO: include founding validators with winners == true
 
@@ -375,13 +387,13 @@ where
                 .map(|(validator_account_hash, active_bid)| {
                     (validator_account_hash, active_bid.bid_amount)
                 });
-        let founder_validators_scores = founder_validators
+        let founding_validators_scores = founding_validators
             .into_iter()
             .filter(|(_validator_account_hash, founding_validator)| founding_validator.winner)
             .map(|(validator_account_hash, amount)| (validator_account_hash, amount.staked_amount));
 
         // Validator's entries from both maps as a single iterable.
-        let all_scores = active_bids_scores.chain(founder_validators_scores);
+        let all_scores = active_bids_scores.chain(founding_validators_scores);
 
         // All the scores are then grouped by the account hash to calculate a sum of each consecutive scores for each validator.
         let mut scores = BTreeMap::new();

@@ -37,7 +37,7 @@ pub const METHOD_QUASH_BID: &str = "quash_bid";
 pub const METHOD_RUN_AUCTION: &str = "run_auction";
 
 /// Storage for `FoundingValidators`.
-pub const FOUNDER_VALIDATORS_KEY: &str = "founder_validators";
+pub const FOUNDING_VALIDATORS_KEY: &str = "founding_validators";
 /// Storage for `ActiveBids`.
 pub const ACTIVE_BIDS_KEY: &str = "active_bids";
 /// Storage for `Delegators`.

@@ -9,7 +9,7 @@ use casperlabs_node::components::contract_runtime::core::engine_state::EngineCon
 use casperlabs_types::{
     account::AccountHash,
     auction::{
-        ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_INDEX_KEY, ERA_VALIDATORS_KEY, FOUNDER_VALIDATORS_KEY,
+        ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_INDEX_KEY, ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY,
     },
     runtime_args, ContractHash, RuntimeArgs, U512,
 };
@@ -92,7 +92,7 @@ fn should_run_auction_install_contract() {
 
     assert_eq!(named_keys.len(), EXPECTED_KNOWN_KEYS_LEN);
 
-    assert!(named_keys.contains_key(FOUNDER_VALIDATORS_KEY));
+    assert!(named_keys.contains_key(FOUNDING_VALIDATORS_KEY));
     assert!(named_keys.contains_key(ACTIVE_BIDS_KEY));
     assert!(named_keys.contains_key(DELEGATORS_KEY));
     assert!(named_keys.contains_key(ERA_VALIDATORS_KEY));

@@ -7,7 +7,7 @@ use crate::{
 
 use super::{
     providers::StorageProvider, EraValidators, ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_INDEX_KEY,
-    ERA_VALIDATORS_KEY, FOUNDER_VALIDATORS_KEY,
+    ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY,
 };
 
 fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T>
@@ -34,23 +34,23 @@ where
     Ok(())
 }
 
-pub fn get_founder_validators<P: StorageProvider + ?Sized>(
+pub fn get_founding_validators<P: StorageProvider + ?Sized>(
     provider: &mut P,
 ) -> Result<FoundingValidators>
 where
     Error: From<P::Error>,
 {
-    Ok(read_from(provider, FOUNDER_VALIDATORS_KEY)?)
+    Ok(read_from(provider, FOUNDING_VALIDATORS_KEY)?)
 }
 
-pub fn set_founder_validators<P: StorageProvider + ?Sized>(
+pub fn set_founding_validators<P: StorageProvider + ?Sized>(
     provider: &mut P,
-    founder_validators: FoundingValidators,
+    founding_validators: FoundingValidators,
 ) -> Result<()>
 where
     Error: From<P::Error>,
 {
-    write_to(provider, FOUNDER_VALIDATORS_KEY, founder_validators)
+    write_to(provider, FOUNDING_VALIDATORS_KEY, founding_validators)
 }
 
 pub fn get_active_bids<P: StorageProvider + ?Sized>(provider: &mut P) -> Result<ActiveBids>
