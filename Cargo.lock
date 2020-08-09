@@ -486,7 +486,6 @@ dependencies = [
  "enum-iterator",
  "fake_instant",
  "futures 0.3.5",
- "getrandom",
  "hex",
  "hex_fmt",
  "hostname",

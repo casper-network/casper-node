@@ -10,8 +10,7 @@ use std::{
 use ed25519_dalek::{self as ed25519, ExpandedSecretKey};
 use hex_fmt::HexFmt;
 use pem::Pem;
-#[cfg(test)]
-use rand::{distributions::Standard, prelude::Distribution, Rng};
+use rand::{distributions::Standard, prelude::Distribution, CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use signature::Signature as Sig;
 
@@ -53,14 +52,6 @@ impl SecretKey {
         )?))
     }
 
-    /// Constructs a new Ed25519 variant using the operating system's cryptographically secure
-    /// random number generator.
-    pub fn generate_ed25519() -> Self {
-        let mut bytes = [0u8; Self::ED25519_LENGTH];
-        getrandom::getrandom(&mut bytes[..]).expect("RNG failure!");
-        SecretKey::new_ed25519(bytes)
-    }
-
     /// Exposes the secret values of the key as a byte slice.
     pub fn as_secret_slice(&self) -> &[u8] {
         match self {
@@ -93,7 +84,6 @@ impl SecretKey {
     }
 }
 
-#[cfg(test)]
 impl Distribution<SecretKey> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SecretKey {
         let mut bytes = [0u8; SecretKey::ED25519_LENGTH];
@@ -281,10 +271,11 @@ impl From<&SecretKey> for PublicKey {
     }
 }
 
-/// Generates an Ed25519 keypair using the operating system's cryptographically secure random number
-/// generator.
-pub fn generate_ed25519_keypair() -> (SecretKey, PublicKey) {
-    let secret_key = SecretKey::generate_ed25519();
+/// Generates an Ed25519 keypair.
+///
+/// Must be supplied with a cryptographically secure random number generator, such as `OsRng`.
+pub fn generate_ed25519_keypair<R: Rng + CryptoRng>(csrng: &mut R) -> (SecretKey, PublicKey) {
+    let secret_key: SecretKey = csrng.gen();
     let public_key = PublicKey::from(&secret_key);
     (secret_key, public_key)
 }
@@ -433,6 +424,8 @@ pub fn verify<T: AsRef<[u8]>>(
 
 #[cfg(test)]
 mod tests {
+    use rand::rngs::OsRng;
+
     use super::*;
 
     mod ed25519 {
@@ -532,10 +525,10 @@ mod tests {
 
         #[test]
         fn sign_and_verify() {
-            let secret_key = SecretKey::generate_ed25519();
+            let secret_key = OsRng.gen();
 
             let public_key = PublicKey::from(&secret_key);
-            let other_public_key = PublicKey::from(&SecretKey::generate_ed25519());
+            let other_public_key = PublicKey::from(&OsRng.gen());
 
             let message = b"message";
             let signature = sign(message, &secret_key, &public_key);

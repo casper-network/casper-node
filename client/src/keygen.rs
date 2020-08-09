@@ -6,8 +6,9 @@ use std::{
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 use lazy_static::lazy_static;
+use rand::{rngs::OsRng, Rng};
 
-use casperlabs_node::crypto::asymmetric_key::{PublicKey, SecretKey};
+use casperlabs_node::crypto::asymmetric_key::PublicKey;
 
 use crate::{common, Subcommand as CrateSubcommand};
 
@@ -117,7 +118,7 @@ impl<'a, 'b> crate::Subcommand<'a, 'b> for Keygen {
             }
         }
 
-        let secret_key = SecretKey::generate_ed25519();
+        let secret_key = OsRng.gen();
         let public_key = PublicKey::from(&secret_key);
         let account_id = public_key.to_account_hash().value();
 
