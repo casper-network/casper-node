@@ -19,7 +19,7 @@ use tracing::error;
 
 use crate::{
     components::{
-        chainspec_handler::HighwayConfig,
+        chainspec_loader::HighwayConfig,
         consensus::{
             consensus_protocol::{ConsensusProtocol, ConsensusProtocolResult},
             highway_core::validators::Validators,

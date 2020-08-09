@@ -1,3 +1,13 @@
+//! Chainspec loader component.
+//!
+//! The chainspec loader initializes a node by reading information from the chainspec, running
+//! initial system contracts and storing the result in the permanent storage. This kind of
+//! initialization only happens at genesis.
+//!
+//! See
+//! https://casperlabs.atlassian.net/wiki/spaces/EN/pages/135528449/Genesis+Process+Specification
+//! for full details.
+
 mod chainspec;
 mod config;
 mod error;

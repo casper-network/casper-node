@@ -9,7 +9,7 @@ use thiserror::Error;
 
 use crate::{
     components::{
-        chainspec_handler::{self, ChainspecHandler},
+        chainspec_loader::{self, ChainspecHandler},
         contract_runtime::{self, ContractRuntime},
         small_network::NodeId,
         storage::{self, Storage, StorageType},
@@ -28,7 +28,7 @@ use crate::{
 pub enum Event {
     /// Chainspec handler event.
     #[from]
-    Chainspec(chainspec_handler::Event),
+    Chainspec(chainspec_loader::Event),
 
     /// Storage event.
     #[from]
@@ -80,7 +80,7 @@ pub enum Error {
 
     /// `ChainspecHandler` component error.
     #[error("chainspec error: {0}")]
-    Chainspec(#[from] chainspec_handler::Error),
+    Chainspec(#[from] chainspec_loader::Error),
 
     /// `Storage` component error.
     #[error("storage error: {0}")]
@@ -95,7 +95,7 @@ pub enum Error {
 #[derive(Debug)]
 pub struct Reactor {
     pub(super) config: validator::Config,
-    pub(super) chainspec_handler: ChainspecHandler,
+    pub(super) chainspec_loader: ChainspecHandler,
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
 }
@@ -103,7 +103,7 @@ pub struct Reactor {
 impl Reactor {
     /// Returns whether the initialization process completed successfully or not.
     pub fn stopped_successfully(&self) -> bool {
-        self.chainspec_handler.stopped_successfully()
+        self.chainspec_loader.stopped_successfully()
     }
 }
 
@@ -123,7 +123,7 @@ impl reactor::Reactor for Reactor {
         let storage = Storage::new(&config.storage)?;
         let contract_runtime =
             ContractRuntime::new(&config.storage, config.contract_runtime, registry)?;
-        let (chainspec_handler, chainspec_effects) =
+        let (chainspec_loader, chainspec_effects) =
             ChainspecHandler::new(config.node.chainspec_config_path.clone(), effect_builder)?;
 
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
@@ -131,7 +131,7 @@ impl reactor::Reactor for Reactor {
         Ok((
             Reactor {
                 config,
-                chainspec_handler,
+                chainspec_loader,
                 storage,
                 contract_runtime,
             },
@@ -148,7 +148,7 @@ impl reactor::Reactor for Reactor {
         match event {
             Event::Chainspec(event) => reactor::wrap_effects(
                 Event::Chainspec,
-                self.chainspec_handler
+                self.chainspec_loader
                     .handle_event(effect_builder, rng, event),
             ),
             Event::Storage(event) => reactor::wrap_effects(
@@ -164,6 +164,6 @@ impl reactor::Reactor for Reactor {
     }
 
     fn is_stopped(&mut self) -> bool {
-        self.chainspec_handler.is_stopped()
+        self.chainspec_loader.is_stopped()
     }
 }

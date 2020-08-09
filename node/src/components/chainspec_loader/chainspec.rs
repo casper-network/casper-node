@@ -1,9 +1,3 @@
-//! The chainspec component.  Responsible for reading in the chainspec configuration file on app
-//! start, and putting the parsed value into persistent storage.
-//!
-//! See https://casperlabs.atlassian.net/wiki/spaces/EN/pages/135528449/Genesis+Process+Specification
-//! for full details.
-
 use std::{
     fmt::{self, Debug, Formatter},
     path::Path,
@@ -394,7 +388,7 @@ mod tests {
 
     /// Takes a chainspec.toml in the specified `chainspec_dir` and rewrites it to a temp file with
     /// the relative paths rewritten to absolute paths.
-    pub(in crate::components::chainspec_handler) fn rewrite_with_absolute_paths(
+    pub(in crate::components::chainspec_loader) fn rewrite_with_absolute_paths(
         chainspec_dir: &str,
     ) -> NamedTempFile {
         let original_contents =

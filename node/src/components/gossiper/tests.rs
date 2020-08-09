@@ -16,7 +16,7 @@ use tracing::debug;
 use super::*;
 use crate::{
     components::{
-        chainspec_handler::Chainspec,
+        chainspec_loader::Chainspec,
         deploy_acceptor::{self, DeployAcceptor},
         in_memory_network::{InMemoryNetwork, NetworkController, NodeId},
         storage::{self, Storage, StorageType},

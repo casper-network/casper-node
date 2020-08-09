@@ -290,7 +290,7 @@ impl reactor::Reactor for Reactor {
     ) -> Result<(Self, Effects<Event>), Error> {
         let initializer::Reactor {
             config,
-            chainspec_handler,
+            chainspec_loader,
             storage,
             contract_runtime,
         } = initializer;
@@ -303,7 +303,7 @@ impl reactor::Reactor for Reactor {
         let (pinger, pinger_effects) = Pinger::new(registry, effect_builder)?;
         let api_server = ApiServer::new(config.http_server, effect_builder);
         let timestamp = Timestamp::now();
-        let validator_stakes = chainspec_handler
+        let validator_stakes = chainspec_loader
             .chainspec()
             .genesis
             .accounts
@@ -320,14 +320,14 @@ impl reactor::Reactor for Reactor {
             config.consensus,
             effect_builder,
             validator_stakes,
-            &chainspec_handler.chainspec().genesis.highway_config,
+            &chainspec_loader.chainspec().genesis.highway_config,
         )?;
         let deploy_acceptor = DeployAcceptor::new();
         let deploy_fetcher = Fetcher::new(config.gossip);
         let deploy_gossiper = Gossiper::new(config.gossip, gossiper::get_deploy_from_storage);
         let deploy_buffer = DeployBuffer::new(config.node.block_max_deploy_count as usize);
         // Post state hash is expected to be present
-        let post_state_hash = chainspec_handler
+        let post_state_hash = chainspec_loader
             .post_state_hash()
             .expect("should have post state hash");
         let block_executor = BlockExecutor::new(post_state_hash);
