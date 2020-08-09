@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use pwasm_utils::rules::{InstructionType, Metering, Set};
 #[cfg(test)]
-use rand::Rng;
+use rand::{distributions::Standard, prelude::Distribution, Rng};
 use serde::{Deserialize, Serialize};
 
 use casperlabs_types::bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
@@ -52,10 +52,11 @@ impl WasmCosts {
             .with_grow_cost(self.grow_mem)
             .with_forbidden_floats()
     }
+}
 
-    /// Generates a random instance.
-    #[cfg(test)]
-    pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
+#[cfg(test)]
+impl Distribution<WasmCosts> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> WasmCosts {
         WasmCosts {
             regular: rng.gen(),
             div: rng.gen(),

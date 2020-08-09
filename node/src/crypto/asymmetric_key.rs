@@ -11,13 +11,11 @@ use ed25519_dalek::{self as ed25519, ExpandedSecretKey};
 use hex_fmt::HexFmt;
 use pem::Pem;
 #[cfg(test)]
-use rand::RngCore;
+use rand::{distributions::Standard, prelude::Distribution, Rng};
 use serde::{Deserialize, Serialize};
 use signature::Signature as Sig;
 
 use super::{Error, Result};
-#[cfg(test)]
-use crate::testing::TestRng;
 use crate::{
     crypto::hash::hash,
     utils::{read_file, read_file_to_string, write_file},
@@ -93,11 +91,12 @@ impl SecretKey {
 
         Self::ed25519_from_bytes(pem.contents)
     }
+}
 
-    /// Generates a random instance using a `TestRng`.
-    #[cfg(test)]
-    pub fn random(rng: &mut TestRng) -> Self {
-        let mut bytes = [0u8; Self::ED25519_LENGTH];
+#[cfg(test)]
+impl Distribution<SecretKey> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SecretKey {
+        let mut bytes = [0u8; SecretKey::ED25519_LENGTH];
         rng.fill_bytes(&mut bytes[..]);
         SecretKey::new_ed25519(bytes)
     }
@@ -196,13 +195,6 @@ impl PublicKey {
         Self::ed25519_from_bytes(pem.contents)
     }
 
-    /// Generates a random instance using a `TestRng`.
-    #[cfg(test)]
-    pub fn random(rng: &mut TestRng) -> Self {
-        let secret_key = SecretKey::random(rng);
-        PublicKey::from(&secret_key)
-    }
-
     fn tag(&self) -> u8 {
         match self {
             PublicKey::Ed25519(_) => ED25519_TAG,
@@ -213,6 +205,13 @@ impl PublicKey {
         match self {
             PublicKey::Ed25519(_) => ED25519,
         }
+    }
+}
+
+#[cfg(test)]
+impl Distribution<PublicKey> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PublicKey {
+        PublicKey::from(&rng.gen())
     }
 }
 

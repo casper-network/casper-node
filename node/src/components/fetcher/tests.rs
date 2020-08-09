@@ -346,7 +346,7 @@ async fn should_fetch_from_local() {
     };
 
     // Create a random deploy.
-    let deploy = Deploy::random(&mut rng);
+    let deploy: Deploy = rng.gen();
 
     // Store deploy on a node.
     let node_to_store_on = &node_ids[0];
@@ -391,7 +391,7 @@ async fn should_fetch_from_peer() {
     };
 
     // Create a random deploy.
-    let deploy = Deploy::random(&mut rng);
+    let deploy = rng.gen();
 
     // Store deploy on a node.
     let node_with_deploy = &node_ids[0];
@@ -437,7 +437,7 @@ async fn should_timeout_fetch_from_peer() {
     };
 
     // Create a random deploy.
-    let deploy = Deploy::random(&mut rng);
+    let deploy: Deploy = rng.gen();
     let deploy_hash = *deploy.id();
 
     let holding_node = node_ids[0];

@@ -114,9 +114,8 @@ impl Default for DeployConfig {
 }
 
 #[cfg(test)]
-impl DeployConfig {
-    /// Generates a random instance.
-    pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
+impl Distribution<DeployConfig> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> DeployConfig {
         let max_payment_cost = Motes::new(U512::from(
             rng.gen_range::<_, u64, u64>(1_000_000, 1_000_000_000),
         ));
@@ -163,9 +162,9 @@ impl Default for HighwayConfig {
 }
 
 #[cfg(test)]
-impl HighwayConfig {
+impl Distribution<HighwayConfig> for Standard {
     /// Generates a random instance.
-    pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> HighwayConfig {
         let genesis_era_start_timestamp = Timestamp::now().millis();
         let era_duration = Duration::from_millis(rng.gen_range(600_000, 604_800_000));
         let booking_duration = Duration::from_millis(rng.gen_range(600_000, 864_000_000));
@@ -233,9 +232,8 @@ impl Debug for GenesisConfig {
 }
 
 #[cfg(test)]
-impl GenesisConfig {
-    /// Generates a random instance.
-    pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
+impl Distribution<GenesisConfig> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisConfig {
         let name = rng.gen::<char>().to_string();
         let timestamp = rng.gen::<u8>() as u64;
         let protocol_version = Version::new(
@@ -247,9 +245,9 @@ impl GenesisConfig {
         let pos_installer_bytes = vec![rng.gen()];
         let standard_payment_installer_bytes = vec![rng.gen()];
         let accounts = vec![rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen()];
-        let costs = WasmCosts::random(rng);
-        let deploy_config = DeployConfig::random(rng);
-        let highway_config = HighwayConfig::random(rng);
+        let costs = rng.gen();
+        let deploy_config = rng.gen();
+        let highway_config = rng.gen();
 
         GenesisConfig {
             name,
@@ -303,16 +301,8 @@ impl UpgradePoint {
         } else {
             None
         };
-        let new_costs = if rng.gen() {
-            Some(WasmCosts::random(rng))
-        } else {
-            None
-        };
-        let new_deploy_config = if rng.gen() {
-            Some(DeployConfig::random(rng))
-        } else {
-            None
-        };
+        let new_costs = if rng.gen() { Some(rng.gen()) } else { None };
+        let new_deploy_config = if rng.gen() { Some(rng.gen()) } else { None };
 
         UpgradePoint {
             activation_point,
@@ -350,14 +340,6 @@ impl Chainspec {
         config::parse_toml(chainspec_path)
     }
 
-    /// Generates a random instance of a chainspec.
-    #[cfg(test)]
-    pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
-        let genesis = GenesisConfig::random(rng);
-        let upgrades = vec![UpgradePoint::random(rng), UpgradePoint::random(rng)];
-        Chainspec { genesis, upgrades }
-    }
-
     /// Constructs a chainspec from the chainspec.toml in 'resources/local'.
     #[cfg(test)]
     pub fn from_resources_local() -> Self {
@@ -365,6 +347,15 @@ impl Chainspec {
 
         let path = format!("{}/../{}", env!("CARGO_MANIFEST_DIR"), PATH);
         Chainspec::from_toml(path).unwrap()
+    }
+}
+
+#[cfg(test)]
+impl Distribution<Chainspec> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Chainspec {
+        let genesis = rng.gen();
+        let upgrades = vec![UpgradePoint::random(rng), UpgradePoint::random(rng)];
+        Chainspec { genesis, upgrades }
     }
 }
 
@@ -561,7 +552,7 @@ mod tests {
     #[test]
     fn rmp_serde_roundtrip() {
         let mut rng = TestRng::new();
-        let chainspec = Chainspec::random(&mut rng);
+        let chainspec: Chainspec = rng.gen();
         testing::rmp_serde_roundtrip(&chainspec);
     }
 }

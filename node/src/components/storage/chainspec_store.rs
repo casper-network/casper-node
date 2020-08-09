@@ -15,12 +15,15 @@ mod tests {
         super::{Config, InMemChainspecStore, LmdbChainspecStore},
         *,
     };
+
+    use rand::Rng;
+
     use crate::testing::TestRng;
 
     fn should_put_then_get<T: ChainspecStore>(chainspec_store: &mut T) {
         let mut rng = TestRng::new();
 
-        let chainspec = Chainspec::random(&mut rng);
+        let chainspec: Chainspec = rng.gen();
         let version = chainspec.genesis.protocol_version.clone();
 
         chainspec_store.put(chainspec.clone()).unwrap();
@@ -47,7 +50,7 @@ mod tests {
     fn should_fail_get<T: ChainspecStore>(chainspec_store: &mut T) {
         let mut rng = TestRng::new();
 
-        let chainspec = Chainspec::random(&mut rng);
+        let chainspec: Chainspec = rng.gen();
         let mut version = chainspec.genesis.protocol_version.clone();
         version.patch += 1;
 
