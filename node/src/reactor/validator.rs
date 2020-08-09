@@ -84,16 +84,14 @@ impl Message {
     pub(crate) fn new_get_request<T: Item>(id: &T::Id) -> Result<Self, Error> {
         Ok(Message::GetRequest {
             tag: T::TAG,
-            serialized_id: bincode::serialize(id)
-                .map_err(|error| Error::from_serialization(*error))?,
+            serialized_id: rmp_serde::to_vec(id)?,
         })
     }
 
     pub(crate) fn new_get_response<T: Item>(item: &T) -> Result<Self, Error> {
         Ok(Message::GetResponse {
             tag: T::TAG,
-            serialized_item: bincode::serialize(item)
-                .map_err(|error| Error::from_serialization(*error))?,
+            serialized_item: rmp_serde::to_vec(item)?,
         })
     }
 }
@@ -462,7 +460,7 @@ impl reactor::Reactor for Reactor {
                     }
                     Message::GetRequest { tag, serialized_id } => match tag {
                         Tag::Deploy => {
-                            let deploy_hash = match bincode::deserialize(&serialized_id) {
+                            let deploy_hash = match rmp_serde::from_read_ref(&serialized_id) {
                                 Ok(hash) => hash,
                                 Err(error) => {
                                     error!(
@@ -483,7 +481,7 @@ impl reactor::Reactor for Reactor {
                         serialized_item,
                     } => match tag {
                         Tag::Deploy => {
-                            let deploy = match bincode::deserialize(&serialized_item) {
+                            let deploy = match rmp_serde::from_read_ref(&serialized_item) {
                                 Ok(deploy) => Box::new(deploy),
                                 Err(error) => {
                                     error!("failed to decode deploy from {}: {}", sender, error);

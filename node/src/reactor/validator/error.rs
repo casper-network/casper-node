@@ -27,11 +27,5 @@ pub enum Error {
 
     /// Failed to serialize data.
     #[error("serialization: {0}")]
-    Serialization(#[source] bincode::ErrorKind),
-}
-
-impl Error {
-    pub(crate) fn from_serialization(error: bincode::ErrorKind) -> Self {
-        Error::Serialization(error)
-    }
+    Serialization(#[from] rmp_serde::encode::Error),
 }
