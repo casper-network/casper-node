@@ -9,7 +9,7 @@ use thiserror::Error;
 
 use crate::{
     components::{
-        chainspec_loader::{self, ChainspecHandler},
+        chainspec_loader::{self, ChainspecLoader},
         contract_runtime::{self, ContractRuntime},
         small_network::NodeId,
         storage::{self, Storage, StorageType},
@@ -95,7 +95,7 @@ pub enum Error {
 #[derive(Debug)]
 pub struct Reactor {
     pub(super) config: validator::Config,
-    pub(super) chainspec_loader: ChainspecHandler,
+    pub(super) chainspec_loader: ChainspecLoader,
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
 }
@@ -124,7 +124,7 @@ impl reactor::Reactor for Reactor {
         let contract_runtime =
             ContractRuntime::new(&config.storage, config.contract_runtime, registry)?;
         let (chainspec_loader, chainspec_effects) =
-            ChainspecHandler::new(config.node.chainspec_config_path.clone(), effect_builder)?;
+            ChainspecLoader::new(config.node.chainspec_config_path.clone(), effect_builder)?;
 
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
 

@@ -67,7 +67,7 @@ impl Display for Event {
 }
 
 #[derive(Debug)]
-pub(crate) struct ChainspecHandler {
+pub(crate) struct ChainspecLoader {
     chainspec: Chainspec,
     // If `Some`, we're finished.  The value of the bool indicates success (true) or not.
     completed_successfully: Option<bool>,
@@ -75,7 +75,7 @@ pub(crate) struct ChainspecHandler {
     post_state_hash: Option<Digest>,
 }
 
-impl ChainspecHandler {
+impl ChainspecLoader {
     pub(crate) fn new<REv>(
         chainspec_config_path: PathBuf,
         effect_builder: EffectBuilder<REv>,
@@ -89,7 +89,7 @@ impl ChainspecHandler {
             .put_chainspec(chainspec.clone())
             .event(|_| Event::PutToStorage { version });
         Ok((
-            ChainspecHandler {
+            ChainspecLoader {
                 chainspec,
                 completed_successfully: None,
                 post_state_hash: None,
@@ -115,7 +115,7 @@ impl ChainspecHandler {
     }
 }
 
-impl<REv> Component<REv> for ChainspecHandler
+impl<REv> Component<REv> for ChainspecLoader
 where
     REv: From<Event> + From<StorageRequest<Storage>> + From<ContractRuntimeRequest> + Send,
 {
