@@ -2,9 +2,16 @@
 //!
 //! The `External` type abstracts away the loading of external resources. See the type documentation
 //! for details.
-use serde::{Deserialize, Serialize};
 
 use std::path::{Path, PathBuf};
+
+use openssl::{
+    pkey::{PKey, Private},
+    x509::X509,
+};
+use serde::{Deserialize, Serialize};
+
+use crate::tls;
 
 /// External resource.
 ///
@@ -62,6 +69,23 @@ where
 {
     fn default() -> Self {
         Self::Loaded(Default::default())
+    }
+}
+
+// We supply a few useful implementations for external types.
+impl Loadable for X509 {
+    type Error = anyhow::Error;
+
+    fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
+        tls::load_cert(path)
+    }
+}
+
+impl Loadable for PKey<Private> {
+    type Error = anyhow::Error;
+
+    fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
+        tls::load_private_key(path)
     }
 }
 

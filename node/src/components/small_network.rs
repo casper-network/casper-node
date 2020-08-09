@@ -50,7 +50,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     io,
-    net::{SocketAddr, TcpListener},
+    net::{IpAddr, SocketAddr, TcpListener},
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -92,7 +92,7 @@ use crate::{
 };
 // Seems to be a false positive.
 #[allow(unreachable_pub)]
-pub use config::Config;
+pub use config::{Config, RetrySettings};
 // Seems to be a false positive.
 #[allow(unreachable_pub)]
 pub use error::Error;
@@ -103,8 +103,8 @@ pub use error::Error;
 pub(crate) type NodeId = KeyFingerprint;
 
 pub(crate) struct SmallNetwork<REv: 'static, P> {
-    /// Configuration.
-    cfg: Config,
+    /// Root address.
+    root_addr: SocketAddr,
     /// Server certificate.
     cert: Arc<TlsCert>,
     /// Server secret key.
@@ -117,6 +117,8 @@ pub(crate) struct SmallNetwork<REv: 'static, P> {
     signed_endpoints: HashMap<NodeId, Signed<Endpoint>>,
     /// Outgoing network connections' messages.
     outgoing: HashMap<NodeId, UnboundedSender<Message<P>>>,
+    /// Retry configuration.
+    retries: RetrySettings,
     /// Channel signaling a shutdown of the small network.
     // Note: This channel never sends anything, instead it is closed when `SmallNetwork` is dropped,
     //       signalling the receiver that it should cease operation. Don't listen to clippy!
@@ -143,23 +145,24 @@ where
         let server_span = tracing::info_span!("server");
 
         // First, we load or generate the TLS keys.
-        let (cert, secret_key) = match (&cfg.cert_path, &cfg.secret_key_path) {
+        let (cert, secret_key) = match (cfg.cert_path, cfg.secret_key_path) {
             // We're given a cert_file and a secret_key file. Just load them, additional checking
             // will be performed once we create the acceptor and connector.
-            (Some(cert_file), Some(secret_key_file)) => (
-                tls::load_cert(cert_file).context("could not load TLS certificate")?,
-                tls::load_private_key(secret_key_file).context("could not load TLS secret key")?,
-            ),
+            (Some(cert_file), Some(secret_key_file)) => {
+                (cert_file.load()?, secret_key_file.load()?)
+            }
 
             // Neither was passed, so we auto-generate a pair.
             (None, None) => tls::generate_node_cert().map_err(Error::CertificateGeneration)?,
 
-            // If we get only one of the two, return an error.
+            // // If we get only one of the two, return an error.
             _ => return Err(Error::InvalidConfig),
         };
 
         // We can now create a listener.
-        let (listener, we_are_root) = create_listener(&cfg).map_err(Error::ListenerCreation)?;
+        let (listener, we_are_root) =
+            create_listener(cfg.root_addr, cfg.bind_port, cfg.bind_interface)
+                .map_err(Error::ListenerCreation)?;
         let addr = listener.local_addr().map_err(Error::ListenerAddr)?;
 
         // Create the model. Initially we know our own endpoint address.
@@ -183,13 +186,17 @@ where
         ));
 
         let model = SmallNetwork {
-            cfg,
+            root_addr: cfg.root_addr,
             signed_endpoints: hashmap! { our_fingerprint => Signed::new(&our_endpoint, &secret_key)? },
             endpoints: hashmap! { our_fingerprint => our_endpoint },
             cert: Arc::new(tls::validate_cert(cert).map_err(Error::OwnCertificateInvalid)?),
             secret_key: Arc::new(secret_key),
             event_queue,
             outgoing: HashMap::new(),
+            retries: RetrySettings {
+                max_outgoing: cfg.max_outgoing_retries,
+                outgoing_delay_millis: cfg.outgoing_retry_delay_millis,
+            },
             shutdown: Some(server_shutdown_sender),
             server_join_handle: Some(server_join_handle),
         };
@@ -207,12 +214,7 @@ where
 
     /// Attempts to connect to the root node.
     fn connect_to_root(&self) -> Effects<Event<P>> {
-        connect_trusted(
-            self.cfg.root_addr,
-            self.cert.clone(),
-            self.secret_key.clone(),
-        )
-        .result(
+        connect_trusted(self.root_addr, self.cert.clone(), self.secret_key.clone()).result(
             move |(cert, transport)| Event::RootConnected { cert, transport },
             move |error| Event::RootFailed { error },
         )
@@ -496,7 +498,7 @@ where
                 // Create a pseudo-endpoint for the root node with the lowest priority (time 0)
                 let root_node_id = cert.public_key_fingerprint();
 
-                let ep = Endpoint::new(0, self.cfg.root_addr, cert);
+                let ep = Endpoint::new(0, self.root_addr, cert);
                 if self.endpoints.insert(root_node_id, ep).is_some() {
                     // This connection is the very first we will ever make, there should never be
                     // a root node registered, as we will never re-attempt this connection if it
@@ -561,7 +563,7 @@ where
                     warn!(%node_id, "outgoing connection closed");
                 }
 
-                if let Some(max) = self.cfg.max_outgoing_retries {
+                if let Some(max) = self.retries.max_outgoing {
                     if attempt_count >= max {
                         // We're giving up connecting to the node. We will remove it completely
                         // (this only carries the danger of the stale addresses being sent to us by
@@ -581,7 +583,7 @@ where
                     let secret_key = self.secret_key.clone();
 
                     effect_builder
-                        .set_timeout(Duration::from_millis(self.cfg.outgoing_retry_delay_millis))
+                        .set_timeout(Duration::from_millis(self.retries.outgoing_delay_millis))
                         .then(move |_| connect_outgoing(ep, cert, secret_key))
                         .result(
                             move |transport| Event::OutgoingEstablished { node_id, transport },
@@ -638,12 +640,14 @@ where
 /// interface of `root_addr`. Otherwise uses an unused port on `bind_interface`.
 ///
 /// Returns a `(listener, is_root)` pair. `is_root` is `true` if the node is a root node.
-fn create_listener(cfg: &Config) -> io::Result<(TcpListener, bool)> {
-    if cfg.root_addr.ip() == cfg.bind_interface
-        && (cfg.bind_port == 0 || cfg.root_addr.port() == cfg.bind_port)
-    {
+fn create_listener(
+    root_addr: SocketAddr,
+    bind_port: u16,
+    bind_interface: IpAddr,
+) -> io::Result<(TcpListener, bool)> {
+    if root_addr.ip() == bind_interface && (bind_port == 0 || root_addr.port() == bind_port) {
         // Try to become the root node, if the root nodes interface is available.
-        match TcpListener::bind(cfg.root_addr) {
+        match TcpListener::bind(root_addr) {
             Ok(listener) => {
                 info!("we are the root node");
                 return Ok((listener, true));
@@ -651,17 +655,14 @@ fn create_listener(cfg: &Config) -> io::Result<(TcpListener, bool)> {
             Err(err) => {
                 warn!(
                     %err,
-                    "could not bind to {}, will become a non-root node", cfg.root_addr
+                    "could not bind to {}, will become a non-root node", root_addr
                 );
             }
         };
     }
 
     // We did not become the root node, bind on the specified port.
-    Ok((
-        TcpListener::bind((cfg.bind_interface, cfg.bind_port))?,
-        false,
-    ))
+    Ok((TcpListener::bind((bind_interface, bind_port))?, false))
 }
 
 /// Core accept loop for the networking server.

@@ -26,5 +26,4 @@ pub struct Config {
     pub gossip: GossipConfig,
     /// Contract runtime configuration.
     pub contract_runtime: ContractRuntimeConfig,
-
 }
