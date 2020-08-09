@@ -5,6 +5,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+use crate::ROOT_VALIDATOR_LISTENING_PORT;
+
 /// Small network configuration.
 #[derive(Debug, Deserialize, Serialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -47,5 +49,11 @@ impl Config {
             max_outgoing_retries: Some(360),
             outgoing_retry_delay_millis: 10_000,
         }
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self::default_on_port(ROOT_VALIDATOR_LISTENING_PORT)
     }
 }
