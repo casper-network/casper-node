@@ -14,8 +14,10 @@ use casperlabs_types::U512;
 
 use super::{chainspec, Error};
 use crate::{
-    components::contract_runtime::shared::wasm_costs::WasmCosts, crypto::asymmetric_key::PublicKey,
-    types::Motes, utils::read_file,
+    components::contract_runtime::shared::wasm_costs::WasmCosts,
+    crypto::asymmetric_key::PublicKey,
+    types::{Motes, TimeDiff, Timestamp},
+    utils::read_file,
 };
 
 const DEFAULT_CHAIN_NAME: &str = "casperlabs-devnet";
@@ -30,7 +32,7 @@ const DEFAULT_UPGRADE_INSTALLER_PATH: &str = "upgrade_install.wasm";
 #[serde(deny_unknown_fields)]
 struct DeployConfig {
     max_payment_cost: String,
-    max_ttl_millis: u64,
+    max_ttl_millis: TimeDiff,
     max_dependencies: u8,
     max_block_size: u32,
     block_gas_limit: u64,
@@ -46,7 +48,7 @@ impl From<chainspec::DeployConfig> for DeployConfig {
     fn from(cfg: chainspec::DeployConfig) -> Self {
         DeployConfig {
             max_payment_cost: cfg.max_payment_cost.to_string(),
-            max_ttl_millis: cfg.max_ttl.as_millis() as u64,
+            max_ttl_millis: cfg.max_ttl,
             max_dependencies: cfg.max_dependencies,
             max_block_size: cfg.max_block_size,
             block_gas_limit: cfg.block_gas_limit,
@@ -61,7 +63,7 @@ impl TryFrom<DeployConfig> for chainspec::DeployConfig {
         let max_payment_cost = Motes::new(U512::from_dec_str(&cfg.max_payment_cost)?);
         Ok(chainspec::DeployConfig {
             max_payment_cost,
-            max_ttl: Duration::from_millis(cfg.max_ttl_millis),
+            max_ttl: cfg.max_ttl_millis,
             max_dependencies: cfg.max_dependencies,
             max_block_size: cfg.max_block_size,
             block_gas_limit: cfg.block_gas_limit,
@@ -72,7 +74,7 @@ impl TryFrom<DeployConfig> for chainspec::DeployConfig {
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
 struct Genesis {
     name: String,
-    timestamp: u64,
+    timestamp: Timestamp,
     protocol_version: Version,
     mint_installer_path: String,
     pos_installer_path: String,
@@ -84,7 +86,7 @@ impl Default for Genesis {
     fn default() -> Self {
         Genesis {
             name: String::from(DEFAULT_CHAIN_NAME),
-            timestamp: 0,
+            timestamp: Timestamp::zero(),
             protocol_version: Version::from((1, 0, 0)),
             mint_installer_path: String::from(DEFAULT_MINT_INSTALLER_PATH),
             pos_installer_path: String::from(DEFAULT_POS_INSTALLER_PATH),
@@ -98,7 +100,7 @@ impl Default for Genesis {
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 struct HighwayConfig {
-    genesis_era_start_timestamp: u64,
+    genesis_era_start_timestamp: Timestamp,
     era_duration_millis: u64,
     booking_duration_millis: u64,
     entropy_duration_millis: u64,

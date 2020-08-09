@@ -17,7 +17,7 @@ use casperlabs_node::{
         asymmetric_key::{self, PublicKey},
         hash::Digest,
     },
-    types::{Deploy, DeployHeader, Timestamp},
+    types::{Deploy, DeployHeader, TimeDiff, Timestamp},
 };
 use casperlabs_types::{
     account::AccountHash,
@@ -155,12 +155,13 @@ mod ttl {
             .display_order(DisplayOrder::Ttl as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> u32 {
-        matches
-            .value_of(ARG_NAME)
-            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
-            .parse()
-            .unwrap_or_else(|error| panic!("should parse {}: {}", ARG_NAME, error))
+    pub(super) fn get(matches: &ArgMatches) -> TimeDiff {
+        TimeDiff::from_str(
+            matches
+                .value_of(ARG_NAME)
+                .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME)),
+        )
+        .unwrap_or_else(|error| panic!("should parse {}: {}", ARG_NAME, error))
     }
 }
 
@@ -726,10 +727,10 @@ impl<'a, 'b> crate::Subcommand<'a, 'b> for PutDeploy {
         let public_key = PublicKey::from(&secret_key);
         let header = DeployHeader {
             account: public_key,
-            timestamp: timestamp.millis(),
+            timestamp,
             gas_price,
             body_hash: [1; 32].into(),
-            ttl_millis: ttl,
+            ttl,
             dependencies: vec![],
             chain_name,
         };

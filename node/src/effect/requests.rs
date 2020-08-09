@@ -30,7 +30,9 @@ use crate::{
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::hash::Digest,
-    types::{BlockHash, Deploy, DeployHash, ExecutedBlock, FinalizedBlock, Item, ProtoBlock},
+    types::{
+        BlockHash, Deploy, DeployHash, ExecutedBlock, FinalizedBlock, Item, ProtoBlock, Timestamp,
+    },
     utils::DisplayIter,
     Chainspec,
 };
@@ -254,7 +256,7 @@ pub enum DeployBufferRequest {
     /// Request a list of deploys to propose in a new block.
     ListForInclusion {
         /// The instant for which the deploy is requested.
-        current_instant: u64, // TODO: timestamp: Timestamp,
+        current_instant: Timestamp,
         /// Set of block hashes pointing to blocks whose deploys should be excluded.
         past_blocks: HashSet<BlockHash>,
         /// Responder to call with the result.
