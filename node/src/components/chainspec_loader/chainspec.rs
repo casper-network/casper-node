@@ -19,7 +19,7 @@ use super::{config, Error};
 use crate::types::Timestamp;
 use crate::{
     components::contract_runtime::shared::wasm_costs::WasmCosts, crypto::asymmetric_key::PublicKey,
-    types::Motes,
+    types::Motes, utils::Loadable,
 };
 
 /// An account that exists at genesis.
@@ -347,6 +347,13 @@ impl Chainspec {
 
         let path = format!("{}/../{}", env!("CARGO_MANIFEST_DIR"), PATH);
         Chainspec::from_toml(path).unwrap()
+    }
+}
+
+impl Loadable for Chainspec {
+    type Error = Error;
+    fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
+        Chainspec::from_toml(path)
     }
 }
 

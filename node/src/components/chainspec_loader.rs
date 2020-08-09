@@ -12,10 +12,7 @@ mod chainspec;
 mod config;
 mod error;
 
-use std::{
-    fmt::{self, Display, Formatter},
-    path::PathBuf,
-};
+use std::fmt::{self, Display, Formatter};
 
 use rand::Rng;
 use semver::Version;
@@ -77,13 +74,12 @@ pub(crate) struct ChainspecLoader {
 
 impl ChainspecLoader {
     pub(crate) fn new<REv>(
-        chainspec_config_path: PathBuf,
+        chainspec: Chainspec,
         effect_builder: EffectBuilder<REv>,
     ) -> Result<(Self, Effects<Event>), Error>
     where
         REv: From<Event> + From<StorageRequest<Storage>> + Send,
     {
-        let chainspec = Chainspec::from_toml(chainspec_config_path)?;
         let version = chainspec.genesis.protocol_version.clone();
         let effects = effect_builder
             .put_chainspec(chainspec.clone())

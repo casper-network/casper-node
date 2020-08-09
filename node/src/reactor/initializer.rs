@@ -118,13 +118,20 @@ impl reactor::Reactor for Reactor {
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut Rd,
     ) -> Result<(Self, Effects<Self::Event>), Error> {
+        let chainspec = config
+            .node
+            .chainspec
+            .clone()
+            .load()
+            .map_err(|err| Error::ConfigError(err.to_string()))?;
+
         let effect_builder = EffectBuilder::new(event_queue);
 
         let storage = Storage::new(&config.storage)?;
         let contract_runtime =
             ContractRuntime::new(&config.storage, config.contract_runtime, registry)?;
         let (chainspec_loader, chainspec_effects) =
-            ChainspecLoader::new(config.node.chainspec_config_path.clone(), effect_builder)?;
+            ChainspecLoader::new(chainspec, effect_builder)?;
 
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
 

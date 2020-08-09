@@ -96,8 +96,7 @@ where
         validator_stakes: Vec<(PublicKey, Motes)>,
         highway_config: &HighwayConfig,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
-        let secret_signing_key =
-            SecretKey::from_file(&config.secret_key_path).map_err(anyhow::Error::new)?;
+        let secret_signing_key = config.secret_key.load()?;
 
         let mut era_supervisor = Self {
             active_eras: Default::default(),

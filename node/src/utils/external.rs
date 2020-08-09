@@ -130,6 +130,13 @@ impl Loadable for PKey<Private> {
     }
 }
 
+impl Loadable for SecretKey {
+    type Error = crypto::Error;
+    fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
+        SecretKey::from_file(path)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::External;

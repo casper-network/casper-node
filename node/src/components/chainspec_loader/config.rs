@@ -128,6 +128,7 @@ impl From<chainspec::HighwayConfig> for HighwayConfig {
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
 struct UpgradePoint {
     protocol_version: Version,
     upgrade_installer_path: Option<String>,
@@ -177,6 +178,7 @@ impl TryFrom<UpgradePoint> for chainspec::UpgradePoint {
 
 /// A chainspec configuration as laid out in the configuration file.
 #[derive(Default, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
 pub(super) struct ChainspecConfig {
     genesis: Genesis,
     highway: HighwayConfig,

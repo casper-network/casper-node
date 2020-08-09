@@ -145,12 +145,13 @@ where
         let server_span = tracing::info_span!("server");
 
         // First, we load or generate the TLS keys.
-        let (cert, secret_key) = match (cfg.cert_path, cfg.secret_key_path) {
+        let (cert, secret_key) = match (cfg.cert, cfg.secret_key) {
             // We're given a cert_file and a secret_key file. Just load them, additional checking
             // will be performed once we create the acceptor and connector.
-            (Some(cert_file), Some(secret_key_file)) => {
-                (cert_file.load()?, secret_key_file.load()?)
-            }
+            (Some(cert), Some(secret_key)) => (
+                cert.load().context("could not load certificate")?,
+                secret_key.load().context("could not load secret key")?,
+            ),
 
             // Neither was passed, so we auto-generate a pair.
             (None, None) => tls::generate_node_cert().map_err(Error::CertificateGeneration)?,

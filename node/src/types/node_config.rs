@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+
+use crate::{utils::External, Chainspec};
 
 const DEFAULT_CHAINSPEC_CONFIG_PATH: &str = "chainspec.toml";
 const DEFAULT_BLOCK_MAX_DEPLOY_COUNT: u32 = 3;
@@ -9,8 +10,8 @@ const DEFAULT_BLOCK_MAX_DEPLOY_COUNT: u32 = 3;
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct NodeConfig {
-    /// Path to chainspec config file.
-    pub chainspec_config_path: PathBuf,
+    /// Chainspec configuration.
+    pub chainspec: External<Chainspec>,
     /// The maximum number of deploys permitted in a single block.
     pub block_max_deploy_count: u32,
 }
@@ -18,7 +19,7 @@ pub struct NodeConfig {
 impl Default for NodeConfig {
     fn default() -> Self {
         NodeConfig {
-            chainspec_config_path: PathBuf::from(DEFAULT_CHAINSPEC_CONFIG_PATH),
+            chainspec: External::path(DEFAULT_CHAINSPEC_CONFIG_PATH),
             block_max_deploy_count: DEFAULT_BLOCK_MAX_DEPLOY_COUNT,
         }
     }
