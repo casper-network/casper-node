@@ -14,6 +14,7 @@ booking_duration_millis = 4
 entropy_duration_millis = 5
 voting_period_duration_millis = 6
 finality_threshold_percent = 8
+minimum_round_exponent = 13
 
 [deploys]
 max_payment_cost = '9'

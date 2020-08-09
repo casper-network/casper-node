@@ -473,7 +473,6 @@ dependencies = [
  "backtrace",
  "base16",
  "base64 0.12.3",
- "bincode",
  "blake2",
  "bytes 0.5.6",
  "casperlabs-types",
@@ -546,6 +545,7 @@ name = "casperlabs-types"
 version = "0.6.0"
 dependencies = [
  "base16",
+ "bincode",
  "bitflags 1.2.1",
  "blake2",
  "criterion",
@@ -555,6 +555,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "proptest",
+ "rmp-serde",
  "serde",
  "uint",
  "version-sync",

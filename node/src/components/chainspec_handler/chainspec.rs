@@ -152,6 +152,7 @@ pub(crate) struct HighwayConfig {
     pub(crate) entropy_duration: Duration,
     pub(crate) voting_period_duration: Duration,
     pub(crate) finality_threshold_percent: u8,
+    pub(crate) minimum_round_exponent: u8,
 }
 
 impl Default for HighwayConfig {
@@ -163,6 +164,7 @@ impl Default for HighwayConfig {
             entropy_duration: Duration::from_millis(10_800_000), // 3 hours
             voting_period_duration: Duration::from_millis(172_800_000), // 2 days
             finality_threshold_percent: 10,
+            minimum_round_exponent: 14, // 2**14 ms = ~16 seconds
         }
     }
 }
@@ -177,6 +179,7 @@ impl HighwayConfig {
         let entropy_duration = Duration::from_millis(rng.gen_range(600_000, 10_800_000));
         let voting_period_duration = Duration::from_millis(rng.gen_range(600_000, 172_800_000));
         let finality_threshold_percent = rng.gen_range(0, 101);
+        let minimum_round_exponent = rng.gen_range(0, 20);
 
         HighwayConfig {
             genesis_era_start_timestamp,
@@ -185,6 +188,7 @@ impl HighwayConfig {
             entropy_duration,
             voting_period_duration,
             finality_threshold_percent,
+            minimum_round_exponent,
         }
     }
 }
@@ -381,7 +385,10 @@ mod tests {
     use tempfile::NamedTempFile;
 
     use super::*;
-    use crate::utils::read_file_to_string;
+    use crate::{
+        testing::{self, TestRng},
+        utils::read_file_to_string,
+    };
 
     const TEST_ROOT: &str = "resources/test/valid";
     const CHAINSPEC_CONFIG_NAME: &str = "chainspec.toml";
@@ -476,6 +483,7 @@ mod tests {
             Duration::from_millis(6)
         );
         assert_eq!(spec.genesis.highway_config.finality_threshold_percent, 8);
+        assert_eq!(spec.genesis.highway_config.minimum_round_exponent, 13);
 
         assert_eq!(
             spec.genesis.deploy_config.max_payment_cost,
@@ -558,5 +566,12 @@ mod tests {
         // Check the parsed chainspec.
         let spec = Chainspec::from_toml(chainspec_config.path()).unwrap();
         check_spec(spec);
+    }
+
+    #[test]
+    fn rmp_serde_roundtrip() {
+        let mut rng = TestRng::new();
+        let chainspec = Chainspec::random(&mut rng);
+        testing::rmp_serde_roundtrip(&chainspec);
     }
 }

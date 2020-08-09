@@ -4,7 +4,7 @@ use core::fmt::{self, Formatter};
 use num_integer::Integer;
 use num_traits::{AsPrimitive, Bounded, Num, One, Unsigned, WrappingAdd, WrappingSub, Zero};
 use serde::{
-    de::{self, Deserialize, Deserializer, SeqAccess, Visitor},
+    de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor},
     ser::{Serialize, SerializeStruct, Serializer},
 };
 
@@ -58,8 +58,9 @@ macro_rules! impl_traits_for_uint {
                     .collect();
                 let num_bytes = non_zero_bytes.len();
 
-                let mut state = serializer.serialize_struct("bigint", num_bytes)?;
+                let mut state = serializer.serialize_struct("bigint", num_bytes + 1)?;
                 state.serialize_field("", &(num_bytes as u8))?;
+
                 for byte in non_zero_bytes.into_iter().rev() {
                     state.serialize_field("", &byte)?;
                 }
@@ -95,6 +96,27 @@ macro_rules! impl_traits_for_uint {
                         let result = $type::from_little_endian(&buffer);
                         Ok(result)
                     }
+
+                    fn visit_map<V: MapAccess<'de>>(self, mut map: V) -> Result<$type, V::Error> {
+                        let _length_key: u8 = map
+                            .next_key()?
+                            .ok_or_else(|| de::Error::missing_field("length"))?;
+                        let length: u8 = map
+                            .next_value()
+                            .map_err(|_| de::Error::invalid_length(0, &self))?;
+                        let mut buffer = [0u8; $total_bytes];
+                        for index in 0..length {
+                            let _byte_key: u8 = map
+                                .next_key()?
+                                .ok_or_else(|| de::Error::missing_field("byte"))?;
+                            let value = map.next_value().map_err(|_| {
+                                de::Error::invalid_length(index as usize + 1, &self)
+                            })?;
+                            buffer[index as usize] = value;
+                        }
+                        let result = $type::from_little_endian(&buffer);
+                        Ok(result)
+                    }
                 }
 
                 const FIELDS: &'static [&'static str] = &[
@@ -104,7 +126,7 @@ macro_rules! impl_traits_for_uint {
                     "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53",
                     "54", "55", "56", "57", "58", "59", "60", "61", "62", "63", "64",
                 ];
-                deserializer.deserialize_struct("Duration", FIELDS, BigNumVisitor)
+                deserializer.deserialize_struct("bigint", FIELDS, BigNumVisitor)
             }
         }
 
@@ -532,6 +554,10 @@ impl AsPrimitive<U512> for U512 {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Debug;
+
+    use serde::de::DeserializeOwned;
+
     use super::*;
 
     fn check_as_i32<T: AsPrimitive<i32>>(expected: i32, input: T) {
@@ -852,5 +878,42 @@ mod tests {
         let min = U128::min_value();
         let value = min.wrapping_sub(&1.into());
         assert_eq!(value, U128::max_value());
+    }
+
+    fn serde_roundtrip<T: Serialize + DeserializeOwned + Eq + Debug>(value: T) {
+        {
+            let serialized = bincode::serialize(&value).unwrap();
+            let deserialized = bincode::deserialize(serialized.as_slice()).unwrap();
+            assert_eq!(value, deserialized);
+        }
+        {
+            let serialized = rmp_serde::to_vec(&value).unwrap();
+            let deserialized = rmp_serde::from_read_ref(serialized.as_slice()).unwrap();
+            assert_eq!(value, deserialized);
+        }
+    }
+
+    #[test]
+    fn serde_roundtrip_u512() {
+        serde_roundtrip(U512::min_value());
+        serde_roundtrip(U512::from(1));
+        serde_roundtrip(U512::from(u64::max_value()));
+        serde_roundtrip(U512::max_value());
+    }
+
+    #[test]
+    fn serde_roundtrip_u256() {
+        serde_roundtrip(U256::min_value());
+        serde_roundtrip(U256::from(1));
+        serde_roundtrip(U256::from(u64::max_value()));
+        serde_roundtrip(U256::max_value());
+    }
+
+    #[test]
+    fn serde_roundtrip_u128() {
+        serde_roundtrip(U128::min_value());
+        serde_roundtrip(U128::from(1));
+        serde_roundtrip(U128::from(u64::max_value()));
+        serde_roundtrip(U128::max_value());
     }
 }
