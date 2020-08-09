@@ -7,9 +7,6 @@ use serde::{Deserialize, Serialize};
 
 use casperlabs_types::bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
 
-#[cfg(test)]
-use crate::testing::TestRng;
-
 const NUM_FIELDS: usize = 10;
 pub const WASM_COSTS_SERIALIZED_LENGTH: usize = NUM_FIELDS * U32_SERIALIZED_LENGTH;
 
@@ -56,9 +53,9 @@ impl WasmCosts {
             .with_forbidden_floats()
     }
 
-    /// Generates a random instance using a `TestRng`.
+    /// Generates a random instance.
     #[cfg(test)]
-    pub fn random(rng: &mut TestRng) -> Self {
+    pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
         WasmCosts {
             regular: rng.gen(),
             div: rng.gen(),

@@ -15,12 +15,12 @@ use serde::{Deserialize, Serialize};
 use casperlabs_types::{account::AccountHash, U512};
 
 use super::{config, Error};
+#[cfg(test)]
+use crate::types::Timestamp;
 use crate::{
     components::contract_runtime::shared::wasm_costs::WasmCosts, crypto::asymmetric_key::PublicKey,
     types::Motes,
 };
-#[cfg(test)]
-use crate::{testing::TestRng, types::Timestamp};
 
 /// An account that exists at genesis.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -115,8 +115,8 @@ impl Default for DeployConfig {
 
 #[cfg(test)]
 impl DeployConfig {
-    /// Generates a random instance using a `TestRng`.
-    pub fn random(rng: &mut TestRng) -> Self {
+    /// Generates a random instance.
+    pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
         let max_payment_cost = Motes::new(U512::from(
             rng.gen_range::<_, u64, u64>(1_000_000, 1_000_000_000),
         ));
@@ -164,8 +164,8 @@ impl Default for HighwayConfig {
 
 #[cfg(test)]
 impl HighwayConfig {
-    /// Generates a random instance using a `TestRng`.
-    pub fn random(rng: &mut TestRng) -> Self {
+    /// Generates a random instance.
+    pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
         let genesis_era_start_timestamp = Timestamp::now().millis();
         let era_duration = Duration::from_millis(rng.gen_range(600_000, 604_800_000));
         let booking_duration = Duration::from_millis(rng.gen_range(600_000, 864_000_000));
@@ -234,8 +234,8 @@ impl Debug for GenesisConfig {
 
 #[cfg(test)]
 impl GenesisConfig {
-    /// Generates a random instance using a `TestRng`.
-    pub fn random(rng: &mut TestRng) -> Self {
+    /// Generates a random instance.
+    pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
         let name = rng.gen::<char>().to_string();
         let timestamp = rng.gen::<u8>() as u64;
         let protocol_version = Version::new(
@@ -284,7 +284,7 @@ pub(crate) struct UpgradePoint {
 #[cfg(test)]
 impl UpgradePoint {
     /// Generates a random instance using a `TestRng`.
-    pub fn random(rng: &mut TestRng) -> Self {
+    pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
         let activation_point = ActivationPoint {
             rank: rng.gen::<u8>() as u64,
         };
@@ -350,9 +350,9 @@ impl Chainspec {
         config::parse_toml(chainspec_path)
     }
 
-    /// Generates a random instance using a `TestRng`.
+    /// Generates a random instance of a chainspec.
     #[cfg(test)]
-    pub fn random(rng: &mut TestRng) -> Self {
+    pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
         let genesis = GenesisConfig::random(rng);
         let upgrades = vec![UpgradePoint::random(rng), UpgradePoint::random(rng)];
         Chainspec { genesis, upgrades }
