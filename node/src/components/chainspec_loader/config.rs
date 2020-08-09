@@ -175,8 +175,9 @@ impl TryFrom<UpgradePoint> for chainspec::UpgradePoint {
     }
 }
 
+/// A chainspec configuration as laid out in the configuration file.
 #[derive(Default, PartialEq, Eq, Serialize, Deserialize, Debug)]
-pub(super) struct Chainspec {
+pub(super) struct ChainspecConfig {
     genesis: Genesis,
     highway: HighwayConfig,
     deploys: DeployConfig,
@@ -184,7 +185,7 @@ pub(super) struct Chainspec {
     upgrade: Option<Vec<UpgradePoint>>,
 }
 
-impl From<&chainspec::Chainspec> for Chainspec {
+impl From<&chainspec::Chainspec> for ChainspecConfig {
     fn from(chainspec: &chainspec::Chainspec) -> Self {
         let genesis = Genesis {
             name: chainspec.genesis.name.clone(),
@@ -235,7 +236,7 @@ impl From<&chainspec::Chainspec> for Chainspec {
             Some(upgrades)
         };
 
-        Chainspec {
+        ChainspecConfig {
             genesis,
             highway,
             deploys,
@@ -254,7 +255,7 @@ fn get_path<P: AsRef<Path>>(root: &Path, file: P) -> PathBuf {
 }
 
 pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec::Chainspec, Error> {
-    let chainspec: Chainspec =
+    let chainspec: ChainspecConfig =
         toml::from_slice(&read_file(chainspec_path.as_ref()).map_err(Error::LoadChainspec)?)?;
 
     // let root = chainspec_path.as_ref().parent().map_or_else(PathBuf::new, PathBuf::from);
@@ -354,11 +355,11 @@ mod tests {
 
     #[test]
     fn default_config_should_match_production() {
-        let default = Chainspec::default();
+        let default = ChainspecConfig::default();
         let production_dir = format!("{}/../{}", env!("CARGO_MANIFEST_DIR"), PRODUCTION_DIR);
         let chainspec_config = rewrite_with_absolute_paths(&production_dir);
 
-        let production = Chainspec::from(&parse_toml(chainspec_config.path()).unwrap());
+        let production = ChainspecConfig::from(&parse_toml(chainspec_config.path()).unwrap());
         assert_eq!(production, default);
     }
 
@@ -393,6 +394,6 @@ mod tests {
             LOCAL_DIR,
             CHAINSPEC_CONFIG_NAME
         );
-        let _chainspec = Chainspec::from(&parse_toml(local_path).unwrap());
+        let _chainspec = ChainspecConfig::from(&parse_toml(local_path).unwrap());
     }
 }

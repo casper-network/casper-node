@@ -337,7 +337,7 @@ pub struct Chainspec {
 impl Chainspec {
     /// Converts the chainspec to a TOML-formatted string.
     pub fn to_toml(&self) -> Result<String, Error> {
-        let config = config::Chainspec::from(self);
+        let config = config::ChainspecConfig::from(self);
         toml::to_string_pretty(&config).map_err(Error::EncodingToToml)
     }
 
