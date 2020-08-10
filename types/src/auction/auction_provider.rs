@@ -380,7 +380,16 @@ where
         let active_bids = internal::get_active_bids(self)?;
         let founding_validators = internal::get_founding_validators(self)?;
 
-        // TODO: include founding validators with winners == true
+        // Take winning validators and add them to validator_weights right away.
+        let mut validator_weights: ValidatorWeights = {
+            founding_validators
+                .iter()
+                .filter(|(_validator_account_hash, founding_validator)| founding_validator.winner)
+                .map(|(validator_account_hash, amount)| {
+                    (*validator_account_hash, amount.staked_amount)
+                })
+                .collect()
+        };
 
         // Prepare two iterables containing account hashes with their amounts.
         let active_bids_scores =
@@ -389,10 +398,14 @@ where
                 .map(|(validator_account_hash, active_bid)| {
                     (validator_account_hash, active_bid.bid_amount)
                 });
+
+        // Non-winning validators are taken care of later
         let founding_validators_scores = founding_validators
-            .into_iter()
-            .filter(|(_validator_account_hash, founding_validator)| founding_validator.winner)
-            .map(|(validator_account_hash, amount)| (validator_account_hash, amount.staked_amount));
+            .iter()
+            .filter(|(_validator_account_hash, founding_validator)| !founding_validator.winner)
+            .map(|(validator_account_hash, amount)| {
+                (*validator_account_hash, amount.staked_amount)
+            });
 
         // Validator's entries from both maps as a single iterable.
         let all_scores = active_bids_scores.chain(founding_validators_scores);
@@ -407,13 +420,13 @@ where
         }
 
         // Compute new winning validators.
-        let validator_weights: ValidatorWeights = {
-            let mut scores: Vec<_> = scores.into_iter().collect();
-            // Sort the results in descending order
-            scores.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
-            // Get top N winners
-            scores.into_iter().take(AUCTION_SLOTS).collect()
-        };
+        let mut scores: Vec<_> = scores.into_iter().collect();
+        // Sort the results in descending order
+        scores.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
+
+        // Fill in remaining validators
+        let remaining_auction_slots = AUCTION_SLOTS.saturating_sub(validator_weights.len());
+        validator_weights.extend(scores.into_iter().take(remaining_auction_slots));
 
         let mut era_index = internal::get_era_index(self)?;
 
