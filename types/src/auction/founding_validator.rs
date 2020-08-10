@@ -1,12 +1,10 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use super::types::DelegationRate;
+use super::types::CommissionRate;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     CLType, CLTyped, PublicKey, URef, U512,
 };
-
-use super::types::CommissionRate;
 
 /// An entry in a founding validator map.
 #[derive(PartialEq, Debug)]
@@ -44,7 +42,7 @@ impl ToBytes for FoundingValidator {
         let mut result = bytesrepr::allocate_buffer(self)?;
         result.extend(self.bonding_purse.to_bytes()?);
         result.extend(self.staked_amount.to_bytes()?);
-        result.extend(self.delegation_rate.to_bytes()?);
+        result.extend(self.commission_rate.to_bytes()?);
         result.extend(self.funds_locked.to_bytes()?);
         Ok(result)
     }
@@ -52,7 +50,7 @@ impl ToBytes for FoundingValidator {
     fn serialized_length(&self) -> usize {
         self.bonding_purse.serialized_length()
             + self.staked_amount.serialized_length()
-            + self.delegation_rate.serialized_length()
+            + self.commission_rate.serialized_length()
             + self.funds_locked.serialized_length()
     }
 }
@@ -67,7 +65,7 @@ impl FromBytes for FoundingValidator {
             FoundingValidator {
                 bonding_purse,
                 staked_amount,
-                delegation_rate,
+                commission_rate,
                 funds_locked: winner,
             },
             bytes,

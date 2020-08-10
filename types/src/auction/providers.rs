@@ -61,7 +61,4 @@ pub trait SystemProvider {
         target: URef,
         amount: U512,
     ) -> Result<(), Self::Error>;
-
-    /// Returns the balance in motes of the given purse.
-    fn get_balance(&mut self, purse: URef) -> Option<U512>;
 }

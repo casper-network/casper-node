@@ -103,7 +103,7 @@ where
             // Update `founding_validators` map since `account_hash` belongs to a validator.
             Some(founding_validator) => {
                 founding_validator.bonding_purse = bonding_purse;
-                founding_validator.delegation_rate = delegation_rate;
+                founding_validator.commission_rate = commission_rate;
                 founding_validator.staked_amount += quantity;
 
                 founding_validator.staked_amount
@@ -458,7 +458,7 @@ where
         let total_delegator_stake_map= internal::get_total_delegator_stake_map(self)?;
         let total_delegator_stake = *total_delegator_stake_map.get(&validator_account_hash).unwrap();
 
-        let amount = self.get_balance(purse).unwrap();
+        let amount = self.get_balance(purse)?.unwrap_or_default();
 
         // Throw and error if the validator has no delegations
         if total_delegator_stake.eq(&U512::zero()) {
@@ -478,7 +478,7 @@ where
         let delegator_reward_pool = *delegator_reward_pool_map.get(&validator_account_hash).unwrap();
 
         // Transfer the reward to the reward pool purse
-        self.transfer_from_purse_to_purse(purse, delegator_reward_pool, amount).unwrap_or_default();
+        self.transfer_from_purse_to_purse(purse, delegator_reward_pool, amount)?;
 
     }
 
