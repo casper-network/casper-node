@@ -33,6 +33,10 @@ pub(crate) use consensus_protocol::BlockContext;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 use traits::NodeIdT;
 
+/// The number of blocks in an era.
+// TODO: Make this configurable, and possibly time-based.
+const ERA_HEIGHT: u64 = 10;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConsensusMessage {
     era_id: EraId,
@@ -174,9 +178,14 @@ where
             }
             Event::NewProtoBlock {
                 era_id,
-                proto_block,
+                mut proto_block,
                 block_context,
             } => {
+                // End the era.
+                // TODO: This is probably the wrong place for that logic!
+                if block_context.height() + 1 == ERA_HEIGHT {
+                    proto_block.switch_block = true;
+                }
                 let mut effects = effect_builder
                     .announce_proposed_proto_block(proto_block.clone())
                     .ignore();
@@ -195,6 +204,7 @@ where
                 era_id,
                 proto_block,
             } => {
+                // TODO: Validate that if `height == ERA_HEIGHT` then `switch_block`?
                 let mut effects = self.delegate_to_era(era_id, effect_builder, |consensus| {
                     consensus.resolve_validity(&proto_block, true)
                 });

@@ -342,6 +342,11 @@ where
             todo!("Drop vertices that depend on the invalid consensus value.")
         }
     }
+
+    /// Turns this instance into a passive observer, that does not create any new vertices.
+    fn deactivate_validator(&mut self) {
+        self.highway.deactivate_validator()
+    }
 }
 
 pub(crate) struct HighwaySecret {
