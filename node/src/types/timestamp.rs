@@ -7,6 +7,8 @@ use std::{
 };
 
 use derive_more::{Add, AddAssign, From, Shl, Shr, Sub, SubAssign};
+#[cfg(test)]
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 /// A timestamp type, representing a concrete moment in time.
@@ -17,9 +19,36 @@ pub struct Timestamp(u64);
 
 /// A time difference between two timestamps.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Add, AddAssign, Sub, SubAssign, From,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Add,
+    AddAssign,
+    Sub,
+    SubAssign,
+    From,
+    Serialize,
+    Deserialize,
 )]
 pub struct TimeDiff(u64);
+
+impl Display for TimeDiff {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl FromStr for TimeDiff {
+    type Err = ParseIntError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        u64::from_str(s).map(TimeDiff)
+    }
+}
 
 impl Timestamp {
     /// Returns the timestamp of the current moment
@@ -46,6 +75,12 @@ impl Timestamp {
     /// Returns the number of trailing zeros in the number of milliseconds since the epoch.
     pub fn trailing_zeros(&self) -> u8 {
         self.0.trailing_zeros() as u8
+    }
+
+    /// Generates a random instance.
+    #[cfg(test)]
+    pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
+        Timestamp(1_596_763_000_000 + rng.gen_range(200_000, 1_000_000))
     }
 }
 

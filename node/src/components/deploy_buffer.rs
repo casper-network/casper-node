@@ -18,7 +18,7 @@ use crate::{
         requests::{DeployBufferRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{BlockHash, DeployHash, DeployHeader, ProtoBlock},
+    types::{BlockHash, DeployHash, DeployHeader, ProtoBlock, Timestamp},
     Chainspec,
 };
 
@@ -41,7 +41,7 @@ pub enum Event {
     /// The result of the `DeployBuffer` getting the chainspec from the storage component.
     GetChainspecResult {
         maybe_chainspec: Box<Option<Chainspec>>,
-        current_instant: u64,
+        current_instant: Timestamp,
         past_blocks: HashSet<BlockHash>,
         responder: Responder<HashSet<DeployHash>>,
     },
@@ -115,7 +115,7 @@ impl DeployBuffer {
     fn get_chainspec_from_storage<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        current_instant: u64,
+        current_instant: Timestamp,
         past_blocks: HashSet<BlockHash>,
         responder: Responder<HashSet<DeployHash>>,
     ) -> Effects<Event>
@@ -138,7 +138,7 @@ impl DeployBuffer {
     fn remaining_deploys(
         &mut self,
         deploy_config: DeployConfig,
-        current_instant: u64,
+        current_instant: Timestamp,
         past_blocks: HashSet<BlockHash>,
     ) -> HashSet<DeployHash> {
         let past_deploys = past_blocks
@@ -165,7 +165,7 @@ impl DeployBuffer {
     fn is_deploy_valid(
         &self,
         deploy: &DeployHeader,
-        current_instant: u64,
+        current_instant: Timestamp,
         deploy_config: &DeployConfig,
         past_deploys: &HashSet<&DeployHash>,
     ) -> bool {
@@ -175,9 +175,9 @@ impl DeployBuffer {
                 .iter()
                 .all(|dep| past_deploys.contains(dep))
         };
-        let ttl_valid = deploy.ttl_millis as u128 <= deploy_config.max_ttl.as_millis();
+        let ttl_valid = deploy.ttl <= deploy_config.max_ttl;
         let timestamp_valid = deploy.timestamp <= current_instant;
-        let deploy_valid = deploy.timestamp + deploy.ttl_millis as u64 >= current_instant;
+        let deploy_valid = deploy.timestamp + deploy.ttl >= current_instant;
         let num_deps_valid = deploy.dependencies.len() <= deploy_config.max_dependencies as usize;
         ttl_valid && timestamp_valid && deploy_valid && num_deps_valid && all_deps_resolved()
     }
@@ -283,17 +283,17 @@ mod tests {
     use super::*;
     use crate::{
         crypto::{asymmetric_key::PublicKey, hash::hash},
-        types::{BlockHash, DeployHash, DeployHeader, NodeConfig},
+        types::{BlockHash, DeployHash, DeployHeader, NodeConfig, TimeDiff},
     };
 
-    fn generate_deploy(timestamp: u64, ttl: u32) -> (DeployHash, DeployHeader) {
+    fn generate_deploy(timestamp: Timestamp, ttl: TimeDiff) -> (DeployHash, DeployHeader) {
         let deploy_hash = DeployHash::new(hash(random::<[u8; 16]>()));
         let deploy = DeployHeader {
             account: PublicKey::new_ed25519([1; PublicKey::ED25519_LENGTH]).unwrap(),
             timestamp,
             gas_price: 10,
             body_hash: hash(random::<[u8; 16]>()),
-            ttl_millis: ttl,
+            ttl,
             dependencies: vec![],
             chain_name: "chain".to_string(),
         };
@@ -302,11 +302,11 @@ mod tests {
 
     #[test]
     fn add_and_take_deploys() {
-        let creation_time = 100u64;
-        let ttl = 100u32;
-        let block_time1 = 80u64;
-        let block_time2 = 120u64;
-        let block_time3 = 220u64;
+        let creation_time = Timestamp::from(100);
+        let ttl = TimeDiff::from(100);
+        let block_time1 = Timestamp::from(80);
+        let block_time2 = Timestamp::from(120);
+        let block_time3 = Timestamp::from(220);
 
         let no_blocks = HashSet::new();
         let mut buffer = DeployBuffer::new(NodeConfig::default().block_max_deploy_count as usize);
@@ -399,9 +399,9 @@ mod tests {
 
     #[test]
     fn test_deploy_dependencies() {
-        let creation_time = 100u64;
-        let ttl = 100u32;
-        let block_time = 120u64;
+        let creation_time = Timestamp::from(100);
+        let ttl = TimeDiff::from(100);
+        let block_time = Timestamp::from(120);
 
         let (hash1, deploy1) = generate_deploy(creation_time, ttl);
         let (hash2, mut deploy2) = generate_deploy(creation_time, ttl);

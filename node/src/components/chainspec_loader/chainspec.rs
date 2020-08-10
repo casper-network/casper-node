@@ -17,11 +17,11 @@ use serde::{Deserialize, Serialize};
 use casperlabs_types::{account::AccountHash, U512};
 
 use super::{config, error::GenesisLoadError, Error};
-#[cfg(test)]
-use crate::types::Timestamp;
 use crate::{
-    components::contract_runtime::shared::wasm_costs::WasmCosts, crypto::asymmetric_key::PublicKey,
-    types::Motes, utils::Loadable,
+    components::contract_runtime::shared::wasm_costs::WasmCosts,
+    crypto::asymmetric_key::PublicKey,
+    types::{Motes, TimeDiff, Timestamp},
+    utils::Loadable,
 };
 
 /// An account that exists at genesis.
@@ -125,19 +125,19 @@ impl Loadable for Vec<GenesisAccount> {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
-pub(crate) struct DeployConfig {
-    pub(crate) max_payment_cost: Motes,
-    pub(crate) max_ttl: Duration,
-    pub(crate) max_dependencies: u8,
-    pub(crate) max_block_size: u32,
-    pub(crate) block_gas_limit: u64,
+pub struct DeployConfig {
+    pub max_payment_cost: Motes,
+    pub max_ttl: TimeDiff,
+    pub max_dependencies: u8,
+    pub max_block_size: u32,
+    pub block_gas_limit: u64,
 }
 
 impl Default for DeployConfig {
     fn default() -> Self {
         DeployConfig {
             max_payment_cost: Motes::zero(),
-            max_ttl: Duration::from_millis(86_400_000), // 1 day
+            max_ttl: TimeDiff::from(86_400_000), // 1 day
             max_dependencies: 10,
             max_block_size: 10_485_760,
             block_gas_limit: 10_000_000_000_000,
@@ -151,7 +151,7 @@ impl Distribution<DeployConfig> for Standard {
         let max_payment_cost = Motes::new(U512::from(
             rng.gen_range::<_, u64, u64>(1_000_000, 1_000_000_000),
         ));
-        let max_ttl = Duration::from_millis(rng.gen_range(60_000, 3_600_000));
+        let max_ttl = TimeDiff::from(rng.gen_range(60_000, 3_600_000));
         let max_dependencies = rng.gen();
         let max_block_size = rng.gen_range(1_000_000, 1_000_000_000);
         let block_gas_limit = rng.gen_range(100_000_000_000, 1_000_000_000_000_000);
@@ -169,20 +169,20 @@ impl Distribution<DeployConfig> for Standard {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
-pub(crate) struct HighwayConfig {
-    pub(crate) genesis_era_start_timestamp: u64,
-    pub(crate) era_duration: Duration,
-    pub(crate) booking_duration: Duration,
-    pub(crate) entropy_duration: Duration,
-    pub(crate) voting_period_duration: Duration,
-    pub(crate) finality_threshold_percent: u8,
-    pub(crate) minimum_round_exponent: u8,
+pub struct HighwayConfig {
+    pub genesis_era_start_timestamp: Timestamp,
+    pub era_duration: Duration,
+    pub booking_duration: Duration,
+    pub entropy_duration: Duration,
+    pub voting_period_duration: Duration,
+    pub finality_threshold_percent: u8,
+    pub minimum_round_exponent: u8,
 }
 
 impl Default for HighwayConfig {
     fn default() -> Self {
         HighwayConfig {
-            genesis_era_start_timestamp: 1_583_712_000_000,
+            genesis_era_start_timestamp: Timestamp::zero() + TimeDiff::from(1_583_712_000_000),
             era_duration: Duration::from_millis(604_800_000), // 1 week
             booking_duration: Duration::from_millis(864_000_000), // 10 days
             entropy_duration: Duration::from_millis(10_800_000), // 3 hours
@@ -197,7 +197,7 @@ impl Default for HighwayConfig {
 impl Distribution<HighwayConfig> for Standard {
     /// Generates a random instance.
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> HighwayConfig {
-        let genesis_era_start_timestamp = Timestamp::now().millis();
+        let genesis_era_start_timestamp = Timestamp::random(rng);
         let era_duration = Duration::from_millis(rng.gen_range(600_000, 604_800_000));
         let booking_duration = Duration::from_millis(rng.gen_range(600_000, 864_000_000));
         let entropy_duration = Duration::from_millis(rng.gen_range(600_000, 10_800_000));
@@ -222,7 +222,7 @@ impl Distribution<HighwayConfig> for Standard {
 #[serde(deny_unknown_fields)]
 pub(crate) struct GenesisConfig {
     pub(crate) name: String,
-    pub(crate) timestamp: u64,
+    pub(crate) timestamp: Timestamp,
     pub(crate) protocol_version: Version,
     pub(crate) mint_installer_bytes: Vec<u8>,
     pub(crate) pos_installer_bytes: Vec<u8>,
@@ -267,7 +267,7 @@ impl Debug for GenesisConfig {
 impl Distribution<GenesisConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisConfig {
         let name = rng.gen::<char>().to_string();
-        let timestamp = rng.gen::<u8>() as u64;
+        let timestamp = Timestamp::random(rng);
         let protocol_version = Version::new(
             rng.gen_range(0, 10),
             rng.gen::<u8>() as u64,
@@ -407,7 +407,7 @@ mod tests {
 
     fn check_spec(spec: Chainspec) {
         assert_eq!(spec.genesis.name, "test-chain");
-        assert_eq!(spec.genesis.timestamp, 1);
+        assert_eq!(spec.genesis.timestamp.millis(), 1);
         assert_eq!(spec.genesis.protocol_version, Version::from((0, 1, 0)));
         assert_eq!(spec.genesis.mint_installer_bytes, b"Mint installer bytes");
         assert_eq!(
@@ -431,7 +431,13 @@ mod tests {
             );
         }
 
-        assert_eq!(spec.genesis.highway_config.genesis_era_start_timestamp, 2);
+        assert_eq!(
+            spec.genesis
+                .highway_config
+                .genesis_era_start_timestamp
+                .millis(),
+            2
+        );
         assert_eq!(
             spec.genesis.highway_config.era_duration,
             Duration::from_millis(3)
@@ -455,10 +461,7 @@ mod tests {
             spec.genesis.deploy_config.max_payment_cost,
             Motes::new(U512::from(9))
         );
-        assert_eq!(
-            spec.genesis.deploy_config.max_ttl,
-            Duration::from_millis(10)
-        );
+        assert_eq!(spec.genesis.deploy_config.max_ttl, TimeDiff::from(10));
         assert_eq!(spec.genesis.deploy_config.max_dependencies, 11);
         assert_eq!(spec.genesis.deploy_config.max_block_size, 12);
         assert_eq!(spec.genesis.deploy_config.block_gas_limit, 13);
@@ -500,7 +503,7 @@ mod tests {
         );
         assert_eq!(
             upgrade0.new_deploy_config.unwrap().max_ttl,
-            Duration::from_millis(35)
+            TimeDiff::from(35)
         );
         assert_eq!(upgrade0.new_deploy_config.unwrap().max_dependencies, 36);
         assert_eq!(upgrade0.new_deploy_config.unwrap().max_block_size, 37);

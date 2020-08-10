@@ -10,7 +10,9 @@ use rand::{distributions::Standard, prelude::Distribution, Rng};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use super::{Item, Tag};
+use super::{Item, Tag, TimeDiff, Timestamp};
+#[cfg(test)]
+use crate::crypto::{asymmetric_key, hash};
 use crate::{
     components::{
         contract_runtime::core::engine_state::executable_deploy_item::ExecutableDeployItem,
@@ -21,11 +23,6 @@ use crate::{
         hash::Digest,
     },
     utils::DisplayIter,
-};
-#[cfg(test)]
-use crate::{
-    crypto::{asymmetric_key, hash},
-    types::Timestamp,
 };
 
 // TODO - improve this if it's to be kept
@@ -104,13 +101,13 @@ pub struct DeployHeader {
     /// The account within which the deploy will be run
     pub account: PublicKey,
     /// When the deploy was created
-    pub timestamp: u64,
+    pub timestamp: Timestamp,
     /// Price per gas unit for this deploy
     pub gas_price: u64,
     /// Hash of the WASM code
     pub body_hash: Digest,
     /// How long the deploy will stay valid
-    pub ttl_millis: u32,
+    pub ttl: TimeDiff,
     /// Other deploys that have to be run before this one
     pub dependencies: Vec<DeployHash>,
     /// Which chain the deploy is supposed to be run on
@@ -118,9 +115,9 @@ pub struct DeployHeader {
 }
 
 impl DeployHeader {
-    /// Returns the timestamp of when the deploy expires, i.e. `self.timestamp + self.ttl_millis`.
-    pub fn expires(&self) -> u64 {
-        self.timestamp.saturating_add(self.ttl_millis as u64)
+    /// Returns the timestamp of when the deploy expires, i.e. `self.timestamp + self.ttl`.
+    pub fn expires(&self) -> Timestamp {
+        self.timestamp + self.ttl
     }
 }
 
@@ -128,12 +125,12 @@ impl Display for DeployHeader {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "deploy-header[account: {}, timestamp: {}, gas_price: {}, body_hash: {}, ttl_millis: {}, dependencies: [{}], chain_name: {}]",
+            "deploy-header[account: {}, timestamp: {}, gas_price: {}, body_hash: {}, ttl: {}, dependencies: [{}], chain_name: {}]",
             self.account,
             self.timestamp,
             self.gas_price,
             self.body_hash,
-            self.ttl_millis,
+            self.ttl,
             DisplayIter::new(self.dependencies.iter()),
             self.chain_name,
         )
@@ -205,10 +202,11 @@ impl Distribution<Deploy> for Standard {
         let secret_key = rng.gen();
         let account = PublicKey::from(&secret_key);
 
-        let timestamp = Timestamp::now().millis();
+        // TODO - make Timestamp deterministic.
+        let timestamp = Timestamp::now();
         let gas_price = rng.gen_range(1, 100);
         let body_hash = hash::hash(rng.gen::<u64>().to_le_bytes());
-        let ttl_millis = rng.gen_range(60_000, 3_600_000);
+        let ttl = TimeDiff::from(rng.gen_range(60_000, 3_600_000));
 
         let dependencies = vec![
             DeployHash::new(hash::hash(seed.overflowing_add(104).0.to_le_bytes())),
@@ -223,7 +221,7 @@ impl Distribution<Deploy> for Standard {
             timestamp,
             gas_price,
             body_hash,
-            ttl_millis,
+            ttl,
             dependencies,
             chain_name,
         };
@@ -317,6 +315,7 @@ mod json {
             asymmetric_key::{PublicKey, Signature},
             hash::Digest,
         },
+        types::{TimeDiff, Timestamp},
     };
     use casperlabs_types::ContractVersion;
 
@@ -493,10 +492,10 @@ mod json {
     #[derive(Serialize, Deserialize)]
     pub(super) struct DeployHeader {
         account: String,
-        timestamp: u64,
+        timestamp: Timestamp,
         gas_price: u64,
         body_hash: String,
-        ttl_millis: u32,
+        ttl: TimeDiff,
         dependencies: Vec<DeployHash>,
         chain_name: String,
     }
@@ -508,7 +507,7 @@ mod json {
                 timestamp: header.timestamp,
                 gas_price: header.gas_price,
                 body_hash: hex::encode(header.body_hash),
-                ttl_millis: header.ttl_millis,
+                ttl: header.ttl,
                 dependencies: header.dependencies.iter().map(Into::into).collect(),
                 chain_name: header.chain_name.clone(),
             }
@@ -535,7 +534,7 @@ mod json {
                 timestamp: header.timestamp,
                 gas_price: header.gas_price,
                 body_hash,
-                ttl_millis: header.ttl_millis,
+                ttl: header.ttl,
                 dependencies,
                 chain_name: header.chain_name,
             })

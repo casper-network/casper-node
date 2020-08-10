@@ -172,18 +172,18 @@ fn is_valid(deploy: &Deploy, chainspec: Chainspec) -> bool {
         return false;
     }
 
-    if deploy.header().ttl_millis as u128 > chainspec.genesis.deploy_config.max_ttl.as_millis() {
+    if deploy.header().ttl > chainspec.genesis.deploy_config.max_ttl {
         warn!(
             deploy_hash = %deploy.id(),
             deploy_header = %deploy.header(),
-            max_ttl = %chainspec.genesis.deploy_config.max_ttl.as_millis(),
+            max_ttl = %chainspec.genesis.deploy_config.max_ttl,
             "deploy ttl excessive"
         );
         return false;
     }
 
     let now = Timestamp::now();
-    if now.millis() > deploy.header().expires() {
+    if now > deploy.header().expires() {
         warn!(
             deploy_hash = %deploy.id(),
             deploy_header = %deploy.header(),
