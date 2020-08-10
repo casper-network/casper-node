@@ -62,7 +62,6 @@ pub enum Error {
     /// Raised when rewards are to be distributed to delegators, but the validator has no delegations.
     #[fail(display = "Validators has not received any delegations")]
     MissingDelegations = 16,
-
 }
 
 impl CLTyped for Error {

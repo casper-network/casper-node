@@ -5,12 +5,14 @@ use std::{
 
 use casperlabs_types::{
     account::AccountHash,
+    auction::SeigniorageRecipients,
     bytesrepr::ToBytes,
     proof_of_stake::{
-        AuctionProvider, MintProvider, ProofOfStake, Queue, QueueProvider, RuntimeProvider, Stakes, StakesProvider,
+        AuctionProvider, MintProvider, ProofOfStake, Queue, QueueProvider, RuntimeProvider, Stakes,
+        StakesProvider,
     },
     system_contract_errors::pos::Error,
-    ApiError, BlockTime, CLValue, Key, Phase, TransferredTo, URef, U512, auction::SeigniorageRecipients,
+    ApiError, BlockTime, CLValue, Key, Phase, TransferredTo, URef, U512,
 };
 
 use crate::components::contract_runtime::{
@@ -222,10 +224,13 @@ where
     fn read_seigniorage_recipients(&mut self) -> SeigniorageRecipients {
         todo!()
     }
-    fn distribute_to_delegators(&mut self, validator_account_hash: AccountHash, amount: U512) -> Result<(), Error> {
+    fn distribute_to_delegators(
+        &mut self,
+        validator_account_hash: AccountHash,
+        amount: U512,
+    ) -> Result<(), Error> {
         todo!()
     }
-    
 }
 
 impl<'a, R> ProofOfStake for Runtime<'a, R>

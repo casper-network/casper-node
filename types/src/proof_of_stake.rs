@@ -1,26 +1,25 @@
 //! Contains implementation of a Proof Of Stake contract functionality.
+mod auction_provider;
 mod mint_provider;
 mod queue;
 mod queue_provider;
 mod runtime_provider;
 mod stakes;
 mod stakes_provider;
-mod auction_provider;
 
-use core::marker::Sized;
 use alloc::collections::BTreeMap;
+use core::marker::Sized;
 
 use crate::{
     account::AccountHash,
     system_contract_errors::pos::{Error, Result},
     AccessRights, TransferredTo, URef, U512,
-
 };
 
 pub use crate::proof_of_stake::{
-    mint_provider::MintProvider, queue::Queue, queue_provider::QueueProvider,
-    runtime_provider::RuntimeProvider, stakes::Stakes, stakes_provider::StakesProvider,
-    auction_provider::AuctionProvider,
+    auction_provider::AuctionProvider, mint_provider::MintProvider, queue::Queue,
+    queue_provider::QueueProvider, runtime_provider::RuntimeProvider, stakes::Stakes,
+    stakes_provider::StakesProvider,
 };
 
 use crate::auction::DELEGATION_RATE_DENOMINATOR;
@@ -119,19 +118,22 @@ pub trait ProofOfStake:
                 continue;
             }
 
-            let total_delegated_amount: U512 = seigniorage_recipient.delegations.values().cloned().sum();
+            let total_delegated_amount: U512 =
+                seigniorage_recipient.delegations.values().cloned().sum();
             // let validators_stake: U512 = total_stake - total_delegated_amount;
             // Compute delegators' part
             let mut delegators_part: U512 = reward * total_delegated_amount / total_stake;
-            let commission: U512 = delegators_part * seigniorage_recipient.commission_rate / DELEGATION_RATE_DENOMINATOR;
+            let commission: U512 = delegators_part * seigniorage_recipient.commission_rate
+                / DELEGATION_RATE_DENOMINATOR;
             delegators_part = delegators_part - commission;
-            
+
             // Validator receives the rest
             let validators_part: U512 = reward - delegators_part;
             // Mint and transfer validator's part to the validator
             let tmp_purse = self.mint(validators_part);
             let rewards_purse = internal::get_rewards_purse(self)?;
-            self.transfer_purse_to_purse(tmp_purse, rewards_purse, validators_part).map_err(|_| Error::Transfer)?;
+            self.transfer_purse_to_purse(tmp_purse, rewards_purse, validators_part)
+                .map_err(|_| Error::Transfer)?;
             // Distribute delegators' part
             self.distribute_to_delegators(account_hash, delegators_part)?;
         }

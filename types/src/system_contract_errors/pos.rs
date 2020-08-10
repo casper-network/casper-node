@@ -109,7 +109,7 @@ pub enum Error {
     /// current era validators when distributing rewards.
     #[fail(display = "Mismatched era validator sets to distribute rewards")]
     MismatchedEraValidators,
-    /// Error for when calling transfer functions 
+    /// Error for when calling transfer functions
     #[fail(display = "Failed to transfer")]
     Transfer,
 }

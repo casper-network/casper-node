@@ -10,7 +10,7 @@ use super::{
     providers::StorageProvider, EraId, EraValidators, SeigniorageRecipientsSnapshot,
     ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY,
     SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-    delegator::{RewardPerStakeMap, TallyMap, TotalDelegatorStakeMap, DelegatorRewardPoolMap},
+    delegator::{DelegatorRewardPoolMap, RewardPerStakeMap, TallyMap, TotalDelegatorStakeMap},
 };
 
 fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T>
@@ -97,17 +97,16 @@ where
     read_from(provider, TALLY_MAP_KEY)
 }
 
-pub fn set_tally_map<P: StorageProvider + ?Sized>(
-    provider: &mut P,
-    tally: TallyMap,
-) -> Result<()>
+pub fn set_tally_map<P: StorageProvider + ?Sized>(provider: &mut P, tally: TallyMap) -> Result<()>
 where
     Error: From<P::Error>,
 {
     write_to(provider, TALLY_MAP_KEY, tally)
 }
 
-pub fn get_reward_per_stake_map<P: StorageProvider + ?Sized>(provider: &mut P) -> Result<RewardPerStakeMap>
+pub fn get_reward_per_stake_map<P: StorageProvider + ?Sized>(
+    provider: &mut P,
+) -> Result<RewardPerStakeMap>
 where
     Error: From<P::Error>,
 {
@@ -124,7 +123,9 @@ where
     write_to(provider, REWARD_PER_STAKE_MAP_KEY, reward_per_stake)
 }
 
-pub fn get_total_delegator_stake_map<P: StorageProvider + ?Sized>(provider: &mut P) -> Result<TotalDelegatorStakeMap>
+pub fn get_total_delegator_stake_map<P: StorageProvider + ?Sized>(
+    provider: &mut P,
+) -> Result<TotalDelegatorStakeMap>
 where
     Error: From<P::Error>,
 {
@@ -138,10 +139,16 @@ pub fn set_total_delegator_stake_map<P: StorageProvider + ?Sized>(
 where
     Error: From<P::Error>,
 {
-    write_to(provider, TOTAL_DELEGATOR_STAKE_MAP_KEY, total_delegator_stake)
+    write_to(
+        provider,
+        TOTAL_DELEGATOR_STAKE_MAP_KEY,
+        total_delegator_stake,
+    )
 }
 
-pub fn get_delegator_reward_pool_map<P: StorageProvider + ?Sized>(provider: &mut P) -> Result<DelegatorRewardPoolMap>
+pub fn get_delegator_reward_pool_map<P: StorageProvider + ?Sized>(
+    provider: &mut P,
+) -> Result<DelegatorRewardPoolMap>
 where
     Error: From<P::Error>,
 {
@@ -155,7 +162,11 @@ pub fn set_delegator_reward_pool_map<P: StorageProvider + ?Sized>(
 where
     Error: From<P::Error>,
 {
-    write_to(provider, DELEGATOR_REWARD_POOL_MAP, delegator_reward_pool_map)
+    write_to(
+        provider,
+        DELEGATOR_REWARD_POOL_MAP,
+        delegator_reward_pool_map,
+    )
 }
 
 pub fn get_era_validators<P: StorageProvider + ?Sized>(provider: &mut P) -> Result<EraValidators>

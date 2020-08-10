@@ -238,7 +238,7 @@ where
             .entry(validator_public_key)
             .and_modify(|total_stake| *total_stake += quantity)
             .or_insert_with(|| quantity);
-        
+
         // Initialize delegator_reward_pool_map entry if it doesn't exist.
         delegator_reward_pool_map
             .entry(validator_public_key)
@@ -250,7 +250,7 @@ where
             .or_default()
             .entry(delegator_public_key)
             .and_modify(|delegation| *delegation += quantity)
-            .or_insert_with (|| quantity);
+            .or_insert_with(|| quantity);
 
         // Update tally_map entry. Initialize if it doesn't exist.
         tally_map
@@ -291,10 +291,21 @@ where
             .get(&validator_public_key)
             .ok_or(Error::ValidatorNotFound)?;
 
-        let mut delegators = internal::get_delegations_map(self)?;
-        let delegators_map = delegators
-            .get_mut(&validator_public_key)
+        let mut delegations_map = internal::get_delegations_map(self)?;
+        let mut tally_map = internal::get_tally_map(self)?;
+        let mut total_delegator_stake_map = internal::get_total_delegator_stake_map(self)?;
+        let mut reward_per_stake_map = internal::get_reward_per_stake_map(self)?;
+
+        let reward_per_stake = *reward_per_stake_map
+            .get_mut(&validator_account_hash)
+            .unwrap();
+
+        let delegations = delegations_map
+            .get_mut(&validator_account_hash)
             .ok_or(Error::DelegatorNotFound)?;
+
+        // We don't have to check for existence in other maps, because the entries
+        // are initialized at the same time in `delegate()`
 
         let new_amount = {
             let amount = delegators_map
@@ -309,11 +320,57 @@ where
 
         if new_amount.is_zero() {
             // Inner map's mapped value should be zero as we subtracted mutable value.
-            let _value = delegators_map.remove(&validator_public_key).unwrap();
+            let _value = delegations.remove(&validator_public_key).unwrap();
             debug_assert!(_value.is_zero());
         }
 
-        internal::set_delegations_map(self, delegators)?;
+        // Update total_delegator_stake_map entry
+        let new_total_amount = {
+            let total_amount = total_delegator_stake_map
+                .get_mut(&validator_account_hash)
+                .ok_or(Error::ValidatorNotFound)?;
+
+            let new_total_amount = total_amount
+                .checked_sub(quantity)
+                .ok_or(Error::InvalidQuantity)?;
+
+            *total_amount = new_total_amount;
+            new_total_amount
+        };
+
+        if new_total_amount.is_zero() {
+            // Inner map's mapped value should be zero as we subtracted mutable value.
+            let _value = total_delegator_stake_map
+                .remove(&validator_account_hash)
+                .unwrap();
+            debug_assert!(_value.is_zero());
+        }
+
+        // Update tally_map entry
+        let new_tally_amount = {
+            let tally_amount = tally_map
+                .get_mut(&validator_account_hash)
+                .unwrap()
+                .get_mut(&delegator_account_hash)
+                .ok_or(Error::DelegatorNotFound)?;
+
+            let new_tally_amount = tally_amount
+                .checked_sub(reward_per_stake * quantity)
+                .ok_or(Error::InvalidQuantity)?;
+
+            *tally_amount = new_tally_amount;
+            new_tally_amount
+        };
+
+        // if new_tally_amount.is_zero() {
+        //     // Inner map's mapped value should be zero as we subtracted mutable value.
+        //     let _value = tally_map.remove(&validator_account_hash).unwrap();
+        //     debug_assert!(_value.is_zero());
+        // }
+
+        internal::set_delegations_map(self, delegations_map)?;
+        internal::set_total_delegator_stake_map(self, total_delegator_stake_map)?;
+        internal::set_tally_map(self, tally_map)?;
 
         Ok(new_amount)
     }
@@ -494,8 +551,8 @@ where
         // Throw an error if the validator has no delegations
         if total_delegator_stake.eq(&U512::zero()) {
             return Err(Error::MissingDelegations);
-        } 
-        
+        }
+
         // Update reward per stake according to pull-based distribution formulation
         // The entry for `validator_public_key` should be initialized by now
         let mut reward_per_stake_map = internal::get_reward_per_stake_map(self)?;
@@ -505,8 +562,7 @@ where
         internal::set_reward_per_stake_map(self, reward_per_stake_map).unwrap();
 
         // Get the reward pool purse for the validator
-        let delegator_reward_pool 
-            = *internal::get_delegator_reward_pool_map(self)
+        let delegator_reward_pool = *internal::get_delegator_reward_pool_map(self)
             .unwrap()
             .get(&validator_public_key)
             .unwrap();

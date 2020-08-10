@@ -27,11 +27,26 @@ pub struct SeigniorageRecipient {
 }
 
 impl SeigniorageRecipient {
-    pub fn new(stake: U512, commission_rate: CommissionRate, total_delegator_stake: U512, reward_per_stake: U512, delegations: BTreeMap<AccountHash, U512>, tally: BTreeMap<AccountHash, U512>, delegator_reward_purse: URef) -> Self { Self { stake, commission_rate, total_delegator_stake, reward_per_stake, delegations, tally, delegator_reward_pool: delegator_reward_purse } }
+    pub fn new(
+        stake: U512,
+        commission_rate: CommissionRate,
+        total_delegator_stake: U512,
+        reward_per_stake: U512,
+        delegations: BTreeMap<AccountHash, U512>,
+        tally: BTreeMap<AccountHash, U512>,
+        delegator_reward_purse: URef,
+    ) -> Self {
+        Self {
+            stake,
+            commission_rate,
+            total_delegator_stake,
+            reward_per_stake,
+            delegations,
+            tally,
+            delegator_reward_pool: delegator_reward_purse,
+        }
+    }
 }
-
-
-
 
 impl CLTyped for SeigniorageRecipient {
     fn cl_type() -> CLType {
@@ -72,7 +87,7 @@ impl FromBytes for SeigniorageRecipient {
         let (delegations, bytes) = FromBytes::from_bytes(bytes)?;
         let (tally, bytes) = FromBytes::from_bytes(bytes)?;
         let (delegator_reward_purse, bytes) = FromBytes::from_bytes(bytes)?;
- 
+
         Ok((
             SeigniorageRecipient {
                 stake,
