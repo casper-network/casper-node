@@ -234,11 +234,11 @@ impl<C: Context> Highway<C> {
     }
 
     pub(crate) fn propose(
-        &self,
+        &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
     ) -> Vec<Effect<C>> {
-        match self.active_validator.as_ref() {
+        match self.active_validator.as_mut() {
             None => {
                 // TODO: Error?
                 warn!(
@@ -260,10 +260,11 @@ impl<C: Context> Highway<C> {
         &self.state
     }
 
-    fn on_new_vote(&self, vhash: &C::Hash, timestamp: Timestamp) -> Vec<Effect<C>> {
+    fn on_new_vote(&mut self, vhash: &C::Hash, timestamp: Timestamp) -> Vec<Effect<C>> {
+        let state = &self.state;
         self.active_validator
-            .as_ref()
-            .map_or_else(Vec::new, |av| av.on_new_vote(vhash, timestamp, &self.state))
+            .as_mut()
+            .map_or_else(Vec::new, |av| av.on_new_vote(vhash, timestamp, state))
     }
 
     /// Performs initial validation and returns an error if `vertex` is invalid. (See

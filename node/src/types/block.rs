@@ -34,6 +34,8 @@ pub struct ProtoBlock {
     pub deploys: Vec<DeployHash>,
     /// A random bit needed for initializing a future era
     pub random_bit: bool,
+    /// Whether this is the last block of an era.
+    pub switch_block: bool,
 }
 
 impl ProtoBlock {
@@ -43,6 +45,11 @@ impl ProtoBlock {
         BlockHash::new(hash::hash(
             &rmp_serde::to_vec(self).expect("serialize ProtoBlock"),
         ))
+    }
+
+    /// Returns `true` if this is the last block of an era.
+    pub(crate) fn switch_block(&self) -> bool {
+        self.switch_block
     }
 }
 

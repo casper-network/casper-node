@@ -2,6 +2,8 @@ use std::{fmt::Debug, hash::Hash};
 
 use serde::{de::DeserializeOwned, Serialize};
 
+use crate::types::ProtoBlock;
+
 pub(crate) trait NodeIdT: Clone + Debug + Send + 'static {}
 impl<I> NodeIdT for I where I: Clone + Debug + Send + 'static {}
 
@@ -13,8 +15,16 @@ impl<VID> ValidatorIdT for VID where VID: Eq + Ord + Clone + Debug + Hash {}
 pub(crate) trait ConsensusValueT:
     Eq + Clone + Debug + Hash + Serialize + DeserializeOwned
 {
+    /// Returns `true` if this value should be the last one to be finalized in the current
+    /// consensus instance, i.e. era.
+    fn terminal(&self) -> bool;
 }
-impl<CV> ConsensusValueT for CV where CV: Eq + Clone + Debug + Hash + Serialize + DeserializeOwned {}
+
+impl ConsensusValueT for ProtoBlock {
+    fn terminal(&self) -> bool {
+        self.switch_block()
+    }
+}
 
 /// A hash, as an identifier for a block or vote.
 pub(crate) trait HashT:
