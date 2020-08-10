@@ -1,9 +1,11 @@
 use std::{
+    convert::TryInto,
     fmt::{self, Debug, Formatter},
     path::Path,
     time::Duration,
 };
 
+use csv::ReaderBuilder;
 use num_traits::Zero;
 use rand::{
     distributions::{Distribution, Standard},
@@ -14,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use casperlabs_types::{account::AccountHash, U512};
 
-use super::{config, Error};
+use super::{config, error::GenesisLoadError, Error};
 #[cfg(test)]
 use crate::types::Timestamp;
 use crate::{
@@ -87,6 +89,36 @@ impl Distribution<GenesisAccount> for Standard {
             balance,
             bonded_amount,
         }
+    }
+}
+
+impl Loadable for Vec<GenesisAccount> {
+    type Error = GenesisLoadError;
+
+    fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
+        #[derive(Debug, Deserialize)]
+        struct ParsedAccount {
+            public_key: String,
+            algorithm: String,
+            balance: String,
+            bonded_amount: String,
+        }
+
+        let mut reader = ReaderBuilder::new().has_headers(false).from_path(path)?;
+        let mut accounts = vec![];
+        for result in reader.deserialize() {
+            let parsed: ParsedAccount = result?;
+            let balance = Motes::new(U512::from_dec_str(&parsed.balance)?);
+            let bonded_amount = Motes::new(U512::from_dec_str(&parsed.bonded_amount)?);
+            let key_bytes = hex::decode(parsed.public_key)?;
+            let account = GenesisAccount::with_public_key(
+                PublicKey::key_from_algorithm_name_and_bytes(&parsed.algorithm, key_bytes)?,
+                balance,
+                bonded_amount,
+            );
+            accounts.push(account);
+        }
+        Ok(accounts)
     }
 }
 
@@ -279,6 +311,35 @@ pub(crate) struct UpgradePoint {
     pub(crate) new_deploy_config: Option<DeployConfig>,
 }
 
+impl UpgradePoint {
+    pub(crate) fn try_from_config<P: AsRef<Path>>(
+        root: P,
+        cfg_upgrade_point: config::UpgradePoint,
+    ) -> Result<Self, Error> {
+        let upgrade_installer_bytes = cfg_upgrade_point
+            .upgrade_installer_path
+            // TODO: FIX PATH. TRY_FROM DOES NOT ALLOW RELATIVE
+            .map(|ext_vec| ext_vec.load_relative(root.as_ref()))
+            .transpose()
+            .map_err(Error::LoadUpgradeInstaller)?;
+        // TODO - read this in?
+        let upgrade_installer_args = None;
+
+        let new_deploy_config = cfg_upgrade_point
+            .new_deploy_config
+            .map(config::DeployConfig::try_into)
+            .transpose()?;
+        Ok(UpgradePoint {
+            activation_point: cfg_upgrade_point.activation_point,
+            protocol_version: cfg_upgrade_point.protocol_version,
+            upgrade_installer_bytes,
+            upgrade_installer_args,
+            new_costs: cfg_upgrade_point.new_costs,
+            new_deploy_config,
+        })
+    }
+}
+
 #[cfg(test)]
 impl UpgradePoint {
     /// Generates a random instance using a `TestRng`.
@@ -346,7 +407,7 @@ impl Chainspec {
         const PATH: &str = "resources/local/chainspec.toml";
 
         let path = format!("{}/../{}", env!("CARGO_MANIFEST_DIR"), PATH);
-        Chainspec::from_toml(path).unwrap()
+        Chainspec::from_toml(path).expect("could not construct chainspec from 'resources/local'")
     }
 }
 

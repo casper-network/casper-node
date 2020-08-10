@@ -2,11 +2,10 @@
 
 use std::{
     convert::{TryFrom, TryInto},
-    path::{Path, PathBuf},
+    path::Path,
     time::Duration,
 };
 
-use csv::ReaderBuilder;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
@@ -14,8 +13,10 @@ use casperlabs_types::U512;
 
 use super::{chainspec, Error};
 use crate::{
-    components::contract_runtime::shared::wasm_costs::WasmCosts, crypto::asymmetric_key::PublicKey,
-    types::Motes, utils::read_file,
+    components::contract_runtime::shared::wasm_costs::WasmCosts,
+    types::Motes,
+    utils::{read_file, External},
+    GenesisAccount,
 };
 
 const DEFAULT_CHAIN_NAME: &str = "casperlabs-devnet";
@@ -28,12 +29,12 @@ const DEFAULT_UPGRADE_INSTALLER_PATH: &str = "upgrade_install.wasm";
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
-struct DeployConfig {
-    max_payment_cost: String,
-    max_ttl_millis: u64,
-    max_dependencies: u8,
-    max_block_size: u32,
-    block_gas_limit: u64,
+pub(crate) struct DeployConfig {
+    pub(crate) max_payment_cost: String,
+    pub(crate) max_ttl_millis: u64,
+    pub(crate) max_dependencies: u8,
+    pub(crate) max_block_size: u32,
+    pub(crate) block_gas_limit: u64,
 }
 
 impl Default for DeployConfig {
@@ -74,10 +75,10 @@ struct Genesis {
     name: String,
     timestamp: u64,
     protocol_version: Version,
-    mint_installer_path: String,
-    pos_installer_path: String,
-    standard_payment_installer_path: String,
-    accounts_path: String,
+    mint_installer_path: External<Vec<u8>>,
+    pos_installer_path: External<Vec<u8>>,
+    standard_payment_installer_path: External<Vec<u8>>,
+    accounts_path: External<Vec<GenesisAccount>>,
 }
 
 impl Default for Genesis {
@@ -86,10 +87,12 @@ impl Default for Genesis {
             name: String::from(DEFAULT_CHAIN_NAME),
             timestamp: 0,
             protocol_version: Version::from((1, 0, 0)),
-            mint_installer_path: String::from(DEFAULT_MINT_INSTALLER_PATH),
-            pos_installer_path: String::from(DEFAULT_POS_INSTALLER_PATH),
-            standard_payment_installer_path: String::from(DEFAULT_STANDARD_PAYMENT_INSTALLER_PATH),
-            accounts_path: String::from(DEFAULT_ACCOUNTS_CSV_PATH),
+            mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
+            pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
+            standard_payment_installer_path: External::path(
+                DEFAULT_STANDARD_PAYMENT_INSTALLER_PATH,
+            ),
+            accounts_path: External::path(DEFAULT_ACCOUNTS_CSV_PATH),
         }
     }
 }
@@ -129,50 +132,23 @@ impl From<chainspec::HighwayConfig> for HighwayConfig {
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
-struct UpgradePoint {
-    protocol_version: Version,
-    upgrade_installer_path: Option<String>,
-    activation_point: chainspec::ActivationPoint,
-    new_costs: Option<WasmCosts>,
-    new_deploy_config: Option<DeployConfig>,
+pub(crate) struct UpgradePoint {
+    pub(crate) protocol_version: Version,
+    pub(crate) upgrade_installer_path: Option<External<Vec<u8>>>,
+    pub(crate) activation_point: chainspec::ActivationPoint,
+    pub(crate) new_costs: Option<WasmCosts>,
+    pub(crate) new_deploy_config: Option<DeployConfig>,
 }
 
 impl From<&chainspec::UpgradePoint> for UpgradePoint {
     fn from(upgrade_point: &chainspec::UpgradePoint) -> Self {
         UpgradePoint {
             protocol_version: upgrade_point.protocol_version.clone(),
-            upgrade_installer_path: Some(String::from(DEFAULT_UPGRADE_INSTALLER_PATH)),
+            upgrade_installer_path: Some(External::path(DEFAULT_UPGRADE_INSTALLER_PATH)),
             activation_point: upgrade_point.activation_point,
             new_costs: upgrade_point.new_costs,
             new_deploy_config: upgrade_point.new_deploy_config.map(DeployConfig::from),
         }
-    }
-}
-
-impl TryFrom<UpgradePoint> for chainspec::UpgradePoint {
-    type Error = Error;
-
-    fn try_from(upgrade_point: UpgradePoint) -> Result<Self, Self::Error> {
-        let upgrade_installer_bytes = upgrade_point
-            .upgrade_installer_path
-            .map(read_file)
-            .transpose()
-            .map_err(Error::LoadUpgradeInstaller)?;
-        // TODO - read this in?
-        let upgrade_installer_args = None;
-
-        let new_deploy_config = upgrade_point
-            .new_deploy_config
-            .map(DeployConfig::try_into)
-            .transpose()?;
-        Ok(chainspec::UpgradePoint {
-            activation_point: upgrade_point.activation_point,
-            protocol_version: upgrade_point.protocol_version,
-            upgrade_installer_bytes,
-            upgrade_installer_args,
-            new_costs: upgrade_point.new_costs,
-            new_deploy_config,
-        })
     }
 }
 
@@ -193,10 +169,12 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
             name: chainspec.genesis.name.clone(),
             timestamp: chainspec.genesis.timestamp,
             protocol_version: chainspec.genesis.protocol_version.clone(),
-            mint_installer_path: String::from(DEFAULT_MINT_INSTALLER_PATH),
-            pos_installer_path: String::from(DEFAULT_POS_INSTALLER_PATH),
-            standard_payment_installer_path: String::from(DEFAULT_STANDARD_PAYMENT_INSTALLER_PATH),
-            accounts_path: String::from(DEFAULT_ACCOUNTS_CSV_PATH),
+            mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
+            pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
+            standard_payment_installer_path: External::path(
+                DEFAULT_STANDARD_PAYMENT_INSTALLER_PATH,
+            ),
+            accounts_path: External::path(DEFAULT_ACCOUNTS_CSV_PATH),
         };
 
         let highway = HighwayConfig {
@@ -248,36 +226,38 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
     }
 }
 
-fn get_path<P: AsRef<Path>>(root: &Path, file: P) -> PathBuf {
-    if file.as_ref().is_absolute() {
-        file.as_ref().into()
-    } else {
-        root.join(file)
-    }
-}
-
 pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec::Chainspec, Error> {
     let chainspec: ChainspecConfig =
         toml::from_slice(&read_file(chainspec_path.as_ref()).map_err(Error::LoadChainspec)?)?;
 
-    // let root = chainspec_path.as_ref().parent().map_or_else(PathBuf::new, PathBuf::from);
     let root = chainspec_path
         .as_ref()
         .parent()
         .unwrap_or_else(|| Path::new(""));
 
-    let mint_path = get_path(root, chainspec.genesis.mint_installer_path);
-    let mint_installer_bytes = read_file(mint_path).map_err(Error::LoadMintInstaller)?;
+    let mint_installer_bytes = chainspec
+        .genesis
+        .mint_installer_path
+        .load_relative(root)
+        .map_err(Error::LoadMintInstaller)?;
 
-    let pos_path = get_path(root, chainspec.genesis.pos_installer_path);
-    let pos_installer_bytes = read_file(pos_path).map_err(Error::LoadPosInstaller)?;
+    let pos_installer_bytes = chainspec
+        .genesis
+        .pos_installer_path
+        .load_relative(root)
+        .map_err(Error::LoadPosInstaller)?;
 
-    let standard_payment_path = get_path(root, chainspec.genesis.standard_payment_installer_path);
-    let standard_payment_installer_bytes =
-        read_file(standard_payment_path).map_err(Error::LoadStandardPaymentInstaller)?;
+    let standard_payment_installer_bytes = chainspec
+        .genesis
+        .standard_payment_installer_path
+        .load_relative(root)
+        .map_err(Error::LoadStandardPaymentInstaller)?;
 
-    let accounts_path = get_path(root, chainspec.genesis.accounts_path);
-    let accounts = parse_accounts(accounts_path)?;
+    let accounts: Vec<GenesisAccount> = chainspec
+        .genesis
+        .accounts_path
+        .load_relative(root)
+        .map_err(Error::LoadGenesisAccounts)?;
     let highway_config = chainspec::HighwayConfig {
         genesis_era_start_timestamp: chainspec.highway.genesis_era_start_timestamp,
         era_duration: Duration::from_millis(chainspec.highway.era_duration_millis),
@@ -304,41 +284,14 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
     };
 
     let mut upgrades = vec![];
-    for mut upgrade_point in chainspec.upgrade.unwrap_or_default().into_iter() {
-        if let Some(path) = upgrade_point.upgrade_installer_path.take() {
-            upgrade_point.upgrade_installer_path = Some(get_path(root, path).display().to_string());
-        }
-        upgrades.push(chainspec::UpgradePoint::try_from(upgrade_point)?);
+    for upgrade_point in chainspec.upgrade.unwrap_or_default().into_iter() {
+        upgrades.push(chainspec::UpgradePoint::try_from_config(
+            root,
+            upgrade_point,
+        )?);
     }
 
     Ok(chainspec::Chainspec { genesis, upgrades })
-}
-
-/// Parses the accounts.csv file into a vec of `GenesisAccount`s.
-fn parse_accounts<P: AsRef<Path>>(file: P) -> Result<Vec<chainspec::GenesisAccount>, Error> {
-    #[derive(Debug, Deserialize)]
-    struct ParsedAccount {
-        public_key: String,
-        algorithm: String,
-        balance: String,
-        bonded_amount: String,
-    }
-
-    let mut reader = ReaderBuilder::new().has_headers(false).from_path(file)?;
-    let mut accounts = vec![];
-    for result in reader.deserialize() {
-        let parsed: ParsedAccount = result?;
-        let balance = Motes::new(U512::from_dec_str(&parsed.balance)?);
-        let bonded_amount = Motes::new(U512::from_dec_str(&parsed.bonded_amount)?);
-        let key_bytes = hex::decode(parsed.public_key)?;
-        let account = chainspec::GenesisAccount::with_public_key(
-            PublicKey::key_from_algorithm_name_and_bytes(&parsed.algorithm, key_bytes)?,
-            balance,
-            bonded_amount,
-        );
-        accounts.push(account);
-    }
-    Ok(accounts)
 }
 
 #[cfg(test)]

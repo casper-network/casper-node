@@ -15,7 +15,7 @@ use lazy_static::lazy_static;
 use libc::{c_long, sysconf, _SC_PAGESIZE};
 use thiserror::Error;
 
-pub use external::{External, Loadable};
+pub use external::{External, LoadError, Loadable};
 pub(crate) use round_robin::WeightedRoundRobin;
 
 /// Sensible default for many if not all systems.

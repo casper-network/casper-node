@@ -15,6 +15,7 @@ use openssl::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use super::{read_file, ReadFileError};
 use crate::{
     crypto::{self, asymmetric_key::SecretKey},
     tls,
@@ -29,7 +30,7 @@ use crate::{
 /// is especially useful when writing structure configurations.
 ///
 /// An `External` also always provides a default, which will always result in an error when `load`
-/// is called. Should the underlying type `T` implement `Default`, the `load_with_default` can be
+/// is called. Should the underlying type `T` implement `Default`, the `with_default` can be
 /// used instead.
 #[derive(Clone, Eq, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
@@ -63,11 +64,25 @@ where
     /// Loads the value if not loaded already, or returns available value.
     pub fn load(self) -> Result<T, LoadError<T::Error>> {
         match self {
-            External::Path(path) => {
-                T::from_file(&path).map_err(move |error| LoadError::Failed { error, path })
-            }
+            External::Path(path) => T::from_file(&path).map_err(move |error| LoadError::Failed {
+                error,
+                // We canonicalize `path` here, with `ReadFileError` we get extra information about
+                // the absolute path this way if the latter is relative. It will still be relative /// if the current path does not exist.
+                path: path.canonicalize().unwrap_or(path),
+            }),
             External::Loaded(value) => Ok(value),
             External::Missing => Err(LoadError::Missing),
+        }
+    }
+
+    /// Loads the value if not loaded already, resolving relative paths from `root` or returns
+    /// available value.
+    pub fn load_relative<P: AsRef<Path>>(self, root: P) -> Result<T, LoadError<T::Error>> {
+        match self {
+            External::Path(ref path) if path.is_relative() => {
+                External::Path(root.as_ref().join(path)).load()
+            }
+            _ => self.load(),
         }
     }
 }
@@ -76,13 +91,11 @@ impl<T> External<T>
 where
     T: Loadable + Default,
 {
-    /// Loads the value if not loaded already, or returns available value.
-    ///
-    /// If missing, returns the default instead of an error.
-    pub fn load_with_default(self) -> Result<T, LoadError<T::Error>> {
+    /// Insert a default value if missing.
+    pub fn with_default(self) -> Self {
         match self {
-            External::Missing => Ok(Default::default()),
-            _ => self.load(),
+            External::Missing => External::Loaded(Default::default()),
+            _ => self,
         }
     }
 }
@@ -102,12 +115,24 @@ impl<T> Default for External<T> {
     }
 }
 
+fn display_res_path<E>(result: &Result<PathBuf, E>) -> String {
+    result
+        .as_ref()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| String::new())
+}
+
 /// Error loading external value.
 #[derive(Debug, Error)]
 pub enum LoadError<E: fmt::Debug + fmt::Display> {
     /// Failed to load from path.
-    #[error("could not load from {path}: {error}")]
-    Failed { path: PathBuf, error: E },
+    #[error("could not load from {}: {error}", display_res_path(&.path.canonicalize()))]
+    Failed {
+        /// Path that failed to load.
+        path: PathBuf,
+        /// Error load failed with.
+        error: E,
+    },
     /// A value was missing.
     #[error("value is missing (default requested)")]
     Missing,
@@ -134,6 +159,14 @@ impl Loadable for SecretKey {
     type Error = crypto::Error;
     fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
         SecretKey::from_file(path)
+    }
+}
+
+impl Loadable for Vec<u8> {
+    type Error = ReadFileError;
+
+    fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
+        read_file(path)
     }
 }
 

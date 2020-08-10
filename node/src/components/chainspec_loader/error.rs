@@ -3,7 +3,7 @@ use uint::FromDecStrErr;
 
 use casperlabs_types::account::ACCOUNT_HASH_LENGTH;
 
-use crate::utils::ReadFileError;
+use crate::utils::{LoadError, ReadFileError};
 
 /// Error while encoding or decoding the chainspec.
 #[derive(Debug, Error)]
@@ -16,6 +16,38 @@ pub enum Error {
     #[error("decoding from TOML error: {0}")]
     DecodingFromToml(#[from] toml::de::Error),
 
+    /// Error while decoding Motes from a decimal format.
+    #[error("decoding motes from base-10 error: {0}")]
+    DecodingMotes(#[from] FromDecStrErr),
+
+    /// Error loading the upgrade installer.
+    #[error("could not load upgrade installer: {0}")]
+    LoadUpgradeInstaller(LoadError<ReadFileError>),
+
+    /// Error loading the chainspec.
+    #[error("could not load chainspec: {0}")]
+    LoadChainspec(ReadFileError),
+
+    /// Error loading the mint installer.
+    #[error("could not load mint installer: {0}")]
+    LoadMintInstaller(LoadError<ReadFileError>),
+
+    /// Error loading the pos installer.
+    #[error("could not load pos installer: {0}")]
+    LoadPosInstaller(LoadError<ReadFileError>),
+
+    /// Error loading the standard payment installer.
+    #[error("could not load standard payment installer: {0}")]
+    LoadStandardPaymentInstaller(LoadError<ReadFileError>),
+
+    /// Error loading the standard payment installer.
+    #[error("could not load genesis accounts installer: {0}")]
+    LoadGenesisAccounts(LoadError<GenesisLoadError>),
+}
+
+/// Error loading genesis accounts file.
+#[derive(Debug, Error)]
+pub enum GenesisLoadError {
     /// Error while decoding the genesis accounts from CSV format.
     #[error("decoding from CSV error: {0}")]
     DecodingFromCsv(#[from] csv::Error),
@@ -28,31 +60,11 @@ pub enum Error {
     #[error("decoding motes from base-10 error: {0}")]
     DecodingMotes(#[from] FromDecStrErr),
 
-    /// Error while decoding a genesis account's key hash from base-64 format.
-    #[error("crypto module error: {0}")]
-    Crypto(#[from] crate::crypto::Error),
-
     /// Decoding a genesis account's key hash yielded an invalid length byte array.
     #[error("expected hash length of {}, got {0}", ACCOUNT_HASH_LENGTH)]
     InvalidHashLength(usize),
 
-    /// Error loading the upgrade installer.
-    #[error("could not load upgrade installer: {0}")]
-    LoadUpgradeInstaller(ReadFileError),
-
-    /// Error loading the chainspec.
-    #[error("could not load chainspec: {0}")]
-    LoadChainspec(ReadFileError),
-
-    /// Error loading the mint installer.
-    #[error("could not load mint installer: {0}")]
-    LoadMintInstaller(ReadFileError),
-
-    /// Error loading the pos installer.
-    #[error("could not load pos installer: {0}")]
-    LoadPosInstaller(ReadFileError),
-
-    /// Error loading the standard payment installer.
-    #[error("could not load standard payment installer: {0}")]
-    LoadStandardPaymentInstaller(ReadFileError),
+    /// Error while decoding a genesis account's key hash from base-64 format.
+    #[error("crypto module error: {0}")]
+    Crypto(#[from] crate::crypto::Error),
 }
