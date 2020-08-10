@@ -11,7 +11,7 @@ const DEFAULT_BLOCK_MAX_DEPLOY_COUNT: u32 = 3;
 #[serde(deny_unknown_fields)]
 pub struct NodeConfig {
     /// Chainspec configuration.
-    pub chainspec: External<Chainspec>,
+    pub chainspec_config_path: External<Chainspec>,
     /// The maximum number of deploys permitted in a single block.
     pub block_max_deploy_count: u32,
 }
@@ -19,7 +19,7 @@ pub struct NodeConfig {
 impl Default for NodeConfig {
     fn default() -> Self {
         NodeConfig {
-            chainspec: External::path(DEFAULT_CHAINSPEC_CONFIG_PATH),
+            chainspec_config_path: External::path(DEFAULT_CHAINSPEC_CONFIG_PATH),
             block_max_deploy_count: DEFAULT_BLOCK_MAX_DEPLOY_COUNT,
         }
     }

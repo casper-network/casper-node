@@ -98,7 +98,7 @@ where
         highway_config: &HighwayConfig,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
         let (root, config) = config.into_parts();
-        let secret_signing_key = config.secret_key.load_relative(root)?;
+        let secret_signing_key = config.secret_key_path.load_relative(root)?;
 
         let mut era_supervisor = Self {
             active_eras: Default::default(),

@@ -123,7 +123,7 @@ impl reactor::Reactor for Reactor {
 
         let chainspec = config
             .node
-            .chainspec
+            .chainspec_config_path
             .clone()
             .load_relative(root)
             .map_err(|err| Error::ConfigError(err.to_string()))?;

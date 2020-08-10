@@ -8,5 +8,5 @@ use crate::{crypto::asymmetric_key::SecretKey, utils::External};
 #[serde(deny_unknown_fields)]
 pub struct Config {
     /// Path to secret key file.
-    pub secret_key: External<SecretKey>,
+    pub secret_key_path: External<SecretKey>,
 }
