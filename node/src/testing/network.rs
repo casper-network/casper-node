@@ -19,6 +19,11 @@ use crate::{
     reactor::{Finalize, Reactor, Runner},
 };
 
+/// Type alias for set of nodes inside a network.
+///
+/// Provided as a convenience for writing condition functions for `settle_on` and friends.
+pub type Nodes<R> = HashMap<<R as NetworkedReactor>::NodeId, Runner<ConditionCheckReactor<R>>>;
+
 /// A reactor with networking functionality.
 pub trait NetworkedReactor: Sized {
     /// The node ID on the networking level.
@@ -244,7 +249,7 @@ where
     pub async fn settle_on<RNG, F>(&mut self, rng: &mut RNG, condition: F, within: Duration)
     where
         RNG: Rng + ?Sized,
-        F: Fn(&HashMap<R::NodeId, Runner<ConditionCheckReactor<R>>>) -> bool,
+        F: Fn(&Nodes<R>) -> bool,
     {
         time::timeout(within, self.settle_on_indefinitely(rng, condition))
             .await
@@ -259,7 +264,7 @@ where
     async fn settle_on_indefinitely<RNG, F>(&mut self, rng: &mut RNG, condition: F)
     where
         RNG: Rng + ?Sized,
-        F: Fn(&HashMap<R::NodeId, Runner<ConditionCheckReactor<R>>>) -> bool,
+        F: Fn(&Nodes<R>) -> bool,
     {
         loop {
             if condition(&self.nodes) {

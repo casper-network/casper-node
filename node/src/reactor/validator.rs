@@ -278,6 +278,14 @@ pub struct Reactor {
     block_validator: BlockValidator<NodeId>,
 }
 
+#[cfg(test)]
+impl Reactor {
+    /// Inspect consensus.
+    pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId> {
+        &self.consensus
+    }
+}
+
 impl reactor::Reactor for Reactor {
     type Event = Event;
 

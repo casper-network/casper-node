@@ -288,4 +288,12 @@ where
             },
         }
     }
+
+    /// Inspect the active eras.
+    #[cfg(test)]
+    pub fn active_eras(
+        &self,
+    ) -> &HashMap<EraId, Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>>> {
+        &self.active_eras
+    }
 }

@@ -8,23 +8,28 @@ use rand::Rng;
 use tempfile::TempDir;
 
 use crate::{
-    components::{contract_runtime::core::engine_state::genesis::GenesisConfig, storage},
+    components::{
+        contract_runtime::core::engine_state::genesis::GenesisConfig, in_memory_network::NodeId,
+        storage,
+    },
     crypto::asymmetric_key::SecretKey,
     reactor::{initializer, validator, Runner},
-    testing::{init_logging, network::Network, TestRng},
+    testing::{init_logging, network::Network, ConditionCheckReactor, TestRng},
     types::{Motes, NodeConfig},
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
     Chainspec, GenesisAccount,
 };
 use anyhow::bail;
 use casperlabs_types::U512;
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 struct TestChain {
     keys: Vec<SecretKey>,
     storages: Vec<TempDir>,
     chainspec: Chainspec,
 }
+
+type Nodes = crate::testing::network::Nodes<validator::Reactor>;
 
 impl TestChain {
     /// Instances a new test chain configuration.
@@ -122,6 +127,36 @@ async fn run_validator_network() {
         .await
         .expect("network initialization failed");
 
-    net.settle_on(&mut rng, |_| false, Duration::from_secs(500))
+    let is_in_era = |era_num| {
+        |nodes: &Nodes| {
+            let mut era_keys = nodes
+                .values()
+                .next()
+                .expect("need at least one node")
+                .reactor()
+                .inner()
+                .consensus()
+                .active_eras()
+                .keys();
+
+            let num_eras = era_keys.len();
+
+            assert!(num_eras <= 1, "first node already in second era");
+            let era = if let Some(era) = era_keys.next() {
+                era
+            } else {
+                // Not initialized yet, try again.
+                return false;
+            };
+
+            nodes
+                .values()
+                .map(|runner| runner.reactor().inner().consensus().active_eras())
+                .all(|eras| eras.contains_key(era) && eras.len() == num_eras)
+        }
+    };
+
+    // Wait for all nodes to agree on one era.
+    net.settle_on(&mut rng, is_in_era(1), Duration::from_secs(20))
         .await;
 }
