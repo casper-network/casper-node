@@ -60,10 +60,6 @@ impl SystemProvider for AuctionContract {
     ) -> StdResult<(), Self::Error> {
         system::transfer_from_purse_to_purse(source, target, amount).map_err(|_| Error::Transfer)
     }
-    fn get_balance(&mut self, purse: URef) -> Option<U512> {
-        system::get_balance(purse)
-    }
-
 }
 
 impl MintProvider for AuctionContract {

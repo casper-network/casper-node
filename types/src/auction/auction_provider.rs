@@ -222,20 +222,49 @@ where
         let (bonding_purse, _total_amount) =
             self.bond(delegator_public_key, quantity, source_purse)?;
 
-        let new_quantity = {
-            let mut delegators = internal::get_delegations_map(self)?;
+        let mut delegations_map = internal::get_delegations_map(self)?;
+        let mut tally_map = internal::get_tally_map(self)?;
+        let mut total_delegator_stake_map = internal::get_total_delegator_stake_map(self)?;
+        let mut reward_per_stake_map = internal::get_reward_per_stake_map(self)?;
+        let mut delegator_reward_pool_map = internal::get_delegator_reward_pool_map(self)?;
 
-            let new_quantity = *delegators
-                .entry(validator_public_key)
-                .or_default()
-                .entry(delegator_public_key)
-                .and_modify(|delegator| *delegator += quantity)
-                .or_insert_with(|| quantity);
+        // Get reward_per_stake_map entry. Initialize if it doesn't exist.
+        let reward_per_stake = *reward_per_stake_map
+            .entry(validator_public_key)
+            .or_insert_with(|| U512::zero());
 
-            internal::set_delegations_map(self, delegators)?;
+        // Update total_delegator_stake_map entry. Initialize if it doesn't exist.
+        total_delegator_stake_map
+            .entry(validator_public_key)
+            .and_modify(|total_stake| *total_stake += quantity)
+            .or_insert_with(|| quantity);
+        
+        // Initialize delegator_reward_pool_map entry if it doesn't exist.
+        delegator_reward_pool_map
+            .entry(validator_public_key)
+            .or_default();
 
-            new_quantity
-        };
+        // Update delegations_map entry. Initialize if it doesn't exist.
+        let new_quantity = *delegations_map
+            .entry(validator_public_key)
+            .or_default()
+            .entry(delegator_public_key)
+            .and_modify(|delegation| *delegation += quantity)
+            .or_insert_with (|| quantity);
+
+        // Update tally_map entry. Initialize if it doesn't exist.
+        tally_map
+            .entry(validator_public_key)
+            .or_default()
+            .entry(delegator_public_key)
+            .and_modify(|tally| *tally += reward_per_stake * quantity)
+            .or_insert_with(|| reward_per_stake * quantity);
+
+        internal::set_delegations_map(self, delegations_map)?;
+        internal::set_total_delegator_stake_map(self, total_delegator_stake_map)?;
+        internal::set_tally_map(self, tally_map)?;
+        internal::set_reward_per_stake_map(self, reward_per_stake_map)?;
+        internal::set_delegator_reward_pool_map(self, delegator_reward_pool_map)?;
 
         Ok((bonding_purse, new_quantity))
     }
@@ -346,11 +375,11 @@ where
         let mut validator_weights: ValidatorWeights = {
             founding_validators
                 .iter()
-                .filter(|(_validator_account_hash, founding_validator)| {
+                .filter(|(_validator_public_key, founding_validator)| {
                     founding_validator.funds_locked
                 })
-                .map(|(validator_account_hash, amount)| {
-                    (*validator_account_hash, amount.staked_amount)
+                .map(|(validator_public_key, amount)| {
+                    (*validator_public_key, amount.staked_amount)
                 })
                 .collect()
         };
@@ -358,18 +387,18 @@ where
         // Prepare two iterables containing account hashes with their amounts.
         let active_bids_scores = active_bids
             .iter()
-            .map(|(validator_account_hash, active_bid)| {
-                (*validator_account_hash, active_bid.bid_amount)
+            .map(|(validator_public_key, active_bid)| {
+                (*validator_public_key, active_bid.bid_amount)
             });
 
         // Non-winning validators are taken care of later
         let founding_validators_scores = founding_validators
             .iter()
-            .filter(|(_validator_account_hash, founding_validator)| {
+            .filter(|(_validator_public_key, founding_validator)| {
                 !founding_validator.funds_locked
             })
-            .map(|(validator_account_hash, amount)| {
-                (*validator_account_hash, amount.staked_amount)
+            .map(|(validator_public_key, amount)| {
+                (*validator_public_key, amount.staked_amount)
             });
 
         // Validator's entries from both maps as a single iterable.
@@ -453,29 +482,34 @@ where
         internal::set_era_validators(self, era_validators)
     }
 
-    /// Distributes rewards to the delegators associated with `validator_account_hash`
-    fn distribute_to_delegators(&mut self, validator_account_hash: AccountHash, purse: URef) -> Result<()> {
-        let total_delegator_stake_map= internal::get_total_delegator_stake_map(self)?;
-        let total_delegator_stake = *total_delegator_stake_map.get(&validator_account_hash).unwrap();
+    /// Distributes rewards to the delegators associated with `validator_public_key`
+    fn distribute_to_delegators(&mut self, validator_public_key: AccountHash, purse: URef) -> Result<()> {
+        let total_delegator_stake 
+            = *internal::get_total_delegator_stake_map(self)?
+            .get(&validator_public_key)
+            .unwrap();
 
         let amount = self.get_balance(purse)?.unwrap_or_default();
 
-        // Throw and error if the validator has no delegations
+        // Throw an error if the validator has no delegations
         if total_delegator_stake.eq(&U512::zero()) {
             return Err(Error::MissingDelegations);
         } 
-
-        let mut reward_per_stake_map = internal::get_reward_per_stake_map(self)?;
-        let mut reward_per_stake = *reward_per_stake_map.get(&validator_account_hash).unwrap();
-
+        
         // Update reward per stake according to pull-based distribution formulation
-        reward_per_stake = reward_per_stake + amount / total_delegator_stake;
-        reward_per_stake_map.insert(validator_account_hash, reward_per_stake);
+        // The entry for `validator_public_key` should be initialized by now
+        let mut reward_per_stake_map = internal::get_reward_per_stake_map(self)?;
+        reward_per_stake_map
+            .entry(validator_public_key)
+            .and_modify(|rps| *rps += amount / total_delegator_stake);
         internal::set_reward_per_stake_map(self, reward_per_stake_map).unwrap();
 
         // Get the reward pool purse for the validator
-        let delegator_reward_pool_map = internal::get_delegator_reward_pool_map(self).unwrap();
-        let delegator_reward_pool = *delegator_reward_pool_map.get(&validator_account_hash).unwrap();
+        let delegator_reward_pool 
+            = *internal::get_delegator_reward_pool_map(self)
+            .unwrap()
+            .get(&validator_public_key)
+            .unwrap();
 
         // Transfer the reward to the reward pool purse
         self.transfer_from_purse_to_purse(purse, delegator_reward_pool, amount)?;

@@ -67,9 +67,6 @@ where
         self.mint_transfer(mint_contract_hash, source, target, amount)
             .map_err(|_| Error::Transfer)
     }
-    fn get_balance(&mut self, purse: URef) -> Option<U512> {
-        Runtime::get_balance(self, purse).unwrap()
-    }
 }
 
 impl<'a, R> MintProvider for Runtime<'a, R>
