@@ -13,17 +13,23 @@ pub(crate) use protocol_state::{ProtocolState, VertexTrait};
 #[derive(Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
 pub struct BlockContext {
     timestamp: Timestamp,
+    height: u64,
 }
 
 impl BlockContext {
     /// Constructs a new `BlockContext`
-    pub(crate) fn new(timestamp: Timestamp) -> Self {
-        BlockContext { timestamp }
+    pub(crate) fn new(timestamp: Timestamp, height: u64) -> Self {
+        BlockContext { timestamp, height }
     }
 
     /// The block's timestamp.
     pub(crate) fn timestamp(&self) -> Timestamp {
         self.timestamp
+    }
+
+    /// The block's relative height within the current era.
+    pub(crate) fn height(&self) -> u64 {
+        self.height
     }
 }
 
@@ -81,6 +87,9 @@ pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID> {
         value: &C,
         valid: bool,
     ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
+
+    /// Turns this instance into a passive observer, that does not create any new vertices.
+    fn deactivate_validator(&mut self);
 }
 
 #[cfg(test)]
@@ -92,6 +101,7 @@ mod example {
         synchronizer::DagSynchronizerState,
         BlockContext, ConsensusProtocol, ConsensusProtocolResult, Timestamp,
     };
+    use crate::components::consensus::traits::ConsensusValueT;
 
     #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
     struct VIdU64(u64);
@@ -118,12 +128,21 @@ mod example {
     #[derive(Debug, Hash, PartialEq, Eq, Clone, Serialize, Deserialize)]
     struct ProtoBlock(u64);
 
+    impl ConsensusValueT for ProtoBlock {
+        fn terminal(&self) -> bool {
+            false
+        }
+    }
+
     #[derive(Debug)]
     struct Error;
 
     type CpResult<I> = Result<Vec<ConsensusProtocolResult<I, ProtoBlock, VIdU64>>, anyhow::Error>;
 
-    impl<I, P: ProtocolState> ConsensusProtocol<I, ProtoBlock, VIdU64> for DagSynchronizerState<I, P> {
+    impl<I, P> ConsensusProtocol<I, ProtoBlock, VIdU64> for DagSynchronizerState<I, P>
+    where
+        P: ProtocolState,
+    {
         fn handle_message(&mut self, _sender: I, _msg: Vec<u8>) -> CpResult<I> {
             unimplemented!()
         }
@@ -137,6 +156,10 @@ mod example {
         }
 
         fn propose(&mut self, _value: ProtoBlock, _block_context: BlockContext) -> CpResult<I> {
+            unimplemented!()
+        }
+
+        fn deactivate_validator(&mut self) {
             unimplemented!()
         }
     }

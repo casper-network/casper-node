@@ -652,7 +652,8 @@ impl<REv> EffectBuilder<REv> {
         (
             ProtoBlock {
                 deploys,
-                random_bit: false, // TODO
+                random_bit: false,   // TODO
+                switch_block: false, // TODO
             },
             block_context,
         )

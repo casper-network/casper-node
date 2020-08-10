@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::Arc};
 
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
@@ -104,7 +104,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
             AvEffect::ScheduleTimer(timestamp) => {
                 vec![ConsensusProtocolResult::ScheduleTimer(timestamp)]
             }
-            AvEffect::RequestNewBlock(block_context) => {
+            AvEffect::RequestNewBlock(block_context, _opt_parent) => {
                 vec![ConsensusProtocolResult::CreateNewBlock(block_context)]
             }
         }
@@ -342,15 +342,20 @@ where
             todo!("Drop vertices that depend on the invalid consensus value.")
         }
     }
+
+    /// Turns this instance into a passive observer, that does not create any new vertices.
+    fn deactivate_validator(&mut self) {
+        self.highway.deactivate_validator()
+    }
 }
 
 pub(crate) struct HighwaySecret {
-    secret_key: SecretKey,
+    secret_key: Arc<SecretKey>,
     public_key: PublicKey,
 }
 
 impl HighwaySecret {
-    pub(crate) fn new(secret_key: SecretKey, public_key: PublicKey) -> Self {
+    pub(crate) fn new(secret_key: Arc<SecretKey>, public_key: PublicKey) -> Self {
         Self {
             secret_key,
             public_key,
