@@ -109,6 +109,14 @@ pub trait Loadable: Sized {
 
     /// Loads a value from the given input path.
     fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error>;
+
+    /// Load a test-only instance from the local path.
+    #[cfg(test)]
+    fn bundled<P: AsRef<Path>>(rel_path: P) -> Self {
+        let manifest_dir: PathBuf = env!("CARGO_MANIFEST_DIR").into();
+        Self::from_file(manifest_dir.join("../resources").join(rel_path))
+            .expect("could not load resources from local")
+    }
 }
 
 impl<T> Default for External<T> {

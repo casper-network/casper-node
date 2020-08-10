@@ -29,6 +29,7 @@ use crate::{
         ConditionCheckReactor, TestRng,
     },
     types::{Deploy, DeployHash, Tag},
+    utils::Loadable,
 };
 
 const TIMEOUT: Duration = Duration::from_secs(1);
@@ -144,7 +145,7 @@ impl reactor::Reactor for Reactor {
                 responder,
                 ..
             })) => responder
-                .respond(Some(Chainspec::from_resources_local()))
+                .respond(Some(Chainspec::bundled("local/chainspec.toml")))
                 .ignore(),
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,

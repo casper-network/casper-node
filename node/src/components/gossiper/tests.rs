@@ -30,6 +30,7 @@ use crate::{
         ConditionCheckReactor, TestRng,
     },
     types::{Deploy, Tag},
+    utils::Loadable,
 };
 
 /// Top-level event for the reactor.
@@ -146,7 +147,7 @@ impl reactor::Reactor for Reactor {
                 responder,
                 ..
             })) => responder
-                .respond(Some(Chainspec::from_resources_local()))
+                .respond(Some(Chainspec::bundled("local/chainspec.toml")))
                 .ignore(),
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
