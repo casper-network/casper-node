@@ -9,8 +9,8 @@ use tempfile::TempDir;
 
 use crate::{
     components::{
-        contract_runtime::core::engine_state::genesis::GenesisConfig, in_memory_network::NodeId,
-        storage,
+        consensus::EraId, contract_runtime::core::engine_state::genesis::GenesisConfig,
+        in_memory_network::NodeId, storage,
     },
     crypto::asymmetric_key::SecretKey,
     reactor::{initializer, validator, Runner},
@@ -21,7 +21,10 @@ use crate::{
 };
 use anyhow::bail;
 use casperlabs_types::U512;
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
 
 struct TestChain {
     keys: Vec<SecretKey>,
@@ -112,6 +115,18 @@ impl TestChain {
     }
 }
 
+/// Get the set of era IDs from a runner.
+fn era_ids(runner: &Runner<ConditionCheckReactor<validator::Reactor>>) -> HashSet<EraId> {
+    runner
+        .reactor()
+        .inner()
+        .consensus()
+        .active_eras()
+        .keys()
+        .cloned()
+        .collect()
+}
+
 #[tokio::test]
 async fn run_validator_network() {
     init_logging();
@@ -128,35 +143,30 @@ async fn run_validator_network() {
         .expect("network initialization failed");
 
     let is_in_era = |era_num| {
-        |nodes: &Nodes| {
-            let mut era_keys = nodes
-                .values()
-                .next()
-                .expect("need at least one node")
-                .reactor()
-                .inner()
-                .consensus()
-                .active_eras()
-                .keys();
+        move |nodes: &Nodes| {
+            let first_node = nodes.values().next().expect("need at least one node");
 
-            let num_eras = era_keys.len();
+            // Get a list of eras from the first node.
+            let expected_eras = era_ids(&first_node);
 
-            assert!(num_eras <= 1, "first node already in second era");
-            let era = if let Some(era) = era_keys.next() {
-                era
-            } else {
-                // Not initialized yet, try again.
+            // Return if not in expected era yet.
+            if expected_eras.len() != era_num {
                 return false;
-            };
+            }
 
+            // Ensure eras are all the same for all other nodes.
             nodes
                 .values()
-                .map(|runner| runner.reactor().inner().consensus().active_eras())
-                .all(|eras| eras.contains_key(era) && eras.len() == num_eras)
+                .map(era_ids)
+                .all(|eras| eras == expected_eras)
         }
     };
 
     // Wait for all nodes to agree on one era.
     net.settle_on(&mut rng, is_in_era(1), Duration::from_secs(20))
         .await;
+
+    // TODO: Enable once we have era rotations.
+    // net.settle_on(&mut rng, is_in_era(2), Duration::from_secs(20))
+    //     .await;
 }
