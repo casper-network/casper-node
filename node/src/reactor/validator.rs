@@ -4,6 +4,8 @@
 
 mod config;
 mod error;
+#[cfg(test)]
+mod tests;
 
 use std::fmt::{self, Display, Formatter};
 
@@ -16,6 +18,8 @@ use tracing::error;
 
 use casperlabs_types::U512;
 
+#[cfg(test)]
+use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
         api_server::{self, ApiServer},
@@ -561,5 +565,13 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
         }
+    }
+}
+
+#[cfg(test)]
+impl NetworkedReactor for Reactor {
+    type NodeId = NodeId;
+    fn node_id(&self) -> Self::NodeId {
+        self.net.node_id()
     }
 }

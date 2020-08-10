@@ -17,6 +17,8 @@ use libc::{c_long, sysconf, _SC_PAGESIZE};
 use thiserror::Error;
 use tracing::warn;
 
+#[cfg(test)]
+pub use external::RESOURCES_PATH;
 pub use external::{External, LoadError, Loadable};
 pub(crate) use round_robin::WeightedRoundRobin;
 

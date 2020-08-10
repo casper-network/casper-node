@@ -21,6 +21,13 @@ use crate::{
     tls,
 };
 
+#[cfg(test)]
+lazy_static::lazy_static! {
+    /// Path to bundled resources.
+    pub static ref RESOURCES_PATH: PathBuf =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../resources");
+}
+
 /// External resource.
 ///
 /// An `External` resource can be given in two ways: Either as an immediate value, or through a
@@ -113,9 +120,7 @@ pub trait Loadable: Sized {
     /// Load a test-only instance from the local path.
     #[cfg(test)]
     fn bundled<P: AsRef<Path>>(rel_path: P) -> Self {
-        let manifest_dir: PathBuf = env!("CARGO_MANIFEST_DIR").into();
-        Self::from_file(manifest_dir.join("../resources").join(rel_path))
-            .expect("could not load resources from local")
+        Self::from_file(RESOURCES_PATH.join(rel_path)).expect("could not load resources from local")
     }
 }
 

@@ -59,6 +59,14 @@ impl SecretKey {
         }
     }
 
+    #[cfg(test)]
+    /// Duplicates a secret key.
+    ///
+    /// Only available for testing and named other than `clone` to prevent accidental use.
+    pub fn duplicate(&self) -> Self {
+        Self::ed25519_from_bytes(self.as_secret_slice()).expect("could not copy secret key")
+    }
+
     /// Attempt to write the secret key bytes to the configured file path.
     pub fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<()> {
         let pem = Pem {
