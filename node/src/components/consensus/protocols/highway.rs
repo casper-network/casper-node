@@ -104,7 +104,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
             AvEffect::ScheduleTimer(timestamp) => {
                 vec![ConsensusProtocolResult::ScheduleTimer(timestamp)]
             }
-            AvEffect::RequestNewBlock(block_context) => {
+            AvEffect::RequestNewBlock(block_context, _opt_parent) => {
                 vec![ConsensusProtocolResult::CreateNewBlock(block_context)]
             }
         }

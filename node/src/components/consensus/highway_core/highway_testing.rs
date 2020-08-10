@@ -82,7 +82,7 @@ impl From<Effect<TestContext>> for HighwayMessage {
             // validators so for them it's just `Vertex` that needs to be validated.
             Effect::NewVertex(ValidVertex(v)) => NewVertex(v),
             Effect::ScheduleTimer(t) => Timer(t),
-            Effect::RequestNewBlock(block_context) => RequestBlock(block_context),
+            Effect::RequestNewBlock(block_context, _opt_parent) => RequestBlock(block_context),
         }
     }
 }
@@ -1004,6 +1004,12 @@ impl ValidatorSecret for TestSecret {
 
     fn sign(&self, data: &Self::Hash) -> Self::Signature {
         SignatureWrapper(data.0 + self.0)
+    }
+}
+
+impl ConsensusValueT for Vec<u32> {
+    fn terminal(&self) -> bool {
+        false
     }
 }
 
