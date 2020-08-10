@@ -19,11 +19,10 @@ use tracing::{debug, info};
 use crate::{
     components::Component,
     effect::{announcements::NetworkAnnouncement, EffectBuilder, Effects},
-    logging,
     reactor::{self, EventQueueHandle, Finalize, Reactor, Runner},
     small_network::{self, NodeId, SmallNetwork},
     testing::{
-        self,
+        self, init_logging,
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
     },
@@ -118,17 +117,6 @@ impl Display for Message {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Debug::fmt(self, f)
     }
-}
-
-/// Sets up logging for testing.
-///
-/// Returns a guard that when dropped out of scope, clears the logger again.
-fn init_logging() {
-    // TODO: Write logs to file by default for each test.
-    logging::init()
-        // Ignore the return value, setting the global subscriber will fail if `init_logging` has
-        // been called before, which we don't care about.
-        .ok();
 }
 
 /// Checks whether or not a given network is completely connected.
