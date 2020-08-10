@@ -362,6 +362,7 @@ where
             new_tally_amount
         };
 
+        // TODO: Reconsider check after reviewing formulation
         // if new_tally_amount.is_zero() {
         //     // Inner map's mapped value should be zero as we subtracted mutable value.
         //     let _value = tally_map.remove(&validator_account_hash).unwrap();
@@ -539,7 +540,12 @@ where
         internal::set_era_validators(self, era_validators)
     }
 
-    /// Distributes rewards to the delegators associated with `validator_public_key`
+    /// Distributes rewards to the delegators associated with `validator_public_key`.
+    /// Uses pull-based reward distribution formulation to distribute seigniorage
+    /// rewards to all delegators of a validator, proportional to delegation amounts
+    /// with O(1) time complexity.
+    ///
+    /// Accessed by: PoS contract
     fn distribute_to_delegators(&mut self, validator_public_key: AccountHash, purse: URef) -> Result<()> {
         let total_delegator_stake 
             = *internal::get_total_delegator_stake_map(self)?
@@ -575,5 +581,72 @@ where
     /// Reads current era id.
     fn read_era_id(&mut self) -> Result<EraId> {
         internal::get_era_id(self)
+    }
+
+    /// Returns the total rewards a delegator has earned from delegating to a specific validator.
+    /// Read-only.
+    fn delegation_reward(
+        &mut self,
+        validator_account_hash: AccountHash,
+        delegator_account_hash: AccountHash,
+    ) -> Result<U512> {
+        let delegation = *internal::get_delegations_map(self)?
+            .get(&validator_account_hash)
+            .ok_or(Error::ValidatorNotFound)?
+            .get(&delegator_account_hash)
+            .ok_or(Error::DelegatorNotFound)?;
+
+        let tally = *internal::get_tally_map(self)?
+            .get(&validator_account_hash)
+            .ok_or(Error::ValidatorNotFound)?
+            .get(&delegator_account_hash)
+            .ok_or(Error::DelegatorNotFound)?;
+
+        let reward_per_stake = *internal::get_reward_per_stake_map(self)?
+            .get(&validator_account_hash)
+            .ok_or(Error::ValidatorNotFound)?;
+
+        let reward = delegation * reward_per_stake - tally;
+        Ok(reward)
+    }
+
+    /// Allows delegators to withdraw the seigniorage rewards they have earned.
+    /// Pays out the entire accumulated amount to the destination purse.
+    fn withdraw_reward(
+        &mut self,
+        validator_account_hash: AccountHash,
+        delegator_account_hash: AccountHash,
+        purse: URef,
+    ) -> Result<U512> {
+        // Get the amount of reward to be paid out
+        let reward = self.delegation_reward(validator_account_hash, delegator_account_hash)?;
+
+        // Get the required variables
+        let reward_pool = *internal::get_delegator_reward_pool_map(self)?
+            .get(&validator_account_hash)
+            .ok_or(Error::ValidatorNotFound)?;
+
+        let delegation = *internal::get_delegations_map(self)?
+            .get(&validator_account_hash)
+            .ok_or(Error::ValidatorNotFound)?
+            .get(&delegator_account_hash)
+            .ok_or(Error::DelegatorNotFound)?;
+
+        let reward_per_stake = *internal::get_reward_per_stake_map(self)?
+            .get(&validator_account_hash)
+            .ok_or(Error::ValidatorNotFound)?;
+
+        // Reset tally for the delegator
+        let mut tally_map = internal::get_tally_map(self)?;
+        tally_map
+            .entry(validator_account_hash)
+            .or_default()
+            .entry(delegator_account_hash)
+            .and_modify(|tally| *tally = reward_per_stake * delegation);
+
+        // Finally, transfer rewards to the delegator
+        self.transfer_from_purse_to_purse(reward_pool, purse, reward)?;
+
+        Ok(reward)
     }
 }
