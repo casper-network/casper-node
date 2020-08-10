@@ -318,7 +318,6 @@ impl UpgradePoint {
     ) -> Result<Self, Error> {
         let upgrade_installer_bytes = cfg_upgrade_point
             .upgrade_installer_path
-            // TODO: FIX PATH. TRY_FROM DOES NOT ALLOW RELATIVE
             .map(|ext_vec| ext_vec.load_relative(root.as_ref()))
             .transpose()
             .map_err(Error::LoadUpgradeInstaller)?;
