@@ -34,6 +34,7 @@ use crate::{
     },
     effect::{EffectBuilder, EffectExt, Effects},
     types::{FinalizedBlock, Instruction, Motes, ProtoBlock, Timestamp},
+    utils::WithDir,
 };
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -91,12 +92,13 @@ where
 {
     pub(crate) fn new<REv: ReactorEventT<I>>(
         timestamp: Timestamp,
-        config: Config,
+        config: WithDir<Config>,
         effect_builder: EffectBuilder<REv>,
         validator_stakes: Vec<(PublicKey, Motes)>,
         highway_config: &HighwayConfig,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
-        let secret_signing_key = config.secret_key.load()?;
+        let (root, config) = config.into_parts();
+        let secret_signing_key = config.secret_key.load_relative(root)?;
 
         let mut era_supervisor = Self {
             active_eras: Default::default(),

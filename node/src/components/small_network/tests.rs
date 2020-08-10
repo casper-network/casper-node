@@ -27,6 +27,7 @@ use crate::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
     },
+    utils::WithDir,
 };
 
 /// Test-reactor event.
@@ -82,7 +83,7 @@ impl Reactor for TestReactor {
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut R,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
-        let (net, effects) = SmallNetwork::new(event_queue, cfg)?;
+        let (net, effects) = SmallNetwork::new(event_queue, WithDir::default_path(cfg))?;
 
         Ok((
             TestReactor { net },

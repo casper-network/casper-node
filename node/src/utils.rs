@@ -6,6 +6,7 @@ mod round_robin;
 
 use std::{
     cell::RefCell,
+    env::current_dir,
     fmt::{self, Display, Formatter},
     fs, io,
     path::{Path, PathBuf},
@@ -14,6 +15,7 @@ use std::{
 use lazy_static::lazy_static;
 use libc::{c_long, sysconf, _SC_PAGESIZE};
 use thiserror::Error;
+use tracing::warn;
 
 pub use external::{External, LoadError, Loadable};
 pub(crate) use round_robin::WeightedRoundRobin;
@@ -130,6 +132,42 @@ pub fn read_file_to_string<P: AsRef<Path>>(filename: P) -> Result<String, ReadFi
         path: path.to_owned(),
         error,
     })
+}
+
+/// With-directory context.
+///
+/// Associates a type with a "working directory".
+#[derive(Clone, Debug)]
+pub struct WithDir<T> {
+    path: PathBuf,
+    value: T,
+}
+
+impl<T> WithDir<T> {
+    /// Creates a new with-directory context.
+    pub fn new<P: Into<PathBuf>>(path: P, value: T) -> Self {
+        WithDir {
+            path: path.into(),
+            value,
+        }
+    }
+
+    /// Creates a new with-directory context based on the current working directory, falling back
+    /// on `/` if it cannot be read.
+    pub fn default_path(value: T) -> Self {
+        WithDir {
+            path: current_dir().unwrap_or_else(|err| {
+                warn!(%err, "could not determine current working directory, falling back to /");
+                "/".into()
+            }),
+            value,
+        }
+    }
+
+    /// Deconstructs a with-directory context.
+    pub fn into_parts(self) -> (PathBuf, T) {
+        (self.path, self.value)
+    }
 }
 
 /// The source of a piece of data.

@@ -20,6 +20,7 @@ use crate::{
         EffectBuilder, Effects,
     },
     reactor::{self, validator, EventQueueHandle},
+    utils::WithDir,
 };
 
 /// Top-level event for the reactor.
@@ -109,7 +110,7 @@ impl Reactor {
 
 impl reactor::Reactor for Reactor {
     type Event = Event;
-    type Config = validator::Config;
+    type Config = WithDir<validator::Config>;
     type Error = Error;
 
     fn new<Rd: Rng + ?Sized>(
@@ -118,11 +119,13 @@ impl reactor::Reactor for Reactor {
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut Rd,
     ) -> Result<(Self, Effects<Self::Event>), Error> {
+        let (root, config) = config.into_parts();
+
         let chainspec = config
             .node
             .chainspec
             .clone()
-            .load()
+            .load_relative(root)
             .map_err(|err| Error::ConfigError(err.to_string()))?;
 
         let effect_builder = EffectBuilder::new(event_queue);

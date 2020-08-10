@@ -46,7 +46,7 @@ use crate::{
     reactor::{self, initializer, EventQueueHandle},
     small_network::{self, NodeId},
     types::{Deploy, Item, Tag, Timestamp},
-    utils::Source,
+    utils::{Source, WithDir},
     SmallNetwork,
 };
 pub use config::Config;
@@ -279,7 +279,7 @@ impl reactor::Reactor for Reactor {
 
     // The "configuration" is in fact the whole state of the initializer reactor, which we
     // deconstruct and reuse.
-    type Config = initializer::Reactor;
+    type Config = WithDir<initializer::Reactor>;
     type Error = Error;
 
     fn new<R: Rng + ?Sized>(
@@ -288,6 +288,8 @@ impl reactor::Reactor for Reactor {
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut R,
     ) -> Result<(Self, Effects<Event>), Error> {
+        let (root, initializer) = initializer.into_parts();
+
         let initializer::Reactor {
             config,
             chainspec_loader,
@@ -298,7 +300,10 @@ impl reactor::Reactor for Reactor {
         let metrics = Metrics::new(registry.clone());
 
         let effect_builder = EffectBuilder::new(event_queue);
-        let (net, net_effects) = SmallNetwork::new(event_queue, config.validator_net)?;
+        let (net, net_effects) = SmallNetwork::new(
+            event_queue,
+            WithDir::new(root.clone(), config.validator_net),
+        )?;
 
         let (pinger, pinger_effects) = Pinger::new(registry, effect_builder)?;
         let api_server = ApiServer::new(config.http_server, effect_builder);
@@ -317,7 +322,7 @@ impl reactor::Reactor for Reactor {
             .collect();
         let (consensus, consensus_effects) = EraSupervisor::new(
             timestamp,
-            config.consensus,
+            WithDir::new(root, config.consensus),
             effect_builder,
             validator_stakes,
             &chainspec_loader.chainspec().genesis.highway_config,

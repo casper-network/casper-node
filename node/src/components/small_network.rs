@@ -89,6 +89,7 @@ use crate::{
     },
     reactor::{EventQueueHandle, Finalize, QueueKind},
     tls::{self, KeyFingerprint, Signed, TlsCert},
+    utils::WithDir,
 };
 // Seems to be a false positive.
 #[allow(unreachable_pub)]
@@ -137,8 +138,10 @@ where
     #[allow(clippy::type_complexity)]
     pub(crate) fn new(
         event_queue: EventQueueHandle<REv>,
-        cfg: Config,
+        cfg: WithDir<Config>,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
+        let (root, cfg) = cfg.into_parts();
+
         let span = tracing::debug_span!("net");
         let _enter = span.enter();
 
@@ -149,8 +152,11 @@ where
             // We're given a cert_file and a secret_key file. Just load them, additional checking
             // will be performed once we create the acceptor and connector.
             (Some(cert), Some(secret_key)) => (
-                cert.load().context("could not load certificate")?,
-                secret_key.load().context("could not load secret key")?,
+                cert.load_relative(&root)
+                    .context("could not load certificate")?,
+                secret_key
+                    .load_relative(&root)
+                    .context("could not load secret key")?,
             ),
 
             // Neither was passed, so we auto-generate a pair.
