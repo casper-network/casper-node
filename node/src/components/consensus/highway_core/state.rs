@@ -97,7 +97,7 @@ pub(crate) enum VoteError {
 /// Rewards for a round in which a block B was proposed are paid out in the first block whose
 /// timestamp greater than `REWARD_DELAY * t` after B's timestamp, where `t` is the round length of
 /// `B` itself.
-const REWARD_DELAY: u64 = 8;
+pub(crate) const REWARD_DELAY: u64 = 8;
 
 /// A number representing the maximum total reward for finalizing one block.
 ///
