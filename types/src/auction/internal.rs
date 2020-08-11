@@ -1,5 +1,4 @@
 use crate::{
-    account::AccountHash,
     auction::{ActiveBids, DelegationsMap, FoundingValidators},
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::{Error, Result},
@@ -8,8 +7,10 @@ use crate::{
 
 use super::{
     providers::StorageProvider, EraId, EraValidators, SeigniorageRecipientsSnapshot,
-    ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY,
+    ACTIVE_BIDS_KEY, DELEGATIONS_MAP_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY,
     SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+    REWARD_PER_STAKE_MAP_KEY, TALLY_MAP_KEY,
+    TOTAL_DELEGATOR_STAKE_MAP_KEY,
     delegator::{DelegatorRewardPoolMap, RewardPerStakeMap, TallyMap, TotalDelegatorStakeMap},
 };
 

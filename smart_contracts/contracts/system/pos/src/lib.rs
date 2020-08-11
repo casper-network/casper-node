@@ -13,14 +13,19 @@ use casperlabs_contract::{
 };
 use casperlabs_types::{
     account::AccountHash,
-    auction::SeigniorageRecipients,
+    auction::{
+        SeigniorageRecipients, ARG_SOURCE_PURSE, ARG_VALIDATOR_ACCOUNT_HASH,
+        METHOD_DISTRIBUTE_TO_DELEGATORS,
+    },
     proof_of_stake::{
         AuctionProvider, MintProvider, ProofOfStake, Queue, QueueProvider, RuntimeProvider, Stakes,
         StakesProvider,
     },
+    runtime_args,
     system_contract_errors::pos::Error,
-    ApiError, BlockTime, CLValue, Key, Phase, TransferResult, URef, U512,
+    ApiError, BlockTime, CLValue, Key, Phase, RuntimeArgs, TransferResult, URef, U512,
 };
+use runtime::call_contract;
 
 pub const METHOD_BOND: &str = "bond";
 pub const METHOD_UNBOND: &str = "unbond";
@@ -73,7 +78,7 @@ impl AuctionProvider for ProofOfStakeContract {
     fn distribute_to_delegators(
         &mut self,
         validator_account_hash: AccountHash,
-        amount: U512,
+        source_purse: URef,
     ) -> Result<(), Error> {
         todo!()
     }

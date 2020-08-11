@@ -1,4 +1,4 @@
-use crate::{account::AccountHash, system_contract_errors::pos::Error, TransferResult, URef, U512};
+use crate::{account::AccountHash, TransferResult, URef, U512};
 
 /// Provides an access to mint.
 pub trait MintProvider {
@@ -25,7 +25,7 @@ pub trait MintProvider {
         todo!();
     }
 
-    fn mint(&mut self, amount: U512) -> URef {
+    fn mint(&mut self, _amount: U512) -> URef {
         todo!();
     }
 }

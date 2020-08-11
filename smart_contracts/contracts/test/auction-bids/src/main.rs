@@ -9,7 +9,7 @@ use casperlabs_contract::contract_api::{account, runtime, storage, system};
 
 use casperlabs_types::{
     auction::{
-        DelegationRate, SeigniorageRecipients, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_SOURCE_PURSE,
+        CommissionRate, SeigniorageRecipients, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_SOURCE_PURSE,
         ARG_VALIDATOR, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_READ_SEIGNIORAGE_RECIPIENTS,
         METHOD_RUN_AUCTION, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
     },
@@ -20,7 +20,7 @@ const ARG_ENTRY_POINT: &str = "entry_point";
 const ARG_ADD_BID: &str = METHOD_ADD_BID;
 const ARG_WITHDRAW_BID: &str = METHOD_WITHDRAW_BID;
 const ARG_AMOUNT: &str = "amount";
-const ARG_DELEGATION_RATE: &str = "delegation_rate";
+const ARG_COMMISSION_RATE: &str = "delegation_rate";
 const ARG_DELEGATE: &str = "delegate";
 const ARG_UNDELEGATE: &str = "undelegate";
 const ARG_RUN_AUCTION: &str = "run_auction";
@@ -50,12 +50,12 @@ fn add_bid() {
     let auction = system::get_auction();
     let public_key: PublicKey = runtime::get_named_arg(ARG_PUBLIC_KEY);
     let quantity: U512 = runtime::get_named_arg(ARG_AMOUNT);
-    let delegation_rate: DelegationRate = runtime::get_named_arg(ARG_DELEGATION_RATE);
+    let commission_rate: CommissionRate = runtime::get_named_arg(ARG_COMMISSION_RATE);
 
     let args = runtime_args! {
         ARG_PUBLIC_KEY => public_key,
         ARG_SOURCE_PURSE => account::get_main_purse(),
-        ARG_DELEGATION_RATE => delegation_rate,
+        ARG_COMMISSION_RATE => commission_rate,
         ARG_AMOUNT => quantity,
     };
 

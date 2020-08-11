@@ -20,8 +20,9 @@ use casperlabs_types::{
     self,
     account::AccountHash,
     auction::{
-        self, ActiveBids, DelegationRate, Delegators, EraValidators, FoundingValidators,
-        ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_VALIDATOR, FOUNDING_VALIDATORS_KEY,
+        ActiveBids, CommissionRate, DelegationsMap, EraValidators, FoundingValidators,
+        SeigniorageRecipients, ARG_AMOUNT, ARG_DELEGATION_RATE, 
+        FOUNDING_VALIDATORS_KEY,
     },
     bytesrepr::FromBytes,
     mint::{UnbondingPurses, DEFAULT_UNBONDING_DELAY},
@@ -41,9 +42,9 @@ lazy_static! {
 }
 
 const ADD_BID_AMOUNT_1: u64 = 95_000;
-const ADD_BID_DELEGATION_RATE_1: DelegationRate = 125;
+const ADD_BID_DELEGATION_RATE_1: CommissionRate = 125;
 const BID_AMOUNT_2: u64 = 5_000;
-const ADD_BID_DELEGATION_RATE_2: DelegationRate = 126;
+const ADD_BID_DELEGATION_RATE_2: CommissionRate = 126;
 const WITHDRAW_BID_AMOUNT_2: u64 = 15_000;
 
 const ARG_ADD_BID: &str = "add_bid";
@@ -287,10 +288,10 @@ fn should_run_delegate_and_undelegate() {
 
     builder.exec(exec_request_1).commit().expect_success();
 
-    let delegators: Delegators = get_value(&mut builder, auction_hash, "delegators");
-    assert_eq!(delegators.len(), 1);
+    let delegations_map: DelegationsMap = get_value(&mut builder, auction_hash, "delegations_map");
+    assert_eq!(delegations_map.len(), 1);
 
-    let delegated_amount_1 = delegators
+    let delegated_amount_1 = delegations_map
         .get(&NON_FOUNDER_VALIDATOR_1.clone().into())
         .and_then(|map| map.get(&BID_ACCOUNT_PK.clone().into()))
         .cloned()
@@ -299,7 +300,7 @@ fn should_run_delegate_and_undelegate() {
         delegated_amount_1,
         U512::from(DELEGATE_AMOUNT_1),
         "{:?}",
-        delegators
+        delegations_map
     );
 
     // 2nd bid top-up
@@ -318,10 +319,10 @@ fn should_run_delegate_and_undelegate() {
 
     builder.exec(exec_request_2).commit().expect_success();
 
-    let delegators: Delegators = get_value(&mut builder, auction_hash, "delegators");
-    assert_eq!(delegators.len(), 1);
+    let delegations_map: DelegationsMap = get_value(&mut builder, auction_hash, "delegations_map");
+    assert_eq!(delegations_map.len(), 1);
 
-    let delegated_amount_2 = delegators
+    let delegated_amount_2 = delegations_map
         .get(&casperlabs_types::PublicKey::from(*NON_FOUNDER_VALIDATOR_1))
         .and_then(|map| map.get(&BID_ACCOUNT_PK.clone().into()))
         .cloned()
@@ -330,7 +331,7 @@ fn should_run_delegate_and_undelegate() {
         delegated_amount_2,
         U512::from(DELEGATE_AMOUNT_1 + DELEGATE_AMOUNT_2),
         "{:?}",
-        delegators
+        delegations_map
     );
 
     let exec_request_3 = ExecuteRequestBuilder::standard(
@@ -350,10 +351,10 @@ fn should_run_delegate_and_undelegate() {
 
     assert_eq!(active_bids.len(), 1);
 
-    let delegators: Delegators = get_value(&mut builder, auction_hash, "delegators");
-    assert_eq!(delegators.len(), 1);
+    let delegations_map: DelegationsMap = get_value(&mut builder, auction_hash, "delegations_map");
+    assert_eq!(delegations_map.len(), 1);
 
-    let delegated_amount_3 = delegators
+    let delegated_amount_3 = delegations_map
         .get(&NON_FOUNDER_VALIDATOR_1.clone().into())
         .and_then(|map| map.get(&BID_ACCOUNT_PK.clone().into()))
         .cloned()
@@ -362,7 +363,7 @@ fn should_run_delegate_and_undelegate() {
         delegated_amount_3,
         U512::from(DELEGATE_AMOUNT_1 + DELEGATE_AMOUNT_2 - UNDELEGATE_AMOUNT_1),
         "{:?}",
-        delegators
+        delegations_map
     );
 }
 

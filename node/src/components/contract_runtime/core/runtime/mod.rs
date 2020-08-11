@@ -2096,6 +2096,18 @@ where
 
             auction::METHOD_READ_ERA_ID => {
                 let result = runtime.read_era_id().map_err(Self::reverter)?;
+            }
+            
+            auction::METHOD_DISTRIBUTE_TO_DELEGATORS => {
+                let account_hash =
+                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_ACCOUNT_HASH)?;
+                let source_purse =
+                    Self::get_named_argument(&runtime_args, auction::ARG_SOURCE_PURSE)?;
+
+                let result = self
+                    .distribute_to_delegators(account_hash, source_purse)
+                    .map_err(Self::reverter)?;
+
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
 

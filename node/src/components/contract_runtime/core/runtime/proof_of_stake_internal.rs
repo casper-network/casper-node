@@ -226,8 +226,8 @@ where
     }
     fn distribute_to_delegators(
         &mut self,
-        validator_account_hash: AccountHash,
-        amount: U512,
+        _validator_account_hash: AccountHash,
+        _source_purse: URef,
     ) -> Result<(), Error> {
         todo!()
     }

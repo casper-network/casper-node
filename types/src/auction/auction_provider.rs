@@ -14,6 +14,14 @@ use crate::{
     PublicKey, URef, U512,
 };
 
+<<<<<<< HEAD
+=======
+const AUCTION_SLOTS: usize = 5;
+
+/// Number of eras before an auction actually defines the set of validators.
+const AUCTION_DELAY: u64 = 3;
+
+>>>>>>> deb03af... Fixed warnings, added `distribute_to_delegators` to entry points
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0; 32]);
 
 /// Bonding auctions contract implementation.
@@ -347,7 +355,7 @@ where
         }
 
         // Update tally_map entry
-        let new_tally_amount = {
+        let _new_tally_amount = {
             let tally_amount = tally_map
                 .get_mut(&validator_account_hash)
                 .unwrap()

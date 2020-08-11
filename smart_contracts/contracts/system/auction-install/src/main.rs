@@ -10,12 +10,12 @@ use casperlabs_contract::{
 };
 use casperlabs_types::{
     auction::{
-        ActiveBids, Delegators, EraValidators, FoundingValidator, FoundingValidators,
+        ActiveBids, Delegations, Delegations, EraValidators, FoundingValidator, FoundingValidators,
         SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
         ValidatorWeights, AUCTION_DELAY, ERA_ID_KEY, INITIAL_ERA_ID,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    auction::{ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY},
+    auction::{ACTIVE_BIDS_KEY, DELEGATIONS_MAP_KEY, ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY},
     contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
     runtime_args,
     system_contract_errors::mint,

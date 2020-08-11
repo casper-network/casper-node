@@ -12,6 +12,7 @@ use casperlabs_types::{
         ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_PURSE, ARG_SOURCE_PURSE, ARG_VALIDATOR,
         ARG_VALIDATOR_KEYS, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_QUASH_BID, METHOD_READ_ERA_ID,
         METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS, METHOD_RUN_AUCTION,
+        METHOD_DISTRIBUTE_TO_DELEGATORS,
         METHOD_UNDELEGATE, METHOD_WITHDRAW_BID, {StorageProvider, SystemProvider},
     },
     auction::{CommissionRate, SeigniorageRecipients},
@@ -192,6 +193,18 @@ pub extern "C" fn read_era_id() {
     runtime::ret(cl_value);
 }
 
+pub extern "C" fn distribute_to_delegators() {
+    let validator_account_hash = runtime::get_named_arg(ARG_VALIDATOR_ACCOUNT_HASH);
+    let source_purse = runtime::get_named_arg(ARG_SOURCE_PURSE);
+
+    let result = AuctionContract
+        .distribute_to_delegators(validator_account_hash, source_purse)
+        .unwrap_or_revert();
+
+    let cl_value = CLValue::from_t(result).unwrap_or_revert();
+    runtime::ret(cl_value)
+}
+
 pub fn get_entry_points() -> EntryPoints {
     let mut entry_points = EntryPoints::new();
 
@@ -290,6 +303,18 @@ pub fn get_entry_points() -> EntryPoints {
     let entry_point = EntryPoint::new(
         METHOD_RUN_AUCTION,
         vec![],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_DISTRIBUTE_TO_DELEGATORS,
+        vec![
+            Parameter::new(ARG_VALIDATOR_ACCOUNT_HASH, AccountHash::cl_type()),
+            Parameter::new(ARG_SOURCE_PURSE, URef::cl_type()),
+        ],
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Contract,

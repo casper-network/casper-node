@@ -48,16 +48,26 @@ pub const METHOD_QUASH_BID: &str = "quash_bid";
 pub const METHOD_RUN_AUCTION: &str = "run_auction";
 /// Named constant for method `read_era_id`.
 pub const METHOD_READ_ERA_ID: &str = "read_era_id";
+/// Named constant for method `distribute_to_delegators`.
+pub const METHOD_DISTRIBUTE_TO_DELEGATORS: &str = "distribute_to_delegators";
 
 /// Storage for `FoundingValidators`.
 pub const FOUNDING_VALIDATORS_KEY: &str = "founding_validators";
 /// Storage for `ActiveBids`.
 pub const ACTIVE_BIDS_KEY: &str = "active_bids";
-/// Storage for `Delegators`.
-pub const DELEGATORS_KEY: &str = "delegators";
 /// Storage for `EraValidators`.
 pub const ERA_VALIDATORS_KEY: &str = "era_validators";
 /// Storage for `EraId`.
 pub const ERA_ID_KEY: &str = "era_id";
 /// Storage for `SeigniorageRecipientsSnapshot`.
 pub const SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY: &str = "seigniorage_recipients_snapshot";
+/// Storage for `DelegationsMap`.
+pub const DELEGATIONS_MAP_KEY: &str = "delegations_map";
+/// Storage for `TallyMap`.
+pub const TALLY_MAP_KEY: &str = "tally_map";
+/// Storage for `RewardPerStakeMap`.
+pub const REWARD_PER_STAKE_MAP_KEY: &str = "reward_per_stake_map";
+/// Storage for `TotalTelegatorStakeMap`.
+pub const TOTAL_DELEGATOR_STAKE_MAP_KEY: &str = "total_delegator_stake_map";
+/// Storage for `DelegatorRewardPoolMap`.
+pub const DELEGATOR_REWARD_POOL_MAP: &str = "delegator_reward_pool_map";

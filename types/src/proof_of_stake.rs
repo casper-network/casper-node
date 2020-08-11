@@ -22,7 +22,7 @@ pub use crate::proof_of_stake::{
     stakes_provider::StakesProvider,
 };
 
-use crate::auction::DELEGATION_RATE_DENOMINATOR;
+use crate::auction::COMMISSION_RATE_DENOMINATOR;
 
 /// Proof of stake functionality implementation.
 pub trait ProofOfStake:
@@ -94,6 +94,8 @@ pub trait ProofOfStake:
         internal::finalize_payment(self, amount_spent, account)
     }
 
+    /// Mint and distribute seigniorage rewards to validators and their delegators,
+    /// according to `reward_factors` returned by the consensus component.
     fn distribute(&mut self, reward_factors: BTreeMap<AccountHash, u64>) -> Result<()> {
         // let era_validators = self.read_winners();
         let seigniorage_recipients = self.read_seigniorage_recipients();
@@ -120,22 +122,22 @@ pub trait ProofOfStake:
 
             let total_delegated_amount: U512 =
                 seigniorage_recipient.delegations.values().cloned().sum();
-            // let validators_stake: U512 = total_stake - total_delegated_amount;
             // Compute delegators' part
             let mut delegators_part: U512 = reward * total_delegated_amount / total_stake;
             let commission: U512 = delegators_part * seigniorage_recipient.commission_rate
-                / DELEGATION_RATE_DENOMINATOR;
+                / COMMISSION_RATE_DENOMINATOR;
             delegators_part = delegators_part - commission;
 
             // Validator receives the rest
             let validators_part: U512 = reward - delegators_part;
             // Mint and transfer validator's part to the validator
             let tmp_purse = self.mint(validators_part);
-            let rewards_purse = internal::get_rewards_purse(self)?;
-            self.transfer_purse_to_purse(tmp_purse, rewards_purse, validators_part)
+            let reward_purse = internal::get_rewards_purse(self)?;
+            self.transfer_purse_to_purse(tmp_purse, reward_purse, validators_part)
                 .map_err(|_| Error::Transfer)?;
+            let delegator_reward_purse = self.mint(delegators_part);
             // Distribute delegators' part
-            self.distribute_to_delegators(account_hash, delegators_part)?;
+            self.distribute_to_delegators(account_hash, delegator_reward_purse)?;
         }
         Ok(())
     }
