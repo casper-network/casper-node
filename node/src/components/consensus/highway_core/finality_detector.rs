@@ -408,6 +408,8 @@ fn round_participation<'a, C: Context>(
 #[allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
 #[cfg(test)]
 mod tests {
+    use std::mem;
+
     use super::{
         super::state::{tests::*, State, BLOCK_REWARD, REWARD_DELAY},
         *,
@@ -548,7 +550,7 @@ mod tests {
         add_vote(48, 3u8, Some(2))?; // Proposal
         let w48 = add_vote(53, 3u8, None)?; // Witness
 
-        let _ = add_vote; // Drop add_vote, so state is not borrowed anymore.
+        mem::drop(add_vote); // Drop add_vote, so state is not borrowed anymore.
 
         let rp = |time: u64| round_participation(&state, &obs, Timestamp::from(time));
         assert_eq!(RoundParticipation::Yes(&w0), rp(0));
@@ -653,7 +655,7 @@ mod tests {
         pan[CAROL] = Observation::Faulty;
         let pay16f = add_vote(payday16_lead, pan, payday16, 3u8, Some(0x16))?;
 
-        let _ = add_vote; // Drop add_vote, so state is not borrowed anymore.
+        mem::drop(add_vote); // Drop add_vote, so state is not borrowed anymore.
 
         // Round 0: Alice and Bob have quorum 9, Carol 6.
         let expected0 = ValidatorMap::from(vec![
