@@ -10,14 +10,14 @@ use super::{
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std::iter::FromIterator;
+use std::iter::{self, FromIterator};
 use tracing::{error, info, trace, warn};
 
 use crate::{
     components::consensus::{
         tests::{
             consensus_des_testing::{
-                DeliverySchedule, FaultType, Message, Target, TargetedMessage, Validator,
+                Adversary, DeliverySchedule, Message, Target, TargetedMessage, Validator,
                 ValidatorId, VirtualNet,
             },
             queue::{MessageT, QueueEntry},
@@ -209,13 +209,53 @@ trait DeliveryStrategy {
     ) -> DeliverySchedule;
 }
 
-type HighwayValidator = Validator<ConsensusValue, HighwayMessage, HighwayConsensus>;
+#[derive(Debug)]
+enum HighwayAdversary {
+    Mute,
+    Equivocator,
+}
+
+impl Adversary<HighwayConsensus, HighwayMessage> for HighwayAdversary {
+    fn pre_hook<R: Rng>(
+        &self,
+        rng: &mut R,
+        consensus: &mut HighwayConsensus,
+        msg: &HighwayMessage,
+    ) {
+    }
+
+    fn post_hook<'a, R: Rng>(
+        &self,
+        rng: &mut R,
+        consensus: &mut HighwayConsensus,
+        msg: HighwayMessage,
+    ) -> Option<HighwayMessage> {
+        match self {
+            HighwayAdversary::Mute => {
+                // If validator is `FaultType::Mute` it shouldn't send a `NewVertex` in response.
+                // Other effects – like `Timer` or `RequestBlock` should still be returned and scheduled.
+                if msg.is_new_vertex() {
+                    warn!("Validator is mute. {:?} won't be gossiped.", msg);
+                    None
+                } else {
+                    Some(msg)
+                }
+            }
+            _ => unimplemented!(""),
+        }
+    }
+}
+
+type HighwayValidator =
+    Validator<ConsensusValue, HighwayMessage, HighwayConsensus, HighwayAdversary>;
+
+type HighwayNet = VirtualNet<ConsensusValue, HighwayConsensus, HighwayMessage, HighwayAdversary>;
 
 struct HighwayTestHarness<DS>
 where
     DS: DeliveryStrategy,
 {
-    virtual_net: VirtualNet<ConsensusValue, HighwayConsensus, HighwayMessage>,
+    virtual_net: HighwayNet,
     /// The instant the network was created.
     start_time: Timestamp,
     /// Consensus values to be proposed.
@@ -240,7 +280,7 @@ where
     DS: DeliveryStrategy,
 {
     fn new<T: Into<Timestamp>>(
-        virtual_net: VirtualNet<ConsensusValue, HighwayConsensus, HighwayMessage>,
+        virtual_net: VirtualNet<ConsensusValue, HighwayConsensus, HighwayMessage, HighwayAdversary>,
         start_time: T,
         consensus_values: VecDeque<ConsensusValue>,
         delivery_time_distribution: Distribution,
@@ -262,7 +302,7 @@ where
     /// Pops one message from the message queue (if there are any)
     /// and pass it to the recipient validator for execution.
     /// Messages returned from the execution are scheduled for later delivery.
-    pub(crate) fn crank<R: Rng>(&mut self, rand: &mut R) -> TestResult<()> {
+    pub(crate) fn crank<R: Rng>(&mut self, rng: &mut R) -> TestResult<()> {
         let QueueEntry {
             delivery_time,
             recipient,
@@ -281,13 +321,13 @@ where
             message.payload(),
         );
 
-        let messages = self.process_message(recipient, message)?;
+        let messages = self.process_message(rng, recipient, message)?;
 
         let targeted_messages = messages
             .into_iter()
             .filter_map(|hwm| {
                 let delivery = self.delivery_time_strategy.gen_delay(
-                    rand,
+                    rng,
                     &hwm,
                     &self.delivery_time_distribution,
                     delivery_time,
@@ -322,8 +362,9 @@ where
             .ok_or_else(|| TestRunError::MissingValidator(*validator_id))
     }
 
-    fn call_validator<F>(
+    fn call_validator<F, R: Rng>(
         &mut self,
+        rng: &mut R,
         validator_id: &ValidatorId,
         f: F,
     ) -> TestResult<Vec<HighwayMessage>>
@@ -332,42 +373,38 @@ where
     {
         let validator = self.validator_mut(validator_id)?;
         let res = f(validator.consensus.highway_mut());
-        let mut effects = vec![];
-        for e in res.into_iter() {
+        // drop(validator);
+        let messages = res.into_iter().flat_map(|eff| {
             // If validator produced a `NewVertex` effect,
             // we want to add it to his state immediately.
-            if let Effect::NewVertex(vv) = &e {
-                effects.extend(
-                    validator
-                        .consensus
-                        .highway_mut()
-                        .add_valid_vertex(vv.clone()),
-                );
-            }
+            let add_vertex_effects = if let Effect::NewVertex(vv) = &eff {
+                validator
+                    .consensus
+                    .highway_mut()
+                    .add_valid_vertex(vv.clone())
+            } else {
+                vec![]
+            };
 
-            match validator.fault() {
-                None => effects.push(e),
-                Some(FaultType::Mute) => {
-                    // If validator is `FaultType::Mute` it shouldn't send a `NewVertex` in response.
-                    // Other effects – like `Timer` or `RequestBlock` should still be returned and scheduled.
-                    match e {
-                        Effect::NewVertex(ValidVertex(v)) => {
-                            warn!("{:} is mute. {:?} won't be gossiped.", validator.id, v)
-                        }
-                        Effect::ScheduleTimer(_) | Effect::RequestNewBlock(_) => effects.push(e),
-                    }
-                }
-                Some(e) => unimplemented!("{:?} is not handled.", e),
-            }
-        }
-        Ok(effects.into_iter().map(HighwayMessage::from).collect())
+            add_vertex_effects
+                .into_iter()
+                .map(HighwayMessage::from)
+                .chain(iter::once(HighwayMessage::from(eff)))
+        });
+
+        Ok(messages
+            .collect::<Vec<_>>()
+            .into_iter()
+            .filter_map(|hwm| validator.post_hook(rng, hwm))
+            .collect())
     }
 
     /// Processes a message sent to `validator_id`.
     /// Returns a vector of messages produced by the `validator` in reaction to processing a
     /// message.
-    fn process_message(
+    fn process_message<R: Rng>(
         &mut self,
+        rng: &mut R,
         validator_id: ValidatorId,
         message: Message<HighwayMessage>,
     ) -> TestResult<Vec<HighwayMessage>> {
@@ -377,13 +414,18 @@ where
         let messages = {
             let sender_id = message.sender;
 
+            let v = self.validator_mut(&validator_id)?;
+            v.pre_hook(rng, message.payload());
+
             let hwm = message.payload().clone();
+
             match hwm {
-                Timer(timestamp) => self
-                    .call_validator(&validator_id, |consensus| consensus.handle_timer(timestamp))?,
+                Timer(timestamp) => self.call_validator(rng, &validator_id, |consensus| {
+                    consensus.handle_timer(timestamp)
+                })?,
 
                 NewVertex(v) => {
-                    match self.add_vertex(validator_id, sender_id, v.clone())? {
+                    match self.add_vertex(rng, validator_id, sender_id, v.clone())? {
                         Ok(msgs) => {
                             trace!("{:?} successfuly added to the state.", v);
                             msgs
@@ -397,7 +439,7 @@ where
                 RequestBlock(block_context) => {
                     let consensus_value = self.next_consensus_value();
 
-                    self.call_validator(&validator_id, |consensus| {
+                    self.call_validator(rng, &validator_id, |consensus| {
                         consensus.propose(consensus_value, block_context)
                     })?
                 }
@@ -448,8 +490,9 @@ where
     // Synchronizes its state if necessary.
     // From the POV of the test system, synchronization is immediate.
     #[allow(clippy::type_complexity)]
-    fn add_vertex(
+    fn add_vertex<R: Rng>(
         &mut self,
+        rng: &mut R,
         recipient: ValidatorId,
         sender: ValidatorId,
         vertex: Vertex<TestContext>,
@@ -464,7 +507,7 @@ where
 
             match validator.consensus.highway.pre_validate_vertex(vertex) {
                 Err((v, error)) => Ok(Err((v, error))),
-                Ok(pvv) => self.synchronize_validator(recipient, sender, pvv),
+                Ok(pvv) => self.synchronize_validator(rng, recipient, sender, pvv),
             }
         }?;
 
@@ -479,7 +522,7 @@ where
                         .validate_vertex(prevalidated_vertex)
                     {
                         Err((pvv, error)) => return Ok(Err((pvv.into_vertex(), error))),
-                        Ok(valid_vertex) => self.call_validator(&recipient, |highway| {
+                        Ok(valid_vertex) => self.call_validator(rng, &recipient, |highway| {
                             highway.add_valid_vertex(valid_vertex)
                         })?,
                     }
@@ -494,8 +537,9 @@ where
     /// If an error occurs during synchronization of one of `pvv`'s dependencies
     /// it's returned and the original vertex mustn't be added to the state.
     #[allow(clippy::type_complexity)]
-    fn synchronize_validator(
+    fn synchronize_validator<R: Rng>(
         &mut self,
+        rng: &mut R,
         recipient: ValidatorId,
         sender: ValidatorId,
         pvv: PreValidatedVertex<TestContext>,
@@ -509,7 +553,7 @@ where
 
             match validator.consensus.highway.missing_dependency(&pvv) {
                 None => return Ok(Ok(pvv)),
-                Some(d) => match self.synchronize_dependency(d, recipient, sender)? {
+                Some(d) => match self.synchronize_dependency(rng, d, recipient, sender)? {
                     Ok(()) => continue,
                     Err(vertex_error) => {
                         // An error occurred when trying to synchronize a missing dependency.
@@ -527,8 +571,9 @@ where
     // We don't want to test synchronization, and the Highway theory assumes
     // that when votes are added then all their dependencies are satisfied.
     #[allow(clippy::type_complexity)]
-    fn synchronize_dependency(
+    fn synchronize_dependency<R: Rng>(
         &mut self,
+        rng: &mut R,
         missing_dependency: Dependency<TestContext>,
         recipient: ValidatorId,
         sender: ValidatorId,
@@ -541,7 +586,7 @@ where
             .map(|vv| vv.0)
             .ok_or_else(|| TestRunError::SenderMissingDependency(sender, missing_dependency))?;
 
-        match self.add_vertex(recipient, sender, vertex)? {
+        match self.add_vertex(rng, recipient, sender, vertex)? {
             Ok(messages) => {
                 if !messages.is_empty() {
                     error!("Syncing produced effects. There should be no effects produced while syncing.");
@@ -775,10 +820,12 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                 // At least 2 validators total and at least one faulty.
                 let faulty_num = rng.gen_range(1, self.max_faulty_validators + 1);
 
+                // Randomly (but within chosed range) assign weights to faulty nodes.
                 let faulty_weights = self
                     .weight_distribution
                     .gen_range_vec(rng, lower, upper, faulty_num);
 
+                // Assign enough weights to honest nodes so that we reach expected `faulty_percantage` ratio.
                 let honest_weights = {
                     let faulty_sum = faulty_weights.iter().sum::<u64>();
                     let mut weights_to_distribute: u64 =
@@ -866,7 +913,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
             for validator in validators.iter() {
                 let vid = *validator.id();
                 let fault = if (vid.0 < faulty_num as u64) {
-                    Some(FaultType::Mute)
+                    Some(HighwayAdversary::Mute)
                 } else {
                     None
                 };
