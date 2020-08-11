@@ -573,8 +573,6 @@ mod tests {
         assert_eq!(BOB, state.leader(Timestamp::from(0)));
         assert_eq!(BOB, state.leader(Timestamp::from(8)));
         assert_eq!(ALICE, state.leader(Timestamp::from(16)));
-        assert_eq!(CAROL, state.leader(Timestamp::from(24)));
-        assert_eq!(ALICE, state.leader(Timestamp::from(32)));
 
         // Payouts for a block happen at the first occasion after `REWARD_DELAY` times the block's
         // round length.
