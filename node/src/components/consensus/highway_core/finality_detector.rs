@@ -369,6 +369,7 @@ fn compute_rewards_for<C: Context>(
 }
 
 /// Information about how a validator participated in a particular round.
+#[derive(Debug, PartialEq)]
 enum RoundParticipation<'a, C: Context> {
     /// The validator was not assigned: The round ID was not the beginning of one of their rounds.
     Unassigned,
@@ -412,6 +413,7 @@ mod tests {
         super::state::{tests::*, State},
         *,
     };
+    use crate::components::consensus::highway_core::vertex::{SignedWireVote, WireVote};
 
     #[test]
     fn finality_detector() -> Result<(), AddVoteError<TestContext>> {
@@ -505,6 +507,56 @@ mod tests {
         add_vote!(bstate, _a1, ALICE, ALICE_SEC, 1; a0, b0, F);
         assert_eq!(vec![CAROL], bstate.get_new_equivocators(&a0));
         assert_eq!(Some(&a0), fde4.next_finalized(&bstate, 1.into()));
+        Ok(())
+    }
+
+    #[test]
+    fn round_participation_test() -> Result<(), AddVoteError<TestContext>> {
+        let mut state = State::new_test(&[Weight(5)], 0);
+        let mut obs = Observation::None;
+        let (w0, w16, w48);
+        {
+            let mut seq_number = 0;
+            let mut add_vote = |time: u64, round_exp: u8, value: Option<u32>| {
+                let wvote = WireVote::<TestContext> {
+                    panorama: Panorama::from(vec![obs.clone()]),
+                    creator: ALICE,
+                    value,
+                    seq_number,
+                    timestamp: Timestamp::from(time),
+                    round_exp,
+                };
+                seq_number += 1;
+                let swvote = SignedWireVote::new(wvote, &ALICE_SEC);
+                let hash = swvote.hash();
+                obs = Observation::Correct(hash);
+                state.add_vote(swvote)?;
+                Ok(hash)
+            };
+
+            // Round ID 0, length 16: Alice participates.
+            add_vote(0, 4, Some(1))?; // Proposal
+            w0 = add_vote(10, 4, None)?; // Witness
+
+            // Round ID 16, length 16: Alice partially participates.
+            w16 = add_vote(26, 4, None)?; // Witness
+
+            // Round ID 32, length 16: Alice doesn't participate.
+
+            // Round ID 48, length 8: Alice participates.
+            add_vote(48, 3, Some(2))?; // Proposal
+            w48 = add_vote(53, 3, None)?; // Witness
+        }
+
+        let rp = |time: u64| round_participation(&state, &obs, Timestamp::from(time));
+        assert_eq!(RoundParticipation::Yes(&w0), rp(0));
+        assert_eq!(RoundParticipation::Unassigned, rp(8));
+        assert_eq!(RoundParticipation::Yes(&w16), rp(16));
+        assert_eq!(RoundParticipation::No, rp(32));
+        assert_eq!(RoundParticipation::Unassigned, rp(40));
+        assert_eq!(RoundParticipation::Yes(&w48), rp(48));
+        assert_eq!(RoundParticipation::Unassigned, rp(52));
+        assert_eq!(RoundParticipation::No, rp(56));
         Ok(())
     }
 }
