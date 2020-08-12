@@ -30,8 +30,11 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
 };
-pub use chainspec::{Chainspec, DeployConfig, GenesisAccount, HighwayConfig};
-
+pub(crate) use chainspec::{DeployConfig, HighwayConfig};
+// False positive.
+#[allow(unreachable_pub)]
+pub use chainspec::{Chainspec, GenesisAccount};
+// False positive.
 #[allow(unreachable_pub)]
 pub use error::Error;
 

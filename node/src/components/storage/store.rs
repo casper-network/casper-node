@@ -27,8 +27,6 @@ pub trait Store: Send + Sync {
 mod tests {
     use smallvec::smallvec;
 
-    use rand::Rng;
-
     use super::{
         super::{Config, InMemStore, LmdbStore},
         *,
@@ -38,7 +36,7 @@ mod tests {
     fn should_put_then_get<T: Store<Value = Deploy>>(store: &mut T) {
         let mut rng = TestRng::new();
 
-        let deploy: Deploy = rng.gen();
+        let deploy = Deploy::random(&mut rng);
         let deploy_hash = *deploy.id();
 
         store.put(deploy.clone()).unwrap();

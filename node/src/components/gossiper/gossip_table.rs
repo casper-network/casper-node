@@ -405,7 +405,7 @@ mod tests {
     const EXPECTED_DEFAULT_INFECTION_TARGET: usize = 3;
     const EXPECTED_DEFAULT_HOLDERS_LIMIT: usize = 15;
 
-    fn random_node_ids<R: Rng + ?Sized>(rng: &mut R) -> Vec<NodeId> {
+    fn random_node_ids(rng: &mut TestRng) -> Vec<NodeId> {
         iter::repeat_with(|| rng.gen::<NodeId>())
             .take(EXPECTED_DEFAULT_HOLDERS_LIMIT + 3)
             .collect()

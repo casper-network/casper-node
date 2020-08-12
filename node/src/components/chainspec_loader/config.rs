@@ -31,12 +31,12 @@ const DEFAULT_UPGRADE_INSTALLER_PATH: &str = "upgrade_install.wasm";
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
-pub(crate) struct DeployConfig {
-    pub(crate) max_payment_cost: String,
-    pub(crate) max_ttl_millis: TimeDiff,
-    pub(crate) max_dependencies: u8,
-    pub(crate) max_block_size: u32,
-    pub(crate) block_gas_limit: u64,
+pub struct DeployConfig {
+    max_payment_cost: String,
+    max_ttl_millis: TimeDiff,
+    max_dependencies: u8,
+    max_block_size: u32,
+    block_gas_limit: u64,
 }
 
 impl Default for DeployConfig {
@@ -134,12 +134,12 @@ impl From<chainspec::HighwayConfig> for HighwayConfig {
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct UpgradePoint {
-    pub(crate) protocol_version: Version,
-    pub(crate) upgrade_installer_path: Option<External<Vec<u8>>>,
-    pub(crate) activation_point: chainspec::ActivationPoint,
-    pub(crate) new_costs: Option<WasmCosts>,
-    pub(crate) new_deploy_config: Option<DeployConfig>,
+struct UpgradePoint {
+    protocol_version: Version,
+    upgrade_installer_path: Option<External<Vec<u8>>>,
+    activation_point: chainspec::ActivationPoint,
+    new_costs: Option<WasmCosts>,
+    new_deploy_config: Option<DeployConfig>,
 }
 
 impl From<&chainspec::UpgradePoint> for UpgradePoint {
@@ -151,6 +151,34 @@ impl From<&chainspec::UpgradePoint> for UpgradePoint {
             new_costs: upgrade_point.new_costs,
             new_deploy_config: upgrade_point.new_deploy_config.map(DeployConfig::from),
         }
+    }
+}
+
+impl UpgradePoint {
+    fn try_into_chainspec_upgrade_point<P: AsRef<Path>>(
+        self,
+        root: P,
+    ) -> Result<chainspec::UpgradePoint, Error> {
+        let upgrade_installer_bytes = self
+            .upgrade_installer_path
+            .map(|ext_vec| ext_vec.load_relative(root.as_ref()))
+            .transpose()
+            .map_err(Error::LoadUpgradeInstaller)?;
+        // TODO - read this in?
+        let upgrade_installer_args = None;
+
+        let new_deploy_config = self
+            .new_deploy_config
+            .map(DeployConfig::try_into)
+            .transpose()?;
+        Ok(chainspec::UpgradePoint {
+            activation_point: self.activation_point,
+            protocol_version: self.protocol_version,
+            upgrade_installer_bytes,
+            upgrade_installer_args,
+            new_costs: self.new_costs,
+            new_deploy_config,
+        })
     }
 }
 
@@ -287,10 +315,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
 
     let mut upgrades = vec![];
     for upgrade_point in chainspec.upgrade.unwrap_or_default().into_iter() {
-        upgrades.push(chainspec::UpgradePoint::try_from_config(
-            root,
-            upgrade_point,
-        )?);
+        upgrades.push(upgrade_point.try_into_chainspec_upgrade_point(root)?);
     }
 
     Ok(chainspec::Chainspec { genesis, upgrades })

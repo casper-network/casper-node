@@ -4,7 +4,7 @@
 //! for details.
 
 use std::{
-    fmt,
+    fmt::{Debug, Display},
     path::{Path, PathBuf},
 };
 
@@ -76,7 +76,8 @@ where
             External::Path(path) => T::from_file(&path).map_err(move |error| LoadError::Failed {
                 error,
                 // We canonicalize `path` here, with `ReadFileError` we get extra information about
-                // the absolute path this way if the latter is relative. It will still be relative /// if the current path does not exist.
+                // the absolute path this way if the latter is relative. It will still be relative
+                // if the current path does not exist.
                 path: path.canonicalize().unwrap_or(path),
             }),
             External::Loaded(value) => Ok(value),
@@ -112,7 +113,7 @@ where
 /// A value that can be loaded from a file.
 pub trait Loadable: Sized {
     /// Error that can occur when attempting to load.
-    type Error: fmt::Debug + fmt::Display;
+    type Error: Debug + Display;
 
     /// Loads a value from the given input path.
     fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error>;
@@ -139,7 +140,7 @@ fn display_res_path<E>(result: &Result<PathBuf, E>) -> String {
 
 /// Error loading external value.
 #[derive(Debug, Error)]
-pub enum LoadError<E: fmt::Debug + fmt::Display> {
+pub enum LoadError<E: Debug + Display> {
     /// Failed to load from path.
     #[error("could not load from {}: {error}", display_res_path(&.path.canonicalize()))]
     Failed {
@@ -172,6 +173,7 @@ impl Loadable for PKey<Private> {
 
 impl Loadable for SecretKey {
     type Error = crypto::Error;
+
     fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
         SecretKey::from_file(path)
     }

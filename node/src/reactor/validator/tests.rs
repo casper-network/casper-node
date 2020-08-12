@@ -37,10 +37,10 @@ type Nodes = crate::testing::network::Nodes<validator::Reactor>;
 impl TestChain {
     /// Instances a new test chain configuration.
     ///
-    /// Generates private keys for `size` validators and creates a matching chainspec.
-    fn new<R: Rng + ?Sized>(rng: &mut R, size: usize) -> Self {
+    /// Generates secret keys for `size` validators and creates a matching chainspec.
+    fn new(rng: &mut TestRng, size: usize) -> Self {
         // Create a secret key for each validator.
-        let keys: Vec<SecretKey> = (0..size).map(|_| rng.gen()).collect();
+        let keys: Vec<SecretKey> = (0..size).map(|_| SecretKey::random(rng)).collect();
 
         // Load the `local` chainspec.
         let mut chainspec = Chainspec::bundled("local/chainspec.toml");

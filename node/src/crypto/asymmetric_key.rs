@@ -10,11 +10,14 @@ use std::{
 use ed25519_dalek::{self as ed25519, ExpandedSecretKey};
 use hex_fmt::HexFmt;
 use pem::Pem;
-use rand::{distributions::Standard, prelude::Distribution, CryptoRng, Rng};
+#[cfg(test)]
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use signature::Signature as Sig;
 
 use super::{Error, Result};
+#[cfg(test)]
+use crate::testing::TestRng;
 use crate::{
     crypto::hash::hash,
     utils::{read_file, read_file_to_string, write_file},
@@ -52,6 +55,14 @@ impl SecretKey {
         )?))
     }
 
+    /// Constructs a new Ed25519 variant using the operating system's cryptographically secure
+    /// random number generator.
+    pub fn generate_ed25519() -> Self {
+        let mut bytes = [0u8; Self::ED25519_LENGTH];
+        getrandom::getrandom(&mut bytes[..]).expect("RNG failure!");
+        SecretKey::new_ed25519(bytes)
+    }
+
     /// Exposes the secret values of the key as a byte slice.
     pub fn as_secret_slice(&self) -> &[u8] {
         match self {
@@ -59,15 +70,7 @@ impl SecretKey {
         }
     }
 
-    #[cfg(test)]
-    /// Duplicates a secret key.
-    ///
-    /// Only available for testing and named other than `clone` to prevent accidental use.
-    pub fn duplicate(&self) -> Self {
-        Self::ed25519_from_bytes(self.as_secret_slice()).expect("could not copy secret key")
-    }
-
-    /// Attempt to write the secret key bytes to the configured file path.
+    /// Attempts to write the secret key bytes to the configured file path.
     pub fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<()> {
         let pem = Pem {
             tag: PEM_SECRET_KEY_TAG.to_string(),
@@ -77,7 +80,7 @@ impl SecretKey {
         write_file(file, pem::encode(&pem)).map_err(Error::SecretKeySave)
     }
 
-    /// Attempt to read the secret key bytes from configured file path.
+    /// Attempts to read the secret key bytes from configured file path.
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self> {
         let pem = pem::parse(read_file(file).map_err(Error::SecretKeyLoad)?)?;
 
@@ -90,11 +93,19 @@ impl SecretKey {
 
         Self::ed25519_from_bytes(pem.contents)
     }
-}
 
-impl Distribution<SecretKey> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SecretKey {
-        let mut bytes = [0u8; SecretKey::ED25519_LENGTH];
+    /// Duplicates a secret key.
+    ///
+    /// Only available for testing and named other than `clone` to prevent accidental use.
+    #[cfg(test)]
+    pub fn duplicate(&self) -> Self {
+        Self::ed25519_from_bytes(self.as_secret_slice()).expect("could not copy secret key")
+    }
+
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let mut bytes = [0u8; Self::ED25519_LENGTH];
         rng.fill_bytes(&mut bytes[..]);
         SecretKey::new_ed25519(bytes)
     }
@@ -168,7 +179,7 @@ impl PublicKey {
         AccountHash::new(digest.to_bytes())
     }
 
-    /// Attempt to write the public key bytes to the configured file path.
+    /// Attempts to write the public key bytes to the configured file path.
     pub fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<()> {
         let pem = Pem {
             tag: PEM_PUBLIC_KEY_TAG.to_string(),
@@ -178,7 +189,7 @@ impl PublicKey {
         write_file(file, pem::encode(&pem)).map_err(Error::PublicKeySave)
     }
 
-    /// Attempt to read the public key bytes from configured file path.
+    /// Attempts to read the public key bytes from configured file path.
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self> {
         let path = file.as_ref();
         let payload = read_file_to_string(path).map_err(Error::PublicKeyLoad)?;
@@ -193,6 +204,13 @@ impl PublicKey {
         Self::ed25519_from_bytes(pem.contents)
     }
 
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let secret_key = SecretKey::random(rng);
+        PublicKey::from(&secret_key)
+    }
+
     fn tag(&self) -> u8 {
         match self {
             PublicKey::Ed25519(_) => ED25519_TAG,
@@ -203,13 +221,6 @@ impl PublicKey {
         match self {
             PublicKey::Ed25519(_) => ED25519,
         }
-    }
-}
-
-#[cfg(test)]
-impl Distribution<PublicKey> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PublicKey {
-        PublicKey::from(&rng.gen())
     }
 }
 
@@ -279,11 +290,10 @@ impl From<&SecretKey> for PublicKey {
     }
 }
 
-/// Generates an Ed25519 keypair.
-///
-/// Must be supplied with a cryptographically secure random number generator, such as `OsRng`.
-pub fn generate_ed25519_keypair<R: Rng + CryptoRng>(csrng: &mut R) -> (SecretKey, PublicKey) {
-    let secret_key: SecretKey = csrng.gen();
+/// Generates an Ed25519 keypair using the operating system's cryptographically secure random number
+/// generator.
+pub fn generate_ed25519_keypair() -> (SecretKey, PublicKey) {
+    let secret_key = SecretKey::generate_ed25519();
     let public_key = PublicKey::from(&secret_key);
     (secret_key, public_key)
 }
@@ -432,8 +442,6 @@ pub fn verify<T: AsRef<[u8]>>(
 
 #[cfg(test)]
 mod tests {
-    use rand::rngs::OsRng;
-
     use super::*;
 
     mod ed25519 {
@@ -533,10 +541,10 @@ mod tests {
 
         #[test]
         fn sign_and_verify() {
-            let secret_key = OsRng.gen();
+            let secret_key = SecretKey::generate_ed25519();
 
             let public_key = PublicKey::from(&secret_key);
-            let other_public_key = PublicKey::from(&OsRng.gen());
+            let other_public_key = PublicKey::from(&SecretKey::generate_ed25519());
 
             let message = b"message";
             let signature = sign(message, &secret_key, &public_key);
