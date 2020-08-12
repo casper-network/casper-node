@@ -1,8 +1,7 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use super::{types::DelegationRate, DelegatedAmounts};
+use super::{types::DelegationRate, DelegatedAmounts, PublicKey};
 use crate::{
-    account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
     CLType, CLTyped, U512,
 };
@@ -58,7 +57,7 @@ impl FromBytes for SeigniorageRecipient {
 }
 
 /// Collection of seigniorage recipients.
-pub type SeigniorageRecipients = BTreeMap<AccountHash, SeigniorageRecipient>;
+pub type SeigniorageRecipients = BTreeMap<PublicKey, SeigniorageRecipient>;
 
 #[cfg(test)]
 mod tests {
@@ -66,7 +65,10 @@ mod tests {
     use core::iter::FromIterator;
 
     use super::SeigniorageRecipient;
-    use crate::{account::AccountHash, auction::DelegationRate, bytesrepr, U512};
+    use crate::{
+        auction::{DelegationRate, PublicKey},
+        bytesrepr, U512,
+    };
 
     #[test]
     fn serialization_roundtrip() {
@@ -74,9 +76,9 @@ mod tests {
             stake: U512::max_value(),
             delegation_rate: DelegationRate::max_value(),
             delegators: BTreeMap::from_iter(vec![
-                (AccountHash::new([42; 32]), U512::one()),
-                (AccountHash::new([43; 32]), U512::max_value()),
-                (AccountHash::new([44; 32]), U512::zero()),
+                (PublicKey::Ed25519([42; 32]), U512::one()),
+                (PublicKey::Ed25519([43; 32]), U512::max_value()),
+                (PublicKey::Ed25519([44; 32]), U512::zero()),
             ]),
         };
         bytesrepr::test_serialization_roundtrip(&seigniorage_recipient);

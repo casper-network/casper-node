@@ -8,6 +8,7 @@ use casperlabs_node::{
     components::contract_runtime::core::engine_state::{
         execution_result::ExecutionResult, genesis::POS_REWARDS_PURSE, CONV_RATE,
     },
+    crypto::asymmetric_key::{PublicKey, SecretKey},
     types::Motes,
     GenesisAccount,
 };
@@ -54,11 +55,12 @@ fn get_cost(response: &[Rc<ExecutionResult>]) -> U512 {
 #[should_panic]
 fn should_not_be_able_to_unbond_reward() {
     let mut builder = InMemoryWasmTestBuilder::default();
-
+    let secret_key = SecretKey::new_ed25519([42; 32]);
+    let public_key = PublicKey::from(&secret_key);
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account = GenesisAccount::new(
-            AccountHash::new([42; 32]),
+        let account = GenesisAccount::with_public_key(
+            public_key,
             Motes::new(GENESIS_VALIDATOR_STAKE.into()) * Motes::new(2.into()),
             Motes::new(GENESIS_VALIDATOR_STAKE.into()),
         );
@@ -71,7 +73,7 @@ fn should_not_be_able_to_unbond_reward() {
 
     // First request to put some funds in the reward purse
     let exec_request_0 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_DO_NOTHING,
         RuntimeArgs::default(),
     )
@@ -80,7 +82,7 @@ fn should_not_be_able_to_unbond_reward() {
     builder.exec(exec_request_0).expect_success().commit();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER,
         runtime_args! { ARG_TARGET => ACCOUNT_ADDR_1, ARG_AMOUNT => U512::from(100) },
     )
@@ -90,7 +92,7 @@ fn should_not_be_able_to_unbond_reward() {
 
     let rewards_purse = get_pos_purse_by_name(&builder, POS_REWARDS_PURSE).unwrap();
     let default_account_purse = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account")
         .main_purse();
 
@@ -101,7 +103,7 @@ fn should_not_be_able_to_unbond_reward() {
     // try to bond using the funds from the rewards purse (should be illegal)
 
     let exec_request_2 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_EE_803_REGRESSION,
         runtime_args! {
             ARG_ENTRY_POINT_NAME => COMMAND_BOND,
@@ -123,7 +125,7 @@ fn should_not_be_able_to_unbond_reward() {
     // user's account
 
     let exec_request_3 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_EE_803_REGRESSION,
         runtime_args! { ARG_ENTRY_POINT_NAME => COMMAND_UNBOND },
     )

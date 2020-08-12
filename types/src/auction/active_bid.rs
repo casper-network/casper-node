@@ -1,8 +1,7 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use super::types::DelegationRate;
+use super::{types::DelegationRate, PublicKey};
 use crate::{
-    account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
     CLType, CLTyped, URef, U512,
 };
@@ -60,7 +59,7 @@ impl FromBytes for ActiveBid {
 /// rates. There is no distinction in behavior between the bid of an active
 /// validator and a prospective validator - reducing the bid results in the
 /// tokens being transferred to an unbonding purse either way.
-pub type ActiveBids = BTreeMap<AccountHash, ActiveBid>;
+pub type ActiveBids = BTreeMap<PublicKey, ActiveBid>;
 
 #[cfg(test)]
 mod tests {

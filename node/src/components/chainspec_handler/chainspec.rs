@@ -18,11 +18,12 @@ use rand::{
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use casperlabs_types::{account::AccountHash, U512};
+use casperlabs_types::U512;
 
 use super::{config, Error};
 use crate::{
-    components::contract_runtime::shared::wasm_costs::WasmCosts, crypto::asymmetric_key::PublicKey,
+    components::contract_runtime::shared::wasm_costs::WasmCosts,
+    crypto::asymmetric_key::{PublicKey, SecretKey},
     types::Motes,
 };
 #[cfg(test)]
@@ -31,42 +32,24 @@ use crate::{testing::TestRng, types::Timestamp};
 /// An account that exists at genesis.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct GenesisAccount {
-    account_hash: AccountHash,
-    public_key: Option<PublicKey>,
+    public_key: PublicKey,
     balance: Motes,
     bonded_amount: Motes,
 }
 
 impl GenesisAccount {
-    /// Constructs a new `GenesisAccount` with no public key.
-    pub fn new(account_hash: AccountHash, balance: Motes, bonded_amount: Motes) -> Self {
-        GenesisAccount {
-            public_key: None,
-            account_hash,
-            balance,
-            bonded_amount,
-        }
-    }
-
     /// Constructs a new `GenesisAccount` with a given public key.
     pub fn with_public_key(public_key: PublicKey, balance: Motes, bonded_amount: Motes) -> Self {
-        let account_hash = public_key.to_account_hash();
         GenesisAccount {
-            public_key: Some(public_key),
-            account_hash,
+            public_key,
             balance,
             bonded_amount,
         }
     }
 
     /// Returns the account's public key.
-    pub fn public_key(&self) -> Option<PublicKey> {
+    pub fn public_key(&self) -> PublicKey {
         self.public_key
-    }
-
-    /// Returns the account's hash.
-    pub fn account_hash(&self) -> AccountHash {
-        self.account_hash
     }
 
     /// Returns the account's balance.
@@ -82,14 +65,13 @@ impl GenesisAccount {
 
 impl Distribution<GenesisAccount> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisAccount {
-        let public_key = None;
-        let account_hash = AccountHash::new(rng.gen());
+        let secret_key: SecretKey = SecretKey::new_ed25519(rng.gen());
+        let public_key = PublicKey::from(&secret_key);
         let balance = Motes::new(U512(rng.gen()));
         let bonded_amount = Motes::new(U512(rng.gen()));
 
         GenesisAccount {
             public_key,
-            account_hash,
             balance,
             bonded_amount,
         }

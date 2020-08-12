@@ -7,7 +7,11 @@ use casperlabs_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_node::{types::Motes, GenesisAccount};
+use casperlabs_node::{
+    crypto::asymmetric_key::{PublicKey, SecretKey},
+    types::Motes,
+    GenesisAccount,
+};
 use casperlabs_types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
 
 const ARG_AMOUNT: &str = "amount";
@@ -27,10 +31,12 @@ lazy_static! {
 #[ignore]
 #[test]
 fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
+    let secret_key = SecretKey::new_ed25519([42; 32]);
+    let public_key = PublicKey::from(&secret_key);
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account = GenesisAccount::new(
-            AccountHash::new([42; 32]),
+        let account = GenesisAccount::with_public_key(
+            public_key,
             Motes::new(GENESIS_VALIDATOR_STAKE.into()) * Motes::new(2.into()),
             Motes::new(GENESIS_VALIDATOR_STAKE.into()),
         );
@@ -41,7 +47,7 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_POS_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => "seed_new_account",

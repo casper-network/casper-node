@@ -2,6 +2,7 @@
 
 use std::{
     cmp::Ordering,
+    convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
     hash::{Hash, Hasher},
     path::Path,
@@ -22,9 +23,13 @@ use crate::{
     crypto::hash::hash,
     utils::{read_file, read_file_to_string, write_file},
 };
-use casperlabs_types::account::AccountHash;
+use casperlabs_types::{account::AccountHash, auction};
 
-const ED25519_TAG: u8 = 0;
+const SYSTEM_ADDR_LENGTH: usize = 32;
+const SYSTEM_ADDR: [u8; SYSTEM_ADDR_LENGTH] = [0; SYSTEM_ADDR_LENGTH];
+const SYSTEM_TAG: u8 = 0;
+const ED25519_TAG: u8 = 1;
+const SYSTEM: &str = "System";
 const ED25519: &str = "Ed25519";
 const ED25519_LOWERCASE: &str = "ed25519";
 const PEM_SECRET_KEY_TAG: &str = "PRIVATE KEY";
@@ -120,6 +125,8 @@ impl Display for SecretKey {
 /// A public asymmetric key.
 #[derive(Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub enum PublicKey {
+    /// System account's public key for which account hash is always 00s.
+    System,
     /// Ed25519 public key.
     Ed25519(ed25519::PublicKey),
 }
@@ -156,6 +163,8 @@ impl PublicKey {
         // As explained here:
         // https://casperlabs.atlassian.net/wiki/spaces/EN/pages/446431524/Design+for+supporting+multiple+signature+algorithms.
         let (algorithm_name, public_key_bytes) = match self {
+            // For a system public key it always produces address of 0s.
+            PublicKey::System => return AccountHash::new(SYSTEM_ADDR),
             PublicKey::Ed25519(bytes) => (ED25519_LOWERCASE, bytes.as_ref()),
         };
         // Prepare preimage based on the public key parameters
@@ -206,12 +215,14 @@ impl PublicKey {
     fn tag(&self) -> u8 {
         match self {
             PublicKey::Ed25519(_) => ED25519_TAG,
+            PublicKey::System => SYSTEM_TAG,
         }
     }
 
     fn variant_name(&self) -> &str {
         match self {
             PublicKey::Ed25519(_) => ED25519,
+            PublicKey::System => SYSTEM,
         }
     }
 }
@@ -220,6 +231,7 @@ impl AsRef<[u8]> for PublicKey {
     fn as_ref(&self) -> &[u8] {
         match self {
             PublicKey::Ed25519(public_key) => public_key.as_ref(),
+            PublicKey::System => &SYSTEM_ADDR,
         }
     }
 }
@@ -288,6 +300,25 @@ pub fn generate_ed25519_keypair() -> (SecretKey, PublicKey) {
     let secret_key = SecretKey::generate_ed25519();
     let public_key = PublicKey::from(&secret_key);
     (secret_key, public_key)
+}
+
+impl TryFrom<auction::PublicKey> for PublicKey {
+    type Error = Error;
+    fn try_from(value: auction::PublicKey) -> Result<Self> {
+        match value {
+            auction::PublicKey::Ed25519(bytes) => PublicKey::new_ed25519(bytes),
+            auction::PublicKey::System => Ok(PublicKey::System),
+        }
+    }
+}
+
+impl From<PublicKey> for auction::PublicKey {
+    fn from(value: PublicKey) -> Self {
+        match value {
+            PublicKey::Ed25519(ed25519) => auction::PublicKey::Ed25519(ed25519.to_bytes()),
+            PublicKey::System => auction::PublicKey::System,
+        }
+    }
 }
 
 // This is inside a private module so that the generated `BigArray` does not form part of this
@@ -413,6 +444,7 @@ pub fn sign<T: AsRef<[u8]>>(
             let signature = expanded_secret_key.sign(message.as_ref(), public_key);
             Signature::Ed25519(signature.to_bytes())
         }
+        (_, _) => panic!("Invalid secret and public key pair"),
     }
 }
 
@@ -429,6 +461,7 @@ pub fn verify<T: AsRef<[u8]>>(
                 &ed25519::Signature::from_bytes(signature)?,
             )
             .map_err(Into::into),
+        (_, _) => panic!("Invalid signature and public key pair"),
     }
 }
 

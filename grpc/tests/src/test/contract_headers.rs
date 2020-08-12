@@ -3,7 +3,7 @@ use casperlabs_engine_test_support::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
-    DEFAULT_ACCOUNT_ADDR,
+   DEFAULT_ACCOUNT_ADDR,
 };
 use casperlabs_types::{runtime_args, Key, RuntimeArgs, SemVer};
 
@@ -20,7 +20,7 @@ fn should_enforce_intended_execution_contexts() {
     // This test runs a contract that's after every call extends the same key with
     // more data
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+       *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_HEADERS,
         RuntimeArgs::default(),
     )
@@ -29,7 +29,7 @@ fn should_enforce_intended_execution_contexts() {
     let exec_request_2 = {
         let args = runtime_args! {};
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
                 SemVer::V1_0_0,
@@ -37,7 +37,7 @@ fn should_enforce_intended_execution_contexts() {
                 args,
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([3; 32])
             .build();
 
@@ -47,7 +47,7 @@ fn should_enforce_intended_execution_contexts() {
     let exec_request_3 = {
         let args = runtime_args! {};
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
                 SemVer::V1_0_0,
@@ -55,7 +55,7 @@ fn should_enforce_intended_execution_contexts() {
                 args,
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([3; 32])
             .build();
 
@@ -65,7 +65,7 @@ fn should_enforce_intended_execution_contexts() {
     let exec_request_4 = {
         let args = runtime_args! {};
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
                 SemVer::V1_0_0,
@@ -73,7 +73,7 @@ fn should_enforce_intended_execution_contexts() {
                 args,
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([4; 32])
             .build();
 
@@ -92,7 +92,7 @@ fn should_enforce_intended_execution_contexts() {
     builder.exec(exec_request_4).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(DEFAULT_ACCOUNT_ADDR), &[])
+        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
         .as_account()
         .cloned()
@@ -112,7 +112,7 @@ fn should_enforce_intended_execution_contexts() {
         .expect("should have exec response");
 
     let account = builder
-        .query(None, Key::Account(DEFAULT_ACCOUNT_ADDR), &[])
+        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
         .as_account()
         .cloned()

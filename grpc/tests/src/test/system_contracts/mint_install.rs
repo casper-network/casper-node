@@ -32,7 +32,7 @@ fn should_run_mint_install_contract() {
     ) = exec_with_return::exec(
         engine_config,
         &mut builder,
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         "mint_install.wasm",
         DEFAULT_BLOCK_TIME,
         DEPLOY_HASH_1,

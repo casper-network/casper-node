@@ -15,7 +15,7 @@ const ARG_AMOUNT: &str = "amount";
 fn should_get_funds_from_faucet() {
     let amount = U512::from(1000);
     let exec_request = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         FAUCET_CONTRACT,
         runtime_args! { ARG_TARGET => NEW_ACCOUNT_ADDR, ARG_AMOUNT => amount },
     )
@@ -45,13 +45,13 @@ fn should_get_funds_from_faucet() {
 fn should_fail_if_already_funded() {
     let amount = U512::from(1000);
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         FAUCET_CONTRACT,
         runtime_args! { ARG_TARGET => NEW_ACCOUNT_ADDR, ARG_AMOUNT => amount },
     )
     .build();
     let exec_request_2 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         FAUCET_CONTRACT,
         runtime_args! { ARG_TARGET => NEW_ACCOUNT_ADDR, ARG_AMOUNT => amount },
     )

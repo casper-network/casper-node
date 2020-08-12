@@ -1995,7 +1995,7 @@ where
         let ret: CLValue = match entry_point_name {
             auction::METHOD_RELEASE_FOUNDER => {
                 let account_hash =
-                    Self::get_named_argument(&runtime_args, auction::ARG_ACCOUNT_HASH)?;
+                    Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
 
                 let result = runtime.release_founder(account_hash);
 
@@ -2016,7 +2016,7 @@ where
 
             auction::METHOD_ADD_BID => {
                 let account_hash =
-                    Self::get_named_argument(&runtime_args, auction::ARG_ACCOUNT_HASH)?;
+                    Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
                 let source_purse =
                     Self::get_named_argument(&runtime_args, auction::ARG_SOURCE_PURSE)?;
                 let delegation_rate =
@@ -2032,7 +2032,7 @@ where
 
             auction::METHOD_WITHDRAW_BID => {
                 let account_hash =
-                    Self::get_named_argument(&runtime_args, auction::ARG_ACCOUNT_HASH)?;
+                    Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
                 let quantity = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = self
@@ -2043,11 +2043,11 @@ where
 
             auction::METHOD_DELEGATE => {
                 let delegator_account_hash =
-                    Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR_ACCOUNT_HASH)?;
+                    Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
                 let source_purse =
                     Self::get_named_argument(&runtime_args, auction::ARG_SOURCE_PURSE)?;
                 let validator_account_hash =
-                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_ACCOUNT_HASH)?;
+                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
                 let quantity = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = self
@@ -2064,9 +2064,9 @@ where
 
             auction::METHOD_UNDELEGATE => {
                 let delegator_account_hash =
-                    Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR_ACCOUNT_HASH)?;
+                    Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
                 let validator_account_hash =
-                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_ACCOUNT_HASH)?;
+                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
                 let quantity = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = self
@@ -2077,10 +2077,12 @@ where
             }
 
             auction::METHOD_QUASH_BID => {
-                let validator_keys: Vec<AccountHash> =
+                let validator_public_keys: Vec<auction::PublicKey> =
                     Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_KEYS)?;
 
-                runtime.quash_bid(&validator_keys).map_err(Self::reverter)?;
+                runtime
+                    .quash_bid(validator_public_keys)
+                    .map_err(Self::reverter)?;
 
                 CLValue::from_t(()).map_err(Self::reverter)?
             }

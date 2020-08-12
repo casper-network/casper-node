@@ -26,6 +26,7 @@ use tracing::{debug, warn};
 
 use casperlabs_types::{
     account::AccountHash,
+    auction,
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
     runtime_args,
@@ -75,7 +76,7 @@ use crate::{
             protocol_data::ProtocolData,
         },
     },
-    crypto::hash,
+    crypto::{asymmetric_key::PublicKey, hash},
     types::Motes,
     Chainspec, GenesisAccount,
 };
@@ -307,7 +308,7 @@ where
                 preprocessor.preprocess(proof_of_stake_installer_bytes)?;
             let args = runtime_args! {
                 "mint_contract_package_hash" => mint_package_hash,
-                "genesis_validators" => bonded_validators.clone(),
+                "genesis_validators" => bonded_validators,
             };
             let authorization_keys: BTreeSet<AccountHash> = BTreeSet::new();
 
@@ -384,6 +385,17 @@ where
         };
 
         let auction_hash: ContractHash = {
+            let bonded_validators: BTreeMap<auction::PublicKey, U512> = ee_config
+                .accounts()
+                .iter()
+                .map(|account| {
+                    (
+                        auction::PublicKey::from(account.public_key()),
+                        account.bonded_amount().value(),
+                    )
+                })
+                .collect();
+
             let auction_installer_bytes = {
                 // NOTE: Before integration node wasn't updated to pass the bytes, so we were
                 // bundling it. This debug_assert can be removed once integration with genesis
@@ -464,8 +476,11 @@ where
                     .into_iter()
                     .map(|account| (account, account_named_keys.clone()))
                     .collect();
-                let system_account =
-                    GenesisAccount::new(SYSTEM_ACCOUNT_ADDR, Motes::zero(), Motes::zero());
+                let system_account = GenesisAccount::with_public_key(
+                    PublicKey::System,
+                    Motes::zero(),
+                    Motes::zero(),
+                );
                 ret.push((system_account, virtual_system_account.named_keys().clone()));
                 ret
             };
@@ -493,7 +508,7 @@ where
                 let mut named_keys_exec = NamedKeys::new();
                 let base_key = mint_hash;
                 let authorization_keys: BTreeSet<AccountHash> = BTreeSet::new();
-                let account_hash = account.account_hash();
+                let account_hash = account.public_key().to_account_hash();
                 let purse_creation_deploy_hash = account_hash.value();
                 let hash_address_generator = Rc::clone(&hash_address_generator);
                 let uref_address_generator = {

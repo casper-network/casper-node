@@ -19,9 +19,9 @@ fn should_run_get_caller_contract() {
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(
             ExecuteRequestBuilder::standard(
-                DEFAULT_ACCOUNT_ADDR,
+                *DEFAULT_ACCOUNT_ADDR,
                 CONTRACT_GET_CALLER,
-                runtime_args! {"account" => DEFAULT_ACCOUNT_ADDR},
+                runtime_args! {"account" => *DEFAULT_ACCOUNT_ADDR},
             )
             .build(),
         )
@@ -39,7 +39,7 @@ fn should_run_get_caller_contract_other_account() {
     builder
         .exec(
             ExecuteRequestBuilder::standard(
-                DEFAULT_ACCOUNT_ADDR,
+                *DEFAULT_ACCOUNT_ADDR,
                 CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
                 runtime_args! {"target" => ACCOUNT_1_ADDR, "amount"=> *DEFAULT_PAYMENT},
             )
@@ -71,9 +71,9 @@ fn should_run_get_caller_subcall_contract() {
         builder
             .exec(
                 ExecuteRequestBuilder::standard(
-                    DEFAULT_ACCOUNT_ADDR,
+                    *DEFAULT_ACCOUNT_ADDR,
                     CONTRACT_GET_CALLER_SUBCALL,
-                    runtime_args! {"account" => DEFAULT_ACCOUNT_ADDR},
+                    runtime_args! {"account" => *DEFAULT_ACCOUNT_ADDR},
                 )
                 .build(),
             )
@@ -86,7 +86,7 @@ fn should_run_get_caller_subcall_contract() {
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(
             ExecuteRequestBuilder::standard(
-                DEFAULT_ACCOUNT_ADDR,
+                *DEFAULT_ACCOUNT_ADDR,
                 CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
                 runtime_args! {"target" => ACCOUNT_1_ADDR, "amount"=>*DEFAULT_PAYMENT},
             )

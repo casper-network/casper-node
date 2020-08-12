@@ -1,16 +1,14 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
 use crate::{
-    account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
     CLType, CLTyped, URef, U512,
 };
 
-use super::types::DelegationRate;
+use super::{types::DelegationRate, PublicKey};
 
 /// An entry in a founding validator map.
-#[cfg_attr(test, derive(Debug))]
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub struct FoundingValidator {
     /// The purse that was used for bonding.
     pub bonding_purse: URef,
@@ -18,8 +16,8 @@ pub struct FoundingValidator {
     pub staked_amount: U512,
     /// Delegation rate
     pub delegation_rate: DelegationRate,
-    /// A flag that represents a possible winning entry.
-    pub winner: bool,
+    /// A flag that represents a winning entry.
+    pub funds_locked: bool,
 }
 
 impl FoundingValidator {
@@ -29,7 +27,7 @@ impl FoundingValidator {
             bonding_purse,
             staked_amount,
             delegation_rate: 0,
-            winner: true,
+            funds_locked: true,
         }
     }
 }
@@ -46,7 +44,7 @@ impl ToBytes for FoundingValidator {
         result.extend(self.bonding_purse.to_bytes()?);
         result.extend(self.staked_amount.to_bytes()?);
         result.extend(self.delegation_rate.to_bytes()?);
-        result.extend(self.winner.to_bytes()?);
+        result.extend(self.funds_locked.to_bytes()?);
         Ok(result)
     }
 
@@ -54,7 +52,7 @@ impl ToBytes for FoundingValidator {
         self.bonding_purse.serialized_length()
             + self.staked_amount.serialized_length()
             + self.delegation_rate.serialized_length()
-            + self.winner.serialized_length()
+            + self.funds_locked.serialized_length()
     }
 }
 
@@ -69,7 +67,7 @@ impl FromBytes for FoundingValidator {
                 bonding_purse,
                 staked_amount,
                 delegation_rate,
-                winner,
+                funds_locked: winner,
             },
             bytes,
         ))
@@ -82,7 +80,7 @@ impl FromBytes for FoundingValidator {
 /// entered as “winners” (this also locks them out of unbonding), taking
 /// some slots out of the auction. The autowin status is controlled by
 /// node software and would, presumably, expire after a fixed number of eras.
-pub type FoundingValidators = BTreeMap<AccountHash, FoundingValidator>;
+pub type FoundingValidators = BTreeMap<PublicKey, FoundingValidator>;
 
 #[cfg(test)]
 mod tests {
@@ -95,7 +93,7 @@ mod tests {
             bonding_purse: URef::new([42; 32], AccessRights::READ_ADD_WRITE),
             staked_amount: U512::one(),
             delegation_rate: DelegationRate::max_value(),
-            winner: true,
+            funds_locked: true,
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);
     }

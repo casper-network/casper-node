@@ -5,12 +5,9 @@ use criterion::{
 };
 use tempfile::TempDir;
 
-use casperlabs_engine_test_support::{
-    internal::{
-        DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR,
+use casperlabs_engine_test_support::internal::{
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casperlabs_node::components::contract_runtime::core::engine_state::EngineConfig;
 use casperlabs_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
@@ -42,7 +39,7 @@ fn make_deploy_hash(i: u64) -> [u8; 32] {
 
 fn bootstrap(data_dir: &Path, accounts: Vec<AccountHash>, amount: U512) -> LmdbWasmTestBuilder {
     let exec_request = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_CREATE_ACCOUNTS,
         runtime_args! { ARG_ACCOUNTS => accounts, ARG_SEED_AMOUNT => amount },
     )
@@ -110,7 +107,7 @@ fn transfer_to_account_multiple_execs(
 
     for _ in 0..TRANSFER_BATCH_SIZE {
         let exec_request = ExecuteRequestBuilder::standard(
-            DEFAULT_ACCOUNT_ADDR,
+            *DEFAULT_ACCOUNT_ADDR,
             CONTRACT_TRANSFER_TO_EXISTING_ACCOUNT,
             runtime_args! {
                 ARG_TARGET => account,
@@ -136,7 +133,7 @@ fn transfer_to_account_multiple_deploys(
 
     for i in 0..TRANSFER_BATCH_SIZE {
         let deploy = DeployItemBuilder::default()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(PER_RUN_FUNDING) })
             .with_session_code(
                 CONTRACT_TRANSFER_TO_EXISTING_ACCOUNT,
@@ -145,7 +142,7 @@ fn transfer_to_account_multiple_deploys(
                     ARG_AMOUNT => U512::one(),
                 },
             )
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash(make_deploy_hash(i)) // deploy_hash
             .build();
         exec_builder = exec_builder.push_deploy(deploy);

@@ -1,9 +1,10 @@
 use alloc::collections::BTreeMap;
 
-use crate::{account::AccountHash, U512};
+use super::PublicKey;
+use crate::U512;
 
 /// Delegators and associated bid "top-ups".
-pub type DelegatedAmounts = BTreeMap<AccountHash, U512>;
+pub type DelegatedAmounts = BTreeMap<PublicKey, U512>;
 
 /// Validators, mapped to a list of delegators and associated bid "top-ups".
-pub type Delegators = BTreeMap<AccountHash, DelegatedAmounts>;
+pub type Delegators = BTreeMap<PublicKey, DelegatedAmounts>;

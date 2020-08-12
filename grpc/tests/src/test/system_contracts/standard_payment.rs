@@ -35,7 +35,7 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
 
     let exec_request = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+       *DEFAULT_ACCOUNT_ADDR,
         TRANSFER_PURSE_TO_ACCOUNT_WASM,
         runtime_args! { "target" =>account_1_account_hash, "amount" => U512::from(MAX_PAYMENT - 1) },
     )
@@ -89,14 +89,14 @@ fn should_raise_insufficient_payment_when_payment_code_does_not_pay_enough() {
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
                 runtime_args! { "target" =>account_1_account_hash, "amount" => U512::from(1) },
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(1)})
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_KEY])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
@@ -111,7 +111,7 @@ fn should_raise_insufficient_payment_when_payment_code_does_not_pay_enough() {
 
     let modified_balance = builder.get_purse_balance(
         builder
-            .get_account(DEFAULT_ACCOUNT_ADDR)
+            .get_account(*DEFAULT_ACCOUNT_ADDR)
             .expect("should have account")
             .main_purse(),
     );
@@ -163,14 +163,14 @@ fn should_raise_insufficient_payment_error_when_out_of_gas() {
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount})
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
                 runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => transferred_amount }
             )
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_KEY])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
@@ -189,7 +189,7 @@ fn should_raise_insufficient_payment_error_when_out_of_gas() {
 
     let modified_balance = builder.get_purse_balance(
         builder
-            .get_account(DEFAULT_ACCOUNT_ADDR)
+            .get_account(*DEFAULT_ACCOUNT_ADDR)
             .expect("should have account")
             .main_purse(),
     );
@@ -236,14 +236,14 @@ fn should_forward_payment_execution_runtime_error() {
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_payment_code(REVERT_WASM, RuntimeArgs::default())
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
                 runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => transferred_amount }
             )
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_KEY])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
@@ -262,7 +262,7 @@ fn should_forward_payment_execution_runtime_error() {
 
     let modified_balance = builder.get_purse_balance(
         builder
-            .get_account(DEFAULT_ACCOUNT_ADDR)
+            .get_account(*DEFAULT_ACCOUNT_ADDR)
             .expect("should have account")
             .main_purse(),
     );
@@ -305,14 +305,14 @@ fn should_forward_payment_execution_gas_limit_error() {
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_payment_code(ENDLESS_LOOP_WASM, RuntimeArgs::default())
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
                 runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => transferred_amount }
             )
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_KEY])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
@@ -331,7 +331,7 @@ fn should_forward_payment_execution_gas_limit_error() {
 
     let modified_balance = builder.get_purse_balance(
         builder
-            .get_account(DEFAULT_ACCOUNT_ADDR)
+            .get_account(*DEFAULT_ACCOUNT_ADDR)
             .expect("should have account")
             .main_purse(),
     );
@@ -372,14 +372,14 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount)})
             .with_session_code(
                 ENDLESS_LOOP_WASM,
                 runtime_args! { "target" => account_1_account_hash, "amount" => U512::from(transferred_amount) },
             )
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_KEY])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
@@ -410,13 +410,13 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_empty_payment_bytes(
                 runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount)},
             )
             .with_session_code(ENDLESS_LOOP_WASM, RuntimeArgs::default())
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_KEY])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
@@ -431,7 +431,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
         .finish();
 
     let default_account = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
     let modified_balance: U512 = builder.get_purse_balance(default_account.main_purse());
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
@@ -470,14 +470,14 @@ fn should_correctly_charge_when_session_code_fails() {
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount)})
             .with_session_code(
                 REVERT_WASM,
                 runtime_args! { "target" => account_1_account_hash, "amount" => U512::from(transferred_amount) },
             )
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_KEY])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
@@ -492,7 +492,7 @@ fn should_correctly_charge_when_session_code_fails() {
         .finish();
 
     let default_account = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
     let modified_balance: U512 = builder.get_purse_balance(default_account.main_purse());
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
@@ -527,14 +527,14 @@ fn should_correctly_charge_when_session_code_succeeds() {
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
                 runtime_args! { "target" => account_1_account_hash, "amount" => U512::from(transferred_amount) },
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount)})
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_KEY])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
@@ -550,7 +550,7 @@ fn should_correctly_charge_when_session_code_succeeds() {
         .finish();
 
     let default_account = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
     let modified_balance: U512 = builder.get_purse_balance(default_account.main_purse());
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
@@ -606,13 +606,13 @@ fn should_finalize_to_rewards_purse() {
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
                 runtime_args! { "target" => account_1_account_hash, "amount" => U512::from(transferred_amount) },
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount)})
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_KEY])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .with_deploy_hash([1; 32])
             .build();
 
@@ -643,13 +643,13 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
 
     let setup_exec_request = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
                 runtime_args! { "target" => account_1_account_hash, "amount" => U512::from(transfer_amount) },
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount)})
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_KEY])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .with_deploy_hash([1; 32])
             .build();
 
@@ -665,12 +665,12 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
 
     let exec_request_from_genesis = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
             .with_empty_payment_bytes(
                 runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount)},
             )
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_KEY])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .with_deploy_hash([2; 32])
             .build();
 

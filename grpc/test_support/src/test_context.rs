@@ -4,6 +4,7 @@ use casperlabs_node::{
     components::contract_runtime::core::engine_state::{
         genesis::GenesisConfig, run_genesis_request::RunGenesisRequest, CONV_RATE,
     },
+    crypto::asymmetric_key::PublicKey,
     types::Motes,
     GenesisAccount,
 };
@@ -162,8 +163,9 @@ impl TestContextBuilder {
     /// the Genesis block.
     ///
     /// Note: `initial_balance` represents the number of motes.
-    pub fn with_account(mut self, address: AccountHash, initial_balance: U512) -> Self {
-        let new_account = GenesisAccount::new(address, Motes::new(initial_balance), Motes::zero());
+    pub fn with_public_key(mut self, public_key: PublicKey, initial_balance: U512) -> Self {
+        let new_account =
+            GenesisAccount::with_public_key(public_key, Motes::new(initial_balance), Motes::zero());
         self.genesis_config
             .ee_config_mut()
             .push_account(new_account);

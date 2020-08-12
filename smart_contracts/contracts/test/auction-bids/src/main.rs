@@ -8,10 +8,9 @@ use alloc::string::String;
 use casperlabs_contract::contract_api::{account, runtime, storage, system};
 
 use casperlabs_types::{
-    account::AccountHash,
     auction::{
-        DelegationRate, SeigniorageRecipients, ARG_ACCOUNT_HASH, ARG_DELEGATOR_ACCOUNT_HASH,
-        ARG_SOURCE_PURSE, ARG_VALIDATOR_ACCOUNT_HASH, METHOD_ADD_BID, METHOD_DELEGATE,
+        DelegationRate, PublicKey, SeigniorageRecipients, ARG_DELEGATOR, ARG_PUBLIC_KEY,
+        ARG_SOURCE_PURSE, ARG_VALIDATOR, METHOD_ADD_BID, METHOD_DELEGATE,
         METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_UNDELEGATE,
         METHOD_WITHDRAW_BID,
     },
@@ -50,11 +49,12 @@ pub extern "C" fn call() {
 
 fn add_bid() {
     let auction = system::get_auction();
+    let public_key: PublicKey = runtime::get_named_arg(ARG_PUBLIC_KEY);
     let quantity: U512 = runtime::get_named_arg(ARG_AMOUNT);
     let delegation_rate: DelegationRate = runtime::get_named_arg(ARG_DELEGATION_RATE);
 
     let args = runtime_args! {
-        ARG_ACCOUNT_HASH => runtime::get_caller(),
+        ARG_PUBLIC_KEY => public_key,
         ARG_SOURCE_PURSE => account::get_main_purse(),
         ARG_DELEGATION_RATE => delegation_rate,
         ARG_AMOUNT => quantity,
@@ -65,11 +65,12 @@ fn add_bid() {
 
 fn withdraw_bid() {
     let auction = system::get_auction();
+    let public_key: PublicKey = runtime::get_named_arg(ARG_PUBLIC_KEY);
     let quantity: U512 = runtime::get_named_arg(ARG_AMOUNT);
 
     let args = runtime_args! {
         ARG_AMOUNT => quantity,
-        ARG_ACCOUNT_HASH => runtime::get_caller(),
+        ARG_PUBLIC_KEY => public_key,
     };
 
     let (_purse, _quantity): (URef, U512) =
@@ -78,13 +79,13 @@ fn withdraw_bid() {
 
 fn delegate() {
     let auction = system::get_auction();
-    let validator: AccountHash = runtime::get_named_arg(ARG_VALIDATOR_ACCOUNT_HASH);
+    let delegator: PublicKey = runtime::get_named_arg(ARG_DELEGATOR);
+    let validator: PublicKey = runtime::get_named_arg(ARG_VALIDATOR);
     let quantity: U512 = runtime::get_named_arg(ARG_AMOUNT);
-
     let args = runtime_args! {
-        ARG_DELEGATOR_ACCOUNT_HASH => runtime::get_caller(),
+        ARG_DELEGATOR => delegator,
+        ARG_VALIDATOR => validator,
         ARG_SOURCE_PURSE => account::get_main_purse(),
-        ARG_VALIDATOR_ACCOUNT_HASH => validator,
         ARG_AMOUNT => quantity,
     };
 
@@ -94,13 +95,13 @@ fn delegate() {
 fn undelegate() {
     let auction = system::get_auction();
     let quantity: U512 = runtime::get_named_arg(ARG_AMOUNT);
-    let validator: AccountHash = runtime::get_named_arg(ARG_VALIDATOR_ACCOUNT_HASH);
+    let delegator: PublicKey = runtime::get_named_arg(ARG_DELEGATOR);
+    let validator: PublicKey = runtime::get_named_arg(ARG_VALIDATOR);
 
     let args = runtime_args! {
         ARG_AMOUNT => quantity,
-        ARG_ACCOUNT_HASH => runtime::get_caller(),
-        ARG_VALIDATOR_ACCOUNT_HASH => validator,
-        ARG_DELEGATOR_ACCOUNT_HASH => runtime::get_caller(),
+        ARG_VALIDATOR => validator,
+        ARG_DELEGATOR => delegator,
     };
 
     let _total_amount: U512 = runtime::call_contract(auction, METHOD_UNDELEGATE, args);

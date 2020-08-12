@@ -4,7 +4,7 @@ use super::{
     era_validators::ValidatorWeights,
     internal,
     providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
-    EraValidators, SeigniorageRecipient,
+    EraValidators, PublicKey, SeigniorageRecipient,
 };
 use crate::{
     account::AccountHash,
@@ -36,7 +36,7 @@ where
     /// contract. Upon receipt of True, it also flips the relevant field
     /// to True in the validator’s entry within founding_validators.
     /// Otherwise the function aborts.
-    fn release_founder(&mut self, account_hash: AccountHash) -> Result<bool> {
+    fn release_founder(&mut self, public_key: PublicKey) -> Result<bool> {
         if self.get_caller() != SYSTEM_ADDR {
             return Err(Error::InvalidContext);
         }
@@ -46,10 +46,10 @@ where
 
         // TODO: It should be aware of current time. Era makes more sense.
 
-        match founding_validators.get_mut(&account_hash) {
+        match founding_validators.get_mut(&public_key) {
             None => return Ok(false),
             Some(founding_validator) => {
-                founding_validator.winner = false;
+                founding_validator.funds_locked = false;
             }
         }
 
@@ -88,8 +88,8 @@ where
             let mut seigniorage_recipient = SeigniorageRecipient::default();
             // ... mapped to their bids
             match (
-                founding_validators.get(&era_validator),
-                active_bids.get(&era_validator),
+                founding_validators.get(era_validator),
+                active_bids.get(era_validator),
             ) {
                 (Some(founding_validator), None) => {
                     seigniorage_recipient.stake = founding_validator.staked_amount;
@@ -104,7 +104,7 @@ where
                 }
             }
 
-            if let Some(delegator_map) = delegators.remove(&era_validator) {
+            if let Some(delegator_map) = delegators.remove(era_validator) {
                 seigniorage_recipient.delegators = delegator_map;
             }
 
@@ -124,7 +124,7 @@ where
     /// bid (or stake) purse key and the new quantity of motes.
     fn add_bid(
         &mut self,
-        account_hash: AccountHash,
+        public_key: PublicKey,
         source_purse: URef,
         delegation_rate: DelegationRate,
         quantity: U512,
@@ -136,7 +136,7 @@ where
         // Update bids or stakes
         let mut founding_validators = internal::get_founding_validators(self)?;
 
-        let new_quantity = match founding_validators.get_mut(&account_hash) {
+        let new_quantity = match founding_validators.get_mut(&public_key) {
             // Update `founding_validators` map since `account_hash` belongs to a validator.
             Some(founding_validator) => {
                 founding_validator.bonding_purse = bonding_purse;
@@ -151,7 +151,7 @@ where
                 // Returns active bid which could be updated in case given entry exists.
                 let bid_amount = {
                     let active_bid = active_bids
-                        .entry(account_hash)
+                        .entry(public_key)
                         .and_modify(|active_bid| {
                             // Update existing entry
                             active_bid.bid_amount += quantity;
@@ -192,12 +192,12 @@ where
     /// exist, the function call returns a designated “failure” purse and does nothing.
     ///
     /// The arguments are the public key and amount of motes to remove.
-    fn withdraw_bid(&mut self, account_hash: AccountHash, quantity: U512) -> Result<(URef, U512)> {
+    fn withdraw_bid(&mut self, public_key: PublicKey, quantity: U512) -> Result<(URef, U512)> {
         // Update bids or stakes
         let mut founding_validators = internal::get_founding_validators(self)?;
 
-        let new_quantity = match founding_validators.get_mut(&account_hash) {
-            Some(founding_validator) if !founding_validator.winner => {
+        let new_quantity = match founding_validators.get_mut(&public_key) {
+            Some(founding_validator) if !founding_validator.funds_locked => {
                 // Carefully decrease bonded funds
 
                 let new_staked_amount = founding_validator
@@ -218,9 +218,7 @@ where
                 let mut active_bids = internal::get_active_bids(self)?;
 
                 // If the target bid does not exist, the function call returns an error
-                let active_bid = active_bids
-                    .get_mut(&account_hash)
-                    .ok_or(Error::BidNotFound)?;
+                let active_bid = active_bids.get_mut(&public_key).ok_or(Error::BidNotFound)?;
                 let new_amount = active_bid
                     .bid_amount
                     .checked_sub(quantity)
@@ -247,15 +245,15 @@ where
     /// The arguments are the delegator’s key, the originating purse, the validator key and quantity of motes.
     fn delegate(
         &mut self,
-        delegator_account_hash: AccountHash,
+        delegator_public_key: PublicKey,
         source_purse: URef,
-        validator_account_hash: AccountHash,
+        validator_public_key: PublicKey,
         quantity: U512,
     ) -> Result<(URef, U512)> {
         let active_bids = internal::get_active_bids(self)?;
         // Return early if target validator is not in `active_bids`
         let _active_bid = active_bids
-            .get(&validator_account_hash)
+            .get(&validator_public_key)
             .ok_or(Error::ValidatorNotFound)?;
 
         let (bonding_purse, _total_amount) = self.bond(quantity, source_purse)?;
@@ -264,9 +262,9 @@ where
             let mut delegators = internal::get_delegators(self)?;
 
             let new_quantity = *delegators
-                .entry(validator_account_hash)
+                .entry(validator_public_key)
                 .or_default()
-                .entry(delegator_account_hash)
+                .entry(delegator_public_key)
                 .and_modify(|delegator| *delegator += quantity)
                 .or_insert_with(|| quantity);
 
@@ -287,8 +285,8 @@ where
     /// The arguments are the delegator’s key, the validator key and quantity of motes.
     fn undelegate(
         &mut self,
-        delegator_account_hash: AccountHash,
-        validator_account_hash: AccountHash,
+        delegator_account_hash: PublicKey,
+        validator_account_hash: PublicKey,
         quantity: U512,
     ) -> Result<U512> {
         let active_bids = internal::get_active_bids(self)?;
@@ -332,14 +330,14 @@ where
     /// is intended to be called together with the slash function in the
     /// Mint contract.
     /// Access: PoS contractPL
-    fn quash_bid(&mut self, validator_account_hashes: &[AccountHash]) -> Result<()> {
+    fn quash_bid(&mut self, validator_public_keys: Vec<PublicKey>) -> Result<()> {
         // Clean up inside `founding_validators`
         let mut founding_validators = internal::get_founding_validators(self)?;
 
         let mut modified_founding_validators = 0usize;
 
-        for validator_account_hash in validator_account_hashes {
-            if founding_validators.remove(validator_account_hash).is_some() {
+        for validator_public_key in &validator_public_keys {
+            if founding_validators.remove(validator_public_key).is_some() {
                 modified_founding_validators += 1;
             }
         }
@@ -354,8 +352,8 @@ where
 
         let mut modified_active_bids = 0usize;
 
-        for validator_account_hash in validator_account_hashes {
-            if active_bids.remove(validator_account_hash).is_some() {
+        for validator_public_key in &validator_public_keys {
+            if active_bids.remove(validator_public_key).is_some() {
                 modified_active_bids += 1;
             }
         }
@@ -384,7 +382,9 @@ where
         let mut validator_weights: ValidatorWeights = {
             founding_validators
                 .iter()
-                .filter(|(_validator_account_hash, founding_validator)| founding_validator.winner)
+                .filter(|(_validator_account_hash, founding_validator)| {
+                    founding_validator.funds_locked
+                })
                 .map(|(validator_account_hash, amount)| {
                     (*validator_account_hash, amount.staked_amount)
                 })
@@ -402,7 +402,9 @@ where
         // Non-winning validators are taken care of later
         let founding_validators_scores = founding_validators
             .iter()
-            .filter(|(_validator_account_hash, founding_validator)| !founding_validator.winner)
+            .filter(|(_validator_account_hash, founding_validator)| {
+                !founding_validator.funds_locked
+            })
             .map(|(validator_account_hash, amount)| {
                 (*validator_account_hash, amount.staked_amount)
             });

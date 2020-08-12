@@ -310,10 +310,11 @@ impl reactor::Reactor for Reactor {
             .genesis
             .accounts
             .iter()
-            .filter_map(|account| {
-                account
-                    .public_key()
-                    .map(|pub_key| (pub_key, account.bonded_amount()))
+            .map(|genesis_account| {
+                (
+                    genesis_account.public_key(),
+                    genesis_account.bonded_amount(),
+                )
             })
             .filter(|(_, stake)| stake.value() > U512::zero())
             .collect();

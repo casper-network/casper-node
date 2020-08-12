@@ -43,7 +43,7 @@ fn should_run_pos_install_contract() {
         .with_enable_bonding(cfg!(feature = "enable-bonding"));
 
     let exec_request = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! { "target" =>SYSTEM_ADDR, "amount" => U512::from(TRANSFER_AMOUNT) },
     )

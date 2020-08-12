@@ -6,6 +6,7 @@ use casperlabs_engine_test_support::{
 };
 use casperlabs_node::{
     components::contract_runtime::core::engine_state::{genesis::POS_BONDING_PURSE, CONV_RATE},
+    crypto::asymmetric_key::{PublicKey, SecretKey},
     types::Motes,
     GenesisAccount,
 };
@@ -53,10 +54,13 @@ fn get_pos_bonding_purse_balance(builder: &InMemoryWasmTestBuilder) -> U512 {
 #[ignore]
 #[test]
 fn should_run_successful_bond_and_unbond() {
+    let account_1_secret_key = SecretKey::new_ed25519([42; 32]);
+    let account_1_public_key = PublicKey::from(&account_1_secret_key);
+
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account = GenesisAccount::new(
-            AccountHash::new([42; 32]),
+        let account = GenesisAccount::with_public_key(
+            account_1_public_key,
             Motes::new(GENESIS_VALIDATOR_STAKE.into()) * Motes::new(2.into()),
             Motes::new(GENESIS_VALIDATOR_STAKE.into()),
         );
@@ -70,13 +74,13 @@ fn should_run_successful_bond_and_unbond() {
     let result = builder.run_genesis(&run_genesis_request).finish();
 
     let default_account = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
     let pos = builder.get_pos_contract_hash();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_POS_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => String::from(TEST_BOND),
@@ -116,7 +120,7 @@ fn should_run_successful_bond_and_unbond() {
     );
 
     let exec_request_2 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_POS_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => TEST_SEED_NEW_ACCOUNT,
@@ -239,7 +243,7 @@ fn should_run_successful_bond_and_unbond() {
     //
     // Genesis account unbonds less than 50% of his stake
     let exec_request_5 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_POS_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => String::from(TEST_UNBOND),
@@ -335,7 +339,7 @@ fn should_run_successful_bond_and_unbond() {
 
     // Genesis account unbonds less than 50% of his stake
     let exec_request_7 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_POS_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => String::from(TEST_UNBOND),
@@ -429,10 +433,13 @@ fn should_run_successful_bond_and_unbond() {
 #[ignore]
 #[test]
 fn should_fail_bonding_with_insufficient_funds() {
+    let account_1_secret_key = SecretKey::new_ed25519([42; 32]);
+    let account_1_public_key = PublicKey::from(&account_1_secret_key);
+
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account = GenesisAccount::new(
-            AccountHash::new([42; 32]),
+        let account = GenesisAccount::with_public_key(
+            account_1_public_key,
             Motes::new(GENESIS_VALIDATOR_STAKE.into()) * Motes::new(2.into()),
             Motes::new(GENESIS_VALIDATOR_STAKE.into()),
         );
@@ -443,7 +450,7 @@ fn should_fail_bonding_with_insufficient_funds() {
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_POS_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => TEST_SEED_NEW_ACCOUNT,
@@ -495,10 +502,13 @@ fn should_fail_bonding_with_insufficient_funds() {
 #[ignore]
 #[test]
 fn should_fail_unbonding_validator_without_bonding_first() {
+    let account_1_secret_key = SecretKey::new_ed25519([42; 32]);
+    let account_1_public_key = PublicKey::from(&account_1_secret_key);
+
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account = GenesisAccount::new(
-            AccountHash::new([42; 32]),
+        let account = GenesisAccount::with_public_key(
+            account_1_public_key,
             Motes::new(GENESIS_VALIDATOR_STAKE.into()) * Motes::new(2.into()),
             Motes::new(GENESIS_VALIDATOR_STAKE.into()),
         );
@@ -509,7 +519,7 @@ fn should_fail_unbonding_validator_without_bonding_first() {
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
     let exec_request = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_POS_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => TEST_UNBOND,

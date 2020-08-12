@@ -9,10 +9,9 @@ use casperlabs_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casperlabs_types::{
-    account::AccountHash,
     auction::{
         ActiveBids, Delegators, EraIndex, EraValidators, FoundingValidator, FoundingValidators,
-        ValidatorWeights, ERA_INDEX_KEY,
+        PublicKey, ValidatorWeights, ERA_INDEX_KEY,
     },
     auction::{ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY},
     contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
@@ -42,7 +41,7 @@ pub extern "C" fn install() {
 
         let mut founding_validators = FoundingValidators::new();
 
-        let genesis_validators: BTreeMap<AccountHash, U512> =
+        let genesis_validators: BTreeMap<PublicKey, U512> =
             runtime::get_named_arg(ARG_GENESIS_VALIDATORS);
 
         // List of validators for initial era.

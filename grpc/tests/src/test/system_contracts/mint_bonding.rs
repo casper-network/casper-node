@@ -5,7 +5,11 @@ use casperlabs_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_node::{types::Motes, GenesisAccount};
+use casperlabs_node::{
+    crypto::asymmetric_key::{PublicKey, SecretKey},
+    types::Motes,
+    GenesisAccount,
+};
 use casperlabs_types::{
     account::AccountHash,
     bytesrepr::FromBytes,
@@ -60,7 +64,7 @@ fn should_run_successful_bond_and_unbond() {
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let exec_request = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
             "target" => SYSTEM_ADDR,
@@ -72,13 +76,13 @@ fn should_run_successful_bond_and_unbond() {
     builder.exec(exec_request).expect_success().commit();
 
     let _default_account = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
     let mint = builder.get_mint_contract_hash();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_MINT_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => String::from(TEST_BOND),
@@ -108,7 +112,7 @@ fn should_run_successful_bond_and_unbond() {
     let unbond_amount = U512::from(GENESIS_ACCOUNT_STAKE) - 1;
 
     let exec_request_2 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_MINT_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => String::from(TEST_UNBOND),
@@ -126,7 +130,7 @@ fn should_run_successful_bond_and_unbond() {
         .get(&DEFAULT_ACCOUNT_ADDR)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
-    assert_eq!(unbond_list[0].origin, DEFAULT_ACCOUNT_ADDR);
+    assert_eq!(unbond_list[0].origin, *DEFAULT_ACCOUNT_ADDR);
     assert_eq!(
         builder.get_purse_balance(unbond_list[0].purse),
         unbond_amount
@@ -154,7 +158,7 @@ fn should_run_successful_bond_and_unbond() {
         .get(&DEFAULT_ACCOUNT_ADDR)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
-    assert_eq!(unbond_list[0].origin, DEFAULT_ACCOUNT_ADDR);
+    assert_eq!(unbond_list[0].origin, *DEFAULT_ACCOUNT_ADDR);
     assert_eq!(
         builder.get_purse_balance(unbond_list[0].purse),
         unbond_amount
@@ -170,7 +174,7 @@ fn should_run_successful_bond_and_unbond() {
         "slash",
         runtime_args! {
             "validator_account_hashes" => vec![
-                DEFAULT_ACCOUNT_ADDR,
+               *DEFAULT_ACCOUNT_ADDR,
             ]
         },
     )
@@ -193,7 +197,7 @@ fn should_run_successful_bond_and_unbond() {
 #[test]
 fn should_fail_bonding_with_insufficient_funds() {
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_MINT_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => TEST_SEED_NEW_ACCOUNT,
@@ -238,10 +242,13 @@ fn should_fail_bonding_with_insufficient_funds() {
 #[ignore]
 #[test]
 fn should_fail_unbonding_validator_without_bonding_first() {
+    let account_1_secret_key = SecretKey::new_ed25519([42; 32]);
+    let account_1_public_key = PublicKey::from(&account_1_secret_key);
+
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account = GenesisAccount::new(
-            AccountHash::new([42; 32]),
+        let account = GenesisAccount::with_public_key(
+            account_1_public_key,
             Motes::new(GENESIS_VALIDATOR_STAKE.into()) * Motes::new(2.into()),
             Motes::new(GENESIS_VALIDATOR_STAKE.into()),
         );
@@ -252,7 +259,7 @@ fn should_fail_unbonding_validator_without_bonding_first() {
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
     let exec_request = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_MINT_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => TEST_UNBOND,

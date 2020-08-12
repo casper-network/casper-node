@@ -10,7 +10,7 @@ const CONTRACT_EE_771_REGRESSION: &str = "ee_771_regression.wasm";
 #[test]
 fn should_run_ee_771_regression() {
     let exec_request = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_EE_771_REGRESSION,
         RuntimeArgs::default(),
     )

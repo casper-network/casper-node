@@ -8,12 +8,11 @@ use casperlabs_contract::{
 use casperlabs_types::{
     account::AccountHash,
     auction::{
-        AuctionProvider, MintProvider, RuntimeProvider, ARG_ACCOUNT_HASH, ARG_AMOUNT,
-        ARG_DELEGATION_RATE, ARG_DELEGATOR_ACCOUNT_HASH, ARG_PURSE, ARG_SOURCE_PURSE,
-        ARG_VALIDATOR_ACCOUNT_HASH, ARG_VALIDATOR_KEYS, METHOD_ADD_BID, METHOD_DELEGATE,
-        METHOD_QUASH_BID, METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS,
-        METHOD_RUN_AUCTION, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
-        {StorageProvider, SystemProvider},
+        AuctionProvider, MintProvider, PublicKey, RuntimeProvider, ARG_AMOUNT, ARG_DELEGATION_RATE,
+        ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_PURSE, ARG_SOURCE_PURSE, ARG_VALIDATOR,
+        ARG_VALIDATOR_KEYS, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_QUASH_BID,
+        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS, METHOD_RUN_AUCTION,
+        METHOD_UNDELEGATE, METHOD_WITHDRAW_BID, {StorageProvider, SystemProvider},
     },
     auction::{DelegationRate, SeigniorageRecipients},
     bytesrepr::{FromBytes, ToBytes},
@@ -113,13 +112,13 @@ pub extern "C" fn read_seigniorage_recipients() {
 
 #[no_mangle]
 pub extern "C" fn add_bid() {
-    let account_hash = runtime::get_named_arg(ARG_ACCOUNT_HASH);
+    let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
     let source_purse = runtime::get_named_arg(ARG_SOURCE_PURSE);
     let delegation_rate = runtime::get_named_arg(ARG_DELEGATION_RATE);
-    let quantity = runtime::get_named_arg(ARG_AMOUNT);
+    let amount = runtime::get_named_arg(ARG_AMOUNT);
 
     let result = AuctionContract
-        .add_bid(account_hash, source_purse, delegation_rate, quantity)
+        .add_bid(public_key, source_purse, delegation_rate, amount)
         .unwrap_or_revert();
 
     let cl_value = CLValue::from_t(result).unwrap_or_revert();
@@ -128,11 +127,11 @@ pub extern "C" fn add_bid() {
 
 #[no_mangle]
 pub extern "C" fn withdraw_bid() {
-    let account_hash = runtime::get_named_arg(ARG_ACCOUNT_HASH);
+    let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
     let quantity = runtime::get_named_arg(ARG_AMOUNT);
 
     let result = AuctionContract
-        .withdraw_bid(account_hash, quantity)
+        .withdraw_bid(public_key, quantity)
         .unwrap_or_revert();
     let cl_value = CLValue::from_t(result).unwrap_or_revert();
     runtime::ret(cl_value)
@@ -140,9 +139,9 @@ pub extern "C" fn withdraw_bid() {
 
 #[no_mangle]
 pub extern "C" fn delegate() {
-    let delegator_account_hash = runtime::get_named_arg(ARG_DELEGATOR_ACCOUNT_HASH);
+    let delegator_account_hash = runtime::get_named_arg(ARG_DELEGATOR);
     let source_purse = runtime::get_named_arg(ARG_SOURCE_PURSE);
-    let validator_account_hash = runtime::get_named_arg(ARG_VALIDATOR_ACCOUNT_HASH);
+    let validator_account_hash = runtime::get_named_arg(ARG_VALIDATOR);
     let quantity = runtime::get_named_arg(ARG_AMOUNT);
 
     let result = AuctionContract
@@ -160,8 +159,8 @@ pub extern "C" fn delegate() {
 
 #[no_mangle]
 pub extern "C" fn undelegate() {
-    let delegator_account_hash = runtime::get_named_arg(ARG_DELEGATOR_ACCOUNT_HASH);
-    let validator_account_hash = runtime::get_named_arg(ARG_VALIDATOR_ACCOUNT_HASH);
+    let delegator_account_hash = runtime::get_named_arg(ARG_DELEGATOR);
+    let validator_account_hash = runtime::get_named_arg(ARG_VALIDATOR);
     let quantity = runtime::get_named_arg(ARG_AMOUNT);
 
     let result = AuctionContract
@@ -174,11 +173,9 @@ pub extern "C" fn undelegate() {
 
 #[no_mangle]
 pub extern "C" fn quash_bid() {
-    let validator_keys: Vec<AccountHash> = runtime::get_named_arg("validator_keys");
+    let validator_keys: Vec<PublicKey> = runtime::get_named_arg("validator_keys");
 
-    AuctionContract
-        .quash_bid(&validator_keys)
-        .unwrap_or_revert();
+    AuctionContract.quash_bid(validator_keys).unwrap_or_revert();
 }
 
 #[no_mangle]
@@ -210,7 +207,7 @@ pub fn get_entry_points() -> EntryPoints {
     let entry_point = EntryPoint::new(
         METHOD_ADD_BID,
         vec![
-            Parameter::new(ARG_ACCOUNT_HASH, AccountHash::cl_type()),
+            Parameter::new(ARG_PUBLIC_KEY, AccountHash::cl_type()),
             Parameter::new(ARG_SOURCE_PURSE, URef::cl_type()),
             Parameter::new(ARG_DELEGATION_RATE, DelegationRate::cl_type()),
             Parameter::new(ARG_AMOUNT, U512::cl_type()),
@@ -224,7 +221,7 @@ pub fn get_entry_points() -> EntryPoints {
     let entry_point = EntryPoint::new(
         METHOD_WITHDRAW_BID,
         vec![
-            Parameter::new(ARG_ACCOUNT_HASH, AccountHash::cl_type()),
+            Parameter::new(ARG_PUBLIC_KEY, AccountHash::cl_type()),
             Parameter::new(ARG_AMOUNT, U512::cl_type()),
         ],
         <(URef, U512)>::cl_type(),
@@ -236,9 +233,9 @@ pub fn get_entry_points() -> EntryPoints {
     let entry_point = EntryPoint::new(
         METHOD_DELEGATE,
         vec![
-            Parameter::new(ARG_DELEGATOR_ACCOUNT_HASH, AccountHash::cl_type()),
+            Parameter::new(ARG_DELEGATOR, PublicKey::cl_type()),
             Parameter::new(ARG_SOURCE_PURSE, URef::cl_type()),
-            Parameter::new(ARG_VALIDATOR_ACCOUNT_HASH, AccountHash::cl_type()),
+            Parameter::new(ARG_VALIDATOR, PublicKey::cl_type()),
             Parameter::new(ARG_AMOUNT, U512::cl_type()),
         ],
         <(URef, U512)>::cl_type(),
@@ -250,8 +247,8 @@ pub fn get_entry_points() -> EntryPoints {
     let entry_point = EntryPoint::new(
         METHOD_UNDELEGATE,
         vec![
-            Parameter::new(ARG_DELEGATOR_ACCOUNT_HASH, AccountHash::cl_type()),
-            Parameter::new(ARG_VALIDATOR_ACCOUNT_HASH, AccountHash::cl_type()),
+            Parameter::new(ARG_DELEGATOR, AccountHash::cl_type()),
+            Parameter::new(ARG_VALIDATOR, AccountHash::cl_type()),
             Parameter::new(ARG_AMOUNT, U512::cl_type()),
         ],
         U512::cl_type(),

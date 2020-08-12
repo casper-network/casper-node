@@ -17,7 +17,7 @@ const ARG_AMOUNT: &str = "amount";
 #[test]
 fn should_run_get_payment_purse_contract_default_account() {
     let exec_request = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_POS_GET_PAYMENT_PURSE,
         runtime_args! {
             ARG_AMOUNT => *DEFAULT_PAYMENT,
@@ -35,7 +35,7 @@ fn should_run_get_payment_purse_contract_default_account() {
 #[test]
 fn should_run_get_payment_purse_contract_account_1() {
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+       *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
         runtime_args! { "target" =>ACCOUNT_1_ADDR, "amount" => U512::from(ACCOUNT_1_INITIAL_BALANCE) },
     )

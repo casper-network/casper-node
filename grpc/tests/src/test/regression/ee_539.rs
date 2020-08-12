@@ -14,7 +14,7 @@ fn should_run_ee_539_serialize_action_thresholds_regression() {
     // This test runs a contract that's after every call extends the same key with
     // more data
     let exec_request = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+       *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_EE_539_REGRESSION,
         runtime_args! { ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(4), ARG_DEPLOYMENT_THRESHOLD => Weight::new(3) },
     )

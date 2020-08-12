@@ -19,7 +19,7 @@ fn should_run_counter_example_contract() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_COUNTER_DEFINE,
         RuntimeArgs::new(),
     )
@@ -32,7 +32,7 @@ fn should_run_counter_example_contract() {
         .commit();
 
     let account = builder
-        .query(None, Key::Account(DEFAULT_ACCOUNT_ADDR), &[])
+        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
         .as_account()
         .expect("should be account")
@@ -44,7 +44,7 @@ fn should_run_counter_example_contract() {
         .expect("should have counter contract hash key");
 
     let exec_request_2 = ExecuteRequestBuilder::versioned_contract_call_by_hash_key_name(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         HASH_KEY_NAME,
         None,
         ENTRYPOINT_SESSION,
@@ -66,7 +66,7 @@ fn should_run_counter_example_contract() {
     assert_eq!(value, 1);
 
     let exec_request_3 = ExecuteRequestBuilder::versioned_contract_call_by_hash_key_name(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         HASH_KEY_NAME,
         None,
         ENTRYPOINT_SESSION,
@@ -96,7 +96,7 @@ fn should_default_contract_hash_arg() {
     // This test runs a contract that's after every call extends the same key with
     // more data
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_COUNTER_DEFINE,
         RuntimeArgs::new(),
     )
@@ -109,7 +109,7 @@ fn should_default_contract_hash_arg() {
         .commit();
 
     let exec_request_2 = ExecuteRequestBuilder::versioned_contract_call_by_hash_key_name(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         HASH_KEY_NAME,
         None,
         ENTRYPOINT_SESSION,
@@ -121,7 +121,7 @@ fn should_default_contract_hash_arg() {
 
     let value: i32 = {
         let counter_contract_hash_key = *builder
-            .query(None, Key::Account(DEFAULT_ACCOUNT_ADDR), &[])
+            .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
             .expect("should query account")
             .as_account()
             .expect("should be account")
@@ -149,7 +149,7 @@ fn should_call_counter_contract_directly() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_COUNTER_DEFINE,
         RuntimeArgs::new(),
     )
@@ -162,7 +162,7 @@ fn should_call_counter_contract_directly() {
         .commit();
 
     let exec_request_2 = ExecuteRequestBuilder::versioned_contract_call_by_hash_key_name(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         HASH_KEY_NAME,
         None,
         ENTRYPOINT_COUNTER,
@@ -174,7 +174,7 @@ fn should_call_counter_contract_directly() {
 
     let value: i32 = {
         let counter_contract_hash_key = *builder
-            .query(None, Key::Account(DEFAULT_ACCOUNT_ADDR), &[])
+            .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
             .expect("should query account")
             .as_account()
             .expect("should be account")
