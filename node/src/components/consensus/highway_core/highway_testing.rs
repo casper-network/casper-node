@@ -257,7 +257,10 @@ impl ValidatorT<HighwayMessage> for HighwayValidator {
                 // it won't cite previous one.
                 match msg {
                     NewVertex(_) => {
-                        warn!("Validator is an equivocator – not adding new vertex to the state.");
+                        warn!(
+                            "Validator is an equivocator – not adding {:?} to the state.",
+                            msg
+                        );
                         vec![msg]
                     }
                     Timer(_) | RequestBlock(_) => vec![msg],
@@ -475,7 +478,7 @@ where
                 if !new_equivocators.is_empty() {
                     warn!("New equivocators detected: {:?}", new_equivocators);
                     // https://casperlabs.atlassian.net/browse/HWY-120
-                    unimplemented!("Equivocations detected but not handled.")
+                    // unimplemented!("Equivocations detected but not handled.")
                 }
                 if !rewards.is_empty() {
                     warn!("Rewards are not verified yet: {:?}", rewards);
@@ -1160,7 +1163,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_some_mute() {
-        logging::init().ok();
+        assert!(logging::init().is_ok());
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1170,6 +1173,44 @@ mod test_harness {
             .max_faulty_validators(3)
             .faulty_weight_perc(fault_perc)
             .fault_type(Fault::Mute)
+            .consensus_values_count(cv_count)
+            .weight_limits(7, 10)
+            .build(&mut rng)
+            .ok()
+            .expect("Construction was successful");
+
+        crank_until(&mut highway_test_harness, &mut rng, |hth| {
+            // Stop the test when each node finalized expected number of consensus values.
+            // Note that we're not testing the order of finalization here.
+            // It will be tested later – it's not the condition for stopping the test run.
+            hth.virtual_net
+                .validators()
+                .all(|v| v.finalized_count() == cv_count as usize)
+        })
+        .unwrap();
+
+        let handle = highway_test_harness.mutable_handle();
+        let mut validators = handle.validators();
+
+        let finalized_values: Vec<Vec<ConsensusValue>> = validators
+            .map(|v| v.finalized_values().cloned().collect::<Vec<_>>())
+            .collect();
+
+        assert_finalization_order(finalized_values, cv_count as usize);
+    }
+
+    #[test]
+    fn liveness_test_some_equivocate() {
+        assert!(logging::init().is_ok());
+
+        let mut rng = TestRng::new();
+        let cv_count = 10;
+        let fault_perc = 10;
+
+        let mut highway_test_harness = HighwayTestHarnessBuilder::new()
+            .max_faulty_validators(3)
+            .faulty_weight_perc(fault_perc)
+            .fault_type(Fault::Equivocate)
             .consensus_values_count(cv_count)
             .weight_limits(7, 10)
             .build(&mut rng)
