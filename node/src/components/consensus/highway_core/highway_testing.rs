@@ -242,7 +242,7 @@ impl HighwayValidator {
                 // For mute validators we add it to the state but not gossip.
                 match msg {
                     NewVertex(vv) => {
-                        let _ = self.highway_mut().add_valid_vertex(ValidVertex(vv.clone()));
+                        let _ = self.highway_mut().add_valid_vertex(ValidVertex(vv));
                         warn!("Validator is mute – won't gossip vertices in response");
                         vec![]
                     }
@@ -399,7 +399,7 @@ where
             .flat_map(|eff| {
                 validator_node
                     .validator_mut()
-                    .post_hook(rng, HighwayMessage::from(eff).clone())
+                    .post_hook(rng, HighwayMessage::from(eff))
             })
             .collect();
         Ok(messages)
