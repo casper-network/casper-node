@@ -65,47 +65,46 @@ impl Display for ValidatorId {
     }
 }
 
-pub(crate) trait Adversary<D, M> {
-    fn pre_hook<R: Rng>(&self, rng: &mut R, consensus: &mut D, msg: &M) {}
-
-    fn post_hook<'a, R: Rng>(&self, rng: &mut R, consensus: &mut D, msg: M) -> Option<M> {
-        Some(msg)
+pub(crate) trait ValidatorT<M> {
+    fn post_hook<R: Rng>(&mut self, rng: &mut R, msg: M) -> Vec<M> {
+        vec![msg]
     }
+}
+
+pub(crate) enum Fault {
+    Mute,
+    Equivocate,
 }
 
 /// A validator in the test network.
 #[derive(Debug)]
-pub(crate) struct Validator<C, M, D, A>
+pub(crate) struct Node<C, M, V>
 where
     M: Clone + Debug,
-    A: Adversary<D, M>,
+    V: ValidatorT<M>,
 {
     pub(crate) id: ValidatorId,
-    /// Whether validator is faulty.
-    pub(crate) adversary: Option<A>,
     /// Vector of consensus values finalized by the validator.
     finalized_values: Vec<C>,
     /// Messages received by the validator.
     messages_received: Vec<Message<M>>,
     /// Messages produced by the validator.
     messages_produced: Vec<M>,
-    /// An instance of consensus protocol.
-    pub(crate) consensus: D,
+    validator: V,
 }
 
-impl<C, M, D, A> Validator<C, M, D, A>
+impl<C, M, V> Node<C, M, V>
 where
     M: Clone + Debug,
-    A: Adversary<D, M>,
+    V: ValidatorT<M>,
 {
-    pub(crate) fn new(id: ValidatorId, adversary: Option<A>, consensus: D) -> Self {
-        Validator {
+    pub(crate) fn new(id: ValidatorId, validator: V) -> Self {
+        Node {
             id,
-            adversary,
             finalized_values: Vec::new(),
             messages_received: Vec::new(),
             messages_produced: Vec::new(),
-            consensus,
+            validator,
         }
     }
 
@@ -145,18 +144,12 @@ where
         self.finalized_values.len()
     }
 
-    pub(crate) fn pre_hook<R: Rng>(&mut self, rng: &mut R, msg: &M) {
-        match self.adversary.as_ref() {
-            None => (),
-            Some(adv) => adv.pre_hook(rng, &mut self.consensus, msg),
-        }
+    pub(crate) fn validator(&self) -> &V {
+        &self.validator
     }
 
-    pub fn post_hook<R: Rng>(&mut self, rng: &mut R, msg: M) -> Option<M> {
-        match self.adversary.as_ref() {
-            None => Some(msg),
-            Some(adv) => adv.post_hook(rng, &mut self.consensus, msg),
-        }
+    pub(crate) fn validator_mut(&mut self) -> &mut V {
+        &mut self.validator
     }
 }
 
@@ -187,23 +180,23 @@ impl From<Timestamp> for DeliverySchedule {
     }
 }
 
-pub(crate) struct VirtualNet<C, D, M, A>
+pub(crate) struct VirtualNet<C, M, V>
 where
     M: MessageT,
-    A: Adversary<D, M>,
+    V: ValidatorT<M>,
 {
     /// Maps validator IDs to actual validator instances.
-    validators_map: BTreeMap<ValidatorId, Validator<C, M, D, A>>,
+    validators_map: BTreeMap<ValidatorId, Node<C, M, V>>,
     /// A collection of all network messages queued up for delivery.
     msg_queue: Queue<M>,
 }
 
-impl<C, D, M, A> VirtualNet<C, D, M, A>
+impl<C, M, V> VirtualNet<C, M, V>
 where
     M: MessageT,
-    A: Adversary<D, M>,
+    V: ValidatorT<M>,
 {
-    pub(crate) fn new<I: IntoIterator<Item = Validator<C, M, D, A>>>(
+    pub(crate) fn new<I: IntoIterator<Item = Node<C, M, V>>>(
         validators: I,
         init_messages: Vec<QueueEntry<M>>,
     ) -> Self {
@@ -244,7 +237,7 @@ where
         self.msg_queue.pop()
     }
 
-    pub(crate) fn get_validator(&self, validator: ValidatorId) -> Option<&Validator<C, M, D, A>> {
+    pub(crate) fn get_validator(&self, validator: ValidatorId) -> Option<&Node<C, M, V>> {
         self.validators_map.get(&validator)
     }
 
@@ -252,18 +245,15 @@ where
         self.validators_map.keys()
     }
 
-    pub(crate) fn validator_mut(
-        &mut self,
-        validator_id: &ValidatorId,
-    ) -> Option<&mut Validator<C, M, D, A>> {
+    pub(crate) fn node_mut(&mut self, validator_id: &ValidatorId) -> Option<&mut Node<C, M, V>> {
         self.validators_map.get_mut(validator_id)
     }
 
-    pub(crate) fn validator(&self, validator_id: &ValidatorId) -> Option<&Validator<C, M, D, A>> {
+    pub(crate) fn validator(&self, validator_id: &ValidatorId) -> Option<&Node<C, M, V>> {
         self.validators_map.get(validator_id)
     }
 
-    pub(crate) fn validators(&self) -> impl Iterator<Item = &Validator<C, M, D, A>> {
+    pub(crate) fn validators(&self) -> impl Iterator<Item = &Node<C, M, V>> {
         self.validators_map.values()
     }
 
@@ -301,8 +291,8 @@ mod virtual_net_tests {
     use std::collections::{HashSet, VecDeque};
 
     use super::{
-        Adversary, DeliverySchedule, Message, Target, TargetedMessage, Timestamp, Validator,
-        ValidatorId, VirtualNet,
+        DeliverySchedule, Message, Node, Target, TargetedMessage, Timestamp, ValidatorId,
+        ValidatorT, VirtualNet,
     };
     use crate::testing::TestRng;
 
@@ -311,15 +301,14 @@ mod virtual_net_tests {
 
     struct NoOpConsensus;
 
-    struct NoOpAdversary;
+    struct NoOpValidator;
 
-    impl Adversary<NoOpConsensus, M> for NoOpAdversary {}
+    impl ValidatorT<M> for NoOpValidator {}
 
     #[test]
     fn messages_are_enqueued_in_order() {
         let validator_id = ValidatorId(1u64);
-        let single_validator: Validator<C, u64, NoOpConsensus, NoOpAdversary> =
-            Validator::new(validator_id, None, NoOpConsensus);
+        let single_validator: Node<C, u64, NoOpValidator> = Node::new(validator_id, NoOpValidator);
         let mut virtual_net = VirtualNet::new(vec![single_validator], vec![]);
 
         let messages_num = 10;
@@ -349,10 +338,9 @@ mod virtual_net_tests {
     #[test]
     fn messages_are_dispatched() {
         let validator_id = ValidatorId(1u64);
-        let a: Validator<C, M, NoOpConsensus, NoOpAdversary> =
-            Validator::new(validator_id, None, NoOpConsensus);
-        let b = Validator::new(ValidatorId(2u64), None, NoOpConsensus);
-        let c = Validator::new(ValidatorId(3u64), None, NoOpConsensus);
+        let a: Node<C, M, NoOpValidator> = Node::new(validator_id, NoOpValidator);
+        let b = Node::new(ValidatorId(2u64), NoOpValidator);
+        let c = Node::new(ValidatorId(3u64), NoOpValidator);
 
         let mut virtual_net = VirtualNet::new(vec![a, b, c], vec![]);
 

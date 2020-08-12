@@ -17,8 +17,8 @@ use crate::{
     components::consensus::{
         tests::{
             consensus_des_testing::{
-                Adversary, DeliverySchedule, Message, Target, TargetedMessage, Validator,
-                ValidatorId, VirtualNet,
+                DeliverySchedule, Fault, Message, Node, Target, TargetedMessage, ValidatorId,
+                ValidatorT, VirtualNet,
             },
             queue::{MessageT, QueueEntry},
         },
@@ -28,29 +28,10 @@ use crate::{
     types::Timestamp,
 };
 
-struct HighwayConsensus {
-    highway: Highway<TestContext>,
-    finality_detector: FinalityDetector<TestContext>,
-}
-
 type ConsensusValue = Vec<u32>;
 
 const TEST_FORGIVENESS_FACTOR: (u16, u16) = (2, 5);
 const TEST_MIN_ROUND_EXP: u8 = 12;
-
-impl HighwayConsensus {
-    fn run_finality(&mut self) -> FinalityOutcome<TestContext> {
-        self.finality_detector.run(&self.highway)
-    }
-
-    pub(crate) fn highway(&self) -> &Highway<TestContext> {
-        &self.highway
-    }
-
-    pub(crate) fn highway_mut(&mut self) -> &mut Highway<TestContext> {
-        &mut self.highway
-    }
-}
 
 #[derive(Clone, Eq, PartialEq)]
 enum HighwayMessage {
@@ -209,47 +190,86 @@ trait DeliveryStrategy {
     ) -> DeliverySchedule;
 }
 
-#[derive(Debug)]
-enum HighwayAdversary {
-    Mute,
-    Equivocator,
+struct HighwayValidator {
+    highway: Highway<TestContext>,
+    finality_detector: FinalityDetector<TestContext>,
+    fault: Option<Fault>,
 }
 
-impl Adversary<HighwayConsensus, HighwayMessage> for HighwayAdversary {
-    fn pre_hook<R: Rng>(
-        &self,
-        rng: &mut R,
-        consensus: &mut HighwayConsensus,
-        msg: &HighwayMessage,
-    ) {
+impl HighwayValidator {
+    fn new(
+        highway: Highway<TestContext>,
+        finality_detector: FinalityDetector<TestContext>,
+        fault: Option<Fault>,
+    ) -> Self {
+        HighwayValidator {
+            highway,
+            finality_detector,
+            fault,
+        }
     }
 
-    fn post_hook<'a, R: Rng>(
-        &self,
-        rng: &mut R,
-        consensus: &mut HighwayConsensus,
-        msg: HighwayMessage,
-    ) -> Option<HighwayMessage> {
-        match self {
-            HighwayAdversary::Mute => {
-                // If validator is `FaultType::Mute` it shouldn't send a `NewVertex` in response.
-                // Other effects – like `Timer` or `RequestBlock` should still be returned and scheduled.
-                if msg.is_new_vertex() {
-                    warn!("Validator is mute. {:?} won't be gossiped.", msg);
-                    None
-                } else {
-                    Some(msg)
+    fn highway_mut(&mut self) -> &mut Highway<TestContext> {
+        &mut self.highway
+    }
+
+    fn highway(&self) -> &Highway<TestContext> {
+        &self.highway
+    }
+
+    fn run_finality(&mut self) -> FinalityOutcome<TestContext> {
+        self.finality_detector.run(&self.highway)
+    }
+}
+
+impl ValidatorT<HighwayMessage> for HighwayValidator {
+    fn post_hook<R: Rng>(&mut self, rng: &mut R, msg: HighwayMessage) -> Vec<HighwayMessage> {
+        match self.fault.as_ref() {
+            None => {
+                // Honest validator.
+                // If validator produced a `NewVertex` effect,
+                // we want to add it to his state immediately and gossip all effects.
+                match &msg {
+                    NewVertex(vv) => self
+                        .highway_mut()
+                        .add_valid_vertex(ValidVertex(vv.clone()))
+                        .into_iter()
+                        .map(HighwayMessage::from)
+                        .chain(iter::once(msg))
+                        .collect(),
+                    Timer(_) | RequestBlock(_) => vec![msg],
                 }
             }
-            _ => unimplemented!(""),
+            Some(Fault::Mute) => {
+                // For mute validators we add it to the state but not gossip.
+                match msg {
+                    NewVertex(vv) => {
+                        let _ = self.highway_mut().add_valid_vertex(ValidVertex(vv.clone()));
+                        warn!("Validator is mute – won't gossip vertices in response");
+                        vec![]
+                    }
+                    Timer(_) | RequestBlock(_) => vec![msg],
+                }
+            }
+            Some(Fault::Equivocate) => {
+                // For equivocators we don't add to state and gossip.
+                // This way, the next time this validator creates a message
+                // it won't cite previous one.
+                match msg {
+                    NewVertex(_) => {
+                        warn!("Validator is an equivocator – not adding new vertex to the state.");
+                        vec![msg]
+                    }
+                    Timer(_) | RequestBlock(_) => vec![msg],
+                }
+            }
         }
     }
 }
 
-type HighwayValidator =
-    Validator<ConsensusValue, HighwayMessage, HighwayConsensus, HighwayAdversary>;
+type HighwayNode = Node<ConsensusValue, HighwayMessage, HighwayValidator>;
 
-type HighwayNet = VirtualNet<ConsensusValue, HighwayConsensus, HighwayMessage, HighwayAdversary>;
+type HighwayNet = VirtualNet<ConsensusValue, HighwayMessage, HighwayValidator>;
 
 struct HighwayTestHarness<DS>
 where
@@ -280,7 +300,7 @@ where
     DS: DeliveryStrategy,
 {
     fn new<T: Into<Timestamp>>(
-        virtual_net: VirtualNet<ConsensusValue, HighwayConsensus, HighwayMessage, HighwayAdversary>,
+        virtual_net: HighwayNet,
         start_time: T,
         consensus_values: VecDeque<ConsensusValue>,
         delivery_time_distribution: Distribution,
@@ -356,9 +376,9 @@ where
 
     /// Helper for getting validator from the underlying virtual net.
     #[allow(clippy::type_complexity)]
-    fn validator_mut(&mut self, validator_id: &ValidatorId) -> TestResult<&mut HighwayValidator> {
+    fn node_mut(&mut self, validator_id: &ValidatorId) -> TestResult<&mut HighwayNode> {
         self.virtual_net
-            .validator_mut(&validator_id)
+            .node_mut(&validator_id)
             .ok_or_else(|| TestRunError::MissingValidator(*validator_id))
     }
 
@@ -369,34 +389,20 @@ where
         f: F,
     ) -> TestResult<Vec<HighwayMessage>>
     where
-        F: FnOnce(&mut Highway<TestContext>) -> Vec<Effect<TestContext>>,
+        F: FnOnce(&mut HighwayValidator) -> Vec<Effect<TestContext>>,
     {
-        let validator = self.validator_mut(validator_id)?;
-        let res = f(validator.consensus.highway_mut());
+        let validator_node = self.node_mut(validator_id)?;
+        let res = f(validator_node.validator_mut());
         // drop(validator);
-        let messages = res.into_iter().flat_map(|eff| {
-            // If validator produced a `NewVertex` effect,
-            // we want to add it to his state immediately.
-            let add_vertex_effects = if let Effect::NewVertex(vv) = &eff {
-                validator
-                    .consensus
-                    .highway_mut()
-                    .add_valid_vertex(vv.clone())
-            } else {
-                vec![]
-            };
-
-            add_vertex_effects
-                .into_iter()
-                .map(HighwayMessage::from)
-                .chain(iter::once(HighwayMessage::from(eff)))
-        });
-
-        Ok(messages
-            .collect::<Vec<_>>()
+        let messages = res
             .into_iter()
-            .filter_map(|hwm| validator.post_hook(rng, hwm))
-            .collect())
+            .flat_map(|eff| {
+                validator_node
+                    .validator_mut()
+                    .post_hook(rng, HighwayMessage::from(eff).clone())
+            })
+            .collect();
+        Ok(messages)
     }
 
     /// Processes a message sent to `validator_id`.
@@ -408,20 +414,19 @@ where
         validator_id: ValidatorId,
         message: Message<HighwayMessage>,
     ) -> TestResult<Vec<HighwayMessage>> {
-        self.validator_mut(&validator_id)?
+        self.node_mut(&validator_id)?
             .push_messages_received(vec![message.clone()]);
 
         let messages = {
             let sender_id = message.sender;
 
-            let v = self.validator_mut(&validator_id)?;
-            v.pre_hook(rng, message.payload());
+            let v = self.node_mut(&validator_id)?;
 
             let hwm = message.payload().clone();
 
             match hwm {
                 Timer(timestamp) => self.call_validator(rng, &validator_id, |consensus| {
-                    consensus.handle_timer(timestamp)
+                    consensus.highway_mut().handle_timer(timestamp)
                 })?,
 
                 NewVertex(v) => {
@@ -440,13 +445,15 @@ where
                     let consensus_value = self.next_consensus_value();
 
                     self.call_validator(rng, &validator_id, |consensus| {
-                        consensus.propose(consensus_value, block_context)
+                        consensus
+                            .highway_mut()
+                            .propose(consensus_value, block_context)
                     })?
                 }
             }
         };
 
-        let recipient = self.validator_mut(&validator_id)?;
+        let recipient = self.node_mut(&validator_id)?;
         recipient.push_messages_produced(messages.clone());
 
         self.run_finality_detector(&validator_id);
@@ -456,9 +463,9 @@ where
 
     /// Runs finality detector.
     fn run_finality_detector(&mut self, validator_id: &ValidatorId) -> TestResult<()> {
-        let recipient = self.validator_mut(validator_id)?;
+        let recipient = self.node_mut(validator_id)?;
 
-        let finality_result = match recipient.consensus.run_finality() {
+        let finality_result = match recipient.validator_mut().run_finality() {
             FinalityOutcome::Finalized {
                 value,
                 new_equivocators,
@@ -503,9 +510,13 @@ where
         // 4. add_valid_vertex
 
         let sync_result = {
-            let validator = self.validator_mut(&recipient)?;
+            let validator = self.node_mut(&recipient)?;
 
-            match validator.consensus.highway.pre_validate_vertex(vertex) {
+            match validator
+                .validator_mut()
+                .highway_mut()
+                .pre_validate_vertex(vertex)
+            {
                 Err((v, error)) => Ok(Err((v, error))),
                 Ok(pvv) => self.synchronize_validator(rng, recipient, sender, pvv),
             }
@@ -516,14 +527,14 @@ where
             Ok(prevalidated_vertex) => {
                 let add_vertex_effects: Vec<HighwayMessage> = {
                     match self
-                        .validator_mut(&recipient)?
-                        .consensus
-                        .highway
+                        .node_mut(&recipient)?
+                        .validator_mut()
+                        .highway_mut()
                         .validate_vertex(prevalidated_vertex)
                     {
                         Err((pvv, error)) => return Ok(Err((pvv.into_vertex(), error))),
-                        Ok(valid_vertex) => self.call_validator(rng, &recipient, |highway| {
-                            highway.add_valid_vertex(valid_vertex)
+                        Ok(valid_vertex) => self.call_validator(rng, &recipient, |v| {
+                            v.highway_mut().add_valid_vertex(valid_vertex)
                         })?,
                     }
                 };
@@ -549,9 +560,10 @@ where
             let validator = self
                 .virtual_net
                 .validator(&recipient)
-                .ok_or_else(|| TestRunError::MissingValidator(recipient))?;
+                .ok_or_else(|| TestRunError::MissingValidator(recipient))?
+                .validator();
 
-            match validator.consensus.highway.missing_dependency(&pvv) {
+            match validator.highway().missing_dependency(&pvv) {
                 None => return Ok(Ok(pvv)),
                 Some(d) => match self.synchronize_dependency(rng, d, recipient, sender)? {
                     Ok(()) => continue,
@@ -579,9 +591,9 @@ where
         sender: ValidatorId,
     ) -> TestRunResult<()> {
         let vertex = self
-            .validator_mut(&sender)?
-            .consensus
-            .highway
+            .node_mut(&sender)?
+            .validator_mut()
+            .highway()
             .get_dependency(&missing_dependency)
             .map(|vv| vv.0)
             .ok_or_else(|| TestRunError::SenderMissingDependency(sender, missing_dependency))?;
@@ -628,7 +640,7 @@ impl<'a, DS: DeliveryStrategy> MutableHandle<'a, DS> {
         self.0.virtual_net.empty_queue();
     }
 
-    fn validators(&self) -> impl Iterator<Item = &HighwayValidator> {
+    fn validators(&self) -> impl Iterator<Item = &HighwayNode> {
         self.0.virtual_net.validators()
     }
 }
@@ -896,10 +908,8 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                 let finality_detector = FinalityDetector::new(Weight(ftt));
 
                 (
-                    HighwayConsensus {
-                        highway,
-                        finality_detector,
-                    },
+                    highway,
+                    finality_detector,
                     effects.into_iter().map(HighwayMessage::from).collect_vec(),
                 )
             };
@@ -913,12 +923,13 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
             for validator in validators.iter() {
                 let vid = *validator.id();
                 let fault = if (vid.0 < faulty_num as u64) {
-                    Some(HighwayAdversary::Mute)
+                    Some(Fault::Mute)
                 } else {
                     None
                 };
-                let (consensus, msgs) = highway_consensus((vid, &mut secrets));
-                let validator = Validator::new(vid, fault, consensus);
+                let (highway, finality_detector, msgs) = highway_consensus((vid, &mut secrets));
+                let highway_consensus = HighwayValidator::new(highway, finality_detector, fault);
+                let validator = Node::new(vid, highway_consensus);
                 let qm: Vec<QueueEntry<HighwayMessage>> = msgs
                     .into_iter()
                     .map(|hwm| {
@@ -1024,7 +1035,7 @@ mod test_harness {
 
     use super::{
         crank_until, ConsensusValue, CrankOk, DeliverySchedule, DeliveryStrategy, HighwayMessage,
-        HighwayTestHarness, HighwayTestHarnessBuilder, HighwayValidator, InstantDeliveryNoDropping,
+        HighwayNode, HighwayTestHarness, HighwayTestHarnessBuilder, InstantDeliveryNoDropping,
         TestRunError,
     };
     use crate::{
