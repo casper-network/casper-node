@@ -3,11 +3,8 @@ use std::{collections::BTreeSet, iter::FromIterator};
 use casperlabs_types::account::AccountHash;
 
 use crate::{
-    components::{
-        contract_runtime::core::{
-            engine_state::executable_deploy_item::ExecutableDeployItem, DeployHash,
-        },
-        storage::Value,
+    components::contract_runtime::core::{
+        engine_state::executable_deploy_item::ExecutableDeployItem, DeployHash,
     },
     types::Deploy,
 };
@@ -48,12 +45,12 @@ impl DeployItem {
 
 impl From<Deploy> for DeployItem {
     fn from(deploy: Deploy) -> Self {
-        let account_hash = deploy.header().account.to_account_hash();
+        let account_hash = deploy.header().account().to_account_hash();
         DeployItem::new(
             account_hash,
             deploy.session().clone(),
             deploy.payment().clone(),
-            deploy.header().gas_price,
+            deploy.header().gas_price(),
             BTreeSet::from_iter(vec![account_hash]),
             deploy.id().inner().to_bytes(),
         )

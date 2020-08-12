@@ -30,7 +30,7 @@ use crate::{
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
         metrics::Metrics,
-        storage::{self, Storage, Value},
+        storage::{self, Storage},
         Component,
     },
     effect::{

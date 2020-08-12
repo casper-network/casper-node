@@ -3,16 +3,20 @@
 
 use std::{
     convert::{TryFrom, TryInto},
+    process,
     str::FromStr,
 };
 
-use clap::{Arg, ArgMatches};
+use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches};
+use futures::executor;
 use lazy_static::lazy_static;
+use reqwest::{Client, StatusCode};
 use serde::{self, Deserialize};
 
 use casperlabs_node::{
     components::contract_runtime::core::engine_state::executable_deploy_item::ExecutableDeployItem,
-    types::{TimeDiff, Timestamp},
+    crypto::hash::Digest,
+    types::{Deploy, DeployHash, TimeDiff, Timestamp},
 };
 use casperlabs_types::{
     account::AccountHash,
@@ -34,6 +38,7 @@ pub(super) enum DisplayOrder {
     Timestamp,
     Ttl,
     GasPrice,
+    Dependencies,
     ChainName,
     SessionCode,
     SessionArgSimple,
@@ -190,6 +195,42 @@ pub(super) mod gas_price {
             .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
             .parse()
             .unwrap_or_else(|error| panic!("should parse {}: {}", ARG_NAME, error))
+    }
+}
+
+/// Handles providing the arg for and retrieval of the deploy dependencies.
+pub(super) mod dependencies {
+    use super::*;
+
+    const ARG_NAME: &str = "dependency";
+    const ARG_VALUE_NAME: &str = "HEX STRING";
+    const ARG_HELP: &str =
+        "A hex-encoded deploy hash of a deploy which must be executed before this deploy";
+
+    pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .required(false)
+            .multiple(true)
+            .value_name(ARG_VALUE_NAME)
+            .takes_value(true)
+            .help(ARG_HELP)
+            .display_order(DisplayOrder::Dependencies as usize)
+    }
+
+    pub(in crate::deploy) fn get(matches: &ArgMatches) -> Vec<DeployHash> {
+        matches
+            .values_of(ARG_NAME)
+            .map(|values| {
+                values
+                    .map(|hex_hash| {
+                        let digest = Digest::from_hex(hex_hash)
+                            .unwrap_or_else(|error| panic!("should parse {}: {}", ARG_NAME, error));
+                        DeployHash::new(digest)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -640,7 +681,6 @@ pub(super) fn parse_payment_info(matches: &ArgMatches<'_>) -> ExecutableDeployIt
 
     // Get the payment code and args options.
     let module_bytes = payment::get(matches).expect("should have payment-amount or payment-path");
-
     let payment_args = args_from_simple_or_complex(
         arg_simple::payment::get(matches),
         args_complex::payment::get(matches),
@@ -649,5 +689,104 @@ pub(super) fn parse_payment_info(matches: &ArgMatches<'_>) -> ExecutableDeployIt
     ExecutableDeployItem::ModuleBytes {
         module_bytes,
         args: payment_args.to_bytes().expect("should serialize"),
+    }
+}
+
+pub(super) fn apply_common_creation_options<'a, 'b>(subcommand: App<'a, 'b>) -> App<'a, 'b> {
+    subcommand
+        .setting(AppSettings::NextLineHelp)
+        .arg(show_arg_examples::arg())
+        .arg(
+            common::node_address::arg(DisplayOrder::NodeAddress as usize)
+                .required_unless(show_arg_examples::ARG_NAME),
+        )
+        .arg(
+            common::secret_key::arg(DisplayOrder::SecretKey as usize)
+                .required_unless(show_arg_examples::ARG_NAME),
+        )
+        .arg(timestamp::arg())
+        .arg(ttl::arg())
+        .arg(gas_price::arg())
+        .arg(dependencies::arg())
+        .arg(chain_name::arg())
+        .arg(standard_payment::arg())
+        .arg(payment::arg())
+        .arg(arg_simple::payment::arg())
+        .arg(args_complex::payment::arg())
+        // Group the payment-arg args so only one style is used to ensure consistent ordering.
+        .group(
+            ArgGroup::with_name("payment-args")
+                .arg(arg_simple::payment::ARG_NAME)
+                .arg(args_complex::payment::ARG_NAME)
+                .required(false),
+        )
+        // Group payment-amount, payment-path and show-arg-examples so that we can require only
+        // one of these.
+        .group(
+            ArgGroup::with_name("required-payment-options")
+                .arg(standard_payment::ARG_NAME)
+                .arg(payment::ARG_NAME)
+                .arg(show_arg_examples::ARG_NAME)
+                .required(true),
+        )
+}
+
+pub(super) fn construct_and_send_deploy_to_node(
+    matches: &ArgMatches<'_>,
+    session: ExecutableDeployItem,
+) {
+    // If we printed the arg examples, exit the process.
+    if show_arg_examples::get(matches) {
+        process::exit(0);
+    }
+
+    let node_address = common::node_address::get(matches);
+    let secret_key = common::secret_key::get(matches);
+    let timestamp = timestamp::get(matches);
+    let ttl = ttl::get(matches);
+    let gas_price = gas_price::get(matches);
+    let dependencies = dependencies::get(matches);
+    let chain_name = chain_name::get(matches);
+
+    let mut rng = rand::thread_rng();
+
+    let payment = parse_payment_info(matches);
+
+    let deploy = Deploy::new(
+        timestamp,
+        ttl,
+        gas_price,
+        dependencies,
+        chain_name,
+        payment,
+        session,
+        &secret_key,
+        &mut rng,
+    );
+
+    let deploy_hash = *deploy.id();
+
+    let body = deploy.to_json().expect("should serialize deploy to JSON");
+
+    let client = Client::new();
+    let url = format!("{}/{}", node_address, common::DEPLOY_API_PATH);
+
+    let response = executor::block_on(async {
+        client
+            .post(&url)
+            .body(body)
+            .send()
+            .await
+            .unwrap_or_else(|error| panic!("should get response from node: {}", error))
+    });
+
+    if response.status() == StatusCode::OK {
+        println!(
+            "Node received deploy with deploy-hash:\n{:?}",
+            deploy_hash.inner()
+        );
+    } else {
+        eprintln!("Sending {} failed\n{:?}", deploy_hash, response);
+        process::exit(1);
     }
 }
