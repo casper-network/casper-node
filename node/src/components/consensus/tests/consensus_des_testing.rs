@@ -71,6 +71,7 @@ pub(crate) trait ValidatorT<M> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum Fault {
     Mute,
     Equivocate,

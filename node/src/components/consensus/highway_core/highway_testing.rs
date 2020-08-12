@@ -659,6 +659,7 @@ struct HighwayTestHarnessBuilder<DS: DeliveryStrategy> {
     /// Percentage of faulty validators' (i.e. equivocators) weight.
     /// Defaults to 0 (network is perfectly secure).
     faulty_percent: u64,
+    fault_type: Option<Fault>,
     /// FTT value for the finality detector.
     /// If not given, defaults to 1/3 of total validators' weight.
     ftt: Option<u64>,
@@ -709,6 +710,7 @@ impl HighwayTestHarnessBuilder<InstantDeliveryNoDropping> {
         HighwayTestHarnessBuilder {
             max_faulty_validators: 10,
             faulty_percent: 0,
+            fault_type: None,
             ftt: None,
             consensus_values_count: 10,
             delivery_distribution: Distribution::Uniform,
@@ -730,6 +732,11 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
         self
     }
 
+    fn fault_type(mut self, fault_type: Fault) -> Self {
+        self.fault_type = Some(fault_type);
+        self
+    }
+
     pub(crate) fn consensus_values_count(mut self, count: u8) -> Self {
         assert!(count > 0);
         self.consensus_values_count = count;
@@ -743,6 +750,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
         HighwayTestHarnessBuilder {
             max_faulty_validators: self.max_faulty_validators,
             faulty_percent: self.faulty_percent,
+            fault_type: self.fault_type,
             ftt: self.ftt,
             consensus_values_count: self.consensus_values_count,
             delivery_distribution: self.delivery_distribution,
@@ -923,7 +931,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
             for validator in validators.iter() {
                 let vid = *validator.id();
                 let fault = if (vid.0 < faulty_num as u64) {
-                    Some(Fault::Mute)
+                    self.fault_type
                 } else {
                     None
                 };
@@ -1041,7 +1049,7 @@ mod test_harness {
     use crate::{
         components::consensus::{
             highway_core::{validators::ValidatorIndex, vertex::Vertex},
-            tests::consensus_des_testing::ValidatorId,
+            tests::consensus_des_testing::{Fault, ValidatorId},
             traits::{Context, ValidatorSecret},
         },
         logging,
@@ -1161,8 +1169,9 @@ mod test_harness {
         let mut highway_test_harness = HighwayTestHarnessBuilder::new()
             .max_faulty_validators(3)
             .faulty_weight_perc(fault_perc)
+            .fault_type(Fault::Mute)
             .consensus_values_count(cv_count)
-            .weight_limits(3, 10)
+            .weight_limits(7, 10)
             .build(&mut rng)
             .ok()
             .expect("Construction was successful");
