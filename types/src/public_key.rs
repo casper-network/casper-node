@@ -59,7 +59,7 @@ impl FromBytes for PublicKey {
 
 impl CLTyped for PublicKey {
     fn cl_type() -> CLType {
-        CLType::Any
+        CLType::PublicKey
     }
 }
 

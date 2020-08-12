@@ -1,9 +1,9 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use super::{types::DelegationRate, PublicKey};
+use super::types::DelegationRate;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    CLType, CLTyped, URef, U512,
+    CLType, CLTyped, PublicKey, URef, U512,
 };
 
 #[cfg_attr(test, derive(Debug))]

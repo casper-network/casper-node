@@ -11,13 +11,13 @@ use casperlabs_contract::{
 use casperlabs_types::{
     auction::{
         ActiveBids, Delegators, EraIndex, EraValidators, FoundingValidator, FoundingValidators,
-        PublicKey, ValidatorWeights, ERA_INDEX_KEY,
+        ValidatorWeights, ERA_INDEX_KEY,
     },
     auction::{ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY},
     contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
     runtime_args,
     system_contract_errors::mint,
-    CLValue, ContractPackageHash, RuntimeArgs, URef, U512,
+    CLValue, ContractPackageHash, PublicKey, RuntimeArgs, URef, U512,
 };
 
 const HASH_KEY_NAME: &str = "auction_hash";

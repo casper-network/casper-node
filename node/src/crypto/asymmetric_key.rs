@@ -23,7 +23,7 @@ use crate::{
     crypto::hash::hash,
     utils::{read_file, read_file_to_string, write_file},
 };
-use casperlabs_types::{account::AccountHash, auction};
+use casperlabs_types::account::AccountHash;
 
 const SYSTEM_ADDR_LENGTH: usize = 32;
 const SYSTEM_ADDR: [u8; SYSTEM_ADDR_LENGTH] = [0; SYSTEM_ADDR_LENGTH];
@@ -302,21 +302,21 @@ pub fn generate_ed25519_keypair() -> (SecretKey, PublicKey) {
     (secret_key, public_key)
 }
 
-impl TryFrom<auction::PublicKey> for PublicKey {
+impl TryFrom<casperlabs_types::PublicKey> for PublicKey {
     type Error = Error;
-    fn try_from(value: auction::PublicKey) -> Result<Self> {
+    fn try_from(value: casperlabs_types::PublicKey) -> Result<Self> {
         match value {
-            auction::PublicKey::Ed25519(bytes) => PublicKey::new_ed25519(bytes),
-            auction::PublicKey::System => Ok(PublicKey::System),
+            casperlabs_types::PublicKey::Ed25519(bytes) => PublicKey::new_ed25519(bytes),
+            casperlabs_types::PublicKey::System => Ok(PublicKey::System),
         }
     }
 }
 
-impl From<PublicKey> for auction::PublicKey {
+impl From<PublicKey> for casperlabs_types::PublicKey {
     fn from(value: PublicKey) -> Self {
         match value {
-            PublicKey::Ed25519(ed25519) => auction::PublicKey::Ed25519(ed25519.to_bytes()),
-            PublicKey::System => auction::PublicKey::System,
+            PublicKey::Ed25519(ed25519) => casperlabs_types::PublicKey::Ed25519(ed25519.to_bytes()),
+            PublicKey::System => casperlabs_types::PublicKey::System,
         }
     }
 }

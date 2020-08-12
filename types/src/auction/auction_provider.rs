@@ -4,13 +4,13 @@ use super::{
     era_validators::ValidatorWeights,
     internal,
     providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
-    EraValidators, PublicKey, SeigniorageRecipient,
+    EraValidators, SeigniorageRecipient,
 };
 use crate::{
     account::AccountHash,
     auction::{ActiveBid, DelegationRate, SeigniorageRecipients},
     system_contract_errors::auction::{Error, Result},
-    URef, U512,
+    PublicKey, URef, U512,
 };
 
 const AUCTION_SLOTS: usize = 5;

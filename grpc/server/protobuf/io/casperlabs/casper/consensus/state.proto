@@ -88,6 +88,7 @@ message CLType {
         STRING = 10;
         KEY = 11;
         UREF = 12;
+        PUBLIC_KEY = 13;
     }
 
     message Option {

@@ -156,6 +156,7 @@ fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
         | CLType::U512
         | CLType::Unit
         | CLType::String
+        | CLType::PublicKey
         | CLType::Any => Ok(vec![]),
         CLType::Option(ty) => match **ty {
             CLType::URef => {
@@ -2077,7 +2078,7 @@ where
             }
 
             auction::METHOD_QUASH_BID => {
-                let validator_public_keys: Vec<auction::PublicKey> =
+                let validator_public_keys: Vec<casperlabs_types::PublicKey> =
                     Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_KEYS)?;
 
                 runtime
@@ -3623,6 +3624,7 @@ mod tests {
                 | CLType::Tuple1(_)
                 | CLType::Tuple2(_)
                 | CLType::Tuple3(_)
+                | CLType::PublicKey
                 | CLType::Any => (),
             }
         };

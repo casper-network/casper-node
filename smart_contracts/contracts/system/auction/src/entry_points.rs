@@ -8,7 +8,7 @@ use casperlabs_contract::{
 use casperlabs_types::{
     account::AccountHash,
     auction::{
-        AuctionProvider, MintProvider, PublicKey, RuntimeProvider, ARG_AMOUNT, ARG_DELEGATION_RATE,
+        AuctionProvider, MintProvider, RuntimeProvider, ARG_AMOUNT, ARG_DELEGATION_RATE,
         ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_PURSE, ARG_SOURCE_PURSE, ARG_VALIDATOR,
         ARG_VALIDATOR_KEYS, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_QUASH_BID,
         METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS, METHOD_RUN_AUCTION,
@@ -19,7 +19,7 @@ use casperlabs_types::{
     runtime_args,
     system_contract_errors::auction::Error,
     CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
-    Parameter, RuntimeArgs, URef, U512,
+    Parameter, PublicKey, RuntimeArgs, URef, U512,
 };
 
 const BOND: &str = "bond";

@@ -1,9 +1,9 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use super::{types::DelegationRate, DelegatedAmounts, PublicKey};
+use super::{types::DelegationRate, DelegatedAmounts};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    CLType, CLTyped, U512,
+    CLType, CLTyped, PublicKey, U512,
 };
 
 /// The seigniorage recipient details.
@@ -65,10 +65,7 @@ mod tests {
     use core::iter::FromIterator;
 
     use super::SeigniorageRecipient;
-    use crate::{
-        auction::{DelegationRate, PublicKey},
-        bytesrepr, U512,
-    };
+    use crate::{auction::DelegationRate, bytesrepr, PublicKey, U512};
 
     #[test]
     fn serialization_roundtrip() {

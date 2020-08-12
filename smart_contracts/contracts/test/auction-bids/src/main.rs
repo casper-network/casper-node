@@ -9,12 +9,11 @@ use casperlabs_contract::contract_api::{account, runtime, storage, system};
 
 use casperlabs_types::{
     auction::{
-        DelegationRate, PublicKey, SeigniorageRecipients, ARG_DELEGATOR, ARG_PUBLIC_KEY,
-        ARG_SOURCE_PURSE, ARG_VALIDATOR, METHOD_ADD_BID, METHOD_DELEGATE,
-        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_UNDELEGATE,
-        METHOD_WITHDRAW_BID,
+        DelegationRate, SeigniorageRecipients, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_SOURCE_PURSE,
+        ARG_VALIDATOR, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_READ_SEIGNIORAGE_RECIPIENTS,
+        METHOD_RUN_AUCTION, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
     },
-    runtime_args, ApiError, RuntimeArgs, URef, U512,
+    runtime_args, ApiError, PublicKey, RuntimeArgs, URef, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";

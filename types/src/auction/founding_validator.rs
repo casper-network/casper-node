@@ -1,11 +1,10 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
+use super::types::DelegationRate;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    CLType, CLTyped, URef, U512,
+    CLType, CLTyped, PublicKey, URef, U512,
 };
-
-use super::{types::DelegationRate, PublicKey};
 
 /// An entry in a founding validator map.
 #[derive(PartialEq, Debug)]

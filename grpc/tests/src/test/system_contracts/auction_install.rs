@@ -9,8 +9,7 @@ use casperlabs_node::components::contract_runtime::core::engine_state::EngineCon
 use casperlabs_types::{
     account::AccountHash,
     auction::{
-        self, ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_INDEX_KEY, ERA_VALIDATORS_KEY,
-        FOUNDING_VALIDATORS_KEY,
+        ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_INDEX_KEY, ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY,
     },
     runtime_args, ContractHash, RuntimeArgs, U512,
 };
@@ -63,7 +62,7 @@ fn should_run_auction_install_contract() {
 
     let _auction_hash = auction.contract_package_hash();
 
-    let genesis_validators: BTreeMap<auction::PublicKey, U512> = BTreeMap::new();
+    let genesis_validators: BTreeMap<casperlabs_types::PublicKey, U512> = BTreeMap::new();
 
     let res = exec_with_return::exec(
         engine_config,

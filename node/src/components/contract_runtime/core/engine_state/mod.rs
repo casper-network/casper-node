@@ -26,7 +26,6 @@ use tracing::{debug, warn};
 
 use casperlabs_types::{
     account::AccountHash,
-    auction,
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
     runtime_args,
@@ -385,12 +384,12 @@ where
         };
 
         let auction_hash: ContractHash = {
-            let bonded_validators: BTreeMap<auction::PublicKey, U512> = ee_config
+            let bonded_validators: BTreeMap<casperlabs_types::PublicKey, U512> = ee_config
                 .accounts()
                 .iter()
                 .map(|account| {
                     (
-                        auction::PublicKey::from(account.public_key()),
+                        casperlabs_types::PublicKey::from(account.public_key()),
                         account.bonded_amount().value(),
                     )
                 })

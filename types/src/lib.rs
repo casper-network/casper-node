@@ -40,6 +40,7 @@ pub mod mint;
 mod phase;
 pub mod proof_of_stake;
 mod protocol_version;
+mod public_key;
 pub mod runtime_args;
 mod semver;
 pub mod standard_payment;
@@ -69,6 +70,7 @@ pub use key::{
 };
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
+pub use public_key::PublicKey;
 pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use semver::{SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use system_contract_type::SystemContractType;

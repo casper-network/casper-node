@@ -1,7 +1,6 @@
 use alloc::collections::BTreeMap;
 
-use super::PublicKey;
-use crate::U512;
+use crate::{PublicKey, U512};
 
 /// Delegators and associated bid "top-ups".
 pub type DelegatedAmounts = BTreeMap<PublicKey, U512>;

@@ -33,6 +33,7 @@ const CL_TYPE_TAG_TUPLE1: u8 = 18;
 const CL_TYPE_TAG_TUPLE2: u8 = 19;
 const CL_TYPE_TAG_TUPLE3: u8 = 20;
 const CL_TYPE_TAG_ANY: u8 = 21;
+const CL_TYPE_TAG_PUBLIC_KEY: u8 = 22;
 
 /// CasperLabs types, i.e. types which can be stored and manipulated by smart contracts.
 ///
@@ -65,7 +66,9 @@ pub enum CLType {
     Key,
     /// [`URef`] system type.
     URef,
-    /// `Option` of a `CLType`.
+    /// [`PublicKey`] system type.
+    PublicKey,
+    /// `Option` of a `CLType`.    
     Option(Box<CLType>),
     /// Variable-length list of a single `CLType` (comparable to a `Vec`).
     List(Box<CLType>),
@@ -108,6 +111,7 @@ impl CLType {
                 | CLType::String
                 | CLType::Key
                 | CLType::URef
+                | CLType::PublicKey
                 | CLType::Any => 0,
                 CLType::Option(cl_type) | CLType::List(cl_type) => cl_type.serialized_length(),
                 CLType::FixedList(cl_type, list_len) => {
@@ -143,6 +147,7 @@ impl CLType {
             CLType::String => stream.push(CL_TYPE_TAG_STRING),
             CLType::Key => stream.push(CL_TYPE_TAG_KEY),
             CLType::URef => stream.push(CL_TYPE_TAG_UREF),
+            CLType::PublicKey => stream.push(CL_TYPE_TAG_PUBLIC_KEY),
             CLType::Option(cl_type) => {
                 stream.push(CL_TYPE_TAG_OPTION);
                 cl_type.append_bytes(stream);
