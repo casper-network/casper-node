@@ -18,7 +18,7 @@ use crate::{
         tests::{
             consensus_des_testing::{
                 DeliverySchedule, Fault, Message, Node, Target, TargetedMessage, ValidatorId,
-                ValidatorT, VirtualNet,
+                VirtualNet,
             },
             queue::{MessageT, QueueEntry},
         },
@@ -220,9 +220,7 @@ impl HighwayValidator {
     fn run_finality(&mut self) -> FinalityOutcome<TestContext> {
         self.finality_detector.run(&self.highway)
     }
-}
 
-impl ValidatorT<HighwayMessage> for HighwayValidator {
     fn post_hook<R: Rng>(&mut self, rng: &mut R, msg: HighwayMessage) -> Vec<HighwayMessage> {
         match self.fault.as_ref() {
             None => {

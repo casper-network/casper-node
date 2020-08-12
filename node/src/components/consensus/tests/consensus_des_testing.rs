@@ -65,12 +65,6 @@ impl Display for ValidatorId {
     }
 }
 
-pub(crate) trait ValidatorT<M> {
-    fn post_hook<R: Rng>(&mut self, rng: &mut R, msg: M) -> Vec<M> {
-        vec![msg]
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Fault {
     Mute,
@@ -82,7 +76,6 @@ pub(crate) enum Fault {
 pub(crate) struct Node<C, M, V>
 where
     M: Clone + Debug,
-    V: ValidatorT<M>,
 {
     pub(crate) id: ValidatorId,
     /// Vector of consensus values finalized by the validator.
@@ -97,7 +90,6 @@ where
 impl<C, M, V> Node<C, M, V>
 where
     M: Clone + Debug,
-    V: ValidatorT<M>,
 {
     pub(crate) fn new(id: ValidatorId, validator: V) -> Self {
         Node {
@@ -184,7 +176,6 @@ impl From<Timestamp> for DeliverySchedule {
 pub(crate) struct VirtualNet<C, M, V>
 where
     M: MessageT,
-    V: ValidatorT<M>,
 {
     /// Maps validator IDs to actual validator instances.
     validators_map: BTreeMap<ValidatorId, Node<C, M, V>>,
@@ -195,7 +186,6 @@ where
 impl<C, M, V> VirtualNet<C, M, V>
 where
     M: MessageT,
-    V: ValidatorT<M>,
 {
     pub(crate) fn new<I: IntoIterator<Item = Node<C, M, V>>>(
         validators: I,
@@ -293,7 +283,7 @@ mod virtual_net_tests {
 
     use super::{
         DeliverySchedule, Message, Node, Target, TargetedMessage, Timestamp, ValidatorId,
-        ValidatorT, VirtualNet,
+        VirtualNet,
     };
     use crate::testing::TestRng;
 
@@ -303,8 +293,6 @@ mod virtual_net_tests {
     struct NoOpConsensus;
 
     struct NoOpValidator;
-
-    impl ValidatorT<M> for NoOpValidator {}
 
     #[test]
     fn messages_are_enqueued_in_order() {
