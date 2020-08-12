@@ -519,17 +519,17 @@ mod tests {
         let mut state = State::new_test(&[Weight(5)], 0); // Alice is the only validator.
 
         let mut obs = Observation::None;
-        let mut seq_number = 0;
         let mut add_vote = |time: u64, round_exp: u8, value: Option<u32>| {
+            let panorama = Panorama::from(vec![obs.clone()]);
+            let seq_number = panorama.next_seq_num(&state, ALICE);
             let wvote = WireVote::<TestContext> {
-                panorama: Panorama::from(vec![obs.clone()]),
+                panorama,
                 creator: ALICE,
                 value,
                 seq_number,
                 timestamp: Timestamp::from(time),
                 round_exp,
             };
-            seq_number += 1;
             let swvote = SignedWireVote::new(wvote, &ALICE_SEC);
             let hash = swvote.hash();
             obs = Observation::Correct(hash);
@@ -592,8 +592,7 @@ mod tests {
                             round_exp: u8,
                             value: Option<u32>|
          -> Result<u64, AddVoteError<TestContext>> {
-            let next_seq_num = |vh: &u64| state.vote(vh).seq_number + 1;
-            let seq_number = panorama.get(creator).correct().map_or(0, next_seq_num);
+            let seq_number = panorama.next_seq_num(&state, creator);
             let wvote = WireVote::<TestContext> {
                 panorama,
                 creator,
