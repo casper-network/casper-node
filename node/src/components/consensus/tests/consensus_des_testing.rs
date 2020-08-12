@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, BinaryHeap, VecDeque},
+    collections::{BTreeMap, BinaryHeap, HashSet, VecDeque},
     fmt::{Debug, Display, Formatter},
     hash::Hash,
     time,
@@ -84,6 +84,7 @@ where
     messages_received: Vec<Message<M>>,
     /// Messages produced by the validator.
     messages_produced: Vec<M>,
+    equivocators_seen: HashSet<ValidatorId>,
     validator: V,
 }
 
@@ -97,6 +98,7 @@ where
             finalized_values: Vec::new(),
             messages_received: Vec::new(),
             messages_produced: Vec::new(),
+            equivocators_seen: HashSet::new(),
             validator,
         }
     }
@@ -143,6 +145,14 @@ where
 
     pub(crate) fn validator_mut(&mut self) -> &mut V {
         &mut self.validator
+    }
+
+    pub(crate) fn new_equivocators<I: Iterator<Item = ValidatorId>>(&mut self, equivocators: I) {
+        self.equivocators_seen.extend(equivocators);
+    }
+
+    pub(crate) fn equivocators(&self) -> impl Iterator<Item = &ValidatorId> {
+        self.equivocators_seen.iter()
     }
 }
 

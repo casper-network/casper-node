@@ -474,7 +474,7 @@ where
             } => {
                 if !new_equivocators.is_empty() {
                     warn!("New equivocators detected: {:?}", new_equivocators);
-                    // https://casperlabs.atlassian.net/browse/HWY-120
+                    recipient.new_equivocators(new_equivocators.into_iter());
                 }
                 if !rewards.is_empty() {
                     warn!("Rewards are not verified yet: {:?}", rewards);
@@ -1055,6 +1055,7 @@ mod test_harness {
         testing::TestRng,
         types::TimeDiff,
     };
+    use logging::{LoggingConfig, LoggingFormat};
     use tracing::{span, warn, Level, Span};
 
     #[test]
@@ -1097,7 +1098,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_no_faults() {
-        logging::init().ok();
+        logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true)).ok();
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1159,7 +1160,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_some_mute() {
-        assert!(logging::init().is_ok());
+        assert!(logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true)).is_ok());
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1197,7 +1198,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_some_equivocate() {
-        assert!(logging::init().is_ok());
+        assert!(logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true)).is_ok());
 
         let mut rng = TestRng::new();
         let cv_count = 10;
