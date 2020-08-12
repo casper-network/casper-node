@@ -396,7 +396,6 @@ where
     {
         let validator_node = self.node_mut(validator_id)?;
         let res = f(validator_node.validator_mut());
-        // drop(validator);
         let messages = res
             .into_iter()
             .flat_map(|eff| {
