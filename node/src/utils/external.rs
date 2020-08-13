@@ -70,7 +70,7 @@ where
 {
     /// Loads the value if not loaded already, or returns available value.
     ///
-    /// This function is a rarely used, consider using `load_relative` instead.
+    /// This function is rarely used, consider using `load_relative` instead.
     pub fn load(self) -> Result<T, LoadError<T::Error>> {
         match self {
             External::Path(path) => T::from_file(&path).map_err(move |error| LoadError::Failed {
