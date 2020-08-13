@@ -91,7 +91,7 @@ bind_port = 7777
 #   /Users/Alice/Library/Application Support/io.CasperLabs.casperlabs-node
 # * Windows: `{FOLDERID_RoamingAppData}\CasperLabs\casperlabs-node\data` e.g.
 #   C:\Users\Alice\AppData\Roaming\CasperLabs\casperlabs-node\data
-path = '$HOME/.local/share/casperlabs-node/example/'
+# path = 'node-storage'
 
 # Optional maximum size of the database to use for the block store.
 #
