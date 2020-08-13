@@ -408,16 +408,11 @@ fn round_participation<'a, C: Context>(
 #[allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
 #[cfg(test)]
 mod tests {
-    use std::mem;
-
     use super::{
         super::state::{tests::*, State, BLOCK_REWARD, REWARD_DELAY},
         *,
     };
-    use crate::components::consensus::highway_core::{
-        validators::ValidatorMap,
-        vertex::{SignedWireVote, WireVote},
-    };
+    use crate::components::consensus::highway_core::validators::ValidatorMap;
 
     #[test]
     fn finality_detector() -> Result<(), AddVoteError<TestContext>> {
@@ -518,40 +513,20 @@ mod tests {
     fn round_participation_test() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new_test(&[Weight(5)], 0); // Alice is the only validator.
 
-        let mut obs = Observation::None;
-        let mut add_vote = |time: u64, round_exp: u8, value: Option<u32>| {
-            let panorama = Panorama::from(vec![obs.clone()]);
-            let seq_number = panorama.next_seq_num(&state, ALICE);
-            let wvote = WireVote::<TestContext> {
-                panorama,
-                creator: ALICE,
-                value,
-                seq_number,
-                timestamp: Timestamp::from(time),
-                round_exp,
-            };
-            let swvote = SignedWireVote::new(wvote, &ALICE_SEC);
-            let hash = swvote.hash();
-            obs = Observation::Correct(hash);
-            state.add_vote(swvote)?;
-            Ok(hash)
-        };
-
         // Round ID 0, length 16: Alice participates.
-        add_vote(0, 4u8, Some(1))?; // Proposal
-        let w0 = add_vote(10, 4u8, None)?; // Witness
+        let p0 = add_vote2!(state, ALICE, 0, 4u8, 0x1; N)?; // Proposal
+        let w0 = add_vote2!(state, ALICE, 10, 4u8, None; p0)?; // Witness
 
         // Round ID 16, length 16: Alice partially participates.
-        let w16 = add_vote(26, 4u8, None)?; // Witness
+        let w16 = add_vote2!(state, ALICE, 26, 4u8, None; w0)?; // Witness
 
         // Round ID 32, length 16: Alice doesn't participate.
 
         // Round ID 48, length 8: Alice participates.
-        add_vote(48, 3u8, Some(2))?; // Proposal
-        let w48 = add_vote(53, 3u8, None)?; // Witness
+        let p48 = add_vote2!(state, ALICE, 48, 3u8, 0x2; w16)?;
+        let w48 = add_vote2!(state, ALICE, 53, 3u8, None; p48)?;
 
-        mem::drop(add_vote); // Drop add_vote, so state is not borrowed anymore.
-
+        let obs = Observation::Correct(w48);
         let rp = |time: u64| round_participation(&state, &obs, Timestamp::from(time));
         assert_eq!(RoundParticipation::Yes(&w0), rp(0));
         assert_eq!(RoundParticipation::Unassigned, rp(8));
@@ -570,89 +545,58 @@ mod tests {
     fn compute_rewards_test() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new_test(&[Weight(4), Weight(5), Weight(1)], 0);
 
-        assert_eq!(BOB, state.leader(Timestamp::from(0)));
-        assert_eq!(BOB, state.leader(Timestamp::from(8)));
-        assert_eq!(ALICE, state.leader(Timestamp::from(16)));
-
         // Payouts for a block happen at the first occasion after `REWARD_DELAY` times the block's
         // round length.
         let payday0 = 0 + (REWARD_DELAY + 1) * 8;
         let payday8 = 8 + (REWARD_DELAY + 1) * 8;
         let payday16 = 16 + (REWARD_DELAY + 1) * 16; // Alice had round length 16.
         let pre16 = payday16 - 16;
-        let payday0_lead = state.leader(Timestamp::from(payday0));
-        let payday8_lead = state.leader(Timestamp::from(payday8));
-        let pre16_lead = state.leader(Timestamp::from(pre16));
-        let payday16_lead = state.leader(Timestamp::from(payday16));
-
-        let secrets = ValidatorMap::from(vec![ALICE_SEC, BOB_SEC, CAROL_SEC]);
-        let mut add_vote = |creator: ValidatorIndex,
-                            panorama: Panorama<TestContext>,
-                            time: u64,
-                            round_exp: u8,
-                            value: Option<u32>|
-         -> Result<u64, AddVoteError<TestContext>> {
-            let seq_number = panorama.next_seq_num(&state, creator);
-            let wvote = WireVote::<TestContext> {
-                panorama,
-                creator,
-                value,
-                seq_number,
-                timestamp: Timestamp::from(time),
-                round_exp,
-            };
-            let swvote = SignedWireVote::new(wvote, &secrets[creator]);
-            let hash = swvote.hash();
-            state.add_vote(swvote)?;
-            Ok(hash)
-        };
 
         // Round 0: Alice has round length 16, Bob and Carol 8.
         // Bob and Alice cite each other, creating a summit with quorum 9.
         // Carol only cites Bob, so she's only part of a quorum-6 summit.
-        let bp0 = add_vote(BOB, panorama!(N, N, N), 0, 3u8, Some(0xB00))?;
-        let ac0 = add_vote(ALICE, panorama!(N, bp0, N), 1, 4u8, None)?;
-        let cc0 = add_vote(CAROL, panorama!(N, bp0, N), 1, 3u8, None)?;
-        let bw0 = add_vote(BOB, panorama!(ac0, bp0, cc0), 5, 3u8, None)?;
-        let cw0 = add_vote(CAROL, panorama!(N, bp0, cc0), 5, 3u8, None)?;
-        let aw0 = add_vote(ALICE, panorama!(ac0, bp0, N), 10, 4u8, None)?;
+        assert_eq!(BOB, state.leader(0.into()));
+        let bp0 = add_vote2!(state, BOB, 0, 3u8, 0xB00; N, N, N)?;
+        let ac0 = add_vote2!(state, ALICE, 1, 4u8, None; N, bp0, N)?;
+        let cc0 = add_vote2!(state, CAROL, 1, 3u8, None; N, bp0, N)?;
+        let bw0 = add_vote2!(state, BOB, 5, 3u8, None; ac0, bp0, cc0)?;
+        let cw0 = add_vote2!(state, CAROL, 5, 3u8, None; N, bp0, cc0)?;
+        let aw0 = add_vote2!(state, ALICE, 10, 4u8, None; ac0, bp0, N)?;
 
         // Round 8: Alice is not assigned (length 16). Bob and Carol make a summit.
-        let bp8 = add_vote(BOB, panorama!(ac0, bw0, cw0), 8, 3u8, Some(0xB08))?;
-        let cc8 = add_vote(CAROL, panorama!(ac0, bp8, cw0), 9, 3u8, None)?;
-        let bw8 = add_vote(BOB, panorama!(aw0, bp8, cc8), 13, 3u8, None)?;
-        let cw8 = add_vote(CAROL, panorama!(aw0, bp8, cc8), 13, 3u8, None)?;
+        assert_eq!(BOB, state.leader(8.into()));
+        let bp8 = add_vote2!(state, BOB, 8, 3u8, 0xB08; ac0, bw0, cw0)?;
+        let cc8 = add_vote2!(state, CAROL, 9, 3u8, None; ac0, bp8, cw0)?;
+        let bw8 = add_vote2!(state, BOB, 13, 3u8, None; aw0, bp8, cc8)?;
+        let cw8 = add_vote2!(state, CAROL, 13, 3u8, None; aw0, bp8, cc8)?;
 
         // Round 16: Carol slows down (length 16). Alice and Bob finalize with quorum 9.
         // Carol cites only Alice and herself, so she's only in the non-finalizing quorum-5 summit.
-        let ap16 = add_vote(ALICE, panorama!(aw0, bw8, cw8), 16, 4u8, Some(0xA16))?;
-        let bc16 = add_vote(BOB, panorama!(ap16, bw8, cw8), 17, 3u8, None)?;
-        let cc16 = add_vote(CAROL, panorama!(ap16, bw8, cw8), 17, 4u8, None)?;
-        let bw16 = add_vote(BOB, panorama!(ap16, bc16, cw8), 19, 3u8, None)?;
-        let aw16 = add_vote(ALICE, panorama!(ap16, bc16, cc16), 26, 4u8, None)?;
-        let cw16 = add_vote(CAROL, panorama!(ap16, bw8, cc16), 26, 4u8, None)?;
+        assert_eq!(ALICE, state.leader(16.into()));
+        let ap16 = add_vote2!(state, ALICE, 16, 4u8, 0xA16; aw0, bw8, cw8)?;
+        let bc16 = add_vote2!(state, BOB, 17, 3u8, None; ap16, bw8, cw8)?;
+        let cc16 = add_vote2!(state, CAROL, 17, 4u8, None; ap16, bw8, cw8)?;
+        let bw16 = add_vote2!(state, BOB, 19, 3u8, None; ap16, bc16, cw8)?;
+        let aw16 = add_vote2!(state, ALICE, 26, 4u8, None; ap16, bc16, cc16)?;
+        let cw16 = add_vote2!(state, CAROL, 26, 4u8, None; ap16, bw8, cc16)?;
 
         // Produce blocks where rewards for rounds 0 and 8 are paid out.
-        let mut pan = panorama!(aw16, bw16, cw16);
-        let pay0 = add_vote(payday0_lead, pan.clone(), payday0, 3u8, Some(0x0))?;
-        pan[payday0_lead] = Observation::Correct(pay0);
-        let pay8 = add_vote(payday8_lead, pan.clone(), payday8, 3u8, Some(0x8))?;
+        assert_eq!(ALICE, state.leader(payday0.into()));
+        let pay0 = add_vote2!(state, ALICE, payday0, 3u8, 0x0; aw16, bw16, cw16)?;
+        assert_eq!(BOB, state.leader(payday8.into()));
+        let pay8 = add_vote2!(state, BOB, payday8, 3u8, 0x8; pay0, bw16, cw16)?;
 
         // Produce another (possibly equivocating) block where rewards for 0 and 8 are paid out,
         // and then one where the reward for round 16 is paid. This is to avoid adding rewards for
         // `pay0` and `pay8` themselves.
-        pan = panorama!(aw16, bw16, cw16);
-        let pay_pre16 = add_vote(pre16_lead, pan.clone(), pre16, 3u8, Some(0x0))?;
-        pan[pre16_lead] = Observation::Correct(pay_pre16);
-        let pay16 = add_vote(payday16_lead, pan.clone(), payday16, 3u8, Some(0x16))?;
+        assert_eq!(ALICE, state.leader(pre16.into()));
+        let pay_pre16 = add_vote2!(state, ALICE, pre16, 3u8, 0x0; aw16, bw16, cw16)?;
+        assert_eq!(ALICE, state.leader(payday16.into()));
+        let pay16 = add_vote2!(state, ALICE, payday16, 3u8, 0x0; pay_pre16, bw16, cw16)?;
 
         // Finally create another block that saw Carol equivocate in round 16.
-        assert_ne!(CAROL, payday16_lead, "faulty validator can't be leader");
-        let _cw16e = add_vote(CAROL, panorama!(ap16, bc16, cc16), 26, 4u8, None)?;
-        pan[CAROL] = Observation::Faulty;
-        let pay16f = add_vote(payday16_lead, pan, payday16, 3u8, Some(0x16))?;
-
-        mem::drop(add_vote); // Drop add_vote, so state is not borrowed anymore.
+        let _cw16e = add_vote2!(state, CAROL, 26, 4u8, None; ap16, bc16, cc16)?;
+        let pay16f = add_vote2!(state, ALICE, payday16, 3u8, 0x0; pay_pre16, bw16, F)?;
 
         // Round 0: Alice and Bob have quorum 9, Carol 6.
         let expected0 = ValidatorMap::from(vec![
