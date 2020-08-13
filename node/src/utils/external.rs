@@ -68,31 +68,27 @@ impl<T> External<T>
 where
     T: Loadable,
 {
-    /// Loads the value if not loaded already, or returns available value.
-    ///
-    /// This function is rarely used, consider using `load_relative` instead.
-    pub fn load(self) -> Result<T, LoadError<T::Error>> {
-        match self {
-            External::Path(path) => T::from_file(&path).map_err(move |error| LoadError::Failed {
-                error,
-                // We canonicalize `path` here, with `ReadFileError` we get extra information about
-                // the absolute path this way if the latter is relative. It will still be relative
-                // if the current path does not exist.
-                path: path.canonicalize().unwrap_or(path),
-            }),
-            External::Loaded(value) => Ok(value),
-            External::Missing => Err(LoadError::Missing),
-        }
-    }
-
     /// Loads the value if not loaded already, resolving relative paths from `root` or returns
     /// available value.
     pub fn load_relative<P: AsRef<Path>>(self, root: P) -> Result<T, LoadError<T::Error>> {
         match self {
-            External::Path(ref path) if path.is_relative() => {
-                External::Path(root.as_ref().join(path)).load()
+            External::Path(path) => {
+                let full_path = if path.is_relative() {
+                    root.as_ref().join(&path)
+                } else {
+                    path
+                };
+
+                T::from_file(&full_path).map_err(move |error| LoadError::Failed {
+                    error,
+                    // We canonicalize `full_path` here, with `ReadFileError` we get extra
+                    // information about the absolute path this way if the latter is relative. It
+                    // will still be relative if the current path does not exist.
+                    path: full_path.canonicalize().unwrap_or(full_path),
+                })
             }
-            _ => self.load(),
+            External::Loaded(value) => Ok(value),
+            External::Missing => Err(LoadError::Missing),
         }
     }
 }
