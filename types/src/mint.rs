@@ -7,7 +7,9 @@ mod unbonding_purse;
 use alloc::{collections::BTreeMap, vec::Vec};
 use core::convert::TryFrom;
 
-use crate::{account::AccountHash, system_contract_errors::mint::Error, Key, URef, U512};
+use crate::{
+    account::AccountHash, system_contract_errors::mint::Error, Key, PublicKey, URef, U512,
+};
 
 pub use crate::mint::{
     era_provider::EraProvider, runtime_provider::RuntimeProvider,
@@ -20,7 +22,7 @@ const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
 /// Bidders mapped to their bidding purses and tokens contained therein. Delegators' tokens
 /// are kept in the validator bid purses, available for withdrawal up to the delegated number
 /// of tokens. Withdrawal moves the tokens to a delegator-controlled unbonding purse.
-pub type BidPurses = BTreeMap<AccountHash, URef>;
+pub type BidPurses = BTreeMap<PublicKey, URef>;
 
 /// Founding validators mapped to their staking purses and tokens contained therein. These
 /// function much like the regular bidding purses, but have a field indicating whether any tokens
@@ -107,7 +109,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
     /// Returns the bid purse's key and current quantity of motes.
     fn bond(
         &mut self,
-        account_hash: AccountHash,
+        public_key: PublicKey,
         source_purse: URef,
         quantity: U512,
     ) -> Result<(URef, U512), Error> {
@@ -118,11 +120,11 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
 
         let mut bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
 
-        let bond_purse = match bid_purses.get(&account_hash) {
+        let bond_purse = match bid_purses.get(&public_key) {
             Some(purse) => *purse,
             None => {
                 let new_purse = self.mint(U512::zero())?;
-                bid_purses.insert(account_hash, new_purse);
+                bid_purses.insert(public_key, new_purse);
                 self.write(bid_purses_uref, bid_purses)?;
                 new_purse
             }
@@ -136,7 +138,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
     }
 
     /// Creates a new purse in unbonding_purses given a validator's key and quantity, returning the new purse's key and the quantity of motes remaining in the validator's bid purse.
-    fn unbond(&mut self, account_hash: AccountHash, quantity: U512) -> Result<(URef, U512), Error> {
+    fn unbond(&mut self, public_key: PublicKey, quantity: U512) -> Result<(URef, U512), Error> {
         let bid_purses_uref = self
             .get_key(BID_PURSES_KEY)
             .and_then(Key::into_uref)
@@ -145,7 +147,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
         let bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
 
         let bid_purse = bid_purses
-            .get(&account_hash)
+            .get(&public_key)
             .copied()
             .ok_or(Error::BondNotFound)?;
         // Creates new unbonding purse with requested tokens
@@ -161,12 +163,12 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
             self.read(unbonding_purses_uref)?.ok_or(Error::Storage)?;
         let new_unbonding_purse = UnbondingPurse {
             purse: unbond_purse,
-            origin: account_hash,
+            origin: public_key,
             era_of_withdrawal: DEFAULT_UNBONDING_DELAY,
             expiration_timer: DEFAULT_LOCK_IN_DURATION,
         };
         unbonding_purses
-            .entry(account_hash)
+            .entry(public_key)
             .and_modify(|unbonding_list| unbonding_list.push(new_unbonding_purse))
             .or_insert_with(|| [new_unbonding_purse].to_vec());
         self.write(unbonding_purses_uref, unbonding_purses)?;
@@ -200,7 +202,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
     }
 
     /// In the first block of each era, the node submits a special deploy that calls this function, decrementing the number of eras until unlock for every value in unbonding_purses.
-    fn slash(&mut self, validator_account_hashes: Vec<AccountHash>) -> Result<(), Error> {
+    fn slash(&mut self, validator_public_keys: Vec<PublicKey>) -> Result<(), Error> {
         // Present version of this document does not specify how unbonding delegators are to be
         // slashed (this will require some modifications to the spec).
         let bid_purses_uref = self
@@ -219,7 +221,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
 
         let mut bid_purses_modified = false;
         let mut unbonding_purses_modified = false;
-        for validator_account_hash in validator_account_hashes {
+        for validator_account_hash in validator_public_keys {
             if let Some(_bid_purse) = bid_purses.remove(&validator_account_hash) {
                 bid_purses_modified = true;
             }

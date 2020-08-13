@@ -1691,7 +1691,9 @@ where
         const METHOD_UNBOND_TIMER_ADVANCE: &str = "unbond_timer_advance";
         const METHOD_SLASH: &str = "slash";
         const ARG_AMOUNT: &str = "amount";
+        const ARG_PUBLIC_KEY: &str = "public_key";
         const ARG_PURSE: &str = "purse";
+        const ARG_VALIDATOR_PUBLIC_KEYS: &str = "validator_public_keys";
 
         let state = self.context.state();
         let access_rights = {
@@ -1772,20 +1774,20 @@ where
             }
             // Type: `fn bond(account_hash: AccountHash, source_purse: URef, quantity: U512) -> Result<(URef, U512), Error>`
             METHOD_BOND => {
-                let account_hash: AccountHash = self.context.get_caller();
+                let public_key = Self::get_named_argument(&runtime_args, ARG_PUBLIC_KEY)?;
                 let source_purse: URef = Self::get_named_argument(&runtime_args, ARG_PURSE)?;
                 let quantity: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
                 let result = mint_runtime
-                    .bond(account_hash, source_purse, quantity)
+                    .bond(public_key, source_purse, quantity)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
             // Type: `fn unbond(account_hash: AccountHash, source_purse: URef, quantity: U512) -> Result<(URef, U512), Error>`
             METHOD_UNBOND => {
-                let account_hash: AccountHash = self.context.get_caller();
+                let public_key = Self::get_named_argument(&runtime_args, ARG_PUBLIC_KEY)?;
                 let quantity: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
                 let result = mint_runtime
-                    .unbond(account_hash, quantity)
+                    .unbond(public_key, quantity)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
@@ -1798,10 +1800,10 @@ where
             }
             // Type: `fn slash(validator_account_hashes: &[AccountHash]) -> Result<(), Error>`
             METHOD_SLASH => {
-                let validator_account_hashes: Vec<AccountHash> =
-                    Self::get_named_argument(&runtime_args, "validator_account_hashes")?;
+                let validator_public_keys =
+                    Self::get_named_argument(&runtime_args, ARG_VALIDATOR_PUBLIC_KEYS)?;
                 mint_runtime
-                    .slash(validator_account_hashes)
+                    .slash(validator_public_keys)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)?
             }

@@ -126,7 +126,7 @@ where
     ) -> Result<(URef, U512)> {
         // Creates new purse with desired amount taken from `source_purse`
         // Bonds whole amount from the newly created purse
-        let (bonding_purse, _total_amount) = self.bond(quantity, source_purse)?;
+        let (bonding_purse, _total_amount) = self.bond(public_key, quantity, source_purse)?;
 
         // Update bids or stakes
         let mut founding_validators = internal::get_founding_validators(self)?;
@@ -225,7 +225,7 @@ where
             }
         };
 
-        let (unbonding_purse, _total_quantity) = self.unbond(quantity)?;
+        let (unbonding_purse, _total_quantity) = self.unbond(public_key, quantity)?;
 
         Ok((unbonding_purse, new_quantity))
     }
@@ -251,7 +251,8 @@ where
             .get(&validator_public_key)
             .ok_or(Error::ValidatorNotFound)?;
 
-        let (bonding_purse, _total_amount) = self.bond(quantity, source_purse)?;
+        let (bonding_purse, _total_amount) =
+            self.bond(delegator_public_key, quantity, source_purse)?;
 
         let new_quantity = {
             let mut delegators = internal::get_delegators(self)?;
@@ -286,7 +287,7 @@ where
     ) -> Result<U512> {
         let active_bids = internal::get_active_bids(self)?;
 
-        let (_unbonding_purse, _total_amount) = self.unbond(quantity)?;
+        let (_unbonding_purse, _total_amount) = self.unbond(delegator_account_hash, quantity)?;
 
         // Return early if target validator is not in `active_bids`
         let _active_bid = active_bids

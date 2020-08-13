@@ -1,7 +1,7 @@
 use casperlabs_engine_test_support::{
     internal::{
-        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
+        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
+        DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
@@ -20,7 +20,6 @@ use casperlabs_types::{
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const CONTRACT_MINT_BONDING: &str = "mint_bonding.wasm";
-const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 
 const GENESIS_VALIDATOR_STAKE: u64 = 50_000;
 const GENESIS_ACCOUNT_STAKE: u64 = 100_000;
@@ -32,8 +31,9 @@ const TEST_SEED_NEW_ACCOUNT: &str = "seed_new_account";
 const TEST_UNBOND: &str = "unbond";
 
 const ARG_AMOUNT: &str = "amount";
+const ARG_PUBLIC_KEY: &str = "public_key";
 const ARG_ENTRY_POINT: &str = "entry_point";
-const ARG_ACCOUNT_PK: &str = "account_hash";
+const ARG_ACCOUNT_HASH: &str = "account_hash";
 
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
@@ -87,7 +87,8 @@ fn should_run_successful_bond_and_unbond() {
         CONTRACT_MINT_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => String::from(TEST_BOND),
-            ARG_AMOUNT => U512::from(GENESIS_ACCOUNT_STAKE)
+            ARG_AMOUNT => U512::from(GENESIS_ACCOUNT_STAKE),
+            ARG_PUBLIC_KEY => casperlabs_types::PublicKey::from(*DEFAULT_ACCOUNT_PUBLIC_KEY),
         },
     )
     .build();
@@ -96,7 +97,9 @@ fn should_run_successful_bond_and_unbond() {
 
     let bid_purses: BidPurses = get_value(&mut builder, mint, "bid_purses");
     let bid_purse = bid_purses
-        .get(&DEFAULT_ACCOUNT_ADDR)
+        .get(&casperlabs_types::PublicKey::from(
+            *DEFAULT_ACCOUNT_PUBLIC_KEY,
+        ))
         .expect("should have bid purse");
     assert_eq!(
         builder.get_purse_balance(*bid_purse),
@@ -118,6 +121,7 @@ fn should_run_successful_bond_and_unbond() {
         runtime_args! {
             ARG_ENTRY_POINT => String::from(TEST_UNBOND),
             ARG_AMOUNT => unbond_amount,
+            ARG_PUBLIC_KEY => casperlabs_types::PublicKey::from(*DEFAULT_ACCOUNT_PUBLIC_KEY),
         },
     )
     .build();
@@ -128,10 +132,15 @@ fn should_run_successful_bond_and_unbond() {
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
-        .get(&DEFAULT_ACCOUNT_ADDR)
+        .get(&casperlabs_types::PublicKey::from(
+            *DEFAULT_ACCOUNT_PUBLIC_KEY,
+        ))
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
-    assert_eq!(unbond_list[0].origin, *DEFAULT_ACCOUNT_ADDR);
+    assert_eq!(
+        unbond_list[0].origin,
+        casperlabs_types::PublicKey::from(*DEFAULT_ACCOUNT_PUBLIC_KEY)
+    );
     assert_eq!(
         builder.get_purse_balance(unbond_list[0].purse),
         unbond_amount
@@ -161,10 +170,15 @@ fn should_run_successful_bond_and_unbond() {
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
-        .get(&DEFAULT_ACCOUNT_ADDR)
+        .get(&casperlabs_types::PublicKey::from(
+            *DEFAULT_ACCOUNT_PUBLIC_KEY,
+        ))
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
-    assert_eq!(unbond_list[0].origin, *DEFAULT_ACCOUNT_ADDR);
+    assert_eq!(
+        unbond_list[0].origin,
+        casperlabs_types::PublicKey::from(*DEFAULT_ACCOUNT_PUBLIC_KEY)
+    );
     assert_eq!(
         builder.get_purse_balance(unbond_list[0].purse),
         unbond_amount
@@ -179,8 +193,8 @@ fn should_run_successful_bond_and_unbond() {
         mint,
         "slash",
         runtime_args! {
-            "validator_account_hashes" => vec![
-               *DEFAULT_ACCOUNT_ADDR,
+            "validator_public_keys" => vec![
+               casperlabs_types::PublicKey::from(*DEFAULT_ACCOUNT_PUBLIC_KEY),
             ]
         },
     )
@@ -190,7 +204,9 @@ fn should_run_successful_bond_and_unbond() {
 
     let unbond_purses: UnbondingPurses = get_value(&mut builder, mint, "unbonding_purses");
     let unbond_list = unbond_purses
-        .get(&DEFAULT_ACCOUNT_ADDR)
+        .get(&casperlabs_types::PublicKey::from(
+            *DEFAULT_ACCOUNT_PUBLIC_KEY,
+        ))
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 0); // removed unbonds
 
@@ -202,22 +218,26 @@ fn should_run_successful_bond_and_unbond() {
 #[ignore]
 #[test]
 fn should_fail_bonding_with_insufficient_funds() {
+    let account_1_secret_key: SecretKey = SecretKey::new_ed25519([123; 32]);
+    let account_1_public_key: PublicKey = PublicKey::from(&account_1_secret_key);
+
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_MINT_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => TEST_SEED_NEW_ACCOUNT,
-            ARG_ACCOUNT_PK => ACCOUNT_1_ADDR,
+            ARG_ACCOUNT_HASH => account_1_public_key.to_account_hash(),
             ARG_AMOUNT => *DEFAULT_PAYMENT + GENESIS_ACCOUNT_STAKE,
         },
     )
     .build();
     let exec_request_2 = ExecuteRequestBuilder::standard(
-        ACCOUNT_1_ADDR,
+        account_1_public_key.to_account_hash(),
         CONTRACT_MINT_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => TEST_BOND_FROM_MAIN_PURSE,
             ARG_AMOUNT => *DEFAULT_PAYMENT + GENESIS_ACCOUNT_STAKE,
+            ARG_PUBLIC_KEY => casperlabs_types::PublicKey::from(account_1_public_key),
         },
     )
     .build();
@@ -270,6 +290,7 @@ fn should_fail_unbonding_validator_without_bonding_first() {
         runtime_args! {
             ARG_ENTRY_POINT => TEST_UNBOND,
             ARG_AMOUNT => U512::from(42),
+            ARG_PUBLIC_KEY => casperlabs_types::PublicKey::from(account_1_public_key),
         },
     )
     .build();

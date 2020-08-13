@@ -65,20 +65,27 @@ impl SystemProvider for AuctionContract {
 impl MintProvider for AuctionContract {
     type Error = Error;
 
-    fn bond(&mut self, amount: U512, purse: URef) -> Result<(URef, U512), Self::Error> {
+    fn bond(
+        &mut self,
+        public_key: PublicKey,
+        amount: U512,
+        purse: URef,
+    ) -> Result<(URef, U512), Self::Error> {
         let contract_hash = system::get_mint();
         let args = runtime_args! {
             ARG_AMOUNT => amount,
             ARG_PURSE => purse,
+            ARG_PUBLIC_KEY => public_key,
         };
 
         Ok(runtime::call_contract(contract_hash, BOND, args))
     }
 
-    fn unbond(&mut self, amount: U512) -> Result<(URef, U512), Self::Error> {
+    fn unbond(&mut self, public_key: PublicKey, amount: U512) -> Result<(URef, U512), Self::Error> {
         let contract_hash = system::get_mint();
         let args = runtime_args! {
             ARG_AMOUNT => amount,
+            ARG_PUBLIC_KEY => public_key,
         };
         Ok(runtime::call_contract(contract_hash, UNBOND, args))
     }

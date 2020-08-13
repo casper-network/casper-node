@@ -3,7 +3,7 @@ use casperlabs_types::{
     bytesrepr::{FromBytes, ToBytes},
     runtime_args,
     system_contract_errors::auction::Error,
-    CLTyped, CLValue, Key, RuntimeArgs, URef, U512,
+    CLTyped, CLValue, Key, PublicKey, RuntimeArgs, URef, U512,
 };
 
 use super::Runtime;
@@ -71,13 +71,20 @@ where
 {
     type Error = Error;
 
-    fn bond(&mut self, amount: U512, purse: URef) -> Result<(URef, U512), Self::Error> {
+    fn bond(
+        &mut self,
+        public_key: PublicKey,
+        amount: U512,
+        purse: URef,
+    ) -> Result<(URef, U512), Self::Error> {
         const ARG_AMOUNT: &str = "amount";
         const ARG_PURSE: &str = "purse";
+        const ARG_PUBLIC_KEY: &str = "public_key";
 
         let args_values: RuntimeArgs = runtime_args! {
             ARG_AMOUNT => amount,
             ARG_PURSE => purse,
+            ARG_PUBLIC_KEY => public_key,
         };
 
         let mint_contract_hash = self.get_mint_contract();
@@ -88,11 +95,13 @@ where
         Ok(result.into_t().map_err(|_| Error::Bonding)?)
     }
 
-    fn unbond(&mut self, amount: U512) -> Result<(URef, U512), Self::Error> {
+    fn unbond(&mut self, public_key: PublicKey, amount: U512) -> Result<(URef, U512), Self::Error> {
         const ARG_AMOUNT: &str = "amount";
+        const ARG_PUBLIC_KEY: &str = "public_key";
 
         let args_values: RuntimeArgs = runtime_args! {
             ARG_AMOUNT => amount,
+            ARG_PUBLIC_KEY => public_key,
         };
 
         let mint_contract_hash = self.get_mint_contract();

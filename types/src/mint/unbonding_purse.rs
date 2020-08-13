@@ -1,16 +1,15 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
 use crate::{
-    account::AccountHash,
     bytesrepr::{self, ToBytes},
-    CLType, CLTyped, URef,
+    CLType, CLTyped, PublicKey, URef,
 };
 use bytesrepr::FromBytes;
 
 #[derive(Copy, Clone)]
 pub struct UnbondingPurse {
     pub purse: URef,
-    pub origin: AccountHash,
+    pub origin: PublicKey,
     pub era_of_withdrawal: u16,
     pub expiration_timer: u8,
 }
@@ -58,4 +57,4 @@ impl CLTyped for UnbondingPurse {
 
 /// Validators and delegators mapped to their purses, validator/bidder key of origin, era of
 /// withdrawal, tokens and expiration timer in eras.
-pub type UnbondingPurses = BTreeMap<AccountHash, Vec<UnbondingPurse>>;
+pub type UnbondingPurses = BTreeMap<PublicKey, Vec<UnbondingPurse>>;

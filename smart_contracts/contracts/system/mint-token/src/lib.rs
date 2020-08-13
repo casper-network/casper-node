@@ -34,6 +34,8 @@ pub const ARG_AMOUNT: &str = "amount";
 pub const ARG_PURSE: &str = "purse";
 pub const ARG_SOURCE: &str = "source";
 pub const ARG_TARGET: &str = "target";
+pub const ARG_PUBLIC_KEY: &str = "public_key";
+pub const ARG_VALIDATOR_PUBLIC_KEYS: &str = "validator_public_keys";
 
 pub struct MintContract;
 
@@ -125,12 +127,11 @@ pub fn transfer() {
 
 pub fn bond() {
     let mut mint_contract = MintContract;
-    let account_hash = runtime::get_caller();
-
+    let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
     let source_purse = runtime::get_named_arg(ARG_PURSE);
     let quantity = runtime::get_named_arg(ARG_AMOUNT);
     let result = mint_contract
-        .bond(account_hash, source_purse, quantity)
+        .bond(public_key, source_purse, quantity)
         .unwrap_or_revert();
     let ret = CLValue::from_t(result).unwrap_or_revert();
     runtime::ret(ret);
@@ -138,10 +139,10 @@ pub fn bond() {
 
 pub fn unbond() {
     let mut mint_contract = MintContract;
-    let account_hash = runtime::get_caller();
+    let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
     let quantity = runtime::get_named_arg(ARG_AMOUNT);
     let result = mint_contract
-        .unbond(account_hash, quantity)
+        .unbond(public_key, quantity)
         .unwrap_or_revert();
     let ret = CLValue::from_t(result).unwrap_or_revert();
     runtime::ret(ret)
@@ -154,9 +155,9 @@ pub fn unbond_timer_advance() {
 
 pub fn slash() {
     let mut mint_contract = MintContract;
-    let validator_account_hashes = runtime::get_named_arg("validator_account_hashes");
+    let validator_public_keys = runtime::get_named_arg(ARG_VALIDATOR_PUBLIC_KEYS);
     mint_contract
-        .slash(validator_account_hashes)
+        .slash(validator_public_keys)
         .unwrap_or_revert();
 }
 
