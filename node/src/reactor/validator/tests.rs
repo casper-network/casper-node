@@ -35,7 +35,7 @@ struct TestChain {
 type Nodes = crate::testing::network::Nodes<validator::Reactor>;
 
 impl TestChain {
-    /// Instances a new test chain configuration.
+    /// Instantiates a new test chain configuration.
     ///
     /// Generates secret keys for `size` validators and creates a matching chainspec.
     fn new(rng: &mut TestRng, size: usize) -> Self {
