@@ -1,5 +1,4 @@
 use std::{
-    convert::TryInto,
     fmt::{self, Debug, Formatter},
     path::Path,
     time::Duration,
@@ -17,6 +16,8 @@ use serde::{Deserialize, Serialize};
 use casperlabs_types::{account::AccountHash, U512};
 
 use super::{config, error::GenesisLoadError, Error};
+#[cfg(test)]
+use crate::testing::TestRng;
 use crate::{
     components::contract_runtime::shared::wasm_costs::WasmCosts,
     crypto::asymmetric_key::PublicKey,
@@ -125,12 +126,12 @@ impl Loadable for Vec<GenesisAccount> {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
-pub struct DeployConfig {
-    pub max_payment_cost: Motes,
-    pub max_ttl: TimeDiff,
-    pub max_dependencies: u8,
-    pub max_block_size: u32,
-    pub block_gas_limit: u64,
+pub(crate) struct DeployConfig {
+    pub(crate) max_payment_cost: Motes,
+    pub(crate) max_ttl: TimeDiff,
+    pub(crate) max_dependencies: u8,
+    pub(crate) max_block_size: u32,
+    pub(crate) block_gas_limit: u64,
 }
 
 impl Default for DeployConfig {
@@ -146,8 +147,9 @@ impl Default for DeployConfig {
 }
 
 #[cfg(test)]
-impl Distribution<DeployConfig> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> DeployConfig {
+impl DeployConfig {
+    /// Generates a random instance using a `TestRng`.
+    pub fn random(rng: &mut TestRng) -> Self {
         let max_payment_cost = Motes::new(U512::from(
             rng.gen_range::<_, u64, u64>(1_000_000, 1_000_000_000),
         ));
@@ -169,14 +171,14 @@ impl Distribution<DeployConfig> for Standard {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
-pub struct HighwayConfig {
-    pub genesis_era_start_timestamp: Timestamp,
-    pub era_duration: Duration,
-    pub booking_duration: Duration,
-    pub entropy_duration: Duration,
-    pub voting_period_duration: Duration,
-    pub finality_threshold_percent: u8,
-    pub minimum_round_exponent: u8,
+pub(crate) struct HighwayConfig {
+    pub(crate) genesis_era_start_timestamp: Timestamp,
+    pub(crate) era_duration: Duration,
+    pub(crate) booking_duration: Duration,
+    pub(crate) entropy_duration: Duration,
+    pub(crate) voting_period_duration: Duration,
+    pub(crate) finality_threshold_percent: u8,
+    pub(crate) minimum_round_exponent: u8,
 }
 
 impl Default for HighwayConfig {
@@ -194,9 +196,9 @@ impl Default for HighwayConfig {
 }
 
 #[cfg(test)]
-impl Distribution<HighwayConfig> for Standard {
-    /// Generates a random instance.
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> HighwayConfig {
+impl HighwayConfig {
+    /// Generates a random instance using a `TestRng`.
+    pub fn random(rng: &mut TestRng) -> Self {
         let genesis_era_start_timestamp = Timestamp::random(rng);
         let era_duration = Duration::from_millis(rng.gen_range(600_000, 604_800_000));
         let booking_duration = Duration::from_millis(rng.gen_range(600_000, 864_000_000));
@@ -264,8 +266,9 @@ impl Debug for GenesisConfig {
 }
 
 #[cfg(test)]
-impl Distribution<GenesisConfig> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisConfig {
+impl GenesisConfig {
+    /// Generates a random instance using a `TestRng`.
+    pub fn random(rng: &mut TestRng) -> Self {
         let name = rng.gen::<char>().to_string();
         let timestamp = Timestamp::random(rng);
         let protocol_version = Version::new(
@@ -277,9 +280,9 @@ impl Distribution<GenesisConfig> for Standard {
         let pos_installer_bytes = vec![rng.gen()];
         let standard_payment_installer_bytes = vec![rng.gen()];
         let accounts = vec![rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen()];
-        let costs = rng.gen();
-        let deploy_config = rng.gen();
-        let highway_config = rng.gen();
+        let costs = WasmCosts::random(rng);
+        let deploy_config = DeployConfig::random(rng);
+        let highway_config = HighwayConfig::random(rng);
 
         GenesisConfig {
             name,
@@ -311,38 +314,10 @@ pub(crate) struct UpgradePoint {
     pub(crate) new_deploy_config: Option<DeployConfig>,
 }
 
-impl UpgradePoint {
-    pub(crate) fn try_from_config<P: AsRef<Path>>(
-        root: P,
-        cfg_upgrade_point: config::UpgradePoint,
-    ) -> Result<Self, Error> {
-        let upgrade_installer_bytes = cfg_upgrade_point
-            .upgrade_installer_path
-            .map(|ext_vec| ext_vec.load_relative(root.as_ref()))
-            .transpose()
-            .map_err(Error::LoadUpgradeInstaller)?;
-        // TODO - read this in?
-        let upgrade_installer_args = None;
-
-        let new_deploy_config = cfg_upgrade_point
-            .new_deploy_config
-            .map(config::DeployConfig::try_into)
-            .transpose()?;
-        Ok(UpgradePoint {
-            activation_point: cfg_upgrade_point.activation_point,
-            protocol_version: cfg_upgrade_point.protocol_version,
-            upgrade_installer_bytes,
-            upgrade_installer_args,
-            new_costs: cfg_upgrade_point.new_costs,
-            new_deploy_config,
-        })
-    }
-}
-
 #[cfg(test)]
 impl UpgradePoint {
     /// Generates a random instance using a `TestRng`.
-    pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
+    pub fn random(rng: &mut TestRng) -> Self {
         let activation_point = ActivationPoint {
             rank: rng.gen::<u8>() as u64,
         };
@@ -361,8 +336,16 @@ impl UpgradePoint {
         } else {
             None
         };
-        let new_costs = if rng.gen() { Some(rng.gen()) } else { None };
-        let new_deploy_config = if rng.gen() { Some(rng.gen()) } else { None };
+        let new_costs = if rng.gen() {
+            Some(WasmCosts::random(rng))
+        } else {
+            None
+        };
+        let new_deploy_config = if rng.gen() {
+            Some(DeployConfig::random(rng))
+        } else {
+            None
+        };
 
         UpgradePoint {
             activation_point,
@@ -392,9 +375,10 @@ impl Loadable for Chainspec {
 }
 
 #[cfg(test)]
-impl Distribution<Chainspec> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Chainspec {
-        let genesis = rng.gen();
+impl Chainspec {
+    /// Generates a random instance using a `TestRng`.
+    pub fn random(rng: &mut TestRng) -> Self {
+        let genesis = GenesisConfig::random(rng);
         let upgrades = vec![UpgradePoint::random(rng), UpgradePoint::random(rng)];
         Chainspec { genesis, upgrades }
     }
@@ -527,7 +511,7 @@ mod tests {
     #[test]
     fn rmp_serde_roundtrip() {
         let mut rng = TestRng::new();
-        let chainspec: Chainspec = rng.gen();
+        let chainspec = Chainspec::random(&mut rng);
         testing::rmp_serde_roundtrip(&chainspec);
     }
 }

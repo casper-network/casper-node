@@ -5,14 +5,13 @@ use std::{
 
 use derive_more::Display;
 use hex_fmt::HexList;
-use rand::{rngs::OsRng, Rng};
 use serde::{Deserialize, Serialize};
 
 use super::Timestamp;
 use crate::{
     components::storage::Value,
     crypto::{
-        asymmetric_key::{self, PublicKey, Signature},
+        asymmetric_key::{self, PublicKey, SecretKey, Signature},
         hash::{self, Digest},
     },
     types::DeployHash,
@@ -158,7 +157,7 @@ impl Block {
         let parent_hash = BlockHash::new(hash::hash(temp.overflowing_add(1).0.to_le_bytes()));
         let root_state_hash = hash::hash(temp.overflowing_add(2).0.to_le_bytes());
 
-        let secret_key = OsRng.gen();
+        let secret_key = SecretKey::generate_ed25519();
         let public_key = PublicKey::from(&secret_key);
 
         let proofs = vec![

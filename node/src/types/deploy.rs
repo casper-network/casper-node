@@ -6,13 +6,11 @@ use std::{
 
 use hex::FromHexError;
 #[cfg(test)]
-use rand::{distributions::Standard, prelude::Distribution, Rng};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::{Item, Tag, TimeDiff, Timestamp};
-#[cfg(test)]
-use crate::crypto::{asymmetric_key, hash};
 use crate::{
     components::{
         contract_runtime::core::engine_state::executable_deploy_item::ExecutableDeployItem,
@@ -23,6 +21,14 @@ use crate::{
         hash::Digest,
     },
     utils::DisplayIter,
+};
+#[cfg(test)]
+use crate::{
+    crypto::{
+        asymmetric_key::{self, SecretKey},
+        hash,
+    },
+    testing::TestRng,
 };
 
 // TODO - improve this if it's to be kept
@@ -191,15 +197,14 @@ impl Deploy {
     pub fn session(&self) -> &ExecutableDeployItem {
         &self.session
     }
-}
 
-#[cfg(test)]
-impl Distribution<Deploy> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Deploy {
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
         let seed: u64 = rng.gen();
         let hash = DeployHash::new(hash::hash(seed.to_le_bytes()));
 
-        let secret_key = rng.gen();
+        let secret_key = SecretKey::random(rng);
         let account = PublicKey::from(&secret_key);
 
         // TODO - make Timestamp deterministic.
@@ -591,7 +596,7 @@ mod tests {
     #[test]
     fn json_roundtrip() {
         let mut rng = TestRng::new();
-        let deploy: Deploy = rng.gen();
+        let deploy = Deploy::random(&mut rng);
         let json = deploy.to_json().unwrap();
         let decoded = Deploy::from_json(&json).unwrap();
         assert_eq!(deploy, decoded);

@@ -11,6 +11,9 @@ use derive_more::{Add, AddAssign, From, Shl, Shr, Sub, SubAssign};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+use crate::testing::TestRng;
+
 /// A timestamp type, representing a concrete moment in time.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash, Shr, Shl,
@@ -77,9 +80,9 @@ impl Timestamp {
         self.0.trailing_zeros() as u8
     }
 
-    /// Generates a random instance.
+    /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
-    pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
+    pub fn random(rng: &mut TestRng) -> Self {
         Timestamp(1_596_763_000_000 + rng.gen_range(200_000, 1_000_000))
     }
 }

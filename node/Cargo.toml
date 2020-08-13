@@ -28,6 +28,7 @@ ed25519-dalek = { version = "1.0.0-pre.3", default-features = false, features = 
 either = "1.5.3"
 enum-iterator = "0.6.0"
 futures = "0.3.5"
+getrandom = "0.1.14"
 hex = "0.4.2"
 hex_fmt = "0.3.0"
 hostname = "0.3.0"
