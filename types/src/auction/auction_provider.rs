@@ -3,9 +3,14 @@ use alloc::{collections::BTreeMap, vec::Vec};
 use super::{
     era_validators::ValidatorWeights,
     internal,
+<<<<<<< HEAD
     providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
     seigniorage_recipient::SeigniorageRecipients,
     EraId, EraValidators, SeigniorageRecipient, AUCTION_DELAY, AUCTION_SLOTS,
+=======
+    providers::{DataProvider, MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
+    EraValidators, SeigniorageRecipient,
+>>>>>>> 78850e5... Started adding tests, moved internal functions that get/set delegation related data to a separate trait called `DataProvider` to make testing easier.
 };
 use crate::{
     account::AccountHash,
@@ -24,13 +29,71 @@ const AUCTION_DELAY: u64 = 3;
 >>>>>>> deb03af... Fixed warnings, added `distribute_to_delegators` to entry points
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0; 32]);
 
+/// Update reward per stake according to pull-based distribution formulation
+/// The entry for `validator_account_hash` should be initialized by now
+fn update_reward_per_stake(
+    reward_per_stake_map: &mut BTreeMap<AccountHash, U512>,
+    validator_account_hash: AccountHash,
+    amount: U512,
+    total_delegator_stake: U512,
+) {
+    reward_per_stake_map
+        .entry(validator_account_hash)
+        .and_modify(|rps| *rps += amount / total_delegator_stake);
+}
+
+/// Update delegations_map entry. Initialize if it doesn't exist.
+fn update_delegations(
+    delegations_map: &mut BTreeMap<AccountHash, BTreeMap<AccountHash, U512>>,
+    validator_account_hash: AccountHash,
+    delegator_account_hash: AccountHash,
+    delegation_amount: U512,
+) -> U512 {
+    let new_quantity = *delegations_map
+        .entry(validator_account_hash)
+        .or_default()
+        .entry(delegator_account_hash)
+        .and_modify(|delegation| *delegation += delegation_amount)
+        .or_insert_with(|| delegation_amount);
+    new_quantity
+}
+
+/// Update total_delegator_stake entry. Initialize if it doesn't exist.
+fn update_total_delegator_stake(
+    total_delegator_stake_map: &mut BTreeMap<AccountHash, U512>,
+    validator_account_hash: AccountHash,
+    delegation_amount: U512,
+) {
+    total_delegator_stake_map
+        .entry(validator_account_hash)
+        .and_modify(|total_stake| *total_stake += delegation_amount)
+        .or_insert_with(|| delegation_amount);
+}
+
+/// Update tally_map entry. Initialize if it doesn't exist.
+fn update_tally(
+    tally_map: &mut BTreeMap<AccountHash, BTreeMap<AccountHash, U512>>,
+    validator_account_hash: AccountHash,
+    delegator_account_hash: AccountHash,
+    delegation_amount: U512,
+    reward_per_stake: U512,
+) {
+    tally_map
+        .entry(validator_account_hash)
+        .or_default()
+        .entry(delegator_account_hash)
+        .and_modify(|tally| *tally += reward_per_stake * delegation_amount)
+        .or_insert_with(|| reward_per_stake * delegation_amount);
+}
+
 /// Bonding auctions contract implementation.
 pub trait AuctionProvider:
-    StorageProvider + SystemProvider + MintProvider + RuntimeProvider
+    StorageProvider + SystemProvider + MintProvider + RuntimeProvider + DataProvider
 where
     Error: From<<Self as StorageProvider>::Error>
         + From<<Self as SystemProvider>::Error>
-        + From<<Self as MintProvider>::Error>,
+        + From<<Self as MintProvider>::Error>
+        + From<<Self as DataProvider>::Error>,
 {
     /// Access: node
     /// Node software will trigger this function once a new era is detected.
@@ -218,8 +281,13 @@ where
         &mut self,
         delegator_public_key: PublicKey,
         source_purse: URef,
+<<<<<<< HEAD
         validator_public_key: PublicKey,
         quantity: U512,
+=======
+        validator_account_hash: AccountHash,
+        delegation_amount: U512,
+>>>>>>> 78850e5... Started adding tests, moved internal functions that get/set delegation related data to a separate trait called `DataProvider` to make testing easier.
     ) -> Result<(URef, U512)> {
         let active_bids = internal::get_active_bids(self)?;
         // Return early if target validator is not in `active_bids`
@@ -227,31 +295,44 @@ where
             .get(&validator_public_key)
             .ok_or(Error::ValidatorNotFound)?;
 
+<<<<<<< HEAD
         let (bonding_purse, _total_amount) =
             self.bond(delegator_public_key, quantity, source_purse)?;
+=======
+        let (bonding_purse, _total_amount) = self.bond(delegation_amount, source_purse)?;
+>>>>>>> 78850e5... Started adding tests, moved internal functions that get/set delegation related data to a separate trait called `DataProvider` to make testing easier.
 
-        let mut delegations_map = internal::get_delegations_map(self)?;
-        let mut tally_map = internal::get_tally_map(self)?;
-        let mut total_delegator_stake_map = internal::get_total_delegator_stake_map(self)?;
-        let mut reward_per_stake_map = internal::get_reward_per_stake_map(self)?;
-        let mut delegator_reward_pool_map = internal::get_delegator_reward_pool_map(self)?;
+        let mut delegations_map = self.get_delegations_map()?;
+        let mut tally_map = self.get_tally_map()?;
+        let mut total_delegator_stake_map = self.get_total_delegator_stake_map()?;
+        let mut reward_per_stake_map = self.get_reward_per_stake_map()?;
+        let mut delegator_reward_pool_map = self.get_delegator_reward_pool_map()?;
 
         // Get reward_per_stake_map entry. Initialize if it doesn't exist.
         let reward_per_stake = *reward_per_stake_map
             .entry(validator_public_key)
             .or_insert_with(|| U512::zero());
 
+<<<<<<< HEAD
         // Update total_delegator_stake_map entry. Initialize if it doesn't exist.
         total_delegator_stake_map
             .entry(validator_public_key)
             .and_modify(|total_stake| *total_stake += quantity)
             .or_insert_with(|| quantity);
 
+=======
+        update_total_delegator_stake(
+            &mut total_delegator_stake_map,
+            validator_account_hash,
+            delegation_amount,
+        );
+>>>>>>> 78850e5... Started adding tests, moved internal functions that get/set delegation related data to a separate trait called `DataProvider` to make testing easier.
         // Initialize delegator_reward_pool_map entry if it doesn't exist.
         delegator_reward_pool_map
             .entry(validator_public_key)
             .or_default();
 
+<<<<<<< HEAD
         // Update delegations_map entry. Initialize if it doesn't exist.
         let new_quantity = *delegations_map
             .entry(validator_public_key)
@@ -275,6 +356,29 @@ where
         internal::set_delegator_reward_pool_map(self, delegator_reward_pool_map)?;
 
         Ok((bonding_purse, new_quantity))
+=======
+        let new_delegation_amount = update_delegations(
+            &mut delegations_map,
+            validator_account_hash,
+            delegator_account_hash,
+            delegation_amount,
+        );
+        update_tally(
+            &mut tally_map,
+            validator_account_hash,
+            delegator_account_hash,
+            delegation_amount,
+            reward_per_stake,
+        );
+
+        self.set_delegations_map(delegations_map)?;
+        self.set_total_delegator_stake_map(total_delegator_stake_map)?;
+        self.set_tally_map(tally_map)?;
+        self.set_reward_per_stake_map(reward_per_stake_map)?;
+        self.set_delegator_reward_pool_map(delegator_reward_pool_map)?;
+
+        Ok((bonding_purse, new_delegation_amount))
+>>>>>>> 78850e5... Started adding tests, moved internal functions that get/set delegation related data to a separate trait called `DataProvider` to make testing easier.
     }
 
     /// Removes a quantity (or the entry altogether, if the
@@ -299,10 +403,10 @@ where
             .get(&validator_public_key)
             .ok_or(Error::ValidatorNotFound)?;
 
-        let mut delegations_map = internal::get_delegations_map(self)?;
-        let mut tally_map = internal::get_tally_map(self)?;
-        let mut total_delegator_stake_map = internal::get_total_delegator_stake_map(self)?;
-        let mut reward_per_stake_map = internal::get_reward_per_stake_map(self)?;
+        let mut delegations_map = self.get_delegations_map()?;
+        let mut tally_map = self.get_tally_map()?;
+        let mut total_delegator_stake_map = self.get_total_delegator_stake_map()?;
+        let mut reward_per_stake_map = self.get_reward_per_stake_map()?;
 
         let reward_per_stake = *reward_per_stake_map
             .get_mut(&validator_account_hash)
@@ -377,9 +481,9 @@ where
         //     debug_assert!(_value.is_zero());
         // }
 
-        internal::set_delegations_map(self, delegations_map)?;
-        internal::set_total_delegator_stake_map(self, total_delegator_stake_map)?;
-        internal::set_tally_map(self, tally_map)?;
+        self.set_delegations_map(delegations_map)?;
+        self.set_total_delegator_stake_map(total_delegator_stake_map)?;
+        self.set_tally_map(tally_map)?;
 
         Ok(new_amount)
     }
@@ -554,10 +658,21 @@ where
     /// with O(1) time complexity.
     ///
     /// Accessed by: PoS contract
+<<<<<<< HEAD
     fn distribute_to_delegators(&mut self, validator_public_key: AccountHash, purse: URef) -> Result<()> {
         let total_delegator_stake 
             = *internal::get_total_delegator_stake_map(self)?
             .get(&validator_public_key)
+=======
+    fn distribute_to_delegators(
+        &mut self,
+        validator_account_hash: AccountHash,
+        purse: URef,
+    ) -> Result<()> {
+        let total_delegator_stake = *self
+            .get_total_delegator_stake_map()?
+            .get(&validator_account_hash)
+>>>>>>> 78850e5... Started adding tests, moved internal functions that get/set delegation related data to a separate trait called `DataProvider` to make testing easier.
             .unwrap();
 
         let amount = self.get_balance(purse)?.unwrap_or_default();
@@ -567,6 +682,7 @@ where
             return Err(Error::MissingDelegations);
         }
 
+<<<<<<< HEAD
         // Update reward per stake according to pull-based distribution formulation
         // The entry for `validator_public_key` should be initialized by now
         let mut reward_per_stake_map = internal::get_reward_per_stake_map(self)?;
@@ -579,6 +695,21 @@ where
         let delegator_reward_pool = *internal::get_delegator_reward_pool_map(self)
             .unwrap()
             .get(&validator_public_key)
+=======
+        let mut reward_per_stake_map = self.get_reward_per_stake_map()?;
+        update_reward_per_stake(
+            &mut reward_per_stake_map,
+            validator_account_hash,
+            amount,
+            total_delegator_stake,
+        );
+        self.set_reward_per_stake_map(reward_per_stake_map)?;
+
+        // Get the reward pool purse for the validator
+        let delegator_reward_pool = *self
+            .get_delegator_reward_pool_map()?
+            .get(&validator_account_hash)
+>>>>>>> 78850e5... Started adding tests, moved internal functions that get/set delegation related data to a separate trait called `DataProvider` to make testing easier.
             .unwrap();
 
         // Transfer the reward to the reward pool purse
@@ -598,19 +729,22 @@ where
         validator_account_hash: AccountHash,
         delegator_account_hash: AccountHash,
     ) -> Result<U512> {
-        let delegation = *internal::get_delegations_map(self)?
+        let delegation = *self
+            .get_delegations_map()?
             .get(&validator_account_hash)
             .ok_or(Error::ValidatorNotFound)?
             .get(&delegator_account_hash)
             .ok_or(Error::DelegatorNotFound)?;
 
-        let tally = *internal::get_tally_map(self)?
+        let tally = *self
+            .get_tally_map()?
             .get(&validator_account_hash)
             .ok_or(Error::ValidatorNotFound)?
             .get(&delegator_account_hash)
             .ok_or(Error::DelegatorNotFound)?;
 
-        let reward_per_stake = *internal::get_reward_per_stake_map(self)?
+        let reward_per_stake = *self
+            .get_reward_per_stake_map()?
             .get(&validator_account_hash)
             .ok_or(Error::ValidatorNotFound)?;
 
@@ -630,22 +764,25 @@ where
         let reward = self.delegation_reward(validator_account_hash, delegator_account_hash)?;
 
         // Get the required variables
-        let reward_pool = *internal::get_delegator_reward_pool_map(self)?
+        let reward_pool = *self
+            .get_delegator_reward_pool_map()?
             .get(&validator_account_hash)
             .ok_or(Error::ValidatorNotFound)?;
 
-        let delegation = *internal::get_delegations_map(self)?
+        let delegation = *self
+            .get_delegations_map()?
             .get(&validator_account_hash)
             .ok_or(Error::ValidatorNotFound)?
             .get(&delegator_account_hash)
             .ok_or(Error::DelegatorNotFound)?;
 
-        let reward_per_stake = *internal::get_reward_per_stake_map(self)?
+        let reward_per_stake = *self
+            .get_reward_per_stake_map()?
             .get(&validator_account_hash)
             .ok_or(Error::ValidatorNotFound)?;
 
         // Reset tally for the delegator
-        let mut tally_map = internal::get_tally_map(self)?;
+        let mut tally_map = self.get_tally_map()?;
         tally_map
             .entry(validator_account_hash)
             .or_default()
@@ -656,5 +793,120 @@ where
         self.transfer_from_purse_to_purse(reward_pool, purse, reward)?;
 
         Ok(reward)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::auction::{
+        delegator::{DelegatorRewardPoolMap, RewardPerStakeMap, TallyMap, TotalDelegatorStakeMap},
+        DelegationsMap,
+    };
+
+    struct PullBasedDistMockup {
+        delegations_map: DelegationsMap,
+        reward_per_stake_map: RewardPerStakeMap,
+        total_delegator_stake_map: TotalDelegatorStakeMap,
+        tally_map: TallyMap,
+        delegator_reward_pool_map: DelegatorRewardPoolMap,
+    }
+
+    impl PullBasedDistMockup {
+        fn new() -> Self {
+            Self {
+                delegations_map: DelegationsMap::default(),
+                reward_per_stake_map: RewardPerStakeMap::default(),
+                total_delegator_stake_map: TotalDelegatorStakeMap::default(),
+                tally_map: TallyMap::default(),
+                delegator_reward_pool_map: DelegatorRewardPoolMap::default(),
+            }
+        }
+    }
+
+    impl DataProvider for PullBasedDistMockup {
+        type Error = Error;
+        fn get_delegations_map(&mut self) -> Result<DelegationsMap> {
+            Ok(self.delegations_map.clone())
+        }
+        fn set_delegations_map(
+            &mut self,
+            delegations_map: DelegationsMap,
+        ) -> Result<()> {
+            self.delegations_map = delegations_map;
+            Ok(())
+        }
+        fn get_tally_map(&mut self) -> Result<TallyMap> {
+            Ok(self.tally_map.clone())
+        }
+        fn set_tally_map(&mut self, tally_map: TallyMap) -> Result<()> {
+            self.tally_map = tally_map;
+            Ok(())
+        }
+        fn get_reward_per_stake_map(&mut self) -> Result<RewardPerStakeMap> {
+            Ok(self.reward_per_stake_map.clone())
+        }
+        fn set_reward_per_stake_map(
+            &mut self,
+            reward_per_stake_map: RewardPerStakeMap,
+        ) -> Result<()> {
+            self.reward_per_stake_map = reward_per_stake_map;
+            Ok(())
+        }
+        fn get_total_delegator_stake_map(&mut self) -> Result<TotalDelegatorStakeMap> {
+            Ok(self.total_delegator_stake_map.clone())
+        }
+        fn set_total_delegator_stake_map(
+            &mut self,
+            total_delegator_stake_map: TotalDelegatorStakeMap,
+        ) -> Result<()> {
+            self.total_delegator_stake_map = total_delegator_stake_map;
+            Ok(())
+        }
+        fn get_delegator_reward_pool_map(&mut self) -> Result<DelegatorRewardPoolMap> {
+            Ok(self.delegator_reward_pool_map.clone())
+        }
+        fn set_delegator_reward_pool_map(
+            &mut self,
+            delegator_reward_pool_map: DelegatorRewardPoolMap,
+        ) -> Result<()> {
+            self.delegator_reward_pool_map = delegator_reward_pool_map;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_update_reward_per_stake() {
+        let mut reward_per_stake_map = BTreeMap::new();
+        let total_reward_amount = U512::from(10_000_000_000u64);
+        let total_delegator_stake = U512::from(30_000_000_000_000u64);
+        let validator_account_hash = AccountHash::new([50; 32]);
+        let initial_reward_per_stake = U512::from(90_000_000_000u64);
+        reward_per_stake_map.insert(validator_account_hash, initial_reward_per_stake);
+
+        update_reward_per_stake(
+            &mut reward_per_stake_map,
+            validator_account_hash,
+            total_reward_amount,
+            total_delegator_stake,
+        );
+
+        assert!(
+            *reward_per_stake_map.get(&validator_account_hash).unwrap()
+                == initial_reward_per_stake + total_reward_amount / total_delegator_stake
+        );
+    }
+
+    fn test_distribute_and_withdraw() {
+        let mut reward_per_stake_map = BTreeMap::new();
+        let validator_account_hash = AccountHash::new([1; 32]);
+        let delegator1_account_hash = AccountHash::new([2; 32]);
+        let delegator2_account_hash = AccountHash::new([3; 32]);
+        let delegator3_account_hash = AccountHash::new([4; 32]);
+
+        let total_reward_amount = U512::from(10_000_000_000u64);
+        let total_delegator_stake = U512::from(30_000_000_000_000u64);
+        let initial_reward_per_stake = U512::from(90_000_000_000u64);
+        reward_per_stake_map.insert(validator_account_hash, initial_reward_per_stake);
     }
 }

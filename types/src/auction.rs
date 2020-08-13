@@ -20,4 +20,8 @@ pub use seigniorage_recipient::{
     SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
 };
 pub use delegator::{Delegations, DelegationsMap};
+pub use delegator::{
+    Delegations, DelegationsMap, DelegatorRewardPoolMap, RewardPerStakeMap, Tally, TallyMap,
+    TotalDelegatorStakeMap,
+};
 pub use types::{CommissionRate, COMMISSION_RATE_DENOMINATOR};

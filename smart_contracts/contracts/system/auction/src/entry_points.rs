@@ -14,6 +14,8 @@ use casperlabs_types::{
         METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS, METHOD_RUN_AUCTION,
         METHOD_DISTRIBUTE_TO_DELEGATORS,
         METHOD_UNDELEGATE, METHOD_WITHDRAW_BID, {StorageProvider, SystemProvider},
+        AuctionProvider, DataProvider, MintProvider, RuntimeProvider, ARG_AMOUNT,
+        DelegationsMap, TallyMap, RewardPerStakeMap, TotalDelegatorStakeMap, DelegatorRewardPoolMap, 
     },
     auction::{CommissionRate, SeigniorageRecipients},
     bytesrepr::{FromBytes, ToBytes},
@@ -89,6 +91,52 @@ impl MintProvider for AuctionContract {
             ARG_PUBLIC_KEY => public_key,
         };
         Ok(runtime::call_contract(contract_hash, UNBOND, args))
+    }
+}
+
+impl DataProvider for AuctionContract {
+    type Error = Error;
+    fn get_delegations_map(&mut self) -> StdResult<DelegationsMap, Self::Error> {
+        todo!()
+    }
+    fn set_delegations_map(
+        &mut self,
+        delegations_map: DelegationsMap,
+    ) -> StdResult<(), Self::Error> {
+        todo!()
+    }
+    fn get_tally_map(&mut self) -> StdResult<TallyMap, Self::Error> {
+        todo!()
+    }
+    fn set_tally_map(&mut self, tally_map: TallyMap) -> StdResult<(), Self::Error> {
+        todo!()
+    }
+    fn get_reward_per_stake_map(&mut self) -> StdResult<RewardPerStakeMap, Self::Error> {
+        todo!()
+    }
+    fn set_reward_per_stake_map(
+        &mut self,
+        reward_per_stake_map: RewardPerStakeMap,
+    ) -> StdResult<(), Self::Error> {
+        todo!()
+    }
+    fn get_total_delegator_stake_map(&mut self) -> StdResult<TotalDelegatorStakeMap, Self::Error> {
+        todo!()
+    }
+    fn set_total_delegator_stake_map(
+        &mut self,
+        total_delegator_stake_map: TotalDelegatorStakeMap,
+    ) -> StdResult<(), Self::Error> {
+        todo!()
+    }
+    fn get_delegator_reward_pool_map(&mut self) -> StdResult<DelegatorRewardPoolMap, Self::Error> {
+        todo!()
+    }
+    fn set_delegator_reward_pool_map(
+        &mut self,
+        delegator_reward_pool_map: DelegatorRewardPoolMap,
+    ) -> StdResult<(), Self::Error> {
+        todo!()
     }
 }
 

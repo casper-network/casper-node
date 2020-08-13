@@ -1,5 +1,5 @@
 use casperlabs_types::{
-    auction::{AuctionProvider, MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
+    auction::{AuctionProvider, MintProvider, RuntimeProvider, StorageProvider, SystemProvider, DataProvider, DelegationsMap, TallyMap, RewardPerStakeMap, TotalDelegatorStakeMap, DelegatorRewardPoolMap},
     bytesrepr::{FromBytes, ToBytes},
     runtime_args,
     system_contract_errors::auction::Error,
@@ -39,6 +39,53 @@ where
         self.context
             .write_gs(uref.into(), StoredValue::CLValue(cl_value))
             .map_err(|_| Error::Storage)
+    }
+}
+
+impl<'a, R> DataProvider for Runtime<'a, R>
+where
+    R: StateReader<Key, StoredValue>,
+    R::Error: Into<execution::Error>,
+{
+    type Error = Error;
+    fn get_delegations_map(&mut self) -> Result<DelegationsMap, Self::Error> {
+        todo!()
+    }
+    fn set_delegations_map(&mut self, delegations_map: DelegationsMap) -> Result<(), Self::Error> {
+        todo!()
+    }
+    fn get_tally_map(&mut self) -> Result<TallyMap, Self::Error> {
+        todo!()
+    }
+    fn set_tally_map(&mut self, tally_map: TallyMap) -> Result<(), Self::Error> {
+        todo!()
+    }
+    fn get_reward_per_stake_map(&mut self) -> Result<RewardPerStakeMap, Self::Error> {
+        todo!()
+    }
+    fn set_reward_per_stake_map(
+        &mut self,
+        reward_per_stake_map: RewardPerStakeMap,
+    ) -> Result<(), Self::Error> {
+        todo!()
+    }
+    fn get_total_delegator_stake_map(&mut self) -> Result<TotalDelegatorStakeMap, Self::Error> {
+        todo!()
+    }
+    fn set_total_delegator_stake_map(
+        &mut self,
+        total_delegator_stake_map: TotalDelegatorStakeMap,
+    ) -> Result<(), Self::Error> {
+        todo!()
+    }
+    fn get_delegator_reward_pool_map(&mut self) -> Result<DelegatorRewardPoolMap, Self::Error> {
+        todo!()
+    }
+    fn set_delegator_reward_pool_map(
+        &mut self,
+        delegator_reward_pool_map: DelegatorRewardPoolMap,
+    ) -> Result<(), Self::Error> {
+        todo!()
     }
 }
 

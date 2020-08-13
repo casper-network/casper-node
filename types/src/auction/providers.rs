@@ -1,3 +1,4 @@
+use super::{delegator::{RewardPerStakeMap, TallyMap, TotalDelegatorStakeMap, DelegatorRewardPoolMap}, DelegationsMap};
 use crate::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
@@ -60,5 +61,50 @@ pub trait SystemProvider {
         source: URef,
         target: URef,
         amount: U512,
+    ) -> Result<(), Self::Error>;
+}
+
+/// Provides data from storage.
+pub trait DataProvider {
+    /// Error representation for data provider errors.
+    type Error: From<Error>;
+
+    /// Gets delegation map
+    fn get_delegations_map(&mut self) -> Result<DelegationsMap, Self::Error>;
+
+    /// Sets delegation map
+    fn set_delegations_map(&mut self, delegations_map: DelegationsMap) -> Result<(), Self::Error>;
+
+    /// Gets tally map
+    fn get_tally_map(&mut self) -> Result<TallyMap, Self::Error>;
+
+    /// Sets tally map
+    fn set_tally_map(&mut self, tally_map: TallyMap) -> Result<(), Self::Error>;
+
+    /// Gets reward per stake map
+    fn get_reward_per_stake_map(&mut self) -> Result<RewardPerStakeMap, Self::Error>;
+
+    /// Sets reward per stake map
+    fn set_reward_per_stake_map(
+        &mut self,
+        reward_per_stake_map: RewardPerStakeMap,
+    ) -> Result<(), Self::Error>;
+
+    /// Gets total delegator stake map
+    fn get_total_delegator_stake_map(&mut self) -> Result<TotalDelegatorStakeMap, Self::Error>;
+
+    /// Sets total delegator stake map
+    fn set_total_delegator_stake_map(
+        &mut self,
+        total_delegator_stake_map: TotalDelegatorStakeMap,
+    ) -> Result<(), Self::Error>;
+
+    /// Gets delegator reward pool map
+    fn get_delegator_reward_pool_map(&mut self) -> Result<DelegatorRewardPoolMap, Self::Error>;
+
+    /// Sets delegator reward pool map
+    fn set_delegator_reward_pool_map(
+        &mut self,
+        delegator_reward_pool_map: DelegatorRewardPoolMap,
     ) -> Result<(), Self::Error>;
 }
