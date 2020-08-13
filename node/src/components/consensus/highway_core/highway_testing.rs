@@ -520,7 +520,7 @@ where
 
         match sync_result {
             Err(vertex_error) => Ok(Err(vertex_error)),
-            Ok(prevalidated_vertex) => {
+            Ok((prevalidated_vertex, mut sync_effects)) => {
                 let add_vertex_effects: Vec<HighwayMessage> = {
                     match self
                         .node_mut(&recipient)?
@@ -535,7 +535,9 @@ where
                     }
                 };
 
-                Ok(Ok(add_vertex_effects))
+                sync_effects.extend(add_vertex_effects);
+
+                Ok(Ok(sync_effects))
             }
         }
     }
@@ -549,7 +551,7 @@ where
         recipient: ValidatorId,
         sender: ValidatorId,
         pvv: PreValidatedVertex<TestContext>,
-    ) -> TestRunResult<PreValidatedVertex<TestContext>> {
+    ) -> TestRunResult<(PreValidatedVertex<TestContext>, Vec<HighwayMessage>)> {
         // There may be more than one dependency missing and we want to sync all of them.
         loop {
             let validator = self
@@ -558,10 +560,15 @@ where
                 .ok_or_else(|| TestRunError::MissingValidator(recipient))?
                 .validator();
 
+            let mut messages = vec![];
+
             match validator.highway().missing_dependency(&pvv) {
-                None => return Ok(Ok(pvv)),
+                None => return Ok(Ok((pvv, messages))),
                 Some(d) => match self.synchronize_dependency(rng, d, recipient, sender)? {
-                    Ok(()) => continue,
+                    Ok(sync_messages) => {
+                        // `hwm` represent messages produced while synchronizing `d`.
+                        messages.extend(sync_messages)
+                    }
                     Err(vertex_error) => {
                         // An error occurred when trying to synchronize a missing dependency.
                         // We must stop the synchronization process and return it to the caller.
@@ -584,7 +591,7 @@ where
         missing_dependency: Dependency<TestContext>,
         recipient: ValidatorId,
         sender: ValidatorId,
-    ) -> TestRunResult<()> {
+    ) -> TestRunResult<Vec<HighwayMessage>> {
         let vertex = self
             .node_mut(&sender)?
             .validator_mut()
@@ -593,17 +600,7 @@ where
             .map(|vv| vv.0)
             .ok_or_else(|| TestRunError::SenderMissingDependency(sender, missing_dependency))?;
 
-        match self.add_vertex(rng, recipient, sender, vertex)? {
-            Ok(messages) => {
-                if !messages.is_empty() {
-                    error!("Syncing produced effects. There should be no effects produced while syncing.");
-                    panic!("Syncing produced effects.")
-                } else {
-                    Ok(Ok(()))
-                }
-            }
-            Err(err) => Ok(Err(err)),
-        }
+        self.add_vertex(rng, recipient, sender, vertex)
     }
 
     /// Returns a `MutableHandle` on the `HighwayTestHarness` object
