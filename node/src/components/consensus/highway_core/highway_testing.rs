@@ -242,7 +242,6 @@ impl HighwayValidator {
                 // For mute validators we add it to the state but not gossip.
                 match msg {
                     NewVertex(vv) => {
-                        let _ = self.highway_mut().add_valid_vertex(ValidVertex(vv));
                         warn!("Validator is mute – won't gossip vertices in response");
                         vec![]
                     }
