@@ -5,8 +5,8 @@ Casper is the blockchain platform purpose-built to scale opportunity for everyon
 ## Current Development Status
 The status on development is reported during the Community calls and is found [here](https://github.com/CasperLabs/Governance/wiki/Current-Status)
 
-The CasperLabs Testnet is live.  
-- Transactions can be sent to: deploy.casperlabs.io via the client or via 
+The CasperLabs Testnet is live.
+- Transactions can be sent to: deploy.casperlabs.io via the client or via
 - [Clarity Block Exporer](https://clarity.casperlabs.io)
 
 ## Specification
