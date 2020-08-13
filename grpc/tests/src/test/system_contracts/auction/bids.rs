@@ -14,6 +14,7 @@ use casperlabs_node::{
     GenesisAccount,
 };
 use casperlabs_types::{
+    self,
     account::AccountHash,
     auction::{
         self, ActiveBids, DelegationRate, Delegators, EraValidators, FoundingValidators,
@@ -474,7 +475,13 @@ fn should_get_first_seigniorage_recipients() {
     let auction_hash = builder.get_auction_contract_hash();
     let founding_validators: FoundingValidators =
         get_value(&mut builder, auction_hash, FOUNDING_VALIDATORS_KEY);
-    assert_eq!(founding_validators.len(), 3);
+    assert_eq!(founding_validators.len(), 2);
+    assert!(founding_validators
+        .get(&casperlabs_types::PublicKey::from(*ACCOUNT_1_PK))
+        .is_some());
+    assert!(founding_validators
+        .get(&casperlabs_types::PublicKey::from(*ACCOUNT_2_PK))
+        .is_some());
 
     builder.exec(transfer_request_1).commit().expect_success();
 
@@ -503,12 +510,24 @@ fn should_get_first_seigniorage_recipients() {
         .unwrap()
         .into_t()
         .unwrap();
-    assert_eq!(seigniorage_recipients.len(), 3);
+    assert_eq!(seigniorage_recipients.len(), 2);
 
     let era_validators: EraValidators = get_value(&mut builder, auction_hash, "era_validators");
     assert_eq!(era_validators.len(), 1, "{:?}", era_validators); // eraindex==1 - ran once
     let validator_weights = era_validators
         .get(&0)
         .expect("should have era_index==0 entry");
-    assert_eq!(validator_weights.len(), 3, "{:?}", validator_weights); // 1 non founding validator + 2 genesis validators "winners"
+    assert_eq!(validator_weights.len(), 2, "{:?}", validator_weights); // 2 genesis validators "winners" with non-zero bond
+    assert_eq!(
+        validator_weights
+            .get(&casperlabs_types::PublicKey::from(*ACCOUNT_1_PK))
+            .unwrap(),
+        &U512::from(ACCOUNT_1_BOND)
+    );
+    assert_eq!(
+        validator_weights
+            .get(&casperlabs_types::PublicKey::from(*ACCOUNT_2_PK))
+            .unwrap(),
+        &U512::from(ACCOUNT_2_BOND)
+    );
 }

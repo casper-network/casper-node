@@ -203,6 +203,7 @@ impl FromBytes for CLType {
             CL_TYPE_TAG_STRING => Ok((CLType::String, remainder)),
             CL_TYPE_TAG_KEY => Ok((CLType::Key, remainder)),
             CL_TYPE_TAG_UREF => Ok((CLType::URef, remainder)),
+            CL_TYPE_TAG_PUBLIC_KEY => Ok((CLType::PublicKey, remainder)),
             CL_TYPE_TAG_OPTION => {
                 let (inner_type, remainder) = CLType::from_bytes(remainder)?;
                 let cl_type = CLType::Option(Box::new(inner_type));

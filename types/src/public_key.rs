@@ -46,7 +46,7 @@ impl ToBytes for PublicKey {
 
 impl FromBytes for PublicKey {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (variant_id, bytes) = FromBytes::from_bytes(bytes)?;
+        let (variant_id, bytes): (u8, _) = FromBytes::from_bytes(bytes)?;
         match variant_id {
             ED25519_VARIANT_ID => {
                 let (ed25519_bytes, bytes) = FromBytes::from_bytes(bytes)?;
@@ -66,11 +66,18 @@ impl CLTyped for PublicKey {
 #[cfg(test)]
 mod tests {
     use super::PublicKey;
-    use crate::bytesrepr;
+    use crate::{bytesrepr, CLValue};
 
     #[test]
     fn serialization_roundtrip() {
         let public_key = PublicKey::Ed25519([42; 32]);
         bytesrepr::test_serialization_roundtrip(&public_key);
+    }
+
+    #[test]
+    fn serialization_roundtrip_cl() {
+        let public_key = PublicKey::Ed25519([42; 32]);
+        let cl = CLValue::from_t(public_key).unwrap();
+        bytesrepr::test_serialization_roundtrip(&cl);
     }
 }

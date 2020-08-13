@@ -255,9 +255,7 @@ where
         let (mint_package_hash, mint_hash): (ContractPackageHash, ContractHash) = {
             let mint_installer_bytes = ee_config.mint_installer_bytes();
             let mint_installer_module = preprocessor.preprocess(mint_installer_bytes)?;
-            let args = runtime_args! {
-                "genesis_validators" => bonded_validators.clone(),
-            };
+            let args = RuntimeArgs::new();
             let authorization_keys: BTreeSet<AccountHash> = BTreeSet::new();
             let install_deploy_hash = genesis_config_hash.to_bytes();
             let hash_address_generator = Rc::clone(&hash_address_generator);
@@ -387,11 +385,15 @@ where
             let bonded_validators: BTreeMap<casperlabs_types::PublicKey, U512> = ee_config
                 .accounts()
                 .iter()
-                .map(|account| {
-                    (
-                        casperlabs_types::PublicKey::from(account.public_key()),
-                        account.bonded_amount().value(),
-                    )
+                .filter_map(|account| {
+                    if !account.bonded_amount().is_zero() {
+                        Some((
+                            casperlabs_types::PublicKey::from(account.public_key()),
+                            account.bonded_amount().value(),
+                        ))
+                    } else {
+                        None
+                    }
                 })
                 .collect();
 
