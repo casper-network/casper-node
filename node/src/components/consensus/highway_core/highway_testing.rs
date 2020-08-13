@@ -292,7 +292,7 @@ where
 type TestResult<T> = Result<T, TestRunError>;
 
 // Outer `Err` (from `TestResult`) represents an unexpected error in test framework, global error.
-// Inner `Result` is a local result, it's error is also local.
+// Inner `Result` is a local result, its error is also local.
 type TestRunResult<T> = TestResult<Result<T, (Vertex<TestContext>, VertexError)>>;
 
 impl<DS> HighwayTestHarness<DS>
