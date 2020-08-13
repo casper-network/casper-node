@@ -71,6 +71,7 @@ mod test_context;
 mod value;
 
 pub use account::Account;
+pub use casperlabs_node::crypto::asymmetric_key::{PublicKey, SecretKey};
 pub use casperlabs_types::account::AccountHash;
 pub use code::Code;
 pub use error::{Error, Result};
