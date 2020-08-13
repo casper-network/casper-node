@@ -152,10 +152,9 @@ where
             // We're given a cert_file and a secret_key file. Just load them, additional checking
             // will be performed once we create the acceptor and connector.
             (Some(cert), Some(secret_key)) => (
-                cert.load_relative(&root)
-                    .context("could not load certificate")?,
+                cert.load(&root).context("could not load certificate")?,
                 secret_key
-                    .load_relative(&root)
+                    .load(&root)
                     .context("could not load secret key")?,
             ),
 

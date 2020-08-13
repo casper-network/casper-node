@@ -125,7 +125,7 @@ impl reactor::Reactor for Reactor {
             .node
             .chainspec_config_path
             .clone()
-            .load_relative(root)
+            .load(root)
             .map_err(|err| Error::ConfigError(err.to_string()))?;
 
         let effect_builder = EffectBuilder::new(event_queue);

@@ -69,8 +69,8 @@ where
     T: Loadable,
 {
     /// Loads the value if not loaded already, resolving relative paths from `root` or returns
-    /// available value.
-    pub fn load_relative<P: AsRef<Path>>(self, root: P) -> Result<T, LoadError<T::Error>> {
+    /// available value. If the value is `Missing`, returns an error.
+    pub fn load<P: AsRef<Path>>(self, root: P) -> Result<T, LoadError<T::Error>> {
         match self {
             External::Path(path) => {
                 let full_path = if path.is_relative() {

@@ -161,7 +161,7 @@ impl UpgradePoint {
     ) -> Result<chainspec::UpgradePoint, Error> {
         let upgrade_installer_bytes = self
             .upgrade_installer_path
-            .map(|ext_vec| ext_vec.load_relative(root.as_ref()))
+            .map(|ext_vec| ext_vec.load(root.as_ref()))
             .transpose()
             .map_err(Error::LoadUpgradeInstaller)?;
         // TODO - read this in?
@@ -268,25 +268,25 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
     let mint_installer_bytes = chainspec
         .genesis
         .mint_installer_path
-        .load_relative(root)
+        .load(root)
         .map_err(Error::LoadMintInstaller)?;
 
     let pos_installer_bytes = chainspec
         .genesis
         .pos_installer_path
-        .load_relative(root)
+        .load(root)
         .map_err(Error::LoadPosInstaller)?;
 
     let standard_payment_installer_bytes = chainspec
         .genesis
         .standard_payment_installer_path
-        .load_relative(root)
+        .load(root)
         .map_err(Error::LoadStandardPaymentInstaller)?;
 
     let accounts: Vec<GenesisAccount> = chainspec
         .genesis
         .accounts_path
-        .load_relative(root)
+        .load(root)
         .map_err(Error::LoadGenesisAccounts)?;
     let highway_config = chainspec::HighwayConfig {
         genesis_era_start_timestamp: chainspec.highway.genesis_era_start_timestamp,
