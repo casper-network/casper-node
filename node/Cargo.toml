@@ -17,7 +17,6 @@ ansi_term = "0.12.1"
 anyhow = "1.0.28"
 base16 = "0.2.1"
 base64 = "0.12.3"
-bincode = "1.2.1"
 blake2 = { version = "0.8.1", default-features = false }
 bytes = "0.5.4"
 casperlabs-types = { version = "0.6.0", path = "../types", features = ["std", "gens"] }

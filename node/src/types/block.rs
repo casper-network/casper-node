@@ -41,7 +41,7 @@ impl ProtoBlock {
     // TODO: Should be a separate `ProtoBlockHash` type?
     pub(crate) fn hash(&self) -> BlockHash {
         BlockHash::new(hash::hash(
-            &bincode::serialize(self).expect("serialize ProtoBlock"),
+            &rmp_serde::to_vec(self).expect("serialize ProtoBlock"),
         ))
     }
 }

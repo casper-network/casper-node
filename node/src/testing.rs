@@ -9,14 +9,23 @@ mod test_rng;
 
 use std::{
     collections::HashSet,
+    fmt::Debug,
     sync::atomic::{AtomicU16, Ordering},
 };
+
+use serde::{de::DeserializeOwned, Serialize};
 
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
 pub(crate) use test_rng::TestRng;
 
 // Lower bound for the port, below there's a high chance of hitting a system service.
 const PORT_LOWER_BOUND: u16 = 10_000;
+
+pub fn rmp_serde_roundtrip<T: Serialize + DeserializeOwned + Eq + Debug>(value: &T) {
+    let serialized = rmp_serde::to_vec(value).unwrap();
+    let deserialized = rmp_serde::from_read_ref(serialized.as_slice()).unwrap();
+    assert_eq!(*value, deserialized);
+}
 
 /// Create an unused port on localhost.
 #[allow(clippy::assertions_on_constants)]
