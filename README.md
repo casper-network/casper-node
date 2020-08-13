@@ -58,8 +58,7 @@ cargo run --release -- generate-config > config.toml
 cargo run --release -- validator -c=config.toml
 ```
 
-Note that all paths specified in the config file must be absolute paths or relative to the config file itself.  Paths
-may contain environment variables such as `$HOME`.
+Note that all paths specified in the config file must be absolute paths or relative to the config file itself.
 
 It is also possible to specify individual config file options from the command line using one or more args in the form
 of `-C=<SECTION>.<KEY>=<VALUE>`.  These will override values set in a config file if provided, or will override the
