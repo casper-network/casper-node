@@ -12,8 +12,9 @@ use casperlabs_node::{
 };
 use casperlabs_types::{
     account::AccountHash,
+    auction::INITIAL_ERA_ID,
     bytesrepr::FromBytes,
-    mint::{BidPurses, UnbondingPurses},
+    mint::{BidPurses, UnbondingPurses, DEFAULT_UNBONDING_DELAY},
     runtime_args, ApiError, CLTyped, ContractHash, RuntimeArgs, U512,
 };
 
@@ -134,6 +135,11 @@ fn should_run_successful_bond_and_unbond() {
     assert_eq!(
         builder.get_purse_balance(unbond_list[0].purse),
         unbond_amount
+    );
+
+    assert_eq!(
+        unbond_list[0].era_of_withdrawal as usize,
+        INITIAL_ERA_ID as usize + DEFAULT_UNBONDING_DELAY as usize
     );
 
     let unbond_timer_1 = unbond_list[0].expiration_timer;

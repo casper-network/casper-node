@@ -1,3 +1,14 @@
+use super::EraId;
+
+/// Maximum number of era validator slots.
+pub const AUCTION_SLOTS: usize = 5;
+
+/// Number of eras before an auction actually defines the set of validators.
+pub const AUCTION_DELAY: u64 = 3;
+
+/// Initial value of era id we start at genesis.
+pub const INITIAL_ERA_ID: EraId = 0;
+
 /// Named constant for `amount`.
 pub const ARG_AMOUNT: &str = "amount";
 /// Named constant for `delegation_rate`.
@@ -35,6 +46,8 @@ pub const METHOD_UNDELEGATE: &str = "undelegate";
 pub const METHOD_QUASH_BID: &str = "quash_bid";
 /// Named constant for method `run_auction`.
 pub const METHOD_RUN_AUCTION: &str = "run_auction";
+/// Named constant for method `read_era_id`.
+pub const METHOD_READ_ERA_ID: &str = "read_era_id";
 
 /// Storage for `FoundingValidators`.
 pub const FOUNDING_VALIDATORS_KEY: &str = "founding_validators";
@@ -44,5 +57,5 @@ pub const ACTIVE_BIDS_KEY: &str = "active_bids";
 pub const DELEGATORS_KEY: &str = "delegators";
 /// Storage for `EraValidators`.
 pub const ERA_VALIDATORS_KEY: &str = "era_validators";
-/// Storage for `EraIndex`.
-pub const ERA_INDEX_KEY: &str = "era_index";
+/// Storage for `EraId`.
+pub const ERA_ID_KEY: &str = "era_id";

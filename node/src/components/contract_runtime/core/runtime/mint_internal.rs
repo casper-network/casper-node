@@ -1,51 +1,55 @@
 use casperlabs_types::{
     account::AccountHash,
+    auction::{EraId, METHOD_READ_ERA_ID},
     bytesrepr::{FromBytes, ToBytes},
-    mint::{Mint, RuntimeProvider, StorageProvider},
+    mint::{EraProvider, Mint, RuntimeProvider, StorageProvider},
     system_contract_errors::mint::Error,
-    CLTyped, CLValue, Key, URef,
+    CLTyped, CLValue, Key, RuntimeArgs, URef,
 };
 
+use super::Runtime;
 use crate::components::contract_runtime::{
-    core::{execution, runtime_context::RuntimeContext},
-    shared::stored_value::StoredValue,
-    storage::global_state::StateReader,
+    core::execution, shared::stored_value::StoredValue, storage::global_state::StateReader,
 };
 
-impl<'a, R> RuntimeProvider for RuntimeContext<'a, R>
+impl<'a, R> RuntimeProvider for Runtime<'a, R>
 where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
     fn get_caller(&self) -> AccountHash {
-        self.get_caller()
+        self.context.get_caller()
     }
 
     fn put_key(&mut self, name: &str, key: Key) {
         // TODO: update RuntimeProvider to better handle errors
-        self.put_key(name.to_string(), key).expect("should put key")
+        self.context
+            .put_key(name.to_string(), key)
+            .expect("should put key")
     }
     fn get_key(&self, name: &str) -> Option<Key> {
-        self.named_keys_get(name).cloned()
+        self.context.named_keys_get(name).cloned()
     }
 }
 
 // TODO: update Mint + StorageProvider to better handle errors
-impl<'a, R> StorageProvider for RuntimeContext<'a, R>
+impl<'a, R> StorageProvider for Runtime<'a, R>
 where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
     fn new_uref<T: CLTyped + ToBytes>(&mut self, init: T) -> URef {
         let cl_value: CLValue = CLValue::from_t(init).expect("should convert value");
-        self.new_uref(StoredValue::CLValue(cl_value))
+        self.context
+            .new_uref(StoredValue::CLValue(cl_value))
             .expect("should create new uref")
     }
 
     fn write_local<K: ToBytes, V: CLTyped + ToBytes>(&mut self, key: K, value: V) {
         let key_bytes = key.to_bytes().expect("should serialize");
         let cl_value = CLValue::from_t(value).expect("should convert");
-        self.write_ls(&key_bytes, cl_value)
+        self.context
+            .write_ls(&key_bytes, cl_value)
             .expect("should write local state")
     }
 
@@ -54,7 +58,10 @@ where
         key: &K,
     ) -> Result<Option<V>, Error> {
         let key_bytes = key.to_bytes().expect("should serialize");
-        let maybe_value = self.read_ls(&key_bytes).map_err(|_| Error::Storage)?;
+        let maybe_value = self
+            .context
+            .read_ls(&key_bytes)
+            .map_err(|_| Error::Storage)?;
         match maybe_value {
             Some(value) => {
                 let value = CLValue::into_t(value).unwrap();
@@ -65,7 +72,10 @@ where
     }
 
     fn read<T: CLTyped + FromBytes>(&mut self, uref: URef) -> Result<Option<T>, Error> {
-        let maybe_value = self.read_gs(&Key::URef(uref)).map_err(|_| Error::Storage)?;
+        let maybe_value = self
+            .context
+            .read_gs(&Key::URef(uref))
+            .map_err(|_| Error::Storage)?;
         match maybe_value {
             Some(StoredValue::CLValue(value)) => {
                 let value = CLValue::into_t(value).unwrap();
@@ -78,18 +88,37 @@ where
 
     fn write<T: CLTyped + ToBytes>(&mut self, uref: URef, value: T) -> Result<(), Error> {
         let cl_value = CLValue::from_t(value).expect("should convert");
-        self.write_gs(Key::URef(uref), StoredValue::CLValue(cl_value))
+        self.context
+            .write_gs(Key::URef(uref), StoredValue::CLValue(cl_value))
             .map_err(|_| Error::Storage)
     }
 
     fn add<T: CLTyped + ToBytes>(&mut self, uref: URef, value: T) -> Result<(), Error> {
         let cl_value = CLValue::from_t(value).expect("should convert");
-        self.add_gs(Key::URef(uref), StoredValue::CLValue(cl_value))
+        self.context
+            .add_gs(Key::URef(uref), StoredValue::CLValue(cl_value))
             .map_err(|_| Error::Storage)
     }
 }
 
-impl<'a, R> Mint for RuntimeContext<'a, R>
+impl<'a, R> EraProvider for Runtime<'a, R>
+where
+    R: StateReader<Key, StoredValue>,
+    R::Error: Into<execution::Error>,
+{
+    fn read_era_id(&mut self) -> EraId {
+        let result = self
+            .call_contract(
+                self.protocol_data().auction(),
+                METHOD_READ_ERA_ID,
+                RuntimeArgs::new(),
+            )
+            .expect("should call auction");
+        result.into_t().expect("should contain era id")
+    }
+}
+
+impl<'a, R> Mint for Runtime<'a, R>
 where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,

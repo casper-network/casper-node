@@ -24,7 +24,7 @@ pub trait ProofOfStake:
     MintProvider + QueueProvider + RuntimeProvider + StakesProvider + Sized
 {
     /// Bonds a `validator` with `amount` of tokens from a `source` purse.
-    fn bond(&mut self, validator: AccountHash, amount: U512, source: URef) -> Result<()> {
+    fn bond_old(&mut self, validator: AccountHash, amount: U512, source: URef) -> Result<()> {
         if amount.is_zero() {
             return Err(Error::BondTooSmall);
         }
@@ -49,7 +49,7 @@ pub trait ProofOfStake:
 
     /// Unbonds a validator with provided `maybe_amount`. If `maybe_amount` is `None` then given
     /// validator will withdraw all funds.
-    fn unbond(&mut self, validator: AccountHash, maybe_amount: Option<U512>) -> Result<()> {
+    fn unbond_old(&mut self, validator: AccountHash, maybe_amount: Option<U512>) -> Result<()> {
         let pos_purse = internal::get_bonding_purse(self)?;
         let timestamp = self.get_block_time();
         internal::unbond(self, maybe_amount, validator, timestamp)?;

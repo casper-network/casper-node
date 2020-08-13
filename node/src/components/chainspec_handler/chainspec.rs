@@ -25,7 +25,7 @@ use super::{config, Error};
 use crate::testing::TestRng;
 use crate::{
     components::contract_runtime::shared::wasm_costs::WasmCosts,
-    crypto::asymmetric_key::{SecretKey, PublicKey},
+    crypto::asymmetric_key::{PublicKey, SecretKey},
     types::{Motes, TimeDiff, Timestamp},
 };
 

@@ -174,7 +174,7 @@ pub fn bond() {
 
     let mut pos_contract = ProofOfStakeContract;
     pos_contract
-        .bond(validator, amount, source)
+        .bond_old(validator, amount, source)
         .unwrap_or_revert();
 }
 
@@ -188,7 +188,7 @@ pub fn unbond() {
 
     let mut pos_contract = ProofOfStakeContract;
     pos_contract
-        .unbond(validator, maybe_amount)
+        .unbond_old(validator, maybe_amount)
         .unwrap_or_revert();
 }
 

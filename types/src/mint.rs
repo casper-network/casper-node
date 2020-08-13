@@ -1,4 +1,5 @@
 //! Contains implementation of a Mint contract functionality.
+mod era_provider;
 mod runtime_provider;
 mod storage_provider;
 mod unbonding_purse;
@@ -9,8 +10,8 @@ use core::convert::TryFrom;
 use crate::{account::AccountHash, system_contract_errors::mint::Error, Key, URef, U512};
 
 pub use crate::mint::{
-    runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
-    unbonding_purse::UnbondingPurses,
+    era_provider::EraProvider, runtime_provider::RuntimeProvider,
+    storage_provider::StorageProvider, unbonding_purse::UnbondingPurses,
 };
 use unbonding_purse::UnbondingPurse;
 
@@ -33,11 +34,14 @@ pub const FOUNDER_PURSES_KEY: &str = "founder_purses";
 /// Name of unbonding purses key.
 pub const UNBONDING_PURSES_KEY: &str = "unbonding_purses";
 const _REWARD_PURSES: &str = "reward_purses";
+
 const DEFAULT_LOCK_IN_DURATION: u8 = 10;
-const DEFAULT_WITHDRAWAL_ERA: u16 = 14;
+
+/// Default number of eras that need to pass to be able to withdraw unbonded funds.
+pub const DEFAULT_UNBONDING_DELAY: u16 = 14;
 
 /// Mint trait.
-pub trait Mint: RuntimeProvider + StorageProvider {
+pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
     /// Mint new token with given `initial_balance` balance. Returns new purse on success, otherwise
     /// an error.
     fn mint(&mut self, initial_balance: U512) -> Result<URef, Error> {
@@ -158,7 +162,7 @@ pub trait Mint: RuntimeProvider + StorageProvider {
         let new_unbonding_purse = UnbondingPurse {
             purse: unbond_purse,
             origin: account_hash,
-            era_of_withdrawal: DEFAULT_WITHDRAWAL_ERA,
+            era_of_withdrawal: DEFAULT_UNBONDING_DELAY,
             expiration_timer: DEFAULT_LOCK_IN_DURATION,
         };
         unbonding_purses

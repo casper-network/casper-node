@@ -6,17 +6,18 @@ extern crate alloc;
 use alloc::boxed::Box;
 
 use casperlabs_contract::{
-    contract_api::{runtime, storage},
+    contract_api::{runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casperlabs_types::{
     account::AccountHash,
+    auction::METHOD_READ_ERA_ID,
     bytesrepr::{FromBytes, ToBytes},
     contracts::Parameters,
-    mint::{Mint, RuntimeProvider, StorageProvider},
+    mint::{EraProvider, Mint, RuntimeProvider, StorageProvider},
     system_contract_errors::mint::Error,
     CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
-    Parameter, URef, U512,
+    Parameter, RuntimeArgs, URef, U512,
 };
 
 pub const METHOD_MINT: &str = "mint";
@@ -77,6 +78,13 @@ impl StorageProvider for MintContract {
     fn add<T: CLTyped + ToBytes>(&mut self, uref: URef, value: T) -> Result<(), Error> {
         storage::add(uref, value);
         Ok(())
+    }
+}
+
+impl EraProvider for MintContract {
+    fn read_era_id(&mut self) -> casperlabs_types::auction::EraId {
+        let auction = system::get_auction();
+        runtime::call_contract(auction, METHOD_READ_ERA_ID, RuntimeArgs::new())
     }
 }
 

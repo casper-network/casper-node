@@ -8,7 +8,7 @@ use crate::{PublicKey, U512};
 pub type ValidatorWeights = BTreeMap<PublicKey, U512>;
 
 /// Era index type.
-pub type EraIndex = u64;
+pub type EraId = u64;
 
 /// List of era validators
-pub type EraValidators = BTreeMap<EraIndex, ValidatorWeights>;
+pub type EraValidators = BTreeMap<EraId, ValidatorWeights>;

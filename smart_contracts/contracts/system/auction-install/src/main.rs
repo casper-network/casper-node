@@ -10,8 +10,8 @@ use casperlabs_contract::{
 };
 use casperlabs_types::{
     auction::{
-        ActiveBids, Delegators, EraIndex, EraValidators, FoundingValidator, FoundingValidators,
-        ValidatorWeights, ERA_INDEX_KEY,
+        ActiveBids, Delegators, EraValidators, FoundingValidator, FoundingValidators,
+        ValidatorWeights, AUCTION_DELAY, ERA_ID_KEY, INITIAL_ERA_ID,
     },
     auction::{ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY},
     contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
@@ -55,11 +55,12 @@ pub extern "C" fn install() {
         }
 
         // Starting era validators
-        let era_index: EraIndex = 0; // Initial era index
-        named_keys.insert(ERA_INDEX_KEY.into(), storage::new_uref(era_index).into());
+        named_keys.insert(ERA_ID_KEY.into(), storage::new_uref(INITIAL_ERA_ID).into());
 
         let mut era_validators = EraValidators::new();
-        era_validators.insert(era_index, initial_validator_weights);
+        for era_index in INITIAL_ERA_ID..INITIAL_ERA_ID + AUCTION_DELAY {
+            era_validators.insert(era_index, initial_validator_weights.clone());
+        }
 
         named_keys.insert(
             FOUNDING_VALIDATORS_KEY.into(),

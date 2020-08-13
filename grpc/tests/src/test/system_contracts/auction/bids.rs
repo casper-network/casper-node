@@ -1,10 +1,12 @@
 use lazy_static::lazy_static;
 
-use auction::{SeigniorageRecipients, ARG_DELEGATOR, ARG_PUBLIC_KEY};
+use auction::{
+    EraId, SeigniorageRecipients, ARG_DELEGATOR, ARG_PUBLIC_KEY, AUCTION_DELAY, ERA_ID_KEY,
+};
 use casperlabs_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
@@ -69,7 +71,7 @@ const ACCOUNT_2_BALANCE: u64 = 25_000_000;
 const ACCOUNT_2_BOND: u64 = 200_000;
 
 lazy_static! {
-    static ref BID_ACCOUNT_SK: SecretKey = SecretKey::new_ed25519([201; 32]);
+    static ref BID_ACCOUNT_SK: SecretKey = SecretKey::new_ed25519([202; 32]);
     static ref BID_ACCOUNT_PK: PublicKey = PublicKey::from(&*BID_ACCOUNT_SK);
     static ref BID_ACCOUNT_ADDR: AccountHash = BID_ACCOUNT_PK.to_account_hash();
 }
@@ -343,6 +345,18 @@ fn should_run_delegate_and_undelegate() {
 #[ignore]
 #[test]
 fn should_calculate_era_validators() {
+    assert_ne!(
+        ACCOUNT_1_PK.to_account_hash(),
+        ACCOUNT_2_PK.to_account_hash()
+    );
+    assert_ne!(
+        ACCOUNT_2_PK.to_account_hash(),
+        BID_ACCOUNT_PK.to_account_hash()
+    );
+    assert_ne!(
+        ACCOUNT_2_PK.to_account_hash(),
+        DEFAULT_ACCOUNT_PUBLIC_KEY.to_account_hash()
+    );
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::with_public_key(
@@ -390,7 +404,7 @@ fn should_calculate_era_validators() {
         get_value(&mut builder, auction_hash, FOUNDING_VALIDATORS_KEY);
     assert_eq!(
         founding_validators.len(),
-        3,
+        2,
         "founding validators {:?}",
         founding_validators
     );
@@ -413,6 +427,9 @@ fn should_calculate_era_validators() {
 
     builder.exec(add_bid_request_1).commit().expect_success();
 
+    let pre_era_id: EraId = get_value(&mut builder, auction_hash, ERA_ID_KEY);
+    assert_eq!(pre_era_id, 0);
+
     // non-founding validator request
     let run_auction_request_1 = ExecuteRequestBuilder::standard(
         SYSTEM_ADDR,
@@ -428,12 +445,42 @@ fn should_calculate_era_validators() {
         .commit()
         .expect_success();
 
+    let post_era_id: EraId = get_value(&mut builder, auction_hash, ERA_ID_KEY);
+    assert_eq!(post_era_id, 1);
+
     let era_validators: EraValidators = get_value(&mut builder, auction_hash, "era_validators");
-    assert_eq!(era_validators.len(), 1, "{:?}", era_validators); // eraindex==1 - ran once
+
+    let consensus_next_era_id: EraId = AUCTION_DELAY + post_era_id;
+
+    assert_eq!(
+        era_validators.len(),
+        consensus_next_era_id as usize,
+        "era_id={} {:?}",
+        consensus_next_era_id,
+        era_validators
+    ); // eraindex==1 - ran once
+
     let validator_weights = era_validators
-        .get(&0)
-        .expect("should have era_index==0 entry");
-    assert_eq!(validator_weights.len(), 3, "{:?}", validator_weights); // 1 non founding validator + 2 genesis validators "winners"
+        .get(&consensus_next_era_id)
+        .unwrap_or_else(|| {
+            panic!(
+                "should have era_index=={} entry {:?}",
+                post_era_id, era_validators
+            )
+        });
+    assert_eq!(
+        validator_weights.len(),
+        3,
+        "{:?} {:?}",
+        era_validators,
+        validator_weights
+    ); //2 genesis validators "winners"
+    assert_eq!(
+        validator_weights
+            .get(&casperlabs_types::PublicKey::from(*BID_ACCOUNT_PK))
+            .expect("should have bid account in this era"),
+        &U512::from(ADD_BID_AMOUNT_1)
+    );
 }
 
 #[ignore]
@@ -513,10 +560,21 @@ fn should_get_first_seigniorage_recipients() {
     assert_eq!(seigniorage_recipients.len(), 2);
 
     let era_validators: EraValidators = get_value(&mut builder, auction_hash, "era_validators");
-    assert_eq!(era_validators.len(), 1, "{:?}", era_validators); // eraindex==1 - ran once
-    let validator_weights = era_validators
-        .get(&0)
-        .expect("should have era_index==0 entry");
+    assert_eq!(
+        era_validators.len(),
+        AUCTION_DELAY as usize,
+        "{:?}",
+        era_validators
+    ); // eraindex==1 - ran once
+
+    let era_id = AUCTION_DELAY - 1;
+
+    let validator_weights = era_validators.get(&era_id).unwrap_or_else(|| {
+        panic!(
+            "should have era_index=={} entry {:?}",
+            era_id, era_validators
+        )
+    });
     assert_eq!(validator_weights.len(), 2, "{:?}", validator_weights); // 2 genesis validators "winners" with non-zero bond
     assert_eq!(
         validator_weights

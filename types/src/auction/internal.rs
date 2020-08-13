@@ -6,7 +6,7 @@ use crate::{
 };
 
 use super::{
-    providers::StorageProvider, EraValidators, ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_INDEX_KEY,
+    providers::StorageProvider, EraId, EraValidators, ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_ID_KEY,
     ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY,
 };
 
@@ -104,16 +104,16 @@ where
     write_to(provider, ERA_VALIDATORS_KEY, era_validators)
 }
 
-pub fn get_era_index<P: StorageProvider + ?Sized>(provider: &mut P) -> Result<u64>
+pub fn get_era_id<P: StorageProvider + ?Sized>(provider: &mut P) -> Result<EraId>
 where
     Error: From<P::Error>,
 {
-    Ok(read_from(provider, ERA_INDEX_KEY)?)
+    Ok(read_from(provider, ERA_ID_KEY)?)
 }
 
 pub fn set_era_index<P: StorageProvider + ?Sized>(provider: &mut P, era_index: u64) -> Result<()>
 where
     Error: From<P::Error>,
 {
-    write_to(provider, ERA_INDEX_KEY, era_index)
+    write_to(provider, ERA_ID_KEY, era_index)
 }

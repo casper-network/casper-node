@@ -1714,7 +1714,7 @@ where
         let phase = self.context.phase();
         let protocol_data = self.context.protocol_data();
 
-        let mut mint_context = RuntimeContext::new(
+        let mint_context = RuntimeContext::new(
             state,
             EntryPointType::Contract,
             named_keys,
@@ -1735,23 +1735,31 @@ where
             protocol_data,
         );
 
+        let mut mint_runtime = Runtime::new(
+            self.config,
+            SystemContractCache::clone(&self.system_contract_cache),
+            self.memory.clone(),
+            self.module.clone(),
+            mint_context,
+        );
+
         let ret: CLValue = match entry_point_name {
             // Type: `fn mint(amount: U512) -> Result<URef, Error>`
             METHOD_MINT => {
                 let amount: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
-                let result: Result<URef, mint::Error> = mint_context.mint(amount);
+                let result: Result<URef, mint::Error> = mint_runtime.mint(amount);
                 CLValue::from_t(result)?
             }
             // Type: `fn create() -> URef`
             METHOD_CREATE => {
-                let uref = mint_context.mint(U512::zero()).map_err(Self::reverter)?;
+                let uref = mint_runtime.mint(U512::zero()).map_err(Self::reverter)?;
                 CLValue::from_t(uref).map_err(Self::reverter)?
             }
             // Type: `fn balance(purse: URef) -> Option<U512>`
             METHOD_BALANCE => {
                 let uref: URef = Self::get_named_argument(&runtime_args, "purse")?;
                 let maybe_balance: Option<U512> =
-                    mint_context.balance(uref).map_err(Self::reverter)?;
+                    mint_runtime.balance(uref).map_err(Self::reverter)?;
                 CLValue::from_t(maybe_balance).map_err(Self::reverter)?
             }
             // Type: `fn transfer(source: URef, target: URef, amount: U512) -> Result<(), Error>`
@@ -1759,7 +1767,7 @@ where
                 let source: URef = Self::get_named_argument(&runtime_args, "source")?;
                 let target: URef = Self::get_named_argument(&runtime_args, "target")?;
                 let amount: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
-                let result: Result<(), mint::Error> = mint_context.transfer(source, target, amount);
+                let result: Result<(), mint::Error> = mint_runtime.transfer(source, target, amount);
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
             // Type: `fn bond(account_hash: AccountHash, source_purse: URef, quantity: U512) -> Result<(URef, U512), Error>`
@@ -1767,7 +1775,7 @@ where
                 let account_hash: AccountHash = self.context.get_caller();
                 let source_purse: URef = Self::get_named_argument(&runtime_args, ARG_PURSE)?;
                 let quantity: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
-                let result = mint_context
+                let result = mint_runtime
                     .bond(account_hash, source_purse, quantity)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)?
@@ -1776,14 +1784,14 @@ where
             METHOD_UNBOND => {
                 let account_hash: AccountHash = self.context.get_caller();
                 let quantity: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
-                let result = mint_context
+                let result = mint_runtime
                     .unbond(account_hash, quantity)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
             // Type: `fn unbond_timer_advance() -> Result<(), Error>`
             METHOD_UNBOND_TIMER_ADVANCE => {
-                mint_context
+                mint_runtime
                     .unbond_timer_advance()
                     .map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)?
@@ -1792,7 +1800,7 @@ where
             METHOD_SLASH => {
                 let validator_account_hashes: Vec<AccountHash> =
                     Self::get_named_argument(&runtime_args, "validator_account_hashes")?;
-                mint_context
+                mint_runtime
                     .slash(validator_account_hashes)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)?
@@ -1883,7 +1891,7 @@ where
                 let amount: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
                 let source_uref: URef = Self::get_named_argument(&runtime_args, ARG_PURSE)?;
                 runtime
-                    .bond(validator, amount, source_uref)
+                    .bond_old(validator, amount, source_uref)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)?
             }
@@ -1896,7 +1904,7 @@ where
                 let validator: AccountHash = runtime.context.get_caller();
                 let maybe_amount: Option<U512> = Self::get_named_argument(&runtime_args, "amount")?;
                 runtime
-                    .unbond(validator, maybe_amount)
+                    .unbond_old(validator, maybe_amount)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)?
             }
@@ -2091,6 +2099,11 @@ where
             auction::METHOD_RUN_AUCTION => {
                 runtime.run_auction().map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)?
+            }
+
+            auction::METHOD_READ_ERA_ID => {
+                let result = runtime.read_era_id().map_err(Self::reverter)?;
+                CLValue::from_t(result).map_err(Self::reverter)?
             }
 
             _ => CLValue::from_t(()).map_err(Self::reverter)?,

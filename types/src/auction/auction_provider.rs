@@ -4,7 +4,7 @@ use super::{
     era_validators::ValidatorWeights,
     internal,
     providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
-    EraValidators, SeigniorageRecipient,
+    EraId, EraValidators, SeigniorageRecipient, AUCTION_DELAY, AUCTION_SLOTS,
 };
 use crate::{
     account::AccountHash,
@@ -12,11 +12,6 @@ use crate::{
     system_contract_errors::auction::{Error, Result},
     PublicKey, URef, U512,
 };
-
-const AUCTION_SLOTS: usize = 5;
-
-/// Number of eras before an auction actually defines the set of validators.
-const AUCTION_DELAY: u64 = 3;
 
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0; 32]);
 
@@ -80,7 +75,7 @@ where
 
         let mut seigniorage_recipients = SeigniorageRecipients::new();
 
-        let era_index = internal::get_era_index(self)?;
+        let era_index = internal::get_era_id(self)?;
         let last_era_validators = era_validators.get(&era_index).unwrap();
 
         // each validator...
@@ -430,13 +425,24 @@ where
         let remaining_auction_slots = AUCTION_SLOTS.saturating_sub(validator_weights.len());
         validator_weights.extend(scores.into_iter().take(remaining_auction_slots));
 
-        let mut era_index = internal::get_era_index(self)?;
+        let mut era_index = internal::get_era_id(self)?;
 
         let mut era_validators = internal::get_era_validators(self)?;
-        era_validators.insert(era_index % AUCTION_DELAY, validator_weights);
+
+        // Era index is assumed to be equal to era id on the consensus side.
         era_index += 1;
+
+        // Index for next set of validators: `era_index + 1 + AUCTION_DELAY`
+        assert!(!era_validators.contains_key(&(era_index + AUCTION_DELAY)));
+        era_validators.insert(era_index + AUCTION_DELAY, validator_weights);
+
         internal::set_era_index(self, era_index)?;
 
         internal::set_era_validators(self, era_validators)
+    }
+
+    /// Reads current era id.
+    fn read_era_id(&mut self) -> Result<EraId> {
+        internal::get_era_id(self)
     }
 }

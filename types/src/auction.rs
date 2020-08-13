@@ -14,7 +14,7 @@ pub use active_bid::{ActiveBid, ActiveBids};
 pub use args::*;
 pub use auction_provider::AuctionProvider;
 pub use delegator::{DelegatedAmounts, Delegators};
-pub use era_validators::{EraIndex, EraValidators, ValidatorWeights};
+pub use era_validators::{EraId, EraValidators, ValidatorWeights};
 pub use founding_validator::{FoundingValidator, FoundingValidators};
 pub use providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvider};
 pub use seigniorage_recipient::{SeigniorageRecipient, SeigniorageRecipients};
