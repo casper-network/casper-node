@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+
+use crate::{crypto::asymmetric_key::SecretKey, utils::External};
 
 /// Consensus configuration.
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -7,5 +8,5 @@ use std::path::PathBuf;
 #[serde(deny_unknown_fields)]
 pub struct Config {
     /// Path to secret key file.
-    pub secret_key_path: PathBuf,
+    pub secret_key_path: External<SecretKey>,
 }
