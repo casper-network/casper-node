@@ -147,7 +147,7 @@ impl reactor::Reactor for Reactor {
                 responder,
                 ..
             })) => responder
-                .respond(Some(Chainspec::bundled("local/chainspec.toml")))
+                .respond(Some(Chainspec::from_resources("local/chainspec.toml")))
                 .ignore(),
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,

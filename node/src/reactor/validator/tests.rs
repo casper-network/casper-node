@@ -43,7 +43,7 @@ impl TestChain {
         let keys: Vec<SecretKey> = (0..size).map(|_| SecretKey::random(rng)).collect();
 
         // Load the `local` chainspec.
-        let mut chainspec = Chainspec::bundled("local/chainspec.toml");
+        let mut chainspec = Chainspec::from_resources("local/chainspec.toml");
 
         // Override accounts with those generated from the keys.
         chainspec.genesis.accounts = keys

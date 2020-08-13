@@ -504,7 +504,7 @@ mod tests {
 
     #[test]
     fn check_bundled_spec() {
-        let spec = Chainspec::bundled("test/valid/chainspec.toml");
+        let spec = Chainspec::from_resources("test/valid/chainspec.toml");
         check_spec(spec);
     }
 

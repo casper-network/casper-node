@@ -116,7 +116,7 @@ pub trait Loadable: Sized {
 
     /// Load a test-only instance from the local path.
     #[cfg(test)]
-    fn bundled<P: AsRef<Path>>(rel_path: P) -> Self {
+    fn from_resources<P: AsRef<Path>>(rel_path: P) -> Self {
         Self::from_file(RESOURCES_PATH.join(rel_path)).expect("could not load resources from local")
     }
 }
