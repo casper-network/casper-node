@@ -375,7 +375,6 @@ where
     }
 
     /// Helper for getting validator from the underlying virtual net.
-    #[allow(clippy::type_complexity)]
     fn node_mut(&mut self, validator_id: &ValidatorId) -> TestResult<&mut HighwayNode> {
         self.virtual_net
             .node_mut(&validator_id)
@@ -494,7 +493,6 @@ where
     // Adds vertex to the `recipient` validator state.
     // Synchronizes its state if necessary.
     // From the POV of the test system, synchronization is immediate.
-    #[allow(clippy::type_complexity)]
     fn add_vertex<R: Rng>(
         &mut self,
         rng: &mut R,
@@ -545,7 +543,6 @@ where
     /// Synchronizes all missing dependencies of `pvv` that `recipient` is missing.
     /// If an error occurs during synchronization of one of `pvv`'s dependencies
     /// it's returned and the original vertex mustn't be added to the state.
-    #[allow(clippy::type_complexity)]
     fn synchronize_validator<R: Rng>(
         &mut self,
         rng: &mut R,
