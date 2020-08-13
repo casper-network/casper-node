@@ -759,6 +759,10 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
     }
 
     pub(crate) fn weight_limits(mut self, lower: u64, upper: u64) -> Self {
+        assert!(
+            lower >= 100,
+            "Lower limit has to be higher than 100 to avoid rounding problems."
+        );
         self.weight_limits = (lower, upper);
         self
     }
@@ -1060,7 +1064,7 @@ mod test_harness {
         let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
             HighwayTestHarnessBuilder::new()
                 .consensus_values_count(1)
-                .weight_limits(7, 10)
+                .weight_limits(100, 120)
                 .build(&mut rng)
                 .ok()
                 .expect("Construction was successful");
@@ -1094,7 +1098,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_no_faults() {
-        logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true)).ok();
+        logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1102,7 +1106,7 @@ mod test_harness {
         let mut highway_test_harness = HighwayTestHarnessBuilder::new()
             .max_faulty_validators(3)
             .consensus_values_count(cv_count)
-            .weight_limits(3, 10)
+            .weight_limits(100, 120)
             .build(&mut rng)
             .ok()
             .expect("Construction was successful");
@@ -1156,7 +1160,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_some_mute() {
-        assert!(logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true)).is_ok());
+        logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1167,7 +1171,7 @@ mod test_harness {
             .faulty_weight_perc(fault_perc)
             .fault_type(Fault::Mute)
             .consensus_values_count(cv_count)
-            .weight_limits(7, 10)
+            .weight_limits(100, 120)
             .build(&mut rng)
             .ok()
             .expect("Construction was successful");
@@ -1194,7 +1198,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_some_equivocate() {
-        assert!(logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true)).is_ok());
+        logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1205,7 +1209,7 @@ mod test_harness {
             .faulty_weight_perc(fault_perc)
             .fault_type(Fault::Equivocate)
             .consensus_values_count(cv_count)
-            .weight_limits(7, 10)
+            .weight_limits(100, 150)
             .build(&mut rng)
             .ok()
             .expect("Construction was successful");
