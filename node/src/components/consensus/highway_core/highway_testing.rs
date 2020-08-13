@@ -1034,6 +1034,7 @@ impl Context for TestContext {
 mod test_harness {
     use std::{
         collections::{hash_map::DefaultHasher, HashMap, HashSet},
+        fmt::Debug,
         hash::Hasher,
     };
 
@@ -1075,22 +1076,12 @@ mod test_harness {
         );
     }
 
-    // Test that validators have finalized consensus values in the same order.
-    fn assert_finalization_order(
-        finalized_values: Vec<Vec<ConsensusValue>>,
-        expected_number: usize,
-    ) {
-        let mut iter = finalized_values.into_iter();
-        let reference_order = iter.next().unwrap();
+    // Test that all elements of the vector all equal.
+    fn assert_eq_vectors<I: Eq + Debug>(coll: Vec<I>, error_msg: &str) {
+        let mut iter = coll.into_iter();
+        let reference = iter.next().unwrap();
 
-        assert_eq!(
-            reference_order.len(),
-            expected_number,
-            "Expected to finalize {} consensus values.",
-            expected_number
-        );
-
-        iter.for_each(|v| assert_eq!(v, reference_order));
+        iter.for_each(|v| assert_eq!(v, reference, "{}", error_msg));
     }
 
     #[test]
@@ -1152,7 +1143,10 @@ mod test_harness {
                 )
             });
 
-        assert_finalization_order(finalized_values, cv_count as usize);
+        assert_eq_vectors(
+            finalized_values,
+            "Nodes finalized different consensus values.",
+        );
     }
 
     #[test]
@@ -1190,7 +1184,10 @@ mod test_harness {
             .map(|v| v.finalized_values().cloned().collect::<Vec<_>>())
             .collect();
 
-        assert_finalization_order(finalized_values, cv_count as usize);
+        assert_eq_vectors(
+            finalized_values,
+            "Nodes finalized different consensus values.",
+        );
     }
 
     #[test]
@@ -1224,10 +1221,25 @@ mod test_harness {
         let handle = highway_test_harness.mutable_handle();
         let mut validators = handle.validators();
 
-        let finalized_values: Vec<Vec<ConsensusValue>> = validators
-            .map(|v| v.finalized_values().cloned().collect::<Vec<_>>())
-            .collect();
+        let (finalized_values, equivocators_seen): (
+            Vec<Vec<ConsensusValue>>,
+            Vec<HashSet<ValidatorId>>,
+        ) = validators
+            .map(|v| {
+                (
+                    v.finalized_values().cloned().collect::<Vec<_>>(),
+                    v.equivocators().cloned().collect::<HashSet<_>>(),
+                )
+            })
+            .unzip();
 
-        assert_finalization_order(finalized_values, cv_count as usize);
+        assert_eq_vectors(
+            finalized_values,
+            "Nodes finalized different consensus values.",
+        );
+        assert_eq_vectors(
+            equivocators_seen,
+            "Nodes saw different set of equivocators.",
+        );
     }
 }
