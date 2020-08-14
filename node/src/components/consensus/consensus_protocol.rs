@@ -2,7 +2,10 @@ use std::{collections::BTreeMap, fmt::Debug};
 
 use anyhow::Error;
 
-use crate::{components::consensus::traits::ConsensusValueT, types::Timestamp};
+use crate::{
+    components::consensus::traits::{ConsensusValueT, ValidatorSecret},
+    types::Timestamp,
+};
 
 mod protocol_state;
 pub(crate) mod synchronizer;
@@ -17,7 +20,7 @@ pub struct BlockContext {
 }
 
 impl BlockContext {
-    /// Constructs a new `BlockContext`
+    /// Constructs a new `BlockContext`.
     pub(crate) fn new(timestamp: Timestamp, height: u64) -> Self {
         BlockContext { timestamp, height }
     }
@@ -28,6 +31,8 @@ impl BlockContext {
     }
 
     /// The block's relative height within the current era.
+    // TODO - remove once used
+    #[allow(dead_code)]
     pub(crate) fn height(&self) -> u64 {
         self.height
     }
@@ -41,7 +46,10 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
     ScheduleTimer(Timestamp),
     /// Request deploys for a new block, whose timestamp will be the given `u64`.
     /// TODO: Add more details that are necessary for block creation.
-    CreateNewBlock(BlockContext),
+    CreateNewBlock {
+        block_context: BlockContext,
+        opt_parent: Option<C>,
+    },
     /// A block was finalized. The timestamp is from when the block was proposed.
     FinalizedBlock {
         value: C,
@@ -59,7 +67,7 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
 }
 
 /// An API for a single instance of the consensus.
-pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID> {
+pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID, S: ValidatorSecret> {
     /// Handles an incoming message (like NewVote, RequestDependency).
     fn handle_message(
         &mut self,
@@ -80,6 +88,9 @@ pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID> {
         block_context: BlockContext,
     ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
 
+    /// Creates a finality signature for the given block hash.
+    fn create_finality_signature(&self, executed_block_hash: &S::Hash) -> Option<S::Signature>;
+
     /// Marks the `value` as valid or invalid, based on validation requested via
     /// `ConsensusProtocolResult::ValidateConsensusvalue`.
     fn resolve_validity(
@@ -94,11 +105,12 @@ mod example {
     use serde::{Deserialize, Serialize};
 
     use super::{
+        super::protocols::highway::HighwaySecret,
         protocol_state::{ProtocolState, VertexTrait},
         synchronizer::DagSynchronizerState,
         BlockContext, ConsensusProtocol, ConsensusProtocolResult, Timestamp,
     };
-    use crate::components::consensus::traits::ConsensusValueT;
+    use crate::components::consensus::traits::{ConsensusValueT, ValidatorSecret};
 
     #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
     struct VIdU64(u64);
@@ -136,7 +148,7 @@ mod example {
 
     type CpResult<I> = Result<Vec<ConsensusProtocolResult<I, ProtoBlock, VIdU64>>, anyhow::Error>;
 
-    impl<I, P> ConsensusProtocol<I, ProtoBlock, VIdU64> for DagSynchronizerState<I, P>
+    impl<I, P> ConsensusProtocol<I, ProtoBlock, VIdU64, HighwaySecret> for DagSynchronizerState<I, P>
     where
         P: ProtocolState,
     {
@@ -149,6 +161,13 @@ mod example {
         }
 
         fn resolve_validity(&mut self, _value: &ProtoBlock, _valid: bool) -> CpResult<I> {
+            unimplemented!()
+        }
+
+        fn create_finality_signature(
+            &self,
+            _executed_block_hash: &<HighwaySecret as ValidatorSecret>::Hash,
+        ) -> Option<<HighwaySecret as ValidatorSecret>::Signature> {
             unimplemented!()
         }
 

@@ -30,7 +30,7 @@ use crate::{
     },
     crypto::{
         asymmetric_key::{PublicKey, SecretKey},
-        hash::hash,
+        hash,
     },
     effect::{EffectBuilder, EffectExt, Effects},
     types::{FinalizedBlock, Instruction, Motes, ProtoBlock, Timestamp},
@@ -72,7 +72,8 @@ impl Default for EraConfig {
 pub(crate) struct EraSupervisor<I> {
     // A map of active consensus protocols.
     // A value is a trait so that we can run different consensus protocol instances per era.
-    active_eras: HashMap<EraId, Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>>>,
+    pub(super) active_eras:
+        HashMap<EraId, Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey, HighwaySecret>>>,
     era_config: EraConfig,
 }
 
@@ -146,7 +147,7 @@ where
         };
 
         let public_key = PublicKey::from(&secret_signing_key);
-        let instance_id = hash(format!("Highway era {}", era_id.0));
+        let instance_id = hash::hash(format!("Highway era {}", era_id.0));
         let ftt =
             validators.total_weight() * u64::from(highway_config.finality_threshold_percent) / 100;
         let (highway, effects) = HighwayProtocol::<I, HighwayContext>::new(
@@ -200,8 +201,11 @@ where
                     .set_timeout(timediff.into())
                     .event(move |_| Event::Timer { era_id, timestamp })
             }
-            ConsensusProtocolResult::CreateNewBlock(block_context) => effect_builder
-                .request_proto_block(block_context)
+            ConsensusProtocolResult::CreateNewBlock {
+                block_context,
+                opt_parent,
+            } => effect_builder
+                .request_proto_block(block_context, opt_parent)
                 .event(move |(proto_block, block_context)| Event::NewProtoBlock {
                     era_id,
                     proto_block,
@@ -226,18 +230,11 @@ where
                     instructions.push(Instruction::Rewards(rewards));
                 };
                 // Request execution of the finalized block.
-                let fb = FinalizedBlock {
-                    proto_block,
-                    instructions,
-                    timestamp,
-                };
+                let fb = FinalizedBlock::new(proto_block, timestamp, instructions);
                 effects.extend(
                     effect_builder
                         .execute_block(fb)
-                        .event(move |executed_block| Event::ExecutedBlock {
-                            era_id,
-                            executed_block,
-                        }),
+                        .event(move |block| Event::ExecutedBlock { era_id, block }),
                 );
                 effects
             }
@@ -269,7 +266,7 @@ where
     where
         REv: ReactorEventT<I>,
         F: FnOnce(
-            &mut dyn ConsensusProtocol<I, ProtoBlock, PublicKey>,
+            &mut dyn ConsensusProtocol<I, ProtoBlock, PublicKey, HighwaySecret>,
         ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>>, Error>,
     {
         match self.active_eras.get_mut(&era_id) {
@@ -293,7 +290,7 @@ where
     #[cfg(test)]
     pub fn active_eras(
         &self,
-    ) -> &HashMap<EraId, Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>>> {
+    ) -> &HashMap<EraId, Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey, HighwaySecret>>> {
         &self.active_eras
     }
 }

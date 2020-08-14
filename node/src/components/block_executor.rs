@@ -1,6 +1,9 @@
 //! Block executor component.
 
-use std::fmt::{Debug, Display};
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Display},
+};
 
 use derive_more::From;
 use rand::Rng;
@@ -27,17 +30,8 @@ use crate::{
         requests::{BlockExecutorRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{Deploy, ExecutedBlock, FinalizedBlock, Timestamp},
+    types::{Block, BlockHash, Deploy, FinalizedBlock, ProtoBlockHash, Timestamp},
 };
-
-/// The Block executor components.
-#[derive(Debug)]
-pub(crate) struct BlockExecutor {
-    // NOTE: As of today state hash is kept track here without any assumption
-    // regarding process restarts etc. This may change in future.
-    /// Current post state hash.
-    post_state_hash: Digest,
-}
 
 /// Block executor component event.
 #[derive(Debug, From)]
@@ -52,7 +46,7 @@ pub enum Event {
         /// Contents of deploys. All deploys are expected to be present in the storage layer.
         deploys: Vec<Deploy>,
         /// Original responder passed with `Event::Request`.
-        main_responder: Responder<ExecutedBlock>,
+        main_responder: Responder<Block>,
     },
     /// Contract execution result.
     DeploysExecutionResult {
@@ -61,7 +55,7 @@ pub enum Event {
         /// Result of deploy execution.
         result: Result<ExecutionResults, RootNotFound>,
         /// Original responder passed with `Event::Request`.
-        main_responder: Responder<ExecutedBlock>,
+        main_responder: Responder<Block>,
     },
     /// Commit effects
     CommitExecutionEffects {
@@ -72,7 +66,7 @@ pub enum Event {
         /// Results
         results: ExecutionResults,
         /// Original responder passed with `Event::Request`.
-        main_responder: Responder<ExecutedBlock>,
+        main_responder: Responder<Block>,
     },
 }
 
@@ -121,6 +115,102 @@ impl Display for Event {
     }
 }
 
+/// The Block executor component.
+#[derive(Debug)]
+pub(crate) struct BlockExecutor {
+    /// A mapping from proto block to executed block to allow identification of a parent block's
+    /// hash once a finalized block has been executed.
+    parent_map: HashMap<ProtoBlockHash, BlockHash>,
+    // NOTE: As of today state hash is kept track here without any assumption
+    // regarding process restarts etc. This may change in future.
+    /// Current post state hash.
+    post_state_hash: Digest,
+}
+
+impl BlockExecutor {
+    pub(crate) fn new(post_state_hash: Digest) -> Self {
+        BlockExecutor {
+            parent_map: HashMap::new(),
+            post_state_hash,
+        }
+    }
+
+    /// Creates new `ExecuteRequest` from a list of deploys.
+    fn create_execute_request_from(&self, deploys: Vec<Deploy>) -> ExecuteRequest {
+        let deploy_items = deploys
+            .into_iter()
+            .map(|deploy| Ok(deploy.into()))
+            .collect();
+
+        ExecuteRequest::new(
+            self.post_state_hash,
+            // TODO: Use `BlockContext`'s timestamp as part of NDRS-175
+            Timestamp::now().millis(),
+            deploy_items,
+            ProtocolVersion::V1_0_0,
+        )
+    }
+
+    /// Consumes execution results and dispatches appropriate events.
+    fn process_execution_results<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        finalized_block: FinalizedBlock,
+        mut execution_results: ExecutionResults,
+        responder: Responder<Block>,
+    ) -> Effects<Event>
+    where
+        REv: From<Event> + From<StorageRequest<Storage>> + From<ContractRuntimeRequest> + Send,
+    {
+        let effect = match execution_results.pop_front() {
+            Some(ExecutionResult::Success { effect, cost }) => {
+                debug!(?effect, %cost, "execution succeeded");
+                effect
+            }
+            Some(ExecutionResult::Failure {
+                error,
+                effect,
+                cost,
+            }) => {
+                error!(?error, ?effect, %cost, "execution failure");
+                effect
+            }
+            None => {
+                // We processed all executed deploys.
+                let block = self.create_block(finalized_block);
+                trace!(?block, "all execution results processed");
+                return responder.respond(block).ignore();
+            }
+        };
+
+        // There's something more to process.
+        effect_builder
+            .request_commit(
+                ProtocolVersion::V1_0_0,
+                self.post_state_hash,
+                effect.transforms,
+            )
+            .event(|commit_result| Event::CommitExecutionEffects {
+                finalized_block,
+                commit_result,
+                results: execution_results,
+                main_responder: responder,
+            })
+    }
+
+    fn create_block(&mut self, finalized_block: FinalizedBlock) -> Block {
+        let proto_parent_hash = finalized_block.proto_block().parent_hash();
+        let parent_hash = self
+            .parent_map
+            .remove(proto_parent_hash)
+            .unwrap_or_else(|| panic!("failed to take {}", proto_parent_hash));
+        let new_proto_hash = *finalized_block.proto_block().hash();
+        let block = Block::new(parent_hash, self.post_state_hash, finalized_block);
+        self.parent_map.insert(new_proto_hash, *block.hash());
+        block
+    }
+}
+
 impl<REv> Component<REv> for BlockExecutor
 where
     REv: From<Event> + From<StorageRequest<Storage>> + From<ContractRuntimeRequest> + Send,
@@ -140,19 +230,16 @@ where
             }) => {
                 debug!(?finalized_block, "execute block");
 
-                if finalized_block.proto_block.deploys.is_empty() {
+                if finalized_block.proto_block().deploys().is_empty() {
                     // No deploys - short circuit and respond straight away using current state
                     // hash.
-                    let executed_block = ExecutedBlock {
-                        finalized_block,
-                        post_state_hash: self.post_state_hash,
-                    };
-                    return responder.respond(executed_block).ignore();
+                    let block = self.create_block(finalized_block);
+                    return responder.respond(block).ignore();
                 }
 
                 let deploy_hashes = finalized_block
-                    .proto_block
-                    .deploys
+                    .proto_block()
+                    .deploys()
                     .clone()
                     .into_iter()
                     .collect();
@@ -241,77 +328,5 @@ where
                 )
             }
         }
-    }
-}
-
-impl BlockExecutor {
-    pub(crate) fn new(post_state_hash: Digest) -> Self {
-        BlockExecutor { post_state_hash }
-    }
-
-    /// Creates new `ExecuteRequest` from a list of deploys.
-    fn create_execute_request_from(&self, deploys: Vec<Deploy>) -> ExecuteRequest {
-        let deploy_items = deploys
-            .into_iter()
-            .map(|deploy| Ok(deploy.into()))
-            .collect();
-
-        ExecuteRequest::new(
-            self.post_state_hash,
-            // TODO: Use `BlockContext`'s timestamp as part of NDRS-175
-            Timestamp::now().millis(),
-            deploy_items,
-            ProtocolVersion::V1_0_0,
-        )
-    }
-
-    /// Consumes execution results and dispatches appropriate events.
-    fn process_execution_results<REv>(
-        &self,
-        effect_builder: EffectBuilder<REv>,
-        finalized_block: FinalizedBlock,
-        mut execution_results: ExecutionResults,
-        responder: Responder<ExecutedBlock>,
-    ) -> Effects<Event>
-    where
-        REv: From<Event> + From<StorageRequest<Storage>> + From<ContractRuntimeRequest> + Send,
-    {
-        let effect = match execution_results.pop_front() {
-            Some(ExecutionResult::Success { effect, cost }) => {
-                debug!(?effect, %cost, "execution succeeded");
-                effect
-            }
-            Some(ExecutionResult::Failure {
-                error,
-                effect,
-                cost,
-            }) => {
-                error!(?error, ?effect, %cost, "execution failure");
-                effect
-            }
-            None => {
-                // We processed all executed deploys.
-                let executed_block = ExecutedBlock {
-                    finalized_block,
-                    post_state_hash: self.post_state_hash,
-                };
-                trace!(?executed_block, "all execution results processed");
-                return responder.respond(executed_block).ignore();
-            }
-        };
-
-        // There's something more to process.
-        effect_builder
-            .request_commit(
-                ProtocolVersion::V1_0_0,
-                self.post_state_hash,
-                effect.transforms,
-            )
-            .event(|commit_result| Event::CommitExecutionEffects {
-                finalized_block,
-                commit_result,
-                results: execution_results,
-                main_responder: responder,
-            })
     }
 }

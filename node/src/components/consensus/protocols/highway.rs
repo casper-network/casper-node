@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::{
     components::consensus::{
@@ -21,8 +21,8 @@ use crate::{
         traits::{Context, NodeIdT, ValidatorSecret},
     },
     crypto::{
-        asymmetric_key::{sign, verify, PublicKey, SecretKey, Signature},
-        hash::{hash, Digest},
+        asymmetric_key::{self, PublicKey, SecretKey, Signature},
+        hash::{self, Digest},
     },
     types::{ProtoBlock, Timestamp},
 };
@@ -104,8 +104,11 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
             AvEffect::ScheduleTimer(timestamp) => {
                 vec![ConsensusProtocolResult::ScheduleTimer(timestamp)]
             }
-            AvEffect::RequestNewBlock(block_context, _opt_parent) => {
-                vec![ConsensusProtocolResult::CreateNewBlock(block_context)]
+            AvEffect::RequestNewBlock(block_context, opt_parent) => {
+                vec![ConsensusProtocolResult::CreateNewBlock {
+                    block_context,
+                    opt_parent,
+                }]
             }
         }
     }
@@ -264,7 +267,7 @@ where
     }
 }
 
-impl<I, C: Context> ConsensusProtocol<I, C::ConsensusValue, C::ValidatorId>
+impl<I, C: Context> ConsensusProtocol<I, C::ConsensusValue, C::ValidatorId, C::ValidatorSecret>
     for HighwayProtocol<I, C>
 where
     I: NodeIdT,
@@ -326,6 +329,11 @@ where
         Ok(self.process_av_effects(effects))
     }
 
+    /// Creates a finality signature for the given block hash.
+    fn create_finality_signature(&self, executed_block_hash: &C::Hash) -> Option<C::Signature> {
+        self.highway.create_finality_signature(executed_block_hash)
+    }
+
     /// Marks `value` as valid.
     /// Calls the synchronizer that `value` dependency has been satisfied.
     fn resolve_validity(
@@ -362,8 +370,8 @@ impl ValidatorSecret for HighwaySecret {
     type Hash = Digest;
     type Signature = Signature;
 
-    fn sign(&self, data: &Digest) -> Signature {
-        sign(data, &self.secret_key, &self.public_key)
+    fn sign(&self, hash: &Digest) -> Signature {
+        asymmetric_key::sign(hash, &self.secret_key, &self.public_key)
     }
 }
 
@@ -379,10 +387,14 @@ impl Context for HighwayContext {
     type InstanceId = Digest;
 
     fn hash(data: &[u8]) -> Digest {
-        hash(data)
+        hash::hash(data)
     }
 
     fn verify_signature(hash: &Digest, public_key: &PublicKey, signature: &Signature) -> bool {
-        verify(hash, signature, public_key).is_ok()
+        if let Err(error) = asymmetric_key::verify(hash, signature, public_key) {
+            warn!(%error, %signature, %public_key, %hash, "failed to validate signature");
+            return false;
+        }
+        true
     }
 }

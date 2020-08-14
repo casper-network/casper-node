@@ -4,12 +4,9 @@ mod consensus_protocol;
 mod era_supervisor;
 mod highway_core;
 mod protocols;
-mod traits;
-
 #[cfg(test)]
-#[allow(unused)]
-#[allow(dead_code)]
 mod tests;
+mod traits;
 
 use std::fmt::{self, Debug, Display, Formatter};
 
@@ -17,18 +14,18 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    components::Component,
+    components::{storage::Storage, Component},
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
             BlockExecutorRequest, BlockValidationRequest, DeployBufferRequest, NetworkRequest,
+            StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
-    types::{ExecutedBlock, ProtoBlock, Timestamp},
+    types::{Block, ProtoBlock, Timestamp},
 };
 pub use config::Config;
-
 pub(crate) use consensus_protocol::BlockContext;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 use traits::NodeIdT;
@@ -53,10 +50,7 @@ pub enum Event<I> {
         block_context: BlockContext,
     },
     /// We are receiving the information necessary to produce finality signatures
-    ExecutedBlock {
-        era_id: EraId,
-        executed_block: ExecutedBlock,
-    },
+    ExecutedBlock { era_id: EraId, block: Block },
     /// The proto-block has been validated and can now be added to the protocol state
     AcceptProtoBlock {
         era_id: EraId,
@@ -94,13 +88,10 @@ impl<I: Debug> Display for Event<I> {
                 "New proto-block for era {:?}: {:?}, {:?}",
                 era_id, proto_block, block_context
             ),
-            Event::ExecutedBlock {
-                era_id,
-                executed_block,
-            } => write!(
+            Event::ExecutedBlock { era_id, block } => write!(
                 f,
                 "A block has been executed for era {:?}: {:?}",
-                era_id, executed_block
+                era_id, block
             ),
             Event::AcceptProtoBlock {
                 era_id,
@@ -133,6 +124,7 @@ pub trait ReactorEventT<I>:
     + From<ConsensusAnnouncement>
     + From<BlockExecutorRequest>
     + From<BlockValidationRequest<I>>
+    + From<StorageRequest<Storage>>
 {
 }
 
@@ -144,6 +136,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<ConsensusAnnouncement>
         + From<BlockExecutorRequest>
         + From<BlockValidationRequest<I>>
+        + From<StorageRequest<Storage>>
 {
 }
 
@@ -187,10 +180,20 @@ where
                 );
                 effects
             }
-            Event::ExecutedBlock { .. } => {
-                // TODO: Finality signatures
-                Effects::new()
-            }
+            Event::ExecutedBlock { era_id, mut block } => match self.active_eras.get(&era_id) {
+                None => todo!("Handle missing eras."),
+                Some(consensus) => {
+                    match consensus.create_finality_signature(block.hash().inner()) {
+                        Some(signature) => {
+                            block.append_proof(signature);
+                            effect_builder
+                                .put_block_to_storage(Box::new(block))
+                                .ignore()
+                        }
+                        None => Effects::new(),
+                    }
+                }
+            },
             Event::AcceptProtoBlock {
                 era_id,
                 proto_block,

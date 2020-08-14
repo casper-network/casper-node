@@ -1,4 +1,7 @@
-use std::{fmt::Debug, hash::Hash};
+use std::{
+    fmt::{Debug, Display},
+    hash::Hash,
+};
 
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -28,10 +31,11 @@ impl ConsensusValueT for ProtoBlock {
 
 /// A hash, as an identifier for a block or vote.
 pub(crate) trait HashT:
-    Eq + Ord + Clone + Debug + Hash + Serialize + DeserializeOwned
+    Eq + Ord + Clone + Debug + Display + Hash + Serialize + DeserializeOwned
 {
 }
-impl<H> HashT for H where H: Eq + Ord + Clone + Debug + Hash + Serialize + DeserializeOwned {}
+impl<H> HashT for H where H: Eq + Ord + Clone + Debug + Display + Hash + Serialize + DeserializeOwned
+{}
 
 /// A validator's secret signing key.
 pub(crate) trait ValidatorSecret {
@@ -39,7 +43,7 @@ pub(crate) trait ValidatorSecret {
 
     type Signature: Eq + PartialEq + Clone + Debug + Hash + Serialize + DeserializeOwned;
 
-    fn sign(&self, data: &Self::Hash) -> Self::Signature;
+    fn sign(&self, hash: &Self::Hash) -> Self::Signature;
 }
 
 /// The collection of types the user can choose for cryptography, IDs, transactions, etc.

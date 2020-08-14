@@ -14,7 +14,7 @@ use crate::{
     components::consensus::{
         consensus_protocol::BlockContext,
         highway_core::vertex::SignedWireVote,
-        traits::{ConsensusValueT, Context},
+        traits::{ConsensusValueT, Context, ValidatorSecret},
     },
     types::{TimeDiff, Timestamp},
 };
@@ -175,6 +175,11 @@ impl<C: Context> ActiveValidator<C> {
         self.next_proposal = Some((timestamp, panorama));
         let bctx = BlockContext::new(timestamp, height);
         Some(Effect::RequestNewBlock(bctx, opt_value))
+    }
+
+    /// Creates a finality signature for the given block hash.
+    pub(crate) fn create_finality_signature(&self, executed_block_hash: &C::Hash) -> C::Signature {
+        self.secret.sign(executed_block_hash)
     }
 
     /// Proposes a new block with the given consensus value.
