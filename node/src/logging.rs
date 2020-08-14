@@ -30,12 +30,22 @@ pub struct LoggingConfig {
     abbreviate_modules: bool,
 }
 
+impl LoggingConfig {
+    /// Creates a new instance of LoggingConfig.
+    pub fn new(format: LoggingFormat, abbreviate_modules: bool) -> Self {
+        LoggingConfig {
+            format,
+            abbreviate_modules,
+        }
+    }
+}
+
 /// Logging output format.
 ///
 /// Defaults to "text"".
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
-enum LoggingFormat {
+pub enum LoggingFormat {
     /// Text format.
     Text,
     /// JSON format.
