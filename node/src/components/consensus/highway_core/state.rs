@@ -26,6 +26,7 @@ use crate::{
     types::{TimeDiff, Timestamp},
 };
 use iter::Sum;
+use tracing::warn;
 
 /// A vote weight.
 #[derive(
@@ -415,6 +416,7 @@ impl<C: Context> State<C> {
         }
         if (wvote.value.is_none() && !wvote.panorama.has_correct())
             || wvote.panorama.len() != self.weights.len()
+            || wvote.panorama.get(creator).is_faulty()
         {
             return Err(VoteError::Panorama);
         }
@@ -434,7 +436,10 @@ impl<C: Context> State<C> {
             return Err(VoteError::Timestamps);
         }
         match wvote.panorama.get(creator) {
-            Observation::Faulty => return Err(VoteError::Panorama),
+            Observation::Faulty => {
+                warn!("Vote from faulty validator should be rejected in `pre_validate_vote`.");
+                return Err(VoteError::Panorama);
+            }
             Observation::None if wvote.seq_number == 0 => (),
             Observation::None => return Err(VoteError::SequenceNumber),
             Observation::Correct(hash) => {

@@ -98,6 +98,10 @@ impl<C: Context> ActiveValidator<C> {
         timestamp: Timestamp,
         state: &State<C>,
     ) -> Vec<Effect<C>> {
+        if self.is_faulty(state) {
+            warn!("Creator knows it's faulty. Won't create a message.");
+            return vec![];
+        }
         let mut effects = self.schedule_timer(timestamp, state);
         if self.earliest_vote_time(state) > timestamp {
             warn!(%timestamp, "skipping outdated timer event");
@@ -151,6 +155,10 @@ impl<C: Context> ActiveValidator<C> {
             warn!(?block_context, "skipping outdated proposal");
             return vec![];
         }
+        if self.is_faulty(state) {
+            warn!("Creator knows it's faulty. Won't create a message.");
+            return vec![];
+        }
         let panorama = state.panorama_cutoff(state.panorama(), timestamp);
         let proposal_vote = self.new_vote(panorama, timestamp, Some(value), state);
         vec![Effect::NewVertex(ValidVertex(Vertex::Vote(proposal_vote)))]
@@ -174,6 +182,7 @@ impl<C: Context> ActiveValidator<C> {
             && vote.timestamp == state::round_id(vote.timestamp, vote.round_exp) // Check if it's a lambda message.
             && vote.creator != self.vidx // We didn't send it ourselves.
             && !state.has_evidence(vote.creator) // The creator is not faulty.
+            && !self.is_faulty(state) // We are not faulty.
             && self.latest_vote(state)
                 .map_or(true, |vote| {
                     !state.sees_correct(&vote.panorama, vhash)
@@ -259,6 +268,11 @@ impl<C: Context> ActiveValidator<C> {
             .get(self.vidx)
             .correct()
             .map(|vh| state.vote(vh))
+    }
+
+    /// Checks if validator knows it's faulty.
+    fn is_faulty(&self, state: &State<C>) -> bool {
+        state.panorama().get(self.vidx).is_faulty()
     }
 
     /// Returns the duration after the beginning of a round when the witness votes are sent.
