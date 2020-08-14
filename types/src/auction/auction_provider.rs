@@ -278,7 +278,7 @@ where
     /// purse. Returns the new unbonding purse and the quantity of
     /// remaining delegated motes.
     ///
-    /// The arguments are the delegator’s key, the validator key and quantity of motes.
+    /// The arguments are the delegator's key, the validator key and quantity of motes.
     fn undelegate(
         &mut self,
         delegator_account_hash: PublicKey,
