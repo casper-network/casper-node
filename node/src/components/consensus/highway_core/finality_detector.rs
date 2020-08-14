@@ -425,12 +425,12 @@ mod tests {
         // b0: 10           b1: 4
         //        \
         //          c0: 1 — c1: 1
-        add_vote!(state, b0, BOB, BOB_SEC, 0; N, N, N; 0xB0);
-        add_vote!(state, c0, CAROL, CAROL_SEC, 0; N, b0, N; 0xC0);
-        add_vote!(state, c1, CAROL, CAROL_SEC, 1; N, b0, c0; 0xC1);
-        add_vote!(state, a0, ALICE, ALICE_SEC, 0; N, b0, N; 0xA0);
-        add_vote!(state, a1, ALICE, ALICE_SEC, 1; a0, b0, c1; 0xA1);
-        add_vote!(state, b1, BOB, BOB_SEC, 1; a0, b0, N; 0xB1);
+        let b0 = add_vote!(state, BOB, 0xB0; N, N, N)?;
+        let c0 = add_vote!(state, CAROL, 0xC0; N, b0, N)?;
+        let c1 = add_vote!(state, CAROL, 0xC1; N, b0, c0)?;
+        let a0 = add_vote!(state, ALICE, 0xA0; N, b0, N)?;
+        let a1 = add_vote!(state, ALICE, 0xA1; a0, b0, c1)?;
+        let b1 = add_vote!(state, BOB, 0xB1; a0, b0, N)?;
 
         let mut fd4 = FinalityDetector::new(Weight(4)); // Fault tolerance 4.
         let mut fd6 = FinalityDetector::new(Weight(6)); // Fault tolerance 6.
@@ -445,15 +445,15 @@ mod tests {
         assert_eq!(None, fd4.next_finalized(&state, 0.into()));
 
         // Adding another level to the summit increases `B0`'s fault tolerance to 6.
-        add_vote!(state, _a2, ALICE, ALICE_SEC, 2; a1, b1, c1);
-        add_vote!(state, _b2, BOB, BOB_SEC, 2; a1, b1, c1);
+        let _a2 = add_vote!(state, ALICE, None; a1, b1, c1)?;
+        let _b2 = add_vote!(state, BOB, None; a1, b1, c1)?;
         assert_eq!(Some(&b0), fd6.next_finalized(&state, 0.into()));
         assert_eq!(None, fd6.next_finalized(&state, 0.into()));
 
         // If Bob equivocates, the FTT 4 is exceeded, but she counts as being part of any summit,
         // so `A0` and `A1` get FTT 6. (Bob voted for `A1` and against `B1` in `b2`.)
         assert_eq!(Weight(0), state.faulty_weight());
-        add_vote!(state, _e2, BOB, BOB_SEC, 2; a1, b1, c1);
+        let _e2 = add_vote!(state, BOB, None; a1, b1, c1)?;
         assert_eq!(Weight(4), state.faulty_weight());
         assert_eq!(Some(&a0), fd6.next_finalized(&state, 4.into()));
         assert_eq!(Some(&a1), fd6.next_finalized(&state, 4.into()));
@@ -474,36 +474,36 @@ mod tests {
         //        \
         //          c0: 1 — c1: 1
         //               \ c1': 1
-        add_vote!(state, b0, BOB, BOB_SEC, 0; N, N, N; 0xB0);
-        add_vote!(state, a0, ALICE, ALICE_SEC, 0; N, b0, N; 0xA0);
-        add_vote!(state, c0, CAROL, CAROL_SEC, 0; N, b0, N; 0xC0);
-        add_vote!(state, _c1, CAROL, CAROL_SEC, 1; N, b0, c0; 0xC1);
+        let b0 = add_vote!(state, BOB, 0xB0; N, N, N)?;
+        let a0 = add_vote!(state, ALICE, 0xA0; N, b0, N)?;
+        let c0 = add_vote!(state, CAROL, 0xC0; N, b0, N)?;
+        let _c1 = add_vote!(state, CAROL, 0xC1; N, b0, c0)?;
         assert_eq!(Weight(0), state.faulty_weight());
-        add_vote!(state, _c1_prime, CAROL, CAROL_SEC, 1; N, b0, c0);
+        let _c1_prime = add_vote!(state, CAROL, None; N, b0, c0)?;
         assert_eq!(Weight(1), state.faulty_weight());
-        add_vote!(state, b1, BOB, BOB_SEC, 1; a0, b0, N; 0xB1);
+        let b1 = add_vote!(state, BOB, 0xB1; a0, b0, N)?;
         assert_eq!(Some(&b0), fd4.next_finalized(&state, 1.into()));
-        add_vote!(state, a1, ALICE, ALICE_SEC, 1; a0, b0, F; 0xA1);
-        add_vote!(state, b2, BOB, BOB_SEC, 2; a1, b1, F);
-        add_vote!(state, a2, ALICE, ALICE_SEC, 2; a1, b2, F; 0xA2);
+        let a1 = add_vote!(state, ALICE, 0xA1; a0, b0, F)?;
+        let b2 = add_vote!(state, BOB, None; a1, b1, F)?;
+        let a2 = add_vote!(state, ALICE, 0xA2; a1, b2, F)?;
         assert_eq!(Some(&a0), fd4.next_finalized(&state, 1.into()));
         // A1 is the first block that sees CAROL equivocating.
         assert_eq!(vec![CAROL], state.get_new_equivocators(&a1));
         assert_eq!(Some(&a1), fd4.next_finalized(&state, 1.into()));
         // Finalize A2. It should not report CAROL as equivocator anymore.
-        add_vote!(state, b3, BOB, BOB_SEC, 3; a2, b2, F);
-        add_vote!(state, _a3, ALICE, ALICE_SEC, 3; a2, b3, F);
+        let b3 = add_vote!(state, BOB, None; a2, b2, F)?;
+        let _a3 = add_vote!(state, ALICE, None; a2, b3, F)?;
         assert!(state.get_new_equivocators(&a2).is_empty());
         assert_eq!(Some(&a2), fd4.next_finalized(&state, 1.into()));
 
         // Test that an initial block reports equivocators as well.
         let mut bstate: State<TestContext> = State::new_test(&[Weight(5), Weight(4), Weight(1)], 0);
         let mut fde4 = FinalityDetector::new(Weight(4)); // Fault tolerance 4.
-        add_vote!(bstate, _c0, CAROL, CAROL_SEC, 0; N, N, N; 0xB0);
-        add_vote!(bstate, _c0_prime, CAROL, CAROL_SEC, 0; N, N, N; 0xB0);
-        add_vote!(bstate, a0, ALICE, ALICE_SEC, 0; N, N, F; 0xA0);
-        add_vote!(bstate, b0, BOB, BOB_SEC, 0; a0, N, F);
-        add_vote!(bstate, _a1, ALICE, ALICE_SEC, 1; a0, b0, F);
+        let _c0 = add_vote!(bstate, CAROL, 0xB0; N, N, N)?;
+        let _c0_prime = add_vote!(bstate, CAROL, 0xB0; N, N, N)?;
+        let a0 = add_vote!(bstate, ALICE, 0xA0; N, N, F)?;
+        let b0 = add_vote!(bstate, BOB, None; a0, N, F)?;
+        let _a1 = add_vote!(bstate, ALICE, None; a0, b0, F)?;
         assert_eq!(vec![CAROL], bstate.get_new_equivocators(&a0));
         assert_eq!(Some(&a0), fde4.next_finalized(&bstate, 1.into()));
         Ok(())
@@ -514,17 +514,17 @@ mod tests {
         let mut state = State::new_test(&[Weight(5)], 0); // Alice is the only validator.
 
         // Round ID 0, length 16: Alice participates.
-        let p0 = add_vote2!(state, ALICE, 0, 4u8, 0x1; N)?; // Proposal
-        let w0 = add_vote2!(state, ALICE, 10, 4u8, None; p0)?; // Witness
+        let p0 = add_vote!(state, ALICE, 0, 4u8, 0x1; N)?; // Proposal
+        let w0 = add_vote!(state, ALICE, 10, 4u8, None; p0)?; // Witness
 
         // Round ID 16, length 16: Alice partially participates.
-        let w16 = add_vote2!(state, ALICE, 26, 4u8, None; w0)?; // Witness
+        let w16 = add_vote!(state, ALICE, 26, 4u8, None; w0)?; // Witness
 
         // Round ID 32, length 16: Alice doesn't participate.
 
         // Round ID 48, length 8: Alice participates.
-        let p48 = add_vote2!(state, ALICE, 48, 3u8, 0x2; w16)?;
-        let w48 = add_vote2!(state, ALICE, 53, 3u8, None; p48)?;
+        let p48 = add_vote!(state, ALICE, 48, 3u8, 0x2; w16)?;
+        let w48 = add_vote!(state, ALICE, 53, 3u8, None; p48)?;
 
         let obs = Observation::Correct(w48);
         let rp = |time: u64| round_participation(&state, &obs, Timestamp::from(time));
@@ -564,47 +564,47 @@ mod tests {
         // Bob and Alice cite each other, creating a summit with quorum 9.
         // Carol only cites Bob, so she's only part of a quorum-6 summit.
         assert_eq!(BOB, state.leader(0.into()));
-        let bp0 = add_vote2!(state, BOB, 0, 3u8, 0xB00; N, N, N)?;
-        let ac0 = add_vote2!(state, ALICE, 1, 4u8, None; N, bp0, N)?;
-        let cc0 = add_vote2!(state, CAROL, 1, 3u8, None; N, bp0, N)?;
-        let bw0 = add_vote2!(state, BOB, 5, 3u8, None; ac0, bp0, cc0)?;
-        let cw0 = add_vote2!(state, CAROL, 5, 3u8, None; N, bp0, cc0)?;
-        let aw0 = add_vote2!(state, ALICE, 10, 4u8, None; ac0, bp0, N)?;
+        let bp0 = add_vote!(state, BOB, 0, 3u8, 0xB00; N, N, N)?;
+        let ac0 = add_vote!(state, ALICE, 1, 4u8, None; N, bp0, N)?;
+        let cc0 = add_vote!(state, CAROL, 1, 3u8, None; N, bp0, N)?;
+        let bw0 = add_vote!(state, BOB, 5, 3u8, None; ac0, bp0, cc0)?;
+        let cw0 = add_vote!(state, CAROL, 5, 3u8, None; N, bp0, cc0)?;
+        let aw0 = add_vote!(state, ALICE, 10, 4u8, None; ac0, bp0, N)?;
 
         // Round 8: Alice is not assigned (length 16). Bob and Carol make a summit.
         assert_eq!(BOB, state.leader(8.into()));
-        let bp8 = add_vote2!(state, BOB, 8, 3u8, 0xB08; ac0, bw0, cw0)?;
-        let cc8 = add_vote2!(state, CAROL, 9, 3u8, None; ac0, bp8, cw0)?;
-        let bw8 = add_vote2!(state, BOB, 13, 3u8, None; aw0, bp8, cc8)?;
-        let cw8 = add_vote2!(state, CAROL, 13, 3u8, None; aw0, bp8, cc8)?;
+        let bp8 = add_vote!(state, BOB, 8, 3u8, 0xB08; ac0, bw0, cw0)?;
+        let cc8 = add_vote!(state, CAROL, 9, 3u8, None; ac0, bp8, cw0)?;
+        let bw8 = add_vote!(state, BOB, 13, 3u8, None; aw0, bp8, cc8)?;
+        let cw8 = add_vote!(state, CAROL, 13, 3u8, None; aw0, bp8, cc8)?;
 
         // Round 16: Carol slows down (length 16). Alice and Bob finalize with quorum 9.
         // Carol cites only Alice and herself, so she's only in the non-finalizing quorum-5 summit.
         assert_eq!(ALICE, state.leader(16.into()));
-        let ap16 = add_vote2!(state, ALICE, 16, 4u8, 0xA16; aw0, bw8, cw8)?;
-        let bc16 = add_vote2!(state, BOB, 17, 3u8, None; ap16, bw8, cw8)?;
-        let cc16 = add_vote2!(state, CAROL, 17, 4u8, None; ap16, bw8, cw8)?;
-        let bw16 = add_vote2!(state, BOB, 19, 3u8, None; ap16, bc16, cw8)?;
-        let aw16 = add_vote2!(state, ALICE, 26, 4u8, None; ap16, bc16, cc16)?;
-        let cw16 = add_vote2!(state, CAROL, 26, 4u8, None; ap16, bw8, cc16)?;
+        let ap16 = add_vote!(state, ALICE, 16, 4u8, 0xA16; aw0, bw8, cw8)?;
+        let bc16 = add_vote!(state, BOB, 17, 3u8, None; ap16, bw8, cw8)?;
+        let cc16 = add_vote!(state, CAROL, 17, 4u8, None; ap16, bw8, cw8)?;
+        let bw16 = add_vote!(state, BOB, 19, 3u8, None; ap16, bc16, cw8)?;
+        let aw16 = add_vote!(state, ALICE, 26, 4u8, None; ap16, bc16, cc16)?;
+        let cw16 = add_vote!(state, CAROL, 26, 4u8, None; ap16, bw8, cc16)?;
 
         // Produce blocks where rewards for rounds 0 and 8 are paid out.
         assert_eq!(ALICE, state.leader(payday0.into()));
-        let pay0 = add_vote2!(state, ALICE, payday0, 3u8, 0x0; aw16, bw16, cw16)?;
+        let pay0 = add_vote!(state, ALICE, payday0, 3u8, 0x0; aw16, bw16, cw16)?;
         assert_eq!(BOB, state.leader(payday8.into()));
-        let pay8 = add_vote2!(state, BOB, payday8, 3u8, 0x8; pay0, bw16, cw16)?;
+        let pay8 = add_vote!(state, BOB, payday8, 3u8, 0x8; pay0, bw16, cw16)?;
 
         // Produce another (possibly equivocating) block where rewards for 0 and 8 are paid out,
         // and then one where the reward for round 16 is paid. This is to avoid adding rewards for
         // `pay0` and `pay8` themselves.
         assert_eq!(ALICE, state.leader(pre16.into()));
-        let pay_pre16 = add_vote2!(state, ALICE, pre16, 3u8, 0x0; aw16, bw16, cw16)?;
+        let pay_pre16 = add_vote!(state, ALICE, pre16, 3u8, 0x0; aw16, bw16, cw16)?;
         assert_eq!(ALICE, state.leader(payday16.into()));
-        let pay16 = add_vote2!(state, ALICE, payday16, 3u8, 0x0; pay_pre16, bw16, cw16)?;
+        let pay16 = add_vote!(state, ALICE, payday16, 3u8, 0x0; pay_pre16, bw16, cw16)?;
 
         // Finally create another block that saw Carol equivocate in round 16.
-        let _cw16e = add_vote2!(state, CAROL, 26, 4u8, None; ap16, bc16, cc16)?;
-        let pay16f = add_vote2!(state, ALICE, payday16, 3u8, 0x0; pay_pre16, bw16, F)?;
+        let _cw16e = add_vote!(state, CAROL, 26, 4u8, None; ap16, bc16, cc16)?;
+        let pay16f = add_vote!(state, ALICE, payday16, 3u8, 0x0; pay_pre16, bw16, F)?;
 
         // Round 0: Alice and Bob have quorum 9, Carol 6.
         let assigned = total_weight;
