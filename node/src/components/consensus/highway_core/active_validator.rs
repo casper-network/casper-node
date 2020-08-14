@@ -215,8 +215,7 @@ impl<C: Context> ActiveValidator<C> {
         value: Option<C::ConsensusValue>,
         state: &State<C>,
     ) -> SignedWireVote<C> {
-        let add1 = |vh: &C::Hash| state.vote(vh).seq_number + 1;
-        let seq_number = panorama.get(self.vidx).correct().map_or(0, add1);
+        let seq_number = panorama.next_seq_num(state, self.vidx);
         let wvote = WireVote {
             panorama,
             creator: self.vidx,

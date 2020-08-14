@@ -40,3 +40,32 @@ macro_rules! add_vote {
         $state.add_vote(vote)?;
     };
 }
+
+/// Creates a vote, adds it to `$state` and returns its hash.
+/// Returns an error if vote addition fails.
+// TODO: Replace add_vote with this.
+macro_rules! add_vote2 {
+    ($state: ident, $creator: expr, $time: expr, $round_exp: expr, $val: expr; $($obs:expr),*) => {
+        {
+            use crate::components::consensus::highway_core::{
+                state::tests::TestSecret,
+                vertex::{SignedWireVote, WireVote},
+            };
+
+            let creator = $creator;
+            let panorama = panorama!($($obs),*);
+            let seq_number = panorama.next_seq_num(&$state, creator);
+            let wvote = WireVote {
+                panorama,
+                creator,
+                value: ($val).into(),
+                seq_number,
+                timestamp: ($time).into(),
+                round_exp: $round_exp,
+            };
+            let hash = wvote.hash();
+            let swvote = SignedWireVote::new(wvote, &TestSecret(($creator).0));
+            $state.add_vote(swvote).map(|()| hash)
+        }
+    };
+}
