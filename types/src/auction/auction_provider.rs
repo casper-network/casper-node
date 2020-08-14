@@ -110,7 +110,7 @@ where
     }
 
     /// For a non-founder validator, this adds, or modifies, an entry in the
-    /// active_bids map and calls bond in the Mint contract to create (or top off)
+    /// `active_bids` map and calls `bond` in the Mint contract to create (or top off)
     /// a bid purse. It also adjusts the delegation rate.
     /// For a founding validator, the same logic is carried out with
     /// founding_validators, instead of active_bids.
