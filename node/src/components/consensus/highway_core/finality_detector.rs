@@ -543,7 +543,15 @@ mod tests {
     #[allow(clippy::identity_op)]
     #[test]
     fn compute_rewards_test() -> Result<(), AddVoteError<TestContext>> {
-        let mut state = State::new_test(&[Weight(4), Weight(5), Weight(1)], 0);
+        const ALICE_W: u64 = 4;
+        const BOB_W: u64 = 5;
+        const CAROL_W: u64 = 1;
+        const ALICE_BOB_W: u64 = ALICE_W + BOB_W;
+        const ALICE_CAROL_W: u64 = ALICE_W + CAROL_W;
+        const BOB_CAROL_W: u64 = BOB_W + CAROL_W;
+
+        let mut state = State::new_test(&[Weight(ALICE_W), Weight(BOB_W), Weight(CAROL_W)], 0);
+        let total_weight = state.total_weight().0;
 
         // Payouts for a block happen at the first occasion after `REWARD_DELAY` times the block's
         // round length.
@@ -599,18 +607,20 @@ mod tests {
         let pay16f = add_vote2!(state, ALICE, payday16, 3u8, 0x0; pay_pre16, bw16, F)?;
 
         // Round 0: Alice and Bob have quorum 9, Carol 6.
+        let assigned = total_weight;
         let expected0 = ValidatorMap::from(vec![
-            BLOCK_REWARD * 9 * 4 / (10 * 10),
-            BLOCK_REWARD * 9 * 5 / (10 * 10),
-            BLOCK_REWARD * 6 * 1 / (10 * 10),
+            BLOCK_REWARD * ALICE_BOB_W * ALICE_W / (assigned * total_weight),
+            BLOCK_REWARD * ALICE_BOB_W * BOB_W / (assigned * total_weight),
+            BLOCK_REWARD * BOB_CAROL_W * CAROL_W / (assigned * total_weight),
         ]);
         assert_eq!(expected0, compute_rewards(&state, &pay0));
 
         // Round 8: Only Bob and Carol were assigned, and finalized the round's block with quorum 6.
+        let assigned = BOB_CAROL_W;
         let expected8 = ValidatorMap::from(vec![
             0,
-            BLOCK_REWARD * 6 * 5 / (6 * 10),
-            BLOCK_REWARD * 6 * 1 / (6 * 10),
+            BLOCK_REWARD * BOB_CAROL_W * BOB_W / (assigned * total_weight),
+            BLOCK_REWARD * BOB_CAROL_W * CAROL_W / (assigned * total_weight),
         ]);
         assert_eq!(expected8, compute_rewards(&state, &pay8));
 
@@ -618,17 +628,19 @@ mod tests {
         assert_eq!(expected0 + expected8, compute_rewards(&state, &pay_pre16));
 
         // Round 16: Alice and Bob finalized the block. Carol only had quorum 50%.
+        let assigned = total_weight;
         let expected16 = ValidatorMap::from(vec![
-            BLOCK_REWARD * 9 * 4 / (10 * 10),
-            BLOCK_REWARD * 9 * 5 / (10 * 10),
-            state.forgiveness_factor() * 5 * 1 / (10 * 10),
+            BLOCK_REWARD * ALICE_BOB_W * ALICE_W / (assigned * total_weight),
+            BLOCK_REWARD * ALICE_BOB_W * BOB_W / (assigned * total_weight),
+            state.forgiveness_factor() * ALICE_CAROL_W * CAROL_W / (assigned * total_weight),
         ]);
         assert_eq!(expected16, compute_rewards(&state, &pay16));
 
         // Round 16 with faulty Carol: Alice and Bob finalized the block, Carol is unassigned.
+        let assigned = ALICE_BOB_W;
         let expected16f = ValidatorMap::from(vec![
-            BLOCK_REWARD * 9 * 4 / (9 * 10),
-            BLOCK_REWARD * 9 * 5 / (9 * 10),
+            BLOCK_REWARD * ALICE_BOB_W * ALICE_W / (assigned * total_weight),
+            BLOCK_REWARD * ALICE_BOB_W * BOB_W / (assigned * total_weight),
             0,
         ]);
         assert_eq!(expected16f, compute_rewards(&state, &pay16f));
