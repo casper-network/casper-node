@@ -19,7 +19,7 @@ macro_rules! add_vote {
     ($state: ident, $creator: expr, $val: expr; $($obs:expr),*) => {{
         use crate::{
             components::consensus::highway_core::{
-                state::tests::TestSecret,
+                state::{self, tests::TestSecret},
                 vertex::{SignedWireVote, WireVote},
             },
             types::{TimeDiff, Timestamp},
@@ -41,7 +41,7 @@ macro_rules! add_vote {
             .unwrap_or_else(Timestamp::zero);
         let timestamp = if value.is_some() {
             // This is a block: Find the next time we're a leader.
-            let mut time = (min_time >> round_exp) << round_exp;
+            let mut time = state::round_id(min_time, round_exp);
             while time < min_time || $state.leader(time) != creator {
                 time += TimeDiff::from(1 << round_exp);
             }
