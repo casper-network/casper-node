@@ -1,15 +1,10 @@
-//! The chainspec component.  Responsible for reading in the chainspec configuration file on app
-//! start, and putting the parsed value into persistent storage.
-//!
-//! See https://casperlabs.atlassian.net/wiki/spaces/EN/pages/135528449/Genesis+Process+Specification
-//! for full details.
-
 use std::{
     fmt::{self, Debug, Formatter},
     path::Path,
     time::Duration,
 };
 
+use csv::ReaderBuilder;
 use num_traits::Zero;
 use rand::{
     distributions::{Distribution, Standard},
@@ -20,13 +15,14 @@ use serde::{Deserialize, Serialize};
 
 use casperlabs_types::U512;
 
-use super::{config, Error};
+use super::{config, error::GenesisLoadError, Error};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
     components::contract_runtime::shared::wasm_costs::WasmCosts,
     crypto::asymmetric_key::{PublicKey, SecretKey},
     types::{Motes, TimeDiff, Timestamp},
+    utils::Loadable,
 };
 
 /// An account that exists at genesis.
@@ -75,6 +71,36 @@ impl Distribution<GenesisAccount> for Standard {
             balance,
             bonded_amount,
         }
+    }
+}
+
+impl Loadable for Vec<GenesisAccount> {
+    type Error = GenesisLoadError;
+
+    fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
+        #[derive(Debug, Deserialize)]
+        struct ParsedAccount {
+            public_key: String,
+            algorithm: String,
+            balance: String,
+            bonded_amount: String,
+        }
+
+        let mut reader = ReaderBuilder::new().has_headers(false).from_path(path)?;
+        let mut accounts = vec![];
+        for result in reader.deserialize() {
+            let parsed: ParsedAccount = result?;
+            let balance = Motes::new(U512::from_dec_str(&parsed.balance)?);
+            let bonded_amount = Motes::new(U512::from_dec_str(&parsed.bonded_amount)?);
+            let key_bytes = hex::decode(parsed.public_key)?;
+            let account = GenesisAccount::with_public_key(
+                PublicKey::key_from_algorithm_name_and_bytes(&parsed.algorithm, key_bytes)?,
+                balance,
+                bonded_amount,
+            );
+            accounts.push(account);
+        }
+        Ok(accounts)
     }
 }
 
@@ -325,102 +351,27 @@ pub struct Chainspec {
     pub(crate) upgrades: Vec<UpgradePoint>,
 }
 
+impl Loadable for Chainspec {
+    type Error = Error;
+    fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
+        config::parse_toml(path)
+    }
+}
+
+#[cfg(test)]
 impl Chainspec {
-    /// Converts the chainspec to a TOML-formatted string.
-    pub fn to_toml(&self) -> Result<String, Error> {
-        let config = config::Chainspec::from(self);
-        toml::to_string_pretty(&config).map_err(Error::EncodingToToml)
-    }
-
-    /// Reads and parses the chainspec configuration files specified in `chainspec_path`.
-    ///
-    /// `chainspec_path` should refer to a TOML-formatted chainspec configuration file (generally
-    /// named "chainspec.toml").  This file can specify paths to further required files.  Each of
-    /// these paths can either be absolute or relative to the folder containing `chainspec_path`.
-    pub fn from_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<Self, Error> {
-        config::parse_toml(chainspec_path)
-    }
-
     /// Generates a random instance using a `TestRng`.
-    #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         let genesis = GenesisConfig::random(rng);
         let upgrades = vec![UpgradePoint::random(rng), UpgradePoint::random(rng)];
         Chainspec { genesis, upgrades }
     }
-
-    /// Constructs a chainspec from the chainspec.toml in 'resources/local'.
-    #[cfg(test)]
-    pub fn from_resources_local() -> Self {
-        const PATH: &str = "resources/local/chainspec.toml";
-
-        let path = format!("{}/../{}", env!("CARGO_MANIFEST_DIR"), PATH);
-        Chainspec::from_toml(path).unwrap()
-    }
 }
 
 #[cfg(test)]
-pub(super) use tests::rewrite_with_absolute_paths;
-
-#[cfg(test)]
 mod tests {
-    use std::io::Write;
-
-    use tempfile::NamedTempFile;
-
     use super::*;
-    use crate::{
-        testing::{self, TestRng},
-        utils::read_file_to_string,
-    };
-
-    const TEST_ROOT: &str = "resources/test/valid";
-    const CHAINSPEC_CONFIG_NAME: &str = "chainspec.toml";
-
-    /// Takes a chainspec.toml in the specified `chainspec_dir` and rewrites it to a temp file with
-    /// the relative paths rewritten to absolute paths.
-    pub(in crate::components::chainspec_handler) fn rewrite_with_absolute_paths(
-        chainspec_dir: &str,
-    ) -> NamedTempFile {
-        let original_contents =
-            read_file_to_string(format!("{}/{}", chainspec_dir, CHAINSPEC_CONFIG_NAME)).unwrap();
-
-        // Replace relative paths with absolute ones.
-        let test_root = format!("{}/../{}", env!("CARGO_MANIFEST_DIR"), TEST_ROOT,);
-        let mut updated_contents = String::new();
-        for line in original_contents.lines() {
-            let updated_line = if line.starts_with("mint_installer_path") {
-                format!("mint_installer_path = '{}/mint.wasm'", test_root)
-            } else if line.starts_with("pos_installer_path") {
-                format!("pos_installer_path = '{}/pos.wasm'", test_root)
-            } else if line.starts_with("standard_payment_installer_path") {
-                format!(
-                    "standard_payment_installer_path = '{}/standard_payment.wasm'",
-                    test_root
-                )
-            } else if line.starts_with("auction_installer_path") {
-                format!(
-                    "auction_installer_path = '{}/auction_install.wasm'",
-                    test_root
-                )
-            } else if line.starts_with("accounts_path") {
-                format!("accounts_path = '{}/accounts.csv'", test_root)
-            } else if line.starts_with("upgrade_installer_path") {
-                format!("upgrade_installer_path = '{}/upgrade.wasm'", test_root)
-            } else {
-                line.to_string()
-            };
-            updated_contents.push_str(&updated_line);
-            updated_contents.push('\n');
-        }
-
-        // Write the updated file to a temporary file which will be deleted on test exit.
-        let mut chainspec_config = NamedTempFile::new().unwrap();
-        chainspec_config
-            .write_all(updated_contents.as_bytes())
-            .unwrap();
-        chainspec_config
-    }
+    use crate::testing::{self, TestRng};
 
     fn check_spec(spec: Chainspec) {
         assert_eq!(spec.genesis.name, "test-chain");
@@ -536,24 +487,8 @@ mod tests {
     }
 
     #[test]
-    fn should_read_relative_paths() {
-        let path = format!(
-            "{}/../{}/{}",
-            env!("CARGO_MANIFEST_DIR"),
-            TEST_ROOT,
-            CHAINSPEC_CONFIG_NAME
-        );
-        let spec = Chainspec::from_toml(path).unwrap();
-        check_spec(spec);
-    }
-
-    #[test]
-    fn should_read_absolute_paths() {
-        let test_root = format!("{}/../{}", env!("CARGO_MANIFEST_DIR"), TEST_ROOT,);
-        let chainspec_config = rewrite_with_absolute_paths(&test_root);
-
-        // Check the parsed chainspec.
-        let spec = Chainspec::from_toml(chainspec_config.path()).unwrap();
+    fn check_bundled_spec() {
+        let spec = Chainspec::from_resources("test/valid/chainspec.toml");
         check_spec(spec);
     }
 

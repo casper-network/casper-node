@@ -53,31 +53,34 @@ pub use self::{
     transfer::TransferRuntimeArgsBuilder,
 };
 use crate::{
-    components::contract_runtime::{
-        core::{
-            execution::{
-                self, AddressGenerator, AddressGeneratorBuilder, DirectSystemContractCall, Executor,
+    components::{
+        chainspec_loader::{Chainspec, GenesisAccount},
+        contract_runtime::{
+            core::{
+                execution::{
+                    self, AddressGenerator, AddressGeneratorBuilder, DirectSystemContractCall,
+                    Executor,
+                },
+                tracking_copy::{TrackingCopy, TrackingCopyExt},
             },
-            tracking_copy::{TrackingCopy, TrackingCopyExt},
-        },
-        shared::{
-            account::Account,
-            additive_map::AdditiveMap,
-            gas::Gas,
-            newtypes::{Blake2bHash, CorrelationId},
-            stored_value::StoredValue,
-            transform::Transform,
-            wasm_costs::WasmCosts,
-            wasm_prep::{self, Preprocessor},
-        },
-        storage::{
-            global_state::{CommitResult, StateProvider, StateReader},
-            protocol_data::ProtocolData,
+            shared::{
+                account::Account,
+                additive_map::AdditiveMap,
+                gas::Gas,
+                newtypes::{Blake2bHash, CorrelationId},
+                stored_value::StoredValue,
+                transform::Transform,
+                wasm_costs::WasmCosts,
+                wasm_prep::{self, Preprocessor},
+            },
+            storage::{
+                global_state::{CommitResult, StateProvider, StateReader},
+                protocol_data::ProtocolData,
+            },
         },
     },
     crypto::{asymmetric_key::PublicKey, hash},
     types::Motes,
-    Chainspec, GenesisAccount,
 };
 use execution_result::ExecutionResults;
 

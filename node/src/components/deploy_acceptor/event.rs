@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 use semver::Version;
 
 use super::Source;
-use crate::{components::chainspec_handler::Chainspec, small_network::NodeId, types::Deploy};
+use crate::{components::chainspec_loader::Chainspec, small_network::NodeId, types::Deploy};
 
 /// `DeployAcceptor` events.
 #[derive(Debug)]

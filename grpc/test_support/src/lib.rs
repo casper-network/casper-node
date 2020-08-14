@@ -20,16 +20,20 @@
 //!
 //! The test could be written as follows:
 //! ```no_run
-//! use casperlabs_engine_test_support::{Code, Error, SessionBuilder, TestContextBuilder, Value};
-//! use casperlabs_types::{account::AccountHash, U512, RuntimeArgs, runtime_args};
+//! use casperlabs_engine_test_support::{Code, Error, SessionBuilder, TestContextBuilder, Value, PublicKey, SecretKey};
+//! use casperlabs_types::{U512, RuntimeArgs, runtime_args};
 //!
-//! const MY_ACCOUNT: AccountHash = AccountHash::new([7u8; 32]);
+//! const MY_ACCOUNT: [u8; 32] = [7u8; 32];
 //! const KEY: &str = "special_value";
 //! const VALUE: &str = "hello world";
 //! const ARG_MESSAGE: &str = "message";
 //!
+//! let secret_key = SecretKey::new_ed25519(MY_ACCOUNT);
+//! let public_key = PublicKey::from(&secret_key);
+//! let account_addr = public_key.to_account_hash();
+//!
 //! let mut context = TestContextBuilder::new()
-//!     .with_account(MY_ACCOUNT, U512::from(128_000_000))
+//!     .with_public_key(public_key, U512::from(128_000_000))
 //!     .build();
 //!
 //! // The test framework checks for compiled Wasm files in '<current working dir>/wasm'.  Paths
@@ -40,11 +44,11 @@
 //!     ARG_MESSAGE => VALUE,
 //! };
 //! let session = SessionBuilder::new(session_code, session_args)
-//!     .with_address(MY_ACCOUNT)
-//!     .with_authorization_keys(&[MY_ACCOUNT])
+//!     .with_address(account_addr)
+//!     .with_authorization_keys(&[account_addr])
 //!     .build();
 //!
-//! let result_of_query: Result<Value, Error> = context.run(session).query(MY_ACCOUNT, &[KEY]);
+//! let result_of_query: Result<Value, Error> = context.run(session).query(account_addr, &[KEY]);
 //!
 //! let returned_value = result_of_query.expect("should be a value");
 //!

@@ -75,7 +75,7 @@ impl SecretKey {
         }
     }
 
-    /// Attempt to write the secret key bytes to the configured file path.
+    /// Attempts to write the secret key bytes to the configured file path.
     pub fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<()> {
         let pem = Pem {
             tag: PEM_SECRET_KEY_TAG.to_string(),
@@ -85,7 +85,7 @@ impl SecretKey {
         write_file(file, pem::encode(&pem)).map_err(Error::SecretKeySave)
     }
 
-    /// Attempt to read the secret key bytes from configured file path.
+    /// Attempts to read the secret key bytes from configured file path.
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self> {
         let pem = pem::parse(read_file(file).map_err(Error::SecretKeyLoad)?)?;
 
@@ -97,6 +97,14 @@ impl SecretKey {
         }
 
         Self::ed25519_from_bytes(pem.contents)
+    }
+
+    /// Duplicates a secret key.
+    ///
+    /// Only available for testing and named other than `clone` to prevent accidental use.
+    #[cfg(test)]
+    pub fn duplicate(&self) -> Self {
+        Self::ed25519_from_bytes(self.as_secret_slice()).expect("could not copy secret key")
     }
 
     /// Generates a random instance using a `TestRng`.
@@ -180,7 +188,7 @@ impl PublicKey {
         AccountHash::new(digest.to_bytes())
     }
 
-    /// Attempt to write the public key bytes to the configured file path.
+    /// Attempts to write the public key bytes to the configured file path.
     pub fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<()> {
         let pem = Pem {
             tag: PEM_PUBLIC_KEY_TAG.to_string(),
@@ -190,7 +198,7 @@ impl PublicKey {
         write_file(file, pem::encode(&pem)).map_err(Error::PublicKeySave)
     }
 
-    /// Attempt to read the public key bytes from configured file path.
+    /// Attempts to read the public key bytes from configured file path.
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self> {
         let path = file.as_ref();
         let payload = read_file_to_string(path).map_err(Error::PublicKeyLoad)?;

@@ -10,12 +10,14 @@ use casperlabs_types::{account::AccountHash, bytesrepr, Key, ProtocolVersion};
 
 use super::execution_effect::ExecutionEffect;
 use crate::{
-    components::contract_runtime::{
-        shared::{newtypes::Blake2bHash, wasm_costs::WasmCosts, TypeMismatch},
-        storage::global_state::CommitResult,
+    components::{
+        chainspec_loader::GenesisAccount,
+        contract_runtime::{
+            shared::{newtypes::Blake2bHash, wasm_costs::WasmCosts, TypeMismatch},
+            storage::global_state::CommitResult,
+        },
     },
     types::Motes,
-    GenesisAccount,
 };
 
 pub const PLACEHOLDER_KEY: Key = Key::Hash([0u8; 32]);

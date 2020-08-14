@@ -16,7 +16,7 @@ use tracing::debug;
 use super::*;
 use crate::{
     components::{
-        chainspec_handler::Chainspec,
+        chainspec_loader::Chainspec,
         deploy_acceptor::{self, DeployAcceptor},
         in_memory_network::{InMemoryNetwork, NetworkController, NodeId},
         storage::{self, Storage, StorageType},
@@ -30,6 +30,7 @@ use crate::{
         ConditionCheckReactor, TestRng,
     },
     types::{Deploy, Tag},
+    utils::Loadable,
 };
 
 /// Top-level event for the reactor.
@@ -146,7 +147,7 @@ impl reactor::Reactor for Reactor {
                 responder,
                 ..
             })) => responder
-                .respond(Some(Chainspec::from_resources_local()))
+                .respond(Some(Chainspec::from_resources("local/chainspec.toml")))
                 .ignore(),
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,

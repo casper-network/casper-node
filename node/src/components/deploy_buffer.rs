@@ -13,7 +13,7 @@ use semver::Version;
 use tracing::{error, info};
 
 use crate::{
-    components::{chainspec_handler::DeployConfig, storage::Storage, Component},
+    components::{chainspec_loader::DeployConfig, storage::Storage, Component},
     effect::{
         requests::{DeployBufferRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
