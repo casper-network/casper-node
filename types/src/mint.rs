@@ -103,7 +103,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
         Ok(())
     }
 
-    /// Creates a new purse in bid_purses corresponding to a validator’s key, or tops off an
+    /// Creates a new purse in bid_purses corresponding to a validator's key, or tops off an
     /// existing one.
     ///
     /// Returns the bid purse's key and current quantity of motes.
