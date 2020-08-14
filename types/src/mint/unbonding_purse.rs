@@ -2,7 +2,7 @@ use alloc::{collections::BTreeMap, vec::Vec};
 
 use crate::{
     bytesrepr::{self, ToBytes},
-    CLType, CLTyped, PublicKey, URef,
+    CLType, CLTyped, PublicKey, URef, U512,
 };
 use bytesrepr::FromBytes;
 
@@ -10,8 +10,8 @@ use bytesrepr::FromBytes;
 pub struct UnbondingPurse {
     pub purse: URef,
     pub origin: PublicKey,
-    pub era_of_withdrawal: u16,
-    pub expiration_timer: u8,
+    pub era_of_withdrawal: u64,
+    pub amount: U512,
 }
 
 impl ToBytes for UnbondingPurse {
@@ -20,14 +20,14 @@ impl ToBytes for UnbondingPurse {
         result.extend(&self.purse.to_bytes()?);
         result.extend(&self.origin.to_bytes()?);
         result.extend(&self.era_of_withdrawal.to_bytes()?);
-        result.extend(&self.expiration_timer.to_bytes()?);
+        result.extend(&self.amount.to_bytes()?);
         Ok(result)
     }
     fn serialized_length(&self) -> usize {
         self.purse.serialized_length()
             + self.origin.serialized_length()
             + self.era_of_withdrawal.serialized_length()
-            + self.expiration_timer.serialized_length()
+            + self.amount.serialized_length()
     }
 }
 
@@ -36,13 +36,13 @@ impl FromBytes for UnbondingPurse {
         let (purse, bytes) = FromBytes::from_bytes(bytes)?;
         let (origin, bytes) = FromBytes::from_bytes(bytes)?;
         let (era_of_withdrawal, bytes) = FromBytes::from_bytes(bytes)?;
-        let (expiration_timer, bytes) = FromBytes::from_bytes(bytes)?;
+        let (amount, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             UnbondingPurse {
                 purse,
                 origin,
                 era_of_withdrawal,
-                expiration_timer,
+                amount,
             },
             bytes,
         ))

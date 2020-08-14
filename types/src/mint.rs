@@ -37,10 +37,8 @@ pub const FOUNDER_PURSES_KEY: &str = "founder_purses";
 pub const UNBONDING_PURSES_KEY: &str = "unbonding_purses";
 const _REWARD_PURSES: &str = "reward_purses";
 
-const DEFAULT_LOCK_IN_DURATION: u8 = 10;
-
 /// Default number of eras that need to pass to be able to withdraw unbonded funds.
-pub const DEFAULT_UNBONDING_DELAY: u16 = 14;
+pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
 
 /// Mint trait.
 pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
@@ -152,7 +150,6 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
             .ok_or(Error::BondNotFound)?;
         // Creates new unbonding purse with requested tokens
         let unbond_purse = self.mint(U512::zero())?;
-        self.transfer(bid_purse, unbond_purse, quantity)?;
 
         // Update `unbonding_purses` data
         let unbonding_purses_uref = self
@@ -161,11 +158,13 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
             .ok_or(Error::MissingKey)?;
         let mut unbonding_purses: UnbondingPurses =
             self.read(unbonding_purses_uref)?.ok_or(Error::Storage)?;
+
+        let current_era_id = self.read_era_id();
         let new_unbonding_purse = UnbondingPurse {
             purse: unbond_purse,
             origin: public_key,
-            era_of_withdrawal: DEFAULT_UNBONDING_DELAY,
-            expiration_timer: DEFAULT_LOCK_IN_DURATION,
+            era_of_withdrawal: current_era_id + DEFAULT_UNBONDING_DELAY,
+            amount: quantity,
         };
         unbonding_purses
             .entry(public_key)
@@ -181,6 +180,13 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
     /// In the first block of each era, the node submits a special deploy that calls this function,
     /// decrementing the number of eras until unlock for every value in unbonding_purses.
     fn unbond_timer_advance(&mut self) -> Result<(), Error> {
+        let bid_purses_uref = self
+            .get_key(BID_PURSES_KEY)
+            .and_then(Key::into_uref)
+            .ok_or(Error::MissingKey)?;
+
+        let bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
+
         // Update `unbonding_purses` data
         let unbonding_purses_uref = self
             .get_key(UNBONDING_PURSES_KEY)
@@ -188,14 +194,26 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
             .ok_or(Error::MissingKey)?;
         let mut unbonding_purses: UnbondingPurses =
             self.read(unbonding_purses_uref)?.ok_or(Error::Storage)?;
+
+        let current_era_id = self.read_era_id();
+
         for unbonding_list in unbonding_purses.values_mut() {
-            for unbonding_purse in unbonding_list {
-                if unbonding_purse.expiration_timer > 0 {
-                    // Advance timer for each unbond in the list
-                    unbonding_purse.expiration_timer -= 1;
+            let mut new_unbonding_list = Vec::new();
+            for unbonding_purse in unbonding_list.iter() {
+                let bid_purse = bid_purses
+                    .get(&unbonding_purse.origin)
+                    .ok_or(Error::BondNotFound)?;
+                // Since `unbond_timer_advance` is run before `run_auction`, so we should check
+                // if current era id is equal or greater than the `era_of_withdrawal` that was
+                // calculated on `unbond` attempt.
+                if current_era_id >= unbonding_purse.era_of_withdrawal as u64 {
+                    // Move funds from bid purse to unbonding purse
+                    self.transfer(*bid_purse, unbonding_purse.purse, unbonding_purse.amount)?;
+                } else {
+                    new_unbonding_list.push(*unbonding_purse);
                 }
-                // Expiration timer == 0 -> tokens are unlocked
             }
+            *unbonding_list = new_unbonding_list;
         }
         self.write(unbonding_purses_uref, unbonding_purses)?;
         Ok(())

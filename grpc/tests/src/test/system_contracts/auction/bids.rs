@@ -2,6 +2,7 @@ use lazy_static::lazy_static;
 
 use auction::{
     EraId, SeigniorageRecipients, ARG_DELEGATOR, ARG_PUBLIC_KEY, AUCTION_DELAY, ERA_ID_KEY,
+    INITIAL_ERA_ID,
 };
 use casperlabs_engine_test_support::{
     internal::{
@@ -23,6 +24,7 @@ use casperlabs_types::{
         ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_VALIDATOR, FOUNDING_VALIDATORS_KEY,
     },
     bytesrepr::FromBytes,
+    mint::{UnbondingPurses, DEFAULT_UNBONDING_DELAY},
     runtime_args, CLTyped, ContractHash, RuntimeArgs, U512,
 };
 
@@ -101,6 +103,7 @@ fn should_run_add_bid() {
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let auction_hash = builder.get_auction_contract_hash();
+    let mint_hash = builder.get_mint_contract_hash();
 
     let auction_stored_value = builder
         .query(None, auction_hash.into(), &[])
@@ -181,7 +184,27 @@ fn should_run_add_bid() {
     let active_bid = active_bids.get(&BID_ACCOUNT_PK.clone().into()).unwrap();
     assert_eq!(
         builder.get_purse_balance(active_bid.bid_purse),
-        U512::from(ADD_BID_AMOUNT_1 + BID_AMOUNT_2 - WITHDRAW_BID_AMOUNT_2)
+        U512::from(ADD_BID_AMOUNT_1 + BID_AMOUNT_2) // Since we don't pay out immediately `WITHDRAW_BID_AMOUNT_2` is locked in unbonding queue
+    );
+    let unbonding_purses: UnbondingPurses = get_value(&mut builder, mint_hash, "unbonding_purses");
+    let unbond_list = unbonding_purses
+        .get(&casperlabs_types::PublicKey::from(*BID_ACCOUNT_PK))
+        .expect("should have unbond");
+    assert_eq!(unbond_list.len(), 1);
+    assert_eq!(
+        unbond_list[0].origin,
+        casperlabs_types::PublicKey::from(*BID_ACCOUNT_PK)
+    );
+    // `WITHDRAW_BID_AMOUNT_2` is in unbonding list
+    assert_eq!(
+        builder.get_purse_balance(unbond_list[0].purse),
+        U512::zero(),
+    );
+    assert_eq!(unbond_list[0].amount, U512::from(WITHDRAW_BID_AMOUNT_2),);
+
+    assert_eq!(
+        unbond_list[0].era_of_withdrawal,
+        INITIAL_ERA_ID + DEFAULT_UNBONDING_DELAY,
     );
 }
 
