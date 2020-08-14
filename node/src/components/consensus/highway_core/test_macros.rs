@@ -41,7 +41,7 @@ macro_rules! add_vote {
     };
 }
 
-/// Creates a vote, assigns its hash to `$hash` and adds it to `$state`.
+/// Creates a vote, adds it to `$state` and returns its hash.
 /// Returns an error if vote addition fails.
 // TODO: Replace add_vote with this.
 macro_rules! add_vote2 {
