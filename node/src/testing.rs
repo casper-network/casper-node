@@ -15,6 +15,7 @@ use std::{
 
 use serde::{de::DeserializeOwned, Serialize};
 
+use crate::logging;
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
 pub(crate) use test_rng::TestRng;
 
@@ -56,6 +57,17 @@ pub(crate) fn unused_port_on_localhost() -> u16 {
 
     // Give up - likely we're in a very tight, oscillatory race with another thread.
     panic!("could not generate random new port after 10_000 tries");
+}
+
+/// Sets up logging for testing.
+///
+/// Can safely be called multiple times.
+pub(crate) fn init_logging() {
+    // TODO: Write logs to file by default for each test.
+    logging::init()
+        // Ignore the return value, setting the global subscriber will fail if `init_logging` has
+        // been called before, which we don't care about.
+        .ok();
 }
 
 /// Test that the random port generator produce at least 40k values without duplicates.

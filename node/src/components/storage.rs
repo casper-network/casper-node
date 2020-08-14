@@ -24,7 +24,7 @@ use tokio::task;
 use tracing::{debug, error};
 
 use crate::{
-    components::{chainspec_handler::Chainspec, small_network::NodeId, Component},
+    components::{chainspec_loader::Chainspec, small_network::NodeId, Component},
     effect::{
         requests::{NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,

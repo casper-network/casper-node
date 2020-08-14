@@ -19,7 +19,7 @@ use tracing::error;
 
 use crate::{
     components::{
-        chainspec_handler::HighwayConfig,
+        chainspec_loader::HighwayConfig,
         consensus::{
             consensus_protocol::{ConsensusProtocol, ConsensusProtocolResult},
             highway_core::validators::Validators,
@@ -34,6 +34,7 @@ use crate::{
     },
     effect::{EffectBuilder, EffectExt, Effects},
     types::{FinalizedBlock, Instruction, Motes, ProtoBlock, Timestamp},
+    utils::WithDir,
 };
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -91,13 +92,13 @@ where
 {
     pub(crate) fn new<REv: ReactorEventT<I>>(
         timestamp: Timestamp,
-        config: Config,
+        config: WithDir<Config>,
         effect_builder: EffectBuilder<REv>,
         validator_stakes: Vec<(PublicKey, Motes)>,
         highway_config: &HighwayConfig,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
-        let secret_signing_key =
-            SecretKey::from_file(&config.secret_key_path).map_err(anyhow::Error::new)?;
+        let (root, config) = config.into_parts();
+        let secret_signing_key = config.secret_key_path.load(root)?;
 
         let mut era_supervisor = Self {
             active_eras: Default::default(),
@@ -286,5 +287,13 @@ where
                 }
             },
         }
+    }
+
+    /// Inspect the active eras.
+    #[cfg(test)]
+    pub fn active_eras(
+        &self,
+    ) -> &HashMap<EraId, Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>>> {
+        &self.active_eras
     }
 }

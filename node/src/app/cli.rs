@@ -2,12 +2,7 @@
 //!
 //! Most configuration is done via config files (see [`config`](../config/index.html) for details).
 
-use std::{
-    env, io,
-    io::Write,
-    path::{Path, PathBuf},
-    str::FromStr,
-};
+use std::{env, io, io::Write, path::PathBuf, str::FromStr};
 
 use anyhow::{self, bail, Context};
 use rand::SeedableRng;
@@ -22,6 +17,7 @@ use casperlabs_node::{
     logging,
     reactor::{initializer, validator, Runner},
     tls,
+    utils::WithDir,
 };
 
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
@@ -117,45 +113,6 @@ fn parse_toml_value(raw: &str) -> Value {
     Value::String(raw.to_string())
 }
 
-/// Normalizes any config key ending with `path` and a value that appears to be a relative path,
-/// relative to the config file path.
-fn normalize_paths(maybe_config_dir: Option<PathBuf>, config: &mut Value) {
-    let table = if let Value::Table(table) = config {
-        table
-    } else {
-        return;
-    };
-
-    for (_section, inner) in table {
-        let table = if let Value::Table(table) = inner {
-            table
-        } else {
-            continue;
-        };
-
-        for (k, v) in table {
-            // Skip any key that does not appear to be a file path.
-            if !k.ends_with("path") {
-                continue;
-            }
-
-            if let Value::String(path_str) = v {
-                // Replace env vars in the provided path.
-                for (env_var_name, env_var_value) in env::vars() {
-                    *path_str = path_str.replace(&format!("${}", env_var_name), &env_var_value);
-                }
-
-                let path = Path::new(path_str);
-                if path.is_relative() {
-                    if let Some(root_dir) = maybe_config_dir.as_ref() {
-                        *path_str = root_dir.join(path).display().to_string();
-                    }
-                }
-            }
-        }
-    }
-}
-
 impl Cli {
     /// Executes selected CLI command.
     pub async fn run(self) -> anyhow::Result<()> {
@@ -181,6 +138,14 @@ impl Cli {
                 io::stdout().write_all(cfg_str.as_bytes())?;
             }
             Cli::Validator { config, config_ext } => {
+                // Determine the parent directory of the configuration file, if any.
+                // Otherwise, we default to `/`.
+                let root = config
+                    .as_ref()
+                    .and_then(|path| path.parent())
+                    .map(|path| path.to_owned())
+                    .unwrap_or_else(|| "/".into());
+
                 // The app supports running without a config file, using default values.
                 let maybe_config: Option<validator::Config> =
                     config.as_ref().map(config::load_from_file).transpose()?;
@@ -195,16 +160,7 @@ impl Cli {
                     item.update_toml_table(&mut config_table);
                 }
 
-                // If a config file path to a TOML file was provided, normalize relative paths in
-                // the config to the config file's path.
-                // If a config file path was not passed via CLI and a default config instance is
-                // being used instead, do not normalize paths.
-                let maybe_root_path =
-                    config.map(|p| p.canonicalize().unwrap().parent().unwrap().to_path_buf());
-
-                normalize_paths(maybe_root_path, &mut config_table);
-
-                // Create validator config, including any overridden or normalized values.
+                // Create validator config, including any overridden values.
                 let validator_config: validator::Config = config_table.try_into()?;
                 logging::init_with_config(&validator_config.logging)?;
                 info!(version = %env!("CARGO_PKG_VERSION"), "node starting up");
@@ -216,8 +172,11 @@ impl Cli {
                 // performance reasons.
                 let mut rng = ChaCha20Rng::from_entropy();
 
-                let mut runner =
-                    Runner::<initializer::Reactor>::new(validator_config, &mut rng).await?;
+                let mut runner = Runner::<initializer::Reactor>::new(
+                    WithDir::new(root.clone(), validator_config),
+                    &mut rng,
+                )
+                .await?;
                 runner.run(&mut rng).await;
 
                 info!("finished initialization");
@@ -227,7 +186,9 @@ impl Cli {
                     bail!("failed to initialize successfully");
                 }
 
-                let mut runner = Runner::<validator::Reactor>::new(initializer, &mut rng).await?;
+                let mut runner =
+                    Runner::<validator::Reactor>::new(WithDir::new(root, initializer), &mut rng)
+                        .await?;
                 runner.run(&mut rng).await;
             }
         }

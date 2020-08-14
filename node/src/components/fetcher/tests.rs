@@ -14,7 +14,7 @@ use tokio::time;
 use super::*;
 use crate::{
     components::{
-        chainspec_handler::Chainspec,
+        chainspec_loader::Chainspec,
         deploy_acceptor::{self, DeployAcceptor},
         in_memory_network::{InMemoryNetwork, NetworkController, NodeId},
         storage::{self, Storage, StorageType},
@@ -29,6 +29,7 @@ use crate::{
         ConditionCheckReactor, TestRng,
     },
     types::{Deploy, DeployHash, Tag},
+    utils::Loadable,
 };
 
 const TIMEOUT: Duration = Duration::from_secs(1);
@@ -144,7 +145,7 @@ impl reactor::Reactor for Reactor {
                 responder,
                 ..
             })) => responder
-                .respond(Some(Chainspec::from_resources_local()))
+                .respond(Some(Chainspec::from_resources("local/chainspec.toml")))
                 .ignore(),
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,

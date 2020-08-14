@@ -9,7 +9,7 @@ use tracing::{debug, error, warn};
 
 use crate::{
     components::{
-        chainspec_handler::Chainspec,
+        chainspec_loader::Chainspec,
         storage::{Storage, Value},
         Component,
     },

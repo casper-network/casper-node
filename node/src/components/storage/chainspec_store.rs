@@ -15,6 +15,7 @@ mod tests {
         super::{Config, InMemChainspecStore, LmdbChainspecStore},
         *,
     };
+
     use crate::testing::TestRng;
 
     fn should_put_then_get<T: ChainspecStore>(chainspec_store: &mut T) {
