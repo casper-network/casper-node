@@ -45,7 +45,7 @@ pub trait MintProvider {
 
 /// Provides functionality of a system.
 pub trait SystemProvider {
-    /// Error represntation for system errors.
+    /// Error representation for system errors.
     type Error: From<Error>;
 
     /// Creates new purse.
