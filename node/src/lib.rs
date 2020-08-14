@@ -35,7 +35,7 @@ pub mod utils;
 pub(crate) use components::small_network::{self, SmallNetwork};
 pub use components::{
     api_server::Config as ApiServerConfig,
-    chainspec_handler::{Chainspec, Error as ChainspecError, GenesisAccount},
+    chainspec_loader::{Chainspec, Error as ChainspecError, GenesisAccount},
     consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
     gossiper::{Config as GossipConfig, Error as GossipError},

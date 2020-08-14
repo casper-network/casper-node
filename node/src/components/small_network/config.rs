@@ -1,9 +1,12 @@
-use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    path::PathBuf,
-};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
+use openssl::{
+    pkey::{PKey, Private},
+    x509::X509,
+};
 use serde::{Deserialize, Serialize};
+
+use crate::{utils::External, ROOT_VALIDATOR_LISTENING_PORT};
 
 /// Small network configuration.
 #[derive(Debug, Deserialize, Serialize)]
@@ -23,10 +26,10 @@ pub struct Config {
     pub root_addr: SocketAddr,
 
     /// Path to certificate file.
-    pub cert_path: Option<PathBuf>,
+    pub cert_path: Option<External<X509>>,
 
     /// Path to secret key for certificate.
-    pub secret_key_path: Option<PathBuf>,
+    pub secret_key_path: Option<External<PKey<Private>>>,
 
     /// Maximum number of retries before removing an outgoing node. Unlimited if `None`.
     pub max_outgoing_retries: Option<u32>,
@@ -47,5 +50,17 @@ impl Config {
             max_outgoing_retries: Some(360),
             outgoing_retry_delay_millis: 10_000,
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct RetrySettings {
+    pub max_outgoing: Option<u32>,
+    pub outgoing_delay_millis: u64,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self::default_on_port(ROOT_VALIDATOR_LISTENING_PORT)
     }
 }

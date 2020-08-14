@@ -4,6 +4,8 @@
 
 mod config;
 mod error;
+#[cfg(test)]
+mod tests;
 
 use std::fmt::{self, Display, Formatter};
 
@@ -16,6 +18,8 @@ use tracing::error;
 
 use casperlabs_types::U512;
 
+#[cfg(test)]
+use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
         api_server::{self, ApiServer},
@@ -46,7 +50,7 @@ use crate::{
     reactor::{self, initializer, EventQueueHandle},
     small_network::{self, NodeId},
     types::{Deploy, Item, Tag, Timestamp},
-    utils::Source,
+    utils::{Source, WithDir},
     SmallNetwork,
 };
 pub use config::Config;
@@ -274,12 +278,20 @@ pub struct Reactor {
     block_validator: BlockValidator<NodeId>,
 }
 
+#[cfg(test)]
+impl Reactor {
+    /// Inspect consensus.
+    pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId> {
+        &self.consensus
+    }
+}
+
 impl reactor::Reactor for Reactor {
     type Event = Event;
 
     // The "configuration" is in fact the whole state of the initializer reactor, which we
     // deconstruct and reuse.
-    type Config = initializer::Reactor;
+    type Config = WithDir<initializer::Reactor>;
     type Error = Error;
 
     fn new<R: Rng + ?Sized>(
@@ -288,9 +300,11 @@ impl reactor::Reactor for Reactor {
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut R,
     ) -> Result<(Self, Effects<Event>), Error> {
+        let (root, initializer) = initializer.into_parts();
+
         let initializer::Reactor {
             config,
-            chainspec_handler,
+            chainspec_loader,
             storage,
             contract_runtime,
         } = initializer;
@@ -298,12 +312,15 @@ impl reactor::Reactor for Reactor {
         let metrics = Metrics::new(registry.clone());
 
         let effect_builder = EffectBuilder::new(event_queue);
-        let (net, net_effects) = SmallNetwork::new(event_queue, config.validator_net)?;
+        let (net, net_effects) = SmallNetwork::new(
+            event_queue,
+            WithDir::new(root.clone(), config.validator_net),
+        )?;
 
         let (pinger, pinger_effects) = Pinger::new(registry, effect_builder)?;
         let api_server = ApiServer::new(config.http_server, effect_builder);
         let timestamp = Timestamp::now();
-        let validator_stakes = chainspec_handler
+        let validator_stakes = chainspec_loader
             .chainspec()
             .genesis
             .accounts
@@ -317,17 +334,17 @@ impl reactor::Reactor for Reactor {
             .collect();
         let (consensus, consensus_effects) = EraSupervisor::new(
             timestamp,
-            config.consensus,
+            WithDir::new(root, config.consensus),
             effect_builder,
             validator_stakes,
-            &chainspec_handler.chainspec().genesis.highway_config,
+            &chainspec_loader.chainspec().genesis.highway_config,
         )?;
         let deploy_acceptor = DeployAcceptor::new();
         let deploy_fetcher = Fetcher::new(config.gossip);
         let deploy_gossiper = Gossiper::new(config.gossip, gossiper::get_deploy_from_storage);
         let deploy_buffer = DeployBuffer::new(config.node.block_max_deploy_count as usize);
         // Post state hash is expected to be present
-        let post_state_hash = chainspec_handler
+        let post_state_hash = chainspec_loader
             .post_state_hash()
             .expect("should have post state hash");
         let block_executor = BlockExecutor::new(post_state_hash);
@@ -556,5 +573,13 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
         }
+    }
+}
+
+#[cfg(test)]
+impl NetworkedReactor for Reactor {
+    type NodeId = NodeId;
+    fn node_id(&self) -> Self::NodeId {
+        self.net.node_id()
     }
 }

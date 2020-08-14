@@ -1,11 +1,18 @@
+//! Chainspec loader component.
+//!
+//! The chainspec loader initializes a node by reading information from the chainspec, running
+//! initial system contracts and storing the result in the permanent storage. This kind of
+//! initialization only happens at genesis.
+//!
+//! See
+//! https://casperlabs.atlassian.net/wiki/spaces/EN/pages/135528449/Genesis+Process+Specification
+//! for full details.
+
 mod chainspec;
 mod config;
 mod error;
 
-use std::{
-    fmt::{self, Display, Formatter},
-    path::PathBuf,
-};
+use std::fmt::{self, Display, Formatter};
 
 use rand::Rng;
 use semver::Version;
@@ -57,7 +64,7 @@ impl Display for Event {
 }
 
 #[derive(Debug)]
-pub(crate) struct ChainspecHandler {
+pub(crate) struct ChainspecLoader {
     chainspec: Chainspec,
     // If `Some`, we're finished.  The value of the bool indicates success (true) or not.
     completed_successfully: Option<bool>,
@@ -65,21 +72,20 @@ pub(crate) struct ChainspecHandler {
     post_state_hash: Option<Digest>,
 }
 
-impl ChainspecHandler {
+impl ChainspecLoader {
     pub(crate) fn new<REv>(
-        chainspec_config_path: PathBuf,
+        chainspec: Chainspec,
         effect_builder: EffectBuilder<REv>,
     ) -> Result<(Self, Effects<Event>), Error>
     where
         REv: From<Event> + From<StorageRequest<Storage>> + Send,
     {
-        let chainspec = Chainspec::from_toml(chainspec_config_path)?;
         let version = chainspec.genesis.protocol_version.clone();
         let effects = effect_builder
             .put_chainspec(chainspec.clone())
             .event(|_| Event::PutToStorage { version });
         Ok((
-            ChainspecHandler {
+            ChainspecLoader {
                 chainspec,
                 completed_successfully: None,
                 post_state_hash: None,
@@ -105,7 +111,7 @@ impl ChainspecHandler {
     }
 }
 
-impl<REv> Component<REv> for ChainspecHandler
+impl<REv> Component<REv> for ChainspecLoader
 where
     REv: From<Event> + From<StorageRequest<Storage>> + From<ContractRuntimeRequest> + Send,
 {

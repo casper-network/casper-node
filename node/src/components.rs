@@ -5,7 +5,7 @@
 pub(crate) mod api_server;
 pub(crate) mod block_executor;
 pub(crate) mod block_validator;
-pub(crate) mod chainspec_handler;
+pub(crate) mod chainspec_loader;
 pub(crate) mod consensus;
 pub mod contract_runtime;
 pub(crate) mod deploy_acceptor;
