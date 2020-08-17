@@ -1,11 +1,14 @@
 use serde::{Deserialize, Serialize};
 
-use super::{
-    state::{self, State},
-    validators::{ValidatorIndex, ValidatorMap},
-};
 use crate::{
-    components::consensus::{highway_core::vertex::SignedWireVote, traits::Context},
+    components::consensus::{
+        highway_core::{
+            highway::SignedWireVote,
+            state::{self, State},
+            validators::{ValidatorIndex, ValidatorMap},
+        },
+        traits::Context,
+    },
     types::Timestamp,
 };
 use std::fmt::Debug;
@@ -79,6 +82,12 @@ impl<C: Context> Panorama<C> {
     /// Returns an iterator over all hashes of the honest validators' latest messages.
     pub(crate) fn iter_correct(&self) -> impl Iterator<Item = &C::Hash> {
         self.iter().filter_map(Observation::correct)
+    }
+
+    /// Returns the correct sequence number for a new vote by `vidx` with this panorama.
+    pub(crate) fn next_seq_num(&self, state: &State<C>, vidx: ValidatorIndex) -> u64 {
+        let add1 = |vh: &C::Hash| state.vote(vh).seq_number + 1;
+        self[vidx].correct().map_or(0, add1)
     }
 }
 

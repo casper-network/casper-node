@@ -1,4 +1,4 @@
-use super::state::State;
+use super::State;
 use crate::components::consensus::traits::Context;
 
 /// A block: Chains of blocks are the consensus values in the CBC Casper sense.

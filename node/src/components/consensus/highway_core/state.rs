@@ -1,9 +1,15 @@
+mod block;
+mod tallies;
+mod vote;
+
+pub(super) use vote::{Observation, Panorama, Vote};
+
 use std::{
     borrow::Borrow,
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet, HashMap},
     convert::identity,
-    iter,
+    iter::{self, Sum},
     ops::{Div, Mul, RangeBounds},
 };
 
@@ -12,21 +18,21 @@ use itertools::Itertools;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
+use tracing::warn;
 
-use super::{
-    block::Block,
-    evidence::Evidence,
-    tallies::Tallies,
-    validators::{ValidatorIndex, ValidatorMap},
-    vertex::{Dependency, WireVote},
-    vote::{Observation, Panorama, Vote},
-};
 use crate::{
-    components::consensus::{highway_core::vertex::SignedWireVote, traits::Context},
+    components::consensus::{
+        highway_core::{
+            evidence::Evidence,
+            highway::{Dependency, SignedWireVote, WireVote},
+            validators::{ValidatorIndex, ValidatorMap},
+        },
+        traits::Context,
+    },
     types::{TimeDiff, Timestamp},
 };
-use iter::Sum;
-use tracing::warn;
+use block::Block;
+use tallies::Tallies;
 
 /// A vote weight.
 #[derive(
@@ -98,7 +104,7 @@ pub(crate) enum VoteError {
 /// Rewards for a round in which a block B was proposed are paid out in the first block whose
 /// timestamp greater than `REWARD_DELAY * t` after B's timestamp, where `t` is the round length of
 /// `B` itself.
-const REWARD_DELAY: u64 = 8;
+pub(crate) const REWARD_DELAY: u64 = 8;
 
 /// A number representing the maximum total reward for finalizing one block.
 ///
@@ -757,19 +763,26 @@ pub(crate) mod tests {
         // Bob:   b0 —— b1
         //          \  /
         // Carol:    c0
-        add_vote!(state, a0, ALICE, ALICE_SEC, 0; N, N, N; 0xA);
-        add_vote!(state, b0, BOB, BOB_SEC, 0; N, N, N; 0xB);
-        add_vote!(state, c0, CAROL, CAROL_SEC, 0; N, b0, N);
-        add_vote!(state, b1, BOB, BOB_SEC, 1; N, b0, c0);
-        add_vote!(state, _a1, ALICE, ALICE_SEC, 1; a0, b1, c0);
+        let a0 = add_vote!(state, ALICE, 0xA; N, N, N)?;
+        let b0 = add_vote!(state, BOB, 0xB; N, N, N)?;
+        let c0 = add_vote!(state, CAROL, None; N, b0, N)?;
+        let b1 = add_vote!(state, BOB, None; N, b0, c0)?;
+        let _a1 = add_vote!(state, ALICE, None; a0, b1, c0)?;
 
         // Wrong sequence number: Carol hasn't produced c1 yet.
-        let vote = vote!(CAROL, CAROL_SEC, 2; N, b1, c0);
+        let wvote = WireVote {
+            panorama: panorama!(N, b1, c0),
+            creator: CAROL,
+            value: None,
+            seq_number: 2,
+            timestamp: state.vote(&b1).timestamp + TimeDiff::from(1),
+            round_exp: state.vote(&c0).round_exp,
+        };
+        let vote = SignedWireVote::new(wvote, &CAROL_SEC);
         let opt_err = state.add_vote(vote).err().map(vote_err);
         assert_eq!(Some(VoteError::SequenceNumber), opt_err);
         // Inconsistent panorama: If you see b1, you have to see c0, too.
-        let vote = vote!(CAROL, CAROL_SEC, 1; N, b1, N);
-        let opt_err = state.add_vote(vote).err().map(vote_err);
+        let opt_err = add_vote!(state, CAROL, None; N, b1, N).err().map(vote_err);
         assert_eq!(Some(VoteError::Panorama), opt_err);
 
         // Alice has not equivocated yet, and not produced message A1.
@@ -779,7 +792,7 @@ pub(crate) mod tests {
         assert_eq!(Some(Dependency::Vote(42)), missing);
 
         // Alice equivocates: A1 doesn't see a1.
-        add_vote!(state, ae1, ALICE, ALICE_SEC, 1; a0, b1, c0);
+        let ae1 = add_vote!(state, ALICE, None; a0, b1, c0)?;
         assert!(state.has_evidence(ALICE));
 
         let missing = state.missing_dependency(&panorama!(F, b1, c0));
@@ -788,7 +801,7 @@ pub(crate) mod tests {
         assert_eq!(None, missing);
 
         // Bob can see the equivocation.
-        add_vote!(state, b2, BOB, BOB_SEC, 2; F, b1, c0);
+        let b2 = add_vote!(state, BOB, None; F, b1, c0)?;
 
         // The state's own panorama has been updated correctly.
         assert_eq!(state.panorama, panorama!(F, b2, c0));
@@ -798,12 +811,10 @@ pub(crate) mod tests {
     #[test]
     fn find_in_swimlane() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new_test(WEIGHTS, 0);
-        let mut a = Vec::new();
-        let vote = vote!(ALICE, ALICE_SEC, 0; N, N, N; Some(0xA));
-        a.push(vote.hash());
-        state.add_vote(vote)?;
+        let a0 = add_vote!(state, ALICE, 0xA; N, N, N)?;
+        let mut a = vec![a0];
         for i in 1..10 {
-            add_vote!(state, ai, ALICE, ALICE_SEC, i as u64; a[i - 1], N, N);
+            let ai = add_vote!(state, ALICE, None; a[i - 1], N, N)?;
             a.push(ai);
         }
 
@@ -834,13 +845,13 @@ pub(crate) mod tests {
         // b0: 12           b2: 4
         //        \
         //          c0: 5 — c1: 5
-        add_vote!(state, b0, BOB, BOB_SEC, 0; N, N, N; 0xB0);
-        add_vote!(state, c0, CAROL, CAROL_SEC, 0; N, b0, N; 0xC0);
-        add_vote!(state, c1, CAROL, CAROL_SEC, 1; N, b0, c0; 0xC1);
-        add_vote!(state, a0, ALICE, ALICE_SEC, 0; N, b0, N; 0xA0);
-        add_vote!(state, b1, BOB, BOB_SEC, 1; a0, b0, N); // Just a ballot; not shown above.
-        add_vote!(state, a1, ALICE, ALICE_SEC, 1; a0, b1, c1; 0xA1);
-        add_vote!(state, b2, BOB, BOB_SEC, 2; a0, b1, N; 0xB2);
+        let b0 = add_vote!(state, BOB, 0xB0; N, N, N)?;
+        let c0 = add_vote!(state, CAROL, 0xC0; N, b0, N)?;
+        let c1 = add_vote!(state, CAROL, 0xC1; N, b0, c0)?;
+        let a0 = add_vote!(state, ALICE, 0xA0; N, b0, N)?;
+        let b1 = add_vote!(state, BOB, None; a0, b0, N)?; // Just a ballot; not shown above.
+        let a1 = add_vote!(state, ALICE, 0xA1; a0, b1, c1)?;
+        let b2 = add_vote!(state, BOB, 0xB2; a0, b1, N)?;
 
         // Alice built `a1` on top of `a0`, which had already 7 points.
         assert_eq!(Some(&a0), state.block(&state.vote(&a1).block).parent());

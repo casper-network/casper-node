@@ -3,16 +3,14 @@ use std::fmt::{self, Debug};
 use tracing::warn;
 
 use super::{
-    highway::ValidVertex,
-    state::{self, State},
+    highway::{ValidVertex, Vertex, WireVote},
+    state::{self, Observation, Panorama, State, Vote},
     validators::ValidatorIndex,
-    vertex::{Vertex, WireVote},
-    vote::{Observation, Panorama, Vote},
 };
 
 use crate::{
     components::consensus::{
-        consensus_protocol::BlockContext, highway_core::vertex::SignedWireVote, traits::Context,
+        consensus_protocol::BlockContext, highway_core::highway::SignedWireVote, traits::Context,
     },
     types::{TimeDiff, Timestamp},
 };
@@ -215,8 +213,7 @@ impl<C: Context> ActiveValidator<C> {
         value: Option<C::ConsensusValue>,
         state: &State<C>,
     ) -> SignedWireVote<C> {
-        let add1 = |vh: &C::Hash| state.vote(vh).seq_number + 1;
-        let seq_number = panorama.get(self.vidx).correct().map_or(0, add1);
+        let seq_number = panorama.next_seq_num(state, self.vidx);
         let wvote = WireVote {
             panorama,
             creator: self.vidx,
@@ -304,9 +301,8 @@ mod tests {
         super::{
             finality_detector::FinalityDetector,
             state::{tests::*, Weight},
-            vertex::Vertex,
         },
-        *,
+        Vertex, *,
     };
 
     type Eff = Effect<TestContext>;

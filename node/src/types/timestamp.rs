@@ -1,7 +1,7 @@
 use std::{
     fmt::{self, Display},
     num::ParseIntError,
-    ops::{Add, Div, Mul, Rem, Sub},
+    ops::{Add, AddAssign, Div, Mul, Rem, Sub},
     str::FromStr,
     time::{Duration, SystemTime},
 };
@@ -113,6 +113,12 @@ impl Add<TimeDiff> for Timestamp {
 
     fn add(self, diff: TimeDiff) -> Timestamp {
         Timestamp(self.0 + diff.0)
+    }
+}
+
+impl AddAssign<TimeDiff> for Timestamp {
+    fn add_assign(&mut self, rhs: TimeDiff) {
+        self.0 += rhs.0;
     }
 }
 

@@ -4,8 +4,10 @@ use std::{
     ops::Index,
 };
 
-use super::state::{State, Weight};
-use crate::components::consensus::traits::Context;
+use crate::components::consensus::{
+    highway_core::state::{State, Weight},
+    traits::Context,
+};
 
 /// A tally of votes at a specific height. This is never empty: It contains at least one vote.
 #[derive(Clone)]
@@ -185,7 +187,7 @@ impl<'a, C: Context> Tallies<'a, C> {
 #[cfg(test)]
 mod tests {
     use super::{
-        super::state::{tests::*, State},
+        super::{tests::*, State},
         *,
     };
 
@@ -207,13 +209,13 @@ mod tests {
         // b0: 12           b2: 4
         //        \
         //          c0: 5 — c1: 5
-        add_vote!(state, b0, BOB, BOB_SEC, 0; N, N, N; 0xB0);
-        add_vote!(state, c0, CAROL, CAROL_SEC, 0; N, b0, N; 0xC0);
-        add_vote!(state, c1, CAROL, CAROL_SEC, 1; N, b0, c0; 0xC1);
-        add_vote!(state, a0, ALICE, ALICE_SEC, 0; N, b0, N; 0xA0);
-        add_vote!(state, b1, BOB, BOB_SEC, 1; a0, b0, N); // Just a ballot; not shown above.
-        add_vote!(state, a1, ALICE, ALICE_SEC, 1; a0, b1, c1; 0xA1);
-        add_vote!(state, b2, BOB, BOB_SEC, 2; a0, b1, N; 0xB2);
+        let b0 = add_vote!(state, BOB, 0xB0; N, N, N)?;
+        let c0 = add_vote!(state, CAROL, 0xC0; N, b0, N)?;
+        let c1 = add_vote!(state, CAROL, 0xC1; N, b0, c0)?;
+        let a0 = add_vote!(state, ALICE, 0xA0; N, b0, N)?;
+        let b1 = add_vote!(state, BOB, None; a0, b0, N)?; // Just a ballot; not shown above.
+        let a1 = add_vote!(state, ALICE, 0xA1; a0, b1, c1)?;
+        let b2 = add_vote!(state, BOB, 0xB2; a0, b1, N)?;
 
         // These are the entries of a panorama seeing `a1`, `b2` and `c0`.
         let vote_entries = vec![
