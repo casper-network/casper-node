@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::consensus::{
         highway_core::{
+            highway::Dependency,
             state::State,
             validators::{ValidatorIndex, ValidatorMap},
         },
@@ -75,6 +76,17 @@ impl<C: Context> Observation<C> {
             (_, _) => false,
         }
     }
+
+    /// Returns the missing dependency if `self` is referring to a vertex we don't know yet.
+    fn missing_dep(&self, state: &State<C>, idx: ValidatorIndex) -> Option<Dependency<C>> {
+        match self {
+            Observation::Faulty if !state.has_evidence(idx) => Some(Dependency::Evidence(idx)),
+            Observation::Correct(hash) if !state.has_vote(hash) => {
+                Some(Dependency::Vote(hash.clone()))
+            }
+            _ => None,
+        }
+    }
 }
 
 /// The observed behavior of all validators at some point in time.
@@ -136,6 +148,12 @@ impl<C: Context> Panorama<C> {
             obs @ Observation::None | obs @ Observation::Faulty => obs.clone(),
         };
         Panorama::from(self.iter().map(obs_cutoff).collect_vec())
+    }
+
+    /// Returns the first missing dependency, or `None` if all are satisfied.
+    pub(crate) fn missing_dependency(&self, state: &State<C>) -> Option<Dependency<C>> {
+        let missing_dep = |(idx, obs): (_, &Observation<C>)| obs.missing_dep(state, idx);
+        self.enumerate().filter_map(missing_dep).next()
     }
 
     /// Returns whether `self` can possibly come later in time than `other`, i.e. it can see

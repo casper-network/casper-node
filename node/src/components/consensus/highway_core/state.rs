@@ -28,7 +28,7 @@ use crate::{
     components::consensus::{
         highway_core::{
             evidence::Evidence,
-            highway::{Dependency, SignedWireVote, WireVote},
+            highway::{SignedWireVote, WireVote},
             validators::{ValidatorIndex, ValidatorMap},
         },
         traits::Context,
@@ -285,12 +285,6 @@ impl<C: Context> State<C> {
         })
     }
 
-    /// Returns the first missing dependency of the panorama, or `None` if all are satisfied.
-    pub(crate) fn missing_dependency(&self, panorama: &Panorama<C>) -> Option<Dependency<C>> {
-        let missing_dep = |(idx, obs)| self.missing_obs_dep(idx, obs);
-        panorama.enumerate().filter_map(missing_dep).next()
-    }
-
     /// Returns the fork choice from `pan`'s view, or `None` if there are no blocks yet.
     ///
     /// The correct validators' latest votes count as votes for the block they point to, as well as
@@ -481,17 +475,6 @@ impl<C: Context> State<C> {
         }
         equivocators
     }
-
-    /// Returns the missing dependency if `obs` is referring to a vertex we don't know yet.
-    fn missing_obs_dep(&self, idx: ValidatorIndex, obs: &Observation<C>) -> Option<Dependency<C>> {
-        match obs {
-            Observation::Faulty if !self.has_evidence(idx) => Some(Dependency::Evidence(idx)),
-            Observation::Correct(hash) if !self.has_vote(hash) => {
-                Some(Dependency::Vote(hash.clone()))
-            }
-            _ => None,
-        }
-    }
 }
 
 /// Returns the round length, given the round exponent.
@@ -532,7 +515,9 @@ pub(crate) mod tests {
     use std::{collections::hash_map::DefaultHasher, hash::Hasher};
 
     use super::*;
-    use crate::components::consensus::traits::ValidatorSecret;
+    use crate::components::consensus::{
+        highway_core::highway::Dependency, traits::ValidatorSecret,
+    };
 
     pub(crate) const WEIGHTS: &[Weight] = &[Weight(3), Weight(4), Weight(5)];
 
@@ -672,18 +657,18 @@ pub(crate) mod tests {
         assert_eq!(Some(VoteError::Panorama), opt_err);
 
         // Alice has not equivocated yet, and not produced message A1.
-        let missing = state.missing_dependency(&panorama!(F, b1, c0));
+        let missing = panorama!(F, b1, c0).missing_dependency(&state);
         assert_eq!(Some(Dependency::Evidence(ALICE)), missing);
-        let missing = state.missing_dependency(&panorama!(42, b1, c0));
+        let missing = panorama!(42, b1, c0).missing_dependency(&state);
         assert_eq!(Some(Dependency::Vote(42)), missing);
 
         // Alice equivocates: A1 doesn't see a1.
         let ae1 = add_vote!(state, ALICE, None; a0, b1, c0)?;
         assert!(state.has_evidence(ALICE));
 
-        let missing = state.missing_dependency(&panorama!(F, b1, c0));
+        let missing = panorama!(F, b1, c0).missing_dependency(&state);
         assert_eq!(None, missing);
-        let missing = state.missing_dependency(&panorama!(ae1, b1, c0));
+        let missing = panorama!(ae1, b1, c0).missing_dependency(&state);
         assert_eq!(None, missing);
 
         // Bob can see the equivocation.
