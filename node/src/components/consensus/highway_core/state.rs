@@ -1,11 +1,13 @@
 mod block;
+mod panorama;
 mod tallies;
 mod vote;
 mod weight;
 
 pub(crate) use weight::Weight;
 
-pub(super) use vote::{Observation, Panorama, Vote};
+pub(super) use panorama::{Observation, Panorama};
+pub(super) use vote::Vote;
 
 use std::{
     borrow::Borrow,
