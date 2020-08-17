@@ -122,7 +122,7 @@ impl<'a, C: Context> Horizon<'a, C> {
     /// Returns the total weight of the `committee`'s members whose message in this horizon is seen
     /// by `vote`.
     fn seen_weight(&self, vote: &Vote<C>, committee: &[ValidatorIndex]) -> Weight {
-        let to_weight = |&idx: &ValidatorIndex| self.state.weight(idx);
+        let to_weight = |&idx: &ValidatorIndex| self.state.params().weight(idx);
         let is_seen = |&&idx: &&ValidatorIndex| self.can_see(vote, idx);
         committee.iter().filter(is_seen).map(to_weight).sum()
     }

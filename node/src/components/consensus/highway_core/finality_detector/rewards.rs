@@ -45,7 +45,7 @@ fn compute_rewards_for<C: Context>(
     panorama: &Panorama<C>,
     proposal_h: &C::Hash,
 ) -> ValidatorMap<u64> {
-    let fault_w = state.faulty_weight_in(panorama);
+    let fault_w = state.params().faulty_weight_in(panorama);
     let proposal_vote = state.vote(proposal_h);
     let r_id = proposal_vote.round_id();
 
@@ -59,7 +59,7 @@ fn compute_rewards_for<C: Context>(
             RoundParticipation::No => (),
             RoundParticipation::Yes(latest_vh) => latest[idx] = Some(latest_vh),
         }
-        assigned_weight += state.weight(idx);
+        assigned_weight += state.params().weight(idx);
     }
 
     // Find all level-1 summits. For each validator, store the highest quorum it is a part of.
@@ -79,17 +79,17 @@ fn compute_rewards_for<C: Context>(
     // Collect the block rewards for each validator who is a member of at least one summit.
     max_quorum
         .iter()
-        .zip(state.weights())
+        .zip(state.params().weights())
         .map(|(quorum, weight)| {
             // If the summit's quorum was not enough to finalize the block, rewards are reduced.
-            let finality_factor = if *quorum * 2 > state.total_weight() + fault_w * 2 {
+            let finality_factor = if *quorum * 2 > state.params().total_weight() + fault_w * 2 {
                 state::BLOCK_REWARD
             } else {
-                state.forgiveness_factor()
+                state.params().reduced_block_reward()
             };
             // Rewards are proportional to the quorum and to the validator's weight.
             let num = u128::from(finality_factor) * u128::from(*quorum) * u128::from(*weight);
-            let denom = u128::from(assigned_weight) * u128::from(state.total_weight());
+            let denom = u128::from(assigned_weight) * u128::from(state.params().total_weight());
             (num / denom) as u64
         })
         .collect()
@@ -184,7 +184,7 @@ mod tests {
         const BOB_CAROL_W: u64 = BOB_W + CAROL_W;
 
         let mut state = State::new_test(&[Weight(ALICE_W), Weight(BOB_W), Weight(CAROL_W)], 0);
-        let total_weight = state.total_weight().0;
+        let total_weight = state.params().total_weight().0;
 
         // Payouts for a block happen at the first occasion after `REWARD_DELAY` times the block's
         // round length.
@@ -196,7 +196,7 @@ mod tests {
         // Round 0: Alice has round length 16, Bob and Carol 8.
         // Bob and Alice cite each other, creating a summit with quorum 9.
         // Carol only cites Bob, so she's only part of a quorum-6 summit.
-        assert_eq!(BOB, state.leader(0.into()));
+        assert_eq!(BOB, state.params().leader(0.into()));
         let bp0 = add_vote!(state, BOB, 0, 3u8, 0xB00; N, N, N)?;
         let ac0 = add_vote!(state, ALICE, 1, 4u8, None; N, bp0, N)?;
         let cc0 = add_vote!(state, CAROL, 1, 3u8, None; N, bp0, N)?;
@@ -205,7 +205,7 @@ mod tests {
         let aw0 = add_vote!(state, ALICE, 10, 4u8, None; ac0, bp0, N)?;
 
         // Round 8: Alice is not assigned (length 16). Bob and Carol make a summit.
-        assert_eq!(BOB, state.leader(8.into()));
+        assert_eq!(BOB, state.params().leader(8.into()));
         let bp8 = add_vote!(state, BOB, 8, 3u8, 0xB08; ac0, bw0, cw0)?;
         let cc8 = add_vote!(state, CAROL, 9, 3u8, None; ac0, bp8, cw0)?;
         let bw8 = add_vote!(state, BOB, 13, 3u8, None; aw0, bp8, cc8)?;
@@ -213,7 +213,7 @@ mod tests {
 
         // Round 16: Carol slows down (length 16). Alice and Bob finalize with quorum 9.
         // Carol cites only Alice and herself, so she's only in the non-finalizing quorum-5 summit.
-        assert_eq!(ALICE, state.leader(16.into()));
+        assert_eq!(ALICE, state.params().leader(16.into()));
         let ap16 = add_vote!(state, ALICE, 16, 4u8, 0xA16; aw0, bw8, cw8)?;
         let bc16 = add_vote!(state, BOB, 17, 3u8, None; ap16, bw8, cw8)?;
         let cc16 = add_vote!(state, CAROL, 17, 4u8, None; ap16, bw8, cw8)?;
@@ -222,17 +222,17 @@ mod tests {
         let cw16 = add_vote!(state, CAROL, 26, 4u8, None; ap16, bw8, cc16)?;
 
         // Produce blocks where rewards for rounds 0 and 8 are paid out.
-        assert_eq!(ALICE, state.leader(payday0.into()));
+        assert_eq!(ALICE, state.params().leader(payday0.into()));
         let pay0 = add_vote!(state, ALICE, payday0, 3u8, 0x0; aw16, bw16, cw16)?;
-        assert_eq!(BOB, state.leader(payday8.into()));
+        assert_eq!(BOB, state.params().leader(payday8.into()));
         let pay8 = add_vote!(state, BOB, payday8, 3u8, 0x8; pay0, bw16, cw16)?;
 
         // Produce another (possibly equivocating) block where rewards for 0 and 8 are paid out,
         // and then one where the reward for round 16 is paid. This is to avoid adding rewards for
         // `pay0` and `pay8` themselves.
-        assert_eq!(ALICE, state.leader(pre16.into()));
+        assert_eq!(ALICE, state.params().leader(pre16.into()));
         let pay_pre16 = add_vote!(state, ALICE, pre16, 3u8, 0x0; aw16, bw16, cw16)?;
-        assert_eq!(ALICE, state.leader(payday16.into()));
+        assert_eq!(ALICE, state.params().leader(payday16.into()));
         let pay16 = add_vote!(state, ALICE, payday16, 3u8, 0x0; pay_pre16, bw16, cw16)?;
 
         // Finally create another block that saw Carol equivocate in round 16.
@@ -262,10 +262,11 @@ mod tests {
 
         // Round 16: Alice and Bob finalized the block. Carol only had quorum 50%.
         let assigned = total_weight;
+        let reduced_reward = state.params().reduced_block_reward();
         let expected16 = ValidatorMap::from(vec![
             BLOCK_REWARD * ALICE_BOB_W * ALICE_W / (assigned * total_weight),
             BLOCK_REWARD * ALICE_BOB_W * BOB_W / (assigned * total_weight),
-            state.forgiveness_factor() * ALICE_CAROL_W * CAROL_W / (assigned * total_weight),
+            reduced_reward * ALICE_CAROL_W * CAROL_W / (assigned * total_weight),
         ]);
         assert_eq!(expected16, compute_rewards(&state, &pay16));
 

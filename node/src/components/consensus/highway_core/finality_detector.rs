@@ -120,7 +120,7 @@ impl<C: Context> FinalityDetector<C> {
         candidate: &C::Hash,
         state: &State<C>,
     ) -> usize {
-        let total_w = state.total_weight();
+        let total_w = state.params().total_weight();
         let quorum = self.quorum_for_lvl(target_lvl, total_w) - fault_w;
         let latest = state.panorama().iter().map(Observation::correct).collect();
         let sec0 = Horizon::level0(candidate, &state, &latest);

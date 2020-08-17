@@ -166,7 +166,7 @@ impl<C: Context> Highway<C> {
     pub(crate) fn missing_dependency(&self, pvv: &PreValidatedVertex<C>) -> Option<Dependency<C>> {
         match pvv.vertex() {
             Vertex::Evidence(_) => None,
-            Vertex::Vote(vote) => self.state.missing_dependency(&vote.wire_vote.panorama),
+            Vertex::Vote(vote) => vote.wire_vote.panorama.missing_dependency(&self.state),
         }
     }
 
