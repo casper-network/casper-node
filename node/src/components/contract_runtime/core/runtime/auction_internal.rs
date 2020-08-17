@@ -1,5 +1,7 @@
 use casperlabs_types::{
-    auction::{AuctionProvider, MintProvider, RuntimeProvider, StorageProvider, SystemProvider, DataProvider, DelegationsMap, TallyMap, RewardPerStakeMap, TotalDelegatorStakeMap, DelegatorRewardPoolMap},
+    auction::{
+        AuctionProvider, DataProvider, DelegationProvider, MintProvider, RuntimeProvider, StorageProvider, SystemProvider,
+    },
     bytesrepr::{FromBytes, ToBytes},
     runtime_args,
     system_contract_errors::auction::Error,
@@ -42,52 +44,131 @@ where
     }
 }
 
+// pub fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T, Error>
+// where
+//     P: StorageProvider + ?Sized,
+//     T: FromBytes + CLTyped,
+//     Error: From<P::Error>,
+// {
+//     let key = provider.get_key(name).ok_or(Error::MissingKey)?;
+//     let uref = key.into_uref().ok_or(Error::InvalidKeyVariant)?;
+//     let value: T = provider.read(uref)?.ok_or(Error::MissingValue)?;
+//     Ok(value)
+// }
+
+// pub fn write_to<P, T>(provider: &mut P, name: &str, value: T) -> Result<(), Error>
+// where
+//     P: StorageProvider + ?Sized,
+//     T: ToBytes + CLTyped,
+//     Error: From<P::Error>,
+// {
+//     let key = provider.get_key(name).ok_or(Error::MissingKey)?;
+//     let uref = key.into_uref().ok_or(Error::InvalidKeyVariant)?;
+//     provider.write(uref, value)?;
+//     Ok(())
+// }
+
 impl<'a, R> DataProvider for Runtime<'a, R>
 where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
     type Error = Error;
-    fn get_delegations_map(&mut self) -> Result<DelegationsMap, Self::Error> {
-        todo!()
-    }
-    fn set_delegations_map(&mut self, delegations_map: DelegationsMap) -> Result<(), Self::Error> {
-        todo!()
-    }
-    fn get_tally_map(&mut self) -> Result<TallyMap, Self::Error> {
-        todo!()
-    }
-    fn set_tally_map(&mut self, tally_map: TallyMap) -> Result<(), Self::Error> {
-        todo!()
-    }
-    fn get_reward_per_stake_map(&mut self) -> Result<RewardPerStakeMap, Self::Error> {
-        todo!()
-    }
-    fn set_reward_per_stake_map(
-        &mut self,
-        reward_per_stake_map: RewardPerStakeMap,
-    ) -> Result<(), Self::Error> {
-        todo!()
-    }
-    fn get_total_delegator_stake_map(&mut self) -> Result<TotalDelegatorStakeMap, Self::Error> {
-        todo!()
-    }
-    fn set_total_delegator_stake_map(
-        &mut self,
-        total_delegator_stake_map: TotalDelegatorStakeMap,
-    ) -> Result<(), Self::Error> {
-        todo!()
-    }
-    fn get_delegator_reward_pool_map(&mut self) -> Result<DelegatorRewardPoolMap, Self::Error> {
-        todo!()
-    }
-    fn set_delegator_reward_pool_map(
-        &mut self,
-        delegator_reward_pool_map: DelegatorRewardPoolMap,
-    ) -> Result<(), Self::Error> {
-        todo!()
-    }
 }
+//     fn get_delegations_map(&mut self) -> Result<DelegationsMap, Self::Error> {
+//         read_from(self, DELEGATIONS_MAP_KEY)
+//     }
+//     fn set_delegations_map(&mut self, delegations_map: DelegationsMap) -> Result<(), Self::Error> {
+//         write_to(self, DELEGATIONS_MAP_KEY, delegations_map)
+//     }
+//     fn get_tally_map(&mut self) -> Result<TallyMap, Self::Error> {
+//         read_from(self, TALLY_MAP_KEY)
+//     }
+//     fn set_tally_map(&mut self, tally_map: TallyMap) -> Result<(), Self::Error> {
+//         write_to(self, TALLY_MAP_KEY, tally_map)
+//     }
+//     fn get_reward_per_stake_map(&mut self) -> Result<RewardPerStakeMap, Self::Error> {
+//         read_from(self, REWARD_PER_STAKE_MAP_KEY)
+//     }
+//     fn set_reward_per_stake_map(
+//         &mut self,
+//         reward_per_stake_map: RewardPerStakeMap,
+//     ) -> Result<(), Self::Error> {
+//         write_to(self, REWARD_PER_STAKE_MAP_KEY, reward_per_stake_map)
+//     }
+//     fn get_total_delegator_stake_map(&mut self) -> Result<TotalDelegatorStakeMap, Self::Error> {
+//         read_from(self, TOTAL_DELEGATOR_STAKE_MAP_KEY)
+//     }
+//     fn set_total_delegator_stake_map(
+//         &mut self,
+//         total_delegator_stake_map: TotalDelegatorStakeMap,
+//     ) -> Result<(), Self::Error> {
+//         write_to(
+//             self,
+//             TOTAL_DELEGATOR_STAKE_MAP_KEY,
+//             total_delegator_stake_map,
+//         )
+//     }
+//     fn get_delegator_reward_pool_map(&mut self) -> Result<DelegatorRewardPoolMap, Self::Error> {
+//         read_from(self, DELEGATOR_REWARD_POOL_MAP)
+//     }
+//     fn set_delegator_reward_pool_map(
+//         &mut self,
+//         delegator_reward_pool_map: DelegatorRewardPoolMap,
+//     ) -> Result<(), Self::Error> {
+//         write_to(self, DELEGATOR_REWARD_POOL_MAP, delegator_reward_pool_map)
+//     }
+// }
+
+impl<'a, R> DelegationProvider for Runtime<'a, R>
+where
+    R: StateReader<Key, StoredValue>,
+    R::Error: Into<execution::Error>,
+{
+    type Error = Error;
+
+}
+//     fn delegate(
+//         &mut self,
+//         delegator_account_hash: casperlabs_types::account::AccountHash,
+//         source_purse: URef,
+//         validator_account_hash: casperlabs_types::account::AccountHash,
+//         delegation_amount: U512,
+//     ) -> Result<(URef, U512), Self::Error> {
+//         todo!()
+//     }
+//     fn undelegate(
+//         &mut self,
+//         delegator_account_hash: casperlabs_types::account::AccountHash,
+//         validator_account_hash: casperlabs_types::account::AccountHash,
+//         quantity: U512,
+//     ) -> Result<U512, Self::Error> {
+//         todo!()
+//     }
+//     fn distribute_to_delegators(
+//         &mut self,
+//         validator_account_hash: casperlabs_types::account::AccountHash,
+//         purse: URef,
+//     ) -> Result<(), Self::Error> {
+//         todo!()
+//     }
+//     fn delegation_reward(
+//         &mut self,
+//         validator_account_hash: casperlabs_types::account::AccountHash,
+//         delegator_account_hash: casperlabs_types::account::AccountHash,
+//     ) -> Result<U512, Self::Error> {
+//         todo!()
+//     }
+//     fn withdraw_reward(
+//         &mut self,
+//         validator_account_hash: casperlabs_types::account::AccountHash,
+//         delegator_account_hash: casperlabs_types::account::AccountHash,
+//         purse: URef,
+//     ) -> Result<U512, Self::Error> {
+//         todo!()
+//     }
+
+// }
 
 impl<'a, R> SystemProvider for Runtime<'a, R>
 where

@@ -3,14 +3,10 @@ use alloc::{collections::BTreeMap, vec::Vec};
 use super::{
     era_validators::ValidatorWeights,
     internal,
-<<<<<<< HEAD
     providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
     seigniorage_recipient::SeigniorageRecipients,
     EraId, EraValidators, SeigniorageRecipient, AUCTION_DELAY, AUCTION_SLOTS,
-=======
-    providers::{DataProvider, MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
-    EraValidators, SeigniorageRecipient,
->>>>>>> 78850e5... Started adding tests, moved internal functions that get/set delegation related data to a separate trait called `DataProvider` to make testing easier.
+    DataProvider, DelegationProvider, EraValidators, SeigniorageRecipient,
 };
 use crate::{
     account::AccountHash,
@@ -19,81 +15,27 @@ use crate::{
     PublicKey, URef, U512,
 };
 
-<<<<<<< HEAD
-=======
 const AUCTION_SLOTS: usize = 5;
 
 /// Number of eras before an auction actually defines the set of validators.
 const AUCTION_DELAY: u64 = 3;
 
->>>>>>> deb03af... Fixed warnings, added `distribute_to_delegators` to entry points
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0; 32]);
-
-/// Update reward per stake according to pull-based distribution formulation
-/// The entry for `validator_account_hash` should be initialized by now
-fn update_reward_per_stake(
-    reward_per_stake_map: &mut BTreeMap<AccountHash, U512>,
-    validator_account_hash: AccountHash,
-    amount: U512,
-    total_delegator_stake: U512,
-) {
-    reward_per_stake_map
-        .entry(validator_account_hash)
-        .and_modify(|rps| *rps += amount / total_delegator_stake);
-}
-
-/// Update delegations_map entry. Initialize if it doesn't exist.
-fn update_delegations(
-    delegations_map: &mut BTreeMap<AccountHash, BTreeMap<AccountHash, U512>>,
-    validator_account_hash: AccountHash,
-    delegator_account_hash: AccountHash,
-    delegation_amount: U512,
-) -> U512 {
-    let new_quantity = *delegations_map
-        .entry(validator_account_hash)
-        .or_default()
-        .entry(delegator_account_hash)
-        .and_modify(|delegation| *delegation += delegation_amount)
-        .or_insert_with(|| delegation_amount);
-    new_quantity
-}
-
-/// Update total_delegator_stake entry. Initialize if it doesn't exist.
-fn update_total_delegator_stake(
-    total_delegator_stake_map: &mut BTreeMap<AccountHash, U512>,
-    validator_account_hash: AccountHash,
-    delegation_amount: U512,
-) {
-    total_delegator_stake_map
-        .entry(validator_account_hash)
-        .and_modify(|total_stake| *total_stake += delegation_amount)
-        .or_insert_with(|| delegation_amount);
-}
-
-/// Update tally_map entry. Initialize if it doesn't exist.
-fn update_tally(
-    tally_map: &mut BTreeMap<AccountHash, BTreeMap<AccountHash, U512>>,
-    validator_account_hash: AccountHash,
-    delegator_account_hash: AccountHash,
-    delegation_amount: U512,
-    reward_per_stake: U512,
-) {
-    tally_map
-        .entry(validator_account_hash)
-        .or_default()
-        .entry(delegator_account_hash)
-        .and_modify(|tally| *tally += reward_per_stake * delegation_amount)
-        .or_insert_with(|| reward_per_stake * delegation_amount);
-}
 
 /// Bonding auctions contract implementation.
 pub trait AuctionProvider:
-    StorageProvider + SystemProvider + MintProvider + RuntimeProvider + DataProvider
+    StorageProvider
+    + SystemProvider
+    + MintProvider
+    + RuntimeProvider
+    + DataProvider
+    + DelegationProvider
 where
     Error: From<<Self as StorageProvider>::Error>
         + From<<Self as SystemProvider>::Error>
         + From<<Self as MintProvider>::Error>
-        + From<<Self as DataProvider>::Error>,
+        + From<<Self as DataProvider>::Error>
+        + From<<Self as DelegationProvider>::Error>,
 {
     /// Access: node
     /// Node software will trigger this function once a new era is detected.
@@ -281,13 +223,8 @@ where
         &mut self,
         delegator_public_key: PublicKey,
         source_purse: URef,
-<<<<<<< HEAD
         validator_public_key: PublicKey,
         quantity: U512,
-=======
-        validator_account_hash: AccountHash,
-        delegation_amount: U512,
->>>>>>> 78850e5... Started adding tests, moved internal functions that get/set delegation related data to a separate trait called `DataProvider` to make testing easier.
     ) -> Result<(URef, U512)> {
         let active_bids = internal::get_active_bids(self)?;
         // Return early if target validator is not in `active_bids`
@@ -295,12 +232,8 @@ where
             .get(&validator_public_key)
             .ok_or(Error::ValidatorNotFound)?;
 
-<<<<<<< HEAD
         let (bonding_purse, _total_amount) =
             self.bond(delegator_public_key, quantity, source_purse)?;
-=======
-        let (bonding_purse, _total_amount) = self.bond(delegation_amount, source_purse)?;
->>>>>>> 78850e5... Started adding tests, moved internal functions that get/set delegation related data to a separate trait called `DataProvider` to make testing easier.
 
         let mut delegations_map = self.get_delegations_map()?;
         let mut tally_map = self.get_tally_map()?;
@@ -313,50 +246,22 @@ where
             .entry(validator_public_key)
             .or_insert_with(|| U512::zero());
 
-<<<<<<< HEAD
         // Update total_delegator_stake_map entry. Initialize if it doesn't exist.
         total_delegator_stake_map
             .entry(validator_public_key)
             .and_modify(|total_stake| *total_stake += quantity)
             .or_insert_with(|| quantity);
 
-=======
         update_total_delegator_stake(
             &mut total_delegator_stake_map,
             validator_account_hash,
             delegation_amount,
         );
->>>>>>> 78850e5... Started adding tests, moved internal functions that get/set delegation related data to a separate trait called `DataProvider` to make testing easier.
         // Initialize delegator_reward_pool_map entry if it doesn't exist.
         delegator_reward_pool_map
             .entry(validator_public_key)
             .or_default();
 
-<<<<<<< HEAD
-        // Update delegations_map entry. Initialize if it doesn't exist.
-        let new_quantity = *delegations_map
-            .entry(validator_public_key)
-            .or_default()
-            .entry(delegator_public_key)
-            .and_modify(|delegation| *delegation += quantity)
-            .or_insert_with(|| quantity);
-
-        // Update tally_map entry. Initialize if it doesn't exist.
-        tally_map
-            .entry(validator_public_key)
-            .or_default()
-            .entry(delegator_public_key)
-            .and_modify(|tally| *tally += reward_per_stake * quantity)
-            .or_insert_with(|| reward_per_stake * quantity);
-
-        internal::set_delegations_map(self, delegations_map)?;
-        internal::set_total_delegator_stake_map(self, total_delegator_stake_map)?;
-        internal::set_tally_map(self, tally_map)?;
-        internal::set_reward_per_stake_map(self, reward_per_stake_map)?;
-        internal::set_delegator_reward_pool_map(self, delegator_reward_pool_map)?;
-
-        Ok((bonding_purse, new_quantity))
-=======
         let new_delegation_amount = update_delegations(
             &mut delegations_map,
             validator_account_hash,
@@ -378,7 +283,6 @@ where
         self.set_delegator_reward_pool_map(delegator_reward_pool_map)?;
 
         Ok((bonding_purse, new_delegation_amount))
->>>>>>> 78850e5... Started adding tests, moved internal functions that get/set delegation related data to a separate trait called `DataProvider` to make testing easier.
     }
 
     /// Removes a quantity (or the entry altogether, if the
@@ -658,21 +562,10 @@ where
     /// with O(1) time complexity.
     ///
     /// Accessed by: PoS contract
-<<<<<<< HEAD
     fn distribute_to_delegators(&mut self, validator_public_key: AccountHash, purse: URef) -> Result<()> {
         let total_delegator_stake 
             = *internal::get_total_delegator_stake_map(self)?
             .get(&validator_public_key)
-=======
-    fn distribute_to_delegators(
-        &mut self,
-        validator_account_hash: AccountHash,
-        purse: URef,
-    ) -> Result<()> {
-        let total_delegator_stake = *self
-            .get_total_delegator_stake_map()?
-            .get(&validator_account_hash)
->>>>>>> 78850e5... Started adding tests, moved internal functions that get/set delegation related data to a separate trait called `DataProvider` to make testing easier.
             .unwrap();
 
         let amount = self.get_balance(purse)?.unwrap_or_default();
@@ -682,20 +575,6 @@ where
             return Err(Error::MissingDelegations);
         }
 
-<<<<<<< HEAD
-        // Update reward per stake according to pull-based distribution formulation
-        // The entry for `validator_public_key` should be initialized by now
-        let mut reward_per_stake_map = internal::get_reward_per_stake_map(self)?;
-        reward_per_stake_map
-            .entry(validator_public_key)
-            .and_modify(|rps| *rps += amount / total_delegator_stake);
-        internal::set_reward_per_stake_map(self, reward_per_stake_map).unwrap();
-
-        // Get the reward pool purse for the validator
-        let delegator_reward_pool = *internal::get_delegator_reward_pool_map(self)
-            .unwrap()
-            .get(&validator_public_key)
-=======
         let mut reward_per_stake_map = self.get_reward_per_stake_map()?;
         update_reward_per_stake(
             &mut reward_per_stake_map,
@@ -709,7 +588,6 @@ where
         let delegator_reward_pool = *self
             .get_delegator_reward_pool_map()?
             .get(&validator_account_hash)
->>>>>>> 78850e5... Started adding tests, moved internal functions that get/set delegation related data to a separate trait called `DataProvider` to make testing easier.
             .unwrap();
 
         // Transfer the reward to the reward pool purse

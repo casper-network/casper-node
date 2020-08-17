@@ -96,49 +96,56 @@ impl MintProvider for AuctionContract {
 
 impl DataProvider for AuctionContract {
     type Error = Error;
-    fn get_delegations_map(&mut self) -> StdResult<DelegationsMap, Self::Error> {
-        todo!()
-    }
-    fn set_delegations_map(
-        &mut self,
-        delegations_map: DelegationsMap,
-    ) -> StdResult<(), Self::Error> {
-        todo!()
-    }
-    fn get_tally_map(&mut self) -> StdResult<TallyMap, Self::Error> {
-        todo!()
-    }
-    fn set_tally_map(&mut self, tally_map: TallyMap) -> StdResult<(), Self::Error> {
-        todo!()
-    }
-    fn get_reward_per_stake_map(&mut self) -> StdResult<RewardPerStakeMap, Self::Error> {
-        todo!()
-    }
-    fn set_reward_per_stake_map(
-        &mut self,
-        reward_per_stake_map: RewardPerStakeMap,
-    ) -> StdResult<(), Self::Error> {
-        todo!()
-    }
-    fn get_total_delegator_stake_map(&mut self) -> StdResult<TotalDelegatorStakeMap, Self::Error> {
-        todo!()
-    }
-    fn set_total_delegator_stake_map(
-        &mut self,
-        total_delegator_stake_map: TotalDelegatorStakeMap,
-    ) -> StdResult<(), Self::Error> {
-        todo!()
-    }
-    fn get_delegator_reward_pool_map(&mut self) -> StdResult<DelegatorRewardPoolMap, Self::Error> {
-        todo!()
-    }
-    fn set_delegator_reward_pool_map(
-        &mut self,
-        delegator_reward_pool_map: DelegatorRewardPoolMap,
-    ) -> StdResult<(), Self::Error> {
-        todo!()
-    }
-}
+ }
+
+impl DelegationProvider for AuctionContract {
+    type Error = Error;
+ }
+
+//     type Error = Error;
+//     fn get_delegations_map(&mut self) -> StdResult<DelegationsMap, Self::Error> {
+//         read_from(self, DELEGATIONS_MAP_KEY)
+//     }
+//     fn set_delegations_map(
+//         &mut self,
+//         delegations_map: DelegationsMap,
+//     ) -> StdResult<(), Self::Error> {
+//         todo!()
+//     }
+//     fn get_tally_map(&mut self) -> StdResult<TallyMap, Self::Error> {
+//         todo!()
+//     }
+//     fn set_tally_map(&mut self, tally_map: TallyMap) -> StdResult<(), Self::Error> {
+//         todo!()
+//     }
+//     fn get_reward_per_stake_map(&mut self) -> StdResult<RewardPerStakeMap, Self::Error> {
+//         todo!()
+//     }
+//     fn set_reward_per_stake_map(
+//         &mut self,
+//         reward_per_stake_map: RewardPerStakeMap,
+//     ) -> StdResult<(), Self::Error> {
+//         todo!()
+//     }
+//     fn get_total_delegator_stake_map(&mut self) -> StdResult<TotalDelegatorStakeMap, Self::Error> {
+//         todo!()
+//     }
+//     fn set_total_delegator_stake_map(
+//         &mut self,
+//         total_delegator_stake_map: TotalDelegatorStakeMap,
+//     ) -> StdResult<(), Self::Error> {
+//         todo!()
+//     }
+//     fn get_delegator_reward_pool_map(&mut self) -> StdResult<DelegatorRewardPoolMap, Self::Error> {
+//         todo!()
+//     }
+//     fn set_delegator_reward_pool_map(
+//         &mut self,
+//         delegator_reward_pool_map: DelegatorRewardPoolMap,
+//     ) -> StdResult<(), Self::Error> {
+//         todo!()
+//     }
+// }
 
 impl RuntimeProvider for AuctionContract {
     fn get_caller(&self) -> AccountHash {

@@ -48,6 +48,7 @@ use crate::components::contract_runtime::{
     storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
 use scoped_instrumenter::ScopedInstrumenter;
+use auction::DelegationProvider;
 
 pub struct Runtime<'a, R> {
     system_contract_cache: SystemContractCache,

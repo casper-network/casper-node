@@ -1,4 +1,4 @@
-use super::{delegator::{RewardPerStakeMap, TallyMap, TotalDelegatorStakeMap, DelegatorRewardPoolMap}, DelegationsMap};
+
 use crate::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
@@ -64,47 +64,96 @@ pub trait SystemProvider {
     ) -> Result<(), Self::Error>;
 }
 
-/// Provides data from storage.
-pub trait DataProvider {
-    /// Error representation for data provider errors.
-    type Error: From<Error>;
+// /// Provides data from storage.
+// pub trait DataProvider {
+//     /// Error representation for data provider errors.
+//     type Error: From<Error>;
 
-    /// Gets delegation map
-    fn get_delegations_map(&mut self) -> Result<DelegationsMap, Self::Error>;
+//     /// Gets delegation map
+//     fn get_delegations_map(&mut self) -> Result<DelegationsMap, Self::Error>;
 
-    /// Sets delegation map
-    fn set_delegations_map(&mut self, delegations_map: DelegationsMap) -> Result<(), Self::Error>;
+//     /// Sets delegation map
+//     fn set_delegations_map(&mut self, delegations_map: DelegationsMap) -> Result<(), Self::Error>;
 
-    /// Gets tally map
-    fn get_tally_map(&mut self) -> Result<TallyMap, Self::Error>;
+//     /// Gets tally map
+//     fn get_tally_map(&mut self) -> Result<TallyMap, Self::Error>;
 
-    /// Sets tally map
-    fn set_tally_map(&mut self, tally_map: TallyMap) -> Result<(), Self::Error>;
+//     /// Sets tally map
+//     fn set_tally_map(&mut self, tally_map: TallyMap) -> Result<(), Self::Error>;
 
-    /// Gets reward per stake map
-    fn get_reward_per_stake_map(&mut self) -> Result<RewardPerStakeMap, Self::Error>;
+//     /// Gets reward per stake map
+//     fn get_reward_per_stake_map(&mut self) -> Result<RewardPerStakeMap, Self::Error>;
 
-    /// Sets reward per stake map
-    fn set_reward_per_stake_map(
-        &mut self,
-        reward_per_stake_map: RewardPerStakeMap,
-    ) -> Result<(), Self::Error>;
+//     /// Sets reward per stake map
+//     fn set_reward_per_stake_map(
+//         &mut self,
+//         reward_per_stake_map: RewardPerStakeMap,
+//     ) -> Result<(), Self::Error>;
 
-    /// Gets total delegator stake map
-    fn get_total_delegator_stake_map(&mut self) -> Result<TotalDelegatorStakeMap, Self::Error>;
+//     /// Gets total delegator stake map
+//     fn get_total_delegator_stake_map(&mut self) -> Result<TotalDelegatorStakeMap, Self::Error>;
 
-    /// Sets total delegator stake map
-    fn set_total_delegator_stake_map(
-        &mut self,
-        total_delegator_stake_map: TotalDelegatorStakeMap,
-    ) -> Result<(), Self::Error>;
+//     /// Sets total delegator stake map
+//     fn set_total_delegator_stake_map(
+//         &mut self,
+//         total_delegator_stake_map: TotalDelegatorStakeMap,
+//     ) -> Result<(), Self::Error>;
 
-    /// Gets delegator reward pool map
-    fn get_delegator_reward_pool_map(&mut self) -> Result<DelegatorRewardPoolMap, Self::Error>;
+//     /// Gets delegator reward pool map
+//     fn get_delegator_reward_pool_map(&mut self) -> Result<DelegatorRewardPoolMap, Self::Error>;
 
-    /// Sets delegator reward pool map
-    fn set_delegator_reward_pool_map(
-        &mut self,
-        delegator_reward_pool_map: DelegatorRewardPoolMap,
-    ) -> Result<(), Self::Error>;
-}
+//     /// Sets delegator reward pool map
+//     fn set_delegator_reward_pool_map(
+//         &mut self,
+//         delegator_reward_pool_map: DelegatorRewardPoolMap,
+//     ) -> Result<(), Self::Error>;
+// }
+
+// /// Provides data from storage.
+// pub trait DelegationProvider {
+//     /// Error representation for data provider errors.
+//     type Error: From<Error>;
+
+//     /// Adds a new delegator to delegators, or tops off a current
+//     /// one. 
+//     fn delegate(
+//         &mut self,
+//         delegator_account_hash: AccountHash,
+//         source_purse: URef,
+//         validator_account_hash: AccountHash,
+//         delegation_amount: U512,
+//     ) -> Result<(URef, U512), Self::Error>;
+
+//     /// Removes a quantity (or the entry altogether, if the
+//     /// remaining quantity is 0) of motes from the entry in delegators
+//     /// and calls unbond in the Mint contract to create a new unbonding
+//     /// purse.
+//     fn undelegate(
+//         &mut self,
+//         delegator_account_hash: AccountHash,
+//         validator_account_hash: AccountHash,
+//         quantity: U512,
+//     ) -> Result<U512, Self::Error>;
+
+//     /// Distributes rewards to the delegators associated with `validator_account_hash`.
+//     fn distribute_to_delegators(
+//         &mut self,
+//         validator_account_hash: AccountHash,
+//         purse: URef,
+//     ) -> Result<(), Self::Error>;
+
+//     /// Returns the total rewards a delegator has earned from delegating to a specific validator.
+//     fn delegation_reward(
+//         &mut self,
+//         validator_account_hash: AccountHash,
+//         delegator_account_hash: AccountHash,
+//     ) -> Result<U512, Self::Error>;
+
+//     /// Pays out the entire accumulated delegation rewards to the destination purse.
+//     fn withdraw_reward(
+//         &mut self,
+//         validator_account_hash: AccountHash,
+//         delegator_account_hash: AccountHash,
+//         purse: URef,
+//     ) -> Result<U512, Self::Error>;
+// }

@@ -2,6 +2,8 @@
 mod active_bid;
 mod args;
 mod auction_provider;
+mod data_provider;
+mod delegation_provider;
 mod delegator;
 mod era_validators;
 mod founding_validator;
@@ -20,6 +22,9 @@ pub use seigniorage_recipient::{
     SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
 };
 pub use delegator::{Delegations, DelegationsMap};
+pub use data_provider::DataProvider;
+pub use delegation_provider::DelegationProvider;
+
 pub use delegator::{
     Delegations, DelegationsMap, DelegatorRewardPoolMap, RewardPerStakeMap, Tally, TallyMap,
     TotalDelegatorStakeMap,
