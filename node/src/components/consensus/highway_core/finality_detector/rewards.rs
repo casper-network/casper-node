@@ -85,7 +85,7 @@ fn compute_rewards_for<C: Context>(
             let finality_factor = if *quorum * 2 > state.params().total_weight() + fault_w * 2 {
                 state::BLOCK_REWARD
             } else {
-                state.params().forgiveness_factor()
+                state.params().reduced_block_reward()
             };
             // Rewards are proportional to the quorum and to the validator's weight.
             let num = u128::from(finality_factor) * u128::from(*quorum) * u128::from(*weight);
@@ -262,11 +262,11 @@ mod tests {
 
         // Round 16: Alice and Bob finalized the block. Carol only had quorum 50%.
         let assigned = total_weight;
+        let reduced_reward = state.params().reduced_block_reward();
         let expected16 = ValidatorMap::from(vec![
             BLOCK_REWARD * ALICE_BOB_W * ALICE_W / (assigned * total_weight),
             BLOCK_REWARD * ALICE_BOB_W * BOB_W / (assigned * total_weight),
-            state.params().forgiveness_factor() * ALICE_CAROL_W * CAROL_W
-                / (assigned * total_weight),
+            reduced_reward * ALICE_CAROL_W * CAROL_W / (assigned * total_weight),
         ]);
         assert_eq!(expected16, compute_rewards(&state, &pay16));
 

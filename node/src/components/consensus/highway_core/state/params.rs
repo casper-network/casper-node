@@ -17,9 +17,9 @@ pub(crate) struct Params {
     cumulative_w: ValidatorMap<Weight>,
     /// The random seed.
     seed: u64,
-    /// The fraction of the block reward, in trillionths, that are paid out even if the heaviest
-    /// summit does not exceed half the total weight.
-    forgiveness_factor: u64,
+    /// The reduced block reward that is paid out even if the heaviest summit does not exceed half
+    /// the total weight. This is a fraction of `BLOCK_REWARD`.
+    reduced_block_reward: u64,
     /// The minimum round exponent. `1 << min_round_exp` milliseconds is the minimum round length.
     min_round_exp: u8,
 }
@@ -45,7 +45,7 @@ impl Params {
             weights,
             cumulative_w,
             seed,
-            forgiveness_factor: BLOCK_REWARD * u64::from(ff_num) / u64::from(ff_denom),
+            reduced_block_reward: BLOCK_REWARD * u64::from(ff_num) / u64::from(ff_denom),
             min_round_exp,
         }
     }
@@ -65,10 +65,10 @@ impl Params {
         &self.weights
     }
 
-    /// Returns the fraction of the block reward, in trillionths, that are paid out even if the
-    /// heaviest summit does not exceed half the total weight.
-    pub(crate) fn forgiveness_factor(&self) -> u64 {
-        self.forgiveness_factor
+    /// Returns the reduced block reward that is paid out even if the heaviest summit does not
+    /// exceed half the total weight. This is a fraction of `BLOCK_REWARD`.
+    pub(crate) fn reduced_block_reward(&self) -> u64 {
+        self.reduced_block_reward
     }
 
     /// Returns the total weight of all validators marked faulty in this panorama.
