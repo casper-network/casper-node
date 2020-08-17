@@ -1,5 +1,5 @@
+mod horizon;
 mod rewards;
-mod section;
 
 use std::{collections::BTreeMap, iter};
 
@@ -9,7 +9,7 @@ use super::{
     validators::ValidatorIndex,
 };
 use crate::{components::consensus::traits::Context, types::Timestamp};
-use section::Section;
+use horizon::Horizon;
 
 /// The result of running the finality detector on a protocol state.
 #[derive(Debug, Eq, PartialEq)]
@@ -123,9 +123,9 @@ impl<C: Context> FinalityDetector<C> {
         let total_w = state.total_weight();
         let quorum = self.quorum_for_lvl(target_lvl, total_w) - fault_w;
         let latest = state.panorama().iter().map(Observation::correct).collect();
-        let sec0 = Section::level0(candidate, &state, &latest);
-        let sections_iter = iter::successors(Some(sec0), |sec| sec.next(quorum));
-        sections_iter.skip(1).take(target_lvl).count()
+        let sec0 = Horizon::level0(candidate, &state, &latest);
+        let horizons_iter = iter::successors(Some(sec0), |sec| sec.next(quorum));
+        horizons_iter.skip(1).take(target_lvl).count()
     }
 
     /// Returns the quorum required by a summit with the specified level and the required FTT.

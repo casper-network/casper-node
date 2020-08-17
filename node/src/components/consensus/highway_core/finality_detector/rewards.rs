@@ -1,6 +1,6 @@
 use itertools::Itertools;
 
-use super::Section;
+use super::Horizon;
 use crate::{
     components::consensus::{
         highway_core::{
@@ -63,12 +63,12 @@ fn compute_rewards_for<C: Context>(
     }
 
     // Find all level-1 summits. For each validator, store the highest quorum it is a part of.
-    let section = Section::level0(proposal_h, state, &latest);
-    let (mut committee, _) = section.prune_committee(Weight(1), latest.keys_some().collect());
+    let horizon = Horizon::level0(proposal_h, state, &latest);
+    let (mut committee, _) = horizon.prune_committee(Weight(1), latest.keys_some().collect());
     let mut max_quorum = ValidatorMap::from(vec![Weight(0); latest.len()]);
-    while let Some(quorum) = section.committee_quorum(&committee) {
+    while let Some(quorum) = horizon.committee_quorum(&committee) {
         // The current committee is a level-1 summit with `quorum`. Try to go higher:
-        let (new_committee, pruned) = section.prune_committee(quorum + Weight(1), committee);
+        let (new_committee, pruned) = horizon.prune_committee(quorum + Weight(1), committee);
         committee = new_committee;
         // Pruned validators are not part of any summit with a higher quorum than this.
         for vidx in pruned {

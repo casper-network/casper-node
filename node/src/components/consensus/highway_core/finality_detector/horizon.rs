@@ -12,18 +12,18 @@ type Committee = Vec<ValidatorIndex>;
 
 /// A list containing the earliest level-n messages of each member of some committee, for some n.
 #[derive(Debug)]
-pub(super) struct Section<'a, C: Context> {
+pub(super) struct Horizon<'a, C: Context> {
     /// Assigns to each member of a committee the sequence number of the earliest message that
     /// qualifies them for that committee.
     sequence_numbers: ValidatorMap<Option<u64>>,
-    /// A reference to the protocol state this section belongs to.
+    /// A reference to the protocol state this horizon belongs to.
     state: &'a State<C>,
     // The latest votes that are eligible for the summit.
     latest: &'a ValidatorMap<Option<&'a C::Hash>>,
 }
 
-impl<'a, C: Context> Section<'a, C> {
-    /// Creates a section assigning to each validator their level-0 vote, i.e. the oldest vote in
+impl<'a, C: Context> Horizon<'a, C> {
+    /// Creates a horizon assigning to each validator their level-0 vote, i.e. the oldest vote in
     /// their current streak of votes for `candidate` (and descendants), or `None` if their latest
     /// vote is not for `candidate`.
     pub(super) fn level0(
@@ -39,14 +39,14 @@ impl<'a, C: Context> Section<'a, C> {
                 .last()
                 .map(|(_, vote)| vote.seq_number)
         };
-        Section {
+        Horizon {
             sequence_numbers: latest.iter().map(to_lvl0vote).collect(),
             state,
             latest,
         }
     }
 
-    /// Returns a section `s` of votes each of which can see a quorum of votes in `self` by
+    /// Returns a horizon `s` of votes each of which can see a quorum of votes in `self` by
     /// validators that are part of `s`.
     pub(super) fn next(&self, quorum: Weight) -> Option<Self> {
         let (committee, _pruned) =
@@ -92,7 +92,7 @@ impl<'a, C: Context> Section<'a, C> {
         committee.iter().map(seen_weight).min()
     }
 
-    /// Returns the section containing the earliest vote of each of the `committee` members that
+    /// Returns the horizon containing the earliest vote of each of the `committee` members that
     /// can see a quorum of votes by `committee` members in `self`.
     fn next_from_committee(&self, quorum: Weight, committee: &[ValidatorIndex]) -> Self {
         let find_first_lvl_n = |idx: &ValidatorIndex| {
@@ -106,14 +106,14 @@ impl<'a, C: Context> Section<'a, C> {
         for (vidx, sn) in committee.iter().flat_map(find_first_lvl_n) {
             sequence_numbers[vidx] = Some(sn);
         }
-        Section {
+        Horizon {
             sequence_numbers,
             state: self.state,
             latest: self.latest,
         }
     }
 
-    /// Returns the total weight of the `committee`'s members whose message in this section is seen
+    /// Returns the total weight of the `committee`'s members whose message in this horizon is seen
     /// by `vote`.
     fn seen_weight(&self, vote: &Vote<C>, committee: &[ValidatorIndex]) -> Weight {
         let to_weight = |&idx: &ValidatorIndex| self.state.weight(idx);
