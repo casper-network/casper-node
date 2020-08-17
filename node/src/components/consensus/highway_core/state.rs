@@ -342,8 +342,8 @@ impl<C: Context> State<C> {
         let merge_obs = |observations: (&Observation<C>, &Observation<C>)| match observations {
             (Observation::Faulty, _) | (_, Observation::Faulty) => Observation::Faulty,
             (Observation::None, obs) | (obs, Observation::None) => obs.clone(),
-            (obs0, Observation::Correct(vh1)) if self.sees_correct(pan0, vh1) => obs0.clone(),
-            (Observation::Correct(vh0), obs1) if self.sees_correct(pan1, vh0) => obs1.clone(),
+            (obs0, Observation::Correct(vh1)) if pan0.sees_correct(self, vh1) => obs0.clone(),
+            (Observation::Correct(vh0), obs1) if pan1.sees_correct(self, vh0) => obs1.clone(),
             (Observation::Correct(_), Observation::Correct(_)) => Observation::Faulty,
         };
         let observations = pan0.iter().zip(pan1).map(merge_obs).collect_vec();
@@ -389,7 +389,7 @@ impl<C: Context> State<C> {
     pub(crate) fn validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {
         let wvote = &swvote.wire_vote;
         let creator = wvote.creator;
-        if !self.is_panorama_valid(&wvote.panorama) {
+        if !wvote.panorama.is_valid(self) {
             return Err(VoteError::Panorama);
         }
         let mut justifications = wvote.panorama.iter_correct();
@@ -488,16 +488,6 @@ impl<C: Context> State<C> {
         })
     }
 
-    /// Returns `true` if `pan` sees the creator of `hash` as correct, and sees that vote.
-    pub(crate) fn sees_correct(&self, pan: &Panorama<C>, hash: &C::Hash) -> bool {
-        let vote = self.vote(hash);
-        pan.get(vote.creator)
-            .correct()
-            .map_or(false, |latest_hash| {
-                Some(hash) == self.find_in_swimlane(latest_hash, vote.seq_number)
-            })
-    }
-
     /// Returns a vector of validator indexes that equivocated between block
     /// identified by `fhash` and its parent.
     pub(super) fn get_new_equivocators(&self, fhash: &C::Hash) -> Vec<ValidatorIndex> {
@@ -517,20 +507,6 @@ impl<C: Context> State<C> {
             }
         }
         equivocators
-    }
-
-    /// Returns `pan` is valid, i.e. it contains the latest votes of some substate of `self`.
-    fn is_panorama_valid(&self, pan: &Panorama<C>) -> bool {
-        pan.enumerate().all(|(idx, observation)| {
-            match observation {
-                Observation::None => true,
-                Observation::Faulty => self.has_evidence(idx),
-                Observation::Correct(hash) => match self.opt_vote(hash) {
-                    Some(vote) => vote.creator == idx && pan.geq(self, &vote.panorama),
-                    None => false, // Unknown vote. Not a substate of `state`.
-                },
-            }
-        })
     }
 
     /// Returns the missing dependency if `obs` is referring to a vertex we don't know yet.

@@ -66,7 +66,7 @@ impl<C: Context> Observation<C> {
         match (self, other) {
             (Observation::Faulty, _) | (_, Observation::None) => true,
             (Observation::Correct(hash0), Observation::Correct(hash1)) => {
-                hash0 == hash1 || state.sees_correct(&state.vote(hash0).panorama, hash1)
+                hash0 == hash1 || state.vote(hash0).panorama.sees_correct(state, hash1)
             }
             (_, _) => false,
         }
@@ -98,10 +98,33 @@ impl<C: Context> Panorama<C> {
         self[vidx].correct().map_or(0, add1)
     }
 
+    /// Returns `true` if `self` sees the creator of `hash` as correct, and sees that vote.
+    pub(crate) fn sees_correct(&self, state: &State<C>, hash: &C::Hash) -> bool {
+        let vote = state.vote(hash);
+        let can_see = |latest_hash: &C::Hash| {
+            Some(hash) == state.find_in_swimlane(latest_hash, vote.seq_number)
+        };
+        self.get(vote.creator).correct().map_or(false, can_see)
+    }
+
     /// Returns whether `self` can possibly come later in time than `other`, i.e. it can see
     /// every honest message and every fault seen by `other`.
     pub(super) fn geq(&self, state: &State<C>, other: &Panorama<C>) -> bool {
         let mut pairs_iter = self.iter().zip(other);
         pairs_iter.all(|(obs_self, obs_other)| obs_self.geq(state, obs_other))
+    }
+
+    /// Returns whether `self` is valid, i.e. it contains the latest votes of some substate.
+    pub(super) fn is_valid(&self, state: &State<C>) -> bool {
+        self.enumerate().all(|(idx, observation)| {
+            match observation {
+                Observation::None => true,
+                Observation::Faulty => state.has_evidence(idx),
+                Observation::Correct(hash) => match state.opt_vote(hash) {
+                    Some(vote) => vote.creator == idx && self.geq(state, &vote.panorama),
+                    None => false, // Unknown vote. Not a substate of `state`.
+                },
+            }
+        })
     }
 }

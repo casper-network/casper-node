@@ -183,7 +183,7 @@ impl<C: Context> ActiveValidator<C> {
             && !self.is_faulty(state) // We are not faulty.
             && self.latest_vote(state)
                 .map_or(true, |vote| {
-                    !state.sees_correct(&vote.panorama, vhash)
+                    !vote.panorama.sees_correct(state, vhash)
                 }) // We haven't confirmed it already.
     }
 
