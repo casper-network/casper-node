@@ -11,6 +11,12 @@ use crate::components::consensus::{
 type Committee = Vec<ValidatorIndex>;
 
 /// A list containing the earliest level-n messages of each member of some committee, for some n.
+///
+/// A summit is a sequence of committees of validators, where each member of the level-n committee
+/// has produced a vote that can see level-(n-1) votes by a quorum of the level-n committe.
+///
+/// The level-n horizon maps each validator of a level-n committee to their earliest level-n vote.
+/// From a level-n horizon, the level-(n+1) committee and horizon can be computed.
 #[derive(Debug)]
 pub(super) struct Horizon<'a, C: Context> {
     /// Assigns to each member of a committee the sequence number of the earliest message that
