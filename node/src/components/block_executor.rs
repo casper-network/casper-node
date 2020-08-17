@@ -7,7 +7,7 @@ use std::{
 
 use derive_more::From;
 use rand::Rng;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, trace};
 
 use casperlabs_types::ProtocolVersion;
 
@@ -115,37 +115,44 @@ impl Display for Event {
     }
 }
 
-/// The Block executor component.
 #[derive(Debug)]
-pub(crate) struct BlockExecutor {
-    /// A mapping from proto block to executed block to allow identification of a parent block's
-    /// hash once a finalized block has been executed.
-    parent_map: HashMap<ProtoBlockHash, BlockHash>,
-    // NOTE: As of today state hash is kept track here without any assumption
-    // regarding process restarts etc. This may change in future.
-    /// Current post state hash.
+struct ExecutedBlockSummary {
+    hash: BlockHash,
     post_state_hash: Digest,
 }
 
+/// The Block executor component.
+#[derive(Debug, Default)]
+pub(crate) struct BlockExecutor {
+    genesis_post_state_hash: Option<Digest>,
+    /// A mapping from proto block to executed block's ID and post-state hash, to allow
+    /// identification of a parent block's details once a finalized block has been executed.
+    parent_map: HashMap<ProtoBlockHash, ExecutedBlockSummary>,
+}
+
 impl BlockExecutor {
-    pub(crate) fn new(post_state_hash: Digest) -> Self {
+    pub(crate) fn new(genesis_post_state_hash: Digest) -> Self {
         BlockExecutor {
+            genesis_post_state_hash: Some(genesis_post_state_hash),
             parent_map: HashMap::new(),
-            post_state_hash,
         }
     }
 
     /// Creates new `ExecuteRequest` from a list of deploys.
-    fn create_execute_request_from(&self, deploys: Vec<Deploy>) -> ExecuteRequest {
+    fn create_execute_request_from(
+        &self,
+        pre_state_hash: Digest,
+        timestamp: &Timestamp,
+        deploys: Vec<Deploy>,
+    ) -> ExecuteRequest {
         let deploy_items = deploys
             .into_iter()
             .map(|deploy| Ok(deploy.into()))
             .collect();
 
         ExecuteRequest::new(
-            self.post_state_hash,
-            // TODO: Use `BlockContext`'s timestamp as part of NDRS-175
-            Timestamp::now().millis(),
+            pre_state_hash,
+            timestamp.millis(),
             deploy_items,
             ProtocolVersion::V1_0_0,
         )
@@ -156,6 +163,7 @@ impl BlockExecutor {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         finalized_block: FinalizedBlock,
+        maybe_post_state_hash: Option<Digest>,
         mut execution_results: ExecutionResults,
         responder: Responder<Block>,
     ) -> Effects<Event>
@@ -177,19 +185,18 @@ impl BlockExecutor {
             }
             None => {
                 // We processed all executed deploys.
-                let block = self.create_block(finalized_block);
+                let post_state_hash =
+                    maybe_post_state_hash.unwrap_or_else(|| self.pre_state_hash(&finalized_block));
+                let block = self.create_block(finalized_block, post_state_hash);
                 trace!(?block, "all execution results processed");
                 return responder.respond(block).ignore();
             }
         };
 
         // There's something more to process.
+        let pre_state_hash = self.pre_state_hash(&finalized_block);
         effect_builder
-            .request_commit(
-                ProtocolVersion::V1_0_0,
-                self.post_state_hash,
-                effect.transforms,
-            )
+            .request_commit(ProtocolVersion::V1_0_0, pre_state_hash, effect.transforms)
             .event(|commit_result| Event::CommitExecutionEffects {
                 finalized_block,
                 commit_result,
@@ -198,16 +205,43 @@ impl BlockExecutor {
             })
     }
 
-    fn create_block(&mut self, finalized_block: FinalizedBlock) -> Block {
+    fn create_block(&mut self, finalized_block: FinalizedBlock, post_state_hash: Digest) -> Block {
         let proto_parent_hash = finalized_block.proto_block().parent_hash();
-        let parent_hash = self
+        let parent_summary = self
             .parent_map
             .remove(proto_parent_hash)
             .unwrap_or_else(|| panic!("failed to take {}", proto_parent_hash));
         let new_proto_hash = *finalized_block.proto_block().hash();
-        let block = Block::new(parent_hash, self.post_state_hash, finalized_block);
-        self.parent_map.insert(new_proto_hash, *block.hash());
+        let block = Block::new(parent_summary.hash, post_state_hash, finalized_block);
+        let summary = ExecutedBlockSummary {
+            hash: *block.hash(),
+            post_state_hash,
+        };
+        let _ = self.parent_map.insert(new_proto_hash, summary);
         block
+    }
+
+    fn pre_state_hash(&mut self, finalized_block: &FinalizedBlock) -> Digest {
+        // Try to get the parent's post-state-hash from the `parent_map`.
+        let parent_proto_hash = finalized_block.proto_block().hash();
+        if let Some(hash) = self
+            .parent_map
+            .get(parent_proto_hash)
+            .map(|summary| summary.post_state_hash)
+        {
+            return hash;
+        }
+
+        // If the proto block has a default parent hash (indicating it has no parent) assume its
+        // parent is the genesis block.
+        if *finalized_block.proto_block().parent_hash().inner() == Digest::default()
+            && self.genesis_post_state_hash.is_some()
+        {
+            return self.genesis_post_state_hash.take().unwrap();
+        }
+
+        error!(%parent_proto_hash, "failed to get pre-state-hash");
+        Digest::default()
     }
 }
 
@@ -233,7 +267,8 @@ where
                 if finalized_block.proto_block().deploys().is_empty() {
                     // No deploys - short circuit and respond straight away using current state
                     // hash.
-                    let block = self.create_block(finalized_block);
+                    let post_state_hash = self.pre_state_hash(&finalized_block);
+                    let block = self.create_block(finalized_block, post_state_hash);
                     return responder.respond(block).ignore();
                 }
 
@@ -266,7 +301,12 @@ where
                 main_responder,
             } => {
                 trace!(total = %deploys.len(), ?deploys, "fetched deploys");
-                let execute_request = self.create_execute_request_from(deploys);
+                let pre_state_hash = self.pre_state_hash(&finalized_block);
+                let execute_request = self.create_execute_request_from(
+                    pre_state_hash,
+                    finalized_block.timestamp(),
+                    deploys,
+                );
                 effect_builder
                     .request_execute(execute_request)
                     .event(move |result| Event::DeploysExecutionResult {
@@ -286,6 +326,7 @@ where
                     Ok(execution_results) => self.process_execution_results(
                         effect_builder,
                         finalized_block,
+                        None,
                         execution_results,
                         main_responder,
                     ),
@@ -302,27 +343,30 @@ where
                 results,
                 main_responder,
             } => {
-                match commit_result {
+                let post_state_hash = match commit_result {
                     Ok(CommitResult::Success {
                         state_root,
                         bonded_validators,
                     }) => {
                         debug!(?state_root, ?bonded_validators, "commit succeeded");
-                        // Update current post state hash as this will be used for next commit.
-                        self.post_state_hash = state_root;
+                        state_root
                     }
-                    Ok(result) => warn!(?result, "commit succeeded in unexpected state"),
+                    Ok(result) => {
+                        debug!(?result, "commit failed");
+                        self.pre_state_hash(&finalized_block)
+                    }
                     Err(error) => {
-                        error!(?error, "commit failed");
+                        error!(?error, "commit failed - internal contract runtime error");
                         // When commit fails we panic as well to avoid being out of sync in next
                         // block.
                         panic!("unable to commit");
                     }
-                }
+                };
 
                 self.process_execution_results(
                     effect_builder,
                     finalized_block,
+                    Some(post_state_hash),
                     results,
                     main_responder,
                 )

@@ -233,22 +233,6 @@ impl<C: Context> Highway<C> {
         }
     }
 
-    pub(crate) fn create_finality_signature(
-        &self,
-        executed_block_hash: &C::Hash,
-    ) -> Option<C::Signature> {
-        match self.active_validator.as_ref() {
-            None => {
-                error!(
-                    %executed_block_hash,
-                    "Observer node was called with `create_finality_signature` event."
-                );
-                None
-            }
-            Some(av) => Some(av.create_finality_signature(executed_block_hash)),
-        }
-    }
-
     pub(crate) fn propose(
         &mut self,
         value: C::ConsensusValue,

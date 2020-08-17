@@ -2,10 +2,7 @@ use std::{collections::BTreeMap, fmt::Debug};
 
 use anyhow::Error;
 
-use crate::{
-    components::consensus::traits::{ConsensusValueT, ValidatorSecret},
-    types::Timestamp,
-};
+use crate::{components::consensus::traits::ConsensusValueT, types::Timestamp};
 
 mod protocol_state;
 pub(crate) mod synchronizer;
@@ -67,7 +64,7 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
 }
 
 /// An API for a single instance of the consensus.
-pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID, S: ValidatorSecret> {
+pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID> {
     /// Handles an incoming message (like NewVote, RequestDependency).
     fn handle_message(
         &mut self,
@@ -88,9 +85,6 @@ pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID, S: ValidatorSecre
         block_context: BlockContext,
     ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
 
-    /// Creates a finality signature for the given block hash.
-    fn create_finality_signature(&self, executed_block_hash: &S::Hash) -> Option<S::Signature>;
-
     /// Marks the `value` as valid or invalid, based on validation requested via
     /// `ConsensusProtocolResult::ValidateConsensusvalue`.
     fn resolve_validity(
@@ -98,81 +92,4 @@ pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID, S: ValidatorSecre
         value: &C,
         valid: bool,
     ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
-}
-
-#[cfg(test)]
-mod example {
-    use serde::{Deserialize, Serialize};
-
-    use super::{
-        super::protocols::highway::HighwaySecret,
-        protocol_state::{ProtocolState, VertexTrait},
-        synchronizer::DagSynchronizerState,
-        BlockContext, ConsensusProtocol, ConsensusProtocolResult, Timestamp,
-    };
-    use crate::components::consensus::traits::{ConsensusValueT, ValidatorSecret};
-
-    #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
-    struct VIdU64(u64);
-
-    #[derive(Debug, Hash, PartialEq, Eq, Clone, Serialize, Deserialize)]
-    struct DummyVertex {
-        id: u64,
-        proto_block: ProtoBlock,
-    }
-
-    impl VertexTrait for DummyVertex {
-        type Id = VIdU64;
-        type Value = ProtoBlock;
-
-        fn id(&self) -> VIdU64 {
-            VIdU64(self.id)
-        }
-
-        fn value(&self) -> Option<&ProtoBlock> {
-            Some(&self.proto_block)
-        }
-    }
-
-    #[derive(Debug, Hash, PartialEq, Eq, Clone, Serialize, Deserialize)]
-    struct ProtoBlock(u64);
-
-    impl ConsensusValueT for ProtoBlock {
-        fn terminal(&self) -> bool {
-            false
-        }
-    }
-
-    #[derive(Debug)]
-    struct Error;
-
-    type CpResult<I> = Result<Vec<ConsensusProtocolResult<I, ProtoBlock, VIdU64>>, anyhow::Error>;
-
-    impl<I, P> ConsensusProtocol<I, ProtoBlock, VIdU64, HighwaySecret> for DagSynchronizerState<I, P>
-    where
-        P: ProtocolState,
-    {
-        fn handle_message(&mut self, _sender: I, _msg: Vec<u8>) -> CpResult<I> {
-            unimplemented!()
-        }
-
-        fn handle_timer(&mut self, _timestamp: Timestamp) -> CpResult<I> {
-            unimplemented!()
-        }
-
-        fn resolve_validity(&mut self, _value: &ProtoBlock, _valid: bool) -> CpResult<I> {
-            unimplemented!()
-        }
-
-        fn create_finality_signature(
-            &self,
-            _executed_block_hash: &<HighwaySecret as ValidatorSecret>::Hash,
-        ) -> Option<<HighwaySecret as ValidatorSecret>::Signature> {
-            unimplemented!()
-        }
-
-        fn propose(&mut self, _value: ProtoBlock, _block_context: BlockContext) -> CpResult<I> {
-            unimplemented!()
-        }
-    }
 }

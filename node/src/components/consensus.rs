@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{storage::Storage, Component},
+    crypto::asymmetric_key,
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
@@ -180,20 +181,21 @@ where
                 );
                 effects
             }
-            Event::ExecutedBlock { era_id, mut block } => match self.active_eras.get(&era_id) {
-                None => todo!("Handle missing eras."),
-                Some(consensus) => {
-                    match consensus.create_finality_signature(block.hash().inner()) {
-                        Some(signature) => {
-                            block.append_proof(signature);
-                            effect_builder
-                                .put_block_to_storage(Box::new(block))
-                                .ignore()
-                        }
-                        None => Effects::new(),
-                    }
-                }
-            },
+            Event::ExecutedBlock {
+                era_id: _,
+                mut block,
+            } => {
+                // TODO - we should only sign if we're a validator for the given era ID.
+                let signature = asymmetric_key::sign(
+                    block.hash().inner(),
+                    &self.secret_signing_key,
+                    &self.public_signing_key,
+                );
+                block.append_proof(signature);
+                effect_builder
+                    .put_block_to_storage(Box::new(block))
+                    .ignore()
+            }
             Event::AcceptProtoBlock {
                 era_id,
                 proto_block,
