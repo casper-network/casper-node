@@ -20,13 +20,15 @@ use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
 use tracing::warn;
 
-use super::{
-    evidence::Evidence,
-    validators::{ValidatorIndex, ValidatorMap},
-    vertex::{Dependency, WireVote},
-};
 use crate::{
-    components::consensus::{highway_core::vertex::SignedWireVote, traits::Context},
+    components::consensus::{
+        highway_core::{
+            evidence::Evidence,
+            highway::{Dependency, SignedWireVote, WireVote},
+            validators::{ValidatorIndex, ValidatorMap},
+        },
+        traits::Context,
+    },
     types::{TimeDiff, Timestamp},
 };
 use block::Block;

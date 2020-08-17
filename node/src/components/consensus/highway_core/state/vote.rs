@@ -3,9 +3,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::consensus::{
         highway_core::{
+            highway::SignedWireVote,
             state::{self, State},
             validators::{ValidatorIndex, ValidatorMap},
-            vertex::SignedWireVote,
         },
         traits::Context,
     },

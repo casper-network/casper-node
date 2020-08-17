@@ -13,9 +13,8 @@ use crate::{
         highway_core::{
             active_validator::Effect as AvEffect,
             finality_detector::{FinalityDetector, FinalityOutcome},
-            highway::{Highway, PreValidatedVertex, ValidVertex},
+            highway::{Dependency, Highway, PreValidatedVertex, ValidVertex, Vertex},
             validators::Validators,
-            vertex::{Dependency, Vertex},
             Weight,
         },
         traits::{Context, NodeIdT, ValidatorSecret},
