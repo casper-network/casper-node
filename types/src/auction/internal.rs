@@ -6,8 +6,9 @@ use crate::{
 };
 
 use super::{
-    providers::StorageProvider, EraId, EraValidators, ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_ID_KEY,
-    ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY,
+    providers::StorageProvider, EraId, EraValidators, SeigniorageRecipientsSnapshot,
+    ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY,
+    SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
 };
 
 fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T>
@@ -111,9 +112,28 @@ where
     Ok(read_from(provider, ERA_ID_KEY)?)
 }
 
-pub fn set_era_index<P: StorageProvider + ?Sized>(provider: &mut P, era_index: u64) -> Result<()>
+pub fn set_era_id<P: StorageProvider + ?Sized>(provider: &mut P, era_id: u64) -> Result<()>
 where
     Error: From<P::Error>,
 {
-    write_to(provider, ERA_ID_KEY, era_index)
+    write_to(provider, ERA_ID_KEY, era_id)
+}
+
+pub fn get_seigniorage_recipients_snapshot<P: StorageProvider + ?Sized>(
+    provider: &mut P,
+) -> Result<SeigniorageRecipientsSnapshot>
+where
+    Error: From<P::Error>,
+{
+    Ok(read_from(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)?)
+}
+
+pub fn set_seigniorage_recipients_snapshot<P: StorageProvider + ?Sized>(
+    provider: &mut P,
+    snapshot: SeigniorageRecipientsSnapshot,
+) -> Result<()>
+where
+    Error: From<P::Error>,
+{
+    write_to(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, snapshot)
 }

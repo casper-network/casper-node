@@ -21,6 +21,7 @@ where
     fn get_key(&mut self, name: &str) -> Option<Key> {
         self.context.named_keys_get(name).cloned()
     }
+
     fn read<T: FromBytes + CLTyped>(&mut self, uref: URef) -> Result<Option<T>, Self::Error> {
         match self.context.read_gs(&uref.into()) {
             Ok(Some(StoredValue::CLValue(cl_value))) => {
@@ -32,6 +33,7 @@ where
             Err(_) => Err(Error::Storage),
         }
     }
+
     fn write<T: ToBytes + CLTyped>(&mut self, uref: URef, value: T) -> Result<(), Self::Error> {
         let cl_value = CLValue::from_t(value).unwrap();
         self.context
@@ -46,12 +48,15 @@ where
     R::Error: Into<execution::Error>,
 {
     type Error = Error;
+
     fn create_purse(&mut self) -> URef {
         Runtime::create_purse(self).unwrap()
     }
+
     fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Self::Error> {
         Runtime::get_balance(self, purse).map_err(|_| Error::GetBalance)
     }
+
     fn transfer_from_purse_to_purse(
         &mut self,
         source: URef,

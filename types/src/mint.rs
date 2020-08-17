@@ -135,7 +135,8 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
         Ok((bond_purse, total_amount))
     }
 
-    /// Creates a new purse in unbonding_purses given a validator's key and quantity, returning the new purse's key and the quantity of motes remaining in the validator's bid purse.
+    /// Creates a new purse in unbonding_purses given a validator's key and quantity, returning
+    /// the new purse's key and the quantity of motes remaining in the validator's bid purse.
     fn unbond(&mut self, public_key: PublicKey, quantity: U512) -> Result<(URef, U512), Error> {
         let bid_purses_uref = self
             .get_key(BID_PURSES_KEY)
@@ -168,8 +169,8 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
         };
         unbonding_purses
             .entry(public_key)
-            .and_modify(|unbonding_list| unbonding_list.push(new_unbonding_purse))
-            .or_insert_with(|| [new_unbonding_purse].to_vec());
+            .or_default()
+            .push(new_unbonding_purse);
         self.write(unbonding_purses_uref, unbonding_purses)?;
 
         // Remaining motes in the validator's bid purse
@@ -177,9 +178,14 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
         Ok((unbond_purse, remaining_bond))
     }
 
-    /// In the first block of each era, the node submits a special deploy that calls this function,
-    /// decrementing the number of eras until unlock for every value in unbonding_purses.
+    /// Iterates over unbonding entries and checks if a locked amount can be paid already if
+    /// a specific era is reached.
+    ///
+    /// This entry point can be called by a system only.
     fn unbond_timer_advance(&mut self) -> Result<(), Error> {
+        if self.get_caller() != SYSTEM_ACCOUNT {
+            return Err(Error::InvalidCaller);
+        }
         let bid_purses_uref = self
             .get_key(BID_PURSES_KEY)
             .and_then(Key::into_uref)
@@ -219,8 +225,13 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
         Ok(())
     }
 
-    /// In the first block of each era, the node submits a special deploy that calls this function, decrementing the number of eras until unlock for every value in unbonding_purses.
+    /// Slashes each validator.
+    ///
+    /// This can be only invoked through as a system call.
     fn slash(&mut self, validator_public_keys: Vec<PublicKey>) -> Result<(), Error> {
+        if self.get_caller() != SYSTEM_ACCOUNT {
+            return Err(Error::InvalidCaller);
+        }
         // Present version of this document does not specify how unbonding delegators are to be
         // slashed (this will require some modifications to the spec).
         let bid_purses_uref = self

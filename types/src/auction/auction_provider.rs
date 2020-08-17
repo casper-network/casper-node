@@ -4,11 +4,12 @@ use super::{
     era_validators::ValidatorWeights,
     internal,
     providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
+    seigniorage_recipient::SeigniorageRecipients,
     EraId, EraValidators, SeigniorageRecipient, AUCTION_DELAY, AUCTION_SLOTS,
 };
 use crate::{
     account::AccountHash,
-    auction::{ActiveBid, DelegationRate, SeigniorageRecipients},
+    auction::{ActiveBid, DelegationRate},
     system_contract_errors::auction::{Error, Result},
     PublicKey, URef, U512,
 };
@@ -67,45 +68,12 @@ where
     /// this data is necessary for distributing seigniorage.
     fn read_seigniorage_recipients(&mut self) -> Result<SeigniorageRecipients> {
         // `era_validators` are assumed to be computed already by calling "run_auction" entrypoint.
-        let era_validators = internal::get_era_validators(self)?;
-
-        let founding_validators = internal::get_founding_validators(self)?;
-        let active_bids = internal::get_active_bids(self)?;
-        let mut delegators = internal::get_delegators(self)?;
-
-        let mut seigniorage_recipients = SeigniorageRecipients::new();
-
         let era_index = internal::get_era_id(self)?;
-        let last_era_validators = era_validators.get(&era_index).unwrap();
-
-        // each validator...
-        for era_validator in last_era_validators.keys() {
-            let mut seigniorage_recipient = SeigniorageRecipient::default();
-            // ... mapped to their bids
-            match (
-                founding_validators.get(era_validator),
-                active_bids.get(era_validator),
-            ) {
-                (Some(founding_validator), None) => {
-                    seigniorage_recipient.stake = founding_validator.staked_amount;
-                    seigniorage_recipient.delegation_rate = founding_validator.delegation_rate;
-                }
-                (None, Some(active_bid)) => {
-                    seigniorage_recipient.stake = active_bid.bid_amount;
-                    seigniorage_recipient.delegation_rate = active_bid.delegation_rate;
-                }
-                _ => {
-                    // It has to be either of those but can't be in both, or neither of those
-                }
-            }
-
-            if let Some(delegator_map) = delegators.remove(era_validator) {
-                seigniorage_recipient.delegators = delegator_map;
-            }
-
-            seigniorage_recipients.insert(*era_validator, seigniorage_recipient);
-        }
-
+        let mut seigniorage_recipients_snapshot =
+            internal::get_seigniorage_recipients_snapshot(self)?;
+        let seigniorage_recipients = seigniorage_recipients_snapshot
+            .remove(&era_index)
+            .unwrap_or_else(|| panic!("No seigniorage_recipients for era {}", era_index));
         Ok(seigniorage_recipients)
     }
 
@@ -281,27 +249,27 @@ where
     /// The arguments are the delegator's key, the validator key and quantity of motes.
     fn undelegate(
         &mut self,
-        delegator_account_hash: PublicKey,
-        validator_account_hash: PublicKey,
+        delegator_public_key: PublicKey,
+        validator_public_key: PublicKey,
         quantity: U512,
     ) -> Result<U512> {
         let active_bids = internal::get_active_bids(self)?;
 
-        let (_unbonding_purse, _total_amount) = self.unbond(delegator_account_hash, quantity)?;
+        let (_unbonding_purse, _total_amount) = self.unbond(delegator_public_key, quantity)?;
 
         // Return early if target validator is not in `active_bids`
         let _active_bid = active_bids
-            .get(&validator_account_hash)
+            .get(&validator_public_key)
             .ok_or(Error::ValidatorNotFound)?;
 
         let mut delegators = internal::get_delegators(self)?;
         let delegators_map = delegators
-            .get_mut(&validator_account_hash)
+            .get_mut(&validator_public_key)
             .ok_or(Error::DelegatorNotFound)?;
 
         let new_amount = {
             let amount = delegators_map
-                .get_mut(&delegator_account_hash)
+                .get_mut(&delegator_public_key)
                 .ok_or(Error::ValidatorNotFound)?;
 
             let new_amount = amount.checked_sub(quantity).ok_or(Error::InvalidQuantity)?;
@@ -312,7 +280,7 @@ where
 
         if new_amount.is_zero() {
             // Inner map's mapped value should be zero as we subtracted mutable value.
-            let _value = delegators_map.remove(&validator_account_hash).unwrap();
+            let _value = delegators_map.remove(&validator_public_key).unwrap();
             debug_assert!(_value.is_zero());
         }
 
@@ -361,10 +329,10 @@ where
         Ok(())
     }
 
-    /// This function is called by a special deploy in the booking block. Takes active_bids
-    /// and delegators to construct a list of validators' total bids (their own added to
-    /// their delegators') ordered by size from largest to smallest, then takes the top N
-    /// (number of auction slots) bidders and replaced era_validators with these.
+    /// Takes active_bids and delegators to construct a list of validators' total bids
+    /// (their own added to their delegators') ordered by size from largest to smallest,
+    /// then takes the top N (number of auction slots) bidders and replaced
+    /// era_validators with these.
     ///
     /// Accessed by: node
     fn run_auction(&mut self) -> Result<()> {
@@ -388,12 +356,11 @@ where
         };
 
         // Prepare two iterables containing account hashes with their amounts.
-        let active_bids_scores =
-            active_bids
-                .into_iter()
-                .map(|(validator_account_hash, active_bid)| {
-                    (validator_account_hash, active_bid.bid_amount)
-                });
+        let active_bids_scores = active_bids
+            .iter()
+            .map(|(validator_account_hash, active_bid)| {
+                (*validator_account_hash, active_bid.bid_amount)
+            });
 
         // Non-winning validators are taken care of later
         let founding_validators_scores = founding_validators
@@ -426,18 +393,62 @@ where
         let remaining_auction_slots = AUCTION_SLOTS.saturating_sub(validator_weights.len());
         validator_weights.extend(scores.into_iter().take(remaining_auction_slots));
 
-        let mut era_index = internal::get_era_id(self)?;
+        let mut era_id = internal::get_era_id(self)?;
 
         let mut era_validators = internal::get_era_validators(self)?;
 
         // Era index is assumed to be equal to era id on the consensus side.
-        era_index += 1;
+        era_id += 1;
 
-        // Index for next set of validators: `era_index + 1 + AUCTION_DELAY`
-        assert!(!era_validators.contains_key(&(era_index + AUCTION_DELAY)));
-        era_validators.insert(era_index + AUCTION_DELAY, validator_weights);
+        let next_era_id = era_id + AUCTION_DELAY;
 
-        internal::set_era_index(self, era_index)?;
+        //
+        // Compute seiginiorage recipients for current era
+        //
+        let mut delegators = internal::get_delegators(self)?;
+        let mut seigniorage_recipients_snapshot =
+            internal::get_seigniorage_recipients_snapshot(self)?;
+        let mut seigniorage_recipients = SeigniorageRecipients::new();
+
+        // for each validator...
+        for era_validator in validator_weights.keys() {
+            let mut seigniorage_recipient = SeigniorageRecipient::default();
+            // ... mapped to their bids
+            match (
+                founding_validators.get(era_validator),
+                active_bids.get(era_validator),
+            ) {
+                (Some(founding_validator), None) => {
+                    seigniorage_recipient.stake = founding_validator.staked_amount;
+                    seigniorage_recipient.delegation_rate = founding_validator.delegation_rate;
+                }
+                (None, Some(active_bid)) => {
+                    seigniorage_recipient.stake = active_bid.bid_amount;
+                    seigniorage_recipient.delegation_rate = active_bid.delegation_rate;
+                }
+                _ => {
+                    // It has to be either of those but can't be in both, or neither of those
+                }
+            }
+
+            if let Some(delegator_map) = delegators.remove(era_validator) {
+                seigniorage_recipient.delegators = delegator_map;
+            }
+
+            seigniorage_recipients.insert(*era_validator, seigniorage_recipient);
+        }
+        let previous_seigniorage_recipients =
+            seigniorage_recipients_snapshot.insert(next_era_id, seigniorage_recipients);
+        assert!(previous_seigniorage_recipients.is_none());
+
+        internal::set_seigniorage_recipients_snapshot(self, seigniorage_recipients_snapshot)?;
+
+        // Index for next set of validators: `era_id + AUCTION_DELAY`
+        let previous_era_validators =
+            era_validators.insert(era_id + AUCTION_DELAY, validator_weights);
+        assert!(previous_era_validators.is_none());
+
+        internal::set_era_id(self, era_id)?;
 
         internal::set_era_validators(self, era_validators)
     }

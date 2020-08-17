@@ -59,3 +59,5 @@ pub const DELEGATORS_KEY: &str = "delegators";
 pub const ERA_VALIDATORS_KEY: &str = "era_validators";
 /// Storage for `EraId`.
 pub const ERA_ID_KEY: &str = "era_id";
+/// Storage for `SeigniorageRecipientsSnapshot`.
+pub const SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY: &str = "seigniorage_recipients_snapshot";

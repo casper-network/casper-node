@@ -1,6 +1,6 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use super::{types::DelegationRate, DelegatedAmounts};
+use super::{types::DelegationRate, DelegatedAmounts, EraId};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     CLType, CLTyped, PublicKey, U512,
@@ -8,11 +8,11 @@ use crate::{
 
 /// The seigniorage recipient details.
 #[cfg_attr(test, derive(Debug))]
-#[derive(Default, PartialEq)]
+#[derive(Default, PartialEq, Clone)]
 pub struct SeigniorageRecipient {
     /// Total staked amounts
     pub stake: U512,
-    /// Accumulated delegation rates.
+    /// Delegation rate of a seigniorage recipient.
     pub delegation_rate: DelegationRate,
     /// List of delegators and their accumulated bids.
     pub delegators: DelegatedAmounts,
@@ -58,6 +58,9 @@ impl FromBytes for SeigniorageRecipient {
 
 /// Collection of seigniorage recipients.
 pub type SeigniorageRecipients = BTreeMap<PublicKey, SeigniorageRecipient>;
+
+/// Snapshot of `SeigniorageRecipients` for a given era.
+pub type SeigniorageRecipientsSnapshot = BTreeMap<EraId, SeigniorageRecipients>;
 
 #[cfg(test)]
 mod tests {

@@ -2053,35 +2053,26 @@ where
             }
 
             auction::METHOD_DELEGATE => {
-                let delegator_account_hash =
-                    Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
+                let delegator = Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
                 let source_purse =
                     Self::get_named_argument(&runtime_args, auction::ARG_SOURCE_PURSE)?;
-                let validator_account_hash =
-                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
+                let validator = Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
                 let quantity = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = self
-                    .delegate(
-                        delegator_account_hash,
-                        source_purse,
-                        validator_account_hash,
-                        quantity,
-                    )
+                    .delegate(delegator, source_purse, validator, quantity)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
 
             auction::METHOD_UNDELEGATE => {
-                let delegator_account_hash =
-                    Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
-                let validator_account_hash =
-                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
+                let delegator = Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
+                let validator = Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
                 let quantity = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = self
-                    .undelegate(delegator_account_hash, validator_account_hash, quantity)
+                    .undelegate(delegator, validator, quantity)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)?

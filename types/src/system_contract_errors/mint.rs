@@ -44,6 +44,9 @@ pub enum Error {
     /// Validator is not not bonded.
     #[fail(display = "Validator's bond not found")]
     BondNotFound = 9,
+    /// Called when caller is not a system account.
+    #[fail(display = "Not a system account")]
+    InvalidCaller = 10,
 }
 
 impl From<PurseError> for Error {

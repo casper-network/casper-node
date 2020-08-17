@@ -53,14 +53,14 @@ fn bond() {
     system::transfer_from_purse_to_purse(account::get_main_purse(), bonding_purse, amount)
         .unwrap_or_revert();
 
-    bonding(mint_contract_hash, public_key, amount, bonding_purse);
+    call_bond(mint_contract_hash, public_key, amount, bonding_purse);
 }
 
 fn bond_from_main_purse() {
     let mint_contract_hash = system::get_mint();
     let amount = runtime::get_named_arg(ARG_AMOUNT);
     let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
-    bonding(
+    call_bond(
         mint_contract_hash,
         public_key,
         amount,
@@ -68,7 +68,7 @@ fn bond_from_main_purse() {
     );
 }
 
-fn bonding(mint: ContractHash, public_key: PublicKey, bond_amount: U512, bonding_purse: URef) {
+fn call_bond(mint: ContractHash, public_key: PublicKey, bond_amount: U512, bonding_purse: URef) {
     let args = runtime_args! {
         ARG_AMOUNT => bond_amount,
         ARG_PURSE => bonding_purse,
@@ -82,10 +82,10 @@ fn unbond() {
     let mint_contract_hash = system::get_mint();
     let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
     let public_key: PublicKey = runtime::get_named_arg(ARG_PUBLIC_KEY);
-    unbonding(mint_contract_hash, public_key, amount);
+    call_unbond(mint_contract_hash, public_key, amount);
 }
 
-fn unbonding(mint: ContractHash, public_key: PublicKey, unbond_amount: U512) -> (URef, U512) {
+fn call_unbond(mint: ContractHash, public_key: PublicKey, unbond_amount: U512) -> (URef, U512) {
     let args = runtime_args! {
         ARG_AMOUNT => unbond_amount,
         ARG_PUBLIC_KEY => public_key,

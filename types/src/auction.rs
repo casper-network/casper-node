@@ -17,5 +17,7 @@ pub use delegator::{DelegatedAmounts, Delegators};
 pub use era_validators::{EraId, EraValidators, ValidatorWeights};
 pub use founding_validator::{FoundingValidator, FoundingValidators};
 pub use providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvider};
-pub use seigniorage_recipient::{SeigniorageRecipient, SeigniorageRecipients};
+pub use seigniorage_recipient::{
+    SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
+};
 pub use types::DelegationRate;

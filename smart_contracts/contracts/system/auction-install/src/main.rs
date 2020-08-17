@@ -11,7 +11,9 @@ use casperlabs_contract::{
 use casperlabs_types::{
     auction::{
         ActiveBids, Delegators, EraValidators, FoundingValidator, FoundingValidators,
+        SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
         ValidatorWeights, AUCTION_DELAY, ERA_ID_KEY, INITIAL_ERA_ID,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
     auction::{ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY},
     contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
@@ -25,6 +27,19 @@ const ACCESS_KEY_NAME: &str = "auction_access";
 const ENTRY_POINT_MINT: &str = "mint";
 const ARG_AMOUNT: &str = "amount";
 const ARG_GENESIS_VALIDATORS: &str = "genesis_validators";
+
+fn compute_seigniorage_recipients(
+    founding_validators: &FoundingValidators,
+) -> SeigniorageRecipients {
+    let mut seigniorage_recipients = SeigniorageRecipients::default();
+    for (era_validator, founding_validator) in founding_validators {
+        let mut seigniorage_recipient = SeigniorageRecipient::default();
+        seigniorage_recipient.stake = founding_validator.staked_amount;
+        seigniorage_recipient.delegation_rate = founding_validator.delegation_rate;
+        seigniorage_recipients.insert(*era_validator, seigniorage_recipient);
+    }
+    seigniorage_recipients
+}
 
 #[no_mangle]
 pub extern "C" fn install() {
@@ -54,14 +69,26 @@ pub extern "C" fn install() {
             initial_validator_weights.insert(validator_account_hash, amount);
         }
 
+        let initial_snapshot_range = INITIAL_ERA_ID..=INITIAL_ERA_ID + AUCTION_DELAY;
+
         // Starting era validators
         named_keys.insert(ERA_ID_KEY.into(), storage::new_uref(INITIAL_ERA_ID).into());
 
         let mut era_validators = EraValidators::new();
-        for era_index in INITIAL_ERA_ID..INITIAL_ERA_ID + AUCTION_DELAY {
+        for era_index in initial_snapshot_range.clone() {
             era_validators.insert(era_index, initial_validator_weights.clone());
         }
 
+        let seigniorage_recipients = compute_seigniorage_recipients(&founding_validators);
+
+        let mut initial_seigniorage_recipients = SeigniorageRecipientsSnapshot::new();
+        for era_id in initial_snapshot_range {
+            initial_seigniorage_recipients.insert(era_id, seigniorage_recipients.clone());
+        }
+        named_keys.insert(
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.into(),
+            storage::new_uref(initial_seigniorage_recipients).into(),
+        );
         named_keys.insert(
             FOUNDING_VALIDATORS_KEY.into(),
             storage::new_uref(founding_validators).into(),

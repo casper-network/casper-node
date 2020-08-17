@@ -27,6 +27,7 @@ use casperlabs_types::{
     mint::{UnbondingPurses, DEFAULT_UNBONDING_DELAY},
     runtime_args, CLTyped, ContractHash, RuntimeArgs, U512,
 };
+use std::iter::FromIterator;
 
 const ARG_ENTRY_POINT: &str = "entry_point";
 
@@ -473,7 +474,16 @@ fn should_calculate_era_validators() {
 
     let era_validators: EraValidators = get_value(&mut builder, auction_hash, "era_validators");
 
-    let consensus_next_era_id: EraId = AUCTION_DELAY + post_era_id;
+    // Check if there are no missing eras after the calculation, but we don't care about what the elements are
+    let eras = Vec::from_iter(era_validators.keys().copied());
+    assert!(!era_validators.is_empty());
+    assert!(era_validators.len() >= AUCTION_DELAY as usize); // definetely more than 1 element
+    let (first_era, _) = era_validators.iter().min().unwrap();
+    let (last_era, _) = era_validators.iter().max().unwrap();
+    let expected_eras: Vec<EraId> = (*first_era..=*last_era).collect();
+    assert_eq!(eras, expected_eras, "Eras {:?}", eras);
+
+    let consensus_next_era_id: EraId = AUCTION_DELAY + 1 + post_era_id;
 
     assert_eq!(
         era_validators.len(),
@@ -484,11 +494,11 @@ fn should_calculate_era_validators() {
     ); // eraindex==1 - ran once
 
     let validator_weights = era_validators
-        .get(&consensus_next_era_id)
+        .get(&(consensus_next_era_id - 1)) // indexed from 0
         .unwrap_or_else(|| {
             panic!(
                 "should have era_index=={} entry {:?}",
-                post_era_id, era_validators
+                consensus_next_era_id, era_validators
             )
         });
     assert_eq!(
@@ -555,8 +565,20 @@ fn should_get_first_seigniorage_recipients() {
 
     builder.exec(transfer_request_1).commit().expect_success();
 
-    // non-founding validator request
+    // run_auction should be executed first
     let exec_request_1 = ExecuteRequestBuilder::standard(
+        SYSTEM_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_ENTRY_POINT => ARG_RUN_AUCTION,
+        },
+    )
+    .build();
+
+    builder.exec(exec_request_1).commit().expect_success();
+
+    // read seigniorage recipients
+    let exec_request_2 = ExecuteRequestBuilder::standard(
         SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
@@ -565,7 +587,7 @@ fn should_get_first_seigniorage_recipients() {
     )
     .build();
 
-    builder.exec(exec_request_1).commit().expect_success();
+    builder.exec(exec_request_2).commit().expect_success();
 
     let account = builder.get_account(SYSTEM_ADDR).unwrap();
     let key = account
@@ -585,7 +607,7 @@ fn should_get_first_seigniorage_recipients() {
     let era_validators: EraValidators = get_value(&mut builder, auction_hash, "era_validators");
     assert_eq!(
         era_validators.len(),
-        AUCTION_DELAY as usize,
+        AUCTION_DELAY as usize + 2, // 1 because `0..AUCTION_DELAY` is an inclusive range and +1 because one `run_auction` was ran
         "{:?}",
         era_validators
     ); // eraindex==1 - ran once

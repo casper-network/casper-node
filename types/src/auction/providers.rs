@@ -43,7 +43,7 @@ pub trait MintProvider {
     fn unbond(&mut self, public_key: PublicKey, amount: U512) -> Result<(URef, U512), Self::Error>;
 }
 
-/// Provides functionality of a system.
+/// Provides functionality of a system module.
 pub trait SystemProvider {
     /// Error representation for system errors.
     type Error: From<Error>;
