@@ -1,9 +1,15 @@
+mod block;
+mod tallies;
+mod vote;
+
+pub(super) use vote::{Observation, Panorama, Vote};
+
 use std::{
     borrow::Borrow,
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet, HashMap},
     convert::identity,
-    iter,
+    iter::{self, Sum},
     ops::{Div, Mul, RangeBounds},
 };
 
@@ -12,21 +18,21 @@ use itertools::Itertools;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
+use tracing::warn;
 
-use super::{
-    block::Block,
-    evidence::Evidence,
-    tallies::Tallies,
-    validators::{ValidatorIndex, ValidatorMap},
-    vertex::{Dependency, WireVote},
-    vote::{Observation, Panorama, Vote},
-};
 use crate::{
-    components::consensus::{highway_core::vertex::SignedWireVote, traits::Context},
+    components::consensus::{
+        highway_core::{
+            evidence::Evidence,
+            highway::{Dependency, SignedWireVote, WireVote},
+            validators::{ValidatorIndex, ValidatorMap},
+        },
+        traits::Context,
+    },
     types::{TimeDiff, Timestamp},
 };
-use iter::Sum;
-use tracing::warn;
+use block::Block;
+use tallies::Tallies;
 
 /// A vote weight.
 #[derive(

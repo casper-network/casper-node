@@ -1,11 +1,14 @@
 use serde::{Deserialize, Serialize};
 
-use super::{
-    state::{self, State},
-    validators::{ValidatorIndex, ValidatorMap},
-};
 use crate::{
-    components::consensus::{highway_core::vertex::SignedWireVote, traits::Context},
+    components::consensus::{
+        highway_core::{
+            highway::SignedWireVote,
+            state::{self, State},
+            validators::{ValidatorIndex, ValidatorMap},
+        },
+        traits::Context,
+    },
     types::Timestamp,
 };
 use std::fmt::Debug;

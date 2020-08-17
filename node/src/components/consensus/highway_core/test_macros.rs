@@ -4,7 +4,7 @@
 /// to `Correct` observations.
 macro_rules! panorama {
     ($($obs:expr),*) => {{
-        use crate::components::consensus::highway_core::vote::Panorama;
+        use crate::components::consensus::highway_core::state::Panorama;
 
         Panorama::from(vec![$($obs.into()),*])
     }};
@@ -20,7 +20,7 @@ macro_rules! add_vote {
         use crate::{
             components::consensus::highway_core::{
                 state::{self, tests::TestSecret},
-                vertex::{SignedWireVote, WireVote},
+                highway::{SignedWireVote, WireVote},
             },
             types::{TimeDiff, Timestamp},
         };
@@ -65,7 +65,7 @@ macro_rules! add_vote {
     ($state: ident, $creator: expr, $time: expr, $round_exp: expr, $val: expr; $($obs:expr),*) => {{
         use crate::components::consensus::highway_core::{
             state::tests::TestSecret,
-            vertex::{SignedWireVote, WireVote},
+            highway::{SignedWireVote, WireVote},
         };
 
         let creator = $creator;

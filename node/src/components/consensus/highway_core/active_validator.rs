@@ -3,16 +3,14 @@ use std::fmt::{self, Debug};
 use tracing::warn;
 
 use super::{
-    highway::ValidVertex,
-    state::{self, State},
+    highway::{ValidVertex, Vertex, WireVote},
+    state::{self, Observation, Panorama, State, Vote},
     validators::ValidatorIndex,
-    vertex::{Vertex, WireVote},
-    vote::{Observation, Panorama, Vote},
 };
 
 use crate::{
     components::consensus::{
-        consensus_protocol::BlockContext, highway_core::vertex::SignedWireVote, traits::Context,
+        consensus_protocol::BlockContext, highway_core::highway::SignedWireVote, traits::Context,
     },
     types::{TimeDiff, Timestamp},
 };
@@ -303,9 +301,8 @@ mod tests {
         super::{
             finality_detector::FinalityDetector,
             state::{tests::*, Weight},
-            vertex::Vertex,
         },
-        *,
+        Vertex, *,
     };
 
     type Eff = Effect<TestContext>;
