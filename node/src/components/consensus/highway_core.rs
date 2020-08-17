@@ -36,15 +36,11 @@ pub(crate) mod active_validator;
 pub(crate) mod finality_detector;
 pub(crate) mod highway;
 pub(crate) mod validators;
-pub(crate) mod vertex;
 
-mod block;
 mod evidence;
 #[cfg(test)]
 #[allow(unused)]
 mod highway_testing;
 mod state;
-mod tallies;
-mod vote;
 
 pub(crate) use state::Weight;

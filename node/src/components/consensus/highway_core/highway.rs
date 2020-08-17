@@ -1,15 +1,19 @@
+mod vertex;
+
+pub(crate) use vertex::{Dependency, SignedWireVote, Vertex, WireVote};
+
 use thiserror::Error;
 use tracing::{error, warn};
 
-use super::{
-    active_validator::{ActiveValidator, Effect},
-    state::{State, VoteError},
-    validators::{Validator, Validators},
-    vertex::{Dependency, Vertex},
-};
 use crate::{
     components::consensus::{
-        consensus_protocol::BlockContext, highway_core::vertex::SignedWireVote, traits::Context,
+        consensus_protocol::BlockContext,
+        highway_core::{
+            active_validator::{ActiveValidator, Effect},
+            state::{State, VoteError},
+            validators::{Validator, Validators},
+        },
+        traits::Context,
     },
     types::Timestamp,
 };
@@ -162,7 +166,7 @@ impl<C: Context> Highway<C> {
     pub(crate) fn missing_dependency(&self, pvv: &PreValidatedVertex<C>) -> Option<Dependency<C>> {
         match pvv.vertex() {
             Vertex::Evidence(_) => None,
-            Vertex::Vote(vote) => self.state.missing_dependency(&vote.wire_vote.panorama),
+            Vertex::Vote(vote) => vote.wire_vote.panorama.missing_dependency(&self.state),
         }
     }
 
@@ -318,16 +322,14 @@ pub(crate) mod tests {
     use crate::{
         components::consensus::{
             highway_core::{
-                highway::{Highway, VertexError, VoteError},
+                highway::{Highway, SignedWireVote, Vertex, VertexError, VoteError, WireVote},
                 state::{
                     tests::{
                         TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC, WEIGHTS,
                     },
-                    State,
+                    Panorama, State,
                 },
                 validators::Validators,
-                vertex::{SignedWireVote, Vertex, WireVote},
-                vote::Panorama,
             },
             traits::ValidatorSecret,
         },

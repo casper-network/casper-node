@@ -17,9 +17,8 @@ use super::{
     active_validator::Effect,
     evidence::Evidence,
     finality_detector::{FinalityDetector, FinalityOutcome},
-    highway::{Highway, PreValidatedVertex, ValidVertex, VertexError},
+    highway::{Dependency, Highway, PreValidatedVertex, ValidVertex, Vertex, VertexError},
     validators::{ValidatorIndex, Validators},
-    vertex::{Dependency, Vertex},
     Weight,
 };
 use crate::{
@@ -1065,7 +1064,7 @@ mod test_harness {
     };
     use crate::{
         components::consensus::{
-            highway_core::{validators::ValidatorIndex, vertex::Vertex},
+            highway_core::{highway::Vertex, validators::ValidatorIndex},
             tests::consensus_des_testing::{Fault, ValidatorId},
             traits::{Context, ValidatorSecret},
         },

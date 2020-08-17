@@ -150,17 +150,15 @@ where
         };
 
         let instance_id = hash::hash(format!("Highway era {}", era_id.0));
-        let secret = HighwaySecret::new(
-            Rc::clone(&self.secret_signing_key),
-            self.public_signing_key.clone(),
-        );
+        let secret =
+            HighwaySecret::new(Rc::clone(&self.secret_signing_key), self.public_signing_key);
         let ftt =
             validators.total_weight() * u64::from(highway_config.finality_threshold_percent) / 100;
         let (highway, effects) = HighwayProtocol::<I, HighwayContext>::new(
             instance_id,
             validators,
             0, // TODO: get a proper seed ?
-            self.public_signing_key.clone(),
+            self.public_signing_key,
             secret,
             highway_config.minimum_round_exponent,
             ftt,
