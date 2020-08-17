@@ -112,7 +112,7 @@ impl<C: Context> ActiveValidator<C> {
             let bctx = BlockContext::new(timestamp);
             effects.push(Effect::RequestNewBlock(bctx));
         } else if timestamp == r_id + self.witness_offset(r_len) {
-            let panorama = state.panorama_cutoff(state.panorama(), timestamp);
+            let panorama = state.panorama().cutoff(state, timestamp);
             if panorama.has_correct() {
                 let witness_vote = self.new_vote(panorama, timestamp, None, state);
                 effects.push(Effect::NewVertex(ValidVertex(Vertex::Vote(witness_vote))))
@@ -157,7 +157,7 @@ impl<C: Context> ActiveValidator<C> {
             warn!("Creator knows it's faulty. Won't create a message.");
             return vec![];
         }
-        let panorama = state.panorama_cutoff(state.panorama(), timestamp);
+        let panorama = state.panorama().cutoff(state, timestamp);
         let proposal_vote = self.new_vote(panorama, timestamp, Some(value), state);
         vec![Effect::NewVertex(ValidVertex(Vertex::Vote(proposal_vote)))]
     }

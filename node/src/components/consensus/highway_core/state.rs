@@ -337,20 +337,6 @@ impl<C: Context> State<C> {
         self.find_ancestor(&block.skip_idx[i], height)
     }
 
-    /// Returns the panorama seeing all votes seen by `pan` with a timestamp no later than
-    /// `timestamp`. Accusations are preserved regardless of the evidence's timestamp.
-    pub(crate) fn panorama_cutoff(&self, pan: &Panorama<C>, timestamp: Timestamp) -> Panorama<C> {
-        let obs_cutoff = |obs: &Observation<C>| match obs {
-            Observation::Correct(vhash) => self
-                .swimlane(vhash)
-                .find(|(_, vote)| vote.timestamp <= timestamp)
-                .map(|(vh, _)| vh.clone())
-                .map_or(Observation::None, Observation::Correct),
-            obs @ Observation::None | obs @ Observation::Faulty => obs.clone(),
-        };
-        Panorama::from(pan.iter().map(obs_cutoff).collect_vec())
-    }
-
     /// Returns an error if `swvote` is invalid. This can be called even if the dependencies are
     /// not present yet.
     pub(crate) fn pre_validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {

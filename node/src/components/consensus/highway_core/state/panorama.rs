@@ -1,13 +1,17 @@
 use std::fmt::Debug;
 
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
-use crate::components::consensus::{
-    highway_core::{
-        state::State,
-        validators::{ValidatorIndex, ValidatorMap},
+use crate::{
+    components::consensus::{
+        highway_core::{
+            state::State,
+            validators::{ValidatorIndex, ValidatorMap},
+        },
+        traits::Context,
     },
-    traits::Context,
+    types::Timestamp,
 };
 
 /// The observed behavior of a validator at some point in time.
@@ -116,8 +120,22 @@ impl<C: Context> Panorama<C> {
             (Observation::Correct(vh0), obs1) if other.sees_correct(state, vh0) => obs1.clone(),
             (Observation::Correct(_), Observation::Correct(_)) => Observation::Faulty,
         };
-        let observations: Vec<_> = self.iter().zip(other).map(merge_obs).collect();
+        let observations = self.iter().zip(other).map(merge_obs).collect_vec();
         Panorama::from(observations)
+    }
+
+    /// Returns the panorama seeing all votes seen by `self` with a timestamp no later than
+    /// `timestamp`. Accusations are preserved regardless of the evidence's timestamp.
+    pub(crate) fn cutoff(&self, state: &State<C>, timestamp: Timestamp) -> Panorama<C> {
+        let obs_cutoff = |obs: &Observation<C>| match obs {
+            Observation::Correct(vhash) => state
+                .swimlane(vhash)
+                .find(|(_, vote)| vote.timestamp <= timestamp)
+                .map(|(vh, _)| vh.clone())
+                .map_or(Observation::None, Observation::Correct),
+            obs @ Observation::None | obs @ Observation::Faulty => obs.clone(),
+        };
+        Panorama::from(self.iter().map(obs_cutoff).collect_vec())
     }
 
     /// Returns whether `self` can possibly come later in time than `other`, i.e. it can see
