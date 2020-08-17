@@ -71,13 +71,13 @@ impl<C: Context> ActiveValidator<C> {
         timestamp: Timestamp,
         state: &State<C>,
     ) -> (Self, Vec<Effect<C>>) {
-        if next_round_exp < state.min_round_exp() {
+        if next_round_exp < state.params().min_round_exp() {
             warn!(
                 "using minimum value {} instead of round exponent {}",
-                state.min_round_exp(),
+                state.params().min_round_exp(),
                 next_round_exp,
             );
-            next_round_exp = state.min_round_exp();
+            next_round_exp = state.params().min_round_exp();
         }
         let mut av = ActiveValidator {
             vidx,
@@ -108,7 +108,7 @@ impl<C: Context> ActiveValidator<C> {
         let r_exp = self.round_exp(state, timestamp);
         let r_id = state::round_id(timestamp, r_exp);
         let r_len = state::round_len(r_exp);
-        if timestamp == r_id && state.leader(r_id) == self.vidx {
+        if timestamp == r_id && state.params().leader(r_id) == self.vidx {
             let bctx = BlockContext::new(timestamp);
             effects.push(Effect::RequestNewBlock(bctx));
         } else if timestamp == r_id + self.witness_offset(r_len) {
@@ -176,7 +176,7 @@ impl<C: Context> ActiveValidator<C> {
         }
         let r_exp = self.round_exp(state, timestamp);
         timestamp >> r_exp == vote.timestamp >> r_exp // Current round.
-            && state.leader(vote.timestamp) == vote.creator // The creator is the round's leader.
+            && state.params().leader(vote.timestamp) == vote.creator // The creator is the round's leader.
             && vote.timestamp == state::round_id(vote.timestamp, vote.round_exp) // Check if it's a lambda message.
             && vote.creator != self.vidx // We didn't send it ourselves.
             && !state.has_evidence(vote.creator) // The creator is not faulty.
@@ -241,7 +241,7 @@ impl<C: Context> ActiveValidator<C> {
             r_id + self.witness_offset(r_len)
         } else {
             let next_r_id = r_id + r_len;
-            if state.leader(next_r_id) == self.vidx {
+            if state.params().leader(next_r_id) == self.vidx {
                 next_r_id
             } else {
                 let next_r_exp = self.round_exp(state, next_r_id);
@@ -334,8 +334,8 @@ mod tests {
 
         // We start at time 410, with round length 16, so the first leader tick is 416, and the
         // first witness tick 426.
-        assert_eq!(ALICE, state.leader(416.into())); // Alice will be the first leader.
-        assert_eq!(BOB, state.leader(432.into())); // Bob will be the second leader.
+        assert_eq!(ALICE, state.params().leader(416.into())); // Alice will be the first leader.
+        assert_eq!(BOB, state.params().leader(432.into())); // Bob will be the second leader.
         let (mut alice_av, effects) =
             ActiveValidator::new(ALICE, TestSecret(0), 4, 410.into(), &state);
         assert_eq!([Eff::ScheduleTimer(416.into())], *effects);

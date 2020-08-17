@@ -30,7 +30,7 @@ macro_rules! add_vote {
         let seq_number = panorama.next_seq_num(&$state, creator);
         // Use our most recent round exponent, or the configured minimum.
         let round_exp = panorama[creator].correct().map_or_else(
-            || $state.min_round_exp(),
+            || $state.params().min_round_exp(),
             |vh| $state.vote(vh).round_exp,
         );
         let value = Option::from($val);
@@ -42,7 +42,7 @@ macro_rules! add_vote {
         let timestamp = if value.is_some() {
             // This is a block: Find the next time we're a leader.
             let mut time = state::round_id(min_time, round_exp);
-            while time < min_time || $state.leader(time) != creator {
+            while time < min_time || $state.params().leader(time) != creator {
                 time += TimeDiff::from(1 << round_exp);
             }
             time
