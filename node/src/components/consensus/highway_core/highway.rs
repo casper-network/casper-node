@@ -322,11 +322,10 @@ pub(crate) mod tests {
                     tests::{
                         TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC, WEIGHTS,
                     },
-                    State,
+                    Panorama, State,
                 },
                 validators::Validators,
                 vertex::{SignedWireVote, Vertex, WireVote},
-                vote::Panorama,
             },
             traits::ValidatorSecret,
         },

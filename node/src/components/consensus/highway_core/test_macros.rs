@@ -4,7 +4,7 @@
 /// to `Correct` observations.
 macro_rules! panorama {
     ($($obs:expr),*) => {{
-        use crate::components::consensus::highway_core::vote::Panorama;
+        use crate::components::consensus::highway_core::state::Panorama;
 
         Panorama::from(vec![$($obs.into()),*])
     }};

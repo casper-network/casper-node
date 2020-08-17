@@ -7,9 +7,8 @@ use itertools::Itertools;
 
 use super::{
     highway::Highway,
-    state::{self, State, Weight},
+    state::{self, Observation, Panorama, State, Vote, Weight},
     validators::{ValidatorIndex, ValidatorMap},
-    vote::{Observation, Panorama, Vote},
 };
 use crate::{components::consensus::traits::Context, types::Timestamp};
 

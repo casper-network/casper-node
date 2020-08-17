@@ -4,10 +4,9 @@ use tracing::warn;
 
 use super::{
     highway::ValidVertex,
-    state::{self, State},
+    state::{self, Observation, Panorama, State, Vote},
     validators::ValidatorIndex,
     vertex::{Vertex, WireVote},
-    vote::{Observation, Panorama, Vote},
 };
 
 use crate::{
