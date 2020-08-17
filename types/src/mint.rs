@@ -182,7 +182,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
     /// a specific era is reached.
     ///
     /// This entry point can be called by a system only.
-    fn unbond_timer_advance(&mut self) -> Result<(), Error> {
+    fn process_unbond_requests(&mut self) -> Result<(), Error> {
         if self.get_caller() != SYSTEM_ACCOUNT {
             return Err(Error::InvalidCaller);
         }
@@ -209,7 +209,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
                 let bid_purse = bid_purses
                     .get(&unbonding_purse.origin)
                     .ok_or(Error::BondNotFound)?;
-                // Since `unbond_timer_advance` is run before `run_auction`, so we should check
+                // Since `process_unbond_requests` is run before `run_auction`, so we should check
                 // if current era id is equal or greater than the `era_of_withdrawal` that was
                 // calculated on `unbond` attempt.
                 if current_era_id >= unbonding_purse.era_of_withdrawal as u64 {

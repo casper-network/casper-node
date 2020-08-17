@@ -158,7 +158,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     let exec_request_3 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,
         mint,
-        "unbond_timer_advance",
+        "process_unbond_requests",
         runtime_args! {},
     )
     .build();
@@ -433,7 +433,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
     let exec_request_3 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,
         mint,
-        "unbond_timer_advance",
+        "process_unbond_requests",
         runtime_args! {},
     )
     .build();
@@ -496,7 +496,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
     let exec_request_4 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,
         mint,
-        "unbond_timer_advance",
+        "process_unbond_requests",
         runtime_args! {},
     )
     .build();

@@ -45,8 +45,8 @@ pub extern "C" fn unbond() {
 }
 
 #[no_mangle]
-pub extern "C" fn unbond_timer_advance() {
-    mint_token::unbond_timer_advance();
+pub extern "C" fn process_unbond_requests() {
+    mint_token::process_unbond_requests();
 }
 
 #[no_mangle]

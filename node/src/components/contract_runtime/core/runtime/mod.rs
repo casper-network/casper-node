@@ -1688,7 +1688,7 @@ where
         const METHOD_TRANSFER: &str = "transfer";
         const METHOD_BOND: &str = "bond";
         const METHOD_UNBOND: &str = "unbond";
-        const METHOD_UNBOND_TIMER_ADVANCE: &str = "unbond_timer_advance";
+        const METHOD_PROCESS_UNBOND_REQUESTS: &str = "process_unbond_requests";
         const METHOD_SLASH: &str = "slash";
         const ARG_AMOUNT: &str = "amount";
         const ARG_PUBLIC_KEY: &str = "public_key";
@@ -1791,10 +1791,10 @@ where
                     .map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
-            // Type: `fn unbond_timer_advance() -> Result<(), Error>`
-            METHOD_UNBOND_TIMER_ADVANCE => {
+            // Type: `fn process_unbond_requests() -> Result<(), Error>`
+            METHOD_PROCESS_UNBOND_REQUESTS => {
                 mint_runtime
-                    .unbond_timer_advance()
+                    .process_unbond_requests()
                     .map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)?
             }

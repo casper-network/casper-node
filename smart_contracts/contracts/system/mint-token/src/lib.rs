@@ -26,7 +26,7 @@ pub const METHOD_BALANCE: &str = "balance";
 pub const METHOD_TRANSFER: &str = "transfer";
 pub const METHOD_BOND: &str = "bond";
 pub const METHOD_UNBOND: &str = "unbond";
-pub const METHOD_UNBOND_TIMER_ADVANCE: &str = "unbond_timer_advance";
+pub const METHOD_PROCESS_UNBOND_REQUESTS: &str = "process_unbond_requests";
 pub const METHOD_SLASH: &str = "slash";
 pub const METHOD_RELEASE_FOUNDER_STAKE: &str = "release_founder_stake";
 
@@ -148,9 +148,9 @@ pub fn unbond() {
     runtime::ret(ret)
 }
 
-pub fn unbond_timer_advance() {
+pub fn process_unbond_requests() {
     let mut mint_contract = MintContract;
-    mint_contract.unbond_timer_advance().unwrap_or_revert();
+    mint_contract.process_unbond_requests().unwrap_or_revert();
 }
 
 pub fn slash() {
@@ -232,7 +232,7 @@ pub fn get_entry_points() -> EntryPoints {
     entry_points.add_entry_point(entry_point);
 
     let entry_point = EntryPoint::new(
-        METHOD_UNBOND_TIMER_ADVANCE,
+        METHOD_PROCESS_UNBOND_REQUESTS,
         vec![],
         CLType::Unit,
         EntryPointAccess::Public,
