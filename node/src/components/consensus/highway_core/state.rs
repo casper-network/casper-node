@@ -337,19 +337,6 @@ impl<C: Context> State<C> {
         self.find_ancestor(&block.skip_idx[i], height)
     }
 
-    /// Merges two panoramas into a new one.
-    pub(crate) fn merge_panoramas(&self, pan0: &Panorama<C>, pan1: &Panorama<C>) -> Panorama<C> {
-        let merge_obs = |observations: (&Observation<C>, &Observation<C>)| match observations {
-            (Observation::Faulty, _) | (_, Observation::Faulty) => Observation::Faulty,
-            (Observation::None, obs) | (obs, Observation::None) => obs.clone(),
-            (obs0, Observation::Correct(vh1)) if pan0.sees_correct(self, vh1) => obs0.clone(),
-            (Observation::Correct(vh0), obs1) if pan1.sees_correct(self, vh0) => obs1.clone(),
-            (Observation::Correct(_), Observation::Correct(_)) => Observation::Faulty,
-        };
-        let observations = pan0.iter().zip(pan1).map(merge_obs).collect_vec();
-        Panorama::from(observations)
-    }
-
     /// Returns the panorama seeing all votes seen by `pan` with a timestamp no later than
     /// `timestamp`. Accusations are preserved regardless of the evidence's timestamp.
     pub(crate) fn panorama_cutoff(&self, pan: &Panorama<C>, timestamp: Timestamp) -> Panorama<C> {

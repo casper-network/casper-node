@@ -107,6 +107,19 @@ impl<C: Context> Panorama<C> {
         self.get(vote.creator).correct().map_or(false, can_see)
     }
 
+    /// Merges two panoramas into a new one.
+    pub(crate) fn merge(&self, state: &State<C>, other: &Panorama<C>) -> Panorama<C> {
+        let merge_obs = |observations: (&Observation<C>, &Observation<C>)| match observations {
+            (Observation::Faulty, _) | (_, Observation::Faulty) => Observation::Faulty,
+            (Observation::None, obs) | (obs, Observation::None) => obs.clone(),
+            (obs0, Observation::Correct(vh1)) if self.sees_correct(state, vh1) => obs0.clone(),
+            (Observation::Correct(vh0), obs1) if other.sees_correct(state, vh0) => obs1.clone(),
+            (Observation::Correct(_), Observation::Correct(_)) => Observation::Faulty,
+        };
+        let observations: Vec<_> = self.iter().zip(other).map(merge_obs).collect();
+        Panorama::from(observations)
+    }
+
     /// Returns whether `self` can possibly come later in time than `other`, i.e. it can see
     /// every honest message and every fault seen by `other`.
     pub(super) fn geq(&self, state: &State<C>, other: &Panorama<C>) -> bool {

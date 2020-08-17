@@ -193,7 +193,7 @@ impl<C: Context> ActiveValidator<C> {
         let mut panorama;
         if let Some(prev_hash) = state.panorama().get(self.vidx).correct().cloned() {
             let own_vote = state.vote(&prev_hash);
-            panorama = state.merge_panoramas(&vote.panorama, &own_vote.panorama);
+            panorama = vote.panorama.merge(state, &own_vote.panorama);
             panorama[self.vidx] = Observation::Correct(prev_hash);
         } else {
             panorama = vote.panorama.clone();
