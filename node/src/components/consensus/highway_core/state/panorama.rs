@@ -60,6 +60,17 @@ impl<C: Context> Observation<C> {
             Self::None | Self::Correct(_) => false,
         }
     }
+
+    /// Returns whether `self` can come later in time than `other`.
+    fn geq(&self, state: &State<C>, other: &Observation<C>) -> bool {
+        match (self, other) {
+            (Observation::Faulty, _) | (_, Observation::None) => true,
+            (Observation::Correct(hash0), Observation::Correct(hash1)) => {
+                hash0 == hash1 || state.sees_correct(&state.vote(hash0).panorama, hash1)
+            }
+            (_, _) => false,
+        }
+    }
 }
 
 /// The observed behavior of all validators at some point in time.
@@ -85,5 +96,12 @@ impl<C: Context> Panorama<C> {
     pub(crate) fn next_seq_num(&self, state: &State<C>, vidx: ValidatorIndex) -> u64 {
         let add1 = |vh: &C::Hash| state.vote(vh).seq_number + 1;
         self[vidx].correct().map_or(0, add1)
+    }
+
+    /// Returns whether `self` can possibly come later in time than `other`, i.e. it can see
+    /// every honest message and every fault seen by `other`.
+    pub(super) fn geq(&self, state: &State<C>, other: &Panorama<C>) -> bool {
+        let mut pairs_iter = self.iter().zip(other);
+        pairs_iter.all(|(obs_self, obs_other)| obs_self.geq(state, obs_other))
     }
 }

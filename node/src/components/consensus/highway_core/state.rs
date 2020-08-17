@@ -526,29 +526,11 @@ impl<C: Context> State<C> {
                 Observation::None => true,
                 Observation::Faulty => self.has_evidence(idx),
                 Observation::Correct(hash) => match self.opt_vote(hash) {
-                    Some(vote) => vote.creator == idx && self.panorama_geq(pan, &vote.panorama),
+                    Some(vote) => vote.creator == idx && pan.geq(self, &vote.panorama),
                     None => false, // Unknown vote. Not a substate of `state`.
                 },
             }
         })
-    }
-
-    /// Returns whether `pan_l` can possibly come later in time than `pan_r`, i.e. it can see
-    /// every honest message and every fault seen by `other`.
-    fn panorama_geq(&self, pan_l: &Panorama<C>, pan_r: &Panorama<C>) -> bool {
-        let mut pairs_iter = pan_l.iter().zip(pan_r);
-        pairs_iter.all(|(obs_l, obs_r)| self.obs_geq(obs_l, obs_r))
-    }
-
-    /// Returns whether `obs_l` can come later in time than `obs_r`.
-    fn obs_geq(&self, obs_l: &Observation<C>, obs_r: &Observation<C>) -> bool {
-        match (obs_l, obs_r) {
-            (Observation::Faulty, _) | (_, Observation::None) => true,
-            (Observation::Correct(hash0), Observation::Correct(hash1)) => {
-                hash0 == hash1 || self.sees_correct(&self.vote(hash0).panorama, hash1)
-            }
-            (_, _) => false,
-        }
     }
 
     /// Returns the missing dependency if `obs` is referring to a vertex we don't know yet.
