@@ -647,6 +647,10 @@ impl<REv> EffectBuilder<REv> {
             .await
             .into_iter()
             .collect();
+        // The only circumstance where `maybe_parent` is `None` is for the very first proto block,
+        // i.e. the one immediately after the genesis block.  In this case, just use
+        // `Digest::default`, and the block executor (which knows the post-state hash of the genesis
+        // block) will apply the executed block's parent hash correctly.
         let parent_hash = maybe_parent
             .as_ref()
             .map(ProtoBlock::hash)

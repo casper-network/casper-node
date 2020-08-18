@@ -235,8 +235,9 @@ impl BlockExecutor {
             return hash;
         }
 
-        // If the proto block has a default parent hash (indicating it has no parent) assume its
-        // parent is the genesis block.
+        // If the proto block has a default parent hash, its parent is the genesis block.  The
+        // default hash is applied in `EffectBuilder::request_proto_block` when the parent proto
+        // block is `None`.
         if *finalized_block.proto_block().parent_hash().inner() == Digest::default()
             && self.genesis_post_state_hash.is_some()
         {
