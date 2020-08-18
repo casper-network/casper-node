@@ -1,2 +1,2 @@
-/// Representation of delegation rate as a tiny fraction of tokens.
+/// Delegation rate in trillionths.
 pub type DelegationRate = u64;
