@@ -127,6 +127,9 @@ pub(crate) struct BlockExecutor {
     genesis_post_state_hash: Option<Digest>,
     /// A mapping from proto block to executed block's ID and post-state hash, to allow
     /// identification of a parent block's details once a finalized block has been executed.
+    ///
+    /// For a given entry, the key is a proto block's hash, and the `ExecutedBlockSummary` is
+    /// derived from the executed block which is created from that proto block.
     parent_map: HashMap<ProtoBlockHash, ExecutedBlockSummary>,
 }
 
@@ -223,7 +226,7 @@ impl BlockExecutor {
 
     fn pre_state_hash(&mut self, finalized_block: &FinalizedBlock) -> Digest {
         // Try to get the parent's post-state-hash from the `parent_map`.
-        let parent_proto_hash = finalized_block.proto_block().hash();
+        let parent_proto_hash = finalized_block.proto_block().parent_hash();
         if let Some(hash) = self
             .parent_map
             .get(parent_proto_hash)
@@ -241,7 +244,7 @@ impl BlockExecutor {
         }
 
         error!(%parent_proto_hash, "failed to get pre-state-hash");
-        Digest::default()
+        panic!("failed to get pre-state hash for {}", parent_proto_hash);
     }
 }
 
@@ -265,11 +268,20 @@ where
                 debug!(?finalized_block, "execute block");
 
                 if finalized_block.proto_block().deploys().is_empty() {
-                    // No deploys - short circuit and respond straight away using current state
-                    // hash.
-                    let post_state_hash = self.pre_state_hash(&finalized_block);
-                    let block = self.create_block(finalized_block, post_state_hash);
-                    return responder.respond(block).ignore();
+                    // No deploys - jump straight to execution stage.
+                    let pre_state_hash = self.pre_state_hash(&finalized_block);
+                    let execute_request = self.create_execute_request_from(
+                        pre_state_hash,
+                        finalized_block.timestamp(),
+                        vec![],
+                    );
+                    return effect_builder
+                        .request_execute(execute_request)
+                        .event(move |result| Event::DeploysExecutionResult {
+                            finalized_block,
+                            result,
+                            main_responder: responder,
+                        });
                 }
 
                 let deploy_hashes = finalized_block
@@ -351,14 +363,13 @@ where
                         debug!(?state_root, ?bonded_validators, "commit succeeded");
                         state_root
                     }
-                    Ok(result) => {
-                        debug!(?result, "commit failed");
-                        self.pre_state_hash(&finalized_block)
-                    }
-                    Err(error) => {
-                        error!(?error, "commit failed - internal contract runtime error");
-                        // When commit fails we panic as well to avoid being out of sync in next
+                    _ => {
+                        // When commit fails we panic as we'll not be able to execute the next
                         // block.
+                        error!(
+                            ?commit_result,
+                            "commit failed - internal contract runtime error"
+                        );
                         panic!("unable to commit");
                     }
                 };
