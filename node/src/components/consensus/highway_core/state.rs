@@ -1,81 +1,41 @@
+mod block;
+mod panorama;
+mod params;
+mod tallies;
+mod vote;
+mod weight;
+
+pub(crate) use params::Params;
+pub(crate) use weight::Weight;
+
+pub(super) use panorama::{Observation, Panorama};
+pub(super) use vote::Vote;
+
 use std::{
     borrow::Borrow,
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet, HashMap},
-    convert::identity,
     iter,
-    ops::{Div, Mul, RangeBounds},
+    ops::RangeBounds,
 };
 
-use derive_more::{Add, AddAssign, From, Sub, SubAssign, Sum};
 use itertools::Itertools;
-use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
-
-use super::{
-    block::Block,
-    evidence::Evidence,
-    tallies::Tallies,
-    validators::{ValidatorIndex, ValidatorMap},
-    vertex::{Dependency, WireVote},
-    vote::{Observation, Panorama, Vote},
-};
-use crate::{
-    components::consensus::{highway_core::vertex::SignedWireVote, traits::Context},
-    types::{TimeDiff, Timestamp},
-};
-use iter::Sum;
 use tracing::warn;
 
-/// A vote weight.
-#[derive(
-    Copy,
-    Clone,
-    Default,
-    Debug,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Add,
-    Sub,
-    AddAssign,
-    SubAssign,
-    Sum,
-    From,
-)]
-pub(crate) struct Weight(pub(crate) u64);
-
-impl<'a> Sum<&'a Weight> for Weight {
-    fn sum<I: Iterator<Item = &'a Weight>>(iter: I) -> Self {
-        let mut sum = 0u64;
-        iter.for_each(|w| sum += w.0);
-        Weight(sum)
-    }
-}
-
-impl Mul<u64> for Weight {
-    type Output = Self;
-
-    fn mul(self, rhs: u64) -> Self {
-        Weight(self.0 * rhs)
-    }
-}
-
-impl Div<u64> for Weight {
-    type Output = Self;
-
-    fn div(self, rhs: u64) -> Self {
-        Weight(self.0 / rhs)
-    }
-}
-
-impl From<Weight> for u128 {
-    fn from(Weight(w): Weight) -> u128 {
-        u128::from(w)
-    }
-}
+use crate::{
+    components::consensus::{
+        highway_core::{
+            evidence::Evidence,
+            highway::{SignedWireVote, WireVote},
+            validators::{ValidatorIndex, ValidatorMap},
+        },
+        traits::Context,
+    },
+    types::{TimeDiff, Timestamp},
+};
+use block::Block;
+use tallies::Tallies;
 
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum VoteError {
@@ -114,11 +74,8 @@ pub(crate) const BLOCK_REWARD: u64 = 1_000_000_000_000;
 /// determine the outcome of the consensus process.
 #[derive(Debug)]
 pub(crate) struct State<C: Context> {
-    /// The validator's voting weights.
-    weights: ValidatorMap<Weight>,
-    /// Cumulative validator weights: Entry `i` contains the sum of the weights of validators `0`
-    /// through `i`.
-    cumulative_w: ValidatorMap<Weight>,
+    /// The fixed parameters.
+    params: Params,
     /// All votes imported so far, by hash.
     // TODO: HashMaps prevent deterministic tests.
     votes: HashMap<C::Hash, Vote<C>>,
@@ -130,50 +87,29 @@ pub(crate) struct State<C: Context> {
     evidence: HashMap<ValidatorIndex, Evidence<C>>,
     /// The full panorama, corresponding to the complete protocol state.
     panorama: Panorama<C>,
-    /// The random seed.
-    seed: u64,
-    /// The fraction of the block reward, in trillionths, that are paid out even if the heaviest
-    /// summit does not exceed half the total weight.
-    forgiveness_factor: u64,
-    /// The minimum round exponent. `1 << min_round_exp` milliseconds is the minimum round length.
-    min_round_exp: u8,
 }
 
 impl<C: Context> State<C> {
-    pub(crate) fn new<I>(
-        weights: I,
-        seed: u64,
-        (ff_num, ff_denom): (u16, u16),
-        min_round_exp: u8,
-    ) -> State<C>
+    pub(crate) fn new<I>(weights: I, seed: u64, ff: (u16, u16), min_round_exp: u8) -> State<C>
     where
         I: IntoIterator,
         I::Item: Borrow<Weight>,
     {
-        assert!(
-            ff_num <= ff_denom,
-            "forgiveness factor must be at most 100%"
-        );
         let weights = ValidatorMap::from(weights.into_iter().map(|w| *w.borrow()).collect_vec());
-        let mut sum = Weight(0);
-        let add = |w: &Weight| {
-            sum += *w;
-            sum
-        };
-        let cumulative_w = weights.iter().map(add).collect();
         let panorama = Panorama::new(weights.len());
         State {
-            weights,
-            cumulative_w,
+            params: Params::new(weights, seed, ff, min_round_exp),
             votes: HashMap::new(),
             blocks: HashMap::new(),
             reward_index: BTreeMap::new(),
             evidence: HashMap::new(),
             panorama,
-            seed,
-            forgiveness_factor: BLOCK_REWARD * u64::from(ff_num) / u64::from(ff_denom),
-            min_round_exp,
         }
+    }
+
+    /// Returns the fixed parameters.
+    pub(crate) fn params(&self) -> &Params {
+        &self.params
     }
 
     /// Returns evidence against validator nr. `idx`, if present.
@@ -216,22 +152,6 @@ impl<C: Context> State<C> {
         self.opt_block(hash).unwrap()
     }
 
-    /// Returns the `idx`th validator's voting weight.
-    pub(crate) fn weight(&self, idx: ValidatorIndex) -> Weight {
-        self.weights[idx]
-    }
-
-    /// Returns the map of validator weights.
-    pub(crate) fn weights(&self) -> &ValidatorMap<Weight> {
-        &self.weights
-    }
-
-    /// Returns the fraction of the block reward, in trillionths, that are paid out even if the
-    /// heaviest summit does not exceed half the total weight.
-    pub(crate) fn forgiveness_factor(&self) -> u64 {
-        self.forgiveness_factor
-    }
-
     /// Returns an iterator over all hashes of blocks whose earliest timestamp for reward payout is
     /// in the specified range.
     pub(crate) fn rewards_range<RB>(&self, range: RB) -> impl Iterator<Item = &C::Hash>
@@ -245,40 +165,12 @@ impl<C: Context> State<C> {
 
     /// Returns the total weight of all known-faulty validators.
     pub(crate) fn faulty_weight(&self) -> Weight {
-        self.faulty_weight_in(&self.panorama)
-    }
-
-    /// Returns the total weight of all validators marked faulty in this panorama.
-    pub(crate) fn faulty_weight_in(&self, panorama: &Panorama<C>) -> Weight {
-        panorama
-            .iter()
-            .zip(&self.weights)
-            .filter(|(obs, _)| **obs == Observation::Faulty)
-            .map(|(_, w)| *w)
-            .sum()
-    }
-
-    /// Returns the sum of all validators' voting weights.
-    pub(crate) fn total_weight(&self) -> Weight {
-        *self.cumulative_w.as_ref().last().unwrap()
+        self.params.faulty_weight_in(&self.panorama)
     }
 
     /// Returns the complete protocol state's latest panorama.
     pub(crate) fn panorama(&self) -> &Panorama<C> {
         &self.panorama
-    }
-
-    /// Returns the leader in the specified time slot.
-    pub(crate) fn leader(&self, timestamp: Timestamp) -> ValidatorIndex {
-        let mut rng = ChaCha8Rng::seed_from_u64(self.seed.wrapping_add(timestamp.millis()));
-        // TODO: `rand` doesn't seem to document how it generates this. Needs to be portable.
-        // We select a random one out of the `total_weight` weight units, starting numbering at 1.
-        let r = Weight(rng.gen_range(1, self.total_weight().0 + 1));
-        // The weight units are subdivided into intervals that belong to some validator.
-        // `cumulative_w[i]` denotes the last weight unit that belongs to validator `i`.
-        // `binary_search` returns the first `i` with `cumulative_w[i] >= r`, i.e. the validator
-        // who owns the randomly selected weight unit.
-        self.cumulative_w.binary_search(&r).unwrap_or_else(identity)
     }
 
     /// Adds the vote to the protocol state.
@@ -324,12 +216,6 @@ impl<C: Context> State<C> {
         })
     }
 
-    /// Returns the first missing dependency of the panorama, or `None` if all are satisfied.
-    pub(crate) fn missing_dependency(&self, panorama: &Panorama<C>) -> Option<Dependency<C>> {
-        let missing_dep = |(idx, obs)| self.missing_obs_dep(idx, obs);
-        panorama.enumerate().filter_map(missing_dep).next()
-    }
-
     /// Returns the fork choice from `pan`'s view, or `None` if there are no blocks yet.
     ///
     /// The correct validators' latest votes count as votes for the block they point to, as well as
@@ -342,7 +228,11 @@ impl<C: Context> State<C> {
             let bhash = &self.vote(obs.correct()?).block;
             Some((self.block(bhash).height, bhash, *w))
         };
-        let mut tallies: Tallies<C> = pan.iter().zip(&self.weights).filter_map(to_entry).collect();
+        let mut tallies: Tallies<C> = pan
+            .iter()
+            .zip(self.params.weights())
+            .filter_map(to_entry)
+            .collect();
         loop {
             // Find the highest block that we know is an ancestor of the fork choice.
             let (height, bhash) = tallies.find_decided(self)?;
@@ -376,46 +266,19 @@ impl<C: Context> State<C> {
         self.find_ancestor(&block.skip_idx[i], height)
     }
 
-    /// Merges two panoramas into a new one.
-    pub(crate) fn merge_panoramas(&self, pan0: &Panorama<C>, pan1: &Panorama<C>) -> Panorama<C> {
-        let merge_obs = |observations: (&Observation<C>, &Observation<C>)| match observations {
-            (Observation::Faulty, _) | (_, Observation::Faulty) => Observation::Faulty,
-            (Observation::None, obs) | (obs, Observation::None) => obs.clone(),
-            (obs0, Observation::Correct(vh1)) if self.sees_correct(pan0, vh1) => obs0.clone(),
-            (Observation::Correct(vh0), obs1) if self.sees_correct(pan1, vh0) => obs1.clone(),
-            (Observation::Correct(_), Observation::Correct(_)) => Observation::Faulty,
-        };
-        let observations = pan0.iter().zip(pan1).map(merge_obs).collect_vec();
-        Panorama::from(observations)
-    }
-
-    /// Returns the panorama seeing all votes seen by `pan` with a timestamp no later than
-    /// `timestamp`. Accusations are preserved regardless of the evidence's timestamp.
-    pub(crate) fn panorama_cutoff(&self, pan: &Panorama<C>, timestamp: Timestamp) -> Panorama<C> {
-        let obs_cutoff = |obs: &Observation<C>| match obs {
-            Observation::Correct(vhash) => self
-                .swimlane(vhash)
-                .find(|(_, vote)| vote.timestamp <= timestamp)
-                .map(|(vh, _)| vh.clone())
-                .map_or(Observation::None, Observation::Correct),
-            obs @ Observation::None | obs @ Observation::Faulty => obs.clone(),
-        };
-        Panorama::from(pan.iter().map(obs_cutoff).collect_vec())
-    }
-
     /// Returns an error if `swvote` is invalid. This can be called even if the dependencies are
     /// not present yet.
     pub(crate) fn pre_validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {
         let wvote = &swvote.wire_vote;
         let creator = wvote.creator;
-        if creator.0 as usize >= self.weights.len() {
+        if creator.0 as usize >= self.params.validator_count() {
             return Err(VoteError::Creator);
         }
-        if wvote.round_exp < self.min_round_exp {
+        if wvote.round_exp < self.params.min_round_exp() {
             return Err(VoteError::RoundLength);
         }
         if (wvote.value.is_none() && !wvote.panorama.has_correct())
-            || wvote.panorama.len() != self.weights.len()
+            || wvote.panorama.len() != self.params.validator_count()
             || wvote.panorama.get(creator).is_faulty()
         {
             return Err(VoteError::Panorama);
@@ -428,7 +291,7 @@ impl<C: Context> State<C> {
     pub(crate) fn validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {
         let wvote = &swvote.wire_vote;
         let creator = wvote.creator;
-        if !self.is_panorama_valid(&wvote.panorama) {
+        if !wvote.panorama.is_valid(self) {
             return Err(VoteError::Panorama);
         }
         let mut justifications = wvote.panorama.iter_correct();
@@ -461,12 +324,6 @@ impl<C: Context> State<C> {
             }
         }
         Ok(())
-    }
-
-    /// Returns the minimum round exponent. `1 << self.min_round_exp()` milliseconds is the minimum
-    /// round length.
-    pub(super) fn min_round_exp(&self) -> u8 {
-        self.min_round_exp
     }
 
     /// Updates `self.panorama` with an incoming vote. Panics if dependencies are missing.
@@ -527,23 +384,13 @@ impl<C: Context> State<C> {
         })
     }
 
-    /// Returns `true` if `pan` sees the creator of `hash` as correct, and sees that vote.
-    pub(crate) fn sees_correct(&self, pan: &Panorama<C>, hash: &C::Hash) -> bool {
-        let vote = self.vote(hash);
-        pan.get(vote.creator)
-            .correct()
-            .map_or(false, |latest_hash| {
-                Some(hash) == self.find_in_swimlane(latest_hash, vote.seq_number)
-            })
-    }
-
     /// Returns a vector of validator indexes that equivocated between block
     /// identified by `fhash` and its parent.
     pub(super) fn get_new_equivocators(&self, fhash: &C::Hash) -> Vec<ValidatorIndex> {
         let cvote = self.vote(fhash);
         let mut equivocators: Vec<ValidatorIndex> = Vec::new();
         let fblock = self.block(fhash);
-        let empty_panorama = Panorama::new(self.weights.len());
+        let empty_panorama = Panorama::new(self.params.validator_count());
         let pvpanorama = fblock
             .parent()
             .map(|pvhash| &self.vote(pvhash).panorama)
@@ -556,49 +403,6 @@ impl<C: Context> State<C> {
             }
         }
         equivocators
-    }
-
-    /// Returns `pan` is valid, i.e. it contains the latest votes of some substate of `self`.
-    fn is_panorama_valid(&self, pan: &Panorama<C>) -> bool {
-        pan.enumerate().all(|(idx, observation)| {
-            match observation {
-                Observation::None => true,
-                Observation::Faulty => self.has_evidence(idx),
-                Observation::Correct(hash) => match self.opt_vote(hash) {
-                    Some(vote) => vote.creator == idx && self.panorama_geq(pan, &vote.panorama),
-                    None => false, // Unknown vote. Not a substate of `state`.
-                },
-            }
-        })
-    }
-
-    /// Returns whether `pan_l` can possibly come later in time than `pan_r`, i.e. it can see
-    /// every honest message and every fault seen by `other`.
-    fn panorama_geq(&self, pan_l: &Panorama<C>, pan_r: &Panorama<C>) -> bool {
-        let mut pairs_iter = pan_l.iter().zip(pan_r);
-        pairs_iter.all(|(obs_l, obs_r)| self.obs_geq(obs_l, obs_r))
-    }
-
-    /// Returns whether `obs_l` can come later in time than `obs_r`.
-    fn obs_geq(&self, obs_l: &Observation<C>, obs_r: &Observation<C>) -> bool {
-        match (obs_l, obs_r) {
-            (Observation::Faulty, _) | (_, Observation::None) => true,
-            (Observation::Correct(hash0), Observation::Correct(hash1)) => {
-                hash0 == hash1 || self.sees_correct(&self.vote(hash0).panorama, hash1)
-            }
-            (_, _) => false,
-        }
-    }
-
-    /// Returns the missing dependency if `obs` is referring to a vertex we don't know yet.
-    fn missing_obs_dep(&self, idx: ValidatorIndex, obs: &Observation<C>) -> Option<Dependency<C>> {
-        match obs {
-            Observation::Faulty if !self.has_evidence(idx) => Some(Dependency::Evidence(idx)),
-            Observation::Correct(hash) if !self.has_vote(hash) => {
-                Some(Dependency::Vote(hash.clone()))
-            }
-            _ => None,
-        }
     }
 }
 
@@ -640,7 +444,9 @@ pub(crate) mod tests {
     use std::{collections::hash_map::DefaultHasher, hash::Hasher};
 
     use super::*;
-    use crate::components::consensus::traits::ValidatorSecret;
+    use crate::components::consensus::{
+        highway_core::highway::Dependency, traits::ValidatorSecret,
+    };
 
     pub(crate) const WEIGHTS: &[Weight] = &[Weight(3), Weight(4), Weight(5)];
 
@@ -780,18 +586,18 @@ pub(crate) mod tests {
         assert_eq!(Some(VoteError::Panorama), opt_err);
 
         // Alice has not equivocated yet, and not produced message A1.
-        let missing = state.missing_dependency(&panorama!(F, b1, c0));
+        let missing = panorama!(F, b1, c0).missing_dependency(&state);
         assert_eq!(Some(Dependency::Evidence(ALICE)), missing);
-        let missing = state.missing_dependency(&panorama!(42, b1, c0));
+        let missing = panorama!(42, b1, c0).missing_dependency(&state);
         assert_eq!(Some(Dependency::Vote(42)), missing);
 
         // Alice equivocates: A1 doesn't see a1.
         let ae1 = add_vote!(state, ALICE, None; a0, b1, c0)?;
         assert!(state.has_evidence(ALICE));
 
-        let missing = state.missing_dependency(&panorama!(F, b1, c0));
+        let missing = panorama!(F, b1, c0).missing_dependency(&state);
         assert_eq!(None, missing);
-        let missing = state.missing_dependency(&panorama!(ae1, b1, c0));
+        let missing = panorama!(ae1, b1, c0).missing_dependency(&state);
         assert_eq!(None, missing);
 
         // Bob can see the equivocation.
