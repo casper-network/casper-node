@@ -31,11 +31,9 @@ const ARG_GENESIS_VALIDATORS: &str = "genesis_validators";
 fn compute_seigniorage_recipients(
     founding_validators: &FoundingValidators,
 ) -> SeigniorageRecipients {
-    let mut seigniorage_recipients = SeigniorageRecipients::default();
+    let mut seigniorage_recipients = SeigniorageRecipients::new();
     for (era_validator, founding_validator) in founding_validators {
-        let mut seigniorage_recipient = SeigniorageRecipient::default();
-        seigniorage_recipient.stake = founding_validator.staked_amount;
-        seigniorage_recipient.delegation_rate = founding_validator.delegation_rate;
+        let seigniorage_recipient = SeigniorageRecipient::from(founding_validator);
         seigniorage_recipients.insert(*era_validator, seigniorage_recipient);
     }
     seigniorage_recipients
