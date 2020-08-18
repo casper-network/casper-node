@@ -331,7 +331,7 @@ where
 
     /// Takes active_bids and delegators to construct a list of validators' total bids
     /// (their own added to their delegators') ordered by size from largest to smallest,
-    /// then takes the top N (number of auction slots) bidders and replaced
+    /// then takes the top N (number of auction slots) bidders and replaces
     /// era_validators with these.
     ///
     /// Accessed by: node
