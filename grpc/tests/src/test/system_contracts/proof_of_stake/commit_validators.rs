@@ -1,4 +1,3 @@
-use num_traits::Zero;
 use std::collections::HashMap;
 
 use casperlabs_engine_test_support::{
@@ -64,13 +63,15 @@ fn should_return_bonded_validators() {
         .clone();
 
     let expected: HashMap<AccountHash, U512> = {
-        let zero = Motes::zero();
         accounts
             .iter()
             .filter_map(move |genesis_account| {
-                if genesis_account.bonded_amount() > zero {
+                if genesis_account.is_genesis_validator() {
                     Some((
-                        genesis_account.public_key().to_account_hash(),
+                        genesis_account
+                            .public_key()
+                            .expect("should have public key")
+                            .to_account_hash(),
                         genesis_account.bonded_amount().value(),
                     ))
                 } else {

@@ -193,7 +193,10 @@ impl ExecConfig {
         self.accounts.iter().filter_map(move |genesis_account| {
             if genesis_account.bonded_amount() > zero {
                 Some((
-                    genesis_account.public_key().to_account_hash(),
+                    genesis_account
+                        .public_key()
+                        .expect("should have public key")
+                        .to_account_hash(),
                     genesis_account.bonded_amount(),
                 ))
             } else {

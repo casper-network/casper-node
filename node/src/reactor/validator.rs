@@ -16,8 +16,6 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use casperlabs_types::U512;
-
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 use crate::{
@@ -325,13 +323,18 @@ impl reactor::Reactor for Reactor {
             .genesis
             .accounts
             .iter()
-            .map(|genesis_account| {
-                (
-                    genesis_account.public_key(),
-                    genesis_account.bonded_amount(),
-                )
+            .filter_map(|genesis_account| {
+                if genesis_account.is_genesis_validator() {
+                    Some((
+                        genesis_account
+                            .public_key()
+                            .expect("should have public key"),
+                        genesis_account.bonded_amount(),
+                    ))
+                } else {
+                    None
+                }
             })
-            .filter(|(_, stake)| stake.value() > U512::zero())
             .collect();
         let (consensus, consensus_effects) = EraSupervisor::new(
             timestamp,

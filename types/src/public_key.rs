@@ -8,14 +8,11 @@ use bytesrepr::{Error, FromBytes};
 
 const PUBLIC_KEY_VARIANT_LENGTH: usize = 1;
 const ED25519_PUBLIC_KEY_LENGTH: usize = 32;
-const SYSTEM_VARIANT_ID: u8 = 0;
 const ED25519_VARIANT_ID: u8 = 1;
 
 /// Simplified raw data type
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PublicKey {
-    /// System account's public key.
-    System,
     /// Ed25519 public key.
     Ed25519([u8; ED25519_PUBLIC_KEY_LENGTH]),
 }
@@ -24,7 +21,6 @@ impl PublicKey {
     fn variant_id(&self) -> u8 {
         match self {
             PublicKey::Ed25519(_) => ED25519_VARIANT_ID,
-            PublicKey::System => SYSTEM_VARIANT_ID,
         }
     }
 }
@@ -35,7 +31,6 @@ impl ToBytes for PublicKey {
         buffer.extend(self.variant_id().to_bytes()?);
         match self {
             PublicKey::Ed25519(bytes) => buffer.extend((*bytes).to_bytes()?),
-            PublicKey::System => buffer.extend(&[0; 32]),
         }
         Ok(buffer)
     }

@@ -28,23 +28,33 @@ use crate::{
 /// An account that exists at genesis.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct GenesisAccount {
-    public_key: PublicKey,
+    /// A valid public key, otherwise a `None` variant indicates a system account that does not
+    /// have a valid key.
+    public_key: Option<PublicKey>,
     balance: Motes,
     bonded_amount: Motes,
 }
 
 impl GenesisAccount {
+    /// Constructs a new `GenesisAccount` with a system account.
+    pub fn system(balance: Motes, bonded_amount: Motes) -> Self {
+        GenesisAccount {
+            balance,
+            bonded_amount,
+            public_key: None, // `None` indicates a virtual system account.
+        }
+    }
     /// Constructs a new `GenesisAccount` with a given public key.
     pub fn with_public_key(public_key: PublicKey, balance: Motes, bonded_amount: Motes) -> Self {
         GenesisAccount {
-            public_key,
+            public_key: Some(public_key),
             balance,
             bonded_amount,
         }
     }
 
     /// Returns the account's public key.
-    pub fn public_key(&self) -> PublicKey {
+    pub fn public_key(&self) -> Option<PublicKey> {
         self.public_key
     }
 
@@ -57,6 +67,18 @@ impl GenesisAccount {
     pub fn bonded_amount(&self) -> Motes {
         self.bonded_amount
     }
+
+    /// Checks if a given genesis account belongs to a virtual system account,
+    pub fn is_system_account(&self) -> bool {
+        self.public_key.is_none()
+    }
+
+    /// Checks if a given genesis account is a valid genesis validator.
+    ///
+    /// Genesis validators are the ones with a stake, and are not owned by a virtual system account.
+    pub fn is_genesis_validator(&self) -> bool {
+        !self.is_system_account() && !self.bonded_amount.is_zero()
+    }
 }
 
 impl Distribution<GenesisAccount> for Standard {
@@ -67,7 +89,7 @@ impl Distribution<GenesisAccount> for Standard {
         let bonded_amount = Motes::new(U512(rng.gen()));
 
         GenesisAccount {
-            public_key,
+            public_key: Some(public_key),
             balance,
             bonded_amount,
         }

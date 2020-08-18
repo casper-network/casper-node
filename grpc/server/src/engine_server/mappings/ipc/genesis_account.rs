@@ -11,7 +11,11 @@ impl From<GenesisAccount> for ChainSpec_GenesisConfig_ExecConfig_GenesisAccount 
     fn from(genesis_account: GenesisAccount) -> Self {
         let mut pb_genesis_account = ChainSpec_GenesisConfig_ExecConfig_GenesisAccount::new();
 
-        pb_genesis_account.public_key_hash = genesis_account.public_key().as_ref().to_vec();
+        pb_genesis_account.public_key_hash = genesis_account
+            .public_key()
+            .expect("should have public key")
+            .as_ref()
+            .to_vec();
         pb_genesis_account.set_balance(genesis_account.balance().value().into());
         pb_genesis_account.set_bonded_amount(genesis_account.bonded_amount().value().into());
 

@@ -387,11 +387,15 @@ where
             let bonded_validators: BTreeMap<casperlabs_types::PublicKey, U512> = ee_config
                 .accounts()
                 .iter()
-                .filter_map(|account| {
-                    if !account.bonded_amount().is_zero() {
+                .filter_map(|genesis_account| {
+                    if genesis_account.is_genesis_validator() {
                         Some((
-                            casperlabs_types::PublicKey::from(account.public_key()),
-                            account.bonded_amount().value(),
+                            casperlabs_types::PublicKey::from(
+                                genesis_account
+                                    .public_key()
+                                    .expect("should have public key"),
+                            ),
+                            genesis_account.bonded_amount().value(),
                         ))
                     } else {
                         None
@@ -479,11 +483,7 @@ where
                     .into_iter()
                     .map(|account| (account, account_named_keys.clone()))
                     .collect();
-                let system_account = GenesisAccount::with_public_key(
-                    PublicKey::System,
-                    Motes::zero(),
-                    Motes::zero(),
-                );
+                let system_account = GenesisAccount::system(Motes::zero(), Motes::zero());
                 ret.push((system_account, virtual_system_account.named_keys().clone()));
                 ret
             };
@@ -511,7 +511,11 @@ where
                 let mut named_keys_exec = NamedKeys::new();
                 let base_key = mint_hash;
                 let authorization_keys: BTreeSet<AccountHash> = BTreeSet::new();
-                let account_hash = account.public_key().to_account_hash();
+                let account_hash = account
+                    .public_key()
+                    .as_ref()
+                    .map(PublicKey::to_account_hash)
+                    .unwrap_or(SYSTEM_ACCOUNT_ADDR);
                 let purse_creation_deploy_hash = account_hash.value();
                 let hash_address_generator = Rc::clone(&hash_address_generator);
                 let uref_address_generator = {
