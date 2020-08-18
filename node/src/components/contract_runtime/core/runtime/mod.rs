@@ -2031,12 +2031,12 @@ where
                     Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
                 let source_purse =
                     Self::get_named_argument(&runtime_args, auction::ARG_SOURCE_PURSE)?;
-                let delegation_rate =
-                    Self::get_named_argument(&runtime_args, auction::ARG_DELEGATION_RATE)?;
+                let commission_rate =
+                    Self::get_named_argument(&runtime_args, auction::ARG_COMMISSION_RATE)?;
                 let quantity = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = self
-                    .add_bid(account_hash, source_purse, delegation_rate, quantity)
+                    .add_bid(account_hash, source_purse, commission_rate, quantity)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)?
@@ -2097,11 +2097,12 @@ where
 
             auction::METHOD_READ_ERA_ID => {
                 let result = runtime.read_era_id().map_err(Self::reverter)?;
+                CLValue::from_t(result).map_err(Self::reverter)?
             }
             
             auction::METHOD_DISTRIBUTE_TO_DELEGATORS => {
                 let account_hash =
-                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_ACCOUNT_HASH)?;
+                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
                 let source_purse =
                     Self::get_named_argument(&runtime_args, auction::ARG_SOURCE_PURSE)?;
 

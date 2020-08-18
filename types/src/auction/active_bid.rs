@@ -15,7 +15,7 @@ pub struct ActiveBid {
     /// Total amount of bid.
     pub bid_amount: U512,
     /// Rate of delegation.
-    pub delegation_rate: CommissionRate,
+    pub commission_rate: CommissionRate,
 }
 
 impl CLTyped for ActiveBid {
@@ -29,13 +29,13 @@ impl ToBytes for ActiveBid {
         let mut result = bytesrepr::allocate_buffer(self)?;
         result.extend(self.bid_purse.to_bytes()?);
         result.extend(self.bid_amount.to_bytes()?);
-        result.extend(self.delegation_rate.to_bytes()?);
+        result.extend(self.commission_rate.to_bytes()?);
         Ok(result)
     }
     fn serialized_length(&self) -> usize {
         self.bid_purse.serialized_length()
             + self.bid_amount.serialized_length()
-            + self.delegation_rate.serialized_length()
+            + self.commission_rate.serialized_length()
     }
 }
 
@@ -43,12 +43,12 @@ impl FromBytes for ActiveBid {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (bid_purse, bytes) = FromBytes::from_bytes(bytes)?;
         let (bid_amount, bytes) = FromBytes::from_bytes(bytes)?;
-        let (delegation_rate, bytes) = FromBytes::from_bytes(bytes)?;
+        let (commission_rate, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             ActiveBid {
                 bid_purse,
                 bid_amount,
-                delegation_rate,
+                commission_rate,
             },
             bytes,
         ))
@@ -71,7 +71,7 @@ mod tests {
         let active_bid = ActiveBid {
             bid_purse: URef::new([42; 32], AccessRights::READ_ADD_WRITE),
             bid_amount: U512::max_value(),
-            delegation_rate: CommissionRate::max_value(),
+            commission_rate: CommissionRate::max_value(),
         };
         bytesrepr::test_serialization_roundtrip(&active_bid);
     }

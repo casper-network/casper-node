@@ -8,13 +8,13 @@ use casperlabs_contract::{
 use casperlabs_types::{
     account::AccountHash,
     auction::{
-        AuctionProvider, EraId, MintProvider, RuntimeProvider, ARG_AMOUNT, ARG_DELEGATION_RATE,
+        AuctionProvider, EraId, MintProvider, RuntimeProvider, ARG_AMOUNT, ARG_COMMISSION_RATE,
         ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_PURSE, ARG_SOURCE_PURSE, ARG_VALIDATOR,
         ARG_VALIDATOR_KEYS, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_QUASH_BID, METHOD_READ_ERA_ID,
         METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS, METHOD_RUN_AUCTION,
         METHOD_DISTRIBUTE_TO_DELEGATORS,
         METHOD_UNDELEGATE, METHOD_WITHDRAW_BID, {StorageProvider, SystemProvider},
-        AuctionProvider, DataProvider, MintProvider, RuntimeProvider, ARG_AMOUNT,
+        DataProvider, DelegationProvider,
         DelegationsMap, TallyMap, RewardPerStakeMap, TotalDelegatorStakeMap, DelegatorRewardPoolMap, 
     },
     auction::{CommissionRate, SeigniorageRecipients},
@@ -177,11 +177,11 @@ pub extern "C" fn read_seigniorage_recipients() {
 pub extern "C" fn add_bid() {
     let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
     let source_purse = runtime::get_named_arg(ARG_SOURCE_PURSE);
-    let delegation_rate = runtime::get_named_arg(ARG_DELEGATION_RATE);
+    let commission_rate = runtime::get_named_arg(ARG_COMMISSION_RATE);
     let amount = runtime::get_named_arg(ARG_AMOUNT);
 
     let result = AuctionContract
-        .add_bid(public_key, source_purse, delegation_rate, amount)
+        .add_bid(public_key, source_purse, commission_rate, amount)
         .unwrap_or_revert();
 
     let cl_value = CLValue::from_t(result).unwrap_or_revert();
@@ -249,11 +249,11 @@ pub extern "C" fn read_era_id() {
 }
 
 pub extern "C" fn distribute_to_delegators() {
-    let validator_account_hash = runtime::get_named_arg(ARG_VALIDATOR_ACCOUNT_HASH);
+    let validator_public_key = runtime::get_named_arg(ARG_VALIDATOR);
     let source_purse = runtime::get_named_arg(ARG_SOURCE_PURSE);
 
     let result = AuctionContract
-        .distribute_to_delegators(validator_account_hash, source_purse)
+        .distribute_to_delegators(validator_public_key, source_purse)
         .unwrap_or_revert();
 
     let cl_value = CLValue::from_t(result).unwrap_or_revert();
@@ -286,7 +286,7 @@ pub fn get_entry_points() -> EntryPoints {
         vec![
             Parameter::new(ARG_PUBLIC_KEY, AccountHash::cl_type()),
             Parameter::new(ARG_SOURCE_PURSE, URef::cl_type()),
-            Parameter::new(ARG_DELEGATION_RATE, CommissionRate::cl_type()),
+            Parameter::new(ARG_COMMISSION_RATE, CommissionRate::cl_type()),
             Parameter::new(ARG_AMOUNT, U512::cl_type()),
         ],
         <(URef, U512)>::cl_type(),
@@ -367,7 +367,7 @@ pub fn get_entry_points() -> EntryPoints {
     let entry_point = EntryPoint::new(
         METHOD_DISTRIBUTE_TO_DELEGATORS,
         vec![
-            Parameter::new(ARG_VALIDATOR_ACCOUNT_HASH, AccountHash::cl_type()),
+            Parameter::new(ARG_VALIDATOR, PublicKey::cl_type()),
             Parameter::new(ARG_SOURCE_PURSE, URef::cl_type()),
         ],
         CLType::Unit,

@@ -32,8 +32,8 @@ impl SeigniorageRecipient {
         commission_rate: CommissionRate,
         total_delegator_stake: U512,
         reward_per_stake: U512,
-        delegations: BTreeMap<AccountHash, U512>,
-        tally: BTreeMap<AccountHash, U512>,
+        delegations: BTreeMap<PublicKey, U512>,
+        tally: BTreeMap<PublicKey, U512>,
         delegator_reward_purse: URef,
     ) -> Self {
         Self {
@@ -130,9 +130,9 @@ mod tests {
             total_delegator_stake: U512::zero(),
             reward_per_stake: U512::zero(),
             tally: BTreeMap::from_iter(vec![
-                (AccountHash::new([45; 32]), U512::one()),
-                (AccountHash::new([46; 32]), U512::max_value()),
-                (AccountHash::new([47; 32]), U512::zero()),
+                (PublicKey::Ed25519([45; 32]), U512::one()),
+                (PublicKey::Ed25519([46; 32]), U512::max_value()),
+                (PublicKey::Ed25519([47; 32]), U512::zero()),
             ]),
             delegator_reward_pool: URef::new([48; 32], AccessRights::NONE),
         };

@@ -59,7 +59,7 @@ impl FromBytes for FoundingValidator {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (bonding_purse, bytes) = FromBytes::from_bytes(bytes)?;
         let (staked_amount, bytes) = FromBytes::from_bytes(bytes)?;
-        let (delegation_rate, bytes) = FromBytes::from_bytes(bytes)?;
+        let (commission_rate, bytes) = FromBytes::from_bytes(bytes)?;
         let (winner, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             FoundingValidator {

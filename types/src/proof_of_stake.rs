@@ -22,7 +22,7 @@ pub use crate::proof_of_stake::{
     stakes_provider::StakesProvider,
 };
 
-use crate::auction::COMMISSION_RATE_DENOMINATOR;
+use crate::{PublicKey, auction::{COMMISSION_RATE_DENOMINATOR, DelegationProvider}};
 
 /// Proof of stake functionality implementation.
 pub trait ProofOfStake:
@@ -96,7 +96,7 @@ pub trait ProofOfStake:
 
     /// Mint and distribute seigniorage rewards to validators and their delegators,
     /// according to `reward_factors` returned by the consensus component.
-    fn distribute(&mut self, reward_factors: BTreeMap<AccountHash, u64>) -> Result<()> {
+    fn distribute(&mut self, reward_factors: BTreeMap<PublicKey, u64>) -> Result<()> {
         // let era_validators = self.read_winners();
         let seigniorage_recipients = self.read_seigniorage_recipients();
         let base_round_reward = U512::from(self.read_base_round_reward());
@@ -108,8 +108,8 @@ pub trait ProofOfStake:
             return Err(Error::MismatchedEraValidators);
         }
 
-        for (account_hash, reward_factor) in reward_factors {
-            let seigniorage_recipient = seigniorage_recipients.get(&account_hash).unwrap();
+        for (public_key, reward_factor) in reward_factors {
+            let seigniorage_recipient = seigniorage_recipients.get(&public_key).unwrap();
 
             // Compute and mint rewards for the current validator
             let reward: U512 = base_round_reward * reward_factor;
@@ -137,7 +137,7 @@ pub trait ProofOfStake:
                 .map_err(|_| Error::Transfer)?;
             let delegator_reward_purse = self.mint(delegators_part);
             // Distribute delegators' part
-            self.distribute_to_delegators(account_hash, delegator_reward_purse)?;
+            self.distribute_to_delegators(public_key, delegator_reward_purse)?;
         }
         Ok(())
     }

@@ -21,7 +21,6 @@ pub use providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvid
 pub use seigniorage_recipient::{
     SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
 };
-pub use delegator::{Delegations, DelegationsMap};
 pub use data_provider::DataProvider;
 pub use delegation_provider::DelegationProvider;
 

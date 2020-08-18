@@ -226,8 +226,8 @@ where
     }
     fn distribute_to_delegators(
         &mut self,
-        _validator_account_hash: AccountHash,
-        _source_purse: URef,
+        validator_public_key: casperlabs_types::PublicKey,
+        purse: URef,
     ) -> Result<(), Error> {
         todo!()
     }

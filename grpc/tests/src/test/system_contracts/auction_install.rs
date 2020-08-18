@@ -9,9 +9,9 @@ use casperlabs_node::components::contract_runtime::core::engine_state::EngineCon
 use casperlabs_types::{
     account::AccountHash,
     auction::{
-        ACTIVE_BIDS_KEY, DELEGATIONS_MAP_KEY, DELEGATOR_REWARD_POOL_MAP, ERA_INDEX_KEY,
+        ACTIVE_BIDS_KEY, DELEGATIONS_MAP_KEY, DELEGATOR_REWARD_POOL_MAP, 
         ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY, REWARD_PER_STAKE_MAP_KEY, TALLY_MAP_KEY,
-        TOTAL_DELEGATOR_STAKE_MAP_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        TOTAL_DELEGATOR_STAKE_MAP_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, ERA_ID_KEY,
     },
     runtime_args, ContractHash, RuntimeArgs, U512,
 };
@@ -99,7 +99,7 @@ fn should_run_auction_install_contract() {
     assert!(named_keys.contains_key(DELEGATIONS_MAP_KEY));
     assert!(named_keys.contains_key(ERA_VALIDATORS_KEY));
     assert!(named_keys.contains_key(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY));
-    assert!(named_keys.contains_key(ERA_INDEX_KEY));
+    assert!(named_keys.contains_key(ERA_ID_KEY));
     assert!(named_keys.contains_key(TALLY_MAP_KEY));
     assert!(named_keys.contains_key(REWARD_PER_STAKE_MAP_KEY));
     assert!(named_keys.contains_key(TOTAL_DELEGATOR_STAKE_MAP_KEY));

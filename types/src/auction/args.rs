@@ -11,8 +11,8 @@ pub const INITIAL_ERA_ID: EraId = 0;
 
 /// Named constant for `amount`.
 pub const ARG_AMOUNT: &str = "amount";
-/// Named constant for `delegation_rate`.
-pub const ARG_DELEGATION_RATE: &str = "delegation_rate";
+/// Named constant for `commission_rate`.
+pub const ARG_COMMISSION_RATE: &str = "commission_rate";
 /// Named constant for `account_hash`.
 pub const ARG_PUBLIC_KEY: &str = "public_key";
 /// Named constant for `purse`.

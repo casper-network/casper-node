@@ -14,7 +14,7 @@ use casperlabs_contract::{
 use casperlabs_types::{
     account::AccountHash,
     auction::{
-        SeigniorageRecipients, ARG_SOURCE_PURSE, ARG_VALIDATOR_ACCOUNT_HASH,
+        SeigniorageRecipients, ARG_SOURCE_PURSE, 
         METHOD_DISTRIBUTE_TO_DELEGATORS,
     },
     proof_of_stake::{
@@ -23,7 +23,7 @@ use casperlabs_types::{
     },
     runtime_args,
     system_contract_errors::pos::Error,
-    ApiError, BlockTime, CLValue, Key, Phase, RuntimeArgs, TransferResult, URef, U512,
+    ApiError, BlockTime, CLValue, Key, Phase, RuntimeArgs, TransferResult, URef, U512, PublicKey,
 };
 use runtime::call_contract;
 
@@ -77,8 +77,8 @@ impl AuctionProvider for ProofOfStakeContract {
     }
     fn distribute_to_delegators(
         &mut self,
-        validator_account_hash: AccountHash,
-        source_purse: URef,
+        validator_public_key: casperlabs_types::PublicKey,
+        purse: URef,
     ) -> Result<(), Error> {
         todo!()
     }
@@ -255,6 +255,6 @@ pub fn finalize_payment() {
 pub fn distribute_rewards() {
     let mut pos_contract = ProofOfStakeContract;
 
-    let reward_factors: BTreeMap<AccountHash, u64> = runtime::get_named_arg(ARG_REWARD_FACTORS);
+    let reward_factors: BTreeMap<PublicKey, u64> = runtime::get_named_arg(ARG_REWARD_FACTORS);
     pos_contract.distribute(reward_factors).unwrap_or_revert();
 }

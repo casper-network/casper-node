@@ -10,7 +10,7 @@ use casperlabs_contract::{
 };
 use casperlabs_types::{
     auction::{
-        ActiveBids, Delegations, Delegations, EraValidators, FoundingValidator, FoundingValidators,
+        ActiveBids, Delegations, DelegationsMap, EraValidators, FoundingValidator, FoundingValidators,
         SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
         ValidatorWeights, AUCTION_DELAY, ERA_ID_KEY, INITIAL_ERA_ID,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
@@ -35,7 +35,7 @@ fn compute_seigniorage_recipients(
     for (era_validator, founding_validator) in founding_validators {
         let mut seigniorage_recipient = SeigniorageRecipient::default();
         seigniorage_recipient.stake = founding_validator.staked_amount;
-        seigniorage_recipient.delegation_rate = founding_validator.delegation_rate;
+        seigniorage_recipient.commission_rate = founding_validator.commission_rate;
         seigniorage_recipients.insert(*era_validator, seigniorage_recipient);
     }
     seigniorage_recipients

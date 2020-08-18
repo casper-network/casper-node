@@ -1,9 +1,5 @@
 use lazy_static::lazy_static;
 
-use auction::{
-    EraId, SeigniorageRecipients, ARG_DELEGATOR, ARG_PUBLIC_KEY, AUCTION_DELAY, ERA_ID_KEY,
-    INITIAL_ERA_ID,
-};
 use casperlabs_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
@@ -21,8 +17,8 @@ use casperlabs_types::{
     account::AccountHash,
     auction::{
         ActiveBids, CommissionRate, DelegationsMap, EraValidators, FoundingValidators,
-        SeigniorageRecipients, ARG_AMOUNT, ARG_DELEGATION_RATE, 
-        FOUNDING_VALIDATORS_KEY,
+        SeigniorageRecipients, ARG_AMOUNT, ARG_COMMISSION_RATE, 
+        FOUNDING_VALIDATORS_KEY, ARG_VALIDATOR, ARG_DELEGATOR, ARG_PUBLIC_KEY, INITIAL_ERA_ID, EraId, ERA_ID_KEY, AUCTION_DELAY,
     },
     bytesrepr::FromBytes,
     mint::{UnbondingPurses, DEFAULT_UNBONDING_DELAY},
@@ -42,9 +38,9 @@ lazy_static! {
 }
 
 const ADD_BID_AMOUNT_1: u64 = 95_000;
-const ADD_BID_DELEGATION_RATE_1: CommissionRate = 125;
+const ADD_BID_COMMISSION_RATE_1: CommissionRate = 125;
 const BID_AMOUNT_2: u64 = 5_000;
-const ADD_BID_DELEGATION_RATE_2: CommissionRate = 126;
+const ADD_BID_COMMISSION_RATE_2: CommissionRate = 126;
 const WITHDRAW_BID_AMOUNT_2: u64 = 15_000;
 
 const ARG_ADD_BID: &str = "add_bid";
@@ -122,7 +118,7 @@ fn should_run_add_bid() {
             ARG_PUBLIC_KEY => casperlabs_types::PublicKey::from(*BID_ACCOUNT_PK),
             ARG_ENTRY_POINT => ARG_ADD_BID,
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
-            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+            ARG_COMMISSION_RATE => ADD_BID_COMMISSION_RATE_1,
         },
     )
     .build();
@@ -138,7 +134,7 @@ fn should_run_add_bid() {
         builder.get_purse_balance(active_bid.bid_purse),
         U512::from(ADD_BID_AMOUNT_1)
     );
-    assert_eq!(active_bid.delegation_rate, ADD_BID_DELEGATION_RATE_1);
+    assert_eq!(active_bid.commission_rate, ADD_BID_COMMISSION_RATE_1);
 
     // 2nd bid top-up
     let exec_request_2 = ExecuteRequestBuilder::standard(
@@ -148,7 +144,7 @@ fn should_run_add_bid() {
             ARG_PUBLIC_KEY => casperlabs_types::PublicKey::from(*BID_ACCOUNT_PK),
             ARG_ENTRY_POINT => ARG_ADD_BID,
             ARG_AMOUNT => U512::from(BID_AMOUNT_2),
-            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_2,
+            ARG_COMMISSION_RATE => ADD_BID_COMMISSION_RATE_2,
         },
     )
     .build();
@@ -164,7 +160,7 @@ fn should_run_add_bid() {
         builder.get_purse_balance(active_bid.bid_purse),
         U512::from(ADD_BID_AMOUNT_1 + BID_AMOUNT_2)
     );
-    assert_eq!(active_bid.delegation_rate, ADD_BID_DELEGATION_RATE_2);
+    assert_eq!(active_bid.commission_rate, ADD_BID_COMMISSION_RATE_2);
 
     // 3. withdraw some amount
     let exec_request_3 = ExecuteRequestBuilder::standard(
@@ -243,7 +239,7 @@ fn should_run_delegate_and_undelegate() {
             ARG_PUBLIC_KEY => casperlabs_types::PublicKey::from(*NON_FOUNDER_VALIDATOR_1),
             ARG_ENTRY_POINT => ARG_ADD_BID,
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
-            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+            ARG_COMMISSION_RATE => ADD_BID_COMMISSION_RATE_1,
         },
     )
     .build();
@@ -264,7 +260,7 @@ fn should_run_delegate_and_undelegate() {
         builder.get_purse_balance(active_bid.bid_purse),
         U512::from(ADD_BID_AMOUNT_1)
     );
-    assert_eq!(active_bid.delegation_rate, ADD_BID_DELEGATION_RATE_1);
+    assert_eq!(active_bid.commission_rate, ADD_BID_COMMISSION_RATE_1);
 
     let auction_stored_value = builder
         .query(None, auction_hash.into(), &[])
@@ -445,7 +441,7 @@ fn should_calculate_era_validators() {
             ARG_PUBLIC_KEY => casperlabs_types::PublicKey::from(*BID_ACCOUNT_PK),
             ARG_ENTRY_POINT => ARG_ADD_BID,
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
-            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+            ARG_COMMISSION_RATE => ADD_BID_COMMISSION_RATE_1,
         },
     )
     .build();
