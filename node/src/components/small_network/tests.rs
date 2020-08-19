@@ -6,6 +6,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     time::{Duration, Instant},
 };
 
@@ -151,12 +152,11 @@ fn network_is_complete(
 
 fn gen_config(bind_port: u16, root_port: u16) -> small_network::Config {
     // Bind everything to localhost.
-    let bind_interface = "127.0.0.1".parse().unwrap();
-
+    let bind_interface: IpAddr = Ipv4Addr::LOCALHOST.into();
     small_network::Config {
-        bind_interface,
+        bind_interface: bind_interface.to_string(),
         bind_port,
-        root_addr: (bind_interface, root_port).into(),
+        root_addr: SocketAddr::new(bind_interface, root_port).to_string(),
         // Fast retry, moderate amount of times. This is 10 seconds max (100 x 100 ms)
         max_outgoing_retries: Some(100),
         outgoing_retry_delay_millis: 100,
@@ -236,9 +236,9 @@ async fn bind_to_real_network_interface() {
     let port = testing::unused_port_on_localhost();
 
     let local_net_config = small_network::Config {
-        bind_interface: local_addr,
+        bind_interface: local_addr.to_string(),
         bind_port: port,
-        root_addr: (local_addr, port).into(),
+        root_addr: SocketAddr::new(local_addr, port).to_string(),
         max_outgoing_retries: Some(360),
         outgoing_retry_delay_millis: 10000,
         cert_path: None,

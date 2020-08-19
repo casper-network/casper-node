@@ -9,6 +9,7 @@ use std::{
     env::current_dir,
     fmt::{self, Display, Formatter},
     fs, io,
+    net::{IpAddr, SocketAddr, ToSocketAddrs},
     path::{Path, PathBuf},
 };
 
@@ -36,6 +37,18 @@ lazy_static! {
             value as usize
         }
     };
+}
+
+/// Parse a network address from a string, with DNS resolution.
+pub fn resolve_address(addr: &str) -> io::Result<SocketAddr> {
+    addr.to_socket_addrs()?
+        .next()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "could not resolve IP"))
+}
+
+/// Resolve a hostname.
+pub fn resolve_ip(host: &str) -> io::Result<IpAddr> {
+    Ok(resolve_address(format!("{}:0", host).as_str())?.ip())
 }
 
 /// Moves a value to the heap and then forgets about, leaving only a static reference behind.
