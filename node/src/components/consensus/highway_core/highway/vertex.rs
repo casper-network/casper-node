@@ -1,8 +1,14 @@
 use serde::{Deserialize, Serialize};
 
-use super::{evidence::Evidence, state, validators::ValidatorIndex, vote::Panorama};
 use crate::{
-    components::consensus::traits::{Context, ValidatorSecret},
+    components::consensus::{
+        highway_core::{
+            evidence::Evidence,
+            state::{self, Panorama},
+            validators::ValidatorIndex,
+        },
+        traits::{Context, ValidatorSecret},
+    },
     types::Timestamp,
 };
 use std::fmt::Debug;

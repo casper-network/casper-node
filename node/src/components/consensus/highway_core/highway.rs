@@ -1,15 +1,19 @@
-use thiserror::Error;
-use tracing::warn;
+mod vertex;
 
-use super::{
-    active_validator::{ActiveValidator, Effect},
-    state::{State, VoteError},
-    validators::{Validator, Validators},
-    vertex::{Dependency, Vertex},
-};
+pub(crate) use vertex::{Dependency, SignedWireVote, Vertex, WireVote};
+
+use thiserror::Error;
+use tracing::{error, warn};
+
 use crate::{
     components::consensus::{
-        consensus_protocol::BlockContext, highway_core::vertex::SignedWireVote, traits::Context,
+        consensus_protocol::BlockContext,
+        highway_core::{
+            active_validator::{ActiveValidator, Effect},
+            state::{State, VoteError},
+            validators::{Validator, Validators},
+        },
+        traits::Context,
     },
     types::Timestamp,
 };
@@ -88,7 +92,7 @@ pub(crate) struct Highway<C: Context> {
     validators: Validators<C::ValidatorId>,
     /// The abstract protocol state.
     state: State<C>,
-    /// The state of an active validator, who is participanting and creating new vertices.
+    /// The state of an active validator, who is participating and creating new vertices.
     active_validator: Option<ActiveValidator<C>>,
 }
 
@@ -162,7 +166,7 @@ impl<C: Context> Highway<C> {
     pub(crate) fn missing_dependency(&self, pvv: &PreValidatedVertex<C>) -> Option<Dependency<C>> {
         match pvv.vertex() {
             Vertex::Evidence(_) => None,
-            Vertex::Vote(vote) => self.state.missing_dependency(&vote.wire_vote.panorama),
+            Vertex::Vote(vote) => vote.wire_vote.panorama.missing_dependency(&self.state),
         }
     }
 
@@ -234,11 +238,11 @@ impl<C: Context> Highway<C> {
     }
 
     pub(crate) fn propose(
-        &self,
+        &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
     ) -> Vec<Effect<C>> {
-        match self.active_validator.as_ref() {
+        match self.active_validator.as_mut() {
             None => {
                 // TODO: Error?
                 warn!(
@@ -260,10 +264,11 @@ impl<C: Context> Highway<C> {
         &self.state
     }
 
-    fn on_new_vote(&self, vhash: &C::Hash, timestamp: Timestamp) -> Vec<Effect<C>> {
+    fn on_new_vote(&mut self, vhash: &C::Hash, timestamp: Timestamp) -> Vec<Effect<C>> {
+        let state = &self.state;
         self.active_validator
-            .as_ref()
-            .map_or_else(Vec::new, |av| av.on_new_vote(vhash, timestamp, &self.state))
+            .as_mut()
+            .map_or_else(Vec::new, |av| av.on_new_vote(vhash, timestamp, state))
     }
 
     /// Performs initial validation and returns an error if `vertex` is invalid. (See
@@ -271,7 +276,7 @@ impl<C: Context> Highway<C> {
     fn do_pre_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
             Vertex::Vote(vote) => {
-                if !C::verify_signature(&vote.hash(), self.validator_pk(&vote), &vote.signature) {
+                if !C::verify_signature(&vote.hash(), self.validator_id(&vote), &vote.signature) {
                     return Err(VoteError::Signature.into());
                 }
                 Ok(self.state.pre_validate_vote(vote)?)
@@ -307,7 +312,7 @@ impl<C: Context> Highway<C> {
     }
 
     /// Returns validator ID of the `swvote` creator.
-    fn validator_pk(&self, swvote: &SignedWireVote<C>) -> &C::ValidatorId {
+    fn validator_id(&self, swvote: &SignedWireVote<C>) -> &C::ValidatorId {
         self.validators.get_by_index(swvote.wire_vote.creator).id()
     }
 }
@@ -317,16 +322,14 @@ pub(crate) mod tests {
     use crate::{
         components::consensus::{
             highway_core::{
-                highway::{Highway, VertexError, VoteError},
+                highway::{Highway, SignedWireVote, Vertex, VertexError, VoteError, WireVote},
                 state::{
                     tests::{
                         TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC, WEIGHTS,
                     },
-                    State,
+                    Panorama, State,
                 },
                 validators::Validators,
-                vertex::{SignedWireVote, Vertex, WireVote},
-                vote::Panorama,
             },
             traits::ValidatorSecret,
         },

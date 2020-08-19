@@ -105,6 +105,7 @@ impl Default for Genesis {
 struct HighwayConfig {
     genesis_era_start_timestamp: Timestamp,
     era_duration_millis: u64,
+    minimum_era_height: u64,
     booking_duration_millis: u64,
     entropy_duration_millis: u64,
     voting_period_duration_millis: u64,
@@ -123,6 +124,7 @@ impl From<chainspec::HighwayConfig> for HighwayConfig {
         HighwayConfig {
             genesis_era_start_timestamp: cfg.genesis_era_start_timestamp,
             era_duration_millis: cfg.era_duration.as_millis() as u64,
+            minimum_era_height: cfg.minimum_era_height,
             booking_duration_millis: cfg.booking_duration.as_millis() as u64,
             entropy_duration_millis: cfg.entropy_duration.as_millis() as u64,
             voting_period_duration_millis: cfg.voting_period_duration.as_millis() as u64,
@@ -213,6 +215,7 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
                 .highway_config
                 .genesis_era_start_timestamp,
             era_duration_millis: chainspec.genesis.highway_config.era_duration.as_millis() as u64,
+            minimum_era_height: chainspec.genesis.highway_config.minimum_era_height,
             booking_duration_millis: chainspec
                 .genesis
                 .highway_config
@@ -291,6 +294,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
     let highway_config = chainspec::HighwayConfig {
         genesis_era_start_timestamp: chainspec.highway.genesis_era_start_timestamp,
         era_duration: Duration::from_millis(chainspec.highway.era_duration_millis),
+        minimum_era_height: chainspec.highway.minimum_era_height,
         booking_duration: Duration::from_millis(chainspec.highway.booking_duration_millis),
         entropy_duration: Duration::from_millis(chainspec.highway.entropy_duration_millis),
         voting_period_duration: Duration::from_millis(

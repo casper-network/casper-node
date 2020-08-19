@@ -1,13 +1,11 @@
+// TODO - remove
+#![allow(dead_code)]
+
 use std::{
-    cmp::Ordering,
-    collections::{BTreeMap, BinaryHeap, HashSet, VecDeque},
+    collections::{BTreeMap, HashSet},
     fmt::{Debug, Display, Formatter},
     hash::Hash,
-    time,
 };
-
-use anyhow::anyhow;
-use rand::Rng;
 
 use super::queue::{MessageT, Queue, QueueEntry};
 use crate::types::Timestamp;
@@ -289,13 +287,7 @@ where
 }
 
 mod virtual_net_tests {
-    use std::collections::{HashSet, VecDeque};
-
-    use super::{
-        DeliverySchedule, Message, Node, Target, TargetedMessage, Timestamp, ValidatorId,
-        VirtualNet,
-    };
-    use crate::testing::TestRng;
+    use super::{Message, Node, Target, TargetedMessage, Timestamp, ValidatorId, VirtualNet};
 
     type M = u64;
     type C = u64;

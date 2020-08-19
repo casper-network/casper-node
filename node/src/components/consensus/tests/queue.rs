@@ -63,7 +63,7 @@ where
 
 #[cfg(test)]
 mod queue_entry_tests {
-    use super::{Message, QueueEntry, Timestamp, ValidatorId};
+    use super::{Message, QueueEntry, ValidatorId};
     use std::cmp::Ordering;
 
     #[test]
@@ -118,7 +118,6 @@ where
 #[cfg(test)]
 mod queue_tests {
     use super::{Message, Queue, QueueEntry, ValidatorId};
-    use crate::types::Timestamp;
 
     #[test]
     fn pop_earliest_delivery() {
