@@ -210,7 +210,7 @@ impl HighwayConfig {
         HighwayConfig {
             genesis_era_start_timestamp: Timestamp::random(rng),
             era_duration: Duration::from_millis(rng.gen_range(600_000, 604_800_000)),
-            minimum_era_height: 10,
+            minimum_era_height: rng.gen_range(5, 100),
             booking_duration: Duration::from_millis(rng.gen_range(600_000, 864_000_000)),
             entropy_duration: Duration::from_millis(rng.gen_range(600_000, 10_800_000)),
             voting_period_duration: Duration::from_millis(rng.gen_range(600_000, 172_800_000)),
