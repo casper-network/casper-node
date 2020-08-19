@@ -149,6 +149,11 @@ impl<C: Context> Highway<C> {
         effects
     }
 
+    /// Turns this instance into a passive observer, that does not create any new vertices.
+    pub(crate) fn deactivate_validator(&mut self) {
+        self.active_validator = None;
+    }
+
     /// Does initial validation. Returns an error if the vertex is invalid.
     pub(crate) fn pre_validate_vertex(
         &self,

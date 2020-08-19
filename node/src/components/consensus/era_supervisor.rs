@@ -9,14 +9,13 @@ use std::{
     collections::HashMap,
     fmt::{self, Debug, Formatter},
     rc::Rc,
-    time::Duration,
 };
 
 use anyhow::Error;
 use casperlabs_types::U512;
 use num_traits::AsPrimitive;
 use serde::{Deserialize, Serialize};
-use tracing::error;
+use tracing::{error, info};
 
 use crate::{
     components::{
@@ -38,7 +37,7 @@ use crate::{
     utils::WithDir,
 };
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct EraId(pub(crate) u64);
 
 impl EraId {
@@ -48,44 +47,27 @@ impl EraId {
             payload,
         }
     }
-}
 
-#[derive(Clone, Debug)]
-struct EraConfig {
-    era_length: Duration,
-    //TODO: Are these necessary for every consensus protocol?
-    booking_duration: Duration,
-    entropy_duration: Duration,
-}
-
-impl Default for EraConfig {
-    fn default() -> Self {
-        // TODO: no idea what the default values should be and if implementing defaults makes
-        // sense, this is just for the time being
-        Self {
-            era_length: Duration::from_secs(86_400),       // one day
-            booking_duration: Duration::from_secs(43_200), // half a day
-            entropy_duration: Duration::from_secs(3_600),
-        }
+    fn successor(self) -> EraId {
+        EraId(self.0 + 1)
     }
 }
 
 pub(crate) struct EraSupervisor<I> {
-    // A map of active consensus protocols.
-    // A value is a trait so that we can run different consensus protocol instances per era.
+    /// A map of active consensus protocols.
+    /// A value is a trait so that we can run different consensus protocol instances per era.
     active_eras: HashMap<EraId, Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>>>,
-    era_config: EraConfig,
     pub(super) secret_signing_key: Rc<SecretKey>,
     pub(super) public_signing_key: PublicKey,
+    validator_stakes: Vec<(PublicKey, Motes)>,
+    current_era: EraId,
+    highway_config: HighwayConfig,
 }
 
 impl<I> Debug for EraSupervisor<I> {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(
-            formatter,
-            "EraSupervisor {{ era_config: {:?}, .. }}",
-            self.era_config
-        )
+        let ae: Vec<_> = self.active_eras.keys().collect();
+        write!(formatter, "EraSupervisor {{ active_eras: {:?}, .. }}", ae)
     }
 }
 
@@ -106,18 +88,14 @@ where
 
         let mut era_supervisor = Self {
             active_eras: Default::default(),
-            era_config: Default::default(),
             secret_signing_key,
             public_signing_key,
+            current_era: EraId(0),
+            validator_stakes: validator_stakes.clone(),
+            highway_config: *highway_config,
         };
 
-        let effects = era_supervisor.new_era(
-            effect_builder,
-            EraId(0),
-            timestamp,
-            validator_stakes,
-            highway_config,
-        );
+        let effects = era_supervisor.new_era(effect_builder, EraId(0), timestamp, validator_stakes);
 
         Ok((era_supervisor, effects))
     }
@@ -128,7 +106,6 @@ where
         era_id: EraId,
         timestamp: Timestamp,
         validator_stakes: Vec<(PublicKey, Motes)>,
-        highway_config: &HighwayConfig,
     ) -> Effects<Event<I>> {
         if self.active_eras.contains_key(&era_id) {
             panic!("{:?} already exists", era_id);
@@ -152,15 +129,16 @@ where
         let instance_id = hash::hash(format!("Highway era {}", era_id.0));
         let secret =
             HighwaySecret::new(Rc::clone(&self.secret_signing_key), self.public_signing_key);
-        let ftt =
-            validators.total_weight() * u64::from(highway_config.finality_threshold_percent) / 100;
+        let ftt = validators.total_weight()
+            * u64::from(self.highway_config.finality_threshold_percent)
+            / 100;
         let (highway, effects) = HighwayProtocol::<I, HighwayContext>::new(
             instance_id,
             validators,
             0, // TODO: get a proper seed ?
             self.public_signing_key,
             secret,
-            highway_config.minimum_round_exponent,
+            self.highway_config.minimum_round_exponent,
             ftt,
             timestamp,
         );
@@ -169,11 +147,12 @@ where
 
         effects
             .into_iter()
-            .flat_map(|result| Self::handle_consensus_result(EraId(0), effect_builder, result))
+            .flat_map(|result| self.handle_consensus_result(era_id, effect_builder, result))
             .collect()
     }
 
     fn handle_consensus_result<REv: ReactorEventT<I>>(
+        &mut self,
         era_id: EraId,
         effect_builder: EffectBuilder<REv>,
         consensus_result: ConsensusProtocolResult<I, ProtoBlock, PublicKey>,
@@ -208,13 +187,15 @@ where
             ConsensusProtocolResult::CreateNewBlock {
                 block_context,
                 opt_parent,
-            } => effect_builder
-                .request_proto_block(block_context, opt_parent)
-                .event(move |(proto_block, block_context)| Event::NewProtoBlock {
-                    era_id,
-                    proto_block,
-                    block_context,
-                }),
+            } => {
+                effect_builder
+                    .request_proto_block(block_context, opt_parent)
+                    .event(move |(proto_block, block_context)| Event::NewProtoBlock {
+                        era_id,
+                        proto_block,
+                        block_context,
+                    })
+            }
             ConsensusProtocolResult::FinalizedBlock {
                 value: proto_block,
                 new_equivocators,
@@ -225,6 +206,22 @@ where
                 let mut effects = effect_builder
                     .announce_finalized_proto_block(proto_block.clone())
                     .ignore();
+                if proto_block.switch_block() {
+                    assert_eq!(
+                        era_id, self.current_era,
+                        "finalized block in unexpected era"
+                    );
+                    self.current_era_mut().deactivate_validator();
+                    let new_era_id = era_id.successor();
+                    let validator_stakes = self.validator_stakes.clone();
+                    effects.extend(self.new_era(
+                        effect_builder,
+                        new_era_id,
+                        timestamp,
+                        validator_stakes,
+                    ));
+                    self.current_era = new_era_id;
+                }
                 // Create instructions for slashing equivocators.
                 let mut instructions: Vec<_> = new_equivocators
                     .into_iter()
@@ -274,13 +271,18 @@ where
         ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>>, Error>,
     {
         match self.active_eras.get_mut(&era_id) {
-            None => todo!("Handle missing eras."),
+            None => {
+                if era_id > self.current_era {
+                    info!("received message for future {:?}", era_id);
+                } else {
+                    info!("received message for obsolete {:?}", era_id);
+                }
+                Effects::new()
+            }
             Some(consensus) => match f(&mut **consensus) {
                 Ok(results) => results
                     .into_iter()
-                    .flat_map(|result| {
-                        Self::handle_consensus_result(era_id, effect_builder, result)
-                    })
+                    .flat_map(|result| self.handle_consensus_result(era_id, effect_builder, result))
                     .collect(),
                 Err(error) => {
                     error!(%error, ?era_id, "got error from era id {:?}: {:?}", era_id, error);
@@ -288,6 +290,13 @@ where
                 }
             },
         }
+    }
+
+    /// Returns the current era.
+    fn current_era_mut(&mut self) -> &mut Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>> {
+        self.active_eras
+            .get_mut(&self.current_era)
+            .expect("current era does not exist")
     }
 
     /// Inspect the active eras.

@@ -92,4 +92,7 @@ pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID> {
         value: &C,
         valid: bool,
     ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
+
+    /// Turns this instance into a passive observer, that does not create any new vertices.
+    fn deactivate_validator(&mut self);
 }
