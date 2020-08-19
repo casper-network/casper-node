@@ -36,6 +36,9 @@ pub enum Error {
     /// Failed to convert std TCP listener to tokio TCP listener.
     #[error("failed to convert listener to tokio")]
     ListenerConversion(#[source] io::Error),
+    /// Could not resolve root node address.
+    #[error("failed to resolve root node address")]
+    ResolveRootNode(#[source] io::Error),
     /// Failed to send message.
     #[error("failed to send message")]
     MessageNotSent(#[source] io::Error),
