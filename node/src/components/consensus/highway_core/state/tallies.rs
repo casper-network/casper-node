@@ -4,8 +4,10 @@ use std::{
     ops::Index,
 };
 
-use super::state::{State, Weight};
-use crate::components::consensus::traits::Context;
+use crate::components::consensus::{
+    highway_core::state::{State, Weight},
+    traits::Context,
+};
 
 /// A tally of votes at a specific height. This is never empty: It contains at least one vote.
 #[derive(Clone)]
@@ -185,7 +187,7 @@ impl<'a, C: Context> Tallies<'a, C> {
 #[cfg(test)]
 mod tests {
     use super::{
-        super::state::{tests::*, State},
+        super::{tests::*, State},
         *,
     };
 

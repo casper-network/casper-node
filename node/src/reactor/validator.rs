@@ -344,10 +344,10 @@ impl reactor::Reactor for Reactor {
         let deploy_gossiper = Gossiper::new(config.gossip, gossiper::get_deploy_from_storage);
         let deploy_buffer = DeployBuffer::new(config.node.block_max_deploy_count as usize);
         // Post state hash is expected to be present
-        let post_state_hash = chainspec_loader
-            .post_state_hash()
+        let genesis_post_state_hash = chainspec_loader
+            .genesis_post_state_hash()
             .expect("should have post state hash");
-        let block_executor = BlockExecutor::new(post_state_hash);
+        let block_executor = BlockExecutor::new(genesis_post_state_hash);
         let block_validator = BlockValidator::<NodeId>::new();
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);

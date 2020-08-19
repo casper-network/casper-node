@@ -101,7 +101,7 @@ where
                 // for now. Duplicate requests must still be answered, but are
                 // de-duplicated by the fetcher.
                 let effects = proto_block
-                    .deploys
+                    .deploys()
                     .iter()
                     .flat_map(|deploy_hash| {
                         // For every request, increase the number of in-flight...
@@ -130,7 +130,7 @@ where
                     Entry::Vacant(entry) => {
                         // Our entry is vacant - create an entry to track the state.
                         let missing_deploys: HashSet<DeployHash> =
-                            entry.key().deploys.iter().cloned().collect();
+                            entry.key().deploys().iter().cloned().collect();
 
                         entry.insert(BlockValidationState {
                             missing_deploys,

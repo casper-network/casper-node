@@ -1,5 +1,5 @@
 use super::validators::ValidatorIndex;
-use crate::components::consensus::{highway_core::vertex::SignedWireVote, traits::Context};
+use crate::components::consensus::{highway_core::highway::SignedWireVote, traits::Context};
 use serde::{Deserialize, Serialize};
 
 /// Evidence that a validator is faulty.
