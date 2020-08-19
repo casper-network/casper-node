@@ -89,7 +89,7 @@ use crate::{
     },
     reactor::{EventQueueHandle, Finalize, QueueKind},
     tls::{self, KeyFingerprint, Signed, TlsCert},
-    utils::{resolve_address, WithDir},
+    utils::{resolve_address, resolve_ip, WithDir},
 };
 // Seems to be a false positive.
 #[allow(unreachable_pub)]
@@ -165,11 +165,13 @@ where
             _ => return Err(Error::InvalidConfig),
         };
 
-        // Resolve the root address
+        // Resolve the bind interface and root address.
+        let bind_interface =
+            resolve_ip(cfg.bind_interface.as_str()).map_err(Error::ListenerCreation)?;
         let root_addr = resolve_address(cfg.root_addr.as_str()).map_err(Error::ResolveRootNode)?;
 
         // We can now create a listener.
-        let (listener, we_are_root) = create_listener(root_addr, cfg.bind_port, cfg.bind_interface)
+        let (listener, we_are_root) = create_listener(root_addr, cfg.bind_port, bind_interface)
             .map_err(Error::ListenerCreation)?;
         let addr = listener.local_addr().map_err(Error::ListenerAddr)?;
 
