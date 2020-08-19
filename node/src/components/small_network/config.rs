@@ -1,4 +1,4 @@
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddrV4};
 
 use openssl::{
     pkey::{PKey, Private},
@@ -23,7 +23,7 @@ pub struct Config {
     pub bind_port: u16,
 
     /// Address to connect to join the network.
-    pub root_addr: SocketAddr,
+    pub root_addr: String,
 
     /// Path to certificate file.
     pub cert_path: Option<External<X509>>,
@@ -44,7 +44,7 @@ impl Config {
         Config {
             bind_interface: Ipv4Addr::LOCALHOST.into(),
             bind_port: 0,
-            root_addr: (Ipv4Addr::LOCALHOST, port).into(),
+            root_addr: SocketAddrV4::new(Ipv4Addr::LOCALHOST, port).to_string(),
             cert_path: None,
             secret_key_path: None,
             max_outgoing_retries: Some(360),

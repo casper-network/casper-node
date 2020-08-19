@@ -89,7 +89,7 @@ use crate::{
     },
     reactor::{EventQueueHandle, Finalize, QueueKind},
     tls::{self, KeyFingerprint, Signed, TlsCert},
-    utils::WithDir,
+    utils::{resolve_address, WithDir},
 };
 // Seems to be a false positive.
 #[allow(unreachable_pub)]
@@ -165,10 +165,12 @@ where
             _ => return Err(Error::InvalidConfig),
         };
 
+        // Resolve the root address
+        let root_addr = resolve_address(cfg.root_addr.as_str()).map_err(Error::ResolveRootNode)?;
+
         // We can now create a listener.
-        let (listener, we_are_root) =
-            create_listener(cfg.root_addr, cfg.bind_port, cfg.bind_interface)
-                .map_err(Error::ListenerCreation)?;
+        let (listener, we_are_root) = create_listener(root_addr, cfg.bind_port, cfg.bind_interface)
+            .map_err(Error::ListenerCreation)?;
         let addr = listener.local_addr().map_err(Error::ListenerAddr)?;
 
         // Create the model. Initially we know our own endpoint address.
@@ -192,7 +194,7 @@ where
         ));
 
         let model = SmallNetwork {
-            root_addr: cfg.root_addr,
+            root_addr,
             signed_endpoints: hashmap! { our_fingerprint => Signed::new(&our_endpoint, &secret_key)? },
             endpoints: hashmap! { our_fingerprint => our_endpoint },
             cert: Arc::new(tls::validate_cert(cert).map_err(Error::OwnCertificateInvalid)?),
