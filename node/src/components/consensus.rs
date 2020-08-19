@@ -15,14 +15,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{storage::Storage, Component},
-    crypto::asymmetric_key,
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
             BlockExecutorRequest, BlockValidationRequest, DeployBufferRequest, NetworkRequest,
             StorageRequest,
         },
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, Effects,
     },
     types::{Block, ProtoBlock, Timestamp},
 };
@@ -156,67 +155,28 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::Timer { era_id, timestamp } => {
-                self.delegate_to_era(era_id, effect_builder, move |consensus| {
-                    consensus.handle_timer(timestamp)
-                })
+                self.handle_timer(effect_builder, era_id, timestamp)
             }
             Event::MessageReceived { sender, msg } => {
-                let ConsensusMessage { era_id, payload } = msg;
-                self.delegate_to_era(era_id, effect_builder, move |consensus| {
-                    consensus.handle_message(sender, payload)
-                })
+                self.handle_message(effect_builder, sender, msg)
             }
             Event::NewProtoBlock {
                 era_id,
                 proto_block,
                 block_context,
-            } => {
-                let mut effects = effect_builder
-                    .announce_proposed_proto_block(proto_block.clone())
-                    .ignore();
-                effects.extend(
-                    self.delegate_to_era(era_id, effect_builder, move |consensus| {
-                        consensus.propose(proto_block, block_context)
-                    }),
-                );
-                effects
-            }
-            Event::ExecutedBlock {
-                era_id: _,
-                mut block,
-            } => {
-                // TODO - we should only sign if we're a validator for the given era ID.
-                let signature = asymmetric_key::sign(
-                    block.hash().inner(),
-                    &self.secret_signing_key,
-                    &self.public_signing_key,
-                );
-                block.append_proof(signature);
-                effect_builder
-                    .put_block_to_storage(Box::new(block))
-                    .ignore()
+            } => self.handle_new_proto_block(effect_builder, era_id, proto_block, block_context),
+            Event::ExecutedBlock { era_id, block } => {
+                self.handle_executed_block(effect_builder, era_id, block)
             }
             Event::AcceptProtoBlock {
                 era_id,
                 proto_block,
-            } => {
-                let mut effects = self.delegate_to_era(era_id, effect_builder, |consensus| {
-                    consensus.resolve_validity(&proto_block, true)
-                });
-                effects.extend(
-                    effect_builder
-                        .announce_proposed_proto_block(proto_block)
-                        .ignore(),
-                );
-                effects
-            }
+            } => self.handle_accept_proto_block(effect_builder, era_id, proto_block),
             Event::InvalidProtoBlock {
                 era_id,
-                sender: _sender,
+                sender,
                 proto_block,
-            } => self.delegate_to_era(era_id, effect_builder, |consensus| {
-                consensus.resolve_validity(&proto_block, false)
-            }),
+            } => self.handle_invalid_proto_block(effect_builder, era_id, sender, proto_block),
         }
     }
 }

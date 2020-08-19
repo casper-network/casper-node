@@ -21,19 +21,20 @@ use crate::{
     components::{
         chainspec_loader::HighwayConfig,
         consensus::{
-            consensus_protocol::{ConsensusProtocol, ConsensusProtocolResult},
+            consensus_protocol::{BlockContext, ConsensusProtocol, ConsensusProtocolResult},
             highway_core::validators::Validators,
             protocols::highway::{HighwayContext, HighwayProtocol, HighwaySecret},
             traits::NodeIdT,
             Config, ConsensusMessage, Event, ReactorEventT,
         },
     },
+    crypto::asymmetric_key,
     crypto::{
         asymmetric_key::{PublicKey, SecretKey},
         hash,
     },
     effect::{EffectBuilder, EffectExt, Effects},
-    types::{FinalizedBlock, Instruction, Motes, ProtoBlock, Timestamp},
+    types::{Block, FinalizedBlock, Instruction, Motes, ProtoBlock, Timestamp},
     utils::WithDir,
 };
 
@@ -187,15 +188,13 @@ where
             ConsensusProtocolResult::CreateNewBlock {
                 block_context,
                 opt_parent,
-            } => {
-                effect_builder
-                    .request_proto_block(block_context, opt_parent)
-                    .event(move |(proto_block, block_context)| Event::NewProtoBlock {
-                        era_id,
-                        proto_block,
-                        block_context,
-                    })
-            }
+            } => effect_builder
+                .request_proto_block(block_context, opt_parent)
+                .event(move |(proto_block, block_context)| Event::NewProtoBlock {
+                    era_id,
+                    proto_block,
+                    block_context,
+                }),
             ConsensusProtocolResult::FinalizedBlock {
                 value: proto_block,
                 new_equivocators,
@@ -290,6 +289,94 @@ where
                 }
             },
         }
+    }
+
+    pub(super) fn handle_timer<REv: ReactorEventT<I>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        era_id: EraId,
+        timestamp: Timestamp,
+    ) -> Effects<Event<I>> {
+        self.delegate_to_era(era_id, effect_builder, move |consensus| {
+            consensus.handle_timer(timestamp)
+        })
+    }
+
+    pub(super) fn handle_message<REv: ReactorEventT<I>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        sender: I,
+        msg: ConsensusMessage,
+    ) -> Effects<Event<I>> {
+        let ConsensusMessage { era_id, payload } = msg;
+        self.delegate_to_era(era_id, effect_builder, move |consensus| {
+            consensus.handle_message(sender, payload)
+        })
+    }
+
+    pub(super) fn handle_new_proto_block<REv: ReactorEventT<I>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        era_id: EraId,
+        proto_block: ProtoBlock,
+        block_context: BlockContext,
+    ) -> Effects<Event<I>> {
+        let mut effects = effect_builder
+            .announce_proposed_proto_block(proto_block.clone())
+            .ignore();
+        effects.extend(
+            self.delegate_to_era(era_id, effect_builder, move |consensus| {
+                consensus.propose(proto_block, block_context)
+            }),
+        );
+        effects
+    }
+
+    pub(super) fn handle_executed_block<REv: ReactorEventT<I>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        _era_id: EraId,
+        mut block: Block,
+    ) -> Effects<Event<I>> {
+        // TODO - we should only sign if we're a validator for the given era ID.
+        let signature = asymmetric_key::sign(
+            block.hash().inner(),
+            &self.secret_signing_key,
+            &self.public_signing_key,
+        );
+        block.append_proof(signature);
+        effect_builder
+            .put_block_to_storage(Box::new(block))
+            .ignore()
+    }
+
+    pub(super) fn handle_accept_proto_block<REv: ReactorEventT<I>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        era_id: EraId,
+        proto_block: ProtoBlock,
+    ) -> Effects<Event<I>> {
+        let mut effects = self.delegate_to_era(era_id, effect_builder, |consensus| {
+            consensus.resolve_validity(&proto_block, true)
+        });
+        effects.extend(
+            effect_builder
+                .announce_proposed_proto_block(proto_block)
+                .ignore(),
+        );
+        effects
+    }
+
+    pub(super) fn handle_invalid_proto_block<REv: ReactorEventT<I>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        era_id: EraId,
+        _sender: I,
+        proto_block: ProtoBlock,
+    ) -> Effects<Event<I>> {
+        self.delegate_to_era(era_id, effect_builder, |consensus| {
+            consensus.resolve_validity(&proto_block, false)
+        })
     }
 
     /// Returns the current era.
