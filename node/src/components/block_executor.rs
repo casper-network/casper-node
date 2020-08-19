@@ -6,6 +6,7 @@ use std::{
 };
 
 use derive_more::From;
+use itertools::Itertools;
 use rand::Rng;
 use tracing::{debug, error, trace};
 
@@ -199,16 +200,22 @@ impl BlockExecutor {
             })
     }
 
-    /// Executes the first deploy in `state.remaining_deploys`.
-    fn execute_next_deploy<REv: ReactorEventT>(
+    /// Executes the first deploy in `state.remaining_deploys`, or creates the executed block if
+    /// there are no remaining deploys left.
+    fn execute_next_deploy_or_create_block<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         mut state: State,
     ) -> Effects<Event> {
-        let next_deploy = state
-            .remaining_deploys
-            .pop_front()
-            .expect("should not be empty");
+        let next_deploy = match state.remaining_deploys.pop_front() {
+            Some(deploy) => deploy,
+            None => {
+                // The state hash of the last execute-commit cycle is used as the block's post state
+                // hash.
+                let block = self.create_block(state.finalized_block, state.pre_state_hash);
+                return state.responder.respond(block).ignore();
+            }
+        };
         let deploy_item = DeployItem::from(next_deploy);
 
         let execute_request = ExecuteRequest::new(
@@ -228,10 +235,13 @@ impl BlockExecutor {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         state: State,
-        mut execution_results: ExecutionResults,
+        execution_results: ExecutionResults,
     ) -> Effects<Event> {
-        assert_eq!(execution_results.len(), 1, "should only be one exec result");
-        let execution_effect = match execution_results.pop_front().unwrap() {
+        let execution_effect = match execution_results
+            .into_iter()
+            .exactly_one()
+            .expect("should only be one exec result")
+        {
             ExecutionResult::Success { effect, cost } => {
                 debug!(?effect, %cost, "execution succeeded");
                 effect
@@ -255,23 +265,6 @@ impl BlockExecutor {
                 state,
                 commit_result,
             })
-    }
-
-    /// Either cycles to the next deploy for execution, or creates the executed block if there are
-    /// no further deploys to execute.
-    fn process_commit_result<REv: ReactorEventT>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        mut state: State,
-        post_state_hash: Digest,
-    ) -> Effects<Event> {
-        if state.remaining_deploys.is_empty() {
-            state.pre_state_hash = post_state_hash;
-            self.execute_next_deploy(effect_builder, state)
-        } else {
-            let block = self.create_block(state.finalized_block, post_state_hash);
-            state.responder.respond(block).ignore()
-        }
     }
 
     fn create_block(&mut self, finalized_block: FinalizedBlock, post_state_hash: Digest) -> Block {
@@ -330,38 +323,24 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
                 responder,
             }) => {
                 debug!(?finalized_block, "execute block");
-                if finalized_block.proto_block().deploys().is_empty() {
-                    // TODO - account for executing `Instruction`s in finalized block.  For now,
-                    //        just create the block.
-                    let post_state_hash = self.pre_state_hash(&finalized_block);
-                    let block = self.create_block(finalized_block, post_state_hash);
-                    responder.respond(block).ignore()
-                } else {
-                    self.get_deploys(effect_builder, finalized_block, responder)
-                }
+                self.get_deploys(effect_builder, finalized_block, responder)
             }
 
             Event::GetDeploysResult { mut state, deploys } => {
                 trace!(total = %deploys.len(), ?deploys, "fetched deploys");
                 state.remaining_deploys = deploys;
-                self.execute_next_deploy(effect_builder, state)
+                self.execute_next_deploy_or_create_block(effect_builder, state)
             }
 
             Event::DeployExecutionResult { state, result } => {
                 trace!(?state, ?result, "deploy execution result");
-                match result {
-                    Ok(execution_results) => {
-                        self.commit_execution_effects(effect_builder, state, execution_results)
-                    }
-                    Err(_) => {
-                        // As for now a given state is expected to exist.
-                        panic!("root not found");
-                    }
-                }
+                // As for now a given state is expected to exist.
+                let execution_results = result.unwrap();
+                self.commit_execution_effects(effect_builder, state, execution_results)
             }
 
             Event::CommitExecutionEffects {
-                state,
+                mut state,
                 commit_result,
             } => {
                 trace!(?state, ?commit_result, "commit result");
@@ -371,7 +350,8 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
                         bonded_validators,
                     }) => {
                         debug!(?post_state_hash, ?bonded_validators, "commit succeeded");
-                        self.process_commit_result(effect_builder, state, post_state_hash)
+                        state.pre_state_hash = post_state_hash;
+                        self.execute_next_deploy_or_create_block(effect_builder, state)
                     }
                     _ => {
                         // When commit fails we panic as we'll not be able to execute the next
