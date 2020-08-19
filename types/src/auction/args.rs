@@ -61,9 +61,7 @@ pub const METHOD_SLASH: &str = "slash";
 pub const METHOD_RELEASE_FOUNDER_STAKE: &str = "release_founder_stake";
 
 /// Storage for `FoundingValidators`.
-pub const FOUNDING_VALIDATORS_KEY: &str = "founding_validators";
-/// Storage for `ActiveBids`.
-pub const ACTIVE_BIDS_KEY: &str = "active_bids";
+pub const VALIDATORS_KEY: &str = "validators";
 /// Storage for `Delegators`.
 pub const DELEGATORS_KEY: &str = "delegators";
 /// Storage for `EraValidators`.

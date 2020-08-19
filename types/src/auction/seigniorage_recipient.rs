@@ -1,6 +1,6 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use super::{types::DelegationRate, DelegatedAmounts, EraId, FoundingValidator};
+use super::{types::DelegationRate, DelegatedAmounts, EraId, Validator};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     CLType, CLTyped, PublicKey, U512,
@@ -56,8 +56,8 @@ impl FromBytes for SeigniorageRecipient {
     }
 }
 
-impl From<&FoundingValidator> for SeigniorageRecipient {
-    fn from(founding_validator: &FoundingValidator) -> Self {
+impl From<&Validator> for SeigniorageRecipient {
+    fn from(founding_validator: &Validator) -> Self {
         Self {
             stake: founding_validator.staked_amount,
             delegation_rate: founding_validator.delegation_rate,
