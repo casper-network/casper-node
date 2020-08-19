@@ -28,8 +28,10 @@ accounts_path = 'accounts.csv'
 # produce blocks in it, and there won't be a new era build either.  That means when a completely new network is started,
 # the genesis era start time has to be adjusted to be active at the time.
 genesis_era_start_timestamp = 1583712000000
-# Era duration defined as a fixed number of milliseconds.  604800000 ms = 1 week.
-era_duration_millis = 604800000
+# Era duration defined as a fixed number of milliseconds.  30000 ms = 30 seconds.
+era_duration_millis = 30000
+# Minimum number of blocks per era.  An era will take longer than `era_duration_millis` ms if that is necessary to reach the minimum height.
+minimum_era_height = 10
 # Amount of time in milliseconds to go back before the start of the era for picking the booking block.
 # 864000000 ms = 10 days.
 booking_duration_millis = 864000000
