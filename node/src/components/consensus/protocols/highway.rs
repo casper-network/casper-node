@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, rc::Rc};
 
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
@@ -20,8 +20,8 @@ use crate::{
         traits::{Context, NodeIdT, ValidatorSecret},
     },
     crypto::{
-        asymmetric_key::{sign, verify, PublicKey, SecretKey, Signature},
-        hash::{hash, Digest},
+        asymmetric_key::{self, PublicKey, SecretKey, Signature},
+        hash::{self, Digest},
     },
     types::{ProtoBlock, Timestamp},
 };
@@ -103,8 +103,11 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
             AvEffect::ScheduleTimer(timestamp) => {
                 vec![ConsensusProtocolResult::ScheduleTimer(timestamp)]
             }
-            AvEffect::RequestNewBlock(block_context) => {
-                vec![ConsensusProtocolResult::CreateNewBlock(block_context)]
+            AvEffect::RequestNewBlock(block_context, opt_parent) => {
+                vec![ConsensusProtocolResult::CreateNewBlock {
+                    block_context,
+                    opt_parent,
+                }]
             }
         }
     }
@@ -344,12 +347,12 @@ where
 }
 
 pub(crate) struct HighwaySecret {
-    secret_key: SecretKey,
+    secret_key: Rc<SecretKey>,
     public_key: PublicKey,
 }
 
 impl HighwaySecret {
-    pub(crate) fn new(secret_key: SecretKey, public_key: PublicKey) -> Self {
+    pub(crate) fn new(secret_key: Rc<SecretKey>, public_key: PublicKey) -> Self {
         Self {
             secret_key,
             public_key,
@@ -361,8 +364,8 @@ impl ValidatorSecret for HighwaySecret {
     type Hash = Digest;
     type Signature = Signature;
 
-    fn sign(&self, data: &Digest) -> Signature {
-        sign(data, &self.secret_key, &self.public_key)
+    fn sign(&self, hash: &Digest) -> Signature {
+        asymmetric_key::sign(hash, self.secret_key.as_ref(), &self.public_key)
     }
 }
 
@@ -378,10 +381,14 @@ impl Context for HighwayContext {
     type InstanceId = Digest;
 
     fn hash(data: &[u8]) -> Digest {
-        hash(data)
+        hash::hash(data)
     }
 
     fn verify_signature(hash: &Digest, public_key: &PublicKey, signature: &Signature) -> bool {
-        verify(hash, signature, public_key).is_ok()
+        if let Err(error) = asymmetric_key::verify(hash, signature, public_key) {
+            info!(%error, %signature, %public_key, %hash, "failed to validate signature");
+            return false;
+        }
+        true
     }
 }

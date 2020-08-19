@@ -1,6 +1,11 @@
-use std::{fmt::Debug, hash::Hash};
+use std::{
+    fmt::{Debug, Display},
+    hash::Hash,
+};
 
 use serde::{de::DeserializeOwned, Serialize};
+
+use crate::types::ProtoBlock;
 
 pub(crate) trait NodeIdT: Clone + Debug + Send + 'static {}
 impl<I> NodeIdT for I where I: Clone + Debug + Send + 'static {}
@@ -13,15 +18,24 @@ impl<VID> ValidatorIdT for VID where VID: Eq + Ord + Clone + Debug + Hash {}
 pub(crate) trait ConsensusValueT:
     Eq + Clone + Debug + Hash + Serialize + DeserializeOwned
 {
+    /// Returns `true` if this value should be the last one to be finalized in the current
+    /// consensus instance, i.e. era.
+    fn terminal(&self) -> bool;
 }
-impl<CV> ConsensusValueT for CV where CV: Eq + Clone + Debug + Hash + Serialize + DeserializeOwned {}
+
+impl ConsensusValueT for ProtoBlock {
+    fn terminal(&self) -> bool {
+        self.switch_block()
+    }
+}
 
 /// A hash, as an identifier for a block or vote.
 pub(crate) trait HashT:
-    Eq + Ord + Clone + Debug + Hash + Serialize + DeserializeOwned
+    Eq + Ord + Clone + Debug + Display + Hash + Serialize + DeserializeOwned
 {
 }
-impl<H> HashT for H where H: Eq + Ord + Clone + Debug + Hash + Serialize + DeserializeOwned {}
+impl<H> HashT for H where H: Eq + Ord + Clone + Debug + Display + Hash + Serialize + DeserializeOwned
+{}
 
 /// A validator's secret signing key.
 pub(crate) trait ValidatorSecret {
@@ -29,7 +43,7 @@ pub(crate) trait ValidatorSecret {
 
     type Signature: Eq + PartialEq + Clone + Debug + Hash + Serialize + DeserializeOwned;
 
-    fn sign(&self, data: &Self::Hash) -> Self::Signature;
+    fn sign(&self, hash: &Self::Hash) -> Self::Signature;
 }
 
 /// The collection of types the user can choose for cryptography, IDs, transactions, etc.

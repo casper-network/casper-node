@@ -11,11 +11,15 @@ use blake2::{
     VarBlake2b,
 };
 use hex_fmt::HexFmt;
+#[cfg(test)]
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use casperlabs_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use super::Error;
+#[cfg(test)]
+use crate::testing::TestRng;
 
 /// The hash digest; a wrapped `u8` array.
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Default)]
@@ -40,6 +44,12 @@ impl Digest {
         let mut inner = [0; Digest::LENGTH];
         hex::decode_to_slice(hex_input, &mut inner)?;
         Ok(Digest(inner))
+    }
+
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        Digest(rng.gen::<[u8; Digest::LENGTH]>())
     }
 }
 

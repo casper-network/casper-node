@@ -31,7 +31,7 @@ use crate::{
     },
     crypto::hash::Digest,
     types::{
-        BlockHash, Deploy, DeployHash, ExecutedBlock, FinalizedBlock, Item, ProtoBlock, Timestamp,
+        Block, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock, ProtoBlockHash, Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
@@ -258,7 +258,7 @@ pub enum DeployBufferRequest {
         /// The instant for which the deploy is requested.
         current_instant: Timestamp,
         /// Set of block hashes pointing to blocks whose deploys should be excluded.
-        past_blocks: HashSet<BlockHash>,
+        past_blocks: HashSet<ProtoBlockHash>,
         /// Responder to call with the result.
         responder: Responder<HashSet<DeployHash>>,
     },
@@ -440,7 +440,7 @@ pub enum BlockExecutorRequest {
         /// The finalized block.
         finalized_block: FinalizedBlock,
         /// Responder to call with the result.
-        responder: Responder<ExecutedBlock>,
+        responder: Responder<Block>,
     },
 }
 

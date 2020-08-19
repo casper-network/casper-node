@@ -1,3 +1,18 @@
+use std::{
+    cell::RefCell,
+    collections::{hash_map::DefaultHasher, HashMap, VecDeque},
+    fmt::{self, Debug, Display, Formatter},
+    hash::Hasher,
+    iter::{self, FromIterator},
+    marker::PhantomData,
+};
+
+use hex_fmt::HexFmt;
+use itertools::Itertools;
+use rand::Rng;
+use serde::{Deserialize, Serialize};
+use tracing::{error, info, trace, warn};
+
 use super::{
     active_validator::Effect,
     evidence::Evidence,
@@ -6,12 +21,6 @@ use super::{
     validators::{ValidatorIndex, Validators},
     Weight,
 };
-
-use itertools::Itertools;
-use serde::{Deserialize, Serialize};
-use std::iter::{self, FromIterator};
-use tracing::{error, info, trace, warn};
-
 use crate::{
     components::consensus::{
         tests::{
@@ -42,12 +51,14 @@ enum HighwayMessage {
 impl Debug for HighwayMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Timer(t) => f.debug_tuple("Timer").field(&t.millis()).finish(),
-            RequestBlock(bc) => f
+            HighwayMessage::Timer(t) => f.debug_tuple("Timer").field(&t.millis()).finish(),
+            HighwayMessage::RequestBlock(bc) => f
                 .debug_struct("RequestBlock")
                 .field("timestamp", &bc.timestamp().millis())
                 .finish(),
-            NewVertex(v) => f.debug_struct("NewVertex").field("vertex", &v).finish(),
+            HighwayMessage::NewVertex(v) => {
+                f.debug_struct("NewVertex").field("vertex", &v).finish()
+            }
         }
     }
 }
@@ -57,8 +68,10 @@ impl HighwayMessage {
         let create_msg = |hwm: HighwayMessage| Message::new(creator, hwm);
 
         match self {
-            NewVertex(_) => TargetedMessage::new(create_msg(self), Target::AllExcept(creator)),
-            Timer(_) | RequestBlock(_) => {
+            HighwayMessage::NewVertex(_) => {
+                TargetedMessage::new(create_msg(self), Target::AllExcept(creator))
+            }
+            HighwayMessage::Timer(_) | HighwayMessage::RequestBlock(_) => {
                 TargetedMessage::new(create_msg(self), Target::SingleValidator(creator))
             }
         }
@@ -66,34 +79,25 @@ impl HighwayMessage {
 
     fn is_new_vertex(&self) -> bool {
         match self {
-            NewVertex(_) => true,
+            HighwayMessage::NewVertex(_) => true,
             _ => false,
         }
     }
 }
-
-use HighwayMessage::*;
 
 impl From<Effect<TestContext>> for HighwayMessage {
     fn from(eff: Effect<TestContext>) -> Self {
         match eff {
             // The effect is `ValidVertex` but we want to gossip it to other
             // validators so for them it's just `Vertex` that needs to be validated.
-            Effect::NewVertex(ValidVertex(v)) => NewVertex(v),
-            Effect::ScheduleTimer(t) => Timer(t),
-            Effect::RequestNewBlock(block_context) => RequestBlock(block_context),
+            Effect::NewVertex(ValidVertex(v)) => HighwayMessage::NewVertex(v),
+            Effect::ScheduleTimer(t) => HighwayMessage::Timer(t),
+            Effect::RequestNewBlock(block_context, _opt_parent) => {
+                HighwayMessage::RequestBlock(block_context)
+            }
         }
     }
 }
-
-use rand::Rng;
-use std::{
-    cell::RefCell,
-    collections::{hash_map::DefaultHasher, HashMap, VecDeque},
-    fmt::{Debug, Display, Formatter},
-    hash::Hasher,
-    marker::PhantomData,
-};
 
 impl PartialOrd for HighwayMessage {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -104,9 +108,9 @@ impl PartialOrd for HighwayMessage {
 impl Ord for HighwayMessage {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match (self, other) {
-            (Timer(t1), Timer(t2)) => t1.cmp(&t2),
-            (Timer(_), _) => std::cmp::Ordering::Less,
-            (NewVertex(v1), NewVertex(v2)) => match (v1, v2) {
+            (HighwayMessage::Timer(t1), HighwayMessage::Timer(t2)) => t1.cmp(&t2),
+            (HighwayMessage::Timer(_), _) => std::cmp::Ordering::Less,
+            (HighwayMessage::NewVertex(v1), HighwayMessage::NewVertex(v2)) => match (v1, v2) {
                 (Vertex::Vote(swv1), Vertex::Vote(swv2)) => swv1.hash().cmp(&swv2.hash()),
                 (Vertex::Vote(_), _) => std::cmp::Ordering::Less,
                 (
@@ -118,9 +122,9 @@ impl Ord for HighwayMessage {
                     .then_with(|| ev1_b.hash().cmp(&ev2_b.hash())),
                 (Vertex::Evidence(_), _) => std::cmp::Ordering::Less,
             },
-            (NewVertex(_), _) => std::cmp::Ordering::Less,
-            (RequestBlock(bc1), RequestBlock(bc2)) => bc1.cmp(&bc2),
-            (RequestBlock(_), _) => std::cmp::Ordering::Less,
+            (HighwayMessage::NewVertex(_), _) => std::cmp::Ordering::Less,
+            (HighwayMessage::RequestBlock(bc1), HighwayMessage::RequestBlock(bc2)) => bc1.cmp(&bc2),
+            (HighwayMessage::RequestBlock(_), _) => std::cmp::Ordering::Less,
         }
     }
 }
@@ -227,24 +231,24 @@ impl HighwayValidator {
                 // If validator produced a `NewVertex` effect,
                 // we want to add it to his state immediately and gossip all effects.
                 match &msg {
-                    NewVertex(vv) => self
+                    HighwayMessage::NewVertex(vv) => self
                         .highway_mut()
                         .add_valid_vertex(ValidVertex(vv.clone()))
                         .into_iter()
                         .map(HighwayMessage::from)
                         .chain(iter::once(msg))
                         .collect(),
-                    Timer(_) | RequestBlock(_) => vec![msg],
+                    HighwayMessage::Timer(_) | HighwayMessage::RequestBlock(_) => vec![msg],
                 }
             }
             Some(Fault::Mute) => {
                 // For mute validators we add it to the state but not gossip.
                 match msg {
-                    NewVertex(vv) => {
+                    HighwayMessage::NewVertex(vv) => {
                         warn!("Validator is mute – won't gossip vertices in response");
                         vec![]
                     }
-                    Timer(_) | RequestBlock(_) => vec![msg],
+                    HighwayMessage::Timer(_) | HighwayMessage::RequestBlock(_) => vec![msg],
                 }
             }
             Some(Fault::Equivocate) => {
@@ -252,14 +256,14 @@ impl HighwayValidator {
                 // This way, the next time this validator creates a message
                 // it won't cite previous one.
                 match msg {
-                    NewVertex(_) => {
+                    HighwayMessage::NewVertex(_) => {
                         warn!(
                             "Validator is an equivocator – not adding {:?} to the state.",
                             msg
                         );
                         vec![msg]
                     }
-                    Timer(_) | RequestBlock(_) => vec![msg],
+                    HighwayMessage::Timer(_) | HighwayMessage::RequestBlock(_) => vec![msg],
                 }
             }
         }
@@ -422,11 +426,13 @@ where
             let hwm = message.payload().clone();
 
             match hwm {
-                Timer(timestamp) => self.call_validator(rng, &validator_id, |consensus| {
-                    consensus.highway_mut().handle_timer(timestamp)
-                })?,
+                HighwayMessage::Timer(timestamp) => {
+                    self.call_validator(rng, &validator_id, |consensus| {
+                        consensus.highway_mut().handle_timer(timestamp)
+                    })?
+                }
 
-                NewVertex(v) => {
+                HighwayMessage::NewVertex(v) => {
                     match self.add_vertex(rng, validator_id, sender_id, v.clone())? {
                         Ok(msgs) => {
                             trace!("{:?} successfuly added to the state.", v);
@@ -438,7 +444,7 @@ where
                         }
                     }
                 }
-                RequestBlock(block_context) => {
+                HighwayMessage::RequestBlock(block_context) => {
                     let consensus_value = self.next_consensus_value();
 
                     self.call_validator(rng, &validator_id, |consensus| {
@@ -689,9 +695,11 @@ impl DeliveryStrategy for InstantDeliveryNoDropping {
         base_delivery_timestamp: Timestamp,
     ) -> DeliverySchedule {
         match message {
-            RequestBlock(bc) => DeliverySchedule::AtInstant(bc.timestamp()),
-            Timer(t) => DeliverySchedule::AtInstant(*t),
-            NewVertex(_) => DeliverySchedule::AtInstant(base_delivery_timestamp + 1.into()),
+            HighwayMessage::RequestBlock(bc) => DeliverySchedule::AtInstant(bc.timestamp()),
+            HighwayMessage::Timer(t) => DeliverySchedule::AtInstant(*t),
+            HighwayMessage::NewVertex(_) => {
+                DeliverySchedule::AtInstant(base_delivery_timestamp + 1.into())
+            }
         }
     }
 }
@@ -981,8 +989,8 @@ pub(crate) struct TestSecret(pub(crate) u64);
 pub(crate) struct SignatureWrapper(u64);
 
 impl Debug for SignatureWrapper {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:10}", hex_fmt::HexFmt(self.0.to_le_bytes()))
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:10}", HexFmt(self.0.to_le_bytes()))
     }
 }
 
@@ -992,8 +1000,14 @@ impl Debug for SignatureWrapper {
 pub(crate) struct HashWrapper(u64);
 
 impl Debug for HashWrapper {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:10}", HexFmt(self.0.to_le_bytes()))
+    }
+}
+
+impl Display for HashWrapper {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:10}", hex_fmt::HexFmt(self.0.to_le_bytes()))
+        Debug::fmt(self, f)
     }
 }
 
@@ -1003,6 +1017,12 @@ impl ValidatorSecret for TestSecret {
 
     fn sign(&self, data: &Self::Hash) -> Self::Signature {
         SignatureWrapper(data.0 + self.0)
+    }
+}
+
+impl ConsensusValueT for Vec<u32> {
+    fn terminal(&self) -> bool {
+        false
     }
 }
 

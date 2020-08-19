@@ -69,7 +69,7 @@ pub(crate) struct ChainspecLoader {
     // If `Some`, we're finished.  The value of the bool indicates success (true) or not.
     completed_successfully: Option<bool>,
     // If `Some` then genesis process returned a valid post state hash.
-    post_state_hash: Option<Digest>,
+    genesis_post_state_hash: Option<Digest>,
 }
 
 impl ChainspecLoader {
@@ -88,7 +88,7 @@ impl ChainspecLoader {
             ChainspecLoader {
                 chainspec,
                 completed_successfully: None,
-                post_state_hash: None,
+                genesis_post_state_hash: None,
             },
             effects,
         ))
@@ -102,8 +102,8 @@ impl ChainspecLoader {
         self.completed_successfully.unwrap_or_default()
     }
 
-    pub(crate) fn post_state_hash(self) -> Option<Digest> {
-        self.post_state_hash
+    pub(crate) fn genesis_post_state_hash(self) -> Option<Digest> {
+        self.genesis_post_state_hash
     }
 
     pub(crate) fn chainspec(&self) -> &Chainspec {
@@ -147,7 +147,7 @@ where
                             info!("successfully committed genesis");
                             trace!(%post_state_hash, ?effect);
                             self.completed_successfully = Some(true);
-                            self.post_state_hash = Some(post_state_hash);
+                            self.genesis_post_state_hash = Some(post_state_hash);
                         }
                     },
                     Err(error) => {

@@ -10,7 +10,9 @@ use super::{
 
 use crate::{
     components::consensus::{
-        consensus_protocol::BlockContext, highway_core::highway::SignedWireVote, traits::Context,
+        consensus_protocol::BlockContext,
+        highway_core::highway::SignedWireVote,
+        traits::{ConsensusValueT, Context},
     },
     types::{TimeDiff, Timestamp},
 };
@@ -22,9 +24,9 @@ pub(crate) enum Effect<C: Context> {
     NewVertex(ValidVertex<C>),
     /// `handle_timer` needs to be called at the specified time.
     ScheduleTimer(Timestamp),
-    /// `propose` needs to be called with a value for a new block with the specified timestamp.
-    // TODO: Add more information required by the deploy buffer.
-    RequestNewBlock(BlockContext),
+    /// `propose` needs to be called with a value for a new block with the specified block context
+    /// and parent value.
+    RequestNewBlock(BlockContext, Option<C::ConsensusValue>),
 }
 
 /// A validator that actively participates in consensus by creating new vertices.
@@ -50,6 +52,8 @@ pub(crate) struct ActiveValidator<C: Context> {
     next_round_exp: u8,
     /// The latest timer we scheduled.
     next_timer: Timestamp,
+    /// Panorama and timestamp for a block we are about to propose when we get a consensus value.
+    next_proposal: Option<(Timestamp, Panorama<C>)>,
 }
 
 impl<C: Context> Debug for ActiveValidator<C> {
@@ -84,6 +88,7 @@ impl<C: Context> ActiveValidator<C> {
             secret,
             next_round_exp,
             next_timer: Timestamp::zero(),
+            next_proposal: None,
         };
         let effects = av.schedule_timer(timestamp, state);
         (av, effects)
@@ -109,8 +114,7 @@ impl<C: Context> ActiveValidator<C> {
         let r_id = state::round_id(timestamp, r_exp);
         let r_len = state::round_len(r_exp);
         if timestamp == r_id && state.params().leader(r_id) == self.vidx {
-            let bctx = BlockContext::new(timestamp);
-            effects.push(Effect::RequestNewBlock(bctx));
+            effects.extend(self.request_new_block(state, timestamp))
         } else if timestamp == r_id + self.witness_offset(r_len) {
             let panorama = state.panorama().cutoff(state, timestamp);
             if panorama.has_correct() {
@@ -123,7 +127,7 @@ impl<C: Context> ActiveValidator<C> {
 
     /// Returns actions a validator needs to take upon receiving a new vote.
     pub(crate) fn on_new_vote(
-        &self,
+        &mut self,
         vhash: &C::Hash,
         timestamp: Timestamp,
         state: &State<C>,
@@ -141,9 +145,39 @@ impl<C: Context> ActiveValidator<C> {
         vec![]
     }
 
+    /// Returns an effect to request a consensus value for a block to propose.
+    ///
+    /// If we are already waiting for a consensus value, `None` is returned instead.
+    /// If the new value would come after a terminal value, the proposal is made immediately, and
+    /// without a value.
+    pub(crate) fn request_new_block(
+        &mut self,
+        state: &State<C>,
+        timestamp: Timestamp,
+    ) -> Option<Effect<C>> {
+        if let Some((prop_time, _)) = self.next_proposal {
+            warn!(
+                ?timestamp,
+                "skipping proposal, still waiting for value for {}", prop_time
+            );
+            return None;
+        }
+        let panorama = state.panorama().cutoff(state, timestamp);
+        let opt_parent = state.fork_choice(&panorama).map(|bh| state.block(bh));
+        if opt_parent.map_or(false, |block| block.value.terminal()) {
+            let proposal_vote = self.new_vote(panorama, timestamp, None, state);
+            return Some(Effect::NewVertex(ValidVertex(Vertex::Vote(proposal_vote))));
+        }
+        let height = opt_parent.map_or(0, |block| block.height);
+        let opt_value = opt_parent.map(|block| block.value.clone());
+        self.next_proposal = Some((timestamp, panorama));
+        let bctx = BlockContext::new(timestamp, height);
+        Some(Effect::RequestNewBlock(bctx, opt_value))
+    }
+
     /// Proposes a new block with the given consensus value.
     pub(crate) fn propose(
-        &self,
+        &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
         state: &State<C>,
@@ -157,7 +191,19 @@ impl<C: Context> ActiveValidator<C> {
             warn!("Creator knows it's faulty. Won't create a message.");
             return vec![];
         }
-        let panorama = state.panorama().cutoff(state, timestamp);
+        let panorama = if let Some((prop_time, panorama)) = self.next_proposal.take() {
+            if prop_time != timestamp {
+                warn!(
+                    ?timestamp,
+                    "unexpected proposal; expected timestamp {}", prop_time
+                );
+                return vec![];
+            }
+            panorama
+        } else {
+            warn!("unexpected proposal value");
+            return vec![];
+        };
         let proposal_vote = self.new_vote(panorama, timestamp, Some(value), state);
         vec![Effect::NewVertex(ValidVertex(Vertex::Vote(proposal_vote)))]
     }
@@ -177,7 +223,7 @@ impl<C: Context> ActiveValidator<C> {
         let r_exp = self.round_exp(state, timestamp);
         timestamp >> r_exp == vote.timestamp >> r_exp // Current round.
             && state.params().leader(vote.timestamp) == vote.creator // The creator is the round's leader.
-            && vote.timestamp == state::round_id(vote.timestamp, vote.round_exp) // Check if it's a lambda message.
+            && vote.timestamp == state::round_id(vote.timestamp, vote.round_exp) // It's a proposal.
             && vote.creator != self.vidx // We didn't send it ourselves.
             && !state.has_evidence(vote.creator) // The creator is not faulty.
             && !self.is_faulty(state) // We are not faulty.
@@ -207,12 +253,18 @@ impl<C: Context> ActiveValidator<C> {
 
     /// Returns a new vote with the given data, and the correct sequence number.
     fn new_vote(
-        &self,
+        &mut self,
         panorama: Panorama<C>,
         timestamp: Timestamp,
         value: Option<C::ConsensusValue>,
         state: &State<C>,
     ) -> SignedWireVote<C> {
+        if let Some((prop_time, _)) = self.next_proposal.take() {
+            warn!(
+                ?timestamp,
+                "canceling proposal for {} due to vote", prop_time
+            );
+        }
         let seq_number = panorama.next_seq_num(state, self.vidx);
         let wvote = WireVote {
             panorama,
@@ -346,7 +398,7 @@ mod tests {
 
         // Alice wants to propose a block, and also make her witness vote at 426.
         let bctx = match &*alice_av.handle_timer(416.into(), &state) {
-            [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock(bctx)]
+            [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock(bctx, None)]
                 if *timestamp == 426.into() =>
             {
                 bctx.clone()

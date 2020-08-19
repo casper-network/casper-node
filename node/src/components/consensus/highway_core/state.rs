@@ -445,7 +445,8 @@ pub(crate) mod tests {
 
     use super::*;
     use crate::components::consensus::{
-        highway_core::highway::Dependency, traits::ValidatorSecret,
+        highway_core::highway::Dependency,
+        traits::{ConsensusValueT, ValidatorSecret},
     };
 
     pub(crate) const WEIGHTS: &[Weight] = &[Weight(3), Weight(4), Weight(5)];
@@ -469,6 +470,12 @@ pub(crate) mod tests {
 
         fn sign(&self, data: &Self::Hash) -> Self::Signature {
             data + u64::from(self.0)
+        }
+    }
+
+    impl ConsensusValueT for u32 {
+        fn terminal(&self) -> bool {
+            false
         }
     }
 

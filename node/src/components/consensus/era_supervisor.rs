@@ -8,6 +8,7 @@
 use std::{
     collections::HashMap,
     fmt::{self, Debug, Formatter},
+    rc::Rc,
     time::Duration,
 };
 
@@ -30,7 +31,7 @@ use crate::{
     },
     crypto::{
         asymmetric_key::{PublicKey, SecretKey},
-        hash::hash,
+        hash,
     },
     effect::{EffectBuilder, EffectExt, Effects},
     types::{FinalizedBlock, Instruction, Motes, ProtoBlock, Timestamp},
@@ -74,6 +75,8 @@ pub(crate) struct EraSupervisor<I> {
     // A value is a trait so that we can run different consensus protocol instances per era.
     active_eras: HashMap<EraId, Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>>>,
     era_config: EraConfig,
+    pub(super) secret_signing_key: Rc<SecretKey>,
+    pub(super) public_signing_key: PublicKey,
 }
 
 impl<I> Debug for EraSupervisor<I> {
@@ -98,11 +101,14 @@ where
         highway_config: &HighwayConfig,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
         let (root, config) = config.into_parts();
-        let secret_signing_key = config.secret_key_path.load(root)?;
+        let secret_signing_key = Rc::new(config.secret_key_path.load(root)?);
+        let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
 
         let mut era_supervisor = Self {
             active_eras: Default::default(),
             era_config: Default::default(),
+            secret_signing_key,
+            public_signing_key,
         };
 
         let effects = era_supervisor.new_era(
@@ -110,7 +116,6 @@ where
             EraId(0),
             timestamp,
             validator_stakes,
-            secret_signing_key,
             highway_config,
         );
 
@@ -123,7 +128,6 @@ where
         era_id: EraId,
         timestamp: Timestamp,
         validator_stakes: Vec<(PublicKey, Motes)>,
-        secret_signing_key: SecretKey,
         highway_config: &HighwayConfig,
     ) -> Effects<Event<I>> {
         if self.active_eras.contains_key(&era_id) {
@@ -145,16 +149,17 @@ where
                 .collect()
         };
 
-        let public_key = PublicKey::from(&secret_signing_key);
-        let instance_id = hash(format!("Highway era {}", era_id.0));
+        let instance_id = hash::hash(format!("Highway era {}", era_id.0));
+        let secret =
+            HighwaySecret::new(Rc::clone(&self.secret_signing_key), self.public_signing_key);
         let ftt =
             validators.total_weight() * u64::from(highway_config.finality_threshold_percent) / 100;
         let (highway, effects) = HighwayProtocol::<I, HighwayContext>::new(
             instance_id,
             validators,
             0, // TODO: get a proper seed ?
-            public_key,
-            HighwaySecret::new(secret_signing_key, public_key),
+            self.public_signing_key,
+            secret,
             highway_config.minimum_round_exponent,
             ftt,
             timestamp,
@@ -200,8 +205,11 @@ where
                     .set_timeout(timediff.into())
                     .event(move |_| Event::Timer { era_id, timestamp })
             }
-            ConsensusProtocolResult::CreateNewBlock(block_context) => effect_builder
-                .request_proto_block(block_context)
+            ConsensusProtocolResult::CreateNewBlock {
+                block_context,
+                opt_parent,
+            } => effect_builder
+                .request_proto_block(block_context, opt_parent)
                 .event(move |(proto_block, block_context)| Event::NewProtoBlock {
                     era_id,
                     proto_block,
@@ -226,18 +234,11 @@ where
                     instructions.push(Instruction::Rewards(rewards));
                 };
                 // Request execution of the finalized block.
-                let fb = FinalizedBlock {
-                    proto_block,
-                    instructions,
-                    timestamp,
-                };
+                let fb = FinalizedBlock::new(proto_block, timestamp, instructions);
                 effects.extend(
                     effect_builder
                         .execute_block(fb)
-                        .event(move |executed_block| Event::ExecutedBlock {
-                            era_id,
-                            executed_block,
-                        }),
+                        .event(move |block| Event::ExecutedBlock { era_id, block }),
                 );
                 effects
             }
