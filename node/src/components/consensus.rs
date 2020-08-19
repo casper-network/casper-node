@@ -27,6 +27,7 @@ use crate::{
 };
 pub use config::Config;
 pub(crate) use consensus_protocol::BlockContext;
+use era_supervisor::HandlingEraSupervisor;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 use traits::NodeIdT;
 
@@ -153,30 +154,30 @@ where
         _rng: &mut R,
         event: Self::Event,
     ) -> Effects<Self::Event> {
+        let mut handling_es = HandlingEraSupervisor {
+            era_supervisor: self,
+            effect_builder,
+        };
         match event {
-            Event::Timer { era_id, timestamp } => {
-                self.handle_timer(effect_builder, era_id, timestamp)
-            }
-            Event::MessageReceived { sender, msg } => {
-                self.handle_message(effect_builder, sender, msg)
-            }
+            Event::Timer { era_id, timestamp } => handling_es.handle_timer(era_id, timestamp),
+            Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
             Event::NewProtoBlock {
                 era_id,
                 proto_block,
                 block_context,
-            } => self.handle_new_proto_block(effect_builder, era_id, proto_block, block_context),
+            } => handling_es.handle_new_proto_block(era_id, proto_block, block_context),
             Event::ExecutedBlock { era_id, block } => {
-                self.handle_executed_block(effect_builder, era_id, block)
+                handling_es.handle_executed_block(era_id, block)
             }
             Event::AcceptProtoBlock {
                 era_id,
                 proto_block,
-            } => self.handle_accept_proto_block(effect_builder, era_id, proto_block),
+            } => handling_es.handle_accept_proto_block(era_id, proto_block),
             Event::InvalidProtoBlock {
                 era_id,
                 sender,
                 proto_block,
-            } => self.handle_invalid_proto_block(effect_builder, era_id, sender, proto_block),
+            } => handling_es.handle_invalid_proto_block(era_id, sender, proto_block),
         }
     }
 }
