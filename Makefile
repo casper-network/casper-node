@@ -5,6 +5,7 @@ NPM    = $(or $(shell which npm),    /usr/bin/npm)
 
 RUST_TOOLCHAIN := $(shell cat rust-toolchain)
 
+CARGO_OPTS := --locked
 CARGO := $(CARGO) $(CARGO_OPTS)
 
 EE_DIR     = $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
@@ -163,7 +164,6 @@ lint:
 
 .PHONY: audit
 audit:
-	$(CARGO) generate-lockfile
 	$(CARGO) audit
 
 .PHONY: build-docs-stable-rs
