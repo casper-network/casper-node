@@ -6,7 +6,7 @@
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fmt::{self, Debug, Formatter},
     rc::Rc,
 };
@@ -182,6 +182,60 @@ where
         let _ = self.active_eras.insert(era_id, era);
 
         results
+    }
+
+    fn handle_finalized_block(
+        &mut self,
+        era_id: EraId,
+        proto_block: ProtoBlock,
+        new_equivocators: Vec<PublicKey>,
+        rewards: BTreeMap<PublicKey, u64>,
+        timestamp: Timestamp,
+        relative_height: u64,
+    ) -> (
+        Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>>,
+        FinalizedBlock,
+    ) {
+        assert_eq!(
+            era_id, self.current_era,
+            "finalized block in unexpected era"
+        );
+        let mut system_transactions: Vec<_> = new_equivocators
+            .into_iter()
+            .map(SystemTransaction::Slash)
+            .collect();
+        if !rewards.is_empty() {
+            system_transactions.push(SystemTransaction::Rewards(rewards));
+        };
+        let start_height = self.active_eras[&era_id].start_height;
+        let start_time = self.active_eras[&era_id].start_time;
+        let switch_block = relative_height + 1 >= self.highway_config.minimum_era_height
+            && timestamp >= start_time + self.highway_config.era_duration;
+        // Request execution of the finalized block.
+        let fb = FinalizedBlock::new(
+            proto_block,
+            timestamp,
+            system_transactions,
+            switch_block,
+            era_id,
+            start_height + relative_height,
+        );
+        let results = if fb.switch_block() {
+            self.current_era_mut().consensus.deactivate_validator();
+            // TODO: Learn the new weights from contract (validator rotation).
+            let validator_stakes = self.validator_stakes.clone();
+            self.current_era = fb.era_id().successor();
+            self.new_era(
+                fb.era_id().successor(),
+                fb.timestamp(),
+                validator_stakes,
+                fb.timestamp(),
+                fb.height() + 1,
+            )
+        } else {
+            vec![]
+        };
+        (results, fb)
     }
 
     /// Returns the current era.
@@ -391,53 +445,24 @@ where
                 timestamp,
                 relative_height,
             } => {
-                assert_eq!(
-                    era_id, self.era_supervisor.current_era,
-                    "finalized block in unexpected era"
-                );
                 // Announce the finalized proto block.
                 let mut effects = self
                     .effect_builder
                     .announce_finalized_proto_block(proto_block.clone())
                     .ignore();
-                // Create system transactions for slashing equivocators.
-                let mut system_transactions: Vec<_> = new_equivocators
-                    .into_iter()
-                    .map(SystemTransaction::Slash)
-                    .collect();
-                if !rewards.is_empty() {
-                    system_transactions.push(SystemTransaction::Rewards(rewards));
-                };
-                let start_height = self.era_supervisor.active_eras[&era_id].start_height;
-                let start_time = self.era_supervisor.active_eras[&era_id].start_time;
-                let switch_block = relative_height + 1
-                    >= self.era_supervisor.highway_config.minimum_era_height
-                    && timestamp >= start_time + self.era_supervisor.highway_config.era_duration;
-                // Request execution of the finalized block.
-                let fb = FinalizedBlock::new(
-                    proto_block,
-                    timestamp,
-                    system_transactions,
-                    switch_block,
+                let (results, fb) = self.era_supervisor.handle_finalized_block(
                     era_id,
-                    start_height + relative_height,
+                    proto_block,
+                    new_equivocators,
+                    rewards,
+                    timestamp,
+                    relative_height,
                 );
-                if fb.switch_block() {
-                    self.era_supervisor
-                        .current_era_mut()
-                        .consensus
-                        .deactivate_validator();
-                    // TODO: Learn the new weights from contract (validator rotation).
-                    let validator_stakes = self.era_supervisor.validator_stakes.clone();
-                    effects.extend(self.new_era(
-                        fb.era_id().successor(),
-                        fb.timestamp(),
-                        validator_stakes,
-                        fb.timestamp(),
-                        fb.height() + 1,
-                    ));
-                    self.era_supervisor.current_era = fb.era_id().successor();
-                }
+                effects.extend(
+                    results
+                        .into_iter()
+                        .flat_map(|result| self.handle_consensus_result(era_id, result)),
+                );
                 effects.extend(
                     self.effect_builder
                         .execute_block(fb)
