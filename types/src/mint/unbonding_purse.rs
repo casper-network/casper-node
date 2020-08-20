@@ -6,7 +6,8 @@ use crate::{
 };
 use bytesrepr::FromBytes;
 
-#[derive(Copy, Clone)]
+#[cfg_attr(test, derive(Debug))]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct UnbondingPurse {
     pub purse: URef,
     pub origin: PublicKey,
@@ -58,3 +59,21 @@ impl CLTyped for UnbondingPurse {
 /// Validators and delegators mapped to their purses, validator/bidder key of origin, era of
 /// withdrawal, tokens and expiration timer in eras.
 pub type UnbondingPurses = BTreeMap<PublicKey, Vec<UnbondingPurse>>;
+
+#[cfg(test)]
+mod tests {
+    use super::UnbondingPurse;
+    use crate::{bytesrepr, AccessRights, PublicKey, URef, U512};
+
+    #[test]
+    fn serialization_roundtrip() {
+        let public_key = PublicKey::Ed25519([42; 32]);
+        let unbonding_purse = UnbondingPurse {
+            purse: URef::new([42; 32], AccessRights::READ_ADD_WRITE),
+            origin: public_key,
+            era_of_withdrawal: u64::max_value(),
+            amount: U512::max_value() - 1,
+        };
+        bytesrepr::test_serialization_roundtrip(&unbonding_purse);
+    }
+}

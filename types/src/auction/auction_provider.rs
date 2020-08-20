@@ -24,20 +24,16 @@ where
         + From<<Self as SystemProvider>::Error>
         + From<<Self as MintProvider>::Error>,
 {
-    /// Access: node
-    /// Node software will trigger this function once a new era is detected.
-    /// The founding_validators data structure is checked, returning False
-    /// if the validator is not found and aborting. If the validator is
-    /// found, the function first calls release_founder_stake in the Mint
-    /// contract. Upon receipt of True, it also flips the relevant field
-    /// to True in the validator’s entry within founding_validators.
-    /// Otherwise the function aborts.
+    /// The `founding_validators` data structure is checked, returning False if the validator is
+    /// not found and returns a `false` early. If the validator is found, then validator's entry is
+    /// updated so the funds are unlocked and a `true` is returned.
+    ///
+    /// For security reasons this entry point can be only called by node.
     fn release_founder(&mut self, public_key: PublicKey) -> Result<bool> {
         if self.get_caller() != SYSTEM_ADDR {
             return Err(Error::InvalidContext);
         }
 
-        // Called by node
         let mut founding_validators = internal::get_founding_validators(self)?;
 
         // TODO: It should be aware of current time. Era makes more sense.
@@ -54,18 +50,18 @@ where
         Ok(true)
     }
 
-    /// Returns era_validators. Publicly accessible, but intended
-    /// for periodic use by the PoS contract to update its own internal data
-    /// structures recording current and past winners.
+    /// Returns era_validators.
+    ///
+    /// Publicly accessible, but intended for periodic use by the PoS contract to update its own
+    /// internal data structures recording current and past winners.
     fn read_winners(&mut self) -> Result<EraValidators> {
         internal::get_era_validators(self)
     }
 
-    /// Returns validators in era_validators, mapped to their bids or founding
-    /// stakes, delegation rates and lists of delegators together with their
-    /// delegated quantities from delegators. This function is publicly
-    /// accessible, but intended for system use by the PoS contract, because
-    /// this data is necessary for distributing seigniorage.
+    /// Returns validators in era_validators, mapped to their bids or founding stakes, delegation
+    /// rates and lists of delegators together with their delegated quantities from delegators.
+    /// This function is publicly accessible, but intended for system use by the PoS contract,
+    /// because this data is necessary for distributing seigniorage.
     fn read_seigniorage_recipients(&mut self) -> Result<SeigniorageRecipients> {
         // `era_validators` are assumed to be computed already by calling "run_auction" entrypoint.
         let era_index = internal::get_era_id(self)?;
@@ -77,14 +73,12 @@ where
         Ok(seigniorage_recipients)
     }
 
-    /// For a non-founder validator, this adds, or modifies, an entry in the
-    /// `active_bids` map and calls `bond` in the Mint contract to create (or top off)
-    /// a bid purse. It also adjusts the delegation rate.
-    /// For a founding validator, the same logic is carried out with
-    /// founding_validators, instead of active_bids.
-    /// The arguments, in order, are public key, originating purse, delegation
-    /// rate and quantity of motes to add. The function returns a tuple of the
-    /// bid (or stake) purse key and the new quantity of motes.
+    /// For a non-founder validator, this adds, or modifies, an entry in the `active_bids` map and
+    /// calls `bond` in the Mint contract to create (or top off) a bid purse. It also adjusts the
+    /// delegation rate.
+    ///
+    /// For a founding validator, the same logic is carried out with founding_validators, instead
+    /// of `active_bids`.
     fn add_bid(
         &mut self,
         public_key: PublicKey,
@@ -142,19 +136,15 @@ where
         Ok((bonding_purse, new_quantity))
     }
 
-    /// For a non-founder validator, implements essentially the same logic as
-    /// add_bid, but reducing the number of tokens and calling unbond in lieu of
-    /// bond.
+    /// For a non-founder validator, implements essentially the same logic as add_bid, but reducing
+    /// the number of tokens and calling unbond in lieu of bond.
     ///
-    /// For a founding validator, this function first checks whether they are
-    /// released, and fails if they are not. Additionally, the relevant data
-    /// structure is founding_validators, rather than active_bids.
+    /// For a founding validator, this function first checks whether they are released, and fails
+    /// if they are not. Additionally, the relevant data structure is founding_validators, rather
+    /// than active_bids.
     ///
-    /// The function returns a tuple of the (new) unbonding purse key and the
-    /// new quantity of motes remaining in the bid. If the target bid does not
-    /// exist, the function call returns a designated “failure” purse and does nothing.
-    ///
-    /// The arguments are the public key and amount of motes to remove.
+    /// The function returns a tuple of the (new) unbonding purse key and the new quantity of motes
+    /// remaining in the bid. If the target bid does not exist, the function call returns an error.
     fn withdraw_bid(&mut self, public_key: PublicKey, quantity: U512) -> Result<(URef, U512)> {
         // Update bids or stakes
         let mut founding_validators = internal::get_founding_validators(self)?;
@@ -198,14 +188,11 @@ where
         Ok((unbonding_purse, new_quantity))
     }
 
-    /// Adds a new delegator to delegators, or tops off a current
-    /// one. If the target validator is not in active_bids, the function call
-    /// returns a designated “failure” purse and does nothing. The function
-    /// calls bond in the Mint contract to transfer motes to the
-    /// validator’s purse and returns a tuple of that purse and the
-    /// quantity of motes contained in it after the transfer.
+    /// Adds a new delegator to delegators, or tops off a current one. If the target validator is
+    /// not in active_bids, the function call returns an error and does nothing.
     ///
-    /// The arguments are the delegator’s key, the originating purse, the validator key and quantity of motes.
+    /// The function calls bond in the Mint contract to transfer motes to the validator's purse and
+    /// returns a tuple of that purse and the quantity of motes contained in it after the transfer.
     fn delegate(
         &mut self,
         delegator_public_key: PublicKey,
@@ -240,13 +227,11 @@ where
         Ok((bonding_purse, new_quantity))
     }
 
-    /// Removes a quantity (or the entry altogether, if the
-    /// remaining quantity is 0) of motes from the entry in delegators
-    /// and calls unbond in the Mint contract to create a new unbonding
-    /// purse. Returns the new unbonding purse and the quantity of
-    /// remaining delegated motes.
+    /// Removes a quantity (or the entry altogether, if the remaining quantity is 0) of motes from
+    /// the entry in delegators and calls unbond in the Mint contract to create a new unbonding
+    /// purse.
     ///
-    /// The arguments are the delegator's key, the validator key and quantity of motes.
+    /// Returns the new unbonding purse and the quantity of remaining delegated motes.
     fn undelegate(
         &mut self,
         delegator_public_key: PublicKey,
@@ -289,11 +274,11 @@ where
         Ok(new_amount)
     }
 
-    /// Removes validator entries from either active_bids or
-    /// founding_validators, wherever they might be found. This function
-    /// is intended to be called together with the slash function in the
-    /// Mint contract.
-    /// Access: PoS contractPL
+    /// Removes validator entries from either active_bids or founding_validators, wherever they
+    /// might be found.
+    ///
+    /// This function is intended to be called together with the slash function in the Mint
+    /// contract.
     fn quash_bid(&mut self, validator_public_keys: Vec<PublicKey>) -> Result<()> {
         // Clean up inside `founding_validators`
         let mut founding_validators = internal::get_founding_validators(self)?;
@@ -329,10 +314,9 @@ where
         Ok(())
     }
 
-    /// Takes active_bids and delegators to construct a list of validators' total bids
-    /// (their own added to their delegators') ordered by size from largest to smallest,
-    /// then takes the top N (number of auction slots) bidders and replaces
-    /// era_validators with these.
+    /// Takes active_bids and delegators to construct a list of validators' total bids (their own
+    /// added to their delegators') ordered by size from largest to smallest, then takes the top N
+    /// (number of auction slots) bidders and replaces era_validators with these.
     ///
     /// Accessed by: node
     fn run_auction(&mut self) -> Result<()> {

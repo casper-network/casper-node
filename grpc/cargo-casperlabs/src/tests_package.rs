@@ -22,7 +22,7 @@ mod tests {
     use casperlabs_engine_test_support::{
         Code, Error, PublicKey, SecretKey, SessionBuilder, TestContextBuilder, Value,
     };
-    use casperlabs_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
+    use casperlabs_types::{runtime_args, RuntimeArgs, U512};
 
     const MY_ACCOUNT: [u8; 32] = [7u8; 32];
     // define KEY constant to match that in the contract

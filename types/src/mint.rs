@@ -232,8 +232,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
         if self.get_caller() != SYSTEM_ACCOUNT {
             return Err(Error::InvalidCaller);
         }
-        // Present version of this document does not specify how unbonding delegators are to be
-        // slashed (this will require some modifications to the spec).
+
         let bid_purses_uref = self
             .get_key(BID_PURSES_KEY)
             .and_then(Key::into_uref)

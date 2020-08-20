@@ -46,12 +46,15 @@ impl StorageProvider for AuctionContract {
 
 impl SystemProvider for AuctionContract {
     type Error = Error;
+
     fn create_purse(&mut self) -> URef {
         system::create_purse()
     }
+
     fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Self::Error> {
         Ok(system::get_balance(purse))
     }
+
     fn transfer_from_purse_to_purse(
         &mut self,
         source: URef,

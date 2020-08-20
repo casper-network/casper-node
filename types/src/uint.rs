@@ -1,7 +1,9 @@
 use alloc::vec::Vec;
-use core::fmt::{self, Formatter};
-use core::iter::Sum;
-use core::ops::Add;
+use core::{
+    fmt::{self, Formatter},
+    iter::Sum,
+    ops::Add,
+};
 
 use num_integer::Integer;
 use num_traits::{AsPrimitive, Bounded, Num, One, Unsigned, WrappingAdd, WrappingSub, Zero};
