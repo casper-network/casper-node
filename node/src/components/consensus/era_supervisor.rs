@@ -34,7 +34,7 @@ use crate::{
         hash,
     },
     effect::{EffectBuilder, EffectExt, Effects},
-    types::{Block, FinalizedBlock, Instruction, Motes, ProtoBlock, Timestamp},
+    types::{Block, FinalizedBlock, Motes, ProtoBlock, SystemTransaction, Timestamp},
     utils::WithDir,
 };
 
@@ -370,15 +370,15 @@ where
                     self.era_supervisor.current_era = new_era_id;
                 }
                 // Create instructions for slashing equivocators.
-                let mut instructions: Vec<_> = new_equivocators
+                let mut system_transactions: Vec<_> = new_equivocators
                     .into_iter()
-                    .map(Instruction::Slash)
+                    .map(SystemTransaction::Slash)
                     .collect();
                 if !rewards.is_empty() {
-                    instructions.push(Instruction::Rewards(rewards));
+                    system_transactions.push(SystemTransaction::Rewards(rewards));
                 };
                 // Request execution of the finalized block.
-                let fb = FinalizedBlock::new(proto_block, timestamp, instructions);
+                let fb = FinalizedBlock::new(proto_block, timestamp, system_transactions);
                 effects.extend(
                     self.effect_builder
                         .execute_block(fb)
