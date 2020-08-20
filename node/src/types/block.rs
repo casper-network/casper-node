@@ -131,7 +131,7 @@ impl Display for ProtoBlock {
 
 /// System transactions like slashing and rewards.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Instruction {
+pub enum SystemTransaction {
     /// A validator has equivocated and should be slashed.
     Slash(PublicKey),
     /// Block reward information, in trillionths (10^-12) of the total reward for one block.
@@ -139,12 +139,12 @@ pub enum Instruction {
     Rewards(BTreeMap<PublicKey, u64>),
 }
 
-impl Instruction {
+impl SystemTransaction {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         if rng.gen() {
-            Instruction::Slash(PublicKey::random(rng))
+            SystemTransaction::Slash(PublicKey::random(rng))
         } else {
             let count = rng.gen_range(2, 11);
             let rewards = iter::repeat_with(|| {
@@ -154,16 +154,16 @@ impl Instruction {
             })
             .take(count)
             .collect();
-            Instruction::Rewards(rewards)
+            SystemTransaction::Rewards(rewards)
         }
     }
 }
 
-impl Display for Instruction {
+impl Display for SystemTransaction {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Instruction::Slash(public_key) => write!(formatter, "slash {}", public_key),
-            Instruction::Rewards(rewards) => {
+            SystemTransaction::Slash(public_key) => write!(formatter, "slash {}", public_key),
+            SystemTransaction::Rewards(rewards) => {
                 let rewards = rewards
                     .iter()
                     .map(|(public_key, amount)| format!("{}: {}", public_key, amount))
@@ -180,19 +180,19 @@ impl Display for Instruction {
 pub struct FinalizedBlock {
     proto_block: ProtoBlock,
     timestamp: Timestamp,
-    instructions: Vec<Instruction>,
+    system_transactions: Vec<SystemTransaction>,
 }
 
 impl FinalizedBlock {
     pub(crate) fn new(
         proto_block: ProtoBlock,
         timestamp: Timestamp,
-        instructions: Vec<Instruction>,
+        system_transactions: Vec<SystemTransaction>,
     ) -> Self {
         FinalizedBlock {
             proto_block,
             timestamp,
-            instructions,
+            system_transactions,
         }
     }
 
@@ -207,8 +207,8 @@ impl FinalizedBlock {
     }
 
     /// Instructions for system transactions like slashing and rewards.
-    pub(crate) fn instructions(&self) -> &Vec<Instruction> {
-        &self.instructions
+    pub(crate) fn system_transactions(&self) -> &Vec<SystemTransaction> {
+        &self.system_transactions
     }
 }
 
@@ -216,12 +216,13 @@ impl Display for FinalizedBlock {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "finalized block {:10} deploys {:10}, random bit {}, timestamp {}, instructions: [{}]",
+            "finalized block {:10} deploys {:10}, random bit {}, timestamp {}, \
+            system_transactions: [{}]",
             HexFmt(self.proto_block.hash().inner()),
             HexList(&self.proto_block.deploys),
             self.proto_block.random_bit,
             self.timestamp(),
-            DisplayIter::new(self.instructions().iter())
+            DisplayIter::new(self.system_transactions().iter())
         )
     }
 }
@@ -257,7 +258,7 @@ pub struct BlockHeader {
     deploy_hashes: Vec<DeployHash>,
     random_bit: bool,
     timestamp: Timestamp,
-    instructions: Vec<Instruction>,
+    system_transactions: Vec<SystemTransaction>,
 }
 
 impl BlockHeader {
@@ -292,8 +293,8 @@ impl BlockHeader {
     }
 
     /// Instructions for system transactions like slashing and rewards.
-    pub fn instructions(&self) -> &Vec<Instruction> {
-        &self.instructions
+    pub fn system_transactions(&self) -> &Vec<SystemTransaction> {
+        &self.system_transactions
     }
 }
 
@@ -302,14 +303,14 @@ impl Display for BlockHeader {
         write!(
             formatter,
             "block header parent hash {}, post-state hash {}, body hash {}, deploys [{}], \
-            random bit {}, timestamp {}, instructions [{}]",
+            random bit {}, timestamp {}, system_transactions [{}]",
             self.parent_hash.inner(),
             self.post_state_hash,
             self.body_hash,
             DisplayIter::new(self.deploy_hashes.iter()),
             self.random_bit,
             self.timestamp,
-            DisplayIter::new(self.instructions.iter()),
+            DisplayIter::new(self.system_transactions.iter()),
         )
     }
 }
@@ -342,7 +343,7 @@ impl Block {
             deploy_hashes: finalized_block.proto_block.deploys,
             random_bit: finalized_block.proto_block.random_bit,
             timestamp: finalized_block.timestamp,
-            instructions: finalized_block.instructions,
+            system_transactions: finalized_block.system_transactions,
         };
         let serialized_header = Self::serialize_header(&header)
             .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
@@ -389,11 +390,11 @@ impl Block {
 
         // TODO - make Timestamp deterministic.
         let timestamp = Timestamp::now();
-        let instructions_count = rng.gen_range(1, 11);
-        let instructions = iter::repeat_with(|| Instruction::random(rng))
-            .take(instructions_count)
+        let system_transactions_count = rng.gen_range(1, 11);
+        let system_transactions = iter::repeat_with(|| SystemTransaction::random(rng))
+            .take(system_transactions_count)
             .collect();
-        let finalized_block = FinalizedBlock::new(proto_block, timestamp, instructions);
+        let finalized_block = FinalizedBlock::new(proto_block, timestamp, system_transactions);
 
         let parent_hash = BlockHash::new(Digest::random(rng));
         let post_state_hash = Digest::random(rng);
@@ -416,7 +417,7 @@ impl Display for Block {
         write!(
             formatter,
             "executed block {}, parent hash {}, post-state hash {}, body hash {}, deploys [{}], \
-            random bit {}, timestamp {}, instructions [{}], proofs count {}",
+            random bit {}, timestamp {}, system_transactions [{}], proofs count {}",
             self.hash.inner(),
             self.header.parent_hash.inner(),
             self.header.post_state_hash,
@@ -424,7 +425,7 @@ impl Display for Block {
             DisplayIter::new(self.header.deploy_hashes.iter()),
             self.header.random_bit,
             self.header.timestamp,
-            DisplayIter::new(self.header.instructions.iter()),
+            DisplayIter::new(self.header.system_transactions.iter()),
             self.proofs.len()
         )
     }

@@ -8,7 +8,7 @@ mod node_config;
 mod timestamp;
 
 pub use block::{Block, BlockHash, BlockHeader};
-pub(crate) use block::{FinalizedBlock, Instruction, ProtoBlock, ProtoBlockHash};
+pub(crate) use block::{FinalizedBlock, ProtoBlock, ProtoBlockHash, SystemTransaction};
 pub use deploy::{DecodingError, Deploy, DeployHash, DeployHeader, EncodingError};
 pub use item::{Item, Tag};
 pub use motes::Motes;
