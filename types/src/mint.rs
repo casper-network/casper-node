@@ -227,7 +227,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
 
     /// Slashes each validator.
     ///
-    /// This can be only invoked through as a system call.
+    /// This can be only invoked through a system call.
     fn slash(&mut self, validator_public_keys: Vec<PublicKey>) -> Result<(), Error> {
         if self.get_caller() != SYSTEM_ACCOUNT {
             return Err(Error::InvalidCaller);
