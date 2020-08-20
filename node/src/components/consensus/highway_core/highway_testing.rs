@@ -1020,12 +1020,6 @@ impl ValidatorSecret for TestSecret {
     }
 }
 
-impl ConsensusValueT for Vec<u32> {
-    fn terminal(&self) -> bool {
-        false
-    }
-}
-
 impl Context for TestContext {
     type ConsensusValue = Vec<u32>;
     type ValidatorId = ValidatorId;

@@ -65,7 +65,6 @@ pub struct ProtoBlock {
     parent_hash: ProtoBlockHash,
     deploys: Vec<DeployHash>,
     random_bit: bool,
-    switch_block: bool,
 }
 
 impl ProtoBlock {
@@ -73,7 +72,6 @@ impl ProtoBlock {
         parent_hash: ProtoBlockHash,
         deploys: Vec<DeployHash>,
         random_bit: bool,
-        switch_block: bool,
     ) -> Self {
         let hash = ProtoBlockHash::new(hash::hash(
             &rmp_serde::to_vec(&(&deploys, random_bit)).expect("serialize ProtoBlock"),
@@ -84,7 +82,6 @@ impl ProtoBlock {
             hash,
             deploys,
             random_bit,
-            switch_block,
         }
     }
 
@@ -104,11 +101,6 @@ impl ProtoBlock {
     /// A random bit needed for initializing a future era.
     pub(crate) fn random_bit(&self) -> bool {
         self.random_bit
-    }
-
-    /// Returns `true` if this is the last block of an era.
-    pub(crate) fn switch_block(&self) -> bool {
-        self.switch_block
     }
 
     pub(crate) fn destructure(self) -> (ProtoBlockHash, ProtoBlockHash, Vec<DeployHash>, bool) {
@@ -384,9 +376,7 @@ impl Block {
             .take(deploy_count)
             .collect();
         let random_bit = rng.gen();
-        let switch_block = rng.gen();
-        let proto_block =
-            ProtoBlock::new(proto_parent_hash, deploy_hashes, random_bit, switch_block);
+        let proto_block = ProtoBlock::new(proto_parent_hash, deploy_hashes, random_bit);
 
         // TODO - make Timestamp deterministic.
         let timestamp = Timestamp::now();

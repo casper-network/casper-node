@@ -10,9 +10,7 @@ use super::{
 
 use crate::{
     components::consensus::{
-        consensus_protocol::BlockContext,
-        highway_core::highway::SignedWireVote,
-        traits::{ConsensusValueT, Context},
+        consensus_protocol::BlockContext, highway_core::highway::SignedWireVote, traits::Context,
     },
     types::{TimeDiff, Timestamp},
 };
@@ -148,7 +146,7 @@ impl<C: Context> ActiveValidator<C> {
     /// Returns an effect to request a consensus value for a block to propose.
     ///
     /// If we are already waiting for a consensus value, `None` is returned instead.
-    /// If the new value would come after a terminal value, the proposal is made immediately, and
+    /// If the new value would come after a terminal block, the proposal is made immediately, and
     /// without a value.
     pub(crate) fn request_new_block(
         &mut self,
@@ -164,7 +162,7 @@ impl<C: Context> ActiveValidator<C> {
         }
         let panorama = state.panorama().cutoff(state, timestamp);
         let opt_parent = state.fork_choice(&panorama).map(|bh| state.block(bh));
-        if opt_parent.map_or(false, |block| block.value.terminal()) {
+        if opt_parent.map_or(false, |block| block.terminal()) {
             let proposal_vote = self.new_vote(panorama, timestamp, None, state);
             return Some(Effect::NewVertex(ValidVertex(Vertex::Vote(proposal_vote))));
         }

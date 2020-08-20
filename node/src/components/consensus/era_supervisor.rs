@@ -373,7 +373,8 @@ where
                     .effect_builder
                     .announce_finalized_proto_block(proto_block.clone())
                     .ignore();
-                if proto_block.switch_block() {
+                if false {
+                    // TODO: Switch block info in `FinalizedBlock`.
                     assert_eq!(
                         era_id, self.era_supervisor.current_era,
                         "finalized block in unexpected era"
