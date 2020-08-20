@@ -6,6 +6,9 @@ pub const AUCTION_SLOTS: usize = 5;
 /// Number of eras before an auction actually defines the set of validators.
 pub const AUCTION_DELAY: u64 = 3;
 
+/// Number of eras to keep track of in past.
+pub const SNAPSHOT_SIZE: usize = AUCTION_DELAY as usize + 1;
+
 /// Initial value of era id we start at genesis.
 pub const INITIAL_ERA_ID: EraId = 0;
 

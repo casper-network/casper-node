@@ -5,7 +5,7 @@ use super::{
     internal,
     providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
     seigniorage_recipient::SeigniorageRecipients,
-    EraId, EraValidators, SeigniorageRecipient, AUCTION_DELAY, AUCTION_SLOTS,
+    EraId, EraValidators, SeigniorageRecipient, AUCTION_DELAY, AUCTION_SLOTS, SNAPSHOT_SIZE,
 };
 use crate::{
     account::AccountHash,
@@ -425,6 +425,11 @@ where
             seigniorage_recipients_snapshot.insert(next_era_id, seigniorage_recipients);
         assert!(previous_seigniorage_recipients.is_none());
 
+        let seigniorage_recipients_snapshot = seigniorage_recipients_snapshot
+            .into_iter()
+            .rev()
+            .take(SNAPSHOT_SIZE)
+            .collect();
         internal::set_seigniorage_recipients_snapshot(self, seigniorage_recipients_snapshot)?;
 
         // Index for next set of validators: `era_id + AUCTION_DELAY`
@@ -433,6 +438,13 @@ where
         assert!(previous_era_validators.is_none());
 
         internal::set_era_id(self, era_id)?;
+
+        // Keep maximum of `AUCTION_DELAY + 1` elements
+        let era_validators = era_validators
+            .into_iter()
+            .rev()
+            .take(SNAPSHOT_SIZE)
+            .collect();
 
         internal::set_era_validators(self, era_validators)
     }

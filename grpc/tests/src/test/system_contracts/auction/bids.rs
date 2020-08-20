@@ -2,7 +2,7 @@ use lazy_static::lazy_static;
 
 use auction::{
     EraId, SeigniorageRecipients, ARG_DELEGATOR, ARG_PUBLIC_KEY, AUCTION_DELAY, ERA_ID_KEY,
-    INITIAL_ERA_ID,
+    INITIAL_ERA_ID, SNAPSHOT_SIZE,
 };
 use casperlabs_engine_test_support::{
     internal::{
@@ -483,11 +483,12 @@ fn should_calculate_era_validators() {
     let expected_eras: Vec<EraId> = (*first_era..=*last_era).collect();
     assert_eq!(eras, expected_eras, "Eras {:?}", eras);
 
+    assert!(post_era_id > 0);
     let consensus_next_era_id: EraId = AUCTION_DELAY + 1 + post_era_id;
 
     assert_eq!(
         era_validators.len(),
-        consensus_next_era_id as usize,
+        SNAPSHOT_SIZE,
         "era_id={} {:?}",
         consensus_next_era_id,
         era_validators
@@ -607,10 +608,12 @@ fn should_get_first_seigniorage_recipients() {
     let era_validators: EraValidators = get_value(&mut builder, auction_hash, "era_validators");
     assert_eq!(
         era_validators.len(),
-        AUCTION_DELAY as usize + 2, // 1 because `0..AUCTION_DELAY` is an inclusive range and +1 because one `run_auction` was ran
+        SNAPSHOT_SIZE, // 1 because `0..AUCTION_DELAY` is an inclusive range and +1 because one `run_auction` was ran
         "{:?}",
         era_validators
     ); // eraindex==1 - ran once
+
+    assert!(era_validators.contains_key(&(AUCTION_DELAY as u64 + 1)));
 
     let era_id = AUCTION_DELAY - 1;
 
