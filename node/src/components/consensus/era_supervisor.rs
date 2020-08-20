@@ -367,26 +367,18 @@ where
                 new_equivocators,
                 rewards,
                 timestamp,
+                relative_height,
             } => {
+                assert_eq!(
+                    era_id, self.era_supervisor.current_era,
+                    "finalized block in unexpected era"
+                );
                 // Announce the finalized proto block.
                 let mut effects = self
                     .effect_builder
                     .announce_finalized_proto_block(proto_block.clone())
                     .ignore();
-                if false {
-                    // TODO: Switch block info in `FinalizedBlock`.
-                    assert_eq!(
-                        era_id, self.era_supervisor.current_era,
-                        "finalized block in unexpected era"
-                    );
-                    self.era_supervisor.current_era_mut().deactivate_validator();
-                    let new_era_id = era_id.successor();
-                    // TODO: Learn the new weights from contract (validator rotation).
-                    let validator_stakes = self.era_supervisor.validator_stakes.clone();
-                    effects.extend(self.new_era(new_era_id, timestamp, validator_stakes));
-                    self.era_supervisor.current_era = new_era_id;
-                }
-                // Create instructions for slashing equivocators.
+                // Create system transactions for slashing equivocators.
                 let mut system_transactions: Vec<_> = new_equivocators
                     .into_iter()
                     .map(SystemTransaction::Slash)
@@ -394,8 +386,20 @@ where
                 if !rewards.is_empty() {
                     system_transactions.push(SystemTransaction::Rewards(rewards));
                 };
+                // TODO: Take wall-clock time into account, too.
+                let switch_block =
+                    relative_height + 1 == self.era_supervisor.highway_config.minimum_era_height;
                 // Request execution of the finalized block.
-                let fb = FinalizedBlock::new(proto_block, timestamp, system_transactions);
+                let fb =
+                    FinalizedBlock::new(proto_block, timestamp, system_transactions, switch_block);
+                if fb.switch_block() {
+                    self.era_supervisor.current_era_mut().deactivate_validator();
+                    let new_era_id = era_id.successor();
+                    // TODO: Learn the new weights from contract (validator rotation).
+                    let validator_stakes = self.era_supervisor.validator_stakes.clone();
+                    effects.extend(self.new_era(new_era_id, timestamp, validator_stakes));
+                    self.era_supervisor.current_era = new_era_id;
+                }
                 effects.extend(
                     self.effect_builder
                         .execute_block(fb)

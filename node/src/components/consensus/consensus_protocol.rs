@@ -53,6 +53,7 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
         new_equivocators: Vec<VID>,
         rewards: BTreeMap<VID, u64>,
         timestamp: Timestamp,
+        relative_height: u64,
     },
     /// Request validation of the consensus value, contained in a message received from the given
     /// node.

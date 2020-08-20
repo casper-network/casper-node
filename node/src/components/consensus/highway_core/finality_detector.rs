@@ -29,6 +29,8 @@ pub(crate) enum FinalityOutcome<C: Context> {
         rewards: BTreeMap<C::ValidatorId, u64>,
         /// The timestamp at which this value was proposed.
         timestamp: Timestamp,
+        /// The relative height in this instance of the protocol.
+        height: u64,
     },
     /// The fault tolerance threshold has been exceeded: The number of observed equivocations
     /// invalidates this finality detector's results.
@@ -73,11 +75,13 @@ impl<C: Context> FinalityDetector<C> {
         let new_equivocators_iter = state.get_new_equivocators(bhash).into_iter();
         let rewards = rewards::compute_rewards(state, bhash);
         let rewards_iter = rewards.enumerate();
+        let block = state.block(bhash);
         FinalityOutcome::Finalized {
-            value: state.block(bhash).value.clone(),
+            value: block.value.clone(),
             new_equivocators: new_equivocators_iter.map(to_id).collect(),
             rewards: rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect(),
             timestamp: state.vote(bhash).timestamp,
+            height: block.height,
         }
     }
 

@@ -173,6 +173,7 @@ pub struct FinalizedBlock {
     proto_block: ProtoBlock,
     timestamp: Timestamp,
     system_transactions: Vec<SystemTransaction>,
+    switch_block: bool,
 }
 
 impl FinalizedBlock {
@@ -180,11 +181,13 @@ impl FinalizedBlock {
         proto_block: ProtoBlock,
         timestamp: Timestamp,
         system_transactions: Vec<SystemTransaction>,
+        switch_block: bool,
     ) -> Self {
         FinalizedBlock {
             proto_block,
             timestamp,
             system_transactions,
+            switch_block,
         }
     }
 
@@ -201,6 +204,11 @@ impl FinalizedBlock {
     /// Instructions for system transactions like slashing and rewards.
     pub(crate) fn system_transactions(&self) -> &Vec<SystemTransaction> {
         &self.system_transactions
+    }
+
+    /// Returns `true` if this is the last block of the current era.
+    pub(crate) fn switch_block(&self) -> bool {
+        self.switch_block
     }
 }
 
@@ -384,7 +392,9 @@ impl Block {
         let system_transactions = iter::repeat_with(|| SystemTransaction::random(rng))
             .take(system_transactions_count)
             .collect();
-        let finalized_block = FinalizedBlock::new(proto_block, timestamp, system_transactions);
+        let switch_block = rng.gen_bool(0.1);
+        let finalized_block =
+            FinalizedBlock::new(proto_block, timestamp, system_transactions, switch_block);
 
         let parent_hash = BlockHash::new(Digest::random(rng));
         let post_state_hash = Digest::random(rng);

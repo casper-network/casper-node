@@ -474,6 +474,7 @@ where
                 new_equivocators,
                 rewards,
                 timestamp,
+                height,
             } => {
                 if !new_equivocators.is_empty() {
                     warn!("New equivocators detected: {:?}", new_equivocators);
@@ -482,7 +483,11 @@ where
                 if !rewards.is_empty() {
                     warn!("Rewards are not verified yet: {:?}", rewards);
                 }
-                trace!("Consensus value finalized: {:?}", value);
+                trace!(
+                    "Consensus value finalized: {:?}, height: {:?}",
+                    value,
+                    height
+                );
                 vec![value]
             }
             FinalityOutcome::None => vec![],
