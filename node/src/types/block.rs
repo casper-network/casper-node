@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use super::Timestamp;
 use crate::{
-    components::storage::Value,
+    components::{consensus::EraId, storage::Value},
     crypto::{
         asymmetric_key::{PublicKey, Signature},
         hash::{self, Digest},
@@ -174,6 +174,8 @@ pub struct FinalizedBlock {
     timestamp: Timestamp,
     system_transactions: Vec<SystemTransaction>,
     switch_block: bool,
+    era_id: EraId,
+    height: u64,
 }
 
 impl FinalizedBlock {
@@ -182,12 +184,16 @@ impl FinalizedBlock {
         timestamp: Timestamp,
         system_transactions: Vec<SystemTransaction>,
         switch_block: bool,
+        era_id: EraId,
+        height: u64,
     ) -> Self {
         FinalizedBlock {
             proto_block,
             timestamp,
             system_transactions,
             switch_block,
+            era_id,
+            height,
         }
     }
 
@@ -197,8 +203,8 @@ impl FinalizedBlock {
     }
 
     /// The timestamp from when the proto block was proposed.
-    pub(crate) fn timestamp(&self) -> &Timestamp {
-        &self.timestamp
+    pub(crate) fn timestamp(&self) -> Timestamp {
+        self.timestamp
     }
 
     /// Instructions for system transactions like slashing and rewards.
@@ -210,15 +216,28 @@ impl FinalizedBlock {
     pub(crate) fn switch_block(&self) -> bool {
         self.switch_block
     }
+
+    /// Returns the ID of the era this block belongs to.
+    pub(crate) fn era_id(&self) -> EraId {
+        self.era_id
+    }
+
+    /// Returns the height of this block.
+    pub(crate) fn height(&self) -> u64 {
+        self.height
+    }
 }
 
 impl Display for FinalizedBlock {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "finalized block {:10} deploys {:10}, random bit {}, timestamp {}, \
-            system_transactions: [{}]",
+            "finalized {}block {:10} in era {:?}, height {}, deploys {:10}, random bit {}, \
+            timestamp {}, system_transactions: [{}]",
+            if self.switch_block { "switch " } else { "" },
             HexFmt(self.proto_block.hash().inner()),
+            self.era_id,
+            self.height,
             HexList(&self.proto_block.deploys),
             self.proto_block.random_bit,
             self.timestamp(),
@@ -393,8 +412,15 @@ impl Block {
             .take(system_transactions_count)
             .collect();
         let switch_block = rng.gen_bool(0.1);
-        let finalized_block =
-            FinalizedBlock::new(proto_block, timestamp, system_transactions, switch_block);
+        let era = rng.gen_range(0, 5);
+        let finalized_block = FinalizedBlock::new(
+            proto_block,
+            timestamp,
+            system_transactions,
+            switch_block,
+            EraId(era),
+            era * 10 + rng.gen_range(0, 10),
+        );
 
         let parent_hash = BlockHash::new(Digest::random(rng));
         let post_state_hash = Digest::random(rng);

@@ -60,7 +60,7 @@ pub(crate) struct Era<I> {
     consensus: Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>>,
     /// The timestamp of the last block of the previous era.
     start_time: Timestamp,
-    /// The height of the last block of the previous era.
+    /// The height of this era's first block.
     start_height: u64,
 }
 
@@ -414,24 +414,29 @@ where
                     >= self.era_supervisor.highway_config.minimum_era_height
                     && timestamp >= start_time + self.era_supervisor.highway_config.era_duration;
                 // Request execution of the finalized block.
-                let fb =
-                    FinalizedBlock::new(proto_block, timestamp, system_transactions, switch_block);
+                let fb = FinalizedBlock::new(
+                    proto_block,
+                    timestamp,
+                    system_transactions,
+                    switch_block,
+                    era_id,
+                    start_height + relative_height,
+                );
                 if fb.switch_block() {
                     self.era_supervisor
                         .current_era_mut()
                         .consensus
                         .deactivate_validator();
-                    let new_era_id = era_id.successor();
                     // TODO: Learn the new weights from contract (validator rotation).
                     let validator_stakes = self.era_supervisor.validator_stakes.clone();
                     effects.extend(self.new_era(
-                        new_era_id,
-                        timestamp,
+                        fb.era_id().successor(),
+                        fb.timestamp(),
                         validator_stakes,
-                        timestamp,
-                        start_height + relative_height + 1,
+                        fb.timestamp(),
+                        fb.height() + 1,
                     ));
-                    self.era_supervisor.current_era = new_era_id;
+                    self.era_supervisor.current_era = fb.era_id().successor();
                 }
                 effects.extend(
                     self.effect_builder
