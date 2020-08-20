@@ -53,6 +53,13 @@ impl FromStr for TimeDiff {
     }
 }
 
+impl TimeDiff {
+    /// Returns the timestamp as the number of milliseconds since the Unix epoch
+    pub fn millis(&self) -> u64 {
+        self.0
+    }
+}
+
 impl Timestamp {
     /// Returns the timestamp of the current moment
     pub fn now() -> Self {

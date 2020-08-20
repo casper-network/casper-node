@@ -3,7 +3,6 @@
 use std::{
     convert::{TryFrom, TryInto},
     path::Path,
-    time::Duration,
 };
 
 use semver::Version;
@@ -123,11 +122,11 @@ impl From<chainspec::HighwayConfig> for HighwayConfig {
     fn from(cfg: chainspec::HighwayConfig) -> Self {
         HighwayConfig {
             genesis_era_start_timestamp: cfg.genesis_era_start_timestamp,
-            era_duration_millis: cfg.era_duration.as_millis() as u64,
+            era_duration_millis: cfg.era_duration.millis(),
             minimum_era_height: cfg.minimum_era_height,
-            booking_duration_millis: cfg.booking_duration.as_millis() as u64,
-            entropy_duration_millis: cfg.entropy_duration.as_millis() as u64,
-            voting_period_duration_millis: cfg.voting_period_duration.as_millis() as u64,
+            booking_duration_millis: cfg.booking_duration.millis(),
+            entropy_duration_millis: cfg.entropy_duration.millis(),
+            voting_period_duration_millis: cfg.voting_period_duration.millis(),
             finality_threshold_percent: cfg.finality_threshold_percent,
             minimum_round_exponent: cfg.minimum_round_exponent,
         }
@@ -214,23 +213,15 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
                 .genesis
                 .highway_config
                 .genesis_era_start_timestamp,
-            era_duration_millis: chainspec.genesis.highway_config.era_duration.as_millis() as u64,
+            era_duration_millis: chainspec.genesis.highway_config.era_duration.millis(),
             minimum_era_height: chainspec.genesis.highway_config.minimum_era_height,
-            booking_duration_millis: chainspec
-                .genesis
-                .highway_config
-                .booking_duration
-                .as_millis() as u64,
-            entropy_duration_millis: chainspec
-                .genesis
-                .highway_config
-                .entropy_duration
-                .as_millis() as u64,
+            booking_duration_millis: chainspec.genesis.highway_config.booking_duration.millis(),
+            entropy_duration_millis: chainspec.genesis.highway_config.entropy_duration.millis(),
             voting_period_duration_millis: chainspec
                 .genesis
                 .highway_config
                 .voting_period_duration
-                .as_millis() as u64,
+                .millis(),
             finality_threshold_percent: chainspec.genesis.highway_config.finality_threshold_percent,
             minimum_round_exponent: chainspec.genesis.highway_config.minimum_round_exponent,
         };
@@ -293,13 +284,11 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         .map_err(Error::LoadGenesisAccounts)?;
     let highway_config = chainspec::HighwayConfig {
         genesis_era_start_timestamp: chainspec.highway.genesis_era_start_timestamp,
-        era_duration: Duration::from_millis(chainspec.highway.era_duration_millis),
+        era_duration: TimeDiff::from(chainspec.highway.era_duration_millis),
         minimum_era_height: chainspec.highway.minimum_era_height,
-        booking_duration: Duration::from_millis(chainspec.highway.booking_duration_millis),
-        entropy_duration: Duration::from_millis(chainspec.highway.entropy_duration_millis),
-        voting_period_duration: Duration::from_millis(
-            chainspec.highway.voting_period_duration_millis,
-        ),
+        booking_duration: TimeDiff::from(chainspec.highway.booking_duration_millis),
+        entropy_duration: TimeDiff::from(chainspec.highway.entropy_duration_millis),
+        voting_period_duration: TimeDiff::from(chainspec.highway.voting_period_duration_millis),
         finality_threshold_percent: chainspec.highway.finality_threshold_percent,
         minimum_round_exponent: chainspec.highway.minimum_round_exponent,
     };

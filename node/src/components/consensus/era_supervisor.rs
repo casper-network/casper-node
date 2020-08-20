@@ -55,10 +55,19 @@ impl EraId {
     }
 }
 
+pub(crate) struct Era<I> {
+    /// The consensus protocol instance.
+    consensus: Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>>,
+    /// The timestamp of the last block of the previous era.
+    start_time: Timestamp,
+    /// The height of the last block of the previous era.
+    start_height: u64,
+}
+
 pub(crate) struct EraSupervisor<I> {
     /// A map of active consensus protocols.
     /// A value is a trait so that we can run different consensus protocol instances per era.
-    active_eras: HashMap<EraId, Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>>>,
+    active_eras: HashMap<EraId, Era<I>>,
     pub(super) secret_signing_key: Rc<SecretKey>,
     pub(super) public_signing_key: PublicKey,
     validator_stakes: Vec<(PublicKey, Motes)>,
@@ -102,6 +111,8 @@ where
             EraId(0),
             timestamp,
             validator_stakes,
+            highway_config.genesis_era_start_timestamp,
+            0,
         );
 
         Ok((era_supervisor, effects))
@@ -124,6 +135,8 @@ where
         era_id: EraId,
         timestamp: Timestamp,
         validator_stakes: Vec<(PublicKey, Motes)>,
+        start_time: Timestamp,
+        start_height: u64,
     ) -> Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>> {
         if self.active_eras.contains_key(&era_id) {
             panic!("{:?} already exists", era_id);
@@ -161,13 +174,18 @@ where
             timestamp,
         );
 
-        let _ = self.active_eras.insert(era_id, Box::new(highway));
+        let era = Era {
+            consensus: Box::new(highway),
+            start_time,
+            start_height,
+        };
+        let _ = self.active_eras.insert(era_id, era);
 
         results
     }
 
     /// Returns the current era.
-    fn current_era_mut(&mut self) -> &mut Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>> {
+    fn current_era_mut(&mut self) -> &mut Era<I> {
         self.active_eras
             .get_mut(&self.current_era)
             .expect("current era does not exist")
@@ -175,9 +193,7 @@ where
 
     /// Inspect the active eras.
     #[cfg(test)]
-    pub fn active_eras(
-        &self,
-    ) -> &HashMap<EraId, Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>>> {
+    pub(crate) fn active_eras(&self) -> &HashMap<EraId, Era<I>> {
         &self.active_eras
     }
 }
@@ -214,7 +230,7 @@ where
                 }
                 Effects::new()
             }
-            Some(consensus) => match f(&mut **consensus) {
+            Some(era) => match f(&mut *era.consensus) {
                 Ok(results) => results
                     .into_iter()
                     .flat_map(|result| self.handle_consensus_result(era_id, result))
@@ -307,10 +323,16 @@ where
         era_id: EraId,
         timestamp: Timestamp,
         validator_stakes: Vec<(PublicKey, Motes)>,
+        start_time: Timestamp,
+        start_height: u64,
     ) -> Effects<Event<I>> {
-        let results = self
-            .era_supervisor
-            .new_era(era_id, timestamp, validator_stakes);
+        let results = self.era_supervisor.new_era(
+            era_id,
+            timestamp,
+            validator_stakes,
+            start_time,
+            start_height,
+        );
 
         results
             .into_iter()
@@ -386,18 +408,29 @@ where
                 if !rewards.is_empty() {
                     system_transactions.push(SystemTransaction::Rewards(rewards));
                 };
-                // TODO: Take wall-clock time into account, too.
-                let switch_block =
-                    relative_height + 1 == self.era_supervisor.highway_config.minimum_era_height;
+                let start_height = self.era_supervisor.active_eras[&era_id].start_height;
+                let start_time = self.era_supervisor.active_eras[&era_id].start_time;
+                let switch_block = relative_height + 1
+                    >= self.era_supervisor.highway_config.minimum_era_height
+                    && timestamp >= start_time + self.era_supervisor.highway_config.era_duration;
                 // Request execution of the finalized block.
                 let fb =
                     FinalizedBlock::new(proto_block, timestamp, system_transactions, switch_block);
                 if fb.switch_block() {
-                    self.era_supervisor.current_era_mut().deactivate_validator();
+                    self.era_supervisor
+                        .current_era_mut()
+                        .consensus
+                        .deactivate_validator();
                     let new_era_id = era_id.successor();
                     // TODO: Learn the new weights from contract (validator rotation).
                     let validator_stakes = self.era_supervisor.validator_stakes.clone();
-                    effects.extend(self.new_era(new_era_id, timestamp, validator_stakes));
+                    effects.extend(self.new_era(
+                        new_era_id,
+                        timestamp,
+                        validator_stakes,
+                        timestamp,
+                        start_height + relative_height + 1,
+                    ));
                     self.era_supervisor.current_era = new_era_id;
                 }
                 effects.extend(
