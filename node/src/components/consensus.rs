@@ -27,7 +27,6 @@ use crate::{
 };
 pub use config::Config;
 pub(crate) use consensus_protocol::BlockContext;
-use era_supervisor::HandlingEraSupervisor;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 use traits::NodeIdT;
 
@@ -151,13 +150,10 @@ where
     fn handle_event<R: Rng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        rng: &mut R,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        let mut handling_es = HandlingEraSupervisor {
-            era_supervisor: self,
-            effect_builder,
-        };
+        let mut handling_es = self.handling(effect_builder, rng);
         match event {
             Event::Timer { era_id, timestamp } => handling_es.handle_timer(era_id, timestamp),
             Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),

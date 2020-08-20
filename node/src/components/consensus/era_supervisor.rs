@@ -14,6 +14,7 @@ use std::{
 use anyhow::Error;
 use casperlabs_types::U512;
 use num_traits::AsPrimitive;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
@@ -76,12 +77,13 @@ impl<I> EraSupervisor<I>
 where
     I: NodeIdT,
 {
-    pub(crate) fn new<REv: ReactorEventT<I>>(
+    pub(crate) fn new<REv: ReactorEventT<I>, R: Rng + ?Sized>(
         timestamp: Timestamp,
         config: WithDir<Config>,
         effect_builder: EffectBuilder<REv>,
         validator_stakes: Vec<(PublicKey, Motes)>,
         highway_config: &HighwayConfig,
+        rng: &mut R,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
         let (root, config) = config.into_parts();
         let secret_signing_key = Rc::new(config.secret_key_path.load(root)?);
@@ -96,13 +98,25 @@ where
             highway_config: *highway_config,
         };
 
-        let effects = HandlingEraSupervisor {
-            era_supervisor: &mut era_supervisor,
-            effect_builder,
-        }
-        .new_era(EraId(0), timestamp, validator_stakes);
+        let effects = era_supervisor.handling(effect_builder, rng).new_era(
+            EraId(0),
+            timestamp,
+            validator_stakes,
+        );
 
         Ok((era_supervisor, effects))
+    }
+
+    pub(super) fn handling<'a, REv: ReactorEventT<I>, R: Rng + ?Sized>(
+        &'a mut self,
+        effect_builder: EffectBuilder<REv>,
+        rng: &'a mut R,
+    ) -> HandlingEraSupervisor<'a, I, REv, R> {
+        HandlingEraSupervisor {
+            era_supervisor: self,
+            effect_builder,
+            rng,
+        }
     }
 
     fn new_era(
@@ -173,15 +187,17 @@ where
 /// This is a short-lived convenience type to avoid passing the effect builder through lots of
 /// message calls, and making every method individually generic in `REv`. It is only instantiated
 /// for the duration of handling a single event.
-pub(super) struct HandlingEraSupervisor<'a, I, REv: 'static> {
+pub(super) struct HandlingEraSupervisor<'a, I, REv: 'static, R: ?Sized> {
     pub(super) era_supervisor: &'a mut EraSupervisor<I>,
     pub(super) effect_builder: EffectBuilder<REv>,
+    pub(super) rng: &'a mut R,
 }
 
-impl<'a, I, REv> HandlingEraSupervisor<'a, I, REv>
+impl<'a, I, REv, R> HandlingEraSupervisor<'a, I, REv, R>
 where
     I: NodeIdT,
     REv: ReactorEventT<I>,
+    R: Rng + ?Sized,
 {
     fn delegate_to_era<F>(&mut self, era_id: EraId, f: F) -> Effects<Event<I>>
     where
@@ -340,7 +356,7 @@ where
                 opt_parent,
             } => self
                 .effect_builder
-                .request_proto_block(block_context, opt_parent)
+                .request_proto_block(block_context, opt_parent, self.rng.gen())
                 .event(move |(proto_block, block_context)| Event::NewProtoBlock {
                     era_id,
                     proto_block,

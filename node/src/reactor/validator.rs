@@ -298,7 +298,7 @@ impl reactor::Reactor for Reactor {
         initializer: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut R,
+        rng: &mut R,
     ) -> Result<(Self, Effects<Event>), Error> {
         let (root, initializer) = initializer.into_parts();
 
@@ -338,6 +338,7 @@ impl reactor::Reactor for Reactor {
             effect_builder,
             validator_stakes,
             &chainspec_loader.chainspec().genesis.highway_config,
+            rng,
         )?;
         let deploy_acceptor = DeployAcceptor::new();
         let deploy_fetcher = Fetcher::new(config.gossip);
