@@ -37,5 +37,5 @@ echo "To stop all nodes, run"
 echo "  systemctl --user stop node-\\*"
 echo "  systemctl --user reset-failed"
 echo
-echo "To see log output for a specific or multiple nodes, use"
-echo "  journalctl --user -u node-1 -f"
+echo "To see log output for a specific (node-n) or multiple (node-\\*) nodes, use"
+echo "  journalctl --user -u node-\\* -f"
