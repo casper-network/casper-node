@@ -131,13 +131,15 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
                 rewards,
                 timestamp,
                 height,
+                terminal,
             } => {
                 results.push(ConsensusProtocolResult::FinalizedBlock {
                     value,
                     new_equivocators,
                     rewards,
                     timestamp,
-                    relative_height: height,
+                    height,
+                    switch_block: terminal,
                 });
             }
         }

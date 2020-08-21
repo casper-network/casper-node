@@ -479,6 +479,7 @@ where
                 rewards,
                 timestamp,
                 height,
+                terminal,
             } => {
                 if !new_equivocators.is_empty() {
                     warn!("New equivocators detected: {:?}", new_equivocators);
@@ -488,7 +489,8 @@ where
                     warn!("Rewards are not verified yet: {:?}", rewards);
                 }
                 trace!(
-                    "Consensus value finalized: {:?}, height: {:?}",
+                    "{}consensus value finalized: {:?}, height: {:?}",
+                    if terminal { "last " } else { "" },
                     value,
                     height
                 );

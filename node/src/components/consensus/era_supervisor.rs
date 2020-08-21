@@ -39,6 +39,10 @@ use crate::{
     utils::WithDir,
 };
 
+// We use one trillion as a block reward unit because it's large enough to allow precise
+// fractions, and small enough for many block rewards to fit into a u64.
+const BLOCK_REWARD: u64 = 1_000_000_000_000;
+
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct EraId(pub(crate) u64);
 
@@ -58,8 +62,6 @@ impl EraId {
 pub(crate) struct Era<I> {
     /// The consensus protocol instance.
     consensus: Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>>,
-    /// The timestamp of the last block of the previous era.
-    start_time: Timestamp,
     /// The height of this era's first block.
     start_height: u64,
 }
@@ -163,16 +165,13 @@ where
         let ftt = validators.total_weight()
             * u64::from(self.highway_config.finality_threshold_percent)
             / 100;
-        // We use one trillion as a block reward unit because it's large enough to allow precise
-        // fractions, and small enough for many block rewards to fit into a u64.
-        let block_reward = 1_000_000_000_000;
         // The number of rounds after which a block reward is paid out.
         // TODO: Make this configurable?
         let reward_delay = 8;
         let params = Params::new(
             0, // TODO: get a proper seed.
-            block_reward,
-            block_reward / 5, // TODO: Make reduced block reward configurable?
+            BLOCK_REWARD,
+            BLOCK_REWARD / 5, // TODO: Make reduced block reward configurable?
             reward_delay,
             self.highway_config.minimum_round_exponent,
             self.highway_config.minimum_era_height,
@@ -190,7 +189,6 @@ where
 
         let era = Era {
             consensus: Box::new(highway),
-            start_time,
             start_height,
         };
         let _ = self.active_eras.insert(era_id, era);
@@ -198,6 +196,7 @@ where
         results
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn handle_finalized_block(
         &mut self,
         era_id: EraId,
@@ -205,7 +204,8 @@ where
         new_equivocators: Vec<PublicKey>,
         rewards: BTreeMap<PublicKey, u64>,
         timestamp: Timestamp,
-        relative_height: u64,
+        height: u64,
+        switch_block: bool,
     ) -> (
         Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>>,
         FinalizedBlock,
@@ -221,10 +221,6 @@ where
         if !rewards.is_empty() {
             system_transactions.push(SystemTransaction::Rewards(rewards));
         };
-        let start_height = self.active_eras[&era_id].start_height;
-        let start_time = self.active_eras[&era_id].start_time;
-        let switch_block = relative_height + 1 >= self.highway_config.minimum_era_height
-            && timestamp >= start_time + self.highway_config.era_duration;
         // Request execution of the finalized block.
         let fb = FinalizedBlock::new(
             proto_block,
@@ -232,7 +228,7 @@ where
             system_transactions,
             switch_block,
             era_id,
-            start_height + relative_height,
+            self.active_eras[&era_id].start_height + height,
         );
         let results = if fb.switch_block() {
             self.current_era_mut().consensus.deactivate_validator();
@@ -457,7 +453,8 @@ where
                 new_equivocators,
                 rewards,
                 timestamp,
-                relative_height,
+                height,
+                switch_block,
             } => {
                 // Announce the finalized proto block.
                 let mut effects = self
@@ -470,7 +467,8 @@ where
                     new_equivocators,
                     rewards,
                     timestamp,
-                    relative_height,
+                    height,
+                    switch_block,
                 );
                 effects.extend(
                     results
