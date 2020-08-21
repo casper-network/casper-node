@@ -8,27 +8,20 @@ use alloc::{
 };
 
 use casperlabs_contract::{
-    contract_api::{runtime, storage, system},
+    contract_api::{runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casperlabs_types::{
     account::AccountHash,
-    proof_of_stake::{
-        MintProvider, ProofOfStake, Queue, QueueProvider, RuntimeProvider, Stakes, StakesProvider,
-    },
+    proof_of_stake::{MintProvider, ProofOfStake, RuntimeProvider, Stakes, StakesProvider},
     system_contract_errors::pos::Error,
-    ApiError, BlockTime, CLValue, Key, Phase, TransferResult, URef, U512,
+    BlockTime, CLValue, Key, Phase, TransferResult, URef, U512,
 };
 
-pub const METHOD_BOND: &str = "bond";
-pub const METHOD_UNBOND: &str = "unbond";
 pub const METHOD_GET_PAYMENT_PURSE: &str = "get_payment_purse";
 pub const METHOD_SET_REFUND_PURSE: &str = "set_refund_purse";
 pub const METHOD_GET_REFUND_PURSE: &str = "get_refund_purse";
 pub const METHOD_FINALIZE_PAYMENT: &str = "finalize_payment";
-
-const BONDING_KEY: u8 = 1;
-const UNBONDING_KEY: u8 = 2;
 
 pub const ARG_AMOUNT: &str = "amount";
 pub const ARG_PURSE: &str = "purse";
@@ -57,32 +50,6 @@ impl MintProvider for ProofOfStakeContract {
 
     fn balance(&mut self, purse: URef) -> Option<U512> {
         system::get_balance(purse)
-    }
-}
-
-impl QueueProvider for ProofOfStakeContract {
-    /// Reads bonding queue from the local state of the contract.
-    fn read_bonding(&mut self) -> Queue {
-        storage::read_local(&BONDING_KEY)
-            .unwrap_or_default()
-            .unwrap_or_default()
-    }
-
-    /// Reads unbonding queue from the local state of the contract.
-    fn read_unbonding(&mut self) -> Queue {
-        storage::read_local(&UNBONDING_KEY)
-            .unwrap_or_default()
-            .unwrap_or_default()
-    }
-
-    /// Writes bonding queue to the local state of the contract.
-    fn write_bonding(&mut self, queue: Queue) {
-        storage::write_local(BONDING_KEY, queue);
-    }
-
-    /// Writes unbonding queue to the local state of the contract.
-    fn write_unbonding(&mut self, queue: Queue) {
-        storage::write_local(UNBONDING_KEY, queue);
     }
 }
 
@@ -161,36 +128,6 @@ impl StakesProvider for ProofOfStakeContract {
 }
 
 impl ProofOfStake for ProofOfStakeContract {}
-
-pub fn bond() {
-    if !cfg!(feature = "enable-bonding") {
-        runtime::revert(ApiError::Unhandled)
-    }
-
-    let validator = runtime::get_caller();
-    let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
-    // source purse
-    let source: URef = runtime::get_named_arg(ARG_PURSE);
-
-    let mut pos_contract = ProofOfStakeContract;
-    pos_contract
-        .bond_old(validator, amount, source)
-        .unwrap_or_revert();
-}
-
-pub fn unbond() {
-    if !cfg!(feature = "enable-bonding") {
-        runtime::revert(ApiError::Unhandled)
-    }
-
-    let validator = runtime::get_caller();
-    let maybe_amount = runtime::get_named_arg(ARG_AMOUNT);
-
-    let mut pos_contract = ProofOfStakeContract;
-    pos_contract
-        .unbond_old(validator, maybe_amount)
-        .unwrap_or_revert();
-}
 
 pub fn get_payment_purse() {
     let pos_contract = ProofOfStakeContract;

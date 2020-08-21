@@ -1,68 +1,21 @@
 //! Contains implementation of a Proof Of Stake contract functionality.
 mod mint_provider;
 mod queue;
-mod queue_provider;
 mod runtime_provider;
 mod stakes;
 mod stakes_provider;
 
 use core::marker::Sized;
 
-use crate::{
-    account::AccountHash,
-    system_contract_errors::pos::{Error, Result},
-    AccessRights, TransferredTo, URef, U512,
-};
+use crate::{account::AccountHash, system_contract_errors::pos::Result, AccessRights, URef, U512};
 
 pub use crate::proof_of_stake::{
-    mint_provider::MintProvider, queue::Queue, queue_provider::QueueProvider,
-    runtime_provider::RuntimeProvider, stakes::Stakes, stakes_provider::StakesProvider,
+    mint_provider::MintProvider, queue::Queue, runtime_provider::RuntimeProvider, stakes::Stakes,
+    stakes_provider::StakesProvider,
 };
 
 /// Proof of stake functionality implementation.
-pub trait ProofOfStake:
-    MintProvider + QueueProvider + RuntimeProvider + StakesProvider + Sized
-{
-    /// Bonds a `validator` with `amount` of tokens from a `source` purse.
-    fn bond_old(&mut self, validator: AccountHash, amount: U512, source: URef) -> Result<()> {
-        if amount.is_zero() {
-            return Err(Error::BondTooSmall);
-        }
-        let target = internal::get_bonding_purse(self)?;
-        let timestamp = self.get_block_time();
-        // Transfer `amount` from the `source` purse to PoS internal purse. POS_PURSE is a constant,
-        // it is the URef of the proof-of-stake contract's own purse.
-
-        self.transfer_purse_to_purse(source, target, amount)
-            .map_err(|_| Error::BondTransferFailed)?;
-        internal::bond(self, amount, validator, timestamp)?;
-
-        // TODO: Remove this and set nonzero delays once the system calls `step` in each block.
-        let unbonds = internal::step(self, timestamp)?;
-        for entry in unbonds {
-            let _: TransferredTo = self
-                .transfer_purse_to_account(source, entry.validator, entry.amount)
-                .map_err(|_| Error::BondTransferFailed)?;
-        }
-        Ok(())
-    }
-
-    /// Unbonds a validator with provided `maybe_amount`. If `maybe_amount` is `None` then given
-    /// validator will withdraw all funds.
-    fn unbond_old(&mut self, validator: AccountHash, maybe_amount: Option<U512>) -> Result<()> {
-        let pos_purse = internal::get_bonding_purse(self)?;
-        let timestamp = self.get_block_time();
-        internal::unbond(self, maybe_amount, validator, timestamp)?;
-
-        // TODO: Remove this and set nonzero delays once the system calls `step` in each block.
-        let unbonds = internal::step(self, timestamp)?;
-        for entry in unbonds {
-            self.transfer_purse_to_account(pos_purse, entry.validator, entry.amount)
-                .map_err(|_| Error::UnbondTransferFailed)?;
-        }
-        Ok(())
-    }
-
+pub trait ProofOfStake: MintProvider + RuntimeProvider + StakesProvider + Sized {
     /// Get payment purse.
     fn get_payment_purse(&self) -> Result<URef> {
         let purse = internal::get_payment_purse(self)?;
@@ -91,25 +44,16 @@ pub trait ProofOfStake:
 }
 
 mod internal {
-    use alloc::vec::Vec;
-
     use crate::{
         account::AccountHash,
         system_contract_errors::pos::{Error, PurseLookupError, Result},
-        BlockTime, Key, Phase, URef, U512,
+        Key, Phase, URef, U512,
     };
 
-    use crate::proof_of_stake::{
-        mint_provider::MintProvider, queue::QueueEntry, queue_provider::QueueProvider,
-        runtime_provider::RuntimeProvider, stakes_provider::StakesProvider,
-    };
+    use crate::proof_of_stake::{mint_provider::MintProvider, runtime_provider::RuntimeProvider};
 
     /// Account used to run system functions (in particular `finalize_payment`).
     const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0u8; 32]);
-
-    /// The uref name where the PoS purse is stored. It contains all staked motes, and all unbonded
-    /// motes that are yet to be paid out.
-    const BONDING_PURSE_KEY: &str = "pos_bonding_purse";
 
     /// The uref name where the PoS accepts payment for computation on behalf of validators.
     const PAYMENT_PURSE_KEY: &str = "pos_payment_purse";
@@ -120,96 +64,6 @@ mod internal {
     /// The uref name where the PoS will refund unused payment back to the user. The uref this name
     /// corresponds to is set by the user.
     const REFUND_PURSE_KEY: &str = "pos_refund_purse";
-
-    /// The time from a bonding request until the bond becomes effective and part of the stake.
-    const BOND_DELAY: u64 = 0;
-
-    /// The time from an unbonding request until the stakes are paid out.
-    const UNBOND_DELAY: u64 = 0;
-
-    /// The maximum number of pending bonding requests.
-    const MAX_BOND_LEN: usize = 100;
-
-    /// The maximum number of pending unbonding requests.
-    const MAX_UNBOND_LEN: usize = 1000;
-
-    /// Enqueues the deploy's creator for becoming a validator. The bond `amount` is paid from the
-    /// purse `source`.
-    pub fn bond<P: QueueProvider + StakesProvider>(
-        provider: &mut P,
-        amount: U512,
-        validator: AccountHash,
-        timestamp: BlockTime,
-    ) -> Result<()> {
-        let mut queue = provider.read_bonding();
-        if queue.0.len() >= MAX_BOND_LEN {
-            return Err(Error::TooManyEventsInQueue);
-        }
-
-        let mut stakes = provider.read()?;
-        // Simulate applying all earlier bonds. The modified stakes are not written.
-        for entry in &queue.0 {
-            stakes.bond(&entry.validator, entry.amount);
-        }
-        stakes.validate_bonding(&validator, amount)?;
-
-        queue.push(validator, amount, timestamp)?;
-        provider.write_bonding(queue);
-        Ok(())
-    }
-
-    /// Enqueues the deploy's creator for unbonding. Their vote weight as a validator is decreased
-    /// immediately, but the funds will only be released after a delay. If `maybe_amount` is `None`,
-    /// all funds are enqueued for withdrawal, terminating the validator status.
-    pub fn unbond<P: QueueProvider + StakesProvider>(
-        provider: &mut P,
-        maybe_amount: Option<U512>,
-        validator: AccountHash,
-        timestamp: BlockTime,
-    ) -> Result<()> {
-        let mut queue = provider.read_unbonding();
-        if queue.0.len() >= MAX_UNBOND_LEN {
-            return Err(Error::TooManyEventsInQueue);
-        }
-
-        let mut stakes = provider.read()?;
-        let payout = stakes.unbond(&validator, maybe_amount)?;
-        provider.write(&stakes);
-        // TODO: Make sure the destination is valid and the amount can be paid. The actual payment
-        // will be made later, after the unbonding delay. contract_api::transfer_dry_run(POS_PURSE,
-        // dest, amount)?;
-        queue.push(validator, payout, timestamp)?;
-        provider.write_unbonding(queue);
-        Ok(())
-    }
-
-    /// Removes all due requests from the queues and applies them.
-    pub fn step<P: QueueProvider + StakesProvider>(
-        provider: &mut P,
-        timestamp: BlockTime,
-    ) -> Result<Vec<QueueEntry>> {
-        let mut bonding_queue = provider.read_bonding();
-        let mut unbonding_queue = provider.read_unbonding();
-
-        let bonds = bonding_queue.pop_due(timestamp.saturating_sub(BlockTime::new(BOND_DELAY)));
-        let unbonds =
-            unbonding_queue.pop_due(timestamp.saturating_sub(BlockTime::new(UNBOND_DELAY)));
-
-        if !unbonds.is_empty() {
-            provider.write_unbonding(unbonding_queue);
-        }
-
-        if !bonds.is_empty() {
-            provider.write_bonding(bonding_queue);
-            let mut stakes = provider.read()?;
-            for entry in bonds {
-                stakes.bond(&entry.validator, entry.amount);
-            }
-            provider.write(&stakes);
-        }
-
-        Ok(unbonds)
-    }
 
     /// Attempts to look up a purse from the named_keys
     fn get_purse<R: RuntimeProvider>(
@@ -228,11 +82,6 @@ mod internal {
     /// Returns the purse for accepting payment for transactions.
     pub fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef> {
         get_purse::<R>(runtime_provider, PAYMENT_PURSE_KEY).map_err(PurseLookupError::payment)
-    }
-
-    /// Returns the purse for holding bonds
-    pub fn get_bonding_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef> {
-        get_purse::<R>(runtime_provider, BONDING_PURSE_KEY).map_err(PurseLookupError::bonding)
     }
 
     /// Returns the purse for holding validator earnings
@@ -333,44 +182,19 @@ mod internal {
 
         use std::{cell::RefCell, iter, thread_local};
 
-        use crate::{account::AccountHash, system_contract_errors::pos::Result, BlockTime, U512};
+        use crate::{account::AccountHash, system_contract_errors::pos::Result, U512};
 
-        use super::{bond, step, unbond, BOND_DELAY, UNBOND_DELAY};
-        use crate::proof_of_stake::{
-            queue::Queue, queue_provider::QueueProvider, stakes::Stakes,
-            stakes_provider::StakesProvider,
-        };
+        use crate::proof_of_stake::{stakes::Stakes, stakes_provider::StakesProvider};
 
         const KEY1: [u8; 32] = [1; 32];
-        const KEY2: [u8; 32] = [2; 32];
 
         thread_local! {
-            static BONDING: RefCell<Queue> = RefCell::new(Queue(Default::default()));
-            static UNBONDING: RefCell<Queue> = RefCell::new(Queue(Default::default()));
             static STAKES: RefCell<Stakes> = RefCell::new(
                 Stakes(iter::once((AccountHash::new(KEY1), U512::from(1_000))).collect())
             );
         }
 
         struct Provider;
-
-        impl QueueProvider for Provider {
-            fn read_bonding(&mut self) -> Queue {
-                BONDING.with(|b| b.borrow().clone())
-            }
-
-            fn read_unbonding(&mut self) -> Queue {
-                UNBONDING.with(|ub| ub.borrow().clone())
-            }
-
-            fn write_bonding(&mut self, queue: Queue) {
-                BONDING.with(|b| b.replace(queue));
-            }
-
-            fn write_unbonding(&mut self, queue: Queue) {
-                UNBONDING.with(|ub| ub.replace(queue));
-            }
-        }
 
         impl StakesProvider for Provider {
             fn read(&self) -> Result<Stakes> {
@@ -380,48 +204,6 @@ mod internal {
             fn write(&mut self, stakes: &Stakes) {
                 STAKES.with(|s| s.replace(stakes.clone()));
             }
-        }
-
-        fn assert_stakes(stakes: &[([u8; 32], usize)]) {
-            let expected = Stakes(
-                stakes
-                    .iter()
-                    .map(|(key, amount)| (AccountHash::new(*key), U512::from(*amount)))
-                    .collect(),
-            );
-            assert_eq!(Ok(expected), Provider.read());
-        }
-
-        #[test]
-        fn test_bond_step_unbond() {
-            let mut provider = Provider;
-            bond(
-                &mut provider,
-                U512::from(500),
-                AccountHash::new(KEY2),
-                BlockTime::new(1),
-            )
-            .expect("bond validator 2");
-
-            // Bonding becomes effective only after the delay.
-            assert_stakes(&[(KEY1, 1_000)]);
-            step(&mut provider, BlockTime::new(BOND_DELAY)).expect("step 1");
-            assert_stakes(&[(KEY1, 1_000)]);
-            step(&mut provider, BlockTime::new(1 + BOND_DELAY)).expect("step 2");
-            assert_stakes(&[(KEY1, 1_000), (KEY2, 500)]);
-
-            unbond::<Provider>(
-                &mut provider,
-                Some(U512::from(500)),
-                AccountHash::new(KEY1),
-                BlockTime::new(2),
-            )
-            .expect("partly unbond validator 1");
-
-            // Unbonding becomes effective immediately.
-            assert_stakes(&[(KEY1, 500), (KEY2, 500)]);
-            step::<Provider>(&mut provider, BlockTime::new(2 + UNBOND_DELAY)).expect("step 3");
-            assert_stakes(&[(KEY1, 500), (KEY2, 500)]);
         }
     }
 }

@@ -1823,14 +1823,10 @@ where
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
     ) -> Result<CLValue, Error> {
-        const METHOD_BOND: &str = "bond";
-        const METHOD_UNBOND: &str = "unbond";
         const METHOD_GET_PAYMENT_PURSE: &str = "get_payment_purse";
         const METHOD_SET_REFUND_PURSE: &str = "set_refund_purse";
         const METHOD_GET_REFUND_PURSE: &str = "get_refund_purse";
         const METHOD_FINALIZE_PAYMENT: &str = "finalize_payment";
-        const ARG_AMOUNT: &str = "amount";
-        const ARG_PURSE: &str = "purse";
 
         let state = self.context.state();
         let access_rights = {
@@ -1883,33 +1879,6 @@ where
         );
 
         let ret: CLValue = match entry_point_name {
-            METHOD_BOND => {
-                if !self.config.enable_bonding() {
-                    let err = Error::Revert(ApiError::Unhandled);
-                    return Err(err);
-                }
-
-                let validator: AccountHash = runtime.context.get_caller();
-                let amount: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
-                let source_uref: URef = Self::get_named_argument(&runtime_args, ARG_PURSE)?;
-                runtime
-                    .bond_old(validator, amount, source_uref)
-                    .map_err(Self::reverter)?;
-                CLValue::from_t(()).map_err(Self::reverter)?
-            }
-            METHOD_UNBOND => {
-                if !self.config.enable_bonding() {
-                    let err = Error::Revert(ApiError::Unhandled);
-                    return Err(err);
-                }
-
-                let validator: AccountHash = runtime.context.get_caller();
-                let maybe_amount: Option<U512> = Self::get_named_argument(&runtime_args, "amount")?;
-                runtime
-                    .unbond_old(validator, maybe_amount)
-                    .map_err(Self::reverter)?;
-                CLValue::from_t(()).map_err(Self::reverter)?
-            }
             METHOD_GET_PAYMENT_PURSE => {
                 let rights_controlled_purse =
                     runtime.get_payment_purse().map_err(Self::reverter)?;
