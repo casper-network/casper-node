@@ -23,7 +23,7 @@ use crate::{
         chainspec_loader::HighwayConfig,
         consensus::{
             consensus_protocol::{BlockContext, ConsensusProtocol, ConsensusProtocolResult},
-            highway_core::validators::Validators,
+            highway_core::{highway::Params, validators::Validators},
             protocols::highway::{HighwayContext, HighwayProtocol, HighwaySecret},
             traits::NodeIdT,
             Config, ConsensusMessage, Event, ReactorEventT,
@@ -163,17 +163,29 @@ where
         let ftt = validators.total_weight()
             * u64::from(self.highway_config.finality_threshold_percent)
             / 100;
+        // We use one trillion as a block reward unit because it's large enough to allow precise
+        // fractions, and small enough for many block rewards to fit into a u64.
+        let block_reward = 1_000_000_000_000;
+        // The number of rounds after which a block reward is paid out.
+        // TODO: Make this configurable?
+        let reward_delay = 8;
+        let params = Params::new(
+            0, // TODO: get a proper seed.
+            block_reward,
+            block_reward / 5, // TODO: Make reduced block reward configurable?
+            reward_delay,
+            self.highway_config.minimum_round_exponent,
+            self.highway_config.minimum_era_height,
+            start_time + self.highway_config.era_duration,
+        );
         let (highway, results) = HighwayProtocol::<I, HighwayContext>::new(
             instance_id,
             validators,
-            0, // TODO: get a proper seed ?
+            params,
             self.public_signing_key,
             secret,
-            self.highway_config.minimum_round_exponent,
             ftt,
             timestamp,
-            self.highway_config.minimum_era_height,
-            start_time + self.highway_config.era_duration,
         );
 
         let era = Era {

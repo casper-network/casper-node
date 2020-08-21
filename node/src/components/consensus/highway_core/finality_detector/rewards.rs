@@ -4,7 +4,7 @@ use super::Horizon;
 use crate::{
     components::consensus::{
         highway_core::{
-            state::{self, Observation, Panorama, State, Weight},
+            state::{Observation, Panorama, State, Weight},
             validators::ValidatorMap,
         },
         traits::Context,
@@ -83,7 +83,7 @@ fn compute_rewards_for<C: Context>(
         .map(|(quorum, weight)| {
             // If the summit's quorum was not enough to finalize the block, rewards are reduced.
             let finality_factor = if *quorum * 2 > state.total_weight() + fault_w * 2 {
-                state::BLOCK_REWARD
+                state.params().block_reward()
             } else {
                 state.params().reduced_block_reward()
             };
@@ -136,11 +136,12 @@ fn round_participation<'a, C: Context>(
 #[allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
 #[cfg(test)]
 mod tests {
-    use super::{
-        state::{tests::*, BLOCK_REWARD, REWARD_DELAY},
-        State, *,
+    use super::*;
+    use crate::components::consensus::highway_core::{
+        highway_testing::{TEST_BLOCK_REWARD, TEST_REWARD_DELAY},
+        state::tests::*,
+        validators::ValidatorMap,
     };
-    use crate::components::consensus::highway_core::validators::ValidatorMap;
 
     #[test]
     fn round_participation_test() -> Result<(), AddVoteError<TestContext>> {
@@ -186,11 +187,11 @@ mod tests {
         let mut state = State::new_test(&[Weight(ALICE_W), Weight(BOB_W), Weight(CAROL_W)], 0);
         let total_weight = state.total_weight().0;
 
-        // Payouts for a block happen at the first occasion after `REWARD_DELAY` times the block's
-        // round length.
-        let payday0 = 0 + (REWARD_DELAY + 1) * 8;
-        let payday8 = 8 + (REWARD_DELAY + 1) * 8;
-        let payday16 = 16 + (REWARD_DELAY + 1) * 16; // Alice had round length 16.
+        // Payouts for a block happen at the first occasion after `TEST_REWARD_DELAY` times the
+        // block's round length.
+        let payday0 = 0 + (TEST_REWARD_DELAY + 1) * 8;
+        let payday8 = 8 + (TEST_REWARD_DELAY + 1) * 8;
+        let payday16 = 16 + (TEST_REWARD_DELAY + 1) * 16; // Alice had round length 16.
         let pre16 = payday16 - 16;
 
         // Round 0: Alice has round length 16, Bob and Carol 8.
@@ -242,9 +243,9 @@ mod tests {
         // Round 0: Alice and Bob have quorum 9, Carol 6.
         let assigned = total_weight;
         let expected0 = ValidatorMap::from(vec![
-            BLOCK_REWARD * ALICE_BOB_W * ALICE_W / (assigned * total_weight),
-            BLOCK_REWARD * ALICE_BOB_W * BOB_W / (assigned * total_weight),
-            BLOCK_REWARD * BOB_CAROL_W * CAROL_W / (assigned * total_weight),
+            TEST_BLOCK_REWARD * ALICE_BOB_W * ALICE_W / (assigned * total_weight),
+            TEST_BLOCK_REWARD * ALICE_BOB_W * BOB_W / (assigned * total_weight),
+            TEST_BLOCK_REWARD * BOB_CAROL_W * CAROL_W / (assigned * total_weight),
         ]);
         assert_eq!(expected0, compute_rewards(&state, &pay0));
 
@@ -252,8 +253,8 @@ mod tests {
         let assigned = BOB_CAROL_W;
         let expected8 = ValidatorMap::from(vec![
             0,
-            BLOCK_REWARD * BOB_CAROL_W * BOB_W / (assigned * total_weight),
-            BLOCK_REWARD * BOB_CAROL_W * CAROL_W / (assigned * total_weight),
+            TEST_BLOCK_REWARD * BOB_CAROL_W * BOB_W / (assigned * total_weight),
+            TEST_BLOCK_REWARD * BOB_CAROL_W * CAROL_W / (assigned * total_weight),
         ]);
         assert_eq!(expected8, compute_rewards(&state, &pay8));
 
@@ -264,8 +265,8 @@ mod tests {
         let assigned = total_weight;
         let reduced_reward = state.params().reduced_block_reward();
         let expected16 = ValidatorMap::from(vec![
-            BLOCK_REWARD * ALICE_BOB_W * ALICE_W / (assigned * total_weight),
-            BLOCK_REWARD * ALICE_BOB_W * BOB_W / (assigned * total_weight),
+            TEST_BLOCK_REWARD * ALICE_BOB_W * ALICE_W / (assigned * total_weight),
+            TEST_BLOCK_REWARD * ALICE_BOB_W * BOB_W / (assigned * total_weight),
             reduced_reward * ALICE_CAROL_W * CAROL_W / (assigned * total_weight),
         ]);
         assert_eq!(expected16, compute_rewards(&state, &pay16));
@@ -273,8 +274,8 @@ mod tests {
         // Round 16 with faulty Carol: Alice and Bob finalized the block, Carol is unassigned.
         let assigned = ALICE_BOB_W;
         let expected16f = ValidatorMap::from(vec![
-            BLOCK_REWARD * ALICE_BOB_W * ALICE_W / (assigned * total_weight),
-            BLOCK_REWARD * ALICE_BOB_W * BOB_W / (assigned * total_weight),
+            TEST_BLOCK_REWARD * ALICE_BOB_W * ALICE_W / (assigned * total_weight),
+            TEST_BLOCK_REWARD * ALICE_BOB_W * BOB_W / (assigned * total_weight),
             0,
         ]);
         assert_eq!(expected16f, compute_rewards(&state, &pay16f));

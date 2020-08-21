@@ -58,20 +58,6 @@ pub(crate) enum VoteError {
     ValueAfterTerminalBlock,
 }
 
-/// The delay after which rewards are calculated.
-///
-/// Rewards for a round in which a block B was proposed are paid out in the first block whose
-/// timestamp greater than `REWARD_DELAY * t` after B's timestamp, where `t` is the round length of
-/// `B` itself.
-pub(crate) const REWARD_DELAY: u64 = 8;
-
-/// A number representing the maximum total reward for finalizing one block.
-///
-/// Validator rewards for finalization must add up to this number or less.
-/// 1 trillion was chosen here because it allows very precise fractions of a block reward while
-/// still leaving space for millions of full rewards in a `u64`.
-pub(crate) const BLOCK_REWARD: u64 = 1_000_000_000_000;
-
 /// A passive instance of the Highway protocol, containing its local state.
 ///
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
@@ -100,14 +86,7 @@ pub(crate) struct State<C: Context> {
 }
 
 impl<C: Context> State<C> {
-    pub(crate) fn new<I>(
-        weights: I,
-        seed: u64,
-        ff: (u16, u16),
-        min_round_exp: u8,
-        end_height: u64,
-        end_timestamp: Timestamp,
-    ) -> State<C>
+    pub(crate) fn new<I>(weights: I, params: Params) -> State<C>
     where
         I: IntoIterator,
         I::Item: Borrow<Weight>,
@@ -121,7 +100,7 @@ impl<C: Context> State<C> {
         let cumulative_w = weights.iter().map(add).collect();
         let panorama = Panorama::new(weights.len());
         State {
-            params: Params::new(seed, ff, min_round_exp, end_height, end_timestamp),
+            params,
             weights,
             cumulative_w,
             votes: HashMap::new(),
@@ -254,7 +233,7 @@ impl<C: Context> State<C> {
         if let Some(value) = opt_value {
             let block = Block::new(fork_choice, value, self);
             self.reward_index
-                .entry(reward_time(&vote))
+                .entry(self.reward_time(&vote))
                 .or_default()
                 .insert(hash.clone());
             self.blocks.insert(hash.clone(), block);
@@ -429,6 +408,11 @@ impl<C: Context> State<C> {
         self.panorama[wvote.creator] = new_obs;
     }
 
+    /// Returns the earliest time at which rewards for a block introduced by this vote can be paid.
+    pub(super) fn reward_time(&self, vote: &Vote<C>) -> Timestamp {
+        vote.timestamp + round_len(vote.round_exp) * self.params.reward_delay()
+    }
+
     /// Returns the hash of the message with the given sequence number from the creator of `hash`,
     /// or `None` if the sequence number is higher than that of the vote with `hash`.
     fn find_in_swimlane<'a>(&'a self, hash: &'a C::Hash, seq_number: u64) -> Option<&'a C::Hash> {
@@ -499,11 +483,6 @@ pub(super) fn round_id(timestamp: Timestamp, round_exp: u8) -> Timestamp {
     (timestamp >> round_exp) << round_exp
 }
 
-/// Returns the earliest time at which rewards for a block introduced by this vote can be paid.
-pub(super) fn reward_time<C: Context>(vote: &Vote<C>) -> Timestamp {
-    vote.timestamp + round_len(vote.round_exp) * REWARD_DELAY
-}
-
 /// Returns the base-2 logarithm of `x`, rounded down,
 /// i.e. the greatest `i` such that `2.pow(i) <= x`.
 fn log2(x: u64) -> u32 {
@@ -522,7 +501,11 @@ pub(crate) mod tests {
 
     use super::*;
     use crate::components::consensus::{
-        highway_core::highway::Dependency, traits::ValidatorSecret,
+        highway_core::{
+            highway::Dependency,
+            highway_testing::{TEST_BLOCK_REWARD, TEST_REWARD_DELAY},
+        },
+        traits::ValidatorSecret,
     };
 
     pub(crate) const WEIGHTS: &[Weight] = &[Weight(3), Weight(4), Weight(5)];
@@ -609,17 +592,18 @@ pub(crate) mod tests {
     }
 
     impl State<TestContext> {
-        /// Returns a new `State` with `TestContext`, a 20% forgiveness factor and minimum round
-        /// exponent 4.
+        /// Returns a new `State` with `TestContext` parameters suitable for tests.
         pub(crate) fn new_test(weights: &[Weight], seed: u64) -> Self {
-            State::new(
-                weights,
+            let params = Params::new(
                 seed,
-                (1, 5),
+                TEST_BLOCK_REWARD,
+                TEST_BLOCK_REWARD / 5,
+                TEST_REWARD_DELAY,
                 4,
                 u64::MAX,
                 Timestamp::from(u64::MAX),
-            )
+            );
+            State::new(weights, params)
         }
 
         /// Adds the vote to the protocol state, or returns an error if it is invalid.

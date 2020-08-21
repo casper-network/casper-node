@@ -17,7 +17,7 @@ use super::{
     active_validator::Effect,
     evidence::Evidence,
     finality_detector::{FinalityDetector, FinalityOutcome},
-    highway::{Dependency, Highway, PreValidatedVertex, ValidVertex, Vertex, VertexError},
+    highway::{Dependency, Highway, Params, PreValidatedVertex, ValidVertex, Vertex, VertexError},
     validators::{ValidatorIndex, Validators},
     Weight,
 };
@@ -41,6 +41,9 @@ type ConsensusValue = Vec<u32>;
 const TEST_FORGIVENESS_FACTOR: (u16, u16) = (2, 5);
 const TEST_MIN_ROUND_EXP: u8 = 12;
 const TEST_END_HEIGHT: u64 = 100000;
+pub(crate) const TEST_BLOCK_REWARD: u64 = 1_000_000_000_000;
+pub(crate) const TEST_REDUCED_BLOCK_REWARD: u64 = 200_000_000_000;
+pub(crate) const TEST_REWARD_DELAY: u64 = 8;
 
 #[derive(Clone, Eq, PartialEq)]
 enum HighwayMessage {
@@ -913,15 +916,16 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
             |(vid, secrets): (ValidatorId, &mut HashMap<ValidatorId, TestSecret>)| {
                 let v_sec = secrets.remove(&vid).expect("Secret key should exist.");
 
-                let mut highway = Highway::new(
-                    instance_id,
-                    validators.clone(),
+                let params = Params::new(
                     seed,
-                    TEST_FORGIVENESS_FACTOR,
+                    TEST_BLOCK_REWARD,
+                    TEST_REDUCED_BLOCK_REWARD,
+                    TEST_REWARD_DELAY,
                     TEST_MIN_ROUND_EXP,
                     TEST_END_HEIGHT,
-                    Timestamp::zero(),
+                    Timestamp::zero(), // Length depends only on block number.
                 );
+                let mut highway = Highway::new(instance_id, validators.clone(), params);
                 let effects = highway.activate_validator(vid, v_sec, round_exp, start_time);
 
                 let finality_detector = FinalityDetector::new(Weight(ftt));

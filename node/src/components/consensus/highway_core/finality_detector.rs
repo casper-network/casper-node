@@ -25,7 +25,7 @@ pub(crate) enum FinalityOutcome<C: Context> {
         /// Rewards for finalization of earlier blocks.
         ///
         /// This is a measure of the value of each validator's contribution to consensus, in
-        /// fractions of a maximum `BLOCK_REWARD`.
+        /// fractions of the configured maximum block reward.
         rewards: BTreeMap<C::ValidatorId, u64>,
         /// The timestamp at which this value was proposed.
         timestamp: Timestamp,

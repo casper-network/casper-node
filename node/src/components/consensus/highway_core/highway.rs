@@ -1,5 +1,6 @@
 mod vertex;
 
+pub(crate) use crate::components::consensus::highway_core::state::Params;
 pub(crate) use vertex::{Dependency, SignedWireVote, Vertex, WireVote};
 
 use thiserror::Error;
@@ -104,28 +105,13 @@ impl<C: Context> Highway<C> {
     /// * `instance_id`: A unique identifier for every execution of the protocol (e.g. for every
     ///   era) to prevent replay attacks.
     /// * `validators`: The set of validators and their weights.
-    /// * `seed`: The seed for the pseudorandom sequence of round leaders.
-    /// * `forgiveness_factor`: The fraction `(numerator, denominator)` of a full block reward that
-    ///   validators receive if they fail to fully finalize a block within a round.
-    /// * `min_round_exp`: The minimum round exponent. `1 << min_round_exp` milliseconds is the
-    ///   minimum round length, and therefore the minimum delay between a block and its child.
+    /// * `params`: The Highway protocol parameters.
     pub(crate) fn new(
         instance_id: C::InstanceId,
         validators: Validators<C::ValidatorId>,
-        seed: u64,
-        forgiveness_factor: (u16, u16),
-        min_round_exp: u8,
-        end_height: u64,
-        end_timestamp: Timestamp,
+        params: Params,
     ) -> Highway<C> {
-        let state = State::new(
-            validators.iter().map(Validator::weight),
-            seed,
-            forgiveness_factor,
-            min_round_exp,
-            end_height,
-            end_timestamp,
-        );
+        let state = State::new(validators.iter().map(Validator::weight), params);
         Highway {
             instance_id,
             validators,

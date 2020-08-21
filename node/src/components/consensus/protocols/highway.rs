@@ -13,7 +13,7 @@ use crate::{
         highway_core::{
             active_validator::Effect as AvEffect,
             finality_detector::{FinalityDetector, FinalityOutcome},
-            highway::{Dependency, Highway, PreValidatedVertex, ValidVertex, Vertex},
+            highway::{Dependency, Highway, Params, PreValidatedVertex, ValidVertex, Vertex},
             validators::Validators,
             Weight,
         },
@@ -61,33 +61,21 @@ pub(crate) struct HighwayProtocol<I, C: Context> {
 }
 
 impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
-    #[allow(clippy::too_many_arguments)] // TODO: Those _are_ too many arguments!
     pub(crate) fn new(
         instance_id: C::InstanceId,
         validators: Validators<C::ValidatorId>,
-        seed: u64,
+        params: Params,
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
-        min_round_exp: u8,
         ftt: Weight,
         timestamp: Timestamp,
-        end_height: u64,
-        end_timestamp: Timestamp,
     ) -> (Self, Vec<CpResult<I, C>>) {
-        // TODO: Get forgiveness factor from the chain spec.
-        let mut highway = Highway::new(
-            instance_id,
-            validators,
-            seed,
-            (1, 5),
-            min_round_exp,
-            end_height,
-            end_timestamp,
-        );
         // TODO: We use the minimum as round exponent here, since it is meant to be optimal.
         // For adaptive round lengths we will probably want to use the most recent one from the
         // previous era instead.
-        let av_effects = highway.activate_validator(our_id, secret, min_round_exp, timestamp);
+        let round_exp = params.min_round_exp();
+        let mut highway = Highway::new(instance_id, validators, params);
+        let av_effects = highway.activate_validator(our_id, secret, round_exp, timestamp);
         let mut instance = HighwayProtocol {
             synchronizer: DagSynchronizerState::new(),
             finality_detector: FinalityDetector::new(ftt),
