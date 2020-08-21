@@ -7,6 +7,7 @@ use std::{
     path::Path,
 };
 
+use derp::{Der, Tag};
 use ed25519_dalek::{self as ed25519, ExpandedSecretKey};
 use hex_fmt::HexFmt;
 use pem::Pem;
@@ -14,21 +15,24 @@ use pem::Pem;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use signature::Signature as Sig;
+use untrusted::Input;
 
 use super::{Error, Result};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
     crypto::hash::hash,
-    utils::{read_file, read_file_to_string, write_file},
+    utils::{read_file, write_file},
 };
 use casperlabs_types::account::AccountHash;
 
 const ED25519_TAG: u8 = 0;
 const ED25519: &str = "Ed25519";
 const ED25519_LOWERCASE: &str = "ed25519";
-const PEM_SECRET_KEY_TAG: &str = "PRIVATE KEY";
-const PEM_PUBLIC_KEY_TAG: &str = "PUBLIC KEY";
+// See https://tools.ietf.org/html/rfc8410#section-10.3
+const ED25519_OBJECT_IDENTIFIER: [u8; 3] = [43, 101, 112];
+const ED25519_PEM_SECRET_KEY_TAG: &str = "PRIVATE KEY";
+const ED25519_PEM_PUBLIC_KEY_TAG: &str = "PUBLIC KEY";
 
 /// A secret or private asymmetric key.
 #[derive(Serialize, Deserialize)]
@@ -72,26 +76,13 @@ impl SecretKey {
 
     /// Attempts to write the secret key bytes to the configured file path.
     pub fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<()> {
-        let pem = Pem {
-            tag: PEM_SECRET_KEY_TAG.to_string(),
-            contents: self.as_secret_slice().to_vec(),
-        };
-
-        write_file(file, pem::encode(&pem)).map_err(Error::SecretKeySave)
+        write_file(file, self.to_pem()?).map_err(Error::SecretKeySave)
     }
 
     /// Attempts to read the secret key bytes from configured file path.
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self> {
-        let pem = pem::parse(read_file(file).map_err(Error::SecretKeyLoad)?)?;
-
-        if pem.tag != PEM_SECRET_KEY_TAG {
-            return Err(Error::FromPem(format!(
-                "invalid tag: expected {}, got {}",
-                PEM_SECRET_KEY_TAG, pem.tag
-            )));
-        }
-
-        Self::ed25519_from_bytes(pem.contents)
+        let data = read_file(file).map_err(Error::SecretKeyLoad)?;
+        Self::from_pem(data)
     }
 
     /// Duplicates a secret key.
@@ -108,6 +99,98 @@ impl SecretKey {
         let mut bytes = [0u8; Self::ED25519_LENGTH];
         rng.fill_bytes(&mut bytes[..]);
         SecretKey::new_ed25519(bytes)
+    }
+
+    /// DER encodes the secret key.
+    fn to_der(&self) -> Result<Vec<u8>> {
+        match self {
+            SecretKey::Ed25519(secret_key) => {
+                // See https://tools.ietf.org/html/rfc8410#section-10.3
+                let mut key_bytes = vec![];
+                let mut der = Der::new(&mut key_bytes);
+                der.octet_string(secret_key.as_ref())?;
+
+                let mut encoded = vec![];
+                der = Der::new(&mut encoded);
+                der.sequence(|der| {
+                    der.integer(&[0])?;
+                    der.sequence(|der| der.oid(&ED25519_OBJECT_IDENTIFIER))?;
+                    der.octet_string(&key_bytes)
+                })?;
+                Ok(encoded)
+            }
+        }
+    }
+
+    /// Decodes a secret key from a DER-encoded slice.
+    fn from_der<T: AsRef<[u8]>>(input: T) -> Result<Self> {
+        let input = Input::from(input.as_ref());
+
+        let (key_type_tag, raw_bytes) = input.read_all(derp::Error::Read, |input| {
+            derp::nested(input, Tag::Sequence, |input| {
+                // Safe to ignore the first value which should be an integer.
+                let _ = derp::expect_tag_and_get_value(input, Tag::Integer)?;
+
+                // Read the next value.
+                let (tag, value) = derp::read_tag_and_get_value(input)?;
+                // If it's a sequence, we're expecting an Ed25519 key.
+                if tag == Tag::Sequence as u8 {
+                    // The sequence should have one element: an object identifier defining Ed25519.
+                    let object_identifier = value.read_all(derp::Error::Read, |input| {
+                        derp::expect_tag_and_get_value(input, Tag::Oid)
+                    })?;
+                    if object_identifier.as_slice_less_safe() != ED25519_OBJECT_IDENTIFIER {
+                        return Err(derp::Error::WrongValue);
+                    }
+
+                    // The third and final value should be the raw bytes of the secret key as an
+                    // octet string in an octet string.
+                    let raw_bytes = derp::nested(input, Tag::OctetString, |input| {
+                        derp::expect_tag_and_get_value(input, Tag::OctetString)
+                    })?
+                    .as_slice_less_safe();
+
+                    return Ok((ED25519_TAG, raw_bytes));
+                }
+
+                Err(derp::Error::WrongValue)
+            })
+        })?;
+
+        match key_type_tag {
+            ED25519_TAG => SecretKey::ed25519_from_bytes(raw_bytes),
+            _ => unreachable!(),
+        }
+    }
+
+    /// PEM encodes the secret key.
+    fn to_pem(&self) -> Result<String> {
+        let pem = match self {
+            SecretKey::Ed25519(_) => Pem {
+                tag: ED25519_PEM_SECRET_KEY_TAG.to_string(),
+                contents: self.to_der()?,
+            },
+        };
+
+        Ok(pem::encode(&pem))
+    }
+
+    /// Decodes a secret key from a PEM-encoded slice.
+    fn from_pem<T: AsRef<[u8]>>(input: T) -> Result<Self> {
+        let pem = pem::parse(input)?;
+
+        if pem.tag != ED25519_PEM_SECRET_KEY_TAG {
+            return Err(Error::FromPem(format!(
+                "invalid tag: expected {}, got {}",
+                ED25519_PEM_SECRET_KEY_TAG, pem.tag
+            )));
+        }
+
+        if pem.tag == ED25519_PEM_SECRET_KEY_TAG {
+            return Self::from_der(&pem.contents);
+        }
+
+        Err(Error::FromPem(String::from("invalid DER encoding")))
     }
 }
 
@@ -179,29 +262,15 @@ impl PublicKey {
         AccountHash::new(digest.to_bytes())
     }
 
-    /// Attempts to write the public key bytes to the configured file path.
+    /// Attempts to write the secret key bytes to the configured file path.
     pub fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<()> {
-        let pem = Pem {
-            tag: PEM_PUBLIC_KEY_TAG.to_string(),
-            contents: self.as_ref().to_vec(),
-        };
-
-        write_file(file, pem::encode(&pem)).map_err(Error::PublicKeySave)
+        write_file(file, self.to_pem()?).map_err(Error::PublicKeySave)
     }
 
-    /// Attempts to read the public key bytes from configured file path.
+    /// Attempts to read the secret key bytes from configured file path.
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self> {
-        let path = file.as_ref();
-        let payload = read_file_to_string(path).map_err(Error::PublicKeyLoad)?;
-
-        let pem = pem::parse(payload)?;
-        if pem.tag != PEM_PUBLIC_KEY_TAG {
-            return Err(Error::FromPem(format!(
-                "invalid tag: expected {}, got {}",
-                PEM_PUBLIC_KEY_TAG, pem.tag
-            )));
-        }
-        Self::ed25519_from_bytes(pem.contents)
+        let data = read_file(file).map_err(Error::PublicKeyLoad)?;
+        Self::from_pem(data)
     }
 
     /// Generates a random instance using a `TestRng`.
@@ -221,6 +290,79 @@ impl PublicKey {
         match self {
             PublicKey::Ed25519(_) => ED25519,
         }
+    }
+
+    /// DER encodes the public key.
+    fn to_der(&self) -> Result<Vec<u8>> {
+        match self {
+            PublicKey::Ed25519(public_key) => {
+                // See https://tools.ietf.org/html/rfc8410#section-10.1
+                let mut encoded = vec![];
+                let mut der = Der::new(&mut encoded);
+                der.sequence(|der| {
+                    der.sequence(|der| der.oid(&ED25519_OBJECT_IDENTIFIER))?;
+                    der.bit_string(0, public_key.as_ref())
+                })?;
+                Ok(encoded)
+            }
+        }
+    }
+
+    /// Decodes a public key from a DER-encoded slice.
+    fn from_der<T: AsRef<[u8]>>(input: T) -> Result<Self> {
+        let input = Input::from(input.as_ref());
+
+        let mut key_type_tag = ED25519_TAG;
+        let raw_bytes = input.read_all(derp::Error::Read, |input| {
+            derp::nested(input, Tag::Sequence, |input| {
+                derp::nested(input, Tag::Sequence, |input| {
+                    // Read the first value.
+                    let object_identifier = derp::expect_tag_and_get_value(input, Tag::Oid)?;
+                    if object_identifier.as_slice_less_safe() == ED25519_OBJECT_IDENTIFIER {
+                        key_type_tag = ED25519_TAG;
+                        Ok(())
+                    } else {
+                        Err(derp::Error::WrongValue)
+                    }
+                })?;
+                Ok(derp::bit_string_with_no_unused_bits(input)?.as_slice_less_safe())
+            })
+        })?;
+
+        match key_type_tag {
+            ED25519_TAG => PublicKey::ed25519_from_bytes(raw_bytes),
+            _ => unreachable!(),
+        }
+    }
+
+    /// PEM encodes the public key.
+    fn to_pem(&self) -> Result<String> {
+        let pem = match self {
+            PublicKey::Ed25519(_) => Pem {
+                tag: ED25519_PEM_PUBLIC_KEY_TAG.to_string(),
+                contents: self.to_der()?,
+            },
+        };
+
+        Ok(pem::encode(&pem))
+    }
+
+    /// Decodes a public key from a PEM-encoded slice.
+    fn from_pem<T: AsRef<[u8]>>(input: T) -> Result<Self> {
+        let pem = pem::parse(input)?;
+
+        if pem.tag != ED25519_PEM_PUBLIC_KEY_TAG {
+            return Err(Error::FromPem(format!(
+                "invalid tag: expected {}, got {}",
+                ED25519_PEM_PUBLIC_KEY_TAG, pem.tag
+            )));
+        }
+
+        if pem.tag == ED25519_PEM_PUBLIC_KEY_TAG {
+            return Self::from_der(&pem.contents);
+        }
+
+        Err(Error::FromPem(String::from("invalid DER encoding")))
     }
 }
 
@@ -442,7 +584,12 @@ pub fn verify<T: AsRef<[u8]>>(
 
 #[cfg(test)]
 mod tests {
+    use openssl::pkey::{PKey, Private, Public};
+
     use super::*;
+
+    type OpenSSLSecretKey = PKey<Private>;
+    type OpenSSLPublicKey = PKey<Public>;
 
     mod ed25519 {
         use std::{
@@ -469,6 +616,74 @@ mod tests {
         }
 
         #[test]
+        fn secret_key_to_and_from_der() {
+            let mut rng = TestRng::new();
+            let secret_key = SecretKey::random(&mut rng);
+
+            let der_encoded = secret_key.to_der().unwrap();
+            let decoded = SecretKey::from_der(&der_encoded).unwrap();
+            assert_eq!(secret_key.as_secret_slice(), decoded.as_secret_slice());
+
+            // Check DER-encoded by openssl can be decoded.
+            let der_encoded = OpenSSLSecretKey::generate_ed25519()
+                .unwrap()
+                .private_key_to_der()
+                .unwrap();
+            let _ = SecretKey::from_der(&der_encoded).unwrap();
+
+            // Ensure malformed encoded version fails to decode.
+            SecretKey::from_der(&der_encoded[1..]).unwrap_err();
+        }
+
+        #[test]
+        fn secret_key_to_and_from_pem() {
+            let mut rng = TestRng::new();
+            let secret_key = SecretKey::random(&mut rng);
+
+            let pem_encoded = secret_key.to_pem().unwrap();
+            let decoded = SecretKey::from_pem(pem_encoded.as_bytes()).unwrap();
+            assert_eq!(secret_key.as_secret_slice(), decoded.as_secret_slice());
+
+            // Check PEM-encoded by openssl can be decoded.
+            let pem_encoded = OpenSSLSecretKey::generate_ed25519()
+                .unwrap()
+                .private_key_to_pem_pkcs8()
+                .unwrap();
+            let _ = SecretKey::from_pem(&pem_encoded).unwrap();
+
+            // Ensure malformed encoded version fails to decode.
+            SecretKey::from_pem(&pem_encoded[1..]).unwrap_err();
+        }
+
+        #[test]
+        fn known_secret_key_to_pem() {
+            // Example values taken from https://tools.ietf.org/html/rfc8410#section-10.3
+            const KNOWN_KEY_HEX: &str =
+                "d4ee72dbf913584ad5b6d8f1f769f8ad3afe7c28cbf1d4fbe097a88f44755842";
+            const KNOWN_KEY_PEM: &str = r#"-----BEGIN PRIVATE KEY-----
+MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
+-----END PRIVATE KEY-----"#;
+
+            let key_bytes = hex::decode(KNOWN_KEY_HEX).unwrap();
+
+            let decoded = SecretKey::from_pem(KNOWN_KEY_PEM.as_bytes()).unwrap();
+            assert_eq!(key_bytes.as_slice(), decoded.as_secret_slice());
+        }
+
+        #[test]
+        fn secret_key_to_and_from_file() {
+            let tempdir = tempfile::tempdir().unwrap();
+            let path = tempdir.path().join("test_secret_key.pem");
+
+            let mut rng = TestRng::new();
+            let secret_key = SecretKey::random(&mut rng);
+
+            secret_key.to_file(&path).unwrap();
+            let decoded = SecretKey::from_file(&path).unwrap();
+            assert_eq!(secret_key.as_secret_slice(), decoded.as_secret_slice());
+        }
+
+        #[test]
         fn public_key_from_bytes() {
             // public key should be `PublicKey::ED25519_LENGTH` bytes
             let bytes = [1; PUBLIC_KEY_LENGTH + 1];
@@ -477,6 +692,67 @@ mod tests {
 
             // check the same bytes but of the right length succeeds
             assert!(PublicKey::ed25519_from_bytes(&bytes[1..]).is_ok());
+        }
+
+        #[test]
+        fn public_key_to_and_from_der() {
+            let mut rng = TestRng::new();
+            let public_key = PublicKey::random(&mut rng);
+
+            let der_encoded = public_key.to_der().unwrap();
+            let decoded = PublicKey::from_der(&der_encoded).unwrap();
+            assert_eq!(public_key, decoded);
+
+            // Check DER-encoded can be decoded by openssl.
+            let _ = OpenSSLPublicKey::public_key_from_der(&der_encoded).unwrap();
+
+            // Ensure malformed encoded version fails to decode.
+            PublicKey::from_der(&der_encoded[1..]).unwrap_err();
+        }
+
+        #[test]
+        fn public_key_to_and_from_pem() {
+            let mut rng = TestRng::new();
+            let public_key = PublicKey::random(&mut rng);
+
+            let pem_encoded = public_key.to_pem().unwrap();
+            let decoded = PublicKey::from_pem(pem_encoded.as_bytes()).unwrap();
+            assert_eq!(public_key, decoded);
+
+            // Check PEM-encoded can be decoded by openssl.
+            let _ = OpenSSLPublicKey::public_key_from_pem(pem_encoded.as_bytes()).unwrap();
+
+            // Ensure malformed encoded version fails to decode.
+            PublicKey::from_pem(&pem_encoded[1..]).unwrap_err();
+        }
+
+        #[test]
+        fn known_public_key_to_pem() {
+            // Example values taken from https://tools.ietf.org/html/rfc8410#section-10.1
+            const KNOWN_KEY_HEX: &str =
+                "19bf44096984cdfe8541bac167dc3b96c85086aa30b6b6cb0c5c38ad703166e1";
+            const KNOWN_KEY_PEM: &str = r#"-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
+-----END PUBLIC KEY-----"#;
+
+            let key_bytes = hex::decode(KNOWN_KEY_HEX).unwrap();
+
+            let decoded = PublicKey::from_pem(KNOWN_KEY_PEM.as_bytes()).unwrap();
+
+            assert_eq!(key_bytes, decoded.as_ref());
+        }
+
+        #[test]
+        fn public_key_to_and_from_file() {
+            let tempdir = tempfile::tempdir().unwrap();
+            let path = tempdir.path().join("test_public_key.pem");
+
+            let mut rng = TestRng::new();
+            let public_key = PublicKey::random(&mut rng);
+
+            public_key.to_file(&path).unwrap();
+            let decoded = PublicKey::from_file(&path).unwrap();
+            assert_eq!(public_key, decoded);
         }
 
         #[test]
@@ -541,10 +817,11 @@ mod tests {
 
         #[test]
         fn sign_and_verify() {
-            let secret_key = SecretKey::generate_ed25519();
+            let mut rng = TestRng::new();
+            let secret_key = SecretKey::random(&mut rng);
 
             let public_key = PublicKey::from(&secret_key);
-            let other_public_key = PublicKey::from(&SecretKey::generate_ed25519());
+            let other_public_key = PublicKey::from(&SecretKey::random(&mut rng));
 
             let message = b"message";
             let signature = sign(message, &secret_key, &public_key);

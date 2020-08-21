@@ -480,6 +480,7 @@ dependencies = [
  "criterion",
  "csv",
  "derive_more",
+ "derp",
  "directories",
  "ed25519-dalek",
  "either",
@@ -534,6 +535,7 @@ dependencies = [
  "tracing-futures",
  "tracing-subscriber",
  "uint",
+ "untrusted",
  "uuid",
  "wabt",
  "warp",
@@ -935,6 +937,15 @@ dependencies = [
  "proc-macro2 1.0.19",
  "quote 1.0.7",
  "syn 1.0.38",
+]
+
+[[package]]
+name = "derp"
+version = "0.0.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9b84cfd9b6fa437e498215e5625e9e3ae3bf9bb54d623028a181c40820db169"
+dependencies = [
+ "untrusted",
 ]
 
 [[package]]
@@ -4806,6 +4817,12 @@ dependencies = [
  "cfg-if",
  "libc",
 ]
+
+[[package]]
+name = "untrusted"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
 
 [[package]]
 name = "update-associated-key"

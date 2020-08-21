@@ -38,6 +38,10 @@ pub enum Error {
     #[error("pem error: {0}")]
     FromPem(String),
 
+    /// DER format error.
+    #[error("der error: {0}")]
+    FromDer(#[from] derp::Error),
+
     /// Error trying to write a secret key.
     #[error("secret key save failed: {0}")]
     SecretKeySave(WriteFileError),
