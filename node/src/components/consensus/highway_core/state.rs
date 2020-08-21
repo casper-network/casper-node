@@ -15,11 +15,14 @@ use std::{
     borrow::Borrow,
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet, HashMap},
+    convert::identity,
     iter,
     ops::RangeBounds,
 };
 
 use itertools::Itertools;
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
 use tracing::warn;
 
@@ -78,6 +81,11 @@ pub(crate) const BLOCK_REWARD: u64 = 1_000_000_000_000;
 pub(crate) struct State<C: Context> {
     /// The fixed parameters.
     params: Params,
+    /// The validator's voting weights.
+    weights: ValidatorMap<Weight>,
+    /// Cumulative validator weights: Entry `i` contains the sum of the weights of validators `0`
+    /// through `i`.
+    cumulative_w: ValidatorMap<Weight>,
     /// All votes imported so far, by hash.
     // TODO: HashMaps prevent deterministic tests.
     votes: HashMap<C::Hash, Vote<C>>,
@@ -105,9 +113,17 @@ impl<C: Context> State<C> {
         I::Item: Borrow<Weight>,
     {
         let weights = ValidatorMap::from(weights.into_iter().map(|w| *w.borrow()).collect_vec());
+        let mut sum = Weight(0);
+        let add = |w: &Weight| {
+            sum += *w;
+            sum
+        };
+        let cumulative_w = weights.iter().map(add).collect();
         let panorama = Panorama::new(weights.len());
         State {
-            params: Params::new(weights, seed, ff, min_round_exp, end_height, end_timestamp),
+            params: Params::new(seed, ff, min_round_exp, end_height, end_timestamp),
+            weights,
+            cumulative_w,
             votes: HashMap::new(),
             blocks: HashMap::new(),
             reward_index: BTreeMap::new(),
@@ -119,6 +135,41 @@ impl<C: Context> State<C> {
     /// Returns the fixed parameters.
     pub(crate) fn params(&self) -> &Params {
         &self.params
+    }
+
+    /// Returns the number of validators.
+    pub(crate) fn validator_count(&self) -> usize {
+        self.weights.len()
+    }
+
+    /// Returns the `idx`th validator's voting weight.
+    pub(crate) fn weight(&self, idx: ValidatorIndex) -> Weight {
+        self.weights[idx]
+    }
+
+    /// Returns the map of validator weights.
+    pub(crate) fn weights(&self) -> &ValidatorMap<Weight> {
+        &self.weights
+    }
+
+    /// Returns the total weight of all validators marked faulty in this panorama.
+    pub(crate) fn faulty_weight_in(&self, panorama: &Panorama<C>) -> Weight {
+        panorama
+            .iter()
+            .zip(&self.weights)
+            .filter(|(obs, _)| **obs == Observation::Faulty)
+            .map(|(_, w)| *w)
+            .sum()
+    }
+
+    /// Returns the total weight of all known-faulty validators.
+    pub(crate) fn faulty_weight(&self) -> Weight {
+        self.faulty_weight_in(&self.panorama)
+    }
+
+    /// Returns the sum of all validators' voting weights.
+    pub(crate) fn total_weight(&self) -> Weight {
+        *self.cumulative_w.as_ref().last().unwrap()
     }
 
     /// Returns evidence against validator nr. `idx`, if present.
@@ -172,14 +223,23 @@ impl<C: Context> State<C> {
             .flat_map(|(_, blocks)| blocks)
     }
 
-    /// Returns the total weight of all known-faulty validators.
-    pub(crate) fn faulty_weight(&self) -> Weight {
-        self.params.faulty_weight_in(&self.panorama)
-    }
-
     /// Returns the complete protocol state's latest panorama.
     pub(crate) fn panorama(&self) -> &Panorama<C> {
         &self.panorama
+    }
+
+    /// Returns the leader in the specified time slot.
+    pub(crate) fn leader(&self, timestamp: Timestamp) -> ValidatorIndex {
+        let mut rng =
+            ChaCha8Rng::seed_from_u64(self.params.seed().wrapping_add(timestamp.millis()));
+        // TODO: `rand` doesn't seem to document how it generates this. Needs to be portable.
+        // We select a random one out of the `total_weight` weight units, starting numbering at 1.
+        let r = Weight(rng.gen_range(1, self.total_weight().0 + 1));
+        // The weight units are subdivided into intervals that belong to some validator.
+        // `cumulative_w[i]` denotes the last weight unit that belongs to validator `i`.
+        // `binary_search` returns the first `i` with `cumulative_w[i] >= r`, i.e. the validator
+        // who owns the randomly selected weight unit.
+        self.cumulative_w.binary_search(&r).unwrap_or_else(identity)
     }
 
     /// Adds the vote to the protocol state.
@@ -237,11 +297,7 @@ impl<C: Context> State<C> {
             let bhash = &self.vote(obs.correct()?).block;
             Some((self.block(bhash).height, bhash, *w))
         };
-        let mut tallies: Tallies<C> = pan
-            .iter()
-            .zip(self.params.weights())
-            .filter_map(to_entry)
-            .collect();
+        let mut tallies: Tallies<C> = pan.iter().zip(&self.weights).filter_map(to_entry).collect();
         loop {
             // Find the highest block that we know is an ancestor of the fork choice.
             let (height, bhash) = tallies.find_decided(self)?;
@@ -280,14 +336,14 @@ impl<C: Context> State<C> {
     pub(crate) fn pre_validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {
         let wvote = &swvote.wire_vote;
         let creator = wvote.creator;
-        if creator.0 as usize >= self.params.validator_count() {
+        if creator.0 as usize >= self.validator_count() {
             return Err(VoteError::Creator);
         }
         if wvote.round_exp < self.params.min_round_exp() {
             return Err(VoteError::RoundLength);
         }
         if (wvote.value.is_none() && !wvote.panorama.has_correct())
-            || wvote.panorama.len() != self.params.validator_count()
+            || wvote.panorama.len() != self.validator_count()
             || wvote.panorama.get(creator).is_faulty()
         {
             return Err(VoteError::Panorama);
@@ -411,7 +467,7 @@ impl<C: Context> State<C> {
         let cvote = self.vote(fhash);
         let mut equivocators: Vec<ValidatorIndex> = Vec::new();
         let fblock = self.block(fhash);
-        let empty_panorama = Panorama::new(self.params.validator_count());
+        let empty_panorama = Panorama::new(self.validator_count());
         let pvpanorama = fblock
             .parent()
             .map(|pvhash| &self.vote(pvhash).panorama)

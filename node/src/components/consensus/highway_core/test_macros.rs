@@ -42,7 +42,7 @@ macro_rules! add_vote {
         let timestamp = if value.is_some() {
             // This is a block: Find the next time we're a leader.
             let mut time = state::round_id(min_time, round_exp);
-            while time < min_time || $state.params().leader(time) != creator {
+            while time < min_time || $state.leader(time) != creator {
                 time += TimeDiff::from(1 << round_exp);
             }
             time
