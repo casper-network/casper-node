@@ -8,6 +8,10 @@ BASEDIR=$(readlink -f $(dirname $0))
 
 run_node() {
     ID=$1
+    STORAGE_DIR=/tmp/node-${ID}-storage
+    rm -rf ${STORAGE_DIR}
+    mkdir -p ${STORAGE_DIR}
+
     systemd-run \
         --user \
         --unit node-$ID \
@@ -19,7 +23,8 @@ run_node() {
         cargo run -p casperlabs-node \
         validator \
         -c resources/local/config.toml \
-        -C consensus.secret_key_path=secret_keys/node-${ID}.pem
+        -C consensus.secret_key_path=secret_keys/node-${ID}.pem \
+        -C storage.path=${STORAGE_DIR}
 }
 
 for i in 1 2 3 4 5; do
