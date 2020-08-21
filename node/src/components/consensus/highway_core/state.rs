@@ -51,6 +51,8 @@ pub(crate) enum VoteError {
     Signature,
     #[error("The round length is invalid.")]
     RoundLength,
+    #[error("The vote is a block, but its parent is already a terminal block.")]
+    ValueAfterTerminalBlock,
 }
 
 /// The delay after which rewards are calculated.
@@ -90,7 +92,14 @@ pub(crate) struct State<C: Context> {
 }
 
 impl<C: Context> State<C> {
-    pub(crate) fn new<I>(weights: I, seed: u64, ff: (u16, u16), min_round_exp: u8) -> State<C>
+    pub(crate) fn new<I>(
+        weights: I,
+        seed: u64,
+        ff: (u16, u16),
+        min_round_exp: u8,
+        end_height: u64,
+        end_timestamp: Timestamp,
+    ) -> State<C>
     where
         I: IntoIterator,
         I::Item: Borrow<Weight>,
@@ -98,7 +107,7 @@ impl<C: Context> State<C> {
         let weights = ValidatorMap::from(weights.into_iter().map(|w| *w.borrow()).collect_vec());
         let panorama = Panorama::new(weights.len());
         State {
-            params: Params::new(weights, seed, ff, min_round_exp),
+            params: Params::new(weights, seed, ff, min_round_exp, end_height, end_timestamp),
             votes: HashMap::new(),
             blocks: HashMap::new(),
             reward_index: BTreeMap::new(),
@@ -283,6 +292,10 @@ impl<C: Context> State<C> {
         {
             return Err(VoteError::Panorama);
         }
+        let is_terminal = |hash: &C::Hash| self.is_terminal_block(hash);
+        if wvote.value.is_some() && self.fork_choice(&wvote.panorama).map_or(false, is_terminal) {
+            return Err(VoteError::ValueAfterTerminalBlock);
+        }
         Ok(())
     }
 
@@ -324,6 +337,14 @@ impl<C: Context> State<C> {
             }
         }
         Ok(())
+    }
+
+    /// Returns `true` if the `bhash` is a block that can have no children.
+    pub(crate) fn is_terminal_block(&self, bhash: &C::Hash) -> bool {
+        self.blocks.get(bhash).map_or(false, |block| {
+            block.height >= self.params.end_height()
+                && self.vote(bhash).timestamp >= self.params.end_timestamp()
+        })
     }
 
     /// Updates `self.panorama` with an incoming vote. Panics if dependencies are missing.
@@ -535,7 +556,14 @@ pub(crate) mod tests {
         /// Returns a new `State` with `TestContext`, a 20% forgiveness factor and minimum round
         /// exponent 4.
         pub(crate) fn new_test(weights: &[Weight], seed: u64) -> Self {
-            State::new(weights, seed, (1, 5), 4)
+            State::new(
+                weights,
+                seed,
+                (1, 5),
+                4,
+                u64::MAX,
+                Timestamp::from(u64::MAX),
+            )
         }
 
         /// Adds the vote to the protocol state, or returns an error if it is invalid.

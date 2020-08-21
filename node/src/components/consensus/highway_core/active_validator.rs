@@ -161,11 +161,12 @@ impl<C: Context> ActiveValidator<C> {
             return None;
         }
         let panorama = state.panorama().cutoff(state, timestamp);
-        let opt_parent = state.fork_choice(&panorama).map(|bh| state.block(bh));
-        if opt_parent.map_or(false, |block| block.terminal()) {
+        let opt_parent_hash = state.fork_choice(&panorama);
+        if opt_parent_hash.map_or(false, |hash| state.is_terminal_block(hash)) {
             let proposal_vote = self.new_vote(panorama, timestamp, None, state);
             return Some(Effect::NewVertex(ValidVertex(Vertex::Vote(proposal_vote))));
         }
+        let opt_parent = opt_parent_hash.map(|bh| state.block(bh));
         let height = opt_parent.map_or(0, |block| block.height);
         let opt_value = opt_parent.map(|block| block.value.clone());
         self.next_proposal = Some((timestamp, panorama));

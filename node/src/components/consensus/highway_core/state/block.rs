@@ -43,10 +43,6 @@ impl<C: Context> Block<C> {
         self.skip_idx.first()
     }
 
-    pub(crate) fn terminal(&self) -> bool {
-        false // TODO
-    }
-
     fn initial(value: C::ConsensusValue) -> Block<C> {
         Block {
             height: 0,

@@ -115,12 +115,16 @@ impl<C: Context> Highway<C> {
         seed: u64,
         forgiveness_factor: (u16, u16),
         min_round_exp: u8,
+        end_height: u64,
+        end_timestamp: Timestamp,
     ) -> Highway<C> {
         let state = State::new(
             validators.iter().map(Validator::weight),
             seed,
             forgiveness_factor,
             min_round_exp,
+            end_height,
+            end_timestamp,
         );
         Highway {
             instance_id,

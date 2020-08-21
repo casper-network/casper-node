@@ -40,6 +40,7 @@ type ConsensusValue = Vec<u32>;
 
 const TEST_FORGIVENESS_FACTOR: (u16, u16) = (2, 5);
 const TEST_MIN_ROUND_EXP: u8 = 12;
+const TEST_END_HEIGHT: u64 = 100000;
 
 #[derive(Clone, Eq, PartialEq)]
 enum HighwayMessage {
@@ -918,6 +919,8 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                     seed,
                     TEST_FORGIVENESS_FACTOR,
                     TEST_MIN_ROUND_EXP,
+                    TEST_END_HEIGHT,
+                    Timestamp::zero(),
                 );
                 let effects = highway.activate_validator(vid, v_sec, round_exp, start_time);
 
