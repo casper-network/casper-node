@@ -9,22 +9,28 @@ BASEDIR=$(readlink -f $(dirname $0))
 run_node() {
     ID=$1
     STORAGE_DIR=/tmp/node-${ID}-storage
+    LOGFILE=/tmp/node-${ID}.log
     rm -rf ${STORAGE_DIR}
+    rm -f ${LOGFILE}
     mkdir -p ${STORAGE_DIR}
 
     systemd-run \
         --user \
         --unit node-$ID \
         --description "CasperLabs Dev Node ${ID}" \
-        --remain-after-exit \
+        --collect \
         "--working-directory=${BASEDIR}" \
         --setenv=RUST_LOG=debug \
-        --\
+        --property=StandardOutput=file:${LOGFILE} \
+        --property=StandardError=file:${LOGFILE}.stderr \
+        -- \
         cargo run -p casperlabs-node \
         validator \
         -c resources/local/config.toml \
         -C consensus.secret_key_path=secret_keys/node-${ID}.pem \
         -C storage.path=${STORAGE_DIR}
+
+    echo "Started node $ID, logfile: ${LOGFILE}"
 }
 
 for i in 1 2 3 4 5; do
@@ -36,6 +42,3 @@ echo
 echo "To stop all nodes, run"
 echo "  systemctl --user stop node-\\*"
 echo "  systemctl --user reset-failed"
-echo
-echo "To see log output for a specific (node-n) or multiple (node-\\*) nodes, use"
-echo "  journalctl --user -u node-\\* -f"
