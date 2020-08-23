@@ -249,9 +249,9 @@ impl Deploy {
         };
 
         let approvals = vec![
-            asymmetric_key::sign(&[3], &secret_key, &account),
-            asymmetric_key::sign(&[4], &secret_key, &account),
-            asymmetric_key::sign(&[5], &secret_key, &account),
+            asymmetric_key::sign(&[3], &secret_key, &account, rng),
+            asymmetric_key::sign(&[4], &secret_key, &account, rng),
+            asymmetric_key::sign(&[5], &secret_key, &account, rng),
         ];
 
         Deploy {

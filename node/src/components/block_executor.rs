@@ -7,7 +7,7 @@ use std::{
 
 use derive_more::From;
 use itertools::Itertools;
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use tracing::{debug, error, trace};
 
 use casperlabs_types::ProtocolVersion;
@@ -308,10 +308,10 @@ impl BlockExecutor {
     }
 }
 
-impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
+impl<REv: ReactorEventT, R: Rng + CryptoRng + ?Sized> Component<REv, R> for BlockExecutor {
     type Event = Event;
 
-    fn handle_event<R: Rng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

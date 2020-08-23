@@ -170,7 +170,7 @@ audit:
 build-docs-stable-rs: $(CRATES_WITH_DOCS_RS_MANIFEST_TABLE)
 
 doc-stable/%:
-	$(CARGO) +stable doc $(CARGO_FLAGS) --manifest-path "$*/Cargo.toml" --features "no-unstable-features" --no-deps
+	cargo +stable --locked doc $(CARGO_FLAGS) --manifest-path "$*/Cargo.toml" --features "no-unstable-features" --no-deps
 
 .PHONY: check-rs
 check-rs: \

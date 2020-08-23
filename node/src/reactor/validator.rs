@@ -12,7 +12,7 @@ use std::fmt::{self, Display, Formatter};
 use derive_more::From;
 use hex_fmt::HexFmt;
 use prometheus::Registry;
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
@@ -262,14 +262,14 @@ impl Display for Event {
 
 /// Validator node reactor.
 #[derive(Debug)]
-pub struct Reactor {
+pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
     metrics: Metrics,
     net: SmallNetwork<Event, Message>,
     pinger: Pinger,
     storage: Storage,
     contract_runtime: ContractRuntime,
     api_server: ApiServer,
-    consensus: EraSupervisor<NodeId>,
+    consensus: EraSupervisor<NodeId, R>,
     deploy_acceptor: DeployAcceptor,
     deploy_fetcher: Fetcher<Deploy>,
     deploy_gossiper: Gossiper<Deploy, Event>,
@@ -279,14 +279,14 @@ pub struct Reactor {
 }
 
 #[cfg(test)]
-impl Reactor {
+impl<R: Rng + CryptoRng + ?Sized> Reactor<R> {
     /// Inspect consensus.
-    pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId> {
+    pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId, R> {
         &self.consensus
     }
 }
 
-impl reactor::Reactor for Reactor {
+impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
     type Event = Event;
 
     // The "configuration" is in fact the whole state of the initializer reactor, which we
@@ -294,11 +294,11 @@ impl reactor::Reactor for Reactor {
     type Config = WithDir<initializer::Reactor>;
     type Error = Error;
 
-    fn new<R: Rng + ?Sized>(
+    fn new(
         initializer: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut R,
+        rng: &mut R,
     ) -> Result<(Self, Effects<Event>), Error> {
         let (root, initializer) = initializer.into_parts();
 
@@ -338,6 +338,7 @@ impl reactor::Reactor for Reactor {
             effect_builder,
             validator_stakes,
             &chainspec_loader.chainspec().genesis.highway_config,
+            rng,
         )?;
         let deploy_acceptor = DeployAcceptor::new();
         let deploy_fetcher = Fetcher::new(config.gossip);
@@ -374,7 +375,7 @@ impl reactor::Reactor for Reactor {
         ))
     }
 
-    fn dispatch_event<R: Rng + ?Sized>(
+    fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
         rng: &mut R,
@@ -577,7 +578,7 @@ impl reactor::Reactor for Reactor {
 }
 
 #[cfg(test)]
-impl NetworkedReactor for Reactor {
+impl<R: Rng + CryptoRng + ?Sized> NetworkedReactor for Reactor<R> {
     type NodeId = NodeId;
     fn node_id(&self) -> Self::NodeId {
         self.net.node_id()

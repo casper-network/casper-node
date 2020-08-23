@@ -8,7 +8,7 @@ use std::{
 };
 
 use hex_fmt::HexFmt;
-use rand::{self, Error, Rng, RngCore, SeedableRng};
+use rand::{self, CryptoRng, Error, Rng, RngCore, SeedableRng};
 use rand_pcg::Pcg64Mcg;
 
 thread_local! {
@@ -141,6 +141,8 @@ impl RngCore for TestRng {
         self.rng.try_fill_bytes(dest)
     }
 }
+
+impl CryptoRng for TestRng {}
 
 mod tests {
     use super::*;

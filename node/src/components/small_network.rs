@@ -64,7 +64,7 @@ use futures::{
 use maplit::hashmap;
 use openssl::pkey;
 use pkey::{PKey, Private};
-use rand::{seq::IteratorRandom, Rng};
+use rand::{seq::IteratorRandom, CryptoRng, Rng};
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::{
     net::TcpStream,
@@ -489,15 +489,16 @@ where
     }
 }
 
-impl<REv, P> Component<REv> for SmallNetwork<REv, P>
+impl<REv, R, P> Component<REv, R> for SmallNetwork<REv, P>
 where
     REv: Send + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
+    R: Rng + CryptoRng + ?Sized,
     P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
 {
     type Event = Event<P>;
 
     #[allow(clippy::cognitive_complexity)]
-    fn handle_event<R: Rng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut R,

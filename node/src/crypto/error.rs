@@ -1,7 +1,6 @@
 use std::result;
 
 use base64::DecodeError;
-use ed25519_dalek::SignatureError;
 use hex::FromHexError;
 use pem::PemError;
 use thiserror::Error;
@@ -49,12 +48,6 @@ pub enum Error {
     /// Error trying to write a public key.
     #[error("public key save failed: {0}")]
     PublicKeySave(WriteFileError),
-}
-
-impl From<SignatureError> for Error {
-    fn from(signature_error: SignatureError) -> Self {
-        Error::AsymmetricKey(signature_error.to_string())
-    }
 }
 
 impl From<PemError> for Error {

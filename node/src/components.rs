@@ -20,7 +20,7 @@ pub(crate) mod pinger;
 pub(crate) mod small_network;
 pub(crate) mod storage;
 
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 
 use crate::effect::{EffectBuilder, Effects};
 
@@ -46,7 +46,7 @@ use crate::effect::{EffectBuilder, Effects};
 ///
 /// Components place restrictions on reactor events (`REv`s), indicating what kind of effects they
 /// need to be able to produce to operate.
-pub trait Component<REv> {
+pub trait Component<REv, R: Rng + CryptoRng + ?Sized> {
     /// Event associated with `Component`.
     ///
     /// The event type that is handled by the component.
@@ -56,7 +56,7 @@ pub trait Component<REv> {
     ///
     /// This function must not ever perform any blocking or CPU intensive work, as it is expected
     /// to return very quickly.
-    fn handle_event<R: Rng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut R,

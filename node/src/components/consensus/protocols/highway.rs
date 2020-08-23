@@ -1,6 +1,7 @@
 use std::{fmt::Debug, rc::Rc};
 
 use anyhow::Error;
+use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
@@ -62,7 +63,7 @@ pub(crate) struct HighwayProtocol<I, C: Context> {
 
 impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
     #[allow(clippy::too_many_arguments)] // TODO: Those _are_ too many arguments!
-    pub(crate) fn new(
+    pub(crate) fn new<R: Rng + CryptoRng + ?Sized>(
         instance_id: C::InstanceId,
         validators: Validators<C::ValidatorId>,
         seed: u64,
@@ -71,6 +72,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         min_round_exp: u8,
         ftt: Weight,
         timestamp: Timestamp,
+        rng: &mut R,
     ) -> (Self, Vec<CpResult<I, C>>) {
         // TODO: Get forgiveness factor from the chain spec.
         let mut highway = Highway::new(instance_id, validators, seed, (1, 5), min_round_exp);
@@ -83,23 +85,28 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
             finality_detector: FinalityDetector::new(ftt),
             highway,
         };
-        let effects = instance.process_av_effects(av_effects);
+        let effects = instance.process_av_effects(av_effects, rng);
         (instance, effects)
     }
 
-    fn process_av_effects<E: IntoIterator<Item = AvEffect<C>>>(
+    fn process_av_effects<E: IntoIterator<Item = AvEffect<C>>, R: Rng + CryptoRng + ?Sized>(
         &mut self,
         av_effects: E,
+        rng: &mut R,
     ) -> Vec<CpResult<I, C>> {
         av_effects
             .into_iter()
-            .flat_map(|effect| self.process_av_effect(effect))
+            .flat_map(|effect| self.process_av_effect(effect, rng))
             .collect()
     }
 
-    fn process_av_effect(&mut self, effect: AvEffect<C>) -> Vec<CpResult<I, C>> {
+    fn process_av_effect<R: Rng + CryptoRng + ?Sized>(
+        &mut self,
+        effect: AvEffect<C>,
+        rng: &mut R,
+    ) -> Vec<CpResult<I, C>> {
         match effect {
-            AvEffect::NewVertex(vv) => self.process_new_vertex(vv),
+            AvEffect::NewVertex(vv) => self.process_new_vertex(vv, rng),
             AvEffect::ScheduleTimer(timestamp) => {
                 vec![ConsensusProtocolResult::ScheduleTimer(timestamp)]
             }
@@ -112,13 +119,17 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         }
     }
 
-    fn process_new_vertex(&mut self, vv: ValidVertex<C>) -> Vec<CpResult<I, C>> {
+    fn process_new_vertex<R: Rng + CryptoRng + ?Sized>(
+        &mut self,
+        vv: ValidVertex<C>,
+        rng: &mut R,
+    ) -> Vec<CpResult<I, C>> {
         let msg = HighwayMessage::NewVertex(vv.clone().into());
         //TODO: Don't unwrap
         // Replace serde with generic serializer.
         let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
         assert!(
-            self.highway.add_valid_vertex(vv).is_empty(),
+            self.highway.add_valid_vertex(vv, rng).is_empty(),
             "unexpected effects when adding our own vertex"
         );
         let mut results = vec![ConsensusProtocolResult::CreatedGossipMessage(
@@ -191,10 +202,10 @@ where
         self
     }
 
-    fn run(mut self) -> Vec<CpResult<I, C>> {
+    fn run<R: Rng + CryptoRng + ?Sized>(mut self, rng: &mut R) -> Vec<CpResult<I, C>> {
         loop {
             if let Some(effect) = self.synchronizer_effects_queue.pop() {
-                self.process_synchronizer_effect(effect);
+                self.process_synchronizer_effect(effect, rng);
             } else if let Some((sender, vertex)) = self.vertex_queue.pop() {
                 self.process_vertex(sender, vertex);
             } else {
@@ -214,9 +225,10 @@ where
         }
     }
 
-    fn process_synchronizer_effect(
+    fn process_synchronizer_effect<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect: SynchronizerEffect<I, PreValidatedVertex<C>>,
+        rng: &mut R,
     ) {
         match effect {
             SynchronizerEffect::RequestVertex(sender, missing_vid) => {
@@ -242,9 +254,9 @@ where
                     }
                 };
                 // TODO: Avoid cloning. (Serialize first?)
-                let av_effects = self.hw_proto.highway.add_valid_vertex(vv.clone());
+                let av_effects = self.hw_proto.highway.add_valid_vertex(vv.clone(), rng);
                 self.results
-                    .extend(self.hw_proto.process_av_effects(av_effects));
+                    .extend(self.hw_proto.process_av_effects(av_effects, rng));
                 let msg = HighwayMessage::NewVertex(vv.into());
                 // TODO: Don't `unwrap`.
                 let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
@@ -266,12 +278,17 @@ where
     }
 }
 
-impl<I, C: Context> ConsensusProtocol<I, C::ConsensusValue, C::ValidatorId>
-    for HighwayProtocol<I, C>
+impl<I, C: Context, R: Rng + CryptoRng + ?Sized>
+    ConsensusProtocol<I, C::ConsensusValue, C::ValidatorId, R> for HighwayProtocol<I, C>
 where
     I: NodeIdT,
 {
-    fn handle_message(&mut self, sender: I, msg: Vec<u8>) -> Result<Vec<CpResult<I, C>>, Error> {
+    fn handle_message(
+        &mut self,
+        sender: I,
+        msg: Vec<u8>,
+        rng: &mut R,
+    ) -> Result<Vec<CpResult<I, C>>, Error> {
         let highway_message: HighwayMessage<C> = serde_json::from_slice(msg.as_slice()).unwrap();
         Ok(match highway_message {
             HighwayMessage::NewVertex(ref v) if self.highway.has_vertex(v) => vec![],
@@ -295,7 +312,7 @@ where
                 // effect.
                 SynchronizerQueue::new(self)
                     .with_vertices(vec![(sender, pvv)])
-                    .run()
+                    .run(rng)
             }
             HighwayMessage::RequestDependency(dep) => {
                 if let Some(vv) = self.highway.get_dependency(&dep) {
@@ -314,18 +331,23 @@ where
         })
     }
 
-    fn handle_timer(&mut self, timestamp: Timestamp) -> Result<Vec<CpResult<I, C>>, Error> {
-        let effects = self.highway.handle_timer(timestamp);
-        Ok(self.process_av_effects(effects))
+    fn handle_timer(
+        &mut self,
+        timestamp: Timestamp,
+        rng: &mut R,
+    ) -> Result<Vec<CpResult<I, C>>, Error> {
+        let effects = self.highway.handle_timer(timestamp, rng);
+        Ok(self.process_av_effects(effects, rng))
     }
 
     fn propose(
         &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
+        rng: &mut R,
     ) -> Result<Vec<CpResult<I, C>>, Error> {
-        let effects = self.highway.propose(value, block_context);
-        Ok(self.process_av_effects(effects))
+        let effects = self.highway.propose(value, block_context, rng);
+        Ok(self.process_av_effects(effects, rng))
     }
 
     /// Marks `value` as valid.
@@ -334,12 +356,13 @@ where
         &mut self,
         value: &C::ConsensusValue,
         valid: bool,
+        rng: &mut R,
     ) -> Result<Vec<CpResult<I, C>>, Error> {
         if valid {
             let effects = self.synchronizer.on_consensus_value_synced(value);
             Ok(SynchronizerQueue::new(self)
                 .with_synchronizer_effects(effects)
-                .run())
+                .run(rng))
         } else {
             todo!("Drop vertices that depend on the invalid consensus value.")
         }
@@ -369,8 +392,8 @@ impl ValidatorSecret for HighwaySecret {
     type Hash = Digest;
     type Signature = Signature;
 
-    fn sign(&self, hash: &Digest) -> Signature {
-        asymmetric_key::sign(hash, self.secret_key.as_ref(), &self.public_key)
+    fn sign<R: Rng + CryptoRng + ?Sized>(&self, hash: &Digest, rng: &mut R) -> Signature {
+        asymmetric_key::sign(hash, self.secret_key.as_ref(), &self.public_key, rng)
     }
 }
 

@@ -14,6 +14,7 @@ use std::{
 use anyhow::Error;
 use casperlabs_types::U512;
 use num_traits::AsPrimitive;
+use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
@@ -54,10 +55,10 @@ impl EraId {
     }
 }
 
-pub(crate) struct EraSupervisor<I> {
+pub(crate) struct EraSupervisor<I, R: Rng + CryptoRng + ?Sized> {
     /// A map of active consensus protocols.
     /// A value is a trait so that we can run different consensus protocol instances per era.
-    active_eras: HashMap<EraId, Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>>>,
+    active_eras: HashMap<EraId, Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey, R>>>,
     pub(super) secret_signing_key: Rc<SecretKey>,
     pub(super) public_signing_key: PublicKey,
     validator_stakes: Vec<(PublicKey, Motes)>,
@@ -65,16 +66,17 @@ pub(crate) struct EraSupervisor<I> {
     highway_config: HighwayConfig,
 }
 
-impl<I> Debug for EraSupervisor<I> {
+impl<I, R: Rng + CryptoRng + ?Sized> Debug for EraSupervisor<I, R> {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         let ae: Vec<_> = self.active_eras.keys().collect();
         write!(formatter, "EraSupervisor {{ active_eras: {:?}, .. }}", ae)
     }
 }
 
-impl<I> EraSupervisor<I>
+impl<I, R> EraSupervisor<I, R>
 where
     I: NodeIdT,
+    R: Rng + CryptoRng + ?Sized,
 {
     pub(crate) fn new<REv: ReactorEventT<I>>(
         timestamp: Timestamp,
@@ -82,6 +84,7 @@ where
         effect_builder: EffectBuilder<REv>,
         validator_stakes: Vec<(PublicKey, Motes)>,
         highway_config: &HighwayConfig,
+        rng: &mut R,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
         let (root, config) = config.into_parts();
         let secret_signing_key = Rc::new(config.secret_key_path.load(root)?);
@@ -100,7 +103,7 @@ where
             era_supervisor: &mut era_supervisor,
             effect_builder,
         }
-        .new_era(EraId(0), timestamp, validator_stakes);
+        .new_era(EraId(0), rng, timestamp, validator_stakes);
 
         Ok((era_supervisor, effects))
     }
@@ -110,6 +113,7 @@ where
         era_id: EraId,
         timestamp: Timestamp,
         validator_stakes: Vec<(PublicKey, Motes)>,
+        rng: &mut R,
     ) -> Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>> {
         if self.active_eras.contains_key(&era_id) {
             panic!("{:?} already exists", era_id);
@@ -145,6 +149,7 @@ where
             self.highway_config.minimum_round_exponent,
             ftt,
             timestamp,
+            rng,
         );
 
         let _ = self.active_eras.insert(era_id, Box::new(highway));
@@ -153,7 +158,7 @@ where
     }
 
     /// Returns the current era.
-    fn current_era_mut(&mut self) -> &mut Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>> {
+    fn current_era_mut(&mut self) -> &mut Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey, R>> {
         self.active_eras
             .get_mut(&self.current_era)
             .expect("current era does not exist")
@@ -163,7 +168,7 @@ where
     #[cfg(test)]
     pub fn active_eras(
         &self,
-    ) -> &HashMap<EraId, Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>>> {
+    ) -> &HashMap<EraId, Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey, R>>> {
         &self.active_eras
     }
 }
@@ -173,20 +178,22 @@ where
 /// This is a short-lived convenience type to avoid passing the effect builder through lots of
 /// message calls, and making every method individually generic in `REv`. It is only instantiated
 /// for the duration of handling a single event.
-pub(super) struct HandlingEraSupervisor<'a, I, REv: 'static> {
-    pub(super) era_supervisor: &'a mut EraSupervisor<I>,
+pub(super) struct HandlingEraSupervisor<'a, I, REv: 'static, R: Rng + CryptoRng + ?Sized> {
+    pub(super) era_supervisor: &'a mut EraSupervisor<I, R>,
     pub(super) effect_builder: EffectBuilder<REv>,
 }
 
-impl<'a, I, REv> HandlingEraSupervisor<'a, I, REv>
+impl<'a, I, REv, R> HandlingEraSupervisor<'a, I, REv, R>
 where
     I: NodeIdT,
     REv: ReactorEventT<I>,
+    R: Rng + CryptoRng + ?Sized,
 {
-    fn delegate_to_era<F>(&mut self, era_id: EraId, f: F) -> Effects<Event<I>>
+    fn delegate_to_era<F>(&mut self, era_id: EraId, rng: &mut R, f: F) -> Effects<Event<I>>
     where
         F: FnOnce(
-            &mut dyn ConsensusProtocol<I, ProtoBlock, PublicKey>,
+            &mut dyn ConsensusProtocol<I, ProtoBlock, PublicKey, R>,
+            &mut R,
         ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>>, Error>,
     {
         match self.era_supervisor.active_eras.get_mut(&era_id) {
@@ -198,10 +205,10 @@ where
                 }
                 Effects::new()
             }
-            Some(consensus) => match f(&mut **consensus) {
+            Some(consensus) => match f(&mut **consensus, rng) {
                 Ok(results) => results
                     .into_iter()
-                    .flat_map(|result| self.handle_consensus_result(era_id, result))
+                    .flat_map(|result| self.handle_consensus_result(era_id, rng, result))
                     .collect(),
                 Err(error) => {
                     error!(%error, ?era_id, "got error from era id {:?}: {:?}", era_id, error);
@@ -214,21 +221,30 @@ where
     pub(super) fn handle_timer(
         &mut self,
         era_id: EraId,
+        rng: &mut R,
         timestamp: Timestamp,
     ) -> Effects<Event<I>> {
-        self.delegate_to_era(era_id, move |consensus| consensus.handle_timer(timestamp))
+        self.delegate_to_era(era_id, rng, move |consensus, rng| {
+            consensus.handle_timer(timestamp, rng)
+        })
     }
 
-    pub(super) fn handle_message(&mut self, sender: I, msg: ConsensusMessage) -> Effects<Event<I>> {
+    pub(super) fn handle_message(
+        &mut self,
+        rng: &mut R,
+        sender: I,
+        msg: ConsensusMessage,
+    ) -> Effects<Event<I>> {
         let ConsensusMessage { era_id, payload } = msg;
-        self.delegate_to_era(era_id, move |consensus| {
-            consensus.handle_message(sender, payload)
+        self.delegate_to_era(era_id, rng, move |consensus, rng| {
+            consensus.handle_message(sender, payload, rng)
         })
     }
 
     pub(super) fn handle_new_proto_block(
         &mut self,
         era_id: EraId,
+        rng: &mut R,
         proto_block: ProtoBlock,
         block_context: BlockContext,
     ) -> Effects<Event<I>> {
@@ -236,8 +252,8 @@ where
             .effect_builder
             .announce_proposed_proto_block(proto_block.clone())
             .ignore();
-        effects.extend(self.delegate_to_era(era_id, move |consensus| {
-            consensus.propose(proto_block, block_context)
+        effects.extend(self.delegate_to_era(era_id, rng, move |consensus, rng| {
+            consensus.propose(proto_block, block_context, rng)
         }));
         effects
     }
@@ -245,6 +261,7 @@ where
     pub(super) fn handle_executed_block(
         &mut self,
         _era_id: EraId,
+        rng: &mut R,
         mut block: Block,
     ) -> Effects<Event<I>> {
         // TODO - we should only sign if we're a validator for the given era ID.
@@ -252,6 +269,7 @@ where
             block.hash().inner(),
             &self.era_supervisor.secret_signing_key,
             &self.era_supervisor.public_signing_key,
+            rng,
         );
         block.append_proof(signature);
         self.effect_builder
@@ -262,10 +280,11 @@ where
     pub(super) fn handle_accept_proto_block(
         &mut self,
         era_id: EraId,
+        rng: &mut R,
         proto_block: ProtoBlock,
     ) -> Effects<Event<I>> {
-        let mut effects = self.delegate_to_era(era_id, |consensus| {
-            consensus.resolve_validity(&proto_block, true)
+        let mut effects = self.delegate_to_era(era_id, rng, |consensus, rng| {
+            consensus.resolve_validity(&proto_block, true, rng)
         });
         effects.extend(
             self.effect_builder
@@ -278,33 +297,36 @@ where
     pub(super) fn handle_invalid_proto_block(
         &mut self,
         era_id: EraId,
+        rng: &mut R,
         _sender: I,
         proto_block: ProtoBlock,
     ) -> Effects<Event<I>> {
-        self.delegate_to_era(era_id, |consensus| {
-            consensus.resolve_validity(&proto_block, false)
+        self.delegate_to_era(era_id, rng, |consensus, rng| {
+            consensus.resolve_validity(&proto_block, false, rng)
         })
     }
 
     fn new_era(
         &mut self,
         era_id: EraId,
+        rng: &mut R,
         timestamp: Timestamp,
         validator_stakes: Vec<(PublicKey, Motes)>,
     ) -> Effects<Event<I>> {
         let results = self
             .era_supervisor
-            .new_era(era_id, timestamp, validator_stakes);
+            .new_era(era_id, timestamp, validator_stakes, rng);
 
         results
             .into_iter()
-            .flat_map(|result| self.handle_consensus_result(era_id, result))
+            .flat_map(|result| self.handle_consensus_result(era_id, rng, result))
             .collect()
     }
 
     fn handle_consensus_result(
         &mut self,
         era_id: EraId,
+        rng: &mut R,
         consensus_result: ConsensusProtocolResult<I, ProtoBlock, PublicKey>,
     ) -> Effects<Event<I>> {
         match consensus_result {
@@ -366,7 +388,7 @@ where
                     let new_era_id = era_id.successor();
                     // TODO: Learn the new weights from contract (validator rotation).
                     let validator_stakes = self.era_supervisor.validator_stakes.clone();
-                    effects.extend(self.new_era(new_era_id, timestamp, validator_stakes));
+                    effects.extend(self.new_era(new_era_id, rng, timestamp, validator_stakes));
                     self.era_supervisor.current_era = new_era_id;
                 }
                 // Create instructions for slashing equivocators.

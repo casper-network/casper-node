@@ -10,7 +10,7 @@ mod traits;
 
 use std::fmt::{self, Debug, Display, Formatter};
 
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -141,17 +141,18 @@ impl<REv, I> ReactorEventT<I> for REv where
 {
 }
 
-impl<I, REv> Component<REv> for EraSupervisor<I>
+impl<I, REv, R> Component<REv, R> for EraSupervisor<I, R>
 where
     I: NodeIdT,
     REv: ReactorEventT<I>,
+    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event<I>;
 
-    fn handle_event<R: Rng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        rng: &mut R,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         let mut handling_es = HandlingEraSupervisor {
@@ -159,25 +160,25 @@ where
             effect_builder,
         };
         match event {
-            Event::Timer { era_id, timestamp } => handling_es.handle_timer(era_id, timestamp),
-            Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
+            Event::Timer { era_id, timestamp } => handling_es.handle_timer(era_id, rng, timestamp),
+            Event::MessageReceived { sender, msg } => handling_es.handle_message(rng, sender, msg),
             Event::NewProtoBlock {
                 era_id,
                 proto_block,
                 block_context,
-            } => handling_es.handle_new_proto_block(era_id, proto_block, block_context),
+            } => handling_es.handle_new_proto_block(era_id, rng, proto_block, block_context),
             Event::ExecutedBlock { era_id, block } => {
-                handling_es.handle_executed_block(era_id, block)
+                handling_es.handle_executed_block(era_id, rng, block)
             }
             Event::AcceptProtoBlock {
                 era_id,
                 proto_block,
-            } => handling_es.handle_accept_proto_block(era_id, proto_block),
+            } => handling_es.handle_accept_proto_block(era_id, rng, proto_block),
             Event::InvalidProtoBlock {
                 era_id,
                 sender,
                 proto_block,
-            } => handling_es.handle_invalid_proto_block(era_id, sender, proto_block),
+            } => handling_es.handle_invalid_proto_block(era_id, rng, sender, proto_block),
         }
     }
 }

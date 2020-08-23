@@ -3,7 +3,7 @@ mod event;
 
 use std::fmt::Debug;
 
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use semver::Version;
 use tracing::{debug, error, warn};
 
@@ -119,10 +119,10 @@ impl DeployAcceptor {
     }
 }
 
-impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
+impl<REv: ReactorEventT, R: Rng + CryptoRng + ?Sized> Component<REv, R> for DeployAcceptor {
     type Event = Event;
 
-    fn handle_event<R: Rng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

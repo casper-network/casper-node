@@ -35,7 +35,7 @@ use std::{
 
 use futures::{future::BoxFuture, FutureExt};
 use prometheus::{self, IntCounter, Registry};
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use tracing::{debug, debug_span, info, trace, warn};
 use tracing_futures::Instrument;
 
@@ -87,7 +87,7 @@ impl<REv> EventQueueHandle<REv> {
 /// Reactor core.
 ///
 /// Any reactor should implement this trait and be executed by the `reactor::run` function.
-pub trait Reactor: Sized {
+pub trait Reactor<R: Rng + CryptoRng + ?Sized>: Sized {
     // Note: We've gone for the `Sized` bound here, since we return an instance in `new`. As an
     // alternative, `new` could return a boxed instance instead, removing this requirement.
 
@@ -107,7 +107,7 @@ pub trait Reactor: Sized {
     /// This function is typically only called by the reactor itself to dispatch an event. It is
     /// safe to call regardless, but will cause the event to skip the queue and things like
     /// accounting.
-    fn dispatch_event<R: Rng + ?Sized>(
+    fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
         rng: &mut R,
@@ -120,7 +120,7 @@ pub trait Reactor: Sized {
     /// instance along with the effects that the components generated upon instantiation.
     ///
     /// If any instantiation fails, an error is returned.
-    fn new<R: Rng + ?Sized>(
+    fn new(
         cfg: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
@@ -152,9 +152,10 @@ pub trait Finalize: Sized {
 /// The runner manages a reactors event queue and reactor itself and can run it either continuously
 /// or in a step-by-step manner.
 #[derive(Debug)]
-pub struct Runner<R>
+pub struct Runner<R, RNG>
 where
-    R: Reactor,
+    R: Reactor<RNG>,
+    RNG: Rng + CryptoRng + ?Sized,
 {
     /// The scheduler used for the reactor.
     scheduler: &'static Scheduler<R::Event>,
@@ -186,14 +187,15 @@ impl RunnerMetrics {
     }
 }
 
-impl<R> Runner<R>
+impl<R, RNG> Runner<R, RNG>
 where
-    R: Reactor,
+    R: Reactor<RNG>,
     R::Error: From<prometheus::Error>,
+    RNG: Rng + CryptoRng + ?Sized,
 {
     /// Creates a new runner from a given configuration.
     #[inline]
-    pub async fn new<Rd: Rng + ?Sized>(cfg: R::Config, rng: &mut Rd) -> Result<Self, R::Error> {
+    pub async fn new(cfg: R::Config, rng: &mut RNG) -> Result<Self, R::Error> {
         let event_size = mem::size_of::<R::Event>();
 
         // Check if the event is of a reasonable size. This only emits a runtime warning at startup
@@ -247,7 +249,7 @@ where
 
     /// Processes a single event on the event queue.
     #[inline]
-    pub async fn crank<Rd: Rng + ?Sized>(&mut self, rng: &mut Rd) {
+    pub async fn crank(&mut self, rng: &mut RNG) {
         // Create another span for tracing the processing of one event.
         let crank_span = tracing::debug_span!("crank", ev = self.event_count);
         let _inner_enter = crank_span.enter();
@@ -284,7 +286,7 @@ where
 
     /// Processes a single event if there is one, returns `None` otherwise.
     #[inline]
-    pub async fn try_crank<Rd: Rng + ?Sized>(&mut self, rng: &mut Rd) -> Option<()> {
+    pub async fn try_crank(&mut self, rng: &mut RNG) -> Option<()> {
         if self.scheduler.item_count() == 0 {
             None
         } else {
@@ -295,7 +297,7 @@ where
 
     /// Runs the reactor until `is_stopped()` returns true.
     #[inline]
-    pub async fn run<Rd: Rng + ?Sized>(&mut self, rng: &mut Rd) {
+    pub async fn run(&mut self, rng: &mut RNG) {
         while !self.reactor.is_stopped() {
             self.crank(rng).await;
         }
