@@ -278,7 +278,7 @@ where
             HighwayMessage::NewVertex(v) => {
                 let pvv = match self.highway.pre_validate_vertex(v) {
                     Ok(pvv) => pvv,
-                    Err((vertex, err)) => {
+                    Err((_vertex, err)) => {
                         return Ok(vec![ConsensusProtocolResult::InvalidIncomingMessage(
                             msg,
                             sender,
