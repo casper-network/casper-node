@@ -19,7 +19,7 @@ run_node() {
         --unit node-$ID \
         --description "CasperLabs Dev Node ${ID}" \
         --collect \
-        "--working-directory=${BASEDIR}" \
+        --property=WorkingDirectory=${BASEDIR} \
         --setenv=RUST_LOG=debug \
         --property=StandardOutput=file:${LOGFILE} \
         --property=StandardError=file:${LOGFILE}.stderr \
