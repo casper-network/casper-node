@@ -5,6 +5,7 @@ use std::{
     convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
     hash::{Hash, Hasher},
+    iter,
     path::Path,
 };
 
@@ -503,15 +504,48 @@ impl PublicKey {
         AccountHash::new(digest.to_bytes())
     }
 
-    /// Attempts to write the public key bytes to the configured file path.
+    /// Attempts to write the public key PEM-encoded to the configured file path.
     pub fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<()> {
         write_file(file, self.to_pem()?).map_err(Error::PublicKeySave)
     }
 
-    /// Attempts to read the public key bytes from configured file path.
+    /// Attempts to read the public key bytes from configured PEM-encoded file.
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self> {
         let data = read_file(file).map_err(Error::PublicKeyLoad)?;
         Self::from_pem(data)
+    }
+
+    /// Converts the public key to hex, where the first byte represents the algorithm tag.
+    pub fn to_hex(&self) -> String {
+        let bytes = iter::once(&self.tag())
+            .chain(self.as_ref())
+            .copied()
+            .collect::<Vec<u8>>();
+        hex::encode(bytes)
+    }
+
+    /// Tries to decode a public key from its hex-representation.  The hex format should be as
+    /// produced by `PublicKey::to_hex()`.
+    pub fn from_hex<T: AsRef<[u8]>>(input: T) -> Result<Self> {
+        let mut tag = [0u8; 1];
+        hex::decode_to_slice(&input.as_ref()[..2], tag.as_mut())?;
+
+        match tag[0] {
+            ED25519_TAG => {
+                let mut bytes = [0u8; Self::ED25519_LENGTH];
+                hex::decode_to_slice(&input.as_ref()[2..], bytes.as_mut())?;
+                Self::new_ed25519(bytes)
+            }
+            SECP256K1_TAG => {
+                let mut bytes = [0u8; Self::SECP256K1_LENGTH];
+                hex::decode_to_slice(&input.as_ref()[2..], bytes.as_mut())?;
+                Self::new_secp256k1(bytes)
+            }
+            _ => Err(Error::AsymmetricKey(format!(
+                "invalid tag.  Expected {} or {}, got {}",
+                ED25519_TAG, SECP256K1_TAG, tag[0]
+            ))),
+        }
     }
 
     /// Generates a random instance using a `TestRng`.
@@ -861,6 +895,39 @@ impl Signature {
         Ok(Signature::Secp256k1(signature))
     }
 
+    /// Converts the signature to hex, where the first byte represents the algorithm tag.
+    pub fn to_hex(&self) -> String {
+        let bytes = iter::once(&self.tag())
+            .chain(self.as_ref())
+            .copied()
+            .collect::<Vec<u8>>();
+        hex::encode(bytes)
+    }
+
+    /// Tries to decode a signature from its hex-representation.  The hex format should be as
+    /// produced by `Signature::to_hex()`.
+    pub fn from_hex<T: AsRef<[u8]>>(input: T) -> Result<Self> {
+        let mut tag = [0u8; 1];
+        hex::decode_to_slice(&input.as_ref()[..2], tag.as_mut())?;
+
+        match tag[0] {
+            ED25519_TAG => {
+                let mut bytes = [0u8; Self::ED25519_LENGTH];
+                hex::decode_to_slice(&input.as_ref()[2..], bytes.as_mut())?;
+                Self::new_ed25519(bytes)
+            }
+            SECP256K1_TAG => {
+                let mut bytes = [0u8; Self::SECP256K1_LENGTH];
+                hex::decode_to_slice(&input.as_ref()[2..], bytes.as_mut())?;
+                Self::new_secp256k1(bytes)
+            }
+            _ => Err(Error::AsymmetricKey(format!(
+                "invalid tag.  Expected {} or {}, got {}",
+                ED25519_TAG, SECP256K1_TAG, tag[0]
+            ))),
+        }
+    }
+
     fn tag(&self) -> u8 {
         match self {
             Signature::Ed25519(_) => ED25519_TAG,
@@ -1153,6 +1220,26 @@ mod tests {
         assert_eq!(public_key, decoded);
     }
 
+    fn public_key_hex_roundtrip(public_key: PublicKey) {
+        let hex_encoded = public_key.to_hex();
+        let decoded = PublicKey::from_hex(hex_encoded.as_bytes()).unwrap();
+        assert_eq!(public_key, decoded);
+        assert_eq!(public_key.tag(), decoded.tag());
+
+        // Ensure malformed encoded version fails to decode.
+        PublicKey::from_hex(&hex_encoded[1..]).unwrap_err();
+    }
+
+    fn signature_hex_roundtrip(signature: Signature) {
+        let hex_encoded = signature.to_hex();
+        let decoded = Signature::from_hex(hex_encoded.as_bytes()).unwrap();
+        assert_eq!(signature, decoded);
+        assert_eq!(signature.tag(), decoded.tag());
+
+        // Ensure malformed encoded version fails to decode.
+        Signature::from_hex(&hex_encoded[1..]).unwrap_err();
+    }
+
     fn hash<T: Hash>(data: &T) -> u64 {
         let mut hasher = DefaultHasher::new();
         data.hash(&mut hasher);
@@ -1293,6 +1380,13 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
         }
 
         #[test]
+        fn public_key_to_and_from_hex() {
+            let mut rng = TestRng::new();
+            let public_key = PublicKey::random_ed25519(&mut rng);
+            public_key_hex_roundtrip(public_key);
+        }
+
+        #[test]
         fn signature_from_bytes() {
             // Signature should be < ~2^(252.5).
             let invalid_bytes = [255; SIGNATURE_LENGTH];
@@ -1305,6 +1399,16 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
 
             // Check the same bytes but of the right length succeeds.
             assert!(Signature::ed25519_from_bytes(&bytes[1..]).is_ok());
+        }
+
+        #[test]
+        fn signature_key_to_and_from_hex() {
+            let mut rng = TestRng::new();
+            let secret_key = SecretKey::random_ed25519(&mut rng);
+            let public_key = PublicKey::from(&secret_key);
+            let data = b"data";
+            let signature = sign(data, &secret_key, &public_key, &mut rng);
+            signature_hex_roundtrip(signature);
         }
 
         #[test]
@@ -1462,6 +1566,13 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
             let mut rng = TestRng::new();
             let public_key = PublicKey::random_secp256k1(&mut rng);
             public_key_file_roundtrip(public_key);
+        }
+
+        #[test]
+        fn public_key_to_and_from_hex() {
+            let mut rng = TestRng::new();
+            let public_key = PublicKey::random_secp256k1(&mut rng);
+            public_key_hex_roundtrip(public_key);
         }
 
         #[test]
