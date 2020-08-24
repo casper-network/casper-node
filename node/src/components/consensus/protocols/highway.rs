@@ -35,7 +35,7 @@ impl<C: Context> VertexTrait for PreValidatedVertex<C> {
     }
 
     fn value(&self) -> Option<&C::ConsensusValue> {
-        self.vertex().value() //.filter(|cv| !cv.empty())
+        self.vertex().value()
     }
 }
 

@@ -34,6 +34,7 @@ use crate::{
         hash,
     },
     effect::{EffectBuilder, EffectExt, Effects},
+    reactor::validator::Message,
     types::{Block, FinalizedBlock, Motes, ProtoBlock, SystemTransaction, Timestamp},
     utils::WithDir,
 };
@@ -322,12 +323,12 @@ where
             ConsensusProtocolResult::CreatedGossipMessage(out_msg) => {
                 // TODO: we'll want to gossip instead of broadcast here
                 self.effect_builder
-                    .broadcast_message(era_id.message(out_msg))
+                    .broadcast_message(Message::new_consensus_message(era_id.message(out_msg)))
                     .ignore()
             }
             ConsensusProtocolResult::CreatedTargetedMessage(out_msg, to) => self
                 .effect_builder
-                .send_message(to, era_id.message(out_msg))
+                .send_message(to, Message::new_consensus_message(era_id.message(out_msg)))
                 .ignore(),
             ConsensusProtocolResult::ScheduleTimer(timestamp) => {
                 let timediff = timestamp.saturating_sub(Timestamp::now());

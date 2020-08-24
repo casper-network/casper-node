@@ -98,6 +98,10 @@ impl Message {
             serialized_item: rmp_serde::to_vec(item)?,
         })
     }
+
+    pub(crate) fn new_consensus_message(item: consensus::ConsensusMessage) -> Self {
+        Message::Consensus(item)
+    }
 }
 
 impl Display for Message {

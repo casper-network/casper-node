@@ -23,6 +23,7 @@ use crate::{
         },
         EffectBuilder, Effects,
     },
+    reactor::validator::Message,
     types::{Block, ProtoBlock, Timestamp},
 };
 pub use config::Config;
@@ -144,7 +145,7 @@ impl<I: Debug> Display for Event<I> {
 pub trait ReactorEventT<I>:
     From<Event<I>>
     + Send
-    + From<NetworkRequest<I, ConsensusMessage>>
+    + From<NetworkRequest<I, Message>>
     + From<DeployBufferRequest>
     + From<ConsensusAnnouncement>
     + From<BlockExecutorRequest>
@@ -156,7 +157,7 @@ pub trait ReactorEventT<I>:
 impl<REv, I> ReactorEventT<I> for REv where
     REv: From<Event<I>>
         + Send
-        + From<NetworkRequest<I, ConsensusMessage>>
+        + From<NetworkRequest<I, Message>>
         + From<DeployBufferRequest>
         + From<ConsensusAnnouncement>
         + From<BlockExecutorRequest>
