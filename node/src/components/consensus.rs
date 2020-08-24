@@ -31,7 +31,6 @@ pub(crate) use consensus_protocol::BlockContext;
 use era_supervisor::HandlingEraSupervisor;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 use hex_fmt::HexFmt;
-use tracing::trace;
 use traits::NodeIdT;
 
 #[derive(Clone, Serialize, Deserialize)]

@@ -88,9 +88,9 @@ fn compute_rewards_for<C: Context>(
                 state.params().reduced_block_reward()
             };
             // Rewards are proportional to the quorum and to the validator's weight.
-            let num = u128::from(finality_factor) * u128::from(*quorum);
-            let denom = u128::from(assigned_weight) * u128::from(state.params().total_weight());
-            ((num / denom) * u128::from(*weight)) as u64
+            (u128::from(finality_factor) * u128::from(*quorum) / u128::from(assigned_weight)
+                * u128::from(*weight)
+                / u128::from(state.params().total_weight())) as u64
         })
         .collect()
 }
