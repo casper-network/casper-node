@@ -23,17 +23,25 @@ use crate::{
         },
         EffectBuilder, Effects,
     },
+    reactor::validator::Message,
     types::{Block, ProtoBlock, Timestamp},
 };
 pub use config::Config;
 pub(crate) use consensus_protocol::BlockContext;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
+use hex_fmt::HexFmt;
 use traits::NodeIdT;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ConsensusMessage {
     era_id: EraId,
     payload: Vec<u8>,
+}
+
+impl ConsensusMessage {
+    fn payload(&self) -> &[u8] {
+        &self.payload
+    }
 }
 
 /// Consensus component event.
@@ -66,7 +74,23 @@ pub enum Event<I> {
 
 impl Display for ConsensusMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "ConsensusMessage {{ era_id: {}, .. }}", self.era_id.0)
+        write!(
+            f,
+            "ConsensusMessage {{ era_id: {}, {:10} }}",
+            self.era_id.0,
+            HexFmt(self.payload())
+        )
+    }
+}
+
+impl Debug for ConsensusMessage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ConsensusMessage {{ era_id: {}, {:10} }}",
+            self.era_id.0,
+            HexFmt(self.payload())
+        )
     }
 }
 
@@ -119,7 +143,7 @@ impl<I: Debug> Display for Event<I> {
 pub trait ReactorEventT<I>:
     From<Event<I>>
     + Send
-    + From<NetworkRequest<I, ConsensusMessage>>
+    + From<NetworkRequest<I, Message>>
     + From<DeployBufferRequest>
     + From<ConsensusAnnouncement>
     + From<BlockExecutorRequest>
@@ -131,7 +155,7 @@ pub trait ReactorEventT<I>:
 impl<REv, I> ReactorEventT<I> for REv where
     REv: From<Event<I>>
         + Send
-        + From<NetworkRequest<I, ConsensusMessage>>
+        + From<NetworkRequest<I, Message>>
         + From<DeployBufferRequest>
         + From<ConsensusAnnouncement>
         + From<BlockExecutorRequest>

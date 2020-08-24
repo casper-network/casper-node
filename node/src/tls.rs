@@ -130,12 +130,24 @@ impl Sha512 {
 }
 
 /// Certificate fingerprint.
-#[derive(Copy, Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Copy, Clone, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub(crate) struct CertFingerprint(Sha512);
 
+impl Debug for CertFingerprint {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "CertFingerprint({:10})", HexFmt(self.0.bytes()))
+    }
+}
+
 /// Public key fingerprint.
-#[derive(Copy, Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Copy, Clone, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct KeyFingerprint(Sha512);
+
+impl Debug for KeyFingerprint {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "KeyFingerprint({:10})", HexFmt(self.0.bytes()))
+    }
+}
 
 #[cfg(test)]
 impl From<[u8; Sha512::SIZE]> for KeyFingerprint {
@@ -154,8 +166,14 @@ impl Distribution<KeyFingerprint> for Standard {
 }
 
 /// Cryptographic signature.
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Deserialize, Eq, Hash, PartialEq, Serialize)]
 struct Signature(Vec<u8>);
+
+impl Debug for Signature {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Signature({:10})", HexFmt(&self.0))
+    }
+}
 
 impl Signature {
     /// Signs a binary blob with the blessed ciphers and TLS parameters.
