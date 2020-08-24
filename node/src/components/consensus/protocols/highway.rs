@@ -2,7 +2,7 @@ use std::{fmt::Debug, rc::Rc};
 
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{info, trace};
 
 use crate::{
     components::consensus::{
@@ -35,7 +35,7 @@ impl<C: Context> VertexTrait for PreValidatedVertex<C> {
     }
 
     fn value(&self) -> Option<&C::ConsensusValue> {
-        self.vertex().value()
+        self.vertex().value() //.filter(|cv| !cv.empty())
     }
 }
 
@@ -145,7 +145,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -194,6 +194,7 @@ where
     fn run(mut self) -> Vec<CpResult<I, C>> {
         loop {
             if let Some(effect) = self.synchronizer_effects_queue.pop() {
+                info!("Processing synchronzier effect");
                 self.process_synchronizer_effect(effect);
             } else if let Some((sender, vertex)) = self.vertex_queue.pop() {
                 self.process_vertex(sender, vertex);
@@ -209,8 +210,14 @@ where
             .synchronizer
             .synchronize_vertex(sender, vertex, &self.hw_proto.highway)
         {
-            Ok(effects) => self.synchronizer_effects_queue.extend(effects),
-            Err(err) => todo!("error: {:?}", err),
+            Ok(effects) => {
+                info!("Synchronized vertex.");
+                self.synchronizer_effects_queue.extend(effects)
+            }
+            Err(err) => {
+                info!("Error processing vertex");
+                todo!("error: {:?}", err)
+            }
         }
     }
 
@@ -218,6 +225,7 @@ where
         &mut self,
         effect: SynchronizerEffect<I, PreValidatedVertex<C>>,
     ) {
+        info!(?effect);
         match effect {
             SynchronizerEffect::RequestVertex(sender, missing_vid) => {
                 let msg = HighwayMessage::RequestDependency(missing_vid);
@@ -242,6 +250,8 @@ where
                     }
                 };
                 // TODO: Avoid cloning. (Serialize first?)
+                let id = vv.id();
+                info!(?id, "Vertex sync'd successfully");
                 let av_effects = self.hw_proto.highway.add_valid_vertex(vv.clone());
                 self.results
                     .extend(self.hw_proto.process_av_effects(av_effects));
@@ -273,12 +283,15 @@ where
 {
     fn handle_message(&mut self, sender: I, msg: Vec<u8>) -> Result<Vec<CpResult<I, C>>, Error> {
         let highway_message: HighwayMessage<C> = serde_json::from_slice(msg.as_slice()).unwrap();
+        trace!(?highway_message, "handle_message");
         Ok(match highway_message {
             HighwayMessage::NewVertex(ref v) if self.highway.has_vertex(v) => vec![],
             HighwayMessage::NewVertex(v) => {
                 let pvv = match self.highway.pre_validate_vertex(v) {
                     Ok(pvv) => pvv,
-                    Err((_vertex, err)) => {
+                    Err((vertex, err)) => {
+                        let id = vertex.id();
+                        info!(?id, %err, "Vertex invalid.");
                         return Ok(vec![ConsensusProtocolResult::InvalidIncomingMessage(
                             msg,
                             sender,
