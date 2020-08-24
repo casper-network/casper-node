@@ -79,12 +79,6 @@ impl<C: Context> From<PreValidatedVertex<C>> for Vertex<C> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ValidVertex<C: Context>(pub(super) Vertex<C>);
 
-impl<C: Context> ValidVertex<C> {
-    pub fn id(&self) -> Dependency<C> {
-        self.0.id()
-    }
-}
-
 /// A passive instance of the Highway protocol, containing its local state.
 ///
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from

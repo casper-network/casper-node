@@ -2,7 +2,7 @@ use std::{fmt::Debug, rc::Rc};
 
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use tracing::{info, trace};
+use tracing::info;
 
 use crate::{
     components::consensus::{
@@ -279,7 +279,6 @@ where
                 let pvv = match self.highway.pre_validate_vertex(v) {
                     Ok(pvv) => pvv,
                     Err((vertex, err)) => {
-                        let id = vertex.id();
                         return Ok(vec![ConsensusProtocolResult::InvalidIncomingMessage(
                             msg,
                             sender,
