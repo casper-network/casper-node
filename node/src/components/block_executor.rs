@@ -269,12 +269,18 @@ impl BlockExecutor {
 
     fn create_block(&mut self, finalized_block: FinalizedBlock, post_state_hash: Digest) -> Block {
         let proto_parent_hash = finalized_block.proto_block().parent_hash();
-        let parent_summary = self
-            .parent_map
-            .remove(proto_parent_hash)
-            .unwrap_or_else(|| panic!("failed to take {}", proto_parent_hash));
+        // TODO: Compare finalized block's height as well.
+        let parent_summary_hash = if proto_parent_hash == &Default::default() {
+            // Genesis, no parent summary.
+            BlockHash::new(Digest::default())
+        } else {
+            self.parent_map
+                .remove(proto_parent_hash)
+                .unwrap_or_else(|| panic!("failed to take {}", proto_parent_hash))
+                .hash
+        };
         let new_proto_hash = *finalized_block.proto_block().hash();
-        let block = Block::new(parent_summary.hash, post_state_hash, finalized_block);
+        let block = Block::new(parent_summary_hash, post_state_hash, finalized_block);
         let summary = ExecutedBlockSummary {
             hash: *block.hash(),
             post_state_hash,
