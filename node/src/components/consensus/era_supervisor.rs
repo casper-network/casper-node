@@ -6,7 +6,7 @@
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     fmt::{self, Debug, Formatter},
     rc::Rc,
 };
@@ -90,6 +90,7 @@ impl<I> EraSupervisor<I>
 where
     I: NodeIdT,
 {
+    /// Creates a new `EraSupervisor`, starting in era 0.
     pub(crate) fn new<REv: ReactorEventT<I>, R: Rng + ?Sized>(
         timestamp: Timestamp,
         config: WithDir<Config>,
@@ -111,7 +112,7 @@ where
             highway_config: *highway_config,
         };
 
-        let effects = era_supervisor.handling(effect_builder, rng).new_era(
+        let results = era_supervisor.new_era(
             EraId(0),
             timestamp,
             validator_stakes,
@@ -119,10 +120,15 @@ where
             0,
             None,
         );
+        let effects = era_supervisor
+            .handling(effect_builder, rng)
+            .handle_consensus_results(EraId(0), results);
 
         Ok((era_supervisor, effects))
     }
 
+    /// Returns a temporary container with this `EraSupervisor`, `EffectBuilder` and random number
+    /// generator, for handling events.
     pub(super) fn handling<'a, REv: ReactorEventT<I>, R: Rng + ?Sized>(
         &'a mut self,
         effect_builder: EffectBuilder<REv>,
@@ -135,6 +141,7 @@ where
         }
     }
 
+    /// Starts a new era; panics if it already exists.
     fn new_era(
         &mut self,
         era_id: EraId,
@@ -147,6 +154,7 @@ where
         if self.active_eras.contains_key(&era_id) {
             panic!("{:?} already exists", era_id);
         }
+        self.current_era = era_id;
         let sum_stakes: Motes = validator_stakes.iter().map(|(_, stake)| *stake).sum();
         let validators: Validators<PublicKey> = if sum_stakes.value() > U512::from(u64::MAX) {
             validator_stakes
@@ -201,57 +209,6 @@ where
         results
     }
 
-    fn start_next_era(
-        &mut self,
-        fb: &FinalizedBlock,
-    ) -> Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>> {
-        self.current_era_mut().consensus.deactivate_validator();
-        // TODO: Learn the new weights from contract (validator rotation).
-        let validator_stakes = self.validator_stakes.clone();
-        self.current_era = fb.era_id().successor();
-        self.new_era(
-            fb.era_id().successor(),
-            fb.timestamp(),
-            validator_stakes,
-            fb.timestamp(),
-            fb.height() + 1,
-            Some(fb.proto_block().clone()),
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn handle_finalized_block(
-        &mut self,
-        era_id: EraId,
-        proto_block: ProtoBlock,
-        new_equivocators: Vec<PublicKey>,
-        rewards: BTreeMap<PublicKey, u64>,
-        timestamp: Timestamp,
-        height: u64,
-        switch_block: bool,
-    ) -> FinalizedBlock {
-        assert_eq!(
-            era_id, self.current_era,
-            "finalized block in unexpected era"
-        );
-        let mut system_transactions: Vec<_> = new_equivocators
-            .into_iter()
-            .map(SystemTransaction::Slash)
-            .collect();
-        if !rewards.is_empty() {
-            system_transactions.push(SystemTransaction::Rewards(rewards));
-        };
-        // Request execution of the finalized block.
-        FinalizedBlock::new(
-            proto_block,
-            timestamp,
-            system_transactions,
-            switch_block,
-            era_id,
-            self.active_eras[&era_id].start_height + height,
-        )
-    }
-
     /// Returns the current era.
     fn current_era_mut(&mut self) -> &mut Era<I> {
         self.active_eras
@@ -283,6 +240,7 @@ where
     REv: ReactorEventT<I>,
     R: Rng + ?Sized,
 {
+    /// Applies `f` to the consensus protocol of the specified era.
     fn delegate_to_era<F>(&mut self, era_id: EraId, f: F) -> Effects<Event<I>>
     where
         F: FnOnce(
@@ -299,10 +257,7 @@ where
                 Effects::new()
             }
             Some(era) => match f(&mut *era.consensus) {
-                Ok(results) => results
-                    .into_iter()
-                    .flat_map(|result| self.handle_consensus_result(era_id, result))
-                    .collect(),
+                Ok(results) => self.handle_consensus_results(era_id, results),
                 Err(error) => {
                     error!(%error, ?era_id, "got error from era id {:?}: {:?}", era_id, error);
                     Effects::new()
@@ -386,24 +341,10 @@ where
         })
     }
 
-    fn new_era(
-        &mut self,
-        era_id: EraId,
-        timestamp: Timestamp,
-        validator_stakes: Vec<(PublicKey, Motes)>,
-        start_time: Timestamp,
-        start_height: u64,
-        prev_switch_block: Option<ProtoBlock>,
-    ) -> Effects<Event<I>> {
-        let results = self.era_supervisor.new_era(
-            era_id,
-            timestamp,
-            validator_stakes,
-            start_time,
-            start_height,
-            prev_switch_block,
-        );
-
+    fn handle_consensus_results<T>(&mut self, era_id: EraId, results: T) -> Effects<Event<I>>
+    where
+        T: IntoIterator<Item = ConsensusProtocolResult<I, ProtoBlock, PublicKey>>,
+    {
         results
             .into_iter()
             .flat_map(|result| self.handle_consensus_result(era_id, result))
@@ -475,24 +416,44 @@ where
                     .effect_builder
                     .announce_finalized_proto_block(proto_block.clone())
                     .ignore();
-                let fb = self.era_supervisor.handle_finalized_block(
-                    era_id,
+                assert_eq!(
+                    era_id, self.era_supervisor.current_era,
+                    "finalized block in unexpected era"
+                );
+                let mut system_transactions: Vec<_> = new_equivocators
+                    .into_iter()
+                    .map(SystemTransaction::Slash)
+                    .collect();
+                if !rewards.is_empty() {
+                    system_transactions.push(SystemTransaction::Rewards(rewards));
+                };
+                let fb = FinalizedBlock::new(
                     proto_block,
-                    new_equivocators,
-                    rewards,
                     timestamp,
-                    height,
+                    system_transactions,
                     switch_block,
+                    era_id,
+                    self.era_supervisor.active_eras[&era_id].start_height + height,
                 );
                 if fb.switch_block() {
-                    let results = self.era_supervisor.start_next_era(&fb);
-                    let new_era_id = era_id.successor();
-                    effects.extend(
-                        results
-                            .into_iter()
-                            .flat_map(|result| self.handle_consensus_result(new_era_id, result)),
+                    // TODO: Learn the new weights from contract (validator rotation).
+                    let validator_stakes = self.era_supervisor.validator_stakes.clone();
+                    self.era_supervisor
+                        .current_era_mut()
+                        .consensus
+                        .deactivate_validator();
+                    let results = self.era_supervisor.new_era(
+                        fb.era_id().successor(),
+                        fb.timestamp(),
+                        validator_stakes,
+                        fb.timestamp(),
+                        fb.height() + 1,
+                        Some(fb.proto_block().clone()),
                     );
+                    let new_era_id = era_id.successor();
+                    effects.extend(self.handle_consensus_results(new_era_id, results));
                 }
+                // Request execution of the finalized block.
                 effects.extend(
                     self.effect_builder
                         .execute_block(fb)
