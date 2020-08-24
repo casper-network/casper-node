@@ -150,7 +150,7 @@ async fn run_validator_network() {
             let expected_eras = era_ids(&first_node);
 
             // Return if not in expected era yet.
-            if expected_eras.len() != era_num {
+            if expected_eras.len() <= era_num {
                 return false;
             }
 

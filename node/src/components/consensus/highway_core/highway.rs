@@ -4,7 +4,7 @@ pub(crate) use crate::components::consensus::highway_core::state::Params;
 pub(crate) use vertex::{Dependency, SignedWireVote, Vertex, WireVote};
 
 use thiserror::Error;
-use tracing::{error, warn};
+use tracing::{debug, error, warn};
 
 use crate::{
     components::consensus::{
@@ -224,8 +224,7 @@ impl<C: Context> Highway<C> {
     pub(crate) fn handle_timer(&mut self, timestamp: Timestamp) -> Vec<Effect<C>> {
         match self.active_validator.as_mut() {
             None => {
-                // TODO: Error?
-                warn!(%timestamp, "Observer node was called with `handle_timer` event.");
+                debug!(%timestamp, "Ignoring `handle_timer` event: only an observer node.");
                 vec![]
             }
             Some(av) => av.handle_timer(timestamp, &self.state),

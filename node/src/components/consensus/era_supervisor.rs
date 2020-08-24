@@ -64,6 +64,8 @@ pub(crate) struct Era<I> {
     consensus: Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>>,
     /// The height of this era's first block.
     start_height: u64,
+    /// The previous era's switch block. `None` for era 0.
+    prev_switch_block: Option<ProtoBlock>,
 }
 
 pub(crate) struct EraSupervisor<I> {
@@ -115,6 +117,7 @@ where
             validator_stakes,
             highway_config.genesis_era_start_timestamp,
             0,
+            None,
         );
 
         Ok((era_supervisor, effects))
@@ -139,6 +142,7 @@ where
         validator_stakes: Vec<(PublicKey, Motes)>,
         start_time: Timestamp,
         start_height: u64,
+        prev_switch_block: Option<ProtoBlock>,
     ) -> Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>> {
         if self.active_eras.contains_key(&era_id) {
             panic!("{:?} already exists", era_id);
@@ -190,10 +194,29 @@ where
         let era = Era {
             consensus: Box::new(highway),
             start_height,
+            prev_switch_block,
         };
         let _ = self.active_eras.insert(era_id, era);
 
         results
+    }
+
+    fn start_next_era(
+        &mut self,
+        fb: &FinalizedBlock,
+    ) -> Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>> {
+        self.current_era_mut().consensus.deactivate_validator();
+        // TODO: Learn the new weights from contract (validator rotation).
+        let validator_stakes = self.validator_stakes.clone();
+        self.current_era = fb.era_id().successor();
+        self.new_era(
+            fb.era_id().successor(),
+            fb.timestamp(),
+            validator_stakes,
+            fb.timestamp(),
+            fb.height() + 1,
+            Some(fb.proto_block().clone()),
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -206,10 +229,7 @@ where
         timestamp: Timestamp,
         height: u64,
         switch_block: bool,
-    ) -> (
-        Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>>,
-        FinalizedBlock,
-    ) {
+    ) -> FinalizedBlock {
         assert_eq!(
             era_id, self.current_era,
             "finalized block in unexpected era"
@@ -222,30 +242,14 @@ where
             system_transactions.push(SystemTransaction::Rewards(rewards));
         };
         // Request execution of the finalized block.
-        let fb = FinalizedBlock::new(
+        FinalizedBlock::new(
             proto_block,
             timestamp,
             system_transactions,
             switch_block,
             era_id,
             self.active_eras[&era_id].start_height + height,
-        );
-        let results = if fb.switch_block() {
-            self.current_era_mut().consensus.deactivate_validator();
-            // TODO: Learn the new weights from contract (validator rotation).
-            let validator_stakes = self.validator_stakes.clone();
-            self.current_era = fb.era_id().successor();
-            self.new_era(
-                fb.era_id().successor(),
-                fb.timestamp(),
-                validator_stakes,
-                fb.timestamp(),
-                fb.height() + 1,
-            )
-        } else {
-            vec![]
-        };
-        (results, fb)
+        )
     }
 
     /// Returns the current era.
@@ -389,6 +393,7 @@ where
         validator_stakes: Vec<(PublicKey, Motes)>,
         start_time: Timestamp,
         start_height: u64,
+        prev_switch_block: Option<ProtoBlock>,
     ) -> Effects<Event<I>> {
         let results = self.era_supervisor.new_era(
             era_id,
@@ -396,6 +401,7 @@ where
             validator_stakes,
             start_time,
             start_height,
+            prev_switch_block,
         );
 
         results
@@ -440,14 +446,22 @@ where
             ConsensusProtocolResult::CreateNewBlock {
                 block_context,
                 opt_parent,
-            } => self
-                .effect_builder
-                .request_proto_block(block_context, opt_parent, self.rng.gen())
-                .event(move |(proto_block, block_context)| Event::NewProtoBlock {
-                    era_id,
-                    proto_block,
-                    block_context,
-                }),
+            } => {
+                let opt_parent = opt_parent.or_else(|| {
+                    self.era_supervisor
+                        .active_eras
+                        .get(&era_id)?
+                        .prev_switch_block
+                        .clone()
+                });
+                self.effect_builder
+                    .request_proto_block(block_context, opt_parent, self.rng.gen())
+                    .event(move |(proto_block, block_context)| Event::NewProtoBlock {
+                        era_id,
+                        proto_block,
+                        block_context,
+                    })
+            }
             ConsensusProtocolResult::FinalizedBlock {
                 value: proto_block,
                 new_equivocators,
@@ -461,7 +475,7 @@ where
                     .effect_builder
                     .announce_finalized_proto_block(proto_block.clone())
                     .ignore();
-                let (results, fb) = self.era_supervisor.handle_finalized_block(
+                let fb = self.era_supervisor.handle_finalized_block(
                     era_id,
                     proto_block,
                     new_equivocators,
@@ -470,11 +484,15 @@ where
                     height,
                     switch_block,
                 );
-                effects.extend(
-                    results
-                        .into_iter()
-                        .flat_map(|result| self.handle_consensus_result(era_id, result)),
-                );
+                if fb.switch_block() {
+                    let results = self.era_supervisor.start_next_era(&fb);
+                    let new_era_id = era_id.successor();
+                    effects.extend(
+                        results
+                            .into_iter()
+                            .flat_map(|result| self.handle_consensus_result(new_era_id, result)),
+                    );
+                }
                 effects.extend(
                     self.effect_builder
                         .execute_block(fb)
