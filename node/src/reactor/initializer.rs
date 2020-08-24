@@ -4,7 +4,7 @@ use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
 use prometheus::Registry;
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use thiserror::Error;
 
 use crate::{
@@ -108,16 +108,16 @@ impl Reactor {
     }
 }
 
-impl reactor::Reactor for Reactor {
+impl<RNG: Rng + CryptoRng + ?Sized> reactor::Reactor<RNG> for Reactor {
     type Event = Event;
     type Config = WithDir<validator::Config>;
     type Error = Error;
 
-    fn new<Rd: Rng + ?Sized>(
+    fn new(
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut Rd,
+        _rng: &mut RNG,
     ) -> Result<(Self, Effects<Self::Event>), Error> {
         let (root, config) = config.into_parts();
 
@@ -149,10 +149,10 @@ impl reactor::Reactor for Reactor {
         ))
     }
 
-    fn dispatch_event<Rd: Rng + ?Sized>(
+    fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut Rd,
+        rng: &mut RNG,
         event: Event,
     ) -> Effects<Self::Event> {
         match event {

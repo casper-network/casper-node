@@ -24,7 +24,7 @@
 //!    also required for busines logic, a second counter should be kept in the component's state.
 
 use prometheus::{Encoder, Registry, TextEncoder};
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use tracing::error;
 
 use crate::{
@@ -39,10 +39,10 @@ pub(crate) struct Metrics {
     registry: Registry,
 }
 
-impl<REv> Component<REv> for Metrics {
+impl<REv, R: Rng + CryptoRng + ?Sized> Component<REv, R> for Metrics {
     type Event = MetricsRequest;
 
-    fn handle_event<R: Rng + ?Sized>(
+    fn handle_event(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

@@ -735,14 +735,15 @@ impl<'a, 'b> crate::Subcommand<'a, 'b> for PutDeploy {
             chain_name,
         };
 
-        let deploy_hash_bytes: [u8; 32] = rand::thread_rng().gen();
+        let mut rng = rand::thread_rng();
+        let deploy_hash_bytes: [u8; 32] = rng.gen();
         let deploy_hash = Digest::from(deploy_hash_bytes);
 
         let session = Self::parse_session_info(matches);
         let payment = Self::parse_payment_info(matches);
 
         let msg = b"Message"; // TODO
-        let sig = asymmetric_key::sign(msg, &secret_key, &public_key);
+        let sig = asymmetric_key::sign(msg, &secret_key, &public_key, &mut rng);
 
         let deploy = Deploy::new(deploy_hash.into(), header, payment, session, vec![sig]);
 

@@ -102,16 +102,16 @@ impl Drop for Reactor {
     }
 }
 
-impl reactor::Reactor for Reactor {
+impl reactor::Reactor<TestRng> for Reactor {
     type Event = Event;
     type Config = GossipConfig;
     type Error = Error;
 
-    fn new<R: Rng + ?Sized>(
+    fn new(
         config: Self::Config,
         _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut R,
+        rng: &mut TestRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let network = NetworkController::create_node(event_queue, rng);
 
@@ -134,10 +134,10 @@ impl reactor::Reactor for Reactor {
         Ok((reactor, effects))
     }
 
-    fn dispatch_event<R: Rng + ?Sized>(
+    fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut R,
+        rng: &mut TestRng,
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -311,7 +311,7 @@ async fn assert_settled(
     rng: &mut TestRng,
     timeout: Duration,
 ) {
-    let has_responded = |_nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
+    let has_responded = |_nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>, _>>| {
         fetched.lock().unwrap().0
     };
 

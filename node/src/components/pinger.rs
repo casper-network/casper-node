@@ -10,7 +10,7 @@ use std::{
 };
 
 use prometheus::{IntCounter, Registry};
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
@@ -95,13 +95,14 @@ impl Display for Event {
     }
 }
 
-impl<REv> Component<REv> for Pinger
+impl<REv, R> Component<REv, R> for Pinger
 where
     REv: From<Event> + Send + From<NetworkRequest<NodeId, Message>>,
+    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event;
 
-    fn handle_event<R: Rng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

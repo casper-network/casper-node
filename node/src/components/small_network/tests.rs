@@ -13,7 +13,6 @@ use std::{
 use derive_more::From;
 use pnet::datalink;
 use prometheus::Registry;
-use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
@@ -58,15 +57,15 @@ impl From<NetworkAnnouncement<NodeId, Message>> for Event {
     }
 }
 
-impl Reactor for TestReactor {
+impl Reactor<TestRng> for TestReactor {
     type Event = Event;
     type Config = small_network::Config;
     type Error = anyhow::Error;
 
-    fn dispatch_event<R: Rng + ?Sized>(
+    fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut R,
+        rng: &mut TestRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -77,11 +76,11 @@ impl Reactor for TestReactor {
         }
     }
 
-    fn new<R: Rng + ?Sized>(
+    fn new(
         cfg: Self::Config,
         _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut R,
+        _rng: &mut TestRng,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let (net, effects) = SmallNetwork::new(event_queue, WithDir::default_path(cfg))?;
 
@@ -122,7 +121,7 @@ impl Display for Message {
 
 /// Checks whether or not a given network is completely connected.
 fn network_is_complete(
-    nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<TestReactor>>>,
+    nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<TestReactor>, TestRng>>,
 ) -> bool {
     // We need at least one node.
     if nodes.is_empty() {
