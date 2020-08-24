@@ -76,7 +76,8 @@ impl ProtoBlock {
         switch_block: bool,
     ) -> Self {
         let hash = ProtoBlockHash::new(hash::hash(
-            &rmp_serde::to_vec(&(&deploys, random_bit)).expect("serialize ProtoBlock"),
+            &rmp_serde::to_vec(&(parent_hash, &deploys, random_bit, switch_block))
+                .expect("serialize ProtoBlock"),
         ));
 
         ProtoBlock {

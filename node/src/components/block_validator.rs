@@ -97,6 +97,12 @@ where
                 sender,
                 responder,
             }) => {
+                if proto_block.deploys().is_empty() {
+                    // If there are no deploys, return early.
+                    let mut effects = Effects::new();
+                    effects.extend(responder.respond((true, proto_block)).ignore());
+                    return effects;
+                }
                 // No matter the current state, we will request the deploys inside this protoblock
                 // for now. Duplicate requests must still be answered, but are
                 // de-duplicated by the fetcher.
