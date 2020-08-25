@@ -59,6 +59,12 @@ const HEADER_ERROR_MIN: u32 = HEADER_ERROR_OFFSET;
 /// Maximum value of contract header error's inclusive range.
 const HEADER_ERROR_MAX: u32 = HEADER_ERROR_OFFSET + u8::MAX as u32;
 
+/// Minimum value of an auction contract error's inclusive range.
+const AUCTION_ERROR_MIN: u32 = AUCTION_ERROR_OFFSET;
+
+/// Maximum value of an auction contract error's inclusive range.
+const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
+
 /// Errors which can be encountered while running a smart contract.
 ///
 /// An `ApiError` can be converted to a `u32` in order to be passed via the execution engine's
@@ -662,6 +668,7 @@ impl From<u32> for ApiError {
             POS_ERROR_MIN..=POS_ERROR_MAX => ApiError::ProofOfStake(value as u8),
             MINT_ERROR_MIN..=MINT_ERROR_MAX => ApiError::Mint(value as u8),
             HEADER_ERROR_MIN..=HEADER_ERROR_MAX => ApiError::ContractHeader(value as u8),
+            AUCTION_ERROR_MIN..=AUCTION_ERROR_MAX => ApiError::AuctionError(value as u8),
             _ => ApiError::Unhandled,
         }
     }
@@ -874,5 +881,7 @@ mod tests {
         round_trip(Err(ApiError::ProofOfStake(u8::MAX)));
         round_trip(Err(ApiError::User(0)));
         round_trip(Err(ApiError::User(u16::MAX)));
+        round_trip(Err(ApiError::AuctionError(0)));
+        round_trip(Err(ApiError::AuctionError(u8::MAX)));
     }
 }
