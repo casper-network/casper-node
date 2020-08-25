@@ -292,7 +292,6 @@ where
         msg: Vec<u8>,
         rng: &mut R,
     ) -> Result<Vec<CpResult<I, C>>, Error> {
-        info!("MSG {}", String::from_utf8(msg.clone()).unwrap());
         let highway_message: HighwayMessage<C> = rmp_serde::from_read_ref(msg.as_slice()).unwrap();
         Ok(match highway_message {
             HighwayMessage::NewVertex(ref v) if self.highway.has_vertex(v) => vec![],
