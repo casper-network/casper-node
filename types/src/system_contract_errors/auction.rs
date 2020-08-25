@@ -59,6 +59,15 @@ pub enum Error {
     /// Raised whenever a validator's funds are still locked in but an attempt to withdraw was made.
     #[fail(display = "Validator's funds are locked")]
     ValidatorFundsLocked = 15,
+    /// Called when caller is not a system account.
+    #[fail(display = "Not a system account")]
+    InvalidCaller = 16,
+    /// Validator is not not bonded.
+    #[fail(display = "Validator's bond not found")]
+    BondNotFound = 17,
+    /// Unable to create purse.
+    #[fail(display = "Unable to create purse")]
+    CreatePurseFailed = 18,
 }
 
 impl CLTyped for Error {

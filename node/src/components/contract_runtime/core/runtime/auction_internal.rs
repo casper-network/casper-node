@@ -1,9 +1,8 @@
 use casperlabs_types::{
-    auction::{AuctionProvider, MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
+    auction::{AuctionProvider, RuntimeProvider, StorageProvider, SystemProvider},
     bytesrepr::{FromBytes, ToBytes},
-    runtime_args,
     system_contract_errors::auction::Error,
-    CLTyped, CLValue, Key, PublicKey, RuntimeArgs, URef, U512,
+    CLTyped, CLValue, Key, URef, U512,
 };
 
 use super::Runtime;
@@ -66,55 +65,6 @@ where
         let mint_contract_hash = self.get_mint_contract();
         self.mint_transfer(mint_contract_hash, source, target, amount)
             .map_err(|_| Error::Transfer)
-    }
-}
-
-impl<'a, R> MintProvider for Runtime<'a, R>
-where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
-{
-    type Error = Error;
-
-    fn bond(
-        &mut self,
-        public_key: PublicKey,
-        amount: U512,
-        purse: URef,
-    ) -> Result<(URef, U512), Self::Error> {
-        const ARG_AMOUNT: &str = "amount";
-        const ARG_PURSE: &str = "purse";
-        const ARG_PUBLIC_KEY: &str = "public_key";
-
-        let args_values: RuntimeArgs = runtime_args! {
-            ARG_AMOUNT => amount,
-            ARG_PURSE => purse,
-            ARG_PUBLIC_KEY => public_key,
-        };
-
-        let mint_contract_hash = self.get_mint_contract();
-
-        let result = self
-            .call_contract(mint_contract_hash, "bond", args_values)
-            .map_err(|_| Error::Bonding)?;
-        Ok(result.into_t().map_err(|_| Error::Bonding)?)
-    }
-
-    fn unbond(&mut self, public_key: PublicKey, amount: U512) -> Result<(URef, U512), Self::Error> {
-        const ARG_AMOUNT: &str = "amount";
-        const ARG_PUBLIC_KEY: &str = "public_key";
-
-        let args_values: RuntimeArgs = runtime_args! {
-            ARG_AMOUNT => amount,
-            ARG_PUBLIC_KEY => public_key,
-        };
-
-        let mint_contract_hash = self.get_mint_contract();
-
-        let result = self
-            .call_contract(mint_contract_hash, "unbond", args_values)
-            .map_err(|_| Error::Unbonding)?;
-        Ok(result.into_t().map_err(|_| Error::Unbonding)?)
     }
 }
 

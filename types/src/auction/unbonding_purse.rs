@@ -6,12 +6,17 @@ use crate::{
 };
 use bytesrepr::FromBytes;
 
+/// Unbonding purse.
 #[cfg_attr(test, derive(Debug))]
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct UnbondingPurse {
+    /// Unbonding Purse.
     pub purse: URef,
+    /// Unbonding Origin.
     pub origin: PublicKey,
+    /// Unbonding Era.
     pub era_of_withdrawal: u64,
+    /// Unbonding Amount.
     pub amount: U512,
 }
 

@@ -2,7 +2,7 @@ use crate::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::Error,
-    CLTyped, Key, PublicKey, URef, U512,
+    CLTyped, Key, URef, U512,
 };
 
 /// Provider of runtime host functionality.
@@ -24,23 +24,6 @@ pub trait StorageProvider {
 
     /// Write data to [`URef].
     fn write<T: ToBytes + CLTyped>(&mut self, uref: URef, value: T) -> Result<(), Self::Error>;
-}
-
-/// Provides functionality of a mint contract.
-pub trait MintProvider {
-    /// Error representation for Mint errors.
-    type Error: From<Error>;
-
-    /// Bond specified amount from a purse.
-    fn bond(
-        &mut self,
-        public_key: PublicKey,
-        amount: U512,
-        purse: URef,
-    ) -> Result<(URef, U512), Self::Error>;
-
-    /// Unbond specified amount.
-    fn unbond(&mut self, public_key: PublicKey, amount: U512) -> Result<(URef, U512), Self::Error>;
 }
 
 /// Provides functionality of a system module.

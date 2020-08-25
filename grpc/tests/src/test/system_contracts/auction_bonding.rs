@@ -12,9 +12,8 @@ use casperlabs_node::{
 };
 use casperlabs_types::{
     account::AccountHash,
-    auction::INITIAL_ERA_ID,
+    auction::{BidPurses, UnbondingPurses, DEFAULT_UNBONDING_DELAY, INITIAL_ERA_ID},
     bytesrepr::FromBytes,
-    mint::{BidPurses, UnbondingPurses, DEFAULT_UNBONDING_DELAY},
     runtime_args, ApiError, CLTyped, ContractHash, RuntimeArgs, U512,
 };
 

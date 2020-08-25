@@ -1686,14 +1686,7 @@ where
         const METHOD_CREATE: &str = "create";
         const METHOD_BALANCE: &str = "balance";
         const METHOD_TRANSFER: &str = "transfer";
-        const METHOD_BOND: &str = "bond";
-        const METHOD_UNBOND: &str = "unbond";
-        const METHOD_PROCESS_UNBOND_REQUESTS: &str = "process_unbond_requests";
-        const METHOD_SLASH: &str = "slash";
         const ARG_AMOUNT: &str = "amount";
-        const ARG_PUBLIC_KEY: &str = "public_key";
-        const ARG_PURSE: &str = "purse";
-        const ARG_VALIDATOR_PUBLIC_KEYS: &str = "validator_public_keys";
 
         let state = self.context.state();
         let access_rights = {
@@ -1771,41 +1764,6 @@ where
                 let amount: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
                 let result: Result<(), mint::Error> = mint_runtime.transfer(source, target, amount);
                 CLValue::from_t(result).map_err(Self::reverter)?
-            }
-            // Type: `fn bond(account_hash: AccountHash, source_purse: URef, quantity: U512) -> Result<(URef, U512), Error>`
-            METHOD_BOND => {
-                let public_key = Self::get_named_argument(&runtime_args, ARG_PUBLIC_KEY)?;
-                let source_purse: URef = Self::get_named_argument(&runtime_args, ARG_PURSE)?;
-                let quantity: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
-                let result = mint_runtime
-                    .bond(public_key, source_purse, quantity)
-                    .map_err(Self::reverter)?;
-                CLValue::from_t(result).map_err(Self::reverter)?
-            }
-            // Type: `fn unbond(account_hash: AccountHash, source_purse: URef, quantity: U512) -> Result<(URef, U512), Error>`
-            METHOD_UNBOND => {
-                let public_key = Self::get_named_argument(&runtime_args, ARG_PUBLIC_KEY)?;
-                let quantity: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
-                let result = mint_runtime
-                    .unbond(public_key, quantity)
-                    .map_err(Self::reverter)?;
-                CLValue::from_t(result).map_err(Self::reverter)?
-            }
-            // Type: `fn process_unbond_requests() -> Result<(), Error>`
-            METHOD_PROCESS_UNBOND_REQUESTS => {
-                mint_runtime
-                    .process_unbond_requests()
-                    .map_err(Self::reverter)?;
-                CLValue::from_t(()).map_err(Self::reverter)?
-            }
-            // Type: `fn slash(validator_account_hashes: &[AccountHash]) -> Result<(), Error>`
-            METHOD_SLASH => {
-                let validator_public_keys =
-                    Self::get_named_argument(&runtime_args, ARG_VALIDATOR_PUBLIC_KEYS)?;
-                mint_runtime
-                    .slash(validator_public_keys)
-                    .map_err(Self::reverter)?;
-                CLValue::from_t(()).map_err(Self::reverter)?
             }
             _ => CLValue::from_t(()).map_err(Self::reverter)?,
         };
@@ -2066,6 +2024,41 @@ where
             auction::METHOD_READ_ERA_ID => {
                 let result = runtime.read_era_id().map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)?
+            }
+
+            // Type: `fn bond(account_hash: AccountHash, source_purse: URef, quantity: U512) -> Result<(URef, U512), Error>`
+            auction::METHOD_BOND => {
+                let public_key = Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
+                let source_purse: URef =
+                    Self::get_named_argument(&runtime_args, auction::ARG_SOURCE_PURSE)?;
+                let quantity: U512 = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let result = runtime
+                    .bond(public_key, source_purse, quantity)
+                    .map_err(Self::reverter)?;
+                CLValue::from_t(result).map_err(Self::reverter)?
+            }
+            // Type: `fn unbond(account_hash: AccountHash, source_purse: URef, quantity: U512) -> Result<(URef, U512), Error>`
+            auction::METHOD_UNBOND => {
+                let public_key = Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
+                let quantity: U512 = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let result = runtime
+                    .unbond(public_key, quantity)
+                    .map_err(Self::reverter)?;
+                CLValue::from_t(result).map_err(Self::reverter)?
+            }
+            // Type: `fn process_unbond_requests() -> Result<(), Error>`
+            auction::METHOD_PROCESS_UNBOND_REQUESTS => {
+                runtime.process_unbond_requests().map_err(Self::reverter)?;
+                CLValue::from_t(()).map_err(Self::reverter)?
+            }
+            // Type: `fn slash(validator_account_hashes: &[AccountHash]) -> Result<(), Error>`
+            auction::METHOD_SLASH => {
+                let validator_public_keys =
+                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEYS)?;
+                runtime
+                    .slash(validator_public_keys)
+                    .map_err(Self::reverter)?;
+                CLValue::from_t(()).map_err(Self::reverter)?
             }
 
             _ => CLValue::from_t(()).map_err(Self::reverter)?,

@@ -5,11 +5,7 @@ use casperlabs_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casperlabs_types::{
-    contracts::NamedKeys,
-    mint::{BidPurses, UnbondingPurses, BID_PURSES_KEY, UNBONDING_PURSES_KEY},
-    CLValue,
-};
+use casperlabs_types::{contracts::NamedKeys, CLValue};
 
 const HASH_KEY_NAME: &str = "mint_hash";
 const ACCESS_KEY_NAME: &str = "mint_access";
@@ -35,26 +31,6 @@ pub extern "C" fn transfer() {
 }
 
 #[no_mangle]
-pub extern "C" fn bond() {
-    mint_token::bond();
-}
-
-#[no_mangle]
-pub extern "C" fn unbond() {
-    mint_token::unbond();
-}
-
-#[no_mangle]
-pub extern "C" fn process_unbond_requests() {
-    mint_token::process_unbond_requests();
-}
-
-#[no_mangle]
-pub extern "C" fn slash() {
-    mint_token::slash();
-}
-
-#[no_mangle]
 pub extern "C" fn install() {
     let entry_points = mint_token::get_entry_points();
 
@@ -62,15 +38,7 @@ pub extern "C" fn install() {
     runtime::put_key(HASH_KEY_NAME, contract_package_hash.into());
     runtime::put_key(ACCESS_KEY_NAME, access_uref.into());
 
-    let mut named_keys = NamedKeys::new();
-    named_keys.insert(
-        BID_PURSES_KEY.into(),
-        storage::new_uref(BidPurses::new()).into(),
-    );
-    named_keys.insert(
-        UNBONDING_PURSES_KEY.into(),
-        storage::new_uref(UnbondingPurses::new()).into(),
-    );
+    let named_keys = NamedKeys::new();
 
     let (contract_key, _contract_version) =
         storage::add_contract_version(contract_package_hash, entry_points, named_keys);

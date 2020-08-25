@@ -13,22 +13,19 @@ use casperlabs_contract::{
 use casperlabs_types::{
     account::AccountHash,
     auction::{
-        AuctionProvider, EraId, MintProvider, RuntimeProvider, ARG_AMOUNT, ARG_DELEGATION_RATE,
-        ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_PURSE, ARG_SOURCE_PURSE, ARG_VALIDATOR,
-        ARG_VALIDATOR_KEYS, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_QUASH_BID, METHOD_READ_ERA_ID,
-        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS, METHOD_RUN_AUCTION,
-        METHOD_UNDELEGATE, METHOD_WITHDRAW_BID, {StorageProvider, SystemProvider},
+        AuctionProvider, DelegationRate, EraId, RuntimeProvider, SeigniorageRecipients,
+        StorageProvider, SystemProvider, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
+        ARG_PUBLIC_KEY, ARG_SOURCE_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_KEYS,
+        ARG_VALIDATOR_PUBLIC_KEYS, METHOD_ADD_BID, METHOD_BOND, METHOD_DELEGATE,
+        METHOD_PROCESS_UNBOND_REQUESTS, METHOD_QUASH_BID, METHOD_READ_ERA_ID,
+        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS, METHOD_RUN_AUCTION, METHOD_SLASH,
+        METHOD_UNBOND, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
     },
-    auction::{DelegationRate, SeigniorageRecipients},
     bytesrepr::{FromBytes, ToBytes},
-    runtime_args,
     system_contract_errors::auction::Error,
     CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
-    Parameter, PublicKey, RuntimeArgs, URef, U512,
+    Parameter, PublicKey, URef, U512,
 };
-
-const BOND: &str = "bond";
-const UNBOND: &str = "unbond";
 
 struct AuctionContract;
 
@@ -70,35 +67,6 @@ impl SystemProvider for AuctionContract {
     }
 }
 
-impl MintProvider for AuctionContract {
-    type Error = Error;
-
-    fn bond(
-        &mut self,
-        public_key: PublicKey,
-        amount: U512,
-        purse: URef,
-    ) -> Result<(URef, U512), Self::Error> {
-        let contract_hash = system::get_mint();
-        let args = runtime_args! {
-            ARG_AMOUNT => amount,
-            ARG_PURSE => purse,
-            ARG_PUBLIC_KEY => public_key,
-        };
-
-        Ok(runtime::call_contract(contract_hash, BOND, args))
-    }
-
-    fn unbond(&mut self, public_key: PublicKey, amount: U512) -> Result<(URef, U512), Self::Error> {
-        let contract_hash = system::get_mint();
-        let args = runtime_args! {
-            ARG_AMOUNT => amount,
-            ARG_PUBLIC_KEY => public_key,
-        };
-        Ok(runtime::call_contract(contract_hash, UNBOND, args))
-    }
-}
-
 impl RuntimeProvider for AuctionContract {
     fn get_caller(&self) -> AccountHash {
         runtime::get_caller()
@@ -137,6 +105,7 @@ pub extern "C" fn add_bid() {
         .unwrap_or_revert();
 
     let cl_value = CLValue::from_t(result).unwrap_or_revert();
+
     runtime::ret(cl_value)
 }
 
@@ -198,6 +167,42 @@ pub extern "C" fn read_era_id() {
     let result = AuctionContract.read_era_id().unwrap_or_revert();
     let cl_value = CLValue::from_t(result).unwrap_or_revert();
     runtime::ret(cl_value);
+}
+
+#[no_mangle]
+pub extern "C" fn bond() {
+    let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
+    let source = runtime::get_named_arg(ARG_SOURCE_PURSE);
+    let amount = runtime::get_named_arg(ARG_AMOUNT);
+    let result = AuctionContract
+        .bond(public_key, source, amount)
+        .unwrap_or_revert();
+    let ret = CLValue::from_t(result).unwrap_or_revert();
+    runtime::ret(ret);
+}
+
+#[no_mangle]
+pub extern "C" fn unbond() {
+    let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
+    let amount = runtime::get_named_arg(ARG_AMOUNT);
+    let result = AuctionContract
+        .unbond(public_key, amount)
+        .unwrap_or_revert();
+    let ret = CLValue::from_t(result).unwrap_or_revert();
+    runtime::ret(ret)
+}
+
+#[no_mangle]
+pub extern "C" fn process_unbond_requests() {
+    AuctionContract.process_unbond_requests().unwrap_or_revert();
+}
+
+#[no_mangle]
+pub extern "C" fn slash() {
+    let validator_public_keys = runtime::get_named_arg(ARG_VALIDATOR_PUBLIC_KEYS);
+    AuctionContract
+        .slash(validator_public_keys)
+        .unwrap_or_revert();
 }
 
 pub fn get_entry_points() -> EntryPoints {
@@ -297,6 +302,45 @@ pub fn get_entry_points() -> EntryPoints {
 
     let entry_point = EntryPoint::new(
         METHOD_RUN_AUCTION,
+        vec![],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_BOND,
+        vec![
+            Parameter::new(ARG_SOURCE_PURSE, CLType::URef),
+            Parameter::new(ARG_AMOUNT, CLType::U512),
+        ],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_UNBOND,
+        vec![],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_PROCESS_UNBOND_REQUESTS,
+        vec![],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_SLASH,
         vec![],
         CLType::Unit,
         EntryPointAccess::Public,

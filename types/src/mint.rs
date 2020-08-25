@@ -2,46 +2,19 @@
 mod era_provider;
 mod runtime_provider;
 mod storage_provider;
-mod unbonding_purse;
 
-use alloc::{collections::BTreeMap, vec::Vec};
 use core::convert::TryFrom;
 
-use crate::{
-    account::AccountHash, system_contract_errors::mint::Error, Key, PublicKey, URef, U512,
-};
+use crate::{account::AccountHash, system_contract_errors::mint::Error, Key, URef, U512};
 
 pub use crate::mint::{
-    era_provider::EraProvider, runtime_provider::RuntimeProvider,
-    storage_provider::StorageProvider, unbonding_purse::UnbondingPurses,
+    era_provider::EraProvider, runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
 };
-use unbonding_purse::UnbondingPurse;
 
 const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
 
-/// Bidders mapped to their bidding purses and tokens contained therein. Delegators' tokens
-/// are kept in the validator bid purses, available for withdrawal up to the delegated number
-/// of tokens. Withdrawal moves the tokens to a delegator-controlled unbonding purse.
-pub type BidPurses = BTreeMap<PublicKey, URef>;
-
-/// Founding validators mapped to their staking purses and tokens contained therein. These
-/// function much like the regular bidding purses, but have a field indicating whether any tokens
-/// may be unbonded.
-pub type FounderPurses = BTreeMap<AccountHash, (URef, bool)>;
-
-/// Name of bid purses named key.
-pub const BID_PURSES_KEY: &str = "bid_purses";
-/// Name of founder purses named key.
-pub const FOUNDER_PURSES_KEY: &str = "founder_purses";
-/// Name of unbonding purses key.
-pub const UNBONDING_PURSES_KEY: &str = "unbonding_purses";
-const _REWARD_PURSES: &str = "reward_purses";
-
-/// Default number of eras that need to pass to be able to withdraw unbonded funds.
-pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
-
 /// Mint trait.
-pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
+pub trait Mint: RuntimeProvider + StorageProvider {
     /// Mint new token with given `initial_balance` balance. Returns new purse on success, otherwise
     /// an error.
     fn mint(&mut self, initial_balance: U512) -> Result<URef, Error> {
@@ -98,179 +71,6 @@ pub trait Mint: RuntimeProvider + StorageProvider + EraProvider {
         };
         self.write(source_balance, source_value - amount)?;
         self.add(target_balance, amount)?;
-        Ok(())
-    }
-
-    /// Creates a new purse in bid_purses corresponding to a validator's key, or tops off an
-    /// existing one.
-    ///
-    /// Returns the bid purse's key and current quantity of motes.
-    fn bond(
-        &mut self,
-        public_key: PublicKey,
-        source_purse: URef,
-        quantity: U512,
-    ) -> Result<(URef, U512), Error> {
-        let bid_purses_uref = self
-            .get_key(BID_PURSES_KEY)
-            .and_then(Key::into_uref)
-            .ok_or(Error::MissingKey)?;
-
-        let mut bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
-
-        let bond_purse = match bid_purses.get(&public_key) {
-            Some(purse) => *purse,
-            None => {
-                let new_purse = self.mint(U512::zero())?;
-                bid_purses.insert(public_key, new_purse);
-                self.write(bid_purses_uref, bid_purses)?;
-                new_purse
-            }
-        };
-
-        self.transfer(source_purse, bond_purse, quantity)?;
-
-        let total_amount = self.balance(bond_purse)?.unwrap();
-
-        Ok((bond_purse, total_amount))
-    }
-
-    /// Creates a new purse in unbonding_purses given a validator's key and quantity, returning
-    /// the new purse's key and the quantity of motes remaining in the validator's bid purse.
-    fn unbond(&mut self, public_key: PublicKey, quantity: U512) -> Result<(URef, U512), Error> {
-        let bid_purses_uref = self
-            .get_key(BID_PURSES_KEY)
-            .and_then(Key::into_uref)
-            .ok_or(Error::MissingKey)?;
-
-        let bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
-
-        let bid_purse = bid_purses
-            .get(&public_key)
-            .copied()
-            .ok_or(Error::BondNotFound)?;
-        // Creates new unbonding purse with requested tokens
-        let unbond_purse = self.mint(U512::zero())?;
-
-        // Update `unbonding_purses` data
-        let unbonding_purses_uref = self
-            .get_key(UNBONDING_PURSES_KEY)
-            .and_then(Key::into_uref)
-            .ok_or(Error::MissingKey)?;
-        let mut unbonding_purses: UnbondingPurses =
-            self.read(unbonding_purses_uref)?.ok_or(Error::Storage)?;
-
-        let current_era_id = self.read_era_id();
-        let new_unbonding_purse = UnbondingPurse {
-            purse: unbond_purse,
-            origin: public_key,
-            era_of_withdrawal: current_era_id + DEFAULT_UNBONDING_DELAY,
-            amount: quantity,
-        };
-        unbonding_purses
-            .entry(public_key)
-            .or_default()
-            .push(new_unbonding_purse);
-        self.write(unbonding_purses_uref, unbonding_purses)?;
-
-        // Remaining motes in the validator's bid purse
-        let remaining_bond = self.balance(bid_purse)?.unwrap();
-        Ok((unbond_purse, remaining_bond))
-    }
-
-    /// Iterates over unbonding entries and checks if a locked amount can be paid already if
-    /// a specific era is reached.
-    ///
-    /// This entry point can be called by a system only.
-    fn process_unbond_requests(&mut self) -> Result<(), Error> {
-        if self.get_caller() != SYSTEM_ACCOUNT {
-            return Err(Error::InvalidCaller);
-        }
-        let bid_purses_uref = self
-            .get_key(BID_PURSES_KEY)
-            .and_then(Key::into_uref)
-            .ok_or(Error::MissingKey)?;
-
-        let bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
-
-        // Update `unbonding_purses` data
-        let unbonding_purses_uref = self
-            .get_key(UNBONDING_PURSES_KEY)
-            .and_then(Key::into_uref)
-            .ok_or(Error::MissingKey)?;
-        let mut unbonding_purses: UnbondingPurses =
-            self.read(unbonding_purses_uref)?.ok_or(Error::Storage)?;
-
-        let current_era_id = self.read_era_id();
-
-        for unbonding_list in unbonding_purses.values_mut() {
-            let mut new_unbonding_list = Vec::new();
-            for unbonding_purse in unbonding_list.iter() {
-                let bid_purse = bid_purses
-                    .get(&unbonding_purse.origin)
-                    .ok_or(Error::BondNotFound)?;
-                // Since `process_unbond_requests` is run before `run_auction`, so we should check
-                // if current era id is equal or greater than the `era_of_withdrawal` that was
-                // calculated on `unbond` attempt.
-                if current_era_id >= unbonding_purse.era_of_withdrawal as u64 {
-                    // Move funds from bid purse to unbonding purse
-                    self.transfer(*bid_purse, unbonding_purse.purse, unbonding_purse.amount)?;
-                } else {
-                    new_unbonding_list.push(*unbonding_purse);
-                }
-            }
-            *unbonding_list = new_unbonding_list;
-        }
-        self.write(unbonding_purses_uref, unbonding_purses)?;
-        Ok(())
-    }
-
-    /// Slashes each validator.
-    ///
-    /// This can be only invoked through a system call.
-    fn slash(&mut self, validator_public_keys: Vec<PublicKey>) -> Result<(), Error> {
-        if self.get_caller() != SYSTEM_ACCOUNT {
-            return Err(Error::InvalidCaller);
-        }
-
-        let bid_purses_uref = self
-            .get_key(BID_PURSES_KEY)
-            .and_then(Key::into_uref)
-            .ok_or(Error::MissingKey)?;
-
-        let mut bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
-
-        let unbonding_purses_uref = self
-            .get_key(UNBONDING_PURSES_KEY)
-            .and_then(Key::into_uref)
-            .ok_or(Error::MissingKey)?;
-        let mut unbonding_purses: UnbondingPurses =
-            self.read(unbonding_purses_uref)?.ok_or(Error::Storage)?;
-
-        let mut bid_purses_modified = false;
-        let mut unbonding_purses_modified = false;
-        for validator_account_hash in validator_public_keys {
-            if let Some(_bid_purse) = bid_purses.remove(&validator_account_hash) {
-                bid_purses_modified = true;
-            }
-
-            if let Some(unbonding_list) = unbonding_purses.get_mut(&validator_account_hash) {
-                let size_before = unbonding_list.len();
-
-                unbonding_list.retain(|element| element.origin != validator_account_hash);
-
-                unbonding_purses_modified = size_before != unbonding_list.len();
-            }
-        }
-
-        if bid_purses_modified {
-            self.write(bid_purses_uref, bid_purses)?;
-        }
-
-        if unbonding_purses_modified {
-            self.write(unbonding_purses_uref, unbonding_purses)?;
-        }
-
         Ok(())
     }
 }

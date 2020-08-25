@@ -24,18 +24,12 @@ pub const METHOD_MINT: &str = "mint";
 pub const METHOD_CREATE: &str = "create";
 pub const METHOD_BALANCE: &str = "balance";
 pub const METHOD_TRANSFER: &str = "transfer";
-pub const METHOD_BOND: &str = "bond";
-pub const METHOD_UNBOND: &str = "unbond";
-pub const METHOD_PROCESS_UNBOND_REQUESTS: &str = "process_unbond_requests";
-pub const METHOD_SLASH: &str = "slash";
-pub const METHOD_RELEASE_FOUNDER_STAKE: &str = "release_founder_stake";
 
 pub const ARG_AMOUNT: &str = "amount";
 pub const ARG_PURSE: &str = "purse";
 pub const ARG_SOURCE: &str = "source";
 pub const ARG_TARGET: &str = "target";
 pub const ARG_PUBLIC_KEY: &str = "public_key";
-pub const ARG_VALIDATOR_PUBLIC_KEYS: &str = "validator_public_keys";
 
 pub struct MintContract;
 
@@ -125,42 +119,6 @@ pub fn transfer() {
     runtime::ret(ret);
 }
 
-pub fn bond() {
-    let mut mint_contract = MintContract;
-    let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
-    let source_purse = runtime::get_named_arg(ARG_PURSE);
-    let quantity = runtime::get_named_arg(ARG_AMOUNT);
-    let result = mint_contract
-        .bond(public_key, source_purse, quantity)
-        .unwrap_or_revert();
-    let ret = CLValue::from_t(result).unwrap_or_revert();
-    runtime::ret(ret);
-}
-
-pub fn unbond() {
-    let mut mint_contract = MintContract;
-    let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
-    let quantity = runtime::get_named_arg(ARG_AMOUNT);
-    let result = mint_contract
-        .unbond(public_key, quantity)
-        .unwrap_or_revert();
-    let ret = CLValue::from_t(result).unwrap_or_revert();
-    runtime::ret(ret)
-}
-
-pub fn process_unbond_requests() {
-    let mut mint_contract = MintContract;
-    mint_contract.process_unbond_requests().unwrap_or_revert();
-}
-
-pub fn slash() {
-    let mut mint_contract = MintContract;
-    let validator_public_keys = runtime::get_named_arg(ARG_VALIDATOR_PUBLIC_KEYS);
-    mint_contract
-        .slash(validator_public_keys)
-        .unwrap_or_revert();
-}
-
 pub fn get_entry_points() -> EntryPoints {
     let mut entry_points = EntryPoints::new();
 
@@ -205,45 +163,6 @@ pub fn get_entry_points() -> EntryPoints {
             ok: Box::new(CLType::Unit),
             err: Box::new(CLType::U8),
         },
-        EntryPointAccess::Public,
-        EntryPointType::Contract,
-    );
-    entry_points.add_entry_point(entry_point);
-
-    let entry_point = EntryPoint::new(
-        METHOD_BOND,
-        vec![
-            Parameter::new(ARG_PURSE, CLType::URef),
-            Parameter::new(ARG_AMOUNT, CLType::U512),
-        ],
-        CLType::Unit,
-        EntryPointAccess::Public,
-        EntryPointType::Contract,
-    );
-    entry_points.add_entry_point(entry_point);
-
-    let entry_point = EntryPoint::new(
-        METHOD_UNBOND,
-        vec![],
-        CLType::Unit,
-        EntryPointAccess::Public,
-        EntryPointType::Contract,
-    );
-    entry_points.add_entry_point(entry_point);
-
-    let entry_point = EntryPoint::new(
-        METHOD_PROCESS_UNBOND_REQUESTS,
-        vec![],
-        CLType::Unit,
-        EntryPointAccess::Public,
-        EntryPointType::Contract,
-    );
-    entry_points.add_entry_point(entry_point);
-
-    let entry_point = EntryPoint::new(
-        METHOD_SLASH,
-        vec![],
-        CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );

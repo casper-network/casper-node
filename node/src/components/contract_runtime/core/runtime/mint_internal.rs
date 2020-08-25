@@ -1,10 +1,9 @@
 use casperlabs_types::{
     account::AccountHash,
-    auction::{EraId, METHOD_READ_ERA_ID},
     bytesrepr::{FromBytes, ToBytes},
-    mint::{EraProvider, Mint, RuntimeProvider, StorageProvider},
+    mint::{Mint, RuntimeProvider, StorageProvider},
     system_contract_errors::mint::Error,
-    CLTyped, CLValue, Key, RuntimeArgs, URef,
+    CLTyped, CLValue, Key, URef,
 };
 
 use super::Runtime;
@@ -98,23 +97,6 @@ where
         self.context
             .add_gs(Key::URef(uref), StoredValue::CLValue(cl_value))
             .map_err(|_| Error::Storage)
-    }
-}
-
-impl<'a, R> EraProvider for Runtime<'a, R>
-where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
-{
-    fn read_era_id(&mut self) -> EraId {
-        let result = self
-            .call_contract(
-                self.protocol_data().auction(),
-                METHOD_READ_ERA_ID,
-                RuntimeArgs::new(),
-            )
-            .expect("should call auction");
-        result.into_t().expect("should contain era id")
     }
 }
 

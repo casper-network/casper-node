@@ -10,12 +10,12 @@ use casperlabs_contract::{
 };
 use casperlabs_types::{
     auction::{
-        ActiveBids, Delegators, EraValidators, FoundingValidator, FoundingValidators,
+        ActiveBids, BidPurses, Delegators, EraValidators, FoundingValidator, FoundingValidators,
         SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
-        ValidatorWeights, AUCTION_DELAY, ERA_ID_KEY, INITIAL_ERA_ID,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        UnbondingPurses, ValidatorWeights, ACTIVE_BIDS_KEY, AUCTION_DELAY, BID_PURSES_KEY,
+        DELEGATORS_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY, INITIAL_ERA_ID,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_PURSES_KEY,
     },
-    auction::{ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY},
     contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
     runtime_args,
     system_contract_errors::mint,
@@ -27,17 +27,6 @@ const ACCESS_KEY_NAME: &str = "auction_access";
 const ENTRY_POINT_MINT: &str = "mint";
 const ARG_AMOUNT: &str = "amount";
 const ARG_GENESIS_VALIDATORS: &str = "genesis_validators";
-
-fn compute_seigniorage_recipients(
-    founding_validators: &FoundingValidators,
-) -> SeigniorageRecipients {
-    let mut seigniorage_recipients = SeigniorageRecipients::new();
-    for (era_validator, founding_validator) in founding_validators {
-        let seigniorage_recipient = SeigniorageRecipient::from(founding_validator);
-        seigniorage_recipients.insert(*era_validator, seigniorage_recipient);
-    }
-    seigniorage_recipients
-}
 
 #[no_mangle]
 pub extern "C" fn install() {
@@ -61,7 +50,7 @@ pub extern "C" fn install() {
         let mut initial_validator_weights = ValidatorWeights::new();
 
         for (validator_account_hash, amount) in genesis_validators {
-            let bonding_purse = mint_purse(mint_package_hash, amount);
+            let bonding_purse = create_purse(mint_package_hash, amount);
             let founding_validator = FoundingValidator::new(bonding_purse, amount);
             founding_validators.insert(validator_account_hash, founding_validator);
             initial_validator_weights.insert(validator_account_hash, amount);
@@ -103,6 +92,14 @@ pub extern "C" fn install() {
             ERA_VALIDATORS_KEY.into(),
             storage::new_uref(era_validators).into(),
         );
+        named_keys.insert(
+            BID_PURSES_KEY.into(),
+            storage::new_uref(BidPurses::new()).into(),
+        );
+        named_keys.insert(
+            UNBONDING_PURSES_KEY.into(),
+            storage::new_uref(UnbondingPurses::new()).into(),
+        );
 
         named_keys
     };
@@ -114,7 +111,18 @@ pub extern "C" fn install() {
     runtime::ret(return_value);
 }
 
-fn mint_purse(contract_package_hash: ContractPackageHash, amount: U512) -> URef {
+fn compute_seigniorage_recipients(
+    founding_validators: &FoundingValidators,
+) -> SeigniorageRecipients {
+    let mut seigniorage_recipients = SeigniorageRecipients::new();
+    for (era_validator, founding_validator) in founding_validators {
+        let seigniorage_recipient = SeigniorageRecipient::from(founding_validator);
+        seigniorage_recipients.insert(*era_validator, seigniorage_recipient);
+    }
+    seigniorage_recipients
+}
+
+fn create_purse(contract_package_hash: ContractPackageHash, amount: U512) -> URef {
     let args = runtime_args! {
         ARG_AMOUNT => amount,
     };

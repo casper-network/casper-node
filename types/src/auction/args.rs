@@ -18,8 +18,6 @@ pub const ARG_AMOUNT: &str = "amount";
 pub const ARG_DELEGATION_RATE: &str = "delegation_rate";
 /// Named constant for `account_hash`.
 pub const ARG_PUBLIC_KEY: &str = "public_key";
-/// Named constant for `purse`.
-pub const ARG_PURSE: &str = "purse";
 /// Named constant for `validator`.
 pub const ARG_VALIDATOR: &str = "validator";
 /// Named constant for `delegator`.
@@ -30,6 +28,8 @@ pub const ARG_SOURCE_PURSE: &str = "source_purse";
 pub const ARG_VALIDATOR_PURSE: &str = "validator_purse";
 /// Named constant for `validator_keys`.
 pub const ARG_VALIDATOR_KEYS: &str = "validator_keys";
+/// Named constant for `validator_public_keys`.
+pub const ARG_VALIDATOR_PUBLIC_KEYS: &str = "validator_public_keys";
 
 /// Named constant for method `release_founder`.
 pub const METHOD_RELEASE_FOUNDER: &str = "release_founder";
@@ -51,6 +51,16 @@ pub const METHOD_QUASH_BID: &str = "quash_bid";
 pub const METHOD_RUN_AUCTION: &str = "run_auction";
 /// Named constant for method `read_era_id`.
 pub const METHOD_READ_ERA_ID: &str = "read_era_id";
+/// Named constant for method `bond`.
+pub const METHOD_BOND: &str = "bond";
+/// Named constant for method `unbond`.
+pub const METHOD_UNBOND: &str = "unbond";
+/// Named constant for method `process_unbond_requests`.
+pub const METHOD_PROCESS_UNBOND_REQUESTS: &str = "process_unbond_requests";
+/// Named constant for method `slash`.
+pub const METHOD_SLASH: &str = "slash";
+/// Named constant for method `release_founder_stake`.
+pub const METHOD_RELEASE_FOUNDER_STAKE: &str = "release_founder_stake";
 
 /// Storage for `FoundingValidators`.
 pub const FOUNDING_VALIDATORS_KEY: &str = "founding_validators";

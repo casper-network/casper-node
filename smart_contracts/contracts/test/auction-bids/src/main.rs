@@ -49,26 +49,26 @@ pub extern "C" fn call() {
 fn add_bid() {
     let auction = system::get_auction();
     let public_key: PublicKey = runtime::get_named_arg(ARG_PUBLIC_KEY);
-    let quantity: U512 = runtime::get_named_arg(ARG_AMOUNT);
+    let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
     let delegation_rate: DelegationRate = runtime::get_named_arg(ARG_DELEGATION_RATE);
 
     let args = runtime_args! {
         ARG_PUBLIC_KEY => public_key,
         ARG_SOURCE_PURSE => account::get_main_purse(),
         ARG_DELEGATION_RATE => delegation_rate,
-        ARG_AMOUNT => quantity,
+        ARG_AMOUNT => amount,
     };
 
-    let (_purse, _quantity): (URef, U512) = runtime::call_contract(auction, METHOD_ADD_BID, args);
+    runtime::call_contract::<(URef, U512)>(auction, METHOD_ADD_BID, args);
 }
 
 fn withdraw_bid() {
     let auction = system::get_auction();
     let public_key: PublicKey = runtime::get_named_arg(ARG_PUBLIC_KEY);
-    let quantity: U512 = runtime::get_named_arg(ARG_AMOUNT);
+    let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
 
     let args = runtime_args! {
-        ARG_AMOUNT => quantity,
+        ARG_AMOUNT => amount,
         ARG_PUBLIC_KEY => public_key,
     };
 

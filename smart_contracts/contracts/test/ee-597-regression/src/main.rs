@@ -20,8 +20,9 @@ fn bond(contract_hash: ContractHash, bond_amount: U512, bonding_purse: URef) {
 
 #[no_mangle]
 pub extern "C" fn call() {
+    // bond amount == 0 should fail
     bond(
-        system::get_proof_of_stake(),
+        system::get_auction(),
         U512::from(0),
         account::get_main_purse(),
     );

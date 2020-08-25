@@ -1,28 +1,49 @@
-use alloc::{collections::BTreeMap, vec::Vec};
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 
 use super::{
     era_validators::ValidatorWeights,
     internal,
-    providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
+    providers::{RuntimeProvider, StorageProvider, SystemProvider},
     seigniorage_recipient::SeigniorageRecipients,
     EraId, EraValidators, SeigniorageRecipient, AUCTION_DELAY, AUCTION_SLOTS, SNAPSHOT_SIZE,
 };
 use crate::{
     account::AccountHash,
-    auction::{ActiveBid, DelegationRate},
+    auction::{
+        unbonding_purse::{UnbondingPurse, UnbondingPurses},
+        ActiveBid, DelegationRate,
+    },
     system_contract_errors::auction::{Error, Result},
-    PublicKey, URef, U512,
+    Key, PublicKey, URef, U512,
 };
 
-const SYSTEM_ADDR: AccountHash = AccountHash::new([0; 32]);
+/// Bidders mapped to their bidding purses and tokens contained therein. Delegators' tokens
+/// are kept in the validator bid purses, available for withdrawal up to the delegated number
+/// of tokens. Withdrawal moves the tokens to a delegator-controlled unbonding purse.
+pub type BidPurses = BTreeMap<PublicKey, URef>;
+//
+// /// Founding validators mapped to their staking purses and tokens contained therein. These
+// /// function much like the regular bidding purses, but have a field indicating whether any tokens
+// /// may be unbonded.
+// pub type FounderPurses = BTreeMap<AccountHash, (URef, bool)>;
+
+/// Name of bid purses named key.
+pub const BID_PURSES_KEY: &str = "bid_purses";
+// /// Name of founder purses named key.
+// pub const FOUNDER_PURSES_KEY: &str = "founder_purses";
+/// Name of unbonding purses key.
+pub const UNBONDING_PURSES_KEY: &str = "unbonding_purses";
+
+/// Default number of eras that need to pass to be able to withdraw unbonded funds.
+pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
+
+const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
 
 /// Bonding auctions contract implementation.
-pub trait AuctionProvider:
-    StorageProvider + SystemProvider + MintProvider + RuntimeProvider
+pub trait AuctionProvider: StorageProvider + SystemProvider + RuntimeProvider
 where
-    Error: From<<Self as StorageProvider>::Error>
-        + From<<Self as SystemProvider>::Error>
-        + From<<Self as MintProvider>::Error>,
+    Error: From<<Self as StorageProvider>::Error> + From<<Self as SystemProvider>::Error>,
 {
     /// The `founding_validators` data structure is checked, returning False if the validator is
     /// not found and returns a `false` early. If the validator is found, then validator's entry is
@@ -30,7 +51,7 @@ where
     ///
     /// For security reasons this entry point can be only called by node.
     fn release_founder(&mut self, public_key: PublicKey) -> Result<bool> {
-        if self.get_caller() != SYSTEM_ADDR {
+        if self.get_caller() != SYSTEM_ACCOUNT {
             return Err(Error::InvalidContext);
         }
 
@@ -82,23 +103,23 @@ where
     fn add_bid(
         &mut self,
         public_key: PublicKey,
-        source_purse: URef,
+        source: URef,
         delegation_rate: DelegationRate,
-        quantity: U512,
+        amount: U512,
     ) -> Result<(URef, U512)> {
         // Creates new purse with desired amount taken from `source_purse`
         // Bonds whole amount from the newly created purse
-        let (bonding_purse, _total_amount) = self.bond(public_key, quantity, source_purse)?;
+        let (bonding_purse, _total_amount) = self.bond(public_key, source, amount)?;
 
         // Update bids or stakes
         let mut founding_validators = internal::get_founding_validators(self)?;
 
-        let new_quantity = match founding_validators.get_mut(&public_key) {
+        let new_amount = match founding_validators.get_mut(&public_key) {
             // Update `founding_validators` map since `account_hash` belongs to a validator.
             Some(founding_validator) => {
                 founding_validator.bonding_purse = bonding_purse;
                 founding_validator.delegation_rate = delegation_rate;
-                founding_validator.staked_amount += quantity;
+                founding_validator.staked_amount += amount;
 
                 founding_validator.staked_amount
             }
@@ -111,7 +132,7 @@ where
                         .entry(public_key)
                         .and_modify(|active_bid| {
                             // Update existing entry
-                            active_bid.bid_amount += quantity;
+                            active_bid.bid_amount += amount;
                             active_bid.bid_purse = bonding_purse;
                             active_bid.delegation_rate = delegation_rate;
                         })
@@ -119,7 +140,7 @@ where
                             // Create new entry in active bids
                             ActiveBid {
                                 bid_purse: bonding_purse,
-                                bid_amount: quantity,
+                                bid_amount: amount,
                                 delegation_rate,
                             }
                         });
@@ -133,7 +154,7 @@ where
             }
         };
 
-        Ok((bonding_purse, new_quantity))
+        Ok((bonding_purse, new_amount))
     }
 
     /// For a non-founder validator, implements essentially the same logic as add_bid, but reducing
@@ -145,7 +166,7 @@ where
     ///
     /// The function returns a tuple of the (new) unbonding purse key and the new quantity of motes
     /// remaining in the bid. If the target bid does not exist, the function call returns an error.
-    fn withdraw_bid(&mut self, public_key: PublicKey, quantity: U512) -> Result<(URef, U512)> {
+    fn withdraw_bid(&mut self, public_key: PublicKey, amount: U512) -> Result<(URef, U512)> {
         // Update bids or stakes
         let mut founding_validators = internal::get_founding_validators(self)?;
 
@@ -155,7 +176,7 @@ where
 
                 let new_staked_amount = founding_validator
                     .staked_amount
-                    .checked_sub(quantity)
+                    .checked_sub(amount)
                     .ok_or(Error::InvalidQuantity)?;
 
                 internal::set_founding_validators(self, founding_validators)?;
@@ -174,7 +195,7 @@ where
                 let active_bid = active_bids.get_mut(&public_key).ok_or(Error::BidNotFound)?;
                 let new_amount = active_bid
                     .bid_amount
-                    .checked_sub(quantity)
+                    .checked_sub(amount)
                     .ok_or(Error::InvalidQuantity)?;
 
                 internal::set_active_bids(self, active_bids)?;
@@ -183,7 +204,7 @@ where
             }
         };
 
-        let (unbonding_purse, _total_quantity) = self.unbond(public_key, quantity)?;
+        let (unbonding_purse, _total_quantity) = self.unbond(public_key, amount)?;
 
         Ok((unbonding_purse, new_quantity))
     }
@@ -196,9 +217,9 @@ where
     fn delegate(
         &mut self,
         delegator_public_key: PublicKey,
-        source_purse: URef,
+        source: URef,
         validator_public_key: PublicKey,
-        quantity: U512,
+        amount: U512,
     ) -> Result<(URef, U512)> {
         let active_bids = internal::get_active_bids(self)?;
         // Return early if target validator is not in `active_bids`
@@ -206,8 +227,7 @@ where
             .get(&validator_public_key)
             .ok_or(Error::ValidatorNotFound)?;
 
-        let (bonding_purse, _total_amount) =
-            self.bond(delegator_public_key, quantity, source_purse)?;
+        let (bonding_purse, _total_amount) = self.bond(delegator_public_key, source, amount)?;
 
         let new_quantity = {
             let mut delegators = internal::get_delegators(self)?;
@@ -216,8 +236,8 @@ where
                 .entry(validator_public_key)
                 .or_default()
                 .entry(delegator_public_key)
-                .and_modify(|delegator| *delegator += quantity)
-                .or_insert_with(|| quantity);
+                .and_modify(|delegator| *delegator += amount)
+                .or_insert_with(|| amount);
 
             internal::set_delegators(self, delegators)?;
 
@@ -236,11 +256,11 @@ where
         &mut self,
         delegator_public_key: PublicKey,
         validator_public_key: PublicKey,
-        quantity: U512,
+        amount: U512,
     ) -> Result<U512> {
         let active_bids = internal::get_active_bids(self)?;
 
-        let (_unbonding_purse, _total_amount) = self.unbond(delegator_public_key, quantity)?;
+        let (_unbonding_purse, _total_amount) = self.unbond(delegator_public_key, amount)?;
 
         // Return early if target validator is not in `active_bids`
         let _active_bid = active_bids
@@ -257,7 +277,7 @@ where
                 .get_mut(&delegator_public_key)
                 .ok_or(Error::ValidatorNotFound)?;
 
-            let new_amount = amount.checked_sub(quantity).ok_or(Error::InvalidQuantity)?;
+            let new_amount = amount.checked_sub(*amount).ok_or(Error::InvalidQuantity)?;
 
             *amount = new_amount;
             new_amount
@@ -314,13 +334,185 @@ where
         Ok(())
     }
 
+    /// Creates a new purse in bid_purses corresponding to a validator's key, or tops off an
+    /// existing one.
+    ///
+    /// Returns the bid purse's key and current quantity of motes.
+    fn bond(&mut self, public_key: PublicKey, source: URef, amount: U512) -> Result<(URef, U512)> {
+        let bid_purses_uref = self
+            .get_key(BID_PURSES_KEY)
+            .and_then(Key::into_uref)
+            .ok_or(Error::MissingKey)?;
+
+        let mut bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
+
+        let target = match bid_purses.get(&public_key) {
+            Some(purse) => *purse,
+            None => {
+                let new_purse = self.create_purse();
+                bid_purses.insert(public_key, new_purse);
+                self.write(bid_purses_uref, bid_purses)?;
+                new_purse
+            }
+        };
+
+        self.transfer_from_purse_to_purse(source, target, amount)?;
+
+        let total_amount = self.get_balance(target)?.unwrap();
+
+        Ok((target, total_amount))
+    }
+
+    /// Creates a new purse in unbonding_purses given a validator's key and quantity, returning
+    /// the new purse's key and the quantity of motes remaining in the validator's bid purse.
+    fn unbond(&mut self, public_key: PublicKey, amount: U512) -> Result<(URef, U512)> {
+        let bid_purses_uref = self
+            .get_key(BID_PURSES_KEY)
+            .and_then(Key::into_uref)
+            .ok_or(Error::MissingKey)?;
+
+        let bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
+
+        let bid_purse = bid_purses
+            .get(&public_key)
+            .copied()
+            .ok_or(Error::BondNotFound)?;
+        // Creates new unbonding purse with requested tokens
+        let unbond_purse = self.create_purse();
+
+        // Update `unbonding_purses` data
+        let unbonding_purses_uref = self
+            .get_key(UNBONDING_PURSES_KEY)
+            .and_then(Key::into_uref)
+            .ok_or(Error::MissingKey)?;
+        let mut unbonding_purses: UnbondingPurses =
+            self.read(unbonding_purses_uref)?.ok_or(Error::Storage)?;
+
+        let current_era_id = self.read_era_id()?;
+        let new_unbonding_purse = UnbondingPurse {
+            purse: unbond_purse,
+            origin: public_key,
+            era_of_withdrawal: current_era_id + DEFAULT_UNBONDING_DELAY,
+            amount,
+        };
+        unbonding_purses
+            .entry(public_key)
+            .or_default()
+            .push(new_unbonding_purse);
+        self.write(unbonding_purses_uref, unbonding_purses)?;
+
+        // Remaining motes in the validator's bid purse
+        let remaining_bond = self.get_balance(bid_purse)?.unwrap();
+        Ok((unbond_purse, remaining_bond))
+    }
+
+    /// Iterates over unbonding entries and checks if a locked amount can be paid already if
+    /// a specific era is reached.
+    ///
+    /// This entry point can be called by a system only.
+    fn process_unbond_requests(&mut self) -> Result<()> {
+        if self.get_caller() != SYSTEM_ACCOUNT {
+            return Err(Error::InvalidCaller);
+        }
+        let bid_purses_uref = self
+            .get_key(BID_PURSES_KEY)
+            .and_then(Key::into_uref)
+            .ok_or(Error::MissingKey)?;
+
+        let bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
+
+        // Update `unbonding_purses` data
+        let unbonding_purses_uref = self
+            .get_key(UNBONDING_PURSES_KEY)
+            .and_then(Key::into_uref)
+            .ok_or(Error::MissingKey)?;
+        let mut unbonding_purses: UnbondingPurses =
+            self.read(unbonding_purses_uref)?.ok_or(Error::Storage)?;
+
+        let current_era_id = self.read_era_id()?;
+
+        for unbonding_list in unbonding_purses.values_mut() {
+            let mut new_unbonding_list = Vec::new();
+            for unbonding_purse in unbonding_list.iter() {
+                let source = bid_purses
+                    .get(&unbonding_purse.origin)
+                    .ok_or(Error::BondNotFound)?;
+                // Since `process_unbond_requests` is run before `run_auction`, so we should check
+                // if current era id is equal or greater than the `era_of_withdrawal` that was
+                // calculated on `unbond` attempt.
+                if current_era_id >= unbonding_purse.era_of_withdrawal as u64 {
+                    // Move funds from bid purse to unbonding purse
+                    self.transfer_from_purse_to_purse(
+                        *source,
+                        unbonding_purse.purse,
+                        unbonding_purse.amount,
+                    )?;
+                } else {
+                    new_unbonding_list.push(*unbonding_purse);
+                }
+            }
+            *unbonding_list = new_unbonding_list;
+        }
+        self.write(unbonding_purses_uref, unbonding_purses)?;
+        Ok(())
+    }
+
+    /// Slashes each validator.
+    ///
+    /// This can be only invoked through a system call.
+    fn slash(&mut self, validator_public_keys: Vec<PublicKey>) -> Result<()> {
+        if self.get_caller() != SYSTEM_ACCOUNT {
+            return Err(Error::InvalidCaller);
+        }
+
+        let bid_purses_uref = self
+            .get_key(BID_PURSES_KEY)
+            .and_then(Key::into_uref)
+            .ok_or(Error::MissingKey)?;
+
+        let mut bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
+
+        let unbonding_purses_uref = self
+            .get_key(UNBONDING_PURSES_KEY)
+            .and_then(Key::into_uref)
+            .ok_or(Error::MissingKey)?;
+        let mut unbonding_purses: UnbondingPurses =
+            self.read(unbonding_purses_uref)?.ok_or(Error::Storage)?;
+
+        let mut bid_purses_modified = false;
+        let mut unbonding_purses_modified = false;
+        for validator_account_hash in validator_public_keys {
+            if let Some(_bid_purse) = bid_purses.remove(&validator_account_hash) {
+                bid_purses_modified = true;
+            }
+
+            if let Some(unbonding_list) = unbonding_purses.get_mut(&validator_account_hash) {
+                let size_before = unbonding_list.len();
+
+                unbonding_list.retain(|element| element.origin != validator_account_hash);
+
+                unbonding_purses_modified = size_before != unbonding_list.len();
+            }
+        }
+
+        if bid_purses_modified {
+            self.write(bid_purses_uref, bid_purses)?;
+        }
+
+        if unbonding_purses_modified {
+            self.write(unbonding_purses_uref, unbonding_purses)?;
+        }
+
+        Ok(())
+    }
+
     /// Takes active_bids and delegators to construct a list of validators' total bids (their own
     /// added to their delegators') ordered by size from largest to smallest, then takes the top N
     /// (number of auction slots) bidders and replaces era_validators with these.
     ///
     /// Accessed by: node
     fn run_auction(&mut self) -> Result<()> {
-        if self.get_caller() != SYSTEM_ADDR {
+        if self.get_caller() != SYSTEM_ACCOUNT {
             return Err(Error::InvalidContext);
         }
         let active_bids = internal::get_active_bids(self)?;

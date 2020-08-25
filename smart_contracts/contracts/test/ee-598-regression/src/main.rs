@@ -28,7 +28,8 @@ fn unbond(contract_hash: ContractHash, unbond_amount: Option<U512>) {
 pub extern "C" fn call() {
     let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
 
-    let contract_hash = system::get_proof_of_stake();
+    // unbond attempt for more than is staked should fail
+    let contract_hash = system::get_auction();
     bond(contract_hash, amount, account::get_main_purse());
     unbond(contract_hash, Some(amount + 1));
 }

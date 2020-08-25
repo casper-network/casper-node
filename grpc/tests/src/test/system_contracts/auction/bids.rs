@@ -21,10 +21,10 @@ use casperlabs_types::{
     account::AccountHash,
     auction::{
         self, ActiveBids, DelegationRate, Delegators, EraValidators, FoundingValidators,
-        ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_VALIDATOR, FOUNDING_VALIDATORS_KEY,
+        UnbondingPurses, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_VALIDATOR, DEFAULT_UNBONDING_DELAY,
+        FOUNDING_VALIDATORS_KEY,
     },
     bytesrepr::FromBytes,
-    mint::{UnbondingPurses, DEFAULT_UNBONDING_DELAY},
     runtime_args, CLTyped, ContractHash, RuntimeArgs, U512,
 };
 use std::iter::FromIterator;
@@ -105,13 +105,6 @@ fn should_run_add_bid() {
 
     let auction_hash = builder.get_auction_contract_hash();
     let mint_hash = builder.get_mint_contract_hash();
-
-    let auction_stored_value = builder
-        .query(None, auction_hash.into(), &[])
-        .expect("should query auction hash");
-    let _auction = auction_stored_value
-        .as_contract()
-        .expect("should be contract");
 
     //
     let exec_request_1 = ExecuteRequestBuilder::standard(
@@ -286,7 +279,6 @@ fn should_run_delegate_and_undelegate() {
     .build();
 
     builder.exec(exec_request_1).commit().expect_success();
-
     let delegators: Delegators = get_value(&mut builder, auction_hash, "delegators");
     assert_eq!(delegators.len(), 1);
 
@@ -303,7 +295,6 @@ fn should_run_delegate_and_undelegate() {
     );
 
     // 2nd bid top-up
-
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_AUCTION_BIDS,

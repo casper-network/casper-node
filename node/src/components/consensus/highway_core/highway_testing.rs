@@ -433,7 +433,8 @@ where
                             msgs
                         }
                         Err((v, error)) => {
-                            error!("{:?} sent an invalid vertex {:?} to {:?} that resulted in {:?} error", sender_id, v, validator_id, error);
+                            // TODO: this seems to get output from passing tests
+                            warn!("{:?} sent an invalid vertex {:?} to {:?} that resulted in {:?} error", sender_id, v, validator_id, error);
                             vec![]
                         }
                     }
