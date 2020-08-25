@@ -172,7 +172,7 @@ impl Cli {
                 // performance reasons.
                 let mut rng = ChaCha20Rng::from_entropy();
 
-                let mut runner = Runner::<initializer::Reactor>::new(
+                let mut runner = Runner::<initializer::Reactor, _>::new(
                     WithDir::new(root.clone(), validator_config),
                     &mut rng,
                 )
@@ -186,9 +186,11 @@ impl Cli {
                     bail!("failed to initialize successfully");
                 }
 
-                let mut runner =
-                    Runner::<validator::Reactor>::new(WithDir::new(root, initializer), &mut rng)
-                        .await?;
+                let mut runner = Runner::<validator::Reactor<_>, _>::new(
+                    WithDir::new(root, initializer),
+                    &mut rng,
+                )
+                .await?;
                 runner.run(&mut rng).await;
             }
         }

@@ -15,7 +15,7 @@ use std::{
 };
 
 use derive_more::{Display, From};
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use smallvec::{smallvec, SmallVec};
 
 use crate::{
@@ -78,14 +78,15 @@ impl<I> BlockValidator<I> {
     }
 }
 
-impl<I, REv> Component<REv> for BlockValidator<I>
+impl<I, REv, R> Component<REv, R> for BlockValidator<I>
 where
     I: Clone + Send + 'static,
     REv: From<Event<I>> + From<BlockValidationRequest<I>> + From<FetcherRequest<I, Deploy>> + Send,
+    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event<I>;
 
-    fn handle_event<R: Rng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

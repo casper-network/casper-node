@@ -499,13 +499,18 @@ fn log2(x: u64) -> u32 {
 pub(crate) mod tests {
     use std::{collections::hash_map::DefaultHasher, hash::Hasher};
 
+    use rand::{CryptoRng, Rng};
+
     use super::*;
-    use crate::components::consensus::{
-        highway_core::{
-            highway::Dependency,
-            highway_testing::{TEST_BLOCK_REWARD, TEST_REWARD_DELAY},
+    use crate::{
+        components::consensus::{
+            highway_core::{
+                highway::Dependency,
+                highway_testing::{TEST_BLOCK_REWARD, TEST_REWARD_DELAY},
+            },
+            traits::ValidatorSecret,
         },
-        traits::ValidatorSecret,
+        testing::TestRng,
     };
 
     pub(crate) const WEIGHTS: &[Weight] = &[Weight(3), Weight(4), Weight(5)];
@@ -527,7 +532,11 @@ pub(crate) mod tests {
         type Hash = u64;
         type Signature = u64;
 
-        fn sign(&self, data: &Self::Hash) -> Self::Signature {
+        fn sign<R: Rng + CryptoRng + ?Sized>(
+            &self,
+            data: &Self::Hash,
+            _rng: &mut R,
+        ) -> Self::Signature {
             data + u64::from(self.0)
         }
     }
@@ -623,6 +632,7 @@ pub(crate) mod tests {
     #[test]
     fn add_vote() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new_test(WEIGHTS, 0);
+        let mut rng = TestRng::new();
 
         // Create votes as follows; a0, b0 are blocks:
         //
@@ -631,11 +641,11 @@ pub(crate) mod tests {
         // Bob:   b0 —— b1
         //          \  /
         // Carol:    c0
-        let a0 = add_vote!(state, ALICE, 0xA; N, N, N)?;
-        let b0 = add_vote!(state, BOB, 0xB; N, N, N)?;
-        let c0 = add_vote!(state, CAROL, None; N, b0, N)?;
-        let b1 = add_vote!(state, BOB, None; N, b0, c0)?;
-        let _a1 = add_vote!(state, ALICE, None; a0, b1, c0)?;
+        let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
+        let b0 = add_vote!(state, rng, BOB, 0xB; N, N, N)?;
+        let c0 = add_vote!(state, rng, CAROL, None; N, b0, N)?;
+        let b1 = add_vote!(state, rng, BOB, None; N, b0, c0)?;
+        let _a1 = add_vote!(state, rng, ALICE, None; a0, b1, c0)?;
 
         // Wrong sequence number: Carol hasn't produced c1 yet.
         let wvote = WireVote {
@@ -646,11 +656,13 @@ pub(crate) mod tests {
             timestamp: state.vote(&b1).timestamp + TimeDiff::from(1),
             round_exp: state.vote(&c0).round_exp,
         };
-        let vote = SignedWireVote::new(wvote, &CAROL_SEC);
+        let vote = SignedWireVote::new(wvote, &CAROL_SEC, &mut rng);
         let opt_err = state.add_vote(vote).err().map(vote_err);
         assert_eq!(Some(VoteError::SequenceNumber), opt_err);
         // Inconsistent panorama: If you see b1, you have to see c0, too.
-        let opt_err = add_vote!(state, CAROL, None; N, b1, N).err().map(vote_err);
+        let opt_err = add_vote!(state, rng, CAROL, None; N, b1, N)
+            .err()
+            .map(vote_err);
         assert_eq!(Some(VoteError::Panorama), opt_err);
 
         // Alice has not equivocated yet, and not produced message A1.
@@ -660,7 +672,7 @@ pub(crate) mod tests {
         assert_eq!(Some(Dependency::Vote(42)), missing);
 
         // Alice equivocates: A1 doesn't see a1.
-        let ae1 = add_vote!(state, ALICE, None; a0, b1, c0)?;
+        let ae1 = add_vote!(state, rng, ALICE, None; a0, b1, c0)?;
         assert!(state.has_evidence(ALICE));
 
         let missing = panorama!(F, b1, c0).missing_dependency(&state);
@@ -669,7 +681,7 @@ pub(crate) mod tests {
         assert_eq!(None, missing);
 
         // Bob can see the equivocation.
-        let b2 = add_vote!(state, BOB, None; F, b1, c0)?;
+        let b2 = add_vote!(state, rng, BOB, None; F, b1, c0)?;
 
         // The state's own panorama has been updated correctly.
         assert_eq!(state.panorama, panorama!(F, b2, c0));
@@ -679,10 +691,11 @@ pub(crate) mod tests {
     #[test]
     fn find_in_swimlane() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new_test(WEIGHTS, 0);
-        let a0 = add_vote!(state, ALICE, 0xA; N, N, N)?;
+        let mut rng = TestRng::new();
+        let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
         let mut a = vec![a0];
         for i in 1..10 {
-            let ai = add_vote!(state, ALICE, None; a[i - 1], N, N)?;
+            let ai = add_vote!(state, rng, ALICE, None; a[i - 1], N, N)?;
             a.push(ai);
         }
 
@@ -705,6 +718,7 @@ pub(crate) mod tests {
     #[test]
     fn fork_choice() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new_test(WEIGHTS, 0);
+        let mut rng = TestRng::new();
 
         // Create blocks with scores as follows:
         //
@@ -713,13 +727,13 @@ pub(crate) mod tests {
         // b0: 12           b2: 4
         //        \
         //          c0: 5 — c1: 5
-        let b0 = add_vote!(state, BOB, 0xB0; N, N, N)?;
-        let c0 = add_vote!(state, CAROL, 0xC0; N, b0, N)?;
-        let c1 = add_vote!(state, CAROL, 0xC1; N, b0, c0)?;
-        let a0 = add_vote!(state, ALICE, 0xA0; N, b0, N)?;
-        let b1 = add_vote!(state, BOB, None; a0, b0, N)?; // Just a ballot; not shown above.
-        let a1 = add_vote!(state, ALICE, 0xA1; a0, b1, c1)?;
-        let b2 = add_vote!(state, BOB, 0xB2; a0, b1, N)?;
+        let b0 = add_vote!(state, rng, BOB, 0xB0; N, N, N)?;
+        let c0 = add_vote!(state, rng, CAROL, 0xC0; N, b0, N)?;
+        let c1 = add_vote!(state, rng, CAROL, 0xC1; N, b0, c0)?;
+        let a0 = add_vote!(state, rng, ALICE, 0xA0; N, b0, N)?;
+        let b1 = add_vote!(state, rng, BOB, None; a0, b0, N)?; // Just a ballot; not shown above.
+        let a1 = add_vote!(state, rng, ALICE, 0xA1; a0, b1, c1)?;
+        let b2 = add_vote!(state, rng, BOB, 0xB2; a0, b1, N)?;
 
         // Alice built `a1` on top of `a0`, which had already 7 points.
         assert_eq!(Some(&a0), state.block(&state.vote(&a1).block).parent());

@@ -14,7 +14,7 @@ use std::{
 use anyhow::Error;
 use casperlabs_types::U512;
 use num_traits::AsPrimitive;
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
@@ -59,19 +59,19 @@ impl EraId {
     }
 }
 
-pub(crate) struct Era<I> {
+pub(crate) struct Era<I, R: Rng + CryptoRng + ?Sized> {
     /// The consensus protocol instance.
-    consensus: Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>>,
+    consensus: Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey, R>>,
     /// The height of this era's first block.
     start_height: u64,
     /// The previous era's switch block. `None` for era 0.
     prev_switch_block: Option<ProtoBlock>,
 }
 
-pub(crate) struct EraSupervisor<I> {
+pub(crate) struct EraSupervisor<I, R: Rng + CryptoRng + ?Sized> {
     /// A map of active consensus protocols.
     /// A value is a trait so that we can run different consensus protocol instances per era.
-    active_eras: HashMap<EraId, Era<I>>,
+    active_eras: HashMap<EraId, Era<I, R>>,
     pub(super) secret_signing_key: Rc<SecretKey>,
     pub(super) public_signing_key: PublicKey,
     validator_stakes: Vec<(PublicKey, Motes)>,
@@ -79,19 +79,20 @@ pub(crate) struct EraSupervisor<I> {
     highway_config: HighwayConfig,
 }
 
-impl<I> Debug for EraSupervisor<I> {
+impl<I, R: Rng + CryptoRng + ?Sized> Debug for EraSupervisor<I, R> {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         let ae: Vec<_> = self.active_eras.keys().collect();
         write!(formatter, "EraSupervisor {{ active_eras: {:?}, .. }}", ae)
     }
 }
 
-impl<I> EraSupervisor<I>
+impl<I, R> EraSupervisor<I, R>
 where
     I: NodeIdT,
+    R: Rng + CryptoRng + ?Sized,
 {
     /// Creates a new `EraSupervisor`, starting in era 0.
-    pub(crate) fn new<REv: ReactorEventT<I>, R: Rng + ?Sized>(
+    pub(crate) fn new<REv: ReactorEventT<I>>(
         timestamp: Timestamp,
         config: WithDir<Config>,
         effect_builder: EffectBuilder<REv>,
@@ -119,6 +120,7 @@ where
             highway_config.genesis_era_start_timestamp,
             0,
             None,
+            rng,
         );
         let effects = era_supervisor
             .handling(effect_builder, rng)
@@ -129,7 +131,7 @@ where
 
     /// Returns a temporary container with this `EraSupervisor`, `EffectBuilder` and random number
     /// generator, for handling events.
-    pub(super) fn handling<'a, REv: ReactorEventT<I>, R: Rng + ?Sized>(
+    pub(super) fn handling<'a, REv: ReactorEventT<I>>(
         &'a mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &'a mut R,
@@ -142,6 +144,7 @@ where
     }
 
     /// Starts a new era; panics if it already exists.
+    #[allow(clippy::too_many_arguments)] // TODO: Those _are_ too many arguments!
     fn new_era(
         &mut self,
         era_id: EraId,
@@ -150,6 +153,7 @@ where
         start_time: Timestamp,
         start_height: u64,
         prev_switch_block: Option<ProtoBlock>,
+        rng: &mut R,
     ) -> Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>> {
         if self.active_eras.contains_key(&era_id) {
             panic!("{:?} already exists", era_id);
@@ -197,6 +201,7 @@ where
             secret,
             ftt,
             timestamp,
+            rng,
         );
 
         let era = Era {
@@ -210,7 +215,7 @@ where
     }
 
     /// Returns the current era.
-    fn current_era_mut(&mut self) -> &mut Era<I> {
+    fn current_era_mut(&mut self) -> &mut Era<I, R> {
         self.active_eras
             .get_mut(&self.current_era)
             .expect("current era does not exist")
@@ -218,7 +223,7 @@ where
 
     /// Inspect the active eras.
     #[cfg(test)]
-    pub(crate) fn active_eras(&self) -> &HashMap<EraId, Era<I>> {
+    pub(crate) fn active_eras(&self) -> &HashMap<EraId, Era<I, R>> {
         &self.active_eras
     }
 }
@@ -228,8 +233,8 @@ where
 /// This is a short-lived convenience type to avoid passing the effect builder through lots of
 /// message calls, and making every method individually generic in `REv`. It is only instantiated
 /// for the duration of handling a single event.
-pub(super) struct HandlingEraSupervisor<'a, I, REv: 'static, R: ?Sized> {
-    pub(super) era_supervisor: &'a mut EraSupervisor<I>,
+pub(super) struct HandlingEraSupervisor<'a, I, REv: 'static, R: Rng + CryptoRng + ?Sized> {
+    pub(super) era_supervisor: &'a mut EraSupervisor<I, R>,
     pub(super) effect_builder: EffectBuilder<REv>,
     pub(super) rng: &'a mut R,
 }
@@ -238,13 +243,14 @@ impl<'a, I, REv, R> HandlingEraSupervisor<'a, I, REv, R>
 where
     I: NodeIdT,
     REv: ReactorEventT<I>,
-    R: Rng + ?Sized,
+    R: Rng + CryptoRng + ?Sized,
 {
     /// Applies `f` to the consensus protocol of the specified era.
     fn delegate_to_era<F>(&mut self, era_id: EraId, f: F) -> Effects<Event<I>>
     where
         F: FnOnce(
-            &mut dyn ConsensusProtocol<I, ProtoBlock, PublicKey>,
+            &mut dyn ConsensusProtocol<I, ProtoBlock, PublicKey, R>,
+            &mut R,
         ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>>, Error>,
     {
         match self.era_supervisor.active_eras.get_mut(&era_id) {
@@ -256,7 +262,7 @@ where
                 }
                 Effects::new()
             }
-            Some(era) => match f(&mut *era.consensus) {
+            Some(era) => match f(&mut *era.consensus, self.rng) {
                 Ok(results) => self.handle_consensus_results(era_id, results),
                 Err(error) => {
                     error!(%error, ?era_id, "got error from era id {:?}: {:?}", era_id, error);
@@ -271,13 +277,15 @@ where
         era_id: EraId,
         timestamp: Timestamp,
     ) -> Effects<Event<I>> {
-        self.delegate_to_era(era_id, move |consensus| consensus.handle_timer(timestamp))
+        self.delegate_to_era(era_id, move |consensus, rng| {
+            consensus.handle_timer(timestamp, rng)
+        })
     }
 
     pub(super) fn handle_message(&mut self, sender: I, msg: ConsensusMessage) -> Effects<Event<I>> {
         let ConsensusMessage { era_id, payload } = msg;
-        self.delegate_to_era(era_id, move |consensus| {
-            consensus.handle_message(sender, payload)
+        self.delegate_to_era(era_id, move |consensus, rng| {
+            consensus.handle_message(sender, payload, rng)
         })
     }
 
@@ -291,8 +299,8 @@ where
             .effect_builder
             .announce_proposed_proto_block(proto_block.clone())
             .ignore();
-        effects.extend(self.delegate_to_era(era_id, move |consensus| {
-            consensus.propose(proto_block, block_context)
+        effects.extend(self.delegate_to_era(era_id, move |consensus, rng| {
+            consensus.propose(proto_block, block_context, rng)
         }));
         effects
     }
@@ -307,6 +315,7 @@ where
             block.hash().inner(),
             &self.era_supervisor.secret_signing_key,
             &self.era_supervisor.public_signing_key,
+            self.rng,
         );
         block.append_proof(signature);
         self.effect_builder
@@ -319,8 +328,8 @@ where
         era_id: EraId,
         proto_block: ProtoBlock,
     ) -> Effects<Event<I>> {
-        let mut effects = self.delegate_to_era(era_id, |consensus| {
-            consensus.resolve_validity(&proto_block, true)
+        let mut effects = self.delegate_to_era(era_id, |consensus, rng| {
+            consensus.resolve_validity(&proto_block, true, rng)
         });
         effects.extend(
             self.effect_builder
@@ -336,8 +345,8 @@ where
         _sender: I,
         proto_block: ProtoBlock,
     ) -> Effects<Event<I>> {
-        self.delegate_to_era(era_id, |consensus| {
-            consensus.resolve_validity(&proto_block, false)
+        self.delegate_to_era(era_id, |consensus, rng| {
+            consensus.resolve_validity(&proto_block, false, rng)
         })
     }
 
@@ -420,6 +429,7 @@ where
                     era_id, self.era_supervisor.current_era,
                     "finalized block in unexpected era"
                 );
+                // Create instructions for slashing equivocators.
                 let mut system_transactions: Vec<_> = new_equivocators
                     .into_iter()
                     .map(SystemTransaction::Slash)
@@ -449,6 +459,7 @@ where
                         fb.timestamp(),
                         fb.height() + 1,
                         Some(fb.proto_block().clone()),
+                        self.rng,
                     );
                     let new_era_id = era_id.successor();
                     effects.extend(self.handle_consensus_results(new_era_id, results));

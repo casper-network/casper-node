@@ -34,6 +34,7 @@ lazy_static! {
 enum DisplayOrder {
     OutputDir,
     Force,
+    Algorithm,
 }
 
 /// Handles providing the arg for and retrieval of the output directory.
@@ -82,6 +83,38 @@ mod force {
     }
 }
 
+/// Handles providing the arg for and retrieval of the node hostname/IP and port.
+mod algorithm {
+    use super::*;
+
+    const ARG_NAME: &str = "algorithm";
+    const ARG_SHORT: &str = "a";
+    const ARG_VALUE_NAME: &str = "STRING";
+    pub(super) const ED25519: &str = "Ed25519";
+    pub(super) const SECP256K1: &str = "secp256k1";
+    const ARG_HELP: &str = "The type of keys to generate";
+
+    pub fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .short(ARG_SHORT)
+            .required(false)
+            .default_value(ED25519)
+            .possible_value(ED25519)
+            .possible_value(SECP256K1)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .display_order(DisplayOrder::Algorithm as usize)
+    }
+
+    pub fn get(matches: &ArgMatches) -> String {
+        matches
+            .value_of(ARG_NAME)
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
+            .to_string()
+    }
+}
+
 pub struct Keygen {}
 
 impl<'a, 'b> crate::Subcommand<'a, 'b> for Keygen {
@@ -94,11 +127,13 @@ impl<'a, 'b> crate::Subcommand<'a, 'b> for Keygen {
             .display_order(display_order)
             .arg(output_dir::arg())
             .arg(force::arg())
+            .arg(algorithm::arg())
     }
 
     fn run(matches: &ArgMatches<'_>) {
         let output_dir = output_dir::get(matches);
         let force = force::get(matches);
+        let algorithm = algorithm::get(matches);
 
         let _ = fs::create_dir_all(&output_dir)
             .unwrap_or_else(|error| panic!("should create {}: {}", output_dir.display(), error));
@@ -117,7 +152,13 @@ impl<'a, 'b> crate::Subcommand<'a, 'b> for Keygen {
             }
         }
 
-        let secret_key = SecretKey::generate_ed25519();
+        let secret_key = if algorithm == algorithm::ED25519 {
+            SecretKey::generate_ed25519()
+        } else if algorithm == algorithm::SECP256K1 {
+            SecretKey::generate_secp256k1()
+        } else {
+            panic!("Invalid key algorithm");
+        };
         let public_key = PublicKey::from(&secret_key);
         let account_id = public_key.to_account_hash().value();
 

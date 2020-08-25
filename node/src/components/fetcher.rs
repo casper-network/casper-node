@@ -3,7 +3,7 @@ mod tests;
 
 use std::{collections::HashMap, fmt::Debug, time::Duration};
 
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use smallvec::smallvec;
 use tracing::{debug, error};
 
@@ -198,13 +198,16 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
     }
 }
 
-impl<T: Item + 'static, REv: ReactorEventT<T>> Component<REv> for Fetcher<T>
+impl<T, REv, R> Component<REv, R> for Fetcher<T>
 where
     Fetcher<T>: ItemFetcher<T>,
+    T: Item + 'static,
+    REv: ReactorEventT<T>,
+    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event<T>;
 
-    fn handle_event<R: Rng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

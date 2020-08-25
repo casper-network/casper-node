@@ -9,6 +9,7 @@ use std::{
 };
 
 use derive_more::From;
+use rand::{CryptoRng, Rng};
 use semver::Version;
 use tracing::{error, info};
 
@@ -226,13 +227,14 @@ impl DeployBuffer {
     }
 }
 
-impl<REv> Component<REv> for DeployBuffer
+impl<REv, R> Component<REv, R> for DeployBuffer
 where
     REv: From<StorageRequest<Storage>> + Send,
+    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event;
 
-    fn handle_event<R: rand::Rng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

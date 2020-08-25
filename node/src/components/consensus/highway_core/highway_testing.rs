@@ -9,7 +9,7 @@ use std::{
 
 use hex_fmt::HexFmt;
 use itertools::Itertools;
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, trace, warn};
 
@@ -178,7 +178,13 @@ enum Distribution {
 
 impl Distribution {
     /// Returns vector of `count` elements of random values between `lower` and `uppwer`.
-    fn gen_range_vec<R: Rng>(&self, rng: &mut R, lower: u64, upper: u64, count: u8) -> Vec<u64> {
+    fn gen_range_vec<R: Rng + CryptoRng + ?Sized>(
+        &self,
+        rng: &mut R,
+        lower: u64,
+        upper: u64,
+        count: u8,
+    ) -> Vec<u64> {
         match self {
             Distribution::Uniform => (0..count).map(|_| rng.gen_range(lower, upper)).collect(),
             // https://casperlabs.atlassian.net/browse/HWY-116
@@ -188,7 +194,7 @@ impl Distribution {
 }
 
 trait DeliveryStrategy {
-    fn gen_delay<R: Rng>(
+    fn gen_delay<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         rng: &mut R,
         message: &HighwayMessage,
@@ -228,7 +234,11 @@ impl HighwayValidator {
         self.finality_detector.run(&self.highway)
     }
 
-    fn post_hook<R: Rng>(&mut self, rng: &mut R, msg: HighwayMessage) -> Vec<HighwayMessage> {
+    fn post_hook<R: Rng + CryptoRng + ?Sized>(
+        &mut self,
+        rng: &mut R,
+        msg: HighwayMessage,
+    ) -> Vec<HighwayMessage> {
         match self.fault.as_ref() {
             None => {
                 // Honest validator.
@@ -237,7 +247,7 @@ impl HighwayValidator {
                 match &msg {
                     HighwayMessage::NewVertex(vv) => self
                         .highway_mut()
-                        .add_valid_vertex(ValidVertex(vv.clone()))
+                        .add_valid_vertex(ValidVertex(vv.clone()), rng)
                         .into_iter()
                         .map(HighwayMessage::from)
                         .chain(iter::once(msg))
@@ -329,7 +339,7 @@ where
     /// Pops one message from the message queue (if there are any)
     /// and pass it to the recipient validator for execution.
     /// Messages returned from the execution are scheduled for later delivery.
-    pub(crate) fn crank<R: Rng>(&mut self, rng: &mut R) -> TestResult<()> {
+    pub(crate) fn crank<R: Rng + CryptoRng + ?Sized>(&mut self, rng: &mut R) -> TestResult<()> {
         let QueueEntry {
             delivery_time,
             recipient,
@@ -388,17 +398,17 @@ where
             .ok_or_else(|| TestRunError::MissingValidator(*validator_id))
     }
 
-    fn call_validator<F, R: Rng>(
+    fn call_validator<F, R: Rng + CryptoRng + ?Sized>(
         &mut self,
         rng: &mut R,
         validator_id: &ValidatorId,
         f: F,
     ) -> TestResult<Vec<HighwayMessage>>
     where
-        F: FnOnce(&mut HighwayValidator) -> Vec<Effect<TestContext>>,
+        F: FnOnce(&mut HighwayValidator, &mut R) -> Vec<Effect<TestContext>>,
     {
         let validator_node = self.node_mut(validator_id)?;
-        let res = f(validator_node.validator_mut());
+        let res = f(validator_node.validator_mut(), rng);
         let messages = res
             .into_iter()
             .flat_map(|eff| {
@@ -413,7 +423,7 @@ where
     /// Processes a message sent to `validator_id`.
     /// Returns a vector of messages produced by the `validator` in reaction to processing a
     /// message.
-    fn process_message<R: Rng>(
+    fn process_message<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         rng: &mut R,
         validator_id: ValidatorId,
@@ -431,8 +441,8 @@ where
 
             match hwm {
                 HighwayMessage::Timer(timestamp) => {
-                    self.call_validator(rng, &validator_id, |consensus| {
-                        consensus.highway_mut().handle_timer(timestamp)
+                    self.call_validator(rng, &validator_id, |consensus, rng| {
+                        consensus.highway_mut().handle_timer(timestamp, rng)
                     })?
                 }
 
@@ -451,10 +461,10 @@ where
                 HighwayMessage::RequestBlock(block_context) => {
                     let consensus_value = self.next_consensus_value();
 
-                    self.call_validator(rng, &validator_id, |consensus| {
+                    self.call_validator(rng, &validator_id, |consensus, rng| {
                         consensus
                             .highway_mut()
-                            .propose(consensus_value, block_context)
+                            .propose(consensus_value, block_context, rng)
                     })?
                 }
             }
@@ -509,7 +519,7 @@ where
     // Adds vertex to the `recipient` validator state.
     // Synchronizes its state if necessary.
     // From the POV of the test system, synchronization is immediate.
-    fn add_vertex<R: Rng>(
+    fn add_vertex<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         rng: &mut R,
         recipient: ValidatorId,
@@ -545,8 +555,8 @@ where
                         .validate_vertex(prevalidated_vertex)
                     {
                         Err((pvv, error)) => return Ok(Err((pvv.into_vertex(), error))),
-                        Ok(valid_vertex) => self.call_validator(rng, &recipient, |v| {
-                            v.highway_mut().add_valid_vertex(valid_vertex)
+                        Ok(valid_vertex) => self.call_validator(rng, &recipient, |v, rng| {
+                            v.highway_mut().add_valid_vertex(valid_vertex, rng)
                         })?,
                     }
                 };
@@ -561,7 +571,7 @@ where
     /// Synchronizes all missing dependencies of `pvv` that `recipient` is missing.
     /// If an error occurs during synchronization of one of `pvv`'s dependencies
     /// it's returned and the original vertex mustn't be added to the state.
-    fn synchronize_validator<R: Rng>(
+    fn synchronize_validator<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         rng: &mut R,
         recipient: ValidatorId,
@@ -601,7 +611,7 @@ where
     // We don't want to test synchronization, and the Highway theory assumes
     // that when votes are added then all their dependencies are satisfied.
     #[allow(clippy::type_complexity)]
-    fn synchronize_dependency<R: Rng>(
+    fn synchronize_dependency<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         rng: &mut R,
         missing_dependency: Dependency<TestContext>,
@@ -626,7 +636,7 @@ where
     }
 }
 
-fn crank_until<F, R: Rng, DS: DeliveryStrategy>(
+fn crank_until<F, R: Rng + CryptoRng + ?Sized, DS: DeliveryStrategy>(
     htt: &mut HighwayTestHarness<DS>,
     rng: &mut R,
     f: F,
@@ -698,7 +708,7 @@ struct HighwayTestHarnessBuilder<DS: DeliveryStrategy> {
 struct InstantDeliveryNoDropping;
 
 impl DeliveryStrategy for InstantDeliveryNoDropping {
-    fn gen_delay<R: Rng>(
+    fn gen_delay<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         _rng: &mut R,
         message: &HighwayMessage,
@@ -813,7 +823,10 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
         self
     }
 
-    fn build<R: Rng>(mut self, rng: &mut R) -> Result<HighwayTestHarness<DS>, BuilderError> {
+    fn build<R: Rng + CryptoRng + ?Sized>(
+        mut self,
+        rng: &mut R,
+    ) -> Result<HighwayTestHarness<DS>, BuilderError> {
         let consensus_values = (0..self.consensus_values_count as u32)
             .map(|el| vec![el])
             .collect::<VecDeque<Vec<u32>>>();
@@ -1029,7 +1042,11 @@ impl ValidatorSecret for TestSecret {
     type Hash = HashWrapper;
     type Signature = SignatureWrapper;
 
-    fn sign(&self, data: &Self::Hash) -> Self::Signature {
+    fn sign<R: Rng + CryptoRng + ?Sized>(
+        &self,
+        data: &Self::Hash,
+        _rng: &mut R,
+    ) -> Self::Signature {
         SignatureWrapper(data.0 + self.0)
     }
 }

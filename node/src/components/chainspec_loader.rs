@@ -14,7 +14,7 @@ mod error;
 
 use std::fmt::{self, Display, Formatter};
 
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use semver::Version;
 use tracing::{debug, error, info, trace};
 
@@ -111,13 +111,14 @@ impl ChainspecLoader {
     }
 }
 
-impl<REv> Component<REv> for ChainspecLoader
+impl<REv, R> Component<REv, R> for ChainspecLoader
 where
     REv: From<Event> + From<StorageRequest<Storage>> + From<ContractRuntimeRequest> + Send,
+    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event;
 
-    fn handle_event<R: Rng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

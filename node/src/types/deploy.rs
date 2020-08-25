@@ -249,9 +249,9 @@ impl Deploy {
         };
 
         let approvals = vec![
-            asymmetric_key::sign(&[3], &secret_key, &account),
-            asymmetric_key::sign(&[4], &secret_key, &account),
-            asymmetric_key::sign(&[5], &secret_key, &account),
+            asymmetric_key::sign(&[3], &secret_key, &account, rng),
+            asymmetric_key::sign(&[4], &secret_key, &account, rng),
+            asymmetric_key::sign(&[5], &secret_key, &account, rng),
         ];
 
         Deploy {
@@ -508,7 +508,7 @@ mod json {
     impl From<&super::DeployHeader> for DeployHeader {
         fn from(header: &super::DeployHeader) -> Self {
             DeployHeader {
-                account: hex::encode(header.account.as_ref()),
+                account: header.account.to_hex(),
                 timestamp: header.timestamp,
                 gas_price: header.gas_price,
                 body_hash: hex::encode(header.body_hash),
@@ -523,8 +523,7 @@ mod json {
         type Error = DecodingError;
 
         fn try_from(header: DeployHeader) -> Result<Self, Self::Error> {
-            let raw_account = hex::decode(&header.account).map_err(|_| DecodingError)?;
-            let account = PublicKey::ed25519_from_bytes(&raw_account).map_err(|_| DecodingError)?;
+            let account = PublicKey::from_hex(&header.account).map_err(|_| DecodingError)?;
 
             let body_hash = Digest::from_hex(&header.body_hash).map_err(|_| DecodingError)?;
 
@@ -562,7 +561,7 @@ mod json {
                 header: (&deploy.header).into(),
                 payment: deploy.payment.clone().into(),
                 session: deploy.session.clone().into(),
-                approvals: deploy.approvals.iter().map(hex::encode).collect(),
+                approvals: deploy.approvals.iter().map(Signature::to_hex).collect(),
             }
         }
     }
@@ -572,9 +571,7 @@ mod json {
         fn try_from(deploy: Deploy) -> Result<Self, Self::Error> {
             let mut approvals = vec![];
             for approval in deploy.approvals.into_iter() {
-                let raw_sig = hex::decode(&approval).map_err(|_| DecodingError)?;
-                let signature =
-                    Signature::ed25519_from_bytes(&raw_sig).map_err(|_| DecodingError)?;
+                let signature = Signature::from_hex(&approval).map_err(|_| DecodingError)?;
                 approvals.push(signature);
             }
             Ok(super::Deploy {

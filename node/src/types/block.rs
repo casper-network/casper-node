@@ -430,7 +430,7 @@ impl Block {
         for _ in 0..signatures_count {
             let secret_key = SecretKey::random(rng);
             let public_key = PublicKey::from(&secret_key);
-            let signature = asymmetric_key::sign(block.hash.inner(), &secret_key, &public_key);
+            let signature = asymmetric_key::sign(block.hash.inner(), &secret_key, &public_key, rng);
             block.append_proof(signature);
         }
 

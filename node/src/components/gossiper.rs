@@ -12,7 +12,7 @@ use std::{
 };
 
 use futures::FutureExt;
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use smallvec::smallvec;
 use tracing::{debug, error};
 
@@ -367,10 +367,15 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
     }
 }
 
-impl<T: Item + 'static, REv: ReactorEventT<T>> Component<REv> for Gossiper<T, REv> {
+impl<T, REv, R> Component<REv, R> for Gossiper<T, REv>
+where
+    T: Item + 'static,
+    REv: ReactorEventT<T>,
+    R: Rng + CryptoRng + ?Sized,
+{
     type Event = Event<T>;
 
-    fn handle_event<R: Rng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

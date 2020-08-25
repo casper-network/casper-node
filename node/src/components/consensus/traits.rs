@@ -3,6 +3,7 @@ use std::{
     hash::Hash,
 };
 
+use rand::{CryptoRng, Rng};
 use serde::{de::DeserializeOwned, Serialize};
 
 pub(crate) trait NodeIdT: Clone + Debug + Send + 'static {}
@@ -33,7 +34,7 @@ pub(crate) trait ValidatorSecret {
 
     type Signature: Eq + PartialEq + Clone + Debug + Hash + Serialize + DeserializeOwned;
 
-    fn sign(&self, hash: &Self::Hash) -> Self::Signature;
+    fn sign<R: Rng + CryptoRng + ?Sized>(&self, hash: &Self::Hash, rng: &mut R) -> Self::Signature;
 }
 
 /// The collection of types the user can choose for cryptography, IDs, transactions, etc.

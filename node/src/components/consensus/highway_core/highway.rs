@@ -3,6 +3,7 @@ mod vertex;
 pub(crate) use crate::components::consensus::highway_core::state::Params;
 pub(crate) use vertex::{Dependency, SignedWireVote, Vertex, WireVote};
 
+use rand::{CryptoRng, Rng};
 use thiserror::Error;
 use tracing::{debug, error, warn};
 
@@ -183,13 +184,14 @@ impl<C: Context> Highway<C> {
     /// The validation must have been performed by _this_ `Highway` instance.
     /// More precisely: The instance on which `add_valid_vertex` is called must contain everything
     /// (and possibly more) that the instance on which `validate_vertex` was called contained.
-    pub(crate) fn add_valid_vertex(
+    pub(crate) fn add_valid_vertex<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         ValidVertex(vertex): ValidVertex<C>,
+        rng: &mut R,
     ) -> Vec<Effect<C>> {
         if !self.has_vertex(&vertex) {
             match vertex {
-                Vertex::Vote(vote) => self.add_valid_vote(vote),
+                Vertex::Vote(vote) => self.add_valid_vote(vote, rng),
                 Vertex::Evidence(evidence) => {
                     self.state.add_evidence(evidence);
                     vec![]
@@ -221,20 +223,25 @@ impl<C: Context> Highway<C> {
         .map(ValidVertex)
     }
 
-    pub(crate) fn handle_timer(&mut self, timestamp: Timestamp) -> Vec<Effect<C>> {
+    pub(crate) fn handle_timer<R: Rng + CryptoRng + ?Sized>(
+        &mut self,
+        timestamp: Timestamp,
+        rng: &mut R,
+    ) -> Vec<Effect<C>> {
         match self.active_validator.as_mut() {
             None => {
                 debug!(%timestamp, "Ignoring `handle_timer` event: only an observer node.");
                 vec![]
             }
-            Some(av) => av.handle_timer(timestamp, &self.state),
+            Some(av) => av.handle_timer(timestamp, &self.state, rng),
         }
     }
 
-    pub(crate) fn propose(
+    pub(crate) fn propose<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
+        rng: &mut R,
     ) -> Vec<Effect<C>> {
         match self.active_validator.as_mut() {
             None => {
@@ -246,7 +253,7 @@ impl<C: Context> Highway<C> {
                 );
                 vec![]
             }
-            Some(av) => av.propose(value, block_context, &self.state),
+            Some(av) => av.propose(value, block_context, &self.state, rng),
         }
     }
 
@@ -258,11 +265,16 @@ impl<C: Context> Highway<C> {
         &self.state
     }
 
-    fn on_new_vote(&mut self, vhash: &C::Hash, timestamp: Timestamp) -> Vec<Effect<C>> {
+    fn on_new_vote<R: Rng + CryptoRng + ?Sized>(
+        &mut self,
+        vhash: &C::Hash,
+        timestamp: Timestamp,
+        rng: &mut R,
+    ) -> Vec<Effect<C>> {
         let state = &self.state;
         self.active_validator
             .as_mut()
-            .map_or_else(Vec::new, |av| av.on_new_vote(vhash, timestamp, state))
+            .map_or_else(Vec::new, |av| av.on_new_vote(vhash, timestamp, state, rng))
     }
 
     /// Performs initial validation and returns an error if `vertex` is invalid. (See
@@ -298,11 +310,15 @@ impl<C: Context> Highway<C> {
     ///
     /// Validity must be checked before calling this! Adding an invalid vote will result in a panic
     /// or an inconsistent state.
-    fn add_valid_vote(&mut self, swvote: SignedWireVote<C>) -> Vec<Effect<C>> {
+    fn add_valid_vote<R: Rng + CryptoRng + ?Sized>(
+        &mut self,
+        swvote: SignedWireVote<C>,
+        rng: &mut R,
+    ) -> Vec<Effect<C>> {
         let vote_timestamp = swvote.wire_vote.timestamp;
         let vote_hash = swvote.hash();
         self.state.add_valid_vote(swvote);
-        self.on_new_vote(&vote_hash, vote_timestamp)
+        self.on_new_vote(&vote_hash, vote_timestamp, rng)
     }
 
     /// Returns validator ID of the `swvote` creator.
@@ -313,6 +329,8 @@ impl<C: Context> Highway<C> {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use std::iter::FromIterator;
+
     use crate::{
         components::consensus::{
             highway_core::{
@@ -327,12 +345,14 @@ pub(crate) mod tests {
             },
             traits::ValidatorSecret,
         },
+        testing::TestRng,
         types::Timestamp,
     };
-    use std::iter::FromIterator;
 
     #[test]
     fn invalid_signature_error() {
+        let mut rng = TestRng::new();
+
         let state: State<TestContext> = State::new_test(WEIGHTS, 0);
         let validators = {
             let vid_weights: Vec<(u32, u64)> =
@@ -371,7 +391,7 @@ pub(crate) mod tests {
 
         // TODO: Also test the `missing_dependency` and `validate_vertex` steps.
 
-        let valid_signature = ALICE_SEC.sign(&wvote.hash());
+        let valid_signature = ALICE_SEC.sign(&wvote.hash(), &mut rng);
         let correct_signature_vote = SignedWireVote {
             wire_vote: wvote,
             signature: valid_signature,
@@ -380,6 +400,6 @@ pub(crate) mod tests {
         let pvv = highway.pre_validate_vertex(valid_vertex).unwrap();
         assert_eq!(None, highway.missing_dependency(&pvv));
         let vv = highway.validate_vertex(pvv).unwrap();
-        assert!(highway.add_valid_vertex(vv).is_empty());
+        assert!(highway.add_valid_vertex(vv, &mut rng).is_empty());
     }
 }

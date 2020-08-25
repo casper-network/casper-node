@@ -10,7 +10,7 @@ mod traits;
 
 use std::fmt::{self, Debug, Display, Formatter};
 
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -164,14 +164,15 @@ impl<REv, I> ReactorEventT<I> for REv where
 {
 }
 
-impl<I, REv> Component<REv> for EraSupervisor<I>
+impl<I, REv, R> Component<REv, R> for EraSupervisor<I, R>
 where
     I: NodeIdT,
     REv: ReactorEventT<I>,
+    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event<I>;
 
-    fn handle_event<R: Rng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut R,
