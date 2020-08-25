@@ -11,7 +11,7 @@ The client runs in one of several modes, each mode performing a single action.  
 
 ```
 cd client
-cargo run --release -- --help
+cargo run --release --help
 ```
 
 To get further info on any command, run `help` followed by the subcommand, e.g.
@@ -65,12 +65,11 @@ gossiped immediately to all interconnected nodes.
 
 #### Get a `Deploy`
 
-To retrieve that `Deploy` from any node (let's say we have another connected node running with its HTTP server listening
-on port 8888):
+To retrieve that `Deploy` from the node 
 
 ```
 cargo run --release -- get-deploy \
-    --node-address=http://localhost:8888 \
+    --node-address=http://localhost:7777 \
     c67eaf71fa9e211aeb448c7f9efd264bcf22a857c223c6b52a4217734167209e
 ```
 
