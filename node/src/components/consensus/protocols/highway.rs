@@ -126,7 +126,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         let msg = HighwayMessage::NewVertex(vv.clone().into());
         //TODO: Don't unwrap
         // Replace serde with generic serializer.
-        let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
+        let serialized_msg = rmp_serde::to_vec(&msg).unwrap();
         assert!(
             self.highway.add_valid_vertex(vv, rng).is_empty(),
             "unexpected effects when adding our own vertex"
@@ -236,7 +236,7 @@ where
         match effect {
             SynchronizerEffect::RequestVertex(sender, missing_vid) => {
                 let msg = HighwayMessage::RequestDependency(missing_vid);
-                let serialized_msg = match serde_json::to_vec_pretty(&msg) {
+                let serialized_msg = match rmp_serde::to_vec(&msg) {
                     Ok(msg) => msg,
                     Err(err) => todo!("error: {:?}", err),
                 };
@@ -262,7 +262,7 @@ where
                     .extend(self.hw_proto.process_av_effects(av_effects, rng));
                 let msg = HighwayMessage::NewVertex(vv.into());
                 // TODO: Don't `unwrap`.
-                let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
+                let serialized_msg = rmp_serde::to_vec(&msg).unwrap();
                 self.results
                     .push(ConsensusProtocolResult::CreatedGossipMessage(
                         serialized_msg,
@@ -292,7 +292,8 @@ where
         msg: Vec<u8>,
         rng: &mut R,
     ) -> Result<Vec<CpResult<I, C>>, Error> {
-        let highway_message: HighwayMessage<C> = serde_json::from_slice(msg.as_slice()).unwrap();
+        info!("MSG {}", String::from_utf8(msg.clone()).unwrap());
+        let highway_message: HighwayMessage<C> = rmp_serde::from_read_ref(msg.as_slice()).unwrap();
         Ok(match highway_message {
             HighwayMessage::NewVertex(ref v) if self.highway.has_vertex(v) => vec![],
             HighwayMessage::NewVertex(v) => {
@@ -320,7 +321,7 @@ where
             HighwayMessage::RequestDependency(dep) => {
                 if let Some(vv) = self.highway.get_dependency(&dep) {
                     let msg = HighwayMessage::NewVertex(vv.into());
-                    let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
+                    let serialized_msg = rmp_serde::to_vec(&msg).unwrap();
                     // TODO: Should this be done via a gossip service?
                     vec![ConsensusProtocolResult::CreatedTargetedMessage(
                         serialized_msg,
