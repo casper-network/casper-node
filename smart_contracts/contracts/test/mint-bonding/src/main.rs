@@ -11,11 +11,11 @@ use casperlabs_contract::{
 };
 
 use casperlabs_types::{
-    account::AccountHash, runtime_args, ApiError, ContractHash, PublicKey, RuntimeArgs, URef, U512,
+    account::AccountHash, auction, runtime_args, ApiError, ContractHash, PublicKey, RuntimeArgs,
+    URef, U512,
 };
 
 const ARG_AMOUNT: &str = "amount";
-const ARG_PURSE: &str = "purse";
 const ARG_ENTRY_POINT: &str = "entry_point";
 const ARG_BOND: &str = "bond";
 const ARG_UNBOND: &str = "unbond";
@@ -44,7 +44,7 @@ pub extern "C" fn call() {
 }
 
 fn bond() {
-    let mint_contract_hash = system::get_mint();
+    let auction_contract_hash = system::get_auction();
     // Creates new purse with desired amount based on main purse and sends funds
     let amount = runtime::get_named_arg(ARG_AMOUNT);
     let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
@@ -53,44 +53,44 @@ fn bond() {
     system::transfer_from_purse_to_purse(account::get_main_purse(), bonding_purse, amount)
         .unwrap_or_revert();
 
-    call_bond(mint_contract_hash, public_key, amount, bonding_purse);
+    call_bond(auction_contract_hash, public_key, amount, bonding_purse);
 }
 
 fn bond_from_main_purse() {
-    let mint_contract_hash = system::get_mint();
+    let auction_contract_hash = system::get_auction();
     let amount = runtime::get_named_arg(ARG_AMOUNT);
     let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
     call_bond(
-        mint_contract_hash,
+        auction_contract_hash,
         public_key,
         amount,
         account::get_main_purse(),
     );
 }
 
-fn call_bond(mint: ContractHash, public_key: PublicKey, bond_amount: U512, bonding_purse: URef) {
+fn call_bond(auction: ContractHash, public_key: PublicKey, bond_amount: U512, bonding_purse: URef) {
     let args = runtime_args! {
-        ARG_AMOUNT => bond_amount,
-        ARG_PURSE => bonding_purse,
-        ARG_PUBLIC_KEY => public_key,
+        auction::ARG_AMOUNT => bond_amount,
+        auction::ARG_SOURCE_PURSE => bonding_purse,
+        auction::ARG_PUBLIC_KEY => public_key,
     };
 
-    let (_purse, _quantity): (URef, U512) = runtime::call_contract(mint, ARG_BOND, args);
+    let (_purse, _quantity): (URef, U512) = runtime::call_contract(auction, ARG_BOND, args);
 }
 
 fn unbond() {
-    let mint_contract_hash = system::get_mint();
+    let auction_contract_hash = system::get_auction();
     let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
     let public_key: PublicKey = runtime::get_named_arg(ARG_PUBLIC_KEY);
-    call_unbond(mint_contract_hash, public_key, amount);
+    call_unbond(auction_contract_hash, public_key, amount);
 }
 
-fn call_unbond(mint: ContractHash, public_key: PublicKey, unbond_amount: U512) -> (URef, U512) {
+fn call_unbond(auction: ContractHash, public_key: PublicKey, unbond_amount: U512) -> (URef, U512) {
     let args = runtime_args! {
         ARG_AMOUNT => unbond_amount,
         ARG_PUBLIC_KEY => public_key,
     };
-    runtime::call_contract(mint, ARG_UNBOND, args)
+    runtime::call_contract(auction, ARG_UNBOND, args)
 }
 
 fn seed_new_account() {

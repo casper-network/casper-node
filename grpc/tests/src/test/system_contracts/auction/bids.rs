@@ -104,7 +104,6 @@ fn should_run_add_bid() {
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let auction_hash = builder.get_auction_contract_hash();
-    let mint_hash = builder.get_mint_contract_hash();
 
     //
     let exec_request_1 = ExecuteRequestBuilder::standard(
@@ -180,7 +179,8 @@ fn should_run_add_bid() {
         builder.get_purse_balance(active_bid.bid_purse),
         U512::from(ADD_BID_AMOUNT_1 + BID_AMOUNT_2) // Since we don't pay out immediately `WITHDRAW_BID_AMOUNT_2` is locked in unbonding queue
     );
-    let unbonding_purses: UnbondingPurses = get_value(&mut builder, mint_hash, "unbonding_purses");
+    let unbonding_purses: UnbondingPurses =
+        get_value(&mut builder, auction_hash, "unbonding_purses");
     let unbond_list = unbonding_purses
         .get(&casperlabs_types::PublicKey::from(*BID_ACCOUNT_PK))
         .expect("should have unbond");

@@ -1076,6 +1076,11 @@ fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
                 let map: BTreeMap<String, URef> = cl_value.to_owned().into_t()?;
                 Ok(map.values().cloned().collect())
             }
+            (CLType::PublicKey, CLType::URef) => {
+                let map: BTreeMap<casperlabs_types::PublicKey, URef> =
+                    cl_value.to_owned().into_t()?;
+                Ok(map.values().cloned().collect())
+            }
             (CLType::Bool, CLType::Key) => {
                 let map: BTreeMap<bool, Key> = cl_value.to_owned().into_t()?;
                 Ok(map.values().cloned().filter_map(Key::into_uref).collect())
@@ -1118,6 +1123,11 @@ fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
             }
             (CLType::String, CLType::Key) => {
                 let map: NamedKeys = cl_value.to_owned().into_t()?;
+                Ok(map.values().cloned().filter_map(Key::into_uref).collect())
+            }
+            (CLType::PublicKey, CLType::Key) => {
+                let map: BTreeMap<casperlabs_types::PublicKey, Key> =
+                    cl_value.to_owned().into_t()?;
                 Ok(map.values().cloned().filter_map(Key::into_uref).collect())
             }
             (_, _) => Ok(vec![]),
@@ -2249,7 +2259,13 @@ where
                 );
             }
             for key in &extra_keys {
-                self.context.validate_key(key)?;
+                if let Err(Error::ForgedReference(maybe_forged_uref)) =
+                    self.context.validate_key(key)
+                {
+                    if !extra_keys.contains(&Key::from(maybe_forged_uref)) {
+                        return Err(Error::ForgedReference(maybe_forged_uref));
+                    }
+                }
             }
 
             if !self.config.use_system_contracts() {
@@ -3561,9 +3577,10 @@ mod tests {
         result,
     };
 
-    use casperlabs_types::{gens::*, CLType, CLValue, Key, URef};
+    use casperlabs_types::{gens::*, AccessRights, CLType, CLValue, Key, URef};
 
     use super::extract_urefs;
+    use std::collections::BTreeMap;
 
     fn cl_value_with_urefs_arb() -> impl Strategy<Value = (CLValue, Vec<URef>)> {
         // If compiler brings you here it most probably means you've added a variant to `CLType`
@@ -3705,5 +3722,24 @@ mod tests {
             let extracted_urefs = extract_urefs(&cl_value).unwrap();
             assert_eq!(extracted_urefs, urefs);
         }
+    }
+
+    #[test]
+    fn extract_from_public_keys_to_urefs_map() {
+        let uref = URef::new([43; 32], AccessRights::READ_ADD_WRITE);
+        let mut map = BTreeMap::new();
+        map.insert(casperlabs_types::PublicKey::Ed25519([42; 32]), uref);
+        let cl_value = CLValue::from_t(map).unwrap();
+        assert_eq!(extract_urefs(&cl_value).unwrap(), vec![uref]);
+    }
+
+    #[test]
+    fn extract_from_public_keys_to_uref_keys_map() {
+        let uref = URef::new([43; 32], AccessRights::READ_ADD_WRITE);
+        let key = Key::from(uref);
+        let mut map = BTreeMap::new();
+        map.insert(casperlabs_types::PublicKey::Ed25519([42; 32]), key);
+        let cl_value = CLValue::from_t(map).unwrap();
+        assert_eq!(extract_urefs(&cl_value).unwrap(), vec![uref]);
     }
 }

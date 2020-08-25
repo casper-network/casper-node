@@ -273,13 +273,15 @@ where
             .ok_or(Error::DelegatorNotFound)?;
 
         let new_amount = {
-            let amount = delegators_map
+            let delegators_amount = delegators_map
                 .get_mut(&delegator_public_key)
                 .ok_or(Error::ValidatorNotFound)?;
 
-            let new_amount = amount.checked_sub(*amount).ok_or(Error::InvalidQuantity)?;
+            let new_amount = delegators_amount
+                .checked_sub(amount)
+                .ok_or(Error::InvalidQuantity)?;
 
-            *amount = new_amount;
+            *delegators_amount = new_amount;
             new_amount
         };
 
@@ -339,6 +341,10 @@ where
     ///
     /// Returns the bid purse's key and current quantity of motes.
     fn bond(&mut self, public_key: PublicKey, source: URef, amount: U512) -> Result<(URef, U512)> {
+        if amount.is_zero() {
+            return Err(Error::BondTooSmall);
+        }
+
         let bid_purses_uref = self
             .get_key(BID_PURSES_KEY)
             .and_then(Key::into_uref)
@@ -377,6 +383,11 @@ where
             .get(&public_key)
             .copied()
             .ok_or(Error::BondNotFound)?;
+
+        if self.get_balance(bid_purse)?.unwrap_or_default() < amount {
+            return Err(Error::UnbondTooLarge);
+        }
+
         // Creates new unbonding purse with requested tokens
         let unbond_purse = self.create_purse();
 
@@ -402,7 +413,7 @@ where
         self.write(unbonding_purses_uref, unbonding_purses)?;
 
         // Remaining motes in the validator's bid purse
-        let remaining_bond = self.get_balance(bid_purse)?.unwrap();
+        let remaining_bond = self.get_balance(bid_purse)?.unwrap_or_default();
         Ok((unbond_purse, remaining_bond))
     }
 

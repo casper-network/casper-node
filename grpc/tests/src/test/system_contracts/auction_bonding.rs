@@ -12,9 +12,15 @@ use casperlabs_node::{
 };
 use casperlabs_types::{
     account::AccountHash,
-    auction::{BidPurses, UnbondingPurses, DEFAULT_UNBONDING_DELAY, INITIAL_ERA_ID},
+    auction::{
+        BidPurses, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, BID_PURSES_KEY,
+        DEFAULT_UNBONDING_DELAY, INITIAL_ERA_ID, METHOD_PROCESS_UNBOND_REQUESTS, METHOD_SLASH,
+        UNBONDING_PURSES_KEY,
+    },
     bytesrepr::FromBytes,
-    runtime_args, ApiError, CLTyped, ContractHash, RuntimeArgs, U512,
+    runtime_args,
+    system_contract_errors::auction,
+    ApiError, CLTyped, ContractHash, RuntimeArgs, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
@@ -82,7 +88,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
-    let mint = builder.get_mint_contract_hash();
+    let auction = builder.get_auction_contract_hash();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -97,7 +103,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let bid_purses: BidPurses = get_value(&mut builder, mint, "bid_purses");
+    let bid_purses: BidPurses = get_value(&mut builder, auction, BID_PURSES_KEY);
     let bid_purse = bid_purses
         .get(&casperlabs_types::PublicKey::from(
             *DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -108,7 +114,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         GENESIS_ACCOUNT_STAKE.into()
     );
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, mint, "unbonding_purses");
+    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 0);
 
     //
@@ -130,7 +136,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     builder.exec(exec_request_2).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, mint, "unbonding_purses");
+    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
@@ -154,15 +160,15 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     let exec_request_3 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,
-        mint,
-        "process_unbond_requests",
+        auction,
+        METHOD_PROCESS_UNBOND_REQUESTS,
         runtime_args! {},
     )
     .build();
 
     builder.exec(exec_request_3).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, mint, "unbonding_purses");
+    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
@@ -184,10 +190,10 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     let exec_request_4 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,
-        mint,
-        "slash",
+        auction,
+        METHOD_SLASH,
         runtime_args! {
-            "validator_public_keys" => vec![
+            ARG_VALIDATOR_PUBLIC_KEYS => vec![
                default_public_key_arg,
             ]
         },
@@ -196,7 +202,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     builder.exec(exec_request_4).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, mint, "unbonding_purses");
+    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
     let unbond_list = unbond_purses
         .get(&casperlabs_types::PublicKey::from(
             *DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -204,7 +210,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 0); // removed unbonds
 
-    let bid_purses: BidPurses = get_value(&mut builder, mint, "bid_purses");
+    let bid_purses: BidPurses = get_value(&mut builder, auction, BID_PURSES_KEY);
 
     assert!(bid_purses.is_empty());
 }
@@ -253,7 +259,7 @@ fn should_fail_bonding_with_insufficient_funds() {
     let error_message = utils::get_error_message(response);
 
     assert!(
-        error_message.contains(&format!("{:?}", ApiError::Mint(0))),
+        error_message.contains(&format!("{:?}", ApiError::from(auction::Error::Transfer))),
         "error: {:?}",
         error_message
     );
@@ -304,7 +310,10 @@ fn should_fail_unbonding_validator_without_bonding_first() {
 
     // pos::Error::NotBonded => 0
     assert!(
-        error_message.contains(&format!("{:?}", ApiError::Mint(9))),
+        error_message.contains(&format!(
+            "{:?}",
+            ApiError::from(auction::Error::BondNotFound)
+        )),
         "error {:?}",
         error_message
     );
@@ -334,7 +343,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
-    let mint = builder.get_mint_contract_hash();
+    let auction = builder.get_auction_contract_hash();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -349,7 +358,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let bid_purses: BidPurses = get_value(&mut builder, mint, "bid_purses");
+    let bid_purses: BidPurses = get_value(&mut builder, auction, BID_PURSES_KEY);
     let bid_purse = bid_purses
         .get(&default_public_key_arg)
         .expect("should have bid purse");
@@ -358,7 +367,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
         GENESIS_ACCOUNT_STAKE.into()
     );
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, mint, "unbonding_purses");
+    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 0);
 
     //
@@ -397,7 +406,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     builder.exec(exec_request_2).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, mint, "unbonding_purses");
+    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
@@ -423,7 +432,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     let exec_request_3 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,
-        mint,
+        auction,
         "process_unbond_requests",
         runtime_args! {},
     )
@@ -431,7 +440,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     builder.exec(exec_request_3).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, mint, "unbonding_purses");
+    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
@@ -481,7 +490,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     let exec_request_4 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,
-        mint,
+        auction,
         "process_unbond_requests",
         runtime_args! {},
     )
@@ -491,7 +500,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     assert_eq!(builder.get_purse_balance(unbond_purse), unbond_amount);
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, mint, "unbonding_purses");
+    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
     let unbond_list = unbond_purses
         .get(&casperlabs_types::PublicKey::from(
             *DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -499,7 +508,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 0); // removed unbonds
 
-    let bid_purses: BidPurses = get_value(&mut builder, mint, "bid_purses");
+    let bid_purses: BidPurses = get_value(&mut builder, auction, BID_PURSES_KEY);
 
     assert!(!bid_purses.is_empty());
     assert_eq!(

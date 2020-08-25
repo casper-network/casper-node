@@ -68,6 +68,12 @@ pub enum Error {
     /// Unable to create purse.
     #[fail(display = "Unable to create purse")]
     CreatePurseFailed = 18,
+    /// Attempted to unbond an amount which was too large.
+    #[fail(display = "Unbond is too large")]
+    UnbondTooLarge = 19,
+    /// Attempted to bond with a stake which was too small.
+    #[fail(display = "Bond is too small")]
+    BondTooSmall = 20,
 }
 
 impl CLTyped for Error {

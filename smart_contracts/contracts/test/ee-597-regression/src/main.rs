@@ -4,18 +4,17 @@
 extern crate alloc;
 
 use casperlabs_contract::contract_api::{account, runtime, system};
-use casperlabs_types::{runtime_args, ContractHash, RuntimeArgs, URef, U512};
+use casperlabs_types::{auction, runtime_args, ContractHash, PublicKey, RuntimeArgs, URef, U512};
 
-const ARG_AMOUNT: &str = "amount";
-const ARG_PURSE: &str = "purse";
-const BOND: &str = "bond";
+const VALID_PUBLIC_KEY: PublicKey = PublicKey::Ed25519([42; 32]);
 
 fn bond(contract_hash: ContractHash, bond_amount: U512, bonding_purse: URef) {
     let runtime_args = runtime_args! {
-        ARG_AMOUNT => bond_amount,
-        ARG_PURSE => bonding_purse,
+        auction::ARG_AMOUNT => bond_amount,
+        auction::ARG_SOURCE_PURSE => bonding_purse,
+        auction::ARG_PUBLIC_KEY => VALID_PUBLIC_KEY,
     };
-    runtime::call_contract::<()>(contract_hash, BOND, runtime_args);
+    runtime::call_contract::<(URef, U512)>(contract_hash, auction::METHOD_BOND, runtime_args);
 }
 
 #[no_mangle]

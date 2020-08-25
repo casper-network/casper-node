@@ -9,8 +9,8 @@ use casperlabs_node::components::contract_runtime::core::engine_state::EngineCon
 use casperlabs_types::{
     account::AccountHash,
     auction::{
-        ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        ACTIVE_BIDS_KEY, BID_PURSES_KEY, DELEGATORS_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY,
+        FOUNDING_VALIDATORS_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_PURSES_KEY,
     },
     runtime_args, ContractHash, RuntimeArgs, U512,
 };
@@ -22,7 +22,7 @@ const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 const DEPLOY_HASH_2: [u8; 32] = [2u8; 32];
 
 // one named_key for each validator and three for the purses
-const EXPECTED_KNOWN_KEYS_LEN: usize = 6;
+const EXPECTED_KNOWN_KEYS_LEN: usize = 8;
 
 #[ignore]
 #[test]
@@ -99,4 +99,6 @@ fn should_run_auction_install_contract() {
     assert!(named_keys.contains_key(ERA_VALIDATORS_KEY));
     assert!(named_keys.contains_key(ERA_ID_KEY));
     assert!(named_keys.contains_key(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY));
+    assert!(named_keys.contains_key(BID_PURSES_KEY));
+    assert!(named_keys.contains_key(UNBONDING_PURSES_KEY));
 }

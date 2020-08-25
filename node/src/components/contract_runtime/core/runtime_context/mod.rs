@@ -249,6 +249,10 @@ where
         self.access_rights.extend(access_rights);
     }
 
+    pub fn access_rights(&self) -> &HashMap<Address, HashSet<AccessRights>> {
+        &self.access_rights
+    }
+
     pub fn account(&self) -> &'a Account {
         &self.account
     }
