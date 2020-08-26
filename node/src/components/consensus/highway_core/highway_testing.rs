@@ -96,9 +96,7 @@ impl From<Effect<TestContext>> for HighwayMessage {
             // validators so for them it's just `Vertex` that needs to be validated.
             Effect::NewVertex(ValidVertex(v)) => HighwayMessage::NewVertex(v),
             Effect::ScheduleTimer(t) => HighwayMessage::Timer(t),
-            Effect::RequestNewBlock(block_context, _opt_parent) => {
-                HighwayMessage::RequestBlock(block_context)
-            }
+            Effect::RequestNewBlock(block_context) => HighwayMessage::RequestBlock(block_context),
         }
     }
 }

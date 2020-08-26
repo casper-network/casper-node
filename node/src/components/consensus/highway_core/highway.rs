@@ -123,6 +123,8 @@ impl<C: Context> Highway<C> {
 
     /// Turns this instance from a passive observer into an active validator that proposes new
     /// blocks and creates and signs new vertices.
+    ///
+    /// Panics if `id` is not the ID of a validator with a weight in this Highway instance.
     pub(crate) fn activate_validator(
         &mut self,
         id: C::ValidatorId,
@@ -134,7 +136,10 @@ impl<C: Context> Highway<C> {
             self.active_validator.is_none(),
             "activate_validator called twice"
         );
-        let idx = self.validators.get_index(&id);
+        let idx = self
+            .validators
+            .get_index(&id)
+            .expect("missing own validator ID");
         let (av, effects) = ActiveValidator::new(idx, secret, round_exp, start_time, &self.state);
         self.active_validator = Some(av);
         effects
@@ -282,7 +287,8 @@ impl<C: Context> Highway<C> {
     fn do_pre_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
             Vertex::Vote(vote) => {
-                if !C::verify_signature(&vote.hash(), self.validator_id(&vote), &vote.signature) {
+                let v_id = self.validator_id(&vote).ok_or(VoteError::Creator)?;
+                if !C::verify_signature(&vote.hash(), v_id, &vote.signature) {
                     return Err(VoteError::Signature.into());
                 }
                 Ok(self.state.pre_validate_vote(vote)?)
@@ -321,9 +327,11 @@ impl<C: Context> Highway<C> {
         self.on_new_vote(&vote_hash, vote_timestamp, rng)
     }
 
-    /// Returns validator ID of the `swvote` creator.
-    fn validator_id(&self, swvote: &SignedWireVote<C>) -> &C::ValidatorId {
-        self.validators.get_by_index(swvote.wire_vote.creator).id()
+    /// Returns validator ID of the `swvote` creator, if it exists.
+    fn validator_id(&self, swvote: &SignedWireVote<C>) -> Option<&C::ValidatorId> {
+        self.validators
+            .get_by_index(swvote.wire_vote.creator)
+            .map(Validator::id)
     }
 }
 

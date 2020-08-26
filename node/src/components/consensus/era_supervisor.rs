@@ -64,8 +64,6 @@ pub(crate) struct Era<I, R: Rng + CryptoRng + ?Sized> {
     consensus: Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey, R>>,
     /// The height of this era's first block.
     start_height: u64,
-    /// The previous era's switch block. `None` for era 0.
-    prev_switch_block: Option<ProtoBlock>,
 }
 
 pub(crate) struct EraSupervisor<I, R: Rng + CryptoRng + ?Sized> {
@@ -119,7 +117,6 @@ where
             validator_stakes,
             highway_config.genesis_era_start_timestamp,
             0,
-            None,
             rng,
         );
         let effects = era_supervisor
@@ -152,7 +149,6 @@ where
         validator_stakes: Vec<(PublicKey, Motes)>,
         start_time: Timestamp,
         start_height: u64,
-        prev_switch_block: Option<ProtoBlock>,
         rng: &mut R,
     ) -> Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>> {
         if self.active_eras.contains_key(&era_id) {
@@ -207,7 +203,6 @@ where
         let era = Era {
             consensus: Box::new(highway),
             start_height,
-            prev_switch_block,
         };
         let _ = self.active_eras.insert(era_id, era);
 
@@ -393,25 +388,14 @@ where
                     .set_timeout(timediff.into())
                     .event(move |_| Event::Timer { era_id, timestamp })
             }
-            ConsensusProtocolResult::CreateNewBlock {
-                block_context,
-                opt_parent,
-            } => {
-                let opt_parent = opt_parent.or_else(|| {
-                    self.era_supervisor
-                        .active_eras
-                        .get(&era_id)?
-                        .prev_switch_block
-                        .clone()
-                });
-                self.effect_builder
-                    .request_proto_block(block_context, opt_parent, self.rng.gen())
-                    .event(move |(proto_block, block_context)| Event::NewProtoBlock {
-                        era_id,
-                        proto_block,
-                        block_context,
-                    })
-            }
+            ConsensusProtocolResult::CreateNewBlock { block_context } => self
+                .effect_builder
+                .request_proto_block(block_context, self.rng.gen())
+                .event(move |(proto_block, block_context)| Event::NewProtoBlock {
+                    era_id,
+                    proto_block,
+                    block_context,
+                }),
             ConsensusProtocolResult::FinalizedBlock {
                 value: proto_block,
                 new_equivocators,
@@ -458,7 +442,6 @@ where
                         validator_stakes,
                         fb.timestamp(),
                         fb.height() + 1,
-                        Some(fb.proto_block().clone()),
                         self.rng,
                     );
                     let new_era_id = era_id.successor();

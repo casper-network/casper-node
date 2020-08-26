@@ -24,7 +24,7 @@ use itertools::Itertools;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
-use tracing::warn;
+use tracing::error;
 
 use crate::{
     components::consensus::{
@@ -42,8 +42,16 @@ use tallies::Tallies;
 
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum VoteError {
-    #[error("The vote's panorama is inconsistent.")]
-    Panorama,
+    #[error("The vote is a ballot but doesn't cite any block.")]
+    MissingBlock,
+    #[error("The panorama's length {} doesn't match the number of validators.", _0)]
+    PanoramaLength(usize),
+    #[error("The vote accuses its own creator as faulty.")]
+    FaultyCreator,
+    #[error("The panorama has a vote from {:?} in the slot for {:?}.", _0, _1)]
+    PanoramaIndex(ValidatorIndex, ValidatorIndex),
+    #[error("The panorama is missing votes indirectly cited via {:?}.", _0)]
+    InconsistentPanorama(ValidatorIndex),
     #[error("The vote contains the wrong sequence number.")]
     SequenceNumber,
     #[error("The vote's timestamp is older than a justification's.")]
@@ -92,12 +100,17 @@ impl<C: Context> State<C> {
         I::Item: Borrow<Weight>,
     {
         let weights = ValidatorMap::from(weights.into_iter().map(|w| *w.borrow()).collect_vec());
+        assert!(
+            weights.len() > 0,
+            "cannot initialize Highway with no validators"
+        );
         let mut sum = Weight(0);
         let add = |w: &Weight| {
-            sum += *w;
+            sum = sum.checked_add(*w).expect("total weight must be < 2^64");
             sum
         };
         let cumulative_w = weights.iter().map(add).collect();
+        assert!(sum > Weight(0), "total weight must not be zero");
         let panorama = Panorama::new(weights.len());
         State {
             params,
@@ -148,7 +161,11 @@ impl<C: Context> State<C> {
 
     /// Returns the sum of all validators' voting weights.
     pub(crate) fn total_weight(&self) -> Weight {
-        *self.cumulative_w.as_ref().last().unwrap()
+        *self
+            .cumulative_w
+            .as_ref()
+            .last()
+            .expect("weight list cannot be empty")
     }
 
     /// Returns evidence against validator nr. `idx`, if present.
@@ -178,7 +195,7 @@ impl<C: Context> State<C> {
 
     /// Returns the vote with the given hash. Panics if not found.
     pub(crate) fn vote(&self, hash: &C::Hash) -> &Vote<C> {
-        self.opt_vote(hash).unwrap()
+        self.opt_vote(hash).expect("vote hash must exist")
     }
 
     /// Returns the block contained in the vote with the given hash, if present.
@@ -188,7 +205,7 @@ impl<C: Context> State<C> {
 
     /// Returns the block contained in the vote with the given hash. Panics if not found.
     pub(crate) fn block(&self, hash: &C::Hash) -> &Block<C> {
-        self.opt_block(hash).unwrap()
+        self.opt_block(hash).expect("block hash must exist")
     }
 
     /// Returns an iterator over all hashes of blocks whose earliest timestamp for reward payout is
@@ -321,11 +338,14 @@ impl<C: Context> State<C> {
         if wvote.round_exp < self.params.min_round_exp() {
             return Err(VoteError::RoundLength);
         }
-        if (wvote.value.is_none() && !wvote.panorama.has_correct())
-            || wvote.panorama.len() != self.validator_count()
-            || wvote.panorama.get(creator).is_faulty()
-        {
-            return Err(VoteError::Panorama);
+        if wvote.value.is_none() && !wvote.panorama.has_correct() {
+            return Err(VoteError::MissingBlock);
+        }
+        if wvote.panorama.len() != self.validator_count() {
+            return Err(VoteError::PanoramaLength(wvote.panorama.len()));
+        }
+        if wvote.panorama.get(creator).is_faulty() {
+            return Err(VoteError::FaultyCreator);
         }
         let is_terminal = |hash: &C::Hash| self.is_terminal_block(hash);
         if wvote.value.is_some() && self.fork_choice(&wvote.panorama).map_or(false, is_terminal) {
@@ -339,17 +359,15 @@ impl<C: Context> State<C> {
     pub(crate) fn validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {
         let wvote = &swvote.wire_vote;
         let creator = wvote.creator;
-        if !wvote.panorama.is_valid(self) {
-            return Err(VoteError::Panorama);
-        }
+        wvote.panorama.validate(self)?;
         let mut justifications = wvote.panorama.iter_correct();
         if !justifications.all(|vh| self.vote(vh).timestamp <= wvote.timestamp) {
             return Err(VoteError::Timestamps);
         }
         match wvote.panorama.get(creator) {
             Observation::Faulty => {
-                warn!("Vote from faulty validator should be rejected in `pre_validate_vote`.");
-                return Err(VoteError::Panorama);
+                error!("Vote from faulty validator should be rejected in `pre_validate_vote`.");
+                return Err(VoteError::FaultyCreator);
             }
             Observation::None if wvote.seq_number == 0 => (),
             Observation::None => return Err(VoteError::SequenceNumber),
@@ -395,13 +413,14 @@ impl<C: Context> State<C> {
         let new_obs = match (self.panorama.get(creator), wvote.panorama.get(creator)) {
             (Observation::Faulty, _) => Observation::Faulty,
             (obs0, obs1) if obs0 == obs1 => Observation::Correct(wvote.hash()),
-            (Observation::None, _) => panic!("missing own previous vote"),
+            (Observation::None, _) => panic!("missing creator's previous vote"),
             (Observation::Correct(hash0), _) => {
-                if !self.has_evidence(creator) {
-                    let prev0 = self.find_in_swimlane(hash0, wvote.seq_number).unwrap();
-                    let wvote0 = self.wire_vote(prev0).unwrap();
-                    self.add_evidence(Evidence::Equivocation(wvote0, swvote.clone()));
-                }
+                // If we have all dependencies of wvote and still see the sender as correct, the
+                // predecessor of wvote must be a predecessor of hash0. So we already have a
+                // conflicting vote with the same sequence number:
+                let prev0 = self.find_in_swimlane(hash0, wvote.seq_number).unwrap();
+                let wvote0 = self.wire_vote(prev0).unwrap();
+                self.add_evidence(Evidence::Equivocation(wvote0, swvote.clone()));
                 Observation::Faulty
             }
         };
@@ -663,7 +682,7 @@ pub(crate) mod tests {
         let opt_err = add_vote!(state, rng, CAROL, None; N, b1, N)
             .err()
             .map(vote_err);
-        assert_eq!(Some(VoteError::Panorama), opt_err);
+        assert_eq!(Some(VoteError::InconsistentPanorama(BOB)), opt_err);
 
         // Alice has not equivocated yet, and not produced message A1.
         let missing = panorama!(F, b1, c0).missing_dependency(&state);
