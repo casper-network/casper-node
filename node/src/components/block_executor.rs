@@ -85,8 +85,8 @@ impl Display for Event {
                 deploys,
             } => write!(
                 f,
-                "fetch deploys for finalized block {} has {} deploys",
-                state.finalized_block.proto_block().hash(),
+                "fetch deploys for finalized block with height {} has {} deploys",
+                state.finalized_block.height(),
                 deploys.len()
             ),
             Event::DeployExecutionResult {
@@ -94,8 +94,8 @@ impl Display for Event {
                 result: Ok(_),
             } => write!(
                 f,
-                "deploys execution result for finalized block {} with pre-state hash {}: success",
-                state.finalized_block.proto_block().hash(),
+                "deploys execution result for finalized block with height {} with pre-state hash {}: success",
+                state.finalized_block.height(),
                 state.pre_state_hash
             ),
             Event::DeployExecutionResult {
@@ -103,21 +103,21 @@ impl Display for Event {
                 result: Err(_),
             } => write!(
                 f,
-                "deploys execution result for finalized block {} with pre-state hash {}: root not found",
-                state.finalized_block.proto_block().hash(),
+                "deploys execution result for finalized block with height {} with pre-state hash {}: root not found",
+                state.finalized_block.height(),
                 state.pre_state_hash
             ),
             Event::CommitExecutionEffects { state, commit_result: Ok(CommitResult::Success { state_root, ..})} => write!(
                 f,
-                "commit execution effects for finalized block {} with pre-state hash {}: success with post-state hash {}",
-                state.finalized_block.proto_block().hash(),
+                "commit execution effects for finalized block with height {} with pre-state hash {}: success with post-state hash {}",
+                state.finalized_block.height(),
                 state.pre_state_hash,
                 state_root,
             ),
             Event::CommitExecutionEffects { state, commit_result } => write!(
                 f,
-                "commit execution effects for finalized block {} with pre-state hash {}: failed {:?}",
-                state.finalized_block.proto_block().hash(),
+                "commit execution effects for finalized block with height {} with pre-state hash {}: failed {:?}",
+                state.finalized_block.height(),
                 state.pre_state_hash,
                 commit_result,
             ),
