@@ -124,9 +124,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         rng: &mut R,
     ) -> Vec<CpResult<I, C>> {
         let msg = HighwayMessage::NewVertex(vv.clone().into());
-        //TODO: Don't unwrap
-        // Replace serde with generic serializer.
-        let serialized_msg = rmp_serde::to_vec(&msg).unwrap();
+        let serialized_msg = rmp_serde::to_vec(&msg).expect("should serialize message");
         assert!(
             self.highway.add_valid_vertex(vv, rng).is_empty(),
             "unexpected effects when adding our own vertex"
@@ -261,8 +259,7 @@ where
                 self.results
                     .extend(self.hw_proto.process_av_effects(av_effects, rng));
                 let msg = HighwayMessage::NewVertex(vv.into());
-                // TODO: Don't `unwrap`.
-                let serialized_msg = rmp_serde::to_vec(&msg).unwrap();
+                let serialized_msg = rmp_serde::to_vec(&msg).expect("should serialize message");
                 self.results
                     .push(ConsensusProtocolResult::CreatedGossipMessage(
                         serialized_msg,
@@ -292,10 +289,14 @@ where
         msg: Vec<u8>,
         rng: &mut R,
     ) -> Result<Vec<CpResult<I, C>>, Error> {
-        let highway_message: HighwayMessage<C> = rmp_serde::from_read_ref(msg.as_slice()).unwrap();
-        Ok(match highway_message {
-            HighwayMessage::NewVertex(ref v) if self.highway.has_vertex(v) => vec![],
-            HighwayMessage::NewVertex(v) => {
+        match rmp_serde::from_read_ref(msg.as_slice()) {
+            Err(err) => Ok(vec![ConsensusProtocolResult::InvalidIncomingMessage(
+                msg,
+                sender,
+                err.into(),
+            )]),
+            Ok(HighwayMessage::NewVertex(ref v)) if self.highway.has_vertex(v) => Ok(vec![]),
+            Ok(HighwayMessage::NewVertex(v)) => {
                 let pvv = match self.highway.pre_validate_vertex(v) {
                     Ok(pvv) => pvv,
                     Err((_vertex, err)) => {
@@ -313,25 +314,25 @@ where
                 // `Event::NewVertex(v)`, and call `add_vertex` when handling that event. For each
                 // returned vertex that needs to be requeued, also return an `EnqueueVertex`
                 // effect.
-                SynchronizerQueue::new(self)
+                Ok(SynchronizerQueue::new(self)
                     .with_vertices(vec![(sender, pvv)])
-                    .run(rng)
+                    .run(rng))
             }
-            HighwayMessage::RequestDependency(dep) => {
+            Ok(HighwayMessage::RequestDependency(dep)) => {
                 if let Some(vv) = self.highway.get_dependency(&dep) {
                     let msg = HighwayMessage::NewVertex(vv.into());
-                    let serialized_msg = rmp_serde::to_vec(&msg).unwrap();
+                    let serialized_msg = rmp_serde::to_vec(&msg).expect("should serialize message");
                     // TODO: Should this be done via a gossip service?
-                    vec![ConsensusProtocolResult::CreatedTargetedMessage(
+                    Ok(vec![ConsensusProtocolResult::CreatedTargetedMessage(
                         serialized_msg,
                         sender,
-                    )]
+                    )])
                 } else {
-                    info!(?dep, "Requested dependency doesn't exist.");
-                    vec![]
+                    info!(?dep, ?sender, "requested dependency doesn't exist");
+                    Ok(vec![])
                 }
             }
-        })
+        }
     }
 
     fn handle_timer(
