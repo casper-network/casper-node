@@ -30,7 +30,6 @@ use crate::{
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
         metrics::Metrics,
-        pinger::{self, Pinger},
         storage::{self, Storage, Value},
         Component,
     },
@@ -57,9 +56,6 @@ use error::Error;
 /// Reactor message.
 #[derive(Debug, Clone, From, Serialize, Deserialize)]
 pub enum Message {
-    /// Pinger component message.
-    #[from]
-    Pinger(pinger::Message),
     /// Consensus component message.
     #[from]
     Consensus(consensus::ConsensusMessage),
@@ -101,7 +97,6 @@ impl Message {
 impl Display for Message {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            Message::Pinger(pinger) => write!(f, "Pinger::{}", pinger),
             Message::Consensus(consensus) => write!(f, "Consensus::{}", consensus),
             Message::DeployGossiper(deploy) => write!(f, "DeployGossiper::{}", deploy),
             Message::GetRequest { tag, serialized_id } => {
@@ -125,9 +120,6 @@ pub enum Event {
     /// Deploy buffer event.
     #[from]
     DeployBuffer(deploy_buffer::Event),
-    /// Pinger event.
-    #[from]
-    Pinger(pinger::Event),
     #[from]
     /// Storage event.
     Storage(storage::Event<Storage>),
@@ -209,12 +201,6 @@ impl From<NetworkRequest<NodeId, consensus::ConsensusMessage>> for Event {
     }
 }
 
-impl From<NetworkRequest<NodeId, pinger::Message>> for Event {
-    fn from(request: NetworkRequest<NodeId, pinger::Message>) -> Self {
-        Event::NetworkRequest(request.map_payload(Message::from))
-    }
-}
-
 impl From<NetworkRequest<NodeId, gossiper::Message<Deploy>>> for Event {
     fn from(request: NetworkRequest<NodeId, gossiper::Message<Deploy>>) -> Self {
         Event::NetworkRequest(request.map_payload(Message::from))
@@ -232,7 +218,6 @@ impl Display for Event {
         match self {
             Event::Network(event) => write!(f, "network: {}", event),
             Event::DeployBuffer(event) => write!(f, "deploy buffer: {}", event),
-            Event::Pinger(event) => write!(f, "pinger: {}", event),
             Event::Storage(event) => write!(f, "storage: {}", event),
             Event::ApiServer(event) => write!(f, "api server: {}", event),
             Event::Consensus(event) => write!(f, "consensus: {}", event),
@@ -263,7 +248,6 @@ impl Display for Event {
 pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
     metrics: Metrics,
     net: SmallNetwork<Event, Message>,
-    pinger: Pinger,
     storage: Storage,
     contract_runtime: ContractRuntime,
     api_server: ApiServer,
@@ -315,7 +299,6 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             WithDir::new(root.clone(), config.validator_net),
         )?;
 
-        let (pinger, pinger_effects) = Pinger::new(registry, effect_builder)?;
         let api_server = ApiServer::new(config.http_server, effect_builder);
         let timestamp = Timestamp::now();
         let validator_stakes = chainspec_loader
@@ -356,14 +339,12 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         let block_validator = BlockValidator::<NodeId>::new();
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
-        effects.extend(reactor::wrap_effects(Event::Pinger, pinger_effects));
         effects.extend(reactor::wrap_effects(Event::Consensus, consensus_effects));
 
         Ok((
             Reactor {
                 metrics,
                 net,
-                pinger,
                 storage,
                 contract_runtime,
                 api_server,
@@ -393,10 +374,6 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             Event::DeployBuffer(event) => reactor::wrap_effects(
                 Event::DeployBuffer,
                 self.deploy_buffer.handle_event(effect_builder, rng, event),
-            ),
-            Event::Pinger(event) => reactor::wrap_effects(
-                Event::Pinger,
-                self.pinger.handle_event(effect_builder, rng, event),
             ),
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
@@ -473,9 +450,6 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 let reactor_event = match payload {
                     Message::Consensus(msg) => {
                         Event::Consensus(consensus::Event::MessageReceived { sender, msg })
-                    }
-                    Message::Pinger(msg) => {
-                        Event::Pinger(pinger::Event::MessageReceived { sender, msg })
                     }
                     Message::DeployGossiper(message) => {
                         Event::DeployGossiper(gossiper::Event::MessageReceived { sender, message })
