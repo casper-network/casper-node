@@ -12,6 +12,7 @@ use tracing::{debug, error, trace};
 
 use casperlabs_types::ProtocolVersion;
 
+use super::consensus::EraId;
 use crate::{
     components::{
         contract_runtime::{
@@ -32,7 +33,7 @@ use crate::{
         requests::{BlockExecutorRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{Block, BlockHash, Deploy, FinalizedBlock, ProtoBlockHash},
+    types::{Block, BlockHash, Deploy, FinalizedBlock},
 };
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `BlockExecutor`
@@ -143,6 +144,8 @@ struct ExecutedBlockSummary {
     post_state_hash: Digest,
 }
 
+type BlockHeight = u64;
+
 /// The Block executor component.
 #[derive(Debug, Default)]
 pub(crate) struct BlockExecutor {
@@ -150,9 +153,9 @@ pub(crate) struct BlockExecutor {
     /// A mapping from proto block to executed block's ID and post-state hash, to allow
     /// identification of a parent block's details once a finalized block has been executed.
     ///
-    /// For a given entry, the key is a proto block's hash, and the `ExecutedBlockSummary` is
-    /// derived from the executed block which is created from that proto block.
-    parent_map: HashMap<ProtoBlockHash, ExecutedBlockSummary>,
+    /// The key is a tuple of block's height (it's a linear chain so it's monotonically increasing),
+    /// and the `ExecutedBlockSummary` is derived from the executed block which is created from that proto block.
+    parent_map: HashMap<BlockHeight, ExecutedBlockSummary>,
 }
 
 impl BlockExecutor {
@@ -268,49 +271,45 @@ impl BlockExecutor {
     }
 
     fn create_block(&mut self, finalized_block: FinalizedBlock, post_state_hash: Digest) -> Block {
-        let proto_parent_hash = finalized_block.proto_block().parent_hash();
-        // TODO: Compare finalized block's height as well.
-        let parent_summary_hash = if proto_parent_hash == &Default::default() {
+        let parent_summary_hash = if finalized_block.is_genesis_child() {
             // Genesis, no parent summary.
             BlockHash::new(Digest::default())
         } else {
+            let parent_block_height = finalized_block.height() - 1;
             self.parent_map
-                .remove(proto_parent_hash)
-                .unwrap_or_else(|| panic!("failed to take {}", proto_parent_hash))
+                .remove(&parent_block_height)
+                .unwrap_or_else(|| panic!("failed to take {:?}", parent_block_height))
                 .hash
         };
-        let new_proto_hash = *finalized_block.proto_block().hash();
+        let block_height = finalized_block.height();
         let block = Block::new(parent_summary_hash, post_state_hash, finalized_block);
         let summary = ExecutedBlockSummary {
             hash: *block.hash(),
             post_state_hash,
         };
-        let _ = self.parent_map.insert(new_proto_hash, summary);
+        let _ = self.parent_map.insert(block_height, summary);
         block
     }
 
     fn pre_state_hash(&mut self, finalized_block: &FinalizedBlock) -> Digest {
-        // Try to get the parent's post-state-hash from the `parent_map`.
-        let parent_proto_hash = finalized_block.proto_block().parent_hash();
-        if let Some(hash) = self
-            .parent_map
-            .get(parent_proto_hash)
-            .map(|summary| summary.post_state_hash)
-        {
-            return hash;
+        if finalized_block.is_genesis_child() && self.genesis_post_state_hash.is_some() {
+            self.genesis_post_state_hash.take().unwrap()
+        } else {
+            // Try to get the parent's post-state-hash from the `parent_map`.
+            // We're subtracting 1 from the height as we want to get _parent's_ post-state hash.
+            let parent_block_height = finalized_block.height() - 1;
+            match self
+                .parent_map
+                .get(&parent_block_height)
+                .map(|summary| summary.post_state_hash)
+            {
+                None => {
+                    error!(?parent_block_height, "failed to get pre-state-hash");
+                    panic!("failed to get pre-state hash for {:?}", parent_block_height);
+                }
+                Some(hash) => hash,
+            }
         }
-
-        // If the proto block has a default parent hash, its parent is the genesis block.  The
-        // default hash is applied in `EffectBuilder::request_proto_block` when the parent proto
-        // block is `None`.
-        if *finalized_block.proto_block().parent_hash().inner() == Digest::default()
-            && self.genesis_post_state_hash.is_some()
-        {
-            return self.genesis_post_state_hash.take().unwrap();
-        }
-
-        error!(%parent_proto_hash, "failed to get pre-state-hash");
-        panic!("failed to get pre-state hash for {}", parent_proto_hash);
     }
 }
 
