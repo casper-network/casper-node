@@ -62,23 +62,17 @@ impl Display for ProtoBlockHash {
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ProtoBlock {
     hash: ProtoBlockHash,
-    parent_hash: ProtoBlockHash,
     deploys: Vec<DeployHash>,
     random_bit: bool,
 }
 
 impl ProtoBlock {
-    pub(crate) fn new(
-        parent_hash: ProtoBlockHash,
-        deploys: Vec<DeployHash>,
-        random_bit: bool,
-    ) -> Self {
+    pub(crate) fn new(deploys: Vec<DeployHash>, random_bit: bool) -> Self {
         let hash = ProtoBlockHash::new(hash::hash(
-            &rmp_serde::to_vec(&(parent_hash, &deploys, random_bit)).expect("serialize ProtoBlock"),
+            &rmp_serde::to_vec(&(&deploys, random_bit)).expect("serialize ProtoBlock"),
         ));
 
         ProtoBlock {
-            parent_hash,
             hash,
             deploys,
             random_bit,
@@ -99,8 +93,8 @@ impl ProtoBlock {
         self.random_bit
     }
 
-    pub(crate) fn destructure(self) -> (ProtoBlockHash, ProtoBlockHash, Vec<DeployHash>, bool) {
-        (self.hash, self.parent_hash, self.deploys, self.random_bit)
+    pub(crate) fn destructure(self) -> (ProtoBlockHash, Vec<DeployHash>, bool) {
+        (self.hash, self.deploys, self.random_bit)
     }
 }
 
@@ -108,9 +102,8 @@ impl Display for ProtoBlock {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "proto block {}, parent hash {}, deploys [{}], random bit {}",
+            "proto block {}, deploys [{}], random bit {}",
             self.hash.inner(),
-            self.parent_hash.inner(),
             DisplayIter::new(self.deploys.iter()),
             self.random_bit(),
         )
@@ -232,13 +225,8 @@ impl FinalizedBlock {
 
 impl From<Block> for FinalizedBlock {
     fn from(b: Block) -> Self {
-        // NOTE: Using default Digest for `parent_hash` is a temporary work around.
-        // `parent_hash` is not used anywhere down the line but it's required for construction.
-        let proto_block = ProtoBlock::new(
-            Default::default(),
-            b.header().deploy_hashes().clone(),
-            b.header().random_bit,
-        );
+        let proto_block =
+            ProtoBlock::new(b.header().deploy_hashes().clone(), b.header().random_bit);
 
         let timestamp = *b.header().timestamp();
         let switch_block = b.header().switch_block;
@@ -437,13 +425,12 @@ impl Block {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let proto_parent_hash = ProtoBlockHash(Digest::random(rng));
         let deploy_count = rng.gen_range(0, 11);
         let deploy_hashes = iter::repeat_with(|| DeployHash::new(Digest::random(rng)))
             .take(deploy_count)
             .collect();
         let random_bit = rng.gen();
-        let proto_block = ProtoBlock::new(proto_parent_hash, deploy_hashes, random_bit);
+        let proto_block = ProtoBlock::new(deploy_hashes, random_bit);
 
         // TODO - make Timestamp deterministic.
         let timestamp = Timestamp::now();

@@ -46,7 +46,6 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
     /// TODO: Add more details that are necessary for block creation.
     CreateNewBlock {
         block_context: BlockContext,
-        opt_parent: Option<C>,
     },
     /// A block was finalized. The timestamp is from when the block was proposed.
     FinalizedBlock {

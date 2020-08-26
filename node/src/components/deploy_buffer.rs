@@ -255,7 +255,7 @@ where
             }
             Event::Buffer { hash, header } => self.add_deploy(hash, *header),
             Event::ProposedProtoBlock(block) => {
-                let (hash, _, deploys, _) = block.destructure();
+                let (hash, deploys, _) = block.destructure();
                 self.added_block(hash, deploys)
             }
             Event::FinalizedProtoBlock(block) => self.finalized_block(*block.hash()),
