@@ -1,10 +1,11 @@
 mod vertex;
 
+pub(crate) use crate::components::consensus::highway_core::state::Params;
 pub(crate) use vertex::{Dependency, SignedWireVote, Vertex, WireVote};
 
 use rand::{CryptoRng, Rng};
 use thiserror::Error;
-use tracing::{error, warn};
+use tracing::{debug, error, warn};
 
 use crate::{
     components::consensus::{
@@ -105,24 +106,13 @@ impl<C: Context> Highway<C> {
     /// * `instance_id`: A unique identifier for every execution of the protocol (e.g. for every
     ///   era) to prevent replay attacks.
     /// * `validators`: The set of validators and their weights.
-    /// * `seed`: The seed for the pseudorandom sequence of round leaders.
-    /// * `forgiveness_factor`: The fraction `(numerator, denominator)` of a full block reward that
-    ///   validators receive if they fail to fully finalize a block within a round.
-    /// * `min_round_exp`: The minimum round exponent. `1 << min_round_exp` milliseconds is the
-    ///   minimum round length, and therefore the minimum delay between a block and its child.
+    /// * `params`: The Highway protocol parameters.
     pub(crate) fn new(
         instance_id: C::InstanceId,
         validators: Validators<C::ValidatorId>,
-        seed: u64,
-        forgiveness_factor: (u16, u16),
-        min_round_exp: u8,
+        params: Params,
     ) -> Highway<C> {
-        let state = State::new(
-            validators.iter().map(Validator::weight),
-            seed,
-            forgiveness_factor,
-            min_round_exp,
-        );
+        let state = State::new(validators.iter().map(Validator::weight), params);
         Highway {
             instance_id,
             validators,
@@ -240,8 +230,7 @@ impl<C: Context> Highway<C> {
     ) -> Vec<Effect<C>> {
         match self.active_validator.as_mut() {
             None => {
-                // TODO: Error?
-                warn!(%timestamp, "Observer node was called with `handle_timer` event.");
+                debug!(%timestamp, "Ignoring `handle_timer` event: only an observer node.");
                 vec![]
             }
             Some(av) => av.handle_timer(timestamp, &self.state, rng),

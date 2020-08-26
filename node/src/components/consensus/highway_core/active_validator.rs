@@ -11,9 +11,7 @@ use super::{
 
 use crate::{
     components::consensus::{
-        consensus_protocol::BlockContext,
-        highway_core::highway::SignedWireVote,
-        traits::{ConsensusValueT, Context},
+        consensus_protocol::BlockContext, highway_core::highway::SignedWireVote, traits::Context,
     },
     types::{TimeDiff, Timestamp},
 };
@@ -115,7 +113,7 @@ impl<C: Context> ActiveValidator<C> {
         let r_exp = self.round_exp(state, timestamp);
         let r_id = state::round_id(timestamp, r_exp);
         let r_len = state::round_len(r_exp);
-        if timestamp == r_id && state.params().leader(r_id) == self.vidx {
+        if timestamp == r_id && state.leader(r_id) == self.vidx {
             effects.extend(self.request_new_block(state, timestamp, rng))
         } else if timestamp == r_id + self.witness_offset(r_len) {
             let panorama = state.panorama().cutoff(state, timestamp);
@@ -151,7 +149,7 @@ impl<C: Context> ActiveValidator<C> {
     /// Returns an effect to request a consensus value for a block to propose.
     ///
     /// If we are already waiting for a consensus value, `None` is returned instead.
-    /// If the new value would come after a terminal value, the proposal is made immediately, and
+    /// If the new value would come after a terminal block, the proposal is made immediately, and
     /// without a value.
     pub(crate) fn request_new_block<R: Rng + CryptoRng + ?Sized>(
         &mut self,
@@ -167,11 +165,12 @@ impl<C: Context> ActiveValidator<C> {
             return None;
         }
         let panorama = state.panorama().cutoff(state, timestamp);
-        let opt_parent = state.fork_choice(&panorama).map(|bh| state.block(bh));
-        if opt_parent.map_or(false, |block| block.value.terminal()) {
+        let opt_parent_hash = state.fork_choice(&panorama);
+        if opt_parent_hash.map_or(false, |hash| state.is_terminal_block(hash)) {
             let proposal_vote = self.new_vote(panorama, timestamp, None, state, rng);
             return Some(Effect::NewVertex(ValidVertex(Vertex::Vote(proposal_vote))));
         }
+        let opt_parent = opt_parent_hash.map(|bh| state.block(bh));
         let height = opt_parent.map_or(0, |block| block.height);
         let opt_value = opt_parent.map(|block| block.value.clone());
         self.next_proposal = Some((timestamp, panorama));
@@ -227,7 +226,7 @@ impl<C: Context> ActiveValidator<C> {
         }
         let r_exp = self.round_exp(state, timestamp);
         timestamp >> r_exp == vote.timestamp >> r_exp // Current round.
-            && state.params().leader(vote.timestamp) == vote.creator // The creator is the round's leader.
+            && state.leader(vote.timestamp) == vote.creator // The creator is the round's leader.
             && vote.timestamp == state::round_id(vote.timestamp, vote.round_exp) // It's a proposal.
             && vote.creator != self.vidx // We didn't send it ourselves.
             && !state.has_evidence(vote.creator) // The creator is not faulty.
@@ -299,7 +298,7 @@ impl<C: Context> ActiveValidator<C> {
             r_id + self.witness_offset(r_len)
         } else {
             let next_r_id = r_id + r_len;
-            if state.params().leader(next_r_id) == self.vidx {
+            if state.leader(next_r_id) == self.vidx {
                 next_r_id
             } else {
                 let next_r_exp = self.round_exp(state, next_r_id);
@@ -394,8 +393,8 @@ mod tests {
 
         // We start at time 410, with round length 16, so the first leader tick is 416, and the
         // first witness tick 426.
-        assert_eq!(ALICE, state.params().leader(416.into())); // Alice will be the first leader.
-        assert_eq!(BOB, state.params().leader(432.into())); // Bob will be the second leader.
+        assert_eq!(ALICE, state.leader(416.into())); // Alice will be the first leader.
+        assert_eq!(BOB, state.leader(432.into())); // Bob will be the second leader.
         let (mut alice_av, effects) =
             ActiveValidator::new(ALICE, TestSecret(0), 4, 410.into(), &state);
         assert_eq!([Eff::ScheduleTimer(416.into())], *effects);
@@ -404,7 +403,7 @@ mod tests {
 
         assert!(alice_av
             .handle_timer(415.into(), &state, &mut rng)
-            .is_empty(),); // Too early: No new effects.
+            .is_empty()); // Too early: No new effects.
 
         // Alice wants to propose a block, and also make her witness vote at 426.
         let bctx = match &*alice_av.handle_timer(416.into(), &state, &mut rng) {

@@ -1230,6 +1230,16 @@ mod tests {
         PublicKey::from_hex(&hex_encoded[1..]).unwrap_err();
     }
 
+    fn signature_serialization_roundtrip(signature: Signature) {
+        // TODO: Why does it fail with serde_json?
+        // let serialized = serde_json::to_vec_pretty(&signature).unwrap();
+        // let deserialized: Signature = serde_json::from_slice(&serialized).unwrap();
+        let serialized = rmp_serde::to_vec(&signature).unwrap();
+        let deserialized: Signature = rmp_serde::from_read_ref(&serialized).unwrap();
+        assert_eq!(signature, deserialized);
+        assert_eq!(signature.tag(), deserialized.tag());
+    }
+
     fn signature_hex_roundtrip(signature: Signature) {
         let hex_encoded = signature.to_hex();
         let decoded = Signature::from_hex(hex_encoded.as_bytes()).unwrap();
@@ -1465,6 +1475,7 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
             let secret_key = SecretKey::random_secp256k1(&mut rng);
             super::secret_key_serialization_roundtrip(secret_key)
         }
+
         #[test]
         fn secret_key_from_bytes() {
             // Secret key should be `SecretKey::SECP256K1_LENGTH` bytes.
@@ -1573,6 +1584,16 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
             let mut rng = TestRng::new();
             let public_key = PublicKey::random_secp256k1(&mut rng);
             public_key_hex_roundtrip(public_key);
+        }
+
+        #[test]
+        fn signature_serialization_roundtrip() {
+            let mut rng = TestRng::new();
+            let secret_key = SecretKey::random_secp256k1(&mut rng);
+            let public_key = PublicKey::from(&secret_key);
+            let data = b"data";
+            let signature = sign(data, &secret_key, &public_key, &mut rng);
+            super::signature_serialization_roundtrip(signature);
         }
 
         #[test]

@@ -153,7 +153,7 @@ async fn run_validator_network() {
             let expected_eras = era_ids(&first_node);
 
             // Return if not in expected era yet.
-            if expected_eras.len() != era_num {
+            if expected_eras.len() <= era_num {
                 return false;
             }
 
@@ -166,10 +166,9 @@ async fn run_validator_network() {
     };
 
     // Wait for all nodes to agree on one era.
-    net.settle_on(&mut rng, is_in_era(1), Duration::from_secs(20))
+    net.settle_on(&mut rng, is_in_era(1), Duration::from_secs(60))
         .await;
 
-    // TODO: Enable once we have era rotations.
-    // net.settle_on(&mut rng, is_in_era(2), Duration::from_secs(20))
-    //     .await;
+    net.settle_on(&mut rng, is_in_era(2), Duration::from_secs(60))
+        .await;
 }

@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use super::Timestamp;
 use crate::{
-    components::storage::Value,
+    components::{consensus::EraId, storage::Value},
     crypto::{
         asymmetric_key::{PublicKey, Signature},
         hash::{self, Digest},
@@ -65,7 +65,6 @@ pub struct ProtoBlock {
     parent_hash: ProtoBlockHash,
     deploys: Vec<DeployHash>,
     random_bit: bool,
-    switch_block: bool,
 }
 
 impl ProtoBlock {
@@ -73,11 +72,9 @@ impl ProtoBlock {
         parent_hash: ProtoBlockHash,
         deploys: Vec<DeployHash>,
         random_bit: bool,
-        switch_block: bool,
     ) -> Self {
         let hash = ProtoBlockHash::new(hash::hash(
-            &rmp_serde::to_vec(&(parent_hash, &deploys, random_bit, switch_block))
-                .expect("serialize ProtoBlock"),
+            &rmp_serde::to_vec(&(parent_hash, &deploys, random_bit)).expect("serialize ProtoBlock"),
         ));
 
         ProtoBlock {
@@ -85,7 +82,6 @@ impl ProtoBlock {
             hash,
             deploys,
             random_bit,
-            switch_block,
         }
     }
 
@@ -105,11 +101,6 @@ impl ProtoBlock {
     /// A random bit needed for initializing a future era.
     pub(crate) fn random_bit(&self) -> bool {
         self.random_bit
-    }
-
-    /// Returns `true` if this is the last block of an era.
-    pub(crate) fn switch_block(&self) -> bool {
-        self.switch_block
     }
 
     pub(crate) fn destructure(self) -> (ProtoBlockHash, ProtoBlockHash, Vec<DeployHash>, bool) {
@@ -182,6 +173,9 @@ pub struct FinalizedBlock {
     proto_block: ProtoBlock,
     timestamp: Timestamp,
     system_transactions: Vec<SystemTransaction>,
+    switch_block: bool,
+    era_id: EraId,
+    height: u64,
 }
 
 impl FinalizedBlock {
@@ -189,11 +183,17 @@ impl FinalizedBlock {
         proto_block: ProtoBlock,
         timestamp: Timestamp,
         system_transactions: Vec<SystemTransaction>,
+        switch_block: bool,
+        era_id: EraId,
+        height: u64,
     ) -> Self {
         FinalizedBlock {
             proto_block,
             timestamp,
             system_transactions,
+            switch_block,
+            era_id,
+            height,
         }
     }
 
@@ -203,13 +203,28 @@ impl FinalizedBlock {
     }
 
     /// The timestamp from when the proto block was proposed.
-    pub(crate) fn timestamp(&self) -> &Timestamp {
-        &self.timestamp
+    pub(crate) fn timestamp(&self) -> Timestamp {
+        self.timestamp
     }
 
     /// Instructions for system transactions like slashing and rewards.
     pub(crate) fn system_transactions(&self) -> &Vec<SystemTransaction> {
         &self.system_transactions
+    }
+
+    /// Returns `true` if this is the last block of the current era.
+    pub(crate) fn switch_block(&self) -> bool {
+        self.switch_block
+    }
+
+    /// Returns the ID of the era this block belongs to.
+    pub(crate) fn era_id(&self) -> EraId {
+        self.era_id
+    }
+
+    /// Returns the height of this block.
+    pub(crate) fn height(&self) -> u64 {
+        self.height
     }
 }
 
@@ -217,9 +232,12 @@ impl Display for FinalizedBlock {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "finalized block {:10} deploys {:10}, random bit {}, timestamp {}, \
-            system_transactions: [{}]",
+            "finalized {}block {:10} in era {:?}, height {}, deploys {:10}, random bit {}, \
+            timestamp {}, system_transactions: [{}]",
+            if self.switch_block { "switch " } else { "" },
             HexFmt(self.proto_block.hash().inner()),
+            self.era_id,
+            self.height,
             HexList(&self.proto_block.deploys),
             self.proto_block.random_bit,
             self.timestamp(),
@@ -385,9 +403,7 @@ impl Block {
             .take(deploy_count)
             .collect();
         let random_bit = rng.gen();
-        let switch_block = rng.gen();
-        let proto_block =
-            ProtoBlock::new(proto_parent_hash, deploy_hashes, random_bit, switch_block);
+        let proto_block = ProtoBlock::new(proto_parent_hash, deploy_hashes, random_bit);
 
         // TODO - make Timestamp deterministic.
         let timestamp = Timestamp::now();
@@ -395,7 +411,16 @@ impl Block {
         let system_transactions = iter::repeat_with(|| SystemTransaction::random(rng))
             .take(system_transactions_count)
             .collect();
-        let finalized_block = FinalizedBlock::new(proto_block, timestamp, system_transactions);
+        let switch_block = rng.gen_bool(0.1);
+        let era = rng.gen_range(0, 5);
+        let finalized_block = FinalizedBlock::new(
+            proto_block,
+            timestamp,
+            system_transactions,
+            switch_block,
+            EraId(era),
+            era * 10 + rng.gen_range(0, 10),
+        );
 
         let parent_hash = BlockHash::new(Digest::random(rng));
         let post_state_hash = Digest::random(rng);

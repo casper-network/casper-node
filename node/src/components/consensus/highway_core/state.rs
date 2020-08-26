@@ -15,11 +15,14 @@ use std::{
     borrow::Borrow,
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet, HashMap},
+    convert::identity,
     iter,
     ops::RangeBounds,
 };
 
 use itertools::Itertools;
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
 use tracing::warn;
 
@@ -51,21 +54,9 @@ pub(crate) enum VoteError {
     Signature,
     #[error("The round length is invalid.")]
     RoundLength,
+    #[error("The vote is a block, but its parent is already a terminal block.")]
+    ValueAfterTerminalBlock,
 }
-
-/// The delay after which rewards are calculated.
-///
-/// Rewards for a round in which a block B was proposed are paid out in the first block whose
-/// timestamp greater than `REWARD_DELAY * t` after B's timestamp, where `t` is the round length of
-/// `B` itself.
-pub(crate) const REWARD_DELAY: u64 = 8;
-
-/// A number representing the maximum total reward for finalizing one block.
-///
-/// Validator rewards for finalization must add up to this number or less.
-/// 1 trillion was chosen here because it allows very precise fractions of a block reward while
-/// still leaving space for millions of full rewards in a `u64`.
-pub(crate) const BLOCK_REWARD: u64 = 1_000_000_000_000;
 
 /// A passive instance of the Highway protocol, containing its local state.
 ///
@@ -76,6 +67,11 @@ pub(crate) const BLOCK_REWARD: u64 = 1_000_000_000_000;
 pub(crate) struct State<C: Context> {
     /// The fixed parameters.
     params: Params,
+    /// The validator's voting weights.
+    weights: ValidatorMap<Weight>,
+    /// Cumulative validator weights: Entry `i` contains the sum of the weights of validators `0`
+    /// through `i`.
+    cumulative_w: ValidatorMap<Weight>,
     /// All votes imported so far, by hash.
     // TODO: HashMaps prevent deterministic tests.
     votes: HashMap<C::Hash, Vote<C>>,
@@ -90,15 +86,23 @@ pub(crate) struct State<C: Context> {
 }
 
 impl<C: Context> State<C> {
-    pub(crate) fn new<I>(weights: I, seed: u64, ff: (u16, u16), min_round_exp: u8) -> State<C>
+    pub(crate) fn new<I>(weights: I, params: Params) -> State<C>
     where
         I: IntoIterator,
         I::Item: Borrow<Weight>,
     {
         let weights = ValidatorMap::from(weights.into_iter().map(|w| *w.borrow()).collect_vec());
+        let mut sum = Weight(0);
+        let add = |w: &Weight| {
+            sum += *w;
+            sum
+        };
+        let cumulative_w = weights.iter().map(add).collect();
         let panorama = Panorama::new(weights.len());
         State {
-            params: Params::new(weights, seed, ff, min_round_exp),
+            params,
+            weights,
+            cumulative_w,
             votes: HashMap::new(),
             blocks: HashMap::new(),
             reward_index: BTreeMap::new(),
@@ -110,6 +114,41 @@ impl<C: Context> State<C> {
     /// Returns the fixed parameters.
     pub(crate) fn params(&self) -> &Params {
         &self.params
+    }
+
+    /// Returns the number of validators.
+    pub(crate) fn validator_count(&self) -> usize {
+        self.weights.len()
+    }
+
+    /// Returns the `idx`th validator's voting weight.
+    pub(crate) fn weight(&self, idx: ValidatorIndex) -> Weight {
+        self.weights[idx]
+    }
+
+    /// Returns the map of validator weights.
+    pub(crate) fn weights(&self) -> &ValidatorMap<Weight> {
+        &self.weights
+    }
+
+    /// Returns the total weight of all validators marked faulty in this panorama.
+    pub(crate) fn faulty_weight_in(&self, panorama: &Panorama<C>) -> Weight {
+        panorama
+            .iter()
+            .zip(&self.weights)
+            .filter(|(obs, _)| **obs == Observation::Faulty)
+            .map(|(_, w)| *w)
+            .sum()
+    }
+
+    /// Returns the total weight of all known-faulty validators.
+    pub(crate) fn faulty_weight(&self) -> Weight {
+        self.faulty_weight_in(&self.panorama)
+    }
+
+    /// Returns the sum of all validators' voting weights.
+    pub(crate) fn total_weight(&self) -> Weight {
+        *self.cumulative_w.as_ref().last().unwrap()
     }
 
     /// Returns evidence against validator nr. `idx`, if present.
@@ -163,14 +202,23 @@ impl<C: Context> State<C> {
             .flat_map(|(_, blocks)| blocks)
     }
 
-    /// Returns the total weight of all known-faulty validators.
-    pub(crate) fn faulty_weight(&self) -> Weight {
-        self.params.faulty_weight_in(&self.panorama)
-    }
-
     /// Returns the complete protocol state's latest panorama.
     pub(crate) fn panorama(&self) -> &Panorama<C> {
         &self.panorama
+    }
+
+    /// Returns the leader in the specified time slot.
+    pub(crate) fn leader(&self, timestamp: Timestamp) -> ValidatorIndex {
+        let mut rng =
+            ChaCha8Rng::seed_from_u64(self.params.seed().wrapping_add(timestamp.millis()));
+        // TODO: `rand` doesn't seem to document how it generates this. Needs to be portable.
+        // We select a random one out of the `total_weight` weight units, starting numbering at 1.
+        let r = Weight(rng.gen_range(1, self.total_weight().0 + 1));
+        // The weight units are subdivided into intervals that belong to some validator.
+        // `cumulative_w[i]` denotes the last weight unit that belongs to validator `i`.
+        // `binary_search` returns the first `i` with `cumulative_w[i] >= r`, i.e. the validator
+        // who owns the randomly selected weight unit.
+        self.cumulative_w.binary_search(&r).unwrap_or_else(identity)
     }
 
     /// Adds the vote to the protocol state.
@@ -185,7 +233,7 @@ impl<C: Context> State<C> {
         if let Some(value) = opt_value {
             let block = Block::new(fork_choice, value, self);
             self.reward_index
-                .entry(reward_time(&vote))
+                .entry(self.reward_time(&vote))
                 .or_default()
                 .insert(hash.clone());
             self.blocks.insert(hash.clone(), block);
@@ -228,11 +276,7 @@ impl<C: Context> State<C> {
             let bhash = &self.vote(obs.correct()?).block;
             Some((self.block(bhash).height, bhash, *w))
         };
-        let mut tallies: Tallies<C> = pan
-            .iter()
-            .zip(self.params.weights())
-            .filter_map(to_entry)
-            .collect();
+        let mut tallies: Tallies<C> = pan.iter().zip(&self.weights).filter_map(to_entry).collect();
         loop {
             // Find the highest block that we know is an ancestor of the fork choice.
             let (height, bhash) = tallies.find_decided(self)?;
@@ -271,17 +315,21 @@ impl<C: Context> State<C> {
     pub(crate) fn pre_validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {
         let wvote = &swvote.wire_vote;
         let creator = wvote.creator;
-        if creator.0 as usize >= self.params.validator_count() {
+        if creator.0 as usize >= self.validator_count() {
             return Err(VoteError::Creator);
         }
         if wvote.round_exp < self.params.min_round_exp() {
             return Err(VoteError::RoundLength);
         }
         if (wvote.value.is_none() && !wvote.panorama.has_correct())
-            || wvote.panorama.len() != self.params.validator_count()
+            || wvote.panorama.len() != self.validator_count()
             || wvote.panorama.get(creator).is_faulty()
         {
             return Err(VoteError::Panorama);
+        }
+        let is_terminal = |hash: &C::Hash| self.is_terminal_block(hash);
+        if wvote.value.is_some() && self.fork_choice(&wvote.panorama).map_or(false, is_terminal) {
+            return Err(VoteError::ValueAfterTerminalBlock);
         }
         Ok(())
     }
@@ -326,6 +374,14 @@ impl<C: Context> State<C> {
         Ok(())
     }
 
+    /// Returns `true` if the `bhash` is a block that can have no children.
+    pub(crate) fn is_terminal_block(&self, bhash: &C::Hash) -> bool {
+        self.blocks.get(bhash).map_or(false, |block| {
+            block.height >= self.params.end_height()
+                && self.vote(bhash).timestamp >= self.params.end_timestamp()
+        })
+    }
+
     /// Updates `self.panorama` with an incoming vote. Panics if dependencies are missing.
     ///
     /// If the new vote is valid, it will just add `Observation::Correct(wvote.hash())` to the
@@ -350,6 +406,11 @@ impl<C: Context> State<C> {
             }
         };
         self.panorama[wvote.creator] = new_obs;
+    }
+
+    /// Returns the earliest time at which rewards for a block introduced by this vote can be paid.
+    pub(super) fn reward_time(&self, vote: &Vote<C>) -> Timestamp {
+        vote.timestamp + round_len(vote.round_exp) * self.params.reward_delay()
     }
 
     /// Returns the hash of the message with the given sequence number from the creator of `hash`,
@@ -390,7 +451,7 @@ impl<C: Context> State<C> {
         let cvote = self.vote(fhash);
         let mut equivocators: Vec<ValidatorIndex> = Vec::new();
         let fblock = self.block(fhash);
-        let empty_panorama = Panorama::new(self.params.validator_count());
+        let empty_panorama = Panorama::new(self.validator_count());
         let pvpanorama = fblock
             .parent()
             .map(|pvhash| &self.vote(pvhash).panorama)
@@ -422,11 +483,6 @@ pub(super) fn round_id(timestamp: Timestamp, round_exp: u8) -> Timestamp {
     (timestamp >> round_exp) << round_exp
 }
 
-/// Returns the earliest time at which rewards for a block introduced by this vote can be paid.
-pub(super) fn reward_time<C: Context>(vote: &Vote<C>) -> Timestamp {
-    vote.timestamp + round_len(vote.round_exp) * REWARD_DELAY
-}
-
 /// Returns the base-2 logarithm of `x`, rounded down,
 /// i.e. the greatest `i` such that `2.pow(i) <= x`.
 fn log2(x: u64) -> u32 {
@@ -448,8 +504,11 @@ pub(crate) mod tests {
     use super::*;
     use crate::{
         components::consensus::{
-            highway_core::highway::Dependency,
-            traits::{ConsensusValueT, ValidatorSecret},
+            highway_core::{
+                highway::Dependency,
+                highway_testing::{TEST_BLOCK_REWARD, TEST_REWARD_DELAY},
+            },
+            traits::ValidatorSecret,
         },
         testing::TestRng,
     };
@@ -479,12 +538,6 @@ pub(crate) mod tests {
             _rng: &mut R,
         ) -> Self::Signature {
             data + u64::from(self.0)
-        }
-    }
-
-    impl ConsensusValueT for u32 {
-        fn terminal(&self) -> bool {
-            false
         }
     }
 
@@ -548,10 +601,18 @@ pub(crate) mod tests {
     }
 
     impl State<TestContext> {
-        /// Returns a new `State` with `TestContext`, a 20% forgiveness factor and minimum round
-        /// exponent 4.
+        /// Returns a new `State` with `TestContext` parameters suitable for tests.
         pub(crate) fn new_test(weights: &[Weight], seed: u64) -> Self {
-            State::new(weights, seed, (1, 5), 4)
+            let params = Params::new(
+                seed,
+                TEST_BLOCK_REWARD,
+                TEST_BLOCK_REWARD / 5,
+                TEST_REWARD_DELAY,
+                4,
+                u64::MAX,
+                Timestamp::from(u64::MAX),
+            );
+            State::new(weights, params)
         }
 
         /// Adds the vote to the protocol state, or returns an error if it is invalid.
