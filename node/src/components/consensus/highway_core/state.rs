@@ -24,7 +24,7 @@ use itertools::Itertools;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
-use tracing::warn;
+use tracing::error;
 
 use crate::{
     components::consensus::{
@@ -42,8 +42,16 @@ use tallies::Tallies;
 
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum VoteError {
-    #[error("The vote's panorama is inconsistent.")]
-    Panorama,
+    #[error("The vote is a ballot but doesn't cite any block.")]
+    MissingBlock,
+    #[error("The panorama's length {} doesn't match the number of validators.", _0)]
+    PanoramaLength(usize),
+    #[error("The vote accuses its own creator as faulty.")]
+    FaultyCreator,
+    #[error("The panorama has a vote from {:?} in the slot for {:?}.", _0, _1)]
+    PanoramaIndex(ValidatorIndex, ValidatorIndex),
+    #[error("The panorama is missing votes indirectly cited via {:?}.", _0)]
+    InconsistentPanorama(ValidatorIndex),
     #[error("The vote contains the wrong sequence number.")]
     SequenceNumber,
     #[error("The vote's timestamp is older than a justification's.")]
@@ -329,11 +337,14 @@ impl<C: Context> State<C> {
         if wvote.round_exp < self.params.min_round_exp() {
             return Err(VoteError::RoundLength);
         }
-        if (wvote.value.is_none() && !wvote.panorama.has_correct())
-            || wvote.panorama.len() != self.validator_count()
-            || wvote.panorama.get(creator).is_faulty()
-        {
-            return Err(VoteError::Panorama);
+        if wvote.value.is_none() && !wvote.panorama.has_correct() {
+            return Err(VoteError::MissingBlock);
+        }
+        if wvote.panorama.len() != self.validator_count() {
+            return Err(VoteError::PanoramaLength(wvote.panorama.len()));
+        }
+        if wvote.panorama.get(creator).is_faulty() {
+            return Err(VoteError::FaultyCreator);
         }
         let is_terminal = |hash: &C::Hash| self.is_terminal_block(hash);
         if wvote.value.is_some() && self.fork_choice(&wvote.panorama).map_or(false, is_terminal) {
@@ -347,17 +358,15 @@ impl<C: Context> State<C> {
     pub(crate) fn validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {
         let wvote = &swvote.wire_vote;
         let creator = wvote.creator;
-        if !wvote.panorama.is_valid(self) {
-            return Err(VoteError::Panorama);
-        }
+        wvote.panorama.validate(self)?;
         let mut justifications = wvote.panorama.iter_correct();
         if !justifications.all(|vh| self.vote(vh).timestamp <= wvote.timestamp) {
             return Err(VoteError::Timestamps);
         }
         match wvote.panorama.get(creator) {
             Observation::Faulty => {
-                warn!("Vote from faulty validator should be rejected in `pre_validate_vote`.");
-                return Err(VoteError::Panorama);
+                error!("Vote from faulty validator should be rejected in `pre_validate_vote`.");
+                return Err(VoteError::FaultyCreator);
             }
             Observation::None if wvote.seq_number == 0 => (),
             Observation::None => return Err(VoteError::SequenceNumber),
@@ -403,7 +412,7 @@ impl<C: Context> State<C> {
         let new_obs = match (self.panorama.get(creator), wvote.panorama.get(creator)) {
             (Observation::Faulty, _) => Observation::Faulty,
             (obs0, obs1) if obs0 == obs1 => Observation::Correct(wvote.hash()),
-            (Observation::None, _) => panic!("missing own previous vote"),
+            (Observation::None, _) => panic!("missing creator's previous vote"),
             (Observation::Correct(hash0), _) => {
                 // If we have all dependencies of wvote and still see the sender as correct, the
                 // predecessor of wvote must be a predecessor of hash0. So we already have a
@@ -672,7 +681,7 @@ pub(crate) mod tests {
         let opt_err = add_vote!(state, rng, CAROL, None; N, b1, N)
             .err()
             .map(vote_err);
-        assert_eq!(Some(VoteError::Panorama), opt_err);
+        assert_eq!(Some(VoteError::InconsistentPanorama(BOB)), opt_err);
 
         // Alice has not equivocated yet, and not produced message A1.
         let missing = panorama!(F, b1, c0).missing_dependency(&state);
