@@ -108,9 +108,8 @@ fn main() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let engine_config = EngineConfig::new()
-        .with_use_system_contracts(cfg!(feature = "use-system-contracts"))
-        .with_enable_bonding(cfg!(feature = "enable-bonding"));
+    let engine_config =
+        EngineConfig::new().with_use_system_contracts(cfg!(feature = "use-system-contracts"));
 
     let mut test_builder = LmdbWasmTestBuilder::open(&args.data_dir, engine_config, root_hash);
 

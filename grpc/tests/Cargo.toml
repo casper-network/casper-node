@@ -35,7 +35,6 @@ default = [
     "casperlabs-node/test-support",
     "casperlabs-engine-test-support/test-support"
 ]
-enable-bonding = ["casperlabs-engine-test-support/enable-bonding"]
 use-as-wasm = ["casperlabs-engine-test-support/use-as-wasm"]
 use-system-contracts = ["casperlabs-engine-test-support/use-system-contracts"]
 no-unstable-features = [

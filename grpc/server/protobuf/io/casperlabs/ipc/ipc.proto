@@ -59,11 +59,6 @@ message DeployPayload {
   }
 }
 
-message Bond {
-    bytes validator_account_hash = 1;
-    io.casperlabs.casper.consensus.state.BigInt stake = 2;
-}
-
 message DeployItem {
     reserved 5; // motes in payment
     reserved 7; // nonce
@@ -103,12 +98,10 @@ message RootNotFound {
 message CommitRequest {
     bytes prestate_hash = 1;
     repeated TransformEntry effects = 2;
-    io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 3;
 }
 
 message CommitResult {
   bytes poststate_hash = 1;
-  repeated Bond bonded_validators = 2;
 }
 
 message CommitResponse {

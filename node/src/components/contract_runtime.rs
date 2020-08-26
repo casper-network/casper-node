@@ -170,24 +170,19 @@ where
                 .ignore()
             }
             Event::Request(ContractRuntimeRequest::Commit {
-                protocol_version,
                 pre_state_hash,
                 effects,
                 responder,
             }) => {
-                trace!(?protocol_version, ?pre_state_hash, ?effects, "commit");
+                trace!(?pre_state_hash, ?effects, "commit");
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 async move {
                     let correlation_id = CorrelationId::new();
                     let result = task::spawn_blocking(move || {
                         let start = Instant::now();
-                        let apply_result = engine_state.apply_effect(
-                            correlation_id,
-                            protocol_version,
-                            pre_state_hash,
-                            effects,
-                        );
+                        let apply_result =
+                            engine_state.apply_effect(correlation_id, pre_state_hash, effects);
                         metrics.apply_effect.observe(start.elapsed().as_secs_f64());
                         apply_result
                     })
@@ -285,8 +280,7 @@ impl ContractRuntime {
 
         let global_state = LmdbGlobalState::empty(environment, trie_store, protocol_data_store)?;
         let engine_config = EngineConfig::new()
-            .with_use_system_contracts(contract_runtime_config.use_system_contracts())
-            .with_enable_bonding(contract_runtime_config.enable_bonding());
+            .with_use_system_contracts(contract_runtime_config.use_system_contracts());
 
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));
 

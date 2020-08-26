@@ -216,11 +216,8 @@ where
                 main_responder,
             } => {
                 match commit_result {
-                    Ok(CommitResult::Success {
-                        state_root,
-                        bonded_validators,
-                    }) => {
-                        debug!(?state_root, ?bonded_validators, "commit succeeded");
+                    Ok(CommitResult::Success { state_root }) => {
+                        debug!(?state_root, "commit succeeded");
                         // Update current post state hash as this will be used for next commit.
                         self.post_state_hash = state_root;
                     }
@@ -302,11 +299,7 @@ impl BlockExecutor {
 
         // There's something more to process.
         effect_builder
-            .request_commit(
-                ProtocolVersion::V1_0_0,
-                self.post_state_hash,
-                effect.transforms,
-            )
+            .request_commit(self.post_state_hash, effect.transforms)
             .event(|commit_result| Event::CommitExecutionEffects {
                 finalized_block,
                 commit_result,

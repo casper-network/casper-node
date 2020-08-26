@@ -45,9 +45,8 @@ fn bootstrap(data_dir: &Path, accounts: Vec<AccountHash>, amount: U512) -> LmdbW
     )
     .build();
 
-    let engine_config = EngineConfig::new()
-        .with_use_system_contracts(cfg!(feature = "use-system-contracts"))
-        .with_enable_bonding(cfg!(feature = "enable-bonding"));
+    let engine_config =
+        EngineConfig::new().with_use_system_contracts(cfg!(feature = "use-system-contracts"));
 
     let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir, engine_config);
 

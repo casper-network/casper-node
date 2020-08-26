@@ -2,19 +2,13 @@
 
 extern crate alloc;
 
-use alloc::{
-    collections::{BTreeMap, BTreeSet},
-    string::String,
-};
-
 use casperlabs_contract::{
     contract_api::{runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casperlabs_types::{
     account::AccountHash,
-    proof_of_stake::{MintProvider, ProofOfStake, RuntimeProvider, Stakes, StakesProvider},
-    system_contract_errors::pos::Error,
+    proof_of_stake::{MintProvider, ProofOfStake, RuntimeProvider},
     BlockTime, CLValue, Key, Phase, TransferResult, URef, U512,
 };
 
@@ -76,54 +70,6 @@ impl RuntimeProvider for ProofOfStakeContract {
 
     fn get_caller(&self) -> AccountHash {
         runtime::get_caller()
-    }
-}
-
-impl StakesProvider for ProofOfStakeContract {
-    /// Reads the current stakes from the contract's known urefs.
-    fn read(&self) -> Result<Stakes, Error> {
-        let mut stakes = BTreeMap::new();
-        for (name, _) in runtime::list_named_keys() {
-            let mut split_name = name.split('_');
-            if Some("v") != split_name.next() {
-                continue;
-            }
-            let hex_key = split_name
-                .next()
-                .ok_or(Error::StakesKeyDeserializationFailed)?;
-            if hex_key.len() != 64 {
-                return Err(Error::StakesKeyDeserializationFailed);
-            }
-            let mut key_bytes = [0u8; 32];
-            let _bytes_written = base16::decode_slice(hex_key, &mut key_bytes)
-                .map_err(|_| Error::StakesKeyDeserializationFailed)?;
-            debug_assert!(_bytes_written == key_bytes.len());
-            let pub_key = AccountHash::new(key_bytes);
-            let balance = split_name
-                .next()
-                .and_then(|b| U512::from_dec_str(b).ok())
-                .ok_or(Error::StakesDeserializationFailed)?;
-            stakes.insert(pub_key, balance);
-        }
-        if stakes.is_empty() {
-            return Err(Error::StakesNotFound);
-        }
-        Ok(Stakes(stakes))
-    }
-
-    /// Writes the current stakes to the contract's known urefs.
-    fn write(&mut self, stakes: &Stakes) {
-        // Encode the stakes as a set of uref names.
-        let mut new_urefs: BTreeSet<String> = stakes.strings().collect();
-        // Remove and add urefs to update the contract's known urefs accordingly.
-        for (name, _) in runtime::list_named_keys() {
-            if name.starts_with("v_") && !new_urefs.remove(&name) {
-                runtime::remove_key(&name);
-            }
-        }
-        for name in new_urefs {
-            runtime::put_key(&name, Key::Hash([0; 32]));
-        }
     }
 }
 

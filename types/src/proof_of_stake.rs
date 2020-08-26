@@ -1,21 +1,15 @@
 //! Contains implementation of a Proof Of Stake contract functionality.
 mod mint_provider;
-mod queue;
 mod runtime_provider;
-mod stakes;
-mod stakes_provider;
 
 use core::marker::Sized;
 
 use crate::{account::AccountHash, system_contract_errors::pos::Result, AccessRights, URef, U512};
 
-pub use crate::proof_of_stake::{
-    mint_provider::MintProvider, queue::Queue, runtime_provider::RuntimeProvider, stakes::Stakes,
-    stakes_provider::StakesProvider,
-};
+pub use crate::proof_of_stake::{mint_provider::MintProvider, runtime_provider::RuntimeProvider};
 
 /// Proof of stake functionality implementation.
-pub trait ProofOfStake: MintProvider + RuntimeProvider + StakesProvider + Sized {
+pub trait ProofOfStake: MintProvider + RuntimeProvider + Sized {
     /// Get payment purse.
     fn get_payment_purse(&self) -> Result<URef> {
         let purse = internal::get_payment_purse(self)?;
@@ -173,37 +167,6 @@ mod internal {
         match mint_provider.transfer_purse_to_account(payment_purse, account, amount) {
             Ok(_) => Ok(()),
             Err(_) => Err(Error::FailedTransferToAccountPurse),
-        }
-    }
-
-    #[cfg(test)]
-    mod tests {
-        extern crate std;
-
-        use std::{cell::RefCell, iter, thread_local};
-
-        use crate::{account::AccountHash, system_contract_errors::pos::Result, U512};
-
-        use crate::proof_of_stake::{stakes::Stakes, stakes_provider::StakesProvider};
-
-        const KEY1: [u8; 32] = [1; 32];
-
-        thread_local! {
-            static STAKES: RefCell<Stakes> = RefCell::new(
-                Stakes(iter::once((AccountHash::new(KEY1), U512::from(1_000))).collect())
-            );
-        }
-
-        struct Provider;
-
-        impl StakesProvider for Provider {
-            fn read(&self) -> Result<Stakes> {
-                STAKES.with(|s| Ok(s.borrow().clone()))
-            }
-
-            fn write(&mut self, stakes: &Stakes) {
-                STAKES.with(|s| s.replace(stakes.clone()));
-            }
         }
     }
 }
