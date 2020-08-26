@@ -15,7 +15,7 @@ use tracing::{info, trace};
 use crate::config;
 use casper_node::{
     logging,
-    reactor::{initializer, validator, Runner},
+    reactor::{initializer, joiner, validator, Runner},
     tls,
     utils::WithDir,
 };
@@ -186,11 +186,14 @@ impl Cli {
                     bail!("failed to initialize successfully");
                 }
 
-                let mut runner = Runner::<validator::Reactor<_>, _>::new(
-                    WithDir::new(root, initializer),
-                    &mut rng,
-                )
-                .await?;
+                let mut runner =
+                    Runner::<joiner::Reactor, _>::new(WithDir::new(root, initializer), &mut rng)
+                        .await?;
+                runner.run(&mut rng).await;
+
+                let joiner = runner.into_inner();
+
+                let mut runner = Runner::<validator::Reactor<_>, _>::new(joiner, &mut rng).await?;
                 runner.run(&mut rng).await;
             }
         }

@@ -13,7 +13,7 @@ use crate::{
         in_memory_network::NodeId, storage,
     },
     crypto::asymmetric_key::SecretKey,
-    reactor::{initializer, validator, Runner},
+    reactor::{initializer, joiner, validator, Runner},
     testing::{init_logging, network::Network, ConditionCheckReactor, TestRng},
     types::{Motes, NodeConfig},
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
@@ -106,8 +106,17 @@ impl TestChain {
                 bail!("failed to initialize successfully");
             }
 
+            let mut runner = Runner::<joiner::Reactor, TestRng>::new(
+                WithDir::new(root.clone(), initializer),
+                rng,
+            )
+            .await?;
+            runner.run(rng).await;
+
+            let joiner = runner.into_inner();
+
             network
-                .add_node_with_config(WithDir::new(root.clone(), initializer), rng)
+                .add_node_with_config(joiner, rng)
                 .await
                 .expect("could not add node to reactor");
         }
