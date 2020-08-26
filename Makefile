@@ -200,10 +200,14 @@ clean:
 	rm -rf $(TOOL_WASM_DIR)
 	$(CARGO) clean
 
+.PHONY: build-for-packaging
+build-for-packaging:
+	$(CARGO) build --release
+
 .PHONY: deb
-deb:
-	$(CARGO) build --release -p casperlabs-engine-grpc-server
+deb: build-for-packaging
 	cd grpc/server && $(CARGO) deb -p casperlabs-engine-grpc-server --no-build
+	cd node && $(CARGO) deb -p casperlabs-node --no-build
 
 grpc/server/.rpm:
 	cd grpc/server && $(CARGO) rpm init
