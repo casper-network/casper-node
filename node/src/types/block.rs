@@ -89,6 +89,7 @@ impl ProtoBlock {
         &self.hash
     }
 
+    #[allow(unused)]
     pub(crate) fn parent_hash(&self) -> &ProtoBlockHash {
         &self.parent_hash
     }
@@ -226,6 +227,12 @@ impl FinalizedBlock {
     pub(crate) fn height(&self) -> u64 {
         self.height
     }
+
+    /// Returns true if block is Genesis' child.
+    /// Genesis child block is from era 0 and height 0.
+    pub(crate) fn is_genesis_child(&self) -> bool {
+        self.era_id() == EraId(0) && self.height() == 0
+    }
 }
 
 impl Display for FinalizedBlock {
@@ -282,6 +289,7 @@ pub struct BlockHeader {
 
 impl BlockHeader {
     /// The parent block's hash.
+    #[allow(unused)]
     pub fn parent_hash(&self) -> &BlockHash {
         &self.parent_hash
     }
