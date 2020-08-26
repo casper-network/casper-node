@@ -44,7 +44,7 @@ use crate::{
         },
         EffectBuilder, Effects,
     },
-    reactor::{self, initializer, EventQueueHandle},
+    reactor::{self, joiner, EventQueueHandle},
     small_network::{self, NodeId},
     types::{Deploy, Item, Tag, Timestamp},
     utils::{Source, WithDir},
@@ -271,25 +271,24 @@ impl<R: Rng + CryptoRng + ?Sized> Reactor<R> {
 impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
     type Event = Event;
 
-    // The "configuration" is in fact the whole state of the initializer reactor, which we
+    // The "configuration" is in fact the whole state of the joiner reactor, which we
     // deconstruct and reuse.
-    type Config = WithDir<initializer::Reactor>;
+    type Config = joiner::Reactor;
     type Error = Error;
 
     fn new(
-        initializer: Self::Config,
+        joiner: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut R,
     ) -> Result<(Self, Effects<Event>), Error> {
-        let (root, initializer) = initializer.into_parts();
-
-        let initializer::Reactor {
+        let joiner::Reactor {
+            root,
             config,
             chainspec_loader,
             storage,
             contract_runtime,
-        } = initializer;
+        } = joiner;
 
         let metrics = Metrics::new(registry.clone());
 
