@@ -631,6 +631,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         block_context: BlockContext,
         maybe_parent: Option<ProtoBlock>,
+        random_bit: bool,
     ) -> (ProtoBlock, BlockContext)
     where
         REv: From<DeployBufferRequest>,
@@ -656,12 +657,7 @@ impl<REv> EffectBuilder<REv> {
             .map(ProtoBlock::hash)
             .copied()
             .unwrap_or_default();
-        let proto_block = ProtoBlock::new(
-            parent_hash,
-            deploys,
-            false, // TODO - random_bit
-            false, // TODO - switch_block
-        );
+        let proto_block = ProtoBlock::new(parent_hash, deploys, random_bit);
         (proto_block, block_context)
     }
 

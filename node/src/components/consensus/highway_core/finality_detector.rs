@@ -25,10 +25,14 @@ pub(crate) enum FinalityOutcome<C: Context> {
         /// Rewards for finalization of earlier blocks.
         ///
         /// This is a measure of the value of each validator's contribution to consensus, in
-        /// fractions of a maximum `BLOCK_REWARD`.
+        /// fractions of the configured maximum block reward.
         rewards: BTreeMap<C::ValidatorId, u64>,
         /// The timestamp at which this value was proposed.
         timestamp: Timestamp,
+        /// The relative height in this instance of the protocol.
+        height: u64,
+        /// Whether this is a terminal block, i.e. the last one to be finalized.
+        terminal: bool,
     },
     /// The fault tolerance threshold has been exceeded: The number of observed equivocations
     /// invalidates this finality detector's results.
@@ -73,11 +77,14 @@ impl<C: Context> FinalityDetector<C> {
         let new_equivocators_iter = state.get_new_equivocators(bhash).into_iter();
         let rewards = rewards::compute_rewards(state, bhash);
         let rewards_iter = rewards.enumerate();
+        let block = state.block(bhash);
         FinalityOutcome::Finalized {
-            value: state.block(bhash).value.clone(),
+            value: block.value.clone(),
             new_equivocators: new_equivocators_iter.map(to_id).collect(),
             rewards: rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect(),
             timestamp: state.vote(bhash).timestamp,
+            height: block.height,
+            terminal: state.is_terminal_block(bhash),
         }
     }
 
@@ -120,7 +127,7 @@ impl<C: Context> FinalityDetector<C> {
         candidate: &C::Hash,
         state: &State<C>,
     ) -> usize {
-        let total_w = state.params().total_weight();
+        let total_w = state.total_weight();
         let quorum = self.quorum_for_lvl(target_lvl, total_w) - fault_w;
         let latest = state.panorama().iter().map(Observation::correct).collect();
         let sec0 = Horizon::level0(candidate, &state, &latest);
