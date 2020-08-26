@@ -24,6 +24,13 @@ use derive_more::{Add, AddAssign, From, Sub, SubAssign, Sum};
 )]
 pub(crate) struct Weight(pub(crate) u64);
 
+impl Weight {
+    /// Checked addition. Returns `None` if overflow occurred.
+    pub fn checked_add(self, rhs: Weight) -> Option<Weight> {
+        Some(Weight(self.0.checked_add(rhs.0)?))
+    }
+}
+
 impl<'a> Sum<&'a Weight> for Weight {
     fn sum<I: Iterator<Item = &'a Weight>>(iter: I) -> Self {
         let mut sum = 0u64;

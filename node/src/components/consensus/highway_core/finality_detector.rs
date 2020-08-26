@@ -34,8 +34,8 @@ pub(crate) enum FinalityOutcome<C: Context> {
         /// Whether this is a terminal block, i.e. the last one to be finalized.
         terminal: bool,
     },
-    /// The fault tolerance threshold has been exceeded: The number of observed equivocations
-    /// invalidates this finality detector's results.
+    /// The fault tolerance threshold or 50% of the weight has been exceeded: The number of
+    /// observed equivocations invalidates this finality detector's results.
     FttExceeded,
 }
 
@@ -53,6 +53,7 @@ pub(crate) struct FinalityDetector<C: Context> {
 
 impl<C: Context> FinalityDetector<C> {
     pub(crate) fn new(ftt: Weight) -> Self {
+        assert!(ftt > Weight(0), "finality threshold must not be zero");
         FinalityDetector {
             last_finalized: None,
             ftt,
@@ -65,7 +66,7 @@ impl<C: Context> FinalityDetector<C> {
     pub(crate) fn run(&mut self, highway: &Highway<C>) -> FinalityOutcome<C> {
         let state = highway.state();
         let fault_w = state.faulty_weight();
-        if fault_w >= self.ftt {
+        if fault_w >= self.ftt || fault_w > (state.total_weight() - Weight(1)) / 2 {
             return FinalityOutcome::FttExceeded;
         }
         let bhash = if let Some(bhash) = self.next_finalized(state, fault_w) {
@@ -98,11 +99,10 @@ impl<C: Context> FinalityDetector<C> {
         fault_w: Weight,
     ) -> Option<&'a C::Hash> {
         let candidate = self.next_candidate(state)?;
-        // For `lvl` → ∞, the quorum converges to a fixed value. After level 64, it is closer
-        // to that limit than 1/2^-64. This won't make a difference in practice, so there is no
-        // point looking for higher summits. It is also too small to be represented in our
-        // 64-bit weight type.
-        let mut target_lvl = 64;
+        // For `lvl` → ∞, the quorum converges to a fixed value. After level 63, it is closer
+        // to that limit than 1/2^-63. This won't make a difference in practice, so there is no
+        // point looking for higher summits.
+        let mut target_lvl = 63;
         while target_lvl > 0 {
             let lvl = self.find_summit(target_lvl, fault_w, candidate, state);
             if lvl == target_lvl {
@@ -144,8 +144,11 @@ impl<C: Context> FinalityDetector<C> {
         // quorum = total_w / 2 + ftt / 2 / (1 - 1/2^lvl)
         //        = total_w / 2 + 2^lvl * ftt / 2 / (2^lvl - 1)
         //        = ((2^lvl - 1) total_w + 2^lvl ftt) / (2 * 2^lvl - 2))
+        assert!(lvl < 64, "lvl must be less than 64");
         let pow_lvl = 1u128 << lvl;
+        // Since  pow_lvl <= 2^63,  we have  numerator < (2^64 - 1) * 2^64.
         let numerator = (pow_lvl - 1) * u128::from(total_w) + pow_lvl * u128::from(self.ftt);
+        // And  denominator < 2^64,  so  numerator + denominator < 2^128.
         let denominator = 2 * pow_lvl - 2;
         // Since this is a lower bound for the quorum, we round up when dividing.
         Weight(((numerator + denominator - 1) / denominator) as u64)
