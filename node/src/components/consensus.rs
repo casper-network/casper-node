@@ -178,7 +178,7 @@ where
         rng: &mut R,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        let mut handling_es = self.handling(effect_builder, rng);
+        let mut handling_es = self.handling_wrapper(effect_builder, rng);
         match event {
             Event::Timer { era_id, timestamp } => handling_es.handle_timer(era_id, timestamp),
             Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),

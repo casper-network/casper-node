@@ -123,7 +123,7 @@ where
             rng,
         );
         let effects = era_supervisor
-            .handling(effect_builder, rng)
+            .handling_wrapper(effect_builder, rng)
             .handle_consensus_results(EraId(0), results);
 
         Ok((era_supervisor, effects))
@@ -131,12 +131,12 @@ where
 
     /// Returns a temporary container with this `EraSupervisor`, `EffectBuilder` and random number
     /// generator, for handling events.
-    pub(super) fn handling<'a, REv: ReactorEventT<I>>(
+    pub(super) fn handling_wrapper<'a, REv: ReactorEventT<I>>(
         &'a mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &'a mut R,
-    ) -> HandlingEraSupervisor<'a, I, REv, R> {
-        HandlingEraSupervisor {
+    ) -> EraSupervisorHandlingWrapper<'a, I, REv, R> {
+        EraSupervisorHandlingWrapper {
             era_supervisor: self,
             effect_builder,
             rng,
@@ -233,13 +233,13 @@ where
 /// This is a short-lived convenience type to avoid passing the effect builder through lots of
 /// message calls, and making every method individually generic in `REv`. It is only instantiated
 /// for the duration of handling a single event.
-pub(super) struct HandlingEraSupervisor<'a, I, REv: 'static, R: Rng + CryptoRng + ?Sized> {
+pub(super) struct EraSupervisorHandlingWrapper<'a, I, REv: 'static, R: Rng + CryptoRng + ?Sized> {
     pub(super) era_supervisor: &'a mut EraSupervisor<I, R>,
     pub(super) effect_builder: EffectBuilder<REv>,
     pub(super) rng: &'a mut R,
 }
 
-impl<'a, I, REv, R> HandlingEraSupervisor<'a, I, REv, R>
+impl<'a, I, REv, R> EraSupervisorHandlingWrapper<'a, I, REv, R>
 where
     I: NodeIdT,
     REv: ReactorEventT<I>,
