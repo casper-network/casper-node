@@ -16,7 +16,6 @@ pub(crate) mod gossiper;
 #[cfg(test)]
 pub mod in_memory_network;
 pub(crate) mod metrics;
-pub(crate) mod pinger;
 pub(crate) mod small_network;
 pub(crate) mod storage;
 
