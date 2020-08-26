@@ -11,7 +11,7 @@ use std::{
 
 use derive_more::From;
 use lmdb::DatabaseFlags;
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use thiserror::Error;
 use tokio::task;
 use tracing::trace;
@@ -126,13 +126,14 @@ impl ContractRuntimeMetrics {
     }
 }
 
-impl<REv> Component<REv> for ContractRuntime
+impl<REv, R> Component<REv, R> for ContractRuntime
 where
     REv: From<Event> + Send,
+    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event;
 
-    fn handle_event<R: Rng + ?Sized>(
+    fn handle_event(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

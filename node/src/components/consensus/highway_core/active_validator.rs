@@ -1,5 +1,6 @@
 use std::fmt::{self, Debug};
 
+use rand::{CryptoRng, Rng};
 use tracing::warn;
 
 use super::{
@@ -22,9 +23,9 @@ pub(crate) enum Effect<C: Context> {
     NewVertex(ValidVertex<C>),
     /// `handle_timer` needs to be called at the specified time.
     ScheduleTimer(Timestamp),
-    /// `propose` needs to be called with a value for a new block with the specified timestamp.
-    // TODO: Add more information required by the deploy buffer.
-    RequestNewBlock(BlockContext),
+    /// `propose` needs to be called with a value for a new block with the specified block context
+    /// and parent value.
+    RequestNewBlock(BlockContext, Option<C::ConsensusValue>),
 }
 
 /// A validator that actively participates in consensus by creating new vertices.
@@ -50,6 +51,8 @@ pub(crate) struct ActiveValidator<C: Context> {
     next_round_exp: u8,
     /// The latest timer we scheduled.
     next_timer: Timestamp,
+    /// Panorama and timestamp for a block we are about to propose when we get a consensus value.
+    next_proposal: Option<(Timestamp, Panorama<C>)>,
 }
 
 impl<C: Context> Debug for ActiveValidator<C> {
@@ -71,19 +74,20 @@ impl<C: Context> ActiveValidator<C> {
         timestamp: Timestamp,
         state: &State<C>,
     ) -> (Self, Vec<Effect<C>>) {
-        if next_round_exp < state.min_round_exp() {
+        if next_round_exp < state.params().min_round_exp() {
             warn!(
                 "using minimum value {} instead of round exponent {}",
-                state.min_round_exp(),
+                state.params().min_round_exp(),
                 next_round_exp,
             );
-            next_round_exp = state.min_round_exp();
+            next_round_exp = state.params().min_round_exp();
         }
         let mut av = ActiveValidator {
             vidx,
             secret,
             next_round_exp,
             next_timer: Timestamp::zero(),
+            next_proposal: None,
         };
         let effects = av.schedule_timer(timestamp, state);
         (av, effects)
@@ -91,10 +95,11 @@ impl<C: Context> ActiveValidator<C> {
 
     /// Returns actions a validator needs to take at the specified `timestamp`, with the given
     /// protocol `state`.
-    pub(crate) fn handle_timer(
+    pub(crate) fn handle_timer<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         timestamp: Timestamp,
         state: &State<C>,
+        rng: &mut R,
     ) -> Vec<Effect<C>> {
         if self.is_faulty(state) {
             warn!("Creator knows it's faulty. Won't create a message.");
@@ -109,12 +114,11 @@ impl<C: Context> ActiveValidator<C> {
         let r_id = state::round_id(timestamp, r_exp);
         let r_len = state::round_len(r_exp);
         if timestamp == r_id && state.leader(r_id) == self.vidx {
-            let bctx = BlockContext::new(timestamp);
-            effects.push(Effect::RequestNewBlock(bctx));
+            effects.extend(self.request_new_block(state, timestamp, rng))
         } else if timestamp == r_id + self.witness_offset(r_len) {
-            let panorama = state.panorama_cutoff(state.panorama(), timestamp);
+            let panorama = state.panorama().cutoff(state, timestamp);
             if panorama.has_correct() {
-                let witness_vote = self.new_vote(panorama, timestamp, None, state);
+                let witness_vote = self.new_vote(panorama, timestamp, None, state, rng);
                 effects.push(Effect::NewVertex(ValidVertex(Vertex::Vote(witness_vote))))
             }
         }
@@ -122,18 +126,19 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// Returns actions a validator needs to take upon receiving a new vote.
-    pub(crate) fn on_new_vote(
-        &self,
+    pub(crate) fn on_new_vote<R: Rng + CryptoRng + ?Sized>(
+        &mut self,
         vhash: &C::Hash,
         timestamp: Timestamp,
         state: &State<C>,
+        rng: &mut R,
     ) -> Vec<Effect<C>> {
         if self.earliest_vote_time(state) > timestamp {
             warn!(%timestamp, "skipping outdated confirmation");
         } else if self.should_send_confirmation(vhash, timestamp, state) {
             let panorama = self.confirmation_panorama(vhash, state);
             if panorama.has_correct() {
-                let confirmation_vote = self.new_vote(panorama, timestamp, None, state);
+                let confirmation_vote = self.new_vote(panorama, timestamp, None, state, rng);
                 let vv = ValidVertex(Vertex::Vote(confirmation_vote));
                 return vec![Effect::NewVertex(vv)];
             }
@@ -141,12 +146,45 @@ impl<C: Context> ActiveValidator<C> {
         vec![]
     }
 
+    /// Returns an effect to request a consensus value for a block to propose.
+    ///
+    /// If we are already waiting for a consensus value, `None` is returned instead.
+    /// If the new value would come after a terminal block, the proposal is made immediately, and
+    /// without a value.
+    pub(crate) fn request_new_block<R: Rng + CryptoRng + ?Sized>(
+        &mut self,
+        state: &State<C>,
+        timestamp: Timestamp,
+        rng: &mut R,
+    ) -> Option<Effect<C>> {
+        if let Some((prop_time, _)) = self.next_proposal {
+            warn!(
+                ?timestamp,
+                "skipping proposal, still waiting for value for {}", prop_time
+            );
+            return None;
+        }
+        let panorama = state.panorama().cutoff(state, timestamp);
+        let opt_parent_hash = state.fork_choice(&panorama);
+        if opt_parent_hash.map_or(false, |hash| state.is_terminal_block(hash)) {
+            let proposal_vote = self.new_vote(panorama, timestamp, None, state, rng);
+            return Some(Effect::NewVertex(ValidVertex(Vertex::Vote(proposal_vote))));
+        }
+        let opt_parent = opt_parent_hash.map(|bh| state.block(bh));
+        let height = opt_parent.map_or(0, |block| block.height);
+        let opt_value = opt_parent.map(|block| block.value.clone());
+        self.next_proposal = Some((timestamp, panorama));
+        let bctx = BlockContext::new(timestamp, height);
+        Some(Effect::RequestNewBlock(bctx, opt_value))
+    }
+
     /// Proposes a new block with the given consensus value.
-    pub(crate) fn propose(
-        &self,
+    pub(crate) fn propose<R: Rng + CryptoRng + ?Sized>(
+        &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
         state: &State<C>,
+        rng: &mut R,
     ) -> Vec<Effect<C>> {
         let timestamp = block_context.timestamp();
         if self.earliest_vote_time(state) > timestamp {
@@ -157,8 +195,20 @@ impl<C: Context> ActiveValidator<C> {
             warn!("Creator knows it's faulty. Won't create a message.");
             return vec![];
         }
-        let panorama = state.panorama_cutoff(state.panorama(), timestamp);
-        let proposal_vote = self.new_vote(panorama, timestamp, Some(value), state);
+        let panorama = if let Some((prop_time, panorama)) = self.next_proposal.take() {
+            if prop_time != timestamp {
+                warn!(
+                    ?timestamp,
+                    "unexpected proposal; expected timestamp {}", prop_time
+                );
+                return vec![];
+            }
+            panorama
+        } else {
+            warn!("unexpected proposal value");
+            return vec![];
+        };
+        let proposal_vote = self.new_vote(panorama, timestamp, Some(value), state, rng);
         vec![Effect::NewVertex(ValidVertex(Vertex::Vote(proposal_vote)))]
     }
 
@@ -177,13 +227,13 @@ impl<C: Context> ActiveValidator<C> {
         let r_exp = self.round_exp(state, timestamp);
         timestamp >> r_exp == vote.timestamp >> r_exp // Current round.
             && state.leader(vote.timestamp) == vote.creator // The creator is the round's leader.
-            && vote.timestamp == state::round_id(vote.timestamp, vote.round_exp) // Check if it's a lambda message.
+            && vote.timestamp == state::round_id(vote.timestamp, vote.round_exp) // It's a proposal.
             && vote.creator != self.vidx // We didn't send it ourselves.
             && !state.has_evidence(vote.creator) // The creator is not faulty.
             && !self.is_faulty(state) // We are not faulty.
             && self.latest_vote(state)
                 .map_or(true, |vote| {
-                    !state.sees_correct(&vote.panorama, vhash)
+                    !vote.panorama.sees_correct(state, vhash)
                 }) // We haven't confirmed it already.
     }
 
@@ -193,7 +243,7 @@ impl<C: Context> ActiveValidator<C> {
         let mut panorama;
         if let Some(prev_hash) = state.panorama().get(self.vidx).correct().cloned() {
             let own_vote = state.vote(&prev_hash);
-            panorama = state.merge_panoramas(&vote.panorama, &own_vote.panorama);
+            panorama = vote.panorama.merge(state, &own_vote.panorama);
             panorama[self.vidx] = Observation::Correct(prev_hash);
         } else {
             panorama = vote.panorama.clone();
@@ -206,13 +256,20 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// Returns a new vote with the given data, and the correct sequence number.
-    fn new_vote(
-        &self,
+    fn new_vote<R: Rng + CryptoRng + ?Sized>(
+        &mut self,
         panorama: Panorama<C>,
         timestamp: Timestamp,
         value: Option<C::ConsensusValue>,
         state: &State<C>,
+        rng: &mut R,
     ) -> SignedWireVote<C> {
+        if let Some((prop_time, _)) = self.next_proposal.take() {
+            warn!(
+                ?timestamp,
+                "canceling proposal for {} due to vote", prop_time
+            );
+        }
         let seq_number = panorama.next_seq_num(state, self.vidx);
         let wvote = WireVote {
             panorama,
@@ -222,7 +279,7 @@ impl<C: Context> ActiveValidator<C> {
             timestamp,
             round_exp: self.round_exp(state, timestamp),
         };
-        SignedWireVote::new(wvote, &self.secret)
+        SignedWireVote::new(wvote, &self.secret, rng)
     }
 
     /// Returns a `ScheduleTimer` effect for the next time we need to be called.
@@ -304,6 +361,7 @@ mod tests {
         },
         Vertex, *,
     };
+    use crate::testing::TestRng;
 
     type Eff = Effect<TestContext>;
 
@@ -330,6 +388,7 @@ mod tests {
     #[allow(clippy::unreadable_literal)] // 0xC0FFEE is more readable than 0x00C0_FFEE.
     fn active_validator() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new_test(&[Weight(3), Weight(4)], 0);
+        let mut rng = TestRng::new();
         let mut fd = FinalityDetector::new(Weight(2));
 
         // We start at time 410, with round length 16, so the first leader tick is 416, and the
@@ -342,11 +401,13 @@ mod tests {
         let (mut bob_av, effects) = ActiveValidator::new(BOB, TestSecret(1), 4, 410.into(), &state);
         assert_eq!([Eff::ScheduleTimer(426.into())], *effects);
 
-        assert!(alice_av.handle_timer(415.into(), &state).is_empty()); // Too early: No new effects.
+        assert!(alice_av
+            .handle_timer(415.into(), &state, &mut rng)
+            .is_empty()); // Too early: No new effects.
 
         // Alice wants to propose a block, and also make her witness vote at 426.
-        let bctx = match &*alice_av.handle_timer(416.into(), &state) {
-            [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock(bctx)]
+        let bctx = match &*alice_av.handle_timer(416.into(), &state, &mut rng) {
+            [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock(bctx, None)]
                 if *timestamp == 426.into() =>
             {
                 bctx.clone()
@@ -356,20 +417,22 @@ mod tests {
         assert_eq!(Timestamp::from(416), bctx.timestamp());
 
         // She has a pending deploy from Colin who wants to pay for a hot beverage.
-        let effects = alice_av.propose(0xC0FFEE, bctx, &state);
+        let effects = alice_av.propose(0xC0FFEE, bctx, &state, &mut rng);
         let proposal_wvote = unwrap_single(effects).unwrap_vote();
         let prop_hash = proposal_wvote.hash();
         state.add_vote(proposal_wvote)?;
         assert!(alice_av
-            .on_new_vote(&prop_hash, 417.into(), &state)
+            .on_new_vote(&prop_hash, 417.into(), &state, &mut rng)
             .is_empty());
 
         // Bob creates a confirmation vote for Alice's proposal.
-        let effects = bob_av.on_new_vote(&prop_hash, 419.into(), &state);
+        let effects = bob_av.on_new_vote(&prop_hash, 419.into(), &state, &mut rng);
         state.add_vote(unwrap_single(effects).unwrap_vote())?;
 
         // Bob creates his witness message 2/3 through the round.
-        let mut effects = bob_av.handle_timer(426.into(), &state).into_iter();
+        let mut effects = bob_av
+            .handle_timer(426.into(), &state, &mut rng)
+            .into_iter();
         assert_eq!(Some(Eff::ScheduleTimer(432.into())), effects.next()); // Bob is the next leader.
         state.add_vote(effects.next().unwrap().unwrap_vote())?;
         assert_eq!(None, effects.next());
@@ -378,7 +441,9 @@ mod tests {
         assert_eq!(None, fd.next_finalized(&state, 0.into()));
 
         // Alice also sends her own witness message, completing the summit for her proposal.
-        let mut effects = alice_av.handle_timer(426.into(), &state).into_iter();
+        let mut effects = alice_av
+            .handle_timer(426.into(), &state, &mut rng)
+            .into_iter();
         assert_eq!(Some(Eff::ScheduleTimer(442.into())), effects.next()); // Timer for witness vote.
         state.add_vote(effects.next().unwrap().unwrap_vote())?;
         assert_eq!(None, effects.next());

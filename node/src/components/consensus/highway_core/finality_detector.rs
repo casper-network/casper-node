@@ -25,10 +25,14 @@ pub(crate) enum FinalityOutcome<C: Context> {
         /// Rewards for finalization of earlier blocks.
         ///
         /// This is a measure of the value of each validator's contribution to consensus, in
-        /// fractions of a maximum `BLOCK_REWARD`.
+        /// fractions of the configured maximum block reward.
         rewards: BTreeMap<C::ValidatorId, u64>,
         /// The timestamp at which this value was proposed.
         timestamp: Timestamp,
+        /// The relative height in this instance of the protocol.
+        height: u64,
+        /// Whether this is a terminal block, i.e. the last one to be finalized.
+        terminal: bool,
     },
     /// The fault tolerance threshold has been exceeded: The number of observed equivocations
     /// invalidates this finality detector's results.
@@ -69,15 +73,21 @@ impl<C: Context> FinalityDetector<C> {
         } else {
             return FinalityOutcome::None;
         };
-        let to_id = |vidx: ValidatorIndex| highway.validators().get_by_index(vidx).id().clone();
+        let to_id = |vidx: ValidatorIndex| {
+            let opt_validator = highway.validators().get_by_index(vidx);
+            opt_validator.unwrap().id().clone() // Index exists, since we have votes from them.
+        };
         let new_equivocators_iter = state.get_new_equivocators(bhash).into_iter();
         let rewards = rewards::compute_rewards(state, bhash);
         let rewards_iter = rewards.enumerate();
+        let block = state.block(bhash);
         FinalityOutcome::Finalized {
-            value: state.block(bhash).value.clone(),
+            value: block.value.clone(),
             new_equivocators: new_equivocators_iter.map(to_id).collect(),
             rewards: rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect(),
             timestamp: state.vote(bhash).timestamp,
+            height: block.height,
+            terminal: state.is_terminal_block(bhash),
         }
     }
 
@@ -162,10 +172,12 @@ mod tests {
         super::state::{tests::*, State},
         *,
     };
+    use crate::testing::TestRng;
 
     #[test]
     fn finality_detector() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new_test(&[Weight(5), Weight(4), Weight(1)], 0);
+        let mut rng = TestRng::new();
 
         // Create blocks with scores as follows:
         //
@@ -174,12 +186,12 @@ mod tests {
         // b0: 10           b1: 4
         //        \
         //          c0: 1 — c1: 1
-        let b0 = add_vote!(state, BOB, 0xB0; N, N, N)?;
-        let c0 = add_vote!(state, CAROL, 0xC0; N, b0, N)?;
-        let c1 = add_vote!(state, CAROL, 0xC1; N, b0, c0)?;
-        let a0 = add_vote!(state, ALICE, 0xA0; N, b0, N)?;
-        let a1 = add_vote!(state, ALICE, 0xA1; a0, b0, c1)?;
-        let b1 = add_vote!(state, BOB, 0xB1; a0, b0, N)?;
+        let b0 = add_vote!(state, rng, BOB, 0xB0; N, N, N)?;
+        let c0 = add_vote!(state, rng, CAROL, 0xC0; N, b0, N)?;
+        let c1 = add_vote!(state, rng, CAROL, 0xC1; N, b0, c0)?;
+        let a0 = add_vote!(state, rng, ALICE, 0xA0; N, b0, N)?;
+        let a1 = add_vote!(state, rng, ALICE, 0xA1; a0, b0, c1)?;
+        let b1 = add_vote!(state, rng, BOB, 0xB1; a0, b0, N)?;
 
         let mut fd4 = FinalityDetector::new(Weight(4)); // Fault tolerance 4.
         let mut fd6 = FinalityDetector::new(Weight(6)); // Fault tolerance 6.
@@ -194,15 +206,15 @@ mod tests {
         assert_eq!(None, fd4.next_finalized(&state, 0.into()));
 
         // Adding another level to the summit increases `B0`'s fault tolerance to 6.
-        let _a2 = add_vote!(state, ALICE, None; a1, b1, c1)?;
-        let _b2 = add_vote!(state, BOB, None; a1, b1, c1)?;
+        let _a2 = add_vote!(state, rng, ALICE, None; a1, b1, c1)?;
+        let _b2 = add_vote!(state, rng, BOB, None; a1, b1, c1)?;
         assert_eq!(Some(&b0), fd6.next_finalized(&state, 0.into()));
         assert_eq!(None, fd6.next_finalized(&state, 0.into()));
 
         // If Bob equivocates, the FTT 4 is exceeded, but she counts as being part of any summit,
         // so `A0` and `A1` get FTT 6. (Bob voted for `A1` and against `B1` in `b2`.)
         assert_eq!(Weight(0), state.faulty_weight());
-        let _e2 = add_vote!(state, BOB, None; a1, b1, c1)?;
+        let _e2 = add_vote!(state, rng, BOB, None; a1, b1, c1)?;
         assert_eq!(Weight(4), state.faulty_weight());
         assert_eq!(Some(&a0), fd6.next_finalized(&state, 4.into()));
         assert_eq!(Some(&a1), fd6.next_finalized(&state, 4.into()));
@@ -214,6 +226,7 @@ mod tests {
     fn equivocators() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new_test(&[Weight(5), Weight(4), Weight(1)], 0);
         let mut fd4 = FinalityDetector::new(Weight(4)); // Fault tolerance 4.
+        let mut rng = TestRng::new();
 
         // Create blocks with scores as follows:
         //
@@ -223,36 +236,36 @@ mod tests {
         //        \
         //          c0: 1 — c1: 1
         //               \ c1': 1
-        let b0 = add_vote!(state, BOB, 0xB0; N, N, N)?;
-        let a0 = add_vote!(state, ALICE, 0xA0; N, b0, N)?;
-        let c0 = add_vote!(state, CAROL, 0xC0; N, b0, N)?;
-        let _c1 = add_vote!(state, CAROL, 0xC1; N, b0, c0)?;
+        let b0 = add_vote!(state, rng, BOB, 0xB0; N, N, N)?;
+        let a0 = add_vote!(state, rng, ALICE, 0xA0; N, b0, N)?;
+        let c0 = add_vote!(state, rng, CAROL, 0xC0; N, b0, N)?;
+        let _c1 = add_vote!(state, rng, CAROL, 0xC1; N, b0, c0)?;
         assert_eq!(Weight(0), state.faulty_weight());
-        let _c1_prime = add_vote!(state, CAROL, None; N, b0, c0)?;
+        let _c1_prime = add_vote!(state, rng, CAROL, None; N, b0, c0)?;
         assert_eq!(Weight(1), state.faulty_weight());
-        let b1 = add_vote!(state, BOB, 0xB1; a0, b0, N)?;
+        let b1 = add_vote!(state, rng, BOB, 0xB1; a0, b0, N)?;
         assert_eq!(Some(&b0), fd4.next_finalized(&state, 1.into()));
-        let a1 = add_vote!(state, ALICE, 0xA1; a0, b0, F)?;
-        let b2 = add_vote!(state, BOB, None; a1, b1, F)?;
-        let a2 = add_vote!(state, ALICE, 0xA2; a1, b2, F)?;
+        let a1 = add_vote!(state, rng, ALICE, 0xA1; a0, b0, F)?;
+        let b2 = add_vote!(state, rng, BOB, None; a1, b1, F)?;
+        let a2 = add_vote!(state, rng, ALICE, 0xA2; a1, b2, F)?;
         assert_eq!(Some(&a0), fd4.next_finalized(&state, 1.into()));
         // A1 is the first block that sees CAROL equivocating.
         assert_eq!(vec![CAROL], state.get_new_equivocators(&a1));
         assert_eq!(Some(&a1), fd4.next_finalized(&state, 1.into()));
         // Finalize A2. It should not report CAROL as equivocator anymore.
-        let b3 = add_vote!(state, BOB, None; a2, b2, F)?;
-        let _a3 = add_vote!(state, ALICE, None; a2, b3, F)?;
+        let b3 = add_vote!(state, rng, BOB, None; a2, b2, F)?;
+        let _a3 = add_vote!(state, rng, ALICE, None; a2, b3, F)?;
         assert!(state.get_new_equivocators(&a2).is_empty());
         assert_eq!(Some(&a2), fd4.next_finalized(&state, 1.into()));
 
         // Test that an initial block reports equivocators as well.
         let mut bstate: State<TestContext> = State::new_test(&[Weight(5), Weight(4), Weight(1)], 0);
         let mut fde4 = FinalityDetector::new(Weight(4)); // Fault tolerance 4.
-        let _c0 = add_vote!(bstate, CAROL, 0xB0; N, N, N)?;
-        let _c0_prime = add_vote!(bstate, CAROL, 0xB0; N, N, N)?;
-        let a0 = add_vote!(bstate, ALICE, 0xA0; N, N, F)?;
-        let b0 = add_vote!(bstate, BOB, None; a0, N, F)?;
-        let _a1 = add_vote!(bstate, ALICE, None; a0, b0, F)?;
+        let _c0 = add_vote!(bstate, rng, CAROL, 0xB0; N, N, N)?;
+        let _c0_prime = add_vote!(bstate, rng, CAROL, 0xB0; N, N, N)?;
+        let a0 = add_vote!(bstate, rng, ALICE, 0xA0; N, N, F)?;
+        let b0 = add_vote!(bstate, rng, BOB, None; a0, N, F)?;
+        let _a1 = add_vote!(bstate, rng, ALICE, None; a0, b0, F)?;
         assert_eq!(vec![CAROL], bstate.get_new_equivocators(&a0));
         assert_eq!(Some(&a0), fde4.next_finalized(&bstate, 1.into()));
         Ok(())

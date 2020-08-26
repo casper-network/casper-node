@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, fmt::Debug};
 
 use anyhow::Error;
+use rand::{CryptoRng, Rng};
 
 use crate::{components::consensus::traits::ConsensusValueT, types::Timestamp};
 
@@ -13,17 +14,25 @@ pub(crate) use protocol_state::{ProtocolState, VertexTrait};
 #[derive(Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
 pub struct BlockContext {
     timestamp: Timestamp,
+    height: u64,
 }
 
 impl BlockContext {
-    /// Constructs a new `BlockContext`
-    pub(crate) fn new(timestamp: Timestamp) -> Self {
-        BlockContext { timestamp }
+    /// Constructs a new `BlockContext`.
+    pub(crate) fn new(timestamp: Timestamp, height: u64) -> Self {
+        BlockContext { timestamp, height }
     }
 
     /// The block's timestamp.
     pub(crate) fn timestamp(&self) -> Timestamp {
         self.timestamp
+    }
+
+    /// The block's relative height within the current era.
+    // TODO - remove once used
+    #[allow(dead_code)]
+    pub(crate) fn height(&self) -> u64 {
+        self.height
     }
 }
 
@@ -35,13 +44,18 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
     ScheduleTimer(Timestamp),
     /// Request deploys for a new block, whose timestamp will be the given `u64`.
     /// TODO: Add more details that are necessary for block creation.
-    CreateNewBlock(BlockContext),
+    CreateNewBlock {
+        block_context: BlockContext,
+        opt_parent: Option<C>,
+    },
     /// A block was finalized. The timestamp is from when the block was proposed.
     FinalizedBlock {
         value: C,
         new_equivocators: Vec<VID>,
         rewards: BTreeMap<VID, u64>,
         timestamp: Timestamp,
+        height: u64,
+        switch_block: bool,
     },
     /// Request validation of the consensus value, contained in a message received from the given
     /// node.
@@ -53,18 +67,20 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
 }
 
 /// An API for a single instance of the consensus.
-pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID> {
+pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID, R: Rng + CryptoRng + ?Sized> {
     /// Handles an incoming message (like NewVote, RequestDependency).
     fn handle_message(
         &mut self,
         sender: I,
         msg: Vec<u8>,
+        rng: &mut R,
     ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
 
     /// Triggers consensus' timer.
     fn handle_timer(
         &mut self,
         timerstamp: Timestamp,
+        rng: &mut R,
     ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
 
     /// Proposes a new value for consensus.
@@ -72,6 +88,7 @@ pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID> {
         &mut self,
         value: C,
         block_context: BlockContext,
+        rng: &mut R,
     ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
 
     /// Marks the `value` as valid or invalid, based on validation requested via
@@ -80,64 +97,9 @@ pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID> {
         &mut self,
         value: &C,
         valid: bool,
+        rng: &mut R,
     ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
-}
 
-#[cfg(test)]
-mod example {
-    use serde::{Deserialize, Serialize};
-
-    use super::{
-        protocol_state::{ProtocolState, VertexTrait},
-        synchronizer::DagSynchronizerState,
-        BlockContext, ConsensusProtocol, ConsensusProtocolResult, Timestamp,
-    };
-
-    #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
-    struct VIdU64(u64);
-
-    #[derive(Debug, Hash, PartialEq, Eq, Clone, Serialize, Deserialize)]
-    struct DummyVertex {
-        id: u64,
-        proto_block: ProtoBlock,
-    }
-
-    impl VertexTrait for DummyVertex {
-        type Id = VIdU64;
-        type Value = ProtoBlock;
-
-        fn id(&self) -> VIdU64 {
-            VIdU64(self.id)
-        }
-
-        fn value(&self) -> Option<&ProtoBlock> {
-            Some(&self.proto_block)
-        }
-    }
-
-    #[derive(Debug, Hash, PartialEq, Eq, Clone, Serialize, Deserialize)]
-    struct ProtoBlock(u64);
-
-    #[derive(Debug)]
-    struct Error;
-
-    type CpResult<I> = Result<Vec<ConsensusProtocolResult<I, ProtoBlock, VIdU64>>, anyhow::Error>;
-
-    impl<I, P: ProtocolState> ConsensusProtocol<I, ProtoBlock, VIdU64> for DagSynchronizerState<I, P> {
-        fn handle_message(&mut self, _sender: I, _msg: Vec<u8>) -> CpResult<I> {
-            unimplemented!()
-        }
-
-        fn handle_timer(&mut self, _timestamp: Timestamp) -> CpResult<I> {
-            unimplemented!()
-        }
-
-        fn resolve_validity(&mut self, _value: &ProtoBlock, _valid: bool) -> CpResult<I> {
-            unimplemented!()
-        }
-
-        fn propose(&mut self, _value: ProtoBlock, _block_context: BlockContext) -> CpResult<I> {
-            unimplemented!()
-        }
-    }
+    /// Turns this instance into a passive observer, that does not create any new vertices.
+    fn deactivate_validator(&mut self);
 }

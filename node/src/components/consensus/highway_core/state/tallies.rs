@@ -57,7 +57,7 @@ impl<'a, C: Context> Tally<'a, C> {
     /// vote for that block's parent. Panics if called on level 0.
     fn parents(&self, state: &'a State<C>) -> Self {
         let to_parent = |(h, w): (&&'a C::Hash, &Weight)| (state.block(*h).parent().unwrap(), *w);
-        Self::try_from_iter(self.votes.iter().map(to_parent)).unwrap()
+        Self::try_from_iter(self.votes.iter().map(to_parent)).unwrap() // Tally is never empty.
     }
 
     /// Adds a vote for a block to the tally, possibly updating the current maximum.
@@ -190,6 +190,7 @@ mod tests {
         super::{tests::*, State},
         *,
     };
+    use crate::testing::TestRng;
 
     impl<'a> Tallies<'a, TestContext> {
         /// Returns the number of tallies.
@@ -201,6 +202,7 @@ mod tests {
     #[test]
     fn tallies() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new_test(WEIGHTS, 0);
+        let mut rng = TestRng::new();
 
         // Create blocks with scores as follows:
         //
@@ -209,13 +211,13 @@ mod tests {
         // b0: 12           b2: 4
         //        \
         //          c0: 5 — c1: 5
-        let b0 = add_vote!(state, BOB, 0xB0; N, N, N)?;
-        let c0 = add_vote!(state, CAROL, 0xC0; N, b0, N)?;
-        let c1 = add_vote!(state, CAROL, 0xC1; N, b0, c0)?;
-        let a0 = add_vote!(state, ALICE, 0xA0; N, b0, N)?;
-        let b1 = add_vote!(state, BOB, None; a0, b0, N)?; // Just a ballot; not shown above.
-        let a1 = add_vote!(state, ALICE, 0xA1; a0, b1, c1)?;
-        let b2 = add_vote!(state, BOB, 0xB2; a0, b1, N)?;
+        let b0 = add_vote!(state, rng, BOB, 0xB0; N, N, N)?;
+        let c0 = add_vote!(state, rng, CAROL, 0xC0; N, b0, N)?;
+        let c1 = add_vote!(state, rng, CAROL, 0xC1; N, b0, c0)?;
+        let a0 = add_vote!(state, rng, ALICE, 0xA0; N, b0, N)?;
+        let b1 = add_vote!(state, rng, BOB, None; a0, b0, N)?; // Just a ballot; not shown above.
+        let a1 = add_vote!(state, rng, ALICE, 0xA1; a0, b1, c1)?;
+        let b2 = add_vote!(state, rng, BOB, 0xB2; a0, b1, N)?;
 
         // These are the entries of a panorama seeing `a1`, `b2` and `c0`.
         let vote_entries = vec![

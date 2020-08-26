@@ -4,39 +4,44 @@ mod consensus_protocol;
 mod era_supervisor;
 mod highway_core;
 mod protocols;
-mod traits;
-
 #[cfg(test)]
-#[allow(unused)]
-#[allow(dead_code)]
 mod tests;
+mod traits;
 
 use std::fmt::{self, Debug, Display, Formatter};
 
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    components::Component,
+    components::{storage::Storage, Component},
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
             BlockExecutorRequest, BlockValidationRequest, DeployBufferRequest, NetworkRequest,
+            StorageRequest,
         },
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, Effects,
     },
-    types::{ExecutedBlock, ProtoBlock, Timestamp},
+    reactor::validator::Message,
+    types::{Block, ProtoBlock, Timestamp},
 };
 pub use config::Config;
-
 pub(crate) use consensus_protocol::BlockContext;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
+use hex_fmt::HexFmt;
 use traits::NodeIdT;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ConsensusMessage {
     era_id: EraId,
     payload: Vec<u8>,
+}
+
+impl ConsensusMessage {
+    fn payload(&self) -> &[u8] {
+        &self.payload
+    }
 }
 
 /// Consensus component event.
@@ -53,10 +58,7 @@ pub enum Event<I> {
         block_context: BlockContext,
     },
     /// We are receiving the information necessary to produce finality signatures
-    ExecutedBlock {
-        era_id: EraId,
-        executed_block: ExecutedBlock,
-    },
+    ExecutedBlock { era_id: EraId, block: Block },
     /// The proto-block has been validated and can now be added to the protocol state
     AcceptProtoBlock {
         era_id: EraId,
@@ -72,7 +74,23 @@ pub enum Event<I> {
 
 impl Display for ConsensusMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "ConsensusMessage {{ era_id: {}, .. }}", self.era_id.0)
+        write!(
+            f,
+            "ConsensusMessage {{ era_id: {}, {:10} }}",
+            self.era_id.0,
+            HexFmt(self.payload())
+        )
+    }
+}
+
+impl Debug for ConsensusMessage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ConsensusMessage {{ era_id: {}, {:10} }}",
+            self.era_id.0,
+            HexFmt(self.payload())
+        )
     }
 }
 
@@ -94,13 +112,10 @@ impl<I: Debug> Display for Event<I> {
                 "New proto-block for era {:?}: {:?}, {:?}",
                 era_id, proto_block, block_context
             ),
-            Event::ExecutedBlock {
-                era_id,
-                executed_block,
-            } => write!(
+            Event::ExecutedBlock { era_id, block } => write!(
                 f,
                 "A block has been executed for era {:?}: {:?}",
-                era_id, executed_block
+                era_id, block
             ),
             Event::AcceptProtoBlock {
                 era_id,
@@ -128,90 +143,62 @@ impl<I: Debug> Display for Event<I> {
 pub trait ReactorEventT<I>:
     From<Event<I>>
     + Send
-    + From<NetworkRequest<I, ConsensusMessage>>
+    + From<NetworkRequest<I, Message>>
     + From<DeployBufferRequest>
     + From<ConsensusAnnouncement>
     + From<BlockExecutorRequest>
     + From<BlockValidationRequest<I>>
+    + From<StorageRequest<Storage>>
 {
 }
 
 impl<REv, I> ReactorEventT<I> for REv where
     REv: From<Event<I>>
         + Send
-        + From<NetworkRequest<I, ConsensusMessage>>
+        + From<NetworkRequest<I, Message>>
         + From<DeployBufferRequest>
         + From<ConsensusAnnouncement>
         + From<BlockExecutorRequest>
         + From<BlockValidationRequest<I>>
+        + From<StorageRequest<Storage>>
 {
 }
 
-impl<I, REv> Component<REv> for EraSupervisor<I>
+impl<I, REv, R> Component<REv, R> for EraSupervisor<I, R>
 where
     I: NodeIdT,
     REv: ReactorEventT<I>,
+    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event<I>;
 
-    fn handle_event<R: Rng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        rng: &mut R,
         event: Self::Event,
     ) -> Effects<Self::Event> {
+        let mut handling_es = self.handling_wrapper(effect_builder, rng);
         match event {
-            Event::Timer { era_id, timestamp } => {
-                self.delegate_to_era(era_id, effect_builder, move |consensus| {
-                    consensus.handle_timer(timestamp)
-                })
-            }
-            Event::MessageReceived { sender, msg } => {
-                let ConsensusMessage { era_id, payload } = msg;
-                self.delegate_to_era(era_id, effect_builder, move |consensus| {
-                    consensus.handle_message(sender, payload)
-                })
-            }
+            Event::Timer { era_id, timestamp } => handling_es.handle_timer(era_id, timestamp),
+            Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
             Event::NewProtoBlock {
                 era_id,
                 proto_block,
                 block_context,
-            } => {
-                let mut effects = effect_builder
-                    .announce_proposed_proto_block(proto_block.clone())
-                    .ignore();
-                effects.extend(
-                    self.delegate_to_era(era_id, effect_builder, move |consensus| {
-                        consensus.propose(proto_block, block_context)
-                    }),
-                );
-                effects
-            }
-            Event::ExecutedBlock { .. } => {
-                // TODO: Finality signatures
-                Effects::new()
+            } => handling_es.handle_new_proto_block(era_id, proto_block, block_context),
+            Event::ExecutedBlock { era_id, block } => {
+                handling_es.handle_executed_block(era_id, block)
             }
             Event::AcceptProtoBlock {
                 era_id,
                 proto_block,
-            } => {
-                let mut effects = self.delegate_to_era(era_id, effect_builder, |consensus| {
-                    consensus.resolve_validity(&proto_block, true)
-                });
-                effects.extend(
-                    effect_builder
-                        .announce_proposed_proto_block(proto_block)
-                        .ignore(),
-                );
-                effects
-            }
+            } => handling_es.handle_accept_proto_block(era_id, proto_block),
             Event::InvalidProtoBlock {
                 era_id,
-                sender: _sender,
+                sender,
                 proto_block,
-            } => self.delegate_to_era(era_id, effect_builder, |consensus| {
-                consensus.resolve_validity(&proto_block, false)
-            }),
+            } => handling_es.handle_invalid_proto_block(era_id, sender, proto_block),
         }
     }
 }

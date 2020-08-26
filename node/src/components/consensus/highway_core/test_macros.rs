@@ -16,7 +16,7 @@ macro_rules! panorama {
 /// The short variant is for tests that don't care about timestamps and round lengths: It
 /// automatically picks reasonable values for those.
 macro_rules! add_vote {
-    ($state: ident, $creator: expr, $val: expr; $($obs:expr),*) => {{
+    ($state: ident, $rng: ident, $creator: expr, $val: expr; $($obs:expr),*) => {{
         use crate::{
             components::consensus::highway_core::{
                 state::{self, tests::TestSecret},
@@ -30,7 +30,7 @@ macro_rules! add_vote {
         let seq_number = panorama.next_seq_num(&$state, creator);
         // Use our most recent round exponent, or the configured minimum.
         let round_exp = panorama[creator].correct().map_or_else(
-            || $state.min_round_exp(),
+            || $state.params().min_round_exp(),
             |vh| $state.vote(vh).round_exp,
         );
         let value = Option::from($val);
@@ -59,10 +59,10 @@ macro_rules! add_vote {
             round_exp,
         };
         let hash = wvote.hash();
-        let swvote = SignedWireVote::new(wvote, &TestSecret(($creator).0));
+        let swvote = SignedWireVote::new(wvote, &TestSecret(($creator).0), &mut $rng);
         $state.add_vote(swvote).map(|()| hash)
     }};
-    ($state: ident, $creator: expr, $time: expr, $round_exp: expr, $val: expr; $($obs:expr),*) => {{
+    ($state: ident, $rng: ident, $creator: expr, $time: expr, $round_exp: expr, $val: expr; $($obs:expr),*) => {{
         use crate::components::consensus::highway_core::{
             state::tests::TestSecret,
             highway::{SignedWireVote, WireVote},
@@ -80,7 +80,7 @@ macro_rules! add_vote {
             round_exp: $round_exp,
         };
         let hash = wvote.hash();
-        let swvote = SignedWireVote::new(wvote, &TestSecret(($creator).0));
+        let swvote = SignedWireVote::new(wvote, &TestSecret(($creator).0), &mut $rng);
         $state.add_vote(swvote).map(|()| hash)
     }};
 }

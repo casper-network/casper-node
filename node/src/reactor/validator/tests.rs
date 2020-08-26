@@ -32,7 +32,7 @@ struct TestChain {
     chainspec: Chainspec,
 }
 
-type Nodes = crate::testing::network::Nodes<validator::Reactor>;
+type Nodes = crate::testing::network::Nodes<validator::Reactor<TestRng>>;
 
 impl TestChain {
     /// Instantiates a new test chain configuration.
@@ -83,20 +83,21 @@ impl TestChain {
         cfg
     }
 
-    async fn create_initialized_network<R: Rng + ?Sized>(
+    async fn create_initialized_network(
         &mut self,
-        rng: &mut R,
-    ) -> anyhow::Result<Network<validator::Reactor>> {
+        rng: &mut TestRng,
+    ) -> anyhow::Result<Network<validator::Reactor<TestRng>>> {
         let root = RESOURCES_PATH.join("local");
 
-        let mut network: Network<validator::Reactor> = Network::new();
+        let mut network: Network<validator::Reactor<TestRng>> = Network::new();
 
         for idx in 0..self.keys.len() {
             let cfg = self.create_node_config(idx);
 
             // We create an initializer reactor here and run it to completion.
             let mut runner =
-                Runner::<initializer::Reactor>::new(WithDir::new(root.clone(), cfg), rng).await?;
+                Runner::<initializer::Reactor, TestRng>::new(WithDir::new(root.clone(), cfg), rng)
+                    .await?;
             runner.run(rng).await;
 
             // Now we can construct the actual node.
@@ -116,7 +117,9 @@ impl TestChain {
 }
 
 /// Get the set of era IDs from a runner.
-fn era_ids(runner: &Runner<ConditionCheckReactor<validator::Reactor>>) -> HashSet<EraId> {
+fn era_ids(
+    runner: &Runner<ConditionCheckReactor<validator::Reactor<TestRng>>, TestRng>,
+) -> HashSet<EraId> {
     runner
         .reactor()
         .inner()
@@ -150,7 +153,7 @@ async fn run_validator_network() {
             let expected_eras = era_ids(&first_node);
 
             // Return if not in expected era yet.
-            if expected_eras.len() != era_num {
+            if expected_eras.len() <= era_num {
                 return false;
             }
 
@@ -163,10 +166,9 @@ async fn run_validator_network() {
     };
 
     // Wait for all nodes to agree on one era.
-    net.settle_on(&mut rng, is_in_era(1), Duration::from_secs(20))
+    net.settle_on(&mut rng, is_in_era(1), Duration::from_secs(60))
         .await;
 
-    // TODO: Enable once we have era rotations.
-    // net.settle_on(&mut rng, is_in_era(2), Duration::from_secs(20))
-    //     .await;
+    net.settle_on(&mut rng, is_in_era(2), Duration::from_secs(60))
+        .await;
 }

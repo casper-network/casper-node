@@ -1,30 +1,36 @@
 mod block;
+mod panorama;
+mod params;
 mod tallies;
 mod vote;
+mod weight;
 
-pub(super) use vote::{Observation, Panorama, Vote};
+pub(crate) use params::Params;
+pub(crate) use weight::Weight;
+
+pub(super) use panorama::{Observation, Panorama};
+pub(super) use vote::Vote;
 
 use std::{
     borrow::Borrow,
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet, HashMap},
     convert::identity,
-    iter::{self, Sum},
-    ops::{Div, Mul, RangeBounds},
+    iter,
+    ops::RangeBounds,
 };
 
-use derive_more::{Add, AddAssign, From, Sub, SubAssign, Sum};
 use itertools::Itertools;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
-use tracing::warn;
+use tracing::error;
 
 use crate::{
     components::consensus::{
         highway_core::{
             evidence::Evidence,
-            highway::{Dependency, SignedWireVote, WireVote},
+            highway::{SignedWireVote, WireVote},
             validators::{ValidatorIndex, ValidatorMap},
         },
         traits::Context,
@@ -34,59 +40,18 @@ use crate::{
 use block::Block;
 use tallies::Tallies;
 
-/// A vote weight.
-#[derive(
-    Copy,
-    Clone,
-    Default,
-    Debug,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Add,
-    Sub,
-    AddAssign,
-    SubAssign,
-    Sum,
-    From,
-)]
-pub(crate) struct Weight(pub(crate) u64);
-
-impl<'a> Sum<&'a Weight> for Weight {
-    fn sum<I: Iterator<Item = &'a Weight>>(iter: I) -> Self {
-        let mut sum = 0u64;
-        iter.for_each(|w| sum += w.0);
-        Weight(sum)
-    }
-}
-
-impl Mul<u64> for Weight {
-    type Output = Self;
-
-    fn mul(self, rhs: u64) -> Self {
-        Weight(self.0 * rhs)
-    }
-}
-
-impl Div<u64> for Weight {
-    type Output = Self;
-
-    fn div(self, rhs: u64) -> Self {
-        Weight(self.0 / rhs)
-    }
-}
-
-impl From<Weight> for u128 {
-    fn from(Weight(w): Weight) -> u128 {
-        u128::from(w)
-    }
-}
-
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum VoteError {
-    #[error("The vote's panorama is inconsistent.")]
-    Panorama,
+    #[error("The vote is a ballot but doesn't cite any block.")]
+    MissingBlock,
+    #[error("The panorama's length {} doesn't match the number of validators.", _0)]
+    PanoramaLength(usize),
+    #[error("The vote accuses its own creator as faulty.")]
+    FaultyCreator,
+    #[error("The panorama has a vote from {:?} in the slot for {:?}.", _0, _1)]
+    PanoramaIndex(ValidatorIndex, ValidatorIndex),
+    #[error("The panorama is missing votes indirectly cited via {:?}.", _0)]
+    InconsistentPanorama(ValidatorIndex),
     #[error("The vote contains the wrong sequence number.")]
     SequenceNumber,
     #[error("The vote's timestamp is older than a justification's.")]
@@ -97,21 +62,9 @@ pub(crate) enum VoteError {
     Signature,
     #[error("The round length is invalid.")]
     RoundLength,
+    #[error("The vote is a block, but its parent is already a terminal block.")]
+    ValueAfterTerminalBlock,
 }
-
-/// The delay after which rewards are calculated.
-///
-/// Rewards for a round in which a block B was proposed are paid out in the first block whose
-/// timestamp greater than `REWARD_DELAY * t` after B's timestamp, where `t` is the round length of
-/// `B` itself.
-pub(crate) const REWARD_DELAY: u64 = 8;
-
-/// A number representing the maximum total reward for finalizing one block.
-///
-/// Validator rewards for finalization must add up to this number or less.
-/// 1 trillion was chosen here because it allows very precise fractions of a block reward while
-/// still leaving space for millions of full rewards in a `u64`.
-pub(crate) const BLOCK_REWARD: u64 = 1_000_000_000_000;
 
 /// A passive instance of the Highway protocol, containing its local state.
 ///
@@ -120,6 +73,8 @@ pub(crate) const BLOCK_REWARD: u64 = 1_000_000_000_000;
 /// determine the outcome of the consensus process.
 #[derive(Debug)]
 pub(crate) struct State<C: Context> {
+    /// The fixed parameters.
+    params: Params,
     /// The validator's voting weights.
     weights: ValidatorMap<Weight>,
     /// Cumulative validator weights: Entry `i` contains the sum of the weights of validators `0`
@@ -136,31 +91,19 @@ pub(crate) struct State<C: Context> {
     evidence: HashMap<ValidatorIndex, Evidence<C>>,
     /// The full panorama, corresponding to the complete protocol state.
     panorama: Panorama<C>,
-    /// The random seed.
-    seed: u64,
-    /// The fraction of the block reward, in trillionths, that are paid out even if the heaviest
-    /// summit does not exceed half the total weight.
-    forgiveness_factor: u64,
-    /// The minimum round exponent. `1 << min_round_exp` milliseconds is the minimum round length.
-    min_round_exp: u8,
 }
 
 impl<C: Context> State<C> {
-    pub(crate) fn new<I>(
-        weights: I,
-        seed: u64,
-        (ff_num, ff_denom): (u16, u16),
-        min_round_exp: u8,
-    ) -> State<C>
+    pub(crate) fn new<I>(weights: I, params: Params) -> State<C>
     where
         I: IntoIterator,
         I::Item: Borrow<Weight>,
     {
-        assert!(
-            ff_num <= ff_denom,
-            "forgiveness factor must be at most 100%"
-        );
         let weights = ValidatorMap::from(weights.into_iter().map(|w| *w.borrow()).collect_vec());
+        assert!(
+            weights.len() > 0,
+            "cannot initialize Highway with no validators"
+        );
         let mut sum = Weight(0);
         let add = |w: &Weight| {
             sum += *w;
@@ -169,6 +112,7 @@ impl<C: Context> State<C> {
         let cumulative_w = weights.iter().map(add).collect();
         let panorama = Panorama::new(weights.len());
         State {
+            params,
             weights,
             cumulative_w,
             votes: HashMap::new(),
@@ -176,10 +120,51 @@ impl<C: Context> State<C> {
             reward_index: BTreeMap::new(),
             evidence: HashMap::new(),
             panorama,
-            seed,
-            forgiveness_factor: BLOCK_REWARD * u64::from(ff_num) / u64::from(ff_denom),
-            min_round_exp,
         }
+    }
+
+    /// Returns the fixed parameters.
+    pub(crate) fn params(&self) -> &Params {
+        &self.params
+    }
+
+    /// Returns the number of validators.
+    pub(crate) fn validator_count(&self) -> usize {
+        self.weights.len()
+    }
+
+    /// Returns the `idx`th validator's voting weight.
+    pub(crate) fn weight(&self, idx: ValidatorIndex) -> Weight {
+        self.weights[idx]
+    }
+
+    /// Returns the map of validator weights.
+    pub(crate) fn weights(&self) -> &ValidatorMap<Weight> {
+        &self.weights
+    }
+
+    /// Returns the total weight of all validators marked faulty in this panorama.
+    pub(crate) fn faulty_weight_in(&self, panorama: &Panorama<C>) -> Weight {
+        panorama
+            .iter()
+            .zip(&self.weights)
+            .filter(|(obs, _)| **obs == Observation::Faulty)
+            .map(|(_, w)| *w)
+            .sum()
+    }
+
+    /// Returns the total weight of all known-faulty validators.
+    pub(crate) fn faulty_weight(&self) -> Weight {
+        self.faulty_weight_in(&self.panorama)
+    }
+
+    /// Returns the sum of all validators' voting weights.
+    pub(crate) fn total_weight(&self) -> Weight {
+        *self
+            .cumulative_w
+            .as_ref()
+            .last()
+            .expect("weight list cannot be empty")
     }
 
     /// Returns evidence against validator nr. `idx`, if present.
@@ -209,7 +194,7 @@ impl<C: Context> State<C> {
 
     /// Returns the vote with the given hash. Panics if not found.
     pub(crate) fn vote(&self, hash: &C::Hash) -> &Vote<C> {
-        self.opt_vote(hash).unwrap()
+        self.opt_vote(hash).expect("vote hash must exist")
     }
 
     /// Returns the block contained in the vote with the given hash, if present.
@@ -219,23 +204,7 @@ impl<C: Context> State<C> {
 
     /// Returns the block contained in the vote with the given hash. Panics if not found.
     pub(crate) fn block(&self, hash: &C::Hash) -> &Block<C> {
-        self.opt_block(hash).unwrap()
-    }
-
-    /// Returns the `idx`th validator's voting weight.
-    pub(crate) fn weight(&self, idx: ValidatorIndex) -> Weight {
-        self.weights[idx]
-    }
-
-    /// Returns the map of validator weights.
-    pub(crate) fn weights(&self) -> &ValidatorMap<Weight> {
-        &self.weights
-    }
-
-    /// Returns the fraction of the block reward, in trillionths, that are paid out even if the
-    /// heaviest summit does not exceed half the total weight.
-    pub(crate) fn forgiveness_factor(&self) -> u64 {
-        self.forgiveness_factor
+        self.opt_block(hash).expect("block hash must exist")
     }
 
     /// Returns an iterator over all hashes of blocks whose earliest timestamp for reward payout is
@@ -249,26 +218,6 @@ impl<C: Context> State<C> {
             .flat_map(|(_, blocks)| blocks)
     }
 
-    /// Returns the total weight of all known-faulty validators.
-    pub(crate) fn faulty_weight(&self) -> Weight {
-        self.faulty_weight_in(&self.panorama)
-    }
-
-    /// Returns the total weight of all validators marked faulty in this panorama.
-    pub(crate) fn faulty_weight_in(&self, panorama: &Panorama<C>) -> Weight {
-        panorama
-            .iter()
-            .zip(&self.weights)
-            .filter(|(obs, _)| **obs == Observation::Faulty)
-            .map(|(_, w)| *w)
-            .sum()
-    }
-
-    /// Returns the sum of all validators' voting weights.
-    pub(crate) fn total_weight(&self) -> Weight {
-        *self.cumulative_w.as_ref().last().unwrap()
-    }
-
     /// Returns the complete protocol state's latest panorama.
     pub(crate) fn panorama(&self) -> &Panorama<C> {
         &self.panorama
@@ -276,7 +225,8 @@ impl<C: Context> State<C> {
 
     /// Returns the leader in the specified time slot.
     pub(crate) fn leader(&self, timestamp: Timestamp) -> ValidatorIndex {
-        let mut rng = ChaCha8Rng::seed_from_u64(self.seed.wrapping_add(timestamp.millis()));
+        let mut rng =
+            ChaCha8Rng::seed_from_u64(self.params.seed().wrapping_add(timestamp.millis()));
         // TODO: `rand` doesn't seem to document how it generates this. Needs to be portable.
         // We select a random one out of the `total_weight` weight units, starting numbering at 1.
         let r = Weight(rng.gen_range(1, self.total_weight().0 + 1));
@@ -299,7 +249,7 @@ impl<C: Context> State<C> {
         if let Some(value) = opt_value {
             let block = Block::new(fork_choice, value, self);
             self.reward_index
-                .entry(reward_time(&vote))
+                .entry(self.reward_time(&vote))
                 .or_default()
                 .insert(hash.clone());
             self.blocks.insert(hash.clone(), block);
@@ -328,12 +278,6 @@ impl<C: Context> State<C> {
             wire_vote: wvote,
             signature: vote.signature,
         })
-    }
-
-    /// Returns the first missing dependency of the panorama, or `None` if all are satisfied.
-    pub(crate) fn missing_dependency(&self, panorama: &Panorama<C>) -> Option<Dependency<C>> {
-        let missing_dep = |(idx, obs)| self.missing_obs_dep(idx, obs);
-        panorama.enumerate().filter_map(missing_dep).next()
     }
 
     /// Returns the fork choice from `pan`'s view, or `None` if there are no blocks yet.
@@ -382,49 +326,29 @@ impl<C: Context> State<C> {
         self.find_ancestor(&block.skip_idx[i], height)
     }
 
-    /// Merges two panoramas into a new one.
-    pub(crate) fn merge_panoramas(&self, pan0: &Panorama<C>, pan1: &Panorama<C>) -> Panorama<C> {
-        let merge_obs = |observations: (&Observation<C>, &Observation<C>)| match observations {
-            (Observation::Faulty, _) | (_, Observation::Faulty) => Observation::Faulty,
-            (Observation::None, obs) | (obs, Observation::None) => obs.clone(),
-            (obs0, Observation::Correct(vh1)) if self.sees_correct(pan0, vh1) => obs0.clone(),
-            (Observation::Correct(vh0), obs1) if self.sees_correct(pan1, vh0) => obs1.clone(),
-            (Observation::Correct(_), Observation::Correct(_)) => Observation::Faulty,
-        };
-        let observations = pan0.iter().zip(pan1).map(merge_obs).collect_vec();
-        Panorama::from(observations)
-    }
-
-    /// Returns the panorama seeing all votes seen by `pan` with a timestamp no later than
-    /// `timestamp`. Accusations are preserved regardless of the evidence's timestamp.
-    pub(crate) fn panorama_cutoff(&self, pan: &Panorama<C>, timestamp: Timestamp) -> Panorama<C> {
-        let obs_cutoff = |obs: &Observation<C>| match obs {
-            Observation::Correct(vhash) => self
-                .swimlane(vhash)
-                .find(|(_, vote)| vote.timestamp <= timestamp)
-                .map(|(vh, _)| vh.clone())
-                .map_or(Observation::None, Observation::Correct),
-            obs @ Observation::None | obs @ Observation::Faulty => obs.clone(),
-        };
-        Panorama::from(pan.iter().map(obs_cutoff).collect_vec())
-    }
-
     /// Returns an error if `swvote` is invalid. This can be called even if the dependencies are
     /// not present yet.
     pub(crate) fn pre_validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {
         let wvote = &swvote.wire_vote;
         let creator = wvote.creator;
-        if creator.0 as usize >= self.weights.len() {
+        if creator.0 as usize >= self.validator_count() {
             return Err(VoteError::Creator);
         }
-        if wvote.round_exp < self.min_round_exp {
+        if wvote.round_exp < self.params.min_round_exp() {
             return Err(VoteError::RoundLength);
         }
-        if (wvote.value.is_none() && !wvote.panorama.has_correct())
-            || wvote.panorama.len() != self.weights.len()
-            || wvote.panorama.get(creator).is_faulty()
-        {
-            return Err(VoteError::Panorama);
+        if wvote.value.is_none() && !wvote.panorama.has_correct() {
+            return Err(VoteError::MissingBlock);
+        }
+        if wvote.panorama.len() != self.validator_count() {
+            return Err(VoteError::PanoramaLength(wvote.panorama.len()));
+        }
+        if wvote.panorama.get(creator).is_faulty() {
+            return Err(VoteError::FaultyCreator);
+        }
+        let is_terminal = |hash: &C::Hash| self.is_terminal_block(hash);
+        if wvote.value.is_some() && self.fork_choice(&wvote.panorama).map_or(false, is_terminal) {
+            return Err(VoteError::ValueAfterTerminalBlock);
         }
         Ok(())
     }
@@ -434,17 +358,15 @@ impl<C: Context> State<C> {
     pub(crate) fn validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {
         let wvote = &swvote.wire_vote;
         let creator = wvote.creator;
-        if !self.is_panorama_valid(&wvote.panorama) {
-            return Err(VoteError::Panorama);
-        }
+        wvote.panorama.validate(self)?;
         let mut justifications = wvote.panorama.iter_correct();
         if !justifications.all(|vh| self.vote(vh).timestamp <= wvote.timestamp) {
             return Err(VoteError::Timestamps);
         }
         match wvote.panorama.get(creator) {
             Observation::Faulty => {
-                warn!("Vote from faulty validator should be rejected in `pre_validate_vote`.");
-                return Err(VoteError::Panorama);
+                error!("Vote from faulty validator should be rejected in `pre_validate_vote`.");
+                return Err(VoteError::FaultyCreator);
             }
             Observation::None if wvote.seq_number == 0 => (),
             Observation::None => return Err(VoteError::SequenceNumber),
@@ -469,10 +391,12 @@ impl<C: Context> State<C> {
         Ok(())
     }
 
-    /// Returns the minimum round exponent. `1 << self.min_round_exp()` milliseconds is the minimum
-    /// round length.
-    pub(super) fn min_round_exp(&self) -> u8 {
-        self.min_round_exp
+    /// Returns `true` if the `bhash` is a block that can have no children.
+    pub(crate) fn is_terminal_block(&self, bhash: &C::Hash) -> bool {
+        self.blocks.get(bhash).map_or(false, |block| {
+            block.height >= self.params.end_height()
+                && self.vote(bhash).timestamp >= self.params.end_timestamp()
+        })
     }
 
     /// Updates `self.panorama` with an incoming vote. Panics if dependencies are missing.
@@ -488,17 +412,23 @@ impl<C: Context> State<C> {
         let new_obs = match (self.panorama.get(creator), wvote.panorama.get(creator)) {
             (Observation::Faulty, _) => Observation::Faulty,
             (obs0, obs1) if obs0 == obs1 => Observation::Correct(wvote.hash()),
-            (Observation::None, _) => panic!("missing own previous vote"),
+            (Observation::None, _) => panic!("missing creator's previous vote"),
             (Observation::Correct(hash0), _) => {
-                if !self.has_evidence(creator) {
-                    let prev0 = self.find_in_swimlane(hash0, wvote.seq_number).unwrap();
-                    let wvote0 = self.wire_vote(prev0).unwrap();
-                    self.add_evidence(Evidence::Equivocation(wvote0, swvote.clone()));
-                }
+                // If we have all dependencies of wvote and still see the sender as correct, the
+                // predecessor of wvote must be a predecessor of hash0. So we already have a
+                // conflicting vote with the same sequence number:
+                let prev0 = self.find_in_swimlane(hash0, wvote.seq_number).unwrap();
+                let wvote0 = self.wire_vote(prev0).unwrap();
+                self.add_evidence(Evidence::Equivocation(wvote0, swvote.clone()));
                 Observation::Faulty
             }
         };
         self.panorama[wvote.creator] = new_obs;
+    }
+
+    /// Returns the earliest time at which rewards for a block introduced by this vote can be paid.
+    pub(super) fn reward_time(&self, vote: &Vote<C>) -> Timestamp {
+        vote.timestamp + round_len(vote.round_exp) * self.params.reward_delay()
     }
 
     /// Returns the hash of the message with the given sequence number from the creator of `hash`,
@@ -533,23 +463,13 @@ impl<C: Context> State<C> {
         })
     }
 
-    /// Returns `true` if `pan` sees the creator of `hash` as correct, and sees that vote.
-    pub(crate) fn sees_correct(&self, pan: &Panorama<C>, hash: &C::Hash) -> bool {
-        let vote = self.vote(hash);
-        pan.get(vote.creator)
-            .correct()
-            .map_or(false, |latest_hash| {
-                Some(hash) == self.find_in_swimlane(latest_hash, vote.seq_number)
-            })
-    }
-
     /// Returns a vector of validator indexes that equivocated between block
     /// identified by `fhash` and its parent.
     pub(super) fn get_new_equivocators(&self, fhash: &C::Hash) -> Vec<ValidatorIndex> {
         let cvote = self.vote(fhash);
         let mut equivocators: Vec<ValidatorIndex> = Vec::new();
         let fblock = self.block(fhash);
-        let empty_panorama = Panorama::new(self.weights.len());
+        let empty_panorama = Panorama::new(self.validator_count());
         let pvpanorama = fblock
             .parent()
             .map(|pvhash| &self.vote(pvhash).panorama)
@@ -562,49 +482,6 @@ impl<C: Context> State<C> {
             }
         }
         equivocators
-    }
-
-    /// Returns `pan` is valid, i.e. it contains the latest votes of some substate of `self`.
-    fn is_panorama_valid(&self, pan: &Panorama<C>) -> bool {
-        pan.enumerate().all(|(idx, observation)| {
-            match observation {
-                Observation::None => true,
-                Observation::Faulty => self.has_evidence(idx),
-                Observation::Correct(hash) => match self.opt_vote(hash) {
-                    Some(vote) => vote.creator == idx && self.panorama_geq(pan, &vote.panorama),
-                    None => false, // Unknown vote. Not a substate of `state`.
-                },
-            }
-        })
-    }
-
-    /// Returns whether `pan_l` can possibly come later in time than `pan_r`, i.e. it can see
-    /// every honest message and every fault seen by `other`.
-    fn panorama_geq(&self, pan_l: &Panorama<C>, pan_r: &Panorama<C>) -> bool {
-        let mut pairs_iter = pan_l.iter().zip(pan_r);
-        pairs_iter.all(|(obs_l, obs_r)| self.obs_geq(obs_l, obs_r))
-    }
-
-    /// Returns whether `obs_l` can come later in time than `obs_r`.
-    fn obs_geq(&self, obs_l: &Observation<C>, obs_r: &Observation<C>) -> bool {
-        match (obs_l, obs_r) {
-            (Observation::Faulty, _) | (_, Observation::None) => true,
-            (Observation::Correct(hash0), Observation::Correct(hash1)) => {
-                hash0 == hash1 || self.sees_correct(&self.vote(hash0).panorama, hash1)
-            }
-            (_, _) => false,
-        }
-    }
-
-    /// Returns the missing dependency if `obs` is referring to a vertex we don't know yet.
-    fn missing_obs_dep(&self, idx: ValidatorIndex, obs: &Observation<C>) -> Option<Dependency<C>> {
-        match obs {
-            Observation::Faulty if !self.has_evidence(idx) => Some(Dependency::Evidence(idx)),
-            Observation::Correct(hash) if !self.has_vote(hash) => {
-                Some(Dependency::Vote(hash.clone()))
-            }
-            _ => None,
-        }
     }
 }
 
@@ -624,11 +501,6 @@ pub(super) fn round_id(timestamp: Timestamp, round_exp: u8) -> Timestamp {
     (timestamp >> round_exp) << round_exp
 }
 
-/// Returns the earliest time at which rewards for a block introduced by this vote can be paid.
-pub(super) fn reward_time<C: Context>(vote: &Vote<C>) -> Timestamp {
-    vote.timestamp + round_len(vote.round_exp) * REWARD_DELAY
-}
-
 /// Returns the base-2 logarithm of `x`, rounded down,
 /// i.e. the greatest `i` such that `2.pow(i) <= x`.
 fn log2(x: u64) -> u32 {
@@ -645,8 +517,19 @@ fn log2(x: u64) -> u32 {
 pub(crate) mod tests {
     use std::{collections::hash_map::DefaultHasher, hash::Hasher};
 
+    use rand::{CryptoRng, Rng};
+
     use super::*;
-    use crate::components::consensus::traits::ValidatorSecret;
+    use crate::{
+        components::consensus::{
+            highway_core::{
+                highway::Dependency,
+                highway_testing::{TEST_BLOCK_REWARD, TEST_REWARD_DELAY},
+            },
+            traits::ValidatorSecret,
+        },
+        testing::TestRng,
+    };
 
     pub(crate) const WEIGHTS: &[Weight] = &[Weight(3), Weight(4), Weight(5)];
 
@@ -667,7 +550,11 @@ pub(crate) mod tests {
         type Hash = u64;
         type Signature = u64;
 
-        fn sign(&self, data: &Self::Hash) -> Self::Signature {
+        fn sign<R: Rng + CryptoRng + ?Sized>(
+            &self,
+            data: &Self::Hash,
+            _rng: &mut R,
+        ) -> Self::Signature {
             data + u64::from(self.0)
         }
     }
@@ -732,10 +619,18 @@ pub(crate) mod tests {
     }
 
     impl State<TestContext> {
-        /// Returns a new `State` with `TestContext`, a 20% forgiveness factor and minimum round
-        /// exponent 4.
+        /// Returns a new `State` with `TestContext` parameters suitable for tests.
         pub(crate) fn new_test(weights: &[Weight], seed: u64) -> Self {
-            State::new(weights, seed, (1, 5), 4)
+            let params = Params::new(
+                seed,
+                TEST_BLOCK_REWARD,
+                TEST_BLOCK_REWARD / 5,
+                TEST_REWARD_DELAY,
+                4,
+                u64::MAX,
+                Timestamp::from(u64::MAX),
+            );
+            State::new(weights, params)
         }
 
         /// Adds the vote to the protocol state, or returns an error if it is invalid.
@@ -755,6 +650,7 @@ pub(crate) mod tests {
     #[test]
     fn add_vote() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new_test(WEIGHTS, 0);
+        let mut rng = TestRng::new();
 
         // Create votes as follows; a0, b0 are blocks:
         //
@@ -763,11 +659,11 @@ pub(crate) mod tests {
         // Bob:   b0 —— b1
         //          \  /
         // Carol:    c0
-        let a0 = add_vote!(state, ALICE, 0xA; N, N, N)?;
-        let b0 = add_vote!(state, BOB, 0xB; N, N, N)?;
-        let c0 = add_vote!(state, CAROL, None; N, b0, N)?;
-        let b1 = add_vote!(state, BOB, None; N, b0, c0)?;
-        let _a1 = add_vote!(state, ALICE, None; a0, b1, c0)?;
+        let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
+        let b0 = add_vote!(state, rng, BOB, 0xB; N, N, N)?;
+        let c0 = add_vote!(state, rng, CAROL, None; N, b0, N)?;
+        let b1 = add_vote!(state, rng, BOB, None; N, b0, c0)?;
+        let _a1 = add_vote!(state, rng, ALICE, None; a0, b1, c0)?;
 
         // Wrong sequence number: Carol hasn't produced c1 yet.
         let wvote = WireVote {
@@ -778,30 +674,32 @@ pub(crate) mod tests {
             timestamp: state.vote(&b1).timestamp + TimeDiff::from(1),
             round_exp: state.vote(&c0).round_exp,
         };
-        let vote = SignedWireVote::new(wvote, &CAROL_SEC);
+        let vote = SignedWireVote::new(wvote, &CAROL_SEC, &mut rng);
         let opt_err = state.add_vote(vote).err().map(vote_err);
         assert_eq!(Some(VoteError::SequenceNumber), opt_err);
         // Inconsistent panorama: If you see b1, you have to see c0, too.
-        let opt_err = add_vote!(state, CAROL, None; N, b1, N).err().map(vote_err);
-        assert_eq!(Some(VoteError::Panorama), opt_err);
+        let opt_err = add_vote!(state, rng, CAROL, None; N, b1, N)
+            .err()
+            .map(vote_err);
+        assert_eq!(Some(VoteError::InconsistentPanorama(BOB)), opt_err);
 
         // Alice has not equivocated yet, and not produced message A1.
-        let missing = state.missing_dependency(&panorama!(F, b1, c0));
+        let missing = panorama!(F, b1, c0).missing_dependency(&state);
         assert_eq!(Some(Dependency::Evidence(ALICE)), missing);
-        let missing = state.missing_dependency(&panorama!(42, b1, c0));
+        let missing = panorama!(42, b1, c0).missing_dependency(&state);
         assert_eq!(Some(Dependency::Vote(42)), missing);
 
         // Alice equivocates: A1 doesn't see a1.
-        let ae1 = add_vote!(state, ALICE, None; a0, b1, c0)?;
+        let ae1 = add_vote!(state, rng, ALICE, None; a0, b1, c0)?;
         assert!(state.has_evidence(ALICE));
 
-        let missing = state.missing_dependency(&panorama!(F, b1, c0));
+        let missing = panorama!(F, b1, c0).missing_dependency(&state);
         assert_eq!(None, missing);
-        let missing = state.missing_dependency(&panorama!(ae1, b1, c0));
+        let missing = panorama!(ae1, b1, c0).missing_dependency(&state);
         assert_eq!(None, missing);
 
         // Bob can see the equivocation.
-        let b2 = add_vote!(state, BOB, None; F, b1, c0)?;
+        let b2 = add_vote!(state, rng, BOB, None; F, b1, c0)?;
 
         // The state's own panorama has been updated correctly.
         assert_eq!(state.panorama, panorama!(F, b2, c0));
@@ -811,10 +709,11 @@ pub(crate) mod tests {
     #[test]
     fn find_in_swimlane() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new_test(WEIGHTS, 0);
-        let a0 = add_vote!(state, ALICE, 0xA; N, N, N)?;
+        let mut rng = TestRng::new();
+        let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
         let mut a = vec![a0];
         for i in 1..10 {
-            let ai = add_vote!(state, ALICE, None; a[i - 1], N, N)?;
+            let ai = add_vote!(state, rng, ALICE, None; a[i - 1], N, N)?;
             a.push(ai);
         }
 
@@ -837,6 +736,7 @@ pub(crate) mod tests {
     #[test]
     fn fork_choice() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new_test(WEIGHTS, 0);
+        let mut rng = TestRng::new();
 
         // Create blocks with scores as follows:
         //
@@ -845,13 +745,13 @@ pub(crate) mod tests {
         // b0: 12           b2: 4
         //        \
         //          c0: 5 — c1: 5
-        let b0 = add_vote!(state, BOB, 0xB0; N, N, N)?;
-        let c0 = add_vote!(state, CAROL, 0xC0; N, b0, N)?;
-        let c1 = add_vote!(state, CAROL, 0xC1; N, b0, c0)?;
-        let a0 = add_vote!(state, ALICE, 0xA0; N, b0, N)?;
-        let b1 = add_vote!(state, BOB, None; a0, b0, N)?; // Just a ballot; not shown above.
-        let a1 = add_vote!(state, ALICE, 0xA1; a0, b1, c1)?;
-        let b2 = add_vote!(state, BOB, 0xB2; a0, b1, N)?;
+        let b0 = add_vote!(state, rng, BOB, 0xB0; N, N, N)?;
+        let c0 = add_vote!(state, rng, CAROL, 0xC0; N, b0, N)?;
+        let c1 = add_vote!(state, rng, CAROL, 0xC1; N, b0, c0)?;
+        let a0 = add_vote!(state, rng, ALICE, 0xA0; N, b0, N)?;
+        let b1 = add_vote!(state, rng, BOB, None; a0, b0, N)?; // Just a ballot; not shown above.
+        let a1 = add_vote!(state, rng, ALICE, 0xA1; a0, b1, c1)?;
+        let b2 = add_vote!(state, rng, BOB, 0xB2; a0, b1, N)?;
 
         // Alice built `a1` on top of `a0`, which had already 7 points.
         assert_eq!(Some(&a0), state.block(&state.vote(&a1).block).parent());

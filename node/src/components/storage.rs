@@ -16,7 +16,7 @@ use std::{
 };
 
 use futures::TryFutureExt;
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use semver::Version;
 use serde::{de::DeserializeOwned, Serialize};
 use smallvec::smallvec;
@@ -326,15 +326,16 @@ pub trait StorageType {
     }
 }
 
-impl<REv, S> Component<REv> for S
+impl<REv, R, S> Component<REv, R> for S
 where
     REv: From<NetworkRequest<NodeId, Message>> + Send,
+    R: Rng + CryptoRng + ?Sized,
     S: StorageType,
     Self: Sized + 'static,
 {
     type Event = Event<S>;
 
-    fn handle_event<R: Rng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

@@ -1,6 +1,7 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, rc::Rc};
 
 use anyhow::Error;
+use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
@@ -13,15 +14,15 @@ use crate::{
         highway_core::{
             active_validator::Effect as AvEffect,
             finality_detector::{FinalityDetector, FinalityOutcome},
-            highway::{Dependency, Highway, PreValidatedVertex, ValidVertex, Vertex},
+            highway::{Dependency, Highway, Params, PreValidatedVertex, ValidVertex, Vertex},
             validators::Validators,
             Weight,
         },
         traits::{Context, NodeIdT, ValidatorSecret},
     },
     crypto::{
-        asymmetric_key::{sign, verify, PublicKey, SecretKey, Signature},
-        hash::{hash, Digest},
+        asymmetric_key::{self, PublicKey, SecretKey, Signature},
+        hash::{self, Digest},
     },
     types::{ProtoBlock, Timestamp},
 };
@@ -62,60 +63,70 @@ pub(crate) struct HighwayProtocol<I, C: Context> {
 
 impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
     #[allow(clippy::too_many_arguments)] // TODO: Those _are_ too many arguments!
-    pub(crate) fn new(
+    pub(crate) fn new<R: Rng + CryptoRng + ?Sized>(
         instance_id: C::InstanceId,
         validators: Validators<C::ValidatorId>,
-        seed: u64,
+        params: Params,
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
-        min_round_exp: u8,
         ftt: Weight,
         timestamp: Timestamp,
+        rng: &mut R,
     ) -> (Self, Vec<CpResult<I, C>>) {
-        // TODO: Get forgiveness factor from the chain spec.
-        let mut highway = Highway::new(instance_id, validators, seed, (1, 5), min_round_exp);
         // TODO: We use the minimum as round exponent here, since it is meant to be optimal.
         // For adaptive round lengths we will probably want to use the most recent one from the
         // previous era instead.
-        let av_effects = highway.activate_validator(our_id, secret, min_round_exp, timestamp);
+        let round_exp = params.min_round_exp();
+        let mut highway = Highway::new(instance_id, validators, params);
+        let av_effects = highway.activate_validator(our_id, secret, round_exp, timestamp);
         let mut instance = HighwayProtocol {
             synchronizer: DagSynchronizerState::new(),
             finality_detector: FinalityDetector::new(ftt),
             highway,
         };
-        let effects = instance.process_av_effects(av_effects);
+        let effects = instance.process_av_effects(av_effects, rng);
         (instance, effects)
     }
 
-    fn process_av_effects<E: IntoIterator<Item = AvEffect<C>>>(
+    fn process_av_effects<E: IntoIterator<Item = AvEffect<C>>, R: Rng + CryptoRng + ?Sized>(
         &mut self,
         av_effects: E,
+        rng: &mut R,
     ) -> Vec<CpResult<I, C>> {
         av_effects
             .into_iter()
-            .flat_map(|effect| self.process_av_effect(effect))
+            .flat_map(|effect| self.process_av_effect(effect, rng))
             .collect()
     }
 
-    fn process_av_effect(&mut self, effect: AvEffect<C>) -> Vec<CpResult<I, C>> {
+    fn process_av_effect<R: Rng + CryptoRng + ?Sized>(
+        &mut self,
+        effect: AvEffect<C>,
+        rng: &mut R,
+    ) -> Vec<CpResult<I, C>> {
         match effect {
-            AvEffect::NewVertex(vv) => self.process_new_vertex(vv),
+            AvEffect::NewVertex(vv) => self.process_new_vertex(vv, rng),
             AvEffect::ScheduleTimer(timestamp) => {
                 vec![ConsensusProtocolResult::ScheduleTimer(timestamp)]
             }
-            AvEffect::RequestNewBlock(block_context) => {
-                vec![ConsensusProtocolResult::CreateNewBlock(block_context)]
+            AvEffect::RequestNewBlock(block_context, opt_parent) => {
+                vec![ConsensusProtocolResult::CreateNewBlock {
+                    block_context,
+                    opt_parent,
+                }]
             }
         }
     }
 
-    fn process_new_vertex(&mut self, vv: ValidVertex<C>) -> Vec<CpResult<I, C>> {
+    fn process_new_vertex<R: Rng + CryptoRng + ?Sized>(
+        &mut self,
+        vv: ValidVertex<C>,
+        rng: &mut R,
+    ) -> Vec<CpResult<I, C>> {
         let msg = HighwayMessage::NewVertex(vv.clone().into());
-        //TODO: Don't unwrap
-        // Replace serde with generic serializer.
-        let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
+        let serialized_msg = rmp_serde::to_vec(&msg).expect("should serialize message");
         assert!(
-            self.highway.add_valid_vertex(vv).is_empty(),
+            self.highway.add_valid_vertex(vv, rng).is_empty(),
             "unexpected effects when adding our own vertex"
         );
         let mut results = vec![ConsensusProtocolResult::CreatedGossipMessage(
@@ -129,12 +140,16 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
                 new_equivocators,
                 rewards,
                 timestamp,
+                height,
+                terminal,
             } => {
                 results.push(ConsensusProtocolResult::FinalizedBlock {
                     value,
                     new_equivocators,
                     rewards,
                     timestamp,
+                    height,
+                    switch_block: terminal,
                 });
             }
         }
@@ -142,7 +157,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -188,10 +203,10 @@ where
         self
     }
 
-    fn run(mut self) -> Vec<CpResult<I, C>> {
+    fn run<R: Rng + CryptoRng + ?Sized>(mut self, rng: &mut R) -> Vec<CpResult<I, C>> {
         loop {
             if let Some(effect) = self.synchronizer_effects_queue.pop() {
-                self.process_synchronizer_effect(effect);
+                self.process_synchronizer_effect(effect, rng);
             } else if let Some((sender, vertex)) = self.vertex_queue.pop() {
                 self.process_vertex(sender, vertex);
             } else {
@@ -211,14 +226,15 @@ where
         }
     }
 
-    fn process_synchronizer_effect(
+    fn process_synchronizer_effect<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect: SynchronizerEffect<I, PreValidatedVertex<C>>,
+        rng: &mut R,
     ) {
         match effect {
             SynchronizerEffect::RequestVertex(sender, missing_vid) => {
                 let msg = HighwayMessage::RequestDependency(missing_vid);
-                let serialized_msg = match serde_json::to_vec_pretty(&msg) {
+                let serialized_msg = match rmp_serde::to_vec(&msg) {
                     Ok(msg) => msg,
                     Err(err) => todo!("error: {:?}", err),
                 };
@@ -239,12 +255,11 @@ where
                     }
                 };
                 // TODO: Avoid cloning. (Serialize first?)
-                let av_effects = self.hw_proto.highway.add_valid_vertex(vv.clone());
+                let av_effects = self.hw_proto.highway.add_valid_vertex(vv.clone(), rng);
                 self.results
-                    .extend(self.hw_proto.process_av_effects(av_effects));
+                    .extend(self.hw_proto.process_av_effects(av_effects, rng));
                 let msg = HighwayMessage::NewVertex(vv.into());
-                // TODO: Don't `unwrap`.
-                let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
+                let serialized_msg = rmp_serde::to_vec(&msg).expect("should serialize message");
                 self.results
                     .push(ConsensusProtocolResult::CreatedGossipMessage(
                         serialized_msg,
@@ -263,16 +278,25 @@ where
     }
 }
 
-impl<I, C: Context> ConsensusProtocol<I, C::ConsensusValue, C::ValidatorId>
-    for HighwayProtocol<I, C>
+impl<I, C: Context, R: Rng + CryptoRng + ?Sized>
+    ConsensusProtocol<I, C::ConsensusValue, C::ValidatorId, R> for HighwayProtocol<I, C>
 where
     I: NodeIdT,
 {
-    fn handle_message(&mut self, sender: I, msg: Vec<u8>) -> Result<Vec<CpResult<I, C>>, Error> {
-        let highway_message: HighwayMessage<C> = serde_json::from_slice(msg.as_slice()).unwrap();
-        Ok(match highway_message {
-            HighwayMessage::NewVertex(ref v) if self.highway.has_vertex(v) => vec![],
-            HighwayMessage::NewVertex(v) => {
+    fn handle_message(
+        &mut self,
+        sender: I,
+        msg: Vec<u8>,
+        rng: &mut R,
+    ) -> Result<Vec<CpResult<I, C>>, Error> {
+        match rmp_serde::from_read_ref(msg.as_slice()) {
+            Err(err) => Ok(vec![ConsensusProtocolResult::InvalidIncomingMessage(
+                msg,
+                sender,
+                err.into(),
+            )]),
+            Ok(HighwayMessage::NewVertex(ref v)) if self.highway.has_vertex(v) => Ok(vec![]),
+            Ok(HighwayMessage::NewVertex(v)) => {
                 let pvv = match self.highway.pre_validate_vertex(v) {
                     Ok(pvv) => pvv,
                     Err((_vertex, err)) => {
@@ -290,39 +314,44 @@ where
                 // `Event::NewVertex(v)`, and call `add_vertex` when handling that event. For each
                 // returned vertex that needs to be requeued, also return an `EnqueueVertex`
                 // effect.
-                SynchronizerQueue::new(self)
+                Ok(SynchronizerQueue::new(self)
                     .with_vertices(vec![(sender, pvv)])
-                    .run()
+                    .run(rng))
             }
-            HighwayMessage::RequestDependency(dep) => {
+            Ok(HighwayMessage::RequestDependency(dep)) => {
                 if let Some(vv) = self.highway.get_dependency(&dep) {
                     let msg = HighwayMessage::NewVertex(vv.into());
-                    let serialized_msg = serde_json::to_vec_pretty(&msg).unwrap();
+                    let serialized_msg = rmp_serde::to_vec(&msg).expect("should serialize message");
                     // TODO: Should this be done via a gossip service?
-                    vec![ConsensusProtocolResult::CreatedTargetedMessage(
+                    Ok(vec![ConsensusProtocolResult::CreatedTargetedMessage(
                         serialized_msg,
                         sender,
-                    )]
+                    )])
                 } else {
-                    info!(?dep, "Requested dependency doesn't exist.");
-                    vec![]
+                    info!(?dep, ?sender, "requested dependency doesn't exist");
+                    Ok(vec![])
                 }
             }
-        })
+        }
     }
 
-    fn handle_timer(&mut self, timestamp: Timestamp) -> Result<Vec<CpResult<I, C>>, Error> {
-        let effects = self.highway.handle_timer(timestamp);
-        Ok(self.process_av_effects(effects))
+    fn handle_timer(
+        &mut self,
+        timestamp: Timestamp,
+        rng: &mut R,
+    ) -> Result<Vec<CpResult<I, C>>, Error> {
+        let effects = self.highway.handle_timer(timestamp, rng);
+        Ok(self.process_av_effects(effects, rng))
     }
 
     fn propose(
         &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
+        rng: &mut R,
     ) -> Result<Vec<CpResult<I, C>>, Error> {
-        let effects = self.highway.propose(value, block_context);
-        Ok(self.process_av_effects(effects))
+        let effects = self.highway.propose(value, block_context, rng);
+        Ok(self.process_av_effects(effects, rng))
     }
 
     /// Marks `value` as valid.
@@ -331,25 +360,31 @@ where
         &mut self,
         value: &C::ConsensusValue,
         valid: bool,
+        rng: &mut R,
     ) -> Result<Vec<CpResult<I, C>>, Error> {
         if valid {
             let effects = self.synchronizer.on_consensus_value_synced(value);
             Ok(SynchronizerQueue::new(self)
                 .with_synchronizer_effects(effects)
-                .run())
+                .run(rng))
         } else {
             todo!("Drop vertices that depend on the invalid consensus value.")
         }
     }
+
+    /// Turns this instance into a passive observer, that does not create any new vertices.
+    fn deactivate_validator(&mut self) {
+        self.highway.deactivate_validator()
+    }
 }
 
 pub(crate) struct HighwaySecret {
-    secret_key: SecretKey,
+    secret_key: Rc<SecretKey>,
     public_key: PublicKey,
 }
 
 impl HighwaySecret {
-    pub(crate) fn new(secret_key: SecretKey, public_key: PublicKey) -> Self {
+    pub(crate) fn new(secret_key: Rc<SecretKey>, public_key: PublicKey) -> Self {
         Self {
             secret_key,
             public_key,
@@ -361,8 +396,8 @@ impl ValidatorSecret for HighwaySecret {
     type Hash = Digest;
     type Signature = Signature;
 
-    fn sign(&self, data: &Digest) -> Signature {
-        sign(data, &self.secret_key, &self.public_key)
+    fn sign<R: Rng + CryptoRng + ?Sized>(&self, hash: &Digest, rng: &mut R) -> Signature {
+        asymmetric_key::sign(hash, self.secret_key.as_ref(), &self.public_key, rng)
     }
 }
 
@@ -378,10 +413,14 @@ impl Context for HighwayContext {
     type InstanceId = Digest;
 
     fn hash(data: &[u8]) -> Digest {
-        hash(data)
+        hash::hash(data)
     }
 
     fn verify_signature(hash: &Digest, public_key: &PublicKey, signature: &Signature) -> bool {
-        verify(hash, signature, public_key).is_ok()
+        if let Err(error) = asymmetric_key::verify(hash, signature, public_key) {
+            info!(%error, %signature, %public_key, %hash, "failed to validate signature");
+            return false;
+        }
+        true
     }
 }

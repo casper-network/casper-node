@@ -25,7 +25,7 @@
 //! # use derive_more::From;
 //! # use maplit::hashmap;
 //! # use prometheus::Registry;
-//! # use rand::{rngs::OsRng, Rng};
+//! # use rand::{rngs::OsRng, CryptoRng, Rng};
 //! #
 //! # use casperlabs_node::{
 //! #     components::{
@@ -99,15 +99,17 @@
 //! }
 //!
 //! // Besides its own events, the shouter is capable of receiving network messages.
-//! impl<REv> Component<REv> for Shouter
-//!     where REv: From<NetworkRequest<NodeId, Message>> + Send
+//! impl<REv, R> Component<REv, R> for Shouter
+//! where
+//!     REv: From<NetworkRequest<NodeId, Message>> + Send,
+//!     R: Rng + CryptoRng + ?Sized
 //! {
 //!     type Event = ShouterEvent<NodeId, Message>;
 //!
-//!     fn handle_event<R: Rng + ?Sized>(&mut self,
-//!                                      effect_builder: EffectBuilder<REv>,
-//!                                      _rng: &mut R,
-//!                                      event: Self::Event
+//!     fn handle_event(&mut self,
+//!         effect_builder: EffectBuilder<REv>,
+//!         _rng: &mut R,
+//!         event: Self::Event
 //!     ) -> Effects<Self::Event> {
 //!         match event {
 //!             ShouterEvent::Net(NetworkAnnouncement::MessageReceived { sender, payload }) => {
@@ -287,7 +289,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use rand::{seq::IteratorRandom, Rng};
+use rand::{seq::IteratorRandom, CryptoRng, Rng};
 use tokio::sync::mpsc::{self, error::SendError};
 use tracing::{debug, error, info, warn};
 
@@ -492,13 +494,14 @@ where
     }
 }
 
-impl<P, REv> Component<REv> for InMemoryNetwork<P>
+impl<P, REv, R> Component<REv, R> for InMemoryNetwork<P>
 where
     P: Display + Clone,
+    R: Rng + CryptoRng + ?Sized,
 {
     type Event = NetworkRequest<NodeId, P>;
 
-    fn handle_event<R: Rng + ?Sized>(
+    fn handle_event(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
         rng: &mut R,

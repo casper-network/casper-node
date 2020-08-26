@@ -25,7 +25,7 @@ use std::{borrow::Cow, error::Error as StdError, net::SocketAddr, str};
 use bytes::Bytes;
 use futures::FutureExt;
 use http::Response;
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use smallvec::smallvec;
 use tracing::{debug, info, warn};
 use warp::{
@@ -68,17 +68,18 @@ impl ApiServer {
     }
 }
 
-impl<REv> Component<REv> for ApiServer
+impl<REv, R> Component<REv, R> for ApiServer
 where
     REv: From<ApiServerAnnouncement>
         + From<ContractRuntimeRequest>
         + From<MetricsRequest>
         + From<StorageRequest<Storage>>
         + Send,
+    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event;
 
-    fn handle_event<R: Rng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

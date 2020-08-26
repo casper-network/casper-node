@@ -93,7 +93,7 @@ use crate::{
     },
     crypto::{asymmetric_key::PublicKey, hash::Digest},
     reactor::{EventQueueHandle, QueueKind},
-    types::{Deploy, DeployHash, ExecutedBlock, FinalizedBlock, ProtoBlock},
+    types::{Block, Deploy, DeployHash, FinalizedBlock, ProtoBlock},
     utils::Source,
     Chainspec,
 };
@@ -481,8 +481,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given block into the linear block store.
-    // TODO: remove once method is used.
-    #[allow(dead_code)]
     pub(crate) async fn put_block_to_storage<S>(self, block: Box<S::Block>) -> bool
     where
         S: StorageType + 'static,
@@ -627,12 +625,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Passes the timestamp of a future block for which deploys are to be proposed.
-    // TODO: Add an argument (`BlockContext`?) that contains all information necessary to select
-    // deploys, e.g. the ancestors' deploys.
+    // TODO: The input `BlockContext` will probably be a different type than the context in the
+    //       return value in the future.
     pub(crate) async fn request_proto_block(
         self,
-        block_context: BlockContext, /* TODO: This `BlockContext` will probably be a different
-                                      * type than the context in the return value in the future */
+        block_context: BlockContext,
+        maybe_parent: Option<ProtoBlock>,
+        random_bit: bool,
     ) -> (ProtoBlock, BlockContext)
     where
         REv: From<DeployBufferRequest>,
@@ -649,17 +648,21 @@ impl<REv> EffectBuilder<REv> {
             .await
             .into_iter()
             .collect();
-        (
-            ProtoBlock {
-                deploys,
-                random_bit: false, // TODO
-            },
-            block_context,
-        )
+        // The only circumstance where `maybe_parent` is `None` is for the very first proto block,
+        // i.e. the one immediately after the genesis block.  In this case, just use
+        // `Digest::default`, and the block executor (which knows the post-state hash of the genesis
+        // block) will apply the executed block's parent hash correctly.
+        let parent_hash = maybe_parent
+            .as_ref()
+            .map(ProtoBlock::hash)
+            .copied()
+            .unwrap_or_default();
+        let proto_block = ProtoBlock::new(parent_hash, deploys, random_bit);
+        (proto_block, block_context)
     }
 
     /// Passes a finalized proto-block to the block executor component to execute it.
-    pub(crate) async fn execute_block(self, finalized_block: FinalizedBlock) -> ExecutedBlock
+    pub(crate) async fn execute_block(self, finalized_block: FinalizedBlock) -> Block
     where
         REv: From<BlockExecutorRequest>,
     {

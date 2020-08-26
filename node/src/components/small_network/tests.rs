@@ -6,13 +6,13 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     time::{Duration, Instant},
 };
 
 use derive_more::From;
 use pnet::datalink;
 use prometheus::Registry;
-use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
@@ -57,15 +57,15 @@ impl From<NetworkAnnouncement<NodeId, Message>> for Event {
     }
 }
 
-impl Reactor for TestReactor {
+impl Reactor<TestRng> for TestReactor {
     type Event = Event;
     type Config = small_network::Config;
     type Error = anyhow::Error;
 
-    fn dispatch_event<R: Rng + ?Sized>(
+    fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut R,
+        rng: &mut TestRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -76,11 +76,11 @@ impl Reactor for TestReactor {
         }
     }
 
-    fn new<R: Rng + ?Sized>(
+    fn new(
         cfg: Self::Config,
         _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut R,
+        _rng: &mut TestRng,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let (net, effects) = SmallNetwork::new(event_queue, WithDir::default_path(cfg))?;
 
@@ -121,7 +121,7 @@ impl Display for Message {
 
 /// Checks whether or not a given network is completely connected.
 fn network_is_complete(
-    nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<TestReactor>>>,
+    nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<TestReactor>, TestRng>>,
 ) -> bool {
     // We need at least one node.
     if nodes.is_empty() {
@@ -151,12 +151,11 @@ fn network_is_complete(
 
 fn gen_config(bind_port: u16, root_port: u16) -> small_network::Config {
     // Bind everything to localhost.
-    let bind_interface = "127.0.0.1".parse().unwrap();
-
+    let bind_interface: IpAddr = Ipv4Addr::LOCALHOST.into();
     small_network::Config {
-        bind_interface,
+        bind_interface: bind_interface.to_string(),
         bind_port,
-        root_addr: (bind_interface, root_port).into(),
+        root_addr: SocketAddr::new(bind_interface, root_port).to_string(),
         // Fast retry, moderate amount of times. This is 10 seconds max (100 x 100 ms)
         max_outgoing_retries: Some(100),
         outgoing_retry_delay_millis: 100,
@@ -236,9 +235,9 @@ async fn bind_to_real_network_interface() {
     let port = testing::unused_port_on_localhost();
 
     let local_net_config = small_network::Config {
-        bind_interface: local_addr,
+        bind_interface: local_addr.to_string(),
         bind_port: port,
-        root_addr: (local_addr, port).into(),
+        root_addr: SocketAddr::new(local_addr, port).to_string(),
         max_outgoing_retries: Some(360),
         outgoing_retry_delay_millis: 10000,
         cert_path: None,

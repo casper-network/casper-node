@@ -15,7 +15,7 @@ use std::{
 };
 
 use derive_more::{Display, From};
-use rand::Rng;
+use rand::{CryptoRng, Rng};
 use smallvec::{smallvec, SmallVec};
 
 use crate::{
@@ -78,14 +78,15 @@ impl<I> BlockValidator<I> {
     }
 }
 
-impl<I, REv> Component<REv> for BlockValidator<I>
+impl<I, REv, R> Component<REv, R> for BlockValidator<I>
 where
     I: Clone + Send + 'static,
     REv: From<Event<I>> + From<BlockValidationRequest<I>> + From<FetcherRequest<I, Deploy>> + Send,
+    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event<I>;
 
-    fn handle_event<R: Rng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,
@@ -97,11 +98,17 @@ where
                 sender,
                 responder,
             }) => {
+                if proto_block.deploys().is_empty() {
+                    // If there are no deploys, return early.
+                    let mut effects = Effects::new();
+                    effects.extend(responder.respond((true, proto_block)).ignore());
+                    return effects;
+                }
                 // No matter the current state, we will request the deploys inside this protoblock
                 // for now. Duplicate requests must still be answered, but are
                 // de-duplicated by the fetcher.
                 let effects = proto_block
-                    .deploys
+                    .deploys()
                     .iter()
                     .flat_map(|deploy_hash| {
                         // For every request, increase the number of in-flight...
@@ -130,7 +137,7 @@ where
                     Entry::Vacant(entry) => {
                         // Our entry is vacant - create an entry to track the state.
                         let missing_deploys: HashSet<DeployHash> =
-                            entry.key().deploys.iter().cloned().collect();
+                            entry.key().deploys().iter().cloned().collect();
 
                         entry.insert(BlockValidationState {
                             missing_deploys,

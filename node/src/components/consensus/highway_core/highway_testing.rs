@@ -1,17 +1,26 @@
+use std::{
+    cell::RefCell,
+    collections::{hash_map::DefaultHasher, HashMap, VecDeque},
+    fmt::{self, Debug, Display, Formatter},
+    hash::Hasher,
+    iter::{self, FromIterator},
+    marker::PhantomData,
+};
+
+use hex_fmt::HexFmt;
+use itertools::Itertools;
+use rand::{CryptoRng, Rng};
+use serde::{Deserialize, Serialize};
+use tracing::{error, info, trace, warn};
+
 use super::{
     active_validator::Effect,
     evidence::Evidence,
     finality_detector::{FinalityDetector, FinalityOutcome},
-    highway::{Dependency, Highway, PreValidatedVertex, ValidVertex, Vertex, VertexError},
+    highway::{Dependency, Highway, Params, PreValidatedVertex, ValidVertex, Vertex, VertexError},
     validators::{ValidatorIndex, Validators},
     Weight,
 };
-
-use itertools::Itertools;
-use serde::{Deserialize, Serialize};
-use std::iter::{self, FromIterator};
-use tracing::{error, info, trace, warn};
-
 use crate::{
     components::consensus::{
         tests::{
@@ -31,6 +40,10 @@ type ConsensusValue = Vec<u32>;
 
 const TEST_FORGIVENESS_FACTOR: (u16, u16) = (2, 5);
 const TEST_MIN_ROUND_EXP: u8 = 12;
+const TEST_END_HEIGHT: u64 = 100000;
+pub(crate) const TEST_BLOCK_REWARD: u64 = 1_000_000_000_000;
+pub(crate) const TEST_REDUCED_BLOCK_REWARD: u64 = 200_000_000_000;
+pub(crate) const TEST_REWARD_DELAY: u64 = 8;
 
 #[derive(Clone, Eq, PartialEq)]
 enum HighwayMessage {
@@ -42,12 +55,14 @@ enum HighwayMessage {
 impl Debug for HighwayMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Timer(t) => f.debug_tuple("Timer").field(&t.millis()).finish(),
-            RequestBlock(bc) => f
+            HighwayMessage::Timer(t) => f.debug_tuple("Timer").field(&t.millis()).finish(),
+            HighwayMessage::RequestBlock(bc) => f
                 .debug_struct("RequestBlock")
                 .field("timestamp", &bc.timestamp().millis())
                 .finish(),
-            NewVertex(v) => f.debug_struct("NewVertex").field("vertex", &v).finish(),
+            HighwayMessage::NewVertex(v) => {
+                f.debug_struct("NewVertex").field("vertex", &v).finish()
+            }
         }
     }
 }
@@ -57,8 +72,10 @@ impl HighwayMessage {
         let create_msg = |hwm: HighwayMessage| Message::new(creator, hwm);
 
         match self {
-            NewVertex(_) => TargetedMessage::new(create_msg(self), Target::AllExcept(creator)),
-            Timer(_) | RequestBlock(_) => {
+            HighwayMessage::NewVertex(_) => {
+                TargetedMessage::new(create_msg(self), Target::AllExcept(creator))
+            }
+            HighwayMessage::Timer(_) | HighwayMessage::RequestBlock(_) => {
                 TargetedMessage::new(create_msg(self), Target::SingleValidator(creator))
             }
         }
@@ -66,34 +83,25 @@ impl HighwayMessage {
 
     fn is_new_vertex(&self) -> bool {
         match self {
-            NewVertex(_) => true,
+            HighwayMessage::NewVertex(_) => true,
             _ => false,
         }
     }
 }
-
-use HighwayMessage::*;
 
 impl From<Effect<TestContext>> for HighwayMessage {
     fn from(eff: Effect<TestContext>) -> Self {
         match eff {
             // The effect is `ValidVertex` but we want to gossip it to other
             // validators so for them it's just `Vertex` that needs to be validated.
-            Effect::NewVertex(ValidVertex(v)) => NewVertex(v),
-            Effect::ScheduleTimer(t) => Timer(t),
-            Effect::RequestNewBlock(block_context) => RequestBlock(block_context),
+            Effect::NewVertex(ValidVertex(v)) => HighwayMessage::NewVertex(v),
+            Effect::ScheduleTimer(t) => HighwayMessage::Timer(t),
+            Effect::RequestNewBlock(block_context, _opt_parent) => {
+                HighwayMessage::RequestBlock(block_context)
+            }
         }
     }
 }
-
-use rand::Rng;
-use std::{
-    cell::RefCell,
-    collections::{hash_map::DefaultHasher, HashMap, VecDeque},
-    fmt::{Debug, Display, Formatter},
-    hash::Hasher,
-    marker::PhantomData,
-};
 
 impl PartialOrd for HighwayMessage {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -104,9 +112,9 @@ impl PartialOrd for HighwayMessage {
 impl Ord for HighwayMessage {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match (self, other) {
-            (Timer(t1), Timer(t2)) => t1.cmp(&t2),
-            (Timer(_), _) => std::cmp::Ordering::Less,
-            (NewVertex(v1), NewVertex(v2)) => match (v1, v2) {
+            (HighwayMessage::Timer(t1), HighwayMessage::Timer(t2)) => t1.cmp(&t2),
+            (HighwayMessage::Timer(_), _) => std::cmp::Ordering::Less,
+            (HighwayMessage::NewVertex(v1), HighwayMessage::NewVertex(v2)) => match (v1, v2) {
                 (Vertex::Vote(swv1), Vertex::Vote(swv2)) => swv1.hash().cmp(&swv2.hash()),
                 (Vertex::Vote(_), _) => std::cmp::Ordering::Less,
                 (
@@ -118,9 +126,9 @@ impl Ord for HighwayMessage {
                     .then_with(|| ev1_b.hash().cmp(&ev2_b.hash())),
                 (Vertex::Evidence(_), _) => std::cmp::Ordering::Less,
             },
-            (NewVertex(_), _) => std::cmp::Ordering::Less,
-            (RequestBlock(bc1), RequestBlock(bc2)) => bc1.cmp(&bc2),
-            (RequestBlock(_), _) => std::cmp::Ordering::Less,
+            (HighwayMessage::NewVertex(_), _) => std::cmp::Ordering::Less,
+            (HighwayMessage::RequestBlock(bc1), HighwayMessage::RequestBlock(bc2)) => bc1.cmp(&bc2),
+            (HighwayMessage::RequestBlock(_), _) => std::cmp::Ordering::Less,
         }
     }
 }
@@ -170,7 +178,13 @@ enum Distribution {
 
 impl Distribution {
     /// Returns vector of `count` elements of random values between `lower` and `uppwer`.
-    fn gen_range_vec<R: Rng>(&self, rng: &mut R, lower: u64, upper: u64, count: u8) -> Vec<u64> {
+    fn gen_range_vec<R: Rng + CryptoRng + ?Sized>(
+        &self,
+        rng: &mut R,
+        lower: u64,
+        upper: u64,
+        count: u8,
+    ) -> Vec<u64> {
         match self {
             Distribution::Uniform => (0..count).map(|_| rng.gen_range(lower, upper)).collect(),
             // https://casperlabs.atlassian.net/browse/HWY-116
@@ -180,7 +194,7 @@ impl Distribution {
 }
 
 trait DeliveryStrategy {
-    fn gen_delay<R: Rng>(
+    fn gen_delay<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         rng: &mut R,
         message: &HighwayMessage,
@@ -220,31 +234,35 @@ impl HighwayValidator {
         self.finality_detector.run(&self.highway)
     }
 
-    fn post_hook<R: Rng>(&mut self, rng: &mut R, msg: HighwayMessage) -> Vec<HighwayMessage> {
+    fn post_hook<R: Rng + CryptoRng + ?Sized>(
+        &mut self,
+        rng: &mut R,
+        msg: HighwayMessage,
+    ) -> Vec<HighwayMessage> {
         match self.fault.as_ref() {
             None => {
                 // Honest validator.
                 // If validator produced a `NewVertex` effect,
                 // we want to add it to his state immediately and gossip all effects.
                 match &msg {
-                    NewVertex(vv) => self
+                    HighwayMessage::NewVertex(vv) => self
                         .highway_mut()
-                        .add_valid_vertex(ValidVertex(vv.clone()))
+                        .add_valid_vertex(ValidVertex(vv.clone()), rng)
                         .into_iter()
                         .map(HighwayMessage::from)
                         .chain(iter::once(msg))
                         .collect(),
-                    Timer(_) | RequestBlock(_) => vec![msg],
+                    HighwayMessage::Timer(_) | HighwayMessage::RequestBlock(_) => vec![msg],
                 }
             }
             Some(Fault::Mute) => {
                 // For mute validators we add it to the state but not gossip.
                 match msg {
-                    NewVertex(vv) => {
+                    HighwayMessage::NewVertex(vv) => {
                         warn!("Validator is mute – won't gossip vertices in response");
                         vec![]
                     }
-                    Timer(_) | RequestBlock(_) => vec![msg],
+                    HighwayMessage::Timer(_) | HighwayMessage::RequestBlock(_) => vec![msg],
                 }
             }
             Some(Fault::Equivocate) => {
@@ -252,14 +270,14 @@ impl HighwayValidator {
                 // This way, the next time this validator creates a message
                 // it won't cite previous one.
                 match msg {
-                    NewVertex(_) => {
+                    HighwayMessage::NewVertex(_) => {
                         warn!(
                             "Validator is an equivocator – not adding {:?} to the state.",
                             msg
                         );
                         vec![msg]
                     }
-                    Timer(_) | RequestBlock(_) => vec![msg],
+                    HighwayMessage::Timer(_) | HighwayMessage::RequestBlock(_) => vec![msg],
                 }
             }
         }
@@ -321,7 +339,7 @@ where
     /// Pops one message from the message queue (if there are any)
     /// and pass it to the recipient validator for execution.
     /// Messages returned from the execution are scheduled for later delivery.
-    pub(crate) fn crank<R: Rng>(&mut self, rng: &mut R) -> TestResult<()> {
+    pub(crate) fn crank<R: Rng + CryptoRng + ?Sized>(&mut self, rng: &mut R) -> TestResult<()> {
         let QueueEntry {
             delivery_time,
             recipient,
@@ -380,17 +398,17 @@ where
             .ok_or_else(|| TestRunError::MissingValidator(*validator_id))
     }
 
-    fn call_validator<F, R: Rng>(
+    fn call_validator<F, R: Rng + CryptoRng + ?Sized>(
         &mut self,
         rng: &mut R,
         validator_id: &ValidatorId,
         f: F,
     ) -> TestResult<Vec<HighwayMessage>>
     where
-        F: FnOnce(&mut HighwayValidator) -> Vec<Effect<TestContext>>,
+        F: FnOnce(&mut HighwayValidator, &mut R) -> Vec<Effect<TestContext>>,
     {
         let validator_node = self.node_mut(validator_id)?;
-        let res = f(validator_node.validator_mut());
+        let res = f(validator_node.validator_mut(), rng);
         let messages = res
             .into_iter()
             .flat_map(|eff| {
@@ -405,7 +423,7 @@ where
     /// Processes a message sent to `validator_id`.
     /// Returns a vector of messages produced by the `validator` in reaction to processing a
     /// message.
-    fn process_message<R: Rng>(
+    fn process_message<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         rng: &mut R,
         validator_id: ValidatorId,
@@ -422,11 +440,13 @@ where
             let hwm = message.payload().clone();
 
             match hwm {
-                Timer(timestamp) => self.call_validator(rng, &validator_id, |consensus| {
-                    consensus.highway_mut().handle_timer(timestamp)
-                })?,
+                HighwayMessage::Timer(timestamp) => {
+                    self.call_validator(rng, &validator_id, |consensus, rng| {
+                        consensus.highway_mut().handle_timer(timestamp, rng)
+                    })?
+                }
 
-                NewVertex(v) => {
+                HighwayMessage::NewVertex(v) => {
                     match self.add_vertex(rng, validator_id, sender_id, v.clone())? {
                         Ok(msgs) => {
                             trace!("{:?} successfuly added to the state.", v);
@@ -439,13 +459,13 @@ where
                         }
                     }
                 }
-                RequestBlock(block_context) => {
+                HighwayMessage::RequestBlock(block_context) => {
                     let consensus_value = self.next_consensus_value();
 
-                    self.call_validator(rng, &validator_id, |consensus| {
+                    self.call_validator(rng, &validator_id, |consensus, rng| {
                         consensus
                             .highway_mut()
-                            .propose(consensus_value, block_context)
+                            .propose(consensus_value, block_context, rng)
                     })?
                 }
             }
@@ -469,6 +489,8 @@ where
                 new_equivocators,
                 rewards,
                 timestamp,
+                height,
+                terminal,
             } => {
                 if !new_equivocators.is_empty() {
                     warn!("New equivocators detected: {:?}", new_equivocators);
@@ -477,7 +499,12 @@ where
                 if !rewards.is_empty() {
                     warn!("Rewards are not verified yet: {:?}", rewards);
                 }
-                trace!("Consensus value finalized: {:?}", value);
+                trace!(
+                    "{}consensus value finalized: {:?}, height: {:?}",
+                    if terminal { "last " } else { "" },
+                    value,
+                    height
+                );
                 vec![value]
             }
             FinalityOutcome::None => vec![],
@@ -493,7 +520,7 @@ where
     // Adds vertex to the `recipient` validator state.
     // Synchronizes its state if necessary.
     // From the POV of the test system, synchronization is immediate.
-    fn add_vertex<R: Rng>(
+    fn add_vertex<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         rng: &mut R,
         recipient: ValidatorId,
@@ -529,8 +556,8 @@ where
                         .validate_vertex(prevalidated_vertex)
                     {
                         Err((pvv, error)) => return Ok(Err((pvv.into_vertex(), error))),
-                        Ok(valid_vertex) => self.call_validator(rng, &recipient, |v| {
-                            v.highway_mut().add_valid_vertex(valid_vertex)
+                        Ok(valid_vertex) => self.call_validator(rng, &recipient, |v, rng| {
+                            v.highway_mut().add_valid_vertex(valid_vertex, rng)
                         })?,
                     }
                 };
@@ -545,7 +572,7 @@ where
     /// Synchronizes all missing dependencies of `pvv` that `recipient` is missing.
     /// If an error occurs during synchronization of one of `pvv`'s dependencies
     /// it's returned and the original vertex mustn't be added to the state.
-    fn synchronize_validator<R: Rng>(
+    fn synchronize_validator<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         rng: &mut R,
         recipient: ValidatorId,
@@ -585,7 +612,7 @@ where
     // We don't want to test synchronization, and the Highway theory assumes
     // that when votes are added then all their dependencies are satisfied.
     #[allow(clippy::type_complexity)]
-    fn synchronize_dependency<R: Rng>(
+    fn synchronize_dependency<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         rng: &mut R,
         missing_dependency: Dependency<TestContext>,
@@ -610,7 +637,7 @@ where
     }
 }
 
-fn crank_until<F, R: Rng, DS: DeliveryStrategy>(
+fn crank_until<F, R: Rng + CryptoRng + ?Sized, DS: DeliveryStrategy>(
     htt: &mut HighwayTestHarness<DS>,
     rng: &mut R,
     f: F,
@@ -682,7 +709,7 @@ struct HighwayTestHarnessBuilder<DS: DeliveryStrategy> {
 struct InstantDeliveryNoDropping;
 
 impl DeliveryStrategy for InstantDeliveryNoDropping {
-    fn gen_delay<R: Rng>(
+    fn gen_delay<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         _rng: &mut R,
         message: &HighwayMessage,
@@ -690,9 +717,11 @@ impl DeliveryStrategy for InstantDeliveryNoDropping {
         base_delivery_timestamp: Timestamp,
     ) -> DeliverySchedule {
         match message {
-            RequestBlock(bc) => DeliverySchedule::AtInstant(bc.timestamp()),
-            Timer(t) => DeliverySchedule::AtInstant(*t),
-            NewVertex(_) => DeliverySchedule::AtInstant(base_delivery_timestamp + 1.into()),
+            HighwayMessage::RequestBlock(bc) => DeliverySchedule::AtInstant(bc.timestamp()),
+            HighwayMessage::Timer(t) => DeliverySchedule::AtInstant(*t),
+            HighwayMessage::NewVertex(_) => {
+                DeliverySchedule::AtInstant(base_delivery_timestamp + 1.into())
+            }
         }
     }
 }
@@ -795,7 +824,10 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
         self
     }
 
-    fn build<R: Rng>(mut self, rng: &mut R) -> Result<HighwayTestHarness<DS>, BuilderError> {
+    fn build<R: Rng + CryptoRng + ?Sized>(
+        mut self,
+        rng: &mut R,
+    ) -> Result<HighwayTestHarness<DS>, BuilderError> {
         let consensus_values = (0..self.consensus_values_count as u32)
             .map(|el| vec![el])
             .collect::<VecDeque<Vec<u32>>>();
@@ -900,13 +932,16 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
             |(vid, secrets): (ValidatorId, &mut HashMap<ValidatorId, TestSecret>)| {
                 let v_sec = secrets.remove(&vid).expect("Secret key should exist.");
 
-                let mut highway = Highway::new(
-                    instance_id,
-                    validators.clone(),
+                let params = Params::new(
                     seed,
-                    TEST_FORGIVENESS_FACTOR,
+                    TEST_BLOCK_REWARD,
+                    TEST_REDUCED_BLOCK_REWARD,
+                    TEST_REWARD_DELAY,
                     TEST_MIN_ROUND_EXP,
+                    TEST_END_HEIGHT,
+                    Timestamp::zero(), // Length depends only on block number.
                 );
+                let mut highway = Highway::new(instance_id, validators.clone(), params);
                 let effects = highway.activate_validator(vid, v_sec, round_exp, start_time);
 
                 let finality_detector = FinalityDetector::new(Weight(ftt));
@@ -982,8 +1017,8 @@ pub(crate) struct TestSecret(pub(crate) u64);
 pub(crate) struct SignatureWrapper(u64);
 
 impl Debug for SignatureWrapper {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:10}", hex_fmt::HexFmt(self.0.to_le_bytes()))
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:10}", HexFmt(self.0.to_le_bytes()))
     }
 }
 
@@ -993,8 +1028,14 @@ impl Debug for SignatureWrapper {
 pub(crate) struct HashWrapper(u64);
 
 impl Debug for HashWrapper {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:10}", HexFmt(self.0.to_le_bytes()))
+    }
+}
+
+impl Display for HashWrapper {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:10}", hex_fmt::HexFmt(self.0.to_le_bytes()))
+        Debug::fmt(self, f)
     }
 }
 
@@ -1002,7 +1043,11 @@ impl ValidatorSecret for TestSecret {
     type Hash = HashWrapper;
     type Signature = SignatureWrapper;
 
-    fn sign(&self, data: &Self::Hash) -> Self::Signature {
+    fn sign<R: Rng + CryptoRng + ?Sized>(
+        &self,
+        data: &Self::Hash,
+        _rng: &mut R,
+    ) -> Self::Signature {
         SignatureWrapper(data.0 + self.0)
     }
 }

@@ -1,7 +1,6 @@
 use std::{
     fmt::{self, Debug, Formatter},
     path::Path,
-    time::Duration,
 };
 
 use csv::ReaderBuilder;
@@ -175,11 +174,17 @@ impl DeployConfig {
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub(crate) struct HighwayConfig {
+    // TODO: Most of these are not Highway-specific.
+    // TODO: Some should be defined on-chain in a contract instead, or be part of `UpgradePoint`.
     pub(crate) genesis_era_start_timestamp: Timestamp,
-    pub(crate) era_duration: Duration,
-    pub(crate) booking_duration: Duration,
-    pub(crate) entropy_duration: Duration,
-    pub(crate) voting_period_duration: Duration,
+    pub(crate) era_duration: TimeDiff,
+    pub(crate) minimum_era_height: u64,
+    // TODO: This is duplicated (and probably in conflict with) `AUCTION_DELAY`.
+    pub(crate) booking_duration: TimeDiff,
+    pub(crate) entropy_duration: TimeDiff,
+    // TODO: Do we need this? When we see the switch block finalized it should suffice to keep
+    // gossiping, without producing new votes. Everyone else will eventually see the same finality.
+    pub(crate) voting_period_duration: TimeDiff,
     pub(crate) finality_threshold_percent: u8,
     pub(crate) minimum_round_exponent: u8,
 }
@@ -188,10 +193,11 @@ impl Default for HighwayConfig {
     fn default() -> Self {
         HighwayConfig {
             genesis_era_start_timestamp: Timestamp::zero() + TimeDiff::from(1_583_712_000_000),
-            era_duration: Duration::from_millis(604_800_000), // 1 week
-            booking_duration: Duration::from_millis(864_000_000), // 10 days
-            entropy_duration: Duration::from_millis(10_800_000), // 3 hours
-            voting_period_duration: Duration::from_millis(172_800_000), // 2 days
+            era_duration: TimeDiff::from(604_800_000), // 1 week
+            minimum_era_height: 100,
+            booking_duration: TimeDiff::from(864_000_000), // 10 days
+            entropy_duration: TimeDiff::from(10_800_000),  // 3 hours
+            voting_period_duration: TimeDiff::from(172_800_000), // 2 days
             finality_threshold_percent: 10,
             minimum_round_exponent: 14, // 2**14 ms = ~16 seconds
         }
@@ -202,22 +208,15 @@ impl Default for HighwayConfig {
 impl HighwayConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
-        let genesis_era_start_timestamp = Timestamp::random(rng);
-        let era_duration = Duration::from_millis(rng.gen_range(600_000, 604_800_000));
-        let booking_duration = Duration::from_millis(rng.gen_range(600_000, 864_000_000));
-        let entropy_duration = Duration::from_millis(rng.gen_range(600_000, 10_800_000));
-        let voting_period_duration = Duration::from_millis(rng.gen_range(600_000, 172_800_000));
-        let finality_threshold_percent = rng.gen_range(0, 101);
-        let minimum_round_exponent = rng.gen_range(0, 20);
-
         HighwayConfig {
-            genesis_era_start_timestamp,
-            era_duration,
-            booking_duration,
-            entropy_duration,
-            voting_period_duration,
-            finality_threshold_percent,
-            minimum_round_exponent,
+            genesis_era_start_timestamp: Timestamp::random(rng),
+            era_duration: TimeDiff::from(rng.gen_range(600_000, 604_800_000)),
+            minimum_era_height: rng.gen_range(5, 100),
+            booking_duration: TimeDiff::from(rng.gen_range(600_000, 864_000_000)),
+            entropy_duration: TimeDiff::from(rng.gen_range(600_000, 10_800_000)),
+            voting_period_duration: TimeDiff::from(rng.gen_range(600_000, 172_800_000)),
+            finality_threshold_percent: rng.gen_range(0, 101),
+            minimum_round_exponent: rng.gen_range(0, 20),
         }
     }
 }
@@ -428,21 +427,19 @@ mod tests {
                 .millis(),
             2
         );
-        assert_eq!(
-            spec.genesis.highway_config.era_duration,
-            Duration::from_millis(3)
-        );
+        assert_eq!(spec.genesis.highway_config.era_duration, TimeDiff::from(3));
+        assert_eq!(spec.genesis.highway_config.minimum_era_height, 9);
         assert_eq!(
             spec.genesis.highway_config.booking_duration,
-            Duration::from_millis(4)
+            TimeDiff::from(4)
         );
         assert_eq!(
             spec.genesis.highway_config.entropy_duration,
-            Duration::from_millis(5)
+            TimeDiff::from(5)
         );
         assert_eq!(
             spec.genesis.highway_config.voting_period_duration,
-            Duration::from_millis(6)
+            TimeDiff::from(6)
         );
         assert_eq!(spec.genesis.highway_config.finality_threshold_percent, 8);
         assert_eq!(spec.genesis.highway_config.minimum_round_exponent, 13);

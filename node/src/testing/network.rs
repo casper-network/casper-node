@@ -8,7 +8,6 @@ use std::{
 };
 
 use futures::future::{BoxFuture, FutureExt};
-use rand::Rng;
 use tokio::time;
 use tracing::debug;
 use tracing_futures::Instrument;
@@ -17,12 +16,14 @@ use super::ConditionCheckReactor;
 use crate::{
     effect::{EffectBuilder, Effects},
     reactor::{Finalize, Reactor, Runner},
+    testing::TestRng,
 };
 
 /// Type alias for set of nodes inside a network.
 ///
 /// Provided as a convenience for writing condition functions for `settle_on` and friends.
-pub type Nodes<R> = HashMap<<R as NetworkedReactor>::NodeId, Runner<ConditionCheckReactor<R>>>;
+pub type Nodes<R> =
+    HashMap<<R as NetworkedReactor>::NodeId, Runner<ConditionCheckReactor<R>, TestRng>>;
 
 /// A reactor with networking functionality.
 pub trait NetworkedReactor: Sized {
@@ -42,16 +43,16 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 /// `crank_all`. As an alternative, the `settle` and `settle_all` functions can be used to continue
 /// cranking until a condition has been reached.
 #[derive(Debug, Default)]
-pub struct Network<R: Reactor + NetworkedReactor> {
+pub struct Network<R: Reactor<TestRng> + NetworkedReactor> {
     /// Current network.
-    nodes: HashMap<<R as NetworkedReactor>::NodeId, Runner<ConditionCheckReactor<R>>>,
+    nodes: HashMap<<R as NetworkedReactor>::NodeId, Runner<ConditionCheckReactor<R>, TestRng>>,
 }
 
 impl<R> Network<R>
 where
-    R: Reactor + NetworkedReactor,
+    R: Reactor<TestRng> + NetworkedReactor,
     R::Config: Default,
-    <R as Reactor>::Error: Debug,
+    <R as Reactor<TestRng>>::Error: Debug,
     R::Error: From<prometheus::Error>,
 {
     /// Creates a new networking node on the network using the default root node port.
@@ -60,19 +61,15 @@ where
     ///
     /// Panics if a duplicate node ID is being inserted. This should only happen in case a randomly
     /// generated ID collides.
-    pub async fn add_node<RNG: Rng + ?Sized>(
+    pub async fn add_node(
         &mut self,
-        rng: &mut RNG,
-    ) -> Result<(R::NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
+        rng: &mut TestRng,
+    ) -> Result<(R::NodeId, &mut Runner<ConditionCheckReactor<R>, TestRng>), R::Error> {
         self.add_node_with_config(Default::default(), rng).await
     }
 
     /// Adds `count` new nodes to the network, and returns their IDs.
-    pub async fn add_nodes<RNG: Rng + ?Sized>(
-        &mut self,
-        rng: &mut RNG,
-        count: usize,
-    ) -> Vec<R::NodeId> {
+    pub async fn add_nodes(&mut self, rng: &mut TestRng, count: usize) -> Vec<R::NodeId> {
         let mut node_ids = vec![];
         for _ in 0..count {
             let (node_id, _runner) = self.add_node(rng).await.unwrap();
@@ -84,7 +81,7 @@ where
 
 impl<R> Network<R>
 where
-    R: Reactor + NetworkedReactor,
+    R: Reactor<TestRng> + NetworkedReactor,
     R::Error: From<prometheus::Error> + From<R::Error>,
 {
     /// Creates a new network.
@@ -99,12 +96,12 @@ where
     /// # Panics
     ///
     /// Panics if a duplicate node ID is being inserted.
-    pub async fn add_node_with_config<RNG: Rng + ?Sized>(
+    pub async fn add_node_with_config(
         &mut self,
         cfg: R::Config,
-        rng: &mut RNG,
-    ) -> Result<(R::NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
-        let runner: Runner<ConditionCheckReactor<R>> = Runner::new(cfg, rng).await?;
+        rng: &mut TestRng,
+    ) -> Result<(R::NodeId, &mut Runner<ConditionCheckReactor<R>, TestRng>), R::Error> {
+        let runner: Runner<ConditionCheckReactor<R>, _> = Runner::new(cfg, rng).await?;
 
         let node_id = runner.reactor().node_id();
 
@@ -121,12 +118,15 @@ where
     }
 
     /// Removes a node from the network.
-    pub fn remove_node(&mut self, node_id: &R::NodeId) -> Option<Runner<ConditionCheckReactor<R>>> {
+    pub fn remove_node(
+        &mut self,
+        node_id: &R::NodeId,
+    ) -> Option<Runner<ConditionCheckReactor<R>, TestRng>> {
         self.nodes.remove(node_id)
     }
 
     /// Crank the specified runner once, returning the number of events processed.
-    pub async fn crank<RNG: Rng + ?Sized>(&mut self, node_id: &R::NodeId, rng: &mut RNG) -> usize {
+    pub async fn crank(&mut self, node_id: &R::NodeId, rng: &mut TestRng) -> usize {
         let runner = self.nodes.get_mut(node_id).expect("should find node");
 
         let node_id = runner.reactor().node_id();
@@ -141,14 +141,13 @@ where
     /// Crank only the specified runner until `condition` is true or until `within` has elapsed.
     ///
     /// Returns `true` if `condition` has been met within the specified timeout.
-    pub async fn crank_until<RNG, F>(
+    pub async fn crank_until<F>(
         &mut self,
         node_id: &R::NodeId,
-        rng: &mut RNG,
+        rng: &mut TestRng,
         condition: F,
         within: Duration,
     ) where
-        RNG: Rng + ?Sized,
         F: Fn(&R::Event) -> bool + Send + 'static,
     {
         self.nodes
@@ -162,11 +161,7 @@ where
             .unwrap()
     }
 
-    async fn crank_and_check_indefinitely<RNG: Rng + ?Sized>(
-        &mut self,
-        node_id: &R::NodeId,
-        rng: &mut RNG,
-    ) {
+    async fn crank_and_check_indefinitely(&mut self, node_id: &R::NodeId, rng: &mut TestRng) {
         loop {
             if self.crank(node_id, rng).await == 0 {
                 time::delay_for(POLL_INTERVAL).await;
@@ -187,7 +182,7 @@ where
     }
 
     /// Crank all runners once, returning the number of events processed.
-    pub async fn crank_all<RNG: Rng + ?Sized>(&mut self, rng: &mut RNG) -> usize {
+    pub async fn crank_all(&mut self, rng: &mut TestRng) -> usize {
         let mut event_count = 0;
         for node in self.nodes.values_mut() {
             let node_id = node.reactor().node_id();
@@ -207,12 +202,7 @@ where
     /// # Panics
     ///
     /// Panics if after `within` the event queues are still not idle.
-    pub async fn settle<RNG: Rng + ?Sized>(
-        &mut self,
-        rng: &mut RNG,
-        quiet_for: Duration,
-        within: Duration,
-    ) {
+    pub async fn settle(&mut self, rng: &mut TestRng, quiet_for: Duration, within: Duration) {
         time::timeout(within, self.settle_indefinitely(rng, quiet_for))
             .await
             .unwrap_or_else(|_| {
@@ -223,7 +213,7 @@ where
             })
     }
 
-    async fn settle_indefinitely<RNG: Rng + ?Sized>(&mut self, rng: &mut RNG, quiet_for: Duration) {
+    async fn settle_indefinitely(&mut self, rng: &mut TestRng, quiet_for: Duration) {
         let mut no_events = false;
         loop {
             if self.crank_all(rng).await == 0 {
@@ -246,9 +236,8 @@ where
     /// # Panics
     ///
     /// If the `condition` is not reached inside of `within`, panics.
-    pub async fn settle_on<RNG, F>(&mut self, rng: &mut RNG, condition: F, within: Duration)
+    pub async fn settle_on<F>(&mut self, rng: &mut TestRng, condition: F, within: Duration)
     where
-        RNG: Rng + ?Sized,
         F: Fn(&Nodes<R>) -> bool,
     {
         time::timeout(within, self.settle_on_indefinitely(rng, condition))
@@ -261,9 +250,8 @@ where
             })
     }
 
-    async fn settle_on_indefinitely<RNG, F>(&mut self, rng: &mut RNG, condition: F)
+    async fn settle_on_indefinitely<F>(&mut self, rng: &mut TestRng, condition: F)
     where
-        RNG: Rng + ?Sized,
         F: Fn(&Nodes<R>) -> bool,
     {
         loop {
@@ -280,7 +268,7 @@ where
     }
 
     /// Returns the internal map of nodes.
-    pub fn nodes(&self) -> &HashMap<R::NodeId, Runner<ConditionCheckReactor<R>>> {
+    pub fn nodes(&self) -> &HashMap<R::NodeId, Runner<ConditionCheckReactor<R>, TestRng>> {
         &self.nodes
     }
 
@@ -304,7 +292,7 @@ where
 
 impl<R> Finalize for Network<R>
 where
-    R: Finalize + NetworkedReactor + Reactor + Send + 'static,
+    R: Finalize + NetworkedReactor + Reactor<TestRng> + Send + 'static,
     R::NodeId: Send,
     R::Error: From<prometheus::Error>,
 {

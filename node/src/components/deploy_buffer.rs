@@ -9,6 +9,7 @@ use std::{
 };
 
 use derive_more::From;
+use rand::{CryptoRng, Rng};
 use semver::Version;
 use tracing::{error, info};
 
@@ -18,7 +19,7 @@ use crate::{
         requests::{DeployBufferRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{BlockHash, DeployHash, DeployHeader, ProtoBlock, Timestamp},
+    types::{DeployHash, DeployHeader, ProtoBlock, ProtoBlockHash, Timestamp},
     Chainspec,
 };
 
@@ -42,7 +43,7 @@ pub enum Event {
     GetChainspecResult {
         maybe_chainspec: Box<Option<Chainspec>>,
         current_instant: Timestamp,
-        past_blocks: HashSet<BlockHash>,
+        past_blocks: HashSet<ProtoBlockHash>,
         responder: Responder<HashSet<DeployHash>>,
     },
 }
@@ -79,8 +80,8 @@ impl Display for Event {
 pub(crate) struct DeployBuffer {
     block_max_deploy_count: usize,
     collected_deploys: HashMap<DeployHash, DeployHeader>,
-    processed: HashMap<BlockHash, HashMap<DeployHash, DeployHeader>>,
-    finalized: HashMap<BlockHash, HashMap<DeployHash, DeployHeader>>,
+    processed: HashMap<ProtoBlockHash, HashMap<DeployHash, DeployHeader>>,
+    finalized: HashMap<ProtoBlockHash, HashMap<DeployHash, DeployHeader>>,
 }
 
 impl DeployBuffer {
@@ -116,7 +117,7 @@ impl DeployBuffer {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         current_instant: Timestamp,
-        past_blocks: HashSet<BlockHash>,
+        past_blocks: HashSet<ProtoBlockHash>,
         responder: Responder<HashSet<DeployHash>>,
     ) -> Effects<Event>
     where
@@ -139,7 +140,7 @@ impl DeployBuffer {
         &mut self,
         deploy_config: DeployConfig,
         current_instant: Timestamp,
-        past_blocks: HashSet<BlockHash>,
+        past_blocks: HashSet<ProtoBlockHash>,
     ) -> HashSet<DeployHash> {
         let past_deploys = past_blocks
             .iter()
@@ -184,7 +185,7 @@ impl DeployBuffer {
 
     /// Notifies the deploy buffer of a new block that has been proposed, so that the block's
     /// deploys are not returned again by `remaining_deploys`.
-    fn added_block<I>(&mut self, block: BlockHash, deploys: I)
+    fn added_block<I>(&mut self, block: ProtoBlockHash, deploys: I)
     where
         I: IntoIterator<Item = DeployHash>,
     {
@@ -204,7 +205,7 @@ impl DeployBuffer {
     }
 
     /// Notifies the deploy buffer that a block has been finalized.
-    fn finalized_block(&mut self, block: BlockHash) {
+    fn finalized_block(&mut self, block: ProtoBlockHash) {
         if let Some(deploys) = self.processed.remove(&block) {
             self.collected_deploys
                 .retain(|deploy_hash, _| !deploys.contains_key(deploy_hash));
@@ -216,7 +217,7 @@ impl DeployBuffer {
     }
 
     /// Notifies the deploy buffer that a block has been orphaned.
-    fn orphaned_block(&mut self, block: BlockHash) {
+    fn orphaned_block(&mut self, block: ProtoBlockHash) {
         if let Some(deploys) = self.processed.remove(&block) {
             self.collected_deploys.extend(deploys);
         } else {
@@ -226,13 +227,14 @@ impl DeployBuffer {
     }
 }
 
-impl<REv> Component<REv> for DeployBuffer
+impl<REv, R> Component<REv, R> for DeployBuffer
 where
     REv: From<StorageRequest<Storage>> + Send,
+    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event;
 
-    fn handle_event<R: rand::Rng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,
@@ -252,9 +254,12 @@ where
                 );
             }
             Event::Buffer { hash, header } => self.add_deploy(hash, *header),
-            Event::ProposedProtoBlock(block) => self.added_block(block.hash(), block.deploys),
-            Event::FinalizedProtoBlock(block) => self.finalized_block(block.hash()),
-            Event::OrphanedProtoBlock(block) => self.orphaned_block(block.hash()),
+            Event::ProposedProtoBlock(block) => {
+                let (hash, _, deploys, _) = block.destructure();
+                self.added_block(hash, deploys)
+            }
+            Event::FinalizedProtoBlock(block) => self.finalized_block(*block.hash()),
+            Event::OrphanedProtoBlock(block) => self.orphaned_block(*block.hash()),
             Event::GetChainspecResult {
                 maybe_chainspec,
                 current_instant,
@@ -283,7 +288,7 @@ mod tests {
     use super::*;
     use crate::{
         crypto::{asymmetric_key::PublicKey, hash::hash},
-        types::{BlockHash, DeployHash, DeployHeader, NodeConfig, TimeDiff},
+        types::{DeployHash, DeployHeader, NodeConfig, ProtoBlockHash, TimeDiff},
     };
 
     fn generate_deploy(timestamp: Timestamp, ttl: TimeDiff) -> (DeployHash, DeployHeader) {
@@ -349,7 +354,7 @@ mod tests {
             .is_empty());
 
         // the two deploys will be included in block 1
-        let block_hash1 = BlockHash::new(hash(random::<[u8; 16]>()));
+        let block_hash1 = ProtoBlockHash::new(hash(random::<[u8; 16]>()));
         buffer.added_block(block_hash1, deploys);
 
         // the deploys should have been removed now
@@ -428,7 +433,7 @@ mod tests {
         assert!(deploys.contains(&hash1));
 
         // the deploy will be included in block 1
-        let block_hash1 = BlockHash::new(hash(random::<[u8; 16]>()));
+        let block_hash1 = ProtoBlockHash::new(hash(random::<[u8; 16]>()));
         buffer.added_block(block_hash1, deploys);
         blocks.insert(block_hash1);
 
