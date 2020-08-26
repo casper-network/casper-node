@@ -96,6 +96,18 @@ impl ProtoBlock {
     pub(crate) fn destructure(self) -> (ProtoBlockHash, Vec<DeployHash>, bool) {
         (self.hash, self.deploys, self.random_bit)
     }
+
+    /// Returns hash of empty ProtoBlock (no deploys) with a random bit set to false.
+    /// Added here so that it's always aligned with how hash is calculated.
+    pub(crate) fn empty_random_bit_false() -> ProtoBlockHash {
+        *ProtoBlock::new(vec![], false).hash()
+    }
+
+    /// Returns hash of empty ProtoBlock (no deploys) with a random bit set to true.
+    /// Added here so that it's always aligned with how hash is calculated.
+    pub(crate) fn empty_random_bit_true() -> ProtoBlockHash {
+        *ProtoBlock::new(vec![], true).hash()
+    }
 }
 
 impl Display for ProtoBlock {

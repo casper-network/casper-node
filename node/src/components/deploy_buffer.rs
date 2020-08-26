@@ -211,8 +211,12 @@ impl DeployBuffer {
                 .retain(|deploy_hash, _| !deploys.contains_key(deploy_hash));
             self.finalized.insert(block, deploys);
         } else {
-            // TODO: Events are not guaranteed to be handled in order, so this could happen!
-            error!("finalized block that hasn't been processed!");
+            let is_empty_proto = block == ProtoBlock::empty_random_bit_false()
+                || block == ProtoBlock::empty_random_bit_true();
+            if !is_empty_proto {
+                // TODO: Events are not guaranteed to be handled in order, so this could happen!
+                error!("finalized block that hasn't been processed!");
+            }
         }
     }
 
