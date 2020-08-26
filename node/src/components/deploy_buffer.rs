@@ -210,7 +210,7 @@ impl DeployBuffer {
             self.collected_deploys
                 .retain(|deploy_hash, _| !deploys.contains_key(deploy_hash));
             self.finalized.insert(block, deploys);
-        } else {
+        } else if !block.is_empty() {
             // TODO: Events are not guaranteed to be handled in order, so this could happen!
             error!("finalized block that hasn't been processed!");
         }
@@ -255,7 +255,7 @@ where
             }
             Event::Buffer { hash, header } => self.add_deploy(hash, *header),
             Event::ProposedProtoBlock(block) => {
-                let (hash, _, deploys, _) = block.destructure();
+                let (hash, deploys, _) = block.destructure();
                 self.added_block(hash, deploys)
             }
             Event::FinalizedProtoBlock(block) => self.finalized_block(*block.hash()),
