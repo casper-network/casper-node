@@ -46,7 +46,6 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
     /// TODO: Add more details that are necessary for block creation.
     CreateNewBlock {
         block_context: BlockContext,
-        opt_parent: Option<C>,
     },
     /// A block was finalized. The timestamp is from when the block was proposed.
     FinalizedBlock {
@@ -54,6 +53,8 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
         new_equivocators: Vec<VID>,
         rewards: BTreeMap<VID, u64>,
         timestamp: Timestamp,
+        height: u64,
+        switch_block: bool,
     },
     /// Request validation of the consensus value, contained in a message received from the given
     /// node.

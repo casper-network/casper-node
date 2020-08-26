@@ -7,7 +7,7 @@ use crate::{
     components::consensus::{
         highway_core::{
             highway::Dependency,
-            state::State,
+            state::{State, VoteError},
             validators::{ValidatorIndex, ValidatorMap},
         },
         traits::Context,
@@ -163,17 +163,21 @@ impl<C: Context> Panorama<C> {
         pairs_iter.all(|(obs_self, obs_other)| obs_self.geq(state, obs_other))
     }
 
-    /// Returns whether `self` is valid, i.e. it contains the latest votes of some substate.
-    pub(super) fn is_valid(&self, state: &State<C>) -> bool {
-        self.enumerate().all(|(idx, observation)| {
-            match observation {
-                Observation::None => true,
-                Observation::Faulty => state.has_evidence(idx),
-                Observation::Correct(hash) => match state.opt_vote(hash) {
-                    Some(vote) => vote.creator == idx && self.geq(state, &vote.panorama),
-                    None => false, // Unknown vote. Not a substate of `state`.
-                },
+    /// Returns `Ok(())` if `self` is valid, i.e. it contains the latest votes of some substate.
+    ///
+    /// Panics if the vote has missing dependencies.
+    pub(super) fn validate(&self, state: &State<C>) -> Result<(), VoteError> {
+        for (idx, observation) in self.enumerate() {
+            if let Some(hash) = observation.correct() {
+                let vote = state.vote(hash);
+                if vote.creator != idx {
+                    return Err(VoteError::PanoramaIndex(vote.creator, idx));
+                }
+                if !self.geq(state, &vote.panorama) {
+                    return Err(VoteError::InconsistentPanorama(idx));
+                }
             }
-        })
+        }
+        Ok(())
     }
 }

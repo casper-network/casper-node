@@ -69,6 +69,9 @@ impl<'a, C: Context> Horizon<'a, C> {
     ///
     /// The first returned value is the pruned committee, the second one are the validators that
     /// were pruned.
+    ///
+    /// Panics if a member of the committee is not in `self.latest`. This can never happen if the
+    /// committee was computed from a `Horizon` that originated from the same `level0` as this one.
     pub(super) fn prune_committee(
         &self,
         quorum: Weight,
@@ -91,6 +94,9 @@ impl<'a, C: Context> Horizon<'a, C> {
 
     /// The maximal quorum for which this is a committee, i.e. the minimum seen weight of the
     /// members.
+    ///
+    /// Panics if a member of the committee is not in `self.latest`. This can never happen if the
+    /// committee was computed from a `Horizon` that originated from the same `level0` as this one.
     pub(super) fn committee_quorum(&self, committee: &[ValidatorIndex]) -> Option<Weight> {
         let seen_weight = |idx: &ValidatorIndex| {
             self.seen_weight(self.state.vote(self.latest[*idx].unwrap()), committee)
@@ -122,7 +128,7 @@ impl<'a, C: Context> Horizon<'a, C> {
     /// Returns the total weight of the `committee`'s members whose message in this horizon is seen
     /// by `vote`.
     fn seen_weight(&self, vote: &Vote<C>, committee: &[ValidatorIndex]) -> Weight {
-        let to_weight = |&idx: &ValidatorIndex| self.state.params().weight(idx);
+        let to_weight = |&idx: &ValidatorIndex| self.state.weight(idx);
         let is_seen = |&&idx: &&ValidatorIndex| self.can_see(vote, idx);
         committee.iter().filter(is_seen).map(to_weight).sum()
     }

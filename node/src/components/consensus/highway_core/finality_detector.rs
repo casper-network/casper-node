@@ -25,13 +25,17 @@ pub(crate) enum FinalityOutcome<C: Context> {
         /// Rewards for finalization of earlier blocks.
         ///
         /// This is a measure of the value of each validator's contribution to consensus, in
-        /// fractions of a maximum `BLOCK_REWARD`.
+        /// fractions of the configured maximum block reward.
         rewards: BTreeMap<C::ValidatorId, u64>,
         /// The timestamp at which this value was proposed.
         timestamp: Timestamp,
+        /// The relative height in this instance of the protocol.
+        height: u64,
+        /// Whether this is a terminal block, i.e. the last one to be finalized.
+        terminal: bool,
     },
-    /// The fault tolerance threshold has been exceeded: The number of observed equivocations
-    /// invalidates this finality detector's results.
+    /// The fault tolerance threshold or 50% of the weight has been exceeded: The number of
+    /// observed equivocations invalidates this finality detector's results.
     FttExceeded,
 }
 
@@ -49,6 +53,7 @@ pub(crate) struct FinalityDetector<C: Context> {
 
 impl<C: Context> FinalityDetector<C> {
     pub(crate) fn new(ftt: Weight) -> Self {
+        assert!(ftt > Weight(0), "finality threshold must not be zero");
         FinalityDetector {
             last_finalized: None,
             ftt,
@@ -61,7 +66,7 @@ impl<C: Context> FinalityDetector<C> {
     pub(crate) fn run(&mut self, highway: &Highway<C>) -> FinalityOutcome<C> {
         let state = highway.state();
         let fault_w = state.faulty_weight();
-        if fault_w >= self.ftt {
+        if fault_w >= self.ftt || fault_w > (state.total_weight() - Weight(1)) / 2 {
             return FinalityOutcome::FttExceeded;
         }
         let bhash = if let Some(bhash) = self.next_finalized(state, fault_w) {
@@ -69,15 +74,21 @@ impl<C: Context> FinalityDetector<C> {
         } else {
             return FinalityOutcome::None;
         };
-        let to_id = |vidx: ValidatorIndex| highway.validators().get_by_index(vidx).id().clone();
+        let to_id = |vidx: ValidatorIndex| {
+            let opt_validator = highway.validators().get_by_index(vidx);
+            opt_validator.unwrap().id().clone() // Index exists, since we have votes from them.
+        };
         let new_equivocators_iter = state.get_new_equivocators(bhash).into_iter();
         let rewards = rewards::compute_rewards(state, bhash);
         let rewards_iter = rewards.enumerate();
+        let block = state.block(bhash);
         FinalityOutcome::Finalized {
-            value: state.block(bhash).value.clone(),
+            value: block.value.clone(),
             new_equivocators: new_equivocators_iter.map(to_id).collect(),
             rewards: rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect(),
             timestamp: state.vote(bhash).timestamp,
+            height: block.height,
+            terminal: state.is_terminal_block(bhash),
         }
     }
 
@@ -88,11 +99,10 @@ impl<C: Context> FinalityDetector<C> {
         fault_w: Weight,
     ) -> Option<&'a C::Hash> {
         let candidate = self.next_candidate(state)?;
-        // For `lvl` → ∞, the quorum converges to a fixed value. After level 64, it is closer
-        // to that limit than 1/2^-64. This won't make a difference in practice, so there is no
-        // point looking for higher summits. It is also too small to be represented in our
-        // 64-bit weight type.
-        let mut target_lvl = 64;
+        // For `lvl` → ∞, the quorum converges to a fixed value. After level 63, it is closer
+        // to that limit than 1/2^-63. This won't make a difference in practice, so there is no
+        // point looking for higher summits.
+        let mut target_lvl = 63;
         while target_lvl > 0 {
             let lvl = self.find_summit(target_lvl, fault_w, candidate, state);
             if lvl == target_lvl {
@@ -120,7 +130,7 @@ impl<C: Context> FinalityDetector<C> {
         candidate: &C::Hash,
         state: &State<C>,
     ) -> usize {
-        let total_w = state.params().total_weight();
+        let total_w = state.total_weight();
         let quorum = self.quorum_for_lvl(target_lvl, total_w) - fault_w;
         let latest = state.panorama().iter().map(Observation::correct).collect();
         let sec0 = Horizon::level0(candidate, &state, &latest);
@@ -134,8 +144,11 @@ impl<C: Context> FinalityDetector<C> {
         // quorum = total_w / 2 + ftt / 2 / (1 - 1/2^lvl)
         //        = total_w / 2 + 2^lvl * ftt / 2 / (2^lvl - 1)
         //        = ((2^lvl - 1) total_w + 2^lvl ftt) / (2 * 2^lvl - 2))
+        assert!(lvl < 64, "lvl must be less than 64");
         let pow_lvl = 1u128 << lvl;
+        // Since  pow_lvl <= 2^63,  we have  numerator < (2^64 - 1) * 2^64.
         let numerator = (pow_lvl - 1) * u128::from(total_w) + pow_lvl * u128::from(self.ftt);
+        // And  denominator < 2^64,  so  numerator + denominator < 2^128.
         let denominator = 2 * pow_lvl - 2;
         // Since this is a lower bound for the quorum, we round up when dividing.
         Weight(((numerator + denominator - 1) / denominator) as u64)

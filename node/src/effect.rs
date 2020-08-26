@@ -630,7 +630,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn request_proto_block(
         self,
         block_context: BlockContext,
-        maybe_parent: Option<ProtoBlock>,
+        random_bit: bool,
     ) -> (ProtoBlock, BlockContext)
     where
         REv: From<DeployBufferRequest>,
@@ -647,21 +647,7 @@ impl<REv> EffectBuilder<REv> {
             .await
             .into_iter()
             .collect();
-        // The only circumstance where `maybe_parent` is `None` is for the very first proto block,
-        // i.e. the one immediately after the genesis block.  In this case, just use
-        // `Digest::default`, and the block executor (which knows the post-state hash of the genesis
-        // block) will apply the executed block's parent hash correctly.
-        let parent_hash = maybe_parent
-            .as_ref()
-            .map(ProtoBlock::hash)
-            .copied()
-            .unwrap_or_default();
-        let proto_block = ProtoBlock::new(
-            parent_hash,
-            deploys,
-            false, // TODO - random_bit
-            false, // TODO - switch_block
-        );
+        let proto_block = ProtoBlock::new(deploys, random_bit);
         (proto_block, block_context)
     }
 
