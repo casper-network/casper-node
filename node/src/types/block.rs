@@ -89,11 +89,6 @@ impl ProtoBlock {
         &self.hash
     }
 
-    #[allow(unused)]
-    pub(crate) fn parent_hash(&self) -> &ProtoBlockHash {
-        &self.parent_hash
-    }
-
     /// The list of deploy hashes included in the block.
     pub(crate) fn deploys(&self) -> &Vec<DeployHash> {
         &self.deploys
@@ -235,6 +230,33 @@ impl FinalizedBlock {
     }
 }
 
+impl From<Block> for FinalizedBlock {
+    fn from(b: Block) -> Self {
+        // NOTE: Using default Digest for `parent_hash` is a temporary work around.
+        // `parent_hash` is not used anywhere down the line but it's required for construction.
+        let proto_block = ProtoBlock::new(
+            Default::default(),
+            b.header().deploy_hashes().clone(),
+            b.header().random_bit,
+        );
+
+        let timestamp = *b.header().timestamp();
+        let switch_block = b.header().switch_block;
+        let era_id = b.header().era_id;
+        let height = b.header().height;
+        let system_transactions = b.take_header().system_transactions;
+
+        FinalizedBlock {
+            proto_block,
+            timestamp,
+            system_transactions,
+            switch_block,
+            era_id,
+            height,
+        }
+    }
+}
+
 impl Display for FinalizedBlock {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
@@ -283,8 +305,11 @@ pub struct BlockHeader {
     body_hash: Digest,
     deploy_hashes: Vec<DeployHash>,
     random_bit: bool,
+    switch_block: bool,
     timestamp: Timestamp,
     system_transactions: Vec<SystemTransaction>,
+    era_id: EraId,
+    height: u64,
 }
 
 impl BlockHeader {
@@ -330,12 +355,13 @@ impl Display for BlockHeader {
         write!(
             formatter,
             "block header parent hash {}, post-state hash {}, body hash {}, deploys [{}], \
-            random bit {}, timestamp {}, system_transactions [{}]",
+            random bit {}, switch block {}, timestamp {}, system_transactions [{}]",
             self.parent_hash.inner(),
             self.post_state_hash,
             self.body_hash,
             DisplayIter::new(self.deploy_hashes.iter()),
             self.random_bit,
+            self.switch_block,
             self.timestamp,
             DisplayIter::new(self.system_transactions.iter()),
         )
@@ -363,14 +389,20 @@ impl Block {
             .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
         let body_hash = hash::hash(&serialized_body);
 
+        let era_id = finalized_block.era_id();
+        let height = finalized_block.height();
+
         let header = BlockHeader {
             parent_hash,
             post_state_hash,
             body_hash,
             deploy_hashes: finalized_block.proto_block.deploys,
             random_bit: finalized_block.proto_block.random_bit,
+            switch_block: finalized_block.switch_block,
             timestamp: finalized_block.timestamp,
             system_transactions: finalized_block.system_transactions,
+            era_id,
+            height,
         };
         let serialized_header = Self::serialize_header(&header)
             .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
@@ -451,7 +483,7 @@ impl Display for Block {
         write!(
             formatter,
             "executed block {}, parent hash {}, post-state hash {}, body hash {}, deploys [{}], \
-            random bit {}, timestamp {}, system_transactions [{}], proofs count {}",
+            random bit {}, timestamp {}, era_id {}, height {}, system_transactions [{}], proofs count {}",
             self.hash.inner(),
             self.header.parent_hash.inner(),
             self.header.post_state_hash,
@@ -459,6 +491,8 @@ impl Display for Block {
             DisplayIter::new(self.header.deploy_hashes.iter()),
             self.header.random_bit,
             self.header.timestamp,
+            self.header.era_id.0,
+            self.header.height,
             DisplayIter::new(self.header.system_transactions.iter()),
             self.proofs.len()
         )
