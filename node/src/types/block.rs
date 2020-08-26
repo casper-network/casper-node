@@ -89,6 +89,7 @@ impl ProtoBlock {
         &self.hash
     }
 
+    #[allow(unused)]
     pub(crate) fn parent_hash(&self) -> &ProtoBlockHash {
         &self.parent_hash
     }

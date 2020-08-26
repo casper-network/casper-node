@@ -12,7 +12,6 @@ use tracing::{debug, error, trace};
 
 use casperlabs_types::ProtocolVersion;
 
-use super::consensus::EraId;
 use crate::{
     components::{
         contract_runtime::{
