@@ -92,6 +92,10 @@ impl<C: Context> State<C> {
         I::Item: Borrow<Weight>,
     {
         let weights = ValidatorMap::from(weights.into_iter().map(|w| *w.borrow()).collect_vec());
+        assert!(
+            weights.len() > 0,
+            "cannot initialize Highway with no validators"
+        );
         let mut sum = Weight(0);
         let add = |w: &Weight| {
             sum += *w;
@@ -148,7 +152,11 @@ impl<C: Context> State<C> {
 
     /// Returns the sum of all validators' voting weights.
     pub(crate) fn total_weight(&self) -> Weight {
-        *self.cumulative_w.as_ref().last().unwrap()
+        *self
+            .cumulative_w
+            .as_ref()
+            .last()
+            .expect("weight list cannot be empty")
     }
 
     /// Returns evidence against validator nr. `idx`, if present.
@@ -178,7 +186,7 @@ impl<C: Context> State<C> {
 
     /// Returns the vote with the given hash. Panics if not found.
     pub(crate) fn vote(&self, hash: &C::Hash) -> &Vote<C> {
-        self.opt_vote(hash).unwrap()
+        self.opt_vote(hash).expect("vote hash must exist")
     }
 
     /// Returns the block contained in the vote with the given hash, if present.
@@ -188,7 +196,7 @@ impl<C: Context> State<C> {
 
     /// Returns the block contained in the vote with the given hash. Panics if not found.
     pub(crate) fn block(&self, hash: &C::Hash) -> &Block<C> {
-        self.opt_block(hash).unwrap()
+        self.opt_block(hash).expect("block hash must exist")
     }
 
     /// Returns an iterator over all hashes of blocks whose earliest timestamp for reward payout is
@@ -397,11 +405,12 @@ impl<C: Context> State<C> {
             (obs0, obs1) if obs0 == obs1 => Observation::Correct(wvote.hash()),
             (Observation::None, _) => panic!("missing own previous vote"),
             (Observation::Correct(hash0), _) => {
-                if !self.has_evidence(creator) {
-                    let prev0 = self.find_in_swimlane(hash0, wvote.seq_number).unwrap();
-                    let wvote0 = self.wire_vote(prev0).unwrap();
-                    self.add_evidence(Evidence::Equivocation(wvote0, swvote.clone()));
-                }
+                // If we have all dependencies of wvote and still see the sender as correct, the
+                // predecessor of wvote must be a predecessor of hash0. So we already have a
+                // conflicting vote with the same sequence number:
+                let prev0 = self.find_in_swimlane(hash0, wvote.seq_number).unwrap();
+                let wvote0 = self.wire_vote(prev0).unwrap();
+                self.add_evidence(Evidence::Equivocation(wvote0, swvote.clone()));
                 Observation::Faulty
             }
         };

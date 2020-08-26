@@ -57,7 +57,7 @@ impl<'a, C: Context> Tally<'a, C> {
     /// vote for that block's parent. Panics if called on level 0.
     fn parents(&self, state: &'a State<C>) -> Self {
         let to_parent = |(h, w): (&&'a C::Hash, &Weight)| (state.block(*h).parent().unwrap(), *w);
-        Self::try_from_iter(self.votes.iter().map(to_parent)).unwrap()
+        Self::try_from_iter(self.votes.iter().map(to_parent)).unwrap() // Tally is never empty.
     }
 
     /// Adds a vote for a block to the tally, possibly updating the current maximum.

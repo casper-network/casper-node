@@ -63,14 +63,13 @@ impl<VID: Eq + Hash> Validators<VID> {
         self.validators.iter().map(|v| v.weight()).sum()
     }
 
-    pub(crate) fn get_index(&self, id: &VID) -> ValidatorIndex {
-        *self.index_by_id.get(id).unwrap()
+    pub(crate) fn get_index(&self, id: &VID) -> Option<ValidatorIndex> {
+        self.index_by_id.get(id).cloned()
     }
 
-    /// Returns validator at index.
-    /// Expects that idx has been validated before calling this function.
-    pub(crate) fn get_by_index(&self, idx: ValidatorIndex) -> &Validator<VID> {
-        &self.validators.get(idx.0 as usize).unwrap()
+    /// Returns validator at index, or `None` if it doesn't exist.
+    pub(crate) fn get_by_index(&self, idx: ValidatorIndex) -> Option<&Validator<VID>> {
+        self.validators.get(idx.0 as usize)
     }
 
     /// Returns an iterator over all validators, sorted by ID.
