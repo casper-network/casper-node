@@ -42,6 +42,11 @@ impl ProtoBlockHash {
     pub fn inner(&self) -> &Digest {
         &self.0
     }
+
+    /// Returns `true` is `self` is a hash of empty `ProtoBlock`.
+    pub(crate) fn is_empty(self) -> bool {
+        self == ProtoBlock::empty_random_bit_false() || self == ProtoBlock::empty_random_bit_true()
+    }
 }
 
 impl Display for ProtoBlockHash {
