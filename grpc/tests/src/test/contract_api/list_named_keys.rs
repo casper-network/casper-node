@@ -33,7 +33,7 @@ fn should_list_named_keys() {
     };
 
     let exec_request = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_LIST_NAMED_KEYS,
         runtime_args! {
             ARG_INITIAL_NAMED_KEYS => initial_named_keys,

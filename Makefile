@@ -53,7 +53,7 @@ SYSTEM_CONTRACTS_FEATURED := $(patsubst %, build-system-contract-featured-rs/%, 
 
 CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 CONTRACT_TARGET_DIR_AS    = target_as
-PACKAGED_SYSTEM_CONTRACTS = mint_install.wasm pos_install.wasm standard_payment_install.wasm
+PACKAGED_SYSTEM_CONTRACTS = mint_install.wasm pos_install.wasm standard_payment_install.wasm auction_install.wasm
 TOOL_TARGET_DIR           = grpc/cargo-casperlabs/target
 TOOL_WASM_DIR             = grpc/cargo-casperlabs/wasm
 
@@ -95,17 +95,6 @@ build-contracts-rs: \
 	$(SYSTEM_CONTRACTS) \
 	$(TEST_CONTRACTS)
 
-build-contracts-enable-bonding-rs: FEATURES := enable-bonding
-build-contracts-enable-bonding-rs: \
-	$(BENCH_CONTRACTS) \
-	$(CLIENT_CONTRACTS) \
-	$(EXPLORER_CONTRACTS) \
-	$(INTEGRATION_CONTRACTS) \
-	$(PROFILING_CONTRACTS) \
-	$(SRE_CONTRACTS) \
-	$(SYSTEM_CONTRACTS_FEATURED) \
-	$(TEST_CONTRACTS)
-
 .PHONY: build-system-contracts
 build-system-contracts: $(SYSTEM_CONTRACTS)
 
@@ -136,11 +125,6 @@ test: test-rs test-as
 test-contracts-rs: build-contracts-rs
 	$(CARGO) test $(CARGO_FLAGS) -p casperlabs-engine-tests -- --ignored --nocapture
 	$(CARGO) test $(CARGO_FLAGS) --manifest-path "grpc/tests/Cargo.toml" --features "use-system-contracts" -- --ignored --nocapture
-
-.PHONY: test-contracts-enable-bonding-rs
-test-contracts-enable-bonding-rs: build-contracts-enable-bonding-rs
-	$(CARGO) test $(CARGO_FLAGS) --manifest-path "grpc/tests/Cargo.toml" --features "enable-bonding" -- --ignored --nocapture
-	$(CARGO) test $(CARGO_FLAGS) --manifest-path "grpc/tests/Cargo.toml" --features "enable-bonding,use-system-contracts" -- --ignored --nocapture
 
 .PHONY: test-contracts_as
 test-contracts_as: build-contracts-rs build-contracts-as
@@ -180,8 +164,7 @@ check-rs: \
 	lint \
 	audit \
 	test-rs \
-	test-contracts-rs \
-	test-contracts-enable-bonding-rs
+	test-contracts-rs
 
 .PHONY: check
 check: \

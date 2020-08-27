@@ -39,6 +39,10 @@ impl RuntimeProvider for MintContract {
     fn put_key(&mut self, name: &str, key: Key) {
         runtime::put_key(name, key)
     }
+
+    fn get_key(&self, name: &str) -> Option<Key> {
+        runtime::get_key(name)
+    }
 }
 
 impl StorageProvider for MintContract {

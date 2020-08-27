@@ -38,7 +38,7 @@ fn should_transfer_to_account() {
     let builder = builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let default_account = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
     let default_account_purse = default_account.main_purse();
@@ -51,7 +51,7 @@ fn should_transfer_to_account() {
     // Exec transfer contract
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
@@ -96,7 +96,7 @@ fn should_transfer_from_account_to_account() {
     let builder = builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let default_account = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
     let default_account_purse = default_account.main_purse();
@@ -109,7 +109,7 @@ fn should_transfer_from_account_to_account() {
     // Exec transfer 1 contract
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
@@ -191,7 +191,7 @@ fn should_transfer_to_existing_account() {
     let builder = builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let default_account = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
     let default_account_purse = default_account.main_purse();
@@ -204,7 +204,7 @@ fn should_transfer_to_existing_account() {
     // Exec transfer 1 contract
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
@@ -279,7 +279,7 @@ fn should_fail_when_insufficient_funds() {
     // Run genesis
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
@@ -329,7 +329,7 @@ fn should_transfer_total_amount() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
         runtime_args! { "target" => ACCOUNT_1_ADDR, "amount" => *ACCOUNT_1_INITIAL_BALANCE },
     )

@@ -11,7 +11,7 @@ use crate::{
         TryFromSliceForAccountHashError, UpdateKeyFailure,
     },
     bytesrepr, contracts,
-    system_contract_errors::{mint, pos},
+    system_contract_errors::{auction, mint, pos},
     CLValueError,
 };
 
@@ -30,6 +30,10 @@ const MINT_ERROR_OFFSET: u32 = (POS_ERROR_OFFSET - 1) - u8::MAX as u32; // 65024
 /// Contract header errors (defined in "types/src/contract_header.rs") will have this value
 /// added to them when being converted to a `u32`.
 const HEADER_ERROR_OFFSET: u32 = (MINT_ERROR_OFFSET - 1) - u8::MAX as u32; // 64768..=65023
+
+/// Contract header errors (defined in "types/src/system_contract_errors/auction.rs") will have
+/// this value added to them when being converted to a `u32`.
+const AUCTION_ERROR_OFFSET: u32 = (HEADER_ERROR_OFFSET - 1) - u8::MAX as u32; // 64512..=64767
 
 /// Minimum value of user error's inclusive range.
 const USER_ERROR_MIN: u32 = RESERVED_ERROR_MAX + 1;
@@ -55,6 +59,12 @@ const HEADER_ERROR_MIN: u32 = HEADER_ERROR_OFFSET;
 /// Maximum value of contract header error's inclusive range.
 const HEADER_ERROR_MAX: u32 = HEADER_ERROR_OFFSET + u8::MAX as u32;
 
+/// Minimum value of an auction contract error's inclusive range.
+const AUCTION_ERROR_MIN: u32 = AUCTION_ERROR_OFFSET;
+
+/// Maximum value of an auction contract error's inclusive range.
+const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
+
 /// Errors which can be encountered while running a smart contract.
 ///
 /// An `ApiError` can be converted to a `u32` in order to be passed via the execution engine's
@@ -62,12 +72,14 @@ const HEADER_ERROR_MAX: u32 = HEADER_ERROR_OFFSET + u8::MAX as u32;
 ///
 /// The variants are split into numeric ranges as follows:
 ///
-/// | Inclusive range | Variant(s)                                   |
-/// | ----------------| ---------------------------------------------|
-/// | [1, 65023]      | all except `Mint`, `ProofOfStake` and `User` |
-/// | [65024, 65279]  | `Mint`                                       |
-/// | [65280, 65535]  | `ProofOfStake`                               |
-/// | [65536, 131071] | `User`                                       |
+/// | Inclusive range | Variant(s)                                                      |
+/// | ----------------| ----------------------------------------------------------------|
+/// | [1, 64511]      | all except reserved system contract error ranges defined below. |
+/// | [64512, 64767]  | `Auction`                                                       |
+/// | [64768, 65023]  | `ContractHeader`                                                |
+/// | [65024, 65279]  | `Mint`                                                          |
+/// | [65280, 65535]  | `ProofOfStake`                                                  |
+/// | [65536, 131071] | `User`                                                          |
 ///
 /// ## Mappings
 ///
@@ -181,6 +193,35 @@ const HEADER_ERROR_MAX: u32 = HEADER_ERROR_OFFSET + u8::MAX as u32;
 /// # );
 /// # show_and_check!(
 /// 34 => HostBufferFull
+/// # );
+/// // Auction errors:
+/// use casperlabs_types::system_contract_errors::auction::Error as AuctionError;
+/// # show_and_check!(
+/// 64_512 => AuctionError::MissingKey
+/// # );
+/// # show_and_check!(
+/// 64_513 => AuctionError::InvalidKeyVariant
+/// # );
+/// # show_and_check!(
+/// 64_514 => AuctionError::MissingValue
+/// # );
+/// # show_and_check!(
+/// 64_515 => AuctionError::Serialization
+/// # );
+/// # show_and_check!(
+/// 64_516 => AuctionError::Transfer
+/// # );
+/// # show_and_check!(
+/// 64_517 => AuctionError::InvalidAmount
+/// # );
+/// # show_and_check!(
+/// 64_518 => AuctionError::BidNotFound
+/// # );
+/// # show_and_check!(
+/// 64_519 => AuctionError::ValidatorNotFound
+/// # );
+/// # show_and_check!(
+/// 64_520 => AuctionError::DelegatorNotFound
 /// # );
 /// // Contract header errors:
 /// use casperlabs_types::contracts::Error as ContractHeaderError;
@@ -426,6 +467,8 @@ pub enum ApiError {
     HostBufferFull,
     /// Could not lay out an array in memory
     AllocLayout,
+    /// Error specific to Auction contract.
+    AuctionError(u8),
     /// Contract header errors.
     ContractHeader(u8),
     /// Error specific to Mint contract.
@@ -504,6 +547,12 @@ impl From<contracts::Error> for ApiError {
     }
 }
 
+impl From<auction::Error> for ApiError {
+    fn from(error: auction::Error) -> Self {
+        ApiError::AuctionError(error as u8)
+    }
+}
+
 // This conversion is not intended to be used by third party crates.
 #[doc(hidden)]
 impl From<TryFromIntError> for ApiError {
@@ -568,6 +617,7 @@ impl From<ApiError> for u32 {
             ApiError::HostBufferEmpty => 33,
             ApiError::HostBufferFull => 34,
             ApiError::AllocLayout => 35,
+            ApiError::AuctionError(value) => AUCTION_ERROR_OFFSET + u32::from(value),
             ApiError::ContractHeader(value) => HEADER_ERROR_OFFSET + u32::from(value),
             ApiError::Mint(value) => MINT_ERROR_OFFSET + u32::from(value),
             ApiError::ProofOfStake(value) => POS_ERROR_OFFSET + u32::from(value),
@@ -618,6 +668,7 @@ impl From<u32> for ApiError {
             POS_ERROR_MIN..=POS_ERROR_MAX => ApiError::ProofOfStake(value as u8),
             MINT_ERROR_MIN..=MINT_ERROR_MAX => ApiError::Mint(value as u8),
             HEADER_ERROR_MIN..=HEADER_ERROR_MAX => ApiError::ContractHeader(value as u8),
+            AUCTION_ERROR_MIN..=AUCTION_ERROR_MAX => ApiError::AuctionError(value as u8),
             _ => ApiError::Unhandled,
         }
     }
@@ -663,6 +714,7 @@ impl Debug for ApiError {
             ApiError::HostBufferEmpty => write!(f, "ApiError::HostBufferEmpty")?,
             ApiError::HostBufferFull => write!(f, "ApiError::HostBufferFull")?,
             ApiError::AllocLayout => write!(f, "ApiError::AllocLayout")?,
+            ApiError::AuctionError(value) => write!(f, "ApiError::AuctionError({})", value)?,
             ApiError::ContractHeader(value) => write!(f, "ApiError::ContractHeader({})", value)?,
             ApiError::Mint(value) => write!(f, "ApiError::Mint({})", value)?,
             ApiError::ProofOfStake(value) => write!(f, "ApiError::ProofOfStake({})", value)?,
@@ -829,5 +881,7 @@ mod tests {
         round_trip(Err(ApiError::ProofOfStake(u8::MAX)));
         round_trip(Err(ApiError::User(0)));
         round_trip(Err(ApiError::User(u16::MAX)));
+        round_trip(Err(ApiError::AuctionError(0)));
+        round_trip(Err(ApiError::AuctionError(u8::MAX)));
     }
 }

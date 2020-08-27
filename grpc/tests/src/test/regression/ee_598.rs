@@ -7,14 +7,22 @@ use casperlabs_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_node::{types::Motes, GenesisAccount};
-use casperlabs_types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
+use casperlabs_node::{
+    crypto::asymmetric_key::{PublicKey, SecretKey},
+    types::Motes,
+    GenesisAccount,
+};
+use casperlabs_types::{
+    account::AccountHash, runtime_args, system_contract_errors::auction, ApiError, RuntimeArgs,
+    U512,
+};
 
 const ARG_AMOUNT: &str = "amount";
+const ARG_PUBLIC_KEY: &str = "public_key";
 const ARG_ENTRY_POINT: &str = "entry_point";
-const ARG_ACCOUNT_PK: &str = "account_hash";
+const ARG_ACCOUNT_HASH: &str = "account_hash";
 
-const CONTRACT_POS_BONDING: &str = "pos_bonding.wasm";
+const CONTRACT_MINT_BONDING: &str = "mint_bonding.wasm";
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([7u8; 32]);
 
 const GENESIS_VALIDATOR_STAKE: u64 = 50_000;
@@ -27,10 +35,16 @@ lazy_static! {
 #[ignore]
 #[test]
 fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
+    let bond_secret_key = SecretKey::new_ed25519([111; 32]);
+    let bond_public_key = PublicKey::from(&bond_secret_key);
+    let bond_public_key_arg = casperlabs_types::PublicKey::from(bond_public_key);
+
+    let secret_key = SecretKey::new_ed25519([42; 32]);
+    let public_key = PublicKey::from(&secret_key);
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account = GenesisAccount::new(
-            AccountHash::new([42; 32]),
+        let account = GenesisAccount::with_public_key(
+            public_key,
             Motes::new(GENESIS_VALIDATOR_STAKE.into()) * Motes::new(2.into()),
             Motes::new(GENESIS_VALIDATOR_STAKE.into()),
         );
@@ -41,11 +55,11 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_POS_BONDING,
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_MINT_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => "seed_new_account",
-            ARG_ACCOUNT_PK => ACCOUNT_1_ADDR,
+            ARG_ACCOUNT_HASH => ACCOUNT_1_ADDR,
             ARG_AMOUNT => *ACCOUNT_1_BALANCE,
         },
     )
@@ -56,7 +70,10 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *ACCOUNT_1_FUND })
             .with_session_code(
                 "ee_598_regression.wasm",
-                runtime_args! { ARG_AMOUNT => *ACCOUNT_1_BOND },
+                runtime_args! {
+                    ARG_AMOUNT => *ACCOUNT_1_BOND,
+                    ARG_PUBLIC_KEY => bond_public_key_arg,
+                },
             )
             .with_deploy_hash([2u8; 32])
             .with_authorization_keys(&[ACCOUNT_1_ADDR])
@@ -78,16 +95,12 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
         .to_owned();
     let error_message = utils::get_error_message(response);
 
-    if !cfg!(feature = "enable-bonding") {
-        assert!(
-            error_message.contains(&format!("{:?}", ApiError::Unhandled)),
-            error_message
-        );
-    } else {
-        // Error::UnbondTooLarge => 7,
-        assert!(
-            error_message.contains(&format!("{:?}", ApiError::ProofOfStake(7))),
-            error_message
-        );
-    }
+    // Error::UnbondTooLarge => 7,
+    assert!(
+        error_message.contains(&format!(
+            "{:?}",
+            ApiError::from(auction::Error::UnbondTooLarge)
+        )),
+        error_message
+    );
 }

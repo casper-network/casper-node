@@ -6,14 +6,11 @@ use std::{env, path::PathBuf};
 
 use clap::{crate_version, App};
 
-use casperlabs_engine_test_support::{
-    internal::{
-        utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
-        DEFAULT_ACCOUNTS, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
-        DEFAULT_WASM_COSTS, MINT_INSTALL_CONTRACT, POS_INSTALL_CONTRACT,
-        STANDARD_PAYMENT_INSTALL_CONTRACT,
-    },
-    DEFAULT_ACCOUNT_ADDR,
+use casperlabs_engine_test_support::internal::{
+    utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
+    AUCTION_INSTALL_CONTRACT, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, DEFAULT_WASM_COSTS, MINT_INSTALL_CONTRACT,
+    POS_INSTALL_CONTRACT, STANDARD_PAYMENT_INSTALL_CONTRACT,
 };
 use casperlabs_node::components::contract_runtime::core::engine_state::{
     engine_config::EngineConfig, genesis::ExecConfig, run_genesis_request::RunGenesisRequest,
@@ -43,14 +40,14 @@ fn data_dir() -> PathBuf {
 fn main() {
     let data_dir = data_dir();
 
-    let genesis_account_hash = DEFAULT_ACCOUNT_ADDR;
+    let genesis_account_hash = *DEFAULT_ACCOUNT_ADDR;
     let account_1_account_hash = profiling::account_1_account_hash();
     let account_1_initial_amount = profiling::account_1_initial_amount();
     let account_2_account_hash = profiling::account_2_account_hash();
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_session_code(
                 STATE_INITIALIZER_CONTRACT,
@@ -74,10 +71,12 @@ fn main() {
     let pos_installer_bytes = utils::read_wasm_file_bytes(POS_INSTALL_CONTRACT);
     let standard_payment_installer_bytes =
         utils::read_wasm_file_bytes(STANDARD_PAYMENT_INSTALL_CONTRACT);
+    let auction_installer_bytes = utils::read_wasm_file_bytes(AUCTION_INSTALL_CONTRACT);
     let exec_config = ExecConfig::new(
         mint_installer_bytes,
         pos_installer_bytes,
         standard_payment_installer_bytes,
+        auction_installer_bytes,
         DEFAULT_ACCOUNTS.clone(),
         *DEFAULT_WASM_COSTS,
     );

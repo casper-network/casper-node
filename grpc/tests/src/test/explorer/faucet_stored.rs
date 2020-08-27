@@ -16,7 +16,7 @@ fn get_builder() -> InMemoryWasmTestBuilder {
     {
         // first, store contract
         let store_request = ExecuteRequestBuilder::standard(
-            DEFAULT_ACCOUNT_ADDR,
+            *DEFAULT_ACCOUNT_ADDR,
             &format!("{}_stored.wasm", FAUCET),
             runtime_args! {},
         )
@@ -34,7 +34,7 @@ fn should_get_funds_from_faucet_stored() {
     let mut builder = get_builder();
 
     let default_account = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let contract_hash = default_account
@@ -49,14 +49,14 @@ fn should_get_funds_from_faucet_stored() {
     // call stored faucet
     let exec_request = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_hash(
                 contract_hash,
                 CALL_FAUCET,
                 runtime_args! { "target" => NEW_ACCOUNT_ADDR, "amount" => amount },
             )
             .with_empty_payment_bytes(runtime_args! { "amount" => U512::from(10_000_000) })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_KEY])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .with_deploy_hash([2; 32])
             .build();
 
@@ -82,7 +82,7 @@ fn should_fail_if_already_funded() {
     let mut builder = get_builder();
 
     let default_account = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let contract_hash = default_account
@@ -97,14 +97,14 @@ fn should_fail_if_already_funded() {
     // call stored faucet
     let exec_request = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_hash(
                 contract_hash,
                 CALL_FAUCET,
                 runtime_args! { "target" => NEW_ACCOUNT_ADDR, "amount" => amount },
             )
             .with_empty_payment_bytes(runtime_args! { "amount" => U512::from(10_000_000) })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_KEY])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .with_deploy_hash([2; 32])
             .build();
 
@@ -115,14 +115,14 @@ fn should_fail_if_already_funded() {
     // call stored faucet again; should error
     let exec_request = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_hash(
                 contract_hash,
                 CALL_FAUCET,
                 runtime_args! { "target" => NEW_ACCOUNT_ADDR, "amount" => amount },
             )
             .with_empty_payment_bytes(runtime_args! { "amount" => U512::from(10_000_000) })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_KEY])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .with_deploy_hash([2; 32])
             .build();
 

@@ -1,7 +1,7 @@
 pub mod in_memory;
 pub mod lmdb;
 
-use std::{collections::HashMap, fmt, hash::BuildHasher};
+use std::{fmt, hash::BuildHasher};
 
 use crate::components::contract_runtime::shared::{
     additive_map::AdditiveMap,
@@ -10,7 +10,7 @@ use crate::components::contract_runtime::shared::{
     transform::{self, Transform},
     TypeMismatch,
 };
-use casperlabs_types::{account::AccountHash, bytesrepr, Key, ProtocolVersion, U512};
+use casperlabs_types::{bytesrepr, Key, ProtocolVersion};
 
 use crate::components::contract_runtime::storage::{
     protocol_data::ProtocolData,
@@ -34,10 +34,7 @@ pub trait StateReader<K, V> {
 #[derive(Debug)]
 pub enum CommitResult {
     RootNotFound,
-    Success {
-        state_root: Blake2bHash,
-        bonded_validators: HashMap<AccountHash, U512>,
-    },
+    Success { state_root: Blake2bHash },
     KeyNotFound(Key),
     TypeMismatch(TypeMismatch),
     Serialization(bytesrepr::Error),
@@ -47,14 +44,9 @@ impl fmt::Display for CommitResult {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
             CommitResult::RootNotFound => write!(f, "Root not found"),
-            CommitResult::Success {
-                state_root,
-                bonded_validators,
-            } => write!(
-                f,
-                "Success: state_root: {}, bonded_validators: {:?}",
-                state_root, bonded_validators
-            ),
+            CommitResult::Success { state_root } => {
+                write!(f, "Success: state_root: {}", state_root,)
+            }
             CommitResult::KeyNotFound(key) => write!(f, "Key not found: {}", key),
             CommitResult::TypeMismatch(type_mismatch) => {
                 write!(f, "Type mismatch: {:?}", type_mismatch)
@@ -157,10 +149,5 @@ where
 
     txn.commit()?;
 
-    let bonded_validators = Default::default();
-
-    Ok(CommitResult::Success {
-        state_root,
-        bonded_validators,
-    })
+    Ok(CommitResult::Success { state_root })
 }

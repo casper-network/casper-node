@@ -258,11 +258,7 @@ impl BlockExecutor {
             }
         };
         effect_builder
-            .request_commit(
-                ProtocolVersion::V1_0_0,
-                state.pre_state_hash,
-                execution_effect.transforms,
-            )
+            .request_commit(state.pre_state_hash, execution_effect.transforms)
             .event(|commit_result| Event::CommitExecutionEffects {
                 state,
                 commit_result,
@@ -351,9 +347,8 @@ impl<REv: ReactorEventT, R: Rng + CryptoRng + ?Sized> Component<REv, R> for Bloc
                 match commit_result {
                     Ok(CommitResult::Success {
                         state_root: post_state_hash,
-                        bonded_validators,
                     }) => {
-                        debug!(?post_state_hash, ?bonded_validators, "commit succeeded");
+                        debug!(?post_state_hash, "commit succeeded");
                         state.pre_state_hash = post_state_hash;
                         self.execute_next_deploy_or_create_block(effect_builder, state)
                     }

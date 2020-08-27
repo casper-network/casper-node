@@ -10,7 +10,7 @@ const REVERT_WASM: &str = "revert.wasm";
 #[test]
 fn should_revert() {
     let exec_request =
-        ExecuteRequestBuilder::standard(DEFAULT_ACCOUNT_ADDR, REVERT_WASM, RuntimeArgs::default())
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, REVERT_WASM, RuntimeArgs::default())
             .build();
     InMemoryWasmTestBuilder::default()
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)

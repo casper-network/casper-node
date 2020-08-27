@@ -24,6 +24,7 @@ const DEFAULT_CHAIN_NAME: &str = "casperlabs-devnet";
 const DEFAULT_MINT_INSTALLER_PATH: &str = "mint_install.wasm";
 const DEFAULT_POS_INSTALLER_PATH: &str = "pos_install.wasm";
 const DEFAULT_STANDARD_PAYMENT_INSTALLER_PATH: &str = "standard_payment_install.wasm";
+const DEFAULT_AUCTION_INSTALLER_PATH: &str = "auction_install.wasm";
 const DEFAULT_ACCOUNTS_CSV_PATH: &str = "accounts.csv";
 const DEFAULT_UPGRADE_INSTALLER_PATH: &str = "upgrade_install.wasm";
 
@@ -79,6 +80,7 @@ struct Genesis {
     mint_installer_path: External<Vec<u8>>,
     pos_installer_path: External<Vec<u8>>,
     standard_payment_installer_path: External<Vec<u8>>,
+    auction_installer_path: External<Vec<u8>>,
     accounts_path: External<Vec<GenesisAccount>>,
 }
 
@@ -93,6 +95,7 @@ impl Default for Genesis {
             standard_payment_installer_path: External::path(
                 DEFAULT_STANDARD_PAYMENT_INSTALLER_PATH,
             ),
+            auction_installer_path: External::path(DEFAULT_AUCTION_INSTALLER_PATH),
             accounts_path: External::path(DEFAULT_ACCOUNTS_CSV_PATH),
         }
     }
@@ -205,6 +208,7 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
             standard_payment_installer_path: External::path(
                 DEFAULT_STANDARD_PAYMENT_INSTALLER_PATH,
             ),
+            auction_installer_path: External::path(DEFAULT_AUCTION_INSTALLER_PATH),
             accounts_path: External::path(DEFAULT_ACCOUNTS_CSV_PATH),
         };
 
@@ -277,6 +281,12 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         .load(root)
         .map_err(Error::LoadStandardPaymentInstaller)?;
 
+    let auction_installer_bytes = chainspec
+        .genesis
+        .auction_installer_path
+        .load(root)
+        .map_err(Error::LoadAuctionInstaller)?;
+
     let accounts: Vec<GenesisAccount> = chainspec
         .genesis
         .accounts_path
@@ -300,6 +310,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         mint_installer_bytes,
         pos_installer_bytes,
         standard_payment_installer_bytes,
+        auction_installer_bytes,
         accounts,
         costs: chainspec.wasm_costs,
         deploy_config: chainspec.deploys.try_into()?,

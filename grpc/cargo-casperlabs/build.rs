@@ -53,6 +53,17 @@ impl Package for StandardPaymentInstall {
     const WASM_FILENAME: &'static str = "standard_payment_install.wasm";
 }
 
+struct AuctionInstall;
+
+impl Package for AuctionInstall {
+    const ROOT: &'static str = "../../smart_contracts/contracts/system/auction-install";
+    const CARGO_TOML: &'static str =
+        "../../smart_contracts/contracts/system/auction-install/Cargo.toml";
+    const MAIN_RS: &'static str =
+        "../../smart_contracts/contracts/system/auction-install/src/main.rs";
+    const WASM_FILENAME: &'static str = "auction_install.wasm";
+}
+
 const TARGET_DIR_FOR_WASM: &str = "target/built-contracts";
 const ORIGINAL_WASM_DIR: &str = "wasm32-unknown-unknown/release";
 const NEW_WASM_DIR: &str = "wasm";
@@ -118,26 +129,30 @@ fn main() {
     let standard_payment_source_exists = Path::new(StandardPayment::CARGO_TOML).is_file();
     let standard_payment_install_source_exists =
         Path::new(StandardPaymentInstall::CARGO_TOML).is_file();
+    let auction_install_source_exists = Path::new(AuctionInstall::CARGO_TOML).is_file();
 
     match (
         mint_install_source_exists,
         pos_install_source_exists,
         standard_payment_source_exists,
         standard_payment_install_source_exists,
+        auction_install_source_exists,
     ) {
-        (true, true, true, true) => {
+        (true, true, true, true, true) => {
             // We're building from within casperlabs-node repo - build the contracts.
             build_package::<MintInstall>();
             build_package::<PosInstall>();
             build_package::<StandardPayment>();
             build_package::<StandardPaymentInstall>();
+            build_package::<AuctionInstall>();
         }
-        (false, false, false, false) => {
+        (false, false, false, false, false) => {
             // We're outside the casperlabs-node repo - the compiled contracts should exist locally.
             assert_wasm_file_exists::<MintInstall>();
             assert_wasm_file_exists::<PosInstall>();
             assert_wasm_file_exists::<StandardPayment>();
             assert_wasm_file_exists::<StandardPaymentInstall>();
+            assert_wasm_file_exists::<AuctionInstall>();
         }
         _ => panic!("Some, but not all required contract sources exist locally."),
     }

@@ -13,7 +13,7 @@ const TRANSFER_AMOUNT: u64 = 250_000_000 + 1000;
 #[test]
 fn should_run_mint_purse_contract() {
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! { "target" =>SYSTEM_ADDR, "amount" => U512::from(TRANSFER_AMOUNT) },
     )
@@ -34,7 +34,7 @@ fn should_run_mint_purse_contract() {
 #[test]
 fn should_not_allow_non_system_accounts_to_mint() {
     let exec_request = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_MINT_PURSE,
         RuntimeArgs::default(),
     )

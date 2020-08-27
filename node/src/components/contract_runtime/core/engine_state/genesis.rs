@@ -21,7 +21,6 @@ use crate::{
 };
 
 pub const PLACEHOLDER_KEY: Key = Key::Hash([0u8; 32]);
-pub const POS_BONDING_PURSE: &str = "pos_bonding_purse";
 pub const POS_PAYMENT_PURSE: &str = "pos_payment_purse";
 pub const POS_REWARDS_PURSE: &str = "pos_rewards_purse";
 
@@ -144,6 +143,7 @@ pub struct ExecConfig {
     mint_installer_bytes: Vec<u8>,
     proof_of_stake_installer_bytes: Vec<u8>,
     standard_payment_installer_bytes: Vec<u8>,
+    auction_installer_bytes: Vec<u8>,
     accounts: Vec<GenesisAccount>,
     wasm_costs: WasmCosts,
 }
@@ -153,6 +153,7 @@ impl ExecConfig {
         mint_installer_bytes: Vec<u8>,
         proof_of_stake_installer_bytes: Vec<u8>,
         standard_payment_installer_bytes: Vec<u8>,
+        auction_installer_bytes: Vec<u8>,
         accounts: Vec<GenesisAccount>,
         wasm_costs: WasmCosts,
     ) -> ExecConfig {
@@ -160,6 +161,7 @@ impl ExecConfig {
             mint_installer_bytes,
             proof_of_stake_installer_bytes,
             standard_payment_installer_bytes,
+            auction_installer_bytes,
             accounts,
             wasm_costs,
         }
@@ -177,6 +179,10 @@ impl ExecConfig {
         self.standard_payment_installer_bytes.as_slice()
     }
 
+    pub fn auction_installer_bytes(&self) -> &[u8] {
+        self.auction_installer_bytes.as_slice()
+    }
+
     pub fn wasm_costs(&self) -> WasmCosts {
         self.wasm_costs
     }
@@ -186,7 +192,10 @@ impl ExecConfig {
         self.accounts.iter().filter_map(move |genesis_account| {
             if genesis_account.bonded_amount() > zero {
                 Some((
-                    genesis_account.account_hash(),
+                    genesis_account
+                        .public_key()
+                        .expect("should have public key")
+                        .to_account_hash(),
                     genesis_account.bonded_amount(),
                 ))
             } else {
@@ -217,6 +226,9 @@ impl Distribution<ExecConfig> for Standard {
         let standard_payment_installer_bytes =
             iter::repeat(()).map(|_| rng.gen()).take(count).collect();
 
+        count = rng.gen_range(1000, 10_000);
+        let auction_installer_bytes = iter::repeat(()).map(|_| rng.gen()).take(count).collect();
+
         count = rng.gen_range(1, 10);
         let accounts = iter::repeat(()).map(|_| rng.gen()).take(count).collect();
 
@@ -237,6 +249,7 @@ impl Distribution<ExecConfig> for Standard {
             mint_installer_bytes,
             proof_of_stake_installer_bytes,
             standard_payment_installer_bytes,
+            auction_installer_bytes,
             accounts,
             wasm_costs,
         }

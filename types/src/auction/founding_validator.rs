@@ -1,18 +1,34 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use casperlabs_types::{
-    account::AccountHash,
+use super::types::DelegationRate;
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    CLType, CLTyped, URef, U512,
+    CLType, CLTyped, PublicKey, URef, U512,
 };
 
-use crate::DelegationRate;
-
+/// An entry in a founding validator map.
+#[derive(PartialEq, Debug)]
 pub struct FoundingValidator {
+    /// The purse that was used for bonding.
     pub bonding_purse: URef,
+    /// The total amount of staked tokens.
     pub staked_amount: U512,
+    /// Delegation rate
     pub delegation_rate: DelegationRate,
-    pub winner: bool,
+    /// A flag that represents a winning entry.
+    pub funds_locked: bool,
+}
+
+impl FoundingValidator {
+    /// Creates new instance of `FoundingValidator`.
+    pub fn new(bonding_purse: URef, staked_amount: U512) -> Self {
+        Self {
+            bonding_purse,
+            staked_amount,
+            delegation_rate: 0,
+            funds_locked: true,
+        }
+    }
 }
 
 impl CLTyped for FoundingValidator {
@@ -27,7 +43,7 @@ impl ToBytes for FoundingValidator {
         result.extend(self.bonding_purse.to_bytes()?);
         result.extend(self.staked_amount.to_bytes()?);
         result.extend(self.delegation_rate.to_bytes()?);
-        result.extend(self.winner.to_bytes()?);
+        result.extend(self.funds_locked.to_bytes()?);
         Ok(result)
     }
 
@@ -35,7 +51,7 @@ impl ToBytes for FoundingValidator {
         self.bonding_purse.serialized_length()
             + self.staked_amount.serialized_length()
             + self.delegation_rate.serialized_length()
-            + self.winner.serialized_length()
+            + self.funds_locked.serialized_length()
     }
 }
 
@@ -50,7 +66,7 @@ impl FromBytes for FoundingValidator {
                 bonding_purse,
                 staked_amount,
                 delegation_rate,
-                winner,
+                funds_locked: winner,
             },
             bytes,
         ))
@@ -63,4 +79,21 @@ impl FromBytes for FoundingValidator {
 /// entered as “winners” (this also locks them out of unbonding), taking
 /// some slots out of the auction. The autowin status is controlled by
 /// node software and would, presumably, expire after a fixed number of eras.
-pub type FoundingValidators = BTreeMap<AccountHash, FoundingValidator>;
+pub type FoundingValidators = BTreeMap<PublicKey, FoundingValidator>;
+
+#[cfg(test)]
+mod tests {
+    use super::FoundingValidator;
+    use crate::{auction::DelegationRate, bytesrepr, AccessRights, URef, U512};
+
+    #[test]
+    fn serialization_roundtrip() {
+        let founding_validator = FoundingValidator {
+            bonding_purse: URef::new([42; 32], AccessRights::READ_ADD_WRITE),
+            staked_amount: U512::one(),
+            delegation_rate: DelegationRate::max_value(),
+            funds_locked: true,
+        };
+        bytesrepr::test_serialization_roundtrip(&founding_validator);
+    }
+}

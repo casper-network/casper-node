@@ -40,6 +40,10 @@ pub enum Error {
     #[error("could not load standard payment installer: {0}")]
     LoadStandardPaymentInstaller(LoadError<ReadFileError>),
 
+    /// Error loading the auction installer.
+    #[error("could not load auction installer: {0}")]
+    LoadAuctionInstaller(LoadError<ReadFileError>),
+
     /// Error loading the standard payment installer.
     #[error("could not load genesis accounts installer: {0}")]
     LoadGenesisAccounts(LoadError<GenesisLoadError>),

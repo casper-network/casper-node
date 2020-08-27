@@ -10,7 +10,7 @@ use std::{
 
 use semver::Version;
 
-use casperlabs_types::{Key, ProtocolVersion};
+use casperlabs_types::Key;
 
 use super::Responder;
 use crate::{
@@ -345,8 +345,6 @@ pub enum ContractRuntimeRequest {
     },
     /// A request to commit existing execution transforms.
     Commit {
-        /// Current protocol version of the commit request.
-        protocol_version: ProtocolVersion,
         /// A valid pre state hash.
         pre_state_hash: Digest,
         /// Effects obtained through `ExecutionResult`
@@ -387,14 +385,13 @@ impl Display for ContractRuntimeRequest {
             ),
 
             ContractRuntimeRequest::Commit {
-                protocol_version,
                 pre_state_hash,
                 effects,
                 ..
             } => write!(
                 formatter,
-                "commit request: {} {} {:?}",
-                protocol_version, pre_state_hash, effects
+                "commit request: {} {:?}",
+                pre_state_hash, effects
             ),
 
             ContractRuntimeRequest::Upgrade { upgrade_config, .. } => {

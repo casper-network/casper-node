@@ -12,11 +12,10 @@ pub mod run_genesis_request;
 pub mod system_contract_cache;
 mod transfer;
 pub mod upgrade;
-pub mod utils;
 
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet},
     rc::Rc,
 };
 
@@ -30,7 +29,6 @@ use casperlabs_types::{
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
     runtime_args,
     system_contract_errors::mint,
-    system_contract_type::PROOF_OF_STAKE,
     AccessRights, BlockTime, Contract, ContractHash, ContractPackage, ContractPackageHash,
     ContractVersionKey, EntryPoint, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, URef,
     U512,
@@ -74,12 +72,12 @@ use crate::{
                 wasm_prep::{self, Preprocessor},
             },
             storage::{
-                global_state::{CommitResult, StateProvider, StateReader},
+                global_state::{CommitResult, StateProvider},
                 protocol_data::ProtocolData,
             },
         },
     },
-    crypto::hash,
+    crypto::{asymmetric_key::PublicKey, hash},
     types::Motes,
 };
 use execution_result::ExecutionResults;
@@ -180,6 +178,7 @@ where
             chainspec.genesis.mint_installer_bytes,
             chainspec.genesis.pos_installer_bytes,
             chainspec.genesis.standard_payment_installer_bytes,
+            chainspec.genesis.auction_installer_bytes,
             chainspec.genesis.accounts,
             chainspec.genesis.costs,
         );
@@ -245,6 +244,13 @@ where
             Rc::new(RefCell::new(generator))
         };
 
+        // Spec #6: Compute initially bonded validators as the contents of accounts_path
+        // filtered to non-zero staked amounts.
+        let bonded_validators: BTreeMap<AccountHash, U512> = ee_config
+            .get_bonded_validators()
+            .map(|(k, v)| (k, v.value()))
+            .collect();
+
         // Spec #5: Execute the wasm code from the mint installer bytes
         let (mint_package_hash, mint_hash): (ContractPackageHash, ContractHash) = {
             let mint_installer_bytes = ee_config.mint_installer_bytes();
@@ -284,13 +290,6 @@ where
             ContractPackageHash,
             ContractHash,
         ) = {
-            // Spec #6: Compute initially bonded validators as the contents of accounts_path
-            // filtered to non-zero staked amounts.
-            let bonded_validators: BTreeMap<AccountHash, U512> = ee_config
-                .get_bonded_validators()
-                .map(|(k, v)| (k, v.value()))
-                .collect();
-
             let tracking_copy = Rc::clone(&tracking_copy);
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
@@ -382,12 +381,76 @@ where
             )?
         };
 
+        let auction_hash: ContractHash = {
+            let bonded_validators: BTreeMap<casperlabs_types::PublicKey, U512> = ee_config
+                .accounts()
+                .iter()
+                .filter_map(|genesis_account| {
+                    if genesis_account.is_genesis_validator() {
+                        Some((
+                            casperlabs_types::PublicKey::from(
+                                genesis_account
+                                    .public_key()
+                                    .expect("should have public key"),
+                            ),
+                            genesis_account.bonded_amount().value(),
+                        ))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            let auction_installer_bytes = {
+                // NOTE: Before integration node wasn't updated to pass the bytes, so we were
+                // bundling it. This debug_assert can be removed once integration with genesis
+                // works.
+                debug_assert!(
+                    !ee_config.auction_installer_bytes().is_empty(),
+                    "Caller is required to pass the auction_installer bytes"
+                );
+                &ee_config.auction_installer_bytes()
+            };
+
+            let auction_installer_module = preprocessor.preprocess(auction_installer_bytes)?;
+            let args = runtime_args! {
+                "mint_contract_package_hash" => mint_package_hash,
+                "genesis_validators" => bonded_validators,
+            };
+            let authorization_keys = BTreeSet::new();
+            let install_deploy_hash = genesis_config_hash.to_bytes();
+            let hash_address_generator = Rc::clone(&hash_address_generator);
+            let uref_address_generator = Rc::clone(&uref_address_generator);
+            let tracking_copy = Rc::clone(&tracking_copy);
+            let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
+
+            executor.exec_wasm_direct(
+                auction_installer_module,
+                ENTRY_POINT_NAME_INSTALL,
+                args,
+                &mut virtual_system_account,
+                authorization_keys,
+                blocktime,
+                install_deploy_hash,
+                gas_limit,
+                hash_address_generator,
+                uref_address_generator,
+                protocol_version,
+                correlation_id,
+                tracking_copy,
+                phase,
+                protocol_data,
+                system_contract_cache,
+            )?
+        };
+
         // Spec #2: Associate given CostTable with given ProtocolVersion.
         let protocol_data = ProtocolData::new(
             wasm_costs,
             mint_hash,
             proof_of_stake_hash,
             standard_payment_hash,
+            auction_hash,
         );
 
         self.state
@@ -418,8 +481,7 @@ where
                     .into_iter()
                     .map(|account| (account, account_named_keys.clone()))
                     .collect();
-                let system_account =
-                    GenesisAccount::new(SYSTEM_ACCOUNT_ADDR, Motes::zero(), Motes::zero());
+                let system_account = GenesisAccount::system(Motes::zero(), Motes::zero());
                 ret.push((system_account, virtual_system_account.named_keys().clone()));
                 ret
             };
@@ -447,7 +509,11 @@ where
                 let mut named_keys_exec = NamedKeys::new();
                 let base_key = mint_hash;
                 let authorization_keys: BTreeSet<AccountHash> = BTreeSet::new();
-                let account_hash = account.account_hash();
+                let account_hash = account
+                    .public_key()
+                    .as_ref()
+                    .map(PublicKey::to_account_hash)
+                    .unwrap_or(SYSTEM_ACCOUNT_ADDR);
                 let purse_creation_deploy_hash = account_hash.value();
                 let hash_address_generator = Rc::clone(&hash_address_generator);
                 let uref_address_generator = {
@@ -574,6 +640,7 @@ where
             current_protocol_data.mint(),
             current_protocol_data.proof_of_stake(),
             current_protocol_data.standard_payment(),
+            current_protocol_data.auction(),
         );
 
         self.state
@@ -1738,7 +1805,6 @@ where
     pub fn apply_effect(
         &self,
         correlation_id: CorrelationId,
-        protocol_version: ProtocolVersion,
         pre_state_hash: Blake2bHash,
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<CommitResult, Error>
@@ -1746,54 +1812,8 @@ where
         Error: From<S::Error>,
     {
         match self.state.commit(correlation_id, pre_state_hash, effects)? {
-            CommitResult::Success { state_root, .. } => {
-                let bonded_validators =
-                    self.get_bonded_validators(correlation_id, protocol_version, state_root)?;
-                Ok(CommitResult::Success {
-                    state_root,
-                    bonded_validators,
-                })
-            }
+            CommitResult::Success { state_root, .. } => Ok(CommitResult::Success { state_root }),
             commit_result => Ok(commit_result),
         }
-    }
-
-    /// Calculates bonded validators at `root_hash` state.
-    ///
-    /// Should only be called with a valid root hash after a successful call to
-    /// [`StateProvider::commit`]. Will panic if called with an invalid root hash.
-    fn get_bonded_validators(
-        &self,
-        correlation_id: CorrelationId,
-        protocol_version: ProtocolVersion,
-        root_hash: Blake2bHash,
-    ) -> Result<HashMap<AccountHash, U512>, Error>
-    where
-        Error: From<S::Error>,
-    {
-        let protocol_data = match self.state.get_protocol_data(protocol_version)? {
-            Some(protocol_data) => protocol_data,
-            None => return Err(Error::InvalidProtocolVersion(protocol_version)),
-        };
-
-        let proof_of_stake_key = protocol_data.proof_of_stake().into();
-
-        let reader = match self.state.checkout(root_hash)? {
-            Some(reader) => reader,
-            None => panic!("get_bonded_validators called with an invalid root hash"),
-        };
-
-        let contract = match reader.read(correlation_id, &proof_of_stake_key)? {
-            Some(StoredValue::Contract(contract)) => contract,
-            _ => return Err(Error::MissingSystemContract(PROOF_OF_STAKE.to_string())),
-        };
-
-        let bonded_validators = contract
-            .named_keys()
-            .keys()
-            .filter_map(|entry| utils::pos_validator_key_name_to_tuple(entry))
-            .collect::<HashMap<AccountHash, U512>>();
-
-        Ok(bonded_validators)
     }
 }

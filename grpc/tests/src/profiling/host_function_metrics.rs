@@ -144,9 +144,8 @@ fn run_test(root_hash: Vec<u8>, repetitions: usize, data_dir: &Path) {
     let account_1_account_hash = profiling::account_1_account_hash();
     let account_2_account_hash = profiling::account_2_account_hash();
 
-    let engine_config = EngineConfig::new()
-        .with_use_system_contracts(cfg!(feature = "use-system-contracts"))
-        .with_enable_bonding(cfg!(feature = "enable-bonding"));
+    let engine_config =
+        EngineConfig::new().with_use_system_contracts(cfg!(feature = "use-system-contracts"));
 
     let mut test_builder = LmdbWasmTestBuilder::open(data_dir, engine_config, root_hash);
 

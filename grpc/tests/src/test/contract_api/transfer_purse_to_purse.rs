@@ -23,7 +23,7 @@ fn should_run_purse_to_purse_transfer() {
     let target = "purse:secondary".to_string();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_PURSE,
         runtime_args! {
             ARG_SOURCE => source,
@@ -42,7 +42,7 @@ fn should_run_purse_to_purse_transfer() {
         .finish();
 
     let default_account = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
 
     // Get the `purse_transfer_result` for a given
@@ -117,7 +117,7 @@ fn should_run_purse_to_purse_transfer_with_error() {
     let source = "purse:main".to_string();
     let target = "purse:secondary".to_string();
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+       *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_PURSE,
         runtime_args! { ARG_SOURCE => source, ARG_TARGET => target, ARG_AMOUNT => U512::from(999_999_999_999i64) },
     )
@@ -131,7 +131,7 @@ fn should_run_purse_to_purse_transfer_with_error() {
         .finish();
 
     let default_account = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
 
     // Get the `purse_transfer_result` for a given
