@@ -438,9 +438,10 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 rng,
                 Event::BlockValidator(block_validator::Event::from(req)),
             ),
-            Event::MetricsRequest(req) => {
-                self.dispatch_event(effect_builder, rng, Event::MetricsRequest(req))
-            }
+            Event::MetricsRequest(req) => reactor::wrap_effects(
+                Event::MetricsRequest,
+                self.metrics.handle_event(effect_builder, rng, req),
+            ),
 
             // Announcements:
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
