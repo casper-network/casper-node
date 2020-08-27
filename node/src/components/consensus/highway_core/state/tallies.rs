@@ -10,6 +10,9 @@ use crate::components::consensus::{
 };
 
 /// A tally of votes at a specific height. This is never empty: It contains at least one vote.
+///
+/// It must always contain at most one vote from each validator. In particular, the sum of the
+/// weights must be at most the total of all validators' weights.
 #[derive(Clone)]
 pub(crate) struct Tally<'a, C: Context> {
     /// The block with the highest weight, and the highest hash if there's a tie.
@@ -53,8 +56,10 @@ impl<'a, C: Context> Tally<'a, C> {
         Some(tally)
     }
 
-    /// Returns a new tally with the same votes, but one level lower: vote for a block counts as a
-    /// vote for that block's parent. Panics if called on level 0.
+    /// Returns a new tally with the same votes, but one level lower: a vote for a block counts as
+    /// a vote for that block's parent. Panics if called on level 0.
+    ///
+    /// This preserves the total weight, and the set of validators who contribute to that weight.
     fn parents(&self, state: &'a State<C>) -> Self {
         let to_parent = |(h, w): (&&'a C::Hash, &Weight)| (state.block(*h).parent().unwrap(), *w);
         Self::try_from_iter(self.votes.iter().map(to_parent)).unwrap() // Tally is never empty.
@@ -83,6 +88,9 @@ impl<'a, C: Context> Tally<'a, C> {
     }
 
     /// Returns a tally containing only the votes for descendants of `bhash`.
+    ///
+    /// The total weight of the result is less or equal to the total weight of `self`, and the set
+    /// of validators contributing to it is a subset of the ones contributing to `self`.
     fn filter_descendants(
         self,
         height: u64,
@@ -96,6 +104,9 @@ impl<'a, C: Context> Tally<'a, C> {
 
 /// A list of tallies by block height. The tally at each height contains only the votes that point
 /// directly to a block at that height, not at a descendant.
+///
+/// Each validator must contribute their weight to at most one entry: The height of the block that
+/// they most recently voted for.
 pub(crate) struct Tallies<'a, C: Context>(BTreeMap<u64, Tally<'a, C>>);
 
 impl<'a, C: Context> Default for Tallies<'a, C> {
@@ -132,7 +143,7 @@ impl<'a, C: Context> Tallies<'a, C> {
         let mut prev_tally = self[max_height].clone();
         // Start from `max_height - 1` and find the greatest height where a decision can be made.
         for height in (0..max_height).rev() {
-            // The tally at `height` is the sum of the parents of `prev_height` and the votes that
+            // The tally at `height` is the sum of the parents of `height + 1` and the votes that
             // point directly to blocks at `height`.
             let mut h_tally = prev_tally.parents(state);
             if let Some(tally) = self.0.get(&height) {
