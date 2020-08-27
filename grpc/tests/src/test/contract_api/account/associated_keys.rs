@@ -30,7 +30,7 @@ fn should_manage_associated_key() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
         runtime_args! { "target" => ACCOUNT_1_ADDR, "amount" => *ACCOUNT_1_INITIAL_FUND },
     )
@@ -38,7 +38,7 @@ fn should_manage_associated_key() {
     let exec_request_2 = ExecuteRequestBuilder::standard(
         ACCOUNT_1_ADDR,
         CONTRACT_ADD_UPDATE_ASSOCIATED_KEY,
-        runtime_args! { "account" => DEFAULT_ACCOUNT_ADDR, },
+        runtime_args! { "account" => *DEFAULT_ACCOUNT_ADDR, },
     )
     .build();
 
@@ -50,7 +50,7 @@ fn should_manage_associated_key() {
 
     builder.exec(exec_request_2).expect_success().commit();
 
-    let genesis_key = DEFAULT_ACCOUNT_ADDR;
+    let genesis_key = *DEFAULT_ACCOUNT_ADDR;
 
     let account_1 = builder
         .get_account(ACCOUNT_1_ADDR)
@@ -66,7 +66,7 @@ fn should_manage_associated_key() {
     let exec_request_3 = ExecuteRequestBuilder::standard(
         ACCOUNT_1_ADDR,
         CONTRACT_REMOVE_ASSOCIATED_KEY,
-        runtime_args! { ARG_ACCOUNT => DEFAULT_ACCOUNT_ADDR, },
+        runtime_args! { ARG_ACCOUNT => *DEFAULT_ACCOUNT_ADDR, },
     )
     .build();
 

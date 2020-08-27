@@ -15,6 +15,7 @@ include = [
     "wasm/pos_install.wasm",
     "wasm/standard_payment.wasm",
     "wasm/standard_payment_install.wasm",
+    "wasm/auction_install.wasm",
     "Cargo.lock",
     "Cargo.toml",
 ]

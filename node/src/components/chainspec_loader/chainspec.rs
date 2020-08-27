@@ -12,14 +12,14 @@ use rand::{
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use casperlabs_types::{account::AccountHash, U512};
+use casperlabs_types::U512;
 
 use super::{config, error::GenesisLoadError, Error};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
     components::contract_runtime::shared::wasm_costs::WasmCosts,
-    crypto::asymmetric_key::PublicKey,
+    crypto::asymmetric_key::{PublicKey, SecretKey},
     types::{Motes, TimeDiff, Timestamp},
     utils::Loadable,
 };
@@ -27,29 +27,26 @@ use crate::{
 /// An account that exists at genesis.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct GenesisAccount {
-    account_hash: AccountHash,
+    /// A valid public key, otherwise a `None` variant indicates a system account that does not
+    /// have a valid key.
     public_key: Option<PublicKey>,
     balance: Motes,
     bonded_amount: Motes,
 }
 
 impl GenesisAccount {
-    /// Constructs a new `GenesisAccount` with no public key.
-    pub fn new(account_hash: AccountHash, balance: Motes, bonded_amount: Motes) -> Self {
+    /// Constructs a new `GenesisAccount` with a system account.
+    pub fn system(balance: Motes, bonded_amount: Motes) -> Self {
         GenesisAccount {
-            public_key: None,
-            account_hash,
             balance,
             bonded_amount,
+            public_key: None, // `None` indicates a virtual system account.
         }
     }
-
     /// Constructs a new `GenesisAccount` with a given public key.
     pub fn with_public_key(public_key: PublicKey, balance: Motes, bonded_amount: Motes) -> Self {
-        let account_hash = public_key.to_account_hash();
         GenesisAccount {
             public_key: Some(public_key),
-            account_hash,
             balance,
             bonded_amount,
         }
@@ -58,11 +55,6 @@ impl GenesisAccount {
     /// Returns the account's public key.
     pub fn public_key(&self) -> Option<PublicKey> {
         self.public_key
-    }
-
-    /// Returns the account's hash.
-    pub fn account_hash(&self) -> AccountHash {
-        self.account_hash
     }
 
     /// Returns the account's balance.
@@ -74,18 +66,29 @@ impl GenesisAccount {
     pub fn bonded_amount(&self) -> Motes {
         self.bonded_amount
     }
+
+    /// Checks if a given genesis account belongs to a virtual system account,
+    pub fn is_system_account(&self) -> bool {
+        self.public_key.is_none()
+    }
+
+    /// Checks if a given genesis account is a valid genesis validator.
+    ///
+    /// Genesis validators are the ones with a stake, and are not owned by a virtual system account.
+    pub fn is_genesis_validator(&self) -> bool {
+        !self.is_system_account() && !self.bonded_amount.is_zero()
+    }
 }
 
 impl Distribution<GenesisAccount> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisAccount {
-        let public_key = None;
-        let account_hash = AccountHash::new(rng.gen());
+        let secret_key: SecretKey = SecretKey::new_ed25519(rng.gen());
+        let public_key = PublicKey::from(&secret_key);
         let balance = Motes::new(U512(rng.gen()));
         let bonded_amount = Motes::new(U512(rng.gen()));
 
         GenesisAccount {
-            public_key,
-            account_hash,
+            public_key: Some(public_key),
             balance,
             bonded_amount,
         }
@@ -228,6 +231,7 @@ pub(crate) struct GenesisConfig {
     pub(crate) mint_installer_bytes: Vec<u8>,
     pub(crate) pos_installer_bytes: Vec<u8>,
     pub(crate) standard_payment_installer_bytes: Vec<u8>,
+    pub(crate) auction_installer_bytes: Vec<u8>,
     pub(crate) accounts: Vec<GenesisAccount>,
     pub(crate) costs: WasmCosts,
     pub(crate) deploy_config: DeployConfig,
@@ -278,6 +282,7 @@ impl GenesisConfig {
         let mint_installer_bytes = vec![rng.gen()];
         let pos_installer_bytes = vec![rng.gen()];
         let standard_payment_installer_bytes = vec![rng.gen()];
+        let auction_installer_bytes = vec![rng.gen()];
         let accounts = vec![rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen()];
         let costs = WasmCosts::random(rng);
         let deploy_config = DeployConfig::random(rng);
@@ -290,6 +295,7 @@ impl GenesisConfig {
             mint_installer_bytes,
             pos_installer_bytes,
             standard_payment_installer_bytes,
+            auction_installer_bytes,
             accounts,
             costs,
             deploy_config,

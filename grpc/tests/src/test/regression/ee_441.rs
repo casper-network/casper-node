@@ -21,7 +21,7 @@ fn do_pass(pass: &str) -> (URef, URef) {
     // more data
     let exec_request = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
             .with_session_code(
                 EE_441_RNG_STATE,
@@ -30,7 +30,7 @@ fn do_pass(pass: &str) -> (URef, URef) {
                 },
             )
             .with_deploy_hash([1u8; 32])
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
@@ -43,7 +43,7 @@ fn do_pass(pass: &str) -> (URef, URef) {
         .commit();
 
     let account = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     (

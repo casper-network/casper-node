@@ -21,10 +21,12 @@ impl TryFrom<ipc::ChainSpec_GenesisConfig_ExecConfig> for ExecConfig {
         let mint_initializer_bytes = pb_exec_config.take_mint_installer();
         let proof_of_stake_initializer_bytes = pb_exec_config.take_pos_installer();
         let standard_payment_installer_bytes = pb_exec_config.take_standard_payment_installer();
+        let auction_installer_bytes = pb_exec_config.take_auction_installer();
         Ok(ExecConfig::new(
             mint_initializer_bytes,
             proof_of_stake_initializer_bytes,
             standard_payment_installer_bytes,
+            auction_installer_bytes,
             accounts,
             wasm_costs,
         ))
@@ -39,6 +41,7 @@ impl From<ExecConfig> for ipc::ChainSpec_GenesisConfig_ExecConfig {
         pb_exec_config.set_standard_payment_installer(
             exec_config.standard_payment_installer_bytes().to_vec(),
         );
+        pb_exec_config.set_auction_installer(exec_config.auction_installer_bytes().to_vec());
         {
             let accounts = exec_config
                 .accounts()

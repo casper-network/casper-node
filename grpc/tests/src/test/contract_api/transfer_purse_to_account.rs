@@ -27,9 +27,9 @@ lazy_static! {
 #[test]
 fn should_run_purse_to_account_transfer() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
-    let genesis_account_hash = DEFAULT_ACCOUNT_ADDR;
+    let genesis_account_hash = *DEFAULT_ACCOUNT_ADDR;
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
         runtime_args! { "target" => account_1_account_hash, "amount" => *ACCOUNT_1_INITIAL_FUND },
     )
@@ -54,7 +54,7 @@ fn should_run_purse_to_account_transfer() {
 
     // Get transforms output for genesis account
     let default_account = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
 
     // Obtain main purse's balance
@@ -164,7 +164,7 @@ fn should_run_purse_to_account_transfer() {
     let transforms = builder.get_transforms();
     let transform = &transforms[1];
     let genesis_transforms = transform
-        .get(&Key::Account(DEFAULT_ACCOUNT_ADDR))
+        .get(&Key::Account(*DEFAULT_ACCOUNT_ADDR))
         .expect("Unable to find transforms for a genesis account");
 
     // Genesis account is unchanged
@@ -200,7 +200,7 @@ fn should_fail_when_sending_too_much_from_purse_to_account() {
     let account_1_key = ACCOUNT_1_ADDR;
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
         runtime_args! { "target" => account_1_key, "amount" => U512::max_value() },
     )
@@ -217,7 +217,7 @@ fn should_fail_when_sending_too_much_from_purse_to_account() {
 
     // Get transforms output for genesis account
     let default_account = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
 
     // Obtain main purse's balance

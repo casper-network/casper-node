@@ -23,7 +23,7 @@ fn should_raise_precondition_authorization_failure_invalid_account() {
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_session_code(
                 "transfer_purse_to_account.wasm",
@@ -57,7 +57,7 @@ fn should_raise_precondition_authorization_failure_empty_authorized_keys() {
     let empty_keys: [AccountHash; 0] = [];
     let exec_request = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code("do_nothing.wasm", RuntimeArgs::default())
             .with_empty_payment_bytes(RuntimeArgs::default())
             .with_deploy_hash([1; 32])
@@ -92,7 +92,7 @@ fn should_raise_precondition_authorization_failure_invalid_authorized_keys() {
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_session_code(
                 "transfer_purse_to_account.wasm",

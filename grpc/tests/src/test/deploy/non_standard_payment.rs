@@ -34,7 +34,7 @@ fn should_charge_non_main_purse() {
 
     let setup_exec_request = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM, // creates account_1
                 runtime_args! {
@@ -43,7 +43,7 @@ fn should_charge_non_main_purse() {
                 },
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount})
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_KEY])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .with_deploy_hash([1; 32])
             .build();
 

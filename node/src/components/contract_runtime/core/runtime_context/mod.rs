@@ -249,6 +249,10 @@ where
         self.access_rights.extend(access_rights);
     }
 
+    pub fn access_rights(&self) -> &HashMap<Address, HashSet<AccessRights>> {
+        &self.access_rights
+    }
+
     pub fn account(&self) -> &'a Account {
         &self.account
     }
@@ -506,7 +510,8 @@ where
                 | CLType::Map { .. }
                 | CLType::Tuple1(_)
                 | CLType::Tuple3(_)
-                | CLType::Any => Ok(()),
+                | CLType::Any
+                | CLType::PublicKey => Ok(()),
                 CLType::Key => {
                     let key: Key = cl_value.to_owned().into_t()?; // TODO: optimize?
                     self.validate_key(&key)

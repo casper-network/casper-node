@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     convert::{TryFrom, TryInto},
     ffi::OsStr,
     fs,
@@ -18,7 +17,7 @@ use casperlabs_engine_grpc_server::engine_server::{
         UpgradeResponse,
     },
     ipc_grpc::ExecutionEngineService,
-    mappings::{MappingError, TransformMap},
+    mappings::TransformMap,
     transforms::TransformEntry,
 };
 use casperlabs_node::{
@@ -81,7 +80,6 @@ pub struct WasmTestBuilder<S> {
     /// Cached transform maps after subsequent successful runs i.e. `transforms[0]` is for first
     /// exec call etc.
     transforms: Vec<AdditiveMap<Key, Transform>>,
-    bonded_validators: Vec<HashMap<AccountHash, U512>>,
     /// Cached genesis transforms
     genesis_account: Option<Account>,
     /// Genesis transforms
@@ -92,6 +90,8 @@ pub struct WasmTestBuilder<S> {
     pos_contract_hash: Option<ContractHash>,
     /// Standard payment contract key
     standard_payment_hash: Option<ContractHash>,
+    /// Auction contract key
+    auction_contract_hash: Option<ContractHash>,
 }
 
 impl<S> WasmTestBuilder<S> {
@@ -104,9 +104,8 @@ impl<S> WasmTestBuilder<S> {
 impl Default for InMemoryWasmTestBuilder {
     fn default() -> Self {
         Self::initialize_logging();
-        let engine_config = EngineConfig::new()
-            .with_use_system_contracts(cfg!(feature = "use-system-contracts"))
-            .with_enable_bonding(cfg!(feature = "enable-bonding"));
+        let engine_config =
+            EngineConfig::new().with_use_system_contracts(cfg!(feature = "use-system-contracts"));
 
         let global_state = InMemoryGlobalState::empty().expect("should create global state");
         let engine_state = EngineState::new(global_state, engine_config);
@@ -118,12 +117,12 @@ impl Default for InMemoryWasmTestBuilder {
             genesis_hash: None,
             post_state_hash: None,
             transforms: Vec::new(),
-            bonded_validators: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
             mint_contract_hash: None,
             pos_contract_hash: None,
             standard_payment_hash: None,
+            auction_contract_hash: None,
         }
     }
 }
@@ -139,12 +138,12 @@ impl<S> Clone for WasmTestBuilder<S> {
             genesis_hash: self.genesis_hash.clone(),
             post_state_hash: self.post_state_hash.clone(),
             transforms: self.transforms.clone(),
-            bonded_validators: self.bonded_validators.clone(),
             genesis_account: self.genesis_account.clone(),
             genesis_transforms: self.genesis_transforms.clone(),
             mint_contract_hash: self.mint_contract_hash,
             pos_contract_hash: self.pos_contract_hash,
             standard_payment_hash: self.standard_payment_hash,
+            auction_contract_hash: self.auction_contract_hash,
         }
     }
 }
@@ -207,12 +206,12 @@ impl LmdbWasmTestBuilder {
             genesis_hash: None,
             post_state_hash: None,
             transforms: Vec::new(),
-            bonded_validators: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
             mint_contract_hash: None,
             pos_contract_hash: None,
             standard_payment_hash: None,
+            auction_contract_hash: None,
         }
     }
 
@@ -232,7 +231,6 @@ impl LmdbWasmTestBuilder {
         // Applies existing properties from gi
         builder.genesis_hash = result.0.genesis_hash.clone();
         builder.post_state_hash = result.0.post_state_hash.clone();
-        builder.bonded_validators = result.0.bonded_validators.clone();
         builder.mint_contract_hash = result.0.mint_contract_hash;
         builder.pos_contract_hash = result.0.pos_contract_hash;
         builder
@@ -268,12 +266,12 @@ impl LmdbWasmTestBuilder {
             genesis_hash: None,
             post_state_hash: Some(post_state_hash),
             transforms: Vec::new(),
-            bonded_validators: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
             mint_contract_hash: None,
             pos_contract_hash: None,
             standard_payment_hash: None,
+            auction_contract_hash: None,
         }
     }
 
@@ -304,11 +302,11 @@ where
             genesis_hash: result.0.genesis_hash,
             post_state_hash: result.0.post_state_hash,
             transforms: Vec::new(),
-            bonded_validators: result.0.bonded_validators,
             genesis_account: result.0.genesis_account,
             mint_contract_hash: result.0.mint_contract_hash,
             pos_contract_hash: result.0.pos_contract_hash,
             standard_payment_hash: result.0.standard_payment_hash,
+            auction_contract_hash: result.0.auction_contract_hash,
             genesis_transforms: result.0.genesis_transforms,
         }
     }
@@ -354,6 +352,7 @@ where
         self.mint_contract_hash = Some(protocol_data.mint());
         self.pos_contract_hash = Some(protocol_data.proof_of_stake());
         self.standard_payment_hash = Some(protocol_data.standard_payment());
+        self.auction_contract_hash = Some(protocol_data.auction());
         self.genesis_account = Some(genesis_account);
         self.genesis_transforms = Some(transforms);
         self
@@ -456,13 +455,6 @@ where
         }
         let mut commit_success = commit_response.take_success();
         self.post_state_hash = Some(commit_success.take_poststate_hash().to_vec());
-        let bonded_validators = commit_success
-            .take_bonded_validators()
-            .into_iter()
-            .map(TryInto::try_into)
-            .collect::<Result<HashMap<AccountHash, U512>, MappingError>>()
-            .unwrap();
-        self.bonded_validators.push(bonded_validators);
         self
     }
 
@@ -527,10 +519,6 @@ where
         self.transforms.clone()
     }
 
-    pub fn get_bonded_validators(&self) -> Vec<HashMap<AccountHash, U512>> {
-        self.bonded_validators.clone()
-    }
-
     /// Gets genesis account (if present)
     pub fn get_genesis_account(&self) -> &Account {
         self.genesis_account
@@ -551,6 +539,11 @@ where
     pub fn get_standard_payment_contract_hash(&self) -> ContractHash {
         self.standard_payment_hash
             .expect("Unable to obtain standard payment contract. Please run genesis first.")
+    }
+
+    pub fn get_auction_contract_hash(&self) -> ContractHash {
+        self.auction_contract_hash
+            .expect("Unable to obtain auction contract. Please run genesis first.")
     }
 
     pub fn get_genesis_transforms(&self) -> &AdditiveMap<Key, Transform> {

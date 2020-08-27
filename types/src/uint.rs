@@ -1,5 +1,9 @@
 use alloc::vec::Vec;
-use core::fmt::{self, Formatter};
+use core::{
+    fmt::{self, Formatter},
+    iter::Sum,
+    ops::Add,
+};
 
 use num_integer::Integer;
 use num_traits::{AsPrimitive, Bounded, Num, One, Unsigned, WrappingAdd, WrappingSub, Zero};
@@ -381,6 +385,12 @@ macro_rules! impl_traits_for_uint {
         impl AsPrimitive<u64> for $type {
             fn as_(self) -> u64 {
                 self.0[0]
+            }
+        }
+
+        impl Sum for $type {
+            fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+                iter.fold($type::zero(), Add::add)
             }
         }
 

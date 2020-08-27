@@ -7,4 +7,7 @@ pub trait RuntimeProvider {
 
     /// This method should handle storing given [`Key`] under `name`.
     fn put_key(&mut self, name: &str, key: Key);
+
+    /// This method should handle obtaining a given named [`Key`] under a `name`.
+    fn get_key(&self, name: &str) -> Option<Key>;
 }

@@ -1,6 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
-use casperlabs_node::{types::Motes, GenesisAccount};
+use casperlabs_node::{crypto::asymmetric_key::PublicKey, types::Motes, GenesisAccount};
 use casperlabs_types::account::AccountHash;
 
 use crate::engine_server::{
@@ -11,7 +11,11 @@ impl From<GenesisAccount> for ChainSpec_GenesisConfig_ExecConfig_GenesisAccount 
     fn from(genesis_account: GenesisAccount) -> Self {
         let mut pb_genesis_account = ChainSpec_GenesisConfig_ExecConfig_GenesisAccount::new();
 
-        pb_genesis_account.public_key_hash = genesis_account.account_hash().as_bytes().to_vec();
+        pb_genesis_account.public_key_hash = genesis_account
+            .public_key()
+            .expect("should have public key")
+            .as_ref()
+            .to_vec();
         pb_genesis_account.set_balance(genesis_account.balance().value().into());
         pb_genesis_account.set_bonded_amount(genesis_account.bonded_amount().value().into());
 
@@ -38,7 +42,11 @@ impl TryFrom<ChainSpec_GenesisConfig_ExecConfig_GenesisAccount> for GenesisAccou
             .take_bonded_amount()
             .try_into()
             .map(Motes::new)?;
-        Ok(GenesisAccount::new(account_hash, balance, bonded_amount))
+        Ok(GenesisAccount::with_public_key(
+            PublicKey::new_ed25519(account_hash.value()).unwrap(),
+            balance,
+            bonded_amount,
+        ))
     }
 }
 

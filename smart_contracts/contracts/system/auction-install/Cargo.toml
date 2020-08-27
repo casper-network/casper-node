@@ -1,0 +1,21 @@
+[package]
+name = "auction-install"
+version = "0.1.0"
+authors = ["Michał Papierski <michal@casperlabs.io>"]
+edition = "2018"
+
+[[bin]]
+name = "auction_install"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[features]
+std = ["casperlabs-contract/std", "casperlabs-types/std"]
+no-unstable-features = ["casperlabs-contract/no-unstable-features", "casperlabs-types/no-unstable-features"]
+
+[dependencies]
+casperlabs-contract = { path = "../../../contract" }
+auction = { version = "0.1.0", path = "../auction" }
+casperlabs-types = { version = "0.6.0", path = "../../../../types" }

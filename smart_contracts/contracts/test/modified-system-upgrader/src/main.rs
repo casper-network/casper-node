@@ -82,8 +82,8 @@ fn upgrade_mint() -> (ContractHash, ContractVersion) {
 
 fn upgrade_proof_of_stake() -> (ContractHash, ContractVersion) {
     use pos::{
-        ARG_ACCOUNT_KEY, ARG_AMOUNT, ARG_PURSE, METHOD_BOND, METHOD_FINALIZE_PAYMENT,
-        METHOD_GET_PAYMENT_PURSE, METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE, METHOD_UNBOND,
+        ARG_ACCOUNT_KEY, ARG_AMOUNT, ARG_PURSE, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
+        METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE,
     };
 
     const HASH_KEY_NAME: &str = "pos_hash";
@@ -100,27 +100,6 @@ fn upgrade_proof_of_stake() -> (ContractHash, ContractVersion) {
 
     let entry_points = {
         let mut entry_points = EntryPoints::new();
-
-        let bond = EntryPoint::new(
-            METHOD_BOND,
-            vec![
-                Parameter::new(ARG_AMOUNT, CLType::U512),
-                Parameter::new(ARG_PURSE, CLType::URef),
-            ],
-            CLType::Unit,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(bond);
-
-        let unbond = EntryPoint::new(
-            METHOD_UNBOND,
-            vec![Parameter::new(ARG_AMOUNT, CLType::U512)],
-            CLType::Unit,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(unbond);
 
         let get_payment_purse = EntryPoint::new(
             METHOD_GET_PAYMENT_PURSE,
@@ -167,16 +146,6 @@ fn upgrade_proof_of_stake() -> (ContractHash, ContractVersion) {
     let named_keys = NamedKeys::new();
 
     storage::add_contract_version(pos_package_hash, entry_points, named_keys)
-}
-
-#[no_mangle]
-pub extern "C" fn bond() {
-    pos::bond();
-}
-
-#[no_mangle]
-pub extern "C" fn unbond() {
-    pos::unbond();
 }
 
 #[no_mangle]
