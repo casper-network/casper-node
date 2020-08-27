@@ -127,7 +127,7 @@ impl<'a, C: Context> Tallies<'a, C> {
     /// ancestor of all entries in `self`. Returns `None` if `self` is empty.
     pub(crate) fn find_decided(&self, state: &'a State<C>) -> Option<(u64, &'a C::Hash)> {
         let max_height = *self.0.keys().next_back()?;
-        let total_weight = self.0.values().map(Tally::weight).sum();
+        let total_weight: Weight = self.0.values().map(Tally::weight).sum();
         // In the loop, this will be the tally of all votes from higher than the current height.
         let mut prev_tally = self[max_height].clone();
         // Start from `max_height - 1` and find the greatest height where a decision can be made.
@@ -140,7 +140,7 @@ impl<'a, C: Context> Tallies<'a, C> {
             }
             // If any block received more than 50%, a decision can be made: Either that block is
             // the fork choice, or we can pick its highest scoring child from `prev_tally`.
-            if h_tally.max_w() * 2 > total_weight {
+            if h_tally.max_w() > total_weight / 2 {
                 return Some(
                     match prev_tally.filter_descendants(height, h_tally.max_bhash(), state) {
                         Some(filtered) => (height + 1, filtered.max_bhash()),

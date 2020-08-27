@@ -25,7 +25,7 @@ pub(crate) enum Effect<C: Context> {
     ScheduleTimer(Timestamp),
     /// `propose` needs to be called with a value for a new block with the specified block context
     /// and parent value.
-    RequestNewBlock(BlockContext, Option<C::ConsensusValue>),
+    RequestNewBlock(BlockContext),
 }
 
 /// A validator that actively participates in consensus by creating new vertices.
@@ -172,10 +172,9 @@ impl<C: Context> ActiveValidator<C> {
         }
         let opt_parent = opt_parent_hash.map(|bh| state.block(bh));
         let height = opt_parent.map_or(0, |block| block.height);
-        let opt_value = opt_parent.map(|block| block.value.clone());
         self.next_proposal = Some((timestamp, panorama));
         let bctx = BlockContext::new(timestamp, height);
-        Some(Effect::RequestNewBlock(bctx, opt_value))
+        Some(Effect::RequestNewBlock(bctx))
     }
 
     /// Proposes a new block with the given consensus value.
@@ -407,7 +406,7 @@ mod tests {
 
         // Alice wants to propose a block, and also make her witness vote at 426.
         let bctx = match &*alice_av.handle_timer(416.into(), &state, &mut rng) {
-            [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock(bctx, None)]
+            [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock(bctx)]
                 if *timestamp == 426.into() =>
             {
                 bctx.clone()

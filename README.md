@@ -43,29 +43,26 @@ make build-system-contracts -j
 
 ### Running
 
-To run a validator node with the [local configuration options](resources/local/config.toml):
+To run a validator node you will need to specify a config file.  For example, this is one with
+[local configuration options](resources/local/config.toml).
+
+Note that all paths specified in the config file must be absolute paths or relative to the config file itself.
+
+It is possible to specify individual config file options from the command line using one or more args in the form of
+`-C=<SECTION>.<KEY>=<VALUE>`.  These will override values set in a config file if provided, or will override the
+default values otherwise.  For example:
 
 ```
-cargo run --release -- validator -c=resources/local/config.toml
+cargo run --release -- validator -c=resources/local/config.toml -C=consensus.secret_key_path=secret_keys/node-1.pem
 ```
 
-It is likely that the configuration requires editing however, so typically one will want to generate a configuration
-file first, edit it and then run:
+To create a config file for editing, you can either copy the example config file linked above, or you can generate a
+default one:
 
 ```
 cargo run --release -- generate-config > config.toml
 # ... edit config.toml
 cargo run --release -- validator -c=config.toml
-```
-
-Note that all paths specified in the config file must be absolute paths or relative to the config file itself.
-
-It is also possible to specify individual config file options from the command line using one or more args in the form
-of `-C=<SECTION>.<KEY>=<VALUE>`.  These will override values set in a config file if provided, or will override the
-default values otherwise.
-
-```
-cargo run --release -- validator -c=resources/local/config.toml -C=consensus.secret_key_path=secret_keys/node-1.pem
 ```
 
 **NOTE:** If you want to run multiple instances on the same machine, ensure you modify the `[storage.path]` field of

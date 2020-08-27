@@ -85,8 +85,8 @@ impl Display for Event {
                 deploys,
             } => write!(
                 f,
-                "fetch deploys for finalized block {} has {} deploys",
-                state.finalized_block.proto_block().hash(),
+                "fetch deploys for finalized block with height {} has {} deploys",
+                state.finalized_block.height(),
                 deploys.len()
             ),
             Event::DeployExecutionResult {
@@ -94,8 +94,8 @@ impl Display for Event {
                 result: Ok(_),
             } => write!(
                 f,
-                "deploys execution result for finalized block {} with pre-state hash {}: success",
-                state.finalized_block.proto_block().hash(),
+                "deploys execution result for finalized block with height {} with pre-state hash {}: success",
+                state.finalized_block.height(),
                 state.pre_state_hash
             ),
             Event::DeployExecutionResult {
@@ -103,21 +103,21 @@ impl Display for Event {
                 result: Err(_),
             } => write!(
                 f,
-                "deploys execution result for finalized block {} with pre-state hash {}: root not found",
-                state.finalized_block.proto_block().hash(),
+                "deploys execution result for finalized block with height {} with pre-state hash {}: root not found",
+                state.finalized_block.height(),
                 state.pre_state_hash
             ),
             Event::CommitExecutionEffects { state, commit_result: Ok(CommitResult::Success { state_root, ..})} => write!(
                 f,
-                "commit execution effects for finalized block {} with pre-state hash {}: success with post-state hash {}",
-                state.finalized_block.proto_block().hash(),
+                "commit execution effects for finalized block with height {} with pre-state hash {}: success with post-state hash {}",
+                state.finalized_block.height(),
                 state.pre_state_hash,
                 state_root,
             ),
             Event::CommitExecutionEffects { state, commit_result } => write!(
                 f,
-                "commit execution effects for finalized block {} with pre-state hash {}: failed {:?}",
-                state.finalized_block.proto_block().hash(),
+                "commit execution effects for finalized block with height {} with pre-state hash {}: failed {:?}",
+                state.finalized_block.height(),
                 state.pre_state_hash,
                 commit_result,
             ),
@@ -148,7 +148,7 @@ type BlockHeight = u64;
 /// The Block executor component.
 #[derive(Debug, Default)]
 pub(crate) struct BlockExecutor {
-    genesis_post_state_hash: Option<Digest>,
+    genesis_post_state_hash: Digest,
     /// A mapping from proto block to executed block's ID and post-state hash, to allow
     /// identification of a parent block's details once a finalized block has been executed.
     ///
@@ -160,7 +160,7 @@ pub(crate) struct BlockExecutor {
 impl BlockExecutor {
     pub(crate) fn new(genesis_post_state_hash: Digest) -> Self {
         BlockExecutor {
-            genesis_post_state_hash: Some(genesis_post_state_hash),
+            genesis_post_state_hash,
             parent_map: HashMap::new(),
         }
     }
@@ -287,8 +287,8 @@ impl BlockExecutor {
     }
 
     fn pre_state_hash(&mut self, finalized_block: &FinalizedBlock) -> Digest {
-        if finalized_block.is_genesis_child() && self.genesis_post_state_hash.is_some() {
-            self.genesis_post_state_hash.take().unwrap()
+        if finalized_block.is_genesis_child() {
+            self.genesis_post_state_hash
         } else {
             // Try to get the parent's post-state-hash from the `parent_map`.
             // We're subtracting 1 from the height as we want to get _parent's_ post-state hash.

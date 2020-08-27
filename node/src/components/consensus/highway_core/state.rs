@@ -106,10 +106,11 @@ impl<C: Context> State<C> {
         );
         let mut sum = Weight(0);
         let add = |w: &Weight| {
-            sum += *w;
+            sum = sum.checked_add(*w).expect("total weight must be < 2^64");
             sum
         };
         let cumulative_w = weights.iter().map(add).collect();
+        assert!(sum > Weight(0), "total weight must not be zero");
         let panorama = Panorama::new(weights.len());
         State {
             params,

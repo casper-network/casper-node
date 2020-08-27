@@ -82,12 +82,13 @@ fn compute_rewards_for<C: Context>(
         .zip(state.weights())
         .map(|(quorum, weight)| {
             // If the summit's quorum was not enough to finalize the block, rewards are reduced.
-            let finality_factor = if *quorum * 2 > state.total_weight() + fault_w * 2 {
+            let finality_factor = if *quorum > state.total_weight() / 2 + fault_w {
                 state.params().block_reward()
             } else {
                 state.params().reduced_block_reward()
             };
             // Rewards are proportional to the quorum and to the validator's weight.
+            // Since  quorum <= assigned_weight  and  weight <= total_weight,  this won't overflow.
             (u128::from(finality_factor) * u128::from(*quorum) / u128::from(assigned_weight)
                 * u128::from(*weight)
                 / u128::from(state.total_weight())) as u64
