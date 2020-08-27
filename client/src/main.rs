@@ -1,15 +1,11 @@
 mod common;
-mod get_deploy;
+mod deploy;
 mod keygen;
-mod list_deploys;
-mod put_deploy;
 
 use clap::{crate_version, App, ArgMatches};
 
-use get_deploy::GetDeploy;
+use deploy::{GetDeploy, ListDeploys, PutDeploy};
 use keygen::Keygen;
-use list_deploys::ListDeploys;
-use put_deploy::PutDeploy;
 
 const APP_NAME: &str = "CasperLabs client";
 const ABOUT: &str = "A client for interacting with the CasperLabs network";
