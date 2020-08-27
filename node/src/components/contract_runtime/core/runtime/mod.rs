@@ -1969,10 +1969,10 @@ where
                     Self::get_named_argument(&runtime_args, auction::ARG_SOURCE_PURSE)?;
                 let delegation_rate =
                     Self::get_named_argument(&runtime_args, auction::ARG_DELEGATION_RATE)?;
-                let quantity = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = self
-                    .add_bid(account_hash, source_purse, delegation_rate, quantity)
+                    .add_bid(account_hash, source_purse, delegation_rate, amount)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)?
@@ -1981,10 +1981,10 @@ where
             auction::METHOD_WITHDRAW_BID => {
                 let account_hash =
                     Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
-                let quantity = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = self
-                    .withdraw_bid(account_hash, quantity)
+                    .withdraw_bid(account_hash, amount)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
@@ -1994,10 +1994,10 @@ where
                 let source_purse =
                     Self::get_named_argument(&runtime_args, auction::ARG_SOURCE_PURSE)?;
                 let validator = Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
-                let quantity = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = self
-                    .delegate(delegator, source_purse, validator, quantity)
+                    .delegate(delegator, source_purse, validator, amount)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)?
@@ -2006,10 +2006,10 @@ where
             auction::METHOD_UNDELEGATE => {
                 let delegator = Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
                 let validator = Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
-                let quantity = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = self
-                    .undelegate(delegator, validator, quantity)
+                    .undelegate(delegator, validator, amount)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)?
@@ -2031,24 +2031,22 @@ where
                 CLValue::from_t(()).map_err(Self::reverter)?
             }
 
-            // Type: `fn bond(account_hash: AccountHash, source_purse: URef, quantity: U512) -> Result<(URef, U512), Error>`
+            // Type: `fn bond(account_hash: AccountHash, source_purse: URef, amount: U512) -> Result<(URef, U512), Error>`
             auction::METHOD_BOND => {
                 let public_key = Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
                 let source_purse: URef =
                     Self::get_named_argument(&runtime_args, auction::ARG_SOURCE_PURSE)?;
-                let quantity: U512 = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let amount: U512 = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
                 let result = runtime
-                    .bond(public_key, source_purse, quantity)
+                    .bond(public_key, source_purse, amount)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
-            // Type: `fn unbond(account_hash: AccountHash, source_purse: URef, quantity: U512) -> Result<(URef, U512), Error>`
+            // Type: `fn unbond(account_hash: AccountHash, source_purse: URef, amount: U512) -> Result<(URef, U512), Error>`
             auction::METHOD_UNBOND => {
                 let public_key = Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
-                let quantity: U512 = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
-                let result = runtime
-                    .unbond(public_key, quantity)
-                    .map_err(Self::reverter)?;
+                let amount: U512 = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let result = runtime.unbond(public_key, amount).map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
             // Type: `fn process_unbond_requests() -> Result<(), Error>`

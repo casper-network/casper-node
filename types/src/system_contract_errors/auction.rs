@@ -26,9 +26,9 @@ pub enum Error {
     /// Triggered when contract was unable to transfer desired amount of tokens.
     #[fail(display = "Transfer error")]
     Transfer = 4,
-    /// User passed invalid quantity of tokens which might result in wrong values after calculation.
-    #[fail(display = "Invalid quantity")]
-    InvalidQuantity = 5,
+    /// User passed invalid amount of tokens which might result in wrong values after calculation.
+    #[fail(display = "Invalid amount")]
+    InvalidAmount = 5,
     /// Unable to find a bid by account hash in `active_bids` map.
     #[fail(display = "Bid not found")]
     BidNotFound = 6,

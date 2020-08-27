@@ -111,10 +111,10 @@ pub extern "C" fn add_bid() {
 #[no_mangle]
 pub extern "C" fn withdraw_bid() {
     let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
-    let quantity = runtime::get_named_arg(ARG_AMOUNT);
+    let amount = runtime::get_named_arg(ARG_AMOUNT);
 
     let result = AuctionContract
-        .withdraw_bid(public_key, quantity)
+        .withdraw_bid(public_key, amount)
         .unwrap_or_revert();
     let cl_value = CLValue::from_t(result).unwrap_or_revert();
     runtime::ret(cl_value)
@@ -125,10 +125,10 @@ pub extern "C" fn delegate() {
     let delegator = runtime::get_named_arg(ARG_DELEGATOR);
     let source_purse = runtime::get_named_arg(ARG_SOURCE_PURSE);
     let validator = runtime::get_named_arg(ARG_VALIDATOR);
-    let quantity = runtime::get_named_arg(ARG_AMOUNT);
+    let amount = runtime::get_named_arg(ARG_AMOUNT);
 
     let result = AuctionContract
-        .delegate(delegator, source_purse, validator, quantity)
+        .delegate(delegator, source_purse, validator, amount)
         .unwrap_or_revert();
 
     let cl_value = CLValue::from_t(result).unwrap_or_revert();
@@ -139,10 +139,10 @@ pub extern "C" fn delegate() {
 pub extern "C" fn undelegate() {
     let delegator = runtime::get_named_arg(ARG_DELEGATOR);
     let validator = runtime::get_named_arg(ARG_VALIDATOR);
-    let quantity = runtime::get_named_arg(ARG_AMOUNT);
+    let amount = runtime::get_named_arg(ARG_AMOUNT);
 
     let result = AuctionContract
-        .undelegate(delegator, validator, quantity)
+        .undelegate(delegator, validator, amount)
         .unwrap_or_revert();
 
     let cl_value = CLValue::from_t(result).unwrap_or_revert();

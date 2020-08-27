@@ -75,7 +75,7 @@ fn call_bond(auction: ContractHash, public_key: PublicKey, bond_amount: U512, bo
         auction::ARG_PUBLIC_KEY => public_key,
     };
 
-    let (_purse, _quantity): (URef, U512) = runtime::call_contract(auction, ARG_BOND, args);
+    let (_purse, _amount): (URef, U512) = runtime::call_contract(auction, ARG_BOND, args);
 }
 
 fn unbond() {

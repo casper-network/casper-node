@@ -170,14 +170,14 @@ where
         // Update bids or stakes
         let mut founding_validators = internal::get_founding_validators(self)?;
 
-        let new_quantity = match founding_validators.get_mut(&public_key) {
+        let new_amount = match founding_validators.get_mut(&public_key) {
             Some(founding_validator) if !founding_validator.funds_locked => {
                 // Carefully decrease bonded funds
 
                 let new_staked_amount = founding_validator
                     .staked_amount
                     .checked_sub(amount)
-                    .ok_or(Error::InvalidQuantity)?;
+                    .ok_or(Error::InvalidAmount)?;
 
                 internal::set_founding_validators(self, founding_validators)?;
 
@@ -196,7 +196,7 @@ where
                 let new_amount = active_bid
                     .bid_amount
                     .checked_sub(amount)
-                    .ok_or(Error::InvalidQuantity)?;
+                    .ok_or(Error::InvalidAmount)?;
 
                 internal::set_active_bids(self, active_bids)?;
 
@@ -204,9 +204,9 @@ where
             }
         };
 
-        let (unbonding_purse, _total_quantity) = self.unbond(public_key, amount)?;
+        let (unbonding_purse, _total_amount) = self.unbond(public_key, amount)?;
 
-        Ok((unbonding_purse, new_quantity))
+        Ok((unbonding_purse, new_amount))
     }
 
     /// Adds a new delegator to delegators, or tops off a current one. If the target validator is
@@ -229,10 +229,10 @@ where
 
         let (bonding_purse, _total_amount) = self.bond(delegator_public_key, source, amount)?;
 
-        let new_quantity = {
+        let new_amount = {
             let mut delegators = internal::get_delegators(self)?;
 
-            let new_quantity = *delegators
+            let new_amount = *delegators
                 .entry(validator_public_key)
                 .or_default()
                 .entry(delegator_public_key)
@@ -241,10 +241,10 @@ where
 
             internal::set_delegators(self, delegators)?;
 
-            new_quantity
+            new_amount
         };
 
-        Ok((bonding_purse, new_quantity))
+        Ok((bonding_purse, new_amount))
     }
 
     /// Removes a quantity (or the entry altogether, if the remaining quantity is 0) of motes from
@@ -279,7 +279,7 @@ where
 
             let new_amount = delegators_amount
                 .checked_sub(amount)
-                .ok_or(Error::InvalidQuantity)?;
+                .ok_or(Error::InvalidAmount)?;
 
             *delegators_amount = new_amount;
             new_amount

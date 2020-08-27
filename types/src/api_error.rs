@@ -212,7 +212,7 @@ const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
 /// 64_516 => AuctionError::Transfer
 /// # );
 /// # show_and_check!(
-/// 64_517 => AuctionError::InvalidQuantity
+/// 64_517 => AuctionError::InvalidAmount
 /// # );
 /// # show_and_check!(
 /// 64_518 => AuctionError::BidNotFound

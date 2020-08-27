@@ -72,7 +72,7 @@ fn withdraw_bid() {
         ARG_PUBLIC_KEY => public_key,
     };
 
-    let (_purse, _quantity): (URef, U512) =
+    let (_purse, _amount): (URef, U512) =
         runtime::call_contract(auction, METHOD_WITHDRAW_BID, args);
 }
 
@@ -80,25 +80,25 @@ fn delegate() {
     let auction = system::get_auction();
     let delegator: PublicKey = runtime::get_named_arg(ARG_DELEGATOR);
     let validator: PublicKey = runtime::get_named_arg(ARG_VALIDATOR);
-    let quantity: U512 = runtime::get_named_arg(ARG_AMOUNT);
+    let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
     let args = runtime_args! {
         ARG_DELEGATOR => delegator,
         ARG_VALIDATOR => validator,
         ARG_SOURCE_PURSE => account::get_main_purse(),
-        ARG_AMOUNT => quantity,
+        ARG_AMOUNT => amount,
     };
 
-    let (_purse, _quantity): (URef, U512) = runtime::call_contract(auction, METHOD_DELEGATE, args);
+    let (_purse, _amount): (URef, U512) = runtime::call_contract(auction, METHOD_DELEGATE, args);
 }
 
 fn undelegate() {
     let auction = system::get_auction();
-    let quantity: U512 = runtime::get_named_arg(ARG_AMOUNT);
+    let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
     let delegator: PublicKey = runtime::get_named_arg(ARG_DELEGATOR);
     let validator: PublicKey = runtime::get_named_arg(ARG_VALIDATOR);
 
     let args = runtime_args! {
-        ARG_AMOUNT => quantity,
+        ARG_AMOUNT => amount,
         ARG_VALIDATOR => validator,
         ARG_DELEGATOR => delegator,
     };
