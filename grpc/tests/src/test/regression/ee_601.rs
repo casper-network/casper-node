@@ -15,12 +15,12 @@ const ARG_AMOUNT: &str = "amount";
 #[ignore]
 #[test]
 fn should_run_ee_601_pay_session_new_uref_collision() {
-    let genesis_account_hash = DEFAULT_ACCOUNT_ADDR;
+    let genesis_account_hash = *DEFAULT_ACCOUNT_ADDR;
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
             .with_deploy_hash([1; 32])
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_payment_code(
                 "ee_601_regression.wasm",
                 runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT },
@@ -42,7 +42,7 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
     let transform = &transforms[0];
 
     let add_keys = if let Some(Transform::AddKeys(keys)) =
-        transform.get(&Key::Account(DEFAULT_ACCOUNT_ADDR))
+        transform.get(&Key::Account(*DEFAULT_ACCOUNT_ADDR))
     {
         keys
     } else {

@@ -24,6 +24,7 @@ impl From<CLType> for state::CLType {
             CLType::String => pb_type.set_simple_type(state::CLType_Simple::STRING),
             CLType::Key => pb_type.set_simple_type(state::CLType_Simple::KEY),
             CLType::URef => pb_type.set_simple_type(state::CLType_Simple::UREF),
+            CLType::PublicKey => pb_type.set_simple_type(state::CLType_Simple::PUBLIC_KEY),
             CLType::Option(inner) => {
                 pb_type.mut_option_type().set_inner((*inner).into());
             }
@@ -94,6 +95,7 @@ impl TryFrom<state::CLType> for CLType {
             CLType_oneof_variants::simple_type(CLType_Simple::STRING) => CLType::String,
             CLType_oneof_variants::simple_type(CLType_Simple::KEY) => CLType::Key,
             CLType_oneof_variants::simple_type(CLType_Simple::UREF) => CLType::URef,
+            CLType_oneof_variants::simple_type(CLType_Simple::PUBLIC_KEY) => CLType::PublicKey,
             CLType_oneof_variants::option_type(mut pb_option) => {
                 let inner = pb_option.take_inner().try_into()?;
                 CLType::Option(Box::new(inner))

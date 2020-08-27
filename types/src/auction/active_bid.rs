@@ -1,14 +1,20 @@
-use crate::DelegationRate;
 use alloc::{collections::BTreeMap, vec::Vec};
-use casperlabs_types::{
-    account::AccountHash,
+
+use super::types::DelegationRate;
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    CLType, CLTyped, URef, U512,
+    CLType, CLTyped, PublicKey, URef, U512,
 };
 
+#[cfg_attr(test, derive(Debug))]
+#[derive(PartialEq)]
+/// Contains definition of an active bid.
 pub struct ActiveBid {
+    /// A purse that was used to bid.
     pub bid_purse: URef,
+    /// Total amount of bid.
     pub bid_amount: U512,
+    /// Rate of delegation.
     pub delegation_rate: DelegationRate,
 }
 
@@ -53,4 +59,20 @@ impl FromBytes for ActiveBid {
 /// rates. There is no distinction in behavior between the bid of an active
 /// validator and a prospective validator - reducing the bid results in the
 /// tokens being transferred to an unbonding purse either way.
-pub type ActiveBids = BTreeMap<AccountHash, ActiveBid>;
+pub type ActiveBids = BTreeMap<PublicKey, ActiveBid>;
+
+#[cfg(test)]
+mod tests {
+    use super::ActiveBid;
+    use crate::{auction::DelegationRate, bytesrepr, AccessRights, URef, U512};
+
+    #[test]
+    fn serialization_roundtrip() {
+        let active_bid = ActiveBid {
+            bid_purse: URef::new([42; 32], AccessRights::READ_ADD_WRITE),
+            bid_amount: U512::max_value(),
+            delegation_rate: DelegationRate::max_value(),
+        };
+        bytesrepr::test_serialization_roundtrip(&active_bid);
+    }
+}

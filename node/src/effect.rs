@@ -74,7 +74,7 @@ use semver::Version;
 use smallvec::{smallvec, SmallVec};
 use tracing::error;
 
-use casperlabs_types::{Key, ProtocolVersion};
+use casperlabs_types::Key;
 use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
 
 use crate::{
@@ -795,7 +795,6 @@ impl<REv> EffectBuilder<REv> {
     /// Requests a commit of effects on the Contract Runtime component.
     pub(crate) async fn request_commit(
         self,
-        protocol_version: ProtocolVersion,
         pre_state_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<CommitResult, engine_state::Error>
@@ -804,7 +803,6 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ContractRuntimeRequest::Commit {
-                protocol_version,
                 pre_state_hash,
                 effects,
                 responder,

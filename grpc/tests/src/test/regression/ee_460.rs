@@ -13,7 +13,7 @@ const ARG_AMOUNT: &str = "amount";
 #[test]
 fn should_run_ee_460_no_side_effects_on_error_regression() {
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_EE_460_REGRESSION,
         runtime_args! { ARG_AMOUNT => U512::max_value() },
     )

@@ -1,7 +1,6 @@
 //! Functions for converting between CasperLabs types and their Protobuf equivalents which are
 //! defined in protobuf/io/casperlabs/ipc/ipc.proto
 
-mod bond;
 mod deploy_item;
 mod deploy_result;
 mod exec_config;

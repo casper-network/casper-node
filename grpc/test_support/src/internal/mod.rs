@@ -17,12 +17,13 @@ use casperlabs_node::{
         },
         shared::{newtypes::Blake2bHash, test_utils, wasm_costs::WasmCosts},
     },
+    crypto::asymmetric_key::{PublicKey, SecretKey},
     types::Motes,
     GenesisAccount,
 };
 use casperlabs_types::{account::AccountHash, ProtocolVersion, U512};
 
-use super::{DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE};
+use super::DEFAULT_ACCOUNT_INITIAL_BALANCE;
 pub use additive_map_diff::AdditiveMapDiff;
 pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
@@ -34,22 +35,26 @@ pub use wasm_test_builder::{
 pub const MINT_INSTALL_CONTRACT: &str = "mint_install.wasm";
 pub const POS_INSTALL_CONTRACT: &str = "pos_install.wasm";
 pub const STANDARD_PAYMENT_INSTALL_CONTRACT: &str = "standard_payment_install.wasm";
+pub const AUCTION_INSTALL_CONTRACT: &str = "auction_install.wasm";
 
 pub const DEFAULT_CHAIN_NAME: &str = "gerald";
 pub const DEFAULT_GENESIS_TIMESTAMP: u64 = 0;
 pub const DEFAULT_BLOCK_TIME: u64 = 0;
 pub const MOCKED_ACCOUNT_ADDRESS: AccountHash = AccountHash::new([48u8; 32]);
 
-pub const DEFAULT_ACCOUNT_KEY: AccountHash = DEFAULT_ACCOUNT_ADDR;
-
 pub const ARG_AMOUNT: &str = "amount";
 
 lazy_static! {
     pub static ref DEFAULT_GENESIS_CONFIG_HASH: Blake2bHash = [42; 32].into();
+    pub static ref DEFAULT_ACCOUNT_SECRET_KEY: SecretKey = SecretKey::new_ed25519([111; 32]);
+    pub static ref DEFAULT_ACCOUNT_PUBLIC_KEY: PublicKey =
+        PublicKey::from(DEFAULT_ACCOUNT_SECRET_KEY.deref());
+    pub static ref DEFAULT_ACCOUNT_ADDR: AccountHash = DEFAULT_ACCOUNT_PUBLIC_KEY.to_account_hash();
+    pub static ref DEFAULT_ACCOUNT_KEY: AccountHash = *DEFAULT_ACCOUNT_ADDR;
     pub static ref DEFAULT_ACCOUNTS: Vec<GenesisAccount> = {
         let mut ret = Vec::new();
-        let genesis_account = GenesisAccount::new(
-            DEFAULT_ACCOUNT_ADDR,
+        let genesis_account = GenesisAccount::with_public_key(
+            *DEFAULT_ACCOUNT_PUBLIC_KEY,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::zero(),
         );
@@ -63,15 +68,18 @@ lazy_static! {
         let mint_installer_bytes;
         let pos_installer_bytes;
         let standard_payment_installer_bytes;
+        let auction_installer_bytes;
         mint_installer_bytes = utils::read_wasm_file_bytes(MINT_INSTALL_CONTRACT);
         pos_installer_bytes = utils::read_wasm_file_bytes(POS_INSTALL_CONTRACT);
         standard_payment_installer_bytes =
             utils::read_wasm_file_bytes(STANDARD_PAYMENT_INSTALL_CONTRACT);
+        auction_installer_bytes = utils::read_wasm_file_bytes(AUCTION_INSTALL_CONTRACT);
 
         ExecConfig::new(
             mint_installer_bytes,
             pos_installer_bytes,
             standard_payment_installer_bytes,
+            auction_installer_bytes,
             DEFAULT_ACCOUNTS.clone(),
             *DEFAULT_WASM_COSTS,
         )

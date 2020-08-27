@@ -10,7 +10,7 @@ const CONTRACT_DESERIALIZE_ERROR: &str = "deserialize_error.wasm";
 #[test]
 fn should_not_fail_deserializing() {
     let exec_request = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_DESERIALIZE_ERROR,
         RuntimeArgs::new(),
     )

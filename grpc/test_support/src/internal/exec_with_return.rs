@@ -86,7 +86,8 @@ where
         let mint = builder.get_mint_contract_hash();
         let pos = builder.get_mint_contract_hash();
         let standard_payment = builder.get_standard_payment_contract_hash();
-        ProtocolData::new(*DEFAULT_WASM_COSTS, mint, pos, standard_payment)
+        let auction = builder.get_auction_contract_hash();
+        ProtocolData::new(*DEFAULT_WASM_COSTS, mint, pos, standard_payment, auction)
     };
 
     let context = RuntimeContext::new(

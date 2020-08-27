@@ -25,9 +25,8 @@ const DEPLOY_HASH_2: [u8; 32] = [2u8; 32];
 const N_VALIDATORS: u8 = 5;
 
 // one named_key for each validator and three for the purses
-const EXPECTED_KNOWN_KEYS_LEN: usize = (N_VALIDATORS as usize) + 3;
+const EXPECTED_KNOWN_KEYS_LEN: usize = 2;
 
-const POS_BONDING_PURSE: &str = "pos_bonding_purse";
 const POS_PAYMENT_PURSE: &str = "pos_payment_purse";
 const POS_REWARDS_PURSE: &str = "pos_rewards_purse";
 
@@ -38,12 +37,11 @@ const ARG_GENESIS_VALIDATORS: &str = "genesis_validators";
 #[test]
 fn should_run_pos_install_contract() {
     let mut builder = WasmTestBuilder::default();
-    let engine_config = EngineConfig::new()
-        .with_use_system_contracts(cfg!(feature = "use-system-contracts"))
-        .with_enable_bonding(cfg!(feature = "enable-bonding"));
+    let engine_config =
+        EngineConfig::new().with_use_system_contracts(cfg!(feature = "use-system-contracts"));
 
     let exec_request = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! { "target" =>SYSTEM_ADDR, "amount" => U512::from(TRANSFER_AMOUNT) },
     )
@@ -63,12 +61,6 @@ fn should_run_pos_install_contract() {
 
     let mint_package_hash = mint_package.contract_package_hash();
 
-    let genesis_validators: BTreeMap<AccountHash, U512> = (1u8..=N_VALIDATORS)
-        .map(|i| (AccountHash::new([i; 32]), U512::from(i)))
-        .collect();
-
-    let total_bond = genesis_validators.values().fold(U512::zero(), |x, y| x + y);
-
     let res = exec_with_return::exec(
         engine_config,
         &mut builder,
@@ -79,7 +71,6 @@ fn should_run_pos_install_contract() {
         "install",
         runtime_args! {
             ARG_MINT_PACKAGE_HASH => mint_package_hash,
-            ARG_GENESIS_VALIDATORS => genesis_validators,
         },
         vec![],
     );
@@ -102,15 +93,6 @@ fn should_run_pos_install_contract() {
     let named_keys = contract.named_keys();
 
     assert_eq!(named_keys.len(), EXPECTED_KNOWN_KEYS_LEN);
-
-    // bonding purse has correct balance
-    let bonding_purse = get_purse(named_keys, POS_BONDING_PURSE).expect(
-        "should find bonding purse in
-    named_keys",
-    );
-
-    let bonding_purse_balance = builder.get_purse_balance(bonding_purse);
-    assert_eq!(bonding_purse_balance, total_bond);
 
     // payment purse has correct balance
     let payment_purse = get_purse(named_keys, POS_PAYMENT_PURSE).expect(

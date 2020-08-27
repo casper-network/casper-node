@@ -13,7 +13,7 @@ fn should_run_get_blocktime_contract() {
     let block_time: u64 = 42;
 
     let exec_request = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_GET_BLOCKTIME,
         runtime_args! { ARG_KNOWN_BLOCK_TIME => block_time },
     )

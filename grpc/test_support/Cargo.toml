@@ -27,7 +27,6 @@ protobuf = "=2.8"
 version-sync = "0.8"
 
 [features]
-enable-bonding = []
 use-as-wasm = []
 use-system-contracts = []
 test-support = ["casperlabs-engine-grpc-server/test-support", "casperlabs-contract/test-support"]

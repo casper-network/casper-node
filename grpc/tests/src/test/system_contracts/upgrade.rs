@@ -116,7 +116,7 @@ fn should_upgrade_system_contract() {
 
     let exec_request = {
         ExecuteRequestBuilder::standard(
-            DEFAULT_ACCOUNT_ADDR,
+            *DEFAULT_ACCOUNT_ADDR,
             &MODIFIED_MINT_CALLER_CONTRACT_NAME,
             runtime_args! { "amount" => U512::from(PAYMENT_AMOUNT) },
         )
@@ -130,7 +130,7 @@ fn should_upgrade_system_contract() {
     let transform = &transforms[0];
 
     let new_keys = if let Some(Transform::AddKeys(keys)) =
-        transform.get(&Key::Account(DEFAULT_ACCOUNT_ADDR))
+        transform.get(&Key::Account(*DEFAULT_ACCOUNT_ADDR))
     {
         keys
     } else {
@@ -195,7 +195,7 @@ fn should_upgrade_system_contract_on_patch_bump() {
 
     let exec_request = {
         ExecuteRequestBuilder::standard(
-            DEFAULT_ACCOUNT_ADDR,
+            *DEFAULT_ACCOUNT_ADDR,
             &MODIFIED_MINT_CALLER_CONTRACT_NAME,
             runtime_args! { ARG_TARGET => U512::from(PAYMENT_AMOUNT) },
         )
@@ -209,7 +209,7 @@ fn should_upgrade_system_contract_on_patch_bump() {
     let transform = &transforms[0];
 
     let new_keys = if let Some(Transform::AddKeys(keys)) =
-        transform.get(&Key::Account(DEFAULT_ACCOUNT_ADDR))
+        transform.get(&Key::Account(*DEFAULT_ACCOUNT_ADDR))
     {
         keys
     } else {
@@ -274,7 +274,7 @@ fn should_upgrade_system_contract_on_minor_bump() {
 
     let exec_request = {
         ExecuteRequestBuilder::standard(
-            DEFAULT_ACCOUNT_ADDR,
+            *DEFAULT_ACCOUNT_ADDR,
             &MODIFIED_MINT_CALLER_CONTRACT_NAME,
             runtime_args! {ARG_TARGET => U512::from(PAYMENT_AMOUNT) },
         )
@@ -288,7 +288,7 @@ fn should_upgrade_system_contract_on_minor_bump() {
     let transform = &transforms[0];
 
     let new_keys = if let Some(Transform::AddKeys(keys)) =
-        transform.get(&Key::Account(DEFAULT_ACCOUNT_ADDR))
+        transform.get(&Key::Account(*DEFAULT_ACCOUNT_ADDR))
     {
         keys
     } else {
@@ -438,7 +438,7 @@ fn should_upgrade_system_contract_and_wasm_costs_major() {
 
     let exec_request = {
         ExecuteRequestBuilder::standard(
-            DEFAULT_ACCOUNT_ADDR,
+            *DEFAULT_ACCOUNT_ADDR,
             &MODIFIED_MINT_CALLER_CONTRACT_NAME,
             runtime_args! {ARG_TARGET => U512::from(PAYMENT_AMOUNT) },
         )
@@ -452,7 +452,7 @@ fn should_upgrade_system_contract_and_wasm_costs_major() {
     let transform = &transforms[0];
 
     let new_keys = if let Some(Transform::AddKeys(keys)) =
-        transform.get(&Key::Account(DEFAULT_ACCOUNT_ADDR))
+        transform.get(&Key::Account(*DEFAULT_ACCOUNT_ADDR))
     {
         keys
     } else {

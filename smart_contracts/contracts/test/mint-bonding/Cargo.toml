@@ -1,0 +1,19 @@
+[package]
+name = "mint-bonding"
+version = "0.1.0"
+authors = ["Michał Papierski <michal@casperlabs.io>"]
+edition = "2018"
+
+[[bin]]
+name = "mint_bonding"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[features]
+std = ["casperlabs-contract/std", "casperlabs-types/std"]
+
+[dependencies]
+casperlabs-contract = { path = "../../../contract" }
+casperlabs-types = { path = "../../../../types" }

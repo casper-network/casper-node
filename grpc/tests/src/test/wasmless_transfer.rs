@@ -309,7 +309,7 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
                 get_default_account_named_uref(&mut builder, TRANSFER_RESULT_NAMED_KEY);
             // passes an invalid uref as source (an existing uref that is not a purse uref)
             (
-                DEFAULT_ACCOUNT_ADDR,
+                *DEFAULT_ACCOUNT_ADDR,
                 runtime_args! { ARG_SOURCE => not_purse_uref, ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => transfer_amount },
                 CoreError::Exec(ExecError::Revert(ApiError::InvalidPurse)),
             )
@@ -319,7 +319,7 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
                 get_default_account_named_uref(&mut builder, TRANSFER_RESULT_NAMED_KEY);
             // passes an invalid uref as target (an existing uref that is not a purse uref)
             (
-                DEFAULT_ACCOUNT_ADDR,
+                *DEFAULT_ACCOUNT_ADDR,
                 runtime_args! { ARG_TARGET => not_purse_uref, ARG_AMOUNT => transfer_amount },
                 CoreError::Exec(ExecError::Revert(ApiError::InvalidPurse)),
             )
@@ -452,7 +452,7 @@ fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
 
 fn get_default_account_named_uref(builder: &mut InMemoryWasmTestBuilder, name: &str) -> URef {
     let default_account = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("default account should exist");
     default_account
         .named_keys()
@@ -466,7 +466,7 @@ fn get_default_account_named_uref(builder: &mut InMemoryWasmTestBuilder, name: &
 fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestBuilder {
     let mut builder = InMemoryWasmTestBuilder::default();
     let create_account_1_request = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *DEFAULT_PAYMENT },
     )
@@ -483,7 +483,7 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestBu
     }
 
     let create_account_2_request = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => ACCOUNT_2_ADDR, ARG_AMOUNT => *DEFAULT_PAYMENT },
     )
