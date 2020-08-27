@@ -13,13 +13,12 @@ use casperlabs_contract::{
 use casperlabs_types::{
     account::AccountHash,
     auction::{
-        AuctionProvider, DelegationRate, EraId, RuntimeProvider, SeigniorageRecipients,
-        StorageProvider, SystemProvider, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
-        ARG_PUBLIC_KEY, ARG_SOURCE_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_KEYS,
-        ARG_VALIDATOR_PUBLIC_KEYS, METHOD_ADD_BID, METHOD_BOND, METHOD_DELEGATE,
-        METHOD_PROCESS_UNBOND_REQUESTS, METHOD_QUASH_BID, METHOD_READ_ERA_ID,
-        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS, METHOD_RUN_AUCTION, METHOD_SLASH,
-        METHOD_UNBOND, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
+        AuctionProvider, DelegationRate, RuntimeProvider, SeigniorageRecipients, StorageProvider,
+        SystemProvider, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
+        ARG_SOURCE_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_KEYS, ARG_VALIDATOR_PUBLIC_KEYS,
+        METHOD_ADD_BID, METHOD_BOND, METHOD_DELEGATE, METHOD_PROCESS_UNBOND_REQUESTS,
+        METHOD_QUASH_BID, METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS,
+        METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNBOND, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
     },
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::Error,
@@ -286,15 +285,6 @@ pub fn get_entry_points() -> EntryPoints {
             Vec::<AccountHash>::cl_type(),
         )],
         CLType::Unit,
-        EntryPointAccess::Public,
-        EntryPointType::Contract,
-    );
-    entry_points.add_entry_point(entry_point);
-
-    let entry_point = EntryPoint::new(
-        METHOD_READ_ERA_ID,
-        vec![],
-        EraId::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );

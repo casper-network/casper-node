@@ -49,8 +49,6 @@ pub const METHOD_UNDELEGATE: &str = "undelegate";
 pub const METHOD_QUASH_BID: &str = "quash_bid";
 /// Named constant for method `run_auction`.
 pub const METHOD_RUN_AUCTION: &str = "run_auction";
-/// Named constant for method `read_era_id`.
-pub const METHOD_READ_ERA_ID: &str = "read_era_id";
 /// Named constant for method `bond`.
 pub const METHOD_BOND: &str = "bond";
 /// Named constant for method `unbond`.

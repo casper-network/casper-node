@@ -2031,11 +2031,6 @@ where
                 CLValue::from_t(()).map_err(Self::reverter)?
             }
 
-            auction::METHOD_READ_ERA_ID => {
-                let result = runtime.read_era_id().map_err(Self::reverter)?;
-                CLValue::from_t(result).map_err(Self::reverter)?
-            }
-
             // Type: `fn bond(account_hash: AccountHash, source_purse: URef, quantity: U512) -> Result<(URef, U512), Error>`
             auction::METHOD_BOND => {
                 let public_key = Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
