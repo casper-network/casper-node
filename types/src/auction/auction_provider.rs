@@ -1,5 +1,4 @@
-use alloc::collections::BTreeMap;
-use alloc::vec::Vec;
+use alloc::{collections::BTreeMap, vec::Vec};
 
 use super::{
     era_validators::ValidatorWeights,
@@ -480,7 +479,8 @@ where
         // Validator's entries from both maps as a single iterable.
         // let all_scores = founders_scores.chain(validators_scores);
 
-        // All the scores are then grouped by the account hash to calculate a sum of each consecutive scores for each validator.
+        // All the scores are then grouped by the account hash to calculate a sum of each
+        // consecutive scores for each validator.
         let mut scores = BTreeMap::new();
         for (account_hash, score) in bid_scores {
             scores

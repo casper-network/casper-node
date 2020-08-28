@@ -11,9 +11,8 @@ mod types;
 mod unbonding_purse;
 
 pub use args::*;
-pub use auction_provider::AuctionProvider;
 pub use auction_provider::{
-    BidPurses, BID_PURSES_KEY, DEFAULT_UNBONDING_DELAY, UNBONDING_PURSES_KEY,
+    AuctionProvider, BidPurses, BID_PURSES_KEY, DEFAULT_UNBONDING_DELAY, UNBONDING_PURSES_KEY,
 };
 pub use bid::{Bid, Bids};
 pub use delegator::{DelegatedAmounts, Delegators};

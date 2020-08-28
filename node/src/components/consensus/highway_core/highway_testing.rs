@@ -871,7 +871,8 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                     .weight_distribution
                     .gen_range_vec(rng, lower, upper, faulty_num);
 
-                // Assign enough weights to honest nodes so that we reach expected `faulty_percantage` ratio.
+                // Assign enough weights to honest nodes so that we reach expected
+                // `faulty_percentage` ratio.
                 let honest_weights = {
                     let faulty_sum = faulty_weights.iter().sum::<u64>();
                     let mut weights_to_distribute: u64 =
@@ -1172,11 +1173,10 @@ mod test_harness {
             .into_iter()
             .enumerate()
             .for_each(|(v_idx, vertices_count)| {
-                // NOTE: Works only when all validators are honest and correct (no "mute" validators).
-                // Validator produces two `NewVertex` type messages per round.
-                // It may produce just one before lambda message is finalized.
-                // Add one in case it's just one round (one consensus value) – 1 message.
-                // 1/2=0 but 3/2=1 b/c of the rounding.
+                // NOTE: Works only when all validators are honest and correct (no "mute"
+                // validators). Validator produces two `NewVertex` type messages per round. It may
+                // produce just one before lambda message is finalized. Add one in case it's just
+                // one round (one consensus value) – 1 message. 1/2=0 but 3/2=1 b/c of the rounding.
                 let rounds_participated_in = (vertices_count as u8 + 1) / 2;
 
                 assert_eq!(

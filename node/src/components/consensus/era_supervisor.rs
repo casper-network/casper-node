@@ -29,8 +29,8 @@ use crate::{
             Config, ConsensusMessage, Event, ReactorEventT,
         },
     },
-    crypto::asymmetric_key,
     crypto::{
+        asymmetric_key,
         asymmetric_key::{PublicKey, SecretKey},
         hash,
     },

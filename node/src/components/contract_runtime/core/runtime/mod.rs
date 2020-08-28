@@ -2022,7 +2022,8 @@ where
                 CLValue::from_t(()).map_err(Self::reverter)?
             }
 
-            // Type: `fn bond(account_hash: AccountHash, source_purse: URef, amount: U512) -> Result<(URef, U512), Error>`
+            // Type: `fn bond(account_hash: AccountHash, source_purse: URef, amount: U512) ->
+            // Result<(URef, U512), Error>`
             auction::METHOD_BOND => {
                 let public_key = Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
                 let source_purse: URef =
@@ -2033,7 +2034,8 @@ where
                     .map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
-            // Type: `fn unbond(account_hash: AccountHash, source_purse: URef, amount: U512) -> Result<(URef, U512), Error>`
+            // Type: `fn unbond(account_hash: AccountHash, source_purse: URef, amount: U512) ->
+            // Result<(URef, U512), Error>`
             auction::METHOD_UNBOND => {
                 let public_key = Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
                 let amount: U512 = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;

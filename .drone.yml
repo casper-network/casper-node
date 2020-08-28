@@ -74,6 +74,7 @@ steps:
   commands:
   - make setup
   - make test
+  - make test-contracts
 
 - name: rebuild-cache
   <<: *cache
