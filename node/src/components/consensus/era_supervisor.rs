@@ -155,21 +155,20 @@ where
             panic!("{:?} already exists", era_id);
         }
         self.current_era = era_id;
+
         let sum_stakes: Motes = validator_stakes.iter().map(|(_, stake)| *stake).sum();
-        let validators: Validators<PublicKey> = if sum_stakes.value() > U512::from(u64::MAX) {
-            validator_stakes
-                .into_iter()
-                .map(|(key, stake)| {
-                    let weight = stake.value() / (sum_stakes.value() / (u64::MAX / 2));
-                    (key, AsPrimitive::<u64>::as_(weight))
-                })
-                .collect()
-        } else {
-            validator_stakes
-                .into_iter()
-                .map(|(key, stake)| (key, AsPrimitive::<u64>::as_(stake.value())))
-                .collect()
+        assert!(
+            !sum_stakes.value().is_zero(),
+            "cannot start era with total weight 0"
+        );
+        // For Highway, we need u64 weights. Scale down by  sum / u64::MAX,  rounded up.
+        // If we round up the divisor, the resulting sum is guaranteed to be  <= u64::MAX.
+        let scaling_factor = (sum_stakes.value() + U512::from(u64::MAX) - 1) / U512::from(u64::MAX);
+        let scale_stake = |(key, stake): (PublicKey, Motes)| {
+            (key, AsPrimitive::<u64>::as_(stake.value() / scaling_factor))
         };
+        let validators: Validators<PublicKey> =
+            validator_stakes.into_iter().map(scale_stake).collect();
 
         let instance_id = hash::hash(format!("Highway era {}", era_id.0));
         let secret =
