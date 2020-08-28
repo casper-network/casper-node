@@ -20,8 +20,8 @@ use casperlabs_types::{
     self,
     account::AccountHash,
     auction::{
-        self, DelegationRate, Delegators, EraValidators, Validators, ARG_AMOUNT,
-        ARG_DELEGATION_RATE, ARG_VALIDATOR, VALIDATORS_KEY,
+        self, Bids, DelegationRate, Delegators, EraValidators, ARG_AMOUNT, ARG_DELEGATION_RATE,
+        ARG_VALIDATOR, BIDS_KEY,
     },
     bytesrepr::FromBytes,
     runtime_args, CLTyped, ContractHash, RuntimeArgs, U512,
@@ -120,7 +120,7 @@ fn should_run_add_bid() {
 
     builder.exec(exec_request_1).commit().expect_success();
 
-    let validators: Validators = get_value(&mut builder, auction_hash, VALIDATORS_KEY);
+    let validators: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
 
     assert_eq!(validators.len(), 1);
 
@@ -130,7 +130,6 @@ fn should_run_add_bid() {
         U512::from(ADD_BID_AMOUNT_1)
     );
     assert_eq!(active_bid.delegation_rate, ADD_BID_DELEGATION_RATE_1);
-    assert!(!active_bid.is_founding_validator);
     assert!(!active_bid.funds_locked);
 
     // 2nd bid top-up
@@ -148,7 +147,7 @@ fn should_run_add_bid() {
 
     builder.exec(exec_request_2).commit().expect_success();
 
-    let founders: Validators = get_value(&mut builder, auction_hash, VALIDATORS_KEY);
+    let founders: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
 
     assert_eq!(founders.len(), 1);
 
@@ -172,7 +171,7 @@ fn should_run_add_bid() {
     .build();
     builder.exec(exec_request_3).commit().expect_success();
 
-    let founders: Validators = get_value(&mut builder, auction_hash, VALIDATORS_KEY);
+    let founders: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
 
     assert_eq!(founders.len(), 1);
 
@@ -249,7 +248,7 @@ fn should_run_delegate_and_undelegate() {
 
     let auction_hash = builder.get_auction_contract_hash();
 
-    let founders: Validators = get_value(&mut builder, auction_hash, VALIDATORS_KEY);
+    let founders: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
     assert_eq!(founders.len(), 1);
     let active_bid = founders
         .get(&casperlabs_types::PublicKey::from(*NON_FOUNDER_VALIDATOR_1))
@@ -339,7 +338,7 @@ fn should_run_delegate_and_undelegate() {
     .build();
     builder.exec(exec_request_3).commit().expect_success();
 
-    let founders: Validators = get_value(&mut builder, auction_hash, VALIDATORS_KEY);
+    let founders: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
 
     assert_eq!(founders.len(), 1);
 
@@ -417,7 +416,7 @@ fn should_calculate_era_validators() {
     builder.run_genesis(&run_genesis_request);
 
     let auction_hash = builder.get_auction_contract_hash();
-    let validators: Validators = get_value(&mut builder, auction_hash, VALIDATORS_KEY);
+    let validators: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
     assert_eq!(validators.len(), 2, "founding validators {:?}", validators);
 
     builder.exec(transfer_request_1).commit().expect_success();
@@ -541,19 +540,17 @@ fn should_get_first_seigniorage_recipients() {
     .build();
 
     let auction_hash = builder.get_auction_contract_hash();
-    let validators: Validators = get_value(&mut builder, auction_hash, VALIDATORS_KEY);
+    let validators: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
     assert_eq!(validators.len(), 2);
 
     let founding_validator_1 = validators
         .get(&casperlabs_types::PublicKey::from(*ACCOUNT_1_PK))
         .expect("should have account 1 pk");
-    assert!(founding_validator_1.is_founding_validator);
     assert!(founding_validator_1.funds_locked);
 
     let founding_validator_2 = validators
         .get(&casperlabs_types::PublicKey::from(*ACCOUNT_2_PK))
         .expect("should have account 2 pk");
-    assert!(founding_validator_2.is_founding_validator);
     assert!(founding_validator_2.funds_locked);
 
     builder.exec(transfer_request_1).commit().expect_success();
@@ -663,10 +660,9 @@ fn should_release_founder_stake() {
     let account_1_public_key = casperlabs_types::PublicKey::from(*ACCOUNT_1_PK);
 
     let auction_hash = builder.get_auction_contract_hash();
-    let validators: Validators = get_value(&mut builder, auction_hash, VALIDATORS_KEY);
+    let validators: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
     assert_eq!(validators.len(), 1);
     let (founding_validator, entry) = validators.into_iter().next().unwrap();
-    assert!(entry.is_founding_validator);
     assert!(entry.funds_locked);
     assert_eq!(founding_validator, account_1_public_key);
 
@@ -683,10 +679,9 @@ fn should_release_founder_stake() {
     .build();
     builder.exec(transfer_request_2).commit().expect_success();
 
-    let validators: Validators = get_value(&mut builder, auction_hash, VALIDATORS_KEY);
+    let validators: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
     assert_eq!(validators.len(), 1);
     let (founding_validator, entry) = validators.into_iter().next().unwrap();
-    assert!(entry.is_founding_validator);
     assert!(!entry.funds_locked);
     assert_eq!(founding_validator, account_1_public_key);
 }
@@ -722,12 +717,11 @@ fn should_not_release_founder_stake() {
     .build();
 
     let auction_hash = builder.get_auction_contract_hash();
-    let validators: Validators = get_value(&mut builder, auction_hash, VALIDATORS_KEY);
+    let validators: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
     assert_eq!(validators.len(), 1);
 
     builder.exec(transfer_request_1).commit().expect_success();
 
-    //
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_AUCTION_BIDS,
@@ -742,14 +736,13 @@ fn should_not_release_founder_stake() {
 
     builder.exec(exec_request_2).commit().expect_success();
 
-    let validators: Validators = get_value(&mut builder, auction_hash, VALIDATORS_KEY);
+    let validators: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
     let bid_account_pk = casperlabs_types::PublicKey::from(*BID_ACCOUNT_PK);
 
     let bid_account_stake = validators
         .get(&bid_account_pk)
         .expect("should have bid account entry");
     assert!(!bid_account_stake.funds_locked);
-    assert!(!bid_account_stake.is_founding_validator);
 
     let transfer_request_3 = ExecuteRequestBuilder::standard(
         SYSTEM_ADDR,

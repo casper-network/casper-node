@@ -1,14 +1,13 @@
 use crate::{
-    auction::{Delegators, Validators},
+    auction::{Bids, Delegators},
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::{Error, Result},
     CLTyped,
 };
 
 use super::{
-    providers::StorageProvider, EraId, EraValidators, SeigniorageRecipientsSnapshot,
+    providers::StorageProvider, EraId, EraValidators, SeigniorageRecipientsSnapshot, BIDS_KEY,
     DELEGATORS_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-    VALIDATORS_KEY,
 };
 
 fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T>
@@ -35,21 +34,18 @@ where
     Ok(())
 }
 
-pub fn get_validators<P: StorageProvider + ?Sized>(provider: &mut P) -> Result<Validators>
+pub fn get_bids<P: StorageProvider + ?Sized>(provider: &mut P) -> Result<Bids>
 where
     Error: From<P::Error>,
 {
-    Ok(read_from(provider, VALIDATORS_KEY)?)
+    Ok(read_from(provider, BIDS_KEY)?)
 }
 
-pub fn set_validators<P: StorageProvider + ?Sized>(
-    provider: &mut P,
-    validators: Validators,
-) -> Result<()>
+pub fn set_bids<P: StorageProvider + ?Sized>(provider: &mut P, validators: Bids) -> Result<()>
 where
     Error: From<P::Error>,
 {
-    write_to(provider, VALIDATORS_KEY, validators)
+    write_to(provider, BIDS_KEY, validators)
 }
 
 pub fn get_delegators<P: StorageProvider + ?Sized>(provider: &mut P) -> Result<Delegators>
