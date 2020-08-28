@@ -12,6 +12,9 @@ pub const SNAPSHOT_SIZE: usize = AUCTION_DELAY as usize + 1;
 /// Initial value of era id we start at genesis.
 pub const INITIAL_ERA_ID: EraId = 0;
 
+/// Default lock period for new bid entries represented in eras.
+pub const DEFAULT_LOCKED_FUNDS_PERIOD: EraId = 15;
+
 /// Named constant for `amount`.
 pub const ARG_AMOUNT: &str = "amount";
 /// Named constant for `delegation_rate`.
@@ -31,8 +34,6 @@ pub const ARG_VALIDATOR_KEYS: &str = "validator_keys";
 /// Named constant for `validator_public_keys`.
 pub const ARG_VALIDATOR_PUBLIC_KEYS: &str = "validator_public_keys";
 
-/// Named constant for method `release_founder`.
-pub const METHOD_RELEASE_FOUNDER: &str = "release_founder";
 /// Named constant for method `read_winners`.
 pub const METHOD_READ_WINNERS: &str = "read_winners";
 /// Named constant for method `read_seigniorage_recipients`.

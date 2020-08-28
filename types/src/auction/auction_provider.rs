@@ -19,16 +19,9 @@ use crate::{
 /// are kept in the validator bid purses, available for withdrawal up to the delegated number
 /// of tokens. Withdrawal moves the tokens to a delegator-controlled unbonding purse.
 pub type BidPurses = BTreeMap<PublicKey, URef>;
-//
-// /// Founding validators mapped to their staking purses and tokens contained therein. These
-// /// function much like the regular bidding purses, but have a field indicating whether any tokens
-// /// may be unbonded.
-// pub type FounderPurses = BTreeMap<AccountHash, (URef, bool)>;
 
 /// Name of bid purses named key.
 pub const BID_PURSES_KEY: &str = "bid_purses";
-// /// Name of founder purses named key.
-// pub const FOUNDER_PURSES_KEY: &str = "founder_purses";
 /// Name of unbonding purses key.
 pub const UNBONDING_PURSES_KEY: &str = "unbonding_purses";
 
@@ -42,31 +35,6 @@ pub trait AuctionProvider: StorageProvider + SystemProvider + RuntimeProvider
 where
     Error: From<<Self as StorageProvider>::Error> + From<<Self as SystemProvider>::Error>,
 {
-    /// The `bids` data structure is checked, returning False if the validator is
-    /// not found and returns a `false` early. If the validator is found, then validator's entry is
-    /// updated so the funds are unlocked and a `true` is returned.
-    ///
-    /// For security reasons this entry point can be only called by node.
-    fn release_founder(&mut self, public_key: PublicKey) -> Result<bool> {
-        if self.get_caller() != SYSTEM_ACCOUNT {
-            return Err(Error::InvalidContext);
-        }
-
-        let mut validators = internal::get_bids(self)?;
-
-        match validators.get_mut(&public_key) {
-            None => return Ok(false),
-            Some(founding_validator) if founding_validator.can_release_funds() => {
-                founding_validator.funds_locked = false;
-            }
-            Some(_founding_validator) => return Ok(false),
-        }
-
-        internal::set_bids(self, validators)?;
-
-        Ok(true)
-    }
-
     /// Returns era_validators.
     ///
     /// Publicly accessible, but intended for periodic use by the PoS contract to update its own
@@ -123,7 +91,7 @@ where
                     bonding_purse,
                     staked_amount: amount,
                     delegation_rate,
-                    funds_locked: false,
+                    funds_locked: None,
                 }
             });
         let new_amount = bid.staked_amount;
@@ -465,13 +433,32 @@ where
         if self.get_caller() != SYSTEM_ACCOUNT {
             return Err(Error::InvalidContext);
         }
-        let bids = internal::get_bids(self)?;
+
+        let mut era_id = internal::get_era_id(self)?;
+
+        let mut bids = internal::get_bids(self)?;
+        //
+        // Process locked bids
+        //
+        let mut bids_modified = false;
+        for bid in bids.values_mut() {
+            if let Some(locked_until) = bid.funds_locked {
+                if era_id >= locked_until {
+                    bid.funds_locked = None;
+                    bids_modified = true;
+                }
+            }
+        }
+
+        //
+        // Compute next auction slots
+        //
 
         // Take winning validators and add them to validator_weights right away.
         let mut bid_weights: ValidatorWeights = {
             bids.iter()
                 .filter(|(_validator_account_hash, founding_validator)| {
-                    founding_validator.funds_locked
+                    founding_validator.funds_locked.is_some()
                 })
                 .map(|(validator_account_hash, amount)| {
                     (*validator_account_hash, amount.staked_amount)
@@ -483,7 +470,7 @@ where
         let bid_scores = bids
             .iter()
             .filter(|(_validator_account_hash, founding_validator)| {
-                !founding_validator.funds_locked
+                founding_validator.funds_locked.is_none()
             })
             .map(|(validator_account_hash, amount)| {
                 (*validator_account_hash, amount.staked_amount)
@@ -510,8 +497,6 @@ where
         // Fill in remaining validators
         let remaining_auction_slots = AUCTION_SLOTS.saturating_sub(bid_weights.len());
         bid_weights.extend(scores.into_iter().take(remaining_auction_slots));
-
-        let mut era_id = internal::get_era_id(self)?;
 
         let mut era_validators = internal::get_era_validators(self)?;
 
@@ -567,7 +552,13 @@ where
             .take(SNAPSHOT_SIZE)
             .collect();
 
-        internal::set_era_validators(self, era_validators)
+        internal::set_era_validators(self, era_validators)?;
+
+        if bids_modified {
+            internal::set_bids(self, bids)?;
+        }
+
+        Ok(())
     }
 
     /// Reads current era id.
