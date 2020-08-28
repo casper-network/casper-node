@@ -16,6 +16,7 @@ const MINT_INSTALL: &str = "mint_install.wasm";
 const POS_INSTALL: &str = "pos_install.wasm";
 const STANDARD_PAYMENT: &str = "standard_payment.wasm";
 const STANDARD_PAYMENT_INSTALL: &str = "standard_payment_install.wasm";
+const AUCTION_INSTALL: &str = "auction_install.wasm";
 
 const INTEGRATION_TESTS_RS_CONTENTS: &str = r#"#[cfg(test)]
 mod tests {
@@ -184,6 +185,10 @@ pub fn copy_wasm_files() {
     common::copy_file(
         WASM_SRC_DIR.join(STANDARD_PAYMENT_INSTALL),
         WASM_DEST_DIR.join(STANDARD_PAYMENT_INSTALL),
+    );
+    common::copy_file(
+        WASM_SRC_DIR.join(AUCTION_INSTALL),
+        WASM_DEST_DIR.join(AUCTION_INSTALL),
     );
 }
 
