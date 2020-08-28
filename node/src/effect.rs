@@ -278,8 +278,8 @@ where
 
 /// A builder for [`Effect`](type.Effect.html)s.
 ///
-/// Provides methods allowing the creation of effects which need scheduled on the reactor's event
-/// queue, without giving direct access to this queue.
+/// Provides methods allowing the creation of effects which need to be scheduled
+/// on the reactor's event queue, without giving direct access to this queue.
 #[derive(Debug)]
 pub struct EffectBuilder<REv: 'static>(EventQueueHandle<REv>);
 
