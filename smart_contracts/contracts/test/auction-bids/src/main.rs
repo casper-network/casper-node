@@ -11,7 +11,7 @@ use casperlabs_types::{
     auction::{
         DelegationRate, SeigniorageRecipients, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_SOURCE_PURSE,
         ARG_VALIDATOR, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_READ_SEIGNIORAGE_RECIPIENTS,
-        METHOD_RUN_AUCTION, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
+        METHOD_RELEASE_FOUNDER, METHOD_RUN_AUCTION, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
     },
     runtime_args, ApiError, PublicKey, RuntimeArgs, URef, U512,
 };
@@ -25,6 +25,7 @@ const ARG_DELEGATE: &str = "delegate";
 const ARG_UNDELEGATE: &str = "undelegate";
 const ARG_RUN_AUCTION: &str = "run_auction";
 const ARG_READ_SEIGNIORAGE_RECIPIENTS: &str = "read_seigniorage_recipients";
+const ARG_RELEASE_FOUNDER: &str = "release_founder";
 
 #[repr(u16)]
 enum Error {
@@ -42,6 +43,7 @@ pub extern "C" fn call() {
         ARG_UNDELEGATE => undelegate(),
         ARG_RUN_AUCTION => run_auction(),
         ARG_READ_SEIGNIORAGE_RECIPIENTS => read_seigniorage_recipients(),
+        ARG_RELEASE_FOUNDER => release_founder(),
         _ => runtime::revert(ApiError::User(Error::UnknownCommand as u16)),
     }
 }
@@ -119,4 +121,15 @@ fn read_seigniorage_recipients() {
         runtime::call_contract(auction, METHOD_READ_SEIGNIORAGE_RECIPIENTS, args);
     let uref = storage::new_uref(result);
     runtime::put_key("seigniorage_recipients_result", uref.into());
+}
+
+fn release_founder() {
+    let auction = system::get_auction();
+
+    let public_key: PublicKey = runtime::get_named_arg(ARG_PUBLIC_KEY);
+    let args = runtime_args! {
+        ARG_PUBLIC_KEY => public_key,
+    };
+    let result: bool = runtime::call_contract(auction, METHOD_RELEASE_FOUNDER, args);
+    assert!(result);
 }

@@ -10,12 +10,12 @@ use casperlabs_contract::{
 };
 use casperlabs_types::{
     auction::{
-        ActiveBids, BidPurses, Delegators, EraValidators, FoundingValidator, FoundingValidators,
-        SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
-        UnbondingPurses, ValidatorWeights, ACTIVE_BIDS_KEY, AUCTION_DELAY, BID_PURSES_KEY,
-        DELEGATORS_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY, INITIAL_ERA_ID,
+        Bid, BidPurses, Bids, Delegators, EraValidators, SeigniorageRecipient,
+        SeigniorageRecipients, SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights,
+        AUCTION_DELAY, BID_PURSES_KEY, ERA_ID_KEY, INITIAL_ERA_ID,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_PURSES_KEY,
     },
+    auction::{BIDS_KEY, DELEGATORS_KEY, ERA_VALIDATORS_KEY},
     contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
     runtime_args,
     system_contract_errors::mint,
@@ -41,7 +41,7 @@ pub extern "C" fn install() {
     let named_keys = {
         let mut named_keys = NamedKeys::new();
 
-        let mut founding_validators = FoundingValidators::new();
+        let mut validators = Bids::new();
 
         let genesis_validators: BTreeMap<PublicKey, U512> =
             runtime::get_named_arg(ARG_GENESIS_VALIDATORS);
@@ -51,8 +51,8 @@ pub extern "C" fn install() {
 
         for (validator_account_hash, amount) in genesis_validators {
             let bonding_purse = create_purse(mint_package_hash, amount);
-            let founding_validator = FoundingValidator::new(bonding_purse, amount);
-            founding_validators.insert(validator_account_hash, founding_validator);
+            let founding_validator = Bid::new(bonding_purse, amount);
+            validators.insert(validator_account_hash, founding_validator);
             initial_validator_weights.insert(validator_account_hash, amount);
         }
 
@@ -66,7 +66,7 @@ pub extern "C" fn install() {
             era_validators.insert(era_index, initial_validator_weights.clone());
         }
 
-        let seigniorage_recipients = compute_seigniorage_recipients(&founding_validators);
+        let seigniorage_recipients = compute_seigniorage_recipients(&validators);
 
         let mut initial_seigniorage_recipients = SeigniorageRecipientsSnapshot::new();
         for era_id in initial_snapshot_range {
@@ -76,14 +76,7 @@ pub extern "C" fn install() {
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.into(),
             storage::new_uref(initial_seigniorage_recipients).into(),
         );
-        named_keys.insert(
-            FOUNDING_VALIDATORS_KEY.into(),
-            storage::new_uref(founding_validators).into(),
-        );
-        named_keys.insert(
-            ACTIVE_BIDS_KEY.into(),
-            storage::new_uref(ActiveBids::new()).into(),
-        );
+        named_keys.insert(BIDS_KEY.into(), storage::new_uref(validators).into());
         named_keys.insert(
             DELEGATORS_KEY.into(),
             storage::new_uref(Delegators::new()).into(),
@@ -111,9 +104,7 @@ pub extern "C" fn install() {
     runtime::ret(return_value);
 }
 
-fn compute_seigniorage_recipients(
-    founding_validators: &FoundingValidators,
-) -> SeigniorageRecipients {
+fn compute_seigniorage_recipients(founding_validators: &Bids) -> SeigniorageRecipients {
     let mut seigniorage_recipients = SeigniorageRecipients::new();
     for (era_validator, founding_validator) in founding_validators {
         let seigniorage_recipient = SeigniorageRecipient::from(founding_validator);
