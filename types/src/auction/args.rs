@@ -60,10 +60,8 @@ pub const METHOD_SLASH: &str = "slash";
 /// Named constant for method `release_founder_stake`.
 pub const METHOD_RELEASE_FOUNDER_STAKE: &str = "release_founder_stake";
 
-/// Storage for `FoundingValidators`.
-pub const FOUNDING_VALIDATORS_KEY: &str = "founding_validators";
-/// Storage for `ActiveBids`.
-pub const ACTIVE_BIDS_KEY: &str = "active_bids";
+/// Storage for `Bids`.
+pub const BIDS_KEY: &str = "bids";
 /// Storage for `Delegators`.
 pub const DELEGATORS_KEY: &str = "delegators";
 /// Storage for `EraValidators`.
