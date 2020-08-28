@@ -1,6 +1,6 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use super::types::DelegationRate;
+use super::{types::DelegationRate, EraId};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     CLType, CLTyped, PublicKey, URef, U512,
@@ -16,28 +16,31 @@ pub struct Bid {
     /// Delegation rate
     pub delegation_rate: DelegationRate,
     /// A flag that represents a winning entry.
-    pub funds_locked: bool,
+    ///
+    /// `Some` indicates locked funds for a specific era and an autowin status, and `None` case
+    /// means that funds are unlocked and autowin status is removed.
+    pub funds_locked: Option<EraId>,
 }
 
 impl Bid {
     /// Creates new instance of a bid with locked funds.
-    pub fn new(bonding_purse: URef, staked_amount: U512) -> Self {
+    pub fn new_locked(bonding_purse: URef, staked_amount: U512, funds_locked: EraId) -> Self {
         Self {
             bonding_purse,
             staked_amount,
             delegation_rate: 0,
-            funds_locked: true,
+            funds_locked: Some(funds_locked),
         }
     }
 
     /// Checks if a given founding validator can release its funds.
     pub fn can_release_funds(&self) -> bool {
-        self.funds_locked
+        self.funds_locked.is_some()
     }
 
     /// Checks if a given founding validator can withdraw its funds.
     pub fn can_withdraw_funds(&self) -> bool {
-        !self.funds_locked
+        self.funds_locked.is_none()
     }
 }
 
@@ -70,13 +73,13 @@ impl FromBytes for Bid {
         let (bonding_purse, bytes) = FromBytes::from_bytes(bytes)?;
         let (staked_amount, bytes) = FromBytes::from_bytes(bytes)?;
         let (delegation_rate, bytes) = FromBytes::from_bytes(bytes)?;
-        let (funds_locked, bytes) = FromBytes::from_bytes(bytes)?;
+        let (locked_until, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             Bid {
                 bonding_purse,
                 staked_amount,
                 delegation_rate,
-                funds_locked,
+                funds_locked: locked_until,
             },
             bytes,
         ))
@@ -97,7 +100,10 @@ pub type Bids = BTreeMap<PublicKey, Bid>;
 #[cfg(test)]
 mod tests {
     use super::Bid;
-    use crate::{auction::DelegationRate, bytesrepr, AccessRights, URef, U512};
+    use crate::{
+        auction::{DelegationRate, EraId},
+        bytesrepr, AccessRights, URef, U512,
+    };
 
     #[test]
     fn serialization_roundtrip() {
@@ -105,7 +111,7 @@ mod tests {
             bonding_purse: URef::new([42; 32], AccessRights::READ_ADD_WRITE),
             staked_amount: U512::one(),
             delegation_rate: DelegationRate::max_value(),
-            funds_locked: true,
+            funds_locked: Some(EraId::max_value() - 1),
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);
     }

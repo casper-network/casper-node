@@ -12,7 +12,7 @@ use casperlabs_types::{
     auction::{
         Bid, BidPurses, Bids, Delegators, EraValidators, SeigniorageRecipient,
         SeigniorageRecipients, SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights,
-        AUCTION_DELAY, BID_PURSES_KEY, ERA_ID_KEY, INITIAL_ERA_ID,
+        AUCTION_DELAY, BID_PURSES_KEY, DEFAULT_LOCKED_FUNDS_PERIOD, ERA_ID_KEY, INITIAL_ERA_ID,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_PURSES_KEY,
     },
     auction::{BIDS_KEY, DELEGATORS_KEY, ERA_VALIDATORS_KEY},
@@ -51,7 +51,8 @@ pub extern "C" fn install() {
 
         for (validator_account_hash, amount) in genesis_validators {
             let bonding_purse = create_purse(mint_package_hash, amount);
-            let founding_validator = Bid::new(bonding_purse, amount);
+            let founding_validator =
+                Bid::new_locked(bonding_purse, amount, DEFAULT_LOCKED_FUNDS_PERIOD);
             validators.insert(validator_account_hash, founding_validator);
             initial_validator_weights.insert(validator_account_hash, amount);
         }

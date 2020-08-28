@@ -1941,17 +1941,6 @@ where
         );
 
         let ret: CLValue = match entry_point_name {
-            auction::METHOD_RELEASE_FOUNDER => {
-                let account_hash =
-                    Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
-
-                let result = runtime
-                    .release_founder(account_hash)
-                    .map_err(Self::reverter)?;
-
-                CLValue::from_t(result).map_err(Self::reverter)?
-            }
-
             auction::METHOD_READ_WINNERS => {
                 let result = runtime.read_winners().map_err(Self::reverter)?;
 
