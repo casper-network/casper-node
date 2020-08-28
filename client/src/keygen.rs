@@ -11,23 +11,19 @@ use casperlabs_node::crypto::asymmetric_key::{PublicKey, SecretKey};
 
 use crate::{common, Subcommand as CrateSubcommand};
 
-const ACCOUNT_ID_BASE64: &str = "account_id_base64";
-const ACCOUNT_ID_HEX: &str = "account_id_hex";
-const PUBLIC_KEY_BASE64: &str = "public_key_base64";
 const PUBLIC_KEY_HEX: &str = "public_key_hex";
 const SECRET_KEY_PEM: &str = "secret_key.pem";
 const PUBLIC_KEY_PEM: &str = "public_key.pem";
-const FILES: [&str; 6] = [
-    ACCOUNT_ID_BASE64,
-    ACCOUNT_ID_HEX,
-    PUBLIC_KEY_BASE64,
-    PUBLIC_KEY_HEX,
-    SECRET_KEY_PEM,
-    PUBLIC_KEY_PEM,
-];
+const FILES: [&str; 3] = [PUBLIC_KEY_HEX, SECRET_KEY_PEM, PUBLIC_KEY_PEM];
 
 lazy_static! {
-    static ref MORE_ABOUT: String = format!("{}. Creates {:?}", Keygen::ABOUT, FILES);
+    static ref MORE_ABOUT: String = format!(
+        "{}. Creates {:?}. \"{}\" contains the hex-encoded algorithm tag prefixed to the \
+        hex-encoded key's bytes",
+        Keygen::ABOUT,
+        FILES,
+        PUBLIC_KEY_HEX
+    );
 }
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
@@ -160,28 +156,8 @@ impl<'a, 'b> crate::Subcommand<'a, 'b> for Keygen {
             panic!("Invalid key algorithm");
         };
         let public_key = PublicKey::from(&secret_key);
-        let account_id = public_key.to_account_hash().value();
 
-        write_file(
-            ACCOUNT_ID_BASE64,
-            output_dir.as_path(),
-            base64::encode(&account_id),
-        );
-        write_file(
-            ACCOUNT_ID_HEX,
-            output_dir.as_path(),
-            hex::encode(&account_id),
-        );
-        write_file(
-            PUBLIC_KEY_BASE64,
-            output_dir.as_path(),
-            base64::encode(public_key.as_ref()),
-        );
-        write_file(
-            PUBLIC_KEY_HEX,
-            output_dir.as_path(),
-            hex::encode(public_key.as_ref()),
-        );
+        write_file(PUBLIC_KEY_HEX, output_dir.as_path(), public_key.to_hex());
 
         let secret_key_path = output_dir.join(SECRET_KEY_PEM);
         secret_key
