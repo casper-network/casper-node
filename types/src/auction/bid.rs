@@ -73,13 +73,13 @@ impl FromBytes for Bid {
         let (bonding_purse, bytes) = FromBytes::from_bytes(bytes)?;
         let (staked_amount, bytes) = FromBytes::from_bytes(bytes)?;
         let (delegation_rate, bytes) = FromBytes::from_bytes(bytes)?;
-        let (locked_until, bytes) = FromBytes::from_bytes(bytes)?;
+        let (funds_locked, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             Bid {
                 bonding_purse,
                 staked_amount,
                 delegation_rate,
-                funds_locked: locked_until,
+                funds_locked,
             },
             bytes,
         ))
