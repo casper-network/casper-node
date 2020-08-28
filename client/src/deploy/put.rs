@@ -1,6 +1,6 @@
 use std::process;
 
-use clap::{App, ArgGroup, ArgMatches, SubCommand};
+use clap::{App, AppSettings, ArgGroup, ArgMatches, SubCommand};
 use futures::executor;
 use rand::Rng;
 use reqwest::{Client, StatusCode};
@@ -25,6 +25,7 @@ impl<'a, 'b> crate::Subcommand<'a, 'b> for PutDeploy {
     fn build(display_order: usize) -> App<'a, 'b> {
         SubCommand::with_name(Self::NAME)
             .about(Self::ABOUT)
+            .setting(AppSettings::NextLineHelp)
             .display_order(display_order)
             .arg(show_arg_examples::arg())
             .arg(

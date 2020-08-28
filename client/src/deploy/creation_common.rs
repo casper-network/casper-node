@@ -27,6 +27,10 @@ pub(super) enum DisplayOrder {
     ShowArgExamples,
     NodeAddress,
     SecretKey,
+    TransferAmount,
+    TransferSourcePurse,
+    TransferTargetAccount,
+    TransferTargetPurse,
     Timestamp,
     Ttl,
     GasPrice,
@@ -433,7 +437,7 @@ pub(super) mod arg_simple {
             }
             CLType::URef => {
                 let uref = URef::from_formatted_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as Key: {:?}", value, error));
+                    .unwrap_or_else(|error| panic!("can't parse {} as URef: {:?}", value, error));
                 CLValue::from_t(uref).unwrap()
             }
             _ => unreachable!(),
