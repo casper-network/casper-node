@@ -12,11 +12,11 @@ const ARG_PHASE: &str = "phase";
 #[ignore]
 #[test]
 fn should_run_get_phase_contract() {
-    let default_account = DEFAULT_ACCOUNT_ADDR;
+    let default_account = *DEFAULT_ACCOUNT_ADDR;
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_session_code(
                 "get_phase.wasm",

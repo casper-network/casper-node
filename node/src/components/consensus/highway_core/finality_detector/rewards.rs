@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use tracing::error;
 
 use super::Horizon;
 use crate::{
@@ -30,13 +31,22 @@ pub(crate) fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> 
     let range = parent_time..payout_vote.timestamp;
     let is_ancestor =
         |bh: &&C::Hash| Some(*bh) == state.find_ancestor(bhash, state.block(bh).height);
-    state
-        .rewards_range(range)
-        .filter(is_ancestor)
-        .unique()
-        .fold(ValidatorMap::from(vec![0; panorama.len()]), |sum, bh| {
-            sum + compute_rewards_for(state, panorama, bh)
-        })
+    let mut rewards = ValidatorMap::from(vec![0u64; panorama.len()]);
+    for bhash in state.rewards_range(range).filter(is_ancestor).unique() {
+        for (vidx, r) in compute_rewards_for(state, panorama, bhash).enumerate() {
+            match rewards[vidx].checked_add(*r) {
+                Some(sum) => rewards[vidx] = sum,
+                None => {
+                    error!(
+                        "rewards for {:?}, {} + {}, saturate u64",
+                        vidx, rewards[vidx], r
+                    );
+                    rewards[vidx] = u64::MAX;
+                }
+            }
+        }
+    }
+    rewards
 }
 
 /// Returns the rewards for finalizing the block with hash `proposal_h`.

@@ -1,4 +1,5 @@
 mod args;
+mod auction_internal;
 mod externals;
 mod mint_internal;
 mod proof_of_stake_internal;
@@ -18,6 +19,7 @@ use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef, Trap, TrapKind
 
 use casperlabs_types::{
     account::{AccountHash, ActionType, Weight},
+    auction::{self, AuctionProvider},
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
         self, Contract, ContractPackage, ContractVersion, ContractVersions, DisabledVersions,
@@ -154,6 +156,7 @@ fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
         | CLType::U512
         | CLType::Unit
         | CLType::String
+        | CLType::PublicKey
         | CLType::Any => Ok(vec![]),
         CLType::Option(ty) => match **ty {
             CLType::URef => {
@@ -1073,6 +1076,11 @@ fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
                 let map: BTreeMap<String, URef> = cl_value.to_owned().into_t()?;
                 Ok(map.values().cloned().collect())
             }
+            (CLType::PublicKey, CLType::URef) => {
+                let map: BTreeMap<casperlabs_types::PublicKey, URef> =
+                    cl_value.to_owned().into_t()?;
+                Ok(map.values().cloned().collect())
+            }
             (CLType::Bool, CLType::Key) => {
                 let map: BTreeMap<bool, Key> = cl_value.to_owned().into_t()?;
                 Ok(map.values().cloned().filter_map(Key::into_uref).collect())
@@ -1115,6 +1123,11 @@ fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
             }
             (CLType::String, CLType::Key) => {
                 let map: NamedKeys = cl_value.to_owned().into_t()?;
+                Ok(map.values().cloned().filter_map(Key::into_uref).collect())
+            }
+            (CLType::PublicKey, CLType::Key) => {
+                let map: BTreeMap<casperlabs_types::PublicKey, Key> =
+                    cl_value.to_owned().into_t()?;
                 Ok(map.values().cloned().filter_map(Key::into_uref).collect())
             }
             (_, _) => Ok(vec![]),
@@ -1650,6 +1663,10 @@ where
         key.into_seed() == self.protocol_data().proof_of_stake()
     }
 
+    pub fn is_auction(&self, key: Key) -> bool {
+        key.into_seed() == self.protocol_data().auction()
+    }
+
     fn get_named_argument<T: FromBytes + CLTyped>(
         args: &RuntimeArgs,
         name: &str,
@@ -1679,6 +1696,7 @@ where
         const METHOD_CREATE: &str = "create";
         const METHOD_BALANCE: &str = "balance";
         const METHOD_TRANSFER: &str = "transfer";
+        const ARG_AMOUNT: &str = "amount";
 
         let state = self.context.state();
         let access_rights = {
@@ -1701,7 +1719,7 @@ where
         let phase = self.context.phase();
         let protocol_data = self.context.protocol_data();
 
-        let mut mint_context = RuntimeContext::new(
+        let mint_context = RuntimeContext::new(
             state,
             EntryPointType::Contract,
             named_keys,
@@ -1722,31 +1740,39 @@ where
             protocol_data,
         );
 
+        let mut mint_runtime = Runtime::new(
+            self.config,
+            SystemContractCache::clone(&self.system_contract_cache),
+            self.memory.clone(),
+            self.module.clone(),
+            mint_context,
+        );
+
         let ret: CLValue = match entry_point_name {
             // Type: `fn mint(amount: U512) -> Result<URef, Error>`
             METHOD_MINT => {
-                let amount: U512 = Self::get_named_argument(&runtime_args, "amount")?;
-                let result: Result<URef, mint::Error> = mint_context.mint(amount);
+                let amount: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
+                let result: Result<URef, mint::Error> = mint_runtime.mint(amount);
                 CLValue::from_t(result)?
             }
             // Type: `fn create() -> URef`
             METHOD_CREATE => {
-                let uref = mint_context.mint(U512::zero()).map_err(Self::reverter)?;
+                let uref = mint_runtime.mint(U512::zero()).map_err(Self::reverter)?;
                 CLValue::from_t(uref).map_err(Self::reverter)?
             }
             // Type: `fn balance(purse: URef) -> Option<U512>`
             METHOD_BALANCE => {
                 let uref: URef = Self::get_named_argument(&runtime_args, "purse")?;
                 let maybe_balance: Option<U512> =
-                    mint_context.balance(uref).map_err(Self::reverter)?;
+                    mint_runtime.balance(uref).map_err(Self::reverter)?;
                 CLValue::from_t(maybe_balance).map_err(Self::reverter)?
             }
             // Type: `fn transfer(source: URef, target: URef, amount: U512) -> Result<(), Error>`
             METHOD_TRANSFER => {
                 let source: URef = Self::get_named_argument(&runtime_args, "source")?;
                 let target: URef = Self::get_named_argument(&runtime_args, "target")?;
-                let amount: U512 = Self::get_named_argument(&runtime_args, "amount")?;
-                let result: Result<(), mint::Error> = mint_context.transfer(source, target, amount);
+                let amount: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
+                let result: Result<(), mint::Error> = mint_runtime.transfer(source, target, amount);
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
             _ => CLValue::from_t(()).map_err(Self::reverter)?,
@@ -1765,14 +1791,10 @@ where
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
     ) -> Result<CLValue, Error> {
-        const METHOD_BOND: &str = "bond";
-        const METHOD_UNBOND: &str = "unbond";
         const METHOD_GET_PAYMENT_PURSE: &str = "get_payment_purse";
         const METHOD_SET_REFUND_PURSE: &str = "set_refund_purse";
         const METHOD_GET_REFUND_PURSE: &str = "get_refund_purse";
         const METHOD_FINALIZE_PAYMENT: &str = "finalize_payment";
-        const ARG_AMOUNT: &str = "amount";
-        const ARG_PURSE: &str = "purse";
 
         let state = self.context.state();
         let access_rights = {
@@ -1825,33 +1847,6 @@ where
         );
 
         let ret: CLValue = match entry_point_name {
-            METHOD_BOND => {
-                if !self.config.enable_bonding() {
-                    let err = Error::Revert(ApiError::Unhandled);
-                    return Err(err);
-                }
-
-                let validator: AccountHash = runtime.context.get_caller();
-                let amount: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
-                let source_uref: URef = Self::get_named_argument(&runtime_args, ARG_PURSE)?;
-                runtime
-                    .bond(validator, amount, source_uref)
-                    .map_err(Self::reverter)?;
-                CLValue::from_t(()).map_err(Self::reverter)?
-            }
-            METHOD_UNBOND => {
-                if !self.config.enable_bonding() {
-                    let err = Error::Revert(ApiError::Unhandled);
-                    return Err(err);
-                }
-
-                let validator: AccountHash = runtime.context.get_caller();
-                let maybe_amount: Option<U512> = Self::get_named_argument(&runtime_args, "amount")?;
-                runtime
-                    .unbond(validator, maybe_amount)
-                    .map_err(Self::reverter)?;
-                CLValue::from_t(()).map_err(Self::reverter)?
-            }
             METHOD_GET_PAYMENT_PURSE => {
                 let rights_controlled_purse =
                     runtime.get_payment_purse().map_err(Self::reverter)?;
@@ -1885,6 +1880,189 @@ where
     pub fn call_host_standard_payment(&mut self) -> Result<(), Error> {
         let amount: U512 = Self::get_named_argument(&self.context.args(), "amount")?;
         self.pay(amount).map_err(Self::reverter)
+    }
+
+    pub fn call_host_auction(
+        &mut self,
+        protocol_version: ProtocolVersion,
+        entry_point_name: &str,
+        named_keys: &mut NamedKeys,
+        runtime_args: &RuntimeArgs,
+        extra_keys: &[Key],
+    ) -> Result<CLValue, Error> {
+        let state = self.context.state();
+        let access_rights = {
+            let mut keys: Vec<Key> = named_keys.values().cloned().collect();
+            keys.extend(extra_keys);
+            keys.push(self.get_mint_contract().into());
+            keys.push(self.get_pos_contract().into());
+            extract_access_rights_from_keys(keys)
+        };
+        let authorization_keys = self.context.authorization_keys().to_owned();
+        let account = self.context.account();
+        let base_key = self.protocol_data().proof_of_stake().into();
+        let blocktime = self.context.get_blocktime();
+        let deploy_hash = self.context.get_deploy_hash();
+        let gas_limit = self.context.gas_limit();
+        let gas_counter = self.context.gas_counter();
+        let fn_store_id = self.context.hash_address_generator();
+        let address_generator = self.context.uref_address_generator();
+        let correlation_id = self.context.correlation_id();
+        let phase = self.context.phase();
+        let protocol_data = self.context.protocol_data();
+
+        let runtime_context = RuntimeContext::new(
+            state,
+            EntryPointType::Contract,
+            named_keys,
+            access_rights,
+            runtime_args.to_owned(),
+            authorization_keys,
+            account,
+            base_key,
+            blocktime,
+            deploy_hash,
+            gas_limit,
+            gas_counter,
+            fn_store_id,
+            address_generator,
+            protocol_version,
+            correlation_id,
+            phase,
+            protocol_data,
+        );
+
+        let mut runtime = Runtime::new(
+            self.config,
+            SystemContractCache::clone(&self.system_contract_cache),
+            self.memory.clone(),
+            self.module.clone(),
+            runtime_context,
+        );
+
+        let ret: CLValue = match entry_point_name {
+            auction::METHOD_READ_WINNERS => {
+                let result = runtime.read_winners().map_err(Self::reverter)?;
+
+                CLValue::from_t(result).map_err(Self::reverter)?
+            }
+
+            auction::METHOD_READ_SEIGNIORAGE_RECIPIENTS => {
+                let result = runtime.read_seigniorage_recipients();
+
+                CLValue::from_t(result).map_err(Self::reverter)?
+            }
+
+            auction::METHOD_ADD_BID => {
+                let account_hash =
+                    Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
+                let source_purse =
+                    Self::get_named_argument(&runtime_args, auction::ARG_SOURCE_PURSE)?;
+                let delegation_rate =
+                    Self::get_named_argument(&runtime_args, auction::ARG_DELEGATION_RATE)?;
+                let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+
+                let result = self
+                    .add_bid(account_hash, source_purse, delegation_rate, amount)
+                    .map_err(Self::reverter)?;
+
+                CLValue::from_t(result).map_err(Self::reverter)?
+            }
+
+            auction::METHOD_WITHDRAW_BID => {
+                let account_hash =
+                    Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
+                let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+
+                let result = self
+                    .withdraw_bid(account_hash, amount)
+                    .map_err(Self::reverter)?;
+                CLValue::from_t(result).map_err(Self::reverter)?
+            }
+
+            auction::METHOD_DELEGATE => {
+                let delegator = Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
+                let source_purse =
+                    Self::get_named_argument(&runtime_args, auction::ARG_SOURCE_PURSE)?;
+                let validator = Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
+                let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+
+                let result = self
+                    .delegate(delegator, source_purse, validator, amount)
+                    .map_err(Self::reverter)?;
+
+                CLValue::from_t(result).map_err(Self::reverter)?
+            }
+
+            auction::METHOD_UNDELEGATE => {
+                let delegator = Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
+                let validator = Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
+                let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+
+                let result = self
+                    .undelegate(delegator, validator, amount)
+                    .map_err(Self::reverter)?;
+
+                CLValue::from_t(result).map_err(Self::reverter)?
+            }
+
+            auction::METHOD_QUASH_BID => {
+                let validator_public_keys: Vec<casperlabs_types::PublicKey> =
+                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_KEYS)?;
+
+                runtime
+                    .quash_bid(validator_public_keys)
+                    .map_err(Self::reverter)?;
+
+                CLValue::from_t(()).map_err(Self::reverter)?
+            }
+
+            auction::METHOD_RUN_AUCTION => {
+                runtime.run_auction().map_err(Self::reverter)?;
+                CLValue::from_t(()).map_err(Self::reverter)?
+            }
+
+            // Type: `fn bond(account_hash: AccountHash, source_purse: URef, amount: U512) ->
+            // Result<(URef, U512), Error>`
+            auction::METHOD_BOND => {
+                let public_key = Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
+                let source_purse: URef =
+                    Self::get_named_argument(&runtime_args, auction::ARG_SOURCE_PURSE)?;
+                let amount: U512 = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let result = runtime
+                    .bond(public_key, source_purse, amount)
+                    .map_err(Self::reverter)?;
+                CLValue::from_t(result).map_err(Self::reverter)?
+            }
+            // Type: `fn unbond(account_hash: AccountHash, source_purse: URef, amount: U512) ->
+            // Result<(URef, U512), Error>`
+            auction::METHOD_UNBOND => {
+                let public_key = Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
+                let amount: U512 = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let result = runtime.unbond(public_key, amount).map_err(Self::reverter)?;
+                CLValue::from_t(result).map_err(Self::reverter)?
+            }
+            // Type: `fn process_unbond_requests() -> Result<(), Error>`
+            auction::METHOD_PROCESS_UNBOND_REQUESTS => {
+                runtime.process_unbond_requests().map_err(Self::reverter)?;
+                CLValue::from_t(()).map_err(Self::reverter)?
+            }
+            // Type: `fn slash(validator_account_hashes: &[AccountHash]) -> Result<(), Error>`
+            auction::METHOD_SLASH => {
+                let validator_public_keys =
+                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEYS)?;
+                runtime
+                    .slash(validator_public_keys)
+                    .map_err(Self::reverter)?;
+                CLValue::from_t(()).map_err(Self::reverter)?
+            }
+
+            _ => CLValue::from_t(()).map_err(Self::reverter)?,
+        };
+        let urefs = extract_urefs(&ret)?;
+        let access_rights = extract_access_rights_from_urefs(urefs);
+        self.context.access_rights_extend(access_rights);
+        Ok(ret)
     }
 
     /// Calls contract living under a `key`, with supplied `args`.
@@ -2067,7 +2245,13 @@ where
                 );
             }
             for key in &extra_keys {
-                self.context.validate_key(key)?;
+                if let Err(Error::ForgedReference(maybe_forged_uref)) =
+                    self.context.validate_key(key)
+                {
+                    if !extra_keys.contains(&Key::from(maybe_forged_uref)) {
+                        return Err(Error::ForgedReference(maybe_forged_uref));
+                    }
+                }
             }
 
             if !self.config.use_system_contracts() {
@@ -2807,6 +2991,13 @@ where
         self.context.protocol_data().standard_payment()
     }
 
+    /// Looks up the public auction contract key in the context's protocol data.
+    ///
+    /// Returned URef is already attenuated depending on the calling account.
+    fn get_auction_contract(&self) -> ContractHash {
+        self.context.protocol_data().auction()
+    }
+
     /// Calls the "create" method on the mint contract at the given mint
     /// contract key
     fn mint_create(&mut self, mint_contract_hash: ContractHash) -> Result<URef, Error> {
@@ -3061,6 +3252,7 @@ where
             Ok(SystemContractType::Mint) => self.get_mint_contract(),
             Ok(SystemContractType::ProofOfStake) => self.get_pos_contract(),
             Ok(SystemContractType::StandardPayment) => self.get_standard_payment_contract(),
+            Ok(SystemContractType::Auction) => self.get_auction_contract(),
             Err(error) => return Ok(Err(error)),
         };
 
@@ -3371,9 +3563,10 @@ mod tests {
         result,
     };
 
-    use casperlabs_types::{gens::*, CLType, CLValue, Key, URef};
+    use casperlabs_types::{gens::*, AccessRights, CLType, CLValue, Key, URef};
 
     use super::extract_urefs;
+    use std::collections::BTreeMap;
 
     fn cl_value_with_urefs_arb() -> impl Strategy<Value = (CLValue, Vec<URef>)> {
         // If compiler brings you here it most probably means you've added a variant to `CLType`
@@ -3402,6 +3595,7 @@ mod tests {
                 | CLType::Tuple1(_)
                 | CLType::Tuple2(_)
                 | CLType::Tuple3(_)
+                | CLType::PublicKey
                 | CLType::Any => (),
             }
         };
@@ -3514,5 +3708,24 @@ mod tests {
             let extracted_urefs = extract_urefs(&cl_value).unwrap();
             assert_eq!(extracted_urefs, urefs);
         }
+    }
+
+    #[test]
+    fn extract_from_public_keys_to_urefs_map() {
+        let uref = URef::new([43; 32], AccessRights::READ_ADD_WRITE);
+        let mut map = BTreeMap::new();
+        map.insert(casperlabs_types::PublicKey::Ed25519([42; 32]), uref);
+        let cl_value = CLValue::from_t(map).unwrap();
+        assert_eq!(extract_urefs(&cl_value).unwrap(), vec![uref]);
+    }
+
+    #[test]
+    fn extract_from_public_keys_to_uref_keys_map() {
+        let uref = URef::new([43; 32], AccessRights::READ_ADD_WRITE);
+        let key = Key::from(uref);
+        let mut map = BTreeMap::new();
+        map.insert(casperlabs_types::PublicKey::Ed25519([42; 32]), key);
+        let cl_value = CLValue::from_t(map).unwrap();
+        assert_eq!(extract_urefs(&cl_value).unwrap(), vec![uref]);
     }
 }

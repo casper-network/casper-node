@@ -28,6 +28,7 @@ pub const ARG_AMOUNT: &str = "amount";
 pub const ARG_PURSE: &str = "purse";
 pub const ARG_SOURCE: &str = "source";
 pub const ARG_TARGET: &str = "target";
+pub const ARG_PUBLIC_KEY: &str = "public_key";
 
 pub struct MintContract;
 
@@ -38,6 +39,9 @@ impl RuntimeProvider for MintContract {
 
     fn put_key(&mut self, name: &str, key: Key) {
         runtime::put_key(name, key)
+    }
+    fn get_key(&self, name: &str) -> Option<Key> {
+        runtime::get_key(name)
     }
 }
 

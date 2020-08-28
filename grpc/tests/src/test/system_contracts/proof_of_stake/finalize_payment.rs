@@ -37,14 +37,14 @@ fn initialize() -> InMemoryWasmTestBuilder {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => SYSTEM_ADDR, ARG_AMOUNT => *DEFAULT_PAYMENT },
     )
     .build();
 
     let exec_request_2 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => ACCOUNT_ADDR, ARG_AMOUNT =>  *DEFAULT_PAYMENT },
     )
@@ -74,7 +74,7 @@ fn finalize_payment_should_not_be_run_by_non_system_accounts() {
     };
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_FINALIZE_PAYMENT,
         args.clone(),
     )
@@ -107,7 +107,7 @@ fn finalize_payment_should_refund_to_specified_purse() {
     let payment_pre_balance = get_pos_payment_purse_balance(&builder);
     let rewards_pre_balance = get_pos_rewards_purse_balance(&builder);
     let refund_pre_balance =
-        get_named_account_balance(&builder, DEFAULT_ACCOUNT_ADDR, LOCAL_REFUND_PURSE)
+        get_named_account_balance(&builder, *DEFAULT_ACCOUNT_ADDR, LOCAL_REFUND_PURSE)
             .unwrap_or_else(U512::zero);
 
     assert!(
@@ -120,10 +120,10 @@ fn finalize_payment_should_refund_to_specified_purse() {
     );
 
     let exec_request = {
-        let genesis_account_hash = DEFAULT_ACCOUNT_ADDR;
+        let genesis_account_hash = *DEFAULT_ACCOUNT_ADDR;
 
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_session_code("do_nothing.wasm", RuntimeArgs::default())
             .with_payment_code(FINALIZE_PAYMENT, args)
@@ -148,7 +148,7 @@ fn finalize_payment_should_refund_to_specified_purse() {
     let payment_post_balance = get_pos_payment_purse_balance(&builder);
     let rewards_post_balance = get_pos_rewards_purse_balance(&builder);
     let refund_post_balance =
-        get_named_account_balance(&builder, DEFAULT_ACCOUNT_ADDR, LOCAL_REFUND_PURSE)
+        get_named_account_balance(&builder, *DEFAULT_ACCOUNT_ADDR, LOCAL_REFUND_PURSE)
             .expect("should have refund balance");
     let expected_amount = rewards_pre_balance + spent_amount;
     assert_eq!(

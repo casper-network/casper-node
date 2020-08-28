@@ -2,16 +2,6 @@
 #![cfg_attr(not(test), no_main)]
 
 #[no_mangle]
-pub extern "C" fn bond() {
-    pos::bond();
-}
-
-#[no_mangle]
-pub extern "C" fn unbond() {
-    pos::unbond();
-}
-
-#[no_mangle]
 pub extern "C" fn get_payment_purse() {
     pos::get_payment_purse();
 }

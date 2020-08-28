@@ -188,7 +188,8 @@ where
 
                 self.validation_states.retain(|key, state| {
                     if state.missing_deploys.contains(&deploy_hash) {
-                        // This validation state contains a failed deploy hash, it can never succeed.
+                        // This validation state contains a failed deploy hash, it can never
+                        // succeed.
                         state.responders.drain(..).for_each(|responder| {
                             effects.extend(responder.respond((false, key.clone())).ignore());
                         });

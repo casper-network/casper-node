@@ -57,6 +57,13 @@ pub fn get_standard_payment() -> ContractHash {
     get_system_contract(SystemContractType::StandardPayment)
 }
 
+/// Returns a read-only pointer to the Auction contract.
+///
+/// Any failure will trigger [`revert`](runtime::revert) with appropriate [`ApiError`].
+pub fn get_auction() -> ContractHash {
+    get_system_contract(SystemContractType::Auction)
+}
+
 /// Creates a new empty purse and returns its [`URef`].
 pub fn create_purse() -> URef {
     let purse_non_null_ptr = contract_api::alloc_bytes(UREF_SERIALIZED_LENGTH);

@@ -28,7 +28,7 @@ fn setup() -> InMemoryWasmTestBuilder {
             "target" => VICTIM_ADDR,
             "amount" => *VICTIM_INITIAL_FUNDS,
         };
-        ExecuteRequestBuilder::standard(DEFAULT_ACCOUNT_ADDR, CONTRACT_TRANSFER_TO_ACCOUNT, args)
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, CONTRACT_TRANSFER_TO_ACCOUNT, args)
             .build()
     };
 
@@ -37,7 +37,7 @@ fn setup() -> InMemoryWasmTestBuilder {
         let args = runtime_args! {
             "method" => "install".to_string(),
         };
-        ExecuteRequestBuilder::standard(DEFAULT_ACCOUNT_ADDR, CONTRACT_EE_599_REGRESSION, args)
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, CONTRACT_EE_599_REGRESSION, args)
             .build()
     };
 
@@ -64,7 +64,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_purse_to_purse() {
         .expect("should have victim account");
 
     let default_account = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
     let transfer_funds = default_account
         .named_keys()
@@ -132,7 +132,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_from_purse_to_account() {
         .expect("should have victim account");
 
     let default_account = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let default_account_balance = builder.get_purse_balance(default_account.main_purse());
@@ -214,7 +214,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_to_account() {
         .expect("should have victim account");
 
     let default_account = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let default_account_balance = builder.get_purse_balance(default_account.main_purse());
@@ -297,7 +297,7 @@ fn should_not_be_able_to_get_main_purse_in_invalid_context() {
         .expect("should have victim account");
 
     let default_account = builder
-        .get_account(DEFAULT_ACCOUNT_ADDR)
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let transfer_funds = default_account

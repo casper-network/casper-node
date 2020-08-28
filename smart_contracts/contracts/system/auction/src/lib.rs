@@ -1,212 +1,342 @@
-#![cfg_attr(not(test), no_std)]
+#![no_std]
 
 #[macro_use]
 extern crate alloc;
 
-mod active_bid;
-mod entry_points;
-mod error;
-mod founding_validator;
-mod providers;
-mod seigniorage_recipient;
+use alloc::vec::Vec;
+use core::result::Result as StdResult;
 
-use alloc::{collections::BTreeMap, vec::Vec};
+use casperlabs_contract::{
+    contract_api::{runtime, storage, system},
+    unwrap_or_revert::UnwrapOrRevert,
+};
+use casperlabs_types::{
+    account::AccountHash,
+    auction::{
+        AuctionProvider, DelegationRate, RuntimeProvider, SeigniorageRecipients, ARG_AMOUNT,
+        ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_SOURCE_PURSE, ARG_VALIDATOR,
+        ARG_VALIDATOR_KEYS, ARG_VALIDATOR_PUBLIC_KEYS, METHOD_ADD_BID, METHOD_BOND,
+        METHOD_DELEGATE, METHOD_PROCESS_UNBOND_REQUESTS, METHOD_QUASH_BID,
+        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS, METHOD_RUN_AUCTION, METHOD_SLASH,
+        METHOD_UNBOND, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID, {StorageProvider, SystemProvider},
+    },
+    bytesrepr::{FromBytes, ToBytes},
+    system_contract_errors::auction::Error,
+    CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
+    Parameter, PublicKey, URef, U512,
+};
 
-use casperlabs_types::{account::AccountHash, URef, U512};
+struct AuctionContract;
 
-use active_bid::{ActiveBid, ActiveBids};
-pub use entry_points::get_entry_points;
-pub use error::{Error, Result};
-use founding_validator::FoundingValidators;
-use providers::{ProofOfStakeProvider, StorageProvider, SystemProvider};
-use seigniorage_recipient::SeignorageRecipient;
+impl StorageProvider for AuctionContract {
+    type Error = Error;
 
-const FOUNDER_VALIDATORS_KEY: &str = "founder_validators";
-const ACTIVE_BIDS_KEY: &str = "active_bids";
-
-type DelegationRate = u32;
-
-pub trait Auction: StorageProvider + ProofOfStakeProvider + SystemProvider
-where
-    Error: From<<Self as StorageProvider>::Error> + From<<Self as SystemProvider>::Error>,
-{
-    /// Access: node
-    /// Upon progression to the set era marking the release of founding stakes,
-    /// node software embeds a deploy in the first block of the relevant era
-    /// to trigger this function. The founding_validators data structure is
-    /// checked, returning False if the validator is not found and aborting.
-    /// If the validator is found, the function first calls
-    /// release_founder_stake in the Mint contract. Upon receipt of True,
-    /// it also flips the relevant field to True in the validator’s entry
-    /// within founding_validators. Otherwise the function aborts.
-    fn release_founder(&mut self, _account_hash: AccountHash) -> bool {
-        todo!()
+    fn get_key(&mut self, name: &str) -> Option<Key> {
+        runtime::get_key(name)
     }
 
-    /// Returns era_validators. Publicly accessible, but intended
-    /// for periodic use by the PoS contract to update its own internal data
-    /// structures recording current and past winners.
-    fn read_winners(&mut self) -> Vec<AccountHash> {
-        todo!()
+    fn read<T: FromBytes + CLTyped>(&mut self, uref: URef) -> Result<Option<T>, Self::Error> {
+        Ok(storage::read(uref)?)
     }
 
-    /// Returns validators in era_validators, mapped to their bids or founding
-    /// stakes, delegation rates and lists of delegators together with their
-    /// delegated quantities from delegators. This function is publicly
-    /// accessible, but intended for system use by the PoS contract, because
-    /// this data is necessary for distributing seigniorage.
-    fn read_seigniorage_recipients(&mut self) -> BTreeMap<AccountHash, SeignorageRecipient> {
-        todo!()
+    fn write<T: ToBytes + CLTyped>(&mut self, uref: URef, value: T) -> Result<(), Self::Error> {
+        storage::write(uref, value);
+        Ok(())
+    }
+}
+
+impl SystemProvider for AuctionContract {
+    type Error = Error;
+
+    fn create_purse(&mut self) -> URef {
+        system::create_purse()
     }
 
-    /// For a non-founder validator, this adds, or modifies, an entry in the
-    /// active_bids map and calls bond in the Mint contract to create (or top off)
-    /// a bid purse. It also adjusts the delegation rate.
-    /// For a founding validator, the same logic is carried out with
-    /// founding_validators, instead of active_bids.
-    /// The arguments, in order, are public key, originating purse, delegation
-    /// rate and quantity of motes to add. The function returns a tuple of the
-    /// bid (or stake) purse key and the new quantity of motes.
-    fn add_bid(
+    fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Self::Error> {
+        Ok(system::get_balance(purse))
+    }
+
+    fn transfer_from_purse_to_purse(
         &mut self,
-        account_hash: AccountHash,
-        source_purse: URef,
-        delegation_rate: DelegationRate,
-        quantity: U512,
-    ) -> Result<(URef, U512)> {
-        // Creates new purse with desired amount taken from `source_purse`
-        let bonding_purse = self.create_purse();
-        self.transfer_from_purse_to_purse(source_purse, bonding_purse, quantity)?;
-
-        // Update bids or stakes
-        let founder_validators_key = self
-            .get_key(FOUNDER_VALIDATORS_KEY)
-            .ok_or(Error::MissingKey)?;
-        let founder_validators_uref = founder_validators_key
-            .into_uref()
-            .ok_or(Error::InvalidKeyVariant)?;
-
-        let mut founder_validators: FoundingValidators = self
-            .read(founder_validators_uref)?
-            .ok_or(Error::MissingValue)?;
-        let new_quantity = match founder_validators.get_mut(&account_hash) {
-            // Update `founder_validators` map since `account_hash` belongs to a validator.
-            Some(founding_validator) => {
-                founding_validator.bonding_purse = bonding_purse;
-                founding_validator.staked_amount += quantity;
-
-                founding_validator.staked_amount
-            }
-            None => {
-                // Non-founder - updates `active_bids` table
-                let active_bids_key = self.get_key(ACTIVE_BIDS_KEY).ok_or(Error::MissingKey)?;
-                let active_bids_uref = active_bids_key
-                    .into_uref()
-                    .ok_or(Error::InvalidKeyVariant)?;
-                let mut active_bids: ActiveBids =
-                    self.read(active_bids_uref)?.ok_or(Error::MissingValue)?;
-                // Returns active bid which could be updated in case given entry exists.
-                let bid_amount = {
-                    let active_bid = active_bids
-                        .entry(account_hash)
-                        .and_modify(|active_bid| {
-                            // Update existing entry
-                            active_bid.bid_amount += quantity;
-                            active_bid.bid_purse = bonding_purse;
-                            active_bid.delegation_rate = delegation_rate;
-                        })
-                        .or_insert_with(|| {
-                            // Create new entry in active bids
-                            ActiveBid {
-                                bid_purse: bonding_purse,
-                                bid_amount: quantity,
-                                delegation_rate,
-                            }
-                        });
-                    active_bid.bid_amount
-                };
-
-                // Write updated active bids
-                self.write(active_bids_uref, active_bids);
-
-                bid_amount
-            }
-        };
-
-        // Bonds whole amount from the newly created purse
-        self.bond(quantity, bonding_purse);
-
-        Ok((bonding_purse, new_quantity))
+        source: URef,
+        target: URef,
+        amount: U512,
+    ) -> StdResult<(), Self::Error> {
+        system::transfer_from_purse_to_purse(source, target, amount).map_err(|_| Error::Transfer)
     }
+}
 
-    /// For a non-founder validator, implements essentially the same logic as
-    /// add_bid, but reducing the number of tokens and calling unbond in lieu of
-    /// bond.
-    ///
-    /// For a founding validator, this function first checks whether they are
-    /// released, and fails if they are not. Additionally, the relevant data
-    /// structure is founding_validators, rather than active_bids.
-    ///
-    /// The function returns a tuple of the (new) unbonding purse key and the new
-    /// quantity of motes remaining in the bid. If the target bid does not exist,
-    /// The arguments are the public key and amount of motes to remove.
-    fn withdraw_bid(
-        &mut self,
-        _account_hash: AccountHash,
-        _quantity: U512,
-    ) -> Result<(URef, U512)> {
-        todo!()
+impl RuntimeProvider for AuctionContract {
+    fn get_caller(&self) -> AccountHash {
+        runtime::get_caller()
     }
+}
 
-    /// Adds a new delegator to delegators, or tops off a curren
-    /// one. If the target validator is not in active_bids, the function call
-    /// returns a designated “failure” purse and does nothing. The function
-    /// calls bond in the Mint contract to transfer motes to the
-    /// validator’s purse and returns a tuple of that purse and the
-    /// quantity of motes contained in it after the transfer.
-    ///
-    /// The arguments are the delegator’s key, the originating purse, the validator key and quantity of motes.
-    fn delegate(
-        &mut self,
-        _delegator_account_hash: AccountHash,
-        _source_purse: URef,
-        _validator_account_hash: AccountHash,
-        _quantity: U512,
-    ) -> Result<(URef, U512)> {
-        todo!()
-    }
+impl AuctionProvider for AuctionContract {}
 
-    /// Removes a quantity (or the entry altogether, if the
-    /// remaining quantity is 0) of motes from the entry in delegators
-    /// and calls unbond in the Mint contract to create a new unbonding
-    /// purse. Returns the new unbonding purse and the quantity of
-    /// remaining delegated motes.
-    ///
-    /// The arguments are the delegator’s key, the validator key and quantity of motes.
-    fn undelegate(
-        &mut self,
-        _delegator_account_hash: AccountHash,
-        _validator_account_hash: AccountHash,
-        _quantity: U512,
-    ) -> Result<(URef, U512)> {
-        todo!()
-    }
+#[no_mangle]
+pub extern "C" fn read_winners() {
+    let result = AuctionContract.read_winners().unwrap_or_revert();
 
-    /// Removes validator entries from either active_bids or
-    /// founding_validators, wherever they might be found. This function
-    /// is intended to be called together with the slash function in the
-    /// Mint contract.
-    /// Access: PoS contractPL
-    fn quash_bid(&mut self, _validator_keys: &[AccountHash]) {
-        todo!()
-    }
+    let cl_value = CLValue::from_t(result).unwrap_or_revert();
+    runtime::ret(cl_value)
+}
 
-    /// block. Takes active_bids and delegators to construct a list of
-    /// validators' total bids (their own added to their delegators') ordered
-    /// by size from largest to smallest, then takes the top N (number of
-    /// auction slots) bidders and replaced era_validators with these.   
-    /// Access: node
-    fn run_auction(&mut self) {
-        todo!()
-    }
+#[no_mangle]
+pub extern "C" fn read_seigniorage_recipients() {
+    let result = AuctionContract
+        .read_seigniorage_recipients()
+        .unwrap_or_revert();
+
+    let cl_value = CLValue::from_t(result).unwrap_or_revert();
+    runtime::ret(cl_value)
+}
+
+#[no_mangle]
+pub extern "C" fn add_bid() {
+    let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
+    let source_purse = runtime::get_named_arg(ARG_SOURCE_PURSE);
+    let delegation_rate = runtime::get_named_arg(ARG_DELEGATION_RATE);
+    let amount = runtime::get_named_arg(ARG_AMOUNT);
+
+    let result = AuctionContract
+        .add_bid(public_key, source_purse, delegation_rate, amount)
+        .unwrap_or_revert();
+
+    let cl_value = CLValue::from_t(result).unwrap_or_revert();
+
+    runtime::ret(cl_value)
+}
+
+#[no_mangle]
+pub extern "C" fn withdraw_bid() {
+    let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
+    let amount = runtime::get_named_arg(ARG_AMOUNT);
+
+    let result = AuctionContract
+        .withdraw_bid(public_key, amount)
+        .unwrap_or_revert();
+    let cl_value = CLValue::from_t(result).unwrap_or_revert();
+    runtime::ret(cl_value)
+}
+
+#[no_mangle]
+pub extern "C" fn delegate() {
+    let delegator = runtime::get_named_arg(ARG_DELEGATOR);
+    let source_purse = runtime::get_named_arg(ARG_SOURCE_PURSE);
+    let validator = runtime::get_named_arg(ARG_VALIDATOR);
+    let amount = runtime::get_named_arg(ARG_AMOUNT);
+
+    let result = AuctionContract
+        .delegate(delegator, source_purse, validator, amount)
+        .unwrap_or_revert();
+
+    let cl_value = CLValue::from_t(result).unwrap_or_revert();
+    runtime::ret(cl_value)
+}
+
+#[no_mangle]
+pub extern "C" fn undelegate() {
+    let delegator = runtime::get_named_arg(ARG_DELEGATOR);
+    let validator = runtime::get_named_arg(ARG_VALIDATOR);
+    let amount = runtime::get_named_arg(ARG_AMOUNT);
+
+    let result = AuctionContract
+        .undelegate(delegator, validator, amount)
+        .unwrap_or_revert();
+
+    let cl_value = CLValue::from_t(result).unwrap_or_revert();
+    runtime::ret(cl_value)
+}
+
+#[no_mangle]
+pub extern "C" fn quash_bid() {
+    let validator_keys: Vec<PublicKey> = runtime::get_named_arg("validator_keys");
+
+    AuctionContract.quash_bid(validator_keys).unwrap_or_revert();
+}
+
+#[no_mangle]
+pub extern "C" fn run_auction() {
+    AuctionContract.run_auction().unwrap_or_revert();
+}
+
+#[no_mangle]
+pub extern "C" fn read_era_id() {
+    let result = AuctionContract.read_era_id().unwrap_or_revert();
+    let cl_value = CLValue::from_t(result).unwrap_or_revert();
+    runtime::ret(cl_value);
+}
+
+#[no_mangle]
+pub extern "C" fn bond() {
+    let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
+    let source = runtime::get_named_arg(ARG_SOURCE_PURSE);
+    let amount = runtime::get_named_arg(ARG_AMOUNT);
+    let result = AuctionContract
+        .bond(public_key, source, amount)
+        .unwrap_or_revert();
+    let ret = CLValue::from_t(result).unwrap_or_revert();
+    runtime::ret(ret);
+}
+
+#[no_mangle]
+pub extern "C" fn unbond() {
+    let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
+    let amount = runtime::get_named_arg(ARG_AMOUNT);
+    let result = AuctionContract
+        .unbond(public_key, amount)
+        .unwrap_or_revert();
+    let ret = CLValue::from_t(result).unwrap_or_revert();
+    runtime::ret(ret)
+}
+
+#[no_mangle]
+pub extern "C" fn process_unbond_requests() {
+    AuctionContract.process_unbond_requests().unwrap_or_revert();
+}
+
+#[no_mangle]
+pub extern "C" fn slash() {
+    let validator_public_keys = runtime::get_named_arg(ARG_VALIDATOR_PUBLIC_KEYS);
+    AuctionContract
+        .slash(validator_public_keys)
+        .unwrap_or_revert();
+}
+
+pub fn get_entry_points() -> EntryPoints {
+    let mut entry_points = EntryPoints::new();
+
+    let entry_point = EntryPoint::new(
+        METHOD_READ_WINNERS,
+        vec![],
+        <Vec<AccountHash>>::cl_type(),
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_READ_SEIGNIORAGE_RECIPIENTS,
+        vec![],
+        SeigniorageRecipients::cl_type(),
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_ADD_BID,
+        vec![
+            Parameter::new(ARG_PUBLIC_KEY, AccountHash::cl_type()),
+            Parameter::new(ARG_SOURCE_PURSE, URef::cl_type()),
+            Parameter::new(ARG_DELEGATION_RATE, DelegationRate::cl_type()),
+            Parameter::new(ARG_AMOUNT, U512::cl_type()),
+        ],
+        <(URef, U512)>::cl_type(),
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_WITHDRAW_BID,
+        vec![
+            Parameter::new(ARG_PUBLIC_KEY, AccountHash::cl_type()),
+            Parameter::new(ARG_AMOUNT, U512::cl_type()),
+        ],
+        <(URef, U512)>::cl_type(),
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_DELEGATE,
+        vec![
+            Parameter::new(ARG_DELEGATOR, PublicKey::cl_type()),
+            Parameter::new(ARG_SOURCE_PURSE, URef::cl_type()),
+            Parameter::new(ARG_VALIDATOR, PublicKey::cl_type()),
+            Parameter::new(ARG_AMOUNT, U512::cl_type()),
+        ],
+        <(URef, U512)>::cl_type(),
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_UNDELEGATE,
+        vec![
+            Parameter::new(ARG_DELEGATOR, AccountHash::cl_type()),
+            Parameter::new(ARG_VALIDATOR, AccountHash::cl_type()),
+            Parameter::new(ARG_AMOUNT, U512::cl_type()),
+        ],
+        U512::cl_type(),
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_QUASH_BID,
+        vec![Parameter::new(
+            ARG_VALIDATOR_KEYS,
+            Vec::<AccountHash>::cl_type(),
+        )],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_RUN_AUCTION,
+        vec![],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_BOND,
+        vec![
+            Parameter::new(ARG_SOURCE_PURSE, CLType::URef),
+            Parameter::new(ARG_AMOUNT, CLType::U512),
+        ],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_UNBOND,
+        vec![],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_PROCESS_UNBOND_REQUESTS,
+        vec![],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_SLASH,
+        vec![],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    entry_points
 }

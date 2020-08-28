@@ -41,7 +41,7 @@ fn should_create_and_remove_group() {
     // This test runs a contract that's after every call extends the same key with
     // more data
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_GROUPS,
         RuntimeArgs::default(),
     )
@@ -54,7 +54,7 @@ fn should_create_and_remove_group() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(DEFAULT_ACCOUNT_ADDR), &[])
+        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
         .as_account()
         .cloned()
@@ -74,7 +74,7 @@ fn should_create_and_remove_group() {
         // can work from different accounts which might not have the same keys in their session
         // code.
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
                 Some(CONTRACT_INITIAL_VERSION),
@@ -82,7 +82,7 @@ fn should_create_and_remove_group() {
                 DEFAULT_CREATE_GROUP_ARGS.clone(),
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([3; 32])
             .build();
 
@@ -112,7 +112,7 @@ fn should_create_and_remove_group() {
             GROUP_NAME_ARG => GROUP_1_NAME,
         };
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
                 Some(CONTRACT_INITIAL_VERSION),
@@ -120,7 +120,7 @@ fn should_create_and_remove_group() {
                 args,
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([3; 32])
             .build();
 
@@ -147,7 +147,7 @@ fn should_create_and_extend_user_group() {
     // This test runs a contract that's after every call extends the same key with
     // more data
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_GROUPS,
         RuntimeArgs::default(),
     )
@@ -160,7 +160,7 @@ fn should_create_and_extend_user_group() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(DEFAULT_ACCOUNT_ADDR), &[])
+        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
         .as_account()
         .cloned()
@@ -180,7 +180,7 @@ fn should_create_and_extend_user_group() {
         // can work from different accounts which might not have the same keys in their session
         // code.
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
                 Some(CONTRACT_INITIAL_VERSION),
@@ -188,7 +188,7 @@ fn should_create_and_extend_user_group() {
                 DEFAULT_CREATE_GROUP_ARGS.clone(),
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([5; 32])
             .build();
 
@@ -219,7 +219,7 @@ fn should_create_and_extend_user_group() {
             TOTAL_NEW_UREFS_ARG => NEW_UREFS_COUNT,
         };
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
                 Some(CONTRACT_INITIAL_VERSION),
@@ -227,7 +227,7 @@ fn should_create_and_extend_user_group() {
                 args,
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([3; 32])
             .build();
 
@@ -258,7 +258,7 @@ fn should_create_and_remove_urefs_from_group() {
     // This test runs a contract that's after every call extends the same key with
     // more data
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_GROUPS,
         RuntimeArgs::default(),
     )
@@ -271,7 +271,7 @@ fn should_create_and_remove_urefs_from_group() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(DEFAULT_ACCOUNT_ADDR), &[])
+        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
         .as_account()
         .cloned()
@@ -291,7 +291,7 @@ fn should_create_and_remove_urefs_from_group() {
         // can work from different accounts which might not have the same keys in their session
         // code.
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
                 Some(CONTRACT_INITIAL_VERSION),
@@ -299,7 +299,7 @@ fn should_create_and_remove_urefs_from_group() {
                 DEFAULT_CREATE_GROUP_ARGS.clone(),
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([3; 32])
             .build();
 
@@ -332,7 +332,7 @@ fn should_create_and_remove_urefs_from_group() {
             UREFS_ARG => urefs_to_remove,
         };
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
                 Some(CONTRACT_INITIAL_VERSION),
@@ -340,7 +340,7 @@ fn should_create_and_remove_urefs_from_group() {
                 args,
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([3; 32])
             .build();
 
@@ -368,7 +368,7 @@ fn should_limit_max_urefs_while_extending() {
     // This test runs a contract that's after every call extends the same key with
     // more data
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_GROUPS,
         RuntimeArgs::default(),
     )
@@ -381,7 +381,7 @@ fn should_limit_max_urefs_while_extending() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(DEFAULT_ACCOUNT_ADDR), &[])
+        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
         .as_account()
         .cloned()
@@ -401,7 +401,7 @@ fn should_limit_max_urefs_while_extending() {
         // can work from different accounts which might not have the same keys in their session
         // code.
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
                 Some(CONTRACT_INITIAL_VERSION),
@@ -409,7 +409,7 @@ fn should_limit_max_urefs_while_extending() {
                 DEFAULT_CREATE_GROUP_ARGS.clone(),
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([3; 32])
             .build();
 
@@ -440,7 +440,7 @@ fn should_limit_max_urefs_while_extending() {
             TOTAL_NEW_UREFS_ARG => 8u64,
         };
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
                 Some(CONTRACT_INITIAL_VERSION),
@@ -448,7 +448,7 @@ fn should_limit_max_urefs_while_extending() {
                 args,
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([5; 32])
             .build();
 
@@ -465,7 +465,7 @@ fn should_limit_max_urefs_while_extending() {
             TOTAL_NEW_UREFS_ARG => 1u64,
         };
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
                 Some(CONTRACT_INITIAL_VERSION),
@@ -473,7 +473,7 @@ fn should_limit_max_urefs_while_extending() {
                 args,
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([32; 32])
             .build();
 

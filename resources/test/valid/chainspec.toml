@@ -5,6 +5,7 @@ protocol_version = '0.1.0'
 mint_installer_path = 'mint.wasm'
 pos_installer_path = 'pos.wasm'
 standard_payment_installer_path = 'standard_payment.wasm'
+auction_installer_path = 'auction_install.wasm'
 accounts_path = 'accounts.csv'
 
 [highway]

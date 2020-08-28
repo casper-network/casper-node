@@ -7,7 +7,7 @@ use casperlabs_types::{
 };
 use std::collections::BTreeMap;
 
-const PROTOCOL_DATA_SERIALIZED_LENGTH: usize = WASM_COSTS_SERIALIZED_LENGTH + 3 * KEY_HASH_LENGTH;
+const PROTOCOL_DATA_SERIALIZED_LENGTH: usize = WASM_COSTS_SERIALIZED_LENGTH + 4 * KEY_HASH_LENGTH;
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
 
 /// Represents a protocol's data. Intended to be associated with a given protocol version.
@@ -17,6 +17,7 @@ pub struct ProtocolData {
     mint: ContractHash,
     proof_of_stake: ContractHash,
     standard_payment: ContractHash,
+    auction: ContractHash,
 }
 
 /// Provides a default instance with non existing urefs and empty costs table.
@@ -30,6 +31,7 @@ impl Default for ProtocolData {
             mint: DEFAULT_ADDRESS,
             proof_of_stake: DEFAULT_ADDRESS,
             standard_payment: DEFAULT_ADDRESS,
+            auction: DEFAULT_ADDRESS,
         }
     }
 }
@@ -41,12 +43,14 @@ impl ProtocolData {
         mint: ContractHash,
         proof_of_stake: ContractHash,
         standard_payment: ContractHash,
+        auction: ContractHash,
     ) -> Self {
         ProtocolData {
             wasm_costs,
             mint,
             proof_of_stake,
             standard_payment,
+            auction,
         }
     }
 
@@ -94,6 +98,10 @@ impl ProtocolData {
         self.standard_payment
     }
 
+    pub fn auction(&self) -> ContractHash {
+        self.auction
+    }
+
     /// Retrieves all valid system contracts stored in protocol version
     pub fn system_contracts(&self) -> Vec<ContractHash> {
         let mut vec = Vec::with_capacity(3);
@@ -106,6 +114,9 @@ impl ProtocolData {
         if self.standard_payment != DEFAULT_ADDRESS {
             vec.push(self.standard_payment)
         }
+        if self.auction != DEFAULT_ADDRESS {
+            vec.push(self.auction)
+        }
         vec
     }
 
@@ -117,6 +128,8 @@ impl ProtocolData {
                 self.proof_of_stake = new_hash;
             } else if old_hash == self.standard_payment {
                 self.standard_payment = new_hash;
+            } else if old_hash == self.auction {
+                self.auction = new_hash;
             } else {
                 return false;
             }
@@ -132,6 +145,7 @@ impl ToBytes for ProtocolData {
         ret.append(&mut self.mint.to_bytes()?);
         ret.append(&mut self.proof_of_stake.to_bytes()?);
         ret.append(&mut self.standard_payment.to_bytes()?);
+        ret.append(&mut self.auction.to_bytes()?);
         Ok(ret)
     }
 
@@ -146,6 +160,7 @@ impl FromBytes for ProtocolData {
         let (mint, rem) = HashAddr::from_bytes(rem)?;
         let (proof_of_stake, rem) = HashAddr::from_bytes(rem)?;
         let (standard_payment, rem) = HashAddr::from_bytes(rem)?;
+        let (auction, rem) = HashAddr::from_bytes(rem)?;
 
         Ok((
             ProtocolData {
@@ -153,6 +168,7 @@ impl FromBytes for ProtocolData {
                 mint,
                 proof_of_stake,
                 standard_payment,
+                auction,
             },
             rem,
         ))
@@ -174,12 +190,14 @@ pub(crate) mod gens {
             mint in gens::u8_slice_32(),
             proof_of_stake in gens::u8_slice_32(),
             standard_payment in gens::u8_slice_32(),
+            auction in gens::u8_slice_32(),
         ) -> ProtocolData {
             ProtocolData {
                 wasm_costs,
                 mint,
                 proof_of_stake,
                 standard_payment,
+                auction,
             }
         }
     }
@@ -231,11 +249,13 @@ mod tests {
             let mint_reference = [1u8; 32];
             let proof_of_stake_reference = [2u8; 32];
             let standard_payment_reference = [3u8; 32];
+            let auction_reference = [4u8; 32];
             ProtocolData::new(
                 costs,
                 mint_reference,
                 proof_of_stake_reference,
                 standard_payment_reference,
+                auction_reference,
             )
         };
         let free = {
@@ -243,11 +263,13 @@ mod tests {
             let mint_reference = [0u8; 32];
             let proof_of_stake_reference = [1u8; 32];
             let standard_payment_reference = [2u8; 32];
+            let auction_reference = [3u8; 32];
             ProtocolData::new(
                 costs,
                 mint_reference,
                 proof_of_stake_reference,
                 standard_payment_reference,
+                auction_reference,
             )
         };
         bytesrepr::test_serialization_roundtrip(&mock);
@@ -259,6 +281,7 @@ mod tests {
         let mint_reference = [1u8; 32];
         let proof_of_stake_reference = [2u8; 32];
         let standard_payment_reference = [3u8; 32];
+        let auction_reference = [4u8; 32];
         let protocol_data = {
             let costs = wasm_costs_mock();
             ProtocolData::new(
@@ -266,6 +289,7 @@ mod tests {
                 mint_reference,
                 proof_of_stake_reference,
                 standard_payment_reference,
+                auction_reference,
             )
         };
 
@@ -275,10 +299,11 @@ mod tests {
             items
         };
 
-        assert_eq!(actual.len(), 3);
+        assert_eq!(actual.len(), 4);
         assert_eq!(actual[0], mint_reference);
         assert_eq!(actual[1], proof_of_stake_reference);
         assert_eq!(actual[2], standard_payment_reference);
+        assert_eq!(actual[3], auction_reference);
     }
 
     #[test]
@@ -289,6 +314,7 @@ mod tests {
         let mint_reference = [0u8; 32]; // <-- invalid addr
         let proof_of_stake_reference = [2u8; 32];
         let standard_payment_reference = [3u8; 32];
+        let auction_reference = [4u8; 32];
         let protocol_data = {
             let costs = wasm_costs_mock();
             ProtocolData::new(
@@ -296,6 +322,7 @@ mod tests {
                 mint_reference,
                 proof_of_stake_reference,
                 standard_payment_reference,
+                auction_reference,
             )
         };
 
@@ -305,9 +332,10 @@ mod tests {
             items
         };
 
-        assert_eq!(actual.len(), 2);
+        assert_eq!(actual.len(), 3);
         assert_eq!(actual[0], proof_of_stake_reference);
         assert_eq!(actual[1], standard_payment_reference);
+        assert_eq!(actual[2], auction_reference);
     }
 
     proptest! {

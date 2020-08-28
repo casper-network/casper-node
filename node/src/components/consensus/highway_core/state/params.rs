@@ -18,14 +18,14 @@ impl Params {
     /// Arguments:
     ///
     /// * `seed`: The random seed.
-    /// * `block_reward`: The total reward that is paid out for a finalized block.
-    ///   Validator rewards for finalization must add up to this number or less.
-    ///   This should be large enough to allow very precise fractions of a block reward while
-    ///   still leaving space for millions of full rewards in a `u64`.
+    /// * `block_reward`: The total reward that is paid out for a finalized block. Validator rewards
+    ///   for finalization must add up to this number or less. This should be large enough to allow
+    ///   very precise fractions of a block reward while still leaving space for millions of full
+    ///   rewards in a `u64`.
     /// * `reduced_block_reward`: The reduced block reward that is paid out even if the heaviest
     ///   summit does not exceed half the total weight.
-    /// * `reward_delay`: The delay after which rewards are calculated. Rewards for a round in
-    ///   which a block B was proposed are paid out in the first block whose timestamp greater than
+    /// * `reward_delay`: The delay after which rewards are calculated. Rewards for a round in which
+    ///   a block B was proposed are paid out in the first block whose timestamp greater than
     ///   `reward_delay * t` after B's timestamp, where `t` is the round length of B itself.
     /// * `min_round_exp`: The minimum round exponent. `1 << min_round_exp` milliseconds is the
     ///   minimum round length.

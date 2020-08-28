@@ -15,7 +15,7 @@ const ARG_PAYMENT_AMOUNT: &str = "payment_amount";
 #[test]
 fn should_run_pos_refund_purse_contract_default_account() {
     let mut builder = initialize();
-    refund_tests(&mut builder, DEFAULT_ACCOUNT_ADDR);
+    refund_tests(&mut builder, *DEFAULT_ACCOUNT_ADDR);
 }
 
 #[ignore]
@@ -37,7 +37,7 @@ fn initialize() -> InMemoryWasmTestBuilder {
 fn transfer(builder: &mut InMemoryWasmTestBuilder, account_hash: AccountHash, amount: U512) {
     let exec_request = {
         ExecuteRequestBuilder::standard(
-            DEFAULT_ACCOUNT_ADDR,
+            *DEFAULT_ACCOUNT_ADDR,
             CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
             runtime_args! {
                 "target" => account_hash,

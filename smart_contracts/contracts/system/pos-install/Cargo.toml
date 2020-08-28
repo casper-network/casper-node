@@ -13,7 +13,6 @@ test = false
 
 [features]
 std = ["casperlabs-contract/std", "casperlabs-types/std"]
-enable-bonding = ["pos/enable-bonding"]
 
 [dependencies]
 base16 = { version = "0.2.1", default-features = false }

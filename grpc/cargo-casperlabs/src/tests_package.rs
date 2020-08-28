@@ -16,13 +16,16 @@ const MINT_INSTALL: &str = "mint_install.wasm";
 const POS_INSTALL: &str = "pos_install.wasm";
 const STANDARD_PAYMENT: &str = "standard_payment.wasm";
 const STANDARD_PAYMENT_INSTALL: &str = "standard_payment_install.wasm";
+const AUCTION_INSTALL: &str = "auction_install.wasm";
 
 const INTEGRATION_TESTS_RS_CONTENTS: &str = r#"#[cfg(test)]
 mod tests {
-    use casperlabs_engine_test_support::{Code, Error, SessionBuilder, TestContextBuilder, Value};
-    use casperlabs_types::{account::AccountHash, U512, RuntimeArgs, runtime_args};
+    use casperlabs_engine_test_support::{
+        Code, Error, PublicKey, SecretKey, SessionBuilder, TestContextBuilder, Value,
+    };
+    use casperlabs_types::{runtime_args, RuntimeArgs, U512};
 
-    const MY_ACCOUNT: AccountHash = AccountHash::new([7u8; 32]);
+    const MY_ACCOUNT: [u8; 32] = [7u8; 32];
     // define KEY constant to match that in the contract
     const KEY: &str = "special_value";
     const VALUE: &str = "hello world";
@@ -30,8 +33,12 @@ mod tests {
 
     #[test]
     fn should_store_hello_world() {
+        let secret_key = SecretKey::new_ed25519(MY_ACCOUNT);
+        let public_key = PublicKey::from(&secret_key);
+        let account_addr = public_key.to_account_hash();
+
         let mut context = TestContextBuilder::new()
-            .with_account(MY_ACCOUNT, U512::from(128_000_000))
+            .with_public_key(public_key, U512::from(128_000_000))
             .build();
 
         // The test framework checks for compiled Wasm files in '<current working dir>/wasm'.  Paths
@@ -42,11 +49,12 @@ mod tests {
             ARG_MESSAGE => VALUE,
         };
         let session = SessionBuilder::new(session_code, session_args)
-            .with_address(MY_ACCOUNT)
-            .with_authorization_keys(&[MY_ACCOUNT])
+            .with_address(account_addr)
+            .with_authorization_keys(&[account_addr])
             .build();
 
-        let result_of_query: Result<Value, Error> = context.run(session).query(MY_ACCOUNT, &[KEY]);
+        let result_of_query: Result<Value, Error> =
+            context.run(session).query(account_addr, &[KEY]);
 
         let returned_value = result_of_query.expect("should be a value");
 
@@ -177,6 +185,10 @@ pub fn copy_wasm_files() {
     common::copy_file(
         WASM_SRC_DIR.join(STANDARD_PAYMENT_INSTALL),
         WASM_DEST_DIR.join(STANDARD_PAYMENT_INSTALL),
+    );
+    common::copy_file(
+        WASM_SRC_DIR.join(AUCTION_INSTALL),
+        WASM_DEST_DIR.join(AUCTION_INSTALL),
     );
 }
 

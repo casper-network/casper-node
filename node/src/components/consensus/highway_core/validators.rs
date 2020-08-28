@@ -60,7 +60,10 @@ impl<VID: Eq + Hash> Validators<VID> {
     }
 
     pub(crate) fn total_weight(&self) -> Weight {
-        self.validators.iter().map(|v| v.weight()).sum()
+        self.validators.iter().fold(Weight(0), |sum, v| {
+            sum.checked_add(v.weight())
+                .expect("total weight must be < 2^64")
+        })
     }
 
     pub(crate) fn get_index(&self, id: &VID) -> Option<ValidatorIndex> {

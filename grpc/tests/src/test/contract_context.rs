@@ -26,7 +26,7 @@ const CONTRACT_VERSION: &str = "contract_version";
 fn should_enforce_intended_execution_contexts() {
     // This test runs a contract that extends the same key with more data after every call.
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_HEADERS,
         RuntimeArgs::default(),
     )
@@ -35,7 +35,7 @@ fn should_enforce_intended_execution_contexts() {
     let exec_request_2 = {
         let args = runtime_args! {};
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
                 Some(CONTRACT_INITIAL_VERSION),
@@ -43,7 +43,7 @@ fn should_enforce_intended_execution_contexts() {
                 args,
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([3; 32])
             .build();
 
@@ -53,7 +53,7 @@ fn should_enforce_intended_execution_contexts() {
     let exec_request_3 = {
         let args = runtime_args! {};
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
                 Some(CONTRACT_INITIAL_VERSION),
@@ -61,7 +61,7 @@ fn should_enforce_intended_execution_contexts() {
                 args,
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([3; 32])
             .build();
 
@@ -71,7 +71,7 @@ fn should_enforce_intended_execution_contexts() {
     let exec_request_4 = {
         let args = runtime_args! {};
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
                 Some(CONTRACT_INITIAL_VERSION),
@@ -79,7 +79,7 @@ fn should_enforce_intended_execution_contexts() {
                 args,
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([4; 32])
             .build();
 
@@ -98,7 +98,7 @@ fn should_enforce_intended_execution_contexts() {
     builder.exec(exec_request_4).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(DEFAULT_ACCOUNT_ADDR), &[])
+        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
         .as_account()
         .cloned()
@@ -123,7 +123,7 @@ fn should_enforce_intended_execution_contexts() {
     let contract_version_stored = builder
         .query(
             None,
-            Key::Account(DEFAULT_ACCOUNT_ADDR),
+            Key::Account(*DEFAULT_ACCOUNT_ADDR),
             &[CONTRACT_VERSION],
         )
         .expect("should query account")
@@ -138,7 +138,7 @@ fn should_enforce_intended_execution_contexts() {
 fn should_enforce_intended_execution_context_direct_by_name() {
     // This test runs a contract that extends the same key with more data after every call.
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_HEADERS,
         RuntimeArgs::default(),
     )
@@ -147,10 +147,10 @@ fn should_enforce_intended_execution_context_direct_by_name() {
     let exec_request_2 = {
         let args = runtime_args! {};
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_named_key(CONTRACT_HASH_KEY, SESSION_CODE_TEST, args)
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([3; 32])
             .build();
 
@@ -160,10 +160,10 @@ fn should_enforce_intended_execution_context_direct_by_name() {
     let exec_request_3 = {
         let args = runtime_args! {};
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_named_key(CONTRACT_HASH_KEY, CONTRACT_CODE_TEST, args)
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([3; 32])
             .build();
 
@@ -173,10 +173,10 @@ fn should_enforce_intended_execution_context_direct_by_name() {
     let exec_request_4 = {
         let args = runtime_args! {};
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_named_key(CONTRACT_HASH_KEY, ADD_NEW_KEY_AS_SESSION, args)
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([4; 32])
             .build();
 
@@ -195,7 +195,7 @@ fn should_enforce_intended_execution_context_direct_by_name() {
     builder.exec(exec_request_4).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(DEFAULT_ACCOUNT_ADDR), &[])
+        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
         .as_account()
         .cloned()
@@ -221,7 +221,7 @@ fn should_enforce_intended_execution_context_direct_by_name() {
 fn should_enforce_intended_execution_context_direct_by_hash() {
     // This test runs a contract that extends the same key with more data after every call.
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_HEADERS,
         RuntimeArgs::default(),
     )
@@ -234,7 +234,7 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(DEFAULT_ACCOUNT_ADDR), &[])
+        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
         .as_account()
         .cloned()
@@ -250,10 +250,10 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
     let exec_request_2 = {
         let args = runtime_args! {};
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_hash(contract_hash, SESSION_CODE_TEST, args)
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([3; 32])
             .build();
 
@@ -263,10 +263,10 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
     let exec_request_3 = {
         let args = runtime_args! {};
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_hash(contract_hash, CONTRACT_CODE_TEST, args)
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([3; 32])
             .build();
 
@@ -276,10 +276,10 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
     let exec_request_4 = {
         let args = runtime_args! {};
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_hash(contract_hash, ADD_NEW_KEY_AS_SESSION, args)
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([4; 32])
             .build();
 
@@ -293,7 +293,7 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
     builder.exec(exec_request_4).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(DEFAULT_ACCOUNT_ADDR), &[])
+        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
         .as_account()
         .cloned()
@@ -319,7 +319,7 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
 fn should_not_call_session_from_contract() {
     // This test runs a contract that extends the same key with more data after every call.
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_HEADERS,
         RuntimeArgs::default(),
     )
@@ -332,7 +332,7 @@ fn should_not_call_session_from_contract() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(DEFAULT_ACCOUNT_ADDR), &[])
+        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
         .as_account()
         .cloned()
@@ -349,7 +349,7 @@ fn should_not_call_session_from_contract() {
             PACKAGE_HASH_KEY => contract_package_hash,
         };
         let deploy = DeployItemBuilder::new()
-            .with_address(DEFAULT_ACCOUNT_ADDR)
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
                 Some(CONTRACT_INITIAL_VERSION),
@@ -357,7 +357,7 @@ fn should_not_call_session_from_contract() {
                 args,
             )
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([3; 32])
             .build();
 

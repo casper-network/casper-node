@@ -21,7 +21,10 @@ pub enum Error {
     DecodingMotes(#[from] FromDecStrErr),
 
     /// Error loading the upgrade installer.
-    #[error("could not load upgrade installer: {0}")]
+    #[error(
+        "could not load upgrade installer: {0} - if the file is missing, try running \
+        'make build-system-contracts' from the workspace root"
+    )]
     LoadUpgradeInstaller(LoadError<ReadFileError>),
 
     /// Error loading the chainspec.
@@ -29,19 +32,35 @@ pub enum Error {
     LoadChainspec(ReadFileError),
 
     /// Error loading the mint installer.
-    #[error("could not load mint installer: {0}")]
+    #[error(
+        "could not load mint installer: {0} - if the file is missing, try running \
+        'make build-system-contracts' from the workspace root"
+    )]
     LoadMintInstaller(LoadError<ReadFileError>),
 
     /// Error loading the pos installer.
-    #[error("could not load pos installer: {0}")]
+    #[error(
+        "could not load pos installer: {0} - if the file is missing, try running \
+        'make build-system-contracts' from the workspace root"
+    )]
     LoadPosInstaller(LoadError<ReadFileError>),
 
     /// Error loading the standard payment installer.
-    #[error("could not load standard payment installer: {0}")]
+    #[error(
+        "could not load standard payment installer: {0} - if the file is missing, try running \
+        'make build-system-contracts' from the workspace root"
+    )]
     LoadStandardPaymentInstaller(LoadError<ReadFileError>),
 
-    /// Error loading the standard payment installer.
-    #[error("could not load genesis accounts installer: {0}")]
+    /// Error loading the auction installer.
+    #[error(
+        "could not load auction installer: {0} - if the file is missing, try running \
+        'make build-system-contracts' from the workspace root"
+    )]
+    LoadAuctionInstaller(LoadError<ReadFileError>),
+
+    /// Error loading the genesis accounts.
+    #[error("could not load genesis accounts: {0}")]
     LoadGenesisAccounts(LoadError<GenesisLoadError>),
 }
 

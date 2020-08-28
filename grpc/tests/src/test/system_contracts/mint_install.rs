@@ -9,8 +9,8 @@ use casperlabs_node::components::contract_runtime::{
     shared::{stored_value::StoredValue, transform::Transform},
 };
 use casperlabs_types::{
-    contracts::CONTRACT_INITIAL_VERSION, ContractHash, ContractPackageHash, ContractVersionKey,
-    ProtocolVersion, RuntimeArgs,
+    contracts::CONTRACT_INITIAL_VERSION, runtime_args, ContractHash, ContractPackageHash,
+    ContractVersionKey, ProtocolVersion, RuntimeArgs,
 };
 
 const DEPLOY_HASH_1: [u8; 32] = [1u8; 32];
@@ -19,9 +19,8 @@ const DEPLOY_HASH_1: [u8; 32] = [1u8; 32];
 #[test]
 fn should_run_mint_install_contract() {
     let mut builder = WasmTestBuilder::default();
-    let engine_config = EngineConfig::new()
-        .with_use_system_contracts(cfg!(feature = "use-system-contracts"))
-        .with_enable_bonding(cfg!(feature = "enable-bonding"));
+    let engine_config =
+        EngineConfig::new().with_use_system_contracts(cfg!(feature = "use-system-contracts"));
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -32,12 +31,12 @@ fn should_run_mint_install_contract() {
     ) = exec_with_return::exec(
         engine_config,
         &mut builder,
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         "mint_install.wasm",
         DEFAULT_BLOCK_TIME,
         DEPLOY_HASH_1,
         "install",
-        RuntimeArgs::new(),
+        runtime_args! {},
         vec![],
     )
     .expect("should run successfully");

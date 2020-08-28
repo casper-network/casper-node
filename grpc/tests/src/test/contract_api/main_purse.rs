@@ -22,7 +22,7 @@ fn should_run_main_purse_contract_default_account() {
     let builder = builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let default_account = if let Ok(StoredValue::Account(account)) =
-        builder.query(None, Key::Account(DEFAULT_ACCOUNT_ADDR), &[])
+        builder.query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
     {
         account
     } else {
@@ -30,7 +30,7 @@ fn should_run_main_purse_contract_default_account() {
     };
 
     let exec_request = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_MAIN_PURSE,
         runtime_args! { "purse" => default_account.main_purse() },
     )
@@ -45,7 +45,7 @@ fn should_run_main_purse_contract_account_1() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *DEFAULT_PAYMENT },
     )

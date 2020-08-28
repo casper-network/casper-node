@@ -16,8 +16,6 @@ use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use casperlabs_types::U512;
-
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 use crate::{
@@ -328,12 +326,18 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             .genesis
             .accounts
             .iter()
-            .filter_map(|account| {
-                account
-                    .public_key()
-                    .map(|pub_key| (pub_key, account.bonded_amount()))
+            .filter_map(|genesis_account| {
+                if genesis_account.is_genesis_validator() {
+                    Some((
+                        genesis_account
+                            .public_key()
+                            .expect("should have public key"),
+                        genesis_account.bonded_amount(),
+                    ))
+                } else {
+                    None
+                }
             })
-            .filter(|(_, stake)| stake.value() > U512::zero())
             .collect();
         let (consensus, consensus_effects) = EraSupervisor::new(
             timestamp,
@@ -460,9 +464,10 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 rng,
                 Event::BlockValidator(block_validator::Event::from(req)),
             ),
-            Event::MetricsRequest(req) => {
-                self.dispatch_event(effect_builder, rng, Event::MetricsRequest(req))
-            }
+            Event::MetricsRequest(req) => reactor::wrap_effects(
+                Event::MetricsRequest,
+                self.metrics.handle_event(effect_builder, rng, req),
+            ),
 
             // Announcements:
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {

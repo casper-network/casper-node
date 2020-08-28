@@ -27,10 +27,10 @@ fn should_run_ee_890_gracefully_reject_start_node_in_session() {
     let wasm_binary = wabt::wat2wasm(CONTRACT_WAT_WITH_START).expect("should parse");
 
     let deploy_1 = DeployItemBuilder::new()
-        .with_address(DEFAULT_ACCOUNT_ADDR)
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_session_bytes(wasm_binary, RuntimeArgs::new())
         .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-        .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .with_deploy_hash([123; 32])
         .build();
 
@@ -55,10 +55,10 @@ fn should_run_ee_890_gracefully_reject_start_node_in_payment() {
     let wasm_binary = wabt::wat2wasm(CONTRACT_WAT_WITH_START).expect("should parse");
 
     let deploy_1 = DeployItemBuilder::new()
-        .with_address(DEFAULT_ACCOUNT_ADDR)
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_session_code(DO_NOTHING_WASM, RuntimeArgs::new())
         .with_payment_bytes(wasm_binary, RuntimeArgs::new())
-        .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .with_deploy_hash([123; 32])
         .build();
 

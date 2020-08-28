@@ -46,7 +46,7 @@ use casperlabs_node::components::contract_runtime::{
     },
     storage::global_state::{CommitResult, StateProvider},
 };
-use casperlabs_types::{bytesrepr::ToBytes, ProtocolVersion};
+use casperlabs_types::bytesrepr::ToBytes;
 
 use self::{
     ipc::{
@@ -59,8 +59,6 @@ use self::{
 };
 
 const UNIMPLEMENTED: &str = "unimplemented";
-
-const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 
 // Idea is that Engine will represent the core of the execution engine project.
 // It will act as an entry point for execution of Wasm binaries.
@@ -179,16 +177,6 @@ where
     ) -> SingleResponse<CommitResponse> {
         let correlation_id = CorrelationId::new();
 
-        // TODO
-        let protocol_version = {
-            let protocol_version = commit_request.take_protocol_version().into();
-            if protocol_version < DEFAULT_PROTOCOL_VERSION {
-                DEFAULT_PROTOCOL_VERSION
-            } else {
-                protocol_version
-            }
-        };
-
         // Acquire pre-state hash
         let pre_state_hash: Blake2bHash = match commit_request.get_prestate_hash().try_into() {
             Err(_) => {
@@ -220,11 +208,8 @@ where
         let commit_response = {
             let mut ret = CommitResponse::new();
 
-            match self.apply_effect(correlation_id, protocol_version, pre_state_hash, transforms) {
-                Ok(CommitResult::Success {
-                    state_root,
-                    bonded_validators,
-                }) => {
+            match self.apply_effect(correlation_id, pre_state_hash, transforms) {
+                Ok(CommitResult::Success { state_root }) => {
                     let properties = {
                         let mut tmp = BTreeMap::new();
                         tmp.insert("post-state-hash", format!("{:?}", state_root));
@@ -237,10 +222,8 @@ where
                         properties,
                     );
 
-                    let bonds = bonded_validators.into_iter().map(Into::into).collect();
                     let commit_result = ret.mut_success();
                     commit_result.set_poststate_hash(state_root.to_vec());
-                    commit_result.set_bonded_validators(bonds);
                 }
                 Ok(CommitResult::RootNotFound) => {
                     warn!("RootNotFound");

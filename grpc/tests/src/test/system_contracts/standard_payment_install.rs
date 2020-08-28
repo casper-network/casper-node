@@ -24,7 +24,7 @@ fn should_run_standard_payment_install_contract() {
     let (standard_payment_hash, ret_urefs, effect): (ContractHash, _, _) = exec_with_return::exec(
         engine_config,
         &mut builder,
-        DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         "standard_payment_install.wasm",
         DEFAULT_BLOCK_TIME,
         DEPLOY_HASH_1,
