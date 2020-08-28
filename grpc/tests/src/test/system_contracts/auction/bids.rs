@@ -178,7 +178,8 @@ fn should_run_add_bid() {
     let active_bid = founders.get(&BID_ACCOUNT_PK.clone().into()).unwrap();
     assert_eq!(
         builder.get_purse_balance(active_bid.bonding_purse),
-        U512::from(ADD_BID_AMOUNT_1 + BID_AMOUNT_2) // Since we don't pay out immediately `WITHDRAW_BID_AMOUNT_2` is locked in unbonding queue
+        // Since we don't pay out immediately `WITHDRAW_BID_AMOUNT_2` is locked in unbonding queue
+        U512::from(ADD_BID_AMOUNT_1 + BID_AMOUNT_2)
     );
     let unbonding_purses: UnbondingPurses =
         get_value(&mut builder, auction_hash, "unbonding_purses");
@@ -460,7 +461,8 @@ fn should_calculate_era_validators() {
 
     let era_validators: EraValidators = get_value(&mut builder, auction_hash, "era_validators");
 
-    // Check if there are no missing eras after the calculation, but we don't care about what the elements are
+    // Check if there are no missing eras after the calculation, but we don't care about what the
+    // elements are
     let eras = Vec::from_iter(era_validators.keys().copied());
     assert!(!era_validators.is_empty());
     assert!(era_validators.len() >= AUCTION_DELAY as usize); // definetely more than 1 element
@@ -595,12 +597,8 @@ fn should_get_first_seigniorage_recipients() {
     assert_eq!(seigniorage_recipients.len(), 2);
 
     let era_validators: EraValidators = get_value(&mut builder, auction_hash, "era_validators");
-    assert_eq!(
-        era_validators.len(),
-        SNAPSHOT_SIZE, // 1 because `0..AUCTION_DELAY` is an inclusive range and +1 because one `run_auction` was ran
-        "{:?}",
-        era_validators
-    ); // eraindex==1 - ran once
+    // 1 because `0..AUCTION_DELAY` is an inclusive range and +1 because one `run_auction` was ran
+    assert_eq!(era_validators.len(), SNAPSHOT_SIZE, "{:?}", era_validators); // eraindex==1 - ran once
 
     assert!(era_validators.contains_key(&(AUCTION_DELAY as u64 + 1)));
 
@@ -612,7 +610,8 @@ fn should_get_first_seigniorage_recipients() {
             era_id, era_validators
         )
     });
-    assert_eq!(validator_weights.len(), 2, "{:?}", validator_weights); // 2 genesis validators "winners" with non-zero bond
+    // 2 genesis validators "winners" with non-zero bond
+    assert_eq!(validator_weights.len(), 2, "{:?}", validator_weights);
     assert_eq!(
         validator_weights
             .get(&casperlabs_types::PublicKey::from(*ACCOUNT_1_PK))
