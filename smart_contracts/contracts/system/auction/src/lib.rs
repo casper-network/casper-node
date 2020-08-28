@@ -17,9 +17,8 @@ use casperlabs_types::{
         ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_SOURCE_PURSE, ARG_VALIDATOR,
         ARG_VALIDATOR_KEYS, ARG_VALIDATOR_PUBLIC_KEYS, METHOD_ADD_BID, METHOD_BOND,
         METHOD_DELEGATE, METHOD_PROCESS_UNBOND_REQUESTS, METHOD_QUASH_BID,
-        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS, METHOD_RELEASE_FOUNDER,
-        METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNBOND, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
-        {StorageProvider, SystemProvider},
+        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS, METHOD_RUN_AUCTION, METHOD_SLASH,
+        METHOD_UNBOND, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID, {StorageProvider, SystemProvider},
     },
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::Error,
@@ -74,17 +73,6 @@ impl RuntimeProvider for AuctionContract {
 }
 
 impl AuctionProvider for AuctionContract {}
-
-#[no_mangle]
-pub extern "C" fn release_founder() {
-    let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
-
-    let result = AuctionContract
-        .release_founder(public_key)
-        .unwrap_or_revert();
-    let cl_value = CLValue::from_t(result).unwrap_or_revert();
-    runtime::ret(cl_value)
-}
 
 #[no_mangle]
 pub extern "C" fn read_winners() {
@@ -218,15 +206,6 @@ pub extern "C" fn slash() {
 
 pub fn get_entry_points() -> EntryPoints {
     let mut entry_points = EntryPoints::new();
-
-    let entry_point = EntryPoint::new(
-        METHOD_RELEASE_FOUNDER,
-        vec![Parameter::new(ARG_PUBLIC_KEY, PublicKey::cl_type())],
-        CLType::Unit,
-        EntryPointAccess::Public,
-        EntryPointType::Contract,
-    );
-    entry_points.add_entry_point(entry_point);
 
     let entry_point = EntryPoint::new(
         METHOD_READ_WINNERS,
