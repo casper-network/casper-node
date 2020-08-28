@@ -89,8 +89,8 @@ impl<'a, C: Context> Tally<'a, C> {
 
     /// Returns a tally containing only the votes for descendants of `bhash`.
     ///
-    /// The total weight of the result is less or equal to the total weight of `self`, and the set
-    /// of validators contributing to it is a subset of the ones contributing to `self`.
+    /// The total weight of the result is less than or equal to the total weight of `self`, and the
+    /// set of validators contributing to it is a subset of the ones contributing to `self`.
     fn filter_descendants(
         self,
         height: u64,
