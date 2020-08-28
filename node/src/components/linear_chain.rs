@@ -84,7 +84,7 @@ where
             }
             Event::LinearChainBlock(block) => {
                 let era_id = block.header().era_id();
-                let block_hash = block.hash().clone();
+                let block_hash = *block.hash();
                 effect_builder
                 .put_block_to_storage(Box::new(block))
                 .event(move |_| Event::PutBlockResult(era_id, block_hash))
