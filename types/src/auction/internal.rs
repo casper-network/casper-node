@@ -1,14 +1,13 @@
 use crate::{
-    auction::{ActiveBids, Delegators, FoundingValidators},
+    auction::{Bids, Delegators},
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::{Error, Result},
     CLTyped,
 };
 
 use super::{
-    providers::StorageProvider, EraId, EraValidators, SeigniorageRecipientsSnapshot,
-    ACTIVE_BIDS_KEY, DELEGATORS_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY, FOUNDING_VALIDATORS_KEY,
-    SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+    providers::StorageProvider, EraId, EraValidators, SeigniorageRecipientsSnapshot, BIDS_KEY,
+    DELEGATORS_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
 };
 
 fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T>
@@ -35,40 +34,18 @@ where
     Ok(())
 }
 
-pub fn get_founding_validators<P: StorageProvider + ?Sized>(
-    provider: &mut P,
-) -> Result<FoundingValidators>
+pub fn get_bids<P: StorageProvider + ?Sized>(provider: &mut P) -> Result<Bids>
 where
     Error: From<P::Error>,
 {
-    Ok(read_from(provider, FOUNDING_VALIDATORS_KEY)?)
+    Ok(read_from(provider, BIDS_KEY)?)
 }
 
-pub fn set_founding_validators<P: StorageProvider + ?Sized>(
-    provider: &mut P,
-    founding_validators: FoundingValidators,
-) -> Result<()>
+pub fn set_bids<P: StorageProvider + ?Sized>(provider: &mut P, validators: Bids) -> Result<()>
 where
     Error: From<P::Error>,
 {
-    write_to(provider, FOUNDING_VALIDATORS_KEY, founding_validators)
-}
-
-pub fn get_active_bids<P: StorageProvider + ?Sized>(provider: &mut P) -> Result<ActiveBids>
-where
-    Error: From<P::Error>,
-{
-    Ok(read_from(provider, ACTIVE_BIDS_KEY)?)
-}
-
-pub fn set_active_bids<P: StorageProvider + ?Sized>(
-    provider: &mut P,
-    active_bids: ActiveBids,
-) -> Result<()>
-where
-    Error: From<P::Error>,
-{
-    write_to(provider, ACTIVE_BIDS_KEY, active_bids)
+    write_to(provider, BIDS_KEY, validators)
 }
 
 pub fn get_delegators<P: StorageProvider + ?Sized>(provider: &mut P) -> Result<Delegators>

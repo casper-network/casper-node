@@ -1945,7 +1945,9 @@ where
                 let account_hash =
                     Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
 
-                let result = runtime.release_founder(account_hash);
+                let result = runtime
+                    .release_founder(account_hash)
+                    .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
