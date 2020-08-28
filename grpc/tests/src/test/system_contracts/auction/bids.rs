@@ -597,7 +597,6 @@ fn should_get_first_seigniorage_recipients() {
     assert_eq!(seigniorage_recipients.len(), 2);
 
     let era_validators: EraValidators = get_value(&mut builder, auction_hash, "era_validators");
-    // 1 because `0..AUCTION_DELAY` is an inclusive range and +1 because one `run_auction` was ran
     assert_eq!(era_validators.len(), SNAPSHOT_SIZE, "{:?}", era_validators); // eraindex==1 - ran once
 
     assert!(era_validators.contains_key(&(AUCTION_DELAY as u64 + 1)));
