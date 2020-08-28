@@ -31,18 +31,20 @@ use crate::{
         deploy_buffer::{self, DeployBuffer},
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
+        linear_chain,
         metrics::Metrics,
         storage::{self, Storage, Value},
         Component,
     },
     effect::{
         announcements::{
-            ApiServerAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
-            NetworkAnnouncement,
+            ApiServerAnnouncement, BlockExecutorAnnouncement, ConsensusAnnouncement,
+            DeployAcceptorAnnouncement, NetworkAnnouncement,
         },
         requests::{
-            ApiRequest, BlockExecutorRequest, BlockValidationRequest, ContractRuntimeRequest,
-            DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
+            ApiRequest, BlockExecutorRequest, BlockValidationRequest, ConsensusRequest,
+            ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MetricsRequest,
+            NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -54,6 +56,7 @@ use crate::{
 };
 pub use config::Config;
 use error::Error;
+use linear_chain::LinearChain;
 
 /// Reactor message.
 #[derive(Debug, Clone, From, Serialize, Deserialize)]
@@ -149,6 +152,9 @@ pub enum Event {
     /// Block validator event.
     #[from]
     BlockValidator(block_validator::Event<NodeId>),
+    /// Linear chain event.
+    #[from]
+    LinearChain(linear_chain::Event),
 
     // Requests
     /// Network request.
@@ -183,6 +189,9 @@ pub enum Event {
     /// Consensus announcement.
     #[from]
     ConsensusAnnouncement(ConsensusAnnouncement),
+    /// BlockExecutor announcement.
+    #[from]
+    BlockExecutorAnnouncement(BlockExecutorAnnouncement),
 }
 
 impl From<StorageRequest<Storage>> for Event {
@@ -215,6 +224,12 @@ impl From<ContractRuntimeRequest> for Event {
     }
 }
 
+impl From<ConsensusRequest> for Event {
+    fn from(request: ConsensusRequest) -> Self {
+        Event::Consensus(consensus::Event::ConsensusRequest(request))
+    }
+}
+
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -241,6 +256,10 @@ impl Display for Event {
                 write!(f, "deploy acceptor announcement: {}", ann)
             }
             Event::ConsensusAnnouncement(ann) => write!(f, "consensus announcement: {}", ann),
+            Event::BlockExecutorAnnouncement(ann) => {
+                write!(f, "block-executor announcement: {}", ann)
+            }
+            Event::LinearChain(event) => write!(f, "linear-chain event {}", event),
         }
     }
 }
@@ -260,6 +279,7 @@ pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
     deploy_buffer: DeployBuffer,
     block_executor: BlockExecutor,
     block_validator: BlockValidator<NodeId>,
+    linear_chain: LinearChain,
 }
 
 #[cfg(test)]
@@ -333,6 +353,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             .expect("should have post state hash");
         let block_executor = BlockExecutor::new(genesis_post_state_hash);
         let block_validator = BlockValidator::<NodeId>::new();
+        let linear_chain = LinearChain::new();
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
         effects.extend(reactor::wrap_effects(Event::Consensus, consensus_effects));
@@ -351,6 +372,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 deploy_buffer,
                 block_executor,
                 block_validator,
+                linear_chain,
             },
             effects,
         ))
@@ -410,6 +432,10 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 Event::BlockValidator,
                 self.block_validator
                     .handle_event(effect_builder, rng, event),
+            ),
+            Event::LinearChain(event) => reactor::wrap_effects(
+                Event::LinearChain,
+                self.linear_chain.handle_event(effect_builder, rng, event),
             ),
 
             // Requests:
@@ -545,6 +571,13 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                         deploy_buffer::Event::OrphanedProtoBlock(block)
                     }
                 });
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            Event::BlockExecutorAnnouncement(BlockExecutorAnnouncement::LinearChainBlock(
+                block,
+            )) => {
+                let reactor_event =
+                    Event::LinearChain(linear_chain::Event::LinearChainBlock(block));
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
         }

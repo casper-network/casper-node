@@ -79,7 +79,7 @@ use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionR
 
 use crate::{
     components::{
-        consensus::BlockContext,
+        consensus::{BlockContext, EraId},
         contract_runtime::{
             core::{
                 engine_state::{self, genesis::GenesisResult},
@@ -91,18 +91,22 @@ use crate::{
         fetcher::FetchResult,
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
-    crypto::{asymmetric_key::PublicKey, hash::Digest},
+    crypto::{
+        asymmetric_key::{PublicKey, Signature},
+        hash::Digest,
+    },
     reactor::{EventQueueHandle, QueueKind},
-    types::{Block, Deploy, DeployHash, FinalizedBlock, ProtoBlock},
+    types::{Block, BlockHash, Deploy, DeployHash, FinalizedBlock, ProtoBlock},
     utils::Source,
     Chainspec,
 };
 use announcements::{
-    ApiServerAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement, NetworkAnnouncement,
+    ApiServerAnnouncement, BlockExecutorAnnouncement, ConsensusAnnouncement,
+    DeployAcceptorAnnouncement, NetworkAnnouncement,
 };
 use requests::{
-    BlockExecutorRequest, BlockValidationRequest, ContractRuntimeRequest, DeployBufferRequest,
-    FetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
+    BlockExecutorRequest, BlockValidationRequest, ConsensusRequest, ContractRuntimeRequest,
+    DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -480,6 +484,19 @@ impl<REv> EffectBuilder<REv> {
         )
     }
 
+    /// Announce new block has been created.
+    pub(crate) async fn announce_linear_chain_block(self, block: Block)
+    where
+        REv: From<BlockExecutorAnnouncement>,
+    {
+        self.0
+            .schedule(
+                BlockExecutorAnnouncement::LinearChainBlock(block),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
     /// Puts the given block into the linear block store.
     pub(crate) async fn put_block_to_storage<S>(self, block: Box<S::Block>) -> bool
     where
@@ -652,18 +669,16 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Passes a finalized proto-block to the block executor component to execute it.
-    pub(crate) async fn execute_block(self, finalized_block: FinalizedBlock) -> Block
+    pub(crate) async fn execute_block(self, finalized_block: FinalizedBlock)
     where
         REv: From<BlockExecutorRequest>,
     {
-        self.make_request(
-            |responder| BlockExecutorRequest::ExecuteBlock {
-                finalized_block,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
+        self.0
+            .schedule(
+                BlockExecutorRequest::ExecuteBlock(finalized_block),
+                QueueKind::Regular,
+            )
+            .await
     }
 
     /// Checks whether the deploys included in the proto-block exist on the network.
@@ -832,5 +847,21 @@ impl<REv> EffectBuilder<REv> {
     #[allow(dead_code)]
     pub(crate) async fn run_auction(self, _root_hash: Digest) -> Result<Digest, execution::Error> {
         todo!("run_auction")
+    }
+
+    /// Request consensus to sign a block from the linear chain.
+    pub(crate) async fn sign_linear_chain_block(
+        self,
+        era_id: EraId,
+        block_hash: BlockHash,
+    ) -> Signature
+    where
+        REv: From<ConsensusRequest>,
+    {
+        self.make_request(
+            |responder| ConsensusRequest::SignLinearBlock(era_id, block_hash, responder),
+            QueueKind::Regular,
+        )
+        .await
     }
 }

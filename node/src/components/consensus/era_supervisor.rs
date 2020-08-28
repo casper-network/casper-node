@@ -34,10 +34,11 @@ use crate::{
         asymmetric_key::{PublicKey, SecretKey},
         hash,
     },
-    effect::{EffectBuilder, EffectExt, Effects},
-    types::{Block, FinalizedBlock, Motes, ProtoBlock, SystemTransaction, Timestamp},
+    effect::{EffectBuilder, EffectExt, Effects, Responder},
+    types::{BlockHash, FinalizedBlock, Motes, ProtoBlock, SystemTransaction, Timestamp},
     utils::WithDir,
 };
+use asymmetric_key::Signature;
 
 // We use one trillion as a block reward unit because it's large enough to allow precise
 // fractions, and small enough for many block rewards to fit into a u64.
@@ -300,22 +301,20 @@ where
         effects
     }
 
-    pub(super) fn handle_executed_block(
+    pub(super) fn sign_linear_chain_block(
         &mut self,
         _era_id: EraId,
-        mut block: Block,
+        block_hash: BlockHash,
+        responder: Responder<Signature>,
     ) -> Effects<Event<I>> {
         // TODO - we should only sign if we're a validator for the given era ID.
         let signature = asymmetric_key::sign(
-            block.hash().inner(),
+            block_hash.inner(),
             &self.era_supervisor.secret_signing_key,
             &self.era_supervisor.public_signing_key,
             self.rng,
         );
-        block.append_proof(signature);
-        self.effect_builder
-            .put_block_to_storage(Box::new(block))
-            .ignore()
+        responder.respond(signature).ignore()
     }
 
     pub(super) fn handle_accept_proto_block(
@@ -448,11 +447,7 @@ where
                     effects.extend(self.handle_consensus_results(new_era_id, results));
                 }
                 // Request execution of the finalized block.
-                effects.extend(
-                    self.effect_builder
-                        .execute_block(fb)
-                        .event(move |block| Event::ExecutedBlock { era_id, block }),
-                );
+                effects.extend(self.effect_builder.execute_block(fb).ignore());
                 effects
             }
             ConsensusProtocolResult::ValidateConsensusValue(sender, proto_block) => self
