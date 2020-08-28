@@ -25,8 +25,7 @@ use crate::effect::{EffectBuilder, Effects};
 
 /// Core Component.
 ///
-/// A component implements a state machine, not unlike a [Mealy
-/// automaton](https://en.wikipedia.org/wiki/Mealy_machine). Its inputs are `Event`s, allowing it to
+/// Its inputs are `Event`s, allowing it to
 /// perform work whenever an event is received, outputting `Effect`s each time it is called.
 ///
 /// # Error and halting states
