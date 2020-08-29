@@ -2,7 +2,7 @@
 //!
 //! Most configuration is done via config files (see [`config`](../config/index.html) for details).
 
-use std::{env, io, io::Write, path::PathBuf, str::FromStr};
+use std::{env, fs, io, io::Write, path::PathBuf, str::FromStr};
 
 use anyhow::{self, bail, Context};
 use rand::SeedableRng;
@@ -38,9 +38,8 @@ pub enum Cli {
     /// Loads the configuration values from the given configuration file or uses defaults if not
     /// given, then runs the reactor.
     Validator {
-        #[structopt(short, long, env)]
         /// Path to configuration file.
-        config: Option<PathBuf>,
+        config: PathBuf,
 
         #[structopt(short = "C", long, env = "NODE_CONFIG", use_delimiter(true))]
         /// Overrides and extensions for configuration file entries in the form
@@ -141,19 +140,18 @@ impl Cli {
                 // Determine the parent directory of the configuration file, if any.
                 // Otherwise, we default to `/`.
                 let root = config
-                    .as_ref()
-                    .and_then(|path| path.parent())
+                    .parent()
                     .map(|path| path.to_owned())
                     .unwrap_or_else(|| "/".into());
 
                 // The app supports running without a config file, using default values.
-                let maybe_config: Option<validator::Config> =
-                    config.as_ref().map(config::load_from_file).transpose()?;
+                let config_raw: String = fs::read_to_string(&config)
+                    .context("could not read configuration file")
+                    .with_context(|| config.display().to_string())?;
 
                 // Get the TOML table version of the config indicated from CLI args, or from a new
                 // defaulted config instance if one is not provided.
-                let mut config_table: Value =
-                    toml::from_str(&toml::to_string(&maybe_config.unwrap_or_default())?)?;
+                let mut config_table: Value = toml::from_str(&config_raw)?;
 
                 // If any command line overrides to the config values are passed, apply them.
                 for item in config_ext {
