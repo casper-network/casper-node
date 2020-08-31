@@ -511,8 +511,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block from the linear block store.
-    // TODO: remove once method is used.
-    #[allow(dead_code)]
     pub(crate) async fn get_block_from_storage<S>(
         self,
         block_hash: <S::Block as Value>::Id,
@@ -532,8 +530,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block header from the linear block store.
-    // TODO: remove once method is used.
-    #[allow(dead_code)]
     pub(crate) async fn get_block_header_from_storage<S>(
         self,
         block_hash: <S::Block as Value>::Id,
@@ -619,8 +615,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested deploy using the `DeployFetcher`.
-    // TODO: remove once method is used.
-    #[allow(dead_code)]
     pub(crate) async fn fetch_deploy<I>(
         self,
         deploy_hash: DeployHash,
