@@ -6,7 +6,7 @@
 use std::fmt::{self, Display, Formatter};
 
 use crate::{
-    types::{Deploy, ProtoBlock},
+    types::{Block, Deploy, ProtoBlock},
     utils::Source,
 };
 
@@ -117,6 +117,23 @@ impl Display for ConsensusAnnouncement {
             }
             ConsensusAnnouncement::Orphaned(block) => {
                 write!(formatter, "orphaned proto block {}", block)
+            }
+        }
+    }
+}
+
+/// A BlockExecutor announcements.
+#[derive(Debug)]
+pub enum BlockExecutorAnnouncement {
+    /// A new block from the linear chain was produced.
+    LinearChainBlock(Block),
+}
+
+impl Display for BlockExecutorAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BlockExecutorAnnouncement::LinearChainBlock(block) => {
+                write!(f, "created linear chain block {}", block.hash())
             }
         }
     }

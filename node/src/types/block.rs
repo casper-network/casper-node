@@ -353,6 +353,11 @@ impl BlockHeader {
     pub fn system_transactions(&self) -> &Vec<SystemTransaction> {
         &self.system_transactions
     }
+
+    /// Era ID in which this block was created.
+    pub fn era_id(&self) -> EraId {
+        self.era_id
+    }
 }
 
 impl Display for BlockHeader {
