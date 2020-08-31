@@ -11,10 +11,14 @@ use rand::{CryptoRng, Rng};
 
 use crate::{
     components::{
-        chainspec_loader::ChainspecLoader, contract_runtime::ContractRuntime, small_network,
-        small_network::SmallNetwork, storage::Storage,
+        chainspec_loader::ChainspecLoader,
+        contract_runtime::ContractRuntime,
+        small_network,
+        small_network::{NodeId, SmallNetwork},
+        storage::Storage,
+        Component,
     },
-    effect::{EffectBuilder, Effects},
+    effect::{announcements::NetworkAnnouncement, EffectBuilder, Effects},
     reactor::{self, error::Error, initializer, validator, EventQueueHandle, Message},
     utils::WithDir,
 };
@@ -26,12 +30,18 @@ pub enum Event {
     /// Network event.
     #[from]
     Network(small_network::Event<Message>),
+
+    // Announcements
+    /// Network announcement.
+    #[from]
+    NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
 }
 
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Network(event) => write!(f, "network: {}", event),
+            Event::NetworkAnnouncement(event) => write!(f, "network announcement: {}", event),
         }
     }
 }
@@ -48,7 +58,7 @@ pub struct Reactor {
 }
 
 impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor {
-    type Event = Event; // Temporary; u8 instead of () so that it implements Display
+    type Event = Event;
 
     // The "configuration" is in fact the whole state of the initializer reactor, which we
     // deconstruct and reuse.
@@ -70,7 +80,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor {
             contract_runtime,
         } = initializer;
 
-        let (net, _net_effects) = SmallNetwork::new(
+        let (net, net_effects) = SmallNetwork::new(
             event_queue,
             WithDir::new(root.clone(), config.validator_net.clone()),
         )?;
@@ -84,17 +94,23 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor {
                 storage,
                 contract_runtime,
             },
-            Default::default(),
+            reactor::wrap_effects(Event::Network, net_effects),
         ))
     }
 
     fn dispatch_event(
         &mut self,
-        _effect_builder: EffectBuilder<Self::Event>,
-        _rng: &mut R,
-        _event: Self::Event,
+        effect_builder: EffectBuilder<Self::Event>,
+        rng: &mut R,
+        event: Self::Event,
     ) -> Effects<Self::Event> {
-        Default::default()
+        match event {
+            Event::Network(event) => reactor::wrap_effects(
+                Event::Network,
+                self.net.handle_event(effect_builder, rng, event),
+            ),
+            Event::NetworkAnnouncement(_) => Default::default(),
+        }
     }
 
     fn is_stopped(&mut self) -> bool {
