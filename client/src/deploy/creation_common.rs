@@ -1,23 +1,22 @@
+//! This module contains structs and helpers which are used by multiple subcommands related to
+//! creating deploys.
+
 use std::{
     convert::{TryFrom, TryInto},
     process,
     str::FromStr,
 };
 
-use clap::{App, Arg, ArgGroup, ArgMatches, SubCommand};
+use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches};
 use futures::executor;
 use lazy_static::lazy_static;
-use rand::Rng;
 use reqwest::{Client, StatusCode};
 use serde::{self, Deserialize};
 
 use casperlabs_node::{
     components::contract_runtime::core::engine_state::executable_deploy_item::ExecutableDeployItem,
-    crypto::{
-        asymmetric_key::{self, PublicKey},
-        hash::Digest,
-    },
-    types::{Deploy, DeployHeader, TimeDiff, Timestamp},
+    crypto::hash::Digest,
+    types::{Deploy, DeployHash, TimeDiff, Timestamp},
 };
 use casperlabs_types::{
     account::AccountHash,
@@ -28,13 +27,18 @@ use casperlabs_types::{
 use crate::common;
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
-enum DisplayOrder {
+pub(super) enum DisplayOrder {
     ShowArgExamples,
     NodeAddress,
     SecretKey,
+    TransferAmount,
+    TransferSourcePurse,
+    TransferTargetAccount,
+    TransferTargetPurse,
     Timestamp,
     Ttl,
     GasPrice,
+    Dependencies,
     ChainName,
     SessionCode,
     SessionArgSimple,
@@ -46,16 +50,16 @@ enum DisplayOrder {
 }
 
 /// Handles providing the arg for and executing the show-arg-examples option.
-mod show_arg_examples {
+pub(super) mod show_arg_examples {
     use super::*;
 
-    pub(super) const ARG_NAME: &str = "show-arg-examples";
+    pub(in crate::deploy) const ARG_NAME: &str = "show-arg-examples";
     const ARG_SHORT: &str = "e";
     const ARG_HELP: &str =
         "If passed, all other options are ignored and a set of examples of session-/payment-args \
         is printed";
 
-    pub(super) fn arg() -> Arg<'static, 'static> {
+    pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
             .short(ARG_SHORT)
@@ -64,7 +68,7 @@ mod show_arg_examples {
             .display_order(DisplayOrder::ShowArgExamples as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> bool {
+    pub(in crate::deploy) fn get(matches: &ArgMatches) -> bool {
         if !matches.is_present(ARG_NAME) {
             return false;
         }
@@ -106,7 +110,7 @@ mod show_arg_examples {
 }
 
 /// Handles providing the arg for and retrieval of the timestamp.
-mod timestamp {
+pub(super) mod timestamp {
     use super::*;
 
     const ARG_NAME: &str = "timestamp";
@@ -115,7 +119,7 @@ mod timestamp {
         "Timestamp as the number of milliseconds since the Unix epoch. If not provided, the \
         current time will be used";
 
-    pub(super) fn arg() -> Arg<'static, 'static> {
+    pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
             .required(false)
@@ -124,7 +128,7 @@ mod timestamp {
             .display_order(DisplayOrder::Timestamp as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> Timestamp {
+    pub(in crate::deploy) fn get(matches: &ArgMatches) -> Timestamp {
         matches
             .value_of(ARG_NAME)
             .map_or_else(Timestamp::now, |value| {
@@ -135,7 +139,7 @@ mod timestamp {
 }
 
 /// Handles providing the arg for and retrieval of the time to live.
-mod ttl {
+pub(super) mod ttl {
     use super::*;
 
     const ARG_NAME: &str = "ttl";
@@ -145,7 +149,7 @@ mod ttl {
         "Time (in milliseconds) that the deploy will remain valid for. A deploy can only be \
         included in a block between `timestamp` and `timestamp + ttl`.";
 
-    pub(super) fn arg() -> Arg<'static, 'static> {
+    pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
             .required(false)
@@ -155,7 +159,7 @@ mod ttl {
             .display_order(DisplayOrder::Ttl as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> TimeDiff {
+    pub(in crate::deploy) fn get(matches: &ArgMatches) -> TimeDiff {
         TimeDiff::from_str(
             matches
                 .value_of(ARG_NAME)
@@ -166,7 +170,7 @@ mod ttl {
 }
 
 /// Handles providing the arg for and retrieval of the gas price.
-mod gas_price {
+pub(super) mod gas_price {
     use super::*;
 
     const ARG_NAME: &str = "gas-price";
@@ -175,7 +179,7 @@ mod gas_price {
     const ARG_HELP: &str =
         "Conversion rate between the cost of Wasm opcodes and the motes sent by the payment code";
 
-    pub(super) fn arg() -> Arg<'static, 'static> {
+    pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
             .required(false)
@@ -185,7 +189,7 @@ mod gas_price {
             .display_order(DisplayOrder::GasPrice as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> u64 {
+    pub(in crate::deploy) fn get(matches: &ArgMatches) -> u64 {
         matches
             .value_of(ARG_NAME)
             .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
@@ -194,8 +198,48 @@ mod gas_price {
     }
 }
 
+/// Handles providing the arg for and retrieval of the deploy dependencies.
+pub(super) mod dependencies {
+    use super::*;
+
+    const ARG_NAME: &str = "dependency";
+    const ARG_VALUE_NAME: &str = "HEX STRING";
+    const ARG_HELP: &str =
+        "A hex-encoded deploy hash of a deploy which must be executed before this deploy";
+
+    pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .required(false)
+            .multiple(true)
+            .value_name(ARG_VALUE_NAME)
+            .takes_value(true)
+            .help(ARG_HELP)
+            .display_order(DisplayOrder::Dependencies as usize)
+    }
+
+    pub(in crate::deploy) fn get(matches: &ArgMatches) -> Vec<DeployHash> {
+        matches
+            .values_of(ARG_NAME)
+            .map(|values| {
+                values
+                    .map(|hex_hash| {
+                        let digest = Digest::from_hex(hex_hash).unwrap_or_else(|error| {
+                            panic!(
+                                "could not parse --{} {} as hex-encoded deploy hash: {}",
+                                ARG_NAME, hex_hash, error
+                            )
+                        });
+                        DeployHash::new(digest)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+}
+
 /// Handles providing the arg for and retrieval of the chain name.
-mod chain_name {
+pub(super) mod chain_name {
     use super::*;
 
     const ARG_NAME: &str = "chain-name";
@@ -205,7 +249,7 @@ mod chain_name {
         "Name of the chain, to avoid the deploy from being accidentally or maliciously included in \
         a different chain";
 
-    pub(super) fn arg() -> Arg<'static, 'static> {
+    pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
             .required(false)
@@ -215,7 +259,7 @@ mod chain_name {
             .display_order(DisplayOrder::ChainName as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> String {
+    pub(in crate::deploy) fn get(matches: &ArgMatches) -> String {
         matches
             .value_of(ARG_NAME)
             .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
@@ -224,7 +268,7 @@ mod chain_name {
 }
 
 /// Handles providing the arg for and retrieval of the session code bytes.
-mod session {
+pub(super) mod session {
     use super::*;
 
     const ARG_NAME: &str = "session-path";
@@ -232,7 +276,7 @@ mod session {
     const ARG_VALUE_NAME: &str = "PATH";
     const ARG_HELP: &str = "Path to the compiled Wasm session code";
 
-    pub(super) fn arg() -> Arg<'static, 'static> {
+    pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .short(ARG_SHORT)
             .long(ARG_NAME)
@@ -242,7 +286,7 @@ mod session {
             .display_order(DisplayOrder::SessionCode as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> Vec<u8> {
+    pub(in crate::deploy) fn get(matches: &ArgMatches) -> Vec<u8> {
         common::read_file(
             matches
                 .value_of(ARG_NAME)
@@ -252,7 +296,7 @@ mod session {
 }
 
 /// Handles providing the arg for and retrieval of simple session and payment args.
-mod arg_simple {
+pub(super) mod arg_simple {
     use super::*;
 
     const ARG_VALUE_NAME: &str = "NAME:TYPE='VALUE'";
@@ -292,7 +336,7 @@ mod arg_simple {
         );
     }
 
-    pub mod session {
+    pub(in crate::deploy) mod session {
         use super::*;
 
         pub const ARG_NAME: &str = "session-arg";
@@ -309,7 +353,7 @@ mod arg_simple {
         }
     }
 
-    pub mod payment {
+    pub(in crate::deploy) mod payment {
         use super::*;
 
         pub const ARG_NAME: &str = "payment-arg";
@@ -438,7 +482,7 @@ mod arg_simple {
             }
             CLType::URef => {
                 let uref = URef::from_formatted_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as Key: {:?}", value, error));
+                    .unwrap_or_else(|error| panic!("can't parse {} as URef: {:?}", value, error));
                 CLValue::from_t(uref).unwrap()
             }
             _ => unreachable!(),
@@ -449,7 +493,7 @@ mod arg_simple {
 
 /// Handles providing the arg for and retrieval of complex session and payment args.  These are read
 /// in from a file.
-mod args_complex {
+pub(super) mod args_complex {
     use super::*;
 
     #[derive(Debug, Deserialize)]
@@ -491,7 +535,7 @@ mod args_complex {
     const ARG_HELP: &str =
         "Path to file containing named and typed args for passing to the Wasm code";
 
-    pub mod session {
+    pub(in crate::deploy) mod session {
         use super::*;
 
         pub const ARG_NAME: &str = "session-args-complex";
@@ -506,7 +550,7 @@ mod args_complex {
         }
     }
 
-    pub mod payment {
+    pub(in crate::deploy) mod payment {
         use super::*;
 
         pub const ARG_NAME: &str = "payment-args-complex";
@@ -549,14 +593,14 @@ mod args_complex {
 }
 
 /// Handles providing the arg for and retrieval of the payment code bytes.
-mod payment {
+pub(super) mod payment {
     use super::*;
 
-    pub(super) const ARG_NAME: &str = "payment-path";
+    pub(in crate::deploy) const ARG_NAME: &str = "payment-path";
     const ARG_VALUE_NAME: &str = "PATH";
     const ARG_HELP: &str = "Path to the compiled Wasm payment code";
 
-    pub(super) fn arg() -> Arg<'static, 'static> {
+    pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
             .required(false)
@@ -565,19 +609,19 @@ mod payment {
             .display_order(DisplayOrder::PaymentCode as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> Option<Vec<u8>> {
+    pub(in crate::deploy) fn get(matches: &ArgMatches) -> Option<Vec<u8>> {
         let path = matches.value_of(ARG_NAME)?;
         Some(common::read_file(path))
     }
 }
 
 /// Handles providing the arg for and retrieval of the payment-amount arg.
-mod standard_payment {
+pub(super) mod standard_payment {
     use super::*;
 
     const STANDARD_PAYMENT_ARG_NAME: &str = "amount";
 
-    pub(super) const ARG_NAME: &str = "payment-amount";
+    pub(in crate::deploy) const ARG_NAME: &str = "payment-amount";
     const ARG_VALUE_NAME: &str = "AMOUNT";
     const ARG_SHORT: &str = "p";
     const ARG_HELP: &str =
@@ -585,7 +629,7 @@ mod standard_payment {
         The value is the 'amount' arg of the standard-payment contract. This arg is incompatible \
         with all other --payment-xxx args";
 
-    pub(super) fn arg() -> Arg<'static, 'static> {
+    pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
             .short(ARG_SHORT)
@@ -595,7 +639,7 @@ mod standard_payment {
             .display_order(DisplayOrder::StandardPayment as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> Option<RuntimeArgs> {
+    pub(in crate::deploy) fn get(matches: &ArgMatches) -> Option<RuntimeArgs> {
         let arg = U512::from_dec_str(matches.value_of(ARG_NAME)?)
             .unwrap_or_else(|error| panic!("should parse {} as U512: {}", ARG_NAME, error));
 
@@ -605,167 +649,148 @@ mod standard_payment {
     }
 }
 
-pub struct PutDeploy {}
-
-impl PutDeploy {
-    fn args_from_simple_or_complex(
-        simple: Option<RuntimeArgs>,
-        complex: Option<RuntimeArgs>,
-    ) -> RuntimeArgs {
-        // We can have exactly zero or one of the two as `Some`.
-        match (simple, complex) {
-            (Some(args), None) | (None, Some(args)) => args,
-            (None, None) => RuntimeArgs::new(),
-            (Some(_), Some(_)) => unreachable!("should not have both simple and complex args"),
-        }
-    }
-
-    fn parse_session_info(matches: &ArgMatches<'_>) -> ExecutableDeployItem {
-        let module_bytes = session::get(matches);
-        let session_args = Self::args_from_simple_or_complex(
-            arg_simple::session::get(matches),
-            args_complex::session::get(matches),
-        );
-
-        ExecutableDeployItem::ModuleBytes {
-            module_bytes,
-            args: session_args.to_bytes().expect("should serialize"),
-        }
-    }
-
-    fn parse_payment_info(matches: &ArgMatches<'_>) -> ExecutableDeployItem {
-        // If we're using the standard-payment system contract, just return empty module bytes.
-        if let Some(payment_args) = standard_payment::get(matches) {
-            return ExecutableDeployItem::ModuleBytes {
-                module_bytes: vec![],
-                args: payment_args.to_bytes().expect("should serialize"),
-            };
-        }
-
-        // Get the payment code and args options.
-        let module_bytes =
-            payment::get(matches).expect("should have payment-amount or payment-path");
-
-        let payment_args = Self::args_from_simple_or_complex(
-            arg_simple::payment::get(matches),
-            args_complex::payment::get(matches),
-        );
-
-        ExecutableDeployItem::ModuleBytes {
-            module_bytes,
-            args: payment_args.to_bytes().expect("should serialize"),
-        }
+fn args_from_simple_or_complex(
+    simple: Option<RuntimeArgs>,
+    complex: Option<RuntimeArgs>,
+) -> RuntimeArgs {
+    // We can have exactly zero or one of the two as `Some`.
+    match (simple, complex) {
+        (Some(args), None) | (None, Some(args)) => args,
+        (None, None) => RuntimeArgs::new(),
+        (Some(_), Some(_)) => unreachable!("should not have both simple and complex args"),
     }
 }
 
-impl<'a, 'b> crate::Subcommand<'a, 'b> for PutDeploy {
-    const NAME: &'static str = "put-deploy";
-    const ABOUT: &'static str = "Stores a new random deploy";
+pub(super) fn parse_session_info(matches: &ArgMatches<'_>) -> ExecutableDeployItem {
+    let module_bytes = session::get(matches);
+    let session_args = args_from_simple_or_complex(
+        arg_simple::session::get(matches),
+        args_complex::session::get(matches),
+    );
 
-    fn build(display_order: usize) -> App<'a, 'b> {
-        SubCommand::with_name(Self::NAME)
-            .about(Self::ABOUT)
-            .display_order(display_order)
-            .arg(show_arg_examples::arg())
-            .arg(
-                common::node_address::arg(DisplayOrder::NodeAddress as usize)
-                    .required_unless(show_arg_examples::ARG_NAME),
-            )
-            .arg(
-                common::secret_key::arg(DisplayOrder::SecretKey as usize)
-                    .required_unless(show_arg_examples::ARG_NAME),
-            )
-            .arg(timestamp::arg())
-            .arg(ttl::arg())
-            .arg(gas_price::arg())
-            .arg(chain_name::arg())
-            .arg(session::arg())
-            .arg(arg_simple::session::arg())
-            .arg(args_complex::session::arg())
-            .arg(standard_payment::arg())
-            .arg(payment::arg())
-            .arg(arg_simple::payment::arg())
-            .arg(args_complex::payment::arg())
-            // Group the session-arg args so only one style is used to ensure consistent ordering.
-            .group(
-                ArgGroup::with_name("session-args")
-                    .arg(arg_simple::session::ARG_NAME)
-                    .arg(args_complex::session::ARG_NAME)
-                    .required(false),
-            )
-            // Group the payment-arg args so only one style is used to ensure consistent ordering.
-            .group(
-                ArgGroup::with_name("payment-args")
-                    .arg(arg_simple::payment::ARG_NAME)
-                    .arg(args_complex::payment::ARG_NAME)
-                    .required(false),
-            )
-            // Group payment-amount, payment-path and show-arg-examples so that we can require only one of these.
-            .group(
-                ArgGroup::with_name("required-payment-options")
-                    .arg(standard_payment::ARG_NAME)
-                    .arg(payment::ARG_NAME)
-                    .arg(show_arg_examples::ARG_NAME)
-                    .required(true),
-            )
-        // TODO: There are also deploy dependencies but this whole structure is subject to changes.
+    ExecutableDeployItem::ModuleBytes {
+        module_bytes,
+        args: session_args.to_bytes().expect("should serialize"),
+    }
+}
+
+pub(super) fn parse_payment_info(matches: &ArgMatches<'_>) -> ExecutableDeployItem {
+    // If we're using the standard-payment system contract, just return empty module bytes.
+    if let Some(payment_args) = standard_payment::get(matches) {
+        return ExecutableDeployItem::ModuleBytes {
+            module_bytes: vec![],
+            args: payment_args.to_bytes().expect("should serialize"),
+        };
     }
 
-    fn run(matches: &ArgMatches<'_>) {
-        // If we printed the arg examples, exit the process.
-        if show_arg_examples::get(matches) {
-            process::exit(0);
-        }
+    // Get the payment code and args options.
+    let module_bytes = payment::get(matches).expect("should have payment-amount or payment-path");
+    let payment_args = args_from_simple_or_complex(
+        arg_simple::payment::get(matches),
+        args_complex::payment::get(matches),
+    );
 
-        let node_address = common::node_address::get(matches);
-        let secret_key = common::secret_key::get(matches);
-        let timestamp = timestamp::get(matches);
-        let ttl = ttl::get(matches);
-        let gas_price = gas_price::get(matches);
-        let chain_name = chain_name::get(matches);
+    ExecutableDeployItem::ModuleBytes {
+        module_bytes,
+        args: payment_args.to_bytes().expect("should serialize"),
+    }
+}
 
-        let public_key = PublicKey::from(&secret_key);
-        let header = DeployHeader {
-            account: public_key,
-            timestamp,
-            gas_price,
-            body_hash: [1; 32].into(),
-            ttl,
-            dependencies: vec![],
-            chain_name,
-        };
+pub(super) fn apply_common_creation_options<'a, 'b>(subcommand: App<'a, 'b>) -> App<'a, 'b> {
+    subcommand
+        .setting(AppSettings::NextLineHelp)
+        .arg(show_arg_examples::arg())
+        .arg(
+            common::node_address::arg(DisplayOrder::NodeAddress as usize)
+                .required_unless(show_arg_examples::ARG_NAME),
+        )
+        .arg(
+            common::secret_key::arg(DisplayOrder::SecretKey as usize)
+                .required_unless(show_arg_examples::ARG_NAME),
+        )
+        .arg(timestamp::arg())
+        .arg(ttl::arg())
+        .arg(gas_price::arg())
+        .arg(dependencies::arg())
+        .arg(chain_name::arg())
+        .arg(standard_payment::arg())
+        .arg(payment::arg())
+        .arg(arg_simple::payment::arg())
+        .arg(args_complex::payment::arg())
+        // Group the payment-arg args so only one style is used to ensure consistent ordering.
+        .group(
+            ArgGroup::with_name("payment-args")
+                .arg(arg_simple::payment::ARG_NAME)
+                .arg(args_complex::payment::ARG_NAME)
+                .required(false),
+        )
+        // Group payment-amount, payment-path and show-arg-examples so that we can require only
+        // one of these.
+        .group(
+            ArgGroup::with_name("required-payment-options")
+                .arg(standard_payment::ARG_NAME)
+                .arg(payment::ARG_NAME)
+                .arg(show_arg_examples::ARG_NAME)
+                .required(true),
+        )
+}
 
-        let mut rng = rand::thread_rng();
-        let deploy_hash_bytes: [u8; 32] = rng.gen();
-        let deploy_hash = Digest::from(deploy_hash_bytes);
+pub(super) fn construct_and_send_deploy_to_node(
+    matches: &ArgMatches<'_>,
+    session: ExecutableDeployItem,
+) {
+    // If we printed the arg examples, exit the process.
+    if show_arg_examples::get(matches) {
+        process::exit(0);
+    }
 
-        let session = Self::parse_session_info(matches);
-        let payment = Self::parse_payment_info(matches);
+    let node_address = common::node_address::get(matches);
+    let secret_key = common::secret_key::get(matches);
+    let timestamp = timestamp::get(matches);
+    let ttl = ttl::get(matches);
+    let gas_price = gas_price::get(matches);
+    let dependencies = dependencies::get(matches);
+    let chain_name = chain_name::get(matches);
 
-        let msg = b"Message"; // TODO
-        let sig = asymmetric_key::sign(msg, &secret_key, &public_key, &mut rng);
+    let mut rng = rand::thread_rng();
 
-        let deploy = Deploy::new(deploy_hash.into(), header, payment, session, vec![sig]);
+    let payment = parse_payment_info(matches);
 
-        let body = deploy.to_json().expect("should serialize deploy to JSON");
+    let deploy = Deploy::new(
+        timestamp,
+        ttl,
+        gas_price,
+        dependencies,
+        chain_name,
+        payment,
+        session,
+        &secret_key,
+        &mut rng,
+    );
 
-        let client = Client::new();
-        let url = format!("{}/{}", node_address, common::DEPLOY_API_PATH);
+    let deploy_hash = *deploy.id();
 
-        let response = executor::block_on(async {
-            client
-                .post(&url)
-                .body(body)
-                .send()
-                .await
-                .unwrap_or_else(|error| panic!("should get response from node: {}", error))
-        });
+    let body = deploy.to_json().expect("should serialize deploy to JSON");
 
-        if response.status() == StatusCode::OK {
-            println!("Node received deploy with deploy-hash:\n{:?}", deploy_hash);
-        } else {
-            eprintln!("Storing {} failed\n{:?}", deploy_hash, response);
-            process::exit(1);
-        }
+    let client = Client::new();
+    let url = format!("{}/{}", node_address, common::DEPLOY_API_PATH);
+
+    let response = executor::block_on(async {
+        client
+            .post(&url)
+            .body(body)
+            .send()
+            .await
+            .unwrap_or_else(|error| panic!("should get response from node: {}", error))
+    });
+
+    if response.status() == StatusCode::OK {
+        println!(
+            "Node received deploy with deploy-hash:\n{:?}",
+            deploy_hash.inner()
+        );
+    } else {
+        eprintln!("Sending {} failed\n{:?}", deploy_hash, response);
+        process::exit(1);
     }
 }

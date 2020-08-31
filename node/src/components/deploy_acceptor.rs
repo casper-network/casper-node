@@ -8,11 +8,7 @@ use semver::Version;
 use tracing::{debug, error, warn};
 
 use crate::{
-    components::{
-        chainspec_loader::Chainspec,
-        storage::{Storage, Value},
-        Component,
-    },
+    components::{chainspec_loader::Chainspec, storage::Storage, Component},
     effect::{
         announcements::DeployAcceptorAnnouncement, requests::StorageRequest, EffectBuilder,
         EffectExt, Effects,
@@ -150,7 +146,7 @@ impl<REv: ReactorEventT, R: Rng + CryptoRng + ?Sized> Component<REv, R> for Depl
 }
 
 fn is_valid(deploy: &Deploy, chainspec: Chainspec) -> bool {
-    if deploy.header().chain_name != chainspec.genesis.name {
+    if deploy.header().chain_name() != chainspec.genesis.name {
         warn!(
             deploy_hash = %deploy.id(),
             deploy_header = %deploy.header(),
@@ -160,7 +156,7 @@ fn is_valid(deploy: &Deploy, chainspec: Chainspec) -> bool {
         return false;
     }
 
-    if deploy.header().dependencies.len()
+    if deploy.header().dependencies().len()
         > chainspec.genesis.deploy_config.max_dependencies as usize
     {
         warn!(
@@ -172,7 +168,7 @@ fn is_valid(deploy: &Deploy, chainspec: Chainspec) -> bool {
         return false;
     }
 
-    if deploy.header().ttl > chainspec.genesis.deploy_config.max_ttl {
+    if deploy.header().ttl() > chainspec.genesis.deploy_config.max_ttl {
         warn!(
             deploy_hash = %deploy.id(),
             deploy_header = %deploy.header(),

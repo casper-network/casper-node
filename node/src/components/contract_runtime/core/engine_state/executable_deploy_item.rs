@@ -15,33 +15,40 @@ use crate::components::contract_runtime::{core::execution, shared::account::Acco
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum ExecutableDeployItem {
     ModuleBytes {
+        #[serde(with = "serde_bytes")]
         module_bytes: Vec<u8>,
         // assumes implicit `call` noarg entrypoint
+        #[serde(with = "serde_bytes")]
         args: Vec<u8>,
     },
     StoredContractByHash {
         hash: ContractHash,
         entry_point: String,
+        #[serde(with = "serde_bytes")]
         args: Vec<u8>,
     },
     StoredContractByName {
         name: String,
         entry_point: String,
+        #[serde(with = "serde_bytes")]
         args: Vec<u8>,
     },
     StoredVersionedContractByName {
         name: String,
         version: Option<ContractVersion>, // defaults to highest enabled version
         entry_point: String,
+        #[serde(with = "serde_bytes")]
         args: Vec<u8>,
     },
     StoredVersionedContractByHash {
         hash: ContractPackageHash,
         version: Option<ContractVersion>, // defaults to highest enabled version
         entry_point: String,
+        #[serde(with = "serde_bytes")]
         args: Vec<u8>,
     },
     Transfer {
+        #[serde(with = "serde_bytes")]
         args: Vec<u8>,
     },
 }

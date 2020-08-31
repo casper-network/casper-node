@@ -31,7 +31,7 @@ use crate::{
         gossiper::{self, Gossiper},
         linear_chain,
         metrics::Metrics,
-        storage::{self, Storage, Value},
+        storage::{self, Storage},
         Component,
     },
     effect::{
