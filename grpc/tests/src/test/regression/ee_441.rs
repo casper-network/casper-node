@@ -1,11 +1,11 @@
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
         DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_types::{runtime_args, Key, RuntimeArgs, URef};
+use casper_types::{runtime_args, Key, RuntimeArgs, URef};
 
 const EE_441_RNG_STATE: &str = "ee_441_rng_state.wasm";
 

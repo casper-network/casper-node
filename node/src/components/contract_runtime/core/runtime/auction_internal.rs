@@ -1,4 +1,4 @@
-use casperlabs_types::{
+use casper_types::{
     auction::{AuctionProvider, RuntimeProvider, StorageProvider, SystemProvider},
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::Error,
@@ -73,7 +73,7 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
-    fn get_caller(&self) -> casperlabs_types::account::AccountHash {
+    fn get_caller(&self) -> casper_types::account::AccountHash {
         self.context.get_caller()
     }
 }

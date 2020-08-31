@@ -1,9 +1,9 @@
 use std::convert::{TryFrom, TryInto};
 
-use casperlabs_node::components::contract_runtime::shared::{
+use casper_node::components::contract_runtime::shared::{
     additive_map::AdditiveMap, transform::Transform,
 };
-use casperlabs_types::Key;
+use casper_types::Key;
 
 use crate::engine_server::{mappings::ParsingError, transforms::TransformEntry};
 
@@ -30,8 +30,8 @@ impl TryFrom<Vec<TransformEntry>> for TransformMap {
 
 #[cfg(test)]
 mod tests {
-    use casperlabs_node::components::contract_runtime::shared::stored_value::StoredValue;
-    use casperlabs_types::CLValue;
+    use casper_node::components::contract_runtime::shared::stored_value::StoredValue;
+    use casper_types::CLValue;
 
     use super::*;
 

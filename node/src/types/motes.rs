@@ -7,11 +7,11 @@ use std::{
 use num::Zero;
 use serde::{Deserialize, Serialize};
 
-use casperlabs_types::U512;
+use casper_types::U512;
 
 use crate::components::contract_runtime::shared::gas::Gas;
 
-/// The smallest division of a CasperLabs token.
+/// The smallest division of a Casper token.
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct Motes(U512);
 
@@ -102,7 +102,7 @@ impl Sum for Motes {
 
 #[cfg(test)]
 mod tests {
-    use casperlabs_types::U512;
+    use casper_types::U512;
 
     use super::Motes;
     use crate::components::contract_runtime::shared::gas::Gas;

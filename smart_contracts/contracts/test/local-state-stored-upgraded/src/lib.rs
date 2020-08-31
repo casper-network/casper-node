@@ -4,8 +4,8 @@ extern crate alloc;
 
 use alloc::string::String;
 
-use casperlabs_contract::{contract_api::storage, unwrap_or_revert::UnwrapOrRevert};
-use casperlabs_types::ApiError;
+use casper_contract::{contract_api::storage, unwrap_or_revert::UnwrapOrRevert};
+use casper_types::ApiError;
 
 pub const ENTRY_FUNCTION_NAME: &str = "delegate";
 pub const CONTRACT_NAME: &str = "local_state_stored";

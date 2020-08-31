@@ -1,4 +1,4 @@
-use casperlabs_types::{
+use casper_types::{
     account::AccountHash,
     proof_of_stake::{MintProvider, ProofOfStake, RuntimeProvider},
     ApiError, BlockTime, Key, Phase, TransferredTo, URef, U512,

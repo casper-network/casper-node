@@ -15,7 +15,7 @@
 //!
 //! ```ignore
 //! use std::time::Duration;
-//! use casperlabs_node::effect::EffectExt;
+//! use casper_node::effect::EffectExt;
 //!
 //! enum Event {
 //!     ThreeSecondsElapsed(Duration)
@@ -74,7 +74,7 @@ use semver::Version;
 use smallvec::{smallvec, SmallVec};
 use tracing::error;
 
-use casperlabs_types::Key;
+use casper_types::Key;
 use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
 
 use crate::{

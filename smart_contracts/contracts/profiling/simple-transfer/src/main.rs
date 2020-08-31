@@ -1,11 +1,11 @@
 #![no_std]
 #![no_main]
 
-use casperlabs_contract::{
+use casper_contract::{
     contract_api::{runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casperlabs_types::{account::AccountHash, ApiError, TransferredTo, U512};
+use casper_types::{account::AccountHash, ApiError, TransferredTo, U512};
 
 const ARG_ACCOUNT_HASH: &str = "account_hash";
 const ARG_AMOUNT: &str = "amount";

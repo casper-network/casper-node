@@ -2,11 +2,11 @@
 
 extern crate alloc;
 
-use casperlabs_contract::{
+use casper_contract::{
     contract_api::{runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casperlabs_types::{
+use casper_types::{
     account::AccountHash,
     proof_of_stake::{MintProvider, ProofOfStake, RuntimeProvider},
     BlockTime, CLValue, Key, Phase, TransferResult, URef, U512,

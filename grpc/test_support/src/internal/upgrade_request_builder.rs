@@ -1,12 +1,12 @@
-use casperlabs_engine_grpc_server::engine_server::{
+use casper_engine_grpc_server::engine_server::{
     ipc::{
         ChainSpec_ActivationPoint, ChainSpec_CostTable, ChainSpec_CostTable_WasmCosts,
         ChainSpec_UpgradePoint, DeployCode, UpgradeRequest,
     },
     state,
 };
-use casperlabs_node::components::contract_runtime::shared::wasm_costs::WasmCosts;
-use casperlabs_types::ProtocolVersion;
+use casper_node::components::contract_runtime::shared::wasm_costs::WasmCosts;
+use casper_types::ProtocolVersion;
 
 pub struct UpgradeRequestBuilder {
     pre_state_hash: Vec<u8>,

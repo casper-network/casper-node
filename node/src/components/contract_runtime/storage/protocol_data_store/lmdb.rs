@@ -1,4 +1,4 @@
-use casperlabs_types::ProtocolVersion;
+use casper_types::ProtocolVersion;
 use lmdb::{Database, DatabaseFlags};
 
 use crate::components::contract_runtime::storage::{

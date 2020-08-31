@@ -1,11 +1,11 @@
 #![no_std]
 #![no_main]
 
-use casperlabs_contract::{
+use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casperlabs_types::{contracts::NamedKeys, CLValue};
+use casper_types::{contracts::NamedKeys, CLValue};
 
 const HASH_KEY_NAME: &str = "mint_hash";
 const ACCESS_KEY_NAME: &str = "mint_access";

@@ -1,4 +1,4 @@
-use casperlabs_types::bytesrepr::{FromBytes, ToBytes};
+use casper_types::bytesrepr::{FromBytes, ToBytes};
 
 use crate::components::contract_runtime::storage::{
     store::Store,

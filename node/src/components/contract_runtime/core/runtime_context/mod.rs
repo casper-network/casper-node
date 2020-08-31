@@ -11,7 +11,7 @@ use blake2::{
     VarBlake2b,
 };
 
-use casperlabs_types::{
+use casper_types::{
     account::{
         AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
         UpdateKeyFailure, Weight,
@@ -520,7 +520,7 @@ where
                     let uref: URef = cl_value.to_owned().into_t()?; // TODO: optimize?
                     self.validate_uref(&uref)
                 }
-                tuple @ CLType::Tuple2(_) if *tuple == casperlabs_types::named_key_type() => {
+                tuple @ CLType::Tuple2(_) if *tuple == casper_types::named_key_type() => {
                     let (_name, key): (String, Key) = cl_value.to_owned().into_t()?; // TODO: optimize?
                     self.validate_key(&key)
                 }

@@ -9,7 +9,7 @@ use std::{collections::HashMap, convert};
 use lmdb::DatabaseFlags;
 use tempfile::{tempdir, TempDir};
 
-use casperlabs_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use crate::{
     components::contract_runtime::{

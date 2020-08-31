@@ -6,7 +6,7 @@ members = [
     "grpc/server",
     "grpc/test_support",
     "grpc/tests",
-    "grpc/cargo-casperlabs",
+    "grpc/cargo-casper",
     "types",
     "node",
     "client",
@@ -17,15 +17,15 @@ default-members = [
     "grpc/server",
     "grpc/test_support",
     "grpc/tests",
-    "grpc/cargo-casperlabs",
+    "grpc/cargo-casper",
     "types",
     "node",
     "client",
 ]
 
-# Include debug symbols in the release build of `casperlabs-engine-tests` so that `simple-transfer` will yield useful
+# Include debug symbols in the release build of `casper-engine-tests` so that `simple-transfer` will yield useful
 # perf data.
-[profile.release.package.casperlabs-engine-tests]
+[profile.release.package.casper-engine-tests]
 debug = true
 
 [profile.release]

@@ -3,7 +3,7 @@ use std::str;
 use clap::{App, Arg, ArgMatches, SubCommand};
 use futures::executor;
 
-use casperlabs_node::types::Deploy;
+use casper_node::types::Deploy;
 
 use crate::common;
 

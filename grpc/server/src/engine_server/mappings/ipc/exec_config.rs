@@ -1,6 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
-use casperlabs_node::{
+use casper_node::{
     components::contract_runtime::core::engine_state::genesis::ExecConfig, GenesisAccount,
 };
 

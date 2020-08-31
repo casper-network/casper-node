@@ -1,6 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
-use casperlabs_types::{account::AccountHash, Key};
+use casper_types::{account::AccountHash, Key};
 
 use crate::engine_server::{
     mappings::{self, ParsingError},
@@ -59,7 +59,7 @@ impl TryFrom<state::Key> for Key {
 mod tests {
     use proptest::proptest;
 
-    use casperlabs_types::gens;
+    use casper_types::gens;
 
     use super::*;
     use crate::engine_server::mappings::test_utils;

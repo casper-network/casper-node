@@ -318,7 +318,7 @@ impl Deploy {
             DeployHash::new(hash::hash(rng.next_u64().to_le_bytes())),
             DeployHash::new(hash::hash(rng.next_u64().to_le_bytes())),
         ];
-        let chain_name = String::from("casperlabs-example");
+        let chain_name = String::from("casper-example");
 
         let payment = ExecutableDeployItem::ModuleBytes {
             module_bytes: hash::hash(rng.next_u64().to_le_bytes()).as_ref().to_vec(),
@@ -513,7 +513,7 @@ mod json {
         },
         types::{TimeDiff, Timestamp},
     };
-    use casperlabs_types::ContractVersion;
+    use casper_types::ContractVersion;
 
     #[derive(Serialize, Deserialize)]
     struct JsonDeployHash(String);

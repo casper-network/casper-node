@@ -3,7 +3,7 @@ use std::{
     convert::{TryFrom, TryInto},
 };
 
-use casperlabs_types::{contracts::NamedKeys, Key};
+use casper_types::{contracts::NamedKeys, Key};
 
 use crate::engine_server::{mappings::ParsingError, state::NamedKey};
 
@@ -65,7 +65,7 @@ impl TryFrom<Vec<NamedKey>> for NamedKeyMap {
 mod tests {
     use proptest::proptest;
 
-    use casperlabs_types::gens;
+    use casper_types::gens;
 
     use super::*;
     use crate::engine_server::mappings::test_utils;

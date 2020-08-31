@@ -12,7 +12,7 @@ const TURBO: &str = "turbo";
 lazy_static! {
     static ref WORKSPACE_PATH_ARG: String =
         format!("--workspace-path={}/../../", env!("CARGO_MANIFEST_DIR"));
-    static ref TEST_DIR: TempDir = TempDir::new("cargo-casperlabs").unwrap();
+    static ref TEST_DIR: TempDir = TempDir::new("cargo-casper").unwrap();
 }
 
 #[test]
@@ -49,7 +49,7 @@ fn output_from_command(mut command: Command) -> Output {
 }
 
 fn run_tool_and_resulting_tests(turbo: bool) {
-    // Run 'cargo-casperlabs <test dir>/<subdir> --workspace-path=<path to casperlabs-node root>'
+    // Run 'cargo-casper <test dir>/<subdir> --workspace-path=<path to casper-node root>'
     let subdir = if turbo { TURBO } else { USE_SYSTEM_CONTRACTS };
     let test_dir = TEST_DIR.path().join(subdir);
     let mut tool_cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
@@ -60,7 +60,7 @@ fn run_tool_and_resulting_tests(turbo: bool) {
         tool_cmd.arg(&*USE_SYSTEM_CONTRACTS);
     }
     // The CI environment doesn't have a Git user configured, so we can set the env var `USER` for
-    // use by 'cargo new' which is called as a subprocess of 'cargo-casperlabs'.
+    // use by 'cargo new' which is called as a subprocess of 'cargo-casper'.
     tool_cmd.env("USER", "tester");
     let tool_output = output_from_command(tool_cmd);
     assert_eq!(SUCCESS_EXIT_CODE, tool_output.status.code().unwrap());

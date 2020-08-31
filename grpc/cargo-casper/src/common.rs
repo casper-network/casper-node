@@ -13,8 +13,8 @@ use crate::{dependency::Dependency, ARGS, FAILURE_EXIT_CODE};
 
 lazy_static! {
     pub static ref CL_CONTRACT: Dependency =
-        Dependency::new("casperlabs-contract", "0.6.0", "smart_contracts/contract");
-    pub static ref CL_TYPES: Dependency = Dependency::new("casperlabs-types", "0.6.0", "types");
+        Dependency::new("casper-contract", "0.6.0", "smart_contracts/contract");
+    pub static ref CL_TYPES: Dependency = Dependency::new("casper-types", "0.6.0", "types");
 }
 
 pub fn print_error_and_exit(msg: &str) -> ! {
@@ -118,15 +118,15 @@ pub mod tests {
     const CL_TYPES_TOML_PATH: &str = "types/Cargo.toml";
     const PACKAGE_FIELD_NAME: &str = "package";
     const VERSION_FIELD_NAME: &str = "version";
-    const PATH_PREFIX: &str = "/grpc/cargo-casperlabs";
+    const PATH_PREFIX: &str = "/grpc/cargo-casper";
 
-    /// Returns the absolute path of `relative_path` where this is relative to "casperlabs-node".
-    /// Panics if the current working directory is not within "casperlabs-node".
+    /// Returns the absolute path of `relative_path` where this is relative to "casper-node".
+    /// Panics if the current working directory is not within "casper-node".
     pub fn full_path_from_path_relative_to_workspace(relative_path: &str) -> String {
         let mut full_path = env::current_dir().unwrap().display().to_string();
         let index = full_path.find(PATH_PREFIX).unwrap_or_else(|| {
             panic!(
-                "test should be run from within casperlabs-node workspace: {} relative path: {}",
+                "test should be run from within casper-node workspace: {} relative path: {}",
                 full_path, relative_path,
             )
         });

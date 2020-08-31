@@ -1,17 +1,17 @@
 [package]
-name = "casperlabs-contract"
+name = "casper-contract"
 version = "0.6.0" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Michael Birch <birchmd@casperlabs.io>", "Mateusz Górski <gorski.mateusz@protonmail.ch>"]
 edition = "2018"
-description = "Library for developing CasperLabs smart contracts."
+description = "Library for developing Casper smart contracts."
 readme = "README.md"
-documentation = "https://docs.rs/casperlabs-contract"
+documentation = "https://docs.rs/casper-contract"
 homepage = "https://casperlabs.io"
-repository = "https://github.com/CasperLabs/CasperLabs/tree/master/execution-engine/contract"
+repository = "https://github.com/CasperLabs/casperlabs-node/tree/master/smart_contracts/contract"
 license-file = "../../LICENSE"
 
 [dependencies]
-casperlabs-types = { version = "0.6.0", path = "../../types" }
+casper-types = { version = "0.6.0", path = "../../types" }
 hex_fmt = "0.3.0"
 thiserror = "1.0.18"
 wee_alloc = "0.4.5"
@@ -21,9 +21,9 @@ version-sync = "0.8"
 
 [features]
 default = []
-std = ["casperlabs-types/std"]
+std = ["casper-types/std"]
 test-support = []
-no-unstable-features = ["std", "casperlabs-types/no-unstable-features"]
+no-unstable-features = ["std", "casper-types/no-unstable-features"]
 
 [package.metadata.docs.rs]
 features = ["no-unstable-features"]

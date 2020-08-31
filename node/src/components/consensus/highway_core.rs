@@ -1,6 +1,6 @@
 //! # Highway
 //!
-//! The core logic of CasperLabs' Highway consensus protocol.
+//! The core logic of Casper' Highway consensus protocol.
 //!
 //! At the center of Highway are:
 //! * the _protocol state_, a grow-only data structure which can be considered a directed acyclic

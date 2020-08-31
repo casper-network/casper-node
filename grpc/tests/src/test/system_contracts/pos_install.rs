@@ -3,17 +3,17 @@
 
 use std::collections::BTreeMap;
 
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{
         exec_with_return, ExecuteRequestBuilder, WasmTestBuilder, DEFAULT_BLOCK_TIME,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_node::{
+use casper_node::{
     components::contract_runtime::core::engine_state::EngineConfig, types::DeployHash,
 };
-use casperlabs_types::{
+use casper_types::{
     account::AccountHash, contracts::NamedKeys, runtime_args, ContractHash, ContractPackageHash,
     Key, RuntimeArgs, URef, U512,
 };

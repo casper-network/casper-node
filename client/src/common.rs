@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf};
 
 use clap::{Arg, ArgMatches};
 
-use casperlabs_node::crypto::asymmetric_key::SecretKey;
+use casper_node::crypto::asymmetric_key::SecretKey;
 
 /// The node HTTP endpoint to instruct it to put the provided deploy.
 pub const DEPLOY_API_PATH: &str = "deploys";

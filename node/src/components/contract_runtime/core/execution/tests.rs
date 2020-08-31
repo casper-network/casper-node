@@ -1,5 +1,5 @@
 use crate::components::contract_runtime::shared::{gas::Gas, transform::Transform};
-use casperlabs_types::{Key, U512};
+use casper_types::{Key, U512};
 use tracing::warn;
 
 use super::Error;

@@ -13,12 +13,12 @@ use lazy_static::lazy_static;
 use reqwest::{Client, StatusCode};
 use serde::{self, Deserialize};
 
-use casperlabs_node::{
+use casper_node::{
     components::contract_runtime::core::engine_state::executable_deploy_item::ExecutableDeployItem,
     crypto::hash::Digest,
     types::{Deploy, DeployHash, TimeDiff, Timestamp},
 };
-use casperlabs_types::{
+use casper_types::{
     account::AccountHash,
     bytesrepr::{self, ToBytes},
     AccessRights, CLType, CLValue, Key, NamedArg, RuntimeArgs, URef, U128, U256, U512,
@@ -244,7 +244,7 @@ pub(super) mod chain_name {
 
     const ARG_NAME: &str = "chain-name";
     const ARG_VALUE_NAME: &str = "NAME";
-    const ARG_DEFAULT: &str = "casperlabs-example";
+    const ARG_DEFAULT: &str = "casper-example";
     const ARG_HELP: &str =
         "Name of the chain, to avoid the deploy from being accidentally or maliciously included in \
         a different chain";

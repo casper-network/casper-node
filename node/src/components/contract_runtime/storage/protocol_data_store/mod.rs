@@ -1,6 +1,6 @@
 //! A store for persisting [`ProtocolData`](contract::value::ProtocolVersion) values at their
 //! protocol versions.
-use casperlabs_types::ProtocolVersion;
+use casper_types::ProtocolVersion;
 
 pub mod in_memory;
 pub mod lmdb;

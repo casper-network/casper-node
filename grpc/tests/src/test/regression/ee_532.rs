@@ -1,8 +1,8 @@
-use casperlabs_engine_test_support::internal::{
+use casper_engine_test_support::internal::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST,
 };
-use casperlabs_node::components::contract_runtime::core::engine_state::Error;
-use casperlabs_types::{account::AccountHash, RuntimeArgs};
+use casper_node::components::contract_runtime::core::engine_state::Error;
+use casper_types::{account::AccountHash, RuntimeArgs};
 
 const CONTRACT_EE_532_REGRESSION: &str = "ee_532_regression.wasm";
 const UNKNOWN_ADDR: AccountHash = AccountHash::new([42u8; 32]);

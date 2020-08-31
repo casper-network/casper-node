@@ -1,11 +1,11 @@
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
         DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_types::{runtime_args, RuntimeArgs};
+use casper_types::{runtime_args, RuntimeArgs};
 
 const DO_NOTHING_WASM: &str = "do_nothing.wasm";
 

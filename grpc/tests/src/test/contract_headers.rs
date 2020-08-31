@@ -1,11 +1,11 @@
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
-   DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_types::{runtime_args, Key, RuntimeArgs, SemVer};
+use casper_types::{runtime_args, Key, RuntimeArgs, SemVer};
 
 const CONTRACT_HEADERS: &str = "contract_headers.wasm";
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
@@ -20,7 +20,7 @@ fn should_enforce_intended_execution_contexts() {
     // This test runs a contract that's after every call extends the same key with
     // more data
     let exec_request_1 = ExecuteRequestBuilder::standard(
-       *DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_HEADERS,
         RuntimeArgs::default(),
     )

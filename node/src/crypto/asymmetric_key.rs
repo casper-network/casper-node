@@ -30,7 +30,7 @@ use crate::{
     crypto::hash::hash,
     utils::{read_file, write_file},
 };
-use casperlabs_types::account::AccountHash;
+use casper_types::account::AccountHash;
 
 const ED25519_TAG: u8 = 1;
 const ED25519: &str = "Ed25519";
@@ -810,27 +810,25 @@ pub fn generate_ed25519_keypair() -> (SecretKey, PublicKey) {
     (secret_key, public_key)
 }
 
-impl TryFrom<casperlabs_types::PublicKey> for PublicKey {
+impl TryFrom<casper_types::PublicKey> for PublicKey {
     type Error = Error;
-    fn try_from(value: casperlabs_types::PublicKey) -> Result<Self> {
+    fn try_from(value: casper_types::PublicKey) -> Result<Self> {
         match value {
-            casperlabs_types::PublicKey::Ed25519(bytes) => PublicKey::new_ed25519(bytes),
-            casperlabs_types::PublicKey::Secp256k1(bytes) => {
-                PublicKey::new_secp256k1(bytes.value())
-            }
+            casper_types::PublicKey::Ed25519(bytes) => PublicKey::new_ed25519(bytes),
+            casper_types::PublicKey::Secp256k1(bytes) => PublicKey::new_secp256k1(bytes.value()),
         }
     }
 }
 
-impl From<PublicKey> for casperlabs_types::PublicKey {
+impl From<PublicKey> for casper_types::PublicKey {
     fn from(value: PublicKey) -> Self {
         match value {
-            PublicKey::Ed25519(ed25519) => casperlabs_types::PublicKey::Ed25519(ed25519.to_bytes()),
+            PublicKey::Ed25519(ed25519) => casper_types::PublicKey::Ed25519(ed25519.to_bytes()),
             PublicKey::Secp256k1(mut secp256k1) => {
                 secp256k1.compress();
                 let mut bytes = [0; PublicKey::SECP256K1_LENGTH];
                 bytes.copy_from_slice(secp256k1.as_bytes());
-                casperlabs_types::PublicKey::Secp256k1(bytes.into())
+                casper_types::PublicKey::Secp256k1(bytes.into())
             }
         }
     }

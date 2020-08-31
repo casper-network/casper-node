@@ -5,8 +5,8 @@ extern crate alloc;
 
 use alloc::string::String;
 
-use casperlabs_contract::contract_api::runtime;
-use casperlabs_types::U512;
+use casper_contract::contract_api::runtime;
+use casper_types::U512;
 
 const ARG_VALUE0: &str = "value0";
 const ARG_VALUE1: &str = "value1";

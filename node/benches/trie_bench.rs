@@ -1,13 +1,13 @@
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 
-use casperlabs_node::{
+use casper_node::{
     components::contract_runtime::{
         shared::stored_value::StoredValue,
         storage::trie::{Pointer, PointerBlock, Trie},
     },
     crypto::hash,
 };
-use casperlabs_types::{
+use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     CLValue, Key,

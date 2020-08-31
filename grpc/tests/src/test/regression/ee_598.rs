@@ -1,18 +1,18 @@
 use lazy_static::lazy_static;
 
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{
         utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
         DEFAULT_PAYMENT,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_node::{
+use casper_node::{
     crypto::asymmetric_key::{PublicKey, SecretKey},
     types::Motes,
     GenesisAccount,
 };
-use casperlabs_types::{
+use casper_types::{
     account::AccountHash, runtime_args, system_contract_errors::auction, ApiError, RuntimeArgs,
     U512,
 };
@@ -37,7 +37,7 @@ lazy_static! {
 fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
     let bond_secret_key = SecretKey::new_ed25519([111; 32]);
     let bond_public_key = PublicKey::from(&bond_secret_key);
-    let bond_public_key_arg = casperlabs_types::PublicKey::from(bond_public_key);
+    let bond_public_key_arg = casper_types::PublicKey::from(bond_public_key);
 
     let secret_key = SecretKey::new_ed25519([42; 32]);
     let public_key = PublicKey::from(&secret_key);

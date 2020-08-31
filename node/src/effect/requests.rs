@@ -10,7 +10,7 @@ use std::{
 
 use semver::Version;
 
-use casperlabs_types::Key;
+use casper_types::Key;
 
 use super::Responder;
 use crate::{

@@ -6,7 +6,7 @@ use rand::{
     Rng,
 };
 
-use casperlabs_types::{account::AccountHash, bytesrepr, Key, ProtocolVersion};
+use casper_types::{account::AccountHash, bytesrepr, Key, ProtocolVersion};
 
 use super::execution_effect::ExecutionEffect;
 use crate::{

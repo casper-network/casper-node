@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 use core::convert::TryFrom;
 
-use casperlabs_types::{
+use casper_types::{
     account::{
         AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
         UpdateKeyFailure, Weight,

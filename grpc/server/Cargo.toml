@@ -1,13 +1,13 @@
 [package]
-name = "casperlabs-engine-grpc-server"
+name = "casper-engine-grpc-server"
 version = "0.20.0"
 authors = ["Mateusz Górski <gorski.mateusz@protonmail.ch>"]
 edition = "2018"
-description = "Wasm execution engine for CasperLabs smart contracts."
+description = "Wasm execution engine for Casper smart contracts."
 readme = "README.md"
-documentation = "https://docs.rs/casperlabs-engine-grpc-server"
+documentation = "https://docs.rs/casper-engine-grpc-server"
 homepage = "https://casperlabs.io"
-repository = "https://github.com/CasperLabs/CasperLabs/tree/master/execution-engine/engine-grpc-server"
+repository = "https://github.com/CasperLabs/casper-node/tree/master/grpc/server"
 # this is required by 'cargo rpm'
 license-file = "../../LICENSE"
 include = [
@@ -19,8 +19,8 @@ include = [
 ]
 
 [dependencies]
-casperlabs-node = { version = "0.1.0", path = "../../node", features = ["gens"] }
-casperlabs-types = { version = "0.6.0", path = "../../types", features = ["std", "gens"] }
+casper-node = { version = "0.1.0", path = "../../node", features = ["gens"] }
+casper-types = { version = "0.6.0", path = "../../types", features = ["std", "gens"] }
 clap = "2"
 ctrlc = "3"
 dirs = "2"
@@ -38,32 +38,32 @@ rand = "0.7.2"
 proptest = "0.10.0"
 
 [features]
-test-support = ["casperlabs-node/test-support"]
-no-unstable-features = ["casperlabs-types/no-unstable-features"]
+test-support = ["casper-node/test-support"]
+no-unstable-features = ["casper-types/no-unstable-features"]
 
 [[bin]]
-name = "casperlabs-engine-grpc-server"
+name = "casper-engine-grpc-server"
 path = "src/main.rs"
 
 [package.metadata.rpm.cargo]
 buildflags = ["--release"]
 
 [package.metadata.rpm.targets]
-casperlabs-engine-grpc-server = { path = "/usr/bin/casperlabs-engine-grpc-server" }
+casper-engine-grpc-server = { path = "/usr/bin/casper-engine-grpc-server" }
 
 [package.metadata.rpm.files]
-"../packaging/casperlabs-engine-grpc-server.service" = { path = "/lib/systemd/system/casperlabs-engine-grpc-server.service" }
+"../packaging/casper-engine-grpc-server.service" = { path = "/lib/systemd/system/casper-engine-grpc-server.service" }
 
 [package.metadata.deb]
 maintainer-scripts="debian"
 assets = [
-	["packaging/casperlabs-engine-grpc-server.service", "/lib/systemd/system/casperlabs-engine-grpc-server.service", "644"],
-	["../../target/release/casperlabs-engine-grpc-server", "/usr/bin/casperlabs-engine-grpc-server", "755"]
+	["packaging/casper-engine-grpc-server.service", "/lib/systemd/system/casper-engine-grpc-server.service", "644"],
+	["../../target/release/casper-engine-grpc-server", "/usr/bin/casper-engine-grpc-server", "755"]
 ]
 extended-description = """
-Wasm execution engine for CasperLabs smart contracts.
+Wasm execution engine for Casper smart contracts.
 
-For information on using package, see https://github.com/CasperLabs/casperlabs-node
+For information on using package, see https://github.com/CasperLabs/casper-node
 """
 
 [package.metadata.docs.rs]

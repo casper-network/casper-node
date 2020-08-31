@@ -1,14 +1,14 @@
 use std::collections::BTreeMap;
 
-use casperlabs_engine_grpc_server::engine_server::ipc::DeployCode;
-use casperlabs_engine_test_support::{
+use casper_engine_grpc_server::engine_server::ipc::DeployCode;
+use casper_engine_test_support::{
     internal::{
         utils, AdditiveMapDiff, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
         UpgradeRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNT_KEY, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
-use casperlabs_node::{
+use casper_node::{
     components::contract_runtime::{
         core::engine_state::{upgrade::ActivationPoint, CONV_RATE},
         shared::{account::Account, stored_value::StoredValue, transform::Transform},
@@ -16,7 +16,7 @@ use casperlabs_node::{
     },
     types::Motes,
 };
-use casperlabs_types::{
+use casper_types::{
     account::AccountHash,
     contracts::{ContractVersion, CONTRACT_INITIAL_VERSION, DEFAULT_ENTRY_POINT_NAME},
     runtime_args, ContractHash, Key, ProtocolVersion, RuntimeArgs, U512,

@@ -19,16 +19,16 @@ use log::LevelFilter;
 use rand::{self, Rng};
 use serde_json::Value;
 
-use casperlabs_engine_test_support::internal::{
+use casper_engine_test_support::internal::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
 };
-use casperlabs_node::components::contract_runtime::{
+use casper_node::components::contract_runtime::{
     core::engine_state::EngineConfig,
     shared::logging::{self, Settings},
 };
-use casperlabs_types::{runtime_args, ApiError, RuntimeArgs};
+use casper_types::{runtime_args, ApiError, RuntimeArgs};
 
-use casperlabs_engine_tests::profiling;
+use casper_engine_tests::profiling;
 
 const ABOUT: &str =
     "Executes a contract which logs metrics for all host functions.  Note that the \

@@ -1,13 +1,13 @@
 use std::convert::TryInto;
 
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{
         utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_node::{
+use casper_node::{
     components::contract_runtime::{
         core::engine_state::{
             genesis::{POS_PAYMENT_PURSE, POS_REWARDS_PURSE},
@@ -17,7 +17,7 @@ use casperlabs_node::{
     },
     types::Motes,
 };
-use casperlabs_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
+use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
 
 const CONTRACT_FINALIZE_PAYMENT: &str = "pos_finalize_payment.wasm";
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";

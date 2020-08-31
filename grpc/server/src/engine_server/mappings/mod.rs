@@ -1,4 +1,4 @@
-//! Functions for converting between CasperLabs types and their Protobuf equivalents.
+//! Functions for converting between Casper types and their Protobuf equivalents.
 
 mod ipc;
 mod state;
@@ -10,8 +10,8 @@ use std::{
     string::ToString,
 };
 
-use casperlabs_node::components::contract_runtime::core::{engine_state, DEPLOY_HASH_LENGTH};
-use casperlabs_types::{account::ACCOUNT_HASH_LENGTH, KEY_HASH_LENGTH};
+use casper_node::components::contract_runtime::core::{engine_state, DEPLOY_HASH_LENGTH};
+use casper_types::{account::ACCOUNT_HASH_LENGTH, KEY_HASH_LENGTH};
 
 pub use transforms::TransformMap;
 

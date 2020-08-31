@@ -1,7 +1,7 @@
 use std::convert::{TryFrom, TryInto};
 
-use casperlabs_node::components::contract_runtime::shared::stored_value::StoredValue;
-use casperlabs_types::{
+use casper_node::components::contract_runtime::shared::stored_value::StoredValue;
+use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     CLTyped, CLValue,
 };

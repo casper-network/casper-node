@@ -2,7 +2,7 @@ use std::{collections::BTreeSet, convert::TryFrom};
 
 use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
-use casperlabs_types::{
+use casper_types::{
     account::AccountHash,
     api_error,
     bytesrepr::{self, ToBytes},
