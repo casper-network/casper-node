@@ -224,8 +224,12 @@ pub(super) mod dependencies {
             .map(|values| {
                 values
                     .map(|hex_hash| {
-                        let digest = Digest::from_hex(hex_hash)
-                            .unwrap_or_else(|error| panic!("should parse {}: {}", ARG_NAME, error));
+                        let digest = Digest::from_hex(hex_hash).unwrap_or_else(|error| {
+                            panic!(
+                                "could not parse --{} {} as hex-encoded deploy hash: {}",
+                                ARG_NAME, hex_hash, error
+                            )
+                        });
                         DeployHash::new(digest)
                     })
                     .collect()
