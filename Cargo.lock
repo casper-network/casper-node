@@ -546,6 +546,7 @@ dependencies = [
  "semver 0.10.0",
  "serde",
  "serde-big-array",
+ "serde_bytes",
  "serde_json",
  "serde_repr",
  "signature",
@@ -3764,6 +3765,15 @@ checksum = "52309f7932ab258e58bcf73cc89037e307ffef3bcfb7ce7a246580c26f81dc55"
 dependencies = [
  "serde",
  "serde_derive",
+]
+
+[[package]]
+name = "serde_bytes"
+version = "0.11.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "16ae07dd2f88a366f15bd0632ba725227018c69a1c8550a927324f8eb8368bb9"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

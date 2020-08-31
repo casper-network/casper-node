@@ -9,7 +9,7 @@ mod timestamp;
 
 pub use block::{Block, BlockHash, BlockHeader};
 pub(crate) use block::{FinalizedBlock, ProtoBlock, ProtoBlockHash, SystemTransaction};
-pub use deploy::{DecodingError, Deploy, DeployHash, DeployHeader, EncodingError};
+pub use deploy::{Approval, Deploy, DeployHash, DeployHeader, Error as DeployError};
 pub use item::{Item, Tag};
 pub use motes::Motes;
 pub use node_config::NodeConfig;

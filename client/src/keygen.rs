@@ -18,8 +18,8 @@ const FILES: [&str; 3] = [PUBLIC_KEY_HEX, SECRET_KEY_PEM, PUBLIC_KEY_PEM];
 
 lazy_static! {
     static ref MORE_ABOUT: String = format!(
-        "{}. Creates {:?}. \"{}\" contains the hex-encoded algorithm tag prefixed to the \
-        hex-encoded key's bytes",
+        "{}. Creates {:?}. \"{}\" contains the hex-encoded key's bytes with the hex-encoded \
+        algorithm tag prefixed",
         Keygen::ABOUT,
         FILES,
         PUBLIC_KEY_HEX
@@ -52,34 +52,11 @@ mod output_dir {
     }
 
     pub(super) fn get(matches: &ArgMatches) -> PathBuf {
-        common::string_to_path_buf(matches.value_of(ARG_NAME).unwrap_or_else(|| "."))
+        matches.value_of(ARG_NAME).unwrap_or_else(|| ".").into()
     }
 }
 
-/// Handles the arg for whether to overwrite existing output files.
-mod force {
-    use super::*;
-
-    pub(super) const ARG_NAME: &str = "force";
-    const ARG_NAME_SHORT: &str = "f";
-    const ARG_HELP: &str =
-        "If this flag is passed, any existing output files will be overwritten. Without this flag, \
-        if any output file exists, no output files will be generated";
-
-    pub(super) fn arg() -> Arg<'static, 'static> {
-        Arg::with_name(ARG_NAME)
-            .short(ARG_NAME_SHORT)
-            .required(false)
-            .help(ARG_HELP)
-            .display_order(DisplayOrder::Force as usize)
-    }
-
-    pub(super) fn get(matches: &ArgMatches) -> bool {
-        matches.is_present(ARG_NAME)
-    }
-}
-
-/// Handles providing the arg for and retrieval of the node hostname/IP and port.
+/// Handles providing the arg for and retrieval of the key algorithm.
 mod algorithm {
     use super::*;
 
@@ -119,16 +96,17 @@ impl<'a, 'b> crate::Subcommand<'a, 'b> for Keygen {
 
     fn build(display_order: usize) -> App<'a, 'b> {
         SubCommand::with_name(Self::NAME)
-            .about(MORE_ABOUT.as_str())
+            .about(Self::ABOUT)
+            .long_about(MORE_ABOUT.as_str())
             .display_order(display_order)
             .arg(output_dir::arg())
-            .arg(force::arg())
+            .arg(common::force::arg(DisplayOrder::Force as usize, false))
             .arg(algorithm::arg())
     }
 
     fn run(matches: &ArgMatches<'_>) {
         let output_dir = output_dir::get(matches);
-        let force = force::get(matches);
+        let force = common::force::get(matches);
         let algorithm = algorithm::get(matches);
 
         let _ = fs::create_dir_all(&output_dir)
@@ -141,7 +119,7 @@ impl<'a, 'b> crate::Subcommand<'a, 'b> for Keygen {
                     eprintln!(
                         "{} exists. To overwrite, rerun with --{}",
                         file.display(),
-                        force::ARG_NAME
+                        common::force::ARG_NAME
                     );
                     process::exit(1);
                 }
