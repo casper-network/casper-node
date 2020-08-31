@@ -140,7 +140,7 @@ impl DeployHeader {
         self.gas_price
     }
 
-    /// Hash of the WASM code.
+    /// Hash of the Wasm code.
     pub fn body_hash(&self) -> &Digest {
         &self.body_hash
     }
