@@ -226,11 +226,9 @@ impl<C: Context> State<C> {
 
     /// Returns the leader in the specified time slot.
     pub(crate) fn leader(&self, timestamp: Timestamp) -> ValidatorIndex {
-        let mut rng =
-            ChaCha8Rng::seed_from_u64(self.params.seed().wrapping_add(timestamp.millis()));
-        // TODO: `rand` doesn't seem to document how it generates this. Needs to be portable.
+        let seed = self.params.seed().wrapping_add(timestamp.millis());
         // We select a random one out of the `total_weight` weight units, starting numbering at 1.
-        let r = Weight(rng.gen_range(1, self.total_weight().0 + 1));
+        let r = Weight(leader_prng(self.total_weight().0, seed));
         // The weight units are subdivided into intervals that belong to some validator.
         // `cumulative_w[i]` denotes the last weight unit that belongs to validator `i`.
         // `binary_search` returns the first `i` with `cumulative_w[i] >= r`, i.e. the validator
@@ -513,12 +511,17 @@ fn log2(x: u64) -> u32 {
     prev_pow2.trailing_zeros()
 }
 
+/// Returns a pseudorandom `u64` betweend `1` and `upper` (inclusive).
+fn leader_prng(upper: u64, seed: u64) -> u64 {
+    ChaCha8Rng::seed_from_u64(seed).gen_range(0, upper) + 1
+}
+
 #[allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
 #[cfg(test)]
 pub(crate) mod tests {
     use std::{collections::hash_map::DefaultHasher, hash::Hasher};
 
-    use rand::{CryptoRng, Rng};
+    use rand::{CryptoRng, Rng, RngCore};
 
     use super::*;
     use crate::{
@@ -768,5 +771,42 @@ pub(crate) mod tests {
         assert_eq!(2, log2(0b101));
         assert_eq!(2, log2(0b111));
         assert_eq!(3, log2(0b1000));
+    }
+
+    #[test]
+    fn test_leader_prng() {
+        let mut rng = TestRng::new();
+
+        // Repeat a few times to make it likely that the inner loop runs more than once.
+        for _ in 0..10 {
+            let upper = rng.gen_range(1, u64::MAX);
+            let seed = rng.next_u64();
+
+            // This tests that the rand crate's gen_range implementation, which is used in
+            // leader_prng, doesn't change, and uses this algorithm:
+            // https://github.com/rust-random/rand/blob/73befa480c58dd0461da5f4469d5e04c564d4de3/src/distributions/uniform.rs#L515
+            let mut prng = ChaCha8Rng::seed_from_u64(seed);
+            let zone = upper << upper.leading_zeros(); // A multiple of upper that fits into a u64.
+            let expected = loop {
+                // Multiply a random u64 by upper. This is between 0 and u64::MAX * upper.
+                let prod = (prng.next_u64() as u128) * (upper as u128);
+                // So prod >> 64 is between 0 and upper - 1. Each interval from (N << 64) to
+                // (N << 64) + zone contains the same number of such values.
+                // If the value is in such an interval, return N + 1; otherwise retry.
+                if (prod as u64) < zone {
+                    break (prod >> 64) as u64 + 1;
+                }
+            };
+
+            assert_eq!(expected, leader_prng(upper, seed));
+        }
+    }
+
+    #[test]
+    fn test_leader_prng_values() {
+        // Test a few concrete values, to detect if the ChaCha8Rng impl changes.
+        assert_eq!(12578764544318200737, leader_prng(u64::MAX, 42));
+        assert_eq!(12358540700710939054, leader_prng(u64::MAX, 1337));
+        assert_eq!(4134160578770126600, leader_prng(u64::MAX, 0x1020304050607));
     }
 }
