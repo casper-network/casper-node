@@ -33,7 +33,6 @@ use crate::{
 const DESER_ERROR_MSG_GENERAL: &str = "failed to deserialize deploy";
 const DEPLOY_HASH_MISMATCH_MSG: &str = "deploy hash mismatch";
 const DEPLOY_BODY_HASH_MISMATCH_MSG: &str = "deploy body hash mismatch";
-const FAILED_TO_VERIFY_MSG: &str = "failed to verify account public key in approvals";
 
 /// Error returned from constructing or validating a `Deploy`.
 #[derive(Debug, Error)]
@@ -50,13 +49,14 @@ pub enum Error {
     #[error("approval at index {0} does not exist")]
     NoSuchApproval(usize),
 
-    /// Failed to verify a single, specific approval.
-    #[error("failed to verify specific approval: {0}")]
-    FailedSpecificVerification(CryptoError),
-
-    /// Failed to verify any approval.
-    #[error("failed to verify any approval")]
-    FailedAnyVerification,
+    /// Failed to verify an approval.
+    #[error("failed to verify approval {index}: {error}")]
+    FailedVerification {
+        /// The index of the failed approval.
+        index: usize,
+        /// The verification error.
+        error: CryptoError,
+    },
 }
 
 impl From<FromHexError> for Error {
@@ -179,6 +179,31 @@ impl Display for DeployHeader {
     }
 }
 
+/// A struct containing a signature and the public key of the signer.
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+pub struct Approval {
+    signer: PublicKey,
+    signature: Signature,
+}
+
+impl Approval {
+    /// Returns the public key of the approval's signer.
+    pub fn signer(&self) -> &PublicKey {
+        &self.signer
+    }
+
+    /// Returns the approval signature.
+    pub fn signature(&self) -> &Signature {
+        &self.signature
+    }
+}
+
+impl Display for Approval {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(formatter, "approval({})", self.signer)
+    }
+}
+
 /// A deploy; an item containing a smart contract along with the requester's signature(s).
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 pub struct Deploy {
@@ -186,7 +211,7 @@ pub struct Deploy {
     header: DeployHeader,
     payment: ExecutableDeployItem,
     session: ExecutableDeployItem,
-    approvals: Vec<Signature>,
+    approvals: Vec<Approval>,
 }
 
 impl Deploy {
@@ -237,34 +262,10 @@ impl Deploy {
 
     /// Adds a signature of this deploy's hash to its approvals.
     pub fn sign<R: Rng + CryptoRng + ?Sized>(&mut self, secret_key: &SecretKey, rng: &mut R) {
-        let public_key = PublicKey::from(secret_key);
-        let signature = asymmetric_key::sign(&self.hash, secret_key, &public_key, rng);
-        self.approvals.push(signature);
-    }
-
-    /// Checks that the given public key verifies that an approval is a valid signature of this
-    /// deploy's hash.  If `index_hint` is `Some`, only the specified approval is checked, otherwise
-    /// all approvals are considered until a valid one is found or the list is exhausted.
-    pub fn verify_approval(
-        &self,
-        public_key: &PublicKey,
-        index_hint: Option<usize>,
-    ) -> Result<(), Error> {
-        if let Some(index) = index_hint {
-            let approval = self
-                .approvals
-                .get(index)
-                .ok_or_else(|| Error::NoSuchApproval(index))?;
-            Ok(asymmetric_key::verify(&self.hash, approval, public_key)
-                .map_err(Error::FailedSpecificVerification)?)
-        } else {
-            for approval in &self.approvals {
-                if asymmetric_key::verify(&self.hash, approval, public_key).is_ok() {
-                    return Ok(());
-                }
-            }
-            Err(Error::FailedAnyVerification)
-        }
+        let signer = PublicKey::from(secret_key);
+        let signature = asymmetric_key::sign(&self.hash, secret_key, &signer, rng);
+        let approval = Approval { signer, signature };
+        self.approvals.push(approval);
     }
 
     /// Returns the `DeployHash` identifying this `Deploy`.
@@ -386,7 +387,7 @@ impl Serialize for Deploy {
 impl<'de> Deserialize<'de> for Deploy {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let (bridging_deploy, approvals) =
-            <(BridgingDeploy, Vec<Signature>)>::deserialize(deserializer)?;
+            <(BridgingDeploy, Vec<Approval>)>::deserialize(deserializer)?;
 
         let actual_deploy_hash = hash::hash(&bridging_deploy.serialized_header);
         if actual_deploy_hash.as_ref() != bridging_deploy.deploy_hash {
@@ -428,12 +429,14 @@ impl<'de> Deserialize<'de> for Deploy {
             approvals,
         };
 
-        if let Err(error) = deploy.verify_approval(deploy.header.account(), Some(0)) {
-            warn!(
-                "{}: {}: {}",
-                DESER_ERROR_MSG_GENERAL, FAILED_TO_VERIFY_MSG, error
-            );
-            return Err(serde::de::Error::custom(FAILED_TO_VERIFY_MSG));
+        for (index, approval) in deploy.approvals.iter().enumerate() {
+            if let Err(error) =
+                asymmetric_key::verify(&deploy.hash, &approval.signature, &approval.signer)
+            {
+                let error_msg = format!("failed to verify approval {}", index);
+                warn!("{}: {}: {}", DESER_ERROR_MSG_GENERAL, error_msg, error);
+                return Err(serde::de::Error::custom(error_msg));
+            }
         }
 
         Ok(deploy)
@@ -732,12 +735,39 @@ mod json {
     }
 
     #[derive(Serialize, Deserialize)]
+    pub(super) struct JsonApproval {
+        signer: String,
+        signature: String,
+    }
+
+    impl From<&Approval> for JsonApproval {
+        fn from(approval: &Approval) -> Self {
+            JsonApproval {
+                signer: approval.signer.to_hex(),
+                signature: approval.signature.to_hex(),
+            }
+        }
+    }
+
+    impl TryFrom<JsonApproval> for Approval {
+        type Error = Error;
+
+        fn try_from(approval: JsonApproval) -> Result<Self, Self::Error> {
+            let signer = PublicKey::from_hex(&approval.signer)
+                .map_err(|error| Error::DecodeFromJson(Box::new(error)))?;
+            let signature = Signature::from_hex(&approval.signature)
+                .map_err(|error| Error::DecodeFromJson(Box::new(error)))?;
+            Ok(Approval { signer, signature })
+        }
+    }
+
+    #[derive(Serialize, Deserialize)]
     pub(super) struct JsonDeploy {
         hash: JsonDeployHash,
         header: JsonDeployHeader,
         payment: JsonExecutableDeployItem,
         session: JsonExecutableDeployItem,
-        approvals: Vec<String>,
+        approvals: Vec<JsonApproval>,
     }
 
     impl From<&Deploy> for JsonDeploy {
@@ -747,7 +777,7 @@ mod json {
                 header: (&deploy.header).into(),
                 payment: deploy.payment.clone().into(),
                 session: deploy.session.clone().into(),
-                approvals: deploy.approvals.iter().map(Signature::to_hex).collect(),
+                approvals: deploy.approvals.iter().map(JsonApproval::from).collect(),
             }
         }
     }
@@ -757,10 +787,9 @@ mod json {
 
         fn try_from(deploy: JsonDeploy) -> Result<Self, Self::Error> {
             let mut approvals = vec![];
-            for approval in deploy.approvals.into_iter() {
-                let signature = Signature::from_hex(&approval)
-                    .map_err(|error| Error::DecodeFromJson(Box::new(error)))?;
-                approvals.push(signature);
+            for json_approval in deploy.approvals.into_iter() {
+                let approval = Approval::try_from(json_approval)?;
+                approvals.push(approval);
             }
             Ok(Deploy {
                 hash: deploy.hash.try_into()?,
