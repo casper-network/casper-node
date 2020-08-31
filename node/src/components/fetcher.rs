@@ -13,7 +13,7 @@ use crate::{
         requests::{NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    reactor::validator::Message,
+    reactor::Message,
     small_network::NodeId,
     types::{Deploy, DeployHash, Item},
     utils::Source,

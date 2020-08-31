@@ -3,17 +3,14 @@
 //! Validator nodes join the validator-only network upon startup.
 
 mod config;
-mod error;
 #[cfg(test)]
 mod tests;
 
 use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
-use hex_fmt::HexFmt;
 use prometheus::Registry;
 use rand::{CryptoRng, Rng};
-use serde::{Deserialize, Serialize};
 use tracing::error;
 
 #[cfg(test)]
@@ -46,72 +43,14 @@ use crate::{
         },
         EffectBuilder, Effects,
     },
-    reactor::{self, joiner, EventQueueHandle},
+    reactor::{self, error::Error, joiner, EventQueueHandle, Message},
     small_network::{self, NodeId},
-    types::{Deploy, Item, Tag, Timestamp},
+    types::{Deploy, Tag, Timestamp},
     utils::{Source, WithDir},
     SmallNetwork,
 };
 pub use config::Config;
-use error::Error;
 use linear_chain::LinearChain;
-
-/// Reactor message.
-#[derive(Debug, Clone, From, Serialize, Deserialize)]
-pub enum Message {
-    /// Consensus component message.
-    #[from]
-    Consensus(consensus::ConsensusMessage),
-    /// Deploy gossiper component message.
-    #[from]
-    DeployGossiper(gossiper::Message<Deploy>),
-    /// Request to get an item from a peer.
-    GetRequest {
-        /// The type tag of the requested item.
-        tag: Tag,
-        /// The serialized ID of the requested item.
-        serialized_id: Vec<u8>,
-    },
-    /// Response to a `GetRequest`.
-    GetResponse {
-        /// The type tag of the contained item.
-        tag: Tag,
-        /// The serialized item.
-        serialized_item: Vec<u8>,
-    },
-}
-
-impl Message {
-    pub(crate) fn new_get_request<T: Item>(id: &T::Id) -> Result<Self, Error> {
-        Ok(Message::GetRequest {
-            tag: T::TAG,
-            serialized_id: rmp_serde::to_vec(id)?,
-        })
-    }
-
-    pub(crate) fn new_get_response<T: Item>(item: &T) -> Result<Self, Error> {
-        Ok(Message::GetResponse {
-            tag: T::TAG,
-            serialized_item: rmp_serde::to_vec(item)?,
-        })
-    }
-}
-
-impl Display for Message {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match self {
-            Message::Consensus(consensus) => write!(f, "Consensus::{}", consensus),
-            Message::DeployGossiper(deploy) => write!(f, "DeployGossiper::{}", deploy),
-            Message::GetRequest { tag, serialized_id } => {
-                write!(f, "GetRequest({}-{:10})", tag, HexFmt(serialized_id))
-            }
-            Message::GetResponse {
-                tag,
-                serialized_item,
-            } => write!(f, "GetResponse({}-{:10})", tag, HexFmt(serialized_item)),
-        }
-    }
-}
 
 /// Top-level event for the reactor.
 #[derive(Debug, From)]
@@ -303,6 +242,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         rng: &mut R,
     ) -> Result<(Self, Effects<Event>), Error> {
         let joiner::Reactor {
+            net: _net,
             root,
             config,
             chainspec_loader,

@@ -19,7 +19,7 @@ use crate::{
         requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
         EffectBuilder, Effects,
     },
-    reactor::{self, validator, EventQueueHandle},
+    reactor::{self, validator, EventQueueHandle, Message},
     utils::WithDir,
 };
 
@@ -52,8 +52,8 @@ impl From<ContractRuntimeRequest> for Event {
     }
 }
 
-impl From<NetworkRequest<NodeId, validator::Message>> for Event {
-    fn from(_request: NetworkRequest<NodeId, validator::Message>) -> Self {
+impl From<NetworkRequest<NodeId, Message>> for Event {
+    fn from(_request: NetworkRequest<NodeId, Message>) -> Self {
         unreachable!("no network traffic happens during initialization")
     }
 }

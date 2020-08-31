@@ -20,7 +20,7 @@ use crate::{
         },
         EffectBuilder, Effects,
     },
-    reactor::validator::Message,
+    reactor::Message,
     types::{ProtoBlock, Timestamp},
 };
 pub use config::Config;

@@ -24,7 +24,7 @@ use crate::{
     effect::announcements::{
         ApiServerAnnouncement, DeployAcceptorAnnouncement, NetworkAnnouncement,
     },
-    reactor::{self, validator::Message as ValidatorMessage, EventQueueHandle, Runner},
+    reactor::{self, EventQueueHandle, Message as ValidatorMessage, Runner},
     testing::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,

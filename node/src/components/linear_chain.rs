@@ -4,7 +4,7 @@ use crate::{
     crypto::asymmetric_key::Signature,
     effect::requests::{LinearChainRequest, StorageRequest},
     effect::{self, EffectExt, Effects},
-    reactor::validator::Message,
+    reactor::Message,
     types::{Block, BlockHash, BlockHeader},
 };
 use derive_more::From;
