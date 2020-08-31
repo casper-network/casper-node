@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::{utils::External, ROOT_VALIDATOR_LISTENING_PORT};
 
 /// Small network configuration.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {

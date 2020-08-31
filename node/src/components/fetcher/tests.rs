@@ -23,7 +23,7 @@ use crate::{
         announcements::{ApiServerAnnouncement, DeployAcceptorAnnouncement, NetworkAnnouncement},
         requests::FetcherRequest,
     },
-    reactor::{self, validator::Message, EventQueueHandle, Runner},
+    reactor::{self, EventQueueHandle, Message, Runner},
     testing::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
