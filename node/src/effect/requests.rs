@@ -474,7 +474,6 @@ impl<I: Display> Display for BlockValidationRequest<I> {
 }
 
 #[derive(Debug)]
-#[allow(unused)] // TODO: Remove once node syncing/joining is implemented.
 /// Requests issued to the Linear Chain component.
 pub enum LinearChainRequest {
     /// Request a block header from the linear, chain by hash.
