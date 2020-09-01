@@ -10,7 +10,7 @@ use hex_fmt::{HexFmt, HexList};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use super::Timestamp;
+use super::{Item, Tag, Timestamp};
 use crate::{
     components::{consensus::EraId, storage::Value},
     crypto::{
@@ -390,6 +390,16 @@ impl Display for BlockHeader {
     }
 }
 
+impl Item for BlockHeader {
+    type Id = BlockHash;
+
+    const TAG: Tag = Tag::BlockHeader;
+
+    fn id(&self) -> Self::Id {
+        self.hash()
+    }
+}
+
 /// A proto-block after execution, with the resulting post-state-hash.  This is the core component
 /// of the Casper linear blockchain.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -529,5 +539,15 @@ impl Value for Block {
 
     fn take_header(self) -> Self::Header {
         self.header
+    }
+}
+
+impl Item for Block {
+    type Id = BlockHash;
+
+    const TAG: Tag = Tag::Block;
+
+    fn id(&self) -> Self::Id {
+        *self.hash()
     }
 }
