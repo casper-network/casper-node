@@ -96,7 +96,7 @@ use crate::{
         hash::Digest,
     },
     reactor::{EventQueueHandle, QueueKind},
-    types::{Block, BlockHash, BlockHeader, Deploy, DeployHash, FinalizedBlock, ProtoBlock},
+    types::{Block, BlockHash, Deploy, DeployHash, FinalizedBlock, ProtoBlock},
     utils::Source,
     Chainspec,
 };
@@ -106,8 +106,7 @@ use announcements::{
 };
 use requests::{
     BlockExecutorRequest, BlockValidationRequest, ConsensusRequest, ContractRuntimeRequest,
-    DeployBufferRequest, FetcherRequest, LinearChainRequest, MetricsRequest, NetworkRequest,
-    StorageRequest,
+    DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -853,35 +852,6 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ConsensusRequest::SignLinearBlock(era_id, block_hash, responder),
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Requests a linear chain block.
-    #[allow(unused)]
-    pub(crate) async fn request_linear_chain_block(self, block_hash: BlockHash) -> Option<Block>
-    where
-        REv: From<LinearChainRequest>,
-    {
-        self.make_request(
-            |responder| LinearChainRequest::BlockRequest(block_hash, responder),
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Requests a linear chain block header.
-    #[allow(unused)]
-    pub(crate) async fn request_linear_chain_block_header(
-        self,
-        block_hash: BlockHash,
-    ) -> Option<BlockHeader>
-    where
-        REv: From<LinearChainRequest>,
-    {
-        self.make_request(
-            |responder| LinearChainRequest::BlockHeaderRequest(block_hash, responder),
             QueueKind::Regular,
         )
         .await

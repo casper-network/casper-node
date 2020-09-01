@@ -2,43 +2,41 @@ use super::{consensus::EraId, storage::Storage, Component};
 use crate::components::storage::Value;
 use crate::{
     crypto::asymmetric_key::Signature,
+    effect::requests::{LinearChainRequest, StorageRequest},
     effect::{self, EffectExt, Effects},
-    effect::{
-        requests::{LinearChainRequest, StorageRequest},
-        Responder,
-    },
+    reactor::validator::Message,
     types::{Block, BlockHash, BlockHeader},
 };
 use derive_more::From;
-use effect::requests::ConsensusRequest;
+use effect::requests::{ConsensusRequest, NetworkRequest};
 use futures::FutureExt;
 use rand::{CryptoRng, Rng};
 use std::fmt::Display;
-use tracing::warn;
+use tracing::{debug, warn, error};
 
 #[derive(Debug, From)]
-pub enum Event {
+pub enum Event<I> {
     /// A linear chain request issued by another node in the network.
     #[from]
-    Request(LinearChainRequest),
+    Request(LinearChainRequest<I>),
     /// New linear chain block has been produced.
     LinearChainBlock(Block),
     /// A continuation for `GetHeader` scenario.
-    GetHeaderResult(Option<BlockHeader>, Responder<Option<BlockHeader>>),
+    GetHeaderResult(BlockHash, Option<BlockHeader>, I),
     /// A continuation for `GetBlock` scenario.
-    GetBlockResult(Option<Block>, Responder<Option<Block>>),
+    GetBlockResult(BlockHash, Option<Block>, I),
     /// New finality signature.
     NewFinalitySignature(BlockHash, Signature),
     PutBlockResult(EraId, BlockHash),
 }
 
-impl Display for Event {
+impl<I: Display> Display for Event<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Event::Request(req) => write!(f, "linear-chain request: {}", req),
             Event::LinearChainBlock(b) => write!(f, "linear-chain new block: {}", b.hash()),
-            Event::GetHeaderResult(_, _) => write!(f, "linear-chain get-header result"),
-            Event::GetBlockResult(_, _) => write!(f, "linear-chain get-block result"),
+            Event::GetHeaderResult(bh, res, peer) => write!(f, "linear-chain get-header for {} from {} found: {}", bh, peer, res.is_some()),
+            Event::GetBlockResult(bh, res, peer) => write!(f, "linear-chain get-block for {} from {} found: {}", bh, peer, res.is_some()),
             Event::NewFinalitySignature(bh, _) => {
                 write!(f, "linear-chain new finality signature for block: {}", bh)
             }
@@ -48,20 +46,28 @@ impl Display for Event {
 }
 
 #[derive(Debug)]
-pub(crate) struct LinearChain;
+pub(crate) struct LinearChain<I> {
+    _marker: std::marker::PhantomData<I>,
+}
 
-impl LinearChain {
+impl<I> LinearChain<I> {
     pub fn new() -> Self {
-        LinearChain
+        LinearChain {
+            _marker: std::marker::PhantomData,
+        }
     }
 }
 
-impl<REv, R> Component<REv, R> for LinearChain
+impl<I, REv, R> Component<REv, R> for LinearChain<I>
 where
-    REv: From<StorageRequest<Storage>> + From<ConsensusRequest> + Send,
+    REv: From<StorageRequest<Storage>>
+        + From<ConsensusRequest>
+        + From<NetworkRequest<I, Message>>
+        + Send,
     R: Rng + CryptoRng + ?Sized,
+    I: Display + Send + 'static,
 {
-    type Event = Event;
+    type Event = Event<I>;
 
     fn handle_event(
         &mut self,
@@ -70,17 +76,41 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Request(LinearChainRequest::BlockHeaderRequest(bh, responder)) => effect_builder
+            Event::Request(LinearChainRequest::BlockHeaderRequest(bh, sender)) => effect_builder
                 .get_block_header_from_storage(bh)
-                .event(move |maybe_header| Event::GetHeaderResult(maybe_header, responder)),
-            Event::Request(LinearChainRequest::BlockRequest(bh, responder)) => effect_builder
+                .event(move |maybe_header| Event::GetHeaderResult(bh, maybe_header, sender)),
+            Event::Request(LinearChainRequest::BlockRequest(bh, sender)) => effect_builder
                 .get_block_from_storage(bh)
-                .event(move |maybe_block| Event::GetBlockResult(maybe_block, responder)),
-            Event::GetHeaderResult(maybe_header, responder) => {
-                responder.respond(maybe_header).ignore()
+                .event(move |maybe_block| Event::GetBlockResult(bh, maybe_block, sender)),
+            Event::GetHeaderResult(block_hash, maybe_header, sender) => {
+                match maybe_header {
+                    None => {
+                        debug!("failed to get {} for {}", block_hash, sender);
+                        Effects::new()
+                    },
+                    Some(block_header) => match Message::new_get_response(&block_header) {
+                        Ok(message) => effect_builder.send_message(sender, message).ignore(),
+                        Err(error) => {
+                            error!("failed to create get-response {}", error);
+                            Effects::new()
+                        }
+                    } 
+                }
             }
-            Event::GetBlockResult(maybe_block, responder) => {
-                responder.respond(maybe_block).ignore()
+            Event::GetBlockResult(block_hash, maybe_block, sender) => {
+                match maybe_block {
+                    None => {
+                        debug!("failed to get {} for {}", block_hash, sender);
+                        Effects::new()
+                    },
+                    Some(block) => match Message::new_get_response(&block) {
+                        Ok(message) => effect_builder.send_message(sender, message).ignore(),
+                        Err(error) => {
+                            error!("failed to create get-response {}", error);
+                            Effects::new()
+                        }
+                    } 
+                }
             }
             Event::LinearChainBlock(block) => {
                 let era_id = block.header().era_id();

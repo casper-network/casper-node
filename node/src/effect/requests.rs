@@ -32,8 +32,7 @@ use crate::{
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
     types::{
-        Block, BlockHash, BlockHeader, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock,
-        ProtoBlockHash, Timestamp,
+        BlockHash, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock, ProtoBlockHash, Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
@@ -475,21 +474,21 @@ impl<I: Display> Display for BlockValidationRequest<I> {
 
 #[derive(Debug)]
 /// Requests issued to the Linear Chain component.
-pub enum LinearChainRequest {
+pub enum LinearChainRequest<I> {
     /// Request a block header from the linear, chain by hash.
-    BlockHeaderRequest(BlockHash, Responder<Option<BlockHeader>>),
+    BlockHeaderRequest(BlockHash, I),
     /// Request whole block from the linear chain, by hash.
-    BlockRequest(BlockHash, Responder<Option<Block>>),
+    BlockRequest(BlockHash, I),
 }
 
-impl Display for LinearChainRequest {
+impl<I: Display> Display for LinearChainRequest<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            LinearChainRequest::BlockHeaderRequest(bh, _responder) => {
-                write!(f, "block-header request for hash {}", bh)
+            LinearChainRequest::BlockHeaderRequest(bh, peer) => {
+                write!(f, "block-header request for hash {} from {}", bh, peer)
             }
-            LinearChainRequest::BlockRequest(bh, _responder) => {
-                write!(f, "block request for hash {}", bh)
+            LinearChainRequest::BlockRequest(bh, peer) => {
+                write!(f, "block request for hash {} from {}", bh, peer)
             }
         }
     }

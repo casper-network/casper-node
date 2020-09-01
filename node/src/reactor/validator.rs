@@ -152,7 +152,7 @@ pub enum Event {
     BlockValidator(block_validator::Event<NodeId>),
     /// Linear chain event.
     #[from]
-    LinearChain(linear_chain::Event),
+    LinearChain(linear_chain::Event<NodeId>),
 
     // Requests
     /// Network request.
@@ -277,7 +277,7 @@ pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
     deploy_buffer: DeployBuffer,
     block_executor: BlockExecutor,
     block_validator: BlockValidator<NodeId>,
-    linear_chain: LinearChain,
+    linear_chain: LinearChain<NodeId>,
 }
 
 #[cfg(test)]
@@ -498,8 +498,40 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                                 peer: sender,
                             })
                         }
-                        Tag::BlockHeader => panic!(),
-                        Tag::Block => panic!(),
+                        Tag::BlockHeader => {
+                            let block_hash = match rmp_serde::from_read_ref(&serialized_id) {
+                                Ok(hash) => hash,
+                                Err(error) => {
+                                    error!(
+                                        "failed to decode {:?} from {}: {}",
+                                        serialized_id, sender, error
+                                    );
+                                    return Effects::new();
+                                }
+                            };
+                            Event::LinearChain(linear_chain::Event::Request(
+                                crate::effect::requests::LinearChainRequest::BlockHeaderRequest(
+                                    block_hash, sender,
+                                ),
+                            ))
+                        }
+                        Tag::Block => {
+                            let block_hash = match rmp_serde::from_read_ref(&serialized_id) {
+                                Ok(hash) => hash,
+                                Err(error) => {
+                                    error!(
+                                        "failed to decode {:?} from {}: {}",
+                                        serialized_id, sender, error
+                                    );
+                                    return Effects::new();
+                                }
+                            };
+                            Event::LinearChain(linear_chain::Event::Request(
+                                crate::effect::requests::LinearChainRequest::BlockHeaderRequest(
+                                    block_hash, sender,
+                                ),
+                            ))
+                        }
                     },
                     Message::GetResponse {
                         tag,
