@@ -12,7 +12,7 @@ use effect::requests::{ConsensusRequest, NetworkRequest};
 use futures::FutureExt;
 use rand::{CryptoRng, Rng};
 use std::fmt::Display;
-use tracing::{debug, warn, error};
+use tracing::{debug, error, warn};
 
 #[derive(Debug, From)]
 pub enum Event<I> {
@@ -35,8 +35,20 @@ impl<I: Display> Display for Event<I> {
         match self {
             Event::Request(req) => write!(f, "linear-chain request: {}", req),
             Event::LinearChainBlock(b) => write!(f, "linear-chain new block: {}", b.hash()),
-            Event::GetHeaderResult(bh, res, peer) => write!(f, "linear-chain get-header for {} from {} found: {}", bh, peer, res.is_some()),
-            Event::GetBlockResult(bh, res, peer) => write!(f, "linear-chain get-block for {} from {} found: {}", bh, peer, res.is_some()),
+            Event::GetHeaderResult(bh, res, peer) => write!(
+                f,
+                "linear-chain get-header for {} from {} found: {}",
+                bh,
+                peer,
+                res.is_some()
+            ),
+            Event::GetBlockResult(bh, res, peer) => write!(
+                f,
+                "linear-chain get-block for {} from {} found: {}",
+                bh,
+                peer,
+                res.is_some()
+            ),
             Event::NewFinalitySignature(bh, _) => {
                 write!(f, "linear-chain new finality signature for block: {}", bh)
             }
@@ -94,7 +106,7 @@ where
                             error!("failed to create get-response {}", error);
                             Effects::new()
                         }
-                    } 
+                    }
                 }
             }
             Event::GetBlockResult(block_hash, maybe_block, sender) => {
@@ -109,7 +121,7 @@ where
                             error!("failed to create get-response {}", error);
                             Effects::new()
                         }
-                    } 
+                    }
                 }
             }
             Event::LinearChainBlock(block) => {
