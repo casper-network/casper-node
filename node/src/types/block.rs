@@ -358,6 +358,18 @@ impl BlockHeader {
     pub fn era_id(&self) -> EraId {
         self.era_id
     }
+
+    // Serialize the block header.
+    fn serialize_header(&self) -> Result<Vec<u8>, rmp_serde::encode::Error> {
+        rmp_serde::to_vec(self)
+    }
+
+    /// Hash of the block header.
+    pub fn hash(&self) -> BlockHash {
+        let serialized_header = Self::serialize_header(&self)
+            .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
+        BlockHash::new(hash::hash(&serialized_header))
+    }
 }
 
 impl Display for BlockHeader {
@@ -414,9 +426,8 @@ impl Block {
             era_id,
             height,
         };
-        let serialized_header = Self::serialize_header(&header)
-            .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
-        let hash = BlockHash::new(hash::hash(&serialized_header));
+
+        let hash = header.hash();
 
         Block {
             hash,
@@ -434,10 +445,6 @@ impl Block {
     /// this via `BlockHash::verify()`.
     pub(crate) fn append_proof(&mut self, proof: Signature) {
         self.proofs.push(proof)
-    }
-
-    fn serialize_header(header: &BlockHeader) -> Result<Vec<u8>, rmp_serde::encode::Error> {
-        rmp_serde::to_vec(header)
     }
 
     fn serialize_body(body: &()) -> Result<Vec<u8>, rmp_serde::encode::Error> {
