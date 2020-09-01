@@ -1,28 +1,28 @@
-# `cargo casperlabs`
+# `cargo casper`
 
 [![LOGO](../../images/CasperLabs_Logo_Horizontal_RGB.png)](https://casperlabs.io/)
 
-[![Build Status](https://drone-auto.casperlabs.io/api/badges/CasperLabs/casperlabs-node/status.svg?branch=master)](http://drone-auto.casperlabs.io/CasperLabs/casperlabs-node)
-[![Crates.io](https://img.shields.io/crates/v/cargo-casperlabs)](https://crates.io/crates/cargo-casperlabs)
-[![Documentation](https://docs.rs/cargo-casperlabs/badge.svg)](https://docs.rs/cargo-casperlabs)
+[![Build Status](https://drone-auto.casperlabs.io/api/badges/CasperLabs/casper-node/status.svg?branch=master)](http://drone-auto.casperlabs.io/CasperLabs/casper-node)
+[![Crates.io](https://img.shields.io/crates/v/cargo-casper)](https://crates.io/crates/cargo-casper)
+[![Documentation](https://docs.rs/cargo-casper/badge.svg)](https://docs.rs/cargo-casper)
 [![License](https://img.shields.io/badge/license-COSL-blue.svg)](../../LICENSE)
 
-A command line tool for creating a Wasm smart contract and tests for use on the CasperLabs network.
+A command line tool for creating a Wasm smart contract and tests for use on the Casper network.
 
 ## Installation
 
-`cargo casperlabs` is a Cargo subcommand which can be installed via `cargo install`:
+`cargo casper` is a Cargo subcommand which can be installed via `cargo install`:
 
 ```
-cargo install cargo-casperlabs
+cargo install cargo-casper
 ```
 
 To install from the latest `dev` branch:
 
 ```
-git clone https://github.com/CasperLabs/casperlabs-node
-cd casperlabs-node/grpc/cargo-casperlabs
-cargo install cargo-casperlabs --path=.
+git clone https://github.com/CasperLabs/casper-node
+cd casper-node/grpc/cargo-casper
+cargo install cargo-casper --path=.
 ```
 
 ## Usage
@@ -30,7 +30,7 @@ cargo install cargo-casperlabs --path=.
 To create a folder "my_project" containing an example contract and a separate test crate for the contract:
 
 ```
-cargo casperlabs my_project
+cargo casper my_project
 ```
 
 This creates the following files:

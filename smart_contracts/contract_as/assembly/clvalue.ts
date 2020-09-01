@@ -5,7 +5,7 @@ import {Key} from "./key";
 import {Option} from "./option";
 
 /**
- * CasperLabs types, i.e. types which can be stored and manipulated by smart contracts.
+ * Casper types, i.e. types which can be stored and manipulated by smart contracts.
  *
  * Provides a description of the underlying data type of a [[CLValue]].
  */
@@ -75,14 +75,14 @@ export class CLType {
         extra = extra.concat(toBytesU32(size));
 
         let clType = new CLType(CLTypeTag.Fixed_list, extra);
-        
+
         return clType;
     }
 
     static list(typeTag: CLType): CLType {
         return new CLType(CLTypeTag.List, typeTag.bytes);
     }
-    
+
     static option(typeTag: CLType): CLType {
         return new CLType(CLTypeTag.Option, typeTag.bytes);
     }
@@ -93,7 +93,7 @@ export class CLType {
 };
 
 /**
- * A CasperLabs value, i.e. a value which can be stored and manipulated by smart contracts.
+ * A Casper value, i.e. a value which can be stored and manipulated by smart contracts.
  *
  * It holds the underlying data as a type-erased, serialized array of bytes and also holds the
  * [[CLType]] of the underlying data as a separate member.

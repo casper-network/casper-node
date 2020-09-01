@@ -1,6 +1,6 @@
-//! # CasperLabs blockchain node
+//! # Casper blockchain node
 //!
-//! This crate contain the core application for the CasperLabs blockchain. Run with `--help` to see
+//! This crate contain the core application for the Casper blockchain. Run with `--help` to see
 //! available command-line arguments.
 //!
 //! ## Application structure
@@ -10,8 +10,8 @@
 //! sourcecode, be sure to run `cargo doc --open`.
 
 #![doc(
-    html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casperlabs-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
-    html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casperlabs-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
+    html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
+    html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
     test(attr(forbid(warnings)))
 )]
 #![warn(

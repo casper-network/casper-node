@@ -26,7 +26,7 @@ export const enum ErrorCode {
     InvalidArgument = 3,
     /** Failed to deserialize a value. */
     Deserialize = 4,
-    /** `casperlabs_contract::storage::read()` returned an error. */
+    /** `casper_contract::storage::read()` returned an error. */
     Read = 5,
     /** The given key returned a `None` value. */
     ValueNotFound = 6,

@@ -7,7 +7,7 @@ use std::{
 use clap::{App, Arg, ArgMatches, SubCommand};
 use lazy_static::lazy_static;
 
-use casperlabs_node::crypto::asymmetric_key::{PublicKey, SecretKey};
+use casper_node::crypto::asymmetric_key::{PublicKey, SecretKey};
 
 use crate::{common, Subcommand as CrateSubcommand};
 

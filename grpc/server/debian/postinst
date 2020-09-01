@@ -4,7 +4,7 @@ set -e
 
 # Default Variables
 # ---
-DEFAULT_USERNAME="casperlabs"
+DEFAULT_USERNAME="casper"
 DEFAULT_DATA_DIRECTORY="/var/lib/${DEFAULT_USERNAME}"
 
 # User Creation

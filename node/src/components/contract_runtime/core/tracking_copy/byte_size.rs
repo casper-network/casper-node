@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, mem};
 
 use crate::components::contract_runtime::shared::{account::Account, stored_value::StoredValue};
-use casperlabs_types::{bytesrepr::ToBytes, ContractWasm, Key};
+use casper_types::{bytesrepr::ToBytes, ContractWasm, Key};
 
 /// Returns byte size of the element - both heap size and stack size.
 pub trait ByteSize {
@@ -107,7 +107,7 @@ mod tests {
     use std::{collections::BTreeMap, mem};
 
     use super::ByteSize;
-    use casperlabs_types::Key;
+    use casper_types::Key;
 
     fn assert_byte_size<T: ByteSize>(el: T, expected: usize) {
         assert_eq!(el.byte_size(), expected)

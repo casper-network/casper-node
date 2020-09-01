@@ -3,13 +3,13 @@
 //! # Usage
 //!
 //! ```
-//! use casperlabs_node::components::contract_runtime::storage::store::Store;
-//! use casperlabs_node::components::contract_runtime::storage::transaction_source::{Transaction, TransactionSource};
-//! use casperlabs_node::components::contract_runtime::storage::transaction_source::in_memory::InMemoryEnvironment;
-//! use casperlabs_node::components::contract_runtime::storage::trie::{Pointer, PointerBlock, Trie};
-//! use casperlabs_node::components::contract_runtime::storage::trie_store::in_memory::InMemoryTrieStore;
-//! use casperlabs_node::crypto::hash;
-//! use casperlabs_types::bytesrepr::ToBytes;
+//! use casper_node::components::contract_runtime::storage::store::Store;
+//! use casper_node::components::contract_runtime::storage::transaction_source::{Transaction, TransactionSource};
+//! use casper_node::components::contract_runtime::storage::transaction_source::in_memory::InMemoryEnvironment;
+//! use casper_node::components::contract_runtime::storage::trie::{Pointer, PointerBlock, Trie};
+//! use casper_node::components::contract_runtime::storage::trie_store::in_memory::InMemoryTrieStore;
+//! use casper_node::crypto::hash;
+//! use casper_types::bytesrepr::ToBytes;
 //!
 //! // Create some leaves
 //! let leaf_1 = Trie::Leaf { key: vec![0u8, 0, 0], value: b"val_1".to_vec() };

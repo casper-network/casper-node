@@ -4,11 +4,11 @@ use log::{Level, LevelFilter, Log, Metadata, Record};
 
 use crate::components::contract_runtime::shared::logging::{
     structured_message::{MessageId, MessageProperties, StructuredMessage, TimestampRfc3999},
-    Settings, Style, CASPERLABS_METADATA_TARGET, DEFAULT_MESSAGE_KEY, METRIC_METADATA_TARGET,
+    Settings, Style, CASPER_METADATA_TARGET, DEFAULT_MESSAGE_KEY, METRIC_METADATA_TARGET,
 };
 
 #[doc(hidden)]
-/// Logs messages from targets with prefix "casperlabs_" or "METRIC" to stdout.
+/// Logs messages from targets with prefix "casper_" or "METRIC" to stdout.
 pub struct TerminalLogger {
     max_level: LevelFilter,
     metrics_enabled: bool,
@@ -78,9 +78,9 @@ impl TerminalLogger {
 
 impl Log for TerminalLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
-        // If the target starts "casperlabs_" it's either come from a log macro in one of our
+        // If the target starts "casper_" it's either come from a log macro in one of our
         // crates, or via `logging::log_details`.  In this case, check the level.
-        (metadata.target().starts_with(CASPERLABS_METADATA_TARGET)
+        (metadata.target().starts_with(CASPER_METADATA_TARGET)
             && metadata.level() <= self.max_level)
             // Otherwise, check if the target is "METRIC" and if we have metric logging enabled.
             || (self.metrics_enabled && metadata.target() == METRIC_METADATA_TARGET)

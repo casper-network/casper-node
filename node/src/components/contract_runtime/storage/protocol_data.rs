@@ -1,7 +1,7 @@
 use crate::components::contract_runtime::shared::wasm_costs::{
     WasmCosts, WASM_COSTS_SERIALIZED_LENGTH,
 };
-use casperlabs_types::{
+use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     ContractHash, HashAddr, KEY_HASH_LENGTH,
 };
@@ -180,7 +180,7 @@ pub(crate) mod gens {
     use proptest::prop_compose;
 
     use crate::components::contract_runtime::shared::wasm_costs::gens as wasm_costs_gens;
-    use casperlabs_types::gens;
+    use casper_types::gens;
 
     use super::ProtocolData;
 
@@ -208,7 +208,7 @@ mod tests {
     use proptest::proptest;
 
     use crate::components::contract_runtime::shared::wasm_costs::WasmCosts;
-    use casperlabs_types::{bytesrepr, ContractHash};
+    use casper_types::{bytesrepr, ContractHash};
 
     use super::{gens, ProtocolData};
 

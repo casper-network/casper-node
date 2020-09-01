@@ -4,11 +4,11 @@
 extern crate alloc;
 
 use alloc::collections::BTreeMap;
-use casperlabs_contract::{
+use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casperlabs_types::{
+use casper_types::{
     auction::{
         Bid, BidPurses, Bids, Delegators, EraValidators, SeigniorageRecipient,
         SeigniorageRecipients, SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights,

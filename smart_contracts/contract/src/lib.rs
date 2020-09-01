@@ -1,5 +1,5 @@
 //! A Rust library for writing smart contracts on the
-//! [CasperLabs Platform](https://techspec.casperlabs.io).
+//! [Casper Platform](https://techspec.casperlabs.io).
 //!
 //! # `no_std`
 //!
@@ -14,10 +14,10 @@
 //! ```rust,no_run
 //! #![no_std]
 //!
-//! use casperlabs_contract::{
+//! use casper_contract::{
 //!     contract_api::{runtime, storage},
 //! };
-//! use casperlabs_types::{Key, URef};
+//! use casper_types::{Key, URef};
 //!
 //! const KEY: &str = "special_value";
 //! const ARG_VALUE: &str = "value";
@@ -53,10 +53,10 @@
     not(feature = "std"),
     feature(alloc_error_handler, core_intrinsics, lang_items)
 )]
-#![doc(html_root_url = "https://docs.rs/casperlabs-contract/0.6.0")]
+#![doc(html_root_url = "https://docs.rs/casper-contract/0.6.0")]
 #![doc(
-    html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/CasperLabs/dev/images/CasperLabs_Logo_Favicon_RGB_50px.png",
-    html_logo_url = "https://raw.githubusercontent.com/CasperLabs/CasperLabs/dev/images/CasperLabs_Logo_Symbol_RGB.png",
+    html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
+    html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
     test(attr(forbid(warnings)))
 )]
 #![warn(missing_docs)]

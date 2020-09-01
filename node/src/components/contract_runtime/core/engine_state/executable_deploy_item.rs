@@ -3,7 +3,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 
-use casperlabs_types::{
+use casper_types::{
     bytesrepr,
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
     ContractHash, ContractPackageHash, Key, RuntimeArgs,

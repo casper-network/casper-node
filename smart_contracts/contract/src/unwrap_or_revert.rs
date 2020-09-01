@@ -1,6 +1,6 @@
 //! Home of [`UnwrapOrRevert`], a convenience trait for unwrapping values.
 
-use casperlabs_types::ApiError;
+use casper_types::ApiError;
 
 use crate::contract_api::runtime;
 

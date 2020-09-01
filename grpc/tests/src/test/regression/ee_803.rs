@@ -1,10 +1,10 @@
 use std::rc::Rc;
 
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS},
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_node::{
+use casper_node::{
     components::contract_runtime::core::engine_state::{
         execution_result::ExecutionResult, genesis::POS_REWARDS_PURSE, CONV_RATE,
     },
@@ -12,7 +12,7 @@ use casperlabs_node::{
     types::Motes,
     GenesisAccount,
 };
-use casperlabs_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
+use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
 
 const CONTRACT_DO_NOTHING: &str = "do_nothing.wasm";
 const CONTRACT_TRANSFER: &str = "transfer_purse_to_account.wasm";

@@ -24,7 +24,7 @@ use std::path::Path;
 use anyhow::Context;
 use serde::{de::DeserializeOwned, Serialize};
 
-use casperlabs_node::utils::read_file;
+use casper_node::utils::read_file;
 
 /// Loads a TOML-formatted configuration from a given file.
 pub fn load_from_file<P: AsRef<Path>, C: DeserializeOwned>(config_path: P) -> anyhow::Result<C> {
@@ -43,7 +43,7 @@ pub fn to_string<C: Serialize>(cfg: &C) -> anyhow::Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use casperlabs_node::reactor::validator::Config;
+    use casper_node::reactor::validator::Config;
 
     #[test]
     fn example_config_should_parse() {

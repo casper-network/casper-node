@@ -2,7 +2,7 @@
 
 ## General
 
-The `logging` module provides the ability to log messages from any CasperLabs crate to `stdout` using the canonical
+The `logging` module provides the ability to log messages from any Casper crate to `stdout` using the canonical
 macros from the [`log` crate](https://crates.io/crates/log).
 
 It also provides functions to allow logging messages with properties attached for the purpose of structured logging and
@@ -37,14 +37,14 @@ done in several or all of the tests in a single binary.
 ## Metrics
 
 The structured log messages output via [`log_metric()`][log_metric] or [`log_duration()`][log_duration] can be
-parsed and read by the [`casperlabs-engine-metrics-scraper`][scraper].
+parsed and read by the [`casper-engine-metrics-scraper`][scraper].
 
 This tool reads from `stdin`, extracts the "time-series-data" from the log messages' properties and makes the values
 available via a `GET` endpoint.
 
 
-[initialize]: https://docs.rs/casperlabs-engine-shared/latest/casperlabs_engine_shared/logging/fn.initialize.html
-[log_metric]: https://docs.rs/casperlabs-engine-shared/latest/casperlabs_engine_shared/logging/fn.log_metric.html
-[log_duration]: https://docs.rs/casperlabs-engine-shared/latest/casperlabs_engine_shared/logging/fn.log_duration.html
-[TestContextBuilder]: https://docs.rs/casperlabs-engine-test-support/latest/casperlabs_engine_test_support/struct.TestContextBuilder.html
+[initialize]: https://docs.rs/casper-engine-shared/latest/casper_engine_shared/logging/fn.initialize.html
+[log_metric]: https://docs.rs/casper-engine-shared/latest/casper_engine_shared/logging/fn.log_metric.html
+[log_duration]: https://docs.rs/casper-engine-shared/latest/casper_engine_shared/logging/fn.log_duration.html
+[TestContextBuilder]: https://docs.rs/casper-engine-test-support/latest/casper_engine_test_support/struct.TestContextBuilder.html
 [scraper]: https://github.com/CasperLabs/CasperLabs/tree/master/execution-engine/engine-metrics-scraper

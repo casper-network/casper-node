@@ -111,7 +111,7 @@ export class URef {
     }
 
     /**
-     * Serializes the URef into an array of bytes that represents it in the CasperLabs serialization
+     * Serializes the URef into an array of bytes that represents it in the Casper serialization
      * format.
      */
     toBytes(): Array<u8> {

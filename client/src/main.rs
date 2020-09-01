@@ -9,7 +9,7 @@ use deploy::{GetDeploy, ListDeploys, PutDeploy, Transfer};
 use generate_completion::GenerateCompletion;
 use keygen::Keygen;
 
-const APP_NAME: &str = "CasperLabs client";
+const APP_NAME: &str = "Casper client";
 
 pub trait Subcommand<'a, 'b> {
     const NAME: &'static str;

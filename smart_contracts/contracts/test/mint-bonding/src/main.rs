@@ -5,12 +5,12 @@ extern crate alloc;
 
 use alloc::string::String;
 
-use casperlabs_contract::{
+use casper_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
 
-use casperlabs_types::{
+use casper_types::{
     account::AccountHash, auction, runtime_args, ApiError, ContractHash, PublicKey, RuntimeArgs,
     URef, U512,
 };

@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use casperlabs_contract::contract_api::runtime;
-use casperlabs_types::{ContractHash, RuntimeArgs};
+use casper_contract::contract_api::runtime;
+use casper_types::{ContractHash, RuntimeArgs};
 
 const ARG_SEED: &str = "seed";
 const ENTRY_FUNCTION_NAME: &str = "delegate";

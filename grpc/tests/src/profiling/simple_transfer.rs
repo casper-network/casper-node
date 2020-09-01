@@ -11,13 +11,13 @@ use std::{env, io, path::PathBuf};
 
 use clap::{crate_version, App, Arg};
 
-use casperlabs_engine_test_support::internal::{
+use casper_engine_test_support::internal::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_PAYMENT,
 };
-use casperlabs_node::components::contract_runtime::core::engine_state::EngineConfig;
-use casperlabs_types::{runtime_args, RuntimeArgs, U512};
+use casper_node::components::contract_runtime::core::engine_state::EngineConfig;
+use casper_types::{runtime_args, RuntimeArgs, U512};
 
-use casperlabs_engine_tests::profiling;
+use casper_engine_tests::profiling;
 
 const ABOUT: &str = "Executes a simple contract which transfers an amount between two accounts.  \
      Note that the 'state-initializer' executable should be run first to set up the required \

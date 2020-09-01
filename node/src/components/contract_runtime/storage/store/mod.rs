@@ -2,7 +2,7 @@ mod store_ext;
 #[cfg(test)]
 pub(crate) mod tests;
 
-use casperlabs_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 pub use self::store_ext::StoreExt;
 use crate::components::contract_runtime::storage::transaction_source::{Readable, Writable};

@@ -151,7 +151,7 @@ impl FromBytes for RuntimeArgs {
 ///
 /// # Example usage
 /// ```
-/// use casperlabs_types::{RuntimeArgs, runtime_args};
+/// use casper_types::{RuntimeArgs, runtime_args};
 /// let _named_args = runtime_args! {
 ///   "foo" => 42,
 ///   "bar" => "Hello, world!"

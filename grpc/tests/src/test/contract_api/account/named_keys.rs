@@ -1,12 +1,10 @@
 use std::convert::TryFrom;
 
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_types::{
-    bytesrepr::FromBytes, runtime_args, CLTyped, CLValue, Key, RuntimeArgs, U512,
-};
+use casper_types::{bytesrepr::FromBytes, runtime_args, CLTyped, CLValue, Key, RuntimeArgs, U512};
 
 const CONTRACT_NAMED_KEYS: &str = "named_keys.wasm";
 const EXPECTED_UREF_VALUE: u64 = 123_456_789u64;

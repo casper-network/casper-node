@@ -6,11 +6,11 @@ extern crate alloc;
 use alloc::borrow::ToOwned;
 use core::iter;
 
-use casperlabs_contract::{
+use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casperlabs_types::{contracts::NamedKeys, ApiError};
+use casper_types::{contracts::NamedKeys, ApiError};
 
 const BAR_KEY: &str = "Bar";
 const FOO_KEY: &str = "Foo";

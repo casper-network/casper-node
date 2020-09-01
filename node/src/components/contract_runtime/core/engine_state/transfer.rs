@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use casperlabs_types::{
+use casper_types::{
     account::AccountHash, AccessRights, ApiError, CLType, Key, RuntimeArgs, URef, U512,
 };
 

@@ -3,11 +3,11 @@
 
 extern crate alloc;
 
-use casperlabs_contract::{
+use casper_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casperlabs_types::{runtime_args, RuntimeArgs, U512};
+use casper_types::{runtime_args, RuntimeArgs, U512};
 
 const BOND_METHOD_NAME: &str = "bond";
 

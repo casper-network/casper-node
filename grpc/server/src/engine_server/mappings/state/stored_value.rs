@@ -1,6 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
-use casperlabs_node::components::contract_runtime::shared::stored_value::StoredValue;
+use casper_node::components::contract_runtime::shared::stored_value::StoredValue;
 
 use crate::engine_server::{
     mappings::ParsingError,
@@ -63,7 +63,7 @@ impl TryFrom<state::StoredValue> for StoredValue {
 mod tests {
     use proptest::proptest;
 
-    use casperlabs_node::components::contract_runtime::shared::stored_value::gens;
+    use casper_node::components::contract_runtime::shared::stored_value::gens;
 
     use super::*;
     use crate::engine_server::mappings::test_utils;

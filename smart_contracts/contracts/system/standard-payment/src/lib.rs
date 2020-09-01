@@ -1,10 +1,10 @@
 #![no_std]
 
-use casperlabs_contract::{
+use casper_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casperlabs_types::{
+use casper_types::{
     standard_payment::{AccountProvider, MintProvider, ProofOfStakeProvider, StandardPayment},
     ApiError, RuntimeArgs, URef, U512,
 };

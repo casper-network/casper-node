@@ -3,7 +3,7 @@ mod associated_keys;
 
 use std::collections::BTreeSet;
 
-use casperlabs_types::{
+use casper_types::{
     account::{
         AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
         UpdateKeyFailure, Weight,
@@ -251,7 +251,7 @@ impl FromBytes for Account {
 pub mod gens {
     use proptest::prelude::*;
 
-    use casperlabs_types::{
+    use casper_types::{
         account::MAX_ASSOCIATED_KEYS,
         gens::{account_hash_arb, named_keys_arb, uref_arb},
     };
@@ -285,7 +285,7 @@ pub mod gens {
 mod proptests {
     use proptest::prelude::*;
 
-    use casperlabs_types::bytesrepr;
+    use casper_types::bytesrepr;
 
     use super::*;
 
@@ -301,7 +301,7 @@ mod proptests {
 mod tests {
     use std::{collections::BTreeSet, iter::FromIterator};
 
-    use casperlabs_types::{
+    use casper_types::{
         account::{
             AccountHash, ActionType, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure,
             Weight,

@@ -3,13 +3,13 @@
 //! # Usage
 //!
 //! ```
-//! use casperlabs_node::components::contract_runtime::storage::store::Store;
-//! use casperlabs_node::components::contract_runtime::storage::transaction_source::{Transaction, TransactionSource};
-//! use casperlabs_node::components::contract_runtime::storage::transaction_source::lmdb::LmdbEnvironment;
-//! use casperlabs_node::components::contract_runtime::storage::trie::{Pointer, PointerBlock, Trie};
-//! use casperlabs_node::components::contract_runtime::storage::trie_store::lmdb::LmdbTrieStore;
-//! use casperlabs_node::crypto::hash;
-//! use casperlabs_types::bytesrepr::ToBytes;
+//! use casper_node::components::contract_runtime::storage::store::Store;
+//! use casper_node::components::contract_runtime::storage::transaction_source::{Transaction, TransactionSource};
+//! use casper_node::components::contract_runtime::storage::transaction_source::lmdb::LmdbEnvironment;
+//! use casper_node::components::contract_runtime::storage::trie::{Pointer, PointerBlock, Trie};
+//! use casper_node::components::contract_runtime::storage::trie_store::lmdb::LmdbTrieStore;
+//! use casper_node::crypto::hash;
+//! use casper_types::bytesrepr::ToBytes;
 //! use lmdb::DatabaseFlags;
 //! use tempfile::tempdir;
 //!

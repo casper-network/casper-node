@@ -15,7 +15,7 @@ use hex_fmt::HexFmt;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use casperlabs_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use super::Error;
 #[cfg(test)]

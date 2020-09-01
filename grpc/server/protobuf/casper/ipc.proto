@@ -1,28 +1,28 @@
 syntax = "proto3";
 
-package io.casperlabs.ipc;
+package casper.ipc;
 
-import "io/casperlabs/casper/consensus/state.proto";
-import "io/casperlabs/ipc/transforms.proto";
+import "casper/state.proto";
+import "casper/transforms.proto";
 
 // --- BEGIN EXECUTION ENGINE SERVICE DEFINITION --- //
 
 message DeployCode {
-  bytes code = 1; // wasm byte code
-  bytes args = 2; // ABI-encoded arguments
+    bytes code = 1; // wasm byte code
+    bytes args = 2; // ABI-encoded arguments
 }
 
-message StoredContractHash{
-  bytes hash = 1; // public hash of a stored contract
-  bytes args = 2; // ABI-encoded arguments
-  string entry_point_name = 3; // optional entry point name (defaults to "call")
+message StoredContractHash {
+    bytes hash = 1; // public hash of a stored contract
+    bytes args = 2; // ABI-encoded arguments
+    string entry_point_name = 3; // optional entry point name (defaults to "call")
 }
 
-message StoredContractName{
-  // name of a stored contract associated with the executing account
-  string name = 1;
-  bytes args = 2;   // ABI-encoded arguments
-  string entry_point_name = 3; // optional entry point name (defaults to "call")
+message StoredContractName {
+    // name of a stored contract associated with the executing account
+    string name = 1;
+    bytes args = 2;   // ABI-encoded arguments
+    string entry_point_name = 3; // optional entry point name (defaults to "call")
 }
 
 message StoredContractPackage {
@@ -48,15 +48,15 @@ message Transfer {
 }
 
 message DeployPayload {
-  reserved 4; // StoredContractURef is no longer supported
-  oneof payload {
-    DeployCode deploy_code = 1;
-    StoredContractHash stored_contract_hash = 2;  
-    StoredContractName stored_contract_name = 3;  
-    StoredContractPackage stored_package_by_name = 5; 
-    StoredContractPackageHash stored_package_by_hash = 6;
-    Transfer transfer = 7;
-  }
+    reserved 4; // StoredContractURef is no longer supported
+    oneof payload {
+        DeployCode deploy_code = 1;
+        StoredContractHash stored_contract_hash = 2;
+        StoredContractName stored_contract_name = 3;
+        StoredContractPackage stored_package_by_name = 5;
+        StoredContractPackageHash stored_package_by_hash = 6;
+        Transfer transfer = 7;
+    }
 }
 
 message DeployItem {
@@ -77,7 +77,7 @@ message ExecuteRequest {
     bytes parent_state_hash = 1;
     uint64 block_time = 2;
     repeated DeployItem deploys = 3;
-    io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 4;
+    casper.state.ProtocolVersion protocol_version = 4;
 }
 
 message ExecuteResponse {
@@ -97,7 +97,7 @@ message RootNotFound {
 
 message CommitRequest {
     bytes prestate_hash = 1;
-    repeated TransformEntry effects = 2;
+    repeated casper.transforms.TransformEntry effects = 2;
 }
 
 message CommitResult {
@@ -108,8 +108,8 @@ message CommitResponse {
     oneof result {
         CommitResult success = 1;
         RootNotFound missing_prestate = 2;
-        io.casperlabs.casper.consensus.state.Key key_not_found = 3;
-        TypeMismatch type_mismatch = 4;
+        casper.state.Key key_not_found = 3;
+        casper.transforms.TypeMismatch type_mismatch = 4;
         PostEffectsError failed_transform = 5;
     }
 }
@@ -154,16 +154,16 @@ message RkvError {
 // Models key value pair of (key, op) entry.
 // Required b/c protobuff doesn't support maps natively
 message OpEntry {
-    io.casperlabs.casper.consensus.state.Key key = 1;
+    casper.state.Key key = 1;
     Op operation = 2;
 }
 
 // Returned by ExecutionEngine to consensus layer.
-// (Map[Key, Op], Map[Key, Transform]) pair, describes how the deploy modifies the global io.casperlabs.casper.consensus.state.
+// (Map[Key, Op], Map[Key, Transform]) pair, describes how the deploy modifies the global casper.state.
 // op_map and transform_map should be of equal lengths
 message ExecutionEffect {
     repeated OpEntry op_map = 1;
-    repeated TransformEntry transform_map = 2;
+    repeated casper.transforms.TransformEntry transform_map = 2;
 }
 
 message DeployError {
@@ -193,7 +193,7 @@ message DeployResult {
     message ExecutionResult {
         ExecutionEffect effects = 1;
         DeployError error = 2;
-        io.casperlabs.casper.consensus.state.BigInt cost = 3;
+        casper.state.BigInt cost = 3;
     }
 
     oneof value {
@@ -210,13 +210,13 @@ message PostEffectsError {
 
 message QueryRequest {
     bytes state_hash = 1;
-    io.casperlabs.casper.consensus.state.Key base_key = 2;
+    casper.state.Key base_key = 2;
     repeated string path = 3;
-    io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 4;
+    casper.state.ProtocolVersion protocol_version = 4;
 }
 
 message QueryResponse {
-    reserved 1; // previously `state.Value`
+    reserved 1; // previously `casper.state.Value`
     oneof result {
         // serialized `StoredValue`
         bytes success = 3;
@@ -224,7 +224,6 @@ message QueryResponse {
         string failure = 2;
     }
 }
-
 
 message GenesisResult {
     bytes poststate_hash = 1;
@@ -254,12 +253,12 @@ message ChainSpec {
         reserved 7; // WASM costs table
         // Human readable name for convenience; the genesis_hash is the true identifier.
         // The name influences the genesis hash by contributing to the seeding of the pseudo-
-        // random number generator used in execution engine for computing genesis post-state.
+        // random number generator used in execution engine for computing genesis post-casper.state.
         string name = 1;
         // timestamp for the genesis block, also used in seeding the pseudo-random number
-        // generator used in execution engine for computing genesis post-state.
+        // generator used in execution engine for computing genesis post-casper.state.
         uint64 timestamp = 2;
-        io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 3;
+        casper.state.ProtocolVersion protocol_version = 3;
         DeployConfig deploy_config = 8;
         HighwayConfig highway_config = 9;
         ExecConfig ee_config = 11;
@@ -280,8 +279,8 @@ message ChainSpec {
 
             message GenesisAccount {
                 bytes public_key_hash = 1;
-                io.casperlabs.casper.consensus.state.BigInt balance = 2; // in motes
-                io.casperlabs.casper.consensus.state.BigInt bonded_amount = 3; // in motes, 0 means "not bonded"
+                casper.state.BigInt balance = 2; // in motes
+                casper.state.BigInt bonded_amount = 3; // in motes, 0 means "not bonded"
             }
         }
     }
@@ -344,7 +343,7 @@ message ChainSpec {
         // to change how such a point is expressed in the future.
         ActivationPoint activation_point = 1;
         // The protocol version as of this upgrade
-        io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 2;
+        casper.state.ProtocolVersion protocol_version = 2;
         // bytes for a contract to run that applies the upgrades to system contracts
         DeployCode upgrade_installer = 3;
         // Note: this is optional; only needed when costs are changing
@@ -361,7 +360,7 @@ message ChainSpec {
 message UpgradeRequest {
     bytes parent_state_hash = 1;
     ChainSpec.UpgradePoint upgrade_point = 2;
-    io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 3;
+    casper.state.ProtocolVersion protocol_version = 3;
 }
 
 message UpgradeResult {
@@ -386,7 +385,7 @@ message UpgradeResponse {
 
 message BidStateRequest {
     bytes parent_state_hash = 1;
-    io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 2;
+    casper.state.ProtocolVersion protocol_version = 2;
 }
 
 message BidState {
@@ -394,7 +393,7 @@ message BidState {
 
     message Bid {
         bytes id = 1;
-        io.casperlabs.casper.consensus.state.BigInt value = 2;
+        casper.state.BigInt value = 2;
     }
 }
 
@@ -408,11 +407,11 @@ message BidStateResponse {
 message DistributeRewardsRequest {
     bytes parent_state_hash = 1;
     repeated ValidatorReward rewards = 2;
-    io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 3;
+    casper.state.ProtocolVersion protocol_version = 3;
 
     message ValidatorReward {
         bytes validator_id = 1;
-        io.casperlabs.casper.consensus.state.BigInt value = 2;
+        casper.state.BigInt value = 2;
     }
 }
 
@@ -432,11 +431,11 @@ message DistributeRewardsResponse {
 message SlashRequest {
     bytes parent_state_hash = 1;
     repeated ValidatorSlash slashes = 2;
-    io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 3;
+    casper.state.ProtocolVersion protocol_version = 3;
 
     message ValidatorSlash{
         bytes validator_id = 1;
-        io.casperlabs.casper.consensus.state.BigInt value = 2;
+        casper.state.BigInt value = 2;
     }
 }
 
@@ -456,7 +455,7 @@ message SlashResponse {
 message UnbondPayoutRequest {
     bytes parent_state_hash = 1;
     uint64 era_height = 2;
-    io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 3;
+    casper.state.ProtocolVersion protocol_version = 3;
 }
 
 message UnbondPayoutError {
@@ -475,7 +474,7 @@ message UnbondPayoutResponse {
 message RunGenesisRequest {
     // Hash of the Genesis configuration.
     bytes genesis_config_hash = 1;
-    io.casperlabs.casper.consensus.state.ProtocolVersion protocol_version = 2;
+    casper.state.ProtocolVersion protocol_version = 2;
     // Genesis configuration for the ExecutionEngine.
     ChainSpec.GenesisConfig.ExecConfig ee_config = 3;
 }

@@ -1,16 +1,16 @@
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
         DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_node::{
+use casper_node::{
     crypto::asymmetric_key::{PublicKey, SecretKey},
     types::Motes,
     GenesisAccount,
 };
-use casperlabs_types::{
+use casper_types::{
     account::AccountHash,
     auction::{
         BidPurses, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, BID_PURSES_KEY,
@@ -68,7 +68,7 @@ fn get_value<T: FromBytes + CLTyped>(
 #[ignore]
 #[test]
 fn should_run_successful_bond_and_unbond_and_slashing() {
-    let default_public_key_arg = casperlabs_types::PublicKey::from(*DEFAULT_ACCOUNT_PUBLIC_KEY);
+    let default_public_key_arg = casper_types::PublicKey::from(*DEFAULT_ACCOUNT_PUBLIC_KEY);
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -105,9 +105,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     let bid_purses: BidPurses = get_value(&mut builder, auction, BID_PURSES_KEY);
     let bid_purse = bid_purses
-        .get(&casperlabs_types::PublicKey::from(
-            *DEFAULT_ACCOUNT_PUBLIC_KEY,
-        ))
+        .get(&casper_types::PublicKey::from(*DEFAULT_ACCOUNT_PUBLIC_KEY))
         .expect("should have bid purse");
     assert_eq!(
         builder.get_purse_balance(*bid_purse),
@@ -140,9 +138,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
-        .get(&casperlabs_types::PublicKey::from(
-            *DEFAULT_ACCOUNT_PUBLIC_KEY,
-        ))
+        .get(&casper_types::PublicKey::from(*DEFAULT_ACCOUNT_PUBLIC_KEY))
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
     assert_eq!(unbond_list[0].origin, default_public_key_arg,);
@@ -172,9 +168,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
-        .get(&casperlabs_types::PublicKey::from(
-            *DEFAULT_ACCOUNT_PUBLIC_KEY,
-        ))
+        .get(&casper_types::PublicKey::from(*DEFAULT_ACCOUNT_PUBLIC_KEY))
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
     assert_eq!(unbond_list[0].origin, default_public_key_arg,);
@@ -204,9 +198,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
     let unbond_list = unbond_purses
-        .get(&casperlabs_types::PublicKey::from(
-            *DEFAULT_ACCOUNT_PUBLIC_KEY,
-        ))
+        .get(&casper_types::PublicKey::from(*DEFAULT_ACCOUNT_PUBLIC_KEY))
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 0); // removed unbonds
 
@@ -237,7 +229,7 @@ fn should_fail_bonding_with_insufficient_funds() {
         runtime_args! {
             ARG_ENTRY_POINT => TEST_BOND_FROM_MAIN_PURSE,
             ARG_AMOUNT => *DEFAULT_PAYMENT + GENESIS_ACCOUNT_STAKE,
-            ARG_PUBLIC_KEY => casperlabs_types::PublicKey::from(account_1_public_key),
+            ARG_PUBLIC_KEY => casper_types::PublicKey::from(account_1_public_key),
         },
     )
     .build();
@@ -290,7 +282,7 @@ fn should_fail_unbonding_validator_without_bonding_first() {
         runtime_args! {
             ARG_ENTRY_POINT => TEST_UNBOND,
             ARG_AMOUNT => U512::from(42),
-            ARG_PUBLIC_KEY => casperlabs_types::PublicKey::from(account_1_public_key),
+            ARG_PUBLIC_KEY => casper_types::PublicKey::from(account_1_public_key),
         },
     )
     .build();
@@ -322,7 +314,7 @@ fn should_fail_unbonding_validator_without_bonding_first() {
 #[ignore]
 #[test]
 fn should_run_successful_bond_and_unbond_with_release() {
-    let default_public_key_arg = casperlabs_types::PublicKey::from(*DEFAULT_ACCOUNT_PUBLIC_KEY);
+    let default_public_key_arg = casper_types::PublicKey::from(*DEFAULT_ACCOUNT_PUBLIC_KEY);
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -410,9 +402,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
-        .get(&casperlabs_types::PublicKey::from(
-            *DEFAULT_ACCOUNT_PUBLIC_KEY,
-        ))
+        .get(&casper_types::PublicKey::from(*DEFAULT_ACCOUNT_PUBLIC_KEY))
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
     assert_eq!(unbond_list[0].origin, default_public_key_arg,);
@@ -502,9 +492,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
     let unbond_list = unbond_purses
-        .get(&casperlabs_types::PublicKey::from(
-            *DEFAULT_ACCOUNT_PUBLIC_KEY,
-        ))
+        .get(&casper_types::PublicKey::from(*DEFAULT_ACCOUNT_PUBLIC_KEY))
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 0); // removed unbonds
 

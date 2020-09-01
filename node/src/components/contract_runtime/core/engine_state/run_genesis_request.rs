@@ -3,7 +3,7 @@ use rand::{
     Rng,
 };
 
-use casperlabs_types::ProtocolVersion;
+use casper_types::ProtocolVersion;
 
 use super::genesis::ExecConfig;
 use crate::crypto::hash::{self, Digest};

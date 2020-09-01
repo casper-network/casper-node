@@ -132,8 +132,8 @@ steps:
 - name: build-deb-tag
   <<: *buildenv
   commands:
-    - "cd grpc/server && cargo deb -p casperlabs-engine-grpc-server --no-build"
-    - "cd node && cargo deb -p casperlabs-node --no-build"
+    - "cd grpc/server && cargo deb -p casper-engine-grpc-server --no-build"
+    - "cd node && cargo deb -p casper-node --no-build"
   depends_on:
   - build-release-tag
 
@@ -190,7 +190,7 @@ steps:
       from_secret: slack_webhook
     template:
     - |
-      casperlabs-node build status: *{{ uppercasefirst build.status }}*
+      casper-node build status: *{{ uppercasefirst build.status }}*
       Author: {{ build.author }}
       Drone Build: <{{ build.link }}|#{{ build.number }}>
       Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>

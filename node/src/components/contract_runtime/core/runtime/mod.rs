@@ -17,7 +17,7 @@ use itertools::Itertools;
 use parity_wasm::elements::Module;
 use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef, Trap, TrapKind};
 
-use casperlabs_types::{
+use casper_types::{
     account::{AccountHash, ActionType, Weight},
     auction::{self, AuctionProvider},
     bytesrepr::{self, FromBytes, ToBytes},
@@ -1077,8 +1077,7 @@ fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
                 Ok(map.values().cloned().collect())
             }
             (CLType::PublicKey, CLType::URef) => {
-                let map: BTreeMap<casperlabs_types::PublicKey, URef> =
-                    cl_value.to_owned().into_t()?;
+                let map: BTreeMap<casper_types::PublicKey, URef> = cl_value.to_owned().into_t()?;
                 Ok(map.values().cloned().collect())
             }
             (CLType::Bool, CLType::Key) => {
@@ -1126,8 +1125,7 @@ fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
                 Ok(map.values().cloned().filter_map(Key::into_uref).collect())
             }
             (CLType::PublicKey, CLType::Key) => {
-                let map: BTreeMap<casperlabs_types::PublicKey, Key> =
-                    cl_value.to_owned().into_t()?;
+                let map: BTreeMap<casper_types::PublicKey, Key> = cl_value.to_owned().into_t()?;
                 Ok(map.values().cloned().filter_map(Key::into_uref).collect())
             }
             (_, _) => Ok(vec![]),
@@ -2007,7 +2005,7 @@ where
             }
 
             auction::METHOD_QUASH_BID => {
-                let validator_public_keys: Vec<casperlabs_types::PublicKey> =
+                let validator_public_keys: Vec<casper_types::PublicKey> =
                     Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_KEYS)?;
 
                 runtime
@@ -3563,7 +3561,7 @@ mod tests {
         result,
     };
 
-    use casperlabs_types::{gens::*, AccessRights, CLType, CLValue, Key, URef};
+    use casper_types::{gens::*, AccessRights, CLType, CLValue, Key, URef};
 
     use super::extract_urefs;
     use std::collections::BTreeMap;
@@ -3714,7 +3712,7 @@ mod tests {
     fn extract_from_public_keys_to_urefs_map() {
         let uref = URef::new([43; 32], AccessRights::READ_ADD_WRITE);
         let mut map = BTreeMap::new();
-        map.insert(casperlabs_types::PublicKey::Ed25519([42; 32]), uref);
+        map.insert(casper_types::PublicKey::Ed25519([42; 32]), uref);
         let cl_value = CLValue::from_t(map).unwrap();
         assert_eq!(extract_urefs(&cl_value).unwrap(), vec![uref]);
     }
@@ -3724,7 +3722,7 @@ mod tests {
         let uref = URef::new([43; 32], AccessRights::READ_ADD_WRITE);
         let key = Key::from(uref);
         let mut map = BTreeMap::new();
-        map.insert(casperlabs_types::PublicKey::Ed25519([42; 32]), key);
+        map.insert(casper_types::PublicKey::Ed25519([42; 32]), key);
         let cl_value = CLValue::from_t(map).unwrap();
         assert_eq!(extract_urefs(&cl_value).unwrap(), vec![uref]);
     }

@@ -1,4 +1,4 @@
-use casperlabs_node::components::contract_runtime::{
+use casper_node::components::contract_runtime::{
     core::{
         engine_state::{
             execution_effect::ExecutionEffect, execution_result::ExecutionResult,
@@ -150,10 +150,10 @@ mod detail {
 mod tests {
     use std::convert::TryInto;
 
-    use casperlabs_node::components::contract_runtime::shared::{
+    use casper_node::components::contract_runtime::shared::{
         additive_map::AdditiveMap, transform::Transform,
     };
-    use casperlabs_types::{
+    use casper_types::{
         bytesrepr::Error as BytesReprError, AccessRights, ApiError, Key, URef, U512,
     };
 

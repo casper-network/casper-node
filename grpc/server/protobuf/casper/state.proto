@@ -1,5 +1,6 @@
 syntax = "proto3";
-package io.casperlabs.casper.consensus.state;
+
+package casper.state;
 
 message SemVer {
     uint32 major = 1;
@@ -56,7 +57,6 @@ message ContractVersionKey {
 }
 
 message ContractPackage {
-    
     message Version {
         ContractVersionKey version = 1;
         bytes contract_hash = 2;
@@ -70,7 +70,6 @@ message ContractPackage {
     repeated ContractVersionKey disabled_versions = 3;
     repeated Group groups = 4;
 }
-
 
 // Fundamental type of a user-facing value stored under a key in global state.
 message CLType {
@@ -262,31 +261,6 @@ message StoredValueInstance {
         ContractPackage contract_package = 4;
         ContractWasm contract_wasm = 5;
     }
-}
-
-message Value {
-	oneof value {
-		int32 int_value = 1;
-		bytes bytes_value = 2;
-		IntList int_list = 3;
-		string string_value = 4;
-		Account account = 5;
-		Contract contract = 6;
-		StringList string_list = 7;
-		NamedKey named_key = 8;
-		BigInt big_int = 9;
-		Key key = 10;
-		Unit unit = 11;
-		uint64 long_value = 12;
-	}
-}
-
-message IntList {
-	repeated int32 values = 1;
-}
-
-message StringList {
-	repeated string values = 1;
 }
 
 message BigInt {

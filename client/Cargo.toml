@@ -1,14 +1,14 @@
 [package]
-name = "casperlabs-client"
+name = "casper-client"
 version = "0.1.0"
 authors = ["Marc Brinkmann <marc@casperlabs.io>", "Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
-description = "A client for interacting with the CasperLabs network"
+description = "A client for interacting with the Casper network"
 
 [dependencies]
 base64 = "0.12.3"
-casperlabs-node = { path = "../node" }
-casperlabs-types = { path = "../types", features = ["std"] }
+casper-node = { path = "../node" }
+casper-types = { path = "../types", features = ["std"] }
 clap = "2.33.1"
 futures = "0.3.5"
 hex = { version = "0.4.2", features = ["serde"] }

@@ -1,5 +1,5 @@
 [package]
-name = "casperlabs-engine-tests"
+name = "casper-engine-tests"
 version = "0.1.0"
 authors = ["Ed Hastings <ed@casperlabs.io>, Henry Till <henrytill@gmail.com>"]
 edition = "2018"
@@ -7,11 +7,11 @@ edition = "2018"
 [dependencies]
 base16 = "0.2.1"
 clap = "2"
-casperlabs-contract = { path = "../../smart_contracts/contract" }
-casperlabs-engine-grpc-server = { path = "../server" }
-casperlabs-engine-test-support = { path = "../test_support" }
-casperlabs-node = { path = "../../node" }
-casperlabs-types = { path = "../../types", features = ["std"] }
+casper-contract = { path = "../../smart_contracts/contract" }
+casper-engine-grpc-server = { path = "../server" }
+casper-engine-test-support = { path = "../test_support" }
+casper-node = { path = "../../node" }
+casper-types = { path = "../../types", features = ["std"] }
 crossbeam-channel = "0.4.0"
 env_logger = "0.7.1"
 grpc = "0.6.1"
@@ -30,19 +30,19 @@ wabt = "0.10.0"
 
 [features]
 default = [
-    "casperlabs-contract/std",
-    "casperlabs-contract/test-support",
-    "casperlabs-node/test-support",
-    "casperlabs-engine-test-support/test-support"
+    "casper-contract/std",
+    "casper-contract/test-support",
+    "casper-node/test-support",
+    "casper-engine-test-support/test-support"
 ]
-use-as-wasm = ["casperlabs-engine-test-support/use-as-wasm"]
-use-system-contracts = ["casperlabs-engine-test-support/use-system-contracts"]
+use-as-wasm = ["casper-engine-test-support/use-as-wasm"]
+use-system-contracts = ["casper-engine-test-support/use-system-contracts"]
 no-unstable-features = [
-    "casperlabs-contract/no-unstable-features",
-    "casperlabs-node/no-unstable-features",
-    "casperlabs-engine-grpc-server/no-unstable-features",
-    "casperlabs-engine-test-support/no-unstable-features",
-    "casperlabs-types/no-unstable-features"
+    "casper-contract/no-unstable-features",
+    "casper-node/no-unstable-features",
+    "casper-engine-grpc-server/no-unstable-features",
+    "casper-engine-test-support/no-unstable-features",
+    "casper-types/no-unstable-features"
 ]
 
 [lib]

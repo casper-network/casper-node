@@ -1,13 +1,13 @@
 use assert_matches::assert_matches;
 
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{
         utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
         DEFAULT_ACCOUNT_KEY, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
-use casperlabs_node::{
+use casper_node::{
     components::contract_runtime::{
         core::{
             engine_state::{genesis::POS_REWARDS_PURSE, Error, CONV_RATE, MAX_PAYMENT},
@@ -17,9 +17,7 @@ use casperlabs_node::{
     },
     types::Motes,
 };
-use casperlabs_types::{
-    account::AccountHash, runtime_args, ApiError, Key, RuntimeArgs, URef, U512,
-};
+use casper_types::{account::AccountHash, runtime_args, ApiError, Key, RuntimeArgs, URef, U512};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
 const DO_NOTHING_WASM: &str = "do_nothing.wasm";

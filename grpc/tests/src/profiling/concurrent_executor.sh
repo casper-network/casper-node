@@ -2,7 +2,7 @@
 
 set -eu -o pipefail
 
-SERVER=casperlabs-engine-grpc-server
+SERVER=casper-engine-grpc-server
 CLIENT=concurrent-executor
 EE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." >/dev/null 2>&1 && pwd)"
 THIS_SCRIPT="$(basename ${BASH_SOURCE[0]})"

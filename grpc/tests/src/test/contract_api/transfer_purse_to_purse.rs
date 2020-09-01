@@ -1,8 +1,8 @@
 use std::convert::TryFrom;
 
-use casperlabs_types::{runtime_args, ApiError, CLValue, Key, RuntimeArgs, U512};
+use casper_types::{runtime_args, ApiError, CLValue, Key, RuntimeArgs, U512};
 
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{
         ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,

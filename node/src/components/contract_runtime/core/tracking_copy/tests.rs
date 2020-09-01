@@ -3,7 +3,7 @@ use std::{cell::Cell, iter, rc::Rc};
 use assert_matches::assert_matches;
 use proptest::prelude::*;
 
-use casperlabs_types::{
+use casper_types::{
     account::{AccountHash, Weight, ACCOUNT_HASH_LENGTH},
     contracts::NamedKeys,
     gens::*,

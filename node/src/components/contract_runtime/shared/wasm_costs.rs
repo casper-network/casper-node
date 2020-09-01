@@ -5,7 +5,7 @@ use pwasm_utils::rules::{InstructionType, Metering, Set};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use casperlabs_types::bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
 
 #[cfg(test)]
 use crate::testing::TestRng;
@@ -179,7 +179,7 @@ pub mod gens {
 mod tests {
     use proptest::proptest;
 
-    use casperlabs_types::bytesrepr;
+    use casper_types::bytesrepr;
 
     use super::gens;
     use crate::components::contract_runtime::shared::wasm_costs::WasmCosts;

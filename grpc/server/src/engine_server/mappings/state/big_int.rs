@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use casperlabs_types::{CLValue, U128, U256, U512};
+use casper_types::{CLValue, U128, U256, U512};
 
 use crate::engine_server::{mappings::ParsingError, state::BigInt};
 
@@ -60,7 +60,7 @@ mod tests {
 
     use proptest::proptest;
 
-    use casperlabs_types::gens;
+    use casper_types::gens;
 
     use super::*;
     use crate::engine_server::mappings::test_utils;

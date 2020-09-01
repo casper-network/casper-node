@@ -2,7 +2,7 @@ use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 
 use std::{collections::BTreeMap, iter};
 
-use casperlabs_types::{
+use casper_types::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
     AccessRights, CLTyped, CLValue, Key, URef, U128, U256, U512,

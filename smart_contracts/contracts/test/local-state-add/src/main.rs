@@ -5,7 +5,7 @@ extern crate alloc;
 
 use alloc::string::String;
 
-use casperlabs_contract::contract_api::{runtime, storage};
+use casper_contract::contract_api::{runtime, storage};
 
 pub const LOCAL_KEY: [u8; 32] = [66u8; 32];
 

@@ -12,7 +12,7 @@ use std::{
 };
 
 use anyhow::Error;
-use casperlabs_types::U512;
+use casper_types::U512;
 use num_traits::AsPrimitive;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};

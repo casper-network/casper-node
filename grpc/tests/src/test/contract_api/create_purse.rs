@@ -1,13 +1,13 @@
 use lazy_static::lazy_static;
 
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{
         ExecuteRequestBuilder, WasmTestBuilder, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_node::components::contract_runtime::shared::transform::Transform;
-use casperlabs_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, U512};
+use casper_node::components::contract_runtime::shared::transform::Transform;
+use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, U512};
 
 const CONTRACT_CREATE_PURSE_01: &str = "create_purse_01.wasm";
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";

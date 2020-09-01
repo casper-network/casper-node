@@ -542,7 +542,7 @@ export class U512 {
 
     /**
      * Deserializes a U512 from an array of bytes. The array should represent a correct U512 in the
-     * CasperLabs serialization format.
+     * Casper serialization format.
      *
      * @returns A [[Result]] that contains the deserialized U512 if the deserialization was
      *    successful, or an error otherwise.
@@ -572,7 +572,7 @@ export class U512 {
     }
 
     /**
-     * Serializes the U512 into an array of bytes that represents it in the CasperLabs serialization
+     * Serializes the U512 into an array of bytes that represents it in the Casper serialization
      * format.
      */
     toBytes(): Array<u8> {
