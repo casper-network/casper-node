@@ -11,6 +11,7 @@ use std::{
 };
 
 use derive_more::From;
+use futures::FutureExt;
 use pnet::datalink;
 use prometheus::Registry;
 use serde::{Deserialize, Serialize};
@@ -19,7 +20,7 @@ use tracing::{debug, info};
 use crate::{
     components::Component,
     effect::{announcements::NetworkAnnouncement, EffectBuilder, Effects},
-    reactor::{self, EventQueueHandle, Finalize, Reactor, Runner},
+    reactor::{self, EventQueueHandle, Finalize, FutureResult, Reactor, Runner},
     small_network::{self, NodeId, SmallNetwork},
     testing::{
         self, init_logging,
@@ -81,13 +82,16 @@ impl Reactor<TestRng> for TestReactor {
         _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut TestRng,
-    ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
-        let (net, effects) = SmallNetwork::new(event_queue, WithDir::default_path(cfg))?;
+    ) -> FutureResult<(Self, Effects<Self::Event>), anyhow::Error> {
+        async move {
+            let (net, effects) = SmallNetwork::new(event_queue, WithDir::default_path(cfg))?;
 
-        Ok((
-            TestReactor { net },
-            reactor::wrap_effects(Event::SmallNet, effects),
-        ))
+            Ok((
+                TestReactor { net },
+                reactor::wrap_effects(Event::SmallNet, effects),
+            ))
+        }
+        .boxed()
     }
 }
 

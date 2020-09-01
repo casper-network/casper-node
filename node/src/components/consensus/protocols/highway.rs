@@ -1,4 +1,4 @@
-use std::{fmt::Debug, rc::Rc};
+use std::{fmt::Debug, sync::Arc};
 
 use anyhow::Error;
 use rand::{CryptoRng, Rng};
@@ -376,12 +376,12 @@ where
 }
 
 pub(crate) struct HighwaySecret {
-    secret_key: Rc<SecretKey>,
+    secret_key: Arc<SecretKey>,
     public_key: PublicKey,
 }
 
 impl HighwaySecret {
-    pub(crate) fn new(secret_key: Rc<SecretKey>, public_key: PublicKey) -> Self {
+    pub(crate) fn new(secret_key: Arc<SecretKey>, public_key: PublicKey) -> Self {
         Self {
             secret_key,
             public_key,

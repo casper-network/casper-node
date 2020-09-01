@@ -8,7 +8,7 @@
 use std::{
     collections::HashMap,
     fmt::{self, Debug, Formatter},
-    rc::Rc,
+    sync::Arc,
 };
 
 use anyhow::Error;
@@ -61,7 +61,7 @@ impl EraId {
 
 pub(crate) struct Era<I, R: Rng + CryptoRng + ?Sized> {
     /// The consensus protocol instance.
-    consensus: Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey, R>>,
+    consensus: Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey, R> + Send>,
     /// The height of this era's first block.
     start_height: u64,
 }
@@ -70,7 +70,7 @@ pub(crate) struct EraSupervisor<I, R: Rng + CryptoRng + ?Sized> {
     /// A map of active consensus protocols.
     /// A value is a trait so that we can run different consensus protocol instances per era.
     active_eras: HashMap<EraId, Era<I, R>>,
-    pub(super) secret_signing_key: Rc<SecretKey>,
+    pub(super) secret_signing_key: Arc<SecretKey>,
     pub(super) public_signing_key: PublicKey,
     validator_stakes: Vec<(PublicKey, Motes)>,
     current_era: EraId,
@@ -99,7 +99,7 @@ where
         rng: &mut R,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
         let (root, config) = config.into_parts();
-        let secret_signing_key = Rc::new(config.secret_key_path.load(root)?);
+        let secret_signing_key = Arc::new(config.secret_key_path.load(root)?);
         let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
 
         let mut era_supervisor = Self {
@@ -171,8 +171,10 @@ where
             validator_stakes.into_iter().map(scale_stake).collect();
 
         let instance_id = hash::hash(format!("Highway era {}", era_id.0));
-        let secret =
-            HighwaySecret::new(Rc::clone(&self.secret_signing_key), self.public_signing_key);
+        let secret = HighwaySecret::new(
+            Arc::clone(&self.secret_signing_key),
+            self.public_signing_key,
+        );
         let ftt = validators.total_weight()
             * u64::from(self.highway_config.finality_threshold_percent)
             / 100;

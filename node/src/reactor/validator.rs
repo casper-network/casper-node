@@ -9,6 +9,7 @@ mod tests;
 use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
+use futures::FutureExt;
 use prometheus::Registry;
 use rand::{CryptoRng, Rng};
 use tracing::error;
@@ -41,7 +42,7 @@ use crate::{
         },
         EffectBuilder, Effects,
     },
-    reactor::{self, error::Error, joiner, EventQueueHandle, Message},
+    reactor::{self, error::Error, joiner, EventQueueHandle, Finalize, FutureResult, Message},
     small_network::{self, NodeId},
     types::{Deploy, Tag, Timestamp},
     utils::{Source, WithDir},
@@ -207,7 +208,7 @@ impl<R: Rng + CryptoRng + ?Sized> Reactor<R> {
     }
 }
 
-impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
+impl<R: Rng + CryptoRng + ?Sized + 'static> reactor::Reactor<R> for Reactor<R> {
     type Event = Event;
 
     // The "configuration" is in fact the whole state of the joiner reactor, which we
@@ -220,9 +221,9 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut R,
-    ) -> Result<(Self, Effects<Event>), Error> {
+    ) -> FutureResult<(Self, Effects<Event>), Error> {
         let joiner::Reactor {
-            net: _net,
+            net,
             root,
             config,
             chainspec_loader,
@@ -230,15 +231,8 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             contract_runtime,
         } = joiner;
 
-        let metrics = Metrics::new(registry.clone());
-
         let effect_builder = EffectBuilder::new(event_queue);
-        let (net, net_effects) = SmallNetwork::new(
-            event_queue,
-            WithDir::new(root.clone(), config.validator_net),
-        )?;
 
-        let api_server = ApiServer::new(config.http_server, effect_builder);
         let timestamp = Timestamp::now();
         let validator_stakes = chainspec_loader
             .chainspec()
@@ -258,45 +252,70 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 }
             })
             .collect();
-        let (consensus, consensus_effects) = EraSupervisor::new(
+
+        let Config {
+            consensus: config_consensus,
+            validator_net: config_validator_net,
+            http_server: config_http_server,
+            gossip: config_gossip,
+            node: config_node,
+            ..
+        } = config;
+
+        // This has to be outside of the async block because of the rng
+        let consensus_result = EraSupervisor::new(
             timestamp,
-            WithDir::new(root, config.consensus),
+            WithDir::new(root.clone(), config_consensus),
             effect_builder,
             validator_stakes,
             &chainspec_loader.chainspec().genesis.highway_config,
             rng,
-        )?;
-        let deploy_acceptor = DeployAcceptor::new();
-        let deploy_fetcher = Fetcher::new(config.gossip);
-        let deploy_gossiper = Gossiper::new(config.gossip, gossiper::get_deploy_from_storage);
-        let deploy_buffer = DeployBuffer::new(config.node.block_max_deploy_count as usize);
-        // Post state hash is expected to be present
-        let genesis_post_state_hash = chainspec_loader
-            .genesis_post_state_hash()
-            .expect("should have post state hash");
-        let block_executor = BlockExecutor::new(genesis_post_state_hash);
-        let block_validator = BlockValidator::<NodeId>::new();
+        );
 
-        let mut effects = reactor::wrap_effects(Event::Network, net_effects);
-        effects.extend(reactor::wrap_effects(Event::Consensus, consensus_effects));
+        let metrics = Metrics::new(registry.clone());
 
-        Ok((
-            Reactor {
-                metrics,
-                net,
-                storage,
-                contract_runtime,
-                api_server,
-                consensus,
-                deploy_acceptor,
-                deploy_fetcher,
-                deploy_gossiper,
-                deploy_buffer,
-                block_executor,
-                block_validator,
-            },
-            effects,
-        ))
+        async move {
+            net.finalize().await;
+
+            let (net, net_effects) =
+                SmallNetwork::new(event_queue, WithDir::new(root, config_validator_net))?;
+
+            let (consensus, consensus_effects) = consensus_result?;
+
+            let api_server = ApiServer::new(config_http_server, effect_builder);
+            let deploy_acceptor = DeployAcceptor::new();
+            let deploy_fetcher = Fetcher::new(config_gossip);
+            let deploy_gossiper = Gossiper::new(config_gossip, gossiper::get_deploy_from_storage);
+            let deploy_buffer = DeployBuffer::new(config_node.block_max_deploy_count as usize);
+            // Post state hash is expected to be present
+            let genesis_post_state_hash = chainspec_loader
+                .genesis_post_state_hash()
+                .expect("should have post state hash");
+            let block_executor = BlockExecutor::new(genesis_post_state_hash);
+            let block_validator = BlockValidator::<NodeId>::new();
+
+            let mut effects = reactor::wrap_effects(Event::Network, net_effects);
+            effects.extend(reactor::wrap_effects(Event::Consensus, consensus_effects));
+
+            Ok((
+                Reactor {
+                    metrics,
+                    net,
+                    storage,
+                    contract_runtime,
+                    api_server,
+                    consensus,
+                    deploy_acceptor,
+                    deploy_fetcher,
+                    deploy_gossiper,
+                    deploy_buffer,
+                    block_executor,
+                    block_validator,
+                },
+                effects,
+            ))
+        }
+        .boxed()
     }
 
     fn dispatch_event(

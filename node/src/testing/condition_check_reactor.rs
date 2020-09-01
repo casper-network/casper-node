@@ -1,12 +1,12 @@
 use std::fmt::{self, Debug, Formatter};
 
-use futures::future::BoxFuture;
+use futures::{future::BoxFuture, FutureExt};
 use prometheus::Registry;
 
 use super::network::NetworkedReactor;
 use crate::{
     effect::{EffectBuilder, Effects},
-    reactor::{EventQueueHandle, Finalize, Reactor},
+    reactor::{EventQueueHandle, Finalize, FutureResult, Reactor},
     testing::TestRng,
 };
 
@@ -49,7 +49,10 @@ impl<R: Reactor<TestRng>> ConditionCheckReactor<R> {
     }
 }
 
-impl<R: Reactor<TestRng>> Reactor<TestRng> for ConditionCheckReactor<R> {
+impl<R: Reactor<TestRng> + 'static> Reactor<TestRng> for ConditionCheckReactor<R>
+where
+    R::Config: Send,
+{
     type Event = R::Event;
     type Config = R::Config;
     type Error = R::Error;
@@ -59,16 +62,20 @@ impl<R: Reactor<TestRng>> Reactor<TestRng> for ConditionCheckReactor<R> {
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut TestRng,
-    ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
-        let (reactor, effects) = R::new(config, registry, event_queue, rng)?;
-        Ok((
-            Self {
-                reactor,
-                condition_checker: None,
-                condition_result: false,
-            },
-            effects,
-        ))
+    ) -> FutureResult<(Self, Effects<Self::Event>), Self::Error> {
+        let reactor_result_future = R::new(config, registry, event_queue, rng);
+        async move {
+            let (reactor, effects) = reactor_result_future.await?;
+            Ok((
+                Self {
+                    reactor,
+                    condition_checker: None,
+                    condition_result: false,
+                },
+                effects,
+            ))
+        }
+        .boxed()
     }
 
     fn dispatch_event(

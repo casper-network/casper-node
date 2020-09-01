@@ -88,6 +88,9 @@ impl<REv> EventQueueHandle<REv> {
     }
 }
 
+/// A result wrapped into a future - type used in the reactor constructors
+pub type FutureResult<T, E> = BoxFuture<'static, Result<T, E>>;
+
 /// Reactor core.
 ///
 /// Any reactor should implement this trait and be executed by the `reactor::run` function.
@@ -129,7 +132,7 @@ pub trait Reactor<R: Rng + CryptoRng + ?Sized>: Sized {
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut R,
-    ) -> Result<(Self, Effects<Self::Event>), Self::Error>;
+    ) -> FutureResult<(Self, Effects<Self::Event>), Self::Error>;
 
     /// Indicates that the reactor has completed all its work and should no longer dispatch events.
     #[inline]
@@ -215,7 +218,7 @@ where
         let registry = Registry::new();
 
         let event_queue = EventQueueHandle::new(scheduler);
-        let (reactor, initial_effects) = R::new(cfg, &registry, event_queue, rng)?;
+        let (reactor, initial_effects) = R::new(cfg, &registry, event_queue, rng).await?;
 
         // Run all effects from component instantiation.
         let span = debug_span!("process initial effects");

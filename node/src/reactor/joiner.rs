@@ -6,6 +6,7 @@ use std::{
 };
 
 use derive_more::From;
+use futures::FutureExt;
 use prometheus::Registry;
 use rand::{CryptoRng, Rng};
 
@@ -19,7 +20,9 @@ use crate::{
         Component,
     },
     effect::{announcements::NetworkAnnouncement, EffectBuilder, Effects},
-    reactor::{self, error::Error, initializer, validator, EventQueueHandle, Message},
+    reactor::{
+        self, error::Error, initializer, validator, EventQueueHandle, FutureResult, Message,
+    },
     utils::WithDir,
 };
 
@@ -70,32 +73,35 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor {
         _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut R,
-    ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
-        let (root, initializer) = initializer.into_parts();
+    ) -> FutureResult<(Self, Effects<Self::Event>), Self::Error> {
+        async move {
+            let (root, initializer) = initializer.into_parts();
 
-        let initializer::Reactor {
-            config,
-            chainspec_loader,
-            storage,
-            contract_runtime,
-        } = initializer;
-
-        let (net, net_effects) = SmallNetwork::new(
-            event_queue,
-            WithDir::new(root.clone(), config.validator_net.clone()),
-        )?;
-
-        Ok((
-            Self {
-                net,
-                root,
+            let initializer::Reactor {
                 config,
                 chainspec_loader,
                 storage,
                 contract_runtime,
-            },
-            reactor::wrap_effects(Event::Network, net_effects),
-        ))
+            } = initializer;
+
+            let (net, net_effects) = SmallNetwork::new(
+                event_queue,
+                WithDir::new(root.clone(), config.validator_net.clone()),
+            )?;
+
+            Ok((
+                Self {
+                    net,
+                    root,
+                    config,
+                    chainspec_loader,
+                    storage,
+                    contract_runtime,
+                },
+                reactor::wrap_effects(Event::Network, net_effects),
+            ))
+        }
+        .boxed()
     }
 
     fn dispatch_event(

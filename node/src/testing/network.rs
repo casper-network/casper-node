@@ -43,15 +43,18 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 /// `crank_all`. As an alternative, the `settle` and `settle_all` functions can be used to continue
 /// cranking until a condition has been reached.
 #[derive(Debug, Default)]
-pub struct Network<R: Reactor<TestRng> + NetworkedReactor> {
+pub struct Network<R: Reactor<TestRng> + NetworkedReactor + 'static>
+where
+    R::Config: Send,
+{
     /// Current network.
     nodes: HashMap<<R as NetworkedReactor>::NodeId, Runner<ConditionCheckReactor<R>, TestRng>>,
 }
 
 impl<R> Network<R>
 where
-    R: Reactor<TestRng> + NetworkedReactor,
-    R::Config: Default,
+    R: Reactor<TestRng> + NetworkedReactor + 'static,
+    R::Config: Default + Send,
     <R as Reactor<TestRng>>::Error: Debug,
     R::Error: From<prometheus::Error>,
 {
@@ -83,6 +86,7 @@ impl<R> Network<R>
 where
     R: Reactor<TestRng> + NetworkedReactor,
     R::Error: From<prometheus::Error> + From<R::Error>,
+    R::Config: Send,
 {
     /// Creates a new network.
     pub fn new() -> Self {
@@ -295,6 +299,7 @@ where
     R: Finalize + NetworkedReactor + Reactor<TestRng> + Send + 'static,
     R::NodeId: Send,
     R::Error: From<prometheus::Error>,
+    R::Config: Send,
 {
     fn finalize(self) -> BoxFuture<'static, ()> {
         // We support finalizing networks where the reactor itself can be finalized.

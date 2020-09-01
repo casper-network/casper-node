@@ -3,6 +3,7 @@
 use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
+use futures::FutureExt;
 use prometheus::Registry;
 use rand::{CryptoRng, Rng};
 use thiserror::Error;
@@ -19,7 +20,7 @@ use crate::{
         requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
         EffectBuilder, Effects,
     },
-    reactor::{self, validator, EventQueueHandle, Message},
+    reactor::{self, validator, EventQueueHandle, FutureResult, Message},
     utils::WithDir,
 };
 
@@ -118,35 +119,42 @@ impl<RNG: Rng + CryptoRng + ?Sized> reactor::Reactor<RNG> for Reactor {
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut RNG,
-    ) -> Result<(Self, Effects<Self::Event>), Error> {
+    ) -> FutureResult<(Self, Effects<Self::Event>), Error> {
         let (root, config) = config.into_parts();
 
-        let chainspec = config
-            .node
-            .chainspec_config_path
-            .clone()
-            .load(root)
-            .map_err(|err| Error::ConfigError(err.to_string()))?;
+        let storage_result = Storage::new(&config.storage);
 
-        let effect_builder = EffectBuilder::new(event_queue);
+        let contract_runtime_result =
+            ContractRuntime::new(&config.storage, config.contract_runtime, registry);
 
-        let storage = Storage::new(&config.storage)?;
-        let contract_runtime =
-            ContractRuntime::new(&config.storage, config.contract_runtime, registry)?;
-        let (chainspec_loader, chainspec_effects) =
-            ChainspecLoader::new(chainspec, effect_builder)?;
+        async move {
+            let chainspec = config
+                .node
+                .chainspec_config_path
+                .clone()
+                .load(root)
+                .map_err(|err| Error::ConfigError(err.to_string()))?;
 
-        let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
+            let effect_builder = EffectBuilder::new(event_queue);
 
-        Ok((
-            Reactor {
-                config,
-                chainspec_loader,
-                storage,
-                contract_runtime,
-            },
-            effects,
-        ))
+            let storage = storage_result?;
+            let contract_runtime = contract_runtime_result?;
+            let (chainspec_loader, chainspec_effects) =
+                ChainspecLoader::new(chainspec, effect_builder)?;
+
+            let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
+
+            Ok((
+                Reactor {
+                    config,
+                    chainspec_loader,
+                    storage,
+                    contract_runtime,
+                },
+                effects,
+            ))
+        }
+        .boxed()
     }
 
     fn dispatch_event(

@@ -23,7 +23,7 @@ use crate::{
         announcements::{ApiServerAnnouncement, DeployAcceptorAnnouncement, NetworkAnnouncement},
         requests::FetcherRequest,
     },
-    reactor::{self, EventQueueHandle, Message, Runner},
+    reactor::{self, EventQueueHandle, FutureResult, Message, Runner},
     testing::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
@@ -112,7 +112,7 @@ impl reactor::Reactor<TestRng> for Reactor {
         _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut TestRng,
-    ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
+    ) -> FutureResult<(Self, Effects<Self::Event>), Self::Error> {
         let network = NetworkController::create_node(event_queue, rng);
 
         let (storage_config, _storage_tempdir) = storage::Config::default_for_tests();
@@ -131,7 +131,7 @@ impl reactor::Reactor<TestRng> for Reactor {
 
         let effects = Effects::new();
 
-        Ok((reactor, effects))
+        async move { Ok((reactor, effects)) }.boxed()
     }
 
     fn dispatch_event(
