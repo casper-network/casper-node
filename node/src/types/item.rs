@@ -38,5 +38,5 @@ pub trait Item: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Dis
     const TAG: Tag;
 
     /// The ID of the specific item.
-    fn id(&self) -> &Self::Id;
+    fn id(&self) -> Self::Id;
 }
