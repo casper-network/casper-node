@@ -192,8 +192,8 @@ impl reactor::Reactor<TestRng> for Reactor {
                                 peer: sender,
                             })
                         }
-                        Tag::BlockHeader => panic!(),
-                        Tag::Block => panic!(),
+                        Tag::BlockHeader => todo!(),
+                        Tag::Block => todo!(),
                     },
                     Message::GetResponse {
                         tag,
@@ -212,8 +212,8 @@ impl reactor::Reactor<TestRng> for Reactor {
                                 source: Source::Peer(sender),
                             })
                         }
-                        Tag::BlockHeader => panic!(),
-                        Tag::Block => panic!(),
+                        Tag::BlockHeader => todo!(),
+                        Tag::Block => todo!(),
                     },
                     msg => panic!("should not get {}", msg),
                 };

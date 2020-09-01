@@ -550,8 +550,8 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                                 source: Source::Peer(sender),
                             })
                         }
-                        Tag::BlockHeader => panic!(),
-                        Tag::Block => panic!(),
+                        Tag::BlockHeader => todo!("Handle GET block header response"),
+                        Tag::Block => todo!("Handle GET block response"),
                     },
                 };
                 self.dispatch_event(effect_builder, rng, reactor_event)

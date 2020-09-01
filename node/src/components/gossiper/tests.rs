@@ -189,8 +189,8 @@ impl reactor::Reactor<TestRng> for Reactor {
                                 peer: sender,
                             })
                         }
-                        Tag::BlockHeader => panic!(),
-                        Tag::Block => panic!(),
+                        Tag::BlockHeader => todo!(),
+                        Tag::Block => todo!(),
                     },
                     ValidatorMessage::GetResponse {
                         tag,
@@ -209,8 +209,8 @@ impl reactor::Reactor<TestRng> for Reactor {
                                 source: Source::Peer(sender),
                             })
                         }
-                        Tag::BlockHeader => panic!(),
-                        Tag::Block => panic!(),
+                        Tag::BlockHeader => todo!(),
+                        Tag::Block => todo!(),
                     },
                     ValidatorMessage::DeployGossiper(message) => {
                         Event::DeployGossiper(super::Event::MessageReceived { sender, message })
