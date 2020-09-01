@@ -41,8 +41,8 @@ use crate::{
         },
         requests::{
             ApiRequest, BlockExecutorRequest, BlockValidationRequest, ConsensusRequest,
-            ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MetricsRequest,
-            NetworkRequest, StorageRequest,
+            ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, LinearChainRequest,
+            MetricsRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -510,9 +510,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                                 }
                             };
                             Event::LinearChain(linear_chain::Event::Request(
-                                crate::effect::requests::LinearChainRequest::BlockHeaderRequest(
-                                    block_hash, sender,
-                                ),
+                                LinearChainRequest::BlockHeaderRequest(block_hash, sender),
                             ))
                         }
                         Tag::Block => {
@@ -527,9 +525,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                                 }
                             };
                             Event::LinearChain(linear_chain::Event::Request(
-                                crate::effect::requests::LinearChainRequest::BlockHeaderRequest(
-                                    block_hash, sender,
-                                ),
+                                LinearChainRequest::BlockHeaderRequest(block_hash, sender),
                             ))
                         }
                     },
