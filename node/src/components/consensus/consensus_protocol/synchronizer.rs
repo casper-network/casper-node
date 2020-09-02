@@ -117,14 +117,14 @@ where
         sender: I,
         v: P::Vertex,
         protocol_state: &P,
-    ) -> Result<Vec<SynchronizerEffect<I, P::Vertex>>, anyhow::Error> {
+    ) -> Vec<SynchronizerEffect<I, P::Vertex>> {
         if let Some(missing_vid) = protocol_state.missing_dependency(&v) {
             // If there are missing vertex dependencies, sync those first.
-            Ok(vec![self.sync_vertex(sender, missing_vid, v.clone())])
+            vec![self.sync_vertex(sender, missing_vid, v.clone())]
         } else {
             // Once all vertex dependencies are satisfied, we need to make sure that
             // we also have all the block's deploys.
-            let effects = match self.sync_consensus_values(sender, &v) {
+            match self.sync_consensus_values(sender, &v) {
                 Some(eff) => vec![eff],
                 None => {
                     // Downloading vertex `v` may resolve the dependency requests for other
@@ -132,8 +132,7 @@ where
                     // can be added to the state.
                     self.on_vertex_fully_synced(v)
                 }
-            };
-            Ok(effects)
+            }
         }
     }
 
@@ -149,12 +148,7 @@ where
             .push(dependant_id);
     }
 
-    fn add_consensus_value_dependency(
-        &mut self,
-        c: <P::Vertex as VertexTrait>::Value,
-        sender: I,
-        v: &P::Vertex,
-    ) {
+    fn add_consensus_value_dependency(&mut self, c: P::Value, sender: I, v: &P::Vertex) {
         let dependant_id = v.id();
         self.vertex_by_vid
             .entry(dependant_id.clone())
@@ -173,14 +167,11 @@ where
         }
     }
 
-    /// Complete a consensus value dependency (called when that C is downloaded from another node).
+    /// Removes a consensus value dependency (called when that C is downloaded from another node).
     /// Returns list of vertices that were waiting on the completion of that consensus value.
     /// Vertices returned have all of its dependencies completed - i.e. are not waiting for anything
     /// else.
-    fn complete_consensus_value_dependency(
-        &mut self,
-        c: &<P::Vertex as VertexTrait>::Value,
-    ) -> Vec<(I, P::Vertex)> {
+    fn remove_consensus_value_dependency(&mut self, c: &P::Value) -> Vec<(I, P::Vertex)> {
         let dependants = self.consensus_value_deps.remove(c);
         if dependants.is_empty() {
             Vec::new()
@@ -246,19 +237,51 @@ where
         effects
     }
 
-    /// Mark `c` consensus value as downloaded.
+    /// Marks `c` consensus value as downloaded.
     /// Returns vertices that were dependant on it.
     /// NOTE: Must be called only after all vertex dependencies are downloaded.
     pub(crate) fn on_consensus_value_synced(
         &mut self,
-        c: &<P::Vertex as VertexTrait>::Value,
+        c: &P::Value,
     ) -> Vec<SynchronizerEffect<I, P::Vertex>> {
-        let completed_dependencies = self.complete_consensus_value_dependency(c);
+        let completed_dependencies = self.remove_consensus_value_dependency(c);
         completed_dependencies
             .into_iter()
             // Because we sync consensus value dependencies only when we have sync'd
             // all vertex dependencies, we can now consider `v` to have all dependencies resolved.
             .flat_map(|(_, v)| self.on_vertex_fully_synced(v))
+            .collect()
+    }
+
+    /// Drops all vertices depending directly or indirectly on `vid` and returns all senders.
+    pub(crate) fn on_vertex_invalid(&mut self, vid: P::VId) -> HashSet<I> {
+        let mut faulty_senders = HashSet::new();
+        let mut invalid_ids = vec![vid];
+        // All vertices waiting for invalid vertices are invalid as well.
+        while let Some(vid) = invalid_ids.pop() {
+            faulty_senders.extend(self.vertex_by_vid.remove(&vid).map(|(s, _)| s));
+            invalid_ids.extend(self.vertex_dependants.remove(&vid).into_iter().flatten());
+            for dependants in self.vertex_dependants.values_mut() {
+                dependants.retain(|dvid| *dvid != vid);
+            }
+        }
+        self.vertex_dependants.retain(|_, dep| !dep.is_empty());
+        faulty_senders
+    }
+
+    /// Drops all vertices depending directly or indirectly on value `c` and returns all senders.
+    pub(crate) fn on_consensus_value_invalid(&mut self, c: &P::Value) -> HashSet<I> {
+        // All vertices waiting for this dependency are invalid.
+        let (faulty_senders, invalid_ids): (Vec<I>, Vec<P::VId>) = self
+            .remove_consensus_value_dependency(c)
+            .into_iter()
+            .map(|(sender, v)| (sender, v.id()))
+            .unzip();
+        // And all vertices waiting for invalid vertices are invalid as well.
+        invalid_ids
+            .into_iter()
+            .flat_map(|vid| self.on_vertex_invalid(vid))
+            .chain(faulty_senders)
             .collect()
     }
 }
