@@ -465,8 +465,8 @@ impl Item for Deploy {
     type Id = DeployHash;
     const TAG: Tag = Tag::Deploy;
 
-    fn id(&self) -> &Self::Id {
-        self.id()
+    fn id(&self) -> Self::Id {
+        *self.id()
     }
 }
 
