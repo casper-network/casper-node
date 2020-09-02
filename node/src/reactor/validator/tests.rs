@@ -113,10 +113,10 @@ impl TestChain {
             .await?;
             runner.run(rng).await;
 
-            let joiner = runner.into_inner();
+            let config = runner.into_inner().into_validator_config().await;
 
             network
-                .add_node_with_config(joiner, rng)
+                .add_node_with_config(config, rng)
                 .await
                 .expect("could not add node to reactor");
         }

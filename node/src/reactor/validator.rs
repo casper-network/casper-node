@@ -6,7 +6,10 @@ mod config;
 #[cfg(test)]
 mod tests;
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    path::PathBuf,
+};
 
 use derive_more::From;
 use prometheus::Registry;
@@ -20,6 +23,7 @@ use crate::{
         api_server::{self, ApiServer},
         block_executor::{self, BlockExecutor},
         block_validator::{self, BlockValidator},
+        chainspec_loader::ChainspecLoader,
         consensus::{self, EraSupervisor},
         contract_runtime::{self, ContractRuntime},
         deploy_acceptor::{self, DeployAcceptor},
@@ -43,7 +47,7 @@ use crate::{
         },
         EffectBuilder, Effects,
     },
-    reactor::{self, error::Error, joiner, EventQueueHandle, Message},
+    reactor::{self, error::Error, EventQueueHandle, Message},
     small_network::{self, NodeId},
     types::{Deploy, Tag, Timestamp},
     utils::{Source, WithDir},
@@ -201,6 +205,16 @@ impl Display for Event {
     }
 }
 
+/// The configuration needed to initialize a Validator reactor
+#[derive(Debug)]
+pub struct ValidatorInitConfig {
+    pub(super) root: PathBuf,
+    pub(super) config: Config,
+    pub(super) chainspec_loader: ChainspecLoader,
+    pub(super) storage: Storage,
+    pub(super) contract_runtime: ContractRuntime,
+}
+
 /// Validator node reactor.
 #[derive(Debug)]
 pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
@@ -232,23 +246,22 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
 
     // The "configuration" is in fact the whole state of the joiner reactor, which we
     // deconstruct and reuse.
-    type Config = joiner::Reactor;
+    type Config = ValidatorInitConfig;
     type Error = Error;
 
     fn new(
-        joiner: Self::Config,
+        config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut R,
     ) -> Result<(Self, Effects<Event>), Error> {
-        let joiner::Reactor {
-            net: _net,
+        let ValidatorInitConfig {
             root,
             config,
             chainspec_loader,
             storage,
             contract_runtime,
-        } = joiner;
+        } = config;
 
         let metrics = Metrics::new(registry.clone());
 

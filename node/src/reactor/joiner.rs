@@ -19,7 +19,13 @@ use crate::{
         Component,
     },
     effect::{announcements::NetworkAnnouncement, EffectBuilder, Effects},
-    reactor::{self, error::Error, initializer, validator, EventQueueHandle, Message},
+    reactor::{
+        self,
+        error::Error,
+        initializer,
+        validator::{self, ValidatorInitConfig},
+        EventQueueHandle, Finalize, Message,
+    },
     utils::WithDir,
 };
 
@@ -116,5 +122,24 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor {
     fn is_stopped(&mut self) -> bool {
         // TODO!
         true
+    }
+}
+
+impl Reactor {
+    /// Deconstructs the reactor into config useful for creating a Validator reactor. Also shuts
+    /// down the network connection.
+    pub async fn into_validator_config(self) -> ValidatorInitConfig {
+        let (net, config) = (
+            self.net,
+            ValidatorInitConfig {
+                root: self.root,
+                chainspec_loader: self.chainspec_loader,
+                config: self.config,
+                contract_runtime: self.contract_runtime,
+                storage: self.storage,
+            },
+        );
+        net.finalize().await;
+        config
     }
 }

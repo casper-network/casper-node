@@ -191,9 +191,9 @@ impl Cli {
                         .await?;
                 runner.run(&mut rng).await;
 
-                let joiner = runner.into_inner();
+                let config = runner.into_inner().into_validator_config().await;
 
-                let mut runner = Runner::<validator::Reactor<_>, _>::new(joiner, &mut rng).await?;
+                let mut runner = Runner::<validator::Reactor<_>, _>::new(config, &mut rng).await?;
                 runner.run(&mut rng).await;
             }
         }
