@@ -272,7 +272,7 @@ where
     /// Drops all vertices depending directly or indirectly on value `c` and returns all senders.
     pub(crate) fn on_consensus_value_invalid(&mut self, c: &P::Value) -> HashSet<I> {
         // All vertices waiting for this dependency are invalid.
-        let (faulty_senders, invalid_ids): (Vec<I>, Vec<P::VId>) = self
+        let (faulty_senders, invalid_ids): (HashSet<I>, HashSet<P::VId>) = self
             .remove_consensus_value_dependency(c)
             .into_iter()
             .map(|(sender, v)| (sender, v.id()))
