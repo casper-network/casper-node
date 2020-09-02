@@ -236,6 +236,11 @@ impl FinalizedBlock {
         self.height
     }
 
+    /// Returns the proposer of this block.
+    pub(crate) fn proposer(&self) -> &PublicKey {
+        &self.proposer
+    }
+
     /// Returns true if block is Genesis' child.
     /// Genesis child block is from era 0 and height 0.
     pub(crate) fn is_genesis_child(&self) -> bool {
