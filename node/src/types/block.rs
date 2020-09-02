@@ -360,13 +360,13 @@ impl BlockHeader {
     }
 
     // Serialize the block header.
-    fn serialize_header(&self) -> Result<Vec<u8>, rmp_serde::encode::Error> {
+    fn serialize(&self) -> Result<Vec<u8>, rmp_serde::encode::Error> {
         rmp_serde::to_vec(self)
     }
 
     /// Hash of the block header.
     pub fn hash(&self) -> BlockHash {
-        let serialized_header = Self::serialize_header(&self)
+        let serialized_header = Self::serialize(&self)
             .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
         BlockHash::new(hash::hash(&serialized_header))
     }
