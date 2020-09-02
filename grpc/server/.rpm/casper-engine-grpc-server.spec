@@ -2,8 +2,8 @@
 %define __os_install_post %{_dbpath}/brp-compress
 %define debug_package %{nil}
 
-Name: casperlabs-engine-grpc-server
-Summary: Wasm execution engine for CasperLabs smart contracts.
+Name: casper-engine-grpc-server
+Summary: Wasm execution engine for Casper smart contracts.
 Version: @@VERSION@@
 Release: @@RELEASE@@
 License: CasperLabs Open Source License (COSL)
@@ -27,7 +27,7 @@ cp -a * %{buildroot}
 %post
 # Default Variables
 # ---
-DEFAULT_USERNAME="casperlabs"
+DEFAULT_USERNAME="casper"
 DEFAULT_DATA_DIRECTORY="/var/lib/${DEFAULT_USERNAME}"
 
 # User Creation
@@ -61,4 +61,4 @@ rm -rf %{buildroot}
 %files
 %defattr(-,root,root,-)
 %{_bindir}/*
-/lib/systemd/system/casperlabs-engine-grpc-server.service
+/lib/systemd/system/casper-engine-grpc-server.service

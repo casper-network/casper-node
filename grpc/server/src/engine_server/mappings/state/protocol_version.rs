@@ -1,4 +1,4 @@
-use casperlabs_types::ProtocolVersion;
+use casper_types::ProtocolVersion;
 
 use crate::engine_server::state;
 

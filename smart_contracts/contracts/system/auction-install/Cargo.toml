@@ -12,10 +12,10 @@ doctest = false
 test = false
 
 [features]
-std = ["casperlabs-contract/std", "casperlabs-types/std"]
-no-unstable-features = ["casperlabs-contract/no-unstable-features", "casperlabs-types/no-unstable-features"]
+std = ["casper-contract/std", "casper-types/std"]
+no-unstable-features = ["casper-contract/no-unstable-features", "casper-types/no-unstable-features"]
 
 [dependencies]
-casperlabs-contract = { path = "../../../contract" }
+casper-contract = { path = "../../../contract" }
 auction = { version = "0.1.0", path = "../auction" }
-casperlabs-types = { version = "0.6.0", path = "../../../../types" }
+casper-types = { version = "0.6.0", path = "../../../../types" }

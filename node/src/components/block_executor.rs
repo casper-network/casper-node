@@ -10,7 +10,7 @@ use itertools::Itertools;
 use rand::{CryptoRng, Rng};
 use tracing::{debug, error, trace};
 
-use casperlabs_types::ProtocolVersion;
+use casper_types::ProtocolVersion;
 
 use crate::{
     components::{

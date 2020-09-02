@@ -1,15 +1,15 @@
 use assert_matches::assert_matches;
 use lazy_static::lazy_static;
 
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_node::components::contract_runtime::core::{engine_state::Error, execution};
-use casperlabs_types::{
+use casper_node::components::contract_runtime::core::{engine_state::Error, execution};
+use casper_types::{
     account::AccountHash, contracts::CONTRACT_INITIAL_VERSION, runtime_args, Key, RuntimeArgs, U512,
 };
 

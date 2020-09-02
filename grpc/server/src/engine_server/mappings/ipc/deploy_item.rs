@@ -3,8 +3,8 @@ use std::{
     convert::{TryFrom, TryInto},
 };
 
-use casperlabs_node::components::contract_runtime::core::engine_state::deploy_item::DeployItem;
-use casperlabs_types::account::AccountHash;
+use casper_node::components::contract_runtime::core::engine_state::deploy_item::DeployItem;
+use casper_types::account::AccountHash;
 
 use crate::engine_server::{ipc, mappings::MappingError};
 

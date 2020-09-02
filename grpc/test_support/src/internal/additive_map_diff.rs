@@ -1,7 +1,7 @@
-use casperlabs_node::components::contract_runtime::shared::{
+use casper_node::components::contract_runtime::shared::{
     additive_map::AdditiveMap, transform::Transform,
 };
-use casperlabs_types::Key;
+use casper_types::Key;
 
 /// Represents the difference between two `AdditiveMap`s.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -57,7 +57,7 @@ mod tests {
     use lazy_static::lazy_static;
     use rand::{self, Rng};
 
-    use casperlabs_types::{AccessRights, Key, URef, BLAKE2B_DIGEST_LENGTH};
+    use casper_types::{AccessRights, Key, URef, BLAKE2B_DIGEST_LENGTH};
 
     use super::*;
 

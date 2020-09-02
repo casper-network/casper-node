@@ -35,7 +35,7 @@ const CL_TYPE_TAG_TUPLE3: u8 = 20;
 const CL_TYPE_TAG_ANY: u8 = 21;
 const CL_TYPE_TAG_PUBLIC_KEY: u8 = 22;
 
-/// CasperLabs types, i.e. types which can be stored and manipulated by smart contracts.
+/// Casper types, i.e. types which can be stored and manipulated by smart contracts.
 ///
 /// Provides a description of the underlying data type of a [`CLValue`](crate::CLValue).
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -68,7 +68,7 @@ pub enum CLType {
     URef,
     /// [`PublicKey`] system type.
     PublicKey,
-    /// `Option` of a `CLType`.    
+    /// `Option` of a `CLType`.
     Option(Box<CLType>),
     /// Variable-length list of a single `CLType` (comparable to a `Vec`).
     List(Box<CLType>),

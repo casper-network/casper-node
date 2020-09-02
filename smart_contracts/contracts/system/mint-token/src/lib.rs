@@ -5,11 +5,11 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 
-use casperlabs_contract::{
+use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casperlabs_types::{
+use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     contracts::Parameters,

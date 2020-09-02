@@ -18,10 +18,10 @@ const MAIN_RS_CONTENTS: &str = r#"#![cfg_attr(
 )]
 #![no_main]
 
-use casperlabs_contract::{
+use casper_contract::{
     contract_api::{runtime, storage},
 };
-use casperlabs_types::{Key, URef};
+use casper_types::{Key, URef};
 
 const KEY: &str = "special_value";
 const ARG_MESSAGE: &str = "message";
@@ -70,7 +70,7 @@ doctest = false
 test = false
 
 [features]
-default = ["casperlabs-contract/std", "casperlabs-types/std", "casperlabs-contract/test-support"]
+default = ["casper-contract/std", "casper-types/std", "casper-contract/test-support"]
 
 [profile.release]
 lto = true

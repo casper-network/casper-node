@@ -75,7 +75,7 @@ fn build_package<T: Package>() {
 
     // Full path to the cargo binary.
     let cargo = env::var("CARGO").expect("env var 'CARGO' should be set");
-    // Full path to the 'grpc/cargo-casperlabs' dir.
+    // Full path to the 'grpc/cargo-casper' dir.
     let root_dir = PathBuf::from(
         env::var("CARGO_MANIFEST_DIR").expect("env var 'CARGO_MANIFEST_DIR' should be set"),
     );
@@ -83,9 +83,9 @@ fn build_package<T: Package>() {
     let mut build_args = vec!["build".to_string(), "--release".to_string()];
 
     // We can't build the contract right into the normal target dir since cargo has a lock on
-    // this while building 'cargo-casperlabs'.  Instead, we'll build to
-    // '.../cargo-casperlabs/target/built-contracts' and then copy the resulting Wasm file from
-    // there to '.../cargo-casperlabs/wasm'.
+    // this while building 'cargo-casper'.  Instead, we'll build to
+    // '.../cargo-casper/target/built-contracts' and then copy the resulting Wasm file from
+    // there to '.../cargo-casper/wasm'.
 
     let target_dir = root_dir.join(TARGET_DIR_FOR_WASM);
     build_args.push(format!(
@@ -106,7 +106,7 @@ fn build_package<T: Package>() {
         output
     );
 
-    // Move the compiled Wasm file to our own folder ("cargo-casperlabs/wasm").
+    // Move the compiled Wasm file to our own folder ("cargo-casper/wasm").
     let new_wasm_dir = env::current_dir().unwrap().join(NEW_WASM_DIR);
     let _ = fs::create_dir(&new_wasm_dir);
 
@@ -139,7 +139,7 @@ fn main() {
         auction_install_source_exists,
     ) {
         (true, true, true, true, true) => {
-            // We're building from within casperlabs-node repo - build the contracts.
+            // We're building from within casper-node repo - build the contracts.
             build_package::<MintInstall>();
             build_package::<PosInstall>();
             build_package::<StandardPayment>();
@@ -147,7 +147,7 @@ fn main() {
             build_package::<AuctionInstall>();
         }
         (false, false, false, false, false) => {
-            // We're outside the casperlabs-node repo - the compiled contracts should exist locally.
+            // We're outside the casper-node repo - the compiled contracts should exist locally.
             assert_wasm_file_exists::<MintInstall>();
             assert_wasm_file_exists::<PosInstall>();
             assert_wasm_file_exists::<StandardPayment>();

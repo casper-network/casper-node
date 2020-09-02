@@ -1,11 +1,11 @@
 #![no_std]
 #![no_main]
 
-use casperlabs_contract::{
+use casper_contract::{
     contract_api::{account, runtime},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casperlabs_types::{
+use casper_types::{
     account::{ActionType, Weight},
     ApiError,
 };

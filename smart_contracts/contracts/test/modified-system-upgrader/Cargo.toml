@@ -12,11 +12,11 @@ doctest = false
 test = false
 
 [features]
-std = ["casperlabs-contract/std", "casperlabs-types/std"]
+std = ["casper-contract/std", "casper-types/std"]
 
 [dependencies]
-casperlabs-contract = { path = "../../../contract" }
+casper-contract = { path = "../../../contract" }
 modified-mint = { path = "../modified-mint" }
 pos = { path = "../../system/pos" }
 standard-payment = { path = "../../system/standard-payment" }
-casperlabs-types = { path = "../../../../types" }
+casper-types = { path = "../../../../types" }

@@ -8,7 +8,7 @@ use std::{
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use casperlabs_types::U512;
+use casper_types::U512;
 
 use super::{
     chainspec::{self, GenesisAccount},
@@ -20,7 +20,7 @@ use crate::{
     utils::{read_file, External},
 };
 
-const DEFAULT_CHAIN_NAME: &str = "casperlabs-devnet";
+const DEFAULT_CHAIN_NAME: &str = "casper-devnet";
 const DEFAULT_MINT_INSTALLER_PATH: &str = "mint_install.wasm";
 const DEFAULT_POS_INSTALLER_PATH: &str = "pos_install.wasm";
 const DEFAULT_STANDARD_PAYMENT_INSTALLER_PATH: &str = "standard_payment_install.wasm";

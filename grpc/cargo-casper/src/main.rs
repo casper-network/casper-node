@@ -1,4 +1,4 @@
-//! Command line tool for creating a Wasm contract and tests for use on the CasperLabs Platform.
+//! Command line tool for creating a Wasm contract and tests for use on the Casper Platform.
 
 #![deny(warnings)]
 
@@ -16,10 +16,10 @@ pub mod dependency;
 mod tests_package;
 mod travis_yml;
 
-const APP_NAME: &str = "cargo-casperlabs";
+const APP_NAME: &str = "cargo-casper";
 const ABOUT: &str =
     "A command line tool for creating a Wasm contract and tests at <path> for use on the \
-     CasperLabs Platform.";
+     Casper Platform.";
 const TOOLCHAIN: &str = "nightly-2020-07-05";
 
 const ROOT_PATH_ARG_NAME: &str = "path";
@@ -39,7 +39,7 @@ const FAILURE_EXIT_CODE: i32 = 101;
 
 lazy_static! {
     static ref USAGE: String = format!(
-        r#"cargo casperlabs [FLAGS] <path>
+        r#"cargo casper [FLAGS] <path>
     rustup install {0}
     rustup target add --toolchain {0} wasm32-unknown-unknown
     cd <path>/tests
@@ -58,17 +58,17 @@ struct Args {
 
 impl Args {
     fn new() -> Self {
-        // If run normally, the args passed are 'cargo-casperlabs', '<target dir>'.  However, if run
-        // as a cargo subcommand (i.e. cargo casperlabs <target dir>), then cargo injects a new arg:
-        // 'cargo-casperlabs', 'casperlabs', '<target dir>'.  We need to filter this extra arg out.
+        // If run normally, the args passed are 'cargo-casper', '<target dir>'.  However, if run as
+        // a cargo subcommand (i.e. cargo casper <target dir>), then cargo injects a new arg:
+        // 'cargo-casper', 'casper', '<target dir>'.  We need to filter this extra arg out.
         //
-        // This yields the situation where if the binary receives args of
-        // 'cargo-casperlabs', 'casperlabs' then it might be a valid call (not a cargo subcommand -
-        // the user entered 'cargo-casperlabs casperlabs' meaning to create a target dir called
-        // 'casperlabs') or it might be an invalid call (the user entered 'cargo casperlabs' with no
-        // target dir specified).  The latter case is assumed as being more likely.
+        // This yields the situation where if the binary receives args of 'cargo-casper', 'casper'
+        // then it might be a valid call (not a cargo subcommand - the user entered
+        // 'cargo-casper casper' meaning to create a target dir called 'casper') or it might be an
+        // invalid call (the user entered 'cargo casper' with no target dir specified).  The latter
+        // case is assumed as being more likely.
         let filtered_args_iter = env::args().enumerate().filter_map(|(index, value)| {
-            if index == 1 && value.as_str() == "casperlabs" {
+            if index == 1 && value.as_str() == "casper" {
                 None
             } else {
                 Some(value)
@@ -162,14 +162,14 @@ mod tests {
 
     use super::TOOLCHAIN;
 
-    const PATH_PREFIX: &str = "/grpc/cargo-casperlabs";
+    const PATH_PREFIX: &str = "/grpc/cargo-casper";
 
     #[test]
     fn check_toolchain_version() {
         let mut toolchain_path = env::current_dir().unwrap().display().to_string();
         let index = toolchain_path.find(PATH_PREFIX).unwrap_or_else(|| {
             panic!(
-                "test should be run from within casperlabs-node workspace: {}",
+                "test should be run from within casper-node workspace: {}",
                 toolchain_path
             )
         });
@@ -182,7 +182,7 @@ mod tests {
             .to_string();
 
         // If this fails, ensure `TOOLCHAIN` is updated to match the value in
-        // "casperlabs-node/rust-toolchain".
+        // "casper-node/rust-toolchain".
         assert_eq!(&*expected_toolchain_value, TOOLCHAIN);
     }
 }

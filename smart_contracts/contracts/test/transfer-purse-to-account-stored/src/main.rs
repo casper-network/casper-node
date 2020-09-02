@@ -6,9 +6,9 @@ extern crate alloc;
 use alloc::{string::ToString, vec};
 
 use alloc::boxed::Box;
-use casperlabs_contract::contract_api::{runtime, storage};
+use casper_contract::contract_api::{runtime, storage};
 
-use casperlabs_types::{
+use casper_types::{
     contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter},
     CLType,
 };

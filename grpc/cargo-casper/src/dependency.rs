@@ -2,7 +2,7 @@ use std::fmt::{Display, Formatter, Result};
 
 use crate::ARGS;
 
-/// Used to hold the information about the CasperLabs dependencies which will be required by the
+/// Used to hold the information about the Casper dependencies which will be required by the
 /// generated Cargo.toml files.
 ///
 /// The information is output in a form suitable for injection into Cargo.toml via implementing the
@@ -11,7 +11,7 @@ use crate::ARGS;
 pub struct Dependency {
     name: String,
     version: String,
-    /// Path relative to "casperlabs-node"
+    /// Path relative to "casper-node"
     relative_path: String,
 }
 

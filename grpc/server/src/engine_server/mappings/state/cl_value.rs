@@ -1,6 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
-use casperlabs_types::CLValue;
+use casper_types::CLValue;
 
 use crate::engine_server::{mappings::ParsingError, state};
 
@@ -29,7 +29,7 @@ impl TryFrom<state::CLValue> for CLValue {
 mod tests {
     use proptest::proptest;
 
-    use casperlabs_types::gens;
+    use casper_types::gens;
 
     use super::*;
     use crate::engine_server::mappings::test_utils;

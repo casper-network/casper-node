@@ -1,13 +1,13 @@
 use std::{collections::BTreeSet, path::Path};
 
-use casperlabs_node::{
+use casper_node::{
     components::contract_runtime::core::engine_state::{
         deploy_item::DeployItem, executable_deploy_item::ExecutableDeployItem,
     },
     crypto::hash::Digest,
     types::DeployHash,
 };
-use casperlabs_types::{
+use casper_types::{
     account::AccountHash, bytesrepr::ToBytes, contracts::ContractVersion, ContractHash, HashAddr,
     RuntimeArgs,
 };

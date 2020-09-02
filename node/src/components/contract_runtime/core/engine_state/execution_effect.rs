@@ -1,4 +1,4 @@
-use casperlabs_types::Key;
+use casper_types::Key;
 
 use super::op::Op;
 use crate::components::contract_runtime::shared::{

@@ -1,11 +1,11 @@
 #![no_std]
 #![no_main]
 
-use casperlabs_contract::{
+use casper_contract::{
     contract_api::{account, runtime},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casperlabs_types::account::{AccountHash, Weight};
+use casper_types::account::{AccountHash, Weight};
 
 const INIT_WEIGHT: u8 = 1;
 const MOD_WEIGHT: u8 = 2;

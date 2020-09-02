@@ -77,20 +77,20 @@ extern "C" {
     pub fn add(key_ptr: *const u8, key_size: usize, value_ptr: *const u8, value_size: usize);
     ///
     pub fn add_local(key_ptr: *const u8, key_size: usize, value_ptr: *const u8, value_size: usize);
-    /// This function causes the runtime to generate a new [`casperlabs_types::uref::URef`], with
+    /// This function causes the runtime to generate a new [`casper_types::uref::URef`], with
     /// the provided value stored under it in the global state. The new
-    /// [`casperlabs_types::uref::URef`] is written (in serialized form) to the wasm linear
+    /// [`casper_types::uref::URef`] is written (in serialized form) to the wasm linear
     /// memory starting from the `key_ptr` offset. Note that data corruption is possible if not
-    /// enough memory is allocated for the [`casperlabs_types::uref::URef`] at `key_ptr`. This
+    /// enough memory is allocated for the [`casper_types::uref::URef`] at `key_ptr`. This
     /// function will cause a `Trap` if the bytes in wasm memory from offset `value_ptr` to
     /// `value_ptr + value_size` cannot be de-serialized into a `Value`.
     ///
     /// # Arguments
     ///
     /// * `key_ptr` - pointer to the offset in wasm memory where the new
-    ///   [`casperlabs_types::uref::URef`] will be written
+    ///   [`casper_types::uref::URef`] will be written
     /// * `value_ptr` - pointer to bytes representing the value to write under the new
-    ///   [`casperlabs_types::uref::URef`]
+    ///   [`casper_types::uref::URef`]
     /// * `value_size` - size of the value (in bytes)
     pub fn new_uref(uref_ptr: *mut u8, value_ptr: *const u8, value_size: usize);
     ///
@@ -99,11 +99,11 @@ extern "C" {
     /// but first copies the bytes from `value_ptr` to `value_ptr + value_size` to
     /// a buffer which is returned to the calling module (if this module was
     /// invoked by [`call_contract`] or [`call_versioned_contract`]). Additionally, the known
-    /// [`casperlabs_types::uref::URef`]s of the calling context are augmented with the
-    /// [`casperlabs_types::uref::URef`]s de-serialized from wasm memory offset
+    /// [`casper_types::uref::URef`]s of the calling context are augmented with the
+    /// [`casper_types::uref::URef`]s de-serialized from wasm memory offset
     /// `extra_urefs_ptr` to `extra_urefs_ptr + extra_urefs_size`. This function will cause a
     /// `Trap` if the bytes at `extra_urefs_ptr` cannot be de-serialized as type `Vec<URef>`, or
-    /// if any of the extra [`casperlabs_types::uref::URef`]s are invalid in the current
+    /// if any of the extra [`casper_types::uref::URef`]s are invalid in the current
     /// context.
     ///
     /// # Arguments
@@ -138,7 +138,7 @@ extern "C" {
     pub fn revert(status: u32) -> !;
     /// This function checks if all the keys contained in the given `Value` are
     /// valid in the current context (i.e. the `Value` does not contain any forged
-    /// [`casperlabs_types::uref::URef`]s). This function causes a `Trap` if the bytes in wasm
+    /// [`casper_types::uref::URef`]s). This function causes a `Trap` if the bytes in wasm
     /// memory from offset `value_ptr` to `value_ptr + value_size` cannot be de-serialized as
     /// type `Value`.
     pub fn is_valid_uref(uref_ptr: *const u8, uref_size: usize) -> i32;
@@ -254,7 +254,7 @@ extern "C" {
     /// * `dest_ptr` - pointer in wasm memory where to write the result
     pub fn get_blocktime(dest_ptr: *const u8);
     /// This function uses the mint contract to create a new, empty purse. If the
-    /// call is successful then the [`casperlabs_types::uref::URef`] (in serialized form) is written
+    /// call is successful then the [`casper_types::uref::URef`] (in serialized form) is written
     /// to the indicated place in wasm memory. It is up to the caller to ensure at
     /// least `purse_size` bytes are allocated at `purse_ptr`, otherwise
     /// data corruption may occur. This function causes a `Trap` if
@@ -263,8 +263,8 @@ extern "C" {
     /// # Arguments
     ///
     /// * `purse_ptr` - pointer to position in wasm memory where to write the created
-    ///   [`casperlabs_types::uref::URef`]
-    /// * `purse_size` - allocated size for the [`casperlabs_types::uref::URef`]
+    ///   [`casper_types::uref::URef`]
+    /// * `purse_size` - allocated size for the [`casper_types::uref::URef`]
     pub fn create_purse(purse_ptr: *const u8, purse_size: usize) -> i32;
     /// This function uses the mint contract’s transfer function to transfer
     /// tokens from the current account’s main purse to the main purse of the
@@ -300,12 +300,12 @@ extern "C" {
     /// tokens from the specified purse to the main purse of the target account.
     /// If the target account does not exist then it is automatically created, and
     /// the tokens are transferred to the main purse of the new account. The
-    /// source is a serialized [`casperlabs_types::uref::URef`].
+    /// source is a serialized [`casper_types::uref::URef`].
     /// The target is a serialized `PublicKey` (i.e. 36 bytes where the
     /// first 4 bytes are the number `32` in little endian encoding, and the
     /// remaining 32-bytes are the public key). The amount must be a serialized
     /// 512-bit unsigned integer. This function causes a `Trap` if the source
-    /// cannot be de-serialized as a [`casperlabs_types::uref::URef`], or the target cannot be
+    /// cannot be de-serialized as a [`casper_types::uref::URef`], or the target cannot be
     /// de-serialized as a `PublicKey` or the amount cannot be de-serialized into
     /// a `U512`. The return value indicated what occurred, where 0 means a
     /// successful transfer to an existing account, 1 means a successful transfer
@@ -316,8 +316,8 @@ extern "C" {
     /// # Arguments
     ///
     /// * `source_ptr` - pointer in wasm memory to bytes representing the source
-    ///   [`casperlabs_types::uref::URef`] to transfer from
-    /// * `source_size` - size of the source [`casperlabs_types::uref::URef`] (in bytes)
+    ///   [`casper_types::uref::URef`] to transfer from
+    /// * `source_size` - size of the source [`casper_types::uref::URef`] (in bytes)
     /// * `target_ptr` - pointer in wasm memory to bytes representing the target account to transfer
     ///   to
     /// * `target_size` - size of the target (in bytes)
@@ -336,10 +336,10 @@ extern "C" {
     /// tokens from the specified source purse to the specified target purse. If
     /// the target account does not exist then it is automatically created, and
     /// the tokens are transferred to the main purse of the new account. The
-    /// source is a serialized [`casperlabs_types::uref::URef`].
-    /// The target is also a serialized [`casperlabs_types::uref::URef`]. The amount must be a
+    /// source is a serialized [`casper_types::uref::URef`].
+    /// The target is also a serialized [`casper_types::uref::URef`]. The amount must be a
     /// serialized 512-bit unsigned integer. This function causes a `Trap` if the
-    /// source or target cannot be de-serialized as a [`casperlabs_types::uref::URef`] or the amount
+    /// source or target cannot be de-serialized as a [`casper_types::uref::URef`] or the amount
     /// cannot be de-serialized into a `U512`. The return value indicated what
     /// occurred, where 0 means a successful transfer, 1 means the transfer
     /// failed (this could be because the source purse had insufficient tokens or
@@ -348,10 +348,10 @@ extern "C" {
     /// # Arguments
     ///
     /// * `source_ptr` - pointer in wasm memory to bytes representing the source
-    ///   [`casperlabs_types::uref::URef`] to transfer from
-    /// * `source_size` - size of the source [`casperlabs_types::uref::URef`] (in bytes)
+    ///   [`casper_types::uref::URef`] to transfer from
+    /// * `source_size` - size of the source [`casper_types::uref::URef`] (in bytes)
     /// * `target_ptr` - pointer in wasm memory to bytes representing the target
-    ///   [`casperlabs_types::uref::URef`] to transfer to
+    ///   [`casper_types::uref::URef`] to transfer to
     /// * `target_size` - size of the target (in bytes)
     /// * `amount_ptr` - pointer in wasm memory to bytes representing the amount to transfer to the
     ///   target account
@@ -367,7 +367,7 @@ extern "C" {
     /// This function uses the mint contract's balance function to get the balance
     /// of the specified purse. It causes a `Trap` if the bytes in wasm memory
     /// from `purse_ptr` to `purse_ptr + purse_size` cannot be
-    /// de-serialized as a [`casperlabs_types::uref::URef`]. The return value is the size of the
+    /// de-serialized as a [`casper_types::uref::URef`]. The return value is the size of the
     /// result in bytes. The result is copied to the host buffer and thus can be obtained
     /// by any function which copies the buffer into wasm memory (e.g.
     /// `get_read`). The result bytes are serialized from type `Option<U512>` and
@@ -376,8 +376,8 @@ extern "C" {
     /// # Arguments
     ///
     /// * `purse_ptr` - pointer in wasm memory to the bytes representing the
-    ///   [`casperlabs_types::uref::URef`] of the purse to get the balance of
-    /// * `purse_size` - size of the [`casperlabs_types::uref::URef`] (in bytes)
+    ///   [`casper_types::uref::URef`] of the purse to get the balance of
+    /// * `purse_size` - size of the [`casper_types::uref::URef`] (in bytes)
     pub fn get_balance(purse_ptr: *const u8, purse_size: usize, result_size: *mut usize) -> i32;
     /// This function writes bytes representing the current phase of the deploy
     /// execution to the specified pointer. The size of the result is always one
@@ -418,7 +418,7 @@ extern "C" {
     /// * `bytes_written` - a pointer to a value where amount of bytes written will be set
     pub fn read_host_buffer(dest_ptr: *mut u8, dest_size: usize, bytes_written: *mut usize) -> i32;
     /// Creates new contract package at hash. Returns both newly generated
-    /// [`casperlabs_types::ContractPackageHash`] and a [`casperlabs_types::URef`] for further
+    /// [`casper_types::ContractPackageHash`] and a [`casper_types::URef`] for further
     /// modifying access.
     pub fn create_contract_package_at_hash(hash_addr_ptr: *mut u8, access_addr_ptr: *mut u8);
     /// Creates new named contract user group under a contract package.
@@ -430,9 +430,9 @@ extern "C" {
     /// * `label_ptr` - serialized group label
     /// * `label_size` - size of serialized group label
     /// * `num_new_urefs` - amount of new urefs to be provisioned by host
-    /// * `existing_urefs_ptr` - serialized list of existing [`casperlabs_types::URef`]s
-    /// * `existing_urefs_size` - size of serialized list of  [`casperlabs_types::URef`]s
-    /// * `output_size_ptr` - pointer to a value where a size of list of [`casperlabs_types::URef`]s
+    /// * `existing_urefs_ptr` - serialized list of existing [`casper_types::URef`]s
+    /// * `existing_urefs_size` - size of serialized list of  [`casper_types::URef`]s
+    /// * `output_size_ptr` - pointer to a value where a size of list of [`casper_types::URef`]s
     ///   written to host buffer will be set.
     pub fn create_contract_user_group(
         contract_package_hash_ptr: *const u8,
@@ -451,10 +451,10 @@ extern "C" {
     /// * `contract_package_hash_ptr` - pointer to serialized contract package hash.
     /// * `contract_package_hash_size` - size of contract package hash in serialized form.
     /// * `version_ptr` - output parameter where new version assigned by host is set
-    /// * `entry_points_ptr` - pointer to serialized [`casperlabs_types::EntryPoints`]
-    /// * `entry_points_size` - size of serialized [`casperlabs_types::EntryPoints`]
-    /// * `named_keys_ptr` - pointer to serialized [`casperlabs_types::contracts::NamedKeys`]
-    /// * `named_keys_size` - size of serialized [`casperlabs_types::contracts::NamedKeys`]
+    /// * `entry_points_ptr` - pointer to serialized [`casper_types::EntryPoints`]
+    /// * `entry_points_size` - size of serialized [`casper_types::EntryPoints`]
+    /// * `named_keys_ptr` - pointer to serialized [`casper_types::contracts::NamedKeys`]
+    /// * `named_keys_size` - size of serialized [`casper_types::contracts::NamedKeys`]
     /// * `output_ptr` - pointer to a memory where host assigned contract hash is set to
     /// * `output_size` - size of memory area that host can write to
     /// * `bytes_written_ptr` - pointer to a value where host will set a number of bytes written to
@@ -589,7 +589,7 @@ extern "C" {
         label_ptr: *const u8,
         label_size: usize,
     ) -> i32;
-    /// Requests host to provision additional [`casperlabs_types::URef`] to a specified group
+    /// Requests host to provision additional [`casper_types::URef`] to a specified group
     /// identified by its label. Returns standard error code for non-zero value, otherwise zero
     /// indicated success.
     ///

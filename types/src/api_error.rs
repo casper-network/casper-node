@@ -85,7 +85,7 @@ const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
 ///
 /// The expanded mapping of all variants to their numerical equivalents is as follows:
 /// ```
-/// # use casperlabs_types::ApiError::{self, *};
+/// # use casper_types::ApiError::{self, *};
 /// # macro_rules! show_and_check {
 /// #     ($lhs:literal => $rhs:expr) => {
 /// #         assert_eq!($lhs as u32, ApiError::from($rhs).into());
@@ -195,7 +195,7 @@ const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
 /// 34 => HostBufferFull
 /// # );
 /// // Auction errors:
-/// use casperlabs_types::system_contract_errors::auction::Error as AuctionError;
+/// use casper_types::system_contract_errors::auction::Error as AuctionError;
 /// # show_and_check!(
 /// 64_512 => AuctionError::MissingKey
 /// # );
@@ -224,7 +224,7 @@ const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
 /// 64_520 => AuctionError::DelegatorNotFound
 /// # );
 /// // Contract header errors:
-/// use casperlabs_types::contracts::Error as ContractHeaderError;
+/// use casper_types::contracts::Error as ContractHeaderError;
 /// # show_and_check!(
 /// 64_769 => ContractHeaderError::PreviouslyUsedVersion
 /// # );
@@ -241,7 +241,7 @@ const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
 /// 64_773 => ContractHeaderError::MaxTotalURefsExceeded
 /// # );
 /// // Mint errors:
-/// use casperlabs_types::system_contract_errors::mint::Error as MintError;
+/// use casper_types::system_contract_errors::mint::Error as MintError;
 /// # show_and_check!(
 /// 65_024 => MintError::InsufficientFunds
 /// # );
@@ -268,7 +268,7 @@ const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
 /// # );
 ///
 /// // Proof of stake errors:
-/// use casperlabs_types::system_contract_errors::pos::Error as PosError;
+/// use casper_types::system_contract_errors::pos::Error as PosError;
 /// # show_and_check!(
 /// 65_280 => PosError::NotBonded
 /// # );
@@ -367,9 +367,9 @@ const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
 /// ```
 ///
 /// Users can specify a C-style enum and implement `From` to ease usage of
-/// `casperlabs_contract::runtime::revert()`, e.g.
+/// `casper_contract::runtime::revert()`, e.g.
 /// ```
-/// use casperlabs_types::ApiError;
+/// use casper_types::ApiError;
 ///
 /// #[repr(u16)]
 /// enum FailureCode {
@@ -398,13 +398,13 @@ pub enum ApiError {
     InvalidArgument,
     /// Failed to deserialize a value.
     Deserialize,
-    /// `casperlabs_contract::storage::read()` returned an error.
+    /// `casper_contract::storage::read()` returned an error.
     Read,
     /// The given key returned a `None` value.
     ValueNotFound,
     /// Failed to find a specified contract.
     ContractNotFound,
-    /// A call to `casperlabs_contract::runtime::get_key()` returned a failure.
+    /// A call to `casper_contract::runtime::get_key()` returned a failure.
     GetKey,
     /// The [`Key`](crate::Key) variant was not as expected.
     UnexpectedKeyVariant,

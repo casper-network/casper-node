@@ -1,7 +1,7 @@
 use std::convert::{TryFrom, TryInto};
 
-use casperlabs_node::components::contract_runtime::shared::transform::Transform;
-use casperlabs_types::Key;
+use casper_node::components::contract_runtime::shared::transform::Transform;
+use casper_types::Key;
 
 use crate::engine_server::{mappings::ParsingError, transforms::TransformEntry};
 
@@ -38,8 +38,8 @@ impl TryFrom<TransformEntry> for (Key, Transform) {
 mod tests {
     use proptest::proptest;
 
-    use casperlabs_node::components::contract_runtime::shared::transform;
-    use casperlabs_types::gens;
+    use casper_node::components::contract_runtime::shared::transform;
+    use casper_types::gens;
 
     use super::*;
     use crate::engine_server::mappings::test_utils;

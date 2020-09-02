@@ -10,7 +10,7 @@ use crate::OS_PAGE_SIZE;
 
 const QUALIFIER: &str = "io";
 const ORGANIZATION: &str = "CasperLabs";
-const APPLICATION: &str = "casperlabs-node";
+const APPLICATION: &str = "casper-node";
 
 const DEFAULT_MAX_BLOCK_STORE_SIZE: usize = 483_183_820_800; // 450 GiB
 const DEFAULT_MAX_DEPLOY_STORE_SIZE: usize = 322_122_547_200; // 300 GiB
@@ -29,12 +29,12 @@ pub struct Config {
     /// If the folder doesn't exist, it and any required parents will be created.
     ///
     /// Defaults to:
-    /// * Linux: `$XDG_DATA_HOME/casperlabs-node` or `$HOME/.local/share/casperlabs-node`, e.g.
-    ///   /home/alice/.local/share/casperlabs-node
-    /// * macOS: `$HOME/Library/Application Support/io.CasperLabs.casperlabs-node`, e.g.
-    ///   /Users/Alice/Library/Application Support/io.CasperLabs.casperlabs-node
-    /// * Windows: `{FOLDERID_RoamingAppData}\CasperLabs\casperlabs-node\data` e.g.
-    ///   C:\Users\Alice\AppData\Roaming\CasperLabs\casperlabs-node\data
+    /// * Linux: `$XDG_DATA_HOME/casper-node` or `$HOME/.local/share/casper-node`, e.g.
+    ///   /home/alice/.local/share/casper-node
+    /// * macOS: `$HOME/Library/Application Support/io.CasperLabs.casper-node`, e.g.
+    ///   /Users/Alice/Library/Application Support/io.CasperLabs.casper-node
+    /// * Windows: `{FOLDERID_RoamingAppData}\CasperLabs\casper-node\data` e.g.
+    ///   C:\Users\Alice\AppData\Roaming\CasperLabs\casper-node\data
     path: Option<PathBuf>,
     /// The maximum size of the database to use for the block store.
     ///

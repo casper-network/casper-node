@@ -5,8 +5,8 @@ extern crate alloc;
 
 use alloc::string::String;
 
-use casperlabs_contract::contract_api::{runtime, storage, system};
-use casperlabs_types::{Key, RuntimeArgs};
+use casper_contract::contract_api::{runtime, storage, system};
+use casper_types::{Key, RuntimeArgs};
 
 const NEW_ENDPOINT_NAME: &str = "version";
 const RESULT_UREF_NAME: &str = "output_version";

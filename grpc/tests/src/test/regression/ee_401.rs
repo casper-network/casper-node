@@ -1,8 +1,8 @@
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_types::RuntimeArgs;
+use casper_types::RuntimeArgs;
 
 const CONTRACT_EE_401_REGRESSION: &str = "ee_401_regression.wasm";
 const CONTRACT_EE_401_REGRESSION_CALL: &str = "ee_401_regression_call.wasm";

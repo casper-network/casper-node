@@ -1,13 +1,13 @@
 [package]
-name = "cargo-casperlabs"
+name = "cargo-casper"
 version = "0.9.0"
 authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
-description = "Command line tool for creating a Wasm smart contract and tests for use on the CasperLabs network."
+description = "Command line tool for creating a Wasm smart contract and tests for use on the Casper network."
 readme = "README.md"
-documentation = "https://docs.rs/cargo-casperlabs"
+documentation = "https://docs.rs/cargo-casper"
 homepage = "https://casperlabs.io"
-repository = "https://github.com/CasperLabs/casperlabs-node/tree/master/grpc/cargo-casperlabs"
+repository = "https://github.com/CasperLabs/casper-node/tree/master/grpc/cargo-casper"
 license-file = "../../LICENSE"
 include = [
     "src/*.rs",

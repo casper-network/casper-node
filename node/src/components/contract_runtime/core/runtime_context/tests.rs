@@ -7,7 +7,7 @@ use std::{
 
 use rand::RngCore;
 
-use casperlabs_types::{
+use casper_types::{
     account::{
         AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, Weight,
     },

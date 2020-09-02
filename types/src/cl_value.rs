@@ -39,7 +39,7 @@ pub enum CLValueError {
     Type(CLTypeMismatch),
 }
 
-/// A CasperLabs value, i.e. a value which can be stored and manipulated by smart contracts.
+/// A Casper value, i.e. a value which can be stored and manipulated by smart contracts.
 ///
 /// It holds the underlying data as a type-erased, serialized `Vec<u8>` and also holds the
 /// [`CLType`] of the underlying data as a separate member.

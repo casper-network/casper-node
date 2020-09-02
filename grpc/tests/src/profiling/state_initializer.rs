@@ -6,18 +6,18 @@ use std::{env, path::PathBuf};
 
 use clap::{crate_version, App};
 
-use casperlabs_engine_test_support::internal::{
+use casper_engine_test_support::internal::{
     utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
     AUCTION_INSTALL_CONTRACT, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_GENESIS_CONFIG_HASH,
     DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, DEFAULT_WASM_COSTS, MINT_INSTALL_CONTRACT,
     POS_INSTALL_CONTRACT, STANDARD_PAYMENT_INSTALL_CONTRACT,
 };
-use casperlabs_node::components::contract_runtime::core::engine_state::{
+use casper_node::components::contract_runtime::core::engine_state::{
     engine_config::EngineConfig, genesis::ExecConfig, run_genesis_request::RunGenesisRequest,
 };
 
-use casperlabs_engine_tests::profiling;
-use casperlabs_types::{runtime_args, RuntimeArgs};
+use casper_engine_tests::profiling;
+use casper_types::{runtime_args, RuntimeArgs};
 
 const ABOUT: &str = "Initializes global state in preparation for profiling runs. Outputs the root \
                      hash from the commit response.";

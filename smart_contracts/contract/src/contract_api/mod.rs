@@ -11,7 +11,7 @@ use alloc::{
 };
 use core::{mem, ptr::NonNull};
 
-use casperlabs_types::{bytesrepr::ToBytes, ApiError};
+use casper_types::{bytesrepr::ToBytes, ApiError};
 
 use crate::unwrap_or_revert::UnwrapOrRevert;
 

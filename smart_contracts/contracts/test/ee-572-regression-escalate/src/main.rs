@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use casperlabs_contract::contract_api::{runtime, storage};
-use casperlabs_types::{AccessRights, ContractHash, RuntimeArgs, URef};
+use casper_contract::contract_api::{runtime, storage};
+use casper_types::{AccessRights, ContractHash, RuntimeArgs, URef};
 
 const REPLACEMENT_DATA: &str = "bawitdaba";
 const ARG_CONTRACT_HASH: &str = "contract_hash";

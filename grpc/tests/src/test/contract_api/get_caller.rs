@@ -1,11 +1,11 @@
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{
         ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_types::{account::AccountHash, runtime_args, RuntimeArgs};
+use casper_types::{account::AccountHash, runtime_args, RuntimeArgs};
 
 const CONTRACT_GET_CALLER: &str = "get_caller.wasm";
 const CONTRACT_GET_CALLER_SUBCALL: &str = "get_caller_subcall.wasm";

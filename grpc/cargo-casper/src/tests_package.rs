@@ -20,10 +20,10 @@ const AUCTION_INSTALL: &str = "auction_install.wasm";
 
 const INTEGRATION_TESTS_RS_CONTENTS: &str = r#"#[cfg(test)]
 mod tests {
-    use casperlabs_engine_test_support::{
+    use casper_engine_test_support::{
         Code, Error, PublicKey, SecretKey, SessionBuilder, TestContextBuilder, Value,
     };
-    use casperlabs_types::{runtime_args, RuntimeArgs, U512};
+    use casper_types::{runtime_args, RuntimeArgs, U512};
 
     const MY_ACCOUNT: [u8; 32] = [7u8; 32];
     // define KEY constant to match that in the contract
@@ -114,11 +114,8 @@ lazy_static! {
         .root_path()
         .join(PACKAGE_NAME)
         .join("src/integration_tests.rs");
-    static ref ENGINE_TEST_SUPPORT: Dependency = Dependency::new(
-        "casperlabs-engine-test-support",
-        "0.8.0",
-        "grpc/test_support"
-    );
+    static ref ENGINE_TEST_SUPPORT: Dependency =
+        Dependency::new("casper-engine-test-support", "0.8.0", "grpc/test_support");
     static ref CARGO_TOML_ADDITIONAL_CONTENTS: String = format!(
         r#"
 [dev-dependencies]
@@ -131,7 +128,7 @@ name = "integration-tests"
 path = "src/integration_tests.rs"
 
 [features]
-default = ["casperlabs-contract/std", "casperlabs-types/std", "casperlabs-engine-test-support/test-support", "casperlabs-contract/test-support""#,
+default = ["casper-contract/std", "casper-types/std", "casper-engine-test-support/test-support", "casper-contract/test-support""#,
         *CL_CONTRACT, *CL_TYPES, *ENGINE_TEST_SUPPORT,
     );
     static ref WASM_SRC_DIR: PathBuf = Path::new(env!("CARGO_MANIFEST_DIR")).join("wasm");
@@ -147,7 +144,7 @@ pub fn update_cargo_toml(use_system_contracts: bool) {
         "{}{}\n",
         &*CARGO_TOML_ADDITIONAL_CONTENTS,
         if use_system_contracts {
-            ", \"casperlabs-engine-test-support/use-system-contracts\"]"
+            ", \"casper-engine-test-support/use-system-contracts\"]"
         } else {
             "]"
         }

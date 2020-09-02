@@ -6,7 +6,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 
-use casperlabs_types::{
+use casper_types::{
     account::AccountHash,
     api_error,
     bytesrepr::{self, FromBytes},

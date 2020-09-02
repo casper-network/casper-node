@@ -1,17 +1,17 @@
-# @casperlabs/contract
+# @casper/contract
 
 This package allows a distributed app developer to create smart contracts
-for the open source [CasperLabs](https://github.com/CasperLabs/CasperLabs) project using [AssemblyScript](https://www.npmjs.com/package/assemblyscript).
+for the open source [Casper](https://github.com/CasperLabs/casper-node) project using [AssemblyScript](https://www.npmjs.com/package/assemblyscript).
 
 ## Installation
 For each smart contract you create, make a project directory and initialize it.
-``` 
+```
 mkdir project
 cd project
 npm init
 ```
 
-npm init will prompt you for various details about your project; 
+npm init will prompt you for various details about your project;
 answer as you see fit but you may safely default everything except `name` which should follow the convention of
 `your-contract-name`.
 
@@ -19,7 +19,7 @@ Then install assembly script and this package in the project directory.
 
 ```
 npm install --save-dev assemblyscript@0.9.1
-npm install --save @casperlabs/contract
+npm install --save @casper/contract
 ```
 
 ## Usage
@@ -67,20 +67,20 @@ Create an `assembly/tsconfig.json` file in the following way:
 ```
 
 ### Sample smart contract
-Create a `assembly/index.ts` file. This is where the code for your contract will go. 
+Create a `assembly/index.ts` file. This is where the code for your contract will go.
 
-You can use the following sample snippet which demonstrates a very simple smart contract that immediately returns an error, which will write a message to a block if executed on the CasperLabs platform. 
+You can use the following sample snippet which demonstrates a very simple smart contract that immediately returns an error, which will write a message to a block if executed on the Casper platform.
 
 ```typescript
 //@ts-nocheck
-import {Error, ErrorCode} from "@casperlabs/contract/error";
+import {Error, ErrorCode} from "@casper/contract/error";
 
 // simplest possible feedback loop
 export function call(): void {
     Error.fromErrorCode(ErrorCode.None).revert(); // ErrorCode: 1
 }
 ```
-If you prefer a more complicated first contract, you can look at client contracts on the [CasperLabs](https://github.com/CasperLabs/CasperLabs/tree/master/execution-engine/contracts_as/client) github repository for inspiration.
+If you prefer a more complicated first contract, you can look at client contracts on the [casper-node](https://github.com/CasperLabs/casper-node/tree/master/smart_contracts/contracts_as/client) GitHub repository for inspiration.
 
 ### Compile to wasm
 To compile your contract to wasm, use npm to run the asbuild script from your project root.

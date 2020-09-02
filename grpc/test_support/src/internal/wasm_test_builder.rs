@@ -11,7 +11,7 @@ use grpc::RequestOptions;
 use lmdb::DatabaseFlags;
 use log::LevelFilter;
 
-use casperlabs_engine_grpc_server::engine_server::{
+use casper_engine_grpc_server::engine_server::{
     ipc::{
         CommitRequest, CommitResponse, GenesisResponse, QueryRequest, UpgradeRequest,
         UpgradeResponse,
@@ -20,7 +20,7 @@ use casperlabs_engine_grpc_server::engine_server::{
     mappings::TransformMap,
     transforms::TransformEntry,
 };
-use casperlabs_node::{
+use casper_node::{
     components::contract_runtime::{
         core::{
             engine_state::{
@@ -48,7 +48,7 @@ use casperlabs_node::{
     },
     OS_PAGE_SIZE,
 };
-use casperlabs_types::{
+use casper_types::{
     account::AccountHash,
     bytesrepr::{self},
     CLValue, Contract, ContractHash, ContractWasm, Key, URef, U512,

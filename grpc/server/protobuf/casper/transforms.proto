@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package io.casperlabs.ipc;
+package casper.transforms;
 
-import "io/casperlabs/casper/consensus/state.proto";
+import "casper/state.proto";
 
 message TypeMismatch {
     string expected = 1;
@@ -31,13 +31,13 @@ message TransformAddUInt64 {
     uint64 value = 1;
 }
 message TransformAddBigInt {
-    io.casperlabs.casper.consensus.state.BigInt value = 1;
+    casper.state.BigInt value = 1;
 }
 message TransformAddKeys {
-    repeated io.casperlabs.casper.consensus.state.NamedKey value = 1;
+    repeated casper.state.NamedKey value = 1;
 }
 message TransformWrite {
-    io.casperlabs.casper.consensus.state.StoredValue value = 1;
+    casper.state.StoredValue value = 1;
 }
 message TransformFailure {
     oneof failure_instance {
@@ -46,6 +46,6 @@ message TransformFailure {
 }
 
 message TransformEntry {
-    io.casperlabs.casper.consensus.state.Key key = 1;
+    casper.state.Key key = 1;
     Transform transform = 2;
 }

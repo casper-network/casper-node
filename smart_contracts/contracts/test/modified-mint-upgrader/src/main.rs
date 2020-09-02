@@ -4,11 +4,11 @@
 extern crate alloc;
 
 use alloc::collections::BTreeMap;
-use casperlabs_contract::{
+use casper_contract::{
     contract_api::{runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casperlabs_types::{contracts::NamedKeys, CLValue, ContractHash, ContractVersion, URef};
+use casper_types::{contracts::NamedKeys, CLValue, ContractHash, ContractVersion, URef};
 
 pub const MODIFIED_MINT_EXT_FUNCTION_NAME: &str = "modified_mint_ext";
 pub const POS_EXT_FUNCTION_NAME: &str = "pos_ext";

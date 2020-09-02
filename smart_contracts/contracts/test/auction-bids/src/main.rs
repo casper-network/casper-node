@@ -5,9 +5,9 @@ extern crate alloc;
 
 use alloc::string::String;
 
-use casperlabs_contract::contract_api::{account, runtime, storage, system};
+use casper_contract::contract_api::{account, runtime, storage, system};
 
-use casperlabs_types::{
+use casper_types::{
     auction::{
         DelegationRate, SeigniorageRecipients, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_SOURCE_PURSE,
         ARG_VALIDATOR, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_READ_SEIGNIORAGE_RECIPIENTS,

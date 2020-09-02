@@ -6,7 +6,7 @@ use crate::components::contract_runtime::shared::{
     stored_value::StoredValue,
     transform::Transform,
 };
-use casperlabs_types::{Key, ProtocolVersion};
+use casper_types::{Key, ProtocolVersion};
 
 use crate::components::contract_runtime::storage::{
     error,
@@ -164,7 +164,7 @@ mod tests {
     use lmdb::DatabaseFlags;
     use tempfile::tempdir;
 
-    use casperlabs_types::{account::AccountHash, CLValue};
+    use casper_types::{account::AccountHash, CLValue};
 
     use crate::{
         components::contract_runtime::storage::{

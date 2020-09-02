@@ -1,6 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
-use casperlabs_types::{
+use casper_types::{
     contracts::{Contract, NamedKeys},
     ContractPackageHash, ContractWasmHash, EntryPoints,
 };
@@ -70,7 +70,7 @@ impl TryFrom<state::Contract> for Contract {
 mod tests {
     use proptest::proptest;
 
-    use casperlabs_types::gens;
+    use casper_types::gens;
 
     use super::*;
     use crate::engine_server::mappings::test_utils;

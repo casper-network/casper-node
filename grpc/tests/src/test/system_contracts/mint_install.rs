@@ -1,14 +1,14 @@
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{
         exec_with_return, WasmTestBuilder, DEFAULT_BLOCK_TIME, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_node::components::contract_runtime::{
+use casper_node::components::contract_runtime::{
     core::engine_state::EngineConfig,
     shared::{stored_value::StoredValue, transform::Transform},
 };
-use casperlabs_types::{
+use casper_types::{
     contracts::CONTRACT_INITIAL_VERSION, runtime_args, ContractHash, ContractPackageHash,
     ContractVersionKey, ProtocolVersion, RuntimeArgs,
 };

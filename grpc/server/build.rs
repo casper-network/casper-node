@@ -28,9 +28,9 @@ fn wrap_file_contents(target_dir: &Path, file_name_without_suffix: &str) {
 }
 
 fn main() {
-    println!("cargo:rerun-if-changed=protobuf/io/casperlabs/casper/consensus/state.proto");
-    println!("cargo:rerun-if-changed=protobuf/io/casperlabs/ipc/ipc.proto");
-    println!("cargo:rerun-if-changed=protobuf/io/casperlabs/ipc/transforms.proto");
+    println!("cargo:rerun-if-changed=protobuf/casper/state.proto");
+    println!("cargo:rerun-if-changed=protobuf/casper/ipc.proto");
+    println!("cargo:rerun-if-changed=protobuf/casper/transforms.proto");
 
     let target_dir = PathBuf::from(format!(
         "{}/../../../../{}",
@@ -43,15 +43,11 @@ fn main() {
     protoc_rust_grpc::run(protoc_rust_grpc::Args {
         out_dir: target_dir.to_str().unwrap(),
         input: &[
-            "protobuf/io/casperlabs/casper/consensus/state.proto",
-            "protobuf/io/casperlabs/ipc/ipc.proto",
-            "protobuf/io/casperlabs/ipc/transforms.proto",
+            "protobuf/casper/state.proto",
+            "protobuf/casper/ipc.proto",
+            "protobuf/casper/transforms.proto",
         ],
-        includes: &[
-            "protobuf/",
-            "protobuf/io/casperlabs/casper/consensus",
-            "protobuf/io/casperlabs/ipc",
-        ],
+        includes: &["protobuf/"],
         rust_protobuf: true,
     })
     .expect("protoc-rust-grpc");

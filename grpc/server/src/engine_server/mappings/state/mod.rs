@@ -1,4 +1,4 @@
-//! Functions for converting between CasperLabs types and their Protobuf equivalents which are
+//! Functions for converting between Casper types and their Protobuf equivalents which are
 //! defined in protobuf/io/casperlabs/casper/consensus/state.proto
 
 mod account;

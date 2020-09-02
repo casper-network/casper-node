@@ -1,4 +1,4 @@
-use casperlabs_types::{
+use casper_types::{
     standard_payment::{AccountProvider, MintProvider, ProofOfStakeProvider, StandardPayment},
     system_contract_errors, ApiError, Key, RuntimeArgs, URef, U512,
 };

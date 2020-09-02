@@ -1,9 +1,9 @@
 use std::result;
 
-use casperlabs_node::components::contract_runtime::shared::TypeMismatch;
-use casperlabs_types::CLValueError;
+use casper_node::components::contract_runtime::shared::TypeMismatch;
+use casper_types::CLValueError;
 
-/// The error type returned by any casperlabs-engine-test-support operation.
+/// The error type returned by any casper-engine-test-support operation.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Hash, Debug)]
 pub struct Error {
     inner: String,

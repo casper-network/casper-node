@@ -1,6 +1,6 @@
 use std::fmt;
 
-use casperlabs_types::{bytesrepr, Key, ProtocolVersion};
+use casper_types::{bytesrepr, Key, ProtocolVersion};
 
 use crate::components::contract_runtime::{
     core::engine_state::execution_effect::ExecutionEffect,

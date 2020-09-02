@@ -1,6 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
-use casperlabs_types::CLType;
+use casper_types::CLType;
 
 use crate::engine_server::{
     mappings::ParsingError,

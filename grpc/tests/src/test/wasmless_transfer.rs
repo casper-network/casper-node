@@ -1,16 +1,16 @@
 use lazy_static::lazy_static;
 
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_node::components::contract_runtime::core::{
+use casper_node::components::contract_runtime::core::{
     engine_state::Error as CoreError, execution::Error as ExecError,
 };
-use casperlabs_types::{
+use casper_types::{
     account::AccountHash, runtime_args, AccessRights, ApiError, Key, RuntimeArgs, URef, U512,
 };
 

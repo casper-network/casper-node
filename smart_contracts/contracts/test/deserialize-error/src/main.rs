@@ -9,12 +9,12 @@ extern crate alloc;
 use alloc::vec;
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use casperlabs_contract::{
+use casper_contract::{
     self,
     contract_api::{self, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casperlabs_types::{
+use casper_types::{
     api_error,
     bytesrepr::{FromBytes, ToBytes},
     contracts::Parameters,
