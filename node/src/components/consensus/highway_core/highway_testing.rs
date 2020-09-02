@@ -257,8 +257,6 @@ impl HighwayValidator {
         match self.fault.as_ref() {
             None => {
                 // Honest validator.
-                // If validator produced a `NewVertex` effect,
-                // we want to add it to his state immediately and gossip all effects.
                 match &msg {
                     HighwayMessage::NewVertex(_)
                     | HighwayMessage::Timer(_)
