@@ -3,7 +3,7 @@ use std::mem;
 use casper_types::ProtocolVersion;
 
 use super::{deploy_item::DeployItem, execution_result::ExecutionResult};
-use crate::crypto::hash::{self, Digest};
+use crate::crypto::{asymmetric_key::PublicKey, hash::{self, Digest}};
 
 #[derive(Debug)]
 pub struct ExecuteRequest {
@@ -11,6 +11,7 @@ pub struct ExecuteRequest {
     pub block_time: u64,
     pub deploys: Vec<Result<DeployItem, ExecutionResult>>,
     pub protocol_version: ProtocolVersion,
+    pub proposer: PublicKey,
 }
 
 impl ExecuteRequest {
@@ -19,18 +20,21 @@ impl ExecuteRequest {
         block_time: u64,
         deploys: Vec<Result<DeployItem, ExecutionResult>>,
         protocol_version: ProtocolVersion,
+        proposer: PublicKey,
     ) -> Self {
         Self {
             parent_state_hash,
             block_time,
             deploys,
             protocol_version,
+            proposer,
         }
     }
 
     pub fn take_deploys(&mut self) -> Vec<Result<DeployItem, ExecutionResult>> {
         mem::replace(&mut self.deploys, vec![])
     }
+
 }
 
 impl Default for ExecuteRequest {
@@ -40,6 +44,7 @@ impl Default for ExecuteRequest {
             block_time: 0,
             deploys: vec![],
             protocol_version: Default::default(),
+            proposer: PublicKey::ed25519_from_bytes([0; 32]).unwrap(),
         }
     }
 }

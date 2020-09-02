@@ -4,7 +4,7 @@ use casper_node::{
     components::contract_runtime::core::engine_state::{
         execute_request::ExecuteRequest, execution_result::ExecutionResult,
     },
-    crypto::hash::Digest,
+    crypto::{asymmetric_key::PublicKey, hash::Digest},
 };
 
 use crate::engine_server::{ipc, mappings::MappingError};
@@ -31,6 +31,7 @@ impl TryFrom<ipc::ExecuteRequest> for ExecuteRequest {
         };
 
         let block_time = request.get_block_time();
+        let proposer = PublicKey::ed25519_from_bytes(request.take_proposer()).unwrap();
 
         let deploys = Into::<Vec<_>>::into(request.take_deploys())
             .into_iter()
@@ -48,6 +49,7 @@ impl TryFrom<ipc::ExecuteRequest> for ExecuteRequest {
             block_time,
             deploys,
             protocol_version,
+            proposer,
         ))
     }
 }

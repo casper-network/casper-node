@@ -78,6 +78,8 @@ message ExecuteRequest {
     uint64 block_time = 2;
     repeated DeployItem deploys = 3;
     casper.state.ProtocolVersion protocol_version = 4;
+    // Public key of the proposer
+    bytes proposer = 5;
 }
 
 message ExecuteResponse {
