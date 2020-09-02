@@ -10,7 +10,7 @@ use hex_fmt::{HexFmt, HexList};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use super::Timestamp;
+use super::{Item, Tag, Timestamp};
 use crate::{
     components::{consensus::EraId, storage::Value},
     crypto::{
@@ -358,6 +358,18 @@ impl BlockHeader {
     pub fn era_id(&self) -> EraId {
         self.era_id
     }
+
+    // Serialize the block header.
+    fn serialize(&self) -> Result<Vec<u8>, rmp_serde::encode::Error> {
+        rmp_serde::to_vec(self)
+    }
+
+    /// Hash of the block header.
+    pub fn hash(&self) -> BlockHash {
+        let serialized_header = Self::serialize(&self)
+            .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
+        BlockHash::new(hash::hash(&serialized_header))
+    }
 }
 
 impl Display for BlockHeader {
@@ -375,6 +387,16 @@ impl Display for BlockHeader {
             self.timestamp,
             DisplayIter::new(self.system_transactions.iter()),
         )
+    }
+}
+
+impl Item for BlockHeader {
+    type Id = BlockHash;
+
+    const TAG: Tag = Tag::BlockHeader;
+
+    fn id(&self) -> Self::Id {
+        self.hash()
     }
 }
 
@@ -414,9 +436,8 @@ impl Block {
             era_id,
             height,
         };
-        let serialized_header = Self::serialize_header(&header)
-            .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
-        let hash = BlockHash::new(hash::hash(&serialized_header));
+
+        let hash = header.hash();
 
         Block {
             hash,
@@ -434,10 +455,6 @@ impl Block {
     /// this via `BlockHash::verify()`.
     pub(crate) fn append_proof(&mut self, proof: Signature) {
         self.proofs.push(proof)
-    }
-
-    fn serialize_header(header: &BlockHeader) -> Result<Vec<u8>, rmp_serde::encode::Error> {
-        rmp_serde::to_vec(header)
     }
 
     fn serialize_body(body: &()) -> Result<Vec<u8>, rmp_serde::encode::Error> {
@@ -522,5 +539,15 @@ impl Value for Block {
 
     fn take_header(self) -> Self::Header {
         self.header
+    }
+}
+
+impl Item for Block {
+    type Id = BlockHash;
+
+    const TAG: Tag = Tag::Block;
+
+    fn id(&self) -> Self::Id {
+        *self.hash()
     }
 }

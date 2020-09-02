@@ -172,42 +172,41 @@ impl reactor::Reactor<TestRng> for Reactor {
                 payload,
             }) => {
                 let reactor_event = match payload {
-                    ValidatorMessage::GetRequest { tag, serialized_id } => match tag {
-                        Tag::Deploy => {
-                            let deploy_hash = match rmp_serde::from_read_ref(&serialized_id) {
-                                Ok(hash) => hash,
-                                Err(error) => {
-                                    error!(
-                                        "failed to decode {:?} from {}: {}",
-                                        serialized_id, sender, error
-                                    );
-                                    return Effects::new();
-                                }
-                            };
-                            Event::Storage(storage::Event::GetDeployForPeer {
-                                deploy_hash,
-                                peer: sender,
-                            })
-                        }
-                    },
+                    ValidatorMessage::GetRequest {
+                        tag: Tag::Deploy,
+                        serialized_id,
+                    } => {
+                        let deploy_hash = match rmp_serde::from_read_ref(&serialized_id) {
+                            Ok(hash) => hash,
+                            Err(error) => {
+                                error!(
+                                    "failed to decode {:?} from {}: {}",
+                                    serialized_id, sender, error
+                                );
+                                return Effects::new();
+                            }
+                        };
+                        Event::Storage(storage::Event::GetDeployForPeer {
+                            deploy_hash,
+                            peer: sender,
+                        })
+                    }
                     ValidatorMessage::GetResponse {
-                        tag,
+                        tag: Tag::Deploy,
                         serialized_item,
-                    } => match tag {
-                        Tag::Deploy => {
-                            let deploy = match rmp_serde::from_read_ref(&serialized_item) {
-                                Ok(deploy) => Box::new(deploy),
-                                Err(error) => {
-                                    error!("failed to decode deploy from {}: {}", sender, error);
-                                    return Effects::new();
-                                }
-                            };
-                            Event::DeployAcceptor(deploy_acceptor::Event::Accept {
-                                deploy,
-                                source: Source::Peer(sender),
-                            })
-                        }
-                    },
+                    } => {
+                        let deploy = match rmp_serde::from_read_ref(&serialized_item) {
+                            Ok(deploy) => Box::new(deploy),
+                            Err(error) => {
+                                error!("failed to decode deploy from {}: {}", sender, error);
+                                return Effects::new();
+                            }
+                        };
+                        Event::DeployAcceptor(deploy_acceptor::Event::Accept {
+                            deploy,
+                            source: Source::Peer(sender),
+                        })
+                    }
                     ValidatorMessage::DeployGossiper(message) => {
                         Event::DeployGossiper(super::Event::MessageReceived { sender, message })
                     }
