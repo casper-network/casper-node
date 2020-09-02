@@ -397,6 +397,7 @@ where
                 timestamp,
                 height,
                 switch_block,
+                proposer,
             } => {
                 // Announce the finalized proto block.
                 let mut effects = self
@@ -422,6 +423,7 @@ where
                     switch_block,
                     era_id,
                     self.era_supervisor.active_eras[&era_id].start_height + height,
+                    proposer,
                 );
                 if fb.switch_block() {
                     // TODO: Learn the new weights from contract (validator rotation).

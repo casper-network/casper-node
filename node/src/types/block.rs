@@ -182,6 +182,7 @@ pub struct FinalizedBlock {
     switch_block: bool,
     era_id: EraId,
     height: u64,
+    proposer: PublicKey,
 }
 
 impl FinalizedBlock {
@@ -192,6 +193,7 @@ impl FinalizedBlock {
         switch_block: bool,
         era_id: EraId,
         height: u64,
+        proposer: PublicKey,
     ) -> Self {
         FinalizedBlock {
             proto_block,
@@ -200,6 +202,7 @@ impl FinalizedBlock {
             switch_block,
             era_id,
             height,
+            proposer,
         }
     }
 
@@ -249,7 +252,9 @@ impl From<Block> for FinalizedBlock {
         let switch_block = b.header().switch_block;
         let era_id = b.header().era_id;
         let height = b.header().height;
-        let system_transactions = b.take_header().system_transactions;
+        let header = b.take_header();
+        let proposer = header.proposer;
+        let system_transactions = header.system_transactions;
 
         FinalizedBlock {
             proto_block,
@@ -258,6 +263,7 @@ impl From<Block> for FinalizedBlock {
             switch_block,
             era_id,
             height,
+            proposer,
         }
     }
 }
@@ -315,6 +321,7 @@ pub struct BlockHeader {
     system_transactions: Vec<SystemTransaction>,
     era_id: EraId,
     height: u64,
+    proposer: PublicKey,
 }
 
 impl BlockHeader {
@@ -357,6 +364,11 @@ impl BlockHeader {
     /// Era ID in which this block was created.
     pub fn era_id(&self) -> EraId {
         self.era_id
+    }
+
+    /// Block proposer.
+    pub fn proposer(&self) -> &PublicKey {
+        &self.proposer
     }
 
     // Serialize the block header.
@@ -435,6 +447,7 @@ impl Block {
             system_transactions: finalized_block.system_transactions,
             era_id,
             height,
+            proposer: finalized_block.proposer,
         };
 
         let hash = header.hash();
@@ -479,6 +492,9 @@ impl Block {
             .collect();
         let switch_block = rng.gen_bool(0.1);
         let era = rng.gen_range(0, 5);
+        let secret_key: SecretKey = SecretKey::new_ed25519(rng.gen());
+        let public_key = PublicKey::from(&secret_key);
+
         let finalized_block = FinalizedBlock::new(
             proto_block,
             timestamp,
@@ -486,6 +502,7 @@ impl Block {
             switch_block,
             EraId(era),
             era * 10 + rng.gen_range(0, 10),
+            public_key,
         );
 
         let parent_hash = BlockHash::new(Digest::random(rng));

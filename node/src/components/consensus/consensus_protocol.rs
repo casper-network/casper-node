@@ -55,6 +55,7 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
         timestamp: Timestamp,
         height: u64,
         switch_block: bool,
+        proposer: VID,
     },
     /// Request validation of the consensus value, contained in a message received from the given
     /// node.

@@ -33,6 +33,8 @@ pub(crate) enum FinalityOutcome<C: Context> {
         height: u64,
         /// Whether this is a terminal block, i.e. the last one to be finalized.
         terminal: bool,
+        /// Proposer of this value
+        proposer: C::ValidatorId,
     },
     /// The fault tolerance threshold or 50% of the weight has been exceeded: The number of
     /// observed equivocations invalidates this finality detector's results.
@@ -82,13 +84,16 @@ impl<C: Context> FinalityDetector<C> {
         let rewards = rewards::compute_rewards(state, bhash);
         let rewards_iter = rewards.enumerate();
         let block = state.block(bhash);
+        let vote = state.vote(bhash);
+
         FinalityOutcome::Finalized {
             value: block.value.clone(),
             new_equivocators: new_equivocators_iter.map(to_id).collect(),
             rewards: rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect(),
-            timestamp: state.vote(bhash).timestamp,
+            timestamp: vote.timestamp,
             height: block.height,
             terminal: state.is_terminal_block(bhash),
+            proposer: to_id(vote.creator),
         }
     }
 

@@ -134,6 +134,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
                 timestamp,
                 height,
                 terminal,
+                proposer,
             } => Some(ConsensusProtocolResult::FinalizedBlock {
                 value,
                 new_equivocators,
@@ -141,6 +142,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
                 timestamp,
                 height,
                 switch_block: terminal,
+                proposer,
             }),
         }
     }
