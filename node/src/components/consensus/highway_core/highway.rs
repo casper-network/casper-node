@@ -5,7 +5,7 @@ pub(crate) use vertex::{Dependency, SignedWireVote, Vertex, WireVote};
 
 use rand::{CryptoRng, Rng};
 use thiserror::Error;
-use tracing::{debug, error, warn};
+use tracing::{debug, error};
 
 use crate::{
     components::consensus::{
@@ -233,13 +233,11 @@ impl<C: Context> Highway<C> {
         timestamp: Timestamp,
         rng: &mut R,
     ) -> Vec<Effect<C>> {
-        match self.active_validator.as_mut() {
-            None => {
+        self.map_active_validator(|av, state, rng| av.handle_timer(timestamp, state, rng), rng)
+            .unwrap_or_else(|| {
                 debug!(%timestamp, "Ignoring `handle_timer` event: only an observer node.");
                 vec![]
-            }
-            Some(av) => av.handle_timer(timestamp, &self.state, rng),
-        }
+            })
     }
 
     pub(crate) fn propose<R: Rng + CryptoRng + ?Sized>(
@@ -248,18 +246,14 @@ impl<C: Context> Highway<C> {
         block_context: BlockContext,
         rng: &mut R,
     ) -> Vec<Effect<C>> {
-        match self.active_validator.as_mut() {
-            None => {
-                // TODO: Error?
-                warn!(
-                    ?value,
-                    ?block_context,
-                    "Observer node was called with `propose` event."
-                );
-                vec![]
-            }
-            Some(av) => av.propose(value, block_context, &self.state, rng),
-        }
+        self.map_active_validator(
+            |av, state, rng| av.propose(value, block_context, state, rng),
+            rng,
+        )
+        .unwrap_or_else(|| {
+            debug!("ignoring `propose` event: validator has been deactivated");
+            vec![]
+        })
     }
 
     pub(crate) fn validators(&self) -> &Validators<C::ValidatorId> {
@@ -276,10 +270,33 @@ impl<C: Context> Highway<C> {
         timestamp: Timestamp,
         rng: &mut R,
     ) -> Vec<Effect<C>> {
-        let state = &self.state;
-        self.active_validator
-            .as_mut()
-            .map_or_else(Vec::new, |av| av.on_new_vote(vhash, timestamp, state, rng))
+        self.map_active_validator(
+            |av, state, rng| av.on_new_vote(vhash, timestamp, state, rng),
+            rng,
+        )
+        .unwrap_or_default()
+    }
+
+    /// Applies `f` if this is an active validator, otherwise returns `None`.
+    ///
+    /// Newly created vertices are added to the state. If an equivocation of this validator is
+    /// detected, it gets deactivated.
+    fn map_active_validator<F, R>(&mut self, f: F, rng: &mut R) -> Option<Vec<Effect<C>>>
+    where
+        F: FnOnce(&mut ActiveValidator<C>, &State<C>, &mut R) -> Vec<Effect<C>>,
+        R: Rng + CryptoRng + ?Sized,
+    {
+        let effects = f(self.active_validator.as_mut()?, &self.state, rng);
+        let mut result = vec![];
+        for effect in &effects {
+            match effect {
+                Effect::NewVertex(vv) => result.extend(self.add_valid_vertex(vv.clone(), rng)),
+                Effect::WeEquivocated(_) => self.deactivate_validator(),
+                Effect::ScheduleTimer(_) | Effect::RequestNewBlock(_) => (),
+            }
+        }
+        result.extend(effects);
+        Some(result)
     }
 
     /// Performs initial validation and returns an error if `vertex` is invalid. (See

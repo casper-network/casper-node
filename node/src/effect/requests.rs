@@ -308,7 +308,7 @@ pub enum ApiRequest {
         /// Responder to call with the result.
         responder: Responder<Vec<DeployHash>>,
     },
-    /// Return string formatted, prometheus compatible metrics or `None` if an error occured.
+    /// Return string formatted, prometheus compatible metrics or `None` if an error occurred.
     GetMetrics {
         /// Responder to call with the result.
         responder: Responder<Option<String>>,

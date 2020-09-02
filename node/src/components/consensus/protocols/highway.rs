@@ -1,4 +1,4 @@
-use std::{fmt::Debug, rc::Rc};
+use std::{fmt::Debug, iter, rc::Rc};
 
 use anyhow::Error;
 use rand::{CryptoRng, Rng};
@@ -14,7 +14,7 @@ use crate::{
         highway_core::{
             active_validator::Effect as AvEffect,
             finality_detector::{FinalityDetector, FinalityOutcome},
-            highway::{Dependency, Highway, Params, PreValidatedVertex, ValidVertex, Vertex},
+            highway::{Dependency, Highway, Params, PreValidatedVertex, Vertex},
             validators::Validators,
             Weight,
         },
@@ -62,8 +62,7 @@ pub(crate) struct HighwayProtocol<I, C: Context> {
 }
 
 impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
-    #[allow(clippy::too_many_arguments)] // TODO: Those _are_ too many arguments!
-    pub(crate) fn new<R: Rng + CryptoRng + ?Sized>(
+    pub(crate) fn new(
         instance_id: C::InstanceId,
         validators: Validators<C::ValidatorId>,
         params: Params,
@@ -71,7 +70,6 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         secret: C::ValidatorSecret,
         ftt: Weight,
         timestamp: Timestamp,
-        rng: &mut R,
     ) -> (Self, Vec<CpResult<I, C>>) {
         // TODO: We use the minimum as round exponent here, since it is meant to be optimal.
         // For adaptive round lengths we will probably want to use the most recent one from the
@@ -84,53 +82,49 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
             finality_detector: FinalityDetector::new(ftt),
             highway,
         };
-        let effects = instance.process_av_effects(av_effects, rng);
+        let effects = instance.process_av_effects(av_effects);
         (instance, effects)
     }
 
-    fn process_av_effects<E: IntoIterator<Item = AvEffect<C>>, R: Rng + CryptoRng + ?Sized>(
-        &mut self,
-        av_effects: E,
-        rng: &mut R,
-    ) -> Vec<CpResult<I, C>> {
+    fn process_av_effects<E>(&mut self, av_effects: E) -> Vec<CpResult<I, C>>
+    where
+        E: IntoIterator<Item = AvEffect<C>>,
+    {
         av_effects
             .into_iter()
-            .flat_map(|effect| self.process_av_effect(effect, rng))
+            .flat_map(|effect| self.process_av_effect(effect))
             .collect()
     }
 
-    fn process_av_effect<R: Rng + CryptoRng + ?Sized>(
-        &mut self,
-        effect: AvEffect<C>,
-        rng: &mut R,
-    ) -> Vec<CpResult<I, C>> {
+    fn process_av_effect(&mut self, effect: AvEffect<C>) -> Vec<CpResult<I, C>> {
         match effect {
-            AvEffect::NewVertex(vv) => self.process_new_vertex(vv, rng),
+            AvEffect::NewVertex(vv) => self.process_new_vertex(vv.into()),
             AvEffect::ScheduleTimer(timestamp) => {
                 vec![ConsensusProtocolResult::ScheduleTimer(timestamp)]
             }
             AvEffect::RequestNewBlock(block_context) => {
                 vec![ConsensusProtocolResult::CreateNewBlock { block_context }]
             }
+            AvEffect::WeEquivocated(evidence) => {
+                panic!("this validator equivocated: {:?}", evidence);
+            }
         }
     }
 
-    fn process_new_vertex<R: Rng + CryptoRng + ?Sized>(
-        &mut self,
-        vv: ValidVertex<C>,
-        rng: &mut R,
-    ) -> Vec<CpResult<I, C>> {
-        let msg = HighwayMessage::NewVertex(vv.clone().into());
+    fn process_new_vertex(&mut self, v: Vertex<C>) -> Vec<CpResult<I, C>> {
+        let msg = HighwayMessage::NewVertex(v);
         let serialized_msg = rmp_serde::to_vec(&msg).expect("should serialize message");
-        assert!(
-            self.highway.add_valid_vertex(vv, rng).is_empty(),
-            "unexpected effects when adding our own vertex"
-        );
-        let mut results = vec![ConsensusProtocolResult::CreatedGossipMessage(
-            serialized_msg,
-        )];
+        self.detect_finality()
+            .into_iter()
+            .chain(iter::once(ConsensusProtocolResult::CreatedGossipMessage(
+                serialized_msg,
+            )))
+            .collect()
+    }
+
+    fn detect_finality(&mut self) -> Option<CpResult<I, C>> {
         match self.finality_detector.run(&self.highway) {
-            FinalityOutcome::None => (),
+            FinalityOutcome::None => None,
             FinalityOutcome::FttExceeded => panic!("Too many faulty validators"),
             FinalityOutcome::Finalized {
                 value,
@@ -139,18 +133,15 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
                 timestamp,
                 height,
                 terminal,
-            } => {
-                results.push(ConsensusProtocolResult::FinalizedBlock {
-                    value,
-                    new_equivocators,
-                    rewards,
-                    timestamp,
-                    height,
-                    switch_block: terminal,
-                });
-            }
+            } => Some(ConsensusProtocolResult::FinalizedBlock {
+                value,
+                new_equivocators,
+                rewards,
+                timestamp,
+                height,
+                switch_block: terminal,
+            }),
         }
-        results
     }
 }
 
@@ -254,9 +245,10 @@ where
                 // TODO: Avoid cloning. (Serialize first?)
                 let av_effects = self.hw_proto.highway.add_valid_vertex(vv.clone(), rng);
                 self.results
-                    .extend(self.hw_proto.process_av_effects(av_effects, rng));
+                    .extend(self.hw_proto.process_av_effects(av_effects));
                 let msg = HighwayMessage::NewVertex(vv.into());
                 let serialized_msg = rmp_serde::to_vec(&msg).expect("should serialize message");
+                self.results.extend(self.hw_proto.detect_finality());
                 self.results
                     .push(ConsensusProtocolResult::CreatedGossipMessage(
                         serialized_msg,
@@ -338,7 +330,7 @@ where
         rng: &mut R,
     ) -> Result<Vec<CpResult<I, C>>, Error> {
         let effects = self.highway.handle_timer(timestamp, rng);
-        Ok(self.process_av_effects(effects, rng))
+        Ok(self.process_av_effects(effects))
     }
 
     fn propose(
@@ -348,7 +340,7 @@ where
         rng: &mut R,
     ) -> Result<Vec<CpResult<I, C>>, Error> {
         let effects = self.highway.propose(value, block_context, rng);
-        Ok(self.process_av_effects(effects, rng))
+        Ok(self.process_av_effects(effects))
     }
 
     /// Marks `value` as valid.
