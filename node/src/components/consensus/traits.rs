@@ -6,8 +6,8 @@ use std::{
 use rand::{CryptoRng, Rng};
 use serde::{de::DeserializeOwned, Serialize};
 
-pub(crate) trait NodeIdT: Clone + Debug + Send + 'static {}
-impl<I> NodeIdT for I where I: Clone + Debug + Send + 'static {}
+pub(crate) trait NodeIdT: Clone + Debug + Send + Eq + Hash + 'static {}
+impl<I> NodeIdT for I where I: Clone + Debug + Send + Eq + Hash + 'static {}
 
 /// A validator identifier.
 pub(crate) trait ValidatorIdT: Eq + Ord + Clone + Debug + Hash {}
