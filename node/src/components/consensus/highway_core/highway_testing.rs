@@ -17,7 +17,10 @@ use super::{
     active_validator::Effect,
     evidence::Evidence,
     finality_detector::{FinalityDetector, FinalityOutcome},
-    highway::{Dependency, Highway, Params, PreValidatedVertex, ValidVertex, Vertex, VertexError},
+    highway::{
+        Dependency, Highway, Params, PreValidatedVertex, SignedWireVote, ValidVertex, Vertex,
+        VertexError,
+    },
     validators::{ValidatorIndex, Validators},
     Weight,
 };
@@ -50,6 +53,7 @@ enum HighwayMessage {
     Timer(Timestamp),
     NewVertex(Vertex<TestContext>),
     RequestBlock(BlockContext),
+    WeEquivocated(Evidence<TestContext>),
 }
 
 impl Debug for HighwayMessage {
@@ -63,6 +67,7 @@ impl Debug for HighwayMessage {
             HighwayMessage::NewVertex(v) => {
                 f.debug_struct("NewVertex").field("vertex", &v).finish()
             }
+            HighwayMessage::WeEquivocated(ev) => f.debug_tuple("WeEquivocated").field(&ev).finish(),
         }
     }
 }
@@ -75,7 +80,9 @@ impl HighwayMessage {
             HighwayMessage::NewVertex(_) => {
                 TargetedMessage::new(create_msg(self), Target::AllExcept(creator))
             }
-            HighwayMessage::Timer(_) | HighwayMessage::RequestBlock(_) => {
+            HighwayMessage::Timer(_)
+            | HighwayMessage::RequestBlock(_)
+            | HighwayMessage::WeEquivocated(_) => {
                 TargetedMessage::new(create_msg(self), Target::SingleValidator(creator))
             }
         }
@@ -97,6 +104,7 @@ impl From<Effect<TestContext>> for HighwayMessage {
             Effect::NewVertex(ValidVertex(v)) => HighwayMessage::NewVertex(v),
             Effect::ScheduleTimer(t) => HighwayMessage::Timer(t),
             Effect::RequestNewBlock(block_context) => HighwayMessage::RequestBlock(block_context),
+            Effect::WeEquivocated(evidence) => HighwayMessage::WeEquivocated(evidence),
         }
     }
 }
@@ -111,7 +119,6 @@ impl Ord for HighwayMessage {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match (self, other) {
             (HighwayMessage::Timer(t1), HighwayMessage::Timer(t2)) => t1.cmp(&t2),
-            (HighwayMessage::Timer(_), _) => std::cmp::Ordering::Less,
             (HighwayMessage::NewVertex(v1), HighwayMessage::NewVertex(v2)) => match (v1, v2) {
                 (Vertex::Vote(swv1), Vertex::Vote(swv2)) => swv1.hash().cmp(&swv2.hash()),
                 (Vertex::Vote(_), _) => std::cmp::Ordering::Less,
@@ -124,9 +131,19 @@ impl Ord for HighwayMessage {
                     .then_with(|| ev1_b.hash().cmp(&ev2_b.hash())),
                 (Vertex::Evidence(_), _) => std::cmp::Ordering::Less,
             },
-            (HighwayMessage::NewVertex(_), _) => std::cmp::Ordering::Less,
             (HighwayMessage::RequestBlock(bc1), HighwayMessage::RequestBlock(bc2)) => bc1.cmp(&bc2),
+            (HighwayMessage::WeEquivocated(ev1), HighwayMessage::WeEquivocated(ev2)) => {
+                let Evidence::Equivocation(ev1_a, ev1_b) = ev1;
+                let Evidence::Equivocation(ev2_a, ev2_b) = ev2;
+                ev1_a
+                    .hash()
+                    .cmp(&ev2_a.hash())
+                    .then_with(|| ev1_b.hash().cmp(&ev2_b.hash()))
+            }
+            (HighwayMessage::Timer(_), _) => std::cmp::Ordering::Less,
+            (HighwayMessage::NewVertex(_), _) => std::cmp::Ordering::Less,
             (HighwayMessage::RequestBlock(_), _) => std::cmp::Ordering::Less,
+            (HighwayMessage::WeEquivocated(_), _) => std::cmp::Ordering::Greater,
         }
     }
 }
@@ -240,42 +257,43 @@ impl HighwayValidator {
         match self.fault.as_ref() {
             None => {
                 // Honest validator.
-                // If validator produced a `NewVertex` effect,
-                // we want to add it to his state immediately and gossip all effects.
                 match &msg {
-                    HighwayMessage::NewVertex(vv) => self
-                        .highway_mut()
-                        .add_valid_vertex(ValidVertex(vv.clone()), rng)
-                        .into_iter()
-                        .map(HighwayMessage::from)
-                        .chain(iter::once(msg))
-                        .collect(),
-                    HighwayMessage::Timer(_) | HighwayMessage::RequestBlock(_) => vec![msg],
+                    HighwayMessage::NewVertex(_)
+                    | HighwayMessage::Timer(_)
+                    | HighwayMessage::RequestBlock(_) => vec![msg],
+                    HighwayMessage::WeEquivocated(ev) => {
+                        panic!("validator equivocated unexpectedly: {:?}", ev);
+                    }
                 }
             }
             Some(Fault::Mute) => {
                 // For mute validators we add it to the state but not gossip.
                 match msg {
-                    HighwayMessage::NewVertex(vv) => {
+                    HighwayMessage::NewVertex(_) => {
                         warn!("Validator is mute – won't gossip vertices in response");
                         vec![]
                     }
                     HighwayMessage::Timer(_) | HighwayMessage::RequestBlock(_) => vec![msg],
+                    HighwayMessage::WeEquivocated(ev) => {
+                        panic!("validator equivocated unexpectedly: {:?}", ev);
+                    }
                 }
             }
             Some(Fault::Equivocate) => {
-                // For equivocators we don't add to state and gossip.
-                // This way, the next time this validator creates a message
-                // it won't cite previous one.
                 match msg {
-                    HighwayMessage::NewVertex(_) => {
-                        warn!(
-                            "Validator is an equivocator – not adding {:?} to the state.",
-                            msg
-                        );
-                        vec![msg]
+                    HighwayMessage::NewVertex(Vertex::Vote(ref swvote)) => {
+                        // Create an equivocating message, with a different timestamp.
+                        // TODO: Don't send both messages to every peer. Add different strategies.
+                        let mut wvote = swvote.wire_vote.clone();
+                        wvote.timestamp += 1.into();
+                        let secret = TestSecret(wvote.creator.0.into());
+                        let swvote2 = SignedWireVote::new(wvote, &secret, rng);
+                        vec![msg, HighwayMessage::NewVertex(Vertex::Vote(swvote2))]
                     }
-                    HighwayMessage::Timer(_) | HighwayMessage::RequestBlock(_) => vec![msg],
+                    HighwayMessage::NewVertex(_)
+                    | HighwayMessage::RequestBlock(_)
+                    | HighwayMessage::WeEquivocated(_)
+                    | HighwayMessage::Timer(_) => vec![msg],
                 }
             }
         }
@@ -443,7 +461,6 @@ where
                         consensus.highway_mut().handle_timer(timestamp, rng)
                     })?
                 }
-
                 HighwayMessage::NewVertex(v) => {
                     match self.add_vertex(rng, validator_id, sender_id, v.clone())? {
                         Ok(msgs) => {
@@ -452,7 +469,11 @@ where
                         }
                         Err((v, error)) => {
                             // TODO: this seems to get output from passing tests
-                            warn!("{:?} sent an invalid vertex {:?} to {:?} that resulted in {:?} error", sender_id, v, validator_id, error);
+                            warn!(
+                                "{:?} sent an invalid vertex {:?} to {:?} \
+                                that resulted in {:?} error",
+                                sender_id, v, validator_id, error
+                            );
                             vec![]
                         }
                     }
@@ -466,6 +487,7 @@ where
                             .propose(consensus_value, block_context, rng)
                     })?
                 }
+                HighwayMessage::WeEquivocated(evidence) => vec![],
             }
         };
 
@@ -718,6 +740,9 @@ impl DeliveryStrategy for InstantDeliveryNoDropping {
             HighwayMessage::RequestBlock(bc) => DeliverySchedule::AtInstant(bc.timestamp()),
             HighwayMessage::Timer(t) => DeliverySchedule::AtInstant(*t),
             HighwayMessage::NewVertex(_) => {
+                DeliverySchedule::AtInstant(base_delivery_timestamp + 1.into())
+            }
+            HighwayMessage::WeEquivocated(_) => {
                 DeliverySchedule::AtInstant(base_delivery_timestamp + 1.into())
             }
         }
@@ -1089,7 +1114,7 @@ mod test_harness {
     };
     use crate::{
         components::consensus::{
-            highway_core::{highway::Vertex, validators::ValidatorIndex},
+            highway_core::{evidence::Evidence, highway::Vertex, validators::ValidatorIndex},
             tests::consensus_des_testing::{Fault, ValidatorId},
             traits::{Context, ValidatorSecret},
         },

@@ -118,7 +118,6 @@ where
             validator_stakes,
             highway_config.genesis_era_start_timestamp,
             0,
-            rng,
         );
         let effects = era_supervisor
             .handling_wrapper(effect_builder, rng)
@@ -142,7 +141,6 @@ where
     }
 
     /// Starts a new era; panics if it already exists.
-    #[allow(clippy::too_many_arguments)] // TODO: Those _are_ too many arguments!
     fn new_era(
         &mut self,
         era_id: EraId,
@@ -150,7 +148,6 @@ where
         validator_stakes: Vec<(PublicKey, Motes)>,
         start_time: Timestamp,
         start_height: u64,
-        rng: &mut R,
     ) -> Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>> {
         if self.active_eras.contains_key(&era_id) {
             panic!("{:?} already exists", era_id);
@@ -197,7 +194,6 @@ where
             secret,
             ftt,
             timestamp,
-            rng,
         );
 
         let era = Era {
@@ -440,7 +436,6 @@ where
                         validator_stakes,
                         fb.timestamp(),
                         fb.height() + 1,
-                        self.rng,
                     );
                     let new_era_id = era_id.successor();
                     effects.extend(self.handle_consensus_results(new_era_id, results));

@@ -1,9 +1,10 @@
 use std::fmt::{self, Debug};
 
 use rand::{CryptoRng, Rng};
-use tracing::warn;
+use tracing::{error, warn};
 
 use super::{
+    evidence::Evidence,
     highway::{ValidVertex, Vertex, WireVote},
     state::{self, Observation, Panorama, State, Vote},
     validators::ValidatorIndex,
@@ -26,6 +27,10 @@ pub(crate) enum Effect<C: Context> {
     /// `propose` needs to be called with a value for a new block with the specified block context
     /// and parent value.
     RequestNewBlock(BlockContext),
+    /// This validator produced an equivocation.
+    ///
+    /// When this is returned, the validator automatically deactivates.
+    WeEquivocated(Evidence<C>),
 }
 
 /// A validator that actively participates in consensus by creating new vertices.
@@ -133,6 +138,9 @@ impl<C: Context> ActiveValidator<C> {
         state: &State<C>,
         rng: &mut R,
     ) -> Vec<Effect<C>> {
+        if let Some(evidence) = state.opt_evidence(self.vidx) {
+            return vec![Effect::WeEquivocated(evidence.clone())];
+        }
         if self.earliest_vote_time(state) > timestamp {
             warn!(%timestamp, "skipping outdated confirmation");
         } else if self.should_send_confirmation(vhash, timestamp, state) {
@@ -257,7 +265,7 @@ impl<C: Context> ActiveValidator<C> {
     /// Returns a new vote with the given data, and the correct sequence number.
     fn new_vote<R: Rng + CryptoRng + ?Sized>(
         &mut self,
-        panorama: Panorama<C>,
+        mut panorama: Panorama<C>,
         timestamp: Timestamp,
         value: Option<C::ConsensusValue>,
         state: &State<C>,
@@ -268,6 +276,10 @@ impl<C: Context> ActiveValidator<C> {
                 ?timestamp,
                 "canceling proposal for {} due to vote", prop_time
             );
+        }
+        if panorama[self.vidx] != state.panorama()[self.vidx] {
+            error!("replacing vote panorama to avoid equivocation");
+            panorama = state.panorama().clone();
         }
         let seq_number = panorama.next_seq_num(state, self.vidx);
         let wvote = WireVote {
