@@ -8,7 +8,7 @@ use super::{
     state::{Observation, State, Weight},
     validators::ValidatorIndex,
 };
-use crate::components::consensus::{consensus_protocol::FinalizedValue, traits::Context};
+use crate::components::consensus::{consensus_protocol::FinalizedBlock, traits::Context};
 use horizon::Horizon;
 
 /// An error returned if the configured fault tolerance has been exceeded.
@@ -36,13 +36,13 @@ impl<C: Context> FinalityDetector<C> {
         }
     }
 
-    /// Returns the all values that have been finalized since the last call.
+    /// Returns all blocks that have been finalized since the last call.
     // TODO: Verify the consensus instance ID?
     pub(crate) fn run<'a>(
         &'a mut self,
         highway: &'a Highway<C>,
     ) -> Result<
-        impl Iterator<Item = FinalizedValue<C::ConsensusValue, C::ValidatorId>> + 'a,
+        impl Iterator<Item = FinalizedBlock<C::ConsensusValue, C::ValidatorId>> + 'a,
         FttExceeded,
     > {
         let state = highway.state();
@@ -62,7 +62,7 @@ impl<C: Context> FinalityDetector<C> {
             let block = state.block(bhash);
             let vote = state.vote(bhash);
 
-            Some(FinalizedValue {
+            Some(FinalizedBlock {
                 value: block.value.clone(),
                 new_equivocators: new_equivocators_iter.map(to_id).collect(),
                 rewards: rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect(),

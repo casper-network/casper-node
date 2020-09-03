@@ -26,7 +26,7 @@ use super::{
 };
 use crate::{
     components::consensus::{
-        consensus_protocol::FinalizedValue,
+        consensus_protocol::FinalizedBlock,
         tests::{
             consensus_des_testing::{
                 DeliverySchedule, Fault, Message, Node, Target, TargetedMessage, ValidatorId,
@@ -248,7 +248,7 @@ impl HighwayValidator {
 
     fn run_finality(
         &mut self,
-    ) -> Result<Vec<FinalizedValue<ConsensusValue, ValidatorId>>, FttExceeded> {
+    ) -> Result<Vec<FinalizedBlock<ConsensusValue, ValidatorId>>, FttExceeded> {
         Ok(self.finality_detector.run(&self.highway)?.collect())
     }
 
@@ -511,7 +511,7 @@ where
             .run_finality()
             // TODO: https://casperlabs.atlassian.net/browse/HWY-119
             .expect("FTT exceeded but not handled");
-        for FinalizedValue {
+        for FinalizedBlock {
             value,
             new_equivocators,
             rewards,

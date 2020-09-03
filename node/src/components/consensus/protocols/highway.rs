@@ -126,7 +126,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         self.finality_detector
             .run(&self.highway)
             .expect("too many faulty validators")
-            .map(ConsensusProtocolResult::FinalizedValue)
+            .map(ConsensusProtocolResult::FinalizedBlock)
     }
 }
 

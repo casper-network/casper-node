@@ -23,7 +23,8 @@ use crate::{
         chainspec_loader::HighwayConfig,
         consensus::{
             consensus_protocol::{
-                BlockContext, ConsensusProtocol, ConsensusProtocolResult, FinalizedValue,
+                BlockContext, ConsensusProtocol, ConsensusProtocolResult,
+                FinalizedBlock as CpFinalizedBlock,
             },
             highway_core::{highway::Params, validators::Validators},
             protocols::highway::{HighwayContext, HighwayProtocol, HighwaySecret},
@@ -392,7 +393,7 @@ where
                     proto_block,
                     block_context,
                 }),
-            ConsensusProtocolResult::FinalizedValue(FinalizedValue {
+            ConsensusProtocolResult::FinalizedBlock(CpFinalizedBlock {
                 value: proto_block,
                 new_equivocators,
                 rewards,

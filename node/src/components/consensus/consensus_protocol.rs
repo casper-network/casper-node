@@ -36,9 +36,11 @@ impl BlockContext {
     }
 }
 
-/// A new consensus value has been finalized.
+/// A finalized block. All nodes are guaranteed to see the same sequence of blocks, and to agree
+/// about all the information contained in this type, as long as the total weight of faulty
+/// validators remains below the threshold.
 #[derive(Debug, Eq, PartialEq)]
-pub(crate) struct FinalizedValue<C: ConsensusValueT, VID> {
+pub(crate) struct FinalizedBlock<C: ConsensusValueT, VID> {
     /// The finalized value.
     pub(crate) value: C,
     /// The set of newly detected equivocators.
@@ -69,8 +71,8 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
     CreateNewBlock {
         block_context: BlockContext,
     },
-    /// A value was finalized.
-    FinalizedValue(FinalizedValue<C, VID>),
+    /// A block was finalized.
+    FinalizedBlock(FinalizedBlock<C, VID>),
     /// Request validation of the consensus value, contained in a message received from the given
     /// node.
     ///
