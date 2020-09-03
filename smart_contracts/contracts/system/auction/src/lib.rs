@@ -29,30 +29,26 @@ use casper_types::{
 struct AuctionContract;
 
 impl StorageProvider for AuctionContract {
-    type Error = Error;
-
     fn get_key(&mut self, name: &str) -> Option<Key> {
         runtime::get_key(name)
     }
 
-    fn read<T: FromBytes + CLTyped>(&mut self, uref: URef) -> Result<Option<T>, Self::Error> {
+    fn read<T: FromBytes + CLTyped>(&mut self, uref: URef) -> Result<Option<T>, Error> {
         Ok(storage::read(uref)?)
     }
 
-    fn write<T: ToBytes + CLTyped>(&mut self, uref: URef, value: T) -> Result<(), Self::Error> {
+    fn write<T: ToBytes + CLTyped>(&mut self, uref: URef, value: T) -> Result<(), Error> {
         storage::write(uref, value);
         Ok(())
     }
 }
 
 impl SystemProvider for AuctionContract {
-    type Error = Error;
-
     fn create_purse(&mut self) -> URef {
         system::create_purse()
     }
 
-    fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Self::Error> {
+    fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
         Ok(system::get_balance(purse))
     }
 
@@ -61,7 +57,7 @@ impl SystemProvider for AuctionContract {
         source: URef,
         target: URef,
         amount: U512,
-    ) -> StdResult<(), Self::Error> {
+    ) -> StdResult<(), Error> {
         system::transfer_from_purse_to_purse(source, target, amount).map_err(|_| Error::Transfer)
     }
 }
