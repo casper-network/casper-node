@@ -648,7 +648,7 @@ where
 /// Creates a listener on either `root_addr` or `bind_addr`.
 ///
 /// If the `root_addr` is the same as `bind_addr` or shares its IP and
-/// `bind_addr` has a port of port of 0, tries to bind to `root_addr`.
+/// `bind_addr` has a port of 0, tries to bind to `root_addr`.
 ///
 /// If binding to `root_addr` fails, or `root_addr` is on a different interface
 /// or non-zero port, binds to `bind_addr` instead.
