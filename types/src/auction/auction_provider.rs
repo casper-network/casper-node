@@ -31,10 +31,7 @@ pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
 const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
 
 /// Bonding auctions contract implementation.
-pub trait AuctionProvider: StorageProvider + SystemProvider + RuntimeProvider
-where
-    Error: From<<Self as StorageProvider>::Error> + From<<Self as SystemProvider>::Error>,
-{
+pub trait AuctionProvider: StorageProvider + SystemProvider + RuntimeProvider {
     /// Returns era_validators.
     ///
     /// Publicly accessible, but intended for periodic use by the PoS contract to update its own
