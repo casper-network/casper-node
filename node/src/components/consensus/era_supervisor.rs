@@ -22,7 +22,10 @@ use crate::{
     components::{
         chainspec_loader::HighwayConfig,
         consensus::{
-            consensus_protocol::{BlockContext, ConsensusProtocol, ConsensusProtocolResult},
+            consensus_protocol::{
+                BlockContext, ConsensusProtocol, ConsensusProtocolResult,
+                FinalizedBlock as CpFinalizedBlock,
+            },
             highway_core::{highway::Params, validators::Validators},
             protocols::highway::{HighwayContext, HighwayProtocol, HighwaySecret},
             traits::NodeIdT,
@@ -390,14 +393,15 @@ where
                     proto_block,
                     block_context,
                 }),
-            ConsensusProtocolResult::FinalizedBlock {
+            ConsensusProtocolResult::FinalizedBlock(CpFinalizedBlock {
                 value: proto_block,
                 new_equivocators,
                 rewards,
                 timestamp,
                 height,
-                switch_block,
-            } => {
+                terminal,
+                proposer,
+            }) => {
                 // Announce the finalized proto block.
                 let mut effects = self
                     .effect_builder
@@ -419,9 +423,10 @@ where
                     proto_block,
                     timestamp,
                     system_transactions,
-                    switch_block,
+                    terminal,
                     era_id,
                     self.era_supervisor.active_eras[&era_id].start_height + height,
+                    proposer,
                 );
                 if fb.switch_block() {
                     // TODO: Learn the new weights from contract (validator rotation).

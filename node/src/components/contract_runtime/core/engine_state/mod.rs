@@ -1644,6 +1644,8 @@ where
             ));
         }
 
+        // Transfer the contents of the rewards purse to block proposer
+
         execution_result_builder.set_payment_execution_result(payment_result);
 
         let post_payment_tracking_copy = tracking_copy.borrow();
