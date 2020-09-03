@@ -5,7 +5,7 @@ use crate::{
     effect::{
         self,
         requests::{LinearChainRequest, StorageRequest},
-        EffectExt, Effects, Responder,
+        EffectExt, Effects,
     },
     reactor::validator::Message,
     types::{Block, BlockHash, BlockHeader},
