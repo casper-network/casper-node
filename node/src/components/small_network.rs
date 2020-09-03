@@ -166,13 +166,13 @@ where
         };
 
         // Resolve the bind interface and root address.
-        let bind_interface =
-            resolve_ip(cfg.bind_interface.as_str()).map_err(Error::ListenerCreation)?;
-        let root_addr = resolve_address(cfg.root_addr.as_str()).map_err(Error::ResolveRootNode)?;
+        let bind_interface = resolve_ip(cfg.bind_interface.as_str()).map_err(Error::ResolveAddr)?;
+        let root_addr = resolve_address(cfg.root_addr.as_str()).map_err(Error::ResolveAddr)?;
 
         // We can now create a listener.
-        let (listener, we_are_root) = create_listener(root_addr, cfg.bind_port, bind_interface)
-            .map_err(Error::ListenerCreation)?;
+        let bind_port = cfg.bind_port;
+        let (listener, we_are_root) = create_listener(root_addr, bind_port, bind_interface)
+            .map_err(|err| Error::ListenerCreation(err, (bind_interface, bind_port).into()))?;
         let addr = listener.local_addr().map_err(Error::ListenerAddr)?;
 
         // Create the model. Initially we know our own endpoint address.
