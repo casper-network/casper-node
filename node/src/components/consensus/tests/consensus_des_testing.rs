@@ -106,8 +106,8 @@ where
     }
 
     /// Adds vector of finalized consensus values to validator's finalized set.
-    pub(crate) fn push_finalized(&mut self, finalized_values: Vec<C>) {
-        self.finalized_values.extend(finalized_values);
+    pub(crate) fn push_finalized(&mut self, finalized_value: C) {
+        self.finalized_values.push(finalized_value);
     }
 
     /// Adds messages to validator's collection of received messages.

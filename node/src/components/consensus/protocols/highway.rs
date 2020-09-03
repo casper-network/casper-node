@@ -13,7 +13,7 @@ use crate::{
         },
         highway_core::{
             active_validator::Effect as AvEffect,
-            finality_detector::{FinalityDetector, FinalityOutcome},
+            finality_detector::FinalityDetector,
             highway::{Dependency, Highway, Params, PreValidatedVertex, Vertex},
             validators::Validators,
             Weight,
@@ -116,35 +116,17 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         let msg = HighwayMessage::NewVertex(v);
         let serialized_msg = rmp_serde::to_vec(&msg).expect("should serialize message");
         self.detect_finality()
-            .into_iter()
             .chain(iter::once(ConsensusProtocolResult::CreatedGossipMessage(
                 serialized_msg,
             )))
             .collect()
     }
 
-    fn detect_finality(&mut self) -> Option<CpResult<I, C>> {
-        match self.finality_detector.run(&self.highway) {
-            FinalityOutcome::None => None,
-            FinalityOutcome::FttExceeded => panic!("Too many faulty validators"),
-            FinalityOutcome::Finalized {
-                value,
-                new_equivocators,
-                rewards,
-                timestamp,
-                height,
-                terminal,
-                proposer,
-            } => Some(ConsensusProtocolResult::FinalizedBlock {
-                value,
-                new_equivocators,
-                rewards,
-                timestamp,
-                height,
-                switch_block: terminal,
-                proposer,
-            }),
-        }
+    fn detect_finality(&mut self) -> impl Iterator<Item = CpResult<I, C>> + '_ {
+        self.finality_detector
+            .run(&self.highway)
+            .expect("too many faulty validators")
+            .map(ConsensusProtocolResult::FinalizedValue)
     }
 }
 

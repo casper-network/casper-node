@@ -16,7 +16,7 @@ use tracing::{error, info, trace, warn};
 use super::{
     active_validator::Effect,
     evidence::Evidence,
-    finality_detector::{FinalityDetector, FinalityOutcome},
+    finality_detector::{FinalityDetector, FttExceeded},
     highway::{
         Dependency, Highway, Params, PreValidatedVertex, SignedWireVote, ValidVertex, Vertex,
         VertexError,
@@ -26,6 +26,7 @@ use super::{
 };
 use crate::{
     components::consensus::{
+        consensus_protocol::FinalizedValue,
         tests::{
             consensus_des_testing::{
                 DeliverySchedule, Fault, Message, Node, Target, TargetedMessage, ValidatorId,
@@ -245,8 +246,10 @@ impl HighwayValidator {
         &self.highway
     }
 
-    fn run_finality(&mut self) -> FinalityOutcome<TestContext> {
-        self.finality_detector.run(&self.highway)
+    fn run_finality(
+        &mut self,
+    ) -> Result<Vec<FinalizedValue<ConsensusValue, ValidatorId>>, FttExceeded> {
+        Ok(self.finality_detector.run(&self.highway)?.collect())
     }
 
     fn post_hook<R: Rng + CryptoRng + ?Sized>(
@@ -503,37 +506,36 @@ where
     fn run_finality_detector(&mut self, validator_id: &ValidatorId) -> TestResult<()> {
         let recipient = self.node_mut(validator_id)?;
 
-        let finality_result = match recipient.validator_mut().run_finality() {
-            FinalityOutcome::Finalized {
-                value,
-                new_equivocators,
-                rewards,
-                timestamp,
-                height,
-                terminal,
-                proposer: _proposer,
-            } => {
-                if !new_equivocators.is_empty() {
-                    warn!("New equivocators detected: {:?}", new_equivocators);
-                    recipient.new_equivocators(new_equivocators.into_iter());
-                }
-                if !rewards.is_empty() {
-                    warn!("Rewards are not verified yet: {:?}", rewards);
-                }
-                trace!(
-                    "{}consensus value finalized: {:?}, height: {:?}",
-                    if terminal { "last " } else { "" },
-                    value,
-                    height
-                );
-                vec![value]
+        let finalized_values = recipient
+            .validator_mut()
+            .run_finality()
+            // TODO: https://casperlabs.atlassian.net/browse/HWY-119
+            .expect("FTT exceeded but not handled");
+        for FinalizedValue {
+            value,
+            new_equivocators,
+            rewards,
+            timestamp,
+            height,
+            terminal,
+            proposer: _proposer,
+        } in finalized_values
+        {
+            if !new_equivocators.is_empty() {
+                warn!("New equivocators detected: {:?}", new_equivocators);
+                recipient.new_equivocators(new_equivocators.into_iter());
             }
-            FinalityOutcome::None => vec![],
-            // https://casperlabs.atlassian.net/browse/HWY-119
-            FinalityOutcome::FttExceeded => unimplemented!("Ftt exceeded but not handled."),
-        };
-
-        recipient.push_finalized(finality_result);
+            if !rewards.is_empty() {
+                warn!("Rewards are not verified yet: {:?}", rewards);
+            }
+            trace!(
+                "{}consensus value finalized: {:?}, height: {:?}",
+                if terminal { "last " } else { "" },
+                value,
+                height
+            );
+            recipient.push_finalized(value);
+        }
 
         Ok(())
     }
@@ -854,7 +856,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
     ) -> Result<HighwayTestHarness<DS>, BuilderError> {
         let consensus_values = (0..self.consensus_values_count as u32)
             .map(|el| vec![el])
-            .collect::<VecDeque<Vec<u32>>>();
+            .collect::<VecDeque<ConsensusValue>>();
 
         let instance_id = 0;
         let seed = self.seed;
@@ -1078,7 +1080,7 @@ impl ValidatorSecret for TestSecret {
 }
 
 impl Context for TestContext {
-    type ConsensusValue = Vec<u32>;
+    type ConsensusValue = ConsensusValue;
     type ValidatorId = ValidatorId;
     type ValidatorSecret = TestSecret;
     type Signature = SignatureWrapper;
