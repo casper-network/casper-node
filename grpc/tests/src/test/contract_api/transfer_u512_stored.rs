@@ -1,12 +1,12 @@
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{
         utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
         DEFAULT_ACCOUNT_KEY, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
-use casperlabs_node::{components::contract_runtime::core::engine_state::CONV_RATE, types::Motes};
-use casperlabs_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
+use casper_node::{components::contract_runtime::core::engine_state::CONV_RATE, types::Motes};
+use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const FUNCTION_NAME: &str = "transfer";
 const CONTRACT_KEY_NAME: &str = "transfer_to_account";

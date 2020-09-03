@@ -12,7 +12,7 @@ use std::{
 
 use linked_hash_map::LinkedHashMap;
 
-use casperlabs_types::{bytesrepr, CLType, CLValueError, Key};
+use casper_types::{bytesrepr, CLType, CLValueError, Key};
 
 pub use self::ext::TrackingCopyExt;
 use self::meter::{heap_meter::HeapSize, Meter};
@@ -296,7 +296,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                     Err(error) => return Ok(AddResult::from(error)),
                 },
                 _ => {
-                    if *cl_value.cl_type() == casperlabs_types::named_key_type() {
+                    if *cl_value.cl_type() == casper_types::named_key_type() {
                         match cl_value.into_t() {
                             Ok(name_and_key) => {
                                 let map = iter::once(name_and_key).collect();

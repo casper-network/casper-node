@@ -8,7 +8,7 @@ RUST_TOOLCHAIN := $(shell cat rust-toolchain)
 CARGO_OPTS := --locked
 CARGO := $(CARGO) $(CARGO_OPTS)
 
-EE_DIR     = $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+DISABLE_LOGGING = RUST_LOG=MatchesNothing
 
 # Rust Contracts
 # Directory names should match crate names
@@ -54,8 +54,8 @@ SYSTEM_CONTRACTS_FEATURED := $(patsubst %, build-system-contract-featured-rs/%, 
 CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 CONTRACT_TARGET_DIR_AS    = target_as
 PACKAGED_SYSTEM_CONTRACTS = mint_install.wasm pos_install.wasm standard_payment_install.wasm auction_install.wasm
-TOOL_TARGET_DIR           = grpc/cargo-casperlabs/target
-TOOL_WASM_DIR             = grpc/cargo-casperlabs/wasm
+TOOL_TARGET_DIR           = grpc/cargo-casper/target
+TOOL_WASM_DIR             = grpc/cargo-casper/wasm
 
 CRATES_WITH_DOCS_RS_MANIFEST_TABLE = \
 	grpc/server \
@@ -112,7 +112,7 @@ build-contracts: build-contracts-rs build-contracts-as
 
 .PHONY: test-rs
 test-rs: build-system-contracts
-	$(CARGO) test $(CARGO_FLAGS) --workspace -- --nocapture
+	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --workspace
 
 .PHONY: test-as
 test-as: setup-as
@@ -123,13 +123,13 @@ test: test-rs test-as
 
 .PHONY: test-contracts-rs
 test-contracts-rs: build-contracts-rs
-	$(CARGO) test $(CARGO_FLAGS) -p casperlabs-engine-tests -- --ignored --nocapture
-	$(CARGO) test $(CARGO_FLAGS) --manifest-path "grpc/tests/Cargo.toml" --features "use-system-contracts" -- --ignored --nocapture
+	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-engine-tests -- --ignored
+	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --manifest-path "grpc/tests/Cargo.toml" --features "use-system-contracts" -- --ignored
 
 .PHONY: test-contracts_as
 test-contracts_as: build-contracts-rs build-contracts-as
 	@# see https://github.com/rust-lang/cargo/issues/5015#issuecomment-515544290
-	$(CARGO) test $(CARGO_FLAGS) --manifest-path "grpc/tests/Cargo.toml" --features "use-as-wasm" -- --ignored --nocapture
+	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --manifest-path "grpc/tests/Cargo.toml" --features "use-as-wasm" -- --ignored
 
 .PHONY: test-contracts
 test-contracts: test-contracts-rs test-contracts_as
@@ -189,8 +189,8 @@ build-for-packaging:
 
 .PHONY: deb
 deb: build-for-packaging
-	cd grpc/server && $(CARGO) deb -p casperlabs-engine-grpc-server --no-build
-	cd node && $(CARGO) deb -p casperlabs-node --no-build
+	cd grpc/server && $(CARGO) deb -p casper-engine-grpc-server --no-build
+	cd node && $(CARGO) deb -p casper-node --no-build
 
 grpc/server/.rpm:
 	cd grpc/server && $(CARGO) rpm init

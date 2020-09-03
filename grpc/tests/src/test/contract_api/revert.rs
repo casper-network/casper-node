@@ -1,8 +1,8 @@
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_types::RuntimeArgs;
+use casper_types::RuntimeArgs;
 
 const REVERT_WASM: &str = "revert.wasm";
 

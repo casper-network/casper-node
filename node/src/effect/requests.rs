@@ -10,11 +10,12 @@ use std::{
 
 use semver::Version;
 
-use casperlabs_types::Key;
+use casper_types::Key;
 
 use super::Responder;
 use crate::{
     components::{
+        consensus::EraId,
         contract_runtime::{
             core::engine_state::{
                 self,
@@ -29,9 +30,9 @@ use crate::{
         fetcher::FetchResult,
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
-    crypto::hash::Digest,
+    crypto::{asymmetric_key::Signature, hash::Digest},
     types::{
-        Block, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock, ProtoBlockHash, Timestamp,
+        BlockHash, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock, ProtoBlockHash, Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
@@ -307,7 +308,7 @@ pub enum ApiRequest {
         /// Responder to call with the result.
         responder: Responder<Vec<DeployHash>>,
     },
-    /// Return string formatted, prometheus compatible metrics or `None` if an error occured.
+    /// Return string formatted, prometheus compatible metrics or `None` if an error occurred.
     GetMetrics {
         /// Responder to call with the result.
         responder: Responder<Option<String>>,
@@ -433,20 +434,15 @@ impl<I, T: Item> Display for FetcherRequest<I, T> {
 #[must_use]
 pub enum BlockExecutorRequest {
     /// A request to execute finalized block.
-    ExecuteBlock {
-        /// The finalized block.
-        finalized_block: FinalizedBlock,
-        /// Responder to call with the result.
-        responder: Responder<Block>,
-    },
+    ExecuteBlock(FinalizedBlock),
 }
 
 impl Display for BlockExecutorRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlockExecutorRequest::ExecuteBlock {
-                finalized_block, ..
-            } => write!(f, "execute block {}", finalized_block),
+            BlockExecutorRequest::ExecuteBlock(finalized_block) => {
+                write!(f, "execute block {}", finalized_block)
+            }
         }
     }
 }
@@ -474,4 +470,34 @@ impl<I: Display> Display for BlockValidationRequest<I> {
         } = self;
         write!(f, "validate block {} from {}", proto_block, sender)
     }
+}
+
+#[derive(Debug)]
+/// Requests issued to the Linear Chain component.
+pub enum LinearChainRequest<I> {
+    /// Request a block header from the linear, chain by hash.
+    BlockHeaderRequest(BlockHash, I),
+    /// Request whole block from the linear chain, by hash.
+    BlockRequest(BlockHash, I),
+}
+
+impl<I: Display> Display for LinearChainRequest<I> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LinearChainRequest::BlockHeaderRequest(bh, peer) => {
+                write!(f, "block-header request for hash {} from {}", bh, peer)
+            }
+            LinearChainRequest::BlockRequest(bh, peer) => {
+                write!(f, "block request for hash {} from {}", bh, peer)
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+#[must_use]
+/// Consensus component requests.
+pub enum ConsensusRequest {
+    /// Request for consensus to sign a new linear chain block.
+    SignLinearBlock(EraId, BlockHash, Responder<Signature>),
 }

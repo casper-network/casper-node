@@ -1,7 +1,7 @@
-use casperlabs_types::{runtime_args, RuntimeArgs, U512};
+use casper_types::{runtime_args, RuntimeArgs, U512};
 use core::convert::TryFrom;
 
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::DEFAULT_ACCOUNT_PUBLIC_KEY, Code, SessionBuilder, SessionTransferInfo,
     TestContextBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };

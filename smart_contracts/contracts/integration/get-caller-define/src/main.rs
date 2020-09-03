@@ -3,8 +3,8 @@
 
 extern crate alloc;
 
-use casperlabs_contract::contract_api::runtime;
-use casperlabs_types::account::AccountHash;
+use casper_contract::contract_api::runtime;
+use casper_types::account::AccountHash;
 
 const _GET_CALLER_EXT: &str = "get_caller_ext";
 const _GET_CALLER_KEY: &str = "get_caller";

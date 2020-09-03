@@ -28,7 +28,7 @@ use std::{
 use grpc::{Error as GrpcError, RequestOptions, ServerBuilder, SingleResponse};
 use log::{info, warn, Level};
 
-use casperlabs_node::components::contract_runtime::{
+use casper_node::components::contract_runtime::{
     core::{
         engine_state::{
             execute_request::ExecuteRequest,
@@ -46,7 +46,7 @@ use casperlabs_node::components::contract_runtime::{
     },
     storage::global_state::{CommitResult, StateProvider},
 };
-use casperlabs_types::bytesrepr::ToBytes;
+use casper_types::bytesrepr::ToBytes;
 
 use self::{
     ipc::{
@@ -63,7 +63,7 @@ const UNIMPLEMENTED: &str = "unimplemented";
 // Idea is that Engine will represent the core of the execution engine project.
 // It will act as an entry point for execution of Wasm binaries.
 // Proto definitions should be translated into domain objects when Engine's API
-// is invoked. This way core won't depend on casperlabs-engine-grpc-server
+// is invoked. This way core won't depend on casper-engine-grpc-server
 // (outer layer) leading to cleaner design.
 impl<S> ExecutionEngineService for EngineState<S>
 where

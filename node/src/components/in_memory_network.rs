@@ -27,7 +27,7 @@
 //! # use prometheus::Registry;
 //! # use rand::{rngs::OsRng, CryptoRng, Rng};
 //! #
-//! # use casperlabs_node::{
+//! # use casper_node::{
 //! #     components::{
 //! #         in_memory_network::{InMemoryNetwork, NetworkController, NodeId},
 //! #         Component,

@@ -41,9 +41,12 @@ lazy_static! {
 
 /// Parse a network address from a string, with DNS resolution.
 pub fn resolve_address(addr: &str) -> io::Result<SocketAddr> {
-    addr.to_socket_addrs()?
-        .next()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "could not resolve IP"))
+    addr.to_socket_addrs()?.next().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::Other,
+            format!("could not resolve `{}`", addr),
+        )
+    })
 }
 
 /// Resolve a hostname.

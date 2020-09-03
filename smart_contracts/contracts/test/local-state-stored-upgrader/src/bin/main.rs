@@ -1,11 +1,11 @@
 #![no_std]
 #![no_main]
 
-use casperlabs_contract::{
+use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casperlabs_types::{
+use casper_types::{
     contracts::{NamedKeys, Parameters},
     CLType, ContractHash, ContractPackageHash, ContractVersion, EntryPoint, EntryPointAccess,
     EntryPointType, EntryPoints,

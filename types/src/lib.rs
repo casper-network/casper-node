@@ -1,4 +1,4 @@
-//! Types used to allow creation of Wasm contracts and tests for use on the CasperLabs Platform.
+//! Types used to allow creation of Wasm contracts and tests for use on the Casper Platform.
 //!
 //! # `no_std`
 //!
@@ -10,10 +10,10 @@
     not(feature = "no-unstable-features"),
     feature(min_specialization, try_reserve)
 )]
-#![doc(html_root_url = "https://docs.rs/casperlabs-types/0.6.0")]
+#![doc(html_root_url = "https://docs.rs/casper-types/0.6.0")]
 #![doc(
-    html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/CasperLabs/dev/images/CasperLabs_Logo_Favicon_RGB_50px.png",
-    html_logo_url = "https://raw.githubusercontent.com/CasperLabs/CasperLabs/dev/images/CasperLabs_Logo_Symbol_RGB.png",
+    html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
+    html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
     test(attr(forbid(warnings)))
 )]
 #![warn(missing_docs)]

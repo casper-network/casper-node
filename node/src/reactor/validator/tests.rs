@@ -20,7 +20,7 @@ use crate::{
     Chainspec, GenesisAccount,
 };
 use anyhow::bail;
-use casperlabs_types::U512;
+use casper_types::U512;
 use std::{
     collections::{HashMap, HashSet},
     time::Duration,

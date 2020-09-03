@@ -1,7 +1,7 @@
 use std::convert::{TryFrom, TryInto};
 
-use casperlabs_node::{crypto::asymmetric_key::PublicKey, types::Motes, GenesisAccount};
-use casperlabs_types::account::AccountHash;
+use casper_node::{crypto::asymmetric_key::PublicKey, types::Motes, GenesisAccount};
+use casper_types::account::AccountHash;
 
 use crate::engine_server::{
     ipc::ChainSpec_GenesisConfig_ExecConfig_GenesisAccount, mappings::MappingError,

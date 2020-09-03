@@ -13,7 +13,7 @@ use toml::{value::Table, Value};
 use tracing::{info, trace};
 
 use crate::config;
-use casperlabs_node::{
+use casper_node::{
     logging,
     reactor::{initializer, validator, Runner},
     tls,
@@ -22,7 +22,7 @@ use casperlabs_node::{
 
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
 #[derive(Debug, StructOpt)]
-/// CasperLabs blockchain node.
+/// Casper blockchain node.
 pub enum Cli {
     /// Generate a self-signed node certificate.
     GenerateCert {

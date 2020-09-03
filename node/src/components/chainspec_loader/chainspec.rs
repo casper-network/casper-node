@@ -12,7 +12,7 @@ use rand::{
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use casperlabs_types::U512;
+use casper_types::U512;
 
 use super::{config, error::GenesisLoadError, Error};
 #[cfg(test)]

@@ -6,11 +6,11 @@ extern crate alloc;
 
 use alloc::string::String;
 
-use casperlabs_contract::{
+use casper_contract::{
     contract_api::{runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casperlabs_types::{
+use casper_types::{
     contracts::NamedKeys, CLType, CLValue, ContractPackageHash, EntryPoint, EntryPointAccess,
     EntryPointType, EntryPoints, Parameter, URef,
 };

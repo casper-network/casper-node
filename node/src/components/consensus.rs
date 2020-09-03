@@ -10,26 +10,26 @@ mod traits;
 
 use std::fmt::{self, Debug, Display, Formatter};
 
-use rand::{CryptoRng, Rng};
-use serde::{Deserialize, Serialize};
-
 use crate::{
     components::{storage::Storage, Component},
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
-            BlockExecutorRequest, BlockValidationRequest, DeployBufferRequest, NetworkRequest,
-            StorageRequest,
+            self, BlockExecutorRequest, BlockValidationRequest, DeployBufferRequest,
+            NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
     reactor::validator::Message,
-    types::{Block, ProtoBlock, Timestamp},
+    types::{ProtoBlock, Timestamp},
 };
 pub use config::Config;
 pub(crate) use consensus_protocol::BlockContext;
+use derive_more::From;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 use hex_fmt::HexFmt;
+use rand::{CryptoRng, Rng};
+use serde::{Deserialize, Serialize};
 use traits::NodeIdT;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -45,7 +45,7 @@ impl ConsensusMessage {
 }
 
 /// Consensus component event.
-#[derive(Debug)]
+#[derive(Debug, From)]
 pub enum Event<I> {
     /// An incoming network message.
     MessageReceived { sender: I, msg: ConsensusMessage },
@@ -57,8 +57,8 @@ pub enum Event<I> {
         proto_block: ProtoBlock,
         block_context: BlockContext,
     },
-    /// We are receiving the information necessary to produce finality signatures
-    ExecutedBlock { era_id: EraId, block: Block },
+    #[from]
+    ConsensusRequest(requests::ConsensusRequest),
     /// The proto-block has been validated and can now be added to the protocol state
     AcceptProtoBlock {
         era_id: EraId,
@@ -112,10 +112,10 @@ impl<I: Debug> Display for Event<I> {
                 "New proto-block for era {:?}: {:?}, {:?}",
                 era_id, proto_block, block_context
             ),
-            Event::ExecutedBlock { era_id, block } => write!(
+            Event::ConsensusRequest(request) => write!(
                 f,
-                "A block has been executed for era {:?}: {:?}",
-                era_id, block
+                "A request for consensus component hash been receieved: {:?}",
+                request
             ),
             Event::AcceptProtoBlock {
                 era_id,
@@ -187,9 +187,11 @@ where
                 proto_block,
                 block_context,
             } => handling_es.handle_new_proto_block(era_id, proto_block, block_context),
-            Event::ExecutedBlock { era_id, block } => {
-                handling_es.handle_executed_block(era_id, block)
-            }
+            Event::ConsensusRequest(requests::ConsensusRequest::SignLinearBlock(
+                era_id,
+                block_hash,
+                responder,
+            )) => handling_es.sign_linear_chain_block(era_id, block_hash, responder),
             Event::AcceptProtoBlock {
                 era_id,
                 proto_block,

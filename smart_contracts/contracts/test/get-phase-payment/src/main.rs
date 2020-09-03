@@ -1,11 +1,11 @@
 #![no_std]
 #![no_main]
 
-use casperlabs_contract::{
+use casper_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casperlabs_types::{Phase, RuntimeArgs, URef, U512};
+use casper_types::{Phase, RuntimeArgs, URef, U512};
 
 const GET_PAYMENT_PURSE: &str = "get_payment_purse";
 const ARG_PHASE: &str = "phase";

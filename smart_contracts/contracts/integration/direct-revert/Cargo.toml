@@ -12,5 +12,5 @@ doctest = false
 test = false
 
 [dependencies]
-casperlabs-contract = { path = "../../../contract" }
-casperlabs-types = { path = "../../../../types" }
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }

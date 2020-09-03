@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use casperlabs_contract::contract_api::runtime;
-use casperlabs_types::ApiError;
+use casper_contract::contract_api::runtime;
+use casper_types::ApiError;
 const ARG_NUMBER: &str = "number";
 
 #[no_mangle]

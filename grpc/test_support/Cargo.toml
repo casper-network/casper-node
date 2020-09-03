@@ -1,20 +1,20 @@
 [package]
-name = "casperlabs-engine-test-support"
+name = "casper-engine-test-support"
 version = "0.8.0" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
-description = "Library to support testing of Wasm smart contracts for use on the CasperLabs network."
+description = "Library to support testing of Wasm smart contracts for use on the Casper network."
 readme = "README.md"
-documentation = "https://docs.rs/casperlabs-engine-test-support"
+documentation = "https://docs.rs/casper-engine-test-support"
 homepage = "https://casperlabs.io"
-repository = "https://github.com/CasperLabs/CasperLabs/tree/master/execution-engine/engine-test-support"
+repository = "https://github.com/CasperLabs/casper-node/tree/master/grpc/test_support"
 license-file = "../../LICENSE"
 
 [dependencies]
-casperlabs-contract = { version = "0.6.0", path = "../../smart_contracts/contract" }
-casperlabs-engine-grpc-server = { version = "0.20.0", path = "../server" }
-casperlabs-node = { path = "../../node" }
-casperlabs-types = { version = "0.6.0", path = "../../types", features = ["std"] }
+casper-contract = { version = "0.6.0", path = "../../smart_contracts/contract" }
+casper-engine-grpc-server = { version = "0.20.0", path = "../server" }
+casper-node = { path = "../../node" }
+casper-types = { version = "0.6.0", path = "../../types", features = ["std"] }
 grpc = "0.6.1"
 lazy_static = "1"
 lmdb = "0.8.0"
@@ -29,11 +29,11 @@ version-sync = "0.8"
 [features]
 use-as-wasm = []
 use-system-contracts = []
-test-support = ["casperlabs-engine-grpc-server/test-support", "casperlabs-contract/test-support"]
+test-support = ["casper-engine-grpc-server/test-support", "casper-contract/test-support"]
 no-unstable-features = [
-    "casperlabs-contract/no-unstable-features",
-    "casperlabs-engine-grpc-server/no-unstable-features",
-    "casperlabs-types/no-unstable-features"
+    "casper-contract/no-unstable-features",
+    "casper-engine-grpc-server/no-unstable-features",
+    "casper-types/no-unstable-features"
 ]
 
 [package.metadata.docs.rs]

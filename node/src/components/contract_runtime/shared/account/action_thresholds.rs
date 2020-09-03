@@ -1,4 +1,4 @@
-use casperlabs_types::{
+use casper_types::{
     account::{ActionType, SetThresholdFailure, Weight, WEIGHT_SERIALIZED_LENGTH},
     bytesrepr::{self, Error, FromBytes, ToBytes},
 };

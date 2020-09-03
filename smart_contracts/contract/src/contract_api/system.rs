@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 
-use casperlabs_types::{
+use casper_types::{
     account::AccountHash, api_error, bytesrepr, ApiError, ContractHash, SystemContractType,
     TransferResult, TransferredTo, URef, U512, UREF_SERIALIZED_LENGTH,
 };

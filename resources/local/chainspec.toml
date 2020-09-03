@@ -2,7 +2,7 @@
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
 # contributing to the seeding of the pseudo-random number generator used in contract-runtime for computing genesis
 # post-state hash.
-name = 'casperlabs-example'
+name = 'casper-example'
 # Timestamp for the genesis block, also used in seeding the pseudo-random number generator used in contract-runtime for
 # computing genesis post-state hash.
 timestamp = 0

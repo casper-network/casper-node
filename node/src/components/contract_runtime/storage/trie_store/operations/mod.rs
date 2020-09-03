@@ -3,7 +3,7 @@ mod tests;
 
 use std::{cmp, collections::VecDeque, mem};
 
-use casperlabs_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use crate::{
     components::contract_runtime::{

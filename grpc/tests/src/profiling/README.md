@@ -26,12 +26,12 @@ To profile `simple-transfer` using `perf` and open the flamegraph in Firefox, fo
 * Clone and add [Flamegraph](https://github.com/brendangregg/FlameGraph) to your path
 * Run:
     ```bash
-    cd CasperLabs/execution-engine/
+    cd casper-node/
     make build-contracts-rs
-    cd engine-tests/
+    cd grpc/tests/
     cargo build --release --bin state-initializer
     cargo build --release --bin simple-transfer
-    ../target/release/state-initializer --data-dir=../target | perf record -g --call-graph dwarf ../target/release/simple-transfer --data-dir=../target
+    ../../target/release/state-initializer --data-dir=../../target | perf record -g --call-graph dwarf ../../target/release/simple-transfer --data-dir=../../target
     perf script | stackcollapse-perf.pl | flamegraph.pl > flame.svg
     firefox flame.svg
     ```
@@ -77,25 +77,25 @@ sysctl -p /etc/sysctl.conf
 
 # `concurrent-executor`
 
-This is a minimal client which repeatedly sends an `execute` request for a transfer to an instance of the `casperlabs-engine-grpc-server`.  It runs a threadpool to parallelize sending the requests, and it's designed to allow testing the effects of varying the worker thread count in the server.
+This is a minimal client which repeatedly sends an `execute` request for a transfer to an instance of the `casper-engine-grpc-server`.  It runs a threadpool to parallelize sending the requests, and it's designed to allow testing the effects of varying the worker thread count in the server.
 
 ## Example usage
 
 First build the contracts and run `state-initializer`:
 
 ```bash
-cd CasperLabs/execution-engine/
+cd casper-node/
 make build-contracts-rs
-cd engine-tests/
-HASH=$(cargo run --release --bin=state-initializer -- --data-dir=/tmp/CasperLabs/DataDir)
+cd grpc/tests/
+HASH=$(cargo run --release --bin=state-initializer -- --data-dir=/tmp/Casper/DataDir)
 ```
 
 In a new terminal, run the server, using the same data directory populated by the `state-initializer`:
 
 ```bash
-cd CasperLabs/execution-engine/
-cargo run --release --bin=casperlabs-engine-grpc-server -- \
-    /tmp/CasperLabs/Socket --data-dir=/tmp/CasperLabs/DataDir --threads=8
+cd casper-node/
+cargo run --release --bin=casper-engine-grpc-server -- \
+    /tmp/Casper/Socket --data-dir=/tmp/Casper/DataDir --threads=8
 ```
 
 **Note: to tell the server to use Wasm system contracts rather than host-side implementations, append ` -z` to the above command.**
@@ -104,7 +104,7 @@ Then in the first terminal, run the client:
 
 ```bash
 RUST_LOG=concurrent_executor=info cargo run --release --bin=concurrent-executor -- \
-    --socket=/tmp/CasperLabs/Socket --pre-state-hash=$HASH --threads=8 --requests=200
+    --socket=/tmp/Casper/Socket --pre-state-hash=$HASH --threads=8 --requests=200
 ```
 
 **Note: by default, the wasmless transfer option is used. However the original wasm based transfer can be opted into by appending `-m=WASM` to the above command.**
@@ -112,7 +112,7 @@ RUST_LOG=concurrent_executor=info cargo run --release --bin=concurrent-executor 
 There is a bash script which automates this process, and which allows specifying the number of server threadpool threads, the number of client threadpool threads, the number of messages the client should send, and whether to use system contracts or not.
 
 ```bash
-cd CasperLabs/execution-engine/engine-tests/src/profiling/
+cd casper-node/tests/src/profiling/
 ./concurrent_executor.sh 8 8 200     # without system contracts
 ./concurrent_executor.sh 8 8 200 -z  # using system contracts
 ```
@@ -132,10 +132,10 @@ This tool generates CSV files containing metrics for the host functions callable
 Note that running the tool with the default 10,000 repetitions can take in excess of half an hour to complete.
 
 ```bash
-cd CasperLabs/execution-engine/
+cd casper-node/
 make build-contracts-rs
-cd engine-tests/
+cd grpc/tests/
 cargo build --release --bin state-initializer
 cargo build --release --bin host-function-metrics
-../target/release/state-initializer --data-dir=../target | ../target/release/host-function-metrics --data-dir=../target --output-dir=../target/host-function-metrics
+../../target/release/state-initializer --data-dir=../../target | ../../target/release/host-function-metrics --data-dir=../../target --output-dir=../../target/host-function-metrics
 ```

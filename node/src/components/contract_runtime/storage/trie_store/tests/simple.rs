@@ -1,7 +1,7 @@
 use lmdb::DatabaseFlags;
 use tempfile::tempdir;
 
-use casperlabs_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use super::TestData;
 use crate::components::contract_runtime::storage::{

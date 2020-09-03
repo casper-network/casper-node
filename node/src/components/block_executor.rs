@@ -10,7 +10,7 @@ use itertools::Itertools;
 use rand::{CryptoRng, Rng};
 use tracing::{debug, error, trace};
 
-use casperlabs_types::ProtocolVersion;
+use casper_types::ProtocolVersion;
 
 use crate::{
     components::{
@@ -29,8 +29,9 @@ use crate::{
     },
     crypto::hash::Digest,
     effect::{
+        announcements::BlockExecutorAnnouncement,
         requests::{BlockExecutorRequest, ContractRuntimeRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects, Responder,
+        EffectBuilder, EffectExt, Effects,
     },
     types::{Block, BlockHash, Deploy, FinalizedBlock},
 };
@@ -38,12 +39,20 @@ use crate::{
 /// A helper trait whose bounds represent the requirements for a reactor event that `BlockExecutor`
 /// can work with.
 pub trait ReactorEventT:
-    From<Event> + From<StorageRequest<Storage>> + From<ContractRuntimeRequest> + Send
+    From<Event>
+    + From<StorageRequest<Storage>>
+    + From<ContractRuntimeRequest>
+    + From<BlockExecutorAnnouncement>
+    + Send
 {
 }
 
 impl<REv> ReactorEventT for REv where
-    REv: From<Event> + From<StorageRequest<Storage>> + From<ContractRuntimeRequest> + Send
+    REv: From<Event>
+        + From<StorageRequest<Storage>>
+        + From<ContractRuntimeRequest>
+        + From<BlockExecutorAnnouncement>
+        + Send
 {
 }
 
@@ -129,11 +138,10 @@ impl Display for Event {
 #[derive(Debug)]
 pub struct State {
     finalized_block: FinalizedBlock,
-    responder: Responder<Block>,
     /// Deploys which have still to be executed.
     remaining_deploys: VecDeque<Deploy>,
-    /// Current pre-state hash of global storage.  Is initialized with the parent block's post-state
-    /// hash, and is updated after each commit.
+    /// Current pre-state hash of global storage.  Is initialized with the parent block's
+    /// post-state hash, and is updated after each commit.
     pre_state_hash: Digest,
 }
 
@@ -152,9 +160,9 @@ pub(crate) struct BlockExecutor {
     /// A mapping from proto block to executed block's ID and post-state hash, to allow
     /// identification of a parent block's details once a finalized block has been executed.
     ///
-    /// The key is a tuple of block's height (it's a linear chain so it's monotonically increasing),
-    /// and the `ExecutedBlockSummary` is derived from the executed block which is created from that
-    /// proto block.
+    /// The key is a tuple of block's height (it's a linear chain so it's monotonically
+    /// increasing), and the `ExecutedBlockSummary` is derived from the executed block which is
+    /// created from that proto block.
     parent_map: HashMap<BlockHeight, ExecutedBlockSummary>,
 }
 
@@ -171,7 +179,6 @@ impl BlockExecutor {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         finalized_block: FinalizedBlock,
-        responder: Responder<Block>,
     ) -> Effects<Event> {
         let deploy_hashes = finalized_block
             .proto_block()
@@ -183,7 +190,6 @@ impl BlockExecutor {
         let pre_state_hash = self.pre_state_hash(&finalized_block);
         let state = State {
             finalized_block,
-            responder,
             remaining_deploys: VecDeque::new(),
             pre_state_hash,
         };
@@ -216,7 +222,7 @@ impl BlockExecutor {
                 // The state hash of the last execute-commit cycle is used as the block's post state
                 // hash.
                 let block = self.create_block(state.finalized_block, state.pre_state_hash);
-                return state.responder.respond(block).ignore();
+                return effect_builder.announce_linear_chain_block(block).ignore();
             }
         };
         let deploy_item = DeployItem::from(next_deploy);
@@ -319,12 +325,9 @@ impl<REv: ReactorEventT, R: Rng + CryptoRng + ?Sized> Component<REv, R> for Bloc
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Request(BlockExecutorRequest::ExecuteBlock {
-                finalized_block,
-                responder,
-            }) => {
+            Event::Request(BlockExecutorRequest::ExecuteBlock(finalized_block)) => {
                 debug!(?finalized_block, "execute block");
-                self.get_deploys(effect_builder, finalized_block, responder)
+                self.get_deploys(effect_builder, finalized_block)
             }
 
             Event::GetDeploysResult { mut state, deploys } => {

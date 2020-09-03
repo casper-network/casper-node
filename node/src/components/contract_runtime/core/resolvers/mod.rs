@@ -5,7 +5,7 @@ mod v1_resolver;
 
 use wasmi::ModuleImportResolver;
 
-use casperlabs_types::ProtocolVersion;
+use casper_types::ProtocolVersion;
 
 use self::error::ResolverError;
 use crate::components::contract_runtime::core::resolvers::memory_resolver::MemoryResolver;

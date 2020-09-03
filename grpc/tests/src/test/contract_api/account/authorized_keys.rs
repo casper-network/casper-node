@@ -1,12 +1,12 @@
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
         DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_node::components::contract_runtime::core::{engine_state, execution};
-use casperlabs_types::{
+use casper_node::components::contract_runtime::core::{engine_state, execution};
+use casper_types::{
     account::{AccountHash, Weight},
     runtime_args, RuntimeArgs,
 };

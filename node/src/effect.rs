@@ -15,7 +15,7 @@
 //!
 //! ```ignore
 //! use std::time::Duration;
-//! use casperlabs_node::effect::EffectExt;
+//! use casper_node::effect::EffectExt;
 //!
 //! enum Event {
 //!     ThreeSecondsElapsed(Duration)
@@ -74,12 +74,12 @@ use semver::Version;
 use smallvec::{smallvec, SmallVec};
 use tracing::error;
 
-use casperlabs_types::Key;
+use casper_types::Key;
 use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
 
 use crate::{
     components::{
-        consensus::BlockContext,
+        consensus::{BlockContext, EraId},
         contract_runtime::{
             core::{
                 engine_state::{self, genesis::GenesisResult},
@@ -91,18 +91,22 @@ use crate::{
         fetcher::FetchResult,
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
-    crypto::{asymmetric_key::PublicKey, hash::Digest},
+    crypto::{
+        asymmetric_key::{PublicKey, Signature},
+        hash::Digest,
+    },
     reactor::{EventQueueHandle, QueueKind},
-    types::{Block, Deploy, DeployHash, FinalizedBlock, ProtoBlock},
+    types::{Block, BlockHash, Deploy, DeployHash, FinalizedBlock, ProtoBlock},
     utils::Source,
     Chainspec,
 };
 use announcements::{
-    ApiServerAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement, NetworkAnnouncement,
+    ApiServerAnnouncement, BlockExecutorAnnouncement, ConsensusAnnouncement,
+    DeployAcceptorAnnouncement, NetworkAnnouncement,
 };
 use requests::{
-    BlockExecutorRequest, BlockValidationRequest, ContractRuntimeRequest, DeployBufferRequest,
-    FetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
+    BlockExecutorRequest, BlockValidationRequest, ConsensusRequest, ContractRuntimeRequest,
+    DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -278,8 +282,8 @@ where
 
 /// A builder for [`Effect`](type.Effect.html)s.
 ///
-/// Provides methods allowing the creation of effects which need scheduled on the reactor's event
-/// queue, without giving direct access to this queue.
+/// Provides methods allowing the creation of effects which need to be scheduled
+/// on the reactor's event queue, without giving direct access to this queue.
 #[derive(Debug)]
 pub struct EffectBuilder<REv: 'static>(EventQueueHandle<REv>);
 
@@ -480,6 +484,19 @@ impl<REv> EffectBuilder<REv> {
         )
     }
 
+    /// Announce new block has been created.
+    pub(crate) async fn announce_linear_chain_block(self, block: Block)
+    where
+        REv: From<BlockExecutorAnnouncement>,
+    {
+        self.0
+            .schedule(
+                BlockExecutorAnnouncement::LinearChainBlock(block),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
     /// Puts the given block into the linear block store.
     pub(crate) async fn put_block_to_storage<S>(self, block: Box<S::Block>) -> bool
     where
@@ -494,8 +511,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block from the linear block store.
-    // TODO: remove once method is used.
-    #[allow(dead_code)]
     pub(crate) async fn get_block_from_storage<S>(
         self,
         block_hash: <S::Block as Value>::Id,
@@ -515,8 +530,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block header from the linear block store.
-    // TODO: remove once method is used.
-    #[allow(dead_code)]
     pub(crate) async fn get_block_header_from_storage<S>(
         self,
         block_hash: <S::Block as Value>::Id,
@@ -602,8 +615,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested deploy using the `DeployFetcher`.
-    // TODO: remove once method is used.
-    #[allow(dead_code)]
     pub(crate) async fn fetch_deploy<I>(
         self,
         deploy_hash: DeployHash,
@@ -652,18 +663,16 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Passes a finalized proto-block to the block executor component to execute it.
-    pub(crate) async fn execute_block(self, finalized_block: FinalizedBlock) -> Block
+    pub(crate) async fn execute_block(self, finalized_block: FinalizedBlock)
     where
         REv: From<BlockExecutorRequest>,
     {
-        self.make_request(
-            |responder| BlockExecutorRequest::ExecuteBlock {
-                finalized_block,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
+        self.0
+            .schedule(
+                BlockExecutorRequest::ExecuteBlock(finalized_block),
+                QueueKind::Regular,
+            )
+            .await
     }
 
     /// Checks whether the deploys included in the proto-block exist on the network.
@@ -830,5 +839,21 @@ impl<REv> EffectBuilder<REv> {
     #[allow(dead_code)]
     pub(crate) async fn run_auction(self, _root_hash: Digest) -> Result<Digest, execution::Error> {
         todo!("run_auction")
+    }
+
+    /// Request consensus to sign a block from the linear chain.
+    pub(crate) async fn sign_linear_chain_block(
+        self,
+        era_id: EraId,
+        block_hash: BlockHash,
+    ) -> Signature
+    where
+        REv: From<ConsensusRequest>,
+    {
+        self.make_request(
+            |responder| ConsensusRequest::SignLinearBlock(era_id, block_hash, responder),
+            QueueKind::Regular,
+        )
+        .await
     }
 }

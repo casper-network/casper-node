@@ -85,12 +85,12 @@ bind_port = 7777
 # If the folder doesn't exist, it and any required parents will be created.
 #
 # If unset, defaults to:
-# * Linux: `$XDG_DATA_HOME/casperlabs-node` or `$HOME/.local/share/casperlabs-node`, e.g.
-#   /home/alice/.local/share/casperlabs-node
-# * macOS: `$HOME/Library/Application Support/io.CasperLabs.casperlabs-node`, e.g.
-#   /Users/Alice/Library/Application Support/io.CasperLabs.casperlabs-node
-# * Windows: `{FOLDERID_RoamingAppData}\CasperLabs\casperlabs-node\data` e.g.
-#   C:\Users\Alice\AppData\Roaming\CasperLabs\casperlabs-node\data
+# * Linux: `$XDG_DATA_HOME/casper-node` or `$HOME/.local/share/casper-node`, e.g.
+#   /home/alice/.local/share/casper-node
+# * macOS: `$HOME/Library/Application Support/io.CasperLabs.casper-node`, e.g.
+#   /Users/Alice/Library/Application Support/io.CasperLabs.casper-node
+# * Windows: `{FOLDERID_RoamingAppData}\CasperLabs\casper-node\data` e.g.
+#   C:\Users\Alice\AppData\Roaming\CasperLabs\casper-node\data
 # path = 'node-storage'
 
 # Optional maximum size of the database to use for the block store.

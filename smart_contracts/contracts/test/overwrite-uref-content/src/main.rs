@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use casperlabs_contract::contract_api::{runtime, storage};
-use casperlabs_types::{AccessRights, ApiError, URef};
+use casper_contract::contract_api::{runtime, storage};
+use casper_types::{AccessRights, ApiError, URef};
 
 const ARG_CONTRACT_UREF: &str = "contract_uref";
 

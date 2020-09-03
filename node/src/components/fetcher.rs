@@ -87,7 +87,7 @@ pub trait ItemFetcher<T: Item + 'static> {
     /// component in order to send it to the requester.
     fn got_from_storage(&mut self, item: T, peer: NodeId) -> Effects<Event<T>> {
         self.signal(
-            *item.id(),
+            item.id(),
             Some(FetchResult::FromStorage(Box::new(item))),
             peer,
         )
@@ -231,7 +231,7 @@ where
             Event::GotRemotely { item, source } => {
                 match source {
                     Source::Peer(peer) => {
-                        self.signal(*item.id(), Some(FetchResult::FromPeer(item, peer)), peer)
+                        self.signal(item.id(), Some(FetchResult::FromPeer(item, peer)), peer)
                     }
                     Source::Client => {
                         // TODO - we could possibly also handle this case

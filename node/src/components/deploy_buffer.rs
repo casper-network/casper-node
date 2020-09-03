@@ -172,14 +172,14 @@ impl DeployBuffer {
     ) -> bool {
         let all_deps_resolved = || {
             deploy
-                .dependencies
+                .dependencies()
                 .iter()
                 .all(|dep| past_deploys.contains(dep))
         };
-        let ttl_valid = deploy.ttl <= deploy_config.max_ttl;
-        let timestamp_valid = deploy.timestamp <= current_instant;
-        let deploy_valid = deploy.timestamp + deploy.ttl >= current_instant;
-        let num_deps_valid = deploy.dependencies.len() <= deploy_config.max_dependencies as usize;
+        let ttl_valid = deploy.ttl() <= deploy_config.max_ttl;
+        let timestamp_valid = deploy.timestamp() <= current_instant;
+        let deploy_valid = deploy.timestamp() + deploy.ttl() >= current_instant;
+        let num_deps_valid = deploy.dependencies().len() <= deploy_config.max_dependencies as usize;
         ttl_valid && timestamp_valid && deploy_valid && num_deps_valid && all_deps_resolved()
     }
 
@@ -287,22 +287,43 @@ mod tests {
 
     use super::*;
     use crate::{
-        crypto::{asymmetric_key::PublicKey, hash::hash},
-        types::{DeployHash, DeployHeader, NodeConfig, ProtoBlockHash, TimeDiff},
+        components::contract_runtime::core::engine_state::executable_deploy_item::ExecutableDeployItem,
+        crypto::{asymmetric_key::SecretKey, hash::hash},
+        testing::TestRng,
+        types::{Deploy, DeployHash, DeployHeader, NodeConfig, ProtoBlockHash, TimeDiff},
     };
 
-    fn generate_deploy(timestamp: Timestamp, ttl: TimeDiff) -> (DeployHash, DeployHeader) {
-        let deploy_hash = DeployHash::new(hash(random::<[u8; 16]>()));
-        let deploy = DeployHeader {
-            account: PublicKey::new_ed25519([1; PublicKey::ED25519_LENGTH]).unwrap(),
-            timestamp,
-            gas_price: 10,
-            body_hash: hash(random::<[u8; 16]>()),
-            ttl,
-            dependencies: vec![],
-            chain_name: "chain".to_string(),
+    fn generate_deploy(
+        rng: &mut TestRng,
+        timestamp: Timestamp,
+        ttl: TimeDiff,
+        dependencies: Vec<DeployHash>,
+    ) -> (DeployHash, DeployHeader) {
+        let secret_key = SecretKey::random(rng);
+        let gas_price = 10;
+        let chain_name = "chain".to_string();
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: vec![],
+            args: vec![],
         };
-        (deploy_hash, deploy)
+        let session = ExecutableDeployItem::ModuleBytes {
+            module_bytes: vec![],
+            args: vec![],
+        };
+
+        let deploy = Deploy::new(
+            timestamp,
+            ttl,
+            gas_price,
+            dependencies,
+            chain_name,
+            payment,
+            session,
+            &secret_key,
+            rng,
+        );
+
+        (*deploy.id(), deploy.take_header())
     }
 
     #[test]
@@ -315,10 +336,11 @@ mod tests {
 
         let no_blocks = HashSet::new();
         let mut buffer = DeployBuffer::new(NodeConfig::default().block_max_deploy_count as usize);
-        let (hash1, deploy1) = generate_deploy(creation_time, ttl);
-        let (hash2, deploy2) = generate_deploy(creation_time, ttl);
-        let (hash3, deploy3) = generate_deploy(creation_time, ttl);
-        let (hash4, deploy4) = generate_deploy(creation_time, ttl);
+        let mut rng = TestRng::new();
+        let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
+        let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
+        let (hash3, deploy3) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
+        let (hash4, deploy4) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
 
         assert!(buffer
             .remaining_deploys(DeployConfig::default(), block_time2, no_blocks.clone())
@@ -408,10 +430,10 @@ mod tests {
         let ttl = TimeDiff::from(100);
         let block_time = Timestamp::from(120);
 
-        let (hash1, deploy1) = generate_deploy(creation_time, ttl);
-        let (hash2, mut deploy2) = generate_deploy(creation_time, ttl);
+        let mut rng = TestRng::new();
+        let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
         // let deploy2 depend on deploy1
-        deploy2.dependencies = vec![hash1];
+        let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![hash1]);
 
         let mut blocks = HashSet::new();
         let mut buffer = DeployBuffer::new(NodeConfig::default().block_max_deploy_count as usize);

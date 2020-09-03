@@ -1,8 +1,8 @@
-# casperlabs-client
+# casper-client
 
-A client for interacting with the CasperLabs network.
+A client for interacting with the Casper network.
 
-The client can easily be run to interact with a local casperlabs-node.  To run one or more local nodes, see
+The client can easily be run to interact with a local casper-node.  To run one or more local nodes, see
 [the main README](../README.md).
 
 ## Running the client
@@ -35,7 +35,7 @@ same machine, follow the instructions in [the main README](../README.md), ensuri
 
 Once the local node starts, the HTTP listening endpoint is printed as an info-level log message.  It can be configured
 via the config file for the node (the `http_server.bind_port` option), and if using
-[the local node config file](https://github.com/CasperLabs/casperlabs-node/blob/master/resources/local/config.toml), the
+[the local node config file](https://github.com/CasperLabs/casper-node/blob/master/resources/local/config.toml), the
 endpoint should be `http://localhost:7777`.
 
 For client commands requiring a node address (specified via the `--node-address` or `-n` arg), the default value is
@@ -58,7 +58,7 @@ To see how to format session code args and payment code args:
 
 ```
 cargo run --release -- put-deploy --show-arg-examples
-``` 
+```
 
 On success, the hash identifying the `Deploy` is output as a 64 character hex-encoded string.  The `Deploy` will be
 gossiped immediately to all interconnected nodes.

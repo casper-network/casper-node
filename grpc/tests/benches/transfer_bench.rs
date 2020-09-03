@@ -5,12 +5,12 @@ use criterion::{
 };
 use tempfile::TempDir;
 
-use casperlabs_engine_test_support::internal::{
+use casper_engine_test_support::internal::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
 };
-use casperlabs_node::components::contract_runtime::core::engine_state::EngineConfig;
-use casperlabs_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
+use casper_node::components::contract_runtime::core::engine_state::EngineConfig;
+use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
 
 const CONTRACT_CREATE_ACCOUNTS: &str = "create_accounts.wasm";
 const CONTRACT_CREATE_PURSES: &str = "create_purses.wasm";

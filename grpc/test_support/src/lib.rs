@@ -1,11 +1,11 @@
-//! A library to support testing of Wasm smart contracts for use on the CasperLabs Platform.
+//! A library to support testing of Wasm smart contracts for use on the Casper Platform.
 //!
 //! # Example
 //! Consider a contract held in "contract.wasm" which stores an arbitrary `String` under a `Key`
 //! named "special_value":
 //! ```no_run
-//! use casperlabs_contract::contract_api::{runtime, storage};
-//! use casperlabs_types::Key;
+//! use casper_contract::contract_api::{runtime, storage};
+//! use casper_types::Key;
 //! const KEY: &str = "special_value";
 //! const ARG_VALUE: &str = "value";
 //!
@@ -20,8 +20,8 @@
 //!
 //! The test could be written as follows:
 //! ```no_run
-//! use casperlabs_engine_test_support::{Code, Error, SessionBuilder, TestContextBuilder, Value, PublicKey, SecretKey};
-//! use casperlabs_types::{U512, RuntimeArgs, runtime_args};
+//! use casper_engine_test_support::{Code, Error, SessionBuilder, TestContextBuilder, Value, PublicKey, SecretKey};
+//! use casper_types::{U512, RuntimeArgs, runtime_args};
 //!
 //! const MY_ACCOUNT: [u8; 32] = [7u8; 32];
 //! const KEY: &str = "special_value";
@@ -56,10 +56,10 @@
 //! assert_eq!(expected_value, returned_value);
 //! ```
 
-#![doc(html_root_url = "https://docs.rs/casperlabs-engine-test-support/0.8.0")]
+#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/0.8.0")]
 #![doc(
-    html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/CasperLabs/dev/images/CasperLabs_Logo_Favicon_RGB_50px.png",
-    html_logo_url = "https://raw.githubusercontent.com/CasperLabs/CasperLabs/dev/images/CasperLabs_Logo_Symbol_RGB.png",
+    html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
+    html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
     test(attr(forbid(warnings)))
 )]
 #![warn(missing_docs)]
@@ -75,8 +75,8 @@ mod test_context;
 mod value;
 
 pub use account::Account;
-pub use casperlabs_node::crypto::asymmetric_key::{PublicKey, SecretKey};
-pub use casperlabs_types::account::AccountHash;
+pub use casper_node::crypto::asymmetric_key::{PublicKey, SecretKey};
+pub use casper_types::account::AccountHash;
 pub use code::Code;
 pub use error::{Error, Result};
 pub use session::{Session, SessionBuilder, SessionTransferInfo};

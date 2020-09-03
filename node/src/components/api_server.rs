@@ -47,7 +47,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     reactor::QueueKind,
-    types::{DecodingError, Deploy, DeployHash},
+    types::{Deploy, DeployHash},
 };
 pub use config::Config;
 pub(crate) use event::Event;
@@ -199,13 +199,14 @@ where
     REv: From<Event> + From<ApiRequest> + Send,
 {
     let deploy = match str::from_utf8(encoded_deploy.as_ref())
-        .map_err(|_| DecodingError)
-        .and_then(Deploy::from_json)
-    {
+        .map_err(|error| error.to_string())
+        .and_then(|encoded_deploy_str| {
+            Deploy::from_json(encoded_deploy_str).map_err(|error| error.to_string())
+        }) {
         Ok(deploy) => deploy,
-        Err(_error) => {
-            info!("failed to put deploy");
-            let error_reply = "Failed to parse as JSON-encoded Deploy";
+        Err(error) => {
+            info!("failed to put deploy: {}", error);
+            let error_reply = format!("Failed to parse as JSON-encoded Deploy: {}", error);
             let json = reply::json(&error_reply);
             return Ok(reply::with_status(json, StatusCode::BAD_REQUEST));
         }

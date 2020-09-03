@@ -4,18 +4,18 @@
 extern crate alloc;
 
 use alloc::collections::BTreeMap;
-use casperlabs_contract::{
+use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casperlabs_types::{
+use casper_types::{
     auction::{
         Bid, BidPurses, Bids, Delegators, EraValidators, SeigniorageRecipient,
         SeigniorageRecipients, SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights,
-        AUCTION_DELAY, BID_PURSES_KEY, DEFAULT_LOCKED_FUNDS_PERIOD, ERA_ID_KEY, INITIAL_ERA_ID,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_PURSES_KEY,
+        AUCTION_DELAY, BIDS_KEY, BID_PURSES_KEY, DEFAULT_LOCKED_FUNDS_PERIOD, DELEGATORS_KEY,
+        ERA_ID_KEY, ERA_VALIDATORS_KEY, INITIAL_ERA_ID, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        UNBONDING_PURSES_KEY,
     },
-    auction::{BIDS_KEY, DELEGATORS_KEY, ERA_VALIDATORS_KEY},
     contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
     runtime_args,
     system_contract_errors::mint,

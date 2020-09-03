@@ -3,7 +3,7 @@
 use alloc::{collections::BTreeSet, string::String, vec, vec::Vec};
 use core::{convert::From, mem::MaybeUninit};
 
-use casperlabs_types::{
+use casper_types::{
     api_error,
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{ContractVersion, EntryPoints, NamedKeys},

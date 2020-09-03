@@ -1,13 +1,13 @@
 use lazy_static::lazy_static;
 
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{
         ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_types::{
+use casper_types::{
     account::{AccountHash, Weight},
     runtime_args, RuntimeArgs, U512,
 };

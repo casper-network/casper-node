@@ -12,7 +12,7 @@ use std::{
 };
 
 use anyhow::Error;
-use casperlabs_types::U512;
+use casper_types::U512;
 use num_traits::AsPrimitive;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
@@ -22,7 +22,10 @@ use crate::{
     components::{
         chainspec_loader::HighwayConfig,
         consensus::{
-            consensus_protocol::{BlockContext, ConsensusProtocol, ConsensusProtocolResult},
+            consensus_protocol::{
+                BlockContext, ConsensusProtocol, ConsensusProtocolResult,
+                FinalizedBlock as CpFinalizedBlock,
+            },
             highway_core::{highway::Params, validators::Validators},
             protocols::highway::{HighwayContext, HighwayProtocol, HighwaySecret},
             traits::NodeIdT,
@@ -34,10 +37,11 @@ use crate::{
         asymmetric_key::{PublicKey, SecretKey},
         hash,
     },
-    effect::{EffectBuilder, EffectExt, Effects},
-    types::{Block, FinalizedBlock, Motes, ProtoBlock, SystemTransaction, Timestamp},
+    effect::{EffectBuilder, EffectExt, Effects, Responder},
+    types::{BlockHash, FinalizedBlock, Motes, ProtoBlock, SystemTransaction, Timestamp},
     utils::WithDir,
 };
+use asymmetric_key::Signature;
 
 // We use one trillion as a block reward unit because it's large enough to allow precise
 // fractions, and small enough for many block rewards to fit into a u64.
@@ -117,7 +121,6 @@ where
             validator_stakes,
             highway_config.genesis_era_start_timestamp,
             0,
-            rng,
         );
         let effects = era_supervisor
             .handling_wrapper(effect_builder, rng)
@@ -141,7 +144,6 @@ where
     }
 
     /// Starts a new era; panics if it already exists.
-    #[allow(clippy::too_many_arguments)] // TODO: Those _are_ too many arguments!
     fn new_era(
         &mut self,
         era_id: EraId,
@@ -149,7 +151,6 @@ where
         validator_stakes: Vec<(PublicKey, Motes)>,
         start_time: Timestamp,
         start_height: u64,
-        rng: &mut R,
     ) -> Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>> {
         if self.active_eras.contains_key(&era_id) {
             panic!("{:?} already exists", era_id);
@@ -196,7 +197,6 @@ where
             secret,
             ftt,
             timestamp,
-            rng,
         );
 
         let era = Era {
@@ -299,22 +299,20 @@ where
         effects
     }
 
-    pub(super) fn handle_executed_block(
+    pub(super) fn sign_linear_chain_block(
         &mut self,
         _era_id: EraId,
-        mut block: Block,
+        block_hash: BlockHash,
+        responder: Responder<Signature>,
     ) -> Effects<Event<I>> {
         // TODO - we should only sign if we're a validator for the given era ID.
         let signature = asymmetric_key::sign(
-            block.hash().inner(),
+            block_hash.inner(),
             &self.era_supervisor.secret_signing_key,
             &self.era_supervisor.public_signing_key,
             self.rng,
         );
-        block.append_proof(signature);
-        self.effect_builder
-            .put_block_to_storage(Box::new(block))
-            .ignore()
+        responder.respond(signature).ignore()
     }
 
     pub(super) fn handle_accept_proto_block(
@@ -395,14 +393,15 @@ where
                     proto_block,
                     block_context,
                 }),
-            ConsensusProtocolResult::FinalizedBlock {
+            ConsensusProtocolResult::FinalizedBlock(CpFinalizedBlock {
                 value: proto_block,
                 new_equivocators,
                 rewards,
                 timestamp,
                 height,
-                switch_block,
-            } => {
+                terminal,
+                proposer,
+            }) => {
                 // Announce the finalized proto block.
                 let mut effects = self
                     .effect_builder
@@ -424,9 +423,10 @@ where
                     proto_block,
                     timestamp,
                     system_transactions,
-                    switch_block,
+                    terminal,
                     era_id,
                     self.era_supervisor.active_eras[&era_id].start_height + height,
+                    proposer,
                 );
                 if fb.switch_block() {
                     // TODO: Learn the new weights from contract (validator rotation).
@@ -441,17 +441,12 @@ where
                         validator_stakes,
                         fb.timestamp(),
                         fb.height() + 1,
-                        self.rng,
                     );
                     let new_era_id = era_id.successor();
                     effects.extend(self.handle_consensus_results(new_era_id, results));
                 }
                 // Request execution of the finalized block.
-                effects.extend(
-                    self.effect_builder
-                        .execute_block(fb)
-                        .event(move |block| Event::ExecutedBlock { era_id, block }),
-                );
+                effects.extend(self.effect_builder.execute_block(fb).ignore());
                 effects
             }
             ConsensusProtocolResult::ValidateConsensusValue(sender, proto_block) => self

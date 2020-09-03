@@ -17,14 +17,14 @@ run_node() {
     systemd-run \
         --user \
         --unit node-$ID \
-        --description "CasperLabs Dev Node ${ID}" \
+        --description "Casper Dev Node ${ID}" \
         --collect \
         --property=WorkingDirectory=${BASEDIR} \
         --setenv=RUST_LOG=debug \
         --property=StandardOutput=file:${LOGFILE} \
         --property=StandardError=file:${LOGFILE}.stderr \
         -- \
-        cargo run -p casperlabs-node \
+        cargo run -p casper-node \
         validator \
         -c resources/local/config.toml \
         -C consensus.secret_key_path=secret_keys/node-${ID}.pem \

@@ -36,6 +36,30 @@ impl BlockContext {
     }
 }
 
+/// A finalized block. All nodes are guaranteed to see the same sequence of blocks, and to agree
+/// about all the information contained in this type, as long as the total weight of faulty
+/// validators remains below the threshold.
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) struct FinalizedBlock<C: ConsensusValueT, VID> {
+    /// The finalized value.
+    pub(crate) value: C,
+    /// The set of newly detected equivocators.
+    pub(crate) new_equivocators: Vec<VID>,
+    /// Rewards for finalization of earlier blocks.
+    ///
+    /// This is a measure of the value of each validator's contribution to consensus, in
+    /// fractions of the configured maximum block reward.
+    pub(crate) rewards: BTreeMap<VID, u64>,
+    /// The timestamp at which this value was proposed.
+    pub(crate) timestamp: Timestamp,
+    /// The relative height in this instance of the protocol.
+    pub(crate) height: u64,
+    /// Whether this is a terminal block, i.e. the last one to be finalized.
+    pub(crate) terminal: bool,
+    /// Proposer of this value
+    pub(crate) proposer: VID,
+}
+
 #[derive(Debug)]
 pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
     CreatedGossipMessage(Vec<u8>),
@@ -47,15 +71,8 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
     CreateNewBlock {
         block_context: BlockContext,
     },
-    /// A block was finalized. The timestamp is from when the block was proposed.
-    FinalizedBlock {
-        value: C,
-        new_equivocators: Vec<VID>,
-        rewards: BTreeMap<VID, u64>,
-        timestamp: Timestamp,
-        height: u64,
-        switch_block: bool,
-    },
+    /// A block was finalized.
+    FinalizedBlock(FinalizedBlock<C, VID>),
     /// Request validation of the consensus value, contained in a message received from the given
     /// node.
     ///

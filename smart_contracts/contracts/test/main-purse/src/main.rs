@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use casperlabs_contract::contract_api::{account, runtime};
-use casperlabs_types::URef;
+use casper_contract::contract_api::{account, runtime};
+use casper_types::URef;
 
 const ARG_PURSE: &str = "purse";
 

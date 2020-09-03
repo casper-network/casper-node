@@ -354,10 +354,10 @@ where
 
 /// Generates a self-signed (key, certificate) pair suitable for TLS and signing.
 ///
-/// The common name of the certificate will be "casperlabs-node".
+/// The common name of the certificate will be "casper-node".
 pub fn generate_node_cert() -> SslResult<(X509, PKey<Private>)> {
     let private_key = generate_private_key()?;
-    let cert = generate_cert(&private_key, "casperlabs-node")?;
+    let cert = generate_cert(&private_key, "casper-node")?;
 
     Ok((cert, private_key))
 }
@@ -703,7 +703,7 @@ fn generate_cert(private_key: &PKey<Private>, cn: &str) -> SslResult<X509> {
     // The serial number is always one, since we are issuing only one cert.
     builder.set_serial_number(mknum(1)?.as_ref())?;
 
-    let issuer = mkname("US", "CasperLabs Blockchain", cn)?;
+    let issuer = mkname("US", "Casper Blockchain", cn)?;
 
     // Set the issuer, subject names, putting the "self" in "self-signed".
     builder.set_issuer_name(issuer.as_ref())?;

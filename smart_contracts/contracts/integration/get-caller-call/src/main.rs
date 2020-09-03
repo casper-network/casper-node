@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use casperlabs_contract::{contract_api::runtime, unwrap_or_revert::UnwrapOrRevert};
-use casperlabs_types::{contracts::DEFAULT_ENTRY_POINT_NAME, ApiError, RuntimeArgs};
+use casper_contract::{contract_api::runtime, unwrap_or_revert::UnwrapOrRevert};
+use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, ApiError, RuntimeArgs};
 
 const GET_CALLER_KEY: &str = "get_caller";
 

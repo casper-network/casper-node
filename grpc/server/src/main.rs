@@ -15,8 +15,8 @@ use dirs::home_dir;
 use lmdb::DatabaseFlags;
 use log::{error, info, Level, LevelFilter};
 
-use casperlabs_engine_grpc_server::engine_server;
-use casperlabs_node::{
+use casper_engine_grpc_server::engine_server;
+use casper_node::{
     components::contract_runtime::{
         core::engine_state::{EngineConfig, EngineState},
         shared::{
@@ -32,8 +32,8 @@ use casperlabs_node::{
 };
 
 // exe / proc
-const PROC_NAME: &str = "casperlabs-engine-grpc-server";
-const APP_NAME: &str = "CasperLabs Execution Engine Server";
+const PROC_NAME: &str = "casper-engine-grpc-server";
+const APP_NAME: &str = "Casper Execution Engine Server";
 const SERVER_LISTENING_TEMPLATE: &str = "{listener} is listening on socket: {socket}";
 const SERVER_START_EXPECT: &str = "failed to start Execution Engine Server";
 

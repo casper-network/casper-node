@@ -1,7 +1,7 @@
 use thiserror::Error;
 use uint::FromDecStrErr;
 
-use casperlabs_types::account::ACCOUNT_HASH_LENGTH;
+use casper_types::account::ACCOUNT_HASH_LENGTH;
 
 use crate::utils::{LoadError, ReadFileError};
 

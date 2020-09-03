@@ -1,4 +1,4 @@
-use casperlabs_types::{
+use casper_types::{
     auction::{AuctionProvider, RuntimeProvider, StorageProvider, SystemProvider},
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::Error,
@@ -15,13 +15,11 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
-    type Error = Error;
-
     fn get_key(&mut self, name: &str) -> Option<Key> {
         self.context.named_keys_get(name).cloned()
     }
 
-    fn read<T: FromBytes + CLTyped>(&mut self, uref: URef) -> Result<Option<T>, Self::Error> {
+    fn read<T: FromBytes + CLTyped>(&mut self, uref: URef) -> Result<Option<T>, Error> {
         match self.context.read_gs(&uref.into()) {
             Ok(Some(StoredValue::CLValue(cl_value))) => {
                 Ok(Some(cl_value.into_t().map_err(|_| Error::Storage)?))
@@ -33,7 +31,7 @@ where
         }
     }
 
-    fn write<T: ToBytes + CLTyped>(&mut self, uref: URef, value: T) -> Result<(), Self::Error> {
+    fn write<T: ToBytes + CLTyped>(&mut self, uref: URef, value: T) -> Result<(), Error> {
         let cl_value = CLValue::from_t(value).unwrap();
         self.context
             .write_gs(uref.into(), StoredValue::CLValue(cl_value))
@@ -46,13 +44,11 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
-    type Error = Error;
-
     fn create_purse(&mut self) -> URef {
         Runtime::create_purse(self).unwrap()
     }
 
-    fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Self::Error> {
+    fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
         Runtime::get_balance(self, purse).map_err(|_| Error::GetBalance)
     }
 
@@ -61,7 +57,7 @@ where
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         let mint_contract_hash = self.get_mint_contract();
         self.mint_transfer(mint_contract_hash, source, target, amount)
             .map_err(|_| Error::Transfer)
@@ -73,7 +69,7 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
-    fn get_caller(&self) -> casperlabs_types::account::AccountHash {
+    fn get_caller(&self) -> casper_types::account::AccountHash {
         self.context.get_caller()
     }
 }

@@ -2,8 +2,8 @@ use std::{env, path::PathBuf, str::FromStr};
 
 use clap::{Arg, ArgMatches};
 
-use casperlabs_engine_test_support::DEFAULT_ACCOUNT_INITIAL_BALANCE;
-use casperlabs_types::{account::AccountHash, U512};
+use casper_engine_test_support::DEFAULT_ACCOUNT_INITIAL_BALANCE;
+use casper_types::{account::AccountHash, U512};
 
 const DATA_DIR_ARG_NAME: &str = "data-dir";
 const DATA_DIR_ARG_SHORT: &str = "d";

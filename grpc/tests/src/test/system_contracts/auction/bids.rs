@@ -5,19 +5,19 @@ use auction::{
     DEFAULT_LOCKED_FUNDS_PERIOD, DEFAULT_UNBONDING_DELAY, ERA_ID_KEY, INITIAL_ERA_ID,
     SNAPSHOT_SIZE,
 };
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
         DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
-use casperlabs_node::{
+use casper_node::{
     crypto::asymmetric_key::{PublicKey, SecretKey},
     types::Motes,
     GenesisAccount,
 };
-use casperlabs_types::{
+use casper_types::{
     self,
     account::AccountHash,
     auction::{
@@ -110,7 +110,7 @@ fn should_run_add_bid() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
-            ARG_PUBLIC_KEY => casperlabs_types::PublicKey::from(*BID_ACCOUNT_PK),
+            ARG_PUBLIC_KEY => casper_types::PublicKey::from(*BID_ACCOUNT_PK),
             ARG_ENTRY_POINT => ARG_ADD_BID,
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
@@ -137,7 +137,7 @@ fn should_run_add_bid() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
-            ARG_PUBLIC_KEY => casperlabs_types::PublicKey::from(*BID_ACCOUNT_PK),
+            ARG_PUBLIC_KEY => casper_types::PublicKey::from(*BID_ACCOUNT_PK),
             ARG_ENTRY_POINT => ARG_ADD_BID,
             ARG_AMOUNT => U512::from(BID_AMOUNT_2),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_2,
@@ -164,7 +164,7 @@ fn should_run_add_bid() {
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => ARG_WITHDRAW_BID,
-            ARG_PUBLIC_KEY => casperlabs_types::PublicKey::from(*BID_ACCOUNT_PK),
+            ARG_PUBLIC_KEY => casper_types::PublicKey::from(*BID_ACCOUNT_PK),
             ARG_AMOUNT => U512::from(WITHDRAW_BID_AMOUNT_2),
         },
     )
@@ -184,12 +184,12 @@ fn should_run_add_bid() {
     let unbonding_purses: UnbondingPurses =
         get_value(&mut builder, auction_hash, "unbonding_purses");
     let unbond_list = unbonding_purses
-        .get(&casperlabs_types::PublicKey::from(*BID_ACCOUNT_PK))
+        .get(&casper_types::PublicKey::from(*BID_ACCOUNT_PK))
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
     assert_eq!(
         unbond_list[0].origin,
-        casperlabs_types::PublicKey::from(*BID_ACCOUNT_PK)
+        casper_types::PublicKey::from(*BID_ACCOUNT_PK)
     );
     // `WITHDRAW_BID_AMOUNT_2` is in unbonding list
     assert_eq!(
@@ -234,7 +234,7 @@ fn should_run_delegate_and_undelegate() {
         NON_FOUNDER_VALIDATOR_1.to_account_hash(),
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
-            ARG_PUBLIC_KEY => casperlabs_types::PublicKey::from(*NON_FOUNDER_VALIDATOR_1),
+            ARG_PUBLIC_KEY => casper_types::PublicKey::from(*NON_FOUNDER_VALIDATOR_1),
             ARG_ENTRY_POINT => ARG_ADD_BID,
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
@@ -252,7 +252,7 @@ fn should_run_delegate_and_undelegate() {
     let bids: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
     assert_eq!(bids.len(), 1);
     let active_bid = bids
-        .get(&casperlabs_types::PublicKey::from(*NON_FOUNDER_VALIDATOR_1))
+        .get(&casper_types::PublicKey::from(*NON_FOUNDER_VALIDATOR_1))
         .unwrap();
     assert_eq!(
         builder.get_purse_balance(active_bid.bonding_purse),
@@ -274,8 +274,8 @@ fn should_run_delegate_and_undelegate() {
         runtime_args! {
             ARG_ENTRY_POINT => ARG_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
-            ARG_VALIDATOR => casperlabs_types::PublicKey::from(*NON_FOUNDER_VALIDATOR_1),
-            ARG_DELEGATOR => casperlabs_types::PublicKey::from(*BID_ACCOUNT_PK),
+            ARG_VALIDATOR => casper_types::PublicKey::from(*NON_FOUNDER_VALIDATOR_1),
+            ARG_DELEGATOR => casper_types::PublicKey::from(*BID_ACCOUNT_PK),
         },
     )
     .build();
@@ -303,8 +303,8 @@ fn should_run_delegate_and_undelegate() {
         runtime_args! {
             ARG_ENTRY_POINT => ARG_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_2),
-            ARG_VALIDATOR => casperlabs_types::PublicKey::from(*NON_FOUNDER_VALIDATOR_1),
-            ARG_DELEGATOR => casperlabs_types::PublicKey::from(*BID_ACCOUNT_PK),
+            ARG_VALIDATOR => casper_types::PublicKey::from(*NON_FOUNDER_VALIDATOR_1),
+            ARG_DELEGATOR => casper_types::PublicKey::from(*BID_ACCOUNT_PK),
         },
     )
     .build();
@@ -315,7 +315,7 @@ fn should_run_delegate_and_undelegate() {
     assert_eq!(delegators.len(), 1);
 
     let delegated_amount_2 = delegators
-        .get(&casperlabs_types::PublicKey::from(*NON_FOUNDER_VALIDATOR_1))
+        .get(&casper_types::PublicKey::from(*NON_FOUNDER_VALIDATOR_1))
         .and_then(|map| map.get(&BID_ACCOUNT_PK.clone().into()))
         .cloned()
         .unwrap_or_default();
@@ -332,8 +332,8 @@ fn should_run_delegate_and_undelegate() {
         runtime_args! {
             ARG_ENTRY_POINT => ARG_UNDELEGATE,
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
-            ARG_VALIDATOR => casperlabs_types::PublicKey::from(*NON_FOUNDER_VALIDATOR_1),
-            ARG_DELEGATOR => casperlabs_types::PublicKey::from(*BID_ACCOUNT_PK),
+            ARG_VALIDATOR => casper_types::PublicKey::from(*NON_FOUNDER_VALIDATOR_1),
+            ARG_DELEGATOR => casper_types::PublicKey::from(*BID_ACCOUNT_PK),
         },
     )
     .build();
@@ -428,7 +428,7 @@ fn should_calculate_era_validators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
-            ARG_PUBLIC_KEY => casperlabs_types::PublicKey::from(*BID_ACCOUNT_PK),
+            ARG_PUBLIC_KEY => casper_types::PublicKey::from(*BID_ACCOUNT_PK),
             ARG_ENTRY_POINT => ARG_ADD_BID,
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
@@ -499,7 +499,7 @@ fn should_calculate_era_validators() {
     ); //2 genesis validators "winners"
     assert_eq!(
         validator_weights
-            .get(&casperlabs_types::PublicKey::from(*BID_ACCOUNT_PK))
+            .get(&casper_types::PublicKey::from(*BID_ACCOUNT_PK))
             .expect("should have bid account in this era"),
         &U512::from(ADD_BID_AMOUNT_1)
     );
@@ -546,7 +546,7 @@ fn should_get_first_seigniorage_recipients() {
     assert_eq!(bids.len(), 2);
 
     let founding_validator_1 = bids
-        .get(&casperlabs_types::PublicKey::from(*ACCOUNT_1_PK))
+        .get(&casper_types::PublicKey::from(*ACCOUNT_1_PK))
         .expect("should have account 1 pk");
     assert_eq!(
         founding_validator_1.funds_locked,
@@ -554,7 +554,7 @@ fn should_get_first_seigniorage_recipients() {
     );
 
     let founding_validator_2 = bids
-        .get(&casperlabs_types::PublicKey::from(*ACCOUNT_2_PK))
+        .get(&casper_types::PublicKey::from(*ACCOUNT_2_PK))
         .expect("should have account 2 pk");
     assert_eq!(
         founding_validator_2.funds_locked,
@@ -619,13 +619,13 @@ fn should_get_first_seigniorage_recipients() {
     assert_eq!(validator_weights.len(), 2, "{:?}", validator_weights);
     assert_eq!(
         validator_weights
-            .get(&casperlabs_types::PublicKey::from(*ACCOUNT_1_PK))
+            .get(&casper_types::PublicKey::from(*ACCOUNT_1_PK))
             .unwrap(),
         &U512::from(ACCOUNT_1_BOND)
     );
     assert_eq!(
         validator_weights
-            .get(&casperlabs_types::PublicKey::from(*ACCOUNT_2_PK))
+            .get(&casper_types::PublicKey::from(*ACCOUNT_2_PK))
             .unwrap(),
         &U512::from(ACCOUNT_2_BOND)
     );
@@ -662,7 +662,7 @@ fn should_release_founder_stake() {
     )
     .build();
 
-    let account_1_public_key = casperlabs_types::PublicKey::from(*ACCOUNT_1_PK);
+    let account_1_public_key = casper_types::PublicKey::from(*ACCOUNT_1_PK);
 
     let auction_hash = builder.get_auction_contract_hash();
     let bids: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);

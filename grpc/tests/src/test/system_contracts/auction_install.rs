@@ -1,12 +1,12 @@
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{
         exec_with_return, ExecuteRequestBuilder, WasmTestBuilder, DEFAULT_BLOCK_TIME,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_node::components::contract_runtime::core::engine_state::EngineConfig;
-use casperlabs_types::{
+use casper_node::components::contract_runtime::core::engine_state::EngineConfig;
+use casper_types::{
     account::AccountHash,
     auction::{
         BIDS_KEY, BID_PURSES_KEY, DELEGATORS_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY,
@@ -62,7 +62,7 @@ fn should_run_auction_install_contract() {
 
     let _auction_hash = auction.contract_package_hash();
 
-    let genesis_validators: BTreeMap<casperlabs_types::PublicKey, U512> = BTreeMap::new();
+    let genesis_validators: BTreeMap<casper_types::PublicKey, U512> = BTreeMap::new();
 
     let res = exec_with_return::exec(
         engine_config,

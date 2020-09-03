@@ -1,4 +1,4 @@
-use casperlabs_types::{
+use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     mint::{Mint, RuntimeProvider, StorageProvider},

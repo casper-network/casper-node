@@ -2,7 +2,7 @@ use std::fmt;
 
 use num::Zero;
 
-use casperlabs_types::U512;
+use casper_types::U512;
 
 use crate::types::Motes;
 
@@ -84,7 +84,7 @@ impl Zero for Gas {
 
 #[cfg(test)]
 mod tests {
-    use casperlabs_types::U512;
+    use casper_types::U512;
 
     use crate::{components::contract_runtime::shared::gas::Gas, types::Motes};
 

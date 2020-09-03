@@ -10,7 +10,7 @@ use crate::components::contract_runtime::shared::{
     transform::{self, Transform},
     TypeMismatch,
 };
-use casperlabs_types::{bytesrepr, Key, ProtocolVersion};
+use casper_types::{bytesrepr, Key, ProtocolVersion};
 
 use crate::components::contract_runtime::storage::{
     protocol_data::ProtocolData,

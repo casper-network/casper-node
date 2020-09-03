@@ -1,6 +1,6 @@
-//! # CasperLabs blockchain node
+//! # Casper blockchain node
 //!
-//! This is the core application for the CasperLabs blockchain. Run with `--help` to see available
+//! This is the core application for the Casper blockchain. Run with `--help` to see available
 //! command-line arguments.
 
 mod cli;

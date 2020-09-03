@@ -1,8 +1,8 @@
 //! This executable is designed to send a series of contracts in parallel to a running instance of
-//! `casperlabs-engine-grpc-server` in order to gauge the server's performance.
+//! `casper-engine-grpc-server` in order to gauge the server's performance.
 //!
 //! For details of how to run this executable, see the README in this directory or at
-//! https://github.com/CasperLabs/CasperLabs/blob/dev/execution-engine/engine-tests/src/profiling/README.md#concurrent-executor
+//! https://github.com/CasperLabs/casper-node/tree/master/grpc/tests/src/profiling#concurrent-executor
 
 use std::{
     iter::Sum,
@@ -16,16 +16,16 @@ use crossbeam_channel::{Iter, Receiver, Sender};
 use grpc::{ClientStubExt, RequestOptions};
 use log::info;
 
-use casperlabs_engine_grpc_server::engine_server::{
+use casper_engine_grpc_server::engine_server::{
     ipc::ExecuteRequest,
     ipc_grpc::{ExecutionEngineService, ExecutionEngineServiceClient},
 };
-use casperlabs_engine_test_support::internal::{
+use casper_engine_test_support::internal::{
     DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_PAYMENT,
 };
-use casperlabs_types::{runtime_args, RuntimeArgs, U512};
+use casper_types::{runtime_args, RuntimeArgs, U512};
 
-use casperlabs_engine_tests::profiling;
+use casper_engine_tests::profiling;
 
 use crate::profiling::TransferMode;
 
@@ -34,7 +34,7 @@ const ABOUT: &str =
     "A client which constructs several 'ExecuteRequest's and sends them concurrently to the \
      Execution Engine server.\n\nFirst run the 'state-initializer' executable to set up the \
      required global state, specifying a data dir.  This outputs the pre-state hash required as an \
-     input to 'concurrent-executor'.  Then run the 'casperlabs-engine-grpc-server' specifying the \
+     input to 'concurrent-executor'.  Then run the 'casper-engine-grpc-server' specifying the \
      same data dir and a socket file.  Finally, 'concurrent-executor' can be run using the same \
      socket file.\n\nTo enable logging, set the env var 'RUST_LOG=concurrent_executor=info'.";
 

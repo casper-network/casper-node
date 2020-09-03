@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use casperlabs_contract::contract_api::{account, runtime, system};
-use casperlabs_types::{auction, runtime_args, ContractHash, PublicKey, RuntimeArgs, URef, U512};
+use casper_contract::contract_api::{account, runtime, system};
+use casper_types::{auction, runtime_args, ContractHash, PublicKey, RuntimeArgs, URef, U512};
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_PUBLIC_KEY: &str = "public_key";

@@ -3,8 +3,8 @@
 
 extern crate alloc;
 
-use casperlabs_contract::contract_api::{account, runtime, system};
-use casperlabs_types::{auction, runtime_args, ContractHash, PublicKey, RuntimeArgs, URef, U512};
+use casper_contract::contract_api::{account, runtime, system};
+use casper_types::{auction, runtime_args, ContractHash, PublicKey, RuntimeArgs, URef, U512};
 
 const VALID_PUBLIC_KEY: PublicKey = PublicKey::Ed25519([42; 32]);
 

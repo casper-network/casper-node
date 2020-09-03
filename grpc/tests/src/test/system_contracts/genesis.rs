@@ -1,8 +1,8 @@
-use casperlabs_engine_test_support::internal::{
+use casper_engine_test_support::internal::{
     utils, InMemoryWasmTestBuilder, AUCTION_INSTALL_CONTRACT, DEFAULT_WASM_COSTS,
     MINT_INSTALL_CONTRACT, POS_INSTALL_CONTRACT, STANDARD_PAYMENT_INSTALL_CONTRACT,
 };
-use casperlabs_node::{
+use casper_node::{
     components::contract_runtime::{
         core::engine_state::{
             genesis::ExecConfig, run_genesis_request::RunGenesisRequest, SYSTEM_ACCOUNT_ADDR,
@@ -13,7 +13,7 @@ use casperlabs_node::{
     types::Motes,
     GenesisAccount,
 };
-use casperlabs_types::{ProtocolVersion, U512};
+use casper_types::{ProtocolVersion, U512};
 
 #[cfg(feature = "use-system-contracts")]
 const BAD_INSTALL: &str = "standard_payment.wasm";

@@ -1,9 +1,9 @@
-use casperlabs_engine_test_support::{
+use casper_engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use casperlabs_node::components::contract_runtime::shared::transform::Transform;
-use casperlabs_types::{runtime_args, RuntimeArgs, U512};
+use casper_node::components::contract_runtime::shared::transform::Transform;
+use casper_types::{runtime_args, RuntimeArgs, U512};
 
 const CONTRACT_EE_460_REGRESSION: &str = "ee_460_regression.wasm";
 

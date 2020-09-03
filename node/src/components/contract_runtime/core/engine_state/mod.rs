@@ -23,7 +23,7 @@ use num_traits::Zero;
 use parity_wasm::elements::Module;
 use tracing::{debug, warn};
 
-use casperlabs_types::{
+use casper_types::{
     account::AccountHash,
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
@@ -382,13 +382,13 @@ where
         };
 
         let auction_hash: ContractHash = {
-            let bonded_validators: BTreeMap<casperlabs_types::PublicKey, U512> = ee_config
+            let bonded_validators: BTreeMap<casper_types::PublicKey, U512> = ee_config
                 .accounts()
                 .iter()
                 .filter_map(|genesis_account| {
                     if genesis_account.is_genesis_validator() {
                         Some((
-                            casperlabs_types::PublicKey::from(
+                            casper_types::PublicKey::from(
                                 genesis_account
                                     .public_key()
                                     .expect("should have public key"),
@@ -1643,6 +1643,8 @@ where
                 rewards_purse_balance_key,
             ));
         }
+
+        // Transfer the contents of the rewards purse to block proposer
 
         execution_result_builder.set_payment_execution_result(payment_result);
 

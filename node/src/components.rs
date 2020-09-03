@@ -12,6 +12,7 @@ pub(crate) mod deploy_acceptor;
 pub(crate) mod deploy_buffer;
 pub(crate) mod fetcher;
 pub(crate) mod gossiper;
+pub(crate) mod linear_chain;
 // The  `in_memory_network` is public for use in doctests.
 #[cfg(test)]
 pub mod in_memory_network;
@@ -25,8 +26,7 @@ use crate::effect::{EffectBuilder, Effects};
 
 /// Core Component.
 ///
-/// A component implements a state machine, not unlike a [Mealy
-/// automaton](https://en.wikipedia.org/wiki/Mealy_machine). Its inputs are `Event`s, allowing it to
+/// Its inputs are `Event`s, allowing it to
 /// perform work whenever an event is received, outputting `Effect`s each time it is called.
 ///
 /// # Error and halting states

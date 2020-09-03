@@ -5,7 +5,7 @@ Casper is the blockchain platform purpose-built to scale opportunity for everyon
 ## Current Development Status
 The status on development is reported during the Community calls and is found [here](https://github.com/CasperLabs/Governance/wiki/Current-Status)
 
-The CasperLabs Testnet is live.
+The Casper Testnet is live.
 - Transactions can be sent to: deploy.casperlabs.io via the client or via
 - [Clarity Block Exporer](https://clarity.casperlabs.io)
 
@@ -16,9 +16,9 @@ The CasperLabs Testnet is live.
 
 ## Get Started with Smart Contracts
 - [Writing Smart Contracts](https://docs.casperlabs.io/en/latest/dapp-dev-guide/index.html)
-- [Rust Smart Contract SDK](https://crates.io/crates/cargo-casperlabs)
-- [Rust Smart Contract API Docs](https://docs.rs/casperlabs-contract/latest/casperlabs_contract/contract_api/index.html)
-- [AssemblyScript Smart Contract API](https://www.npmjs.com/package/@casperlabs/contract)
+- [Rust Smart Contract SDK](https://crates.io/crates/cargo-casper)
+- [Rust Smart Contract API Docs](https://docs.rs/casper-contract/latest/casper_contract/contract_api/index.html)
+- [AssemblyScript Smart Contract API](https://www.npmjs.com/package/@casper/contract)
 
 ## Community
 
@@ -26,9 +26,9 @@ The CasperLabs Testnet is live.
 - [CasperLabs Community Forum](https://forums.casperlabs.io/)
 - [Telegram Channel](https://t.me/CasperLabs)
 
-# casperlabs-node
+# casper-node
 
-This is the core application for the CasperLabs blockchain.
+This is the core application for the Casper blockchain.
 
 ## Running a validator node
 
@@ -84,7 +84,7 @@ If the environment variable is unset, it is equivalent to setting `RUST_LOG=erro
 A typical log message will look like:
 
 ```
-Jun 09 01:40:17.315 INFO  [casperlabs_node::components::api_server api_server.rs:127] starting HTTP server; server_addr=127.0.0.1:7777
+Jun 09 01:40:17.315 INFO  [casper_node::components::api_server api_server.rs:127] starting HTTP server; server_addr=127.0.0.1:7777
 ```
 
 This is comprised of the following parts:
@@ -103,7 +103,7 @@ For example, to enable `trace` level logging for the `small_network` module in `
 modules in `components`, and `warn` level for the remaining codebase:
 
 ```
-RUST_LOG=casperlabs_node::components::small=trace,casperlabs_node::comp=info,warn
+RUST_LOG=casper_node::components::small=trace,casper_node::comp=info,warn
 ```
 
 ## Running a client

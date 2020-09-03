@@ -1,8 +1,8 @@
-use std::{env, fs, path::PathBuf};
+use std::{fs, path::PathBuf};
 
 use clap::{Arg, ArgMatches};
 
-use casperlabs_node::crypto::asymmetric_key::SecretKey;
+use casper_node::crypto::asymmetric_key::SecretKey;
 
 /// The node HTTP endpoint to instruct it to put the provided deploy.
 pub const DEPLOY_API_PATH: &str = "deploys";
@@ -54,7 +54,7 @@ pub mod secret_key {
     }
 
     pub fn get(matches: &ArgMatches) -> SecretKey {
-        let path = string_to_path_buf(
+        let path = PathBuf::from(
             matches
                 .value_of(ARG_NAME)
                 .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME)),
@@ -63,17 +63,36 @@ pub mod secret_key {
     }
 }
 
-pub fn string_to_path_buf(input: &str) -> PathBuf {
-    let mut path = input.to_string();
-    // Replace env vars in the provided path.
-    for (env_var_name, env_var_value) in env::vars() {
-        path = path.replace(&format!("${}", env_var_name), &env_var_value);
+/// Handles the arg for whether to overwrite existing output file(s).
+pub mod force {
+    use super::*;
+
+    pub const ARG_NAME: &str = "force";
+    const ARG_NAME_SHORT: &str = "f";
+    const ARG_HELP_SINGULAR: &str =
+        "If this flag is passed and the output file already exists, it will be overwritten. \
+        Without this flag, if the output file already exists, the command will fail";
+    const ARG_HELP_PLURAL: &str =
+        "If this flag is passed, any existing output files will be overwritten. Without this flag, \
+        if any output file exists, no output files will be generated and the command will fail";
+
+    pub fn arg(order: usize, singular: bool) -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .short(ARG_NAME_SHORT)
+            .required(false)
+            .help(if singular {
+                ARG_HELP_SINGULAR
+            } else {
+                ARG_HELP_PLURAL
+            })
+            .display_order(order)
     }
 
-    PathBuf::from(path)
+    pub fn get(matches: &ArgMatches) -> bool {
+        matches.is_present(ARG_NAME)
+    }
 }
 
 pub fn read_file(path: &str) -> Vec<u8> {
-    let path = string_to_path_buf(path);
-    fs::read(&path).unwrap_or_else(|error| panic!("should read {}: {}", path.display(), error))
+    fs::read(path).unwrap_or_else(|error| panic!("should read {}: {}", path, error))
 }

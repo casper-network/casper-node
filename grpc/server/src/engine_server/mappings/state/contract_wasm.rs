@@ -1,4 +1,4 @@
-use casperlabs_types::ContractWasm;
+use casper_types::ContractWasm;
 
 use crate::engine_server::state;
 
@@ -20,7 +20,7 @@ impl From<state::ContractWasm> for ContractWasm {
 mod tests {
     use proptest::proptest;
 
-    use casperlabs_types::gens;
+    use casper_types::gens;
 
     use super::*;
     use crate::engine_server::mappings::test_utils;

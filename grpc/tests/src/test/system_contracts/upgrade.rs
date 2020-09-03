@@ -1,21 +1,21 @@
-use casperlabs_engine_grpc_server::engine_server::ipc::DeployCode;
-use casperlabs_engine_test_support::internal::{
+use casper_engine_grpc_server::engine_server::ipc::DeployCode;
+use casper_engine_test_support::internal::{
     utils, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_RUN_GENESIS_REQUEST,
     DEFAULT_WASM_COSTS,
 };
 #[cfg(feature = "use-system-contracts")]
-use casperlabs_engine_test_support::{internal::ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
+use casper_engine_test_support::{internal::ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
 #[cfg(feature = "use-system-contracts")]
-use casperlabs_node::components::contract_runtime::shared::{
+use casper_node::components::contract_runtime::shared::{
     stored_value::StoredValue, transform::Transform,
 };
-use casperlabs_node::components::contract_runtime::{
+use casper_node::components::contract_runtime::{
     core::engine_state::{upgrade::ActivationPoint, Error},
     shared::wasm_costs::WasmCosts,
 };
-use casperlabs_types::ProtocolVersion;
+use casper_types::ProtocolVersion;
 #[cfg(feature = "use-system-contracts")]
-use casperlabs_types::{runtime_args, CLValue, Key, RuntimeArgs, U512};
+use casper_types::{runtime_args, CLValue, Key, RuntimeArgs, U512};
 
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 const DEFAULT_ACTIVATION_POINT: ActivationPoint = 1;
