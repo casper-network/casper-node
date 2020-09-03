@@ -140,8 +140,8 @@ pub struct State {
     finalized_block: FinalizedBlock,
     /// Deploys which have still to be executed.
     remaining_deploys: VecDeque<Deploy>,
-    /// Current pre-state hash of global storage.  Is initialized with the parent block's post-state
-    /// hash, and is updated after each commit.
+    /// Current pre-state hash of global storage.  Is initialized with the parent block's
+    /// post-state hash, and is updated after each commit.
     pre_state_hash: Digest,
 }
 
@@ -160,9 +160,9 @@ pub(crate) struct BlockExecutor {
     /// A mapping from proto block to executed block's ID and post-state hash, to allow
     /// identification of a parent block's details once a finalized block has been executed.
     ///
-    /// The key is a tuple of block's height (it's a linear chain so it's monotonically increasing),
-    /// and the `ExecutedBlockSummary` is derived from the executed block which is created from that
-    /// proto block.
+    /// The key is a tuple of block's height (it's a linear chain so it's monotonically
+    /// increasing), and the `ExecutedBlockSummary` is derived from the executed block which is
+    /// created from that proto block.
     parent_map: HashMap<BlockHeight, ExecutedBlockSummary>,
 }
 
