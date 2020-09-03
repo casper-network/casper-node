@@ -6,7 +6,6 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
-    net::{IpAddr, Ipv4Addr, SocketAddr},
     time::{Duration, Instant},
 };
 
@@ -20,13 +19,12 @@ use crate::{
     components::Component,
     effect::{announcements::NetworkAnnouncement, EffectBuilder, Effects},
     reactor::{self, EventQueueHandle, Finalize, Reactor, Runner},
-    small_network::{self, NodeId, SmallNetwork},
+    small_network::{self, Config, NodeId, SmallNetwork},
     testing::{
         self, init_logging,
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
     },
-    utils::WithDir,
 };
 
 /// Test-reactor event.
@@ -59,7 +57,7 @@ impl From<NetworkAnnouncement<NodeId, Message>> for Event {
 
 impl Reactor<TestRng> for TestReactor {
     type Event = Event;
-    type Config = small_network::Config;
+    type Config = Config;
     type Error = anyhow::Error;
 
     fn dispatch_event(
@@ -82,7 +80,7 @@ impl Reactor<TestRng> for TestReactor {
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut TestRng,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
-        let (net, effects) = SmallNetwork::new(event_queue, WithDir::default_path(cfg))?;
+        let (net, effects) = SmallNetwork::new(event_queue, cfg)?;
 
         Ok((
             TestReactor { net },
@@ -149,22 +147,6 @@ fn network_is_complete(
         .all(|actual| actual == expected)
 }
 
-fn gen_config(bind_port: u16, root_port: u16) -> small_network::Config {
-    // Bind everything to localhost.
-    let bind_interface: IpAddr = Ipv4Addr::LOCALHOST.into();
-    small_network::Config {
-        bind_interface: bind_interface.to_string(),
-        bind_port,
-        root_addr: SocketAddr::new(bind_interface, root_port).to_string(),
-        // Fast retry, moderate amount of times. This is 10 seconds max (100 x 100 ms)
-        max_outgoing_retries: Some(100),
-        outgoing_retry_delay_millis: 100,
-        // Auto-generate cert and key.
-        cert_path: None,
-        secret_key_path: None,
-    }
-}
-
 /// Run a two-node network five times.
 ///
 /// Ensures that network cleanup and basic networking works.
@@ -173,7 +155,7 @@ async fn run_two_node_network_five_times() {
     let mut rng = TestRng::new();
 
     // The networking port used by the tests for the root node.
-    let root_node_port = testing::unused_port_on_localhost();
+    let first_node_port = testing::unused_port_on_localhost();
 
     init_logging();
 
@@ -183,10 +165,13 @@ async fn run_two_node_network_five_times() {
         let mut net = Network::new();
 
         let start = Instant::now();
-        net.add_node_with_config(gen_config(root_node_port, root_node_port), &mut rng)
-            .await
-            .unwrap();
-        net.add_node_with_config(gen_config(root_node_port + 1, root_node_port), &mut rng)
+        net.add_node_with_config(
+            Config::default_local_net_first_node(first_node_port),
+            &mut rng,
+        )
+        .await
+        .unwrap();
+        net.add_node_with_config(Config::default_local_net(first_node_port), &mut rng)
             .await
             .unwrap();
         let end = Instant::now();
@@ -196,7 +181,7 @@ async fn run_two_node_network_five_times() {
             "finished setting up networking nodes"
         );
 
-        let timeout = Duration::from_secs(1);
+        let timeout = Duration::from_secs(2);
         net.settle_on(&mut rng, network_is_complete, timeout).await;
 
         let quiet_for = Duration::from_millis(25);
@@ -234,15 +219,7 @@ async fn bind_to_real_network_interface() {
         .ip();
     let port = testing::unused_port_on_localhost();
 
-    let local_net_config = small_network::Config {
-        bind_interface: local_addr.to_string(),
-        bind_port: port,
-        root_addr: SocketAddr::new(local_addr, port).to_string(),
-        max_outgoing_retries: Some(360),
-        outgoing_retry_delay_millis: 10000,
-        cert_path: None,
-        secret_key_path: None,
-    };
+    let local_net_config = Config::new(local_addr, port);
 
     let mut net = Network::<TestReactor>::new();
     net.add_node_with_config(local_net_config, &mut rng)
@@ -270,11 +247,17 @@ async fn check_varying_size_network_connects() {
         let mut net = Network::new();
 
         // Pick a random port in the higher ranges that is likely to be unused.
-        let root_port = testing::unused_port_on_localhost();
+        let first_node_port = testing::unused_port_on_localhost();
 
-        for i in 0..number_of_nodes {
-            // We use a `bind_port` of 0 to get a random port assigned.
-            net.add_node_with_config(gen_config(root_port + i, root_port), &mut rng)
+        net.add_node_with_config(
+            Config::default_local_net_first_node(first_node_port),
+            &mut rng,
+        )
+        .await
+        .unwrap();
+
+        for _ in 1..number_of_nodes {
+            net.add_node_with_config(Config::default_local_net(first_node_port), &mut rng)
                 .await
                 .unwrap();
         }

@@ -97,12 +97,6 @@ pub(crate) struct Gossiper<T: Item + 'static, REv: ReactorEventT<T>> {
 impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
     /// Constructs a new gossiper component.
     ///
-    /// `put_to_holder` is called by the gossiper whenever a new complete item is received, via
-    /// handling either an `Event::ItemReceived` or a `Message::GetResponse`.
-    ///
-    /// For an example of how `put_to_holder` should be implemented, see
-    /// `gossiper::put_deploy_to_store()` which is used by `Gossiper<Deploy>`.
-    ///
     /// `get_from_holder` is called by the gossiper when handling either a `Message::GossipResponse`
     /// where the sender indicates it needs the full item, or a `Message::GetRequest`.
     ///

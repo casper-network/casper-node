@@ -8,27 +8,29 @@ use derive_more::From;
 use tokio::net::TcpStream;
 
 use super::{Error, Message, NodeId, Transport};
-use crate::{effect::requests::NetworkRequest, tls::TlsCert};
+use crate::effect::requests::NetworkRequest;
 
 #[derive(Debug, From)]
 pub enum Event<P> {
-    /// Connection to the root node succeeded.
-    RootConnected { cert: TlsCert, transport: Transport },
-    /// Connection to the root node failed.
-    RootFailed { error: Error },
+    /// Connection to the known node failed.
+    BootstrappingFailed { error: Error },
     /// A new TCP connection has been established from an incoming connection.
-    IncomingNew { stream: TcpStream, addr: SocketAddr },
+    IncomingNew {
+        stream: TcpStream,
+        address: SocketAddr,
+    },
     /// The TLS handshake completed on the incoming connection.
     IncomingHandshakeCompleted {
         result: Result<(NodeId, Transport), Error>,
-        addr: SocketAddr,
+        address: SocketAddr,
     },
     /// Received network message.
     IncomingMessage { node_id: NodeId, msg: Message<P> },
     /// Incoming connection closed.
     IncomingClosed {
         result: io::Result<()>,
-        addr: SocketAddr,
+        node_id: NodeId,
+        address: SocketAddr,
     },
 
     /// A new outgoing connection was successfully established.
@@ -39,7 +41,6 @@ pub enum Event<P> {
     /// An outgoing connection failed to connect or was terminated.
     OutgoingFailed {
         node_id: NodeId,
-        attempt_count: u32,
         error: Option<Error>,
     },
 
@@ -51,28 +52,22 @@ pub enum Event<P> {
 impl<P: Display> Display for Event<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::RootConnected { cert, .. } => {
-                write!(f, "root connected @ {}", cert.public_key_fingerprint())
-            }
-            Event::RootFailed { error } => write!(f, "root failed: {}", error),
-            Event::IncomingNew { addr, .. } => write!(f, "incoming connection from {}", addr),
-            Event::IncomingHandshakeCompleted { result, addr } => {
-                write!(f, "handshake from {}, is_err {}", addr, result.is_err())
+            Event::BootstrappingFailed { error } => write!(f, "root failed: {}", error),
+            Event::IncomingNew { address, .. } => write!(f, "incoming connection from {}", address),
+            Event::IncomingHandshakeCompleted { result, address } => {
+                write!(f, "handshake from {}, is_err {}", address, result.is_err())
             }
             Event::IncomingMessage { node_id, msg } => write!(f, "msg from {}: {}", node_id, msg),
-            Event::IncomingClosed { addr, .. } => write!(f, "closed connection from {}", addr),
+            Event::IncomingClosed { address, .. } => {
+                write!(f, "closed connection from {}", address)
+            }
             Event::OutgoingEstablished { node_id, .. } => {
                 write!(f, "established outgoing to {}", node_id)
             }
-            Event::OutgoingFailed {
-                node_id,
-                attempt_count,
-                error,
-            } => write!(
+            Event::OutgoingFailed { node_id, error } => write!(
                 f,
-                "failed outgoing {} [{}]: (is_err {})",
+                "failed outgoing {}: (is_err {})",
                 node_id,
-                attempt_count,
                 error.is_some()
             ),
             Event::NetworkRequest { req } => write!(f, "request: {}", req),

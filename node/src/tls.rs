@@ -177,6 +177,7 @@ impl Debug for Signature {
 
 impl Signature {
     /// Signs a binary blob with the blessed ciphers and TLS parameters.
+    #[allow(dead_code)]
     fn create(private_key: &PKeyRef<Private>, data: &[u8]) -> SslResult<Self> {
         // TODO: This needs verification to ensure we're not doing stupid/textbook RSA-ish.
 
@@ -230,6 +231,7 @@ impl TlsCert {
     }
 
     /// Extracts the public key from the certificate.
+    #[allow(dead_code)]
     pub(crate) fn public_key(&self) -> PKey<Public> {
         // This can never fail, we validate the certificate on construction and deserialization.
         self.x509
@@ -305,6 +307,7 @@ where
     /// Creates a new signed value.
     ///
     /// Serializes the value to a buffer and signs the buffer.
+    #[allow(dead_code)]
     pub(crate) fn new(value: &V, signing_key: &PKeyRef<Private>) -> anyhow::Result<Self> {
         let data = rmp_serde::to_vec(value)?;
         let signature = Signature::create(signing_key, &data)?;
@@ -335,6 +338,7 @@ where
     ///
     /// Allows for extraction of a public key prior to validating a value.
     #[inline]
+    #[allow(dead_code)]
     pub(crate) fn validate_self_signed<F>(&self, extract: F) -> anyhow::Result<V>
     where
         F: FnOnce(&V) -> anyhow::Result<PKey<Public>>,

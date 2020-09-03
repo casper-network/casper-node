@@ -16,9 +16,9 @@ pub struct Config {
     pub logging: LoggingConfig,
     /// Consensus configuration.
     pub consensus: ConsensusConfig,
-    /// Network configuration for the validator-only network.
-    pub validator_net: SmallNetworkConfig,
-    /// Network configuration for the HTTP API.
+    /// Network configuration.
+    pub network: SmallNetworkConfig,
+    /// HTTP API server configuration.
     pub http_server: ApiServerConfig,
     /// On-disk storage configuration.
     pub storage: StorageConfig,

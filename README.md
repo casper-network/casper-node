@@ -56,12 +56,6 @@ default values otherwise.  For example:
 cargo run --release -- validator resources/local/config.toml -C=consensus.secret_key_path=secret_keys/node-1.pem
 ```
 
-To create a config file for editing, you can either copy the example config file linked above, then start the node:
-
-```
-cargo run --release -- validator config.toml
-```
-
 **NOTE:** If you want to run multiple instances on the same machine, ensure you modify the `[storage.path]` field of
 their configuration files to give each a unique path, or else instances will share database files.
 

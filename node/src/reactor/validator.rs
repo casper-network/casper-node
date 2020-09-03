@@ -314,10 +314,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         let metrics = Metrics::new(registry.clone());
 
         let effect_builder = EffectBuilder::new(event_queue);
-        let (net, net_effects) = SmallNetwork::new(
-            event_queue,
-            WithDir::new(root.clone(), config.validator_net),
-        )?;
+        let (net, net_effects) = SmallNetwork::new(event_queue, config.network)?;
 
         let api_server = ApiServer::new(config.http_server, effect_builder);
         let timestamp = Timestamp::now();
