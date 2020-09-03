@@ -50,7 +50,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     io,
-    net::{IpAddr, SocketAddr, TcpListener},
+    net::{SocketAddr, TcpListener},
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -170,9 +170,9 @@ where
         let root_addr = resolve_address(cfg.root_addr.as_str()).map_err(Error::ResolveAddr)?;
 
         // We can now create a listener.
-        let bind_port = cfg.bind_port;
-        let (listener, we_are_root) = create_listener(root_addr, bind_port, bind_interface)
-            .map_err(|err| Error::ListenerCreation(err, (bind_interface, bind_port).into()))?;
+        let bind_addr = (bind_interface, cfg.bind_port).into();
+        let (listener, we_are_root) = create_listener(root_addr, bind_addr)
+            .map_err(|err| Error::ListenerCreation(err, bind_addr))?;
         let addr = listener.local_addr().map_err(Error::ListenerAddr)?;
 
         // Create the model. Initially we know our own endpoint address.
@@ -645,18 +645,23 @@ where
     }
 }
 
-/// Determines bind address for now.
+/// Creates a listener on either `root_addr` or `bind_addr`.
 ///
-/// Will attempt to bind on the root address first if the `bind_interface` is the same as the
-/// interface of `root_addr`. Otherwise uses an unused port on `bind_interface`.
+/// If the `root_addr` is the same as `bind_addr` or shares its IP and
+/// `bind_addr` has a port of port of 0, tries to bind to `root_addr`.
 ///
-/// Returns a `(listener, is_root)` pair. `is_root` is `true` if the node is a root node.
+/// If binding to `root_addr` fails, or `root_addr` is on a different interface
+/// or non-zero port, binds to `bind_addr` instead.
+///
+/// Returns a `(listener, is_root)` pair. `is_root` is `true` if the node is a
+/// root node.
 fn create_listener(
     root_addr: SocketAddr,
-    bind_port: u16,
-    bind_interface: IpAddr,
+    bind_addr: SocketAddr,
 ) -> io::Result<(TcpListener, bool)> {
-    if root_addr.ip() == bind_interface && (bind_port == 0 || root_addr.port() == bind_port) {
+    if root_addr.ip() == bind_addr.ip()
+        && (bind_addr.port() == 0 || root_addr.port() == bind_addr.port())
+    {
         // Try to become the root node, if the root nodes interface is available.
         match TcpListener::bind(root_addr) {
             Ok(listener) => {
@@ -673,7 +678,7 @@ fn create_listener(
     }
 
     // We did not become the root node, bind on the specified port.
-    Ok((TcpListener::bind((bind_interface, bind_port))?, false))
+    Ok((TcpListener::bind(bind_addr)?, false))
 }
 
 /// Core accept loop for the networking server.
