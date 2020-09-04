@@ -16,9 +16,9 @@ use casper_types::{
         AuctionProvider, DelegationRate, RuntimeProvider, SeigniorageRecipients, StorageProvider,
         SystemProvider, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
         ARG_SOURCE_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_KEYS, ARG_VALIDATOR_PUBLIC_KEYS,
-        METHOD_ADD_BID, METHOD_BOND, METHOD_DELEGATE, METHOD_PROCESS_UNBOND_REQUESTS,
-        METHOD_QUASH_BID, METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS,
-        METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNBOND, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
+        METHOD_ADD_BID, METHOD_BOND, METHOD_DELEGATE, METHOD_QUASH_BID,
+        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS, METHOD_RUN_AUCTION, METHOD_SLASH,
+        METHOD_UNBOND, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
     },
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::Error,
@@ -188,11 +188,6 @@ pub extern "C" fn unbond() {
 }
 
 #[no_mangle]
-pub extern "C" fn process_unbond_requests() {
-    AuctionContract.process_unbond_requests().unwrap_or_revert();
-}
-
-#[no_mangle]
 pub extern "C" fn slash() {
     let validator_public_keys = runtime::get_named_arg(ARG_VALIDATOR_PUBLIC_KEYS);
     AuctionContract
@@ -309,15 +304,6 @@ pub fn get_entry_points() -> EntryPoints {
 
     let entry_point = EntryPoint::new(
         METHOD_UNBOND,
-        vec![],
-        CLType::Unit,
-        EntryPointAccess::Public,
-        EntryPointType::Contract,
-    );
-    entry_points.add_entry_point(entry_point);
-
-    let entry_point = EntryPoint::new(
-        METHOD_PROCESS_UNBOND_REQUESTS,
         vec![],
         CLType::Unit,
         EntryPointAccess::Public,
