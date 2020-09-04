@@ -1,17 +1,15 @@
 use std::{
-    cell::RefCell,
     collections::{hash_map::DefaultHasher, HashMap, VecDeque},
     fmt::{self, Debug, Display, Formatter},
     hash::Hasher,
-    iter::{self, FromIterator},
-    marker::PhantomData,
+    iter::FromIterator,
 };
 
 use hex_fmt::HexFmt;
 use itertools::Itertools;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
-use tracing::{error, info, trace, warn};
+use tracing::{trace, warn};
 
 use super::{
     active_validator::Effect,
@@ -21,7 +19,7 @@ use super::{
         Dependency, Highway, Params, PreValidatedVertex, SignedWireVote, ValidVertex, Vertex,
         VertexError,
     },
-    validators::{ValidatorIndex, Validators},
+    validators::Validators,
     Weight,
 };
 use crate::{
@@ -32,9 +30,9 @@ use crate::{
                 DeliverySchedule, Fault, Message, Node, Target, TargetedMessage, ValidatorId,
                 VirtualNet,
             },
-            queue::{MessageT, QueueEntry},
+            queue::QueueEntry,
         },
-        traits::{ConsensusValueT, Context, ValidatorSecret},
+        traits::{Context, ValidatorSecret},
         BlockContext,
     },
     types::Timestamp,
@@ -42,7 +40,6 @@ use crate::{
 
 type ConsensusValue = Vec<u32>;
 
-const TEST_FORGIVENESS_FACTOR: (u16, u16) = (2, 5);
 const TEST_MIN_ROUND_EXP: u8 = 12;
 const TEST_END_HEIGHT: u64 = 100000;
 pub(crate) const TEST_BLOCK_REWARD: u64 = 1_000_000_000_000;
@@ -149,15 +146,6 @@ impl Ord for HighwayMessage {
     }
 }
 
-/// Result of single `crank()` call.
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) enum CrankOk {
-    /// Test run is not done.
-    Continue,
-    /// Test run is finished.
-    Done,
-}
-
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum TestRunError {
     /// VirtualNet was missing a validator when it was expected to exist.
@@ -189,7 +177,7 @@ impl Display for TestRunError {
 
 enum Distribution {
     Uniform,
-    Poisson(f64),
+    // TODO: Poisson(f64), https://casperlabs.atlassian.net/browse/HWY-116
 }
 
 impl Distribution {
@@ -203,8 +191,6 @@ impl Distribution {
     ) -> Vec<u64> {
         match self {
             Distribution::Uniform => (0..count).map(|_| rng.gen_range(lower, upper)).collect(),
-            // https://casperlabs.atlassian.net/browse/HWY-116
-            Distribution::Poisson(_) => unimplemented!("Poisson distribution of weights"),
         }
     }
 }
@@ -312,13 +298,9 @@ where
     DS: DeliveryStrategy,
 {
     virtual_net: HighwayNet,
-    /// The instant the network was created.
-    start_time: Timestamp,
     /// Consensus values to be proposed.
     /// Order of values in the vector defines the order in which they will be proposed.
     consensus_values: VecDeque<ConsensusValue>,
-    /// Number of consensus values that the test is started with.
-    consensus_values_num: usize,
     /// A strategy to pseudo randomly change the message delivery times.
     delivery_time_strategy: DS,
     /// Distribution of delivery times.
@@ -335,24 +317,6 @@ impl<DS> HighwayTestHarness<DS>
 where
     DS: DeliveryStrategy,
 {
-    fn new<T: Into<Timestamp>>(
-        virtual_net: HighwayNet,
-        start_time: T,
-        consensus_values: VecDeque<ConsensusValue>,
-        delivery_time_distribution: Distribution,
-        delivery_time_strategy: DS,
-    ) -> Self {
-        let cv_len = consensus_values.len();
-        HighwayTestHarness {
-            virtual_net,
-            start_time: start_time.into(),
-            consensus_values,
-            consensus_values_num: cv_len,
-            delivery_time_distribution,
-            delivery_time_strategy,
-        }
-    }
-
     /// Advance the test by one message.
     ///
     /// Pops one message from the message queue (if there are any)
@@ -454,8 +418,6 @@ where
         let messages = {
             let sender_id = message.sender;
 
-            let v = self.node_mut(&validator_id)?;
-
             let hwm = message.payload().clone();
 
             match hwm {
@@ -490,14 +452,14 @@ where
                             .propose(consensus_value, block_context, rng)
                     })?
                 }
-                HighwayMessage::WeEquivocated(evidence) => vec![],
+                HighwayMessage::WeEquivocated(_evidence) => vec![],
             }
         };
 
         let recipient = self.node_mut(&validator_id)?;
         recipient.push_messages_produced(messages.clone());
 
-        self.run_finality_detector(&validator_id);
+        self.run_finality_detector(&validator_id)?;
 
         Ok(messages)
     }
@@ -515,10 +477,10 @@ where
             value,
             new_equivocators,
             rewards,
-            timestamp,
+            timestamp: _,
             height,
             terminal,
-            proposer: _proposer,
+            proposer: _,
         } in finalized_values
         {
             if !new_equivocators.is_empty() {
@@ -688,10 +650,8 @@ impl<'a, DS: DeliveryStrategy> MutableHandle<'a, DS> {
 }
 
 enum BuilderError {
-    EmptyConsensusValues,
     WeightLimits,
     TooManyFaultyNodes(String),
-    EmptyFtt,
 }
 
 struct HighwayTestHarnessBuilder<DS: DeliveryStrategy> {
@@ -790,26 +750,6 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
         self
     }
 
-    pub(crate) fn delivery_strategy<DS2: DeliveryStrategy>(
-        self,
-        ds: DS2,
-    ) -> HighwayTestHarnessBuilder<DS2> {
-        HighwayTestHarnessBuilder {
-            max_faulty_validators: self.max_faulty_validators,
-            faulty_percent: self.faulty_percent,
-            fault_type: self.fault_type,
-            ftt: self.ftt,
-            consensus_values_count: self.consensus_values_count,
-            delivery_distribution: self.delivery_distribution,
-            delivery_strategy: ds,
-            weight_limits: self.weight_limits,
-            start_time: self.start_time,
-            weight_distribution: self.weight_distribution,
-            seed: self.seed,
-            round_exp: self.round_exp,
-        }
-    }
-
     pub(crate) fn weight_limits(mut self, lower: u64, upper: u64) -> Self {
         assert!(
             lower >= 100,
@@ -819,39 +759,13 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
         self
     }
 
-    pub(crate) fn weight_distribution(mut self, wd: Distribution) -> Self {
-        self.weight_distribution = wd;
-        self
-    }
-
-    pub(crate) fn start_time<T: Into<Timestamp>>(mut self, start_time: T) -> Self {
-        self.start_time = start_time.into();
-        self
-    }
-
-    pub(crate) fn seed(mut self, seed: u64) -> Self {
-        self.seed = seed;
-        self
-    }
-
-    pub(crate) fn round_exp(mut self, round_exp: u8) -> Self {
-        self.round_exp = round_exp;
-        self
-    }
-
-    pub(crate) fn ftt(mut self, ftt: u64) -> Self {
-        assert!(ftt < 100 && ftt > 0);
-        self.ftt = Some(ftt);
-        self
-    }
-
     fn max_faulty_validators(mut self, max_faulty_count: u8) -> Self {
         self.max_faulty_validators = max_faulty_count;
         self
     }
 
     fn build<R: Rng + CryptoRng + ?Sized>(
-        mut self,
+        self,
         rng: &mut R,
     ) -> Result<HighwayTestHarness<DS>, BuilderError> {
         let consensus_values = (0..self.consensus_values_count as u32)
@@ -872,14 +786,14 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
         };
 
         let (faulty_weights, honest_weights): (Vec<Weight>, Vec<Weight>) = {
-            if (self.faulty_percent > 33) {
+            if self.faulty_percent > 33 {
                 return Err(BuilderError::TooManyFaultyNodes(
                     "Total weight of all malicious validators cannot be more than 33% of all network weight."
                         .to_string(),
                 ));
             }
 
-            if (self.faulty_percent == 0) {
+            if self.faulty_percent == 0 {
                 // All validators are honest.
                 let validators_num = rng.gen_range(2, self.max_faulty_validators + 1);
                 let honest_validators: Vec<Weight> = self
@@ -988,7 +902,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
 
             for validator in validators.iter() {
                 let vid = *validator.id();
-                let fault = if (vid.0 < faulty_num as u64) {
+                let fault = if vid.0 < faulty_num as u64 {
                     self.fault_type
                 } else {
                     None
@@ -1001,7 +915,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                     .map(|hwm| {
                         // These are messages crated on the start of the network.
                         // They are sent from validator to himself.
-                        QueueEntry::new(self.start_time, vid, Message::new(vid, hwm))
+                        QueueEntry::new(start_time, vid, Message::new(vid, hwm))
                     })
                     .collect();
                 init_messages.extend(qm);
@@ -1017,13 +931,9 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
 
         let virtual_net = VirtualNet::new(validators, init_messages);
 
-        let cv_len = consensus_values.len();
-
         let hwth = HighwayTestHarness {
             virtual_net,
-            start_time: self.start_time,
             consensus_values,
-            consensus_values_num: cv_len,
             delivery_time_strategy,
             delivery_time_distribution,
         };
@@ -1104,29 +1014,18 @@ impl Context for TestContext {
 }
 
 mod test_harness {
-    use std::{
-        collections::{hash_map::DefaultHasher, HashMap, HashSet},
-        fmt::Debug,
-        hash::Hasher,
-    };
+    use std::{collections::HashSet, fmt::Debug};
 
     use super::{
-        crank_until, ConsensusValue, CrankOk, DeliverySchedule, DeliveryStrategy, HighwayMessage,
-        HighwayNode, HighwayTestHarness, HighwayTestHarnessBuilder, InstantDeliveryNoDropping,
-        TestRunError,
+        crank_until, ConsensusValue, HighwayTestHarness, HighwayTestHarnessBuilder,
+        InstantDeliveryNoDropping, TestRunError,
     };
     use crate::{
-        components::consensus::{
-            highway_core::{evidence::Evidence, highway::Vertex, validators::ValidatorIndex},
-            tests::consensus_des_testing::{Fault, ValidatorId},
-            traits::{Context, ValidatorSecret},
-        },
+        components::consensus::tests::consensus_des_testing::{Fault, ValidatorId},
         logging,
         testing::TestRng,
-        types::TimeDiff,
     };
     use logging::{LoggingConfig, LoggingFormat};
-    use tracing::{span, warn, Level, Span};
 
     #[test]
     fn on_empty_queue_error() {
@@ -1158,7 +1057,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_no_faults() {
-        logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
+        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1182,7 +1081,7 @@ mod test_harness {
         .unwrap();
 
         let handle = highway_test_harness.mutable_handle();
-        let mut validators = handle.validators();
+        let validators = handle.validators();
 
         let (finalized_values, vertices_produced): (Vec<Vec<ConsensusValue>>, Vec<usize>) =
             validators
@@ -1222,7 +1121,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_some_mute() {
-        logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
+        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1249,7 +1148,7 @@ mod test_harness {
         .unwrap();
 
         let handle = highway_test_harness.mutable_handle();
-        let mut validators = handle.validators();
+        let validators = handle.validators();
 
         let finalized_values: Vec<Vec<ConsensusValue>> = validators
             .map(|v| v.finalized_values().cloned().collect::<Vec<_>>())
@@ -1263,7 +1162,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_some_equivocate() {
-        logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
+        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1290,7 +1189,7 @@ mod test_harness {
         .unwrap();
 
         let handle = highway_test_harness.mutable_handle();
-        let mut validators = handle.validators();
+        let validators = handle.validators();
 
         let (finalized_values, equivocators_seen): (
             Vec<Vec<ConsensusValue>>,
