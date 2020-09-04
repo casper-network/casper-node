@@ -14,8 +14,6 @@ use casper_types::{
     api_error, bytesrepr::ToBytes, contracts::Parameters, CLType, ContractHash, EntryPoint,
     EntryPointAccess, EntryPointType, EntryPoints, RuntimeArgs,
 };
-#[allow(unused_imports)] // TODO: Is this required?
-use contract_api::runtime as _;
 
 #[no_mangle]
 pub extern "C" fn do_nothing() {
