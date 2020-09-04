@@ -18,6 +18,8 @@ use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
+use casper_execution_engine::shared::motes::Motes;
+
 use crate::{
     components::{
         chainspec_loader::HighwayConfig,
@@ -38,7 +40,7 @@ use crate::{
         hash,
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
-    types::{BlockHash, FinalizedBlock, Motes, ProtoBlock, SystemTransaction, Timestamp},
+    types::{BlockHash, FinalizedBlock, ProtoBlock, SystemTransaction, Timestamp},
     utils::WithDir,
 };
 use asymmetric_key::Signature;

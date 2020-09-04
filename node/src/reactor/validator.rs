@@ -7,7 +7,10 @@ mod error;
 #[cfg(test)]
 mod tests;
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+    convert::TryInto,
+    fmt::{self, Display, Formatter},
+};
 
 use derive_more::From;
 use hex_fmt::HexFmt;
@@ -52,6 +55,7 @@ use crate::{
     utils::{Source, WithDir},
     SmallNetwork,
 };
+
 pub use config::Config;
 use error::Error;
 use linear_chain::LinearChain;
@@ -328,12 +332,17 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             .iter()
             .filter_map(|genesis_account| {
                 if genesis_account.is_genesis_validator() {
-                    Some((
-                        genesis_account
-                            .public_key()
-                            .expect("should have public key"),
-                        genesis_account.bonded_amount(),
-                    ))
+                    let public_key = genesis_account
+                        .public_key()
+                        .expect("should have genesis public key");
+
+                    let crypto_public_key = public_key
+                        .try_into()
+                        .expect("should have valid genesis public key");
+
+                    Some((crypto_public_key, genesis_account.bonded_amount()))
+                // genesis_public_key.try_into().map(|result| (result,
+                // genesis_account.bonded_amount()))
                 } else {
                     None
                 }

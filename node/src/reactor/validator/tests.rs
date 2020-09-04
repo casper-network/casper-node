@@ -7,17 +7,19 @@
 use rand::Rng;
 use tempfile::TempDir;
 
+use casper_execution_engine::{
+    core::engine_state::genesis::{GenesisAccount, GenesisConfig},
+    shared::motes::Motes,
+};
+
 use crate::{
-    components::{
-        consensus::EraId, contract_runtime::core::engine_state::genesis::GenesisConfig,
-        in_memory_network::NodeId, storage,
-    },
-    crypto::asymmetric_key::SecretKey,
+    components::{consensus::EraId, in_memory_network::NodeId, storage},
+    crypto::asymmetric_key::{PublicKey, SecretKey},
     reactor::{initializer, validator, Runner},
     testing::{init_logging, network::Network, ConditionCheckReactor, TestRng},
-    types::{Motes, NodeConfig},
+    types::NodeConfig,
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
-    Chainspec, GenesisAccount,
+    Chainspec,
 };
 use anyhow::bail;
 use casper_types::U512;
@@ -49,8 +51,10 @@ impl TestChain {
         chainspec.genesis.accounts = keys
             .iter()
             .map(|secret_key| {
-                GenesisAccount::with_public_key(
-                    secret_key.into(),
+                let public_key: PublicKey = secret_key.into();
+                GenesisAccount::new(
+                    public_key.into(),
+                    public_key.to_account_hash(),
                     Motes::new(U512::from(rng.gen_range(10000, 99999999))),
                     Motes::new(U512::from(rng.gen_range(100, 999))),
                 )

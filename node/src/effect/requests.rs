@@ -10,23 +10,25 @@ use std::{
 
 use semver::Version;
 
+use casper_execution_engine::shared::{additive_map::AdditiveMap, transform::Transform};
 use casper_types::Key;
 
 use super::Responder;
+
+use casper_execution_engine::{
+    core::engine_state::{
+        self,
+        execute_request::ExecuteRequest,
+        genesis::GenesisResult,
+        query::{QueryRequest, QueryResult},
+        upgrade::{UpgradeConfig, UpgradeResult},
+    },
+    storage::global_state::CommitResult,
+};
+
 use crate::{
     components::{
         consensus::EraId,
-        contract_runtime::{
-            core::engine_state::{
-                self,
-                execute_request::ExecuteRequest,
-                genesis::GenesisResult,
-                query::{QueryRequest, QueryResult},
-                upgrade::{UpgradeConfig, UpgradeResult},
-            },
-            shared::{additive_map::AdditiveMap, transform::Transform},
-            storage::global_state::CommitResult,
-        },
         fetcher::FetchResult,
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },

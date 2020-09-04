@@ -35,8 +35,6 @@ use crate::{
 // Seems to be a false positive.
 #[allow(unreachable_pub)]
 pub use config::Config;
-// TODO - remove this once contract runtime's config doesn't need it any more.
-pub(crate) use config::check_multiple_of_page_size;
 // Seems to be a false positive.
 use chainspec_store::ChainspecStore;
 #[allow(unreachable_pub)]

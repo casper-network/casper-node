@@ -1,12 +1,11 @@
 use std::path::PathBuf;
 
+use casper_execution_engine::shared::utils;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use tempfile::TempDir;
 use tracing::warn;
-
-use crate::OS_PAGE_SIZE;
 
 const QUALIFIER: &str = "io";
 const ORGANIZATION: &str = "CasperLabs";
@@ -84,7 +83,7 @@ impl Config {
         let value = self
             .max_block_store_size
             .unwrap_or(DEFAULT_MAX_BLOCK_STORE_SIZE);
-        check_multiple_of_page_size(value);
+        utils::check_multiple_of_page_size(value);
         value
     }
 
@@ -92,7 +91,7 @@ impl Config {
         let value = self
             .max_deploy_store_size
             .unwrap_or(DEFAULT_MAX_DEPLOY_STORE_SIZE);
-        check_multiple_of_page_size(value);
+        utils::check_multiple_of_page_size(value);
         value
     }
 
@@ -100,7 +99,7 @@ impl Config {
         let value = self
             .max_chainspec_store_size
             .unwrap_or(DEFAULT_MAX_CHAINSPEC_STORE_SIZE);
-        check_multiple_of_page_size(value);
+        utils::check_multiple_of_page_size(value);
         value
     }
 
@@ -123,16 +122,5 @@ impl Default for Config {
             max_deploy_store_size: Some(DEFAULT_MAX_DEPLOY_STORE_SIZE),
             max_chainspec_store_size: Some(DEFAULT_MAX_CHAINSPEC_STORE_SIZE),
         }
-    }
-}
-
-/// Warns if `value` is not a multiple of the OS page size.
-// TODO - make this private once contract runtime's config doesn't need it any more.
-pub(crate) fn check_multiple_of_page_size(value: usize) {
-    if value % *OS_PAGE_SIZE != 0 {
-        warn!(
-            "maximum size {} is not multiple of system page size {}",
-            value, *OS_PAGE_SIZE,
-        );
     }
 }

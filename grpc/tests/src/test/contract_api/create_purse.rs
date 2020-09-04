@@ -6,7 +6,7 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_node::components::contract_runtime::shared::transform::Transform;
+use casper_execution_engine::shared::transform::Transform;
 use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, U512};
 
 const CONTRACT_CREATE_PURSE_01: &str = "create_purse_01.wasm";

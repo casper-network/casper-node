@@ -397,6 +397,7 @@ name = "casper-client"
 version = "0.1.0"
 dependencies = [
  "base64 0.12.3",
+ "casper-execution-engine",
  "casper-node",
  "casper-types",
  "clap",
@@ -425,7 +426,7 @@ dependencies = [
 name = "casper-engine-grpc-server"
 version = "0.20.0"
 dependencies = [
- "casper-node",
+ "casper-execution-engine",
  "casper-types",
  "clap",
  "ctrlc",
@@ -446,7 +447,7 @@ version = "0.8.0"
 dependencies = [
  "casper-contract",
  "casper-engine-grpc-server",
- "casper-node",
+ "casper-execution-engine",
  "casper-types",
  "grpc",
  "lazy_static",
@@ -467,7 +468,7 @@ dependencies = [
  "casper-contract",
  "casper-engine-grpc-server",
  "casper-engine-test-support",
- "casper-node",
+ "casper-execution-engine",
  "casper-types",
  "clap",
  "criterion",
@@ -484,6 +485,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "casper-execution-engine"
+version = "0.7.0"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "base16",
+ "blake2",
+ "casper-types",
+ "chrono",
+ "csv",
+ "hex",
+ "hex_fmt",
+ "hostname",
+ "itertools 0.8.2",
+ "lazy_static",
+ "libc",
+ "linked-hash-map",
+ "lmdb",
+ "log 0.4.11",
+ "num",
+ "num-derive",
+ "num-traits",
+ "parity-wasm",
+ "proptest",
+ "pwasm-utils",
+ "rand 0.7.3",
+ "rand_chacha 0.2.2",
+ "rmp-serde",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tracing",
+ "uint",
+ "uuid",
+ "wabt",
+ "wasmi",
+]
+
+[[package]]
 name = "casper-node"
 version = "0.1.0"
 dependencies = [
@@ -495,6 +537,7 @@ dependencies = [
  "base64 0.12.3",
  "blake2",
  "bytes 0.5.6",
+ "casper-execution-engine",
  "casper-types",
  "chrono",
  "criterion",
@@ -581,6 +624,7 @@ dependencies = [
  "proptest",
  "rmp-serde",
  "serde",
+ "serde-big-array",
  "uint",
  "version-sync",
 ]
@@ -1949,9 +1993,9 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "1.5.1"
+version = "1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86b45e59b16c76b11bf9738fd5d38879d3bd28ad292d7b313608becb17ae2df9"
+checksum = "4e47a3566dd4fd4eec714ae6ceabdee0caec795be835c223d92c2d40f1e8cf1c"
 dependencies = [
  "autocfg 1.0.1",
  "hashbrown",

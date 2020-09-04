@@ -4,15 +4,15 @@ use casper_engine_test_support::{
     internal::{utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS},
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_node::{
-    components::contract_runtime::core::engine_state::{
-        execution_result::ExecutionResult, genesis::POS_REWARDS_PURSE, CONV_RATE,
+use casper_execution_engine::{
+    core::engine_state::{
+        execution_result::ExecutionResult,
+        genesis::{GenesisAccount, POS_REWARDS_PURSE},
+        CONV_RATE,
     },
-    crypto::asymmetric_key::{PublicKey, SecretKey},
-    types::Motes,
-    GenesisAccount,
+    shared::motes::Motes,
 };
-use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
+use casper_types::{account::AccountHash, runtime_args, Key, PublicKey, RuntimeArgs, URef, U512};
 
 const CONTRACT_DO_NOTHING: &str = "do_nothing.wasm";
 const CONTRACT_TRANSFER: &str = "transfer_purse_to_account.wasm";
@@ -55,12 +55,13 @@ fn get_cost(response: &[Rc<ExecutionResult>]) -> U512 {
 #[should_panic]
 fn should_not_be_able_to_unbond_reward() {
     let mut builder = InMemoryWasmTestBuilder::default();
-    let secret_key = SecretKey::new_ed25519([42; 32]);
-    let public_key = PublicKey::from(&secret_key);
+    let public_key = PublicKey::Ed25519([42; 32]);
+    let account_hash = AccountHash::new([43; 32]);
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account = GenesisAccount::with_public_key(
+        let account = GenesisAccount::new(
             public_key,
+            account_hash,
             Motes::new(GENESIS_VALIDATOR_STAKE.into()) * Motes::new(2.into()),
             Motes::new(GENESIS_VALIDATOR_STAKE.into()),
         );

@@ -1,9 +1,7 @@
 use clap::{App, Arg, ArgGroup, ArgMatches, SubCommand};
 
-use casper_node::{
-    components::contract_runtime::core::engine_state::executable_deploy_item::ExecutableDeployItem,
-    crypto::asymmetric_key::PublicKey,
-};
+use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
+use casper_node::crypto::asymmetric_key::PublicKey;
 use casper_types::{bytesrepr::ToBytes, RuntimeArgs, URef, U512};
 
 use super::creation_common::{self, DisplayOrder};

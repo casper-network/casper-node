@@ -7,14 +7,10 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_node::{
-    crypto::asymmetric_key::{PublicKey, SecretKey},
-    types::Motes,
-    GenesisAccount,
-};
+use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
 use casper_types::{
-    account::AccountHash, runtime_args, system_contract_errors::auction, ApiError, RuntimeArgs,
-    U512,
+    account::AccountHash, runtime_args, system_contract_errors::auction, ApiError, PublicKey,
+    RuntimeArgs, U512,
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -35,16 +31,15 @@ lazy_static! {
 #[ignore]
 #[test]
 fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
-    let bond_secret_key = SecretKey::new_ed25519([111; 32]);
-    let bond_public_key = PublicKey::from(&bond_secret_key);
-    let bond_public_key_arg = casper_types::PublicKey::from(bond_public_key);
+    let bond_public_key = PublicKey::Ed25519([111; 32]);
 
-    let secret_key = SecretKey::new_ed25519([42; 32]);
-    let public_key = PublicKey::from(&secret_key);
+    let public_key = PublicKey::Ed25519([42; 32]);
+    let account_hash = AccountHash::new([43; 32]);
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account = GenesisAccount::with_public_key(
+        let account = GenesisAccount::new(
             public_key,
+            account_hash,
             Motes::new(GENESIS_VALIDATOR_STAKE.into()) * Motes::new(2.into()),
             Motes::new(GENESIS_VALIDATOR_STAKE.into()),
         );
@@ -72,7 +67,7 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
                 "ee_598_regression.wasm",
                 runtime_args! {
                     ARG_AMOUNT => *ACCOUNT_1_BOND,
-                    ARG_PUBLIC_KEY => bond_public_key_arg,
+                    ARG_PUBLIC_KEY => bond_public_key,
                 },
             )
             .with_deploy_hash([2u8; 32])

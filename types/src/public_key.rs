@@ -6,6 +6,7 @@ use crate::{
     CLType, CLTyped,
 };
 use bytesrepr::{Error, FromBytes};
+use serde::{Deserialize, Serialize};
 
 const PUBLIC_KEY_VARIANT_LENGTH: usize = 1;
 const ED25519_PUBLIC_KEY_LENGTH: usize = 32;
@@ -13,8 +14,16 @@ const ED25519_VARIANT_ID: u8 = 1;
 const SECP256K1_PUBLIC_KEY_LENGTH: usize = 33;
 const SECP256K1_VARIANT_ID: u8 = 2;
 
-#[derive(Copy, Clone)]
-pub struct Secp256k1Bytes([u8; SECP256K1_PUBLIC_KEY_LENGTH]);
+// This is inside a private module so that the generated `BigArray` does not form part of this
+// crate's public API, and hence also doesn't appear in the rustdocs.
+mod big_array {
+    use serde_big_array::big_array;
+
+    big_array! { BigArray; super::SECP256K1_PUBLIC_KEY_LENGTH }
+}
+
+#[derive(Copy, Clone, Serialize, Deserialize)]
+pub struct Secp256k1Bytes(#[serde(with = "big_array::BigArray")] [u8; SECP256K1_PUBLIC_KEY_LENGTH]);
 
 impl Secp256k1Bytes {
     pub fn value(self) -> [u8; SECP256K1_PUBLIC_KEY_LENGTH] {
@@ -80,7 +89,7 @@ impl ToBytes for Secp256k1Bytes {
 }
 
 /// Simplified raw data type
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum PublicKey {
     /// Ed25519 public key.
     Ed25519([u8; ED25519_PUBLIC_KEY_LENGTH]),

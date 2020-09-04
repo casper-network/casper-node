@@ -74,20 +74,19 @@ use semver::Version;
 use smallvec::{smallvec, SmallVec};
 use tracing::error;
 
+use casper_execution_engine::{
+    core::{
+        engine_state::{self, execute_request::ExecuteRequest, execution_result::ExecutionResults},
+        execution,
+    },
+    shared::{additive_map::AdditiveMap, transform::Transform},
+    storage::global_state::CommitResult,
+};
 use casper_types::Key;
-use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
 
 use crate::{
     components::{
         consensus::{BlockContext, EraId},
-        contract_runtime::{
-            core::{
-                engine_state::{self, genesis::GenesisResult},
-                execution,
-            },
-            shared::{additive_map::AdditiveMap, transform::Transform},
-            storage::global_state::CommitResult,
-        },
         fetcher::FetchResult,
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
@@ -104,6 +103,7 @@ use announcements::{
     ApiServerAnnouncement, BlockExecutorAnnouncement, ConsensusAnnouncement,
     DeployAcceptorAnnouncement, NetworkAnnouncement,
 };
+use engine_state::genesis::GenesisResult;
 use requests::{
     BlockExecutorRequest, BlockValidationRequest, ConsensusRequest, ContractRuntimeRequest,
     DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,

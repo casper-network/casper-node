@@ -7,7 +7,7 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_node::{components::contract_runtime::core::engine_state::CONV_RATE, types::Motes};
+use casper_execution_engine::{core::engine_state::CONV_RATE, shared::motes::Motes};
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const CONTRACT_EE_599_REGRESSION: &str = "ee_599_regression.wasm";

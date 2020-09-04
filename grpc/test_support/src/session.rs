@@ -1,6 +1,6 @@
 use rand::Rng;
 
-use casper_node::components::contract_runtime::core::engine_state::execute_request::ExecuteRequest;
+use casper_execution_engine::core::engine_state::execute_request::ExecuteRequest;
 use casper_types::{runtime_args, ProtocolVersion, RuntimeArgs, URef, U512};
 
 use crate::{

@@ -12,21 +12,19 @@ use tracing::{debug, error, trace};
 
 use casper_types::ProtocolVersion;
 
-use crate::{
-    components::{
-        contract_runtime::{
-            core::engine_state::{
-                self,
-                deploy_item::DeployItem,
-                execute_request::ExecuteRequest,
-                execution_result::{ExecutionResult, ExecutionResults},
-                RootNotFound,
-            },
-            storage::global_state::CommitResult,
-        },
-        storage::Storage,
-        Component,
+use casper_execution_engine::{
+    core::engine_state::{
+        self,
+        deploy_item::DeployItem,
+        execute_request::ExecuteRequest,
+        execution_result::{ExecutionResult, ExecutionResults},
+        RootNotFound,
     },
+    storage::global_state::CommitResult,
+};
+
+use crate::{
+    components::{storage::Storage, Component},
     crypto::hash::Digest,
     effect::{
         announcements::BlockExecutorAnnouncement,
@@ -228,7 +226,7 @@ impl BlockExecutor {
         let deploy_item = DeployItem::from(next_deploy);
 
         let execute_request = ExecuteRequest::new(
-            state.pre_state_hash,
+            state.pre_state_hash.into(),
             state.finalized_block.timestamp().millis(),
             vec![Ok(deploy_item)],
             ProtocolVersion::V1_0_0,
@@ -353,7 +351,7 @@ impl<REv: ReactorEventT, R: Rng + CryptoRng + ?Sized> Component<REv, R> for Bloc
                         state_root: post_state_hash,
                     }) => {
                         debug!(?post_state_hash, "commit succeeded");
-                        state.pre_state_hash = post_state_hash;
+                        state.pre_state_hash = post_state_hash.into();
                         self.execute_next_deploy_or_create_block(effect_builder, state)
                     }
                     _ => {

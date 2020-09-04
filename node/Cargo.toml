@@ -82,6 +82,7 @@ uuid = { version = "0.8.1", features = ["serde", "v4"] }
 wabt = "0.10.0"
 warp = "0.2.4"
 wasmi = "0.6.2"
+casper-execution-engine = { path = "../execution_engine" }
 
 [dev-dependencies]
 assert_matches = "1.3.0"
