@@ -345,10 +345,6 @@ impl<C: Context> State<C> {
         if wvote.panorama.get(creator).is_faulty() {
             return Err(VoteError::FaultyCreator);
         }
-        let is_terminal = |hash: &C::Hash| self.is_terminal_block(hash);
-        if wvote.value.is_some() && self.fork_choice(&wvote.panorama).map_or(false, is_terminal) {
-            return Err(VoteError::ValueAfterTerminalBlock);
-        }
         Ok(())
     }
 
@@ -386,6 +382,10 @@ impl<C: Context> State<C> {
                     }
                 }
             }
+        }
+        let is_terminal = |hash: &C::Hash| self.is_terminal_block(hash);
+        if wvote.value.is_some() && self.fork_choice(&wvote.panorama).map_or(false, is_terminal) {
+            return Err(VoteError::ValueAfterTerminalBlock);
         }
         Ok(())
     }
