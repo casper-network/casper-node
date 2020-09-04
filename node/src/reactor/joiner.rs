@@ -127,8 +127,9 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor {
 }
 
 impl Reactor {
-    /// Deconstructs the reactor into config useful for creating a Validator reactor. Also shuts
-    /// down the network connection.
+    /// Deconstructs the reactor into config useful for creating a Validator reactor. Shuts down
+    /// the network, closing all incoming and outgoing connections, and frees up the listening
+    /// socket.
     pub async fn into_validator_config(self) -> ValidatorInitConfig {
         let (net, config) = (
             self.net,
