@@ -1,31 +1,22 @@
-// FIXME: Remove
-#![allow(dead_code)]
-#![allow(unused_imports)]
-#![allow(unused_variables)]
-#![allow(unreachable_code)]
+use std::{collections::HashSet, time::Duration};
 
 use rand::Rng;
 use tempfile::TempDir;
+use anyhow::bail;
 
 use casper_execution_engine::{
-    core::engine_state::genesis::{GenesisAccount, GenesisConfig},
+    core::engine_state::genesis::GenesisAccount,
     shared::motes::Motes,
 };
+use casper_types::U512;
 
 use crate::{
-    components::{consensus::EraId, in_memory_network::NodeId, storage},
+    components::{consensus::EraId, storage},
     crypto::asymmetric_key::{PublicKey, SecretKey},
     reactor::{initializer, validator, Runner},
     testing::{init_logging, network::Network, ConditionCheckReactor, TestRng},
-    types::NodeConfig,
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
     Chainspec,
-};
-use anyhow::bail;
-use casper_types::U512;
-use std::{
-    collections::{HashMap, HashSet},
-    time::Duration,
 };
 
 struct TestChain {
