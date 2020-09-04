@@ -1,9 +1,12 @@
 use super::{consensus::EraId, storage::Storage, Component};
-use crate::components::storage::Value;
 use crate::{
+    components::storage::Value,
     crypto::asymmetric_key::Signature,
-    effect::requests::{LinearChainRequest, StorageRequest},
-    effect::{self, EffectExt, Effects},
+    effect::{
+        self,
+        requests::{LinearChainRequest, StorageRequest},
+        EffectExt, Effects,
+    },
     reactor::Message,
     types::{Block, BlockHash, BlockHeader},
 };

@@ -13,7 +13,7 @@ use crate::{
         },
         highway_core::{
             active_validator::Effect as AvEffect,
-            finality_detector::{FinalityDetector, FinalityOutcome},
+            finality_detector::FinalityDetector,
             highway::{Dependency, Highway, Params, PreValidatedVertex, Vertex},
             validators::Validators,
             Weight,
@@ -43,6 +43,7 @@ impl<C: Context> VertexTrait for PreValidatedVertex<C> {
 impl<C: Context> ProtocolState for Highway<C> {
     type Error = String;
     type VId = Dependency<C>;
+    type Value = C::ConsensusValue;
     type Vertex = PreValidatedVertex<C>;
 
     fn missing_dependency(&self, pvv: &Self::Vertex) -> Option<Dependency<C>> {
@@ -115,33 +116,17 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         let msg = HighwayMessage::NewVertex(v);
         let serialized_msg = rmp_serde::to_vec(&msg).expect("should serialize message");
         self.detect_finality()
-            .into_iter()
             .chain(iter::once(ConsensusProtocolResult::CreatedGossipMessage(
                 serialized_msg,
             )))
             .collect()
     }
 
-    fn detect_finality(&mut self) -> Option<CpResult<I, C>> {
-        match self.finality_detector.run(&self.highway) {
-            FinalityOutcome::None => None,
-            FinalityOutcome::FttExceeded => panic!("Too many faulty validators"),
-            FinalityOutcome::Finalized {
-                value,
-                new_equivocators,
-                rewards,
-                timestamp,
-                height,
-                terminal,
-            } => Some(ConsensusProtocolResult::FinalizedBlock {
-                value,
-                new_equivocators,
-                rewards,
-                timestamp,
-                height,
-                switch_block: terminal,
-            }),
-        }
+    fn detect_finality(&mut self) -> impl Iterator<Item = CpResult<I, C>> + '_ {
+        self.finality_detector
+            .run(&self.highway)
+            .expect("too many faulty validators")
+            .map(ConsensusProtocolResult::FinalizedBlock)
     }
 }
 
@@ -204,14 +189,11 @@ where
     }
 
     fn process_vertex(&mut self, sender: I, vertex: PreValidatedVertex<C>) {
-        match self
-            .hw_proto
-            .synchronizer
-            .synchronize_vertex(sender, vertex, &self.hw_proto.highway)
-        {
-            Ok(effects) => self.synchronizer_effects_queue.extend(effects),
-            Err(err) => todo!("error: {:?}", err),
-        }
+        let effects =
+            self.hw_proto
+                .synchronizer
+                .synchronize_vertex(sender, vertex, &self.hw_proto.highway);
+        self.synchronizer_effects_queue.extend(effects);
     }
 
     fn process_synchronizer_effect<R: Rng + CryptoRng + ?Sized>(
@@ -222,10 +204,7 @@ where
         match effect {
             SynchronizerEffect::RequestVertex(sender, missing_vid) => {
                 let msg = HighwayMessage::RequestDependency(missing_vid);
-                let serialized_msg = match rmp_serde::to_vec(&msg) {
-                    Ok(msg) => msg,
-                    Err(err) => todo!("error: {:?}", err),
-                };
+                let serialized_msg = rmp_serde::to_vec(&msg).expect("should serialize message");
                 self.results
                     .push(ConsensusProtocolResult::CreatedTargetedMessage(
                         serialized_msg,
@@ -236,9 +215,12 @@ where
                 let vv = match self.hw_proto.highway.validate_vertex(pvv) {
                     Ok(vv) => vv,
                     Err((pvv, err)) => {
-                        // TODO: Disconnect from sender!
-                        // TODO: Remove all vertices from the synchronizer that depend on this one.
                         info!(?pvv, ?err, "invalid vertex");
+                        let _senders = self
+                            .hw_proto
+                            .synchronizer
+                            .on_vertex_invalid(Vertex::from(pvv).id());
+                        // TODO: Disconnect from senders!
                         return;
                     }
                 };
@@ -288,7 +270,9 @@ where
             Ok(HighwayMessage::NewVertex(v)) => {
                 let pvv = match self.highway.pre_validate_vertex(v) {
                     Ok(pvv) => pvv,
-                    Err((_vertex, err)) => {
+                    Err((vertex, err)) => {
+                        let _senders = self.synchronizer.on_vertex_invalid(vertex.id());
+                        // TODO: Disconnect from senders.
                         return Ok(vec![ConsensusProtocolResult::InvalidIncomingMessage(
                             msg,
                             sender,
@@ -357,7 +341,11 @@ where
                 .with_synchronizer_effects(effects)
                 .run(rng))
         } else {
-            todo!("Drop vertices that depend on the invalid consensus value.")
+            // TODO: Slash proposer?
+            // Drop dependent vertices.
+            let _senders = self.synchronizer.on_consensus_value_invalid(value);
+            // TODO: Disconnect from senders.
+            Ok(vec![])
         }
     }
 

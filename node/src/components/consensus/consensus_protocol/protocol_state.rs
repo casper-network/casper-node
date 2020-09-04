@@ -15,7 +15,8 @@ pub(crate) trait VertexTrait: Debug + Clone {
 pub(crate) trait ProtocolState {
     type Error: Debug;
     type VId: VertexId;
-    type Vertex: VertexTrait<Id = Self::VId>;
+    type Value: Debug + Clone + Hash + Eq;
+    type Vertex: VertexTrait<Id = Self::VId, Value = Self::Value>;
 
     fn missing_dependency(&self, v: &Self::Vertex) -> Option<Self::VId>;
 

@@ -1,4 +1,4 @@
-use std::{io, result, time::SystemTimeError};
+use std::{io, net::SocketAddr, result, time::SystemTimeError};
 
 use openssl::error::ErrorStack;
 use thiserror::Error;
@@ -28,8 +28,8 @@ pub enum Error {
     #[error("own certificate invalid")]
     OwnCertificateInvalid(#[source] ValidationError),
     /// Failed to create a TCP listener.
-    #[error("failed to create listener")]
-    ListenerCreation(#[source] io::Error),
+    #[error("failed to create listener on {}", 1)]
+    ListenerCreation(#[source] io::Error, SocketAddr),
     /// Failed to get TCP listener address.
     #[error("failed to get listener addr")]
     ListenerAddr(#[source] io::Error),
@@ -37,8 +37,8 @@ pub enum Error {
     #[error("failed to convert listener to tokio")]
     ListenerConversion(#[source] io::Error),
     /// Could not resolve root node address.
-    #[error("failed to resolve root node address")]
-    ResolveRootNode(#[source] io::Error),
+    #[error("failed to resolve network address")]
+    ResolveAddr(#[source] io::Error),
     /// Failed to send message.
     #[error("failed to send message")]
     MessageNotSent(#[source] io::Error),

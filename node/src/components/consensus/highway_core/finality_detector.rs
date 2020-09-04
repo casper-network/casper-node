@@ -1,43 +1,19 @@
 mod horizon;
 mod rewards;
 
-use std::{collections::BTreeMap, iter};
+use std::iter;
 
 use super::{
     highway::Highway,
     state::{Observation, State, Weight},
     validators::ValidatorIndex,
 };
-use crate::{components::consensus::traits::Context, types::Timestamp};
+use crate::components::consensus::{consensus_protocol::FinalizedBlock, traits::Context};
 use horizon::Horizon;
 
-/// The result of running the finality detector on a protocol state.
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) enum FinalityOutcome<C: Context> {
-    /// No new block has been finalized yet.
-    None,
-    /// A new block with this consensus value has been finalized.
-    Finalized {
-        /// The finalized value.
-        value: C::ConsensusValue,
-        /// The set of newly detected equivocators.
-        new_equivocators: Vec<C::ValidatorId>,
-        /// Rewards for finalization of earlier blocks.
-        ///
-        /// This is a measure of the value of each validator's contribution to consensus, in
-        /// fractions of the configured maximum block reward.
-        rewards: BTreeMap<C::ValidatorId, u64>,
-        /// The timestamp at which this value was proposed.
-        timestamp: Timestamp,
-        /// The relative height in this instance of the protocol.
-        height: u64,
-        /// Whether this is a terminal block, i.e. the last one to be finalized.
-        terminal: bool,
-    },
-    /// The fault tolerance threshold or 50% of the weight has been exceeded: The number of
-    /// observed equivocations invalidates this finality detector's results.
-    FttExceeded,
-}
+/// An error returned if the configured fault tolerance has been exceeded.
+#[derive(Debug)]
+pub(crate) struct FttExceeded(Weight);
 
 /// An incremental finality detector.
 ///
@@ -60,36 +36,42 @@ impl<C: Context> FinalityDetector<C> {
         }
     }
 
-    /// Returns the next value, if any has been finalized since the last call.
-    // TODO: Iterate this and return multiple finalized blocks.
+    /// Returns all blocks that have been finalized since the last call.
     // TODO: Verify the consensus instance ID?
-    pub(crate) fn run(&mut self, highway: &Highway<C>) -> FinalityOutcome<C> {
+    pub(crate) fn run<'a>(
+        &'a mut self,
+        highway: &'a Highway<C>,
+    ) -> Result<
+        impl Iterator<Item = FinalizedBlock<C::ConsensusValue, C::ValidatorId>> + 'a,
+        FttExceeded,
+    > {
         let state = highway.state();
         let fault_w = state.faulty_weight();
         if fault_w >= self.ftt || fault_w > (state.total_weight() - Weight(1)) / 2 {
-            return FinalityOutcome::FttExceeded;
+            return Err(FttExceeded(fault_w));
         }
-        let bhash = if let Some(bhash) = self.next_finalized(state, fault_w) {
-            bhash
-        } else {
-            return FinalityOutcome::None;
-        };
-        let to_id = |vidx: ValidatorIndex| {
-            let opt_validator = highway.validators().get_by_index(vidx);
-            opt_validator.unwrap().id().clone() // Index exists, since we have votes from them.
-        };
-        let new_equivocators_iter = state.get_new_equivocators(bhash).into_iter();
-        let rewards = rewards::compute_rewards(state, bhash);
-        let rewards_iter = rewards.enumerate();
-        let block = state.block(bhash);
-        FinalityOutcome::Finalized {
-            value: block.value.clone(),
-            new_equivocators: new_equivocators_iter.map(to_id).collect(),
-            rewards: rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect(),
-            timestamp: state.vote(bhash).timestamp,
-            height: block.height,
-            terminal: state.is_terminal_block(bhash),
-        }
+        Ok(iter::from_fn(move || {
+            let bhash = self.next_finalized(state, fault_w)?;
+            let to_id = |vidx: ValidatorIndex| {
+                let opt_validator = highway.validators().get_by_index(vidx);
+                opt_validator.unwrap().id().clone() // Index exists, since we have votes from them.
+            };
+            let new_equivocators_iter = state.get_new_equivocators(bhash).into_iter();
+            let rewards = rewards::compute_rewards(state, bhash);
+            let rewards_iter = rewards.enumerate();
+            let block = state.block(bhash);
+            let vote = state.vote(bhash);
+
+            Some(FinalizedBlock {
+                value: block.value.clone(),
+                new_equivocators: new_equivocators_iter.map(to_id).collect(),
+                rewards: rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect(),
+                timestamp: vote.timestamp,
+                height: block.height,
+                terminal: state.is_terminal_block(bhash),
+                proposer: to_id(vote.creator),
+            })
+        }))
     }
 
     /// Returns the next block, if any has been finalized since the last call.
