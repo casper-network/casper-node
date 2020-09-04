@@ -1,17 +1,16 @@
 #![no_std]
 #![no_main]
-#![allow(unused_imports)]
 
 extern crate alloc;
 
-use alloc::{collections::BTreeMap, string::String};
+use alloc::string::String;
 
 use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    contracts::Parameters, ApiError, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
+    contracts::Parameters, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
     EntryPoints, Key, RuntimeArgs, URef, U512,
 };
 
