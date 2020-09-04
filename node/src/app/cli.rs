@@ -170,29 +170,30 @@ impl Cli {
                 // performance reasons.
                 let mut rng = ChaCha20Rng::from_entropy();
 
-                let mut runner = Runner::<initializer::Reactor, _>::new(
+                let mut initializer_runner = Runner::<initializer::Reactor, _>::new(
                     WithDir::new(root.clone(), validator_config),
                     &mut rng,
                 )
                 .await?;
-                runner.run(&mut rng).await;
+                initializer_runner.run(&mut rng).await;
 
                 info!("finished initialization");
 
-                let initializer = runner.into_inner();
+                let initializer = initializer_runner.into_inner();
                 if !initializer.stopped_successfully() {
                     bail!("failed to initialize successfully");
                 }
 
-                let mut runner =
+                let mut joiner_runner =
                     Runner::<joiner::Reactor, _>::new(WithDir::new(root, initializer), &mut rng)
                         .await?;
-                runner.run(&mut rng).await;
+                joiner_runner.run(&mut rng).await;
 
-                let config = runner.into_inner().into_validator_config().await;
+                let config = joiner_runner.into_inner().into_validator_config().await;
 
-                let mut runner = Runner::<validator::Reactor<_>, _>::new(config, &mut rng).await?;
-                runner.run(&mut rng).await;
+                let mut validator_runner =
+                    Runner::<validator::Reactor<_>, _>::new(config, &mut rng).await?;
+                validator_runner.run(&mut rng).await;
             }
         }
 

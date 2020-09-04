@@ -95,25 +95,25 @@ impl TestChain {
             let cfg = self.create_node_config(idx);
 
             // We create an initializer reactor here and run it to completion.
-            let mut runner =
+            let mut initializer_runner =
                 Runner::<initializer::Reactor, TestRng>::new(WithDir::new(root.clone(), cfg), rng)
                     .await?;
-            runner.run(rng).await;
+            initializer_runner.run(rng).await;
 
             // Now we can construct the actual node.
-            let initializer = runner.into_inner();
+            let initializer = initializer_runner.into_inner();
             if !initializer.stopped_successfully() {
                 bail!("failed to initialize successfully");
             }
 
-            let mut runner = Runner::<joiner::Reactor, TestRng>::new(
+            let mut joiner_runner = Runner::<joiner::Reactor, TestRng>::new(
                 WithDir::new(root.clone(), initializer),
                 rng,
             )
             .await?;
-            runner.run(rng).await;
+            joiner_runner.run(rng).await;
 
-            let config = runner.into_inner().into_validator_config().await;
+            let config = joiner_runner.into_inner().into_validator_config().await;
 
             network
                 .add_node_with_config(config, rng)
