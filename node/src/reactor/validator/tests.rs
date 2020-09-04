@@ -1,13 +1,10 @@
 use std::{collections::HashSet, time::Duration};
 
+use anyhow::bail;
 use rand::Rng;
 use tempfile::TempDir;
-use anyhow::bail;
 
-use casper_execution_engine::{
-    core::engine_state::genesis::GenesisAccount,
-    shared::motes::Motes,
-};
+use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
 use casper_types::U512;
 
 use crate::{
