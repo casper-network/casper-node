@@ -327,7 +327,11 @@ impl<REv: ReactorEventT, R: Rng + CryptoRng + ?Sized> Component<REv, R> for Bloc
         match event {
             Event::Request(BlockExecutorRequest::ExecuteBlock(finalized_block)) => {
                 debug!(?finalized_block, "execute block");
-                self.get_deploys(effect_builder, finalized_block)
+                if finalized_block.is_genesis() {
+                    Default::default()
+                } else {
+                    self.get_deploys(effect_builder, finalized_block)
+                }
             }
 
             Event::GetDeploysResult { mut state, deploys } => {

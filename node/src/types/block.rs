@@ -236,10 +236,16 @@ impl FinalizedBlock {
         self.height
     }
 
-    /// Returns true if block is Genesis' child.
-    /// Genesis child block is from era 0 and height 0.
-    pub(crate) fn is_genesis_child(&self) -> bool {
+    /// Returns true if block is Genesis.
+    /// Genesis block is from era 0 and height 0.
+    pub(crate) fn is_genesis(&self) -> bool {
         self.era_id() == EraId(0) && self.height() == 0
+    }
+
+    /// Returns true if block is Genesis' child.
+    /// Genesis child block is from era 0 and height 1.
+    pub(crate) fn is_genesis_child(&self) -> bool {
+        self.era_id() == EraId(0) && self.height() == 1
     }
 }
 
