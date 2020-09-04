@@ -2040,11 +2040,6 @@ where
                 let result = runtime.unbond(public_key, amount).map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
-            // Type: `fn process_unbond_requests() -> Result<(), Error>`
-            auction::METHOD_PROCESS_UNBOND_REQUESTS => {
-                runtime.process_unbond_requests().map_err(Self::reverter)?;
-                CLValue::from_t(()).map_err(Self::reverter)?
-            }
             // Type: `fn slash(validator_account_hashes: &[AccountHash]) -> Result<(), Error>`
             auction::METHOD_SLASH => {
                 let validator_public_keys =

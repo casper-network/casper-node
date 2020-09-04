@@ -10,7 +10,7 @@ use casper_types::{
     account::AccountHash,
     auction::{
         BidPurses, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, BID_PURSES_KEY,
-        DEFAULT_UNBONDING_DELAY, INITIAL_ERA_ID, METHOD_PROCESS_UNBOND_REQUESTS, METHOD_SLASH,
+        DEFAULT_UNBONDING_DELAY, INITIAL_ERA_ID, METHOD_RUN_AUCTION, METHOD_SLASH,
         UNBONDING_PURSES_KEY,
     },
     bytesrepr::FromBytes,
@@ -153,7 +153,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     let exec_request_3 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,
         auction,
-        METHOD_PROCESS_UNBOND_REQUESTS,
+        METHOD_RUN_AUCTION,
         runtime_args! {},
     )
     .build();
@@ -420,7 +420,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
     let exec_request_3 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,
         auction,
-        "process_unbond_requests",
+        METHOD_RUN_AUCTION,
         runtime_args! {},
     )
     .build();
@@ -478,7 +478,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
     let exec_request_4 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,
         auction,
-        "process_unbond_requests",
+        METHOD_RUN_AUCTION,
         runtime_args! {},
     )
     .build();
@@ -488,10 +488,10 @@ fn should_run_successful_bond_and_unbond_with_release() {
     assert_eq!(builder.get_purse_balance(unbond_purse), unbond_amount);
 
     let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
-    let unbond_list = unbond_purses
-        .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
-        .expect("should have unbond");
-    assert_eq!(unbond_list.len(), 0); // removed unbonds
+    assert!(
+        !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_PUBLIC_KEY),
+        "Unbond entry should be removed"
+    );
 
     let bid_purses: BidPurses = get_value(&mut builder, auction, BID_PURSES_KEY);
 

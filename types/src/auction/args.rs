@@ -1,4 +1,8 @@
 use super::EraId;
+use crate::account::AccountHash;
+
+/// System account hash.
+pub const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
 
 /// Maximum number of era validator slots.
 pub const AUCTION_SLOTS: usize = 5;
@@ -54,8 +58,6 @@ pub const METHOD_RUN_AUCTION: &str = "run_auction";
 pub const METHOD_BOND: &str = "bond";
 /// Named constant for method `unbond`.
 pub const METHOD_UNBOND: &str = "unbond";
-/// Named constant for method `process_unbond_requests`.
-pub const METHOD_PROCESS_UNBOND_REQUESTS: &str = "process_unbond_requests";
 /// Named constant for method `slash`.
 pub const METHOD_SLASH: &str = "slash";
 /// Named constant for method `release_founder_stake`.
