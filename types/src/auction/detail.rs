@@ -12,7 +12,7 @@ use crate::{
 /// Iterates over unbonding entries and checks if a locked amount can be paid already if
 /// a specific era is reached.
 ///
-/// This entry point can be called by a system only.
+/// This function can be called by the system only.
 pub(crate) fn process_unbond_requests<P: AuctionProvider + ?Sized>(provider: &mut P) -> Result<()> {
     if provider.get_caller() != SYSTEM_ACCOUNT {
         return Err(Error::InvalidCaller);
