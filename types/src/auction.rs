@@ -3,6 +3,7 @@ mod args;
 mod auction_provider;
 mod bid;
 mod delegator;
+mod detail;
 mod era_validators;
 mod internal;
 mod providers;
