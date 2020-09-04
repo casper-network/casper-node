@@ -326,7 +326,6 @@ pub struct BlockHeader {
 
 impl BlockHeader {
     /// The parent block's hash.
-    #[allow(unused)]
     pub fn parent_hash(&self) -> &BlockHash {
         &self.parent_hash
     }
