@@ -5,11 +5,7 @@ extern crate alloc;
 
 use alloc::{vec, vec::Vec};
 
-use casper_contract::{
-    self,
-    contract_api::{self, storage},
-    unwrap_or_revert::UnwrapOrRevert,
-};
+use casper_contract::{self, contract_api::storage, unwrap_or_revert::UnwrapOrRevert};
 use casper_types::{
     api_error, bytesrepr::ToBytes, contracts::Parameters, CLType, ContractHash, EntryPoint,
     EntryPointAccess, EntryPointType, EntryPoints, RuntimeArgs,
