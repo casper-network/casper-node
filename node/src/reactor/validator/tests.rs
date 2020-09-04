@@ -1,30 +1,18 @@
-// FIXME: Remove
-#![allow(dead_code)]
-#![allow(unused_imports)]
-#![allow(unused_variables)]
-#![allow(unreachable_code)]
-
 use rand::Rng;
 use tempfile::TempDir;
 
 use crate::{
-    components::{
-        consensus::EraId, contract_runtime::core::engine_state::genesis::GenesisConfig,
-        in_memory_network::NodeId, storage,
-    },
+    components::{consensus::EraId, storage},
     crypto::asymmetric_key::SecretKey,
     reactor::{initializer, validator, Runner},
     testing::{init_logging, network::Network, ConditionCheckReactor, TestRng},
-    types::{Motes, NodeConfig},
+    types::Motes,
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
     Chainspec, GenesisAccount,
 };
 use anyhow::bail;
 use casper_types::U512;
-use std::{
-    collections::{HashMap, HashSet},
-    time::Duration,
-};
+use std::{collections::HashSet, time::Duration};
 
 struct TestChain {
     keys: Vec<SecretKey>,

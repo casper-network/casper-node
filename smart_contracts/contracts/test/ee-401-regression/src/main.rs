@@ -1,11 +1,9 @@
 #![no_std]
 #![no_main]
-#![allow(unused_imports)]
 
-#[macro_use]
 extern crate alloc;
 
-use alloc::{collections::BTreeMap, string::String};
+use alloc::string::String;
 
 use casper_contract::{
     contract_api::{runtime, storage},
@@ -13,7 +11,7 @@ use casper_contract::{
 };
 use casper_types::{
     contracts::Parameters, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Parameter, URef,
+    EntryPoints, URef,
 };
 
 const HELLO_EXT: &str = "hello_ext";
