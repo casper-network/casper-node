@@ -41,7 +41,7 @@ pub(crate) fn process_unbond_requests<P: AuctionProvider + ?Sized>(provider: &mu
             let source = bid_purses
                 .get(&unbonding_purse.origin)
                 .ok_or(Error::BondNotFound)?;
-            // Since `process_unbond_requests` is run before `run_auction`, so we should check
+            // Since `process_unbond_requests` is run before `run_auction`, we should check
             // if current era id is equal or greater than the `era_of_withdrawal` that was
             // calculated on `unbond` attempt.
             if current_era_id >= unbonding_purse.era_of_withdrawal as u64 {
