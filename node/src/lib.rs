@@ -25,6 +25,7 @@ pub mod components;
 pub mod crypto;
 pub mod effect;
 pub mod logging;
+pub mod protocol;
 pub mod reactor;
 #[cfg(test)]
 pub mod testing;

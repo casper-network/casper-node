@@ -29,7 +29,7 @@ use crate::{
         requests::{NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    reactor::Message,
+    protocol::Message,
     types::{Block, Deploy, Item},
 };
 // Seems to be a false positive.

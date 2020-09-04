@@ -19,7 +19,8 @@ use crate::{
         requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
         EffectBuilder, Effects,
     },
-    reactor::{self, validator, EventQueueHandle, Message},
+    protocol::Message,
+    reactor::{self, validator, EventQueueHandle},
     utils::WithDir,
 };
 

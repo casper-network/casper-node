@@ -19,12 +19,13 @@ use crate::{
         Component,
     },
     effect::{announcements::NetworkAnnouncement, EffectBuilder, Effects},
+    protocol::Message,
     reactor::{
         self,
         error::Error,
         initializer,
         validator::{self, ValidatorInitConfig},
-        EventQueueHandle, Finalize, Message,
+        EventQueueHandle, Finalize,
     },
     utils::WithDir,
 };

@@ -27,7 +27,6 @@
 mod error;
 pub mod initializer;
 pub mod joiner;
-mod message;
 mod queue_kind;
 pub mod validator;
 
@@ -46,7 +45,6 @@ use crate::{
     effect::{Effect, EffectBuilder, Effects},
     utils::{self, WeightedRoundRobin},
 };
-pub use message::Message;
 pub use queue_kind::QueueKind;
 
 /// Event scheduler
