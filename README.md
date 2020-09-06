@@ -41,7 +41,7 @@ make setup-rs
 make build-system-contracts -j
 ```
 
-### Running
+### Running one node
 
 To run a validator node you will need to specify a config file.  For example, this is one with
 [local configuration options](resources/local/config.toml).
@@ -56,11 +56,35 @@ default values otherwise.  For example:
 cargo run --release -- validator resources/local/config.toml -C=consensus.secret_key_path=secret_keys/node-1.pem
 ```
 
-**NOTE:** If you want to run multiple instances on the same machine, ensure you modify the `[storage.path]` field of
-their configuration files to give each a unique path, or else instances will share database files.
+Note that `network.known_address` must refer to a public listening address of a currently-running node.  If the node
+cannot connect to this address, it will panic.  The node _can_ be run with this referring to its own address, but it
+will be equivalent to not specifying any value for `known_address` - i.e. the node will run and listen, but will be
+reliant on other nodes connecting to it in order to join the network.  This would be normal for the very first node of a
+network, but all subsequent nodes should normally specify that first node's public listening address as their
+`known_address`.
 
 As well as the commented [local config file](resources/local/config.toml), there is a commented
 [local chainspec](resources/local/chainspec.toml) in the same folder.
+
+### Running multiple nodes on one machine
+
+If you want to run multiple instances on the same machine, you will need to modify the following values from the
+[local configuration options](resources/local/config.toml):
+
+* the secret key path should be different for each node, e.g. `-C=consensus.secret_key_path=secret_keys/node-2.pem`
+* the storage path should be different for each node, e.g. `-C=storage.path=/tmp/node-2-storage`
+* the bind port should be different for each node, but if you set it to 0, the node will automatically be assigned a
+random port, e.g. `-C=network.bind_port=0`
+
+The nodes can take quite a long time to become fully interconnected.  This is dependent on the `network.gossip_interval`
+value (in milliseconds).  Nodes gossip their own listening addresses at this frequency.  To reduce the initial time to
+become fully interconnected, this value can be reduced, e.g. `-C=network.gossip_interval=1000` for once every second.
+However, beware that this will also increase the network traffic, as gossip rounds between the nodes will continue to
+be exchanged at this frequency for the duration of the network.
+
+There is a [shell script](run-dev.sh) which automates the process of running multiple nodes on a single machine.
+
+Note that running multiple nodes on a single machine is normally only recommended for test purposes.
 
 ## Logging
 

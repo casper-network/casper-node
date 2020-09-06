@@ -135,7 +135,7 @@ pub(crate) struct SmallNetwork<REv: 'static, P> {
 
 impl<REv, P> SmallNetwork<REv, P>
 where
-    P: Serialize + DeserializeOwned + Clone + Debug + Send + 'static,
+    P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
     REv: Send + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
 {
     #[allow(clippy::type_complexity)]
@@ -258,8 +258,46 @@ where
         }
     }
 
+    fn handle_incoming_handshake_completed(
+        &mut self,
+        result: Result<(NodeId, Transport)>,
+        address: SocketAddr,
+    ) -> Effects<Event<P>> {
+        match result {
+            Ok((peer_id, transport)) => {
+                if peer_id == self.our_id {
+                    debug!(%address, "{}: connected to ourself - closing connection", self.our_id);
+                    return Effects::new();
+                }
+
+                debug!(%peer_id, %address, "{}: established incoming connection", self.our_id);
+                // The sink is never used, as we only read data from incoming connections.
+                let (_sink, stream) = framed::<P>(transport).split();
+
+                let _ = self.incoming.insert(peer_id, address);
+
+                message_reader(self.event_queue, stream, self.our_id, peer_id).event(
+                    move |result| Event::IncomingClosed {
+                        result,
+                        peer_id,
+                        address,
+                    },
+                )
+            }
+            Err(err) => {
+                warn!(%address, %err, "{}: TLS handshake failed", self.our_id);
+                Effects::new()
+            }
+        }
+    }
+
     /// Sets up an established outgoing connection.
     fn setup_outgoing(&mut self, peer_id: NodeId, transport: Transport) -> Effects<Event<P>> {
+        if peer_id == self.our_id {
+            debug!("{}: connected to ourself - closing connection", self.our_id);
+            return Effects::new();
+        }
+
         // This connection is send-only, we only use the sink.
         let peer_address = transport
             .get_ref()
@@ -449,27 +487,7 @@ where
                     .event(move |result| Event::IncomingHandshakeCompleted { result, address })
             }
             Event::IncomingHandshakeCompleted { result, address } => {
-                match result {
-                    Ok((peer_id, transport)) => {
-                        debug!(%peer_id, %address, "{}: established incoming connection", self.our_id);
-                        // The sink is never used, as we only read data from incoming connections.
-                        let (_sink, stream) = framed::<P>(transport).split();
-
-                        let _ = self.incoming.insert(peer_id, address);
-
-                        message_reader(self.event_queue, stream, self.our_id, peer_id).event(
-                            move |result| Event::IncomingClosed {
-                                result,
-                                peer_id,
-                                address,
-                            },
-                        )
-                    }
-                    Err(err) => {
-                        warn!(%address, %err, "{}: TLS handshake failed", self.our_id);
-                        Effects::new()
-                    }
-                }
+                self.handle_incoming_handshake_completed(result, address)
             }
             Event::IncomingMessage { peer_id, msg } => {
                 self.handle_message(effect_builder, peer_id, msg)
