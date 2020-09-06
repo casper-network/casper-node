@@ -38,6 +38,8 @@ pub(crate) struct ShouldGossip {
     pub(crate) count: usize,
     /// Peers we should avoid gossiping this data to, since they already hold it.
     pub(crate) exclude_peers: HashSet<NodeId>,
+    /// Whether we already held the full data or not.
+    pub(crate) is_already_held: bool,
 }
 
 #[derive(Debug, Default)]
@@ -77,6 +79,7 @@ impl State {
                 return GossipAction::ShouldGossip(ShouldGossip {
                     count,
                     exclude_peers: self.holders.clone(),
+                    is_already_held: !is_new,
                 });
             } else {
                 return GossipAction::Noop;
@@ -529,6 +532,7 @@ mod tests {
         let expected = Some(ShouldGossip {
             count: EXPECTED_DEFAULT_INFECTION_TARGET,
             exclude_peers: HashSet::new(),
+            is_already_held: false,
         });
         assert_eq!(expected, action);
         check_holders(&node_ids[..0], &gossip_table, &data_id);
@@ -545,6 +549,7 @@ mod tests {
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
             exclude_peers: node_ids[..2].iter().copied().collect(),
+            is_already_held: true,
         });
         assert_eq!(expected, action);
         check_holders(&node_ids[..2], &gossip_table, &data_id);
@@ -562,6 +567,7 @@ mod tests {
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: EXPECTED_DEFAULT_INFECTION_TARGET,
             exclude_peers: node_ids[..3].iter().copied().collect(),
+            is_already_held: true,
         });
         assert_eq!(expected, action);
 
@@ -586,6 +592,7 @@ mod tests {
         let expected = Some(ShouldGossip {
             count: EXPECTED_DEFAULT_INFECTION_TARGET,
             exclude_peers: node_ids[..1].iter().copied().collect(),
+            is_already_held: false,
         });
         assert_eq!(expected, action);
         check_holders(&node_ids[..1], &gossip_table, &data_id);
@@ -608,6 +615,7 @@ mod tests {
             let expected = GossipAction::ShouldGossip(ShouldGossip {
                 count: 1,
                 exclude_peers: node_ids[..(index + 1)].iter().copied().collect(),
+                is_already_held: true,
             });
             assert_eq!(expected, action);
         }
@@ -618,6 +626,7 @@ mod tests {
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
             exclude_peers: node_ids[..limit].iter().copied().collect(),
+            is_already_held: true,
         });
         assert_eq!(expected, action);
 
@@ -643,6 +652,7 @@ mod tests {
             let expected = GossipAction::ShouldGossip(ShouldGossip {
                 count: 1,
                 exclude_peers: node_ids[..(index + 1)].iter().copied().collect(),
+                is_already_held: true,
             });
             assert_eq!(expected, action);
         }
@@ -653,6 +663,7 @@ mod tests {
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
             exclude_peers: node_ids[..limit].iter().copied().collect(),
+            is_already_held: true,
         });
         assert_eq!(expected, action);
 
@@ -686,6 +697,7 @@ mod tests {
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
             exclude_peers: node_ids[..(holders_limit + 1)].iter().copied().collect(),
+            is_already_held: true,
         });
         assert_eq!(expected, action);
     }
@@ -711,6 +723,7 @@ mod tests {
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
             exclude_peers: iter::once(node_ids[0]).collect(),
+            is_already_held: true,
         });
         assert_eq!(expected, action);
     }
@@ -780,6 +793,7 @@ mod tests {
         let expected = Some(ShouldGossip {
             count: EXPECTED_DEFAULT_INFECTION_TARGET,
             exclude_peers: iter::once(node_ids[3]).collect(),
+            is_already_held: false,
         });
         assert_eq!(expected, action);
         check_holders(&node_ids[3..4], &gossip_table, &data_id);

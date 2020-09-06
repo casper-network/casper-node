@@ -16,15 +16,24 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
 use crate::{
-    components::Component,
-    effect::{announcements::NetworkAnnouncement, EffectBuilder, Effects},
-    reactor::{self, EventQueueHandle, Finalize, Reactor, Runner},
-    small_network::{self, Config, NodeId, SmallNetwork},
+    components::{
+        gossiper::{self, Gossiper},
+        storage::Storage,
+        Component,
+    },
+    effect::{
+        announcements::{GossiperAnnouncement, NetworkAnnouncement},
+        requests::{NetworkRequest, StorageRequest},
+        EffectBuilder, Effects,
+    },
+    reactor::{self, validator, EventQueueHandle, Finalize, Reactor, Runner},
+    small_network::{self, Config, GossipedAddress, NodeId, SmallNetwork},
     testing::{
         self, init_logging,
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
     },
+    utils::Source,
 };
 
 /// Test-reactor event.
@@ -32,13 +41,51 @@ use crate::{
 enum Event {
     #[from]
     SmallNet(small_network::Event<Message>),
+    #[from]
+    AddressGossiper(gossiper::Event<GossipedAddress>),
+    #[from]
+    NetworkRequest(NetworkRequest<NodeId, Message>),
+    #[from]
+    NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
+    #[from]
+    AddressGossiperAnnouncement(GossiperAnnouncement<GossipedAddress>),
 }
 
-/// Example message.
-///
-/// All messages are empty, currently the tests are not checking the payload.
-#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
-struct Message;
+impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event {
+    fn from(request: NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>) -> Self {
+        Event::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
+impl From<NetworkRequest<NodeId, validator::Message>> for Event {
+    fn from(_request: NetworkRequest<NodeId, validator::Message>) -> Self {
+        unreachable!()
+    }
+}
+
+impl From<StorageRequest<Storage>> for Event {
+    fn from(_request: StorageRequest<Storage>) -> Self {
+        unreachable!()
+    }
+}
+
+impl Display for Event {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Debug::fmt(self, f)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, From)]
+enum Message {
+    #[from]
+    AddressGossiper(gossiper::Message<GossipedAddress>),
+}
+
+impl Display for Message {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Debug::fmt(self, f)
+    }
+}
 
 /// Test reactor.
 ///
@@ -46,19 +93,32 @@ struct Message;
 #[derive(Debug)]
 struct TestReactor {
     net: SmallNetwork<Event, Message>,
-}
-
-impl From<NetworkAnnouncement<NodeId, Message>> for Event {
-    fn from(_: NetworkAnnouncement<NodeId, Message>) -> Self {
-        // This will be called if a message is sent, thus it is currently not implemented.
-        todo!()
-    }
+    address_gossiper: Gossiper<GossipedAddress, Event>,
 }
 
 impl Reactor<TestRng> for TestReactor {
     type Event = Event;
     type Config = Config;
     type Error = anyhow::Error;
+
+    fn new(
+        cfg: Self::Config,
+        _registry: &Registry,
+        event_queue: EventQueueHandle<Self::Event>,
+        _rng: &mut TestRng,
+    ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
+        let (net, effects) = SmallNetwork::new(event_queue, cfg)?;
+        let gossiper_config = gossiper::Config::default();
+        let address_gossiper = Gossiper::new_for_complete_items(gossiper_config);
+
+        Ok((
+            TestReactor {
+                net,
+                address_gossiper,
+            },
+            reactor::wrap_effects(Event::SmallNet, effects),
+        ))
+    }
 
     fn dispatch_event(
         &mut self,
@@ -71,21 +131,41 @@ impl Reactor<TestRng> for TestReactor {
                 Event::SmallNet,
                 self.net.handle_event(effect_builder, rng, ev),
             ),
+            Event::AddressGossiper(event) => reactor::wrap_effects(
+                Event::AddressGossiper,
+                self.address_gossiper
+                    .handle_event(effect_builder, rng, event),
+            ),
+            Event::NetworkRequest(req) => self.dispatch_event(
+                effect_builder,
+                rng,
+                Event::SmallNet(small_network::Event::from(req)),
+            ),
+            Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
+                sender,
+                payload,
+            }) => {
+                let reactor_event = match payload {
+                    Message::AddressGossiper(message) => {
+                        Event::AddressGossiper(gossiper::Event::MessageReceived { sender, message })
+                    }
+                };
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            Event::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(gossiped_address)) => {
+                let event = gossiper::Event::ItemReceived {
+                    item_id: gossiped_address,
+                    source: Source::<NodeId>::Client,
+                };
+                self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
+            }
+            Event::AddressGossiperAnnouncement(ann) => {
+                let GossiperAnnouncement::NewCompleteItem(gossiped_address) = ann;
+                let reactor_event =
+                    Event::SmallNet(small_network::Event::PeerAddressReceived(gossiped_address));
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
         }
-    }
-
-    fn new(
-        cfg: Self::Config,
-        _registry: &Registry,
-        event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut TestRng,
-    ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
-        let (net, effects) = SmallNetwork::new(event_queue, cfg)?;
-
-        Ok((
-            TestReactor { net },
-            reactor::wrap_effects(Event::SmallNet, effects),
-        ))
     }
 }
 
@@ -100,20 +180,6 @@ impl NetworkedReactor for TestReactor {
 impl Finalize for TestReactor {
     fn finalize(self) -> futures::future::BoxFuture<'static, ()> {
         self.net.finalize()
-    }
-}
-
-impl Display for Event {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Event::SmallNet(ev) => Display::fmt(ev, f),
-        }
-    }
-}
-
-impl Display for Message {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        Debug::fmt(self, f)
     }
 }
 
@@ -226,9 +292,11 @@ async fn bind_to_real_network_interface() {
         .await
         .unwrap();
 
-    let quiet_for = Duration::from_millis(250);
+    // The network should be fully connected.
     let timeout = Duration::from_secs(2);
-    net.settle(&mut rng, quiet_for, timeout).await;
+    net.settle_on(&mut rng, network_is_complete, timeout).await;
+
+    net.finalize().await;
 }
 
 /// Check that a network of varying sizes will connect all nodes properly.
@@ -237,8 +305,6 @@ async fn check_varying_size_network_connects() {
     init_logging();
 
     let mut rng = TestRng::new();
-
-    let quiet_for: Duration = Duration::from_millis(250);
 
     // Try with a few predefined sets of network sizes.
     for &number_of_nodes in &[2u16, 3, 5, 9, 15] {
@@ -264,9 +330,6 @@ async fn check_varying_size_network_connects() {
 
         // The network should be fully connected.
         net.settle_on(&mut rng, network_is_complete, timeout).await;
-
-        // Afterwards, there should be no activity on the network.
-        net.settle(&mut rng, quiet_for, timeout).await;
 
         // This should not make a difference at all, but we're paranoid, so check again.
         assert!(

@@ -30,6 +30,8 @@ pub enum Tag {
     BlockHeader,
     /// A block.
     Block,
+    /// A gossiped public listening address.
+    GossipedAddress,
 }
 
 /// A trait which allows an implementing type to be used by the gossiper and fetcher components, and
@@ -37,9 +39,11 @@ pub enum Tag {
 /// type-identifying `TAG`.
 pub trait Item: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display {
     /// The type of ID of the item.
-    type Id: Copy + Eq + Hash + Debug + Display + Serialize + DeserializeOwned + Send + Sync;
+    type Id: Copy + Eq + Hash + Serialize + DeserializeOwned + Send + Sync + Debug + Display;
     /// The tag representing the type of the item.
     const TAG: Tag;
+    /// Whether the item's ID _is_ the complete item or not.
+    const ID_IS_COMPLETE_ITEM: bool;
 
     /// The ID of the specific item.
     fn id(&self) -> Self::Id;

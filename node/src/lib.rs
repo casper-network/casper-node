@@ -32,7 +32,7 @@ pub mod tls;
 pub mod types;
 pub mod utils;
 
-pub(crate) use components::small_network::{self, SmallNetwork};
+pub(crate) use components::small_network;
 pub use components::{
     api_server::Config as ApiServerConfig,
     chainspec_loader::{Chainspec, Error as ChainspecError, GenesisAccount},

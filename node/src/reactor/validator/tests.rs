@@ -1,18 +1,20 @@
+use std::{collections::HashSet, time::Duration};
+
+use anyhow::bail;
 use rand::Rng;
 use tempfile::TempDir;
 
 use crate::{
-    components::{consensus::EraId, storage},
+    components::{consensus::EraId, small_network, storage},
     crypto::asymmetric_key::SecretKey,
     reactor::{initializer, validator, Runner},
+    testing,
     testing::{init_logging, network::Network, ConditionCheckReactor, TestRng},
     types::Motes,
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
     Chainspec, GenesisAccount,
 };
-use anyhow::bail;
 use casper_types::U512;
-use std::{collections::HashSet, time::Duration};
 
 struct TestChain {
     keys: Vec<SecretKey>,
@@ -53,11 +55,18 @@ impl TestChain {
     }
 
     /// Creates an initializer/validator configuration for the `idx`th validator.
-    fn create_node_config(&mut self, idx: usize) -> validator::Config {
+    fn create_node_config(&mut self, idx: usize, first_node_port: u16) -> validator::Config {
         // Start with a default configuration.
         let mut cfg = validator::Config::default();
 
-        // We need to set the correct chainspec...
+        // Set the network configuration.
+        cfg.network = if idx == 0 {
+            small_network::Config::default_local_net_first_node(first_node_port)
+        } else {
+            small_network::Config::default_local_net(first_node_port)
+        };
+
+        // Set the correct chainspec...
         cfg.node.chainspec_config_path = External::value(self.chainspec.clone());
 
         // ...and the secret key for our validator.
@@ -78,9 +87,10 @@ impl TestChain {
         let root = RESOURCES_PATH.join("local");
 
         let mut network: Network<validator::Reactor<TestRng>> = Network::new();
+        let first_node_port = testing::unused_port_on_localhost();
 
         for idx in 0..self.keys.len() {
-            let cfg = self.create_node_config(idx);
+            let cfg = self.create_node_config(idx, first_node_port);
 
             // We create an initializer reactor here and run it to completion.
             let mut runner =
