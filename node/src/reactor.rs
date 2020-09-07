@@ -24,7 +24,6 @@
 //! in a step-wise manner using [`crank`](struct.Runner.html#method.crank) or indefinitely using
 //! [`run`](struct.Runner.html#method.crank).
 
-mod error;
 pub mod initializer;
 pub mod joiner;
 mod queue_kind;

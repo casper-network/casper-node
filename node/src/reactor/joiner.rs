@@ -21,10 +21,8 @@ use crate::{
     effect::{announcements::NetworkAnnouncement, EffectBuilder, Effects},
     protocol::Message,
     reactor::{
-        self,
-        error::Error,
-        initializer,
-        validator::{self, ValidatorInitConfig},
+        self, initializer,
+        validator::{self, Error, ValidatorInitConfig},
         EventQueueHandle, Finalize,
     },
     utils::WithDir,

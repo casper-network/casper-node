@@ -3,6 +3,7 @@
 //! Validator nodes join the validator-only network upon startup.
 
 mod config;
+mod error;
 #[cfg(test)]
 mod tests;
 
@@ -48,13 +49,14 @@ use crate::{
         EffectBuilder, Effects,
     },
     protocol::Message,
-    reactor::{self, error::Error, EventQueueHandle},
+    reactor::{self, EventQueueHandle},
     small_network::{self, NodeId},
     types::{Deploy, Tag, Timestamp},
     utils::{Source, WithDir},
     SmallNetwork,
 };
 pub use config::Config;
+pub use error::Error;
 use linear_chain::LinearChain;
 
 /// Top-level event for the reactor.
