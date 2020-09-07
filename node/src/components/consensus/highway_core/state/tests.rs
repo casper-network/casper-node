@@ -150,18 +150,24 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     let b1 = add_vote!(state, rng, BOB, None; N, b0, c0)?;
     let _a1 = add_vote!(state, rng, ALICE, None; a0, b1, c0)?;
 
-    // Wrong sequence number: Carol hasn't produced c1 yet.
-    let wvote = WireVote {
+    // Wrong sequence number: Bob hasn't produced b2 yet.
+    let mut wvote = WireVote {
         panorama: panorama!(N, b1, c0),
-        creator: CAROL,
+        creator: BOB,
         value: None,
-        seq_number: 2,
+        seq_number: 3,
         timestamp: state.vote(&b1).timestamp + TimeDiff::from(1),
-        round_exp: state.vote(&c0).round_exp,
+        round_exp: state.vote(&b1).round_exp,
     };
-    let vote = SignedWireVote::new(wvote, &CAROL_SEC, &mut rng);
+    let vote = SignedWireVote::new(wvote.clone(), &BOB_SEC, &mut rng);
     let opt_err = state.add_vote(vote).err().map(vote_err);
     assert_eq!(Some(VoteError::SequenceNumber), opt_err);
+    // Still not valid: This would be the third vote in the first round.
+    wvote.seq_number = 2;
+    let vote = SignedWireVote::new(wvote, &BOB_SEC, &mut rng);
+    let opt_err = state.add_vote(vote).err().map(vote_err);
+    assert_eq!(Some(VoteError::ThreeVotesInRound), opt_err);
+
     // Inconsistent panorama: If you see b1, you have to see c0, too.
     let opt_err = add_vote!(state, rng, CAROL, None; N, b1, N)
         .err()
