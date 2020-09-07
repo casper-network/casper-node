@@ -1,12 +1,22 @@
 use super::{fetcher::FetchResult, storage::Storage, Component};
 use crate::{
-    effect::{self, EffectExt, EffectOptionExt, Effects},
+    effect::{self, EffectExt, EffectOptionExt, Effects, EffectBuilder},
     types::{Block, BlockHash, DeployHash},
 };
 use effect::requests::{FetcherRequest, StorageRequest};
 use rand::{CryptoRng, Rng};
 use std::fmt::Display;
 use tracing::{error, info, warn};
+
+pub trait ReactorEventT<I>:
+    From<StorageRequest<Storage>> + From<FetcherRequest<I, Block>> + Send
+{
+}
+
+impl<I, REv> ReactorEventT<I> for REv where
+    REv: From<StorageRequest<Storage>> + From<FetcherRequest<I, Block>> + Send
+{
+}
 
 #[derive(Debug)]
 #[allow(unused)]
@@ -18,7 +28,8 @@ pub enum Event {
     LinearChainBlocksDownloaded(),
 }
 
-struct LinearChainSync<I> {
+#[derive(Debug)]
+pub(crate) struct LinearChainSync<I> {
     // Set of peers that we can requests blocks from.
     peers: Vec<I>,
     // Peers we have not yet requested current block from.
@@ -31,13 +42,24 @@ struct LinearChainSync<I> {
 
 impl<I: Clone> LinearChainSync<I> {
     #[allow(unused)]
-    pub fn new(peers: Vec<I>) -> Self {
-        LinearChainSync {
+    pub fn new<REv: ReactorEventT<I>>(
+        peers: Vec<I>,
+        effect_builder: EffectBuilder<REv>,
+        init_hash: BlockHash,
+    ) -> (Self, Effects<Event>) {
+        let linear_chain_sync = LinearChainSync {
             peers: peers.clone(),
             peers_to_try: peers,
             linear_chain: Vec::new(),
             is_synced: false,
-        }
+        };
+
+        (
+            linear_chain_sync,
+            effect_builder
+                .immediately()
+                .event(move |_| Event::Start(init_hash)),
+        )
     }
 
     fn reset_peers(&mut self) {
@@ -47,7 +69,8 @@ impl<I: Clone> LinearChainSync<I> {
     /// Returns `true` if we have finished syncing linear chain.
     #[allow(unused)]
     pub fn is_synced(&self) -> bool {
-        self.is_synced
+        // self.is_synced
+        true
     }
 }
 
@@ -55,13 +78,13 @@ impl<I, REv, R> Component<REv, R> for LinearChainSync<I>
 where
     I: Display + Clone + Copy + Send + 'static,
     R: Rng + CryptoRng + ?Sized,
-    REv: From<StorageRequest<Storage>> + From<FetcherRequest<I, Block>> + Send,
+    REv: ReactorEventT<I>,
 {
     type Event = Event;
 
     fn handle_event(
         &mut self,
-        effect_builder: effect::EffectBuilder<REv>,
+        effect_builder: EffectBuilder<REv>,
         _rng: &mut R,
         event: Self::Event,
     ) -> Effects<Self::Event> {
