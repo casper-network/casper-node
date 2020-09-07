@@ -463,6 +463,22 @@ impl Block {
         &self.hash
     }
 
+    pub(crate) fn parent(&self) -> &BlockHash {
+        self.header.parent_hash()
+    }
+
+    pub(crate) fn deploy_hashes(&self) -> &Vec<DeployHash> {
+        self.header.deploy_hashes()
+    }
+
+    pub(crate) fn parent_hash(&self) -> &BlockHash {
+        self.header.parent_hash()
+    }
+
+    pub(crate) fn is_genesis_child(&self) -> bool {
+        self.header.era_id == EraId(0) && self.header.height == 0
+    }
+
     /// Appends the given signature to this block's proofs.  It should have been validated prior to
     /// this via `BlockHash::verify()`.
     pub(crate) fn append_proof(&mut self, proof: Signature) {

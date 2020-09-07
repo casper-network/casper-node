@@ -51,7 +51,7 @@ use crate::{
     protocol::Message,
     reactor::{self, EventQueueHandle},
     small_network::{self, NodeId},
-    types::{Deploy, Tag, Timestamp},
+    types::{Deploy, ProtoBlock, Tag, Timestamp},
     utils::{Source, WithDir},
     SmallNetwork,
 };
