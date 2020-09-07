@@ -7,7 +7,7 @@ use crate::{
         requests::{LinearChainRequest, StorageRequest},
         EffectExt, Effects,
     },
-    reactor::validator::Message,
+    protocol::Message,
     types::{Block, BlockHash, BlockHeader},
 };
 use derive_more::From;
