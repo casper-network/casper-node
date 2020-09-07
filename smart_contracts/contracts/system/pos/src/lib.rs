@@ -20,6 +20,7 @@ pub const METHOD_FINALIZE_PAYMENT: &str = "finalize_payment";
 pub const ARG_AMOUNT: &str = "amount";
 pub const ARG_PURSE: &str = "purse";
 pub const ARG_ACCOUNT_KEY: &str = "account";
+pub const ARG_PROPOSER: &str = "proposer";
 
 pub struct ProofOfStakeContract;
 
@@ -106,7 +107,9 @@ pub fn finalize_payment() {
 
     let amount_spent: U512 = runtime::get_named_arg(ARG_AMOUNT);
     let account: AccountHash = runtime::get_named_arg(ARG_ACCOUNT_KEY);
+    let proposer: AccountHash = runtime::get_named_arg(ARG_PROPOSER);
+    
     pos_contract
-        .finalize_payment(amount_spent, account)
+        .finalize_payment(amount_spent, account, proposer)
         .unwrap_or_revert();
 }

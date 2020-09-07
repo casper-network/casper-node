@@ -32,8 +32,8 @@ pub trait ProofOfStake: MintProvider + RuntimeProvider + Sized {
     }
 
     /// Finalize payment with `amount_spent` and a given `account`.
-    fn finalize_payment(&mut self, amount_spent: U512, account: AccountHash) -> Result<()> {
-        internal::finalize_payment(self, amount_spent, account)
+    fn finalize_payment(&mut self, amount_spent: U512, account: AccountHash, proposer: AccountHash) -> Result<()> {
+        internal::finalize_payment(self, amount_spent, account, proposer)
     }
 }
 
@@ -111,6 +111,7 @@ mod internal {
         provider: &mut P,
         amount_spent: U512,
         account: AccountHash,
+        proposer: AccountHash,
     ) -> Result<()> {
         let caller = provider.get_caller();
         if caller != SYSTEM_ACCOUNT {
@@ -132,10 +133,15 @@ mod internal {
         let refund_purse = get_refund_purse(provider)?;
         provider.remove_key(REFUND_PURSE_KEY); //unset refund purse after reading it
 
-        // pay validators
+        // First transfer to the rewards_purse, because that is how it was specified in the payments code spec
         provider
             .transfer_purse_to_purse(payment_purse, rewards_purse, amount_spent)
             .map_err(|_| Error::FailedTransferToRewardsPurse)?;
+
+        // Then, transfer it to the block proposer's account
+        provider
+            .transfer_purse_to_account(rewards_purse, proposer, amount_spent)
+            .map_err(|_| Error::FailedTransferToAccountPurse)?;
 
         if refund_amount.is_zero() {
             return Ok(());

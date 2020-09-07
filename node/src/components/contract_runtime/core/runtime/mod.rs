@@ -1862,8 +1862,9 @@ where
             METHOD_FINALIZE_PAYMENT => {
                 let amount_spent: U512 = Self::get_named_argument(&runtime_args, "amount")?;
                 let account: AccountHash = Self::get_named_argument(&runtime_args, "account")?;
+                let proposer: AccountHash = Self::get_named_argument(&runtime_args, "proposer")?;
                 runtime
-                    .finalize_payment(amount_spent, account)
+                    .finalize_payment(amount_spent, account, proposer)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)?
             }

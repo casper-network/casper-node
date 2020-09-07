@@ -14,7 +14,7 @@ use casper_types::{
     RuntimeArgs,
 };
 
-use crate::components::contract_runtime::{
+use crate::{components::contract_runtime::{
     core::{
         engine_state::{
             execution_effect::ExecutionEffect, execution_result::ExecutionResult,
@@ -31,7 +31,7 @@ use crate::components::contract_runtime::{
     },
     shared::{account::Account, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
     storage::{global_state::StateReader, protocol_data::ProtocolData},
-};
+}};
 
 macro_rules! on_fail_charge {
     ($fn:expr) => {

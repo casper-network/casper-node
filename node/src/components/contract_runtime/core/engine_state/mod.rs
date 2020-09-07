@@ -828,6 +828,7 @@ where
                         exec_request.parent_state_hash,
                         BlockTime::new(exec_request.block_time),
                         deploy_item,
+                        exec_request.proposer,
                     ),
                 },
             };
@@ -1205,6 +1206,7 @@ where
         prestate_hash: Blake2bHash,
         blocktime: BlockTime,
         deploy_item: DeployItem,
+        proposer: PublicKey,
     ) -> Result<ExecutionResult, RootNotFound> {
         // spec: https://casperlabs.atlassian.net/wiki/spaces/EN/pages/123404576/Payment+code+execution+specification
 
@@ -1644,8 +1646,6 @@ where
             ));
         }
 
-        // Transfer the contents of the rewards purse to block proposer
-
         execution_result_builder.set_payment_execution_result(payment_result);
 
         let post_payment_tracking_copy = tracking_copy.borrow();
@@ -1749,9 +1749,11 @@ where
                         .expect("motes overflow");
                 const ARG_AMOUNT: &str = "amount";
                 const ARG_ACCOUNT_KEY: &str = "account";
+                const ARG_PROPOSER: &str = "proposer";
                 runtime_args! {
                     ARG_AMOUNT => finalize_cost_motes.value(),
                     ARG_ACCOUNT_KEY => account_public_key,
+                    ARG_PROPOSER => proposer.to_account_hash(),
                 }
             };
 
