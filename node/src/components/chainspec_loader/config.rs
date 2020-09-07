@@ -8,7 +8,10 @@ use std::{
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::shared::{motes::Motes, wasm_costs::WasmCosts};
+use casper_execution_engine::{
+    core::engine_state::genesis::GenesisAccount,
+    shared::{motes::Motes, wasm_costs::WasmCosts},
+};
 use casper_types::U512;
 
 use super::{chainspec, Error};
@@ -16,7 +19,6 @@ use crate::{
     types::{TimeDiff, Timestamp},
     utils::{read_file, External},
 };
-use casper_execution_engine::core::engine_state::genesis::GenesisAccount;
 
 const DEFAULT_CHAIN_NAME: &str = "casper-devnet";
 const DEFAULT_MINT_INSTALLER_PATH: &str = "mint_install.wasm";

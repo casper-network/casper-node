@@ -6,10 +6,12 @@ pub use config::Config;
 use std::{
     fmt::{self, Debug, Display, Formatter},
     sync::Arc,
+    time::Instant,
 };
 
 use derive_more::From;
 use lmdb::DatabaseFlags;
+use prometheus::{self, Histogram, HistogramOpts, Registry};
 use rand::{CryptoRng, Rng};
 use thiserror::Error;
 use tokio::task;
@@ -24,6 +26,7 @@ use casper_execution_engine::{
         transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore,
     },
 };
+use casper_types::ProtocolVersion;
 
 use crate::{
     components::Component,
@@ -31,9 +34,6 @@ use crate::{
     effect::{requests::ContractRuntimeRequest, EffectBuilder, EffectExt, Effects},
     Chainspec, StorageConfig,
 };
-use casper_types::ProtocolVersion;
-use prometheus::{exponential_buckets, Histogram, HistogramOpts, Registry};
-use std::time::Instant;
 
 /// The contract runtime components.
 pub(crate) struct ContractRuntime {
@@ -94,7 +94,7 @@ fn register_histogram_metric(
     metric_name: &str,
     metric_help: &str,
 ) -> Result<Histogram, prometheus::Error> {
-    let common_buckets = exponential_buckets(
+    let common_buckets = prometheus::exponential_buckets(
         EXPONENTIAL_BUCKET_START,
         EXPONENTIAL_BUCKET_FACTOR,
         EXPONENTIAL_BUCKET_COUNT,

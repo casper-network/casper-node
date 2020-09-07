@@ -20,8 +20,8 @@ lazy_static = "1"
 lmdb = "0.8.0"
 log = "0.4.8"
 num-traits = "0.2.10"
-rand = "0.7.2"
 protobuf = "=2.8"
+rand = "0.7.2"
 
 [dev-dependencies]
 version-sync = "0.8"

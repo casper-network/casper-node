@@ -486,6 +486,7 @@ impl Display for Deploy {
         )
     }
 }
+
 impl From<Deploy> for DeployItem {
     fn from(deploy: Deploy) -> Self {
         let account_hash = deploy.header().account().to_account_hash();

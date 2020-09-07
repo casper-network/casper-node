@@ -35,15 +35,13 @@ use crate::{
         },
     },
     crypto::{
-        asymmetric_key,
-        asymmetric_key::{PublicKey, SecretKey},
+        asymmetric_key::{self, PublicKey, SecretKey, Signature},
         hash,
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
     types::{BlockHash, FinalizedBlock, ProtoBlock, SystemTransaction, Timestamp},
     utils::WithDir,
 };
-use asymmetric_key::Signature;
 
 // We use one trillion as a block reward unit because it's large enough to allow precise
 // fractions, and small enough for many block rewards to fit into a u64.

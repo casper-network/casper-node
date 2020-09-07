@@ -20,6 +20,7 @@ base16 = "0.2.1"
 base64 = "0.12.3"
 blake2 = { version = "0.8.1", default-features = false }
 bytes = "0.5.4"
+casper-execution-engine = { path = "../execution_engine" }
 casper-types = { version = "0.6.0", path = "../types", features = ["std", "gens"] }
 chrono = "0.4.10"
 csv = "1.1.3"
@@ -82,17 +83,15 @@ uuid = { version = "0.8.1", features = ["serde", "v4"] }
 wabt = "0.10.0"
 warp = "0.2.4"
 wasmi = "0.6.2"
-casper-execution-engine = { path = "../execution_engine" }
 
 [dev-dependencies]
 assert_matches = "1.3.0"
-criterion = "0.3.3"
 fake_instant = "0.4.0"
 lazy_static = "1"
 pnet = "0.26.0"
 proptest = "0.10.0"
-rand_pcg = "0.2.1"
 rand_core = "0.5.1"
+rand_pcg = "0.2.1"
 tokio = { version = "0.2.20", features = ["test-util"] }
 
 [features]
@@ -107,10 +106,6 @@ path = "src/app/main.rs"
 bench = false
 doctest = false
 test = false
-
-[[bench]]
-name = "trie_bench"
-harness = false
 
 [package.metadata.deb]
 features = ["vendored-openssl"]

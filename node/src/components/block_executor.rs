@@ -10,8 +10,6 @@ use itertools::Itertools;
 use rand::{CryptoRng, Rng};
 use tracing::{debug, error, trace};
 
-use casper_types::ProtocolVersion;
-
 use casper_execution_engine::{
     core::engine_state::{
         self,
@@ -22,6 +20,7 @@ use casper_execution_engine::{
     },
     storage::global_state::CommitResult,
 };
+use casper_types::ProtocolVersion;
 
 use crate::{
     components::{storage::Storage, Component},

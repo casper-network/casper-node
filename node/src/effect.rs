@@ -76,7 +76,10 @@ use tracing::error;
 
 use casper_execution_engine::{
     core::{
-        engine_state::{self, execute_request::ExecuteRequest, execution_result::ExecutionResults},
+        engine_state::{
+            self, execute_request::ExecuteRequest, execution_result::ExecutionResults,
+            genesis::GenesisResult,
+        },
         execution,
     },
     shared::{additive_map::AdditiveMap, transform::Transform},
@@ -103,7 +106,6 @@ use announcements::{
     ApiServerAnnouncement, BlockExecutorAnnouncement, ConsensusAnnouncement,
     DeployAcceptorAnnouncement, NetworkAnnouncement,
 };
-use engine_state::genesis::GenesisResult;
 use requests::{
     BlockExecutorRequest, BlockValidationRequest, ConsensusRequest, ContractRuntimeRequest,
     DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,

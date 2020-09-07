@@ -5,29 +5,25 @@ use std::{
 
 use csv::ReaderBuilder;
 use num_traits::Zero;
-
+#[cfg(test)]
+use rand::Rng;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::{
     core::engine_state::genesis::{ExecConfig, GenesisAccount},
-    shared::wasm_costs::WasmCosts,
+    shared::{motes::Motes, wasm_costs::WasmCosts},
 };
 use casper_types::U512;
 
+use super::{config, error::GenesisLoadError, Error};
 #[cfg(test)]
 use crate::testing::TestRng;
-
 use crate::{
     crypto::asymmetric_key::PublicKey,
     types::{TimeDiff, Timestamp},
     utils::Loadable,
 };
-
-use super::{config, error::GenesisLoadError, Error};
-use casper_execution_engine::shared::motes::Motes;
-#[cfg(test)]
-use rand::Rng;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -222,18 +218,7 @@ impl GenesisConfig {
         let standard_payment_installer_bytes = vec![rng.gen()];
         let auction_installer_bytes = vec![rng.gen()];
         let accounts = vec![rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen()];
-        let costs = WasmCosts {
-            regular: rng.gen(),
-            div: rng.gen(),
-            mul: rng.gen(),
-            mem: rng.gen(),
-            initial_mem: rng.gen(),
-            grow_mem: rng.gen(),
-            memcpy: rng.gen(),
-            max_stack_height: rng.gen(),
-            opcodes_mul: rng.gen(),
-            opcodes_div: rng.gen(),
-        };
+        let costs = rng.gen();
         let deploy_config = DeployConfig::random(rng);
         let highway_config = HighwayConfig::random(rng);
 

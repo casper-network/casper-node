@@ -1,12 +1,12 @@
 use alloc::vec::Vec;
 use core::{cmp, fmt};
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
-    bytesrepr::{self, ToBytes},
+    bytesrepr::{self, Error, FromBytes, ToBytes},
     CLType, CLTyped,
 };
-use bytesrepr::{Error, FromBytes};
-use serde::{Deserialize, Serialize};
 
 const PUBLIC_KEY_VARIANT_LENGTH: usize = 1;
 const ED25519_PUBLIC_KEY_LENGTH: usize = 32;

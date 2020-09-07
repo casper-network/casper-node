@@ -55,7 +55,6 @@ use crate::{
     utils::{Source, WithDir},
     SmallNetwork,
 };
-
 pub use config::Config;
 use error::Error;
 use linear_chain::LinearChain;

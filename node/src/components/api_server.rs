@@ -37,11 +37,10 @@ use warp::{
     Filter,
 };
 
-use crate::crypto::hash::Digest;
-
 use super::Component;
 use crate::{
     components::storage::Storage,
+    crypto::hash::Digest,
     effect::{
         announcements::ApiServerAnnouncement,
         requests::{ApiRequest, ContractRuntimeRequest, MetricsRequest, StorageRequest},

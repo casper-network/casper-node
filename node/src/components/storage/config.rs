@@ -1,11 +1,12 @@
 use std::path::PathBuf;
 
-use casper_execution_engine::shared::utils;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use tempfile::TempDir;
 use tracing::warn;
+
+use casper_execution_engine::shared::utils;
 
 const QUALIFIER: &str = "io";
 const ORGANIZATION: &str = "CasperLabs";

@@ -18,6 +18,8 @@ use rand::{CryptoRng, Rng};
 use semver::Version;
 use tracing::{debug, error, info, trace};
 
+use casper_execution_engine::core::engine_state::{self, genesis::GenesisResult};
+
 use crate::{
     components::{storage::Storage, Component},
     crypto::hash::Digest,
@@ -26,8 +28,6 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
 };
-use casper_execution_engine::core::engine_state::{self, genesis::GenesisResult};
-
 pub(crate) use chainspec::{DeployConfig, HighwayConfig};
 // False positive.
 #[allow(unreachable_pub)]

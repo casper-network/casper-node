@@ -153,7 +153,6 @@ pub struct GenesisConfig {
 }
 
 impl GenesisConfig {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         name: String,
         timestamp: u64,
@@ -244,6 +243,7 @@ impl ExecConfig {
             wasm_costs,
         }
     }
+
     pub fn mint_installer_bytes(&self) -> &[u8] {
         self.mint_installer_bytes.as_slice()
     }
@@ -297,18 +297,7 @@ impl Distribution<ExecConfig> for Standard {
         count = rng.gen_range(1, 10);
         let accounts = iter::repeat(()).map(|_| rng.gen()).take(count).collect();
 
-        let wasm_costs = WasmCosts {
-            regular: rng.gen(),
-            div: rng.gen(),
-            mul: rng.gen(),
-            mem: rng.gen(),
-            initial_mem: rng.gen(),
-            grow_mem: rng.gen(),
-            memcpy: rng.gen(),
-            max_stack_height: rng.gen(),
-            opcodes_mul: rng.gen(),
-            opcodes_div: rng.gen(),
-        };
+        let wasm_costs = rng.gen();
 
         ExecConfig {
             mint_installer_bytes,
