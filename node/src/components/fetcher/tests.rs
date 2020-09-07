@@ -214,8 +214,8 @@ impl reactor::Reactor<TestRng> for Reactor {
                 };
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
-            Event::NetworkAnnouncement(_) => {
-                panic!();
+            Event::NetworkAnnouncement(ann) => {
+                unreachable!("should not receive announcements of type {:?}", ann);
             }
             Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
                 let event = deploy_acceptor::Event::Accept {

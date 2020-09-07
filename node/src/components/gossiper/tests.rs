@@ -221,7 +221,7 @@ impl reactor::Reactor<TestRng> for Reactor {
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(_)) => {
-                panic!();
+                unreachable!("should not receive announcements of type GossipOurAddress");
             }
             Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
                 let event = deploy_acceptor::Event::Accept {
