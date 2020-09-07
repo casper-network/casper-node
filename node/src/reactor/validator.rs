@@ -10,13 +10,12 @@ mod tests;
 use std::{
     convert::TryInto,
     fmt::{self, Display, Formatter},
+    path::PathBuf,
 };
 
 use derive_more::From;
-use hex_fmt::HexFmt;
 use prometheus::Registry;
 use rand::{CryptoRng, Rng};
-use serde::{Deserialize, Serialize};
 use tracing::error;
 
 #[cfg(test)]
@@ -26,6 +25,7 @@ use crate::{
         api_server::{self, ApiServer},
         block_executor::{self, BlockExecutor},
         block_validator::{self, BlockValidator},
+        chainspec_loader::ChainspecLoader,
         consensus::{self, EraSupervisor},
         contract_runtime::{self, ContractRuntime},
         deploy_acceptor::{self, DeployAcceptor},
@@ -49,72 +49,16 @@ use crate::{
         },
         EffectBuilder, Effects,
     },
-    reactor::{self, initializer, EventQueueHandle},
+    protocol::Message,
+    reactor::{self, EventQueueHandle},
     small_network::{self, NodeId},
-    types::{Deploy, Item, Tag, Timestamp},
+    types::{Deploy, Tag, Timestamp},
     utils::{Source, WithDir},
     SmallNetwork,
 };
 pub use config::Config;
-use error::Error;
+pub use error::Error;
 use linear_chain::LinearChain;
-
-/// Reactor message.
-#[derive(Debug, Clone, From, Serialize, Deserialize)]
-pub enum Message {
-    /// Consensus component message.
-    #[from]
-    Consensus(consensus::ConsensusMessage),
-    /// Deploy gossiper component message.
-    #[from]
-    DeployGossiper(gossiper::Message<Deploy>),
-    /// Request to get an item from a peer.
-    GetRequest {
-        /// The type tag of the requested item.
-        tag: Tag,
-        /// The serialized ID of the requested item.
-        serialized_id: Vec<u8>,
-    },
-    /// Response to a `GetRequest`.
-    GetResponse {
-        /// The type tag of the contained item.
-        tag: Tag,
-        /// The serialized item.
-        serialized_item: Vec<u8>,
-    },
-}
-
-impl Message {
-    pub(crate) fn new_get_request<T: Item>(id: &T::Id) -> Result<Self, Error> {
-        Ok(Message::GetRequest {
-            tag: T::TAG,
-            serialized_id: rmp_serde::to_vec(id)?,
-        })
-    }
-
-    pub(crate) fn new_get_response<T: Item>(item: &T) -> Result<Self, Error> {
-        Ok(Message::GetResponse {
-            tag: T::TAG,
-            serialized_item: rmp_serde::to_vec(item)?,
-        })
-    }
-}
-
-impl Display for Message {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match self {
-            Message::Consensus(consensus) => write!(f, "Consensus::{}", consensus),
-            Message::DeployGossiper(deploy) => write!(f, "DeployGossiper::{}", deploy),
-            Message::GetRequest { tag, serialized_id } => {
-                write!(f, "GetRequest({}-{:10})", tag, HexFmt(serialized_id))
-            }
-            Message::GetResponse {
-                tag,
-                serialized_item,
-            } => write!(f, "GetResponse({}-{:10})", tag, HexFmt(serialized_item)),
-        }
-    }
-}
 
 /// Top-level event for the reactor.
 #[derive(Debug, From)]
@@ -265,6 +209,16 @@ impl Display for Event {
     }
 }
 
+/// The configuration needed to initialize a Validator reactor
+#[derive(Debug)]
+pub struct ValidatorInitConfig {
+    pub(super) root: PathBuf,
+    pub(super) config: Config,
+    pub(super) chainspec_loader: ChainspecLoader,
+    pub(super) storage: Storage,
+    pub(super) contract_runtime: ContractRuntime,
+}
+
 /// Validator node reactor.
 #[derive(Debug)]
 pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
@@ -294,25 +248,24 @@ impl<R: Rng + CryptoRng + ?Sized> Reactor<R> {
 impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
     type Event = Event;
 
-    // The "configuration" is in fact the whole state of the initializer reactor, which we
+    // The "configuration" is in fact the whole state of the joiner reactor, which we
     // deconstruct and reuse.
-    type Config = WithDir<initializer::Reactor>;
+    type Config = ValidatorInitConfig;
     type Error = Error;
 
     fn new(
-        initializer: Self::Config,
+        config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut R,
     ) -> Result<(Self, Effects<Event>), Error> {
-        let (root, initializer) = initializer.into_parts();
-
-        let initializer::Reactor {
+        let ValidatorInitConfig {
+            root,
             config,
             chainspec_loader,
             storage,
             contract_runtime,
-        } = initializer;
+        } = config;
 
         let metrics = Metrics::new(registry.clone());
 

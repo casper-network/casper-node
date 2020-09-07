@@ -7,7 +7,7 @@ use crate::{
         },
         traits::Context,
     },
-    types::Timestamp,
+    types::{TimeDiff, Timestamp},
 };
 
 /// A vote sent to or received from the network.
@@ -87,5 +87,10 @@ impl<C: Context> Vote<C> {
     /// Returns the time at which the round containing this vote began.
     pub(crate) fn round_id(&self) -> Timestamp {
         state::round_id(self.timestamp, self.round_exp)
+    }
+
+    /// Returns the length of the round containing this vote.
+    pub(crate) fn round_len(&self) -> TimeDiff {
+        state::round_len(self.round_exp)
     }
 }
