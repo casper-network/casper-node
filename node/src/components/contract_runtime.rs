@@ -159,7 +159,7 @@ where
                     let result = task::spawn_blocking(move || {
                         let start = Instant::now();
                         let execution_result =
-                            engine_state.run_execute(correlation_id, execute_request);
+                            engine_state.run_execute(correlation_id, *execute_request);
                         metrics.run_execute.observe(start.elapsed().as_secs_f64());
                         execution_result
                     })

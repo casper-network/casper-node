@@ -340,7 +340,7 @@ pub enum ContractRuntimeRequest {
     /// An `ExecuteRequest` that contains multiple deploys that will be executed.
     Execute {
         /// Execution request containing deploys.
-        execute_request: ExecuteRequest,
+        execute_request: Box<ExecuteRequest>,
         /// Responder to call with the execution result.
         responder: Responder<Result<ExecutionResults, engine_state::RootNotFound>>,
     },

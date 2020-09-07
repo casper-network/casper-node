@@ -793,7 +793,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ContractRuntimeRequest::Execute {
-                execute_request,
+                execute_request: Box::new(execute_request),
                 responder,
             },
             QueueKind::Regular,

@@ -232,7 +232,7 @@ impl BlockExecutor {
             state.finalized_block.timestamp().millis(),
             vec![Ok(deploy_item)],
             ProtocolVersion::V1_0_0,
-            state.finalized_block.proposer().clone(),
+            *state.finalized_block.proposer(),
         );
 
         effect_builder
