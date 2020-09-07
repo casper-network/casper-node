@@ -39,7 +39,6 @@ pub(crate) mod validators;
 
 mod evidence;
 #[cfg(test)]
-#[allow(unused)]
 mod highway_testing;
 mod state;
 
