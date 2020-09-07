@@ -474,6 +474,7 @@ impl Block {
         &self.hash
     }
 
+    #[allow(unused)]
     pub(crate) fn parent(&self) -> &BlockHash {
         self.header.parent_hash()
     }

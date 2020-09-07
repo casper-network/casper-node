@@ -1,9 +1,12 @@
+mod event;
+
 use super::{fetcher::FetchResult, storage::Storage, Component};
 use crate::{
     effect::{self, EffectExt, EffectOptionExt, Effects, EffectBuilder},
-    types::{Block, BlockHash, DeployHash},
+    types::{Block, BlockHash},
 };
 use effect::requests::{FetcherRequest, StorageRequest};
+pub use event::Event;
 use rand::{CryptoRng, Rng};
 use std::fmt::Display;
 use tracing::{error, info, warn};
@@ -16,16 +19,6 @@ pub trait ReactorEventT<I>:
 impl<I, REv> ReactorEventT<I> for REv where
     REv: From<StorageRequest<Storage>> + From<FetcherRequest<I, Block>> + Send
 {
-}
-
-#[derive(Debug)]
-#[allow(unused)]
-pub enum Event {
-    Start(BlockHash),
-    GetBlockResult(BlockHash, Option<FetchResult<Block>>),
-    DeployFound(DeployHash),
-    DeployNotFound(DeployHash),
-    LinearChainBlocksDownloaded(),
 }
 
 #[derive(Debug)]
