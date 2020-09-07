@@ -65,6 +65,8 @@ pub(crate) enum VoteError {
     Signature,
     #[error("The round length is invalid.")]
     RoundLength,
+    #[error("This would be the third vote in that round. Only two are allowed.")]
+    ThreeVotesInRound,
     #[error("The vote is a block, but its parent is already a terminal block.")]
     ValueAfterTerminalBlock,
 }
@@ -334,7 +336,8 @@ impl<C: Context> State<C> {
         let wvote = &swvote.wire_vote;
         let creator = wvote.creator;
         if creator.0 as usize >= self.validator_count() {
-            return Err(VoteError::Creator);
+            error!("Nonexistent validator should be rejected in Highway::pre_validate_vote.");
+            return Err(VoteError::Creator); // Should be unreachable.
         }
         if wvote.round_exp < self.params.min_round_exp() {
             return Err(VoteError::RoundLength);
@@ -364,7 +367,7 @@ impl<C: Context> State<C> {
         match wvote.panorama.get(creator) {
             Observation::Faulty => {
                 error!("Vote from faulty validator should be rejected in `pre_validate_vote`.");
-                return Err(VoteError::FaultyCreator);
+                return Err(VoteError::FaultyCreator); // Should be unreachable.
             }
             Observation::None if wvote.seq_number == 0 => (),
             Observation::None => return Err(VoteError::SequenceNumber),
@@ -382,6 +385,11 @@ impl<C: Context> State<C> {
                         || prev_vote.timestamp >> max_re == wvote.timestamp >> max_re
                     {
                         return Err(VoteError::RoundLength);
+                    }
+                }
+                if let Some(prev2_vote) = prev_vote.previous().map(|h2| self.vote(h2)) {
+                    if prev2_vote.round_id() == round_id(wvote.timestamp, wvote.round_exp) {
+                        return Err(VoteError::ThreeVotesInRound);
                     }
                 }
             }
@@ -430,7 +438,7 @@ impl<C: Context> State<C> {
 
     /// Returns the earliest time at which rewards for a block introduced by this vote can be paid.
     pub(super) fn reward_time(&self, vote: &Vote<C>) -> Timestamp {
-        vote.timestamp + round_len(vote.round_exp) * self.params.reward_delay()
+        vote.timestamp + vote.round_len() * self.params.reward_delay()
     }
 
     /// Returns the hash of the message with the given sequence number from the creator of `hash`,

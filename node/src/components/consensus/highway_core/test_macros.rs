@@ -17,6 +17,7 @@ macro_rules! panorama {
 /// automatically picks reasonable values for those.
 macro_rules! add_vote {
     ($state: ident, $rng: ident, $creator: expr, $val: expr; $($obs:expr),*) => {{
+        #[allow(unused_imports)] // These might be already imported at the call site.
         use crate::{
             components::consensus::highway_core::{
                 state::{self, tests::TestSecret},
@@ -28,28 +29,33 @@ macro_rules! add_vote {
         let creator = $creator;
         let panorama = panorama!($($obs),*);
         let seq_number = panorama.next_seq_num(&$state, creator);
+        let opt_parent_hash = panorama[creator].correct();
         // Use our most recent round exponent, or the configured minimum.
-        let round_exp = panorama[creator].correct().map_or_else(
+        let round_exp = opt_parent_hash.map_or_else(
             || $state.params().min_round_exp(),
             |vh| $state.vote(vh).round_exp,
         );
         let value = Option::from($val);
-        // Our timestamp must not be less than any justification's.
-        let min_time = panorama.iter_correct()
+        // At most two votes per round are allowed.
+        let two_votes_limit = opt_parent_hash
+            .and_then(|ph| $state.vote(ph).previous())
+            .map(|pph| $state.vote(pph))
+            .map(|vote| vote.round_id() + vote.round_len());
+        // And our timestamp must not be less than any justification's.
+        let mut timestamp = panorama
+            .iter_correct()
             .map(|vh| $state.vote(vh).timestamp + TimeDiff::from(1))
+            .chain(two_votes_limit)
             .max()
             .unwrap_or_else(Timestamp::zero);
-        let timestamp = if value.is_some() {
-            // This is a block: Find the next time we're a leader.
-            let mut time = state::round_id(min_time, round_exp);
-            while time < min_time || $state.leader(time) != creator {
-                time += TimeDiff::from(1 << round_exp);
+        // If this is a block: Find the next time we're a leader.
+        if value.is_some() {
+            let r_len = TimeDiff::from(1 << round_exp);
+            timestamp = state::round_id(timestamp + r_len - TimeDiff::from(1), round_exp);
+            while $state.leader(timestamp) != creator {
+                timestamp += r_len;
             }
-            time
-        } else {
-            // TODO: If we add stricter validity checks for ballots, this needs to be updated.
-            min_time
-        };
+        }
         let wvote = WireVote {
             panorama,
             creator,
