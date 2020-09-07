@@ -3,6 +3,7 @@ use std::iter;
 use std::{
     collections::BTreeMap,
     fmt::{self, Debug, Display, Formatter},
+    hash::Hash,
 };
 
 use hex_fmt::{HexFmt, HexList};
@@ -25,6 +26,10 @@ use crate::{
     crypto::asymmetric_key::{self, SecretKey},
     testing::TestRng,
 };
+
+pub trait BlockLike: Eq + Hash {
+    fn deploys(&self) -> &Vec<DeployHash>;
+}
 
 /// A cryptographic hash identifying a `ProtoBlock`.
 #[derive(
@@ -124,6 +129,12 @@ impl Display for ProtoBlock {
             DisplayIter::new(self.deploys.iter()),
             self.random_bit(),
         )
+    }
+}
+
+impl BlockLike for ProtoBlock {
+    fn deploys(&self) -> &Vec<DeployHash> {
+        self.deploys()
     }
 }
 
@@ -554,6 +565,12 @@ impl Display for Block {
             DisplayIter::new(self.header.system_transactions.iter()),
             self.proofs.len()
         )
+    }
+}
+
+impl BlockLike for Block {
+    fn deploys(&self) -> &Vec<DeployHash> {
+        self.deploy_hashes()
     }
 }
 

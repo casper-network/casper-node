@@ -726,12 +726,12 @@ impl<REv> EffectBuilder<REv> {
         proto_block: ProtoBlock,
     ) -> (bool, ProtoBlock)
     where
-        REv: From<BlockValidationRequest<I>>,
+        REv: From<BlockValidationRequest<ProtoBlock, I>>,
     {
         self.make_request(
             |responder| BlockValidationRequest {
+                block: proto_block,
                 sender,
-                proto_block,
                 responder,
             },
             QueueKind::Regular,
