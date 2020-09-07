@@ -108,7 +108,7 @@ pub fn finalize_payment() {
     let amount_spent: U512 = runtime::get_named_arg(ARG_AMOUNT);
     let account: AccountHash = runtime::get_named_arg(ARG_ACCOUNT_KEY);
     let proposer: AccountHash = runtime::get_named_arg(ARG_PROPOSER);
-    
+
     pos_contract
         .finalize_payment(amount_spent, account, proposer)
         .unwrap_or_revert();

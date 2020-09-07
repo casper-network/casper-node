@@ -97,7 +97,7 @@ impl<C: Context> FinalityDetector<C> {
         }
         None
     }
- 
+
     /// Returns the number of levels of the highest summit with a quorum that a `target_lvl` summit
     /// would need for the desired FTT. If the returned number is `target_lvl` that means the
     /// `candidate` is finalized. If not, we need to retry with a lower `target_lvl`.

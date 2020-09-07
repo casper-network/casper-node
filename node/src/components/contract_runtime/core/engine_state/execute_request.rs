@@ -3,7 +3,10 @@ use std::mem;
 use casper_types::ProtocolVersion;
 
 use super::{deploy_item::DeployItem, execution_result::ExecutionResult};
-use crate::crypto::{asymmetric_key::PublicKey, hash::{self, Digest}};
+use crate::crypto::{
+    asymmetric_key::PublicKey,
+    hash::{self, Digest},
+};
 
 #[derive(Debug)]
 pub struct ExecuteRequest {
@@ -34,7 +37,6 @@ impl ExecuteRequest {
     pub fn take_deploys(&mut self) -> Vec<Result<DeployItem, ExecutionResult>> {
         mem::replace(&mut self.deploys, vec![])
     }
-
 }
 
 impl Default for ExecuteRequest {
