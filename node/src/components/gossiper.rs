@@ -23,7 +23,7 @@ use crate::{
         requests::{NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    reactor::validator::Message as ValidatorMessage,
+    protocol::Message as NodeMessage,
     types::{Deploy, DeployHash, Item},
     utils::Source,
 };
@@ -38,7 +38,7 @@ pub use message::Message;
 pub trait ReactorEventT<T>:
     From<Event<T>>
     + From<NetworkRequest<NodeId, Message<T>>>
-    + From<NetworkRequest<NodeId, ValidatorMessage>>
+    + From<NetworkRequest<NodeId, NodeMessage>>
     + From<StorageRequest<Storage>>
     + From<GossiperAnnouncement<T>>
     + Send
@@ -55,7 +55,7 @@ where
     <T as Item>::Id: 'static,
     REv: From<Event<T>>
         + From<NetworkRequest<NodeId, Message<T>>>
-        + From<NetworkRequest<NodeId, ValidatorMessage>>
+        + From<NetworkRequest<NodeId, NodeMessage>>
         + From<StorageRequest<Storage>>
         + From<GossiperAnnouncement<T>>
         + Send
@@ -248,7 +248,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 // The previous peer failed to provide the item, so we still need to get it.  Send
                 // a `GetRequest` to a different holder and set a timeout to check we got the
                 // response.
-                let request = match ValidatorMessage::new_get_request::<T>(&item_id) {
+                let request = match NodeMessage::new_get_request::<T>(&item_id) {
                     Ok(request) => request,
                     Err(error) => {
                         error!("failed to create get-request: {}", error);
@@ -388,7 +388,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         item: T,
         requester: NodeId,
     ) -> Effects<Event<T>> {
-        match ValidatorMessage::new_get_response(&item) {
+        match NodeMessage::new_get_response(&item) {
             Ok(message) => effect_builder.send_message(requester, message).ignore(),
             Err(error) => {
                 error!("failed to create get-response: {}", error);

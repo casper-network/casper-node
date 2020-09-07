@@ -25,7 +25,8 @@ use crate::{
         ApiServerAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
         NetworkAnnouncement,
     },
-    reactor::{self, validator::Message as ValidatorMessage, EventQueueHandle, Runner},
+    protocol::Message as NodeMessage,
+    reactor::{self, EventQueueHandle, Runner},
     testing::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
@@ -45,9 +46,9 @@ enum Event {
     #[from]
     DeployGossiper(super::Event<Deploy>),
     #[from]
-    NetworkRequest(NetworkRequest<NodeId, ValidatorMessage>),
+    NetworkRequest(NetworkRequest<NodeId, NodeMessage>),
     #[from]
-    NetworkAnnouncement(NetworkAnnouncement<NodeId, ValidatorMessage>),
+    NetworkAnnouncement(NetworkAnnouncement<NodeId, NodeMessage>),
     #[from]
     ApiServerAnnouncement(ApiServerAnnouncement),
     #[from]
@@ -64,7 +65,7 @@ impl From<StorageRequest<Storage>> for Event {
 
 impl From<NetworkRequest<NodeId, Message<Deploy>>> for Event {
     fn from(request: NetworkRequest<NodeId, Message<Deploy>>) -> Self {
-        Event::NetworkRequest(request.map_payload(ValidatorMessage::from))
+        Event::NetworkRequest(request.map_payload(NodeMessage::from))
     }
 }
 
@@ -97,7 +98,7 @@ enum Error {
 }
 
 struct Reactor {
-    network: InMemoryNetwork<ValidatorMessage>,
+    network: InMemoryNetwork<NodeMessage>,
     storage: Storage,
     deploy_acceptor: DeployAcceptor,
     deploy_gossiper: Gossiper<Deploy, Event>,
@@ -106,7 +107,7 @@ struct Reactor {
 
 impl Drop for Reactor {
     fn drop(&mut self) {
-        NetworkController::<ValidatorMessage>::remove_node(&self.network.node_id())
+        NetworkController::<NodeMessage>::remove_node(&self.network.node_id())
     }
 }
 
@@ -178,7 +179,7 @@ impl reactor::Reactor<TestRng> for Reactor {
                 payload,
             }) => {
                 let reactor_event = match payload {
-                    ValidatorMessage::GetRequest {
+                    NodeMessage::GetRequest {
                         tag: Tag::Deploy,
                         serialized_id,
                     } => {
@@ -197,7 +198,7 @@ impl reactor::Reactor<TestRng> for Reactor {
                             peer: sender,
                         })
                     }
-                    ValidatorMessage::GetResponse {
+                    NodeMessage::GetResponse {
                         tag: Tag::Deploy,
                         serialized_item,
                     } => {
@@ -213,7 +214,7 @@ impl reactor::Reactor<TestRng> for Reactor {
                             source: Source::Peer(sender),
                         })
                     }
-                    ValidatorMessage::DeployGossiper(message) => {
+                    NodeMessage::DeployGossiper(message) => {
                         Event::DeployGossiper(super::Event::MessageReceived { sender, message })
                     }
                     msg => panic!("should not get {}", msg),
@@ -269,7 +270,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
     const TIMEOUT: Duration = Duration::from_secs(20);
     const QUIET_FOR: Duration = Duration::from_millis(50);
 
-    NetworkController::<ValidatorMessage>::create_active();
+    NetworkController::<NodeMessage>::create_active();
     let mut network = Network::<Reactor>::new();
 
     // Add `network_size` nodes.
@@ -311,7 +312,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
     // Ensure all responders are called before dropping the network.
     network.settle(rng, QUIET_FOR, TIMEOUT).await;
 
-    NetworkController::<ValidatorMessage>::remove_active();
+    NetworkController::<NodeMessage>::remove_active();
 }
 
 #[tokio::test]
@@ -334,7 +335,7 @@ async fn should_get_from_alternate_source() {
     const POLL_DURATION: Duration = Duration::from_millis(10);
     const TIMEOUT: Duration = Duration::from_secs(2);
 
-    NetworkController::<ValidatorMessage>::create_active();
+    NetworkController::<NodeMessage>::create_active();
     let mut network = Network::<Reactor>::new();
     let mut rng = TestRng::new();
 
@@ -371,7 +372,7 @@ async fn should_get_from_alternate_source() {
         match event {
             Event::NetworkRequest(NetworkRequest::SendMessage {
                 dest,
-                payload: ValidatorMessage::DeployGossiper(Message::GossipResponse { .. }),
+                payload: NodeMessage::DeployGossiper(Message::GossipResponse { .. }),
                 ..
             }) => dest == &node_id_0,
             _ => false,
@@ -408,7 +409,7 @@ async fn should_get_from_alternate_source() {
     };
     network.settle_on(&mut rng, deploy_held, TIMEOUT).await;
 
-    NetworkController::<ValidatorMessage>::remove_active();
+    NetworkController::<NodeMessage>::remove_active();
 }
 
 #[tokio::test]
@@ -416,7 +417,7 @@ async fn should_timeout_gossip_response() {
     const PAUSE_DURATION: Duration = Duration::from_millis(50);
     const TIMEOUT: Duration = Duration::from_secs(2);
 
-    NetworkController::<ValidatorMessage>::create_active();
+    NetworkController::<NodeMessage>::create_active();
     let mut network = Network::<Reactor>::new();
     let mut rng = TestRng::new();
 
@@ -485,5 +486,5 @@ async fn should_timeout_gossip_response() {
     };
     network.settle_on(&mut rng, deploy_held, TIMEOUT).await;
 
-    NetworkController::<ValidatorMessage>::remove_active();
+    NetworkController::<NodeMessage>::remove_active();
 }

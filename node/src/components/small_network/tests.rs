@@ -26,7 +26,8 @@ use crate::{
         requests::{NetworkRequest, StorageRequest},
         EffectBuilder, Effects,
     },
-    reactor::{self, validator, EventQueueHandle, Finalize, Reactor, Runner},
+    protocol,
+    reactor::{self, EventQueueHandle, Finalize, Reactor, Runner},
     small_network::{self, Config, GossipedAddress, NodeId, SmallNetwork},
     testing::{
         self, init_logging,
@@ -57,8 +58,8 @@ impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event 
     }
 }
 
-impl From<NetworkRequest<NodeId, validator::Message>> for Event {
-    fn from(_request: NetworkRequest<NodeId, validator::Message>) -> Self {
+impl From<NetworkRequest<NodeId, protocol::Message>> for Event {
+    fn from(_request: NetworkRequest<NodeId, protocol::Message>) -> Self {
         unreachable!()
     }
 }

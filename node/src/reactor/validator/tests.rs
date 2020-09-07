@@ -7,9 +7,8 @@ use tempfile::TempDir;
 use crate::{
     components::{consensus::EraId, small_network, storage},
     crypto::asymmetric_key::SecretKey,
-    reactor::{initializer, validator, Runner},
-    testing,
-    testing::{init_logging, network::Network, ConditionCheckReactor, TestRng},
+    reactor::{initializer, joiner, validator, Runner},
+    testing::{self, network::Network, ConditionCheckReactor, TestRng},
     types::Motes,
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
     Chainspec, GenesisAccount,
@@ -93,19 +92,28 @@ impl TestChain {
             let cfg = self.create_node_config(idx, first_node_port);
 
             // We create an initializer reactor here and run it to completion.
-            let mut runner =
+            let mut initializer_runner =
                 Runner::<initializer::Reactor, TestRng>::new(WithDir::new(root.clone(), cfg), rng)
                     .await?;
-            runner.run(rng).await;
+            initializer_runner.run(rng).await;
 
             // Now we can construct the actual node.
-            let initializer = runner.into_inner();
+            let initializer = initializer_runner.into_inner();
             if !initializer.stopped_successfully() {
                 bail!("failed to initialize successfully");
             }
 
+            let mut joiner_runner = Runner::<joiner::Reactor, TestRng>::new(
+                WithDir::new(root.clone(), initializer),
+                rng,
+            )
+            .await?;
+            joiner_runner.run(rng).await;
+
+            let config = joiner_runner.into_inner().into_validator_config().await;
+
             network
-                .add_node_with_config(WithDir::new(root.clone(), initializer), rng)
+                .add_node_with_config(config, rng)
                 .await
                 .expect("could not add node to reactor");
         }
@@ -130,7 +138,7 @@ fn era_ids(
 
 #[tokio::test]
 async fn run_validator_network() {
-    init_logging();
+    testing::init_logging();
 
     let mut rng = TestRng::new();
 

@@ -25,6 +25,7 @@
 //! [`run`](struct.Runner.html#method.crank).
 
 pub mod initializer;
+pub mod joiner;
 mod queue_kind;
 pub mod validator;
 
