@@ -341,8 +341,6 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                         .expect("should have valid genesis public key");
 
                     Some((crypto_public_key, genesis_account.bonded_amount()))
-                // genesis_public_key.try_into().map(|result| (result,
-                // genesis_account.bonded_amount()))
                 } else {
                     None
                 }
