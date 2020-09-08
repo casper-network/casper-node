@@ -24,16 +24,16 @@ use crate::{
         requests::{BlockValidationRequest, FetcherRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
     },
-    types::{Deploy, DeployHash, ProtoBlock},
+    types::{BlockLike, Deploy, DeployHash},
 };
 use keyed_counter::KeyedCounter;
 
 /// Block validator component event.
 #[derive(Debug, From, Display)]
-pub enum Event<I> {
+pub enum Event<T, I> {
     /// A request made of the block validator component.
     #[from]
-    Request(BlockValidationRequest<I>),
+    Request(BlockValidationRequest<T, I>),
 
     /// A deploy has been successfully found.
     #[display(fmt = "deploy {} found", _0)]
@@ -48,18 +48,18 @@ pub enum Event<I> {
 ///
 /// Tracks whether or not there are deploys still missing and who is interested in the final result.
 #[derive(Debug)]
-struct BlockValidationState {
+struct BlockValidationState<T> {
     /// The deploys that have not yet been "crossed off" the list of potential misses.
     missing_deploys: HashSet<DeployHash>,
     /// A list of responders that are awaiting an answer.
-    responders: SmallVec<[Responder<(bool, ProtoBlock)>; 2]>,
+    responders: SmallVec<[Responder<(bool, T)>; 2]>,
 }
 
 /// Block validator.
 #[derive(Debug, Default)]
-pub(crate) struct BlockValidator<I> {
+pub(crate) struct BlockValidator<T, I> {
     /// State of validation of a specific block.
-    validation_states: HashMap<ProtoBlock, BlockValidationState>,
+    validation_states: HashMap<T, BlockValidationState<T>>,
 
     /// Number of requests for a specific deploy hash still in flight.
     in_flight: KeyedCounter<DeployHash>,
@@ -67,7 +67,7 @@ pub(crate) struct BlockValidator<I> {
     _marker: std::marker::PhantomData<I>,
 }
 
-impl<I> BlockValidator<I> {
+impl<T, I> BlockValidator<T, I> {
     /// Creates a new block validator instance.
     pub(crate) fn new() -> Self {
         BlockValidator {
@@ -78,13 +78,17 @@ impl<I> BlockValidator<I> {
     }
 }
 
-impl<I, REv, R> Component<REv, R> for BlockValidator<I>
+impl<T, I, REv, R> Component<REv, R> for BlockValidator<T, I>
 where
+    T: BlockLike + Send + Clone + 'static,
     I: Clone + Send + 'static,
-    REv: From<Event<I>> + From<BlockValidationRequest<I>> + From<FetcherRequest<I, Deploy>> + Send,
+    REv: From<Event<T, I>>
+        + From<BlockValidationRequest<T, I>>
+        + From<FetcherRequest<I, Deploy>>
+        + Send,
     R: Rng + CryptoRng + ?Sized,
 {
-    type Event = Event<I>;
+    type Event = Event<T, I>;
 
     fn handle_event(
         &mut self,
@@ -94,20 +98,20 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::Request(BlockValidationRequest {
-                proto_block,
+                block,
                 sender,
                 responder,
             }) => {
-                if proto_block.deploys().is_empty() {
+                if block.deploys().is_empty() {
                     // If there are no deploys, return early.
                     let mut effects = Effects::new();
-                    effects.extend(responder.respond((true, proto_block)).ignore());
+                    effects.extend(responder.respond((true, block)).ignore());
                     return effects;
                 }
                 // No matter the current state, we will request the deploys inside this protoblock
                 // for now. Duplicate requests must still be answered, but are
                 // de-duplicated by the fetcher.
-                let effects = proto_block
+                let effects = block
                     .deploys()
                     .iter()
                     .flat_map(|deploy_hash| {
@@ -128,7 +132,7 @@ where
 
                 // TODO: Clean this up to use `or_insert_with_key` once
                 // https://github.com/rust-lang/rust/issues/71024 is stabilized.
-                match self.validation_states.entry(proto_block) {
+                match self.validation_states.entry(block) {
                     Entry::Occupied(mut entry) => {
                         // The entry already exists. We register ourselves as someone interested in
                         // the ultimate validation result.
