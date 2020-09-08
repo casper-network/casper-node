@@ -39,10 +39,10 @@ impl Config {
 
     /// Interface to bind to for listening.  Defaults to "unspecified", i.e. '0.0.0.0'.
     pub fn bind_interface(&self) -> io::Result<IpAddr> {
-        match &self.bind_interface {
-            Some(address) => utils::resolve_ip(address),
-            None => Ok(DEFAULT_BIND_INTERFACE),
-        }
+        self.bind_interface
+            .as_deref()
+            .map(utils::resolve_ip)
+            .unwrap_or(Ok(DEFAULT_BIND_INTERFACE))
     }
 
     /// Port to bind to for listening.  Use 0 for a random port.  Defaults to 34553.
