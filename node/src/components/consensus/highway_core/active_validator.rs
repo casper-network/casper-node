@@ -75,22 +75,13 @@ impl<C: Context> ActiveValidator<C> {
     pub(crate) fn new(
         vidx: ValidatorIndex,
         secret: C::ValidatorSecret,
-        mut next_round_exp: u8,
         timestamp: Timestamp,
         state: &State<C>,
     ) -> (Self, Vec<Effect<C>>) {
-        if next_round_exp < state.params().min_round_exp() {
-            warn!(
-                "using minimum value {} instead of round exponent {}",
-                state.params().min_round_exp(),
-                next_round_exp,
-            );
-            next_round_exp = state.params().min_round_exp();
-        }
         let mut av = ActiveValidator {
             vidx,
             secret,
-            next_round_exp,
+            next_round_exp: state.params().init_round_exp(),
             next_timer: Timestamp::zero(),
             next_proposal: None,
         };
@@ -407,9 +398,9 @@ mod tests {
         assert_eq!(ALICE, state.leader(416.into())); // Alice will be the first leader.
         assert_eq!(BOB, state.leader(432.into())); // Bob will be the second leader.
         let (mut alice_av, effects) =
-            ActiveValidator::new(ALICE, TestSecret(0), 4, 410.into(), &state);
+            ActiveValidator::new(ALICE, TestSecret(0), 410.into(), &state);
         assert_eq!([Eff::ScheduleTimer(416.into())], *effects);
-        let (mut bob_av, effects) = ActiveValidator::new(BOB, TestSecret(1), 4, 410.into(), &state);
+        let (mut bob_av, effects) = ActiveValidator::new(BOB, TestSecret(1), 410.into(), &state);
         assert_eq!([Eff::ScheduleTimer(426.into())], *effects);
 
         assert!(alice_av

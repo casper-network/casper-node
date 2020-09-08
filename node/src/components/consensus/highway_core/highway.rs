@@ -129,7 +129,6 @@ impl<C: Context> Highway<C> {
         &mut self,
         id: C::ValidatorId,
         secret: C::ValidatorSecret,
-        round_exp: u8,
         start_time: Timestamp,
     ) -> Vec<Effect<C>> {
         assert!(
@@ -140,7 +139,7 @@ impl<C: Context> Highway<C> {
             .validators
             .get_index(&id)
             .expect("missing own validator ID");
-        let (av, effects) = ActiveValidator::new(idx, secret, round_exp, start_time, &self.state);
+        let (av, effects) = ActiveValidator::new(idx, secret, start_time, &self.state);
         self.active_validator = Some(av);
         effects
     }
@@ -258,10 +257,6 @@ impl<C: Context> Highway<C> {
 
     pub(crate) fn validators(&self) -> &Validators<C::ValidatorId> {
         &self.validators
-    }
-
-    pub(crate) fn params(&self) -> &Params {
-        self.state.params()
     }
 
     pub(super) fn state(&self) -> &State<C> {
@@ -406,7 +401,7 @@ pub(crate) mod tests {
             value: Some(0),
             seq_number: 0,
             timestamp: Timestamp::zero() + 1.into(),
-            round_exp: 12,
+            round_exp: 4,
         };
         let invalid_signature = 1u64;
         let invalid_signature_vote = SignedWireVote {
