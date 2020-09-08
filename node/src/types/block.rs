@@ -405,6 +405,7 @@ impl Item for BlockHeader {
     type Id = BlockHash;
 
     const TAG: Tag = Tag::BlockHeader;
+    const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn id(&self) -> Self::Id {
         self.hash()
@@ -562,6 +563,7 @@ impl Item for Block {
     type Id = BlockHash;
 
     const TAG: Tag = Tag::Block;
+    const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn id(&self) -> Self::Id {
         *self.hash()

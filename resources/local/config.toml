@@ -35,31 +35,29 @@ secret_key_path = 'secret_key.pem'
 # ====================================
 # Configuration options for networking
 # ====================================
-[validator_net]
+[network]
 
-# Interface to bind to.
+# The public IP of the node.
 #
-# If it is the same as that in `root_addr` and the `bind_port` is non-zero and the same as that in
-# `root_addr`, attempt to become the root node for this particular small network.
-bind_interface = '127.0.0.1'
+# It must be publicly available in order to allow peers to connect to this node.
+public_ip = '127.0.0.1'
 
-# Port to bind to when not the root node.  Use 0 for a random port.
-bind_port = 0
+# Interface to bind to for listening.  Defaults to "unspecified", i.e. '0.0.0.0'.
+#bind_interface = '0.0.0.0'
 
-# Address to connect to join the network.
-root_addr = '127.0.0.1:34553'
+# Port to bind to for listening.  Use 0 for a random port.  Defaults to 34553.
+#bind_port = 34553
 
-# Optional path to certificate file.
-#cert_path = 'path/to/certificate'
+# Address to connect to in order to join the network.
+#
+# If not set, this node will not be able to attempt to connect to the network.  Instead it will
+# depend upon peers connecting to it.  This is normally only useful for the first node of the
+# network.
+known_address = '127.0.0.1:34553'
 
-# Optional path to secret key for certificate.
-#secret_key_path = 'path/to/secret/key'
-
-# Maximum number of retries before removing an outgoing node.  Unlimited if unset.
-max_outgoing_retries = 360
-
-# Number of milliseconds to delay between each reconnection attempt.
-outgoing_retry_delay_millis = 10000
+# The interval (in milliseconds) between each fresh round of gossiping the node's public address.
+# Defaults to 30_000.
+#gossip_interval = 30000
 
 
 # =============================================
@@ -91,7 +89,7 @@ bind_port = 7777
 #   /Users/Alice/Library/Application Support/io.CasperLabs.casper-node
 # * Windows: `{FOLDERID_RoamingAppData}\CasperLabs\casper-node\data` e.g.
 #   C:\Users\Alice\AppData\Roaming\CasperLabs\casper-node\data
-# path = 'node-storage'
+#path = 'node-storage'
 
 # Optional maximum size of the database to use for the block store.
 #

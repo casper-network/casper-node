@@ -91,6 +91,7 @@ use crate::{
     components::{
         consensus::{BlockContext, EraId},
         fetcher::FetchResult,
+        small_network::GossipedAddress,
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::{
@@ -98,13 +99,13 @@ use crate::{
         hash::Digest,
     },
     reactor::{EventQueueHandle, QueueKind},
-    types::{Block, BlockHash, Deploy, DeployHash, FinalizedBlock, ProtoBlock},
+    types::{Block, BlockHash, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock},
     utils::Source,
     Chainspec,
 };
 use announcements::{
     ApiServerAnnouncement, BlockExecutorAnnouncement, ConsensusAnnouncement,
-    DeployAcceptorAnnouncement, NetworkAnnouncement,
+    DeployAcceptorAnnouncement, GossiperAnnouncement, NetworkAnnouncement,
 };
 use requests::{
     BlockExecutorRequest, BlockValidationRequest, ConsensusRequest, ContractRuntimeRequest,
@@ -439,6 +440,37 @@ impl<REv> EffectBuilder<REv> {
             .schedule(
                 NetworkAnnouncement::MessageReceived { sender, payload },
                 QueueKind::NetworkIncoming,
+            )
+            .await;
+    }
+
+    /// Announces that we should gossip our own public listening address.
+    pub(crate) async fn announce_gossip_our_address<I, P>(self, our_address: GossipedAddress)
+    where
+        REv: From<NetworkAnnouncement<I, P>>,
+    {
+        self.0
+            .schedule(
+                NetworkAnnouncement::GossipOurAddress(our_address),
+                QueueKind::Regular,
+            )
+            .await;
+    }
+
+    /// Announces that a gossiper has received a new item, where the item's ID is the complete item.
+    pub(crate) async fn announce_complete_item_received_via_gossip<T: Item>(self, item: T::Id)
+    where
+        REv: From<GossiperAnnouncement<T>>,
+    {
+        assert!(
+            T::ID_IS_COMPLETE_ITEM,
+            "{} must be an item where the ID _is_ the complete item",
+            item
+        );
+        self.0
+            .schedule(
+                GossiperAnnouncement::NewCompleteItem(item),
+                QueueKind::Regular,
             )
             .await;
     }
