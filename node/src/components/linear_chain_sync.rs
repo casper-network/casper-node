@@ -59,7 +59,7 @@ impl<I: Clone> LinearChainSync<I> {
                         .immediately()
                         .event(move |_| Event::Start(hash))
                 })
-                .unwrap_or_else(|| Effects::new()),
+                .unwrap_or_else(Effects::new),
         )
     }
 
