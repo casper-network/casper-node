@@ -31,7 +31,7 @@ use crate::{
         validator::{self, Error, ValidatorInitConfig},
         EventQueueHandle, Finalize,
     },
-    types::{Block, BlockHash},
+    types::Block,
     utils::WithDir,
 };
 
@@ -136,7 +136,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor {
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
 
         // TODO
-        let init_hash = BlockHash::new(Default::default());
+        let init_hash = None;
         let effect_builder = EffectBuilder::new(event_queue);
 
         let (linear_chain_sync, linear_effects) =

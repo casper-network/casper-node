@@ -2,7 +2,7 @@ mod event;
 
 use super::{fetcher::FetchResult, storage::Storage, Component};
 use crate::{
-    effect::{self, EffectExt, EffectOptionExt, Effects, EffectBuilder},
+    effect::{self, EffectBuilder, EffectExt, EffectOptionExt, Effects},
     types::{Block, BlockHash},
 };
 use effect::requests::{FetcherRequest, StorageRequest};
@@ -32,6 +32,8 @@ pub(crate) struct LinearChainSync<I> {
     linear_chain: Vec<Block>,
     // Flag indicating whether we have finished syncing linear chain.
     is_synced: bool,
+    // Linear chain block to start sync from.
+    init_hash: Option<BlockHash>,
 }
 
 impl<I: Clone> LinearChainSync<I> {
@@ -39,20 +41,25 @@ impl<I: Clone> LinearChainSync<I> {
     pub fn new<REv: ReactorEventT<I>>(
         peers: Vec<I>,
         effect_builder: EffectBuilder<REv>,
-        init_hash: BlockHash,
+        init_hash: Option<BlockHash>,
     ) -> (Self, Effects<Event>) {
         let linear_chain_sync = LinearChainSync {
             peers: peers.clone(),
             peers_to_try: peers,
             linear_chain: Vec::new(),
-            is_synced: false,
+            is_synced: init_hash.is_none(),
+            init_hash,
         };
 
         (
             linear_chain_sync,
-            effect_builder
-                .immediately()
-                .event(move |_| Event::Start(init_hash)),
+            init_hash
+                .map(|hash| {
+                    effect_builder
+                        .immediately()
+                        .event(move |_| Event::Start(hash))
+                })
+                .unwrap_or_else(|| Effects::new()),
         )
     }
 
@@ -63,8 +70,7 @@ impl<I: Clone> LinearChainSync<I> {
     /// Returns `true` if we have finished syncing linear chain.
     #[allow(unused)]
     pub fn is_synced(&self) -> bool {
-        // self.is_synced
-        true
+        self.is_synced
     }
 }
 
