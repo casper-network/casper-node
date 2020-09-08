@@ -2,6 +2,7 @@
 //! being factored out into standalone crates.
 
 mod external;
+pub mod milliseconds;
 mod round_robin;
 
 use std::{

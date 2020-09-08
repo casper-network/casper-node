@@ -184,7 +184,7 @@ where
             incoming: HashMap::new(),
             outgoing: HashMap::new(),
             pending: HashSet::new(),
-            gossip_interval: cfg.gossip_interval(),
+            gossip_interval: cfg.gossip_interval,
             next_gossip_address_index: 0,
             shutdown: Some(server_shutdown_sender),
             server_join_handle: Some(server_join_handle),

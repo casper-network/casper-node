@@ -19,7 +19,7 @@ const DEFAULT_BIND_ADDRESS: &str = "0.0.0.0:34553";
 const DEFAULT_PUBLIC_ADDRESS: &str = "127.0.0.1:0";
 
 /// Default interval for gossiping network addresses.
-const DEFAULT_GOSSIP_INTERVAL: u64 = 30_000;
+const DEFAULT_GOSSIP_INTERVAL: Duration = Duration::from_secs(30);
 
 // Default values for networking configuration:
 impl Default for Config {
@@ -47,21 +47,13 @@ pub struct Config {
     /// Known address of a node on the network used for joining.
     pub known_address: Option<String>,
     /// Interval in milliseconds used for gossiping.
-    pub gossip_interval: u64,
-}
-
-impl Config {
-    /// The interval between each fresh round of gossiping the node's public address.  Defaults to
-    /// 30 seconds.
-    pub fn gossip_interval(&self) -> Duration {
-        // TODO: replace me with serde
-        Duration::from_millis(self.gossip_interval)
-    }
+    #[serde(with = "crate::utils::milliseconds")]
+    pub gossip_interval: Duration,
 }
 
 #[cfg(test)]
 /// Reduced gossip interval for local testing.
-const DEFAULT_TEST_GOSSIP_INTERVAL: u64 = 1_000;
+const DEFAULT_TEST_GOSSIP_INTERVAL: Duration = Duration::from_secs(1);
 
 #[cfg(test)]
 /// Address used to bind all local testing networking to by default.
