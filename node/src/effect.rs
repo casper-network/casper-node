@@ -346,6 +346,13 @@ impl<REv> EffectBuilder<REv> {
     #[inline(always)]
     pub async fn immediately(self) {}
 
+    /// Reports a fatal error.
+    ///
+    /// Usually causes the node to cease operations quickly and exit/crash.
+    pub async fn fatal<M: Display + ?Sized>(self, file: &str, line: u32, msg: &M) {
+        panic!("fatal error [{}:{}]: {}", file, line, msg);
+    }
+
     /// Sets a timeout.
     pub(crate) async fn set_timeout(self, timeout: Duration) -> Duration {
         let then = Instant::now();
@@ -888,4 +895,15 @@ impl<REv> EffectBuilder<REv> {
         )
         .await
     }
+}
+
+/// Construct a fatal error effect.
+///
+/// This macro is a convenient wrapper around `EffectBuilder::fatal` that inserts the `file!()` and
+/// `line!()` number automatically.
+#[macro_export]
+macro_rules! fatal {
+    ($effect_builder:expr, $msg:expr) => {
+        $effect_builder.fatal(file!(), line!(), &$msg).ignore()
+    };
 }
