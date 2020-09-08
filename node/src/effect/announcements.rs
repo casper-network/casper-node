@@ -6,7 +6,8 @@
 use std::fmt::{self, Display, Formatter};
 
 use crate::{
-    types::{Block, Deploy, ProtoBlock},
+    components::small_network::GossipedAddress,
+    types::{Block, Deploy, Item, ProtoBlock},
     utils::Source,
 };
 
@@ -21,6 +22,8 @@ pub enum NetworkAnnouncement<I, P> {
         /// The message payload
         payload: P,
     },
+    /// Our public listening address should be gossiped across the network.
+    GossipOurAddress(GossipedAddress),
 }
 
 impl<I, P> Display for NetworkAnnouncement<I, P>
@@ -33,6 +36,7 @@ where
             NetworkAnnouncement::MessageReceived { sender, payload } => {
                 write!(formatter, "received from {}: {}", sender, payload)
             }
+            NetworkAnnouncement::GossipOurAddress(_) => write!(formatter, "gossip our address"),
         }
     }
 }
@@ -122,7 +126,7 @@ impl Display for ConsensusAnnouncement {
     }
 }
 
-/// A BlockExecutor announcements.
+/// A BlockExecutor announcement.
 #[derive(Debug)]
 pub enum BlockExecutorAnnouncement {
     /// A new block from the linear chain was produced.
@@ -135,6 +139,21 @@ impl Display for BlockExecutorAnnouncement {
             BlockExecutorAnnouncement::LinearChainBlock(block) => {
                 write!(f, "created linear chain block {}", block.hash())
             }
+        }
+    }
+}
+
+/// A Gossiper announcement.
+#[derive(Debug)]
+pub enum GossiperAnnouncement<T: Item> {
+    /// A new item has been received, where the item's ID is the complete item.
+    NewCompleteItem(T::Id),
+}
+
+impl<T: Item> Display for GossiperAnnouncement<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            GossiperAnnouncement::NewCompleteItem(item) => write!(f, "new complete item {}", item),
         }
     }
 }

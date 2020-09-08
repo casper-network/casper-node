@@ -22,7 +22,8 @@ use crate::{
         storage::{self, Storage, StorageType},
     },
     effect::announcements::{
-        ApiServerAnnouncement, DeployAcceptorAnnouncement, NetworkAnnouncement,
+        ApiServerAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+        NetworkAnnouncement,
     },
     protocol::Message as NodeMessage,
     reactor::{self, EventQueueHandle, Runner},
@@ -52,6 +53,8 @@ enum Event {
     ApiServerAnnouncement(ApiServerAnnouncement),
     #[from]
     DeployAcceptorAnnouncement(DeployAcceptorAnnouncement<NodeId>),
+    #[from]
+    DeployGossiperAnnouncement(GossiperAnnouncement<Deploy>),
 }
 
 impl From<StorageRequest<Storage>> for Event {
@@ -79,6 +82,9 @@ impl Display for Event {
             }
             Event::DeployAcceptorAnnouncement(ann) => {
                 write!(formatter, "deploy-acceptor announcement: {}", ann)
+            }
+            Event::DeployGossiperAnnouncement(ann) => {
+                write!(formatter, "deploy-gossiper announcement: {}", ann)
             }
         }
     }
@@ -122,7 +128,7 @@ impl reactor::Reactor<TestRng> for Reactor {
         let storage = Storage::new(&storage_config).unwrap();
 
         let deploy_acceptor = DeployAcceptor::new();
-        let deploy_gossiper = Gossiper::new(config, get_deploy_from_storage);
+        let deploy_gossiper = Gossiper::new_for_partial_items(config, get_deploy_from_storage);
 
         let reactor = Reactor {
             network,
@@ -215,6 +221,9 @@ impl reactor::Reactor<TestRng> for Reactor {
                 };
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
+            Event::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(_)) => {
+                unreachable!("should not receive announcements of type GossipOurAddress");
+            }
             Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
                 let event = deploy_acceptor::Event::Accept {
                     deploy,
@@ -236,6 +245,9 @@ impl reactor::Reactor<TestRng> for Reactor {
                 deploy: _,
                 source: _,
             }) => Effects::new(),
+            Event::DeployGossiperAnnouncement(_ann) => {
+                unreachable!("the deploy gossiper should never make an announcement")
+            }
         }
     }
 }

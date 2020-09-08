@@ -42,7 +42,6 @@ libc = "0.2.66"
 linked-hash-map = "0.5.2"
 lmdb = "0.8.0"
 log = { version = "0.4.8", features = ["std", "serde", "kv_unstable"] }
-maplit = "1.0.2"
 num = { version = "0.2.0", default-features = false }
 num-derive = "0.3.0"
 num-traits = "0.2.10"

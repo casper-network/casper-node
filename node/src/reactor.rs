@@ -242,7 +242,7 @@ where
 
         let effects = create_effects(effect_builder);
 
-        let effect_span = tracing::debug_span!("process injected effects", ev = self.event_count);
+        let effect_span = debug_span!("process injected effects", ev = self.event_count);
         process_effects(self.scheduler, effects)
             .instrument(effect_span)
             .await;
@@ -252,7 +252,7 @@ where
     #[inline]
     pub async fn crank(&mut self, rng: &mut RNG) {
         // Create another span for tracing the processing of one event.
-        let crank_span = tracing::debug_span!("crank", ev = self.event_count);
+        let crank_span = debug_span!("crank", ev = self.event_count);
         let _inner_enter = crank_span.enter();
 
         self.event_count += 1;
@@ -264,7 +264,7 @@ where
         let (event, q) = self.scheduler.pop().await;
 
         // Create another span for tracing the processing of one event.
-        let event_span = tracing::debug_span!("dispatch events", ev = self.event_count);
+        let event_span = debug_span!("dispatch events", ev = self.event_count);
         let inner_enter = event_span.enter();
 
         // We log events twice, once in display and once in debug mode.
@@ -277,7 +277,7 @@ where
         drop(inner_enter);
 
         // We create another span for the effects, but will keep the same ID.
-        let effect_span = tracing::debug_span!("process effects", ev = self.event_count);
+        let effect_span = debug_span!("process effects", ev = self.event_count);
 
         process_effects(self.scheduler, effects)
             .instrument(effect_span)
