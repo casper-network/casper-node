@@ -451,7 +451,7 @@ impl Display for BlockExecutorRequest {
 pub struct BlockValidationRequest<T, I> {
     /// The proto-block to be validated.
     pub(crate) block: T,
-    /// The sender of the proto-block, which will be asked to provide all missing deploys.
+    /// The sender of the block, which will be asked to provide all missing deploys.
     pub(crate) sender: I,
     /// Responder to call with the result.
     ///

@@ -636,7 +636,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested block using the `BlockHeaderFetcher`
+    /// Gets the requested block using the `BlockFetcher`
     #[allow(unused)]
     pub(crate) async fn fetch_block<I>(
         self,

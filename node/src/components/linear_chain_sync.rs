@@ -23,7 +23,7 @@ impl<I, REv> ReactorEventT<I> for REv where
 
 #[derive(Debug)]
 pub(crate) struct LinearChainSync<I> {
-    // Set of peers that we can requests blocks from.
+    // Set of peers that we can requests block from.
     peers: Vec<I>,
     // Peers we have not yet requested current block from.
     // NOTE: Maybe use a bitmask to decide which peers were tried?.
@@ -67,6 +67,18 @@ impl<I: Clone> LinearChainSync<I> {
         self.peers_to_try = self.peers.clone();
     }
 
+    fn random_peer<R: Rng + ?Sized>(&mut self, rand: &mut R) -> Option<I> {
+        let peers_count = self.peers_to_try.len();
+        if peers_count == 0 {
+            return None;
+        }
+        if peers_count == 1 {
+            return Some(self.peers_to_try.pop().expect("Not to fail"));
+        }
+        let idx = rand.gen_range(0, peers_count);
+        Some(self.peers_to_try.remove(idx))
+    }
+
     /// Returns `true` if we have finished syncing linear chain.
     #[allow(unused)]
     pub fn is_synced(&self) -> bool {
@@ -85,14 +97,13 @@ where
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        rng: &mut R,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
             Event::Start(block_hash) => {
                 let peer = self
-                    .peers_to_try
-                    .pop()
+                    .random_peer(rng)
                     .expect("Should have at least 1 peer to start.");
                 effect_builder.fetch_block(block_hash, peer).option(
                     move |value| Event::GetBlockResult(block_hash, Some(value)),
@@ -100,7 +111,7 @@ where
                 )
             }
             Event::GetBlockResult(block_hash, fetch_result) => match fetch_result {
-                None => match self.peers_to_try.pop() {
+                None => match self.random_peer(rng) {
                     None => {
                         error!(%block_hash, "Could not download linear block from any of the peers.");
                         panic!("Failed to download linear chain.")
@@ -129,7 +140,11 @@ where
                         // NOTE: Signal misbehaving validator to networking layer.
                         // Continue trying to fetch it from other peers.
                         // Panic for now.
-                        panic!("Failed to download linear chain.")
+                        return self.handle_event(
+                            effect_builder,
+                            rng,
+                            Event::GetBlockResult(*block.hash(), None),
+                        );
                     }
                     self.linear_chain.push(*block.clone());
                     if block.is_genesis_child() {
@@ -140,7 +155,7 @@ where
                     } else {
                         self.reset_peers();
                         let parent_hash = *block.parent_hash();
-                        let peer = self.peers_to_try.pop().expect("At least 1 peer available.");
+                        let peer = self.random_peer(rng).expect("At least 1 peer available.");
                         let mut effects = effect_builder.put_block_to_storage(block).ignore();
                         let fetch_parent = effect_builder.fetch_block(parent_hash, peer).option(
                             move |value| Event::GetBlockResult(block_hash, Some(value)),

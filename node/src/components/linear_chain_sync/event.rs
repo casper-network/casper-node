@@ -19,7 +19,7 @@ impl Display for Event {
             Event::Start(block_hash) => write!(f, "Start syncing from {}.", block_hash),
             Event::GetBlockResult(bh, r) => write!(f, "Get block result for {}: {:?}", bh, r),
             Event::DeployFound(dh) => write!(f, "Deploy found: {}", dh),
-            Event::DeployNotFound(dh) => write!(f, "Deploy mot found: {}", dh),
+            Event::DeployNotFound(dh) => write!(f, "Deploy not found: {}", dh),
             Event::LinearChainBlocksDownloaded() => write!(f, "Linear chain blocks downloaded"),
         }
     }
