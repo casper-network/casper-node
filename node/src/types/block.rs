@@ -412,16 +412,6 @@ impl Display for BlockHeader {
     }
 }
 
-impl Item for BlockHeader {
-    type Id = BlockHash;
-
-    const TAG: Tag = Tag::BlockHeader;
-
-    fn id(&self) -> Self::Id {
-        self.hash()
-    }
-}
-
 /// A proto-block after execution, with the resulting post-state-hash.  This is the core component
 /// of the Casper linear blockchain.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]

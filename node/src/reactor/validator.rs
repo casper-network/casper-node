@@ -453,21 +453,6 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                                 peer: sender,
                             })
                         }
-                        Tag::BlockHeader => {
-                            let block_hash = match rmp_serde::from_read_ref(&serialized_id) {
-                                Ok(hash) => hash,
-                                Err(error) => {
-                                    error!(
-                                        "failed to decode {:?} from {}: {}",
-                                        serialized_id, sender, error
-                                    );
-                                    return Effects::new();
-                                }
-                            };
-                            Event::LinearChain(linear_chain::Event::Request(
-                                LinearChainRequest::BlockHeaderRequest(block_hash, sender),
-                            ))
-                        }
                         Tag::Block => {
                             let block_hash = match rmp_serde::from_read_ref(&serialized_id) {
                                 Ok(hash) => hash,
@@ -480,7 +465,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                                 }
                             };
                             Event::LinearChain(linear_chain::Event::Request(
-                                LinearChainRequest::BlockHeaderRequest(block_hash, sender),
+                                LinearChainRequest::BlockRequest(block_hash, sender),
                             ))
                         }
                     },
@@ -501,7 +486,6 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                                 source: Source::Peer(sender),
                             })
                         }
-                        Tag::BlockHeader => todo!("Handle GET block header response"),
                         Tag::Block => todo!("Handle GET block response"),
                     },
                 };

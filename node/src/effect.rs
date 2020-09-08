@@ -96,7 +96,7 @@ use crate::{
         hash::Digest,
     },
     reactor::{EventQueueHandle, QueueKind},
-    types::{Block, BlockHash, BlockHeader, Deploy, DeployHash, FinalizedBlock, ProtoBlock},
+    types::{Block, BlockHash, Deploy, DeployHash, FinalizedBlock, ProtoBlock},
     utils::Source,
     Chainspec,
 };
@@ -530,6 +530,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block header from the linear block store.
+    #[allow(unused)]
     pub(crate) async fn get_block_header_from_storage<S>(
         self,
         block_hash: <S::Block as Value>::Id,
@@ -627,28 +628,6 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| FetcherRequest::Fetch {
                 id: deploy_hash,
-                peer,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Gets the requested block header using the `BlockHeaderFetcher`
-    #[allow(unused)]
-    pub(crate) async fn fetch_block_header<I>(
-        self,
-        block_hash: BlockHash,
-        peer: I,
-    ) -> Option<FetchResult<BlockHeader>>
-    where
-        REv: From<FetcherRequest<I, BlockHeader>>,
-        I: Send + 'static,
-    {
-        self.make_request(
-            |responder| FetcherRequest::Fetch {
-                id: block_hash,
                 peer,
                 responder,
             },

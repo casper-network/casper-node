@@ -8,7 +8,7 @@ use crate::{
         EffectExt, Effects,
     },
     protocol::Message,
-    types::{Block, BlockHash, BlockHeader},
+    types::{Block, BlockHash},
 };
 use derive_more::From;
 use effect::requests::{ConsensusRequest, NetworkRequest};
@@ -24,8 +24,6 @@ pub enum Event<I> {
     Request(LinearChainRequest<I>),
     /// New linear chain block has been produced.
     LinearChainBlock(Block),
-    /// A continuation for `GetHeader` scenario.
-    GetHeaderResult(BlockHash, Option<BlockHeader>, I),
     /// A continuation for `GetBlock` scenario.
     GetBlockResult(BlockHash, Option<Block>, I),
     /// New finality signature.
@@ -38,13 +36,6 @@ impl<I: Display> Display for Event<I> {
         match self {
             Event::Request(req) => write!(f, "linear-chain request: {}", req),
             Event::LinearChainBlock(b) => write!(f, "linear-chain new block: {}", b.hash()),
-            Event::GetHeaderResult(bh, res, peer) => write!(
-                f,
-                "linear-chain get-header for {} from {} found: {}",
-                bh,
-                peer,
-                res.is_some()
-            ),
             Event::GetBlockResult(bh, res, peer) => write!(
                 f,
                 "linear-chain get-block for {} from {} found: {}",
@@ -91,27 +82,9 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Request(LinearChainRequest::BlockHeaderRequest(bh, sender)) => effect_builder
-                .get_block_header_from_storage(bh)
-                .event(move |maybe_header| Event::GetHeaderResult(bh, maybe_header, sender)),
             Event::Request(LinearChainRequest::BlockRequest(bh, sender)) => effect_builder
                 .get_block_from_storage(bh)
                 .event(move |maybe_block| Event::GetBlockResult(bh, maybe_block, sender)),
-            Event::GetHeaderResult(block_hash, maybe_header, sender) => {
-                match maybe_header {
-                    None => {
-                        debug!("failed to get {} for {}", block_hash, sender);
-                        Effects::new()
-                    },
-                    Some(block_header) => match Message::new_get_response(&block_header) {
-                        Ok(message) => effect_builder.send_message(sender, message).ignore(),
-                        Err(error) => {
-                            error!("failed to create get-response {}", error);
-                            Effects::new()
-                        }
-                    }
-                }
-            }
             Event::GetBlockResult(block_hash, maybe_block, sender) => {
                 match maybe_block {
                     None => {

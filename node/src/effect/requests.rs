@@ -469,8 +469,6 @@ impl<T: Display, I: Display> Display for BlockValidationRequest<T, I> {
 #[derive(Debug)]
 /// Requests issued to the Linear Chain component.
 pub enum LinearChainRequest<I> {
-    /// Request a block header from the linear, chain by hash.
-    BlockHeaderRequest(BlockHash, I),
     /// Request whole block from the linear chain, by hash.
     BlockRequest(BlockHash, I),
 }
@@ -478,9 +476,6 @@ pub enum LinearChainRequest<I> {
 impl<I: Display> Display for LinearChainRequest<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            LinearChainRequest::BlockHeaderRequest(bh, peer) => {
-                write!(f, "block-header request for hash {} from {}", bh, peer)
-            }
             LinearChainRequest::BlockRequest(bh, peer) => {
                 write!(f, "block request for hash {} from {}", bh, peer)
             }
