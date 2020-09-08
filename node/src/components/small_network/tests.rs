@@ -290,7 +290,7 @@ async fn bind_to_real_network_interface() {
         .ip();
     let port = testing::unused_port_on_localhost();
 
-    let local_net_config = Config::new(local_addr, port);
+    let local_net_config = Config::new((local_addr, port).into());
 
     let mut net = Network::<TestReactor>::new();
     net.add_node_with_config(local_net_config, &mut rng)
