@@ -155,7 +155,10 @@ where
         let listener = TcpListener::bind(bind_address)
             .map_err(|error| Error::ListenerCreation(error, bind_address))?;
         let local_address = listener.local_addr().map_err(Error::ListenerAddr)?;
-        let public_address = SocketAddr::new(cfg.public_ip(), local_address.port());
+        let public_address = SocketAddr::new(
+            cfg.public_ip().map_err(Error::ResolveAddr)?,
+            local_address.port(),
+        );
 
         // Run the server task.
         // We spawn it ourselves instead of through an effect to get a hold of the join handle,

@@ -31,10 +31,8 @@ pub struct Config {
 
 impl Config {
     /// The public IP of the node.  Defaults to loopback, i.e. '127.0.0.1'.
-    pub fn public_ip(&self) -> IpAddr {
-        utils::resolve_ip(&self.public_ip).unwrap_or_else(|error| {
-            panic!("can't parse {} as an IP address: {}", self.public_ip, error)
-        })
+    pub fn public_ip(&self) -> io::Result<IpAddr> {
+        utils::resolve_ip(&self.public_ip)
     }
 
     /// Interface to bind to for listening.  Defaults to "unspecified", i.e. '0.0.0.0'.
