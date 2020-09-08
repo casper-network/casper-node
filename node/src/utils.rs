@@ -39,7 +39,12 @@ lazy_static! {
     };
 }
 
-/// Parse a network address from a string, with DNS resolution.
+/// Formats a host and port pair into a string.
+pub fn format_address<I: Into<IpAddr>>(host: I, port: u16) -> String {
+    SocketAddr::from((host, port)).to_string()
+}
+
+/// Parses a network address from a string, with DNS resolution.
 pub fn resolve_address(addr: &str) -> io::Result<SocketAddr> {
     addr.to_socket_addrs()?.next().ok_or_else(|| {
         io::Error::new(
@@ -49,7 +54,7 @@ pub fn resolve_address(addr: &str) -> io::Result<SocketAddr> {
     })
 }
 
-/// Resolve a hostname.
+/// Resolves a hostname.
 pub fn resolve_ip(host: &str) -> io::Result<IpAddr> {
     Ok(resolve_address(format!("{}:0", host).as_str())?.ip())
 }

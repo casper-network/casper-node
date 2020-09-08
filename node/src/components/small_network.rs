@@ -82,6 +82,7 @@ use crate::{
     },
     reactor::{EventQueueHandle, Finalize, QueueKind},
     tls::{self, KeyFingerprint, TlsCert},
+    utils,
 };
 // Seems to be a false positive.
 #[allow(unreachable_pub)]
@@ -148,17 +149,18 @@ where
         let certificate = Arc::new(tls::validate_cert(cert).map_err(Error::OwnCertificateInvalid)?);
 
         // We can now create a listener.
-        let bind_address = SocketAddr::new(
-            cfg.bind_interface().map_err(Error::ResolveAddr)?,
-            cfg.bind_port(),
-        );
+        let bind_address = utils::resolve_address(&cfg.bind_address).map_err(Error::ResolveAddr)?;
         let listener = TcpListener::bind(bind_address)
             .map_err(|error| Error::ListenerCreation(error, bind_address))?;
         let local_address = listener.local_addr().map_err(Error::ListenerAddr)?;
-        let public_address = SocketAddr::new(
-            cfg.public_ip().map_err(Error::ResolveAddr)?,
-            local_address.port(),
-        );
+
+        let mut public_address =
+            utils::resolve_address(&cfg.public_address).map_err(Error::ResolveAddr)?;
+
+        // Substitute the actually bound port if set to 0.
+        if public_address.port() == 0 {
+            public_address.set_port(local_address.port());
+        }
 
         // Run the server task.
         // We spawn it ourselves instead of through an effect to get a hold of the join handle,
@@ -189,7 +191,9 @@ where
         };
 
         // Connect to the known node if available.
-        let mut effects = if let Some(known_address) = cfg.known_address() {
+        let mut effects = if let Some(known_address_str) = cfg.known_address {
+            let known_address =
+                utils::resolve_address(&known_address_str).map_err(Error::ResolveAddr)?;
             let _ = model.pending.insert(known_address);
             connect_outgoing(
                 known_address,
