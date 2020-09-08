@@ -148,7 +148,10 @@ where
         let certificate = Arc::new(tls::validate_cert(cert).map_err(Error::OwnCertificateInvalid)?);
 
         // We can now create a listener.
-        let bind_address = SocketAddr::new(cfg.bind_interface(), cfg.bind_port());
+        let bind_address = SocketAddr::new(
+            cfg.bind_interface().map_err(Error::ResolveAddr)?,
+            cfg.bind_port(),
+        );
         let listener = TcpListener::bind(bind_address)
             .map_err(|error| Error::ListenerCreation(error, bind_address))?;
         let local_address = listener.local_addr().map_err(Error::ListenerAddr)?;

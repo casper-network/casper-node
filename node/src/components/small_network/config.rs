@@ -1,6 +1,7 @@
 #[cfg(test)]
 use std::net::SocketAddrV4;
 use std::{
+    io,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     time::Duration,
 };
@@ -37,12 +38,10 @@ impl Config {
     }
 
     /// Interface to bind to for listening.  Defaults to "unspecified", i.e. '0.0.0.0'.
-    pub fn bind_interface(&self) -> IpAddr {
+    pub fn bind_interface(&self) -> io::Result<IpAddr> {
         match &self.bind_interface {
-            Some(address) => utils::resolve_ip(address).unwrap_or_else(|error| {
-                panic!("can't parse {} as an IP address: {}", self.public_ip, error)
-            }),
-            None => DEFAULT_BIND_INTERFACE,
+            Some(address) => utils::resolve_ip(address),
+            None => Ok(DEFAULT_BIND_INTERFACE),
         }
     }
 
