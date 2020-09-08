@@ -13,7 +13,7 @@ use crate::effect::requests::NetworkRequest;
 #[derive(Debug, From)]
 pub enum Event<P> {
     /// Connection to the known node failed.
-    BootstrappingFailed { error: Error },
+    BootstrappingFailed { address: SocketAddr, error: Error },
     /// A new TCP connection has been established from an incoming connection.
     IncomingNew {
         stream: TcpStream,
@@ -58,7 +58,9 @@ pub enum Event<P> {
 impl<P: Display> Display for Event<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::BootstrappingFailed { error } => write!(f, "root failed: {}", error),
+            Event::BootstrappingFailed { address, error } => {
+                write!(f, "bootstrapping failed for node {}: {}", address, error)
+            }
             Event::IncomingNew { address, .. } => write!(f, "incoming connection from {}", address),
             Event::IncomingHandshakeCompleted { result, address } => {
                 write!(f, "handshake from {}, is_err {}", address, result.is_err())
