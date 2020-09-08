@@ -26,7 +26,7 @@ run_node() {
         -- \
         cargo run -p casper-node \
         validator \
-        -c resources/local/config.toml \
+        resources/local/config.toml \
         -C consensus.secret_key_path=secret_keys/node-${ID}.pem \
         -C storage.path=${STORAGE_DIR}
 
