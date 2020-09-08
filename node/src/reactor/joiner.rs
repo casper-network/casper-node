@@ -132,12 +132,10 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor {
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
 
-        // TODO
-        let init_hash = None;
         let effect_builder = EffectBuilder::new(event_queue);
 
         let (linear_chain_sync, linear_effects) =
-            LinearChainSync::new(Vec::new(), effect_builder, init_hash);
+            LinearChainSync::new(Vec::new(), effect_builder, config.node.trusted_hash);
 
         effects.extend(reactor::wrap_effects(
             Event::LinearChainSync,
