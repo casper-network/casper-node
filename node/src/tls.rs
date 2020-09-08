@@ -31,7 +31,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use hex_fmt::HexFmt;
 use nid::Nid;
 use openssl::{
@@ -41,9 +41,8 @@ use openssl::{
     error::ErrorStack,
     hash::{DigestBytes, MessageDigest},
     nid,
-    pkey::{PKey, PKeyRef, Private, Public},
+    pkey::{PKey, PKeyRef, Private},
     sha,
-    sign::{Signer, Verifier},
     ssl::{SslAcceptor, SslConnector, SslContextBuilder, SslMethod, SslVerifyMode, SslVersion},
     x509::{X509Builder, X509Name, X509NameBuilder, X509NameRef, X509Ref, X509},
 };
@@ -52,7 +51,7 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
 use crate::utils::{read_file, write_file};
@@ -175,36 +174,6 @@ impl Debug for Signature {
     }
 }
 
-impl Signature {
-    /// Signs a binary blob with the blessed ciphers and TLS parameters.
-    fn create(private_key: &PKeyRef<Private>, data: &[u8]) -> SslResult<Self> {
-        // TODO: This needs verification to ensure we're not doing stupid/textbook RSA-ish.
-
-        // Sha512 is hardcoded, so check we're creating the correct signature.
-        assert_eq!(Sha512::NID, SIGNATURE_DIGEST);
-
-        let mut signer = Signer::new(Sha512::create_message_digest(), private_key)?;
-
-        // The API of OpenSSL is a bit weird here; there is no constant size for the buffer required
-        // to create the signatures. Additionally, we need to truncate it to the returned size.
-        let sig_len = signer.len()?;
-        let mut sig_buf = vec![0; sig_len];
-        let bytes_written = signer.sign_oneshot(&mut sig_buf, data)?;
-        sig_buf.truncate(bytes_written);
-
-        Ok(Signature(sig_buf))
-    }
-
-    /// Verifies that signature matches on a binary blob.
-    fn verify(self: &Signature, public_key: &PKeyRef<Public>, data: &[u8]) -> SslResult<bool> {
-        assert_eq!(Sha512::NID, SIGNATURE_DIGEST);
-
-        let mut verifier = Verifier::new(Sha512::create_message_digest(), public_key)?;
-
-        verifier.verify_oneshot(&self.0, data)
-    }
-}
-
 /// TLS certificate.
 ///
 /// Thin wrapper around `X509` enabling things like Serde serialization and fingerprint caching.
@@ -227,14 +196,6 @@ impl TlsCert {
     /// information.
     pub(crate) fn fingerprint(&self) -> CertFingerprint {
         self.cert_fingerprint
-    }
-
-    /// Extracts the public key from the certificate.
-    pub(crate) fn public_key(&self) -> PKey<Public> {
-        // This can never fail, we validate the certificate on construction and deserialization.
-        self.x509
-            .public_key()
-            .expect("public key extraction failed, how did we end up with an invalid cert?")
     }
 
     /// Returns the public key fingerprint.
@@ -296,60 +257,6 @@ pub struct Signed<V> {
     data: Vec<u8>,
     signature: Signature,
     _phantom: PhantomData<V>,
-}
-
-impl<V> Signed<V>
-where
-    V: Serialize,
-{
-    /// Creates a new signed value.
-    ///
-    /// Serializes the value to a buffer and signs the buffer.
-    pub(crate) fn new(value: &V, signing_key: &PKeyRef<Private>) -> anyhow::Result<Self> {
-        let data = rmp_serde::to_vec(value)?;
-        let signature = Signature::create(signing_key, &data)?;
-
-        Ok(Signed {
-            data,
-            signature,
-            _phantom: PhantomData,
-        })
-    }
-}
-
-impl<V> Signed<V>
-where
-    V: DeserializeOwned,
-{
-    /// Validates signature and restore value.
-    #[allow(dead_code)]
-    pub(crate) fn validate(&self, public_key: &PKeyRef<Public>) -> anyhow::Result<V> {
-        if self.signature.verify(public_key, &self.data)? {
-            Ok(rmp_serde::from_read(self.data.as_slice())?)
-        } else {
-            Err(anyhow!("invalid signature"))
-        }
-    }
-
-    /// Validates a self-signed value.
-    ///
-    /// Allows for extraction of a public key prior to validating a value.
-    #[inline]
-    pub(crate) fn validate_self_signed<F>(&self, extract: F) -> anyhow::Result<V>
-    where
-        F: FnOnce(&V) -> anyhow::Result<PKey<Public>>,
-    {
-        let unverified = rmp_serde::from_read(self.data.as_slice())?;
-        {
-            let public_key =
-                extract(&unverified).context("could not extract public key from self-signed")?;
-            if self.signature.verify(&public_key, &self.data)? {
-                Ok(unverified)
-            } else {
-                Err(anyhow!("invalid signature"))
-            }
-        }
-    }
 }
 
 /// Generates a self-signed (key, certificate) pair suitable for TLS and signing.
@@ -858,7 +765,7 @@ impl Hash for Sha512 {
 
 #[cfg(test)]
 mod test {
-    use super::{generate_node_cert, mkname, name_to_string, validate_cert, Signature, TlsCert};
+    use super::{generate_node_cert, mkname, name_to_string, validate_cert, TlsCert};
 
     #[test]
     fn simple_name_to_string() {
@@ -883,14 +790,5 @@ mod test {
         let serialized_again = rmp_serde::to_vec(&deserialized).expect("could not serialize");
 
         assert_eq!(serialized, serialized_again);
-    }
-
-    #[test]
-    fn test_signature_roundtrip() {
-        let (cert, private_key) = generate_node_cert().expect("failed to generate key, cert pair");
-        let public_key = cert.public_key().unwrap();
-        let data = vec![1, 2, 3, 4, 5];
-        let sig = Signature::create(&private_key, &data).expect("signing failed");
-        assert!(sig.verify(&public_key, &data).expect("verification failed"));
     }
 }

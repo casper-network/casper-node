@@ -463,7 +463,9 @@ impl Value for Deploy {
 
 impl Item for Deploy {
     type Id = DeployHash;
+
     const TAG: Tag = Tag::Deploy;
+    const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn id(&self) -> Self::Id {
         *self.id()

@@ -85,10 +85,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor {
             contract_runtime,
         } = initializer;
 
-        let (net, net_effects) = SmallNetwork::new(
-            event_queue,
-            WithDir::new(root.clone(), config.validator_net.clone()),
-        )?;
+        let (net, net_effects) = SmallNetwork::new(event_queue, config.network.clone())?;
 
         Ok((
             Self {

@@ -9,7 +9,7 @@ use std::{
 
 use futures::future::{BoxFuture, FutureExt};
 use tokio::time;
-use tracing::debug;
+use tracing::{debug, error_span};
 use tracing_futures::Instrument;
 
 use super::ConditionCheckReactor;
@@ -130,7 +130,7 @@ where
         let runner = self.nodes.get_mut(node_id).expect("should find node");
 
         let node_id = runner.reactor().node_id();
-        let span = tracing::error_span!("crank", node_id = %node_id);
+        let span = error_span!("crank", node_id = %node_id);
         if runner.try_crank(rng).instrument(span).await.is_some() {
             1
         } else {
@@ -186,7 +186,7 @@ where
         let mut event_count = 0;
         for node in self.nodes.values_mut() {
             let node_id = node.reactor().node_id();
-            let span = tracing::error_span!("crank", node_id = %node_id);
+            let span = error_span!("crank", node_id = %node_id);
             event_count += if node.try_crank(rng).instrument(span).await.is_some() {
                 1
             } else {
@@ -282,7 +282,7 @@ where
     {
         let runner = self.nodes.get_mut(node_id).unwrap();
         let node_id = runner.reactor().node_id();
-        let span = tracing::error_span!("inject", node_id = %node_id);
+        let span = error_span!("inject", node_id = %node_id);
         runner
             .process_injected_effects(create_effects)
             .instrument(span)

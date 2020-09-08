@@ -2,7 +2,7 @@
 //!
 //! Most configuration is done via config files (see [`config`](../config/index.html) for details).
 
-use std::{env, fs, io, io::Write, path::PathBuf, str::FromStr};
+use std::{env, fs, path::PathBuf, str::FromStr};
 
 use anyhow::{self, bail, Context};
 use rand::SeedableRng;
@@ -16,7 +16,6 @@ use crate::config;
 use casper_node::{
     logging,
     reactor::{initializer, joiner, validator, Runner},
-    tls,
     utils::WithDir,
 };
 
@@ -24,15 +23,6 @@ use casper_node::{
 #[derive(Debug, StructOpt)]
 /// Casper blockchain node.
 pub enum Cli {
-    /// Generate a self-signed node certificate.
-    GenerateCert {
-        /// Output path base of the certificate. The certificate will be stored as
-        /// `output.crt.pem`, while the key will be stored as `output.key.pem`.
-        output: PathBuf,
-    },
-    /// Generate a configuration file from defaults and dump it to stdout.
-    GenerateConfig {},
-
     /// Run the validator node.
     ///
     /// Loads the configuration values from the given configuration file or uses defaults if not
@@ -116,26 +106,6 @@ impl Cli {
     /// Executes selected CLI command.
     pub async fn run(self) -> anyhow::Result<()> {
         match self {
-            Cli::GenerateCert { output } => {
-                if output.file_name().is_none() {
-                    bail!("not a valid output path");
-                }
-
-                let mut cert_path = output.clone();
-                cert_path.set_extension("crt.pem");
-
-                let mut key_path = output;
-                key_path.set_extension("key.pem");
-
-                let (cert, key) = tls::generate_node_cert()?;
-
-                tls::save_cert(&cert, cert_path)?;
-                tls::save_private_key(&key, key_path)?;
-            }
-            Cli::GenerateConfig {} => {
-                let cfg_str = config::to_string(&validator::Config::default())?;
-                io::stdout().write_all(cfg_str.as_bytes())?;
-            }
             Cli::Validator { config, config_ext } => {
                 // Determine the parent directory of the configuration file, if any.
                 // Otherwise, we default to `/`.

@@ -15,7 +15,7 @@ use std::{
 use derive_more::From;
 use prometheus::Registry;
 use rand::{CryptoRng, Rng};
-use tracing::error;
+use tracing::{error, warn};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -33,13 +33,14 @@ use crate::{
         gossiper::{self, Gossiper},
         linear_chain,
         metrics::Metrics,
+        small_network::{self, GossipedAddress, NodeId, SmallNetwork},
         storage::{self, Storage},
         Component,
     },
     effect::{
         announcements::{
             ApiServerAnnouncement, BlockExecutorAnnouncement, ConsensusAnnouncement,
-            DeployAcceptorAnnouncement, NetworkAnnouncement,
+            DeployAcceptorAnnouncement, GossiperAnnouncement, NetworkAnnouncement,
         },
         requests::{
             ApiRequest, BlockExecutorRequest, BlockValidationRequest, ConsensusRequest,
@@ -50,10 +51,8 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, EventQueueHandle},
-    small_network::{self, NodeId},
     types::{Deploy, Tag, Timestamp},
     utils::{Source, WithDir},
-    SmallNetwork,
 };
 pub use config::Config;
 pub use error::Error;
@@ -87,6 +86,9 @@ pub enum Event {
     /// Deploy gossiper event.
     #[from]
     DeployGossiper(gossiper::Event<Deploy>),
+    /// Deploy gossiper event.
+    #[from]
+    AddressGossiper(gossiper::Event<GossipedAddress>),
     /// Contract runtime event.
     #[from]
     ContractRuntime(contract_runtime::Event),
@@ -136,6 +138,12 @@ pub enum Event {
     /// BlockExecutor announcement.
     #[from]
     BlockExecutorAnnouncement(BlockExecutorAnnouncement),
+    /// Deploy Gossiper announcement.
+    #[from]
+    DeployGossiperAnnouncement(GossiperAnnouncement<Deploy>),
+    /// Address Gossiper announcement.
+    #[from]
+    AddressGossiperAnnouncement(GossiperAnnouncement<GossipedAddress>),
 }
 
 impl From<StorageRequest<Storage>> for Event {
@@ -158,6 +166,12 @@ impl From<NetworkRequest<NodeId, consensus::ConsensusMessage>> for Event {
 
 impl From<NetworkRequest<NodeId, gossiper::Message<Deploy>>> for Event {
     fn from(request: NetworkRequest<NodeId, gossiper::Message<Deploy>>) -> Self {
+        Event::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
+impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event {
+    fn from(request: NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>) -> Self {
         Event::NetworkRequest(request.map_payload(Message::from))
     }
 }
@@ -185,9 +199,11 @@ impl Display for Event {
             Event::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
             Event::DeployFetcher(event) => write!(f, "deploy fetcher: {}", event),
             Event::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
+            Event::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
             Event::ContractRuntime(event) => write!(f, "contract runtime: {}", event),
             Event::BlockExecutor(event) => write!(f, "block executor: {}", event),
             Event::BlockValidator(event) => write!(f, "block validator: {}", event),
+            Event::LinearChain(event) => write!(f, "linear-chain event {}", event),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
             Event::DeployFetcherRequest(req) => write!(f, "deploy fetcher request: {}", req),
             Event::DeployBufferRequest(req) => write!(f, "deploy buffer request: {}", req),
@@ -203,7 +219,12 @@ impl Display for Event {
             Event::BlockExecutorAnnouncement(ann) => {
                 write!(f, "block-executor announcement: {}", ann)
             }
-            Event::LinearChain(event) => write!(f, "linear-chain event {}", event),
+            Event::DeployGossiperAnnouncement(ann) => {
+                write!(f, "deploy gossiper announcement: {}", ann)
+            }
+            Event::AddressGossiperAnnouncement(ann) => {
+                write!(f, "address gossiper announcement: {}", ann)
+            }
         }
     }
 }
@@ -223,6 +244,7 @@ pub struct ValidatorInitConfig {
 pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
     metrics: Metrics,
     net: SmallNetwork<Event, Message>,
+    address_gossiper: Gossiper<GossipedAddress, Event>,
     storage: Storage,
     contract_runtime: ContractRuntime,
     api_server: ApiServer,
@@ -269,10 +291,9 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         let metrics = Metrics::new(registry.clone());
 
         let effect_builder = EffectBuilder::new(event_queue);
-        let (net, net_effects) = SmallNetwork::new(
-            event_queue,
-            WithDir::new(root.clone(), config.validator_net),
-        )?;
+        let (net, net_effects) = SmallNetwork::new(event_queue, config.network)?;
+
+        let address_gossiper = Gossiper::new_for_complete_items(config.gossip);
 
         let api_server = ApiServer::new(config.http_server, effect_builder);
         let timestamp = Timestamp::now();
@@ -304,9 +325,12 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         )?;
         let deploy_acceptor = DeployAcceptor::new();
         let deploy_fetcher = Fetcher::new(config.gossip);
-        let deploy_gossiper = Gossiper::new(config.gossip, gossiper::get_deploy_from_storage);
+        let deploy_gossiper = Gossiper::new_for_partial_items(
+            config.gossip,
+            gossiper::get_deploy_from_storage::<Deploy, Event>,
+        );
         let deploy_buffer = DeployBuffer::new(config.node.block_max_deploy_count as usize);
-        // Post state hash is expected to be present
+        // Post state hash is expected to be present.
         let genesis_post_state_hash = chainspec_loader
             .genesis_post_state_hash()
             .expect("should have post state hash");
@@ -321,6 +345,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             Reactor {
                 metrics,
                 net,
+                address_gossiper,
                 storage,
                 contract_runtime,
                 api_server,
@@ -376,6 +401,11 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             Event::DeployGossiper(event) => reactor::wrap_effects(
                 Event::DeployGossiper,
                 self.deploy_gossiper
+                    .handle_event(effect_builder, rng, event),
+            ),
+            Event::AddressGossiper(event) => reactor::wrap_effects(
+                Event::AddressGossiper,
+                self.address_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
             Event::ContractRuntime(event) => reactor::wrap_effects(
@@ -436,6 +466,9 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                     Message::DeployGossiper(message) => {
                         Event::DeployGossiper(gossiper::Event::MessageReceived { sender, message })
                     }
+                    Message::AddressGossiper(message) => {
+                        Event::AddressGossiper(gossiper::Event::MessageReceived { sender, message })
+                    }
                     Message::GetRequest { tag, serialized_id } => match tag {
                         Tag::Deploy => {
                             let deploy_hash = match rmp_serde::from_read_ref(&serialized_id) {
@@ -483,6 +516,10 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                                 LinearChainRequest::BlockHeaderRequest(block_hash, sender),
                             ))
                         }
+                        Tag::GossipedAddress => {
+                            warn!("received get request for gossiped-address from {}", sender);
+                            return Effects::new();
+                        }
                     },
                     Message::GetResponse {
                         tag,
@@ -503,9 +540,20 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                         }
                         Tag::BlockHeader => todo!("Handle GET block header response"),
                         Tag::Block => todo!("Handle GET block response"),
+                        Tag::GossipedAddress => {
+                            warn!("received get request for gossiped-address from {}", sender);
+                            return Effects::new();
+                        }
                     },
                 };
                 self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            Event::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(gossiped_address)) => {
+                let event = gossiper::Event::ItemReceived {
+                    item_id: gossiped_address,
+                    source: Source::<NodeId>::Client,
+                };
+                self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
             }
             Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
                 let event = deploy_acceptor::Event::Accept {
@@ -570,6 +618,15 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             )) => {
                 let reactor_event =
                     Event::LinearChain(linear_chain::Event::LinearChainBlock(block));
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            Event::DeployGossiperAnnouncement(_ann) => {
+                unreachable!("the deploy gossiper should never make an announcement")
+            }
+            Event::AddressGossiperAnnouncement(ann) => {
+                let GossiperAnnouncement::NewCompleteItem(gossiped_address) = ann;
+                let reactor_event =
+                    Event::Network(small_network::Event::PeerAddressReceived(gossiped_address));
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
         }
