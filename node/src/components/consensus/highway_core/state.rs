@@ -67,6 +67,8 @@ pub(crate) enum VoteError {
     RoundLength,
     #[error("This would be the third vote in that round. Only two are allowed.")]
     ThreeVotesInRound,
+    #[error("A block must be the leader's first vote, at the beginning of the round.")]
+    NonLeaderBlock,
     #[error("The vote is a block, but its parent is already a terminal block.")]
     ValueAfterTerminalBlock,
 }
@@ -387,10 +389,18 @@ impl<C: Context> State<C> {
                         return Err(VoteError::RoundLength);
                     }
                 }
+                let r_id = round_id(wvote.timestamp, wvote.round_exp);
                 if let Some(prev2_vote) = prev_vote.previous().map(|h2| self.vote(h2)) {
-                    if prev2_vote.round_id() == round_id(wvote.timestamp, wvote.round_exp) {
+                    if prev2_vote.round_id() == r_id {
                         return Err(VoteError::ThreeVotesInRound);
                     }
+                }
+                if wvote.value.is_some()
+                    && (prev_vote.round_id() == r_id
+                        || wvote.timestamp != r_id
+                        || self.leader(r_id) != creator)
+                {
+                    return Err(VoteError::NonLeaderBlock);
                 }
             }
         }
