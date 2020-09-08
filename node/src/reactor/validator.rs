@@ -51,7 +51,6 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, EventQueueHandle},
-    small_network::{self, NodeId},
     types::{Deploy, ProtoBlock, Tag, Timestamp},
     utils::{Source, WithDir},
 };
@@ -203,7 +202,6 @@ impl Display for Event {
             Event::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
             Event::ContractRuntime(event) => write!(f, "contract runtime: {}", event),
             Event::BlockExecutor(event) => write!(f, "block executor: {}", event),
-            Event::BlockValidator(event) => write!(f, "block validator: {}", event),
             Event::LinearChain(event) => write!(f, "linear-chain event {}", event),
             Event::ProtoBlockValidator(event) => write!(f, "block validator: {}", event),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
