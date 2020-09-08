@@ -26,8 +26,6 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 pub enum Tag {
     /// A deploy.
     Deploy,
-    /// A block header.
-    BlockHeader,
     /// A block.
     Block,
     /// A gossiped public listening address.

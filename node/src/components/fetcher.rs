@@ -15,7 +15,7 @@ use crate::{
     },
     protocol::Message,
     small_network::NodeId,
-    types::{Deploy, DeployHash, Item},
+    types::{Block, BlockHash, Deploy, DeployHash, Item},
     utils::Source,
     GossipConfig,
 };
@@ -194,6 +194,33 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
                 id,
                 peer,
                 maybe_item: Box::new(results.pop().expect("can only contain one result")),
+            })
+    }
+}
+
+impl ItemFetcher<Block> for Fetcher<Block> {
+    fn responders(
+        &mut self,
+    ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<Block>>>> {
+        &mut self.responders
+    }
+
+    fn peer_timeout(&self) -> Duration {
+        self.get_from_peer_timeout
+    }
+
+    fn get_from_storage<REv: ReactorEventT<Block>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        id: BlockHash,
+        peer: NodeId,
+    ) -> Effects<Event<Block>> {
+        effect_builder
+            .get_block_from_storage(id)
+            .event(move |result| Event::GetFromStorageResult {
+                id,
+                peer,
+                maybe_item: Box::new(result),
             })
     }
 }

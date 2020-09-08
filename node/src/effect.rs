@@ -348,6 +348,13 @@ impl<REv> EffectBuilder<REv> {
     #[inline(always)]
     pub async fn immediately(self) {}
 
+    /// Reports a fatal error.
+    ///
+    /// Usually causes the node to cease operations quickly and exit/crash.
+    pub async fn fatal<M: Display + ?Sized>(self, file: &str, line: u32, msg: &M) {
+        panic!("fatal error [{}:{}]: {}", file, line, msg);
+    }
+
     /// Sets a timeout.
     pub(crate) async fn set_timeout(self, timeout: Duration) -> Duration {
         let then = Instant::now();
@@ -564,6 +571,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block header from the linear block store.
+    #[allow(unused)]
     pub(crate) async fn get_block_header_from_storage<S>(
         self,
         block_hash: <S::Block as Value>::Id,
@@ -669,6 +677,28 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets the requested block using the `BlockFetcher`
+    #[allow(unused)]
+    pub(crate) async fn fetch_block<I>(
+        self,
+        block_hash: BlockHash,
+        peer: I,
+    ) -> Option<FetchResult<Block>>
+    where
+        REv: From<FetcherRequest<I, Block>>,
+        I: Send + 'static,
+    {
+        self.make_request(
+            |responder| FetcherRequest::Fetch {
+                id: block_hash,
+                peer,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Passes the timestamp of a future block for which deploys are to be proposed.
     // TODO: The input `BlockContext` will probably be a different type than the context in the
     //       return value in the future.
@@ -716,12 +746,12 @@ impl<REv> EffectBuilder<REv> {
         proto_block: ProtoBlock,
     ) -> (bool, ProtoBlock)
     where
-        REv: From<BlockValidationRequest<I>>,
+        REv: From<BlockValidationRequest<ProtoBlock, I>>,
     {
         self.make_request(
             |responder| BlockValidationRequest {
+                block: proto_block,
                 sender,
-                proto_block,
                 responder,
             },
             QueueKind::Regular,
@@ -890,4 +920,15 @@ impl<REv> EffectBuilder<REv> {
         )
         .await
     }
+}
+
+/// Construct a fatal error effect.
+///
+/// This macro is a convenient wrapper around `EffectBuilder::fatal` that inserts the `file!()` and
+/// `line!()` number automatically.
+#[macro_export]
+macro_rules! fatal {
+    ($effect_builder:expr, $msg:expr) => {
+        $effect_builder.fatal(file!(), line!(), &$msg).ignore()
+    };
 }

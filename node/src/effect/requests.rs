@@ -32,9 +32,7 @@ use crate::{
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
-    types::{
-        BlockHash, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock, ProtoBlockHash, Timestamp,
-    },
+    types::{BlockHash, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlockHash, Timestamp},
     utils::DisplayIter,
     Chainspec,
 };
@@ -450,33 +448,27 @@ impl Display for BlockExecutorRequest {
 /// A block validator request.
 #[derive(Debug)]
 #[must_use]
-pub struct BlockValidationRequest<I> {
+pub struct BlockValidationRequest<T, I> {
     /// The proto-block to be validated.
-    pub(crate) proto_block: ProtoBlock,
-    /// The sender of the proto-block, which will be asked to provide all missing deploys.
+    pub(crate) block: T,
+    /// The sender of the block, which will be asked to provide all missing deploys.
     pub(crate) sender: I,
     /// Responder to call with the result.
     ///
     /// Indicates whether or not validation was successful and returns `proto_block` unchanged.
-    pub(crate) responder: Responder<(bool, ProtoBlock)>,
+    pub(crate) responder: Responder<(bool, T)>,
 }
 
-impl<I: Display> Display for BlockValidationRequest<I> {
+impl<T: Display, I: Display> Display for BlockValidationRequest<T, I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let BlockValidationRequest {
-            proto_block,
-            sender,
-            ..
-        } = self;
-        write!(f, "validate block {} from {}", proto_block, sender)
+        let BlockValidationRequest { block, sender, .. } = self;
+        write!(f, "validate block {} from {}", block, sender)
     }
 }
 
 #[derive(Debug)]
 /// Requests issued to the Linear Chain component.
 pub enum LinearChainRequest<I> {
-    /// Request a block header from the linear, chain by hash.
-    BlockHeaderRequest(BlockHash, I),
     /// Request whole block from the linear chain, by hash.
     BlockRequest(BlockHash, I),
 }
@@ -484,9 +476,6 @@ pub enum LinearChainRequest<I> {
 impl<I: Display> Display for LinearChainRequest<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            LinearChainRequest::BlockHeaderRequest(bh, peer) => {
-                write!(f, "block-header request for hash {} from {}", bh, peer)
-            }
             LinearChainRequest::BlockRequest(bh, peer) => {
                 write!(f, "block request for hash {} from {}", bh, peer)
             }

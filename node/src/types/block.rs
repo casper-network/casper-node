@@ -3,6 +3,7 @@ use std::iter;
 use std::{
     collections::BTreeMap,
     fmt::{self, Debug, Display, Formatter},
+    hash::Hash,
 };
 
 use hex_fmt::{HexFmt, HexList};
@@ -25,6 +26,10 @@ use crate::{
     crypto::asymmetric_key::{self, SecretKey},
     testing::TestRng,
 };
+
+pub trait BlockLike: Eq + Hash {
+    fn deploys(&self) -> &Vec<DeployHash>;
+}
 
 /// A cryptographic hash identifying a `ProtoBlock`.
 #[derive(
@@ -124,6 +129,12 @@ impl Display for ProtoBlock {
             DisplayIter::new(self.deploys.iter()),
             self.random_bit(),
         )
+    }
+}
+
+impl BlockLike for ProtoBlock {
+    fn deploys(&self) -> &Vec<DeployHash> {
+        self.deploys()
     }
 }
 
@@ -401,17 +412,6 @@ impl Display for BlockHeader {
     }
 }
 
-impl Item for BlockHeader {
-    type Id = BlockHash;
-
-    const TAG: Tag = Tag::BlockHeader;
-    const ID_IS_COMPLETE_ITEM: bool = false;
-
-    fn id(&self) -> Self::Id {
-        self.hash()
-    }
-}
-
 /// A proto-block after execution, with the resulting post-state-hash.  This is the core component
 /// of the Casper linear blockchain.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -462,6 +462,23 @@ impl Block {
 
     pub(crate) fn hash(&self) -> &BlockHash {
         &self.hash
+    }
+
+    #[allow(unused)]
+    pub(crate) fn parent(&self) -> &BlockHash {
+        self.header.parent_hash()
+    }
+
+    pub(crate) fn deploy_hashes(&self) -> &Vec<DeployHash> {
+        self.header.deploy_hashes()
+    }
+
+    pub(crate) fn parent_hash(&self) -> &BlockHash {
+        self.header.parent_hash()
+    }
+
+    pub(crate) fn is_genesis_child(&self) -> bool {
+        self.header.era_id == EraId(0) && self.header.height == 0
     }
 
     /// Appends the given signature to this block's proofs.  It should have been validated prior to
@@ -539,6 +556,12 @@ impl Display for Block {
             DisplayIter::new(self.header.system_transactions.iter()),
             self.proofs.len()
         )
+    }
+}
+
+impl BlockLike for Block {
+    fn deploys(&self) -> &Vec<DeployHash> {
+        self.deploy_hashes()
     }
 }
 

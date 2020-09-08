@@ -52,7 +52,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, EventQueueHandle},
-    types::{Deploy, Tag, Timestamp},
+    types::{Deploy, ProtoBlock, Tag, Timestamp},
     utils::{Source, WithDir},
 };
 pub use config::Config;
@@ -98,7 +98,7 @@ pub enum Event {
     BlockExecutor(block_executor::Event),
     /// Block validator event.
     #[from]
-    BlockValidator(block_validator::Event<NodeId>),
+    ProtoBlockValidator(block_validator::Event<ProtoBlock, NodeId>),
     /// Linear chain event.
     #[from]
     LinearChain(linear_chain::Event<NodeId>),
@@ -118,7 +118,7 @@ pub enum Event {
     BlockExecutorRequest(BlockExecutorRequest),
     /// Block validator request.
     #[from]
-    BlockValidatorRequest(BlockValidationRequest<NodeId>),
+    ProtoBlockValidatorRequest(BlockValidationRequest<ProtoBlock, NodeId>),
     /// Metrics request.
     #[from]
     MetricsRequest(MetricsRequest),
@@ -203,13 +203,13 @@ impl Display for Event {
             Event::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
             Event::ContractRuntime(event) => write!(f, "contract runtime: {}", event),
             Event::BlockExecutor(event) => write!(f, "block executor: {}", event),
-            Event::BlockValidator(event) => write!(f, "block validator: {}", event),
             Event::LinearChain(event) => write!(f, "linear-chain event {}", event),
+            Event::ProtoBlockValidator(event) => write!(f, "block validator: {}", event),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
             Event::DeployFetcherRequest(req) => write!(f, "deploy fetcher request: {}", req),
             Event::DeployBufferRequest(req) => write!(f, "deploy buffer request: {}", req),
             Event::BlockExecutorRequest(req) => write!(f, "block executor request: {}", req),
-            Event::BlockValidatorRequest(req) => write!(f, "block validator request: {}", req),
+            Event::ProtoBlockValidatorRequest(req) => write!(f, "block validator request: {}", req),
             Event::MetricsRequest(req) => write!(f, "metrics request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
             Event::ApiServerAnnouncement(ann) => write!(f, "api server announcement: {}", ann),
@@ -255,7 +255,7 @@ pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
     deploy_gossiper: Gossiper<Deploy, Event>,
     deploy_buffer: DeployBuffer,
     block_executor: BlockExecutor,
-    block_validator: BlockValidator<NodeId>,
+    proto_block_validator: BlockValidator<ProtoBlock, NodeId>,
     linear_chain: LinearChain<NodeId>,
 }
 
@@ -339,7 +339,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             .genesis_post_state_hash()
             .expect("should have post state hash");
         let block_executor = BlockExecutor::new(genesis_post_state_hash);
-        let block_validator = BlockValidator::<NodeId>::new();
+        let proto_block_validator = BlockValidator::new();
         let linear_chain = LinearChain::new();
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
@@ -359,7 +359,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 deploy_gossiper,
                 deploy_buffer,
                 block_executor,
-                block_validator,
+                proto_block_validator,
                 linear_chain,
             },
             effects,
@@ -421,9 +421,9 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 Event::BlockExecutor,
                 self.block_executor.handle_event(effect_builder, rng, event),
             ),
-            Event::BlockValidator(event) => reactor::wrap_effects(
-                Event::BlockValidator,
-                self.block_validator
+            Event::ProtoBlockValidator(event) => reactor::wrap_effects(
+                Event::ProtoBlockValidator,
+                self.proto_block_validator
                     .handle_event(effect_builder, rng, event),
             ),
             Event::LinearChain(event) => reactor::wrap_effects(
@@ -448,10 +448,10 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 rng,
                 Event::BlockExecutor(block_executor::Event::from(req)),
             ),
-            Event::BlockValidatorRequest(req) => self.dispatch_event(
+            Event::ProtoBlockValidatorRequest(req) => self.dispatch_event(
                 effect_builder,
                 rng,
-                Event::BlockValidator(block_validator::Event::from(req)),
+                Event::ProtoBlockValidator(block_validator::Event::from(req)),
             ),
             Event::MetricsRequest(req) => reactor::wrap_effects(
                 Event::MetricsRequest,
@@ -490,21 +490,6 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                                 peer: sender,
                             })
                         }
-                        Tag::BlockHeader => {
-                            let block_hash = match rmp_serde::from_read_ref(&serialized_id) {
-                                Ok(hash) => hash,
-                                Err(error) => {
-                                    error!(
-                                        "failed to decode {:?} from {}: {}",
-                                        serialized_id, sender, error
-                                    );
-                                    return Effects::new();
-                                }
-                            };
-                            Event::LinearChain(linear_chain::Event::Request(
-                                LinearChainRequest::BlockHeaderRequest(block_hash, sender),
-                            ))
-                        }
                         Tag::Block => {
                             let block_hash = match rmp_serde::from_read_ref(&serialized_id) {
                                 Ok(hash) => hash,
@@ -517,7 +502,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                                 }
                             };
                             Event::LinearChain(linear_chain::Event::Request(
-                                LinearChainRequest::BlockHeaderRequest(block_hash, sender),
+                                LinearChainRequest::BlockRequest(block_hash, sender),
                             ))
                         }
                         Tag::GossipedAddress => {
@@ -542,7 +527,6 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                                 source: Source::Peer(sender),
                             })
                         }
-                        Tag::BlockHeader => todo!("Handle GET block header response"),
                         Tag::Block => todo!("Handle GET block response"),
                         Tag::GossipedAddress => {
                             warn!("received get request for gossiped-address from {}", sender);
