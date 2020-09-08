@@ -212,7 +212,7 @@ where
                                 transport,
                             },
                             move |error| Event::BootstrappingFailed {
-                                address: known_address.clone(),
+                                address: known_address,
                                 error,
                             },
                         ),
