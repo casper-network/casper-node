@@ -28,3 +28,23 @@ where
 
     Ok(Duration::from_millis(ms))
 }
+
+#[cfg(test)]
+mod tests {
+    use serde::{Deserialize, Serialize};
+    use std::time::Duration;
+
+    #[test]
+    fn round_trip() {
+        #[derive(Debug, Deserialize, PartialEq, Serialize)]
+        struct Example(#[serde(with = "super")] Duration);
+
+        let value = Example(Duration::from_millis(12345));
+
+        let json = serde_json::to_string(&value).expect("serialization failed");
+        assert_eq!(json, "12345");
+        let deserialized = serde_json::from_str(&json).expect("deserialization failed");
+
+        assert_eq!(value, deserialized);
+    }
+}
