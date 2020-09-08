@@ -147,7 +147,7 @@ pub trait ReactorEventT<I>:
     + From<DeployBufferRequest>
     + From<ConsensusAnnouncement>
     + From<BlockExecutorRequest>
-    + From<BlockValidationRequest<I>>
+    + From<BlockValidationRequest<ProtoBlock, I>>
     + From<StorageRequest<Storage>>
 {
 }
@@ -159,7 +159,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<DeployBufferRequest>
         + From<ConsensusAnnouncement>
         + From<BlockExecutorRequest>
-        + From<BlockValidationRequest<I>>
+        + From<BlockValidationRequest<ProtoBlock, I>>
         + From<StorageRequest<Storage>>
 {
 }

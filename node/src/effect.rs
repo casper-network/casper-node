@@ -562,6 +562,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block header from the linear block store.
+    #[allow(unused)]
     pub(crate) async fn get_block_header_from_storage<S>(
         self,
         block_hash: <S::Block as Value>::Id,
@@ -667,6 +668,28 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets the requested block using the `BlockFetcher`
+    #[allow(unused)]
+    pub(crate) async fn fetch_block<I>(
+        self,
+        block_hash: BlockHash,
+        peer: I,
+    ) -> Option<FetchResult<Block>>
+    where
+        REv: From<FetcherRequest<I, Block>>,
+        I: Send + 'static,
+    {
+        self.make_request(
+            |responder| FetcherRequest::Fetch {
+                id: block_hash,
+                peer,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Passes the timestamp of a future block for which deploys are to be proposed.
     // TODO: The input `BlockContext` will probably be a different type than the context in the
     //       return value in the future.
@@ -714,12 +737,12 @@ impl<REv> EffectBuilder<REv> {
         proto_block: ProtoBlock,
     ) -> (bool, ProtoBlock)
     where
-        REv: From<BlockValidationRequest<I>>,
+        REv: From<BlockValidationRequest<ProtoBlock, I>>,
     {
         self.make_request(
             |responder| BlockValidationRequest {
+                block: proto_block,
                 sender,
-                proto_block,
                 responder,
             },
             QueueKind::Regular,
