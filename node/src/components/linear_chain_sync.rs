@@ -26,6 +26,7 @@ pub(crate) struct LinearChainSync<I> {
     // Set of peers that we can requests blocks from.
     peers: Vec<I>,
     // Peers we have not yet requested current block from.
+    // NOTE: Maybe use a bitmask to decide which peers were tried?.
     peers_to_try: Vec<I>,
     // Chain of downloaded blocks from the linear chain.
     linear_chain: Vec<Block>,
