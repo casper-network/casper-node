@@ -9,6 +9,9 @@ chainspec_config_path = 'chainspec.toml'
 # The maximum number of deploys permitted in a single block.
 block_max_deploy_count = 3
 
+# If set, use this hash as a trust anchor when joining an existing network.
+# trusted_hash = 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
 
 # =================================
 # Configuration options for logging

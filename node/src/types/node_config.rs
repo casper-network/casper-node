@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use super::BlockHash;
 use crate::{utils::External, Chainspec};
 
 const DEFAULT_CHAINSPEC_CONFIG_PATH: &str = "chainspec.toml";
@@ -14,6 +15,8 @@ pub struct NodeConfig {
     pub chainspec_config_path: External<Chainspec>,
     /// The maximum number of deploys permitted in a single block.
     pub block_max_deploy_count: u32,
+    /// Hash used as a trust anchor when joining, if any.
+    pub trusted_hash: Option<BlockHash>,
 }
 
 impl Default for NodeConfig {
@@ -21,6 +24,7 @@ impl Default for NodeConfig {
         NodeConfig {
             chainspec_config_path: External::path(DEFAULT_CHAINSPEC_CONFIG_PATH),
             block_max_deploy_count: DEFAULT_BLOCK_MAX_DEPLOY_COUNT,
+            trusted_hash: None,
         }
     }
 }
