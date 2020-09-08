@@ -70,7 +70,7 @@ use tokio::{
 use tokio_openssl::SslStream;
 use tokio_serde::{formats::SymmetricalMessagePack, SymmetricallyFramed};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use self::error::Result;
 pub(crate) use self::{event::Event, gossiped_address::GossipedAddress, message::Message};
@@ -262,7 +262,9 @@ where
             .choose_multiple(rng, count);
 
         if peer_ids.len() != count {
-            warn!(
+            // TODO - set this to `warn!` once we are normally testing with networks large enough to
+            //        make it a meaningful and infrequent log message.
+            trace!(
                 wanted = count,
                 selected = peer_ids.len(),
                 "{}: could not select enough random nodes for gossiping, not enough non-excluded \
