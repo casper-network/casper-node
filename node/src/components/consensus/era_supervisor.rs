@@ -100,6 +100,7 @@ where
         effect_builder: EffectBuilder<REv>,
         validator_stakes: Vec<(PublicKey, Motes)>,
         highway_config: &HighwayConfig,
+        chainspec_hash: hash::Digest,
         rng: &mut R,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
         let (root, config) = config.into_parts();
@@ -121,6 +122,7 @@ where
             validator_stakes,
             highway_config.genesis_era_start_timestamp,
             0,
+            chainspec_hash,
         );
         let effects = era_supervisor
             .handling_wrapper(effect_builder, rng)
@@ -151,6 +153,7 @@ where
         validator_stakes: Vec<(PublicKey, Motes)>,
         start_time: Timestamp,
         start_height: u64,
+        instance_id: hash::Digest,
     ) -> Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>> {
         if self.active_eras.contains_key(&era_id) {
             panic!("{:?} already exists", era_id);
@@ -171,7 +174,6 @@ where
         let validators: Validators<PublicKey> =
             validator_stakes.into_iter().map(scale_stake).collect();
 
-        let instance_id = hash::hash(format!("Highway era {}", era_id.0));
         let ftt = validators.total_weight()
             * u64::from(self.highway_config.finality_threshold_percent)
             / 100;
@@ -341,6 +343,7 @@ where
                 validator_stakes,
                 block_header.timestamp(),
                 block_header.height() + 1,
+                *block_header.hash().inner(),
             );
             effects.extend(self.handle_consensus_results(new_era_id, results));
         }

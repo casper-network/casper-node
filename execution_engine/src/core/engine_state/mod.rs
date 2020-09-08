@@ -547,7 +547,8 @@ where
             .map_err(Into::into)?;
 
         // Return the result
-        let genesis_result = GenesisResult::from_commit_result(commit_result, effects);
+        let genesis_result =
+            GenesisResult::from_commit_result(commit_result, genesis_config_hash, effects);
 
         Ok(genesis_result)
     }

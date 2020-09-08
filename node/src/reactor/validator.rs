@@ -319,12 +319,16 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 }
             })
             .collect();
+        let chainspec_hash = chainspec_loader
+            .chainspec_hash()
+            .expect("should have chainspec hash");
         let (consensus, consensus_effects) = EraSupervisor::new(
             timestamp,
             WithDir::new(root, config.consensus),
             effect_builder,
             validator_stakes,
             &chainspec_loader.chainspec().genesis.highway_config,
+            chainspec_hash,
             rng,
         )?;
         let deploy_acceptor = DeployAcceptor::new();
