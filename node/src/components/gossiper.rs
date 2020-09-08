@@ -19,6 +19,7 @@ use tracing::{debug, error};
 use crate::{
     components::{small_network::NodeId, storage::Storage, Component},
     effect::{
+        announcements::GossiperAnnouncement,
         requests::{NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
@@ -39,6 +40,7 @@ pub trait ReactorEventT<T>:
     + From<NetworkRequest<NodeId, Message<T>>>
     + From<NetworkRequest<NodeId, NodeMessage>>
     + From<StorageRequest<Storage>>
+    + From<GossiperAnnouncement<T>>
     + Send
     + 'static
 where
@@ -55,11 +57,14 @@ where
         + From<NetworkRequest<NodeId, Message<T>>>
         + From<NetworkRequest<NodeId, NodeMessage>>
         + From<StorageRequest<Storage>>
+        + From<GossiperAnnouncement<T>>
         + Send
         + 'static,
 {
 }
 
+/// This function can be passed in to `Gossiper::new()` as the `get_from_holder` arg when
+/// constructing a `Gossiper<Deploy>`.
 pub(crate) fn get_deploy_from_storage<T: Item + 'static, REv: ReactorEventT<T>>(
     effect_builder: EffectBuilder<REv>,
     deploy_hash: DeployHash,
@@ -95,30 +100,47 @@ pub(crate) struct Gossiper<T: Item + 'static, REv: ReactorEventT<T>> {
 }
 
 impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
-    /// Constructs a new gossiper component.
-    ///
-    /// `put_to_holder` is called by the gossiper whenever a new complete item is received, via
-    /// handling either an `Event::ItemReceived` or a `Message::GetResponse`.
-    ///
-    /// For an example of how `put_to_holder` should be implemented, see
-    /// `gossiper::put_deploy_to_store()` which is used by `Gossiper<Deploy>`.
+    /// Constructs a new gossiper component for use where `T::ID_IS_COMPLETE_ITEM == false`, i.e.
+    /// where the gossip messages themselves don't contain the actual data being gossiped, they
+    /// contain just the identifiers.
     ///
     /// `get_from_holder` is called by the gossiper when handling either a `Message::GossipResponse`
     /// where the sender indicates it needs the full item, or a `Message::GetRequest`.
     ///
     /// For an example of how `get_from_holder` should be implemented, see
     /// `gossiper::get_deploy_from_store()` which is used by `Gossiper<Deploy>`.
-    pub(crate) fn new(
+    pub(crate) fn new_for_partial_items(
         config: Config,
         get_from_holder: impl Fn(EffectBuilder<REv>, T::Id, NodeId) -> Effects<Event<T>>
             + Send
             + 'static,
     ) -> Self {
+        assert!(
+            !T::ID_IS_COMPLETE_ITEM,
+            "this should only be called for types where T::ID_IS_COMPLETE_ITEM is false"
+        );
         Gossiper {
             table: GossipTable::new(config),
             gossip_timeout: Duration::from_secs(config.gossip_request_timeout_secs()),
             get_from_peer_timeout: Duration::from_secs(config.get_remainder_timeout_secs()),
             get_from_holder: Box::new(get_from_holder),
+        }
+    }
+
+    /// Constructs a new gossiper component for use where `T::ID_IS_COMPLETE_ITEM == true`, i.e.
+    /// where the gossip messages themselves contain the actual data being gossiped.
+    pub(crate) fn new_for_complete_items(config: Config) -> Self {
+        assert!(
+            T::ID_IS_COMPLETE_ITEM,
+            "this should only be called for types where T::ID_IS_COMPLETE_ITEM is true"
+        );
+        Gossiper {
+            table: GossipTable::new(config),
+            gossip_timeout: Duration::from_secs(config.gossip_request_timeout_secs()),
+            get_from_peer_timeout: Duration::from_secs(config.get_remainder_timeout_secs()),
+            get_from_holder: Box::new(|_, item, _| {
+                panic!("gossiper should never try to get {}", item)
+            }),
         }
     }
 
@@ -258,19 +280,37 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         item_id: T::Id,
         sender: NodeId,
     ) -> Effects<Event<T>> {
-        match self.table.new_partial_data(&item_id, sender) {
+        let action = if T::ID_IS_COMPLETE_ITEM {
+            self.table
+                .new_complete_data(&item_id, Some(sender))
+                .map_or_else(|| GossipAction::Noop, GossipAction::ShouldGossip)
+        } else {
+            self.table.new_partial_data(&item_id, sender)
+        };
+
+        match action {
             GossipAction::ShouldGossip(should_gossip) => {
-                // Gossip the item ID and send a response to the sender indicating we already hold
-                // the item.
+                // Gossip the item ID.
                 let mut effects = self.gossip(
                     effect_builder,
                     item_id,
                     should_gossip.count,
                     should_gossip.exclude_peers,
                 );
+
+                // If this is a new complete item to us, announce it.
+                if T::ID_IS_COMPLETE_ITEM && !should_gossip.is_already_held {
+                    effects.extend(
+                        effect_builder
+                            .announce_complete_item_received_via_gossip(item_id)
+                            .ignore(),
+                    );
+                }
+
+                // Send a response to the sender indicating whether we already hold the item.
                 let reply = Message::GossipResponse {
                     item_id,
-                    is_already_held: true,
+                    is_already_held: should_gossip.is_already_held,
                 };
                 effects.extend(effect_builder.send_message(sender, reply).ignore());
                 effects
@@ -316,9 +356,11 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         let action = if is_already_held {
             self.table.already_infected(&item_id, sender)
         } else {
-            // `sender` doesn't hold the full item; get the item from the component responsible for
-            // holding it, then send it to `sender`.
-            effects.extend((self.get_from_holder)(effect_builder, item_id, sender));
+            if !T::ID_IS_COMPLETE_ITEM {
+                // `sender` doesn't hold the full item; get the item from the component responsible
+                // for holding it, then send it to `sender`.
+                effects.extend((self.get_from_holder)(effect_builder, item_id, sender));
+            }
             self.table.we_infected(&item_id, sender)
         };
 

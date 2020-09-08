@@ -7,7 +7,7 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    components::{consensus, gossiper},
+    components::{consensus, gossiper, small_network::GossipedAddress},
     types::{Deploy, Item, Tag},
 };
 
@@ -20,6 +20,9 @@ pub enum Message {
     /// Deploy gossiper component message.
     #[from]
     DeployGossiper(gossiper::Message<Deploy>),
+    /// Address gossiper component message.
+    #[from]
+    AddressGossiper(gossiper::Message<GossipedAddress>),
     /// Request to get an item from a peer.
     GetRequest {
         /// The type tag of the requested item.
@@ -57,6 +60,9 @@ impl Display for Message {
         match self {
             Message::Consensus(consensus) => write!(f, "Consensus::{}", consensus),
             Message::DeployGossiper(deploy) => write!(f, "DeployGossiper::{}", deploy),
+            Message::AddressGossiper(gossiped_address) => {
+                write!(f, "AddressGossiper::({})", gossiped_address)
+            }
             Message::GetRequest { tag, serialized_id } => {
                 write!(f, "GetRequest({}-{:10})", tag, HexFmt(serialized_id))
             }

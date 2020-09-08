@@ -33,7 +33,7 @@ pub mod tls;
 pub mod types;
 pub mod utils;
 
-pub(crate) use components::small_network::{self, SmallNetwork};
+pub(crate) use components::small_network;
 pub use components::{
     api_server::Config as ApiServerConfig,
     chainspec_loader::{Chainspec, Error as ChainspecError, GenesisAccount},
@@ -44,6 +44,3 @@ pub use components::{
     storage::{Config as StorageConfig, Error as StorageError},
 };
 pub use utils::OS_PAGE_SIZE;
-
-/// The default listening port for the root node of the validator network.
-pub const ROOT_VALIDATOR_LISTENING_PORT: u16 = 34553;

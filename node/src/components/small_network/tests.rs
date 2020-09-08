@@ -6,7 +6,6 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
-    net::{IpAddr, Ipv4Addr, SocketAddr},
     time::{Duration, Instant},
 };
 
@@ -17,16 +16,25 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
 use crate::{
-    components::Component,
-    effect::{announcements::NetworkAnnouncement, EffectBuilder, Effects},
+    components::{
+        gossiper::{self, Gossiper},
+        storage::Storage,
+        Component,
+    },
+    effect::{
+        announcements::{GossiperAnnouncement, NetworkAnnouncement},
+        requests::{NetworkRequest, StorageRequest},
+        EffectBuilder, Effects,
+    },
+    protocol,
     reactor::{self, EventQueueHandle, Finalize, Reactor, Runner},
-    small_network::{self, NodeId, SmallNetwork},
+    small_network::{self, Config, GossipedAddress, NodeId, SmallNetwork},
     testing::{
         self, init_logging,
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
     },
-    utils::WithDir,
+    utils::Source,
 };
 
 /// Test-reactor event.
@@ -34,13 +42,51 @@ use crate::{
 enum Event {
     #[from]
     SmallNet(small_network::Event<Message>),
+    #[from]
+    AddressGossiper(gossiper::Event<GossipedAddress>),
+    #[from]
+    NetworkRequest(NetworkRequest<NodeId, Message>),
+    #[from]
+    NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
+    #[from]
+    AddressGossiperAnnouncement(GossiperAnnouncement<GossipedAddress>),
 }
 
-/// Example message.
-///
-/// All messages are empty, currently the tests are not checking the payload.
-#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
-struct Message;
+impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event {
+    fn from(request: NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>) -> Self {
+        Event::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
+impl From<NetworkRequest<NodeId, protocol::Message>> for Event {
+    fn from(_request: NetworkRequest<NodeId, protocol::Message>) -> Self {
+        unreachable!()
+    }
+}
+
+impl From<StorageRequest<Storage>> for Event {
+    fn from(_request: StorageRequest<Storage>) -> Self {
+        unreachable!()
+    }
+}
+
+impl Display for Event {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Debug::fmt(self, f)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, From)]
+enum Message {
+    #[from]
+    AddressGossiper(gossiper::Message<GossipedAddress>),
+}
+
+impl Display for Message {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Debug::fmt(self, f)
+    }
+}
 
 /// Test reactor.
 ///
@@ -48,19 +94,32 @@ struct Message;
 #[derive(Debug)]
 struct TestReactor {
     net: SmallNetwork<Event, Message>,
-}
-
-impl From<NetworkAnnouncement<NodeId, Message>> for Event {
-    fn from(_: NetworkAnnouncement<NodeId, Message>) -> Self {
-        // This will be called if a message is sent, thus it is currently not implemented.
-        todo!()
-    }
+    address_gossiper: Gossiper<GossipedAddress, Event>,
 }
 
 impl Reactor<TestRng> for TestReactor {
     type Event = Event;
-    type Config = small_network::Config;
+    type Config = Config;
     type Error = anyhow::Error;
+
+    fn new(
+        cfg: Self::Config,
+        _registry: &Registry,
+        event_queue: EventQueueHandle<Self::Event>,
+        _rng: &mut TestRng,
+    ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
+        let (net, effects) = SmallNetwork::new(event_queue, cfg)?;
+        let gossiper_config = gossiper::Config::default();
+        let address_gossiper = Gossiper::new_for_complete_items(gossiper_config);
+
+        Ok((
+            TestReactor {
+                net,
+                address_gossiper,
+            },
+            reactor::wrap_effects(Event::SmallNet, effects),
+        ))
+    }
 
     fn dispatch_event(
         &mut self,
@@ -73,21 +132,41 @@ impl Reactor<TestRng> for TestReactor {
                 Event::SmallNet,
                 self.net.handle_event(effect_builder, rng, ev),
             ),
+            Event::AddressGossiper(event) => reactor::wrap_effects(
+                Event::AddressGossiper,
+                self.address_gossiper
+                    .handle_event(effect_builder, rng, event),
+            ),
+            Event::NetworkRequest(req) => self.dispatch_event(
+                effect_builder,
+                rng,
+                Event::SmallNet(small_network::Event::from(req)),
+            ),
+            Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
+                sender,
+                payload,
+            }) => {
+                let reactor_event = match payload {
+                    Message::AddressGossiper(message) => {
+                        Event::AddressGossiper(gossiper::Event::MessageReceived { sender, message })
+                    }
+                };
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            Event::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(gossiped_address)) => {
+                let event = gossiper::Event::ItemReceived {
+                    item_id: gossiped_address,
+                    source: Source::<NodeId>::Client,
+                };
+                self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
+            }
+            Event::AddressGossiperAnnouncement(ann) => {
+                let GossiperAnnouncement::NewCompleteItem(gossiped_address) = ann;
+                let reactor_event =
+                    Event::SmallNet(small_network::Event::PeerAddressReceived(gossiped_address));
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
         }
-    }
-
-    fn new(
-        cfg: Self::Config,
-        _registry: &Registry,
-        event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut TestRng,
-    ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
-        let (net, effects) = SmallNetwork::new(event_queue, WithDir::default_path(cfg))?;
-
-        Ok((
-            TestReactor { net },
-            reactor::wrap_effects(Event::SmallNet, effects),
-        ))
     }
 }
 
@@ -102,20 +181,6 @@ impl NetworkedReactor for TestReactor {
 impl Finalize for TestReactor {
     fn finalize(self) -> futures::future::BoxFuture<'static, ()> {
         self.net.finalize()
-    }
-}
-
-impl Display for Event {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Event::SmallNet(ev) => Display::fmt(ev, f),
-        }
-    }
-}
-
-impl Display for Message {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        Debug::fmt(self, f)
     }
 }
 
@@ -149,22 +214,6 @@ fn network_is_complete(
         .all(|actual| actual == expected)
 }
 
-fn gen_config(bind_port: u16, root_port: u16) -> small_network::Config {
-    // Bind everything to localhost.
-    let bind_interface: IpAddr = Ipv4Addr::LOCALHOST.into();
-    small_network::Config {
-        bind_interface: bind_interface.to_string(),
-        bind_port,
-        root_addr: SocketAddr::new(bind_interface, root_port).to_string(),
-        // Fast retry, moderate amount of times. This is 10 seconds max (100 x 100 ms)
-        max_outgoing_retries: Some(100),
-        outgoing_retry_delay_millis: 100,
-        // Auto-generate cert and key.
-        cert_path: None,
-        secret_key_path: None,
-    }
-}
-
 /// Run a two-node network five times.
 ///
 /// Ensures that network cleanup and basic networking works.
@@ -173,7 +222,7 @@ async fn run_two_node_network_five_times() {
     let mut rng = TestRng::new();
 
     // The networking port used by the tests for the root node.
-    let root_node_port = testing::unused_port_on_localhost();
+    let first_node_port = testing::unused_port_on_localhost();
 
     init_logging();
 
@@ -183,10 +232,13 @@ async fn run_two_node_network_five_times() {
         let mut net = Network::new();
 
         let start = Instant::now();
-        net.add_node_with_config(gen_config(root_node_port, root_node_port), &mut rng)
-            .await
-            .unwrap();
-        net.add_node_with_config(gen_config(root_node_port + 1, root_node_port), &mut rng)
+        net.add_node_with_config(
+            Config::default_local_net_first_node(first_node_port),
+            &mut rng,
+        )
+        .await
+        .unwrap();
+        net.add_node_with_config(Config::default_local_net(first_node_port), &mut rng)
             .await
             .unwrap();
         let end = Instant::now();
@@ -196,7 +248,7 @@ async fn run_two_node_network_five_times() {
             "finished setting up networking nodes"
         );
 
-        let timeout = Duration::from_secs(1);
+        let timeout = Duration::from_secs(2);
         net.settle_on(&mut rng, network_is_complete, timeout).await;
 
         let quiet_for = Duration::from_millis(25);
@@ -234,24 +286,18 @@ async fn bind_to_real_network_interface() {
         .ip();
     let port = testing::unused_port_on_localhost();
 
-    let local_net_config = small_network::Config {
-        bind_interface: local_addr.to_string(),
-        bind_port: port,
-        root_addr: SocketAddr::new(local_addr, port).to_string(),
-        max_outgoing_retries: Some(360),
-        outgoing_retry_delay_millis: 10000,
-        cert_path: None,
-        secret_key_path: None,
-    };
+    let local_net_config = Config::new(local_addr, port);
 
     let mut net = Network::<TestReactor>::new();
     net.add_node_with_config(local_net_config, &mut rng)
         .await
         .unwrap();
 
-    let quiet_for = Duration::from_millis(250);
+    // The network should be fully connected.
     let timeout = Duration::from_secs(2);
-    net.settle(&mut rng, quiet_for, timeout).await;
+    net.settle_on(&mut rng, network_is_complete, timeout).await;
+
+    net.finalize().await;
 }
 
 /// Check that a network of varying sizes will connect all nodes properly.
@@ -261,8 +307,6 @@ async fn check_varying_size_network_connects() {
 
     let mut rng = TestRng::new();
 
-    let quiet_for: Duration = Duration::from_millis(250);
-
     // Try with a few predefined sets of network sizes.
     for &number_of_nodes in &[2u16, 3, 5, 9, 15] {
         let timeout = Duration::from_secs(3 * number_of_nodes as u64);
@@ -270,20 +314,23 @@ async fn check_varying_size_network_connects() {
         let mut net = Network::new();
 
         // Pick a random port in the higher ranges that is likely to be unused.
-        let root_port = testing::unused_port_on_localhost();
+        let first_node_port = testing::unused_port_on_localhost();
 
-        for i in 0..number_of_nodes {
-            // We use a `bind_port` of 0 to get a random port assigned.
-            net.add_node_with_config(gen_config(root_port + i, root_port), &mut rng)
+        net.add_node_with_config(
+            Config::default_local_net_first_node(first_node_port),
+            &mut rng,
+        )
+        .await
+        .unwrap();
+
+        for _ in 1..number_of_nodes {
+            net.add_node_with_config(Config::default_local_net(first_node_port), &mut rng)
                 .await
                 .unwrap();
         }
 
         // The network should be fully connected.
         net.settle_on(&mut rng, network_is_complete, timeout).await;
-
-        // Afterwards, there should be no activity on the network.
-        net.settle(&mut rng, quiet_for, timeout).await;
 
         // This should not make a difference at all, but we're paranoid, so check again.
         assert!(

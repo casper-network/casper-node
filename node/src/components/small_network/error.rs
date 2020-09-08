@@ -28,7 +28,7 @@ pub enum Error {
     #[error("own certificate invalid")]
     OwnCertificateInvalid(#[source] ValidationError),
     /// Failed to create a TCP listener.
-    #[error("failed to create listener on {}", 1)]
+    #[error("failed to create listener on {1}")]
     ListenerCreation(#[source] io::Error, SocketAddr),
     /// Failed to get TCP listener address.
     #[error("failed to get listener addr")]

@@ -7,75 +7,98 @@ use std::{
 use derive_more::From;
 use tokio::net::TcpStream;
 
-use super::{Error, Message, NodeId, Transport};
-use crate::{effect::requests::NetworkRequest, tls::TlsCert};
+use super::{Error, GossipedAddress, Message, NodeId, Transport};
+use crate::effect::requests::NetworkRequest;
 
 #[derive(Debug, From)]
 pub enum Event<P> {
-    /// Connection to the root node succeeded.
-    RootConnected { cert: TlsCert, transport: Transport },
-    /// Connection to the root node failed.
-    RootFailed { error: Error },
+    /// Connection to the known node failed.
+    BootstrappingFailed { error: Error },
     /// A new TCP connection has been established from an incoming connection.
-    IncomingNew { stream: TcpStream, addr: SocketAddr },
+    IncomingNew {
+        stream: TcpStream,
+        address: SocketAddr,
+    },
     /// The TLS handshake completed on the incoming connection.
     IncomingHandshakeCompleted {
         result: Result<(NodeId, Transport), Error>,
-        addr: SocketAddr,
+        address: SocketAddr,
     },
     /// Received network message.
-    IncomingMessage { node_id: NodeId, msg: Message<P> },
+    IncomingMessage { peer_id: NodeId, msg: Message<P> },
     /// Incoming connection closed.
     IncomingClosed {
         result: io::Result<()>,
-        addr: SocketAddr,
+        peer_id: NodeId,
+        address: SocketAddr,
     },
 
     /// A new outgoing connection was successfully established.
     OutgoingEstablished {
-        node_id: NodeId,
+        peer_id: NodeId,
         transport: Transport,
     },
     /// An outgoing connection failed to connect or was terminated.
     OutgoingFailed {
-        node_id: NodeId,
-        attempt_count: u32,
+        peer_id: Option<NodeId>,
+        peer_address: SocketAddr,
         error: Option<Error>,
     },
 
     /// Incoming network request.
     #[from]
     NetworkRequest { req: NetworkRequest<NodeId, P> },
+
+    /// The node should gossip its own public listening address.
+    GossipOurAddress,
+    /// We received a peer's public listening address via gossip.
+    PeerAddressReceived(GossipedAddress),
 }
 
 impl<P: Display> Display for Event<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::RootConnected { cert, .. } => {
-                write!(f, "root connected @ {}", cert.public_key_fingerprint())
+            Event::BootstrappingFailed { error } => write!(f, "root failed: {}", error),
+            Event::IncomingNew { address, .. } => write!(f, "incoming connection from {}", address),
+            Event::IncomingHandshakeCompleted { result, address } => {
+                write!(f, "handshake from {}, is_err {}", address, result.is_err())
             }
-            Event::RootFailed { error } => write!(f, "root failed: {}", error),
-            Event::IncomingNew { addr, .. } => write!(f, "incoming connection from {}", addr),
-            Event::IncomingHandshakeCompleted { result, addr } => {
-                write!(f, "handshake from {}, is_err {}", addr, result.is_err())
+            Event::IncomingMessage {
+                peer_id: node_id,
+                msg,
+            } => write!(f, "msg from {}: {}", node_id, msg),
+            Event::IncomingClosed { address, .. } => {
+                write!(f, "closed connection from {}", address)
             }
-            Event::IncomingMessage { node_id, msg } => write!(f, "msg from {}: {}", node_id, msg),
-            Event::IncomingClosed { addr, .. } => write!(f, "closed connection from {}", addr),
-            Event::OutgoingEstablished { node_id, .. } => {
-                write!(f, "established outgoing to {}", node_id)
-            }
+            Event::OutgoingEstablished {
+                peer_id: node_id, ..
+            } => write!(f, "established outgoing to {}", node_id),
             Event::OutgoingFailed {
-                node_id,
-                attempt_count,
+                peer_id: Some(node_id),
+                peer_address,
                 error,
             } => write!(
                 f,
-                "failed outgoing {} [{}]: (is_err {})",
+                "failed outgoing {} {}: (is_err {})",
                 node_id,
-                attempt_count,
+                peer_address,
+                error.is_some()
+            ),
+            Event::OutgoingFailed {
+                peer_id: None,
+                peer_address,
+                error,
+            } => write!(
+                f,
+                "failed outgoing {}: (is_err {})",
+                peer_address,
                 error.is_some()
             ),
             Event::NetworkRequest { req } => write!(f, "request: {}", req),
+            Event::GossipOurAddress => write!(f, "gossip our address"),
+            Event::PeerAddressReceived(gossiped_address) => {
+                write!(f, "received gossiped peer address {}", gossiped_address)
+            }
         }
     }
 }

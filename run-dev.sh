@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# run-dev: A quicky and dirty script to run a testing setup of local nodes.
+# run-dev: A quick and dirty script to run a testing setup of local nodes.
 
 set -eu
 
@@ -13,6 +13,13 @@ run_node() {
     rm -rf ${STORAGE_DIR}
     rm -f ${LOGFILE}
     mkdir -p ${STORAGE_DIR}
+
+    if [ $1 -ne 1 ]
+    then
+        BIND_PORT_ARG=--config-ext=network.bind_port=0
+    else
+        BIND_PORT_ARG=
+    fi
 
     systemd-run \
         --user \
@@ -27,8 +34,10 @@ run_node() {
         cargo run -p casper-node \
         validator \
         resources/local/config.toml \
-        -C consensus.secret_key_path=secret_keys/node-${ID}.pem \
-        -C storage.path=${STORAGE_DIR}
+        --config-ext=consensus.secret_key_path=secret_keys/node-${ID}.pem \
+        --config-ext=storage.path=${STORAGE_DIR} \
+        --config-ext=network.gossip_interval=1000 \
+        ${BIND_PORT_ARG}
 
     echo "Started node $ID, logfile: ${LOGFILE}"
 }

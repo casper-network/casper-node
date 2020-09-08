@@ -23,7 +23,6 @@
 //! # };
 //! #
 //! # use derive_more::From;
-//! # use maplit::hashmap;
 //! # use prometheus::Registry;
 //! # use rand::{rngs::OsRng, CryptoRng, Rng};
 //! #
@@ -266,14 +265,14 @@
 //!     }
 //! }
 //!
-//! assert_eq!(global_count, hashmap!{
-//!     1 => 2 * TEST_NODE_COUNT,
-//!     2 => TEST_NODE_COUNT,
-//!     3 => TEST_GOSSIP_COUNT,
-//!     4 => 2 * TEST_GOSSIP_COUNT,
-//!     6 => TEST_NODE_COUNT,
-//!     8 => TEST_GOSSIP_COUNT,
-//! });
+//! let mut expected = HashMap::new();
+//! let _ = expected.insert(1, 2 * TEST_NODE_COUNT);
+//! let _ = expected.insert(2, TEST_NODE_COUNT);
+//! let _ = expected.insert(3, TEST_GOSSIP_COUNT);
+//! let _ = expected.insert(4, 2 * TEST_GOSSIP_COUNT);
+//! let _ = expected.insert(6, TEST_NODE_COUNT);
+//! let _ = expected.insert(8, TEST_GOSSIP_COUNT);
+//! assert_eq!(global_count, expected);
 //!
 //! // It's good form to remove the active network.
 //! NetworkController::<Message>::remove_active();
