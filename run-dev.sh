@@ -16,9 +16,9 @@ run_node() {
 
     if [ $1 -ne 1 ]
     then
-        BIND_PORT_ARG=--config-ext=network.bind_port=0
+        BIND_ADDRESS_ARG=--config-ext=network.bind_address='0.0.0.0:0'
     else
-        BIND_PORT_ARG=
+        BIND_ADDRESS_ARG=
     fi
 
     systemd-run \
@@ -37,7 +37,7 @@ run_node() {
         --config-ext=consensus.secret_key_path=secret_keys/node-${ID}.pem \
         --config-ext=storage.path=${STORAGE_DIR} \
         --config-ext=network.gossip_interval=1000 \
-        ${BIND_PORT_ARG}
+        ${BIND_ADDRESS_ARG}
 
     echo "Started node $ID, logfile: ${LOGFILE}"
 }
