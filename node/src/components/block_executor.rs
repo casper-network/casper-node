@@ -8,6 +8,7 @@ use std::{
 use derive_more::From;
 use itertools::Itertools;
 use rand::{CryptoRng, Rng};
+use smallvec::SmallVec;
 use tracing::{debug, error, trace};
 
 use casper_execution_engine::{
@@ -61,8 +62,8 @@ pub enum Event {
     Request(BlockExecutorRequest),
     /// Received all requested deploys.
     GetDeploysResult {
-        /// State of this request.
-        state: State,
+        /// The block that needs the deploys for execution.
+        finalized_block: FinalizedBlock,
         /// Contents of deploys. All deploys are expected to be present in the storage component.
         deploys: VecDeque<Deploy>,
     },
@@ -87,12 +88,12 @@ impl Display for Event {
         match self {
             Event::Request(req) => write!(f, "{}", req),
             Event::GetDeploysResult {
-                state,
+                finalized_block,
                 deploys,
             } => write!(
                 f,
                 "fetch deploys for finalized block with height {} has {} deploys",
-                state.finalized_block.height(),
+                finalized_block.height(),
                 deploys.len()
             ),
             Event::DeployExecutionResult {
@@ -100,7 +101,8 @@ impl Display for Event {
                 result: Ok(_),
             } => write!(
                 f,
-                "deploys execution result for finalized block with height {} with pre-state hash {}: success",
+                "deploys execution result for finalized block with height {} with \
+                pre-state hash {}: success",
                 state.finalized_block.height(),
                 state.pre_state_hash
             ),
@@ -109,20 +111,29 @@ impl Display for Event {
                 result: Err(_),
             } => write!(
                 f,
-                "deploys execution result for finalized block with height {} with pre-state hash {}: root not found",
+                "deploys execution result for finalized block with height {} with \
+                pre-state hash {}: root not found",
                 state.finalized_block.height(),
                 state.pre_state_hash
             ),
-            Event::CommitExecutionEffects { state, commit_result: Ok(CommitResult::Success { state_root, ..})} => write!(
+            Event::CommitExecutionEffects {
+                state,
+                commit_result: Ok(CommitResult::Success { state_root, .. }),
+            } => write!(
                 f,
-                "commit execution effects for finalized block with height {} with pre-state hash {}: success with post-state hash {}",
+                "commit execution effects for finalized block with height {} with \
+                pre-state hash {}: success with post-state hash {}",
                 state.finalized_block.height(),
                 state.pre_state_hash,
                 state_root,
             ),
-            Event::CommitExecutionEffects { state, commit_result } => write!(
+            Event::CommitExecutionEffects {
+                state,
+                commit_result,
+            } => write!(
                 f,
-                "commit execution effects for finalized block with height {} with pre-state hash {}: failed {:?}",
+                "commit execution effects for finalized block with height {} with \
+                pre-state hash {}: failed {:?}",
                 state.finalized_block.height(),
                 state.pre_state_hash,
                 commit_result,
@@ -161,6 +172,8 @@ pub(crate) struct BlockExecutor {
     /// increasing), and the `ExecutedBlockSummary` is derived from the executed block which is
     /// created from that proto block.
     parent_map: HashMap<BlockHeight, ExecutedBlockSummary>,
+    /// Finalized blocks waiting for their pre-state hash to start executing.
+    exec_queue: HashMap<BlockHeight, (FinalizedBlock, VecDeque<Deploy>)>,
 }
 
 impl BlockExecutor {
@@ -168,6 +181,7 @@ impl BlockExecutor {
         BlockExecutor {
             genesis_post_state_hash,
             parent_map: HashMap::new(),
+            exec_queue: HashMap::new(),
         }
     }
 
@@ -177,25 +191,13 @@ impl BlockExecutor {
         effect_builder: EffectBuilder<REv>,
         finalized_block: FinalizedBlock,
     ) -> Effects<Event> {
-        let deploy_hashes = finalized_block
-            .proto_block()
-            .deploys()
-            .iter()
-            .copied()
-            .collect();
-
-        let pre_state_hash = self.pre_state_hash(&finalized_block);
-        let state = State {
-            finalized_block,
-            remaining_deploys: VecDeque::new(),
-            pre_state_hash,
-        };
+        let deploy_hashes = SmallVec::from_slice(finalized_block.proto_block().deploys());
 
         // Get all deploys in order they appear in the finalized block.
         effect_builder
             .get_deploys_from_storage(deploy_hashes)
             .event(move |result| Event::GetDeploysResult {
-                state,
+                finalized_block,
                 deploys: result
                     .into_iter()
                     // Assumes all deploys are present
@@ -218,8 +220,18 @@ impl BlockExecutor {
             None => {
                 // The state hash of the last execute-commit cycle is used as the block's post state
                 // hash.
+                let next_height = state.finalized_block.height() + 1;
                 let block = self.create_block(state.finalized_block, state.pre_state_hash);
-                return effect_builder.announce_linear_chain_block(block).ignore();
+                let mut effects = effect_builder.announce_linear_chain_block(block).ignore();
+                // If the child is already finalized, start execution.
+                if let Some((finalized_block, deploys)) = self.exec_queue.remove(&next_height) {
+                    effects.extend(self.handle_get_deploys_result(
+                        effect_builder,
+                        finalized_block,
+                        deploys,
+                    ));
+                }
+                return effects;
             }
         };
         let deploy_item = DeployItem::from(next_deploy);
@@ -234,6 +246,27 @@ impl BlockExecutor {
         effect_builder
             .request_execute(execute_request)
             .event(move |result| Event::DeployExecutionResult { state, result })
+    }
+
+    fn handle_get_deploys_result<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        finalized_block: FinalizedBlock,
+        deploys: VecDeque<Deploy>,
+    ) -> Effects<Event> {
+        if let Some(pre_state_hash) = self.pre_state_hash(&finalized_block) {
+            let state = State {
+                finalized_block,
+                remaining_deploys: deploys,
+                pre_state_hash,
+            };
+            self.execute_next_deploy_or_create_block(effect_builder, state)
+        } else {
+            // The parent block has not been executed yet; delay handling.
+            let height = finalized_block.height();
+            self.exec_queue.insert(height, (finalized_block, deploys));
+            Effects::new()
+        }
     }
 
     /// Commits the execution effects.
@@ -290,24 +323,16 @@ impl BlockExecutor {
         block
     }
 
-    fn pre_state_hash(&mut self, finalized_block: &FinalizedBlock) -> Digest {
+    fn pre_state_hash(&mut self, finalized_block: &FinalizedBlock) -> Option<Digest> {
         if finalized_block.is_genesis_child() {
-            self.genesis_post_state_hash
+            Some(self.genesis_post_state_hash)
         } else {
             // Try to get the parent's post-state-hash from the `parent_map`.
             // We're subtracting 1 from the height as we want to get _parent's_ post-state hash.
             let parent_block_height = finalized_block.height() - 1;
-            match self
-                .parent_map
+            self.parent_map
                 .get(&parent_block_height)
                 .map(|summary| summary.post_state_hash)
-            {
-                None => {
-                    error!(?parent_block_height, "failed to get pre-state-hash");
-                    panic!("failed to get pre-state hash for {:?}", parent_block_height);
-                }
-                Some(hash) => hash,
-            }
         }
     }
 }
@@ -327,10 +352,12 @@ impl<REv: ReactorEventT, R: Rng + CryptoRng + ?Sized> Component<REv, R> for Bloc
                 self.get_deploys(effect_builder, finalized_block)
             }
 
-            Event::GetDeploysResult { mut state, deploys } => {
+            Event::GetDeploysResult {
+                finalized_block,
+                deploys,
+            } => {
                 trace!(total = %deploys.len(), ?deploys, "fetched deploys");
-                state.remaining_deploys = deploys;
-                self.execute_next_deploy_or_create_block(effect_builder, state)
+                self.handle_get_deploys_result(effect_builder, finalized_block, deploys)
             }
 
             Event::DeployExecutionResult { state, result } => {
