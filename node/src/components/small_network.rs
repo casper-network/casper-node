@@ -80,6 +80,7 @@ use crate::{
         announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, EffectExt,
         EffectResultExt, Effects,
     },
+    fatal,
     reactor::{EventQueueHandle, Finalize, QueueKind},
     tls::{self, KeyFingerprint, TlsCert},
     utils,
@@ -190,28 +191,51 @@ where
             server_join_handle: Some(server_join_handle),
         };
 
-        // Connect to the known node if available.
-        let mut effects = if let Some(known_address_str) = cfg.known_address {
-            let known_address =
-                utils::resolve_address(&known_address_str).map_err(Error::ResolveAddr)?;
-            let _ = model.pending.insert(known_address);
-            connect_outgoing(
-                known_address,
-                Arc::clone(&model.certificate),
-                Arc::clone(&model.secret_key),
-            )
-            .result(
-                move |(peer_id, transport)| Event::OutgoingEstablished { peer_id, transport },
-                move |error| Event::BootstrappingFailed { error },
-            )
-        } else {
-            debug!("{}: no known nodes to connect to", model.our_id);
-            Effects::new()
-        };
+        // Bootstrap process.
+        let mut effects = Effects::new();
 
-        // Start broadcasting our public listening address.
+        for address in &cfg.known_addresses {
+            match utils::resolve_address(address) {
+                Ok(known_address) => {
+                    model.pending.insert(known_address);
+
+                    // We successfully resolved an address, add an effect to connect to it.
+                    effects.extend(
+                        connect_outgoing(
+                            known_address,
+                            Arc::clone(&model.certificate),
+                            Arc::clone(&model.secret_key),
+                        )
+                        .result(
+                            move |(peer_id, transport)| Event::OutgoingEstablished {
+                                peer_id,
+                                transport,
+                            },
+                            move |error| Event::BootstrappingFailed {
+                                address: known_address.clone(),
+                                error,
+                            },
+                        ),
+                    );
+                }
+                Err(err) => {
+                    warn!("failed to resolve known address {}: {}", address, err);
+                }
+            }
+        }
+
         let effect_builder = EffectBuilder::new(event_queue);
-        effects.extend(model.gossip_our_address(effect_builder));
+
+        // If there are no pending connections, we failed to resolve any.
+        if model.pending.is_empty() && !cfg.known_addresses.is_empty() {
+            effects.extend(fatal!(
+                effect_builder,
+                "was given known addresses, but failed to resolve any of them"
+            ));
+        } else {
+            // Start broadcasting our public listening address.
+            effects.extend(model.gossip_our_address(effect_builder));
+        }
 
         Ok((model, effects))
     }
@@ -443,6 +467,14 @@ where
     pub(crate) fn node_id(&self) -> NodeId {
         self.our_id
     }
+
+    /// Returns whether or not this node has been isolated.
+    ///
+    /// An isolated node has no chance of recovering a connection to the network and is not
+    /// connected to any peer.
+    fn is_isolated(&self) -> bool {
+        self.pending.is_empty() && self.outgoing.is_empty() && self.incoming.is_empty()
+    }
 }
 
 impl<REv, P> Finalize for SmallNetwork<REv, P>
@@ -485,9 +517,26 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::BootstrappingFailed { error } => {
-                error!(%error, "{}: connection to known node failed", self.our_id);
-                panic!("failed to connect to known node");
+            Event::BootstrappingFailed { address, error } => {
+                warn!(%error, "{}: connection to known node at {} failed", self.our_id, address);
+
+                let was_removed = self.pending.remove(&address);
+                assert!(
+                    was_removed,
+                    "Bootstrap failed for node, but it was not in the set of pending connections"
+                );
+
+                // Exit with a fatal error if bootstrapping failed entirely.
+                if self.is_isolated() {
+                    // Note that we could retry the connection to other nodes, but for now we just
+                    // leave it up to the node operator to restart.
+                    fatal!(
+                        effect_builder,
+                        "failed to connect to any known node, now isolated"
+                    )
+                } else {
+                    Effects::new()
+                }
             }
             Event::IncomingNew { stream, address } => {
                 debug!(%address, "{}: incoming connection, starting TLS handshake", self.our_id);

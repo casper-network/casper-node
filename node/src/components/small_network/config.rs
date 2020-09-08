@@ -27,7 +27,7 @@ impl Default for Config {
         Config {
             bind_address: DEFAULT_BIND_ADDRESS.to_string(),
             public_address: DEFAULT_PUBLIC_ADDRESS.to_string(),
-            known_address: None,
+            known_addresses: Vec::new(),
             gossip_interval: DEFAULT_GOSSIP_INTERVAL,
         }
     }
@@ -45,7 +45,7 @@ pub struct Config {
     /// If the port is specified as `0`, it will be replaced with the actually bound port.
     pub public_address: String,
     /// Known address of a node on the network used for joining.
-    pub known_address: Option<String>,
+    pub known_addresses: Vec<String>,
     /// Interval in milliseconds used for gossiping.
     #[serde(with = "crate::utils::milliseconds")]
     pub gossip_interval: Duration,
@@ -67,7 +67,7 @@ impl Config {
         Config {
             bind_address: bind_address.to_string(),
             public_address: bind_address.to_string(),
-            known_address: None,
+            known_addresses: Vec::new(),
             gossip_interval: DEFAULT_TEST_GOSSIP_INTERVAL,
         }
     }
@@ -82,7 +82,7 @@ impl Config {
         Config {
             bind_address: format_address(TEST_BIND_INTERFACE, 0),
             public_address: format_address(TEST_BIND_INTERFACE, 0),
-            known_address: Some(format_address(TEST_BIND_INTERFACE, known_peer_port)),
+            known_addresses: vec![format_address(TEST_BIND_INTERFACE, known_peer_port)],
             gossip_interval: DEFAULT_TEST_GOSSIP_INTERVAL,
         }
     }
