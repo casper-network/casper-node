@@ -172,6 +172,10 @@ where
                 self.is_synced = true;
                 Effects::new()
             }
+            Event::NewPeerConnected(_peer_id) => {
+                // TODO: Do something with the information that a new peer connected.
+                Effects::new()
+            }
         }
     }
 }

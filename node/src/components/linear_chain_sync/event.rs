@@ -1,5 +1,5 @@
 use crate::{
-    components::fetcher::FetchResult,
+    components::{fetcher::FetchResult, small_network::NodeId},
     types::{Block, BlockHash, DeployHash},
 };
 use std::fmt::Display;
@@ -11,6 +11,7 @@ pub enum Event {
     DeployFound(DeployHash),
     DeployNotFound(DeployHash),
     LinearChainBlocksDownloaded(),
+    NewPeerConnected(NodeId),
 }
 
 impl Display for Event {
@@ -21,6 +22,7 @@ impl Display for Event {
             Event::DeployFound(dh) => write!(f, "Deploy found: {}", dh),
             Event::DeployNotFound(dh) => write!(f, "Deploy not found: {}", dh),
             Event::LinearChainBlocksDownloaded() => write!(f, "Linear chain blocks downloaded"),
+            Event::NewPeerConnected(peer_id) => write!(f, "A new peer connected: {}", peer_id),
         }
     }
 }
