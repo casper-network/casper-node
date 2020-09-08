@@ -56,12 +56,13 @@ default values otherwise.  For example:
 cargo run --release -- validator resources/local/config.toml -C=consensus.secret_key_path=secret_keys/node-1.pem
 ```
 
-Note that `network.known_address` must refer to a public listening address of a currently-running node.  If the node
-cannot connect to this address, it will panic.  The node _can_ be run with this referring to its own address, but it
-will be equivalent to not specifying any value for `known_address` - i.e. the node will run and listen, but will be
-reliant on other nodes connecting to it in order to join the network.  This would be normal for the very first node of a
-network, but all subsequent nodes should normally specify that first node's public listening address as their
-`known_address`.
+Note that `network.known_addresses` must refer to public listening addresses of one or more
+currently-running nodes.  If the node cannot connect to any of these addresses, it will panic.  The
+node _can_ be run with this referring to its own address, but it will be equivalent to specifying an
+empty list for `known_addresses` - i.e. the node will run and listen, but will be reliant on other
+nodes connecting to it in order to join the network.  This would be normal for the very first node
+of a network, but all subsequent nodes should normally specify that first node's public listening
+address as their `known_addresses`.
 
 As well as the commented [local config file](resources/local/config.toml), there is a commented
 [local chainspec](resources/local/chainspec.toml) in the same folder.
