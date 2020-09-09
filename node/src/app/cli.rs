@@ -2,6 +2,8 @@
 //!
 //! Most configuration is done via config files (see [`config`](../config/index.html) for details).
 
+mod arglang;
+
 use std::{env, fs, path::PathBuf, str::FromStr};
 
 use anyhow::{self, bail, Context};
