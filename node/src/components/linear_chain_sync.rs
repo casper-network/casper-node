@@ -9,7 +9,7 @@ use effect::requests::{BlockValidationRequest, FetcherRequest, StorageRequest};
 pub use event::Event;
 use rand::{CryptoRng, Rng};
 use std::fmt::Display;
-use tracing::{error, info, warn};
+use tracing::{error, info, trace, warn};
 
 pub trait ReactorEventT<I>:
     From<StorageRequest<Storage>>
@@ -93,9 +93,26 @@ impl<I: Clone> LinearChainSync<I> {
     }
 
     /// Returns `true` if we have finished syncing linear chain.
-    #[allow(unused)]
     pub fn is_synced(&self) -> bool {
         self.is_synced
+    }
+
+    fn fetch_next_block_deploys<R, REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        rng: &mut R,
+    ) -> Effects<Event>
+    where
+        I: Send + Copy + 'static,
+        R: Rng + CryptoRng + ?Sized,
+        REv: ReactorEventT<I>,
+    {
+        let peer = self.random_peer_unsafe(rng);
+        let block = self
+            .linear_chain
+            .pop()
+            .expect("At least one block to download.");
+        fetch_block_deploys(effect_builder, peer, block)
     }
 }
 
@@ -135,12 +152,12 @@ where
                 Some(FetchResult::FromStorage(_)) => {
                     // We should be checking the local storage for linear blocks before we start
                     // syncing.
-                    info!("Linear block found in the local storage.");
+                    trace!(%block_hash, "Linear block found in the local storage.");
                     // If we found the linear block in the storage it means we should have all of
                     // its parents as well. If that's not the case then we have a bug.
                     effect_builder
                         .immediately()
-                        .event(move |_| Event::LinearChainBlocksDownloaded())
+                        .event(move |_| Event::LinearChainBlocksDownloaded)
                 }
                 Some(FetchResult::FromPeer(block, peer)) => {
                     if *block.hash() != block_hash {
@@ -149,20 +166,19 @@ where
                             peer, block_hash
                         );
                         // NOTE: Signal misbehaving validator to networking layer.
-                        // Continue trying to fetch it from other peers.
-                        // Panic for now.
                         return self.handle_event(
                             effect_builder,
                             rng,
                             Event::GetBlockResult(*block.hash(), None),
                         );
                     }
+                    trace!(%block_hash, "Downloaded linear chain block.");
                     self.linear_chain.push(*block.clone());
                     if block.is_genesis_child() {
                         info!("Linear chain downloaded. Starting downloading deploys.");
                         effect_builder
                             .put_block_to_storage(block)
-                            .event(move |_| Event::LinearChainBlocksDownloaded())
+                            .event(move |_| Event::LinearChainBlocksDownloaded)
                     } else {
                         self.reset_peers();
                         let parent_hash = *block.parent_hash();
@@ -177,24 +193,45 @@ where
                     }
                 }
             },
-            Event::DeploysFound(_) => unimplemented!(),
-            Event::DeploysNotFound(_) => unimplemented!(),
-            Event::LinearChainBlocksDownloaded() => {
-                let peer = self.random_peer_unsafe(rng);
-                let block = self
-                    .linear_chain
-                    .pop()
-                    .expect("At least one block to download.");
-                effect_builder
-                    .validate_block(peer, block)
-                    .event(move |(found, block)| {
-                        if found {
-                            Event::DeploysFound(*block.hash())
-                        } else {
-                            Event::DeploysNotFound(*block.hash())
-                        }
-                    })
+            Event::DeploysFound(block) => {
+                let block_hash = block.hash();
+                trace!(%block_hash, "Deploys for linear chain block found.");
+                self.reset_peers();
+                // Execute block
+                // Download next block deploys.
+                self.fetch_next_block_deploys(effect_builder, rng)
+            }
+            Event::DeploysNotFound(block) => match self.random_peer(rng) {
+                None => {
+                    let block_hash = block.hash();
+                    error!(%block_hash, "Could not download deploys from linear chain block.");
+                    panic!("Failed to download linear chain deploys.")
+                }
+                Some(peer) => fetch_block_deploys(effect_builder, peer, *block),
+            },
+            Event::LinearChainBlocksDownloaded => {
+                // Start downloading deploys from the first block of the linear chain.
+                self.fetch_next_block_deploys(effect_builder, rng)
             }
         }
     }
+}
+
+fn fetch_block_deploys<I: Send + Copy + 'static, REv>(
+    effect_builder: EffectBuilder<REv>,
+    peer: I,
+    block: Block,
+) -> Effects<Event>
+where
+    REv: ReactorEventT<I>,
+{
+    effect_builder
+        .validate_block(peer, block)
+        .event(move |(found, block)| {
+            if found {
+                Event::DeploysFound(Box::new(block))
+            } else {
+                Event::DeploysNotFound(Box::new(block))
+            }
+        })
 }

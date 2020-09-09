@@ -9,10 +9,10 @@ pub enum Event {
     Start(BlockHash),
     GetBlockResult(BlockHash, Option<FetchResult<Block>>),
     /// Deploys from the block have been found.
-    DeploysFound(BlockHash),
+    DeploysFound(Box<Block>),
     /// Deploys from the block have not been found.
-    DeploysNotFound(BlockHash),
-    LinearChainBlocksDownloaded(),
+    DeploysNotFound(Box<Block>),
+    LinearChainBlocksDownloaded,
 }
 
 impl Display for Event {
@@ -22,11 +22,11 @@ impl Display for Event {
             Event::GetBlockResult(block_hash, r) => {
                 write!(f, "Get block result for {}: {:?}", block_hash, r)
             }
-            Event::DeploysFound(block_hash) => write!(f, "Deploys for block found: {}", block_hash),
+            Event::DeploysFound(block) => write!(f, "Deploys for block found: {}", block.hash()),
             Event::DeploysNotFound(block_hash) => {
-                write!(f, "Deploy for block found: {}", block_hash)
+                write!(f, "Deploy for block found: {}", block_hash.hash())
             }
-            Event::LinearChainBlocksDownloaded() => write!(f, "Linear chain blocks downloaded"),
+            Event::LinearChainBlocksDownloaded => write!(f, "Linear chain blocks downloaded"),
         }
     }
 }
