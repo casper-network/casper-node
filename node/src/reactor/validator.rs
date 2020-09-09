@@ -300,21 +300,8 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         let validator_stakes = chainspec_loader
             .chainspec()
             .genesis
-            .accounts
-            .iter()
-            .filter_map(|genesis_account| {
-                if genesis_account.is_genesis_validator() {
-                    Some((
-                        genesis_account
-                            .public_key()
-                            .expect("should have public key"),
-                        genesis_account.bonded_amount(),
-                    ))
-                } else {
-                    None
-                }
-            })
-            .collect();
+            .genesis_validator_stakes();
+
         let (consensus, consensus_effects) = EraSupervisor::new(
             timestamp,
             WithDir::new(root, config.consensus),

@@ -238,6 +238,28 @@ pub(crate) struct GenesisConfig {
     pub(crate) highway_config: HighwayConfig,
 }
 
+impl GenesisConfig {
+    /// Returns a vector of Genesis validators' public key and their stake.
+    pub fn genesis_validator_stakes(&self) -> Vec<(PublicKey, Motes)> {
+        self.accounts
+            .iter()
+            .filter_map(|genesis_account| {
+                if genesis_account.is_genesis_validator() {
+                    Some((
+                        genesis_account
+                            .public_key()
+                            .expect("should have public key"),
+                        genesis_account.bonded_amount(),
+                    ))
+                } else {
+                    None
+                }
+            })
+            .clone()
+            .collect()
+    }
+}
+
 impl Debug for GenesisConfig {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         formatter
