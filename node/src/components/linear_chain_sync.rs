@@ -36,13 +36,13 @@ pub(crate) struct LinearChainSync<I> {
     init_hash: Option<BlockHash>,
 }
 
-impl<I: Clone> LinearChainSync<I> {
+impl<I: Clone + 'static> LinearChainSync<I> {
     #[allow(unused)]
     pub fn new<REv: ReactorEventT<I>>(
         peers: Vec<I>,
         effect_builder: EffectBuilder<REv>,
         init_hash: Option<BlockHash>,
-    ) -> (Self, Effects<Event>) {
+    ) -> (Self, Effects<Event<I>>) {
         let linear_chain_sync = LinearChainSync {
             peers: peers.clone(),
             peers_to_try: peers,
@@ -92,7 +92,7 @@ where
     R: Rng + CryptoRng + ?Sized,
     REv: ReactorEventT<I>,
 {
-    type Event = Event;
+    type Event = Event<I>;
 
     fn handle_event(
         &mut self,
@@ -172,8 +172,9 @@ where
                 self.is_synced = true;
                 Effects::new()
             }
-            Event::NewPeerConnected(_peer_id) => {
-                // TODO: Do something with the information that a new peer connected.
+            Event::NewPeerConnected(peer_id) => {
+                // Add to the set of peers we can request things from.
+                self.peers.push(peer_id);
                 Effects::new()
             }
         }

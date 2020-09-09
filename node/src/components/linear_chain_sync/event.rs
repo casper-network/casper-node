@@ -1,20 +1,23 @@
 use crate::{
-    components::{fetcher::FetchResult, small_network::NodeId},
+    components::fetcher::FetchResult,
     types::{Block, BlockHash, DeployHash},
 };
 use std::fmt::Display;
 
 #[derive(Debug)]
-pub enum Event {
+pub enum Event<I> {
     Start(BlockHash),
     GetBlockResult(BlockHash, Option<FetchResult<Block>>),
     DeployFound(DeployHash),
     DeployNotFound(DeployHash),
     LinearChainBlocksDownloaded(),
-    NewPeerConnected(NodeId),
+    NewPeerConnected(I),
 }
 
-impl Display for Event {
+impl<I> Display for Event<I>
+where
+    I: Display,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Event::Start(block_hash) => write!(f, "Start syncing from {}.", block_hash),

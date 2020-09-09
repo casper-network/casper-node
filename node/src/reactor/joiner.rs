@@ -53,7 +53,7 @@ pub enum Event {
 
     /// Linear chain event.
     #[from]
-    LinearChainSync(linear_chain_sync::Event),
+    LinearChainSync(linear_chain_sync::Event<NodeId>),
 
     /// Requests.
     /// Linear chain fetcher request.
