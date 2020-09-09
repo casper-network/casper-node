@@ -64,7 +64,7 @@ known_addresses = ['127.0.0.1:34553']
 gossip_interval = 30000
 
 # Enable systemd support. If enabled, the node will notify systemd once it has synced and its
-# listening socket for # incoming connections is open.
+# listening socket for incoming connections is open.
 #
 # It is usally better to leave this option off and enable it explicitly via command-line override
 # only in the unit files themselves via `-C=network.systemd_support=true`.
