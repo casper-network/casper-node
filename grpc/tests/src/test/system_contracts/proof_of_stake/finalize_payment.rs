@@ -31,6 +31,7 @@ pub const ARG_AMOUNT: &str = "amount";
 pub const ARG_AMOUNT_SPENT: &str = "amount_spent";
 pub const ARG_REFUND_FLAG: &str = "refund";
 pub const ARG_ACCOUNT_KEY: &str = "account";
+pub const ARG_PROPOSER: &str = "proposer";
 pub const ARG_TARGET: &str = "target";
 
 fn initialize() -> InMemoryWasmTestBuilder {
@@ -92,6 +93,7 @@ fn finalize_payment_should_not_be_run_by_non_system_accounts() {
 fn finalize_payment_should_refund_to_specified_purse() {
     let mut builder = InMemoryWasmTestBuilder::default();
     let payment_amount = *DEFAULT_PAYMENT;
+    // let proposer = ???; // TODO: Initialize a new account for a proposer, and get its AccountHash
     let refund_purse_flag: u8 = 1;
     // Don't need to run finalize_payment manually, it happens during
     // the deploy because payment code is enabled.
@@ -100,6 +102,7 @@ fn finalize_payment_should_refund_to_specified_purse() {
         ARG_REFUND_FLAG => refund_purse_flag,
         ARG_AMOUNT_SPENT => Option::<U512>::None,
         ARG_ACCOUNT_KEY => Option::<AccountHash>::None,
+        ARG_PROPOSER => proposer,
     };
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -147,14 +150,21 @@ fn finalize_payment_should_refund_to_specified_purse() {
 
     let payment_post_balance = get_pos_payment_purse_balance(&builder);
     let rewards_post_balance = get_pos_rewards_purse_balance(&builder);
+    let proposer_post_balance = get_proposer_purse_balance(&builder, proposer);
     let refund_post_balance =
         get_named_account_balance(&builder, *DEFAULT_ACCOUNT_ADDR, LOCAL_REFUND_PURSE)
             .expect("should have refund balance");
     let expected_amount = rewards_pre_balance + spent_amount;
     assert_eq!(
-        expected_amount, rewards_post_balance,
-        "validators should get paid; expected: {}, actual: {}",
-        expected_amount, rewards_post_balance
+        expected_amount, proposer_post_balance,
+        "block proposer should get paid; expected: {}, actual: {}",
+        expected_amount, proposer_post_balance
+    );
+    assert_eq!(
+        U512::zero(),
+        rewards_post_balance,
+        "rewards balance should be 0; expected: 0, actual: {}",
+        rewards_post_balance
     );
 
     // user gets refund
@@ -185,6 +195,22 @@ fn get_pos_payment_purse_balance(builder: &InMemoryWasmTestBuilder) -> U512 {
 fn get_pos_rewards_purse_balance(builder: &InMemoryWasmTestBuilder) -> U512 {
     let purse =
         get_pos_purse_by_name(builder, POS_REWARDS_PURSE).expect("should find PoS rewards purse");
+    builder.get_purse_balance(purse)
+}
+
+fn get_proposer_purse_balance(
+    builder: &InMemoryWasmTestBuilder,
+    account_address: AccountHash,
+) -> U512 {
+    let account_key = Key::Account(account_address);
+
+    let account: Account = builder
+        .query(None, account_key, &[])
+        .and_then(|v| v.try_into().map_err(|error| format!("{:?}", error)))
+        .expect("should find balance uref");
+
+    let purse = account.main_purse().clone();
+
     builder.get_purse_balance(purse)
 }
 
