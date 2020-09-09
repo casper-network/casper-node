@@ -171,7 +171,7 @@ where
     }
 }
 
-/// Parse string to using arglang.
+/// Parse string using arglang.
 pub fn parse(input: &str) -> Result<Value, Error> {
     let mut tokens = tokenize(input)?.into_iter().peekable();
     let value = parse_stream(&mut tokens)?;
