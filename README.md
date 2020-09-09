@@ -56,6 +56,8 @@ default values otherwise.  For example:
 cargo run --release -- validator resources/local/config.toml -C=consensus.secret_key_path=secret_keys/node-1.pem
 ```
 
+Beware that no semicolons (`;`) can be passed in any string on the command-line, as these serve as top-level argument separators when passing arguments via environment variables.
+
 Note that `network.known_addresses` must refer to public listening addresses of one or more
 currently-running nodes.  If the node cannot connect to any of these addresses, it will panic.  The
 node _can_ be run with this referring to its own address, but it will be equivalent to specifying an
