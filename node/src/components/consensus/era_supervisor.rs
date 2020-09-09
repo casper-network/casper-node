@@ -451,7 +451,7 @@ where
             }
             ConsensusProtocolResult::ValidateConsensusValue(sender, proto_block) => self
                 .effect_builder
-                .validate_proto_block(sender.clone(), proto_block)
+                .validate_block(sender.clone(), proto_block)
                 .event(move |(is_valid, proto_block)| {
                     if is_valid {
                         Event::AcceptProtoBlock {

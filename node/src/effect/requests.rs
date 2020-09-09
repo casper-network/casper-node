@@ -449,13 +449,13 @@ impl Display for BlockExecutorRequest {
 #[derive(Debug)]
 #[must_use]
 pub struct BlockValidationRequest<T, I> {
-    /// The proto-block to be validated.
+    /// The block to be validated.
     pub(crate) block: T,
     /// The sender of the block, which will be asked to provide all missing deploys.
     pub(crate) sender: I,
     /// Responder to call with the result.
     ///
-    /// Indicates whether or not validation was successful and returns `proto_block` unchanged.
+    /// Indicates whether or not validation was successful and returns `block` unchanged.
     pub(crate) responder: Responder<(bool, T)>,
 }
 

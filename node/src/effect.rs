@@ -97,7 +97,7 @@ use crate::{
         hash::Digest,
     },
     reactor::{EventQueueHandle, QueueKind},
-    types::{Block, BlockHash, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock},
+    types::{Block, BlockHash, BlockLike, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock},
     utils::Source,
     Chainspec,
 };
@@ -737,18 +737,15 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Checks whether the deploys included in the proto-block exist on the network.
-    pub(crate) async fn validate_proto_block<I>(
-        self,
-        sender: I,
-        proto_block: ProtoBlock,
-    ) -> (bool, ProtoBlock)
+    /// Checks whether the deploys included in the block exist on the network.
+    pub(crate) async fn validate_block<I, T>(self, sender: I, block: T) -> (bool, T)
     where
-        REv: From<BlockValidationRequest<ProtoBlock, I>>,
+        REv: From<BlockValidationRequest<T, I>>,
+        T: BlockLike + Send + 'static,
     {
         self.make_request(
             |responder| BlockValidationRequest {
-                block: proto_block,
+                block,
                 sender,
                 responder,
             },
