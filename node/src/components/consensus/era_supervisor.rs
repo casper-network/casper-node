@@ -195,7 +195,7 @@ where
             + self
                 .highway_config
                 .era_duration
-                .min(params.min_round_len() * params.end_height());
+                .max(params.min_round_len() * params.end_height());
         let should_activate =
             min_end_time >= timestamp && validators.iter().any(|v| *v.id() == our_id);
 
