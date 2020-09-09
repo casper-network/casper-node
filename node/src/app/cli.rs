@@ -33,7 +33,13 @@ pub enum Cli {
         /// Path to configuration file.
         config: PathBuf,
 
-        #[structopt(short = "C", long, env = "NODE_CONFIG", use_delimiter(true))]
+        #[structopt(
+            short = "C",
+            long,
+            env = "NODE_CONFIG",
+            use_delimiter(true),
+            value_delimiter(";")
+        )]
         /// Overrides and extensions for configuration file entries in the form
         /// <SECTION>.<KEY>=<VALUE>.  For example, '-C=node.chainspec_config_path=chainspec.toml'
         config_ext: Vec<ConfigExt>,
