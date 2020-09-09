@@ -38,6 +38,53 @@ max_stack_height = 20
 opcodes_mul = 21
 opcodes_div = 22
 
+[storage]
+gas_per_byte = 101
+
+[host_function_costs]
+
+add = 102
+add_associated_key = 103
+add_contract_version = 104 
+add_local = [105, 106]
+call_contract = [107, 108]
+call_versioned_contract = [109, 110]
+create_content_package_at_hash = 111
+create_contract_user_group = 112
+create_purse = 113
+disable_contract_version = 114
+get_balance = 115
+get_blocktime = 116
+get_caller = 117
+get_key = [118, 119]
+get_main_purse = 120
+get_named_arg = [121, 122]
+get_named_arg_size = 123
+get_phase = 124
+get_system_contract = 125
+has_key = [126, 127]
+is_valid_uref = 128
+load_named_keys = 129
+new_uref = [130, 131]
+provision_contract_user_group_uref = 132
+put_key = [133, 134]
+read_host_buffer = [135, 136]
+read_value = 137
+read_value_local = [138, 139]
+remove_associated_key = 140
+remove_contract_user_group = 141
+remove_contract_user_group_urefs = 142
+remove_key = [143, 144]
+ret = [145, 146, 147]
+revert = [148]
+set_action_threshold = [149]
+transfer_from_purse_to_account = [150]
+transfer_from_purse_to_purse = [151]
+transfer_to_account = [152]
+update_associated_key = [153]
+write = [154, 155]
+write_local = [156, 157, 158]
+
 [[upgrade]]
 protocol_version = '0.2.0'
 upgrade_installer_path = 'upgrade.wasm'
