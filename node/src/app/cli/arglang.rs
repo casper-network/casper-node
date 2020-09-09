@@ -181,7 +181,7 @@ pub fn parse(input: &str) -> Result<Value, Error> {
         return Err(Error::TrailingInput(trailing));
     }
 
-    return Ok(value);
+    Ok(value)
 }
 
 #[cfg(test)]
