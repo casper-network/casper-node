@@ -26,7 +26,6 @@ use bytes::Bytes;
 use futures::FutureExt;
 use http::Response;
 use rand::{CryptoRng, Rng};
-use serde::Serialize;
 use smallvec::smallvec;
 use tracing::{debug, info, warn};
 use warp::{
@@ -51,7 +50,7 @@ use crate::{
     },
     reactor::QueueKind,
     small_network::NodeId,
-    types::{Block, Deploy, DeployHash},
+    types::{Deploy, DeployHash, StatusFeed},
 };
 pub use config::Config;
 pub(crate) use event::Event;
@@ -62,24 +61,6 @@ const STATUS_API_PATH: &str = "status";
 
 #[derive(Debug)]
 pub(crate) struct ApiServer {}
-
-#[derive(Debug, Serialize)]
-pub struct StatusFeed {
-    last_finalized_block: Option<Block>,
-    //peers: HashMap<NodeId, SocketAddr>,
-}
-
-impl StatusFeed {
-    pub(crate) fn new(
-        last_finalized_block: Option<Block>,
-        //peers: HashMap<NodeId, SocketAddr>,
-    ) -> Self {
-        StatusFeed {
-            last_finalized_block,
-            //peers,
-        }
-    }
-}
 
 impl ApiServer {
     pub(crate) fn new<REv>(config: Config, effect_builder: EffectBuilder<REv>) -> Self
