@@ -1,7 +1,7 @@
 use std::convert::{TryFrom, TryInto};
 
-use casper_node::{
-    components::contract_runtime::core::engine_state::query::QueryRequest, crypto::hash::Digest,
+use casper_execution_engine::{
+    core::engine_state::query::QueryRequest, shared::newtypes::Blake2bHash,
 };
 
 use crate::engine_server::{ipc, mappings::MappingError};
@@ -13,9 +13,9 @@ impl TryFrom<ipc::QueryRequest> for QueryRequest {
         let state_hash = {
             let state_hash = query_request.get_state_hash();
             let length = state_hash.len();
-            if length != Digest::LENGTH {
+            if length != Blake2bHash::LENGTH {
                 return Err(MappingError::InvalidStateHashLength {
-                    expected: Digest::LENGTH,
+                    expected: Blake2bHash::LENGTH,
                     actual: length,
                 });
             }

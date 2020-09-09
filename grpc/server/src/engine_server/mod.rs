@@ -28,7 +28,7 @@ use std::{
 use grpc::{Error as GrpcError, RequestOptions, ServerBuilder, SingleResponse};
 use log::{info, warn, Level};
 
-use casper_node::components::contract_runtime::{
+use casper_execution_engine::{
     core::{
         engine_state::{
             execute_request::ExecuteRequest,
@@ -277,7 +277,7 @@ where
         let protocol_version = run_genesis_request.protocol_version();
         let ee_config = run_genesis_request.ee_config();
 
-        let genesis_response = match self.commit_genesis_old(
+        let genesis_response = match self.commit_genesis(
             correlation_id,
             genesis_config_hash,
             protocol_version,

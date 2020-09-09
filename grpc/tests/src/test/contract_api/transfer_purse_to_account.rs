@@ -9,9 +9,7 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
-use casper_node::components::contract_runtime::shared::{
-    stored_value::StoredValue, transform::Transform,
-};
+use casper_execution_engine::shared::{stored_value::StoredValue, transform::Transform};
 use casper_types::{
     account::AccountHash, runtime_args, ApiError, CLValue, Key, RuntimeArgs, TransferResult,
     TransferredTo, U512,

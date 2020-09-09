@@ -7,7 +7,7 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_node::components::contract_runtime::core::{
+use casper_execution_engine::core::{
     engine_state::Error as CoreError, execution::Error as ExecError,
 };
 use casper_types::{

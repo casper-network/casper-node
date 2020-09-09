@@ -1,6 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
-use casper_node::components::contract_runtime::shared::{
+use casper_execution_engine::shared::{
     stored_value::StoredValue,
     transform::{Error as TransformError, Transform},
 };
@@ -108,7 +108,7 @@ impl TryFrom<transforms::Transform> for Transform {
 mod tests {
     use proptest::proptest;
 
-    use casper_node::components::contract_runtime::shared::transform::gens;
+    use casper_execution_engine::shared::transform::gens;
 
     use super::*;
     use crate::engine_server::mappings::test_utils;

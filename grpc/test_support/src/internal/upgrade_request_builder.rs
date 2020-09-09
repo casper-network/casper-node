@@ -5,7 +5,7 @@ use casper_engine_grpc_server::engine_server::{
     },
     state,
 };
-use casper_node::components::contract_runtime::shared::wasm_costs::WasmCosts;
+use casper_execution_engine::shared::wasm_costs::WasmCosts;
 use casper_types::ProtocolVersion;
 
 pub struct UpgradeRequestBuilder {

@@ -278,7 +278,8 @@ message ChainSpec {
             CostTable costs = 5;
 
             message GenesisAccount {
-                bytes public_key_hash = 1;
+                bytes public_key_bytes = 1;
+                bytes account_hash_bytes = 4;
                 casper.state.BigInt balance = 2; // in motes
                 casper.state.BigInt bonded_amount = 3; // in motes, 0 means "not bonded"
             }

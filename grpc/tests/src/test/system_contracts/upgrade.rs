@@ -6,10 +6,8 @@ use casper_engine_test_support::internal::{
 #[cfg(feature = "use-system-contracts")]
 use casper_engine_test_support::{internal::ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
 #[cfg(feature = "use-system-contracts")]
-use casper_node::components::contract_runtime::shared::{
-    stored_value::StoredValue, transform::Transform,
-};
-use casper_node::components::contract_runtime::{
+use casper_execution_engine::shared::{stored_value::StoredValue, transform::Transform};
+use casper_execution_engine::{
     core::engine_state::{upgrade::ActivationPoint, Error},
     shared::wasm_costs::WasmCosts,
 };

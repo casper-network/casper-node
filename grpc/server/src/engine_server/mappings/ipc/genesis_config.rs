@@ -1,6 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
-use casper_node::components::contract_runtime::core::engine_state::genesis::GenesisConfig;
+use casper_execution_engine::core::engine_state::genesis::GenesisConfig;
 
 use crate::engine_server::{ipc::ChainSpec_GenesisConfig, mappings::MappingError};
 

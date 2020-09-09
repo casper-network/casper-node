@@ -10,8 +10,8 @@ use std::{
     string::ToString,
 };
 
-use casper_node::components::contract_runtime::core::{engine_state, DEPLOY_HASH_LENGTH};
-use casper_types::{account::ACCOUNT_HASH_LENGTH, KEY_HASH_LENGTH};
+use casper_execution_engine::core::{engine_state, DEPLOY_HASH_LENGTH};
+use casper_types::{account::ACCOUNT_HASH_LENGTH, bytesrepr, KEY_HASH_LENGTH};
 
 pub use transforms::TransformMap;
 
@@ -33,6 +33,7 @@ pub enum MappingError {
     InvalidStateHash(String),
     MissingPayload,
     TryFromSlice,
+    Serialization(bytesrepr::Error),
 }
 
 impl MappingError {
@@ -55,6 +56,12 @@ impl MappingError {
 impl From<ParsingError> for MappingError {
     fn from(error: ParsingError) -> Self {
         MappingError::Parsing(error)
+    }
+}
+
+impl From<bytesrepr::Error> for MappingError {
+    fn from(error: bytesrepr::Error) -> Self {
+        Self::Serialization(error)
     }
 }
 
@@ -97,6 +104,7 @@ impl Display for MappingError {
                 "Invalid hash length: expected {}, actual {}",
                 expected, actual
             ),
+            MappingError::Serialization(error) => write!(f, "{}", error),
         }
     }
 }

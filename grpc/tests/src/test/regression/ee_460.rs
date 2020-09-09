@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_node::components::contract_runtime::shared::transform::Transform;
+use casper_execution_engine::shared::transform::Transform;
 use casper_types::{runtime_args, RuntimeArgs, U512};
 
 const CONTRACT_EE_460_REGRESSION: &str = "ee_460_regression.wasm";

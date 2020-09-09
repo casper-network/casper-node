@@ -1,40 +1,39 @@
 //! Contract Runtime component.
 mod config;
-pub mod core;
-pub mod shared;
-pub mod storage;
+
+pub use config::Config;
 
 use std::{
     fmt::{self, Debug, Display, Formatter},
     sync::Arc,
+    time::Instant,
 };
 
 use derive_more::From;
 use lmdb::DatabaseFlags;
+use prometheus::{self, Histogram, HistogramOpts, Registry};
 use rand::{CryptoRng, Rng};
 use thiserror::Error;
 use tokio::task;
 use tracing::trace;
 
-use crate::{
-    components::{
-        contract_runtime::{
-            core::engine_state::{EngineConfig, EngineState},
-            shared::newtypes::CorrelationId,
-            storage::{
-                error::lmdb::Error as StorageLmdbError, global_state::lmdb::LmdbGlobalState,
-                protocol_data_store::lmdb::LmdbProtocolDataStore,
-                transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore,
-            },
-        },
-        Component,
+use casper_execution_engine::{
+    core::engine_state::{genesis::GenesisResult, EngineConfig, EngineState, Error},
+    shared::newtypes::CorrelationId,
+    storage::{
+        error::lmdb::Error as StorageLmdbError, global_state::lmdb::LmdbGlobalState,
+        protocol_data_store::lmdb::LmdbProtocolDataStore,
+        transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore,
     },
-    effect::{requests::ContractRuntimeRequest, EffectBuilder, EffectExt, Effects},
-    StorageConfig,
 };
-pub use config::Config;
-use prometheus::{exponential_buckets, Histogram, HistogramOpts, Registry};
-use std::time::Instant;
+use casper_types::ProtocolVersion;
+
+use crate::{
+    components::Component,
+    crypto::hash,
+    effect::{requests::ContractRuntimeRequest, EffectBuilder, EffectExt, Effects},
+    Chainspec, StorageConfig,
+};
 
 /// The contract runtime components.
 pub(crate) struct ContractRuntime {
@@ -95,7 +94,7 @@ fn register_histogram_metric(
     metric_name: &str,
     metric_help: &str,
 ) -> Result<Histogram, prometheus::Error> {
-    let common_buckets = exponential_buckets(
+    let common_buckets = prometheus::exponential_buckets(
         EXPONENTIAL_BUCKET_START,
         EXPONENTIAL_BUCKET_FACTOR,
         EXPONENTIAL_BUCKET_COUNT,
@@ -144,7 +143,7 @@ where
                 chainspec,
                 responder,
             }) => {
-                let result = self.engine_state.commit_genesis(*chainspec);
+                let result = self.commit_genesis(chainspec);
                 responder.respond(result).ignore()
             }
             Event::Request(ContractRuntimeRequest::Execute {
@@ -182,8 +181,11 @@ where
                     let correlation_id = CorrelationId::new();
                     let result = task::spawn_blocking(move || {
                         let start = Instant::now();
-                        let apply_result =
-                            engine_state.apply_effect(correlation_id, pre_state_hash, effects);
+                        let apply_result = engine_state.apply_effect(
+                            correlation_id,
+                            pre_state_hash.into(),
+                            effects,
+                        );
                         metrics.apply_effect.observe(start.elapsed().as_secs_f64());
                         apply_result
                     })
@@ -290,5 +292,25 @@ impl ContractRuntime {
             engine_state,
             metrics,
         })
+    }
+
+    /// Commits a genesis using a chainspec
+    fn commit_genesis(&self, chainspec: Box<Chainspec>) -> Result<GenesisResult, Error> {
+        let correlation_id = CorrelationId::new();
+        let serialized_chainspec = rmp_serde::to_vec(&chainspec)?;
+        let genesis_config_hash = hash::hash(&serialized_chainspec);
+        let protocol_version = ProtocolVersion::from_parts(
+            chainspec.genesis.protocol_version.major as u32,
+            chainspec.genesis.protocol_version.minor as u32,
+            chainspec.genesis.protocol_version.patch as u32,
+        );
+        // Transforms a chainspec into a valid genesis config for execution engine.
+        let ee_config = (*chainspec).into();
+        self.engine_state.commit_genesis(
+            correlation_id,
+            genesis_config_hash.into(),
+            protocol_version,
+            &ee_config,
+        )
     }
 }
