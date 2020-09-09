@@ -79,6 +79,13 @@ impl<I: Clone> LinearChainSync<I> {
         Some(self.peers_to_try.remove(idx))
     }
 
+    // Unsafe version of `random_peer`.
+    // Panics if no peer is available for querying.
+    fn random_peer_unsafe<R: Rng + ?Sized>(&mut self, rand: &mut R) -> I {
+        self.random_peer(rand)
+            .expect("At least one peer available.")
+    }
+
     /// Returns `true` if we have finished syncing linear chain.
     #[allow(unused)]
     pub fn is_synced(&self) -> bool {
@@ -102,9 +109,7 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::Start(block_hash) => {
-                let peer = self
-                    .random_peer(rng)
-                    .expect("Should have at least 1 peer to start.");
+                let peer = self.random_peer_unsafe(rng);
                 effect_builder.fetch_block(block_hash, peer).option(
                     move |value| Event::GetBlockResult(block_hash, Some(value)),
                     move || Event::GetBlockResult(block_hash, None),
@@ -155,7 +160,7 @@ where
                     } else {
                         self.reset_peers();
                         let parent_hash = *block.parent_hash();
-                        let peer = self.random_peer(rng).expect("At least 1 peer available.");
+                        let peer = self.random_peer_unsafe(rng);
                         let mut effects = effect_builder.put_block_to_storage(block).ignore();
                         let fetch_parent = effect_builder.fetch_block(parent_hash, peer).option(
                             move |value| Event::GetBlockResult(block_hash, Some(value)),
