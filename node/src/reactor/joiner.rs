@@ -11,6 +11,7 @@ use rand::{CryptoRng, Rng};
 
 use crate::{
     components::{
+        block_validator::{self, BlockValidator},
         chainspec_loader::ChainspecLoader,
         contract_runtime::ContractRuntime,
         fetcher::{self, Fetcher},
@@ -22,7 +23,7 @@ use crate::{
     },
     effect::{
         announcements::NetworkAnnouncement,
-        requests::{FetcherRequest, NetworkRequest, StorageRequest},
+        requests::{BlockValidationRequest, FetcherRequest, NetworkRequest, StorageRequest},
         EffectBuilder, Effects,
     },
     protocol::Message,
@@ -31,7 +32,7 @@ use crate::{
         validator::{self, Error, ValidatorInitConfig},
         EventQueueHandle, Finalize,
     },
-    types::Block,
+    types::{Block, Deploy},
     utils::WithDir,
 };
 
@@ -51,6 +52,14 @@ pub enum Event {
     #[from]
     BlockFetcher(fetcher::Event<Block>),
 
+    /// Deploy fetcher event.
+    #[from]
+    DeployFetcher(fetcher::Event<Deploy>),
+
+    /// Block validator event.
+    #[from]
+    BlockValidator(block_validator::Event<Block, NodeId>),
+
     /// Linear chain event.
     #[from]
     LinearChainSync(linear_chain_sync::Event),
@@ -59,6 +68,15 @@ pub enum Event {
     /// Linear chain fetcher request.
     #[from]
     BlockFetcherRequest(FetcherRequest<NodeId, Block>),
+
+    /// Deploy fetcher request.
+    #[from]
+    DeployFetcherRequest(FetcherRequest<NodeId, Deploy>),
+
+    /// Block validation request.
+    #[from]
+    BlockValidatorRequest(BlockValidationRequest<Block, NodeId>),
+
     // Announcements
     /// Network announcement.
     #[from]
@@ -84,8 +102,16 @@ impl Display for Event {
             Event::NetworkAnnouncement(event) => write!(f, "network announcement: {}", event),
             Event::Storage(request) => write!(f, "storage: {}", request),
             Event::BlockFetcherRequest(request) => write!(f, "block fetcher request: {}", request),
+            Event::BlockValidatorRequest(request) => {
+                write!(f, "block validator request: {}", request)
+            }
+            Event::DeployFetcherRequest(request) => {
+                write!(f, "deploy fetcher request: {}", request)
+            }
             Event::LinearChainSync(event) => write!(f, "linear chain: {}", event),
             Event::BlockFetcher(event) => write!(f, "block fetcher: {}", event),
+            Event::BlockValidator(event) => write!(f, "block validator event: {}", event),
+            Event::DeployFetcher(event) => write!(f, "deploy fetcher event: {}", event),
         }
     }
 }
@@ -101,6 +127,8 @@ pub struct Reactor {
     pub(super) contract_runtime: ContractRuntime,
     pub(super) linear_chain_fetcher: Fetcher<Block>,
     pub(super) linear_chain_sync: LinearChainSync<NodeId>,
+    pub(super) block_validator: BlockValidator<Block, NodeId>,
+    pub(super) deploy_fetcher: Fetcher<Deploy>,
 }
 
 impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor {
@@ -142,6 +170,10 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor {
             linear_effects,
         ));
 
+        let block_validator = BlockValidator::new();
+
+        let deploy_fetcher = Fetcher::new(config.gossip);
+
         Ok((
             Self {
                 net,
@@ -152,6 +184,8 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor {
                 contract_runtime,
                 linear_chain_sync,
                 linear_chain_fetcher,
+                block_validator,
+                deploy_fetcher,
             },
             effects,
         ))
@@ -176,6 +210,10 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor {
             Event::BlockFetcherRequest(request) => {
                 self.dispatch_event(effect_builder, rng, Event::BlockFetcher(request.into()))
             }
+
+            Event::BlockValidatorRequest(request) => {
+                self.dispatch_event(effect_builder, rng, Event::BlockValidator(request.into()))
+            }
             Event::LinearChainSync(event) => reactor::wrap_effects(
                 Event::LinearChainSync,
                 self.linear_chain_sync
@@ -186,6 +224,18 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor {
                 self.linear_chain_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
+            Event::BlockValidator(event) => reactor::wrap_effects(
+                Event::BlockValidator,
+                self.block_validator
+                    .handle_event(effect_builder, rng, event),
+            ),
+            Event::DeployFetcher(event) => reactor::wrap_effects(
+                Event::DeployFetcher,
+                self.deploy_fetcher.handle_event(effect_builder, rng, event),
+            ),
+            Event::DeployFetcherRequest(request) => {
+                self.dispatch_event(effect_builder, rng, Event::DeployFetcher(request.into()))
+            }
         }
     }
 

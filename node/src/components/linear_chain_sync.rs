@@ -5,19 +5,25 @@ use crate::{
     effect::{self, EffectBuilder, EffectExt, EffectOptionExt, Effects},
     types::{Block, BlockHash},
 };
-use effect::requests::{FetcherRequest, StorageRequest};
+use effect::requests::{BlockValidationRequest, FetcherRequest, StorageRequest};
 pub use event::Event;
 use rand::{CryptoRng, Rng};
 use std::fmt::Display;
 use tracing::{error, info, warn};
 
 pub trait ReactorEventT<I>:
-    From<StorageRequest<Storage>> + From<FetcherRequest<I, Block>> + Send
+    From<StorageRequest<Storage>>
+    + From<FetcherRequest<I, Block>>
+    + From<BlockValidationRequest<Block, I>>
+    + Send
 {
 }
 
 impl<I, REv> ReactorEventT<I> for REv where
-    REv: From<StorageRequest<Storage>> + From<FetcherRequest<I, Block>> + Send
+    REv: From<StorageRequest<Storage>>
+        + From<FetcherRequest<I, Block>>
+        + From<BlockValidationRequest<Block, I>>
+        + Send
 {
 }
 
@@ -173,6 +179,22 @@ where
             },
             Event::DeploysFound(_) => unimplemented!(),
             Event::DeploysNotFound(_) => unimplemented!(),
+            Event::LinearChainBlocksDownloaded() => {
+                let peer = self.random_peer_unsafe(rng);
+                let block = self
+                    .linear_chain
+                    .pop()
+                    .expect("At least one block to download.");
+                effect_builder
+                    .validate_block(peer, block)
+                    .event(move |(found, block)| {
+                        if found {
+                            Event::DeploysFound(*block.hash())
+                        } else {
+                            Event::DeploysNotFound(*block.hash())
+                        }
+                    })
+            }
         }
     }
 }
