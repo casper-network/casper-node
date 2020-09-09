@@ -63,6 +63,10 @@ max_block_size = 10485760
 # The upper limit of total gas of all deploys in a block.
 block_gas_limit = 10_000_000_000_000
 
+[storage]
+# Gas charged per byte stored in the global state.
+gas_per_byte = 630_000_000
+
 [wasm_costs]
 # Default opcode cost.
 regular = 210_000
