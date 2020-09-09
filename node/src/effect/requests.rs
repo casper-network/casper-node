@@ -10,22 +10,23 @@ use std::{
 
 use semver::Version;
 
+use casper_execution_engine::{
+    core::engine_state::{
+        self,
+        execute_request::ExecuteRequest,
+        execution_result::ExecutionResults,
+        genesis::GenesisResult,
+        query::{QueryRequest, QueryResult},
+        upgrade::{UpgradeConfig, UpgradeResult},
+    },
+    shared::{additive_map::AdditiveMap, transform::Transform},
+    storage::global_state::CommitResult,
+};
 use casper_types::Key;
 
 use super::Responder;
 use crate::{
     components::{
-        contract_runtime::{
-            core::engine_state::{
-                self,
-                execute_request::ExecuteRequest,
-                genesis::GenesisResult,
-                query::{QueryRequest, QueryResult},
-                upgrade::{UpgradeConfig, UpgradeResult},
-            },
-            shared::{additive_map::AdditiveMap, transform::Transform},
-            storage::global_state::CommitResult,
-        },
         fetcher::FetchResult,
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
@@ -36,7 +37,6 @@ use crate::{
     utils::DisplayIter,
     Chainspec,
 };
-use engine_state::execution_result::ExecutionResults;
 
 /// A metrics request.
 #[derive(Debug)]

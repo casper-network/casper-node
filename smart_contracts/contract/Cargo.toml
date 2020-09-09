@@ -7,7 +7,7 @@ description = "Library for developing Casper smart contracts."
 readme = "README.md"
 documentation = "https://docs.rs/casper-contract"
 homepage = "https://casperlabs.io"
-repository = "https://github.com/CasperLabs/casperlabs-node/tree/master/smart_contracts/contract"
+repository = "https://github.com/CasperLabs/casper-node/tree/master/smart_contracts/contract"
 license-file = "../../LICENSE"
 
 [dependencies]

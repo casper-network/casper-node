@@ -74,20 +74,22 @@ use semver::Version;
 use smallvec::{smallvec, SmallVec};
 use tracing::error;
 
+use casper_execution_engine::{
+    core::{
+        engine_state::{
+            self, execute_request::ExecuteRequest, execution_result::ExecutionResults,
+            genesis::GenesisResult,
+        },
+        execution,
+    },
+    shared::{additive_map::AdditiveMap, transform::Transform},
+    storage::global_state::CommitResult,
+};
 use casper_types::Key;
-use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
 
 use crate::{
     components::{
         consensus::BlockContext,
-        contract_runtime::{
-            core::{
-                engine_state::{self, genesis::GenesisResult},
-                execution,
-            },
-            shared::{additive_map::AdditiveMap, transform::Transform},
-            storage::global_state::CommitResult,
-        },
         fetcher::FetchResult,
         small_network::GossipedAddress,
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},

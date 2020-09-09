@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::BTreeSet, convert::TryInto, rc::Rc};
 
 use casper_engine_grpc_server::engine_server::ipc_grpc::ExecutionEngineService;
-use casper_node::components::contract_runtime::{
+use casper_execution_engine::{
     core::{
         engine_state::{
             executable_deploy_item::ExecutableDeployItem, execution_effect::ExecutionEffect,

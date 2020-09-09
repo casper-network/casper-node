@@ -7,15 +7,12 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
-use casper_node::{
-    components::contract_runtime::{
-        core::{
-            engine_state::{genesis::POS_REWARDS_PURSE, Error, CONV_RATE, MAX_PAYMENT},
-            execution,
-        },
-        shared::transform::Transform,
+use casper_execution_engine::{
+    core::{
+        engine_state::{genesis::POS_REWARDS_PURSE, Error, CONV_RATE, MAX_PAYMENT},
+        execution,
     },
-    types::Motes,
+    shared::{motes::Motes, transform::Transform},
 };
 use casper_types::{account::AccountHash, runtime_args, ApiError, Key, RuntimeArgs, URef, U512};
 

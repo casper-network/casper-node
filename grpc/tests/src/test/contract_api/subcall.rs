@@ -7,7 +7,7 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_node::components::contract_runtime::core::engine_state::CONV_RATE;
+use casper_execution_engine::core::engine_state::CONV_RATE;
 use casper_types::{contracts::CONTRACT_INITIAL_VERSION, runtime_args, RuntimeArgs, U512};
 
 const ARG_TARGET: &str = "target_contract";
