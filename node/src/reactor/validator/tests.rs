@@ -9,7 +9,7 @@ use crate::{
     crypto::asymmetric_key::SecretKey,
     reactor::{initializer, joiner, validator, Runner},
     testing::{self, network::Network, ConditionCheckReactor, TestRng},
-    types::Motes,
+    types::{Motes, Timestamp},
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
     Chainspec, GenesisAccount,
 };
@@ -45,6 +45,9 @@ impl TestChain {
                 )
             })
             .collect();
+        // TODO: This is duplicated. Remove the `HighwayConfig` field.
+        chainspec.genesis.timestamp = Timestamp::now();
+        chainspec.genesis.highway_config.genesis_era_start_timestamp = Timestamp::now();
 
         TestChain {
             keys,
