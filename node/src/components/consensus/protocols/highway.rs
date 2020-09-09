@@ -76,8 +76,14 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         // For adaptive round lengths we will probably want to use the most recent one from the
         // previous era instead.
         let round_exp = params.min_round_exp();
+        // Only activate if we are a validator and the era has not ended yet.
+        let should_activate = validators.iter().any(|v| *v.id() == our_id);
         let mut highway = Highway::new(instance_id, validators, params);
-        let av_effects = highway.activate_validator(our_id, secret, round_exp, timestamp);
+        let av_effects = if should_activate {
+            highway.activate_validator(our_id, secret, round_exp, timestamp)
+        } else {
+            Vec::new()
+        };
         let mut instance = HighwayProtocol {
             synchronizer: DagSynchronizerState::new(),
             finality_detector: FinalityDetector::new(ftt),

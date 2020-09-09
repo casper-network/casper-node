@@ -79,7 +79,7 @@ use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionR
 
 use crate::{
     components::{
-        consensus::{BlockContext, EraId},
+        consensus::BlockContext,
         contract_runtime::{
             core::{
                 engine_state::{self, genesis::GenesisResult},
@@ -97,7 +97,7 @@ use crate::{
         hash::Digest,
     },
     reactor::{EventQueueHandle, QueueKind},
-    types::{Block, BlockHash, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock},
+    types::{Block, BlockHash, BlockHeader, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock},
     utils::Source,
     Chainspec,
 };
@@ -903,17 +903,13 @@ impl<REv> EffectBuilder<REv> {
         todo!("run_auction")
     }
 
-    /// Request consensus to sign a block from the linear chain.
-    pub(crate) async fn sign_linear_chain_block(
-        self,
-        era_id: EraId,
-        block_hash: BlockHash,
-    ) -> Signature
+    /// Request consensus to sign a block from the linear chain and possibly start a new era.
+    pub(crate) async fn handle_linear_chain_block(self, block_header: BlockHeader) -> Signature
     where
         REv: From<ConsensusRequest>,
     {
         self.make_request(
-            |responder| ConsensusRequest::SignLinearBlock(era_id, block_hash, responder),
+            |responder| ConsensusRequest::HandleLinearBlock(Box::new(block_header), responder),
             QueueKind::Regular,
         )
         .await

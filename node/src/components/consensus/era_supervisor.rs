@@ -38,7 +38,7 @@ use crate::{
         hash,
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
-    types::{BlockHash, FinalizedBlock, Motes, ProtoBlock, SystemTransaction, Timestamp},
+    types::{BlockHeader, FinalizedBlock, Motes, ProtoBlock, SystemTransaction, Timestamp},
     utils::WithDir,
 };
 use asymmetric_key::Signature;
@@ -299,20 +299,42 @@ where
         effects
     }
 
-    pub(super) fn sign_linear_chain_block(
+    pub(super) fn handle_linear_chain_block(
         &mut self,
-        _era_id: EraId,
-        block_hash: BlockHash,
+        block_header: BlockHeader,
         responder: Responder<Signature>,
     ) -> Effects<Event<I>> {
+        assert_eq!(
+            block_header.era_id(),
+            self.era_supervisor.current_era,
+            "executed block in unexpected era"
+        );
         // TODO - we should only sign if we're a validator for the given era ID.
         let signature = asymmetric_key::sign(
-            block_hash.inner(),
+            block_header.hash().inner(),
             &self.era_supervisor.secret_signing_key,
             &self.era_supervisor.public_signing_key,
             self.rng,
         );
-        responder.respond(signature).ignore()
+        let mut effects = responder.respond(signature).ignore();
+        if block_header.switch_block() {
+            // TODO: Learn the new weights from contract (validator rotation).
+            let validator_stakes = self.era_supervisor.validator_stakes.clone();
+            self.era_supervisor
+                .current_era_mut()
+                .consensus
+                .deactivate_validator();
+            let new_era_id = block_header.era_id().successor();
+            let results = self.era_supervisor.new_era(
+                new_era_id,
+                Timestamp::now(), // TODO: This should be passed in.
+                validator_stakes,
+                block_header.timestamp(),
+                block_header.height() + 1,
+            );
+            effects.extend(self.handle_consensus_results(new_era_id, results));
+        }
+        effects
     }
 
     pub(super) fn handle_accept_proto_block(
@@ -407,10 +429,6 @@ where
                     .effect_builder
                     .announce_finalized_proto_block(proto_block.clone())
                     .ignore();
-                assert_eq!(
-                    era_id, self.era_supervisor.current_era,
-                    "finalized block in unexpected era"
-                );
                 // Create instructions for slashing equivocators.
                 let mut system_transactions: Vec<_> = new_equivocators
                     .into_iter()
@@ -428,23 +446,6 @@ where
                     self.era_supervisor.active_eras[&era_id].start_height + height,
                     proposer,
                 );
-                if fb.switch_block() {
-                    // TODO: Learn the new weights from contract (validator rotation).
-                    let validator_stakes = self.era_supervisor.validator_stakes.clone();
-                    self.era_supervisor
-                        .current_era_mut()
-                        .consensus
-                        .deactivate_validator();
-                    let results = self.era_supervisor.new_era(
-                        fb.era_id().successor(),
-                        fb.timestamp(),
-                        validator_stakes,
-                        fb.timestamp(),
-                        fb.height() + 1,
-                    );
-                    let new_era_id = era_id.successor();
-                    effects.extend(self.handle_consensus_results(new_era_id, results));
-                }
                 // Request execution of the finalized block.
                 effects.extend(self.effect_builder.execute_block(fb).ignore());
                 effects
