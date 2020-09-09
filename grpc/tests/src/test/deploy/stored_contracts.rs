@@ -8,13 +8,10 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
-use casper_node::{
-    components::contract_runtime::{
-        core::engine_state::{upgrade::ActivationPoint, CONV_RATE},
-        shared::{account::Account, stored_value::StoredValue, transform::Transform},
-        storage::global_state::in_memory::InMemoryGlobalState,
-    },
-    types::Motes,
+use casper_execution_engine::{
+    core::engine_state::{upgrade::ActivationPoint, CONV_RATE},
+    shared::{account::Account, motes::Motes, stored_value::StoredValue, transform::Transform},
+    storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{
     account::AccountHash,

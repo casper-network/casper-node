@@ -1,8 +1,7 @@
 use std::convert::{TryFrom, TryInto};
 
-use casper_node::{
-    components::contract_runtime::core::engine_state::run_genesis_request::RunGenesisRequest,
-    crypto::hash::Digest,
+use casper_execution_engine::{
+    core::engine_state::run_genesis_request::RunGenesisRequest, shared::newtypes::Blake2bHash,
 };
 
 use crate::engine_server::{ipc, mappings::MappingError};
@@ -11,7 +10,7 @@ impl TryFrom<ipc::RunGenesisRequest> for RunGenesisRequest {
     type Error = MappingError;
 
     fn try_from(mut run_genesis_request: ipc::RunGenesisRequest) -> Result<Self, Self::Error> {
-        let hash: Digest = run_genesis_request
+        let hash: Blake2bHash = run_genesis_request
             .get_genesis_config_hash()
             .try_into()
             .map_err(|_| MappingError::TryFromSlice)?;

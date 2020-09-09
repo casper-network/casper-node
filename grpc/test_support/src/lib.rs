@@ -20,20 +20,20 @@
 //!
 //! The test could be written as follows:
 //! ```no_run
-//! use casper_engine_test_support::{Code, Error, SessionBuilder, TestContextBuilder, Value, PublicKey, SecretKey};
-//! use casper_types::{U512, RuntimeArgs, runtime_args};
+//! use casper_engine_test_support::{Code, Error, SessionBuilder, TestContextBuilder, Value};
+//! use casper_types::{U512, RuntimeArgs, runtime_args, PublicKey, account::AccountHash};
 //!
 //! const MY_ACCOUNT: [u8; 32] = [7u8; 32];
+//! const MY_ADDR: [u8; 32] = [8u8; 32];
 //! const KEY: &str = "special_value";
 //! const VALUE: &str = "hello world";
 //! const ARG_MESSAGE: &str = "message";
 //!
-//! let secret_key = SecretKey::new_ed25519(MY_ACCOUNT);
-//! let public_key = PublicKey::from(&secret_key);
-//! let account_addr = public_key.to_account_hash();
+//! let public_key = PublicKey::Ed25519(MY_ACCOUNT);
+//! let account_addr = AccountHash::new(MY_ADDR);
 //!
 //! let mut context = TestContextBuilder::new()
-//!     .with_public_key(public_key, U512::from(128_000_000))
+//!     .with_public_key(public_key, account_addr, U512::from(128_000_000))
 //!     .build();
 //!
 //! // The test framework checks for compiled Wasm files in '<current working dir>/wasm'.  Paths
@@ -75,7 +75,6 @@ mod test_context;
 mod value;
 
 pub use account::Account;
-pub use casper_node::crypto::asymmetric_key::{PublicKey, SecretKey};
 pub use casper_types::account::AccountHash;
 pub use code::Code;
 pub use error::{Error, Result};

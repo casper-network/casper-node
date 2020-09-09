@@ -1,14 +1,14 @@
 use num_traits::identities::Zero;
 
-use casper_node::{
-    components::contract_runtime::core::engine_state::{
-        genesis::GenesisConfig, run_genesis_request::RunGenesisRequest, CONV_RATE,
+use casper_execution_engine::{
+    core::engine_state::{
+        genesis::{GenesisAccount, GenesisConfig},
+        run_genesis_request::RunGenesisRequest,
+        CONV_RATE,
     },
-    crypto::asymmetric_key::PublicKey,
-    types::Motes,
-    GenesisAccount,
+    shared::motes::Motes,
 };
-use casper_types::{AccessRights, Key, URef, U512};
+use casper_types::{AccessRights, Key, PublicKey, URef, U512};
 
 use crate::{
     internal::{InMemoryWasmTestBuilder, DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH},
@@ -163,9 +163,18 @@ impl TestContextBuilder {
     /// the Genesis block.
     ///
     /// Note: `initial_balance` represents the number of motes.
-    pub fn with_public_key(mut self, public_key: PublicKey, initial_balance: U512) -> Self {
-        let new_account =
-            GenesisAccount::with_public_key(public_key, Motes::new(initial_balance), Motes::zero());
+    pub fn with_public_key(
+        mut self,
+        public_key: PublicKey,
+        account_hash: AccountHash,
+        initial_balance: U512,
+    ) -> Self {
+        let new_account = GenesisAccount::new(
+            public_key,
+            account_hash,
+            Motes::new(initial_balance),
+            Motes::zero(),
+        );
         self.genesis_config
             .ee_config_mut()
             .push_account(new_account);

@@ -5,125 +5,25 @@ use std::{
 
 use csv::ReaderBuilder;
 use num_traits::Zero;
-use rand::{
-    distributions::{Distribution, Standard},
-    Rng,
-};
+#[cfg(test)]
+use rand::Rng;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
+use casper_execution_engine::{
+    core::engine_state::genesis::{ExecConfig, GenesisAccount},
+    shared::{motes::Motes, wasm_costs::WasmCosts},
+};
 use casper_types::U512;
 
 use super::{config, error::GenesisLoadError, Error};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
-    components::contract_runtime::shared::wasm_costs::WasmCosts,
-    crypto::asymmetric_key::{PublicKey, SecretKey},
-    types::{Motes, TimeDiff, Timestamp},
+    crypto::asymmetric_key::PublicKey,
+    types::{TimeDiff, Timestamp},
     utils::Loadable,
 };
-
-/// An account that exists at genesis.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-pub struct GenesisAccount {
-    /// A valid public key, otherwise a `None` variant indicates a system account that does not
-    /// have a valid key.
-    public_key: Option<PublicKey>,
-    balance: Motes,
-    bonded_amount: Motes,
-}
-
-impl GenesisAccount {
-    /// Constructs a new `GenesisAccount` with a system account.
-    pub fn system(balance: Motes, bonded_amount: Motes) -> Self {
-        GenesisAccount {
-            balance,
-            bonded_amount,
-            public_key: None, // `None` indicates a virtual system account.
-        }
-    }
-    /// Constructs a new `GenesisAccount` with a given public key.
-    pub fn with_public_key(public_key: PublicKey, balance: Motes, bonded_amount: Motes) -> Self {
-        GenesisAccount {
-            public_key: Some(public_key),
-            balance,
-            bonded_amount,
-        }
-    }
-
-    /// Returns the account's public key.
-    pub fn public_key(&self) -> Option<PublicKey> {
-        self.public_key
-    }
-
-    /// Returns the account's balance.
-    pub fn balance(&self) -> Motes {
-        self.balance
-    }
-
-    /// Returns the account's bonded amount.
-    pub fn bonded_amount(&self) -> Motes {
-        self.bonded_amount
-    }
-
-    /// Checks if a given genesis account belongs to a virtual system account,
-    pub fn is_system_account(&self) -> bool {
-        self.public_key.is_none()
-    }
-
-    /// Checks if a given genesis account is a valid genesis validator.
-    ///
-    /// Genesis validators are the ones with a stake, and are not owned by a virtual system account.
-    pub fn is_genesis_validator(&self) -> bool {
-        !self.is_system_account() && !self.bonded_amount.is_zero()
-    }
-}
-
-impl Distribution<GenesisAccount> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisAccount {
-        let secret_key: SecretKey = SecretKey::new_ed25519(rng.gen());
-        let public_key = PublicKey::from(&secret_key);
-        let balance = Motes::new(U512(rng.gen()));
-        let bonded_amount = Motes::new(U512(rng.gen()));
-
-        GenesisAccount {
-            public_key: Some(public_key),
-            balance,
-            bonded_amount,
-        }
-    }
-}
-
-impl Loadable for Vec<GenesisAccount> {
-    type Error = GenesisLoadError;
-
-    fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
-        #[derive(Debug, Deserialize)]
-        struct ParsedAccount {
-            public_key: String,
-            algorithm: String,
-            balance: String,
-            bonded_amount: String,
-        }
-
-        let mut reader = ReaderBuilder::new().has_headers(false).from_path(path)?;
-        let mut accounts = vec![];
-        for result in reader.deserialize() {
-            let parsed: ParsedAccount = result?;
-            let balance = Motes::new(U512::from_dec_str(&parsed.balance)?);
-            let bonded_amount = Motes::new(U512::from_dec_str(&parsed.bonded_amount)?);
-            let key_bytes = hex::decode(parsed.public_key)?;
-            let account = GenesisAccount::with_public_key(
-                PublicKey::key_from_algorithm_name_and_bytes(&parsed.algorithm, key_bytes)?,
-                balance,
-                bonded_amount,
-            );
-            accounts.push(account);
-        }
-        Ok(accounts)
-    }
-}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -221,6 +121,40 @@ impl HighwayConfig {
     }
 }
 
+impl Loadable for Vec<GenesisAccount> {
+    type Error = GenesisLoadError;
+
+    fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
+        #[derive(Debug, Deserialize)]
+        struct ParsedAccount {
+            public_key: String,
+            algorithm: String,
+            balance: String,
+            bonded_amount: String,
+        }
+
+        let mut reader = ReaderBuilder::new().has_headers(false).from_path(path)?;
+        let mut accounts = vec![];
+        for result in reader.deserialize() {
+            let parsed: ParsedAccount = result?;
+            let balance = Motes::new(U512::from_dec_str(&parsed.balance)?);
+            let bonded_amount = Motes::new(U512::from_dec_str(&parsed.bonded_amount)?);
+            let key_bytes = hex::decode(parsed.public_key)?;
+
+            let public_key =
+                PublicKey::key_from_algorithm_name_and_bytes(&parsed.algorithm, key_bytes)?;
+            let account = GenesisAccount::new(
+                casper_types::PublicKey::from(public_key),
+                public_key.to_account_hash(),
+                balance,
+                bonded_amount,
+            );
+            accounts.push(account);
+        }
+        Ok(accounts)
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
@@ -284,7 +218,7 @@ impl GenesisConfig {
         let standard_payment_installer_bytes = vec![rng.gen()];
         let auction_installer_bytes = vec![rng.gen()];
         let accounts = vec![rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen()];
-        let costs = WasmCosts::random(rng);
+        let costs = rng.gen();
         let deploy_config = DeployConfig::random(rng);
         let highway_config = HighwayConfig::random(rng);
 
@@ -341,11 +275,7 @@ impl UpgradePoint {
         } else {
             None
         };
-        let new_costs = if rng.gen() {
-            Some(WasmCosts::random(rng))
-        } else {
-            None
-        };
+        let new_costs = if rng.gen() { Some(rng.gen()) } else { None };
         let new_deploy_config = if rng.gen() {
             Some(DeployConfig::random(rng))
         } else {
@@ -389,6 +319,19 @@ impl Chainspec {
     }
 }
 
+impl Into<ExecConfig> for Chainspec {
+    fn into(self) -> ExecConfig {
+        ExecConfig::new(
+            self.genesis.mint_installer_bytes,
+            self.genesis.pos_installer_bytes,
+            self.genesis.standard_payment_installer_bytes,
+            self.genesis.auction_installer_bytes,
+            self.genesis.accounts,
+            self.genesis.costs,
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -411,11 +354,11 @@ mod tests {
         assert_eq!(spec.genesis.accounts.len(), 4);
         for index in 0..4 {
             assert_eq!(
-                spec.genesis.accounts[index].balance,
+                spec.genesis.accounts[index].balance(),
                 Motes::new(U512::from(index + 1))
             );
             assert_eq!(
-                spec.genesis.accounts[index].bonded_amount,
+                spec.genesis.accounts[index].bonded_amount(),
                 Motes::new(U512::from((index as u64 + 1) * 10))
             );
         }

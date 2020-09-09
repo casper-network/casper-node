@@ -9,19 +9,14 @@ mod wasm_test_builder;
 use lazy_static::lazy_static;
 use num_traits::identities::Zero;
 
-use casper_node::{
-    components::contract_runtime::{
-        core::engine_state::{
-            genesis::{ExecConfig, GenesisConfig},
-            run_genesis_request::RunGenesisRequest,
-        },
-        shared::{newtypes::Blake2bHash, test_utils, wasm_costs::WasmCosts},
+use casper_execution_engine::{
+    core::engine_state::{
+        genesis::{ExecConfig, GenesisAccount, GenesisConfig},
+        run_genesis_request::RunGenesisRequest,
     },
-    crypto::asymmetric_key::{PublicKey, SecretKey},
-    types::Motes,
-    GenesisAccount,
+    shared::{motes::Motes, newtypes::Blake2bHash, test_utils, wasm_costs::WasmCosts},
 };
-use casper_types::{account::AccountHash, ProtocolVersion, U512};
+use casper_types::{account::AccountHash, ProtocolVersion, PublicKey, U512};
 
 use super::DEFAULT_ACCOUNT_INITIAL_BALANCE;
 pub use additive_map_diff::AdditiveMapDiff;
@@ -45,16 +40,24 @@ pub const MOCKED_ACCOUNT_ADDRESS: AccountHash = AccountHash::new([48u8; 32]);
 pub const ARG_AMOUNT: &str = "amount";
 
 lazy_static! {
+    // NOTE: Those values could be contants but are kept az lazy statics to avoid changes of `*FOO` into `FOO` back and forth.
     pub static ref DEFAULT_GENESIS_CONFIG_HASH: Blake2bHash = [42; 32].into();
-    pub static ref DEFAULT_ACCOUNT_SECRET_KEY: SecretKey = SecretKey::new_ed25519([111; 32]);
-    pub static ref DEFAULT_ACCOUNT_PUBLIC_KEY: PublicKey =
-        PublicKey::from(DEFAULT_ACCOUNT_SECRET_KEY.deref());
-    pub static ref DEFAULT_ACCOUNT_ADDR: AccountHash = DEFAULT_ACCOUNT_PUBLIC_KEY.to_account_hash();
+    pub static ref DEFAULT_ACCOUNT_PUBLIC_KEY: PublicKey = PublicKey::Ed25519([199; 32]);
+    pub static ref DEFAULT_ACCOUNT_ADDR: AccountHash = {
+        // Default addr initialized to seemingly unique address to avoid accidental collisions
+        // with custom addresses in tests.
+        let mut account_hash_bytes: [u8; 32] = Default::default();
+        for (position, byte) in account_hash_bytes.iter_mut().enumerate() {
+            *byte = 100u8 + position as u8;
+        }
+        AccountHash::new(account_hash_bytes)
+    };
     pub static ref DEFAULT_ACCOUNT_KEY: AccountHash = *DEFAULT_ACCOUNT_ADDR;
     pub static ref DEFAULT_ACCOUNTS: Vec<GenesisAccount> = {
         let mut ret = Vec::new();
-        let genesis_account = GenesisAccount::with_public_key(
+        let genesis_account = GenesisAccount::new(
             *DEFAULT_ACCOUNT_PUBLIC_KEY,
+            *DEFAULT_ACCOUNT_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::zero(),
         );
