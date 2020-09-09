@@ -248,11 +248,6 @@ mod tests {
             vec![Token::string("inner\"quote"),]
         );
 
-        assert_eq!(
-            tokenize("\"inner\\\"quote\"").unwrap(),
-            vec![Token::string("inner\"quote"),]
-        );
-
         assert_eq!(tokenize("\"asdf"), Err(Error::UnterminatedString))
     }
 
