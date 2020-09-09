@@ -16,19 +16,17 @@ use lmdb::DatabaseFlags;
 use log::{error, info, Level, LevelFilter};
 
 use casper_engine_grpc_server::engine_server;
-use casper_node::{
-    components::contract_runtime::{
-        core::engine_state::{EngineConfig, EngineState},
-        shared::{
-            logging::{self, Settings, Style},
-            socket,
-        },
-        storage::{
-            global_state::lmdb::LmdbGlobalState, protocol_data_store::lmdb::LmdbProtocolDataStore,
-            transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore,
-        },
+use casper_execution_engine::{
+    core::engine_state::{EngineConfig, EngineState},
+    shared::{
+        logging::{self, Settings, Style},
+        socket,
+        utils::OS_PAGE_SIZE,
     },
-    OS_PAGE_SIZE,
+    storage::{
+        global_state::lmdb::LmdbGlobalState, protocol_data_store::lmdb::LmdbProtocolDataStore,
+        transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore,
+    },
 };
 
 // exe / proc

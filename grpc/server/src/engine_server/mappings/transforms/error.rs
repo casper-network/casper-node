@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use casper_node::components::contract_runtime::shared::{transform, TypeMismatch};
+use casper_execution_engine::shared::{transform, TypeMismatch};
 
 use crate::engine_server::{
     mappings::ParsingError,

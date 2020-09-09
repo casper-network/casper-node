@@ -283,11 +283,11 @@ where
 mod tests {
     use std::collections::HashSet;
 
+    use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
     use rand::random;
 
     use super::*;
     use crate::{
-        components::contract_runtime::core::engine_state::executable_deploy_item::ExecutableDeployItem,
         crypto::{asymmetric_key::SecretKey, hash::hash},
         testing::TestRng,
         types::{Deploy, DeployHash, DeployHeader, NodeConfig, ProtoBlockHash, TimeDiff},

@@ -19,7 +19,7 @@ include = [
 ]
 
 [dependencies]
-casper-node = { version = "0.1.0", path = "../../node", features = ["gens"] }
+casper-execution-engine = { path = "../../execution_engine", features = ["gens"] }
 casper-types = { version = "0.6.0", path = "../../types", features = ["std", "gens"] }
 clap = "2"
 ctrlc = "3"
@@ -34,11 +34,11 @@ protoc-rust-grpc = "0.6.1"
 
 [dev-dependencies]
 parity-wasm = "0.41.0"
-rand = "0.7.2"
 proptest = "0.10.0"
+rand = "0.7.2"
 
 [features]
-test-support = ["casper-node/test-support"]
+test-support = ["casper-execution-engine/test-support"]
 no-unstable-features = ["casper-types/no-unstable-features"]
 
 [[bin]]

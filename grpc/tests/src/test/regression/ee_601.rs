@@ -5,9 +5,7 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_node::components::contract_runtime::shared::{
-    stored_value::StoredValue, transform::Transform,
-};
+use casper_execution_engine::shared::{stored_value::StoredValue, transform::Transform};
 use casper_types::{runtime_args, CLValue, Key, RuntimeArgs};
 
 const ARG_AMOUNT: &str = "amount";

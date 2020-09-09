@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_node::components::contract_runtime::shared::stored_value::StoredValue;
+use casper_execution_engine::shared::stored_value::StoredValue;
 use casper_types::{
     contracts::{ContractVersion, CONTRACT_INITIAL_VERSION},
     runtime_args, CLValue, ContractPackageHash, RuntimeArgs,
