@@ -64,7 +64,7 @@ fn tokenize(input: &str) -> Result<Vec<Token>, Error> {
         if !buffer.is_empty() {
             match ch {
                 Some(' ') | Some('"') | Some('[') | Some(']') | Some(',') | None => {
-                    // Try to parse as number of bool first.
+                    // Try to parse as number or bool first.
                     if let Ok(value) = i64::from_str(&buffer) {
                         tokens.push(Token::I64(value));
                     } else if let Ok(value) = bool::from_str(&buffer) {
