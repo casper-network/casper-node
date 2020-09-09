@@ -109,7 +109,8 @@ use announcements::{
 };
 use requests::{
     BlockExecutorRequest, BlockValidationRequest, ConsensusRequest, ContractRuntimeRequest,
-    DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
+    DeployBufferRequest, FetcherRequest, LinearChainRequest, MetricsRequest, NetworkRequest,
+    StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -371,6 +372,20 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| MetricsRequest::RenderNodeMetricsText { responder },
+            QueueKind::Api,
+        )
+        .await
+    }
+
+    /// Retrieve the last finalized block.
+    ///
+    /// If an error occurred, `None` is returned.
+    pub(crate) async fn get_last_finalized_block<I>(self) -> Option<Block>
+    where
+        REv: From<LinearChainRequest<I>>,
+    {
+        self.make_request(
+            |responder| LinearChainRequest::LastFinalizedBlock(responder),
             QueueKind::Api,
         )
         .await

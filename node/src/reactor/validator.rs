@@ -189,6 +189,12 @@ impl From<ConsensusRequest> for Event {
     }
 }
 
+impl From<LinearChainRequest<NodeId>> for Event {
+    fn from(request: LinearChainRequest<NodeId>) -> Self {
+        Event::LinearChain(linear_chain::Event::Request(request))
+    }
+}
+
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {

@@ -26,6 +26,7 @@ use bytes::Bytes;
 use futures::FutureExt;
 use http::Response;
 use rand::{CryptoRng, Rng};
+use serde::Serialize;
 use smallvec::smallvec;
 use tracing::{debug, info, warn};
 use warp::{
@@ -43,20 +44,42 @@ use crate::{
     crypto::hash::Digest,
     effect::{
         announcements::ApiServerAnnouncement,
-        requests::{ApiRequest, ContractRuntimeRequest, MetricsRequest, StorageRequest},
+        requests::{
+            ApiRequest, ContractRuntimeRequest, LinearChainRequest, MetricsRequest, StorageRequest,
+        },
         EffectBuilder, EffectExt, Effects,
     },
     reactor::QueueKind,
-    types::{Deploy, DeployHash},
+    small_network::NodeId,
+    types::{Block, Deploy, DeployHash},
 };
 pub use config::Config;
 pub(crate) use event::Event;
 
 const DEPLOYS_API_PATH: &str = "deploys";
 const METRICS_API_PATH: &str = "metrics";
+const STATUS_API_PATH: &str = "status";
 
 #[derive(Debug)]
 pub(crate) struct ApiServer {}
+
+#[derive(Debug, Serialize)]
+pub struct StatusFeed {
+    last_finalized_block: Option<Block>,
+    //peers: HashMap<NodeId, SocketAddr>,
+}
+
+impl StatusFeed {
+    pub(crate) fn new(
+        last_finalized_block: Option<Block>,
+        //peers: HashMap<NodeId, SocketAddr>,
+    ) -> Self {
+        StatusFeed {
+            last_finalized_block,
+            //peers,
+        }
+    }
+}
 
 impl ApiServer {
     pub(crate) fn new<REv>(config: Config, effect_builder: EffectBuilder<REv>) -> Self
@@ -71,6 +94,7 @@ impl ApiServer {
 impl<REv, R> Component<REv, R> for ApiServer
 where
     REv: From<ApiServerAnnouncement>
+        + From<LinearChainRequest<NodeId>>
         + From<ContractRuntimeRequest>
         + From<MetricsRequest>
         + From<StorageRequest<Storage>>
@@ -93,6 +117,8 @@ where
             }
             Event::ApiRequest(ApiRequest::GetDeploy { hash, responder }) => effect_builder
                 .get_deploys_from_storage(smallvec![hash])
+                // .and_then(|result| responder.respond(result))
+                // .ignore(),
                 .event(move |mut result| Event::GetDeployResult {
                     hash,
                     result: Box::new(result.pop().expect("can only contain one result")),
@@ -110,6 +136,14 @@ where
                     text,
                     main_responder: responder,
                 }),
+            Event::ApiRequest(ApiRequest::GetStatus { responder }) => async move {
+                let last_finalized_block = effect_builder.get_last_finalized_block().await;
+                let status_feed = StatusFeed::new(last_finalized_block);
+                let last_finalized_block_json = serde_json::to_string(&status_feed)
+                    .unwrap_or(String::from("\"last_finalized_block\": \"{}\""));
+                responder.respond(Some(last_finalized_block_json)).await;
+            }
+            .ignore(),
             Event::GetDeployResult {
                 hash: _,
                 result,
@@ -135,12 +169,12 @@ where
     let post_deploy = warp::post()
         .and(warp::path(DEPLOYS_API_PATH))
         .and(body::bytes())
-        .and_then(move |encoded_deploy| parse_post_request(effect_builder, encoded_deploy));
+        .and_then(move |encoded_deploy| parse_post_deploy_request(effect_builder, encoded_deploy));
 
     let get_deploy = warp::get()
         .and(warp::path(DEPLOYS_API_PATH))
         .and(warp::path::tail())
-        .and_then(move |hex_digest| parse_get_request(effect_builder, hex_digest));
+        .and_then(move |hex_digest| parse_get_deploy_request(effect_builder, hex_digest));
 
     let get_metrics = warp::get()
         .and(warp::path(METRICS_API_PATH))
@@ -161,37 +195,35 @@ where
                 })
         });
 
+    let get_status = warp::get()
+        .and(warp::path(STATUS_API_PATH))
+        .and_then(move || handle_get_status(effect_builder));
+
     let mut server_addr = SocketAddr::from((config.bind_interface, config.bind_port));
 
-    debug!(%server_addr, "starting HTTP server");
-    match warp::serve(post_deploy.or(get_deploy).or(get_metrics)).try_bind_ephemeral(server_addr) {
-        Ok((addr, server_fut)) => {
-            info!(%addr, "started HTTP server");
-            return server_fut.await;
-        }
-        Err(error) => {
-            if server_addr.port() == 0 {
-                warn!(%error, "failed to start HTTP server");
-                return;
-            } else {
-                debug!(%error, "failed to start HTTP server. retrying on random port");
-            }
-        }
-    }
+    let filter = post_deploy.or(get_deploy).or(get_metrics).or(get_status);
 
-    server_addr.set_port(0);
-    match warp::serve(post_deploy.or(get_deploy)).try_bind_ephemeral(server_addr) {
-        Ok((addr, server_fut)) => {
-            info!(%addr, "started HTTP server");
-            server_fut.await;
-        }
-        Err(error) => {
-            warn!(%error, "failed to start HTTP server");
+    debug!(%server_addr, "starting HTTP server");
+    loop {
+        match warp::serve(filter.clone()).try_bind_ephemeral(server_addr) {
+            Ok((addr, server_fut)) => {
+                info!(%addr, "started HTTP server");
+                return server_fut.await;
+            }
+            Err(error) => {
+                if server_addr.port() == 0 {
+                    warn!(%error, "failed to start HTTP server");
+                    return;
+                } else {
+                    server_addr.set_port(0);
+                    debug!(%error, "failed to start HTTP server. retrying on random port");
+                }
+            }
         }
     }
 }
 
-async fn parse_post_request<REv>(
+async fn parse_post_deploy_request<REv>(
     effect_builder: EffectBuilder<REv>,
     encoded_deploy: Bytes,
 ) -> Result<WithStatus<Json>, Rejection>
@@ -226,7 +258,7 @@ where
     Ok(reply::with_status(json, StatusCode::OK))
 }
 
-async fn parse_get_request<REv>(
+async fn parse_get_deploy_request<REv>(
     effect_builder: EffectBuilder<REv>,
     tail: Tail,
 ) -> Result<Response<String>, Rejection>
@@ -325,6 +357,34 @@ where
             Err(error) => (error_body(&error), StatusCode::INTERNAL_SERVER_ERROR),
         },
         None => ("null".to_string(), StatusCode::OK),
+    };
+
+    Ok(Response::builder()
+        .header("content-type", "application/json")
+        .status(status)
+        .body(body)
+        .unwrap())
+}
+
+async fn handle_get_status<REv>(
+    effect_builder: EffectBuilder<REv>,
+) -> Result<Response<String>, Rejection>
+where
+    REv: From<Event> + From<ApiRequest> + Send,
+{
+    let status_feed_json = effect_builder
+        .make_request(
+            |responder| ApiRequest::GetStatus { responder },
+            QueueKind::Api,
+        )
+        .await;
+
+    let (body, status) = match status_feed_json {
+        Some(body) => (body, StatusCode::OK),
+        None => (
+            String::from("status unavailable"),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ),
     };
 
     Ok(Response::builder()

@@ -32,7 +32,7 @@ use crate::{
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
-    types::{BlockHash, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlockHash, Timestamp},
+    types::{Block as LinearBlock, BlockHash, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlockHash, Timestamp},
     utils::DisplayIter,
     Chainspec,
 };
@@ -311,6 +311,11 @@ pub enum ApiRequest {
         /// Responder to call with the result.
         responder: Responder<Option<String>>,
     },
+    /// Return string formatted status or `None` if an error occurred.
+    GetStatus {
+        /// Responder to call with the result.
+        responder: Responder<Option<String>>,
+    },
 }
 
 impl Display for ApiRequest {
@@ -320,6 +325,7 @@ impl Display for ApiRequest {
             ApiRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
             ApiRequest::ListDeploys { .. } => write!(formatter, "list deploys"),
             ApiRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
+            ApiRequest::GetStatus { .. } => write!(formatter, "get status"),
         }
     }
 }
@@ -471,6 +477,8 @@ impl<T: Display, I: Display> Display for BlockValidationRequest<T, I> {
 pub enum LinearChainRequest<I> {
     /// Request whole block from the linear chain, by hash.
     BlockRequest(BlockHash, I),
+    /// Get last finalized block.
+    LastFinalizedBlock(Responder<Option<LinearBlock>>),
 }
 
 impl<I: Display> Display for LinearChainRequest<I> {
@@ -479,6 +487,7 @@ impl<I: Display> Display for LinearChainRequest<I> {
             LinearChainRequest::BlockRequest(bh, peer) => {
                 write!(f, "block request for hash {} from {}", bh, peer)
             }
+            LinearChainRequest::LastFinalizedBlock(_) => write!(f, "last finalized block request"),
         }
     }
 }
