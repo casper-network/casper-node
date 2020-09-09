@@ -172,8 +172,6 @@ where
             validator_stakes.into_iter().map(scale_stake).collect();
 
         let instance_id = hash::hash(format!("Highway era {}", era_id.0));
-        let secret =
-            HighwaySecret::new(Rc::clone(&self.secret_signing_key), self.public_signing_key);
         let ftt = validators.total_weight()
             * u64::from(self.highway_config.finality_threshold_percent)
             / 100;
@@ -189,15 +187,17 @@ where
             self.highway_config.minimum_era_height,
             start_time + self.highway_config.era_duration,
         );
-        let (highway, results) = HighwayProtocol::<I, HighwayContext>::new(
-            instance_id,
-            validators,
-            params,
-            self.public_signing_key,
-            secret,
-            ftt,
-            timestamp,
-        );
+
+        let our_id = self.public_signing_key;
+        let should_activate = validators.iter().any(|v| *v.id() == our_id);
+        let mut highway =
+            HighwayProtocol::<I, HighwayContext>::new(instance_id, validators, params, ftt);
+        let results = if should_activate {
+            let secret = HighwaySecret::new(Rc::clone(&self.secret_signing_key), our_id);
+            highway.activate_validator(our_id, secret, timestamp)
+        } else {
+            Vec::new()
+        };
 
         let era = Era {
             consensus: Box::new(highway),

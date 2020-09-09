@@ -67,30 +67,29 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         instance_id: C::InstanceId,
         validators: Validators<C::ValidatorId>,
         params: Params,
+        ftt: Weight,
+    ) -> Self {
+        HighwayProtocol {
+            synchronizer: DagSynchronizerState::new(),
+            finality_detector: FinalityDetector::new(ftt),
+            highway: Highway::new(instance_id, validators, params),
+        }
+    }
+
+    pub(crate) fn activate_validator(
+        &mut self,
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
-        ftt: Weight,
         timestamp: Timestamp,
-    ) -> (Self, Vec<CpResult<I, C>>) {
+    ) -> Vec<CpResult<I, C>> {
         // TODO: We use the minimum as round exponent here, since it is meant to be optimal.
         // For adaptive round lengths we will probably want to use the most recent one from the
         // previous era instead.
-        let round_exp = params.min_round_exp();
-        // Only activate if we are a validator and the era has not ended yet.
-        let should_activate = validators.iter().any(|v| *v.id() == our_id);
-        let mut highway = Highway::new(instance_id, validators, params);
-        let av_effects = if should_activate {
-            highway.activate_validator(our_id, secret, round_exp, timestamp)
-        } else {
-            Vec::new()
-        };
-        let mut instance = HighwayProtocol {
-            synchronizer: DagSynchronizerState::new(),
-            finality_detector: FinalityDetector::new(ftt),
-            highway,
-        };
-        let effects = instance.process_av_effects(av_effects);
-        (instance, effects)
+        let round_exp = self.highway.params().min_round_exp();
+        let av_effects = self
+            .highway
+            .activate_validator(our_id, secret, round_exp, timestamp);
+        self.process_av_effects(av_effects)
     }
 
     fn process_av_effects<E>(&mut self, av_effects: E) -> Vec<CpResult<I, C>>

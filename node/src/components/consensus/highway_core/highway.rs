@@ -260,6 +260,10 @@ impl<C: Context> Highway<C> {
         &self.validators
     }
 
+    pub(crate) fn params(&self) -> &Params {
+        self.state.params()
+    }
+
     pub(super) fn state(&self) -> &State<C> {
         &self.state
     }
