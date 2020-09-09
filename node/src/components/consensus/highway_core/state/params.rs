@@ -1,4 +1,4 @@
-use super::Timestamp;
+use super::{TimeDiff, Timestamp};
 
 /// Protocol parameters for Highway.
 #[derive(Debug, Clone)]
@@ -82,6 +82,11 @@ impl Params {
     /// round length.
     pub(crate) fn min_round_exp(&self) -> u8 {
         self.min_round_exp
+    }
+
+    /// Returns the minimum round length, i.e. `1 << self.min_round_exp()` milliseconds.
+    pub(crate) fn min_round_len(&self) -> TimeDiff {
+        super::round_len(self.min_round_exp)
     }
 
     /// Returns the minimum height of the last block.

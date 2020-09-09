@@ -188,10 +188,20 @@ where
             start_time + self.highway_config.era_duration,
         );
 
+        // Activate the era if it is still ongoing based on its minimum duration, and if we are one
+        // of the validators.
         let our_id = self.public_signing_key;
-        let should_activate = validators.iter().any(|v| *v.id() == our_id);
+        let min_end_time = start_time
+            + self
+                .highway_config
+                .era_duration
+                .min(params.min_round_len() * params.end_height());
+        let should_activate =
+            min_end_time >= timestamp && validators.iter().any(|v| *v.id() == our_id);
+
         let mut highway =
             HighwayProtocol::<I, HighwayContext>::new(instance_id, validators, params, ftt);
+
         let results = if should_activate {
             let secret = HighwaySecret::new(Rc::clone(&self.secret_signing_key), our_id);
             highway.activate_validator(our_id, secret, timestamp)
