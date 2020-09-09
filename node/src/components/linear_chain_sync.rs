@@ -166,12 +166,8 @@ where
                     }
                 }
             },
-            Event::DeployFound(_) => unimplemented!(),
-            Event::DeployNotFound(_) => unimplemented!(),
-            Event::LinearChainBlocksDownloaded() => {
-                self.is_synced = true;
-                Effects::new()
-            }
+            Event::DeploysFound(_) => unimplemented!(),
+            Event::DeploysNotFound(_) => unimplemented!(),
         }
     }
 }
