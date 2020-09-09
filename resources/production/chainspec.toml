@@ -59,7 +59,7 @@ max_ttl_millis = 86400000
 # The maximum number of other deploys a deploy can depend on (require to have been executed before it can execute).
 max_dependencies = 10
 # Maximum block size in bytes.  0 means unlimited.
-max_block_size = 50_000
+max_block_size = 10485760
 # The upper limit of total gas of all deploys in a block.
 block_gas_limit = 10_000_000_000_000
 
@@ -70,8 +70,8 @@ regular = 210_000
 div = 2
 # Mul operations multiplier. (A mul should cost 240_000)
 mul = 2
-# Memory (load/store) operations multiplier.
-mem = 4_700_00
+# Memory (load/store) operations multiplier. (A mem should cost 4_700_000)
+mem = 23
 # Amount of free memory (in 64kB pages) each contract can use for stack.
 initial_mem = 4096
 # Grow memory cost, per page (64kB).
