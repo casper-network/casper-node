@@ -48,7 +48,7 @@ cargo build -p casper-node --release
 ```
 
 The result will be a `casper-node` binary found in `target/release`.  Copy this somewhere into your
-path, or substitute `target/release/casper-node` for `casper-node` in all examples below.
+PATH, or substitute `target/release/casper-node` for `casper-node` in all examples below.
 
 ### Running one node
 
