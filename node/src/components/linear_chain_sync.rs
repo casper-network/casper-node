@@ -40,6 +40,8 @@ pub(crate) struct LinearChainSync<I> {
     peers_to_try: Vec<I>,
     // Chain of downloaded blocks from the linear chain.
     linear_chain: Vec<Block>,
+    // How many blocks of the linear chain we've synchronized.
+    linear_chain_length: u64,
     // Flag indicating whether we have finished syncing linear chain.
     is_synced: bool,
     // Linear chain block to start sync from.
@@ -56,6 +58,7 @@ impl<I: Clone + 'static> LinearChainSync<I> {
             peers: Vec::new(),
             peers_to_try: Vec::new(),
             linear_chain: Vec::new(),
+            linear_chain_length: 0,
             is_synced: init_hash.is_none(),
             init_hash,
         }
@@ -82,6 +85,11 @@ impl<I: Clone + 'static> LinearChainSync<I> {
     fn random_peer_unsafe<R: Rng + ?Sized>(&mut self, rand: &mut R) -> I {
         self.random_peer(rand)
             .expect("At least one peer available.")
+    }
+
+    fn new_block(&mut self, block: Block) {
+        self.linear_chain.push(block);
+        self.linear_chain_length += 1;
     }
 
     /// Returns `true` if we have finished syncing linear chain.
@@ -141,9 +149,11 @@ where
                     }
                 }
             }
-            Event::BlockExecutionDone(block_hash) => {
+            Event::BlockExecutionDone(block_hash, block_height) => {
                 info!(?block_hash, "Finished block execution.");
-                if self.linear_chain.is_empty() {
+                if block_height + 1 == self.linear_chain_length {
+                    // We've executed as many blocks from the linear chain
+                    // as was synchronized.
                     info!("Finished synchronizing linear chain.");
                     self.is_synced = true;
                 }
@@ -187,7 +197,7 @@ where
                     }
                     trace!(%block_hash, "Downloaded linear chain block.");
                     self.reset_peers();
-                    self.linear_chain.push(*block.clone());
+                    self.new_block(*block.clone());
                     if block.is_genesis_child() {
                         info!("Linear chain downloaded. Starting downloading deploys.");
                         effect_builder
@@ -205,6 +215,7 @@ where
             },
             Event::DeploysFound(block) => {
                 let block_hash = *block.hash();
+                let block_height = block.height();
                 trace!(%block_hash, "Deploys for linear chain block found.");
                 self.reset_peers();
                 // Execute block
@@ -213,7 +224,7 @@ where
                 let finalized_block: FinalizedBlock = (*block).into();
                 let execute_block_effect = effect_builder
                     .execute_block(finalized_block)
-                    .event(move |_| Event::BlockExecutionDone(block_hash));
+                    .event(move |_| Event::BlockExecutionDone(block_hash, block_height));
                 effects.extend(execute_block_effect);
                 effects
             }
