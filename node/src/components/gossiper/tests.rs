@@ -224,6 +224,10 @@ impl reactor::Reactor<TestRng> for Reactor {
             Event::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(_)) => {
                 unreachable!("should not receive announcements of type GossipOurAddress");
             }
+            Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_)) => {
+                // We do not care about new peers in the gossiper test.
+                Effects::new()
+            }
             Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
                 let event = deploy_acceptor::Event::Accept {
                     deploy,
