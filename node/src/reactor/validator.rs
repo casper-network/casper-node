@@ -84,7 +84,7 @@ pub enum Event {
     /// Deploy gossiper event.
     #[from]
     DeployGossiper(gossiper::Event<Deploy>),
-    /// Deploy gossiper event.
+    /// Address gossiper event.
     #[from]
     AddressGossiper(gossiper::Event<GossipedAddress>),
     /// Contract runtime event.

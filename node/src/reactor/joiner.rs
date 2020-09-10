@@ -7,7 +7,8 @@ use consensus::EraSupervisor;
 use derive_more::From;
 use prometheus::Registry;
 use rand::{CryptoRng, Rng};
-use tracing::{info, warn};
+use small_network::GossipedAddress;
+use tracing::{debug, info, warn};
 
 use crate::{
     components::{
@@ -17,6 +18,7 @@ use crate::{
         consensus,
         contract_runtime::{self, ContractRuntime},
         fetcher::{self, Fetcher},
+        gossiper::{self, Gossiper},
         linear_chain,
         linear_chain_sync::{self, LinearChainSync},
         small_network::{self, NodeId, SmallNetwork},
@@ -25,7 +27,10 @@ use crate::{
     },
     crypto::hash::Digest,
     effect::{
-        announcements::{BlockExecutorAnnouncement, ConsensusAnnouncement, NetworkAnnouncement},
+        announcements::{
+            BlockExecutorAnnouncement, ConsensusAnnouncement, GossiperAnnouncement,
+            NetworkAnnouncement,
+        },
         requests::{
             BlockExecutorRequest, BlockValidationRequest, ConsensusRequest, ContractRuntimeRequest,
             DeployBufferRequest, FetcherRequest, NetworkRequest, StorageRequest,
@@ -39,7 +44,7 @@ use crate::{
         EventQueueHandle, Finalize,
     },
     types::{Block, BlockHash, Deploy, ProtoBlock, Timestamp},
-    utils::WithDir,
+    utils::{Source, WithDir},
 };
 
 /// Top-level event for the reactor.
@@ -86,6 +91,10 @@ pub enum Event {
     #[from]
     Consensus(consensus::Event<NodeId>),
 
+    /// Address gossiper event.
+    #[from]
+    AddressGossiper(gossiper::Event<GossipedAddress>),
+
     /// Requests.
     /// Linear chain fetcher request.
     #[from]
@@ -123,6 +132,10 @@ pub enum Event {
     /// Consensus announcement.
     #[from]
     ConsensusAnnouncement(ConsensusAnnouncement),
+
+    /// Address Gossiper announcement.
+    #[from]
+    AddressGossiperAnnouncement(GossiperAnnouncement<GossipedAddress>),
 }
 
 impl From<StorageRequest<Storage>> for Event {
@@ -134,6 +147,14 @@ impl From<StorageRequest<Storage>> for Event {
 impl From<NetworkRequest<NodeId, Message>> for Event {
     fn from(request: NetworkRequest<NodeId, Message>) -> Self {
         Event::Network(small_network::Event::from(request))
+    }
+}
+
+impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event {
+    fn from(request: NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>) -> Self {
+        Event::Network(small_network::Event::from(
+            request.map_payload(Message::from),
+        ))
     }
 }
 
@@ -179,6 +200,10 @@ impl Display for Event {
             Event::Consensus(event) => write!(f, "consensus event: {}", event),
             Event::ConsensusAnnouncement(ann) => write!(f, "consensus announcement: {}", ann),
             Event::ProtoBlockValidatorRequest(req) => write!(f, "block validator request: {}", req),
+            Event::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
+            Event::AddressGossiperAnnouncement(ann) => {
+                write!(f, "address gossiper announcement: {}", ann)
+            }
         }
     }
 }
@@ -186,6 +211,7 @@ impl Display for Event {
 /// Joining node reactor.
 pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
     pub(super) net: SmallNetwork<Event, Message>,
+    pub(super) address_gossiper: Gossiper<GossipedAddress, Event>,
     pub(super) config: validator::Config,
     pub(super) chainspec_loader: ChainspecLoader,
     pub(super) storage: Storage,
@@ -229,8 +255,9 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         let (net, net_effects) = SmallNetwork::new(event_queue, config.network.clone())?;
 
         let linear_chain_fetcher = Fetcher::new(config.gossip);
-
         let effects = reactor::wrap_effects(Event::Network, net_effects);
+
+        let address_gossiper = Gossiper::new_for_complete_items(config.gossip);
 
         let effect_builder = EffectBuilder::new(event_queue);
 
@@ -279,6 +306,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         Ok((
             Self {
                 net,
+                address_gossiper,
                 config,
                 chainspec_loader,
                 storage,
@@ -315,7 +343,17 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                     linear_chain_sync::Event::NewPeerConnected(id),
                 ),
             ),
-            Event::NetworkAnnouncement(_) => Default::default(),
+            Event::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(gossiped_address)) => {
+                let event = gossiper::Event::ItemReceived {
+                    item_id: gossiped_address,
+                    source: Source::<NodeId>::Client,
+                };
+                self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
+            }
+            Event::NetworkAnnouncement(announcement) => {
+                debug!(?announcement, "network announcement ignored.");
+                Default::default()
+            }
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
@@ -392,6 +430,17 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 // validation of the proto block.
                 warn!("Ignoring proto block validation request {}", request);
                 Effects::new()
+            }
+            Event::AddressGossiper(event) => reactor::wrap_effects(
+                Event::AddressGossiper,
+                self.address_gossiper
+                    .handle_event(effect_builder, rng, event),
+            ),
+            Event::AddressGossiperAnnouncement(ann) => {
+                let GossiperAnnouncement::NewCompleteItem(gossiped_address) = ann;
+                let reactor_event =
+                    Event::Network(small_network::Event::PeerAddressReceived(gossiped_address));
+                self.dispatch_event(effect_builder, rng, reactor_event)
             }
         }
     }
