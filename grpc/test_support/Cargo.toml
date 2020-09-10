@@ -13,15 +13,15 @@ license-file = "../../LICENSE"
 [dependencies]
 casper-contract = { version = "0.6.0", path = "../../smart_contracts/contract" }
 casper-engine-grpc-server = { version = "0.20.0", path = "../server" }
-casper-node = { path = "../../node" }
+casper-execution-engine = { path = "../../execution_engine" }
 casper-types = { version = "0.6.0", path = "../../types", features = ["std"] }
 grpc = "0.6.1"
 lazy_static = "1"
 lmdb = "0.8.0"
 log = "0.4.8"
 num-traits = "0.2.10"
-rand = "0.7.2"
 protobuf = "=2.8"
+rand = "0.7.2"
 
 [dev-dependencies]
 version-sync = "0.8"

@@ -6,12 +6,12 @@ edition = "2018"
 
 [dependencies]
 base16 = "0.2.1"
-clap = "2"
 casper-contract = { path = "../../smart_contracts/contract" }
 casper-engine-grpc-server = { path = "../server" }
 casper-engine-test-support = { path = "../test_support" }
-casper-node = { path = "../../node" }
+casper-execution-engine = { path = "../../execution_engine" }
 casper-types = { path = "../../types", features = ["std"] }
+clap = "2"
 crossbeam-channel = "0.4.0"
 env_logger = "0.7.1"
 grpc = "0.6.1"
@@ -32,14 +32,14 @@ wabt = "0.10.0"
 default = [
     "casper-contract/std",
     "casper-contract/test-support",
-    "casper-node/test-support",
+    "casper-execution-engine/test-support",
     "casper-engine-test-support/test-support"
 ]
 use-as-wasm = ["casper-engine-test-support/use-as-wasm"]
 use-system-contracts = ["casper-engine-test-support/use-system-contracts"]
 no-unstable-features = [
     "casper-contract/no-unstable-features",
-    "casper-node/no-unstable-features",
+    "casper-execution-engine/no-unstable-features",
     "casper-engine-grpc-server/no-unstable-features",
     "casper-engine-test-support/no-unstable-features",
     "casper-types/no-unstable-features"

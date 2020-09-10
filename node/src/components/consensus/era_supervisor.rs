@@ -18,6 +18,8 @@ use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
+use casper_execution_engine::shared::motes::Motes;
+
 use crate::{
     components::{
         chainspec_loader::HighwayConfig,
@@ -33,15 +35,13 @@ use crate::{
         },
     },
     crypto::{
-        asymmetric_key,
-        asymmetric_key::{PublicKey, SecretKey},
+        asymmetric_key::{self, PublicKey, SecretKey, Signature},
         hash,
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
-    types::{BlockHash, FinalizedBlock, Motes, ProtoBlock, SystemTransaction, Timestamp},
+    types::{BlockHeader, FinalizedBlock, ProtoBlock, SystemTransaction, Timestamp},
     utils::WithDir,
 };
-use asymmetric_key::Signature;
 
 // We use one trillion as a block reward unit because it's large enough to allow precise
 // fractions, and small enough for many block rewards to fit into a u64.
@@ -172,8 +172,6 @@ where
             validator_stakes.into_iter().map(scale_stake).collect();
 
         let instance_id = hash::hash(format!("Highway era {}", era_id.0));
-        let secret =
-            HighwaySecret::new(Rc::clone(&self.secret_signing_key), self.public_signing_key);
         let ftt = validators.total_weight()
             * u64::from(self.highway_config.finality_threshold_percent)
             / 100;
@@ -189,15 +187,27 @@ where
             self.highway_config.minimum_era_height,
             start_time + self.highway_config.era_duration,
         );
-        let (highway, results) = HighwayProtocol::<I, HighwayContext>::new(
-            instance_id,
-            validators,
-            params,
-            self.public_signing_key,
-            secret,
-            ftt,
-            timestamp,
-        );
+
+        // Activate the era if it is still ongoing based on its minimum duration, and if we are one
+        // of the validators.
+        let our_id = self.public_signing_key;
+        let min_end_time = start_time
+            + self
+                .highway_config
+                .era_duration
+                .max(params.min_round_len() * params.end_height());
+        let should_activate =
+            min_end_time >= timestamp && validators.iter().any(|v| *v.id() == our_id);
+
+        let mut highway =
+            HighwayProtocol::<I, HighwayContext>::new(instance_id, validators, params, ftt);
+
+        let results = if should_activate {
+            let secret = HighwaySecret::new(Rc::clone(&self.secret_signing_key), our_id);
+            highway.activate_validator(our_id, secret, timestamp)
+        } else {
+            Vec::new()
+        };
 
         let era = Era {
             consensus: Box::new(highway),
@@ -299,20 +309,42 @@ where
         effects
     }
 
-    pub(super) fn sign_linear_chain_block(
+    pub(super) fn handle_linear_chain_block(
         &mut self,
-        _era_id: EraId,
-        block_hash: BlockHash,
+        block_header: BlockHeader,
         responder: Responder<Signature>,
     ) -> Effects<Event<I>> {
+        assert_eq!(
+            block_header.era_id(),
+            self.era_supervisor.current_era,
+            "executed block in unexpected era"
+        );
         // TODO - we should only sign if we're a validator for the given era ID.
         let signature = asymmetric_key::sign(
-            block_hash.inner(),
+            block_header.hash().inner(),
             &self.era_supervisor.secret_signing_key,
             &self.era_supervisor.public_signing_key,
             self.rng,
         );
-        responder.respond(signature).ignore()
+        let mut effects = responder.respond(signature).ignore();
+        if block_header.switch_block() {
+            // TODO: Learn the new weights from contract (validator rotation).
+            let validator_stakes = self.era_supervisor.validator_stakes.clone();
+            self.era_supervisor
+                .current_era_mut()
+                .consensus
+                .deactivate_validator();
+            let new_era_id = block_header.era_id().successor();
+            let results = self.era_supervisor.new_era(
+                new_era_id,
+                Timestamp::now(), // TODO: This should be passed in.
+                validator_stakes,
+                block_header.timestamp(),
+                block_header.height() + 1,
+            );
+            effects.extend(self.handle_consensus_results(new_era_id, results));
+        }
+        effects
     }
 
     pub(super) fn handle_accept_proto_block(
@@ -407,10 +439,6 @@ where
                     .effect_builder
                     .announce_finalized_proto_block(proto_block.clone())
                     .ignore();
-                assert_eq!(
-                    era_id, self.era_supervisor.current_era,
-                    "finalized block in unexpected era"
-                );
                 // Create instructions for slashing equivocators.
                 let mut system_transactions: Vec<_> = new_equivocators
                     .into_iter()
@@ -428,23 +456,6 @@ where
                     self.era_supervisor.active_eras[&era_id].start_height + height,
                     proposer,
                 );
-                if fb.switch_block() {
-                    // TODO: Learn the new weights from contract (validator rotation).
-                    let validator_stakes = self.era_supervisor.validator_stakes.clone();
-                    self.era_supervisor
-                        .current_era_mut()
-                        .consensus
-                        .deactivate_validator();
-                    let results = self.era_supervisor.new_era(
-                        fb.era_id().successor(),
-                        fb.timestamp(),
-                        validator_stakes,
-                        fb.timestamp(),
-                        fb.height() + 1,
-                    );
-                    let new_era_id = era_id.successor();
-                    effects.extend(self.handle_consensus_results(new_era_id, results));
-                }
                 // Request execution of the finalized block.
                 effects.extend(self.effect_builder.execute_block(fb).ignore());
                 effects

@@ -46,13 +46,13 @@ pub(crate) struct LinearChainSync<I> {
     init_hash: Option<BlockHash>,
 }
 
-impl<I: Clone> LinearChainSync<I> {
+impl<I: Clone + 'static> LinearChainSync<I> {
     #[allow(unused)]
     pub fn new<REv: ReactorEventT<I>>(
         peers: Vec<I>,
         effect_builder: EffectBuilder<REv>,
         init_hash: Option<BlockHash>,
-    ) -> (Self, Effects<Event>) {
+    ) -> (Self, Effects<Event<I>>) {
         let linear_chain_sync = LinearChainSync {
             peers: peers.clone(),
             peers_to_try: peers,
@@ -105,7 +105,7 @@ impl<I: Clone> LinearChainSync<I> {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut R,
-    ) -> Effects<Event>
+    ) -> Effects<Event<I>>
     where
         I: Send + Copy + 'static,
         R: Rng + CryptoRng + ?Sized,
@@ -130,7 +130,7 @@ where
     R: Rng + CryptoRng + ?Sized,
     REv: ReactorEventT<I>,
 {
-    type Event = Event;
+    type Event = Event<I>;
 
     fn handle_event(
         &mut self,
@@ -225,6 +225,11 @@ where
                 // Start downloading deploys from the first block of the linear chain.
                 self.fetch_next_block_deploys(effect_builder, rng)
             }
+            Event::NewPeerConnected(peer_id) => {
+                // Add to the set of peers we can request things from.
+                self.peers.push(peer_id);
+                Effects::new()
+            }
         }
     }
 }
@@ -233,7 +238,7 @@ fn fetch_block_deploys<I: Send + Copy + 'static, REv>(
     effect_builder: EffectBuilder<REv>,
     peer: I,
     block: Block,
-) -> Effects<Event>
+) -> Effects<Event<I>>
 where
     REv: ReactorEventT<I>,
 {

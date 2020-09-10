@@ -10,32 +10,33 @@ use std::{
 
 use semver::Version;
 
+use casper_execution_engine::{
+    core::engine_state::{
+        self,
+        execute_request::ExecuteRequest,
+        execution_result::ExecutionResults,
+        genesis::GenesisResult,
+        query::{QueryRequest, QueryResult},
+        upgrade::{UpgradeConfig, UpgradeResult},
+    },
+    shared::{additive_map::AdditiveMap, transform::Transform},
+    storage::global_state::CommitResult,
+};
 use casper_types::Key;
 
 use super::Responder;
 use crate::{
     components::{
-        consensus::EraId,
-        contract_runtime::{
-            core::engine_state::{
-                self,
-                execute_request::ExecuteRequest,
-                genesis::GenesisResult,
-                query::{QueryRequest, QueryResult},
-                upgrade::{UpgradeConfig, UpgradeResult},
-            },
-            shared::{additive_map::AdditiveMap, transform::Transform},
-            storage::global_state::CommitResult,
-        },
         fetcher::FetchResult,
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
-    types::{BlockHash, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlockHash, Timestamp},
+    types::{
+        BlockHash, BlockHeader, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlockHash, Timestamp,
+    },
     utils::DisplayIter,
     Chainspec,
 };
-use engine_state::execution_result::ExecutionResults;
 
 /// A metrics request.
 #[derive(Debug)]
@@ -487,6 +488,6 @@ impl<I: Display> Display for LinearChainRequest<I> {
 #[must_use]
 /// Consensus component requests.
 pub enum ConsensusRequest {
-    /// Request for consensus to sign a new linear chain block.
-    SignLinearBlock(EraId, BlockHash, Responder<Signature>),
+    /// Request for consensus to sign a new linear chain block and possibly start a new era.
+    HandleLinearBlock(Box<BlockHeader>, Responder<Signature>),
 }

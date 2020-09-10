@@ -1,8 +1,10 @@
 use std::{
     array::TryFromSliceError,
+    collections::BTreeSet,
     convert::TryFrom,
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
+    iter::FromIterator,
 };
 
 use hex::FromHexError;
@@ -14,14 +16,15 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 use tracing::warn;
 
+use casper_execution_engine::core::engine_state::{
+    executable_deploy_item::ExecutableDeployItem, DeployItem,
+};
+
 use super::{Item, Tag, TimeDiff, Timestamp};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
-    components::{
-        contract_runtime::core::engine_state::executable_deploy_item::ExecutableDeployItem,
-        storage::Value,
-    },
+    components::storage::Value,
     crypto::{
         asymmetric_key::{self, PublicKey, SecretKey, Signature},
         hash::{self, Digest},
@@ -482,6 +485,20 @@ impl Display for Deploy {
             self.payment,
             self.session,
             DisplayIter::new(self.approvals.iter())
+        )
+    }
+}
+
+impl From<Deploy> for DeployItem {
+    fn from(deploy: Deploy) -> Self {
+        let account_hash = deploy.header().account().to_account_hash();
+        DeployItem::new(
+            account_hash,
+            deploy.session().clone(),
+            deploy.payment().clone(),
+            deploy.header().gas_price(),
+            BTreeSet::from_iter(vec![account_hash]),
+            deploy.id().inner().to_bytes(),
         )
     }
 }

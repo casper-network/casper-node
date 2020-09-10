@@ -74,20 +74,22 @@ use semver::Version;
 use smallvec::{smallvec, SmallVec};
 use tracing::error;
 
+use casper_execution_engine::{
+    core::{
+        engine_state::{
+            self, execute_request::ExecuteRequest, execution_result::ExecutionResults,
+            genesis::GenesisResult,
+        },
+        execution,
+    },
+    shared::{additive_map::AdditiveMap, transform::Transform},
+    storage::global_state::CommitResult,
+};
 use casper_types::Key;
-use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
 
 use crate::{
     components::{
-        consensus::{BlockContext, EraId},
-        contract_runtime::{
-            core::{
-                engine_state::{self, genesis::GenesisResult},
-                execution,
-            },
-            shared::{additive_map::AdditiveMap, transform::Transform},
-            storage::global_state::CommitResult,
-        },
+        consensus::BlockContext,
         fetcher::FetchResult,
         small_network::GossipedAddress,
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
@@ -97,7 +99,7 @@ use crate::{
         hash::Digest,
     },
     reactor::{EventQueueHandle, QueueKind},
-    types::{Block, BlockHash, BlockLike, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock},
+    types::{Block, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock},
     utils::Source,
     Chainspec,
 };
@@ -458,6 +460,19 @@ impl<REv> EffectBuilder<REv> {
             .schedule(
                 NetworkAnnouncement::GossipOurAddress(our_address),
                 QueueKind::Regular,
+            )
+            .await;
+    }
+
+    /// Announces that a new peer has connected.
+    pub(crate) async fn announce_new_peer<I, P>(self, peer_id: I)
+    where
+        REv: From<NetworkAnnouncement<I, P>>,
+    {
+        self.0
+            .schedule(
+                NetworkAnnouncement::NewPeer(peer_id),
+                QueueKind::NetworkIncoming,
             )
             .await;
     }
@@ -900,17 +915,13 @@ impl<REv> EffectBuilder<REv> {
         todo!("run_auction")
     }
 
-    /// Request consensus to sign a block from the linear chain.
-    pub(crate) async fn sign_linear_chain_block(
-        self,
-        era_id: EraId,
-        block_hash: BlockHash,
-    ) -> Signature
+    /// Request consensus to sign a block from the linear chain and possibly start a new era.
+    pub(crate) async fn handle_linear_chain_block(self, block_header: BlockHeader) -> Signature
     where
         REv: From<ConsensusRequest>,
     {
         self.make_request(
-            |responder| ConsensusRequest::SignLinearBlock(era_id, block_hash, responder),
+            |responder| ConsensusRequest::HandleLinearBlock(Box::new(block_header), responder),
             QueueKind::Regular,
         )
         .await

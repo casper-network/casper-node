@@ -13,7 +13,7 @@ use derive_more::From;
 use fmt::Debug;
 use prometheus::Registry;
 use rand::{CryptoRng, Rng};
-use tracing::{error, warn};
+use tracing::{debug, error, warn};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -515,6 +515,10 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                     source: Source::<NodeId>::Client,
                 };
                 self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
+            }
+            Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(peer_id)) => {
+                debug!(%peer_id, "new peer announcement event ignored (validator reactor does not care)");
+                Effects::new()
             }
             Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
                 let event = deploy_acceptor::Event::Accept {

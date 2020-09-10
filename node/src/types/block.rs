@@ -232,11 +232,6 @@ impl FinalizedBlock {
         &self.system_transactions
     }
 
-    /// Returns `true` if this is the last block of the current era.
-    pub(crate) fn switch_block(&self) -> bool {
-        self.switch_block
-    }
-
     /// Returns the ID of the era this block belongs to.
     pub(crate) fn era_id(&self) -> EraId {
         self.era_id
@@ -259,7 +254,7 @@ impl From<Block> for FinalizedBlock {
         let proto_block =
             ProtoBlock::new(b.header().deploy_hashes().clone(), b.header().random_bit);
 
-        let timestamp = *b.header().timestamp();
+        let timestamp = b.header().timestamp();
         let switch_block = b.header().switch_block;
         let era_id = b.header().era_id;
         let height = b.header().height;
@@ -356,14 +351,19 @@ impl BlockHeader {
         &self.deploy_hashes
     }
 
+    /// Returns `true` if this is the last block of an era.
+    pub fn switch_block(&self) -> bool {
+        self.switch_block
+    }
+
     /// A random bit needed for initializing a future era.
-    pub fn random_bit(&self) -> &bool {
-        &self.random_bit
+    pub fn random_bit(&self) -> bool {
+        self.random_bit
     }
 
     /// The timestamp from when the proto block was proposed.
-    pub fn timestamp(&self) -> &Timestamp {
-        &self.timestamp
+    pub fn timestamp(&self) -> Timestamp {
+        self.timestamp
     }
 
     /// Instructions for system transactions like slashing and rewards.
@@ -374,6 +374,11 @@ impl BlockHeader {
     /// Era ID in which this block was created.
     pub fn era_id(&self) -> EraId {
         self.era_id
+    }
+
+    /// Returns the height of this block, i.e. the number of ancestors.
+    pub fn height(&self) -> u64 {
+        self.height
     }
 
     /// Block proposer.

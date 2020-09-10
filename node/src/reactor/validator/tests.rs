@@ -4,16 +4,18 @@ use anyhow::bail;
 use rand::Rng;
 use tempfile::TempDir;
 
+use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
+use casper_types::U512;
+
 use crate::{
     components::{consensus::EraId, small_network, storage},
-    crypto::asymmetric_key::SecretKey,
+    crypto::asymmetric_key::{PublicKey, SecretKey},
     reactor::{initializer, joiner, validator, Runner},
     testing::{self, network::Network, ConditionCheckReactor, TestRng},
-    types::Motes,
+    types::Timestamp,
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
-    Chainspec, GenesisAccount,
+    Chainspec,
 };
-use casper_types::U512;
 
 struct TestChain {
     keys: Vec<SecretKey>,
@@ -38,13 +40,18 @@ impl TestChain {
         chainspec.genesis.accounts = keys
             .iter()
             .map(|secret_key| {
-                GenesisAccount::with_public_key(
-                    secret_key.into(),
+                let public_key: PublicKey = secret_key.into();
+                GenesisAccount::new(
+                    public_key.into(),
+                    public_key.to_account_hash(),
                     Motes::new(U512::from(rng.gen_range(10000, 99999999))),
                     Motes::new(U512::from(rng.gen_range(100, 999))),
                 )
             })
             .collect();
+        // TODO: This is duplicated. Remove the `HighwayConfig` field.
+        chainspec.genesis.timestamp = Timestamp::now();
+        chainspec.genesis.highway_config.genesis_era_start_timestamp = Timestamp::now();
 
         TestChain {
             keys,

@@ -13,10 +13,10 @@ use lazy_static::lazy_static;
 use reqwest::{Client, StatusCode};
 use serde::{self, Deserialize};
 
+use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_node::{
-    components::contract_runtime::core::engine_state::executable_deploy_item::ExecutableDeployItem,
     crypto::hash::Digest,
-    types::{Deploy, DeployHash, TimeDiff, Timestamp},
+    types::{Deploy, TimeDiff, Timestamp},
 };
 use casper_types::{
     account::AccountHash,
@@ -201,6 +201,7 @@ pub(super) mod gas_price {
 /// Handles providing the arg for and retrieval of the deploy dependencies.
 pub(super) mod dependencies {
     use super::*;
+    use casper_node::types::DeployHash;
 
     const ARG_NAME: &str = "dependency";
     const ARG_VALUE_NAME: &str = "HEX STRING";
