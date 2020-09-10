@@ -180,6 +180,7 @@ where
                         );
                     }
                     trace!(%block_hash, "Downloaded linear chain block.");
+                    self.reset_peers();
                     self.linear_chain.push(*block.clone());
                     if block.is_genesis_child() {
                         info!("Linear chain downloaded. Starting downloading deploys.");
@@ -187,7 +188,6 @@ where
                             .put_block_to_storage(block)
                             .event(move |_| Event::LinearChainBlocksDownloaded)
                     } else {
-                        self.reset_peers();
                         let parent_hash = *block.parent_hash();
                         let peer = self.random_peer_unsafe(rng);
                         let mut effects = effect_builder.put_block_to_storage(block).ignore();
