@@ -53,7 +53,7 @@ pub enum Event {
 
     /// Linear chain event.
     #[from]
-    LinearChainSync(linear_chain_sync::Event),
+    LinearChainSync(linear_chain_sync::Event<NodeId>),
 
     /// Requests.
     /// Linear chain fetcher request.
@@ -167,6 +167,14 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor {
             Event::Network(event) => reactor::wrap_effects(
                 Event::Network,
                 self.net.handle_event(effect_builder, rng, event),
+            ),
+            Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(id)) => reactor::wrap_effects(
+                Event::LinearChainSync,
+                self.linear_chain_sync.handle_event(
+                    effect_builder,
+                    rng,
+                    linear_chain_sync::Event::NewPeerConnected(id),
+                ),
             ),
             Event::NetworkAnnouncement(_) => Default::default(),
             Event::Storage(event) => reactor::wrap_effects(
