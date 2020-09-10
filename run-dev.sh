@@ -57,8 +57,12 @@ sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = $(date '+%s000')/" ${CHAINSPEC}
 sed -i 's|\.\./\.\.|'"$BASEDIR"'|' ${CHAINSPEC}
 sed -i 's|accounts\.csv|'"$BASEDIR"'/resources/local/accounts.csv|' ${CHAINSPEC}
 
+NODES="$@"
+
 for i in 1 2 3 4 5; do
-    run_node $i
+    case "$NODES" in
+        *"$i"*) echo "Running node-$i" && run_node $i
+    esac
 done;
 
 echo "Test network started."
