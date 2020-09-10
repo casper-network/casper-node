@@ -263,7 +263,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
 
         let (consensus, init_consensus_effects) = EraSupervisor::new(
             timestamp,
-            WithDir::new(root.clone(), config.consensus.clone()),
+            WithDir::new(root, config.consensus.clone()),
             effect_builder,
             validator_stakes,
             &chainspec_loader.chainspec().genesis.highway_config,
