@@ -176,7 +176,7 @@ where
                         return self.handle_event(
                             effect_builder,
                             rng,
-                            Event::GetBlockResult(*block.hash(), None),
+                            Event::GetBlockResult(block_hash, None),
                         );
                     }
                     trace!(%block_hash, "Downloaded linear chain block.");
@@ -185,18 +185,15 @@ where
                     if block.is_genesis_child() {
                         info!("Linear chain downloaded. Starting downloading deploys.");
                         effect_builder
-                            .put_block_to_storage(block)
+                            .immediately()
                             .event(move |_| Event::LinearChainBlocksDownloaded)
                     } else {
                         let parent_hash = *block.parent_hash();
                         let peer = self.random_peer_unsafe(rng);
-                        let mut effects = effect_builder.put_block_to_storage(block).ignore();
-                        let fetch_parent = effect_builder.fetch_block(parent_hash, peer).option(
-                            move |value| Event::GetBlockResult(block_hash, Some(value)),
-                            move || Event::GetBlockResult(block_hash, None),
-                        );
-                        effects.extend(fetch_parent);
-                        effects
+                        effect_builder.fetch_block(parent_hash, peer).option(
+                            move |value| Event::GetBlockResult(parent_hash, Some(value)),
+                            move || Event::GetBlockResult(parent_hash, None),
+                        )
                     }
                 }
             },
