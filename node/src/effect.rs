@@ -100,7 +100,10 @@ use crate::{
         hash::Digest,
     },
     reactor::{EventQueueHandle, QueueKind},
-    types::{Block, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock},
+    types::{
+        Block, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, FinalizedBlock, Item,
+        ProtoBlock,
+    },
     utils::Source,
     Chainspec,
 };
