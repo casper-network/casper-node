@@ -28,12 +28,8 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
 };
-pub(crate) use chainspec::{DeployConfig, HighwayConfig};
-// False positive.
-#[allow(unreachable_pub)]
 pub use chainspec::Chainspec;
-// False positive.
-#[allow(unreachable_pub)]
+pub(crate) use chainspec::{DeployConfig, HighwayConfig};
 pub use error::Error;
 
 /// `ChainspecHandler` events.

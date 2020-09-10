@@ -5,6 +5,7 @@
 set -eu
 
 BASEDIR=$(readlink -f $(dirname $0))
+CHAINSPEC=$(mktemp -t chainspec_XXXXXXXX --suffix .toml)
 
 run_node() {
     ID=$1
@@ -37,6 +38,7 @@ run_node() {
         --config-ext=consensus.secret_key_path=secret_keys/node-${ID}.pem \
         --config-ext=storage.path=${STORAGE_DIR} \
         --config-ext=network.gossip_interval=1000 \
+        --config-ext=node.chainspec_config_path=${CHAINSPEC} \
         ${BIND_ADDRESS_ARG}
 
     echo "Started node $ID, logfile: ${LOGFILE}"
@@ -48,6 +50,12 @@ run_node() {
 
 # Build the node first, so that `sleep` in the loop has an effect.
 cargo build -p casper-node
+
+# Update the chainspec to use the current time as the genesis timestamp.
+cp ${BASEDIR}/resources/local/chainspec.toml ${CHAINSPEC}
+sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = $(date '+%s000')/" ${CHAINSPEC}
+sed -i 's|\.\./\.\.|'"$BASEDIR"'|' ${CHAINSPEC}
+sed -i 's|accounts\.csv|'"$BASEDIR"'/resources/local/accounts.csv|' ${CHAINSPEC}
 
 for i in 1 2 3 4 5; do
     run_node $i
