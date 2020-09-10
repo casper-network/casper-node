@@ -111,6 +111,7 @@ where
                 let era_id = block.header().era_id();
                 let block_hash = *block.hash();
                 self.last_block = Some(block.clone());
+                debug!("LinearChainBlock --block_hash: {}", block_hash);
                 effect_builder
                 .put_block_to_storage(Box::new(block))
                 .event(move |_| Event::PutBlockResult(era_id, block_hash))

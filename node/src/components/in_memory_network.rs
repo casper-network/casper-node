@@ -295,8 +295,9 @@ use tracing::{debug, error, info, warn};
 use crate::{
     components::Component,
     effect::{
-        announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, EffectExt,
-        Effects,
+        announcements::NetworkAnnouncement,
+        requests::NetworkRequest,
+        EffectBuilder, EffectExt, Effects,
     },
     logging,
     reactor::{EventQueueHandle, QueueKind},

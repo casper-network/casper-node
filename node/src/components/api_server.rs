@@ -20,14 +20,14 @@
 mod config;
 mod event;
 
-use std::{borrow::Cow, error::Error as StdError, net::SocketAddr, str};
+use std::{borrow::Cow, error::Error as StdError, fmt::Debug, net::SocketAddr, str};
 
 use bytes::Bytes;
-use futures::FutureExt;
+use futures::{FutureExt, join};
 use http::Response;
 use rand::{CryptoRng, Rng};
 use smallvec::smallvec;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 use warp::{
     body,
     filters::path::Tail,
@@ -44,7 +44,8 @@ use crate::{
     effect::{
         announcements::ApiServerAnnouncement,
         requests::{
-            ApiRequest, ContractRuntimeRequest, LinearChainRequest, MetricsRequest, StorageRequest,
+            ApiRequest, ContractRuntimeRequest, LinearChainRequest, MetricsRequest,
+            NetworkInfoRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -69,76 +70,6 @@ impl ApiServer {
     {
         tokio::spawn(run_server(config, effect_builder));
         ApiServer {}
-    }
-}
-
-impl<REv, R> Component<REv, R> for ApiServer
-where
-    REv: From<ApiServerAnnouncement>
-        + From<LinearChainRequest<NodeId>>
-        + From<ContractRuntimeRequest>
-        + From<MetricsRequest>
-        + From<StorageRequest<Storage>>
-        + Send,
-    R: Rng + CryptoRng + ?Sized,
-{
-    type Event = Event;
-
-    fn handle_event(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
-        event: Self::Event,
-    ) -> Effects<Self::Event> {
-        match event {
-            Event::ApiRequest(ApiRequest::SubmitDeploy { deploy, responder }) => {
-                let mut effects = effect_builder.announce_deploy_received(deploy).ignore();
-                effects.extend(responder.respond(()).ignore());
-                effects
-            }
-            Event::ApiRequest(ApiRequest::GetDeploy { hash, responder }) => effect_builder
-                .get_deploys_from_storage(smallvec![hash])
-                // .and_then(|result| responder.respond(result))
-                // .ignore(),
-                .event(move |mut result| Event::GetDeployResult {
-                    hash,
-                    result: Box::new(result.pop().expect("can only contain one result")),
-                    main_responder: responder,
-                }),
-            Event::ApiRequest(ApiRequest::ListDeploys { responder }) => effect_builder
-                .list_deploys()
-                .event(move |result| Event::ListDeploysResult {
-                    result,
-                    main_responder: responder,
-                }),
-            Event::ApiRequest(ApiRequest::GetMetrics { responder }) => effect_builder
-                .get_metrics()
-                .event(move |text| Event::GetMetricsResult {
-                    text,
-                    main_responder: responder,
-                }),
-            Event::ApiRequest(ApiRequest::GetStatus { responder }) => async move {
-                let last_finalized_block = effect_builder.get_last_finalized_block().await;
-                let status_feed = StatusFeed::new(last_finalized_block);
-                let last_finalized_block_json = serde_json::to_string(&status_feed)
-                    .unwrap_or(String::from("\"last_finalized_block\": \"{}\""));
-                responder.respond(Some(last_finalized_block_json)).await;
-            }
-            .ignore(),
-            Event::GetDeployResult {
-                hash: _,
-                result,
-                main_responder,
-            } => main_responder.respond(*result).ignore(),
-            Event::ListDeploysResult {
-                result,
-                main_responder,
-            } => main_responder.respond(result).ignore(),
-            Event::GetMetricsResult {
-                text,
-                main_responder,
-            } => main_responder.respond(text).ignore(),
-        }
     }
 }
 
@@ -186,7 +117,7 @@ where
 
     debug!(%server_addr, "starting HTTP server");
     loop {
-        match warp::serve(filter.clone()).try_bind_ephemeral(server_addr) {
+        match warp::serve(filter).try_bind_ephemeral(server_addr) {
             Ok((addr, server_fut)) => {
                 info!(%addr, "started HTTP server");
                 return server_fut.await;
@@ -373,4 +304,87 @@ where
         .status(status)
         .body(body)
         .unwrap())
+}
+
+impl<REv, R> Component<REv, R> for ApiServer
+where
+    REv: From<ApiServerAnnouncement>
+        + From<NetworkInfoRequest<NodeId>>
+        + From<LinearChainRequest<NodeId>>
+        + From<ContractRuntimeRequest>
+        + From<MetricsRequest>
+        + From<StorageRequest<Storage>>
+        + Send,
+    R: Rng + CryptoRng + ?Sized,
+{
+    type Event = Event;
+
+    fn handle_event(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        _rng: &mut R,
+        event: Self::Event,
+    ) -> Effects<Self::Event> {
+        match event {
+            Event::ApiRequest(ApiRequest::SubmitDeploy { deploy, responder }) => {
+                let mut effects = effect_builder.announce_deploy_received(deploy).ignore();
+                effects.extend(responder.respond(()).ignore());
+                effects
+            }
+            Event::ApiRequest(ApiRequest::GetDeploy { hash, responder }) => effect_builder
+                .get_deploys_from_storage(smallvec![hash])
+                .event(move |mut result| Event::GetDeployResult {
+                    hash,
+                    result: Box::new(result.pop().expect("can only contain one result")),
+                    main_responder: responder,
+                }),
+            Event::ApiRequest(ApiRequest::ListDeploys { responder }) => effect_builder
+                .list_deploys()
+                .event(move |result| Event::ListDeploysResult {
+                    result,
+                    main_responder: responder,
+                }),
+            Event::ApiRequest(ApiRequest::GetMetrics { responder }) => effect_builder
+                .get_metrics()
+                .event(move |text| Event::GetMetricsResult {
+                    text,
+                    main_responder: responder,
+                }),
+            Event::ApiRequest(ApiRequest::GetStatus { responder }) => async move {
+                // let last_finalized_block = effect_builder.get_last_finalized_block().await;
+                // let peers = effect_builder.network_peers().await;
+                let (last_finalized_block, peers) = join!(
+                    effect_builder.get_last_finalized_block(),
+                    effect_builder.network_peers()
+                );
+                let status_feed = StatusFeed::new(last_finalized_block, peers);
+                debug!("GetStatus --status_feed: {:?}", status_feed);
+                let json = {
+                    match serde_json::to_string(&status_feed) {
+                        Ok(json) => json,
+                        Err(error) => {
+                            error!("GetStatus --error: {:?}", error);
+                            serde_json::to_string(&StatusFeed::default())
+                                .unwrap_or_else(|_| String::default())
+                        }
+                    }
+                };
+                responder.respond(Some(json)).await;
+            }
+            .ignore(),
+            Event::GetDeployResult {
+                hash: _,
+                result,
+                main_responder,
+            } => main_responder.respond(*result).ignore(),
+            Event::ListDeploysResult {
+                result,
+                main_responder,
+            } => main_responder.respond(result).ignore(),
+            Event::GetMetricsResult {
+                text,
+                main_responder,
+            } => main_responder.respond(text).ignore(),
+        }
+    }
 }

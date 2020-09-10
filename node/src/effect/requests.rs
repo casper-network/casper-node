@@ -4,8 +4,9 @@
 //! top-level module documentation for details.
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
+    net::SocketAddr,
 };
 
 use semver::Version;
@@ -32,7 +33,10 @@ use crate::{
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
-    types::{Block as LinearBlock, BlockHash, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlockHash, Timestamp},
+    types::{
+        Block as LinearBlock, BlockHash, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlockHash,
+        Timestamp,
+    },
     utils::DisplayIter,
     Chainspec,
 };
@@ -141,6 +145,28 @@ where
                 write!(formatter, "broadcast: {}", payload)
             }
             NetworkRequest::Gossip { payload, .. } => write!(formatter, "gossip: {}", payload),
+        }
+    }
+}
+
+/// A networking info request.
+#[derive(Debug)]
+#[must_use]
+pub enum NetworkInfoRequest<I> {
+    /// Get incoming and outgoing peers.
+    GetPeers {
+        /// Responder to be called with all connected peers.
+        responder: Responder<HashMap<I, SocketAddr>>,
+    },
+}
+
+impl<I> Display for NetworkInfoRequest<I>
+where
+    I: Display,
+{
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            NetworkInfoRequest::GetPeers { responder: _ } => write!(formatter, "get peers"),
         }
     }
 }
