@@ -1,4 +1,4 @@
-use super::{consensus::EraId, storage::Storage, Component};
+use super::{storage::Storage, Component};
 use crate::{
     components::storage::Value,
     crypto::asymmetric_key::Signature,
@@ -29,7 +29,7 @@ pub enum Event<I> {
     /// New finality signature.
     NewFinalitySignature(BlockHash, Signature),
     /// The result of putting a block to storage.
-    PutBlockResult(EraId, BlockHash),
+    PutBlockResult(Block),
 }
 
 impl<I: Display> Display for Event<I> {
@@ -47,7 +47,7 @@ impl<I: Display> Display for Event<I> {
             Event::NewFinalitySignature(bh, _) => {
                 write!(f, "linear-chain new finality signature for block: {}", bh)
             }
-            Event::PutBlockResult(_, _) => write!(f, "linear-chain put-block result"),
+            Event::PutBlockResult(_) => write!(f, "linear-chain put-block result"),
         }
     }
 }
@@ -109,17 +109,17 @@ where
                 }
             }
             Event::LinearChainBlock(block) => {
-                let era_id = block.header().era_id();
-                let block_hash = *block.hash();
-                self.last_block = Some(block.clone());
-                debug!("LinearChainBlock --block_hash: {}", block_hash);
                 effect_builder
-                .put_block_to_storage(Box::new(block))
-                .event(move |_| Event::PutBlockResult(era_id, block_hash))
+                .put_block_to_storage(Box::new(block.clone()))
+                .event(move |_| Event::PutBlockResult(block))
             },
-            Event::PutBlockResult(era_id, block_hash) =>
-                effect_builder.sign_linear_chain_block(era_id, block_hash)
-                .event(move |signature| Event::NewFinalitySignature(block_hash, signature)),
+            Event::PutBlockResult(block) => {
+                let block_hash = *block.hash();
+                debug!("LinearChainBlock --block_hash: {}", block_hash);
+                self.last_block = Some(block.clone());
+                effect_builder.handle_linear_chain_block(block.header().clone())
+                    .event(move |signature| Event::NewFinalitySignature(block_hash, signature))
+            },
             Event::NewFinalitySignature(bh, signature) => {
                 effect_builder
                 .clone()

@@ -32,12 +32,8 @@ use crate::{
     protocol::Message,
     types::{Block, Deploy, Item},
 };
-// Seems to be a false positive.
-#[allow(unreachable_pub)]
-pub use config::Config;
-// Seems to be a false positive.
 use chainspec_store::ChainspecStore;
-#[allow(unreachable_pub)]
+pub use config::Config;
 pub use error::Error;
 pub(crate) use error::Result;
 pub use event::Event;

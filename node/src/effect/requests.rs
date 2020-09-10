@@ -28,14 +28,13 @@ use casper_types::Key;
 use super::Responder;
 use crate::{
     components::{
-        consensus::EraId,
         fetcher::FetchResult,
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
     types::{
-        Block as LinearBlock, BlockHash, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlockHash,
-        Timestamp,
+        Block as LinearBlock, BlockHash, BlockHeader, Deploy, DeployHash, FinalizedBlock, Item,
+        ProtoBlockHash, Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
@@ -172,9 +171,7 @@ where
 }
 
 #[derive(Debug)]
-// TODO: remove once all variants are used.
 /// A storage request.
-#[allow(dead_code)]
 #[must_use]
 pub enum StorageRequest<S: StorageType + 'static> {
     /// Store given block.
@@ -522,6 +519,6 @@ impl<I: Display> Display for LinearChainRequest<I> {
 #[must_use]
 /// Consensus component requests.
 pub enum ConsensusRequest {
-    /// Request for consensus to sign a new linear chain block.
-    SignLinearBlock(EraId, BlockHash, Responder<Signature>),
+    /// Request for consensus to sign a new linear chain block and possibly start a new era.
+    HandleLinearBlock(Box<BlockHeader>, Responder<Signature>),
 }
