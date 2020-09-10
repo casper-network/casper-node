@@ -276,6 +276,8 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
+        // We don't need `rng` b/c consensus component was the only one using it,
+        // and now it's being passed on from the `joiner` reactor via `config`.
         _rng: &mut R,
     ) -> Result<(Self, Effects<Event>), Error> {
         let ValidatorInitConfig {
