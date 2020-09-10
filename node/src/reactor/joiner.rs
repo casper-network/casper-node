@@ -8,7 +8,7 @@ use derive_more::From;
 use prometheus::Registry;
 use rand::{CryptoRng, Rng};
 use small_network::GossipedAddress;
-use tracing::{debug, info, warn};
+use tracing::{error, info, warn};
 
 use crate::{
     components::{
@@ -43,7 +43,7 @@ use crate::{
         validator::{self, Error, ValidatorInitConfig},
         EventQueueHandle, Finalize,
     },
-    types::{Block, BlockHash, Deploy, ProtoBlock, Timestamp},
+    types::{Block, BlockHash, Deploy, ProtoBlock, Tag, Timestamp},
     utils::{Source, WithDir},
 };
 
@@ -350,10 +350,32 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 };
                 self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
             }
-            Event::NetworkAnnouncement(announcement) => {
-                debug!(?announcement, "network announcement ignored.");
-                Default::default()
-            }
+            Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
+                sender,
+                payload,
+            }) => match payload {
+                Message::GetResponse {
+                    tag: Tag::Block,
+                    serialized_item,
+                } => {
+                    let block = match rmp_serde::from_read_ref(&serialized_item) {
+                        Ok(block) => Box::new(block),
+                        Err(err) => {
+                            error!("failed to decode block from {}: {}", sender, err);
+                            return Effects::new();
+                        }
+                    };
+                    let event = fetcher::Event::GotRemotely {
+                        item: block,
+                        source: Source::Peer(sender),
+                    };
+                    self.dispatch_event(effect_builder, rng, Event::BlockFetcher(event))
+                }
+                other => {
+                    warn!(?other, "network announcement ignored.");
+                    Effects::new()
+                }
+            },
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
