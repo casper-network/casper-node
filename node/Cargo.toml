@@ -108,15 +108,29 @@ test = false
 
 [package.metadata.deb]
 features = ["vendored-openssl"]
+revision = "0"  # Increment with releases for updates to charlie data files when not version bumping casper-node.
 assets = [
-    ["../target/release/casper-node","/usr/bin/casper-node", "755"],
-    ["../target/release/casper-client","/usr/bin/casper-client", "755"]
+    ["../target/release/casper-node", "/usr/bin/casper-node", "755"],
+    ["../target/release/casper-client", "/usr/bin/casper-client", "755"],
+    ["../target/wasm32-unknown-unknown/release/mint_install.wasm", "/etc/casper/wasm/mint_install.wasm", "644"],
+    ["../target/wasm32-unknown-unknown/release/pos_install.wasm", "/etc/casper/wasm/pos_install.wasm", "644"],
+    ["../target/wasm32-unknown-unknown/release/standard_payment_install.wasm", "/etc/casper/wasm/standard_payment_install.wasm", "644"],
+    ["../target/wasm32-unknown-unknown/release/auction_install.wasm", "/etc/casper/wasm/auction_install.wasm", "644"],
+    ["../resources/charlie/accounts.csv", "/etc/casper/accounts.csv", "644"],
+    ["../resources/charlie/chainspec.toml", "/etc/casper/chainspec.toml", "644"],
+    ["../resources/charlie/README.md", "/etc/casper/README.md", "644"],
+    ["../resources/charlie/config-example.toml", "/etc/casper/config-example.toml", "644"],
+    ["../resources/charlie/validator_keys/README.md", "/etc/casper/validator_keys/README.md", "644"]
 ]
 extended-description = """
 Package for Casper Node and Client.
 
 For information on using package, see https://github.com/CasperLabs/casper-node
 """
+
+[package.metadata.deb.systemd-units]
+unit-scripts = "../resources/maintainer_scripts/casper_node"
+restart-after-upgrade = true
 
 [package.metadata.docs.rs]
 features = ["no-unstable-features"]
