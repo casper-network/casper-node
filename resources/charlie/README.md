@@ -4,11 +4,11 @@ The purpose of this document is to guide configuring a system with the new Rust 
 
 ## Software Install
 
-Initially, we will be distributing the debian package as part of the archive which contained this file.  
-The package can be found in the `deb` folder, `casper-node_0.1.x_amd64.deb`.
+The package can be installed with `sudo apt install casper-node_0.1.x-r_amd64.deb`.  
+Where `x` is last minor version of software and `r` is the package revision. We will be pushing revisions
+with no code changes for updates to genesis files.
 
-The package can be installed with `sudo apt install ./deb/casper-node_0.1.x_amd64.deb`.  This will install both
-`casper-node` and `casper-client` executables in `/usr/bin`.
+This package will install both `casper-node` and `casper-client` executables in `/usr/bin`.
 
 Configuration files and other needed files are installed in `/etc/casper/`. And example config file is given
 as `/etc/casper/config-example.toml`. This needs to be updated to `config.toml`. You can do a direct copy and 
@@ -16,7 +16,7 @@ modify values as needed. We did not distribute `config.toml` so it isn't overwri
 installed to upgrade.
 
 The `accounts.csv` and `chainspec.toml` files will be installed in `/etc/casper` with the deb package install. 
-This should allow easy configuration for each network run. 
+This should allow easy configuration for each network run as they are updated with a new deb package revision.
 
 ## Key Generation
 
