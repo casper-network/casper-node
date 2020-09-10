@@ -7,12 +7,10 @@ mod error;
 #[cfg(test)]
 mod tests;
 
-use std::{
-    fmt::{self, Display, Formatter},
-    path::PathBuf,
-};
+use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
+use fmt::Debug;
 use prometheus::Registry;
 use rand::{CryptoRng, Rng};
 use tracing::{error, warn};
@@ -51,8 +49,8 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, EventQueueHandle},
-    types::{Deploy, ProtoBlock, Tag, Timestamp},
-    utils::{Source, WithDir},
+    types::{Deploy, ProtoBlock, Tag},
+    utils::Source,
 };
 pub use config::Config;
 pub use error::Error;
@@ -230,13 +228,13 @@ impl Display for Event {
 }
 
 /// The configuration needed to initialize a Validator reactor
-#[derive(Debug)]
-pub struct ValidatorInitConfig {
-    pub(super) root: PathBuf,
+pub struct ValidatorInitConfig<R: Rng + CryptoRng + ?Sized> {
     pub(super) config: Config,
     pub(super) chainspec_loader: ChainspecLoader,
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
+    pub(super) consensus: EraSupervisor<NodeId, R>,
+    pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
 }
 
 /// Validator node reactor.
@@ -271,21 +269,22 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
 
     // The "configuration" is in fact the whole state of the joiner reactor, which we
     // deconstruct and reuse.
-    type Config = ValidatorInitConfig;
+    type Config = ValidatorInitConfig<R>;
     type Error = Error;
 
     fn new(
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut R,
+        _rng: &mut R,
     ) -> Result<(Self, Effects<Event>), Error> {
         let ValidatorInitConfig {
-            root,
             config,
             chainspec_loader,
             storage,
             contract_runtime,
+            consensus,
+            init_consensus_effects,
         } = config;
 
         let metrics = Metrics::new(registry.clone());
@@ -296,20 +295,6 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         let address_gossiper = Gossiper::new_for_complete_items(config.gossip);
 
         let api_server = ApiServer::new(config.http_server, effect_builder);
-        let timestamp = Timestamp::now();
-        let validator_stakes = chainspec_loader
-            .chainspec()
-            .genesis
-            .genesis_validator_stakes();
-
-        let (consensus, consensus_effects) = EraSupervisor::new(
-            timestamp,
-            WithDir::new(root, config.consensus),
-            effect_builder,
-            validator_stakes,
-            &chainspec_loader.chainspec().genesis.highway_config,
-            rng,
-        )?;
         let deploy_acceptor = DeployAcceptor::new();
         let deploy_fetcher = Fetcher::new(config.gossip);
         let deploy_gossiper = Gossiper::new_for_partial_items(
@@ -326,7 +311,10 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         let linear_chain = LinearChain::new();
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
-        effects.extend(reactor::wrap_effects(Event::Consensus, consensus_effects));
+        effects.extend(reactor::wrap_effects(
+            Event::Consensus,
+            init_consensus_effects,
+        ));
 
         Ok((
             Reactor {

@@ -1,9 +1,6 @@
 //! Reactor used to join the network.
 
-use std::{
-    fmt::{self, Display, Formatter},
-    path::PathBuf,
-};
+use std::fmt::{self, Display, Formatter};
 
 use block_executor::BlockExecutor;
 use consensus::EraSupervisor;
@@ -186,9 +183,7 @@ impl Display for Event {
 }
 
 /// Joining node reactor.
-#[derive(Debug)]
 pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
-    pub(super) root: PathBuf,
     pub(super) net: SmallNetwork<Event, Message>,
     pub(super) config: validator::Config,
     pub(super) chainspec_loader: ChainspecLoader,
@@ -201,6 +196,10 @@ pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
     pub(super) block_executor: BlockExecutor,
     pub(super) linear_chain: linear_chain::LinearChain<NodeId>,
     pub(super) consensus: EraSupervisor<NodeId, R>,
+    // Effects consensus component returned during creation.
+    // In the `joining` phase we don't want to handle it,
+    // so we carry them forward to the `validator` reactor.
+    pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
 }
 
 impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
@@ -262,7 +261,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         // Used to decide whether era should be activated.
         let timestamp = Timestamp::now();
 
-        let (consensus, consensus_effects) = EraSupervisor::new(
+        let (consensus, init_consensus_effects) = EraSupervisor::new(
             timestamp,
             WithDir::new(root.clone(), config.consensus.clone()),
             effect_builder,
@@ -271,12 +270,9 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             rng,
         )?;
 
-        effects.extend(reactor::wrap_effects(Event::Consensus, consensus_effects));
-
         Ok((
             Self {
                 net,
-                root,
                 config,
                 chainspec_loader,
                 storage,
@@ -288,6 +284,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 block_executor,
                 linear_chain,
                 consensus,
+                init_consensus_effects,
             },
             effects,
         ))
@@ -394,15 +391,16 @@ impl<R: Rng + CryptoRng + ?Sized> Reactor<R> {
     /// Deconstructs the reactor into config useful for creating a Validator reactor. Shuts down
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
-    pub async fn into_validator_config(self) -> ValidatorInitConfig {
+    pub async fn into_validator_config(self) -> ValidatorInitConfig<R> {
         let (net, config) = (
             self.net,
             ValidatorInitConfig {
-                root: self.root,
                 chainspec_loader: self.chainspec_loader,
                 config: self.config,
                 contract_runtime: self.contract_runtime,
                 storage: self.storage,
+                consensus: self.consensus,
+                init_consensus_effects: self.init_consensus_effects,
             },
         );
         net.finalize().await;
