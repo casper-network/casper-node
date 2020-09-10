@@ -167,8 +167,10 @@ where
                 Some(FetchResult::FromPeer(block, peer)) => {
                     if *block.hash() != block_hash {
                         warn!(
-                            "{} returned linear block where hash doesn't match {}",
-                            peer, block_hash
+                            "Block hash mismatch. Expected {} got {} from {}.",
+                            block_hash,
+                            block.hash(),
+                            peer
                         );
                         // NOTE: Signal misbehaving validator to networking layer.
                         return self.handle_event(
