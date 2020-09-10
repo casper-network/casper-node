@@ -3,9 +3,11 @@ mod event;
 use super::{fetcher::FetchResult, storage::Storage, Component};
 use crate::{
     effect::{self, EffectBuilder, EffectExt, EffectOptionExt, Effects},
-    types::{Block, BlockHash},
+    types::{Block, BlockHash, FinalizedBlock},
 };
-use effect::requests::{BlockValidationRequest, FetcherRequest, StorageRequest};
+use effect::requests::{
+    BlockExecutorRequest, BlockValidationRequest, FetcherRequest, StorageRequest,
+};
 pub use event::Event;
 use rand::{CryptoRng, Rng};
 use std::fmt::Display;
@@ -15,6 +17,7 @@ pub trait ReactorEventT<I>:
     From<StorageRequest<Storage>>
     + From<FetcherRequest<I, Block>>
     + From<BlockValidationRequest<Block, I>>
+    + From<BlockExecutorRequest>
     + Send
 {
 }
@@ -23,6 +26,7 @@ impl<I, REv> ReactorEventT<I> for REv where
     REv: From<StorageRequest<Storage>>
         + From<FetcherRequest<I, Block>>
         + From<BlockValidationRequest<Block, I>>
+        + From<BlockExecutorRequest>
         + Send
 {
 }
@@ -199,7 +203,12 @@ where
                 self.reset_peers();
                 // Execute block
                 // Download next block deploys.
-                self.fetch_next_block_deploys(effect_builder, rng)
+                let mut effects = self.fetch_next_block_deploys(effect_builder, rng);
+                let finalized_block: FinalizedBlock = (*block).into();
+                // TODO: Signal when the whole linear chain has been downloaded and executed.
+                let execute_block_effect = effect_builder.execute_block(finalized_block).ignore();
+                effects.extend(execute_block_effect);
+                effects
             }
             Event::DeploysNotFound(block) => match self.random_peer(rng) {
                 None => {

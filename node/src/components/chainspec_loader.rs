@@ -102,8 +102,8 @@ impl ChainspecLoader {
         self.completed_successfully.unwrap_or_default()
     }
 
-    pub(crate) fn genesis_post_state_hash(self) -> Option<Digest> {
-        self.genesis_post_state_hash
+    pub(crate) fn genesis_post_state_hash(&self) -> &Option<Digest> {
+        &self.genesis_post_state_hash
     }
 
     pub(crate) fn chainspec(&self) -> &Chainspec {
