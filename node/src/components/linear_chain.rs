@@ -15,7 +15,7 @@ use effect::requests::{ConsensusRequest, NetworkRequest};
 use futures::FutureExt;
 use rand::{CryptoRng, Rng};
 use std::fmt::Display;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 #[derive(Debug, From)]
 pub enum Event<I> {
@@ -108,6 +108,8 @@ where
             },
             Event::PutBlockResult(block_header) => {
                 let block_hash = block_header.hash();
+                // Using `Display` impl for the `block_hash` to not truncate it.
+                info!(?block_hash, "Linear chain block stored.");
                 effect_builder.handle_linear_chain_block(block_header)
                     .event(move |signature| Event::NewFinalitySignature(block_hash, signature))
             },
