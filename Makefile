@@ -6,7 +6,7 @@ NPM    = $(or $(shell which npm),    /usr/bin/npm)
 RUST_TOOLCHAIN := $(shell cat rust-toolchain)
 
 CARGO_OPTS := --locked
-CARGO := $(CARGO) $(CARGO_OPTS)
+CARGO := $(CARGO) $(CARGO_TOOLCHAIN) $(CARGO_OPTS)
 
 DISABLE_LOGGING = RUST_LOG=MatchesNothing
 
@@ -153,8 +153,9 @@ audit:
 .PHONY: build-docs-stable-rs
 build-docs-stable-rs: $(CRATES_WITH_DOCS_RS_MANIFEST_TABLE)
 
+doc-stable/%: CARGO_TOOLCHAIN += +stable
 doc-stable/%:
-	cargo +stable --locked doc $(CARGO_FLAGS) --manifest-path "$*/Cargo.toml" --features "no-unstable-features" --no-deps
+	$(CARGO) doc $(CARGO_FLAGS) --manifest-path "$*/Cargo.toml" --features "no-unstable-features" --no-deps
 
 .PHONY: check-rs
 check-rs: \
