@@ -3,6 +3,7 @@
 use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
+use fmt::Debug;
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +13,7 @@ use crate::{
 };
 
 /// Reactor message.
-#[derive(Debug, Clone, From, Serialize, Deserialize)]
+#[derive(Clone, From, Serialize, Deserialize)]
 pub enum Message {
     /// Consensus component message.
     #[from]
@@ -52,6 +53,29 @@ impl Message {
             tag: T::TAG,
             serialized_item: rmp_serde::to_vec(item)?,
         })
+    }
+}
+
+impl Debug for Message {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Message::Consensus(c) => f.debug_tuple("Consensus").field(&c).finish(),
+            Message::DeployGossiper(dg) => f.debug_tuple("DeployGossiper").field(&dg).finish(),
+            Message::AddressGossiper(ga) => f.debug_tuple("AddressGossiper").field(&ga).finish(),
+            Message::GetRequest { tag, serialized_id } => f
+                .debug_struct("GetRequest")
+                .field("tag", tag)
+                .field("serialized_item", &HexFmt(serialized_id))
+                .finish(),
+            Message::GetResponse {
+                tag,
+                serialized_item,
+            } => f
+                .debug_struct("GetResponse")
+                .field("tag", tag)
+                .field("serialized_item", &HexFmt(serialized_item))
+                .finish(),
+        }
     }
 }
 
