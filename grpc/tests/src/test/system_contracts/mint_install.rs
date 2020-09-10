@@ -4,7 +4,7 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_node::components::contract_runtime::{
+use casper_execution_engine::{
     core::engine_state::EngineConfig,
     shared::{stored_value::StoredValue, transform::Transform},
 };

@@ -7,15 +7,12 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_node::{
-    components::contract_runtime::{
-        core::engine_state::{
-            genesis::{POS_PAYMENT_PURSE, POS_REWARDS_PURSE},
-            CONV_RATE,
-        },
-        shared::account::Account,
+use casper_execution_engine::{
+    core::engine_state::{
+        genesis::{POS_PAYMENT_PURSE, POS_REWARDS_PURSE},
+        CONV_RATE,
     },
-    types::Motes,
+    shared::{account::Account, motes::Motes},
 };
 use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
 

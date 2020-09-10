@@ -40,7 +40,14 @@ run_node() {
         ${BIND_ADDRESS_ARG}
 
     echo "Started node $ID, logfile: ${LOGFILE}"
+
+    # Sleep so that nodes are actually started in sequence.
+    # Hopefully, fixes some of the race condition issues during startup.
+    sleep 1;
 }
+
+# Build the node first, so that `sleep` in the loop has an effect.
+cargo build -p casper-node
 
 for i in 1 2 3 4 5; do
     run_node $i

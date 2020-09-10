@@ -6,7 +6,7 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_node::components::contract_runtime::core::{engine_state::Error, execution};
+use casper_execution_engine::core::{engine_state::Error, execution};
 use casper_types::{contracts, contracts::MAX_GROUPS, runtime_args, Group, Key, RuntimeArgs};
 use contracts::CONTRACT_INITIAL_VERSION;
 use lazy_static::lazy_static;

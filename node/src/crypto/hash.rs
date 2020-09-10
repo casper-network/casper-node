@@ -15,6 +15,7 @@ use hex_fmt::HexFmt;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+use casper_execution_engine::shared::newtypes::Blake2bHash;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use super::Error;
@@ -130,6 +131,20 @@ pub fn hash<T: AsRef<[u8]>>(data: T) -> Digest {
         result.copy_from_slice(slice);
     });
     Digest(result)
+}
+
+impl From<Digest> for Blake2bHash {
+    fn from(digest: Digest) -> Self {
+        let digest_bytes = digest.to_bytes();
+        Blake2bHash::from(digest_bytes)
+    }
+}
+
+impl From<Blake2bHash> for Digest {
+    fn from(blake2bhash: Blake2bHash) -> Self {
+        let bytes = blake2bhash.value();
+        Digest::from(bytes)
+    }
 }
 
 #[cfg(test)]

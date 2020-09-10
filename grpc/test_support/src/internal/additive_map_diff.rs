@@ -1,6 +1,4 @@
-use casper_node::components::contract_runtime::shared::{
-    additive_map::AdditiveMap, transform::Transform,
-};
+use casper_execution_engine::shared::{additive_map::AdditiveMap, transform::Transform};
 use casper_types::Key;
 
 /// Represents the difference between two `AdditiveMap`s.

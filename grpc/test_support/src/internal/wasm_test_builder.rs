@@ -20,33 +20,30 @@ use casper_engine_grpc_server::engine_server::{
     mappings::TransformMap,
     transforms::TransformEntry,
 };
-use casper_node::{
-    components::contract_runtime::{
-        core::{
-            engine_state::{
-                execute_request::ExecuteRequest, execution_result::ExecutionResult,
-                run_genesis_request::RunGenesisRequest, EngineConfig, EngineState,
-                SYSTEM_ACCOUNT_ADDR,
-            },
-            execution,
+use casper_execution_engine::{
+    core::{
+        engine_state::{
+            execute_request::ExecuteRequest, execution_result::ExecutionResult,
+            run_genesis_request::RunGenesisRequest, EngineConfig, EngineState, SYSTEM_ACCOUNT_ADDR,
         },
-        shared::{
-            account::Account,
-            additive_map::AdditiveMap,
-            gas::Gas,
-            logging::{self, Settings, Style},
-            newtypes::{Blake2bHash, CorrelationId},
-            stored_value::StoredValue,
-            transform::Transform,
-        },
-        storage::{
-            global_state::{in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, StateProvider},
-            protocol_data_store::lmdb::LmdbProtocolDataStore,
-            transaction_source::lmdb::LmdbEnvironment,
-            trie_store::lmdb::LmdbTrieStore,
-        },
+        execution,
     },
-    OS_PAGE_SIZE,
+    shared::{
+        account::Account,
+        additive_map::AdditiveMap,
+        gas::Gas,
+        logging::{self, Settings, Style},
+        newtypes::{Blake2bHash, CorrelationId},
+        stored_value::StoredValue,
+        transform::Transform,
+        utils::OS_PAGE_SIZE,
+    },
+    storage::{
+        global_state::{in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, StateProvider},
+        protocol_data_store::lmdb::LmdbProtocolDataStore,
+        transaction_source::lmdb::LmdbEnvironment,
+        trie_store::lmdb::LmdbTrieStore,
+    },
 };
 use casper_types::{
     account::AccountHash,
