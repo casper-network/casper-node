@@ -85,11 +85,7 @@ use crate::{
     tls::{self, KeyFingerprint, TlsCert},
     utils,
 };
-// Seems to be a false positive.
-#[allow(unreachable_pub)]
 pub use config::Config;
-// Seems to be a false positive.
-#[allow(unreachable_pub)]
 pub use error::Error;
 
 /// A node ID.
