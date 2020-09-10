@@ -335,6 +335,7 @@ where
                 .consensus
                 .deactivate_validator();
             let new_era_id = block_header.era_id().successor();
+            info!(?new_era_id, "Era created");
             let results = self.era_supervisor.new_era(
                 new_era_id,
                 Timestamp::now(), // TODO: This should be passed in.
