@@ -112,11 +112,15 @@ impl<I: Clone> LinearChainSync<I> {
         REv: ReactorEventT<I>,
     {
         let peer = self.random_peer_unsafe(rng);
-        let block = self
-            .linear_chain
-            .pop()
-            .expect("At least one block to download.");
-        fetch_block_deploys(effect_builder, peer, block)
+        match self.linear_chain.pop() {
+            None => {
+                // We're done syncing
+                self.is_synced = true;
+                info!("Finished syncing linear chain.");
+                Effects::new()
+            }
+            Some(block) => fetch_block_deploys(effect_builder, peer, block),
+        }
     }
 }
 
@@ -205,7 +209,6 @@ where
                 // Download next block deploys.
                 let mut effects = self.fetch_next_block_deploys(effect_builder, rng);
                 let finalized_block: FinalizedBlock = (*block).into();
-                // TODO: Signal when the whole linear chain has been downloaded and executed.
                 let execute_block_effect = effect_builder.execute_block(finalized_block).ignore();
                 effects.extend(execute_block_effect);
                 effects
