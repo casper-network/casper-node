@@ -7,6 +7,8 @@ set -eu
 BASEDIR=$(readlink -f $(dirname $0))
 CHAINSPEC=$(mktemp -t chainspec_XXXXXXXX --suffix .toml)
 TRUSTED_HASH="${TRUSTED_HASH:-}"
+TIMESTAMP="${GENESIS_TIMESTAMP:-$(date '+%s000')}"
+echo "Genesis timestamp: " $TIMESTAMP
 
 run_node() {
     ID=$1
@@ -64,7 +66,7 @@ cargo build -p casper-node
 
 # Update the chainspec to use the current time as the genesis timestamp.
 cp ${BASEDIR}/resources/local/chainspec.toml ${CHAINSPEC}
-sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = $(date '+%s000')/" ${CHAINSPEC}
+sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = ${TIMESTAMP}/" ${CHAINSPEC}
 sed -i 's|\.\./\.\.|'"$BASEDIR"'|' ${CHAINSPEC}
 sed -i 's|accounts\.csv|'"$BASEDIR"'/resources/local/accounts.csv|' ${CHAINSPEC}
 
