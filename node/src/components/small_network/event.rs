@@ -8,7 +8,7 @@ use derive_more::From;
 use tokio::net::TcpStream;
 
 use super::{Error, GossipedAddress, Message, NodeId, Transport};
-use crate::effect::requests::NetworkRequest;
+use crate::effect::requests::{NetworkInfoRequest, NetworkRequest};
 
 #[derive(Debug, From)]
 pub enum Event<P> {
@@ -48,6 +48,10 @@ pub enum Event<P> {
     /// Incoming network request.
     #[from]
     NetworkRequest { req: NetworkRequest<NodeId, P> },
+
+    /// Incoming network info request.
+    #[from]
+    NetworkInfoRequest { req: NetworkInfoRequest<NodeId> },
 
     /// The node should gossip its own public listening address.
     GossipOurAddress,
@@ -97,6 +101,7 @@ impl<P: Display> Display for Event<P> {
                 error.is_some()
             ),
             Event::NetworkRequest { req } => write!(f, "request: {}", req),
+            Event::NetworkInfoRequest { req } => write!(f, "request: {}", req),
             Event::GossipOurAddress => write!(f, "gossip our address"),
             Event::PeerAddressReceived(gossiped_address) => {
                 write!(f, "received gossiped peer address {}", gossiped_address)

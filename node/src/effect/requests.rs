@@ -4,8 +4,9 @@
 //! top-level module documentation for details.
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
+    net::SocketAddr,
 };
 
 use semver::Version;
@@ -32,7 +33,8 @@ use crate::{
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
     types::{
-        BlockHash, BlockHeader, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlockHash, Timestamp,
+        Block as LinearBlock, BlockHash, BlockHeader, Deploy, DeployHash, FinalizedBlock, Item,
+        ProtoBlockHash, Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
@@ -146,10 +148,30 @@ where
     }
 }
 
+/// A networking info request.
 #[derive(Debug)]
-// TODO: remove once all variants are used.
+#[must_use]
+pub enum NetworkInfoRequest<I> {
+    /// Get incoming and outgoing peers.
+    GetPeers {
+        /// Responder to be called with all connected peers.
+        responder: Responder<HashMap<I, SocketAddr>>,
+    },
+}
+
+impl<I> Display for NetworkInfoRequest<I>
+where
+    I: Display,
+{
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            NetworkInfoRequest::GetPeers { responder: _ } => write!(formatter, "get peers"),
+        }
+    }
+}
+
+#[derive(Debug)]
 /// A storage request.
-#[allow(dead_code)]
 #[must_use]
 pub enum StorageRequest<S: StorageType + 'static> {
     /// Store given block.
@@ -312,6 +334,11 @@ pub enum ApiRequest {
         /// Responder to call with the result.
         responder: Responder<Option<String>>,
     },
+    /// Return string formatted status or `None` if an error occurred.
+    GetStatus {
+        /// Responder to call with the result.
+        responder: Responder<Option<String>>,
+    },
 }
 
 impl Display for ApiRequest {
@@ -321,6 +348,7 @@ impl Display for ApiRequest {
             ApiRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
             ApiRequest::ListDeploys { .. } => write!(formatter, "list deploys"),
             ApiRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
+            ApiRequest::GetStatus { .. } => write!(formatter, "get status"),
         }
     }
 }
@@ -472,6 +500,8 @@ impl<T: Display, I: Display> Display for BlockValidationRequest<T, I> {
 pub enum LinearChainRequest<I> {
     /// Request whole block from the linear chain, by hash.
     BlockRequest(BlockHash, I),
+    /// Get last finalized block.
+    LastFinalizedBlock(Responder<Option<LinearBlock>>),
 }
 
 impl<I: Display> Display for LinearChainRequest<I> {
@@ -480,6 +510,7 @@ impl<I: Display> Display for LinearChainRequest<I> {
             LinearChainRequest::BlockRequest(bh, peer) => {
                 write!(f, "block request for hash {} from {}", bh, peer)
             }
+            LinearChainRequest::LastFinalizedBlock(_) => write!(f, "last finalized block request"),
         }
     }
 }

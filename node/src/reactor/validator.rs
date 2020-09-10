@@ -43,7 +43,7 @@ use crate::{
         requests::{
             ApiRequest, BlockExecutorRequest, BlockValidationRequest, ConsensusRequest,
             ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, LinearChainRequest,
-            MetricsRequest, NetworkRequest, StorageRequest,
+            MetricsRequest, NetworkInfoRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -104,6 +104,9 @@ pub enum Event {
     /// Network request.
     #[from]
     NetworkRequest(NetworkRequest<NodeId, Message>),
+    /// Network info request.
+    #[from]
+    NetworkInfoRequest(NetworkInfoRequest<NodeId>),
     /// Deploy fetcher request.
     #[from]
     DeployFetcherRequest(FetcherRequest<NodeId, Deploy>),
@@ -186,6 +189,12 @@ impl From<ConsensusRequest> for Event {
     }
 }
 
+impl From<LinearChainRequest<NodeId>> for Event {
+    fn from(request: LinearChainRequest<NodeId>) -> Self {
+        Event::LinearChain(linear_chain::Event::Request(request))
+    }
+}
+
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -203,6 +212,7 @@ impl Display for Event {
             Event::LinearChain(event) => write!(f, "linear-chain event {}", event),
             Event::ProtoBlockValidator(event) => write!(f, "block validator: {}", event),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
+            Event::NetworkInfoRequest(req) => write!(f, "network info request: {}", req),
             Event::DeployFetcherRequest(req) => write!(f, "deploy fetcher request: {}", req),
             Event::DeployBufferRequest(req) => write!(f, "deploy buffer request: {}", req),
             Event::BlockExecutorRequest(req) => write!(f, "block executor request: {}", req),
@@ -406,6 +416,11 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
 
             // Requests:
             Event::NetworkRequest(req) => self.dispatch_event(
+                effect_builder,
+                rng,
+                Event::Network(small_network::Event::from(req)),
+            ),
+            Event::NetworkInfoRequest(req) => self.dispatch_event(
                 effect_builder,
                 rng,
                 Event::Network(small_network::Event::from(req)),
