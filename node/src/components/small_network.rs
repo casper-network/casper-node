@@ -296,6 +296,7 @@ where
 
     fn handle_incoming_handshake_completed(
         &mut self,
+        effect_builder: EffectBuilder<REv>,
         result: Result<(NodeId, Transport)>,
         address: SocketAddr,
     ) -> Effects<Event<P>> {
@@ -312,13 +313,20 @@ where
 
                 let _ = self.incoming.insert(peer_id, address);
 
-                message_reader(self.event_queue, stream, self.our_id, peer_id).event(
-                    move |result| Event::IncomingClosed {
-                        result,
-                        peer_id,
-                        address,
-                    },
-                )
+                // If the connection is now complete, announce the new peer before starting reader.
+                let mut effects = self.check_connection_complete(effect_builder, peer_id);
+
+                effects.extend(
+                    message_reader(self.event_queue, stream, self.our_id, peer_id).event(
+                        move |result| Event::IncomingClosed {
+                            result,
+                            peer_id,
+                            address,
+                        },
+                    ),
+                );
+
+                effects
             }
             Err(err) => {
                 warn!(%address, %err, "{}: TLS handshake failed", self.our_id);
@@ -328,7 +336,12 @@ where
     }
 
     /// Sets up an established outgoing connection.
-    fn setup_outgoing(&mut self, peer_id: NodeId, transport: Transport) -> Effects<Event<P>> {
+    fn setup_outgoing(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        peer_id: NodeId,
+        transport: Transport,
+    ) -> Effects<Event<P>> {
         if peer_id == self.our_id {
             debug!("{}: connected to ourself - closing connection", self.our_id);
             return Effects::new();
@@ -360,11 +373,17 @@ where
             error!(%peer_id, "{}: did not expect leftover channel in outgoing map", self.our_id);
         }
 
-        message_sender(receiver, sink).event(move |result| Event::OutgoingFailed {
-            peer_id: Some(peer_id),
-            peer_address,
-            error: result.err().map(Into::into),
-        })
+        let mut effects = self.check_connection_complete(effect_builder, peer_id);
+
+        effects.extend(
+            message_sender(receiver, sink).event(move |result| Event::OutgoingFailed {
+                peer_id: Some(peer_id),
+                peer_address,
+                error: result.err().map(Into::into),
+            }),
+        );
+
+        effects
     }
 
     fn handle_outgoing_lost(
@@ -458,6 +477,23 @@ where
         }
     }
 
+    /// Checks whether a connection has been established fully, i.e. with an incoming and outgoing
+    /// connection.
+    ///
+    /// Returns either no effect or an announcement that a new peer has connected.
+    fn check_connection_complete(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        peer_id: NodeId,
+    ) -> Effects<Event<P>> {
+        if self.outgoing.contains_key(&peer_id) && self.incoming.contains_key(&peer_id) {
+            debug!(%peer_id, "connection to peer is now complete");
+            effect_builder.announce_new_peer(peer_id).ignore()
+        } else {
+            Effects::new()
+        }
+    }
+
     /// Returns the set of connected nodes.
     #[cfg(test)]
     pub(crate) fn connected_nodes(&self) -> HashSet<NodeId> {
@@ -548,7 +584,7 @@ where
                     .event(move |result| Event::IncomingHandshakeCompleted { result, address })
             }
             Event::IncomingHandshakeCompleted { result, address } => {
-                self.handle_incoming_handshake_completed(result, address)
+                self.handle_incoming_handshake_completed(effect_builder, result, address)
             }
             Event::IncomingMessage { peer_id, msg } => {
                 self.handle_message(effect_builder, peer_id, msg)
@@ -568,7 +604,7 @@ where
                 Effects::new()
             }
             Event::OutgoingEstablished { peer_id, transport } => {
-                self.setup_outgoing(peer_id, transport)
+                self.setup_outgoing(effect_builder, peer_id, transport)
             }
             Event::OutgoingFailed {
                 peer_id,
