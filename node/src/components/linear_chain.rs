@@ -108,8 +108,9 @@ where
             },
             Event::PutBlockResult(block_header) => {
                 let block_hash = block_header.hash();
+                let era_id = block_header.era_id();
                 // Using `Display` impl for the `block_hash` to not truncate it.
-                info!(?block_hash, "Linear chain block stored.");
+                info!(?block_hash, ?era_id, "Linear chain block stored.");
                 effect_builder.handle_linear_chain_block(block_header)
                     .event(move |signature| Event::NewFinalitySignature(block_hash, signature))
             },
