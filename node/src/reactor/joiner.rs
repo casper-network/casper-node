@@ -229,17 +229,11 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
 
         let linear_chain_fetcher = Fetcher::new(config.gossip);
 
-        let mut effects = reactor::wrap_effects(Event::Network, net_effects);
+        let effects = reactor::wrap_effects(Event::Network, net_effects);
 
         let effect_builder = EffectBuilder::new(event_queue);
 
-        let (linear_chain_sync, linear_effects) =
-            LinearChainSync::new(Vec::new(), effect_builder, config.node.trusted_hash);
-
-        effects.extend(reactor::wrap_effects(
-            Event::LinearChainSync,
-            linear_effects,
-        ));
+        let linear_chain_sync = LinearChainSync::new(effect_builder, config.node.trusted_hash);
 
         let block_validator = BlockValidator::new();
 

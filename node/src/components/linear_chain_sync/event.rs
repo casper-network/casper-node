@@ -6,7 +6,7 @@ use std::fmt::Display;
 
 #[derive(Debug)]
 pub enum Event<I> {
-    Start(BlockHash),
+    Start(I),
     GetBlockResult(BlockHash, Option<FetchResult<Block>>),
     /// Deploys from the block have been found.
     DeploysFound(Box<Block>),
@@ -22,7 +22,7 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Event::Start(block_hash) => write!(f, "Start syncing from {}.", block_hash),
+            Event::Start(init_peer) => write!(f, "Start syncing from peer {}.", init_peer),
             Event::GetBlockResult(block_hash, r) => {
                 write!(f, "Get block result for {}: {:?}", block_hash, r)
             }

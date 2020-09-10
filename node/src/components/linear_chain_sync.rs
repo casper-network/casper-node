@@ -49,28 +49,16 @@ pub(crate) struct LinearChainSync<I> {
 impl<I: Clone + 'static> LinearChainSync<I> {
     #[allow(unused)]
     pub fn new<REv: ReactorEventT<I>>(
-        peers: Vec<I>,
         effect_builder: EffectBuilder<REv>,
         init_hash: Option<BlockHash>,
-    ) -> (Self, Effects<Event<I>>) {
-        let linear_chain_sync = LinearChainSync {
-            peers: peers.clone(),
-            peers_to_try: peers,
+    ) -> Self {
+        LinearChainSync {
+            peers: Vec::new(),
+            peers_to_try: Vec::new(),
             linear_chain: Vec::new(),
             is_synced: init_hash.is_none(),
             init_hash,
-        };
-
-        (
-            linear_chain_sync,
-            init_hash
-                .map(|hash| {
-                    effect_builder
-                        .immediately()
-                        .event(move |_| Event::Start(hash))
-                })
-                .unwrap_or_else(Effects::new),
-        )
+        }
     }
 
     fn reset_peers(&mut self) {
@@ -139,12 +127,20 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Start(block_hash) => {
-                let peer = self.random_peer_unsafe(rng);
-                effect_builder.fetch_block(block_hash, peer).option(
-                    move |value| Event::GetBlockResult(block_hash, Some(value)),
-                    move || Event::GetBlockResult(block_hash, None),
-                )
+            Event::Start(init_peer) => {
+                match self.init_hash {
+                    None => {
+                        // No syncing configured.
+                        Effects::new()
+                    }
+                    Some(init_hash) => {
+                        // Start synchronization.
+                        effect_builder.fetch_block(init_hash, init_peer).option(
+                            move |value| Event::GetBlockResult(init_hash, Some(value)),
+                            move || Event::GetBlockResult(init_hash, None),
+                        )
+                    }
+                }
             }
             Event::GetBlockResult(block_hash, fetch_result) => match fetch_result {
                 None => match self.random_peer(rng) {
@@ -226,9 +222,18 @@ where
                 self.fetch_next_block_deploys(effect_builder, rng)
             }
             Event::NewPeerConnected(peer_id) => {
+                let mut effects = Effects::new();
+                if self.peers.is_empty() {
+                    // First peer connected, start dowloading.
+                    effects.extend(
+                        effect_builder
+                            .immediately()
+                            .event(move |_| Event::Start(peer_id)),
+                    );
+                }
                 // Add to the set of peers we can request things from.
                 self.peers.push(peer_id);
-                Effects::new()
+                effects
             }
         }
     }
