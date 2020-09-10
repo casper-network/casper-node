@@ -351,8 +351,6 @@ where
                     main_responder: responder,
                 }),
             Event::ApiRequest(ApiRequest::GetStatus { responder }) => async move {
-                // let last_finalized_block = effect_builder.get_last_finalized_block().await;
-                // let peers = effect_builder.network_peers().await;
                 let (last_finalized_block, peers) = join!(
                     effect_builder.get_last_finalized_block(),
                     effect_builder.network_peers()
