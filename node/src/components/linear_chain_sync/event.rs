@@ -14,6 +14,7 @@ pub enum Event<I> {
     DeploysNotFound(Box<Block>),
     LinearChainBlocksDownloaded,
     NewPeerConnected(I),
+    BlockExecutionDone(BlockHash),
 }
 
 impl<I> Display for Event<I>
@@ -32,6 +33,9 @@ where
             }
             Event::LinearChainBlocksDownloaded => write!(f, "Linear chain blocks downloaded"),
             Event::NewPeerConnected(peer_id) => write!(f, "A new peer connected: {}", peer_id),
+            Event::BlockExecutionDone(block_hash) => {
+                write!(f, "Block execution done: {}", block_hash)
+            }
         }
     }
 }

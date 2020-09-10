@@ -102,9 +102,7 @@ impl<I: Clone + 'static> LinearChainSync<I> {
         let peer = self.random_peer_unsafe(rng);
         match self.linear_chain.pop() {
             None => {
-                // We're done syncing
-                self.is_synced = true;
-                info!("Finished syncing linear chain.");
+                // We're done syncing but we have to wait for the execution of all blocks.
                 Effects::new()
             }
             Some(block) => fetch_block_deploys(effect_builder, peer, block),
@@ -142,6 +140,14 @@ where
                         )
                     }
                 }
+            }
+            Event::BlockExecutionDone(block_hash) => {
+                info!(?block_hash, "Finished block execution.");
+                if self.linear_chain.is_empty() {
+                    info!("Finished synchronizing linear chain.");
+                    self.is_synced = true;
+                }
+                Effects::new()
             }
             Event::GetBlockResult(block_hash, fetch_result) => match fetch_result {
                 None => match self.random_peer(rng) {
@@ -198,14 +204,16 @@ where
                 }
             },
             Event::DeploysFound(block) => {
-                let block_hash = block.hash();
+                let block_hash = *block.hash();
                 trace!(%block_hash, "Deploys for linear chain block found.");
                 self.reset_peers();
                 // Execute block
                 // Download next block deploys.
                 let mut effects = self.fetch_next_block_deploys(effect_builder, rng);
                 let finalized_block: FinalizedBlock = (*block).into();
-                let execute_block_effect = effect_builder.execute_block(finalized_block).ignore();
+                let execute_block_effect = effect_builder
+                    .execute_block(finalized_block)
+                    .event(move |_| Event::BlockExecutionDone(block_hash));
                 effects.extend(execute_block_effect);
                 effects
             }
