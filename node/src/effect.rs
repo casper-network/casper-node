@@ -79,7 +79,7 @@ use casper_execution_engine::{
     core::{
         engine_state::{
             self, execute_request::ExecuteRequest, execution_result::ExecutionResults,
-            genesis::GenesisResult,
+            genesis::GenesisResult, QueryRequest, QueryResult,
         },
         execution,
     },
@@ -685,19 +685,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Lists all deploy hashes held in the deploy store.
-    pub(crate) async fn list_deploys<S>(self) -> Vec<<S::Deploy as Value>::Id>
-    where
-        S: StorageType + 'static,
-        REv: From<StorageRequest<S>>,
-    {
-        self.make_request(
-            |responder| StorageRequest::ListDeploys { responder },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Gets the requested deploy using the `DeployFetcher`.
     pub(crate) async fn fetch_deploy<I>(
         self,
@@ -939,6 +926,24 @@ impl<REv> EffectBuilder<REv> {
             |responder| ContractRuntimeRequest::Commit {
                 pre_state_hash,
                 effects,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests a query be executed on the Contract Runtime component.
+    pub(crate) async fn query_global_state(
+        self,
+        query_request: QueryRequest,
+    ) -> Result<QueryResult, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::Query {
+                query_request,
                 responder,
             },
             QueueKind::Regular,

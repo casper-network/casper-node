@@ -1,33 +1,24 @@
-use std::{collections::HashMap, net::SocketAddr};
+use std::{collections::HashMap, hash::Hash, net::SocketAddr};
 
 use serde::Serialize;
 
-use crate::{small_network::NodeId, types::Block};
+use crate::types::Block;
 
-/// Data feed for client status endpoint.
+/// Data feed for client "info_get_status" endpoint.
 #[derive(Debug, Serialize)]
-pub struct StatusFeed {
-    last_linear_block_hash: Option<String>,
-    peers: Vec<String>,
+#[serde(bound = "I: Eq + Hash + Serialize")]
+pub struct StatusFeed<I> {
+    /// The last finalized block.
+    pub last_finalized_block: Option<Block>,
+    /// The peer nodes which are connected to this node.
+    pub peers: HashMap<I, SocketAddr>,
 }
 
-impl StatusFeed {
-    pub(crate) fn new(
-        last_linear_block: Option<Block>,
-        peers: HashMap<NodeId, SocketAddr>,
-    ) -> Self {
+impl<I> StatusFeed<I> {
+    pub(crate) fn new(last_finalized_block: Option<Block>, peers: HashMap<I, SocketAddr>) -> Self {
         StatusFeed {
-            last_linear_block_hash: last_linear_block.map(|b| hex::encode(b.hash().inner())),
-            peers: peers.values().map(ToString::to_string).collect(),
-        }
-    }
-}
-
-impl Default for StatusFeed {
-    fn default() -> Self {
-        StatusFeed {
-            last_linear_block_hash: None,
-            peers: vec![],
+            last_finalized_block,
+            peers,
         }
     }
 }

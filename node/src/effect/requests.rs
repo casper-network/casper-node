@@ -34,7 +34,7 @@ use crate::{
     crypto::{asymmetric_key::Signature, hash::Digest},
     types::{
         Block as LinearBlock, BlockHash, BlockHeader, Deploy, DeployHash, FinalizedBlock, Item,
-        ProtoBlockHash, Timestamp,
+        ProtoBlockHash, StatusFeed, Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
@@ -220,11 +220,6 @@ pub enum StorageRequest<S: StorageType + 'static> {
         /// Responder to call with the results.
         responder: Responder<DeployHeaderResults<S>>,
     },
-    /// List all deploy hashes.
-    ListDeploys {
-        /// Responder to call with the result.
-        responder: Responder<Vec<<S::Deploy as Value>::Id>>,
-    },
     /// Store given chainspec.
     PutChainspec {
         /// Chainspec.
@@ -258,7 +253,6 @@ impl<S: StorageType> Display for StorageRequest<S> {
                 "get headers {}",
                 DisplayIter::new(deploy_hashes.iter())
             ),
-            StorageRequest::ListDeploys { .. } => write!(formatter, "list deploys"),
             StorageRequest::PutChainspec { chainspec, .. } => write!(
                 formatter,
                 "put chainspec {}",
@@ -309,13 +303,33 @@ impl Display for DeployBufferRequest {
 /// transport.
 #[derive(Debug)]
 #[must_use]
-pub enum ApiRequest {
+pub enum ApiRequest<I> {
     /// Submit a deploy to be announced.
     SubmitDeploy {
         /// The deploy to be announced.
         deploy: Box<Deploy>,
         /// Responder to call.
         responder: Responder<()>,
+    },
+    /// If `maybe_hash` is `Some`, return the specified block if it exists, else `None`.  If
+    /// `maybe_hash` is `None`, return the latest block.
+    GetBlock {
+        /// The hash of the block to be retrieved.
+        maybe_hash: Option<BlockHash>,
+        /// Responder to call with the result.
+        responder: Responder<Option<LinearBlock>>,
+    },
+    /// If `maybe_hash` is `Some`, the state at the specified block is queried.  If `maybe_hash` is
+    /// `None`, the latest block is used.
+    QueryGlobalState {
+        /// The block to query, or the latest block if `None`
+        maybe_hash: Option<BlockHash>,
+        /// Hex-encoded `casper_types::Key`.
+        base_key: Key,
+        /// The path components starting from the key as base.
+        path: Vec<String>,
+        /// Responder to call with the result.
+        responder: Responder<Option<Result<QueryResult, engine_state::Error>>>,
     },
     /// Return the specified deploy if it exists, else `None`.
     GetDeploy {
@@ -324,31 +338,58 @@ pub enum ApiRequest {
         /// Responder to call with the result.
         responder: Responder<Option<Deploy>>,
     },
-    /// Return the list of all deploy hashes stored on this node.
-    ListDeploys {
+    /// Return the connected peers.
+    GetPeers {
         /// Responder to call with the result.
-        responder: Responder<Vec<DeployHash>>,
+        responder: Responder<HashMap<I, SocketAddr>>,
+    },
+    /// Return string formatted status or `None` if an error occurred.
+    GetStatus {
+        /// Responder to call with the result.
+        responder: Responder<StatusFeed<I>>,
     },
     /// Return string formatted, prometheus compatible metrics or `None` if an error occurred.
     GetMetrics {
         /// Responder to call with the result.
         responder: Responder<Option<String>>,
     },
-    /// Return string formatted status or `None` if an error occurred.
-    GetStatus {
-        /// Responder to call with the result.
-        responder: Responder<Option<String>>,
-    },
 }
 
-impl Display for ApiRequest {
+impl<I> Display for ApiRequest<I> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ApiRequest::SubmitDeploy { deploy, .. } => write!(formatter, "submit {}", *deploy),
+            ApiRequest::GetBlock {
+                maybe_hash: Some(hash),
+                ..
+            } => write!(formatter, "get {}", hash),
+            ApiRequest::GetBlock {
+                maybe_hash: None, ..
+            } => write!(formatter, "get latest block"),
+            ApiRequest::QueryGlobalState {
+                maybe_hash: Some(hash),
+                base_key,
+                path,
+                ..
+            } => write!(
+                formatter,
+                "query {}, base_key: {}, path: {:?}",
+                hash, base_key, path
+            ),
+            ApiRequest::QueryGlobalState {
+                maybe_hash: None,
+                base_key,
+                path,
+                ..
+            } => write!(
+                formatter,
+                "query latest block, base_key: {}, path: {:?}",
+                base_key, path
+            ),
             ApiRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
-            ApiRequest::ListDeploys { .. } => write!(formatter, "list deploys"),
-            ApiRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
+            ApiRequest::GetPeers { .. } => write!(formatter, "get peers"),
             ApiRequest::GetStatus { .. } => write!(formatter, "get status"),
+            ApiRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
         }
     }
 }

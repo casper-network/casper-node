@@ -263,24 +263,6 @@ pub trait StorageType {
         .ignore()
     }
 
-    fn list_deploys(
-        &self,
-        responder: Responder<Vec<<Self::Deploy as Value>::Id>>,
-    ) -> Effects<Event<Self>>
-    where
-        Self: Sized,
-    {
-        let deploy_store = self.deploy_store();
-        async move {
-            let result = task::spawn_blocking(move || deploy_store.ids())
-                .await
-                .expect("should run")
-                .unwrap_or_else(|error| panic!("failed to list deploys: {}", error));
-            responder.respond(result).await
-        }
-        .ignore()
-    }
-
     fn put_chainspec(
         &self,
         chainspec: Box<Chainspec>,
@@ -361,9 +343,6 @@ where
                 deploy_hashes,
                 responder,
             }) => self.get_deploy_headers(deploy_hashes, responder),
-            Event::Request(StorageRequest::ListDeploys { responder }) => {
-                self.list_deploys(responder)
-            }
             Event::Request(StorageRequest::PutChainspec {
                 chainspec,
                 responder,

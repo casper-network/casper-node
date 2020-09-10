@@ -153,8 +153,8 @@ impl From<StorageRequest<Storage>> for Event {
     }
 }
 
-impl From<ApiRequest> for Event {
-    fn from(request: ApiRequest) -> Self {
+impl From<ApiRequest<NodeId>> for Event {
+    fn from(request: ApiRequest<NodeId>) -> Self {
         Event::ApiServer(api_server::Event::ApiRequest(request))
     }
 }
