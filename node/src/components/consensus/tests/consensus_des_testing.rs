@@ -1,6 +1,3 @@
-// TODO - remove
-#![allow(dead_code)]
-
 use std::{
     collections::{BTreeMap, HashSet},
     fmt::{Debug, Display, Formatter},
@@ -101,10 +98,6 @@ where
         }
     }
 
-    pub(crate) fn validator_id(&self) -> ValidatorId {
-        self.id
-    }
-
     /// Adds vector of finalized consensus values to validator's finalized set.
     pub(crate) fn push_finalized(&mut self, finalized_value: C) {
         self.finalized_values.push(finalized_value);
@@ -123,10 +116,6 @@ where
     /// Iterator over consensus values finalized by the validator.
     pub(crate) fn finalized_values(&self) -> impl Iterator<Item = &C> {
         self.finalized_values.iter()
-    }
-
-    pub(crate) fn messages_received(&self) -> impl Iterator<Item = &Message<M>> {
-        self.messages_received.iter()
     }
 
     pub(crate) fn messages_produced(&self) -> impl Iterator<Item = &M> {
@@ -156,16 +145,13 @@ where
 
 pub(crate) enum DeliverySchedule {
     AtInstant(Timestamp),
+    #[allow(dead_code)] // TODO: Use or remove this.
     Drop,
 }
 
 impl DeliverySchedule {
     fn at(instant: Timestamp) -> DeliverySchedule {
         DeliverySchedule::AtInstant(instant)
-    }
-
-    fn drop(_instant: Timestamp) -> DeliverySchedule {
-        DeliverySchedule::Drop
     }
 }
 
@@ -236,10 +222,6 @@ where
         self.msg_queue.pop()
     }
 
-    pub(crate) fn get_validator(&self, validator: ValidatorId) -> Option<&Node<C, M, V>> {
-        self.validators_map.get(&validator)
-    }
-
     pub(crate) fn validators_ids(&self) -> impl Iterator<Item = &ValidatorId> {
         self.validators_map.keys()
     }
@@ -291,8 +273,6 @@ mod virtual_net_tests {
 
     type M = u64;
     type C = u64;
-
-    struct NoOpConsensus;
 
     struct NoOpValidator;
 

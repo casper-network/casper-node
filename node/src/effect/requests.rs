@@ -147,9 +147,7 @@ where
 }
 
 #[derive(Debug)]
-// TODO: remove once all variants are used.
 /// A storage request.
-#[allow(dead_code)]
 #[must_use]
 pub enum StorageRequest<S: StorageType + 'static> {
     /// Store given block.
