@@ -134,6 +134,7 @@ where
                         Effects::new()
                     }
                     Some(init_hash) => {
+                        trace!(?init_hash, "Start synchronization");
                         // Start synchronization.
                         effect_builder.fetch_block(init_hash, init_peer).option(
                             move |value| Event::GetBlockResult(init_hash, Some(value)),
@@ -222,6 +223,7 @@ where
                 self.fetch_next_block_deploys(effect_builder, rng)
             }
             Event::NewPeerConnected(peer_id) => {
+                trace!(%peer_id, "New peer connected");
                 let mut effects = Effects::new();
                 if self.peers.is_empty() {
                     // First peer connected, start dowloading.
