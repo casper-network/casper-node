@@ -7,7 +7,7 @@ use consensus::EraSupervisor;
 use derive_more::From;
 use prometheus::Registry;
 use rand::{CryptoRng, Rng};
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::{
     components::{
@@ -23,6 +23,7 @@ use crate::{
         storage::{self, Storage},
         Component,
     },
+    crypto::hash::Digest,
     effect::{
         announcements::{BlockExecutorAnnouncement, ConsensusAnnouncement, NetworkAnnouncement},
         requests::{
@@ -37,7 +38,7 @@ use crate::{
         validator::{self, Error, ValidatorInitConfig},
         EventQueueHandle, Finalize,
     },
-    types::{Block, Deploy, ProtoBlock, Timestamp},
+    types::{Block, BlockHash, Deploy, ProtoBlock, Timestamp},
     utils::WithDir,
 };
 
@@ -233,7 +234,18 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
 
         let effect_builder = EffectBuilder::new(event_queue);
 
-        let linear_chain_sync = LinearChainSync::new(effect_builder, config.node.trusted_hash);
+        let init_hash = config
+            .node
+            .trusted_hash
+            .clone()
+            .map(|str_hash| BlockHash::new(Digest::from_hex(str_hash).unwrap()));
+
+        match init_hash {
+            None => info!("No synchronization of the linear chain will be done."),
+            Some(hash) => info!("Synchronizing linear chain from: {:?}", hash),
+        }
+
+        let linear_chain_sync = LinearChainSync::new(effect_builder, init_hash);
 
         let block_validator = BlockValidator::new();
 
