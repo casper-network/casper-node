@@ -55,7 +55,8 @@ impl<I: Display> Display for Event<I> {
 #[derive(Debug)]
 pub(crate) struct LinearChain<I> {
     _marker: std::marker::PhantomData<I>,
-    /// The last block this component put to storage which is presumably the last block in the linear chain.
+    /// The last block this component put to storage which is presumably the last block in the
+    /// linear chain.
     last_block: Option<Block>,
 }
 

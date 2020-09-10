@@ -214,16 +214,11 @@ fn network_is_complete(
         .all(|actual| actual == expected)
 }
 
-
 /// Checks whether or not a given network has at least one other node in it
-fn network_started(
-    net: &Network<TestReactor>,
-) -> bool {
+fn network_started(net: &Network<TestReactor>) -> bool {
     net.nodes()
         .iter()
-        .map(|(_, runner)| {
-            runner.reactor().inner().net.peers()
-        })
+        .map(|(_, runner)| runner.reactor().inner().net.peers())
         .all(|peers| !peers.is_empty())
 }
 

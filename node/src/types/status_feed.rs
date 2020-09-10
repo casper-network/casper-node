@@ -23,11 +23,11 @@ impl StatusFeed {
     }
 }
 
-impl Default for StatusFeed{
+impl Default for StatusFeed {
     fn default() -> Self {
-        StatusFeed{
+        StatusFeed {
             last_linear_block_hash: None,
-            peers: vec![]
+            peers: vec![],
         }
     }
 }

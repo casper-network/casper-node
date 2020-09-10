@@ -23,7 +23,7 @@ mod event;
 use std::{borrow::Cow, error::Error as StdError, fmt::Debug, net::SocketAddr, str};
 
 use bytes::Bytes;
-use futures::{FutureExt, join};
+use futures::{join, FutureExt};
 use http::Response;
 use rand::{CryptoRng, Rng};
 use smallvec::smallvec;
