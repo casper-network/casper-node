@@ -8,7 +8,7 @@ BASEDIR=$(readlink -f $(dirname $0))
 CHAINSPEC=$(mktemp -t chainspec_XXXXXXXX --suffix .toml)
 TRUSTED_HASH="${TRUSTED_HASH:-}"
 TIMESTAMP="${GENESIS_TIMESTAMP:-$(date '+%s000')}"
-echo "Genesis timestamp: " $TIMESTAMP
+echo "GENESIS_TIMESTAMP="$TIMESTAMP
 
 run_node() {
     ID=$1
