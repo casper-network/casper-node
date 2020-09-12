@@ -46,6 +46,9 @@ use crate::{
 // We use one trillion as a block reward unit because it's large enough to allow precise
 // fractions, and small enough for many block rewards to fit into a u64.
 const BLOCK_REWARD: u64 = 1_000_000_000_000;
+/// The number of recent eras to retain. Eras older than this are dropped from memory.
+// TODO: This needs to be in sync with AUCTION_DELAY/booking_duration_millis. (Already duplicated!)
+const RETAIN_ERAS: u64 = 4;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct EraId(pub(crate) u64);
@@ -215,6 +218,11 @@ where
             start_height,
         };
         let _ = self.active_eras.insert(era_id, era);
+
+        // Remove the era that has become obsolete now.
+        if era_id.0 > RETAIN_ERAS {
+            self.active_eras.remove(&EraId(era_id.0 - RETAIN_ERAS - 1));
+        }
 
         results
     }
