@@ -432,11 +432,14 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, event),
             ),
-            Event::BlockExecutorAnnouncement(BlockExecutorAnnouncement::LinearChainBlock(
+            Event::BlockExecutorAnnouncement(BlockExecutorAnnouncement::LinearChainBlock {
                 block,
-            )) => {
-                let reactor_event =
-                    Event::LinearChain(linear_chain::Event::LinearChainBlock(block));
+                execution_results,
+            }) => {
+                let reactor_event = Event::LinearChain(linear_chain::Event::LinearChainBlock {
+                    block,
+                    execution_results,
+                });
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::LinearChain(event) => reactor::wrap_effects(

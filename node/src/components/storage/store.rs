@@ -1,6 +1,7 @@
 use smallvec::SmallVec;
 
-use super::{Result, Value};
+use super::{DeployMetadata, Result, Value};
+use crate::types::ExecutionResult;
 
 pub(super) type Multiple<T> = SmallVec<[T; 3]>;
 
@@ -10,7 +11,7 @@ pub trait Store: Send + Sync {
 
     /// If the store did not have this value present, true is returned.  If the store did have this
     /// value present, false is returned.
-    fn put(&self, block: Self::Value) -> Result<bool>;
+    fn put(&self, value: Self::Value) -> Result<bool>;
     fn get(
         &self,
         ids: Multiple<<Self::Value as Value>::Id>,
@@ -23,6 +24,26 @@ pub trait Store: Send + Sync {
     fn ids(&self) -> Result<Vec<<Self::Value as Value>::Id>>;
 }
 
+type DeployAndMetadata<D, B> = (D, DeployMetadata<B>);
+
+pub trait DeployStore: Store {
+    type Block: Value;
+    type Deploy: Value;
+
+    fn put_execution_result(
+        &self,
+        id: <Self::Deploy as Value>::Id,
+        block_hash: <Self::Block as Value>::Id,
+        execution_result: ExecutionResult,
+    ) -> Result<bool>;
+
+    /// Returns the deploy and its associated metadata if the deploy exists.
+    fn get_deploy_and_metadata(
+        &self,
+        id: <Self::Deploy as Value>::Id,
+    ) -> Result<Option<DeployAndMetadata<Self::Deploy, Self::Block>>>;
+}
+
 #[cfg(test)]
 mod tests {
     use smallvec::smallvec;
@@ -31,7 +52,10 @@ mod tests {
         super::{Config, InMemStore, LmdbStore},
         *,
     };
-    use crate::{testing::TestRng, types::Deploy};
+    use crate::{
+        testing::TestRng,
+        types::{Block, Deploy},
+    };
 
     fn should_put_then_get<T: Store<Value = Deploy>>(store: &mut T) {
         let mut rng = TestRng::new();
@@ -53,14 +77,17 @@ mod tests {
     #[test]
     fn lmdb_deploy_store_should_put_then_get() {
         let (config, _tempdir) = Config::default_for_tests();
-        let mut lmdb_deploy_store =
-            LmdbStore::<Deploy>::new(config.path(), config.max_deploy_store_size()).unwrap();
+        let mut lmdb_deploy_store = LmdbStore::<Deploy, DeployMetadata<Block>>::new(
+            config.path(),
+            config.max_deploy_store_size(),
+        )
+        .unwrap();
         should_put_then_get(&mut lmdb_deploy_store);
     }
 
     #[test]
     fn in_mem_deploy_store_should_put_then_get() {
-        let mut in_mem_deploy_store = InMemStore::<Deploy>::new();
+        let mut in_mem_deploy_store = InMemStore::<Deploy, DeployMetadata<Block>>::new();
         should_put_then_get(&mut in_mem_deploy_store);
     }
 }

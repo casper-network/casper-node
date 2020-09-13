@@ -9,6 +9,7 @@ mod lmdb_store;
 mod store;
 
 use std::{
+    collections::HashMap,
     fmt::{Debug, Display},
     fs,
     hash::Hash,
@@ -18,19 +19,20 @@ use std::{
 use futures::TryFutureExt;
 use rand::{CryptoRng, Rng};
 use semver::Version;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
 use tokio::task;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use crate::{
     components::{chainspec_loader::Chainspec, small_network::NodeId, Component},
+    crypto::asymmetric_key::Signature,
     effect::{
         requests::{NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
     protocol::Message,
-    types::{Block, Deploy, Item},
+    types::{Block, Deploy, ExecutionResult, Item},
 };
 use chainspec_store::ChainspecStore;
 pub use config::Config;
@@ -41,7 +43,7 @@ use in_mem_chainspec_store::InMemChainspecStore;
 use in_mem_store::InMemStore;
 use lmdb_chainspec_store::LmdbChainspecStore;
 use lmdb_store::LmdbStore;
-use store::{Multiple, Store};
+use store::{DeployStore, Multiple, Store};
 
 pub(crate) type Storage = LmdbStorage<Block, Deploy>;
 
@@ -88,6 +90,37 @@ pub trait Value: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Di
     fn take_header(self) -> Self::Header;
 }
 
+/// Metadata associated with a block.
+#[derive(Default, Clone, Serialize, Deserialize, Debug)]
+pub struct BlockMetadata {
+    /// The finalization signatures of a block.
+    pub proofs: Vec<Signature>,
+}
+
+/// Metadata associated with a deploy.
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct DeployMetadata<B: Value> {
+    /// The block hashes of blocks containing the related deploy, along with the results of
+    /// executing the related deploy.
+    pub execution_results: HashMap<B::Id, ExecutionResult>,
+}
+
+impl<B: Value> DeployMetadata<B> {
+    fn new(block_hash: B::Id, execution_result: ExecutionResult) -> Self {
+        let mut execution_results = HashMap::new();
+        let _ = execution_results.insert(block_hash, execution_result);
+        DeployMetadata { execution_results }
+    }
+}
+
+impl<B: Value> Default for DeployMetadata<B> {
+    fn default() -> Self {
+        DeployMetadata {
+            execution_results: HashMap::new(),
+        }
+    }
+}
+
 /// Trait which will handle management of the various storage sub-components.
 ///
 /// If this trait is ultimately only used for testing scenarios, we shouldn't need to expose it to
@@ -97,7 +130,9 @@ pub trait StorageType {
     type Deploy: Value + Item;
 
     fn block_store(&self) -> Arc<dyn Store<Value = Self::Block>>;
-    fn deploy_store(&self) -> Arc<dyn Store<Value = Self::Deploy>>;
+    fn deploy_store(
+        &self,
+    ) -> Arc<dyn DeployStore<Block = Self::Block, Deploy = Self::Deploy, Value = Self::Deploy>>;
     fn chainspec_store(&self) -> Arc<dyn ChainspecStore>;
     fn new(config: &Config) -> Result<Self>
     where
@@ -263,6 +298,42 @@ pub trait StorageType {
         .ignore()
     }
 
+    fn put_execution_results(
+        &self,
+        block_hash: <Self::Block as Value>::Id,
+        execution_results: HashMap<<Self::Deploy as Value>::Id, ExecutionResult>,
+        responder: Responder<()>,
+    ) -> Effects<Event<Self>>
+    where
+        Self: Sized,
+    {
+        let deploy_store = self.deploy_store();
+        async move {
+            task::spawn_blocking(move || {
+                for (deploy_hash, execution_result) in execution_results.into_iter() {
+                    match deploy_store.put_execution_result(
+                        deploy_hash,
+                        block_hash,
+                        execution_result,
+                    ) {
+                        Ok(true) => (),
+                        Ok(false) => {
+                            warn!(%deploy_hash, %block_hash, "already stored execution result")
+                        }
+                        Err(error) => panic!(
+                            "failed to put execution results {} {}: {}",
+                            deploy_hash, block_hash, error
+                        ),
+                    }
+                }
+            })
+            .await
+            .expect("should run");
+            responder.respond(()).await
+        }
+        .ignore()
+    }
+
     fn put_chainspec(
         &self,
         chainspec: Box<Chainspec>,
@@ -343,6 +414,11 @@ where
                 deploy_hashes,
                 responder,
             }) => self.get_deploy_headers(deploy_hashes, responder),
+            Event::Request(StorageRequest::PutExecutionResults {
+                block_hash,
+                execution_results,
+                responder,
+            }) => self.put_execution_results(block_hash, execution_results, responder),
             Event::Request(StorageRequest::PutChainspec {
                 chainspec,
                 responder,
@@ -357,8 +433,8 @@ where
 // Concrete type of `Storage` backed by in-memory stores.
 #[derive(Debug)]
 pub(crate) struct InMemStorage<B: Value, D: Value> {
-    block_store: Arc<InMemStore<B>>,
-    deploy_store: Arc<InMemStore<D>>,
+    block_store: Arc<InMemStore<B, BlockMetadata>>,
+    deploy_store: Arc<InMemStore<D, DeployMetadata<B>>>,
     chainspec_store: Arc<InMemChainspecStore>,
 }
 
@@ -371,8 +447,8 @@ impl<B: Value + 'static, D: Value + Item + 'static> StorageType for InMemStorage
         Arc::clone(&self.block_store) as Arc<dyn Store<Value = B>>
     }
 
-    fn deploy_store(&self) -> Arc<dyn Store<Value = D>> {
-        Arc::clone(&self.deploy_store) as Arc<dyn Store<Value = D>>
+    fn deploy_store(&self) -> Arc<dyn DeployStore<Block = B, Deploy = D, Value = D>> {
+        Arc::clone(&self.deploy_store) as Arc<dyn DeployStore<Block = B, Deploy = D, Value = D>>
     }
 
     fn chainspec_store(&self) -> Arc<dyn ChainspecStore> {
@@ -391,8 +467,8 @@ impl<B: Value + 'static, D: Value + Item + 'static> StorageType for InMemStorage
 // Concrete type of `Storage` backed by LMDB stores.
 #[derive(Debug)]
 pub struct LmdbStorage<B: Value, D: Value> {
-    block_store: Arc<LmdbStore<B>>,
-    deploy_store: Arc<LmdbStore<D>>,
+    block_store: Arc<LmdbStore<B, BlockMetadata>>,
+    deploy_store: Arc<LmdbStore<D, DeployMetadata<B>>>,
     chainspec_store: Arc<LmdbChainspecStore>,
 }
 
@@ -428,8 +504,8 @@ impl<B: Value + 'static, D: Value + Item + 'static> StorageType for LmdbStorage<
         Arc::clone(&self.block_store) as Arc<dyn Store<Value = B>>
     }
 
-    fn deploy_store(&self) -> Arc<dyn Store<Value = D>> {
-        Arc::clone(&self.deploy_store) as Arc<dyn Store<Value = D>>
+    fn deploy_store(&self) -> Arc<dyn DeployStore<Block = B, Deploy = D, Value = D>> {
+        Arc::clone(&self.deploy_store) as Arc<dyn DeployStore<Block = B, Deploy = D, Value = D>>
     }
 
     fn chainspec_store(&self) -> Arc<dyn ChainspecStore> {

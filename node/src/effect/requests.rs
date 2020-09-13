@@ -33,8 +33,8 @@ use crate::{
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
     types::{
-        Block as LinearBlock, BlockHash, BlockHeader, Deploy, DeployHash, FinalizedBlock, Item,
-        ProtoBlockHash, StatusFeed, Timestamp,
+        Block as LinearBlock, BlockHash, BlockHeader, Deploy, DeployHash, ExecutionResult,
+        FinalizedBlock, Item, ProtoBlockHash, StatusFeed, Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
@@ -220,6 +220,16 @@ pub enum StorageRequest<S: StorageType + 'static> {
         /// Responder to call with the results.
         responder: Responder<DeployHeaderResults<S>>,
     },
+    /// Store the given execution results for the deploys in the given block.
+    PutExecutionResults {
+        /// Hash of block.
+        block_hash: <S::Block as Value>::Id,
+        /// Execution results.
+        execution_results: HashMap<<S::Deploy as Value>::Id, ExecutionResult>,
+        /// Responder to call with the result.  Returns true if the execution results were stored
+        /// on this attempt or false if they were previously stored.
+        responder: Responder<()>,
+    },
     /// Store given chainspec.
     PutChainspec {
         /// Chainspec.
@@ -253,6 +263,9 @@ impl<S: StorageType> Display for StorageRequest<S> {
                 "get headers {}",
                 DisplayIter::new(deploy_hashes.iter())
             ),
+            StorageRequest::PutExecutionResults { block_hash, .. } => {
+                write!(formatter, "put execution results for {}", block_hash)
+            }
             StorageRequest::PutChainspec { chainspec, .. } => write!(
                 formatter,
                 "put chainspec {}",

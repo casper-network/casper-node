@@ -6,17 +6,27 @@ use lmdb::{
 use smallvec::smallvec;
 use tracing::info;
 
-use super::{Error, Multiple, Result, Store, Value};
+use super::{DeployMetadata, DeployStore, Error, Multiple, Result, Store, Value};
+use crate::types::ExecutionResult;
+
+/// Used to namespace metadata associated with stored values.
+#[repr(u8)]
+enum Tag {
+    // TODO - remove once used.
+    #[allow(unused)]
+    BlockMetadata,
+    DeployMetadata,
+}
 
 /// LMDB version of a store.
 #[derive(Debug)]
-pub(super) struct LmdbStore<V: Value> {
+pub(super) struct LmdbStore<V: Value, M> {
     env: Environment,
     db: Database,
-    _phantom: PhantomData<V>,
+    _phantom: PhantomData<(V, M)>,
 }
 
-impl<V: Value> LmdbStore<V> {
+impl<V: Value, M: Default + Send + Sync> LmdbStore<V, M> {
     pub(crate) fn new<P: AsRef<Path>>(db_path: P, max_size: usize) -> Result<Self> {
         let env = Environment::new()
             .set_flags(EnvironmentFlags::NO_SUB_DIR)
@@ -33,19 +43,19 @@ impl<V: Value> LmdbStore<V> {
     }
 }
 
-impl<V: Value> LmdbStore<V> {
+impl<V: Value, M> LmdbStore<V, M> {
     fn get_values(&self, ids: Multiple<V::Id>) -> Multiple<Result<Option<V>>> {
         let mut serialized_ids = Multiple::new();
         for id in &ids {
-            serialized_ids.push(rmp_serde::to_vec(id).map_err(Error::from));
+            serialized_ids.push(Self::serialized_id(id, None).map_err(Error::from));
         }
 
         let mut values = smallvec![];
         let txn = self.env.begin_ro_txn().expect("should create ro txn");
-        for id in serialized_ids {
-            match id {
-                Ok(id) => {
-                    match txn.get(self.db, &id) {
+        for maybe_serialized_id in serialized_ids {
+            match maybe_serialized_id {
+                Ok(serialized_id) => {
+                    match txn.get(self.db, &serialized_id) {
                         Ok(serialized_value) => {
                             let value_result = rmp_serde::from_read_ref(serialized_value)
                                 .map(Some)
@@ -64,16 +74,29 @@ impl<V: Value> LmdbStore<V> {
         txn.commit().expect("should commit txn");
         values
     }
+
+    fn serialized_id(id: &V::Id, maybe_tag: Option<Tag>) -> Result<Vec<u8>> {
+        match maybe_tag {
+            Some(tag) => rmp_serde::to_vec(&(tag as u8, id)),
+            None => rmp_serde::to_vec(id),
+        }
+        .map_err(Error::from)
+    }
 }
 
-impl<V: Value> Store for LmdbStore<V> {
+impl<V: Value, M: Send + Sync> Store for LmdbStore<V, M> {
     type Value = V;
 
     fn put(&self, value: V) -> Result<bool> {
-        let id = rmp_serde::to_vec(value.id())?;
+        let serialized_id = Self::serialized_id(value.id(), None)?;
         let serialized_value = rmp_serde::to_vec(&value)?;
         let mut txn = self.env.begin_rw_txn().expect("should create rw txn");
-        let result = match txn.put(self.db, &id, &serialized_value, WriteFlags::NO_OVERWRITE) {
+        let result = match txn.put(
+            self.db,
+            &serialized_id,
+            &serialized_value,
+            WriteFlags::NO_OVERWRITE,
+        ) {
             Ok(()) => true,
             Err(lmdb::Error::KeyExist) => false,
             Err(error) => panic!("should put: {:?}", error),
@@ -100,12 +123,89 @@ impl<V: Value> Store for LmdbStore<V> {
             let mut cursor = txn
                 .open_ro_cursor(self.db)
                 .expect("should create ro cursor");
-            for (id, _value) in cursor.iter() {
-                let id: V::Id = rmp_serde::from_read_ref(id)?;
-                ids.push(id);
+            for (serialized_id, _value) in cursor.iter() {
+                if let Ok(id) = rmp_serde::from_read_ref::<_, V::Id>(serialized_id) {
+                    ids.push(id);
+                }
             }
         }
         txn.commit().expect("should commit txn");
         Ok(ids)
+    }
+}
+
+impl<D: Value, B: Value> DeployStore for LmdbStore<D, DeployMetadata<B>> {
+    type Block = B;
+    type Deploy = D;
+
+    fn put_execution_result(
+        &self,
+        id: D::Id,
+        block_hash: B::Id,
+        execution_result: ExecutionResult,
+    ) -> Result<bool> {
+        // Get existing metadata associated with this deploy.
+        let serialized_id = Self::serialized_id(&id, Some(Tag::DeployMetadata))?;
+        let mut txn = self.env.begin_rw_txn().expect("should create rw txn");
+
+        let mut metadata: DeployMetadata<B> = match txn.get(self.db, &serialized_id) {
+            Ok(serialized_value) => {
+                rmp_serde::from_read_ref(serialized_value).map_err(Error::from)?
+            }
+            Err(lmdb::Error::NotFound) => DeployMetadata::default(),
+            Err(error) => panic!("should get: {:?}", error),
+        };
+
+        // If we already have this execution result, return false.
+        if metadata
+            .execution_results
+            .insert(block_hash, execution_result)
+            .is_some()
+        {
+            txn.commit().expect("should commit txn");
+            return Ok(false);
+        }
+
+        // Store the updated metadata.
+        let serialized_value = rmp_serde::to_vec(&metadata)?;
+        txn.put(
+            self.db,
+            &serialized_id,
+            &serialized_value,
+            WriteFlags::default(),
+        )?;
+        txn.commit().expect("should commit txn");
+        Ok(true)
+    }
+
+    fn get_deploy_and_metadata(&self, id: D::Id) -> Result<Option<(D, DeployMetadata<B>)>> {
+        let serialized_deploy_id = Self::serialized_id(&id, None)?;
+        let serialized_metadata_id = Self::serialized_id(&id, Some(Tag::DeployMetadata))?;
+
+        // Get the deploy.
+        let txn = self.env.begin_ro_txn().expect("should create ro txn");
+        let deploy: D = match txn.get(self.db, &serialized_deploy_id) {
+            Ok(serialized_value) => {
+                rmp_serde::from_read_ref(serialized_value).map_err(Error::from)?
+            }
+            Err(lmdb::Error::NotFound) => {
+                // Return `None` if the deploy doesn't exist.
+                txn.commit().expect("should commit txn");
+                return Ok(None);
+            }
+            Err(error) => panic!("should get: {:?}", error),
+        };
+
+        // Get the metadata or create a default one.
+        let metadata: DeployMetadata<B> = match txn.get(self.db, &serialized_metadata_id) {
+            Ok(serialized_value) => {
+                rmp_serde::from_read_ref(serialized_value).map_err(Error::from)?
+            }
+            Err(lmdb::Error::NotFound) => DeployMetadata::default(),
+            Err(error) => panic!("should get: {:?}", error),
+        };
+
+        txn.commit().expect("should commit txn");
+        Ok(Some((deploy, metadata)))
     }
 }

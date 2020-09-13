@@ -3,11 +3,14 @@
 //! Announcements indicate new incoming data or events from various sources. See the top-level
 //! module documentation for details.
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+    collections::HashMap,
+    fmt::{self, Display, Formatter},
+};
 
 use crate::{
     components::{consensus::EraId, small_network::GossipedAddress},
-    types::{Block, Deploy, Item, ProtoBlock},
+    types::{Block, Deploy, DeployHash, ExecutionResult, Item, ProtoBlock},
     utils::Source,
 };
 
@@ -152,13 +155,18 @@ impl Display for ConsensusAnnouncement {
 #[derive(Debug)]
 pub enum BlockExecutorAnnouncement {
     /// A new block from the linear chain was produced.
-    LinearChainBlock(Block),
+    LinearChainBlock {
+        /// The block.
+        block: Block,
+        /// The results of executing the deploys in this block.
+        execution_results: HashMap<DeployHash, ExecutionResult>,
+    },
 }
 
 impl Display for BlockExecutorAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlockExecutorAnnouncement::LinearChainBlock(block) => {
+            BlockExecutorAnnouncement::LinearChainBlock { block, .. } => {
                 write!(f, "created linear chain block {}", block.hash())
             }
         }

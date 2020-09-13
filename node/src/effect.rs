@@ -101,8 +101,8 @@ use crate::{
     },
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        Block, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, FinalizedBlock, Item,
-        ProtoBlock,
+        Block, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, ExecutionResult,
+        FinalizedBlock, Item, ProtoBlock,
     },
     utils::Source,
     Chainspec,
@@ -568,13 +568,19 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announce new block has been created.
-    pub(crate) async fn announce_linear_chain_block(self, block: Block)
-    where
+    pub(crate) async fn announce_linear_chain_block(
+        self,
+        block: Block,
+        execution_results: HashMap<DeployHash, ExecutionResult>,
+    ) where
         REv: From<BlockExecutorAnnouncement>,
     {
         self.0
             .schedule(
-                BlockExecutorAnnouncement::LinearChainBlock(block),
+                BlockExecutorAnnouncement::LinearChainBlock {
+                    block,
+                    execution_results,
+                },
                 QueueKind::Regular,
             )
             .await
@@ -678,6 +684,27 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetDeployHeaders {
                 deploy_hashes,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Stores the given execution results for the deploys in the given block in the linear block
+    /// store.
+    pub(crate) async fn put_execution_results_to_storage<S>(
+        self,
+        block_hash: <S::Block as Value>::Id,
+        execution_results: HashMap<<S::Deploy as Value>::Id, ExecutionResult>,
+    ) where
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
+    {
+        self.make_request(
+            |responder| StorageRequest::PutExecutionResults {
+                block_hash,
+                execution_results,
                 responder,
             },
             QueueKind::Regular,
