@@ -228,7 +228,8 @@ pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
     // so we carry them forward to the `validator` reactor.
     pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
     // TODO: remove after proper syncing is implemented
-    latest_received_era_id: EraId,
+    // `None` means we haven't seen any consensus messages yet
+    latest_received_era_id: Option<EraId>,
 }
 
 impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
@@ -321,7 +322,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 linear_chain,
                 consensus,
                 init_consensus_effects,
-                latest_received_era_id: EraId(0),
+                latest_received_era_id: None,
             },
             effects,
         ))
@@ -457,8 +458,12 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 ),
                     ConsensusAnnouncement::GotMessageInEra(era_id) => {
                         // note if the era id is later than the latest we've received so far
-                        if era_id > self.latest_received_era_id {
-                            self.latest_received_era_id = era_id;
+                        if self
+                            .latest_received_era_id
+                            .map(|lreid| era_id > lreid)
+                            .unwrap_or(true)
+                        {
+                            self.latest_received_era_id = Some(era_id);
                         }
                         Effects::new()
                     }
@@ -496,10 +501,13 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
     fn is_stopped(&mut self) -> bool {
         if self.linear_chain_sync.is_synced() {
             trace!("Linear chain is synced.");
-            if let Some(latest_known_era) = self.linear_chain_sync.init_block_era() {
+            if let (Some(latest_known_era), Some(latest_received_era)) = (
+                self.linear_chain_sync.init_block_era(),
+                self.latest_received_era_id,
+            ) {
                 trace!("Latest known era: {:?}", latest_known_era);
-                trace!("Latest received era: {:?}", self.latest_received_era_id);
-                if latest_known_era < self.latest_received_era_id {
+                trace!("Latest received era: {:?}", latest_received_era);
+                if latest_known_era < latest_received_era {
                     // We only synchronized up to era N, and the other validators are at least at
                     // era N+1 - we won't be able to catch up, so we crash
                     // TODO: remove this once proper syncing is implemented
@@ -508,15 +516,19 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                         synchronizing, the other validators progressed to era {:?}. Since they \
                         are ahead of us, we won't be able to participate. Try to restart the node \
                         with a later trusted block hash.",
-                        latest_known_era, self.latest_received_era_id
+                        latest_known_era, latest_received_era
                     );
                     panic!("other validators ahead, won't be able to participate - please restart");
                 }
             } else {
-                trace!("No latest known era!");
+                trace!("No latest known era or latest received era!");
             }
         }
+        // We want to wait for a consensus message in order to determine the current consensus era,
+        // but only if the trusted hash has been specified
         self.linear_chain_sync.is_synced()
+            && (self.latest_received_era_id.is_some()
+                || self.linear_chain_sync.init_block_era().is_none())
     }
 }
 
