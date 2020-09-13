@@ -8,14 +8,14 @@ use derive_more::From;
 use prometheus::Registry;
 use rand::{CryptoRng, Rng};
 use small_network::GossipedAddress;
-use tracing::{error, info, warn};
+use tracing::{error, info, trace, warn};
 
 use crate::{
     components::{
         block_executor,
         block_validator::{self, BlockValidator},
         chainspec_loader::ChainspecLoader,
-        consensus,
+        consensus::{self, EraId},
         contract_runtime::{self, ContractRuntime},
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
@@ -227,6 +227,8 @@ pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
     // In the `joining` phase we don't want to handle it,
     // so we carry them forward to the `validator` reactor.
     pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
+    // TODO: remove after proper syncing is implemented
+    latest_received_era_id: EraId,
 }
 
 impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
@@ -319,6 +321,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 linear_chain,
                 consensus,
                 init_consensus_effects,
+                latest_received_era_id: EraId(0),
             },
             effects,
         ))
@@ -371,6 +374,13 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                     };
                     self.dispatch_event(effect_builder, rng, Event::BlockFetcher(event))
                 }
+                // needed so that consensus can notify us of the eras it knows of
+                // TODO: remove when proper syncing is implemented
+                Message::Consensus(msg) => self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    Event::Consensus(consensus::Event::MessageReceived { sender, msg }),
+                ),
                 other => {
                     warn!(?other, "network announcement ignored.");
                     Effects::new()
@@ -445,6 +455,13 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                         linear_chain_sync::Event::BlockHandled(height),
                     ),
                 ),
+                    ConsensusAnnouncement::GotMessageInEra(era_id) => {
+                        // note if the era id is later than the latest we've received so far
+                        if era_id > self.latest_received_era_id {
+                            self.latest_received_era_id = era_id;
+                        }
+                        Effects::new()
+                    }
                 other => {
                     warn!("Ignoring consensus announcement {}", other);
                     Effects::new()
@@ -477,6 +494,28 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
     }
 
     fn is_stopped(&mut self) -> bool {
+        if self.linear_chain_sync.is_synced() {
+            trace!("Linear chain is synced.");
+            if let Some(latest_known_era) = self.linear_chain_sync.init_block_era() {
+                trace!("Latest known era: {:?}", latest_known_era);
+                trace!("Latest received era: {:?}", self.latest_received_era_id);
+                if latest_known_era < self.latest_received_era_id {
+                    // We only synchronized up to era N, and the other validators are at least at
+                    // era N+1 - we won't be able to catch up, so we crash
+                    // TODO: remove this once proper syncing is implemented
+                    error!(
+                        "We are now synchronized up to era {:?}. Unfortunately, while we were \
+                        synchronizing, the other validators progressed to era {:?}. Since they \
+                        are ahead of us, we won't be able to participate. Try to restart the node \
+                        with a later trusted block hash.",
+                        latest_known_era, self.latest_received_era_id
+                    );
+                    panic!("other validators ahead, won't be able to participate - please restart");
+                }
+            } else {
+                trace!("No latest known era!");
+            }
+        }
         self.linear_chain_sync.is_synced()
     }
 }

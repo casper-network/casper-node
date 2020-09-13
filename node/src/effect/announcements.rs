@@ -6,7 +6,7 @@
 use std::fmt::{self, Display, Formatter};
 
 use crate::{
-    components::small_network::GossipedAddress,
+    components::{consensus::EraId, small_network::GossipedAddress},
     types::{Block, Deploy, Item, ProtoBlock},
     utils::Source,
 };
@@ -119,6 +119,9 @@ pub enum ConsensusAnnouncement {
     Orphaned(ProtoBlock),
     /// A linear chain block has been handled.
     Handled(u64),
+    /// TODO: this is only for purposes of detecting incomplete linear chain synchronization,
+    /// remove when proper syncing is implemented
+    GotMessageInEra(EraId),
 }
 
 impl Display for ConsensusAnnouncement {
@@ -138,6 +141,9 @@ impl Display for ConsensusAnnouncement {
                 "Linear chain block has been handled by consensus, height={}",
                 height
             ),
+            ConsensusAnnouncement::GotMessageInEra(era_id) => {
+                write!(formatter, "message in era {:?} received", era_id)
+            }
         }
     }
 }

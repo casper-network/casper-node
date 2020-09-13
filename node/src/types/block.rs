@@ -485,6 +485,10 @@ impl Block {
         self.header.height()
     }
 
+    pub(crate) fn era_id(&self) -> EraId {
+        self.header.era_id()
+    }
+
     pub(crate) fn is_genesis_child(&self) -> bool {
         self.header.era_id == EraId(0) && self.header.height == 0
     }
