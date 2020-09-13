@@ -16,6 +16,7 @@ run_node() {
     LOGFILE=/tmp/node-${ID}.log
     rm -rf ${STORAGE_DIR}
     rm -f ${LOGFILE}
+    rm -f ${LOGFILE}.stderr
     mkdir -p ${STORAGE_DIR}
 
     if [ $1 -ne 1 ]
