@@ -142,10 +142,7 @@ where
                     Some(init_hash) => {
                         trace!(?init_hash, "Start synchronization");
                         // Start synchronization.
-                        effect_builder.fetch_block(init_hash, init_peer).option(
-                            move |value| Event::GetBlockResult(init_hash, Some(value)),
-                            move || Event::GetBlockResult(init_hash, None),
-                        )
+                        fetch_block(effect_builder, init_peer, init_hash)
                     }
                 }
             }
@@ -165,10 +162,7 @@ where
                         error!(%block_hash, "Could not download linear block from any of the peers.");
                         panic!("Failed to download linear chain.")
                     }
-                    Some(peer) => effect_builder.fetch_block(block_hash, peer).option(
-                        move |value| Event::GetBlockResult(block_hash, Some(value)),
-                        move || Event::GetBlockResult(block_hash, None),
-                    ),
+                    Some(peer) => fetch_block(effect_builder, peer, block_hash),
                 },
                 Some(FetchResult::FromStorage(_)) => {
                     // We should be checking the local storage for linear blocks before we start
@@ -206,10 +200,7 @@ where
                     } else {
                         let parent_hash = *block.parent_hash();
                         let peer = self.random_peer_unsafe(rng);
-                        effect_builder.fetch_block(parent_hash, peer).option(
-                            move |value| Event::GetBlockResult(parent_hash, Some(value)),
-                            move || Event::GetBlockResult(parent_hash, None),
-                        )
+                        fetch_block(effect_builder, peer, parent_hash)
                     }
                 }
             },
@@ -276,4 +267,18 @@ where
                 Event::DeploysNotFound(Box::new(block))
             }
         })
+}
+
+fn fetch_block<I: Send + Copy + 'static, REv>(
+    effect_builder: EffectBuilder<REv>,
+    peer: I,
+    block_hash: BlockHash,
+) -> Effects<Event<I>>
+where
+    REv: ReactorEventT<I>,
+{
+    effect_builder.fetch_block(block_hash, peer).option(
+        move |value| Event::GetBlockResult(block_hash, Some(value)),
+        move || Event::GetBlockResult(block_hash, None),
+    )
 }
