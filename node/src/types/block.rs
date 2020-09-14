@@ -469,6 +469,10 @@ impl Block {
         &self.hash
     }
 
+    pub(crate) fn post_state_hash(&self) -> Digest {
+        self.header.post_state_hash
+    }
+
     pub(crate) fn deploy_hashes(&self) -> &Vec<DeployHash> {
         self.header.deploy_hashes()
     }

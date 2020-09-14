@@ -55,6 +55,8 @@ impl<I: Display> Display for Event<I> {
 #[derive(Debug)]
 pub(crate) struct LinearChain<I> {
     _marker: std::marker::PhantomData<I>,
+    /// A temporary workaround.
+    linear_chain: Vec<Block>,
     /// The last block this component put to storage which is presumably the last block in the
     /// linear chain.
     last_block: Option<Block>,
@@ -64,8 +66,13 @@ impl<I> LinearChain<I> {
     pub fn new() -> Self {
         LinearChain {
             _marker: std::marker::PhantomData,
+            linear_chain: Vec::new(),
             last_block: None,
         }
+    }
+
+    pub fn linear_chain(&self) -> &Vec<Block> {
+        &self.linear_chain
     }
 }
 
@@ -114,6 +121,7 @@ where
                 .event(move |_| Event::PutBlockResult(block))
             },
             Event::PutBlockResult(block) => {
+                self.linear_chain.push(block.clone());
                 self.last_block = Some(block.clone());
                 let block_header = block.take_header();
                 let block_hash = block_header.hash();

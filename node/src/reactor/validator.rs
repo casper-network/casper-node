@@ -49,7 +49,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, EventQueueHandle},
-    types::{Deploy, ProtoBlock, Tag},
+    types::{Block, Deploy, ProtoBlock, Tag},
     utils::Source,
 };
 pub use config::Config;
@@ -245,6 +245,7 @@ pub struct ValidatorInitConfig<R: Rng + CryptoRng + ?Sized> {
     pub(super) contract_runtime: ContractRuntime,
     pub(super) consensus: EraSupervisor<NodeId, R>,
     pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
+    pub(super) linear_chain: Vec<Block>,
 }
 
 /// Validator node reactor.
@@ -297,6 +298,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             contract_runtime,
             consensus,
             init_consensus_effects,
+            linear_chain,
         } = config;
 
         let metrics = Metrics::new(registry.clone());
@@ -318,7 +320,8 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         let genesis_post_state_hash = chainspec_loader
             .genesis_post_state_hash()
             .expect("should have post state hash");
-        let block_executor = BlockExecutor::new(genesis_post_state_hash);
+        let block_executor =
+            BlockExecutor::new(genesis_post_state_hash).with_parent_map(linear_chain);
         let proto_block_validator = BlockValidator::new();
         let linear_chain = LinearChain::new();
 

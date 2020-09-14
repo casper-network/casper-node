@@ -504,6 +504,7 @@ impl<R: Rng + CryptoRng + ?Sized> Reactor<R> {
                 storage: self.storage,
                 consensus: self.consensus,
                 init_consensus_effects: self.init_consensus_effects,
+                linear_chain: self.linear_chain.linear_chain().clone(),
             },
         );
         net.finalize().await;
