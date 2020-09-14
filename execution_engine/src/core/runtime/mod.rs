@@ -19,7 +19,7 @@ use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef, Trap, TrapKind
 
 use casper_types::{
     account::{AccountHash, ActionType, Weight},
-    auction::{self, AuctionProvider},
+    auction::{self, Auction},
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
         self, Contract, ContractPackage, ContractVersion, ContractVersions, DisabledVersions,
