@@ -1,6 +1,4 @@
-use casper_node::components::contract_runtime::core::engine_state::{
-    execution_effect::ExecutionEffect, op::Op,
-};
+use casper_execution_engine::core::engine_state::{execution_effect::ExecutionEffect, op::Op};
 use casper_types::Key;
 
 use crate::engine_server::{

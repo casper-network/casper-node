@@ -20,14 +20,14 @@
 mod config;
 mod event;
 
-use std::{borrow::Cow, error::Error as StdError, net::SocketAddr, str};
+use std::{borrow::Cow, error::Error as StdError, fmt::Debug, net::SocketAddr, str};
 
 use bytes::Bytes;
-use futures::FutureExt;
+use futures::{join, FutureExt};
 use http::Response;
 use rand::{CryptoRng, Rng};
 use smallvec::smallvec;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 use warp::{
     body,
     filters::path::Tail,
@@ -43,17 +43,22 @@ use crate::{
     crypto::hash::Digest,
     effect::{
         announcements::ApiServerAnnouncement,
-        requests::{ApiRequest, ContractRuntimeRequest, MetricsRequest, StorageRequest},
+        requests::{
+            ApiRequest, ContractRuntimeRequest, LinearChainRequest, MetricsRequest,
+            NetworkInfoRequest, StorageRequest,
+        },
         EffectBuilder, EffectExt, Effects,
     },
     reactor::QueueKind,
-    types::{Deploy, DeployHash},
+    small_network::NodeId,
+    types::{Deploy, DeployHash, StatusFeed},
 };
 pub use config::Config;
 pub(crate) use event::Event;
 
 const DEPLOYS_API_PATH: &str = "deploys";
 const METRICS_API_PATH: &str = "metrics";
+const STATUS_API_PATH: &str = "status";
 
 #[derive(Debug)]
 pub(crate) struct ApiServer {}
@@ -68,65 +73,6 @@ impl ApiServer {
     }
 }
 
-impl<REv, R> Component<REv, R> for ApiServer
-where
-    REv: From<ApiServerAnnouncement>
-        + From<ContractRuntimeRequest>
-        + From<MetricsRequest>
-        + From<StorageRequest<Storage>>
-        + Send,
-    R: Rng + CryptoRng + ?Sized,
-{
-    type Event = Event;
-
-    fn handle_event(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
-        event: Self::Event,
-    ) -> Effects<Self::Event> {
-        match event {
-            Event::ApiRequest(ApiRequest::SubmitDeploy { deploy, responder }) => {
-                let mut effects = effect_builder.announce_deploy_received(deploy).ignore();
-                effects.extend(responder.respond(()).ignore());
-                effects
-            }
-            Event::ApiRequest(ApiRequest::GetDeploy { hash, responder }) => effect_builder
-                .get_deploys_from_storage(smallvec![hash])
-                .event(move |mut result| Event::GetDeployResult {
-                    hash,
-                    result: Box::new(result.pop().expect("can only contain one result")),
-                    main_responder: responder,
-                }),
-            Event::ApiRequest(ApiRequest::ListDeploys { responder }) => effect_builder
-                .list_deploys()
-                .event(move |result| Event::ListDeploysResult {
-                    result,
-                    main_responder: responder,
-                }),
-            Event::ApiRequest(ApiRequest::GetMetrics { responder }) => effect_builder
-                .get_metrics()
-                .event(move |text| Event::GetMetricsResult {
-                    text,
-                    main_responder: responder,
-                }),
-            Event::GetDeployResult {
-                hash: _,
-                result,
-                main_responder,
-            } => main_responder.respond(*result).ignore(),
-            Event::ListDeploysResult {
-                result,
-                main_responder,
-            } => main_responder.respond(result).ignore(),
-            Event::GetMetricsResult {
-                text,
-                main_responder,
-            } => main_responder.respond(text).ignore(),
-        }
-    }
-}
-
 /// Run the HTTP server.
 async fn run_server<REv>(config: Config, effect_builder: EffectBuilder<REv>)
 where
@@ -135,12 +81,12 @@ where
     let post_deploy = warp::post()
         .and(warp::path(DEPLOYS_API_PATH))
         .and(body::bytes())
-        .and_then(move |encoded_deploy| parse_post_request(effect_builder, encoded_deploy));
+        .and_then(move |encoded_deploy| parse_post_deploy_request(effect_builder, encoded_deploy));
 
     let get_deploy = warp::get()
         .and(warp::path(DEPLOYS_API_PATH))
         .and(warp::path::tail())
-        .and_then(move |hex_digest| parse_get_request(effect_builder, hex_digest));
+        .and_then(move |hex_digest| parse_get_deploy_request(effect_builder, hex_digest));
 
     let get_metrics = warp::get()
         .and(warp::path(METRICS_API_PATH))
@@ -161,37 +107,35 @@ where
                 })
         });
 
+    let get_status = warp::get()
+        .and(warp::path(STATUS_API_PATH))
+        .and_then(move || handle_get_status(effect_builder));
+
     let mut server_addr = SocketAddr::from((config.bind_interface, config.bind_port));
 
-    debug!(%server_addr, "starting HTTP server");
-    match warp::serve(post_deploy.or(get_deploy).or(get_metrics)).try_bind_ephemeral(server_addr) {
-        Ok((addr, server_fut)) => {
-            info!(%addr, "started HTTP server");
-            return server_fut.await;
-        }
-        Err(error) => {
-            if server_addr.port() == 0 {
-                warn!(%error, "failed to start HTTP server");
-                return;
-            } else {
-                debug!(%error, "failed to start HTTP server. retrying on random port");
-            }
-        }
-    }
+    let filter = post_deploy.or(get_deploy).or(get_metrics).or(get_status);
 
-    server_addr.set_port(0);
-    match warp::serve(post_deploy.or(get_deploy)).try_bind_ephemeral(server_addr) {
-        Ok((addr, server_fut)) => {
-            info!(%addr, "started HTTP server");
-            server_fut.await;
-        }
-        Err(error) => {
-            warn!(%error, "failed to start HTTP server");
+    debug!(%server_addr, "starting HTTP server");
+    loop {
+        match warp::serve(filter).try_bind_ephemeral(server_addr) {
+            Ok((addr, server_fut)) => {
+                info!(%addr, "started HTTP server");
+                return server_fut.await;
+            }
+            Err(error) => {
+                if server_addr.port() == 0 {
+                    warn!(%error, "failed to start HTTP server");
+                    return;
+                } else {
+                    server_addr.set_port(0);
+                    debug!(%error, "failed to start HTTP server. retrying on random port");
+                }
+            }
         }
     }
 }
 
-async fn parse_post_request<REv>(
+async fn parse_post_deploy_request<REv>(
     effect_builder: EffectBuilder<REv>,
     encoded_deploy: Bytes,
 ) -> Result<WithStatus<Json>, Rejection>
@@ -226,7 +170,7 @@ where
     Ok(reply::with_status(json, StatusCode::OK))
 }
 
-async fn parse_get_request<REv>(
+async fn parse_get_deploy_request<REv>(
     effect_builder: EffectBuilder<REv>,
     tail: Tail,
 ) -> Result<Response<String>, Rejection>
@@ -332,4 +276,113 @@ where
         .status(status)
         .body(body)
         .unwrap())
+}
+
+async fn handle_get_status<REv>(
+    effect_builder: EffectBuilder<REv>,
+) -> Result<Response<String>, Rejection>
+where
+    REv: From<Event> + From<ApiRequest> + Send,
+{
+    let status_feed_json = effect_builder
+        .make_request(
+            |responder| ApiRequest::GetStatus { responder },
+            QueueKind::Api,
+        )
+        .await;
+
+    let (body, status) = match status_feed_json {
+        Some(body) => (body, StatusCode::OK),
+        None => (
+            String::from("status unavailable"),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ),
+    };
+
+    Ok(Response::builder()
+        .header("content-type", "application/json")
+        .status(status)
+        .body(body)
+        .unwrap())
+}
+
+impl<REv, R> Component<REv, R> for ApiServer
+where
+    REv: From<ApiServerAnnouncement>
+        + From<NetworkInfoRequest<NodeId>>
+        + From<LinearChainRequest<NodeId>>
+        + From<ContractRuntimeRequest>
+        + From<MetricsRequest>
+        + From<StorageRequest<Storage>>
+        + Send,
+    R: Rng + CryptoRng + ?Sized,
+{
+    type Event = Event;
+
+    fn handle_event(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        _rng: &mut R,
+        event: Self::Event,
+    ) -> Effects<Self::Event> {
+        match event {
+            Event::ApiRequest(ApiRequest::SubmitDeploy { deploy, responder }) => {
+                let mut effects = effect_builder.announce_deploy_received(deploy).ignore();
+                effects.extend(responder.respond(()).ignore());
+                effects
+            }
+            Event::ApiRequest(ApiRequest::GetDeploy { hash, responder }) => effect_builder
+                .get_deploys_from_storage(smallvec![hash])
+                .event(move |mut result| Event::GetDeployResult {
+                    hash,
+                    result: Box::new(result.pop().expect("can only contain one result")),
+                    main_responder: responder,
+                }),
+            Event::ApiRequest(ApiRequest::ListDeploys { responder }) => effect_builder
+                .list_deploys()
+                .event(move |result| Event::ListDeploysResult {
+                    result,
+                    main_responder: responder,
+                }),
+            Event::ApiRequest(ApiRequest::GetMetrics { responder }) => effect_builder
+                .get_metrics()
+                .event(move |text| Event::GetMetricsResult {
+                    text,
+                    main_responder: responder,
+                }),
+            Event::ApiRequest(ApiRequest::GetStatus { responder }) => async move {
+                let (last_finalized_block, peers) = join!(
+                    effect_builder.get_last_finalized_block(),
+                    effect_builder.network_peers()
+                );
+                let status_feed = StatusFeed::new(last_finalized_block, peers);
+                debug!("GetStatus --status_feed: {:?}", status_feed);
+                let json = {
+                    match serde_json::to_string(&status_feed) {
+                        Ok(json) => json,
+                        Err(error) => {
+                            error!("GetStatus --error: {:?}", error);
+                            serde_json::to_string(&StatusFeed::default())
+                                .unwrap_or_else(|_| String::default())
+                        }
+                    }
+                };
+                responder.respond(Some(json)).await;
+            }
+            .ignore(),
+            Event::GetDeployResult {
+                hash: _,
+                result,
+                main_responder,
+            } => main_responder.respond(*result).ignore(),
+            Event::ListDeploysResult {
+                result,
+                main_responder,
+            } => main_responder.respond(result).ignore(),
+            Event::GetMetricsResult {
+                text,
+                main_responder,
+            } => main_responder.respond(text).ignore(),
+        }
+    }
 }

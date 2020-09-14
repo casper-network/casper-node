@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::components::storage;
+use casper_execution_engine::shared::utils;
 
 const DEFAULT_MAX_GLOBAL_STATE_SIZE: usize = 805_306_368_000; // 750 GiB
 const DEFAULT_USE_SYSTEM_CONTRACTS: bool = false;
@@ -30,7 +30,7 @@ impl Config {
         let value = self
             .max_global_state_size
             .unwrap_or(DEFAULT_MAX_GLOBAL_STATE_SIZE);
-        storage::check_multiple_of_page_size(value);
+        utils::check_multiple_of_page_size(value);
         value
     }
 }

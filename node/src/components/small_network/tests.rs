@@ -160,6 +160,10 @@ impl Reactor<TestRng> for TestReactor {
                 };
                 self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
             }
+            Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_)) => {
+                // We do not care about the announcement of new peers in this test.
+                Effects::new()
+            }
             Event::AddressGossiperAnnouncement(ann) => {
                 let GossiperAnnouncement::NewCompleteItem(gossiped_address) = ann;
                 let reactor_event =
@@ -214,6 +218,14 @@ fn network_is_complete(
         .all(|actual| actual == expected)
 }
 
+/// Checks whether or not a given network has at least one other node in it
+fn network_started(net: &Network<TestReactor>) -> bool {
+    net.nodes()
+        .iter()
+        .map(|(_, runner)| runner.reactor().inner().net.peers())
+        .all(|peers| !peers.is_empty())
+}
+
 /// Run a two-node network five times.
 ///
 /// Ensures that network cleanup and basic networking works.
@@ -251,6 +263,11 @@ async fn run_two_node_network_five_times() {
         let timeout = Duration::from_secs(2);
         net.settle_on(&mut rng, network_is_complete, timeout).await;
 
+        assert!(
+            network_started(&net),
+            "each node is connected to at least one other node"
+        );
+
         let quiet_for = Duration::from_millis(25);
         let timeout = Duration::from_secs(2);
         net.settle(&mut rng, quiet_for, timeout).await;
@@ -286,7 +303,7 @@ async fn bind_to_real_network_interface() {
         .ip();
     let port = testing::unused_port_on_localhost();
 
-    let local_net_config = Config::new(local_addr, port);
+    let local_net_config = Config::new((local_addr, port).into());
 
     let mut net = Network::<TestReactor>::new();
     net.add_node_with_config(local_net_config, &mut rng)

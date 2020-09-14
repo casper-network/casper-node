@@ -3,6 +3,7 @@ use std::iter;
 use std::{
     collections::BTreeMap,
     fmt::{self, Debug, Display, Formatter},
+    hash::Hash,
 };
 
 use hex_fmt::{HexFmt, HexList};
@@ -25,6 +26,10 @@ use crate::{
     crypto::asymmetric_key::{self, SecretKey},
     testing::TestRng,
 };
+
+pub trait BlockLike: Eq + Hash {
+    fn deploys(&self) -> &Vec<DeployHash>;
+}
 
 /// A cryptographic hash identifying a `ProtoBlock`.
 #[derive(
@@ -127,6 +132,12 @@ impl Display for ProtoBlock {
     }
 }
 
+impl BlockLike for ProtoBlock {
+    fn deploys(&self) -> &Vec<DeployHash> {
+        self.deploys()
+    }
+}
+
 /// System transactions like slashing and rewards.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SystemTransaction {
@@ -221,11 +232,6 @@ impl FinalizedBlock {
         &self.system_transactions
     }
 
-    /// Returns `true` if this is the last block of the current era.
-    pub(crate) fn switch_block(&self) -> bool {
-        self.switch_block
-    }
-
     /// Returns the ID of the era this block belongs to.
     pub(crate) fn era_id(&self) -> EraId {
         self.era_id
@@ -248,7 +254,7 @@ impl From<Block> for FinalizedBlock {
         let proto_block =
             ProtoBlock::new(b.header().deploy_hashes().clone(), b.header().random_bit);
 
-        let timestamp = *b.header().timestamp();
+        let timestamp = b.header().timestamp();
         let switch_block = b.header().switch_block;
         let era_id = b.header().era_id;
         let height = b.header().height;
@@ -345,14 +351,19 @@ impl BlockHeader {
         &self.deploy_hashes
     }
 
+    /// Returns `true` if this is the last block of an era.
+    pub fn switch_block(&self) -> bool {
+        self.switch_block
+    }
+
     /// A random bit needed for initializing a future era.
-    pub fn random_bit(&self) -> &bool {
-        &self.random_bit
+    pub fn random_bit(&self) -> bool {
+        self.random_bit
     }
 
     /// The timestamp from when the proto block was proposed.
-    pub fn timestamp(&self) -> &Timestamp {
-        &self.timestamp
+    pub fn timestamp(&self) -> Timestamp {
+        self.timestamp
     }
 
     /// Instructions for system transactions like slashing and rewards.
@@ -363,6 +374,11 @@ impl BlockHeader {
     /// Era ID in which this block was created.
     pub fn era_id(&self) -> EraId {
         self.era_id
+    }
+
+    /// Returns the height of this block, i.e. the number of ancestors.
+    pub fn height(&self) -> u64 {
+        self.height
     }
 
     /// Block proposer.
@@ -398,17 +414,6 @@ impl Display for BlockHeader {
             self.timestamp,
             DisplayIter::new(self.system_transactions.iter()),
         )
-    }
-}
-
-impl Item for BlockHeader {
-    type Id = BlockHash;
-
-    const TAG: Tag = Tag::BlockHeader;
-    const ID_IS_COMPLETE_ITEM: bool = false;
-
-    fn id(&self) -> Self::Id {
-        self.hash()
     }
 }
 
@@ -462,6 +467,23 @@ impl Block {
 
     pub(crate) fn hash(&self) -> &BlockHash {
         &self.hash
+    }
+
+    #[allow(unused)]
+    pub(crate) fn parent(&self) -> &BlockHash {
+        self.header.parent_hash()
+    }
+
+    pub(crate) fn deploy_hashes(&self) -> &Vec<DeployHash> {
+        self.header.deploy_hashes()
+    }
+
+    pub(crate) fn parent_hash(&self) -> &BlockHash {
+        self.header.parent_hash()
+    }
+
+    pub(crate) fn is_genesis_child(&self) -> bool {
+        self.header.era_id == EraId(0) && self.header.height == 0
     }
 
     /// Appends the given signature to this block's proofs.  It should have been validated prior to
@@ -539,6 +561,12 @@ impl Display for Block {
             DisplayIter::new(self.header.system_transactions.iter()),
             self.proofs.len()
         )
+    }
+}
+
+impl BlockLike for Block {
+    fn deploys(&self) -> &Vec<DeployHash> {
+        self.deploy_hashes()
     }
 }
 

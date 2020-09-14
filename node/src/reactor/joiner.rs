@@ -13,18 +13,25 @@ use crate::{
     components::{
         chainspec_loader::ChainspecLoader,
         contract_runtime::ContractRuntime,
+        fetcher::{self, Fetcher},
+        linear_chain_sync::{self, LinearChainSync},
         small_network,
         small_network::{NodeId, SmallNetwork},
-        storage::Storage,
+        storage::{self, Storage},
         Component,
     },
-    effect::{announcements::NetworkAnnouncement, EffectBuilder, Effects},
+    effect::{
+        announcements::NetworkAnnouncement,
+        requests::{FetcherRequest, NetworkRequest, StorageRequest},
+        EffectBuilder, Effects,
+    },
     protocol::Message,
     reactor::{
         self, initializer,
         validator::{self, Error, ValidatorInitConfig},
         EventQueueHandle, Finalize,
     },
+    types::Block,
     utils::WithDir,
 };
 
@@ -36,10 +43,38 @@ pub enum Event {
     #[from]
     Network(small_network::Event<Message>),
 
+    /// Storage event.
+    #[from]
+    Storage(storage::Event<Storage>),
+
+    /// Linear chain fetcher event.
+    #[from]
+    BlockFetcher(fetcher::Event<Block>),
+
+    /// Linear chain event.
+    #[from]
+    LinearChainSync(linear_chain_sync::Event<NodeId>),
+
+    /// Requests.
+    /// Linear chain fetcher request.
+    #[from]
+    BlockFetcherRequest(FetcherRequest<NodeId, Block>),
     // Announcements
     /// Network announcement.
     #[from]
     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
+}
+
+impl From<StorageRequest<Storage>> for Event {
+    fn from(request: StorageRequest<Storage>) -> Self {
+        Event::Storage(storage::Event::Request(request))
+    }
+}
+
+impl From<NetworkRequest<NodeId, Message>> for Event {
+    fn from(request: NetworkRequest<NodeId, Message>) -> Self {
+        Event::Network(small_network::Event::from(request))
+    }
 }
 
 impl Display for Event {
@@ -47,6 +82,10 @@ impl Display for Event {
         match self {
             Event::Network(event) => write!(f, "network: {}", event),
             Event::NetworkAnnouncement(event) => write!(f, "network announcement: {}", event),
+            Event::Storage(request) => write!(f, "storage: {}", request),
+            Event::BlockFetcherRequest(request) => write!(f, "block fetcher request: {}", request),
+            Event::LinearChainSync(event) => write!(f, "linear chain: {}", event),
+            Event::BlockFetcher(event) => write!(f, "block fetcher: {}", event),
         }
     }
 }
@@ -60,6 +99,8 @@ pub struct Reactor {
     pub(super) chainspec_loader: ChainspecLoader,
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
+    pub(super) linear_chain_fetcher: Fetcher<Block>,
+    pub(super) linear_chain_sync: LinearChainSync<NodeId>,
 }
 
 impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor {
@@ -87,6 +128,20 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor {
 
         let (net, net_effects) = SmallNetwork::new(event_queue, config.network.clone())?;
 
+        let linear_chain_fetcher = Fetcher::new(config.gossip);
+
+        let mut effects = reactor::wrap_effects(Event::Network, net_effects);
+
+        let effect_builder = EffectBuilder::new(event_queue);
+
+        let (linear_chain_sync, linear_effects) =
+            LinearChainSync::new(Vec::new(), effect_builder, config.node.trusted_hash);
+
+        effects.extend(reactor::wrap_effects(
+            Event::LinearChainSync,
+            linear_effects,
+        ));
+
         Ok((
             Self {
                 net,
@@ -95,8 +150,10 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor {
                 chainspec_loader,
                 storage,
                 contract_runtime,
+                linear_chain_sync,
+                linear_chain_fetcher,
             },
-            reactor::wrap_effects(Event::Network, net_effects),
+            effects,
         ))
     }
 
@@ -111,13 +168,37 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor {
                 Event::Network,
                 self.net.handle_event(effect_builder, rng, event),
             ),
+            Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(id)) => reactor::wrap_effects(
+                Event::LinearChainSync,
+                self.linear_chain_sync.handle_event(
+                    effect_builder,
+                    rng,
+                    linear_chain_sync::Event::NewPeerConnected(id),
+                ),
+            ),
             Event::NetworkAnnouncement(_) => Default::default(),
+            Event::Storage(event) => reactor::wrap_effects(
+                Event::Storage,
+                self.storage.handle_event(effect_builder, rng, event),
+            ),
+            Event::BlockFetcherRequest(request) => {
+                self.dispatch_event(effect_builder, rng, Event::BlockFetcher(request.into()))
+            }
+            Event::LinearChainSync(event) => reactor::wrap_effects(
+                Event::LinearChainSync,
+                self.linear_chain_sync
+                    .handle_event(effect_builder, rng, event),
+            ),
+            Event::BlockFetcher(event) => reactor::wrap_effects(
+                Event::BlockFetcher,
+                self.linear_chain_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
         }
     }
 
     fn is_stopped(&mut self) -> bool {
-        // TODO!
-        true
+        self.linear_chain_sync.is_synced()
     }
 }
 

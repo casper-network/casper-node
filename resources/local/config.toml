@@ -9,6 +9,9 @@ chainspec_config_path = 'chainspec.toml'
 # The maximum number of deploys permitted in a single block.
 block_max_deploy_count = 3
 
+# If set, use this hash as a trust anchor when joining an existing network.
+# trusted_hash =
+
 
 # =================================
 # Configuration options for logging
@@ -37,27 +40,28 @@ secret_key_path = 'secret_key.pem'
 # ====================================
 [network]
 
-# The public IP of the node.
+# The public address of the node.
 #
 # It must be publicly available in order to allow peers to connect to this node.
-public_ip = '127.0.0.1'
+# If the port is set to 0, the actual bound port will be substituted.
+public_address = '127.0.0.1:0'
 
-# Interface to bind to for listening.  Defaults to "unspecified", i.e. '0.0.0.0'.
-#bind_interface = '0.0.0.0'
+# Address to bind to for listening.
+# If port is set to 0, a random port will be used.
+bind_address = '0.0.0.0:34553'
 
-# Port to bind to for listening.  Use 0 for a random port.  Defaults to 34553.
-#bind_port = 34553
-
-# Address to connect to in order to join the network.
+# Addresses to connect to in order to join the network.
 #
 # If not set, this node will not be able to attempt to connect to the network.  Instead it will
 # depend upon peers connecting to it.  This is normally only useful for the first node of the
 # network.
-known_address = '127.0.0.1:34553'
+#
+# Multiple addresses can be given and the node will attempt to connect to each, requiring at least
+# one connection.
+known_addresses = ['127.0.0.1:34553']
 
 # The interval (in milliseconds) between each fresh round of gossiping the node's public address.
-# Defaults to 30_000.
-#gossip_interval = 30000
+gossip_interval = 30000
 
 
 # =============================================

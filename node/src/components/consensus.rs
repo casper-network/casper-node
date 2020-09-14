@@ -147,7 +147,7 @@ pub trait ReactorEventT<I>:
     + From<DeployBufferRequest>
     + From<ConsensusAnnouncement>
     + From<BlockExecutorRequest>
-    + From<BlockValidationRequest<I>>
+    + From<BlockValidationRequest<ProtoBlock, I>>
     + From<StorageRequest<Storage>>
 {
 }
@@ -159,7 +159,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<DeployBufferRequest>
         + From<ConsensusAnnouncement>
         + From<BlockExecutorRequest>
-        + From<BlockValidationRequest<I>>
+        + From<BlockValidationRequest<ProtoBlock, I>>
         + From<StorageRequest<Storage>>
 {
 }
@@ -187,11 +187,10 @@ where
                 proto_block,
                 block_context,
             } => handling_es.handle_new_proto_block(era_id, proto_block, block_context),
-            Event::ConsensusRequest(requests::ConsensusRequest::SignLinearBlock(
-                era_id,
-                block_hash,
+            Event::ConsensusRequest(requests::ConsensusRequest::HandleLinearBlock(
+                block_header,
                 responder,
-            )) => handling_es.sign_linear_chain_block(era_id, block_hash, responder),
+            )) => handling_es.handle_linear_chain_block(*block_header, responder),
             Event::AcceptProtoBlock {
                 era_id,
                 proto_block,

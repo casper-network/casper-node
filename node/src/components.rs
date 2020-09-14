@@ -13,6 +13,7 @@ pub(crate) mod deploy_buffer;
 pub(crate) mod fetcher;
 pub(crate) mod gossiper;
 pub(crate) mod linear_chain;
+pub(crate) mod linear_chain_sync;
 // The  `in_memory_network` is public for use in doctests.
 #[cfg(test)]
 pub mod in_memory_network;

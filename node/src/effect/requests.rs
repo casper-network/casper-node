@@ -4,40 +4,41 @@
 //! top-level module documentation for details.
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
+    net::SocketAddr,
 };
 
 use semver::Version;
 
+use casper_execution_engine::{
+    core::engine_state::{
+        self,
+        execute_request::ExecuteRequest,
+        execution_result::ExecutionResults,
+        genesis::GenesisResult,
+        query::{QueryRequest, QueryResult},
+        upgrade::{UpgradeConfig, UpgradeResult},
+    },
+    shared::{additive_map::AdditiveMap, transform::Transform},
+    storage::global_state::CommitResult,
+};
 use casper_types::Key;
 
 use super::Responder;
 use crate::{
     components::{
-        consensus::EraId,
-        contract_runtime::{
-            core::engine_state::{
-                self,
-                execute_request::ExecuteRequest,
-                genesis::GenesisResult,
-                query::{QueryRequest, QueryResult},
-                upgrade::{UpgradeConfig, UpgradeResult},
-            },
-            shared::{additive_map::AdditiveMap, transform::Transform},
-            storage::global_state::CommitResult,
-        },
         fetcher::FetchResult,
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
     types::{
-        BlockHash, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock, ProtoBlockHash, Timestamp,
+        Block as LinearBlock, BlockHash, BlockHeader, Deploy, DeployHash, FinalizedBlock, Item,
+        ProtoBlockHash, Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
 };
-use engine_state::execution_result::ExecutionResults;
 
 /// A metrics request.
 #[derive(Debug)]
@@ -147,10 +148,30 @@ where
     }
 }
 
+/// A networking info request.
 #[derive(Debug)]
-// TODO: remove once all variants are used.
+#[must_use]
+pub enum NetworkInfoRequest<I> {
+    /// Get incoming and outgoing peers.
+    GetPeers {
+        /// Responder to be called with all connected peers.
+        responder: Responder<HashMap<I, SocketAddr>>,
+    },
+}
+
+impl<I> Display for NetworkInfoRequest<I>
+where
+    I: Display,
+{
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            NetworkInfoRequest::GetPeers { responder: _ } => write!(formatter, "get peers"),
+        }
+    }
+}
+
+#[derive(Debug)]
 /// A storage request.
-#[allow(dead_code)]
 #[must_use]
 pub enum StorageRequest<S: StorageType + 'static> {
     /// Store given block.
@@ -313,6 +334,11 @@ pub enum ApiRequest {
         /// Responder to call with the result.
         responder: Responder<Option<String>>,
     },
+    /// Return string formatted status or `None` if an error occurred.
+    GetStatus {
+        /// Responder to call with the result.
+        responder: Responder<Option<String>>,
+    },
 }
 
 impl Display for ApiRequest {
@@ -322,6 +348,7 @@ impl Display for ApiRequest {
             ApiRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
             ApiRequest::ListDeploys { .. } => write!(formatter, "list deploys"),
             ApiRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
+            ApiRequest::GetStatus { .. } => write!(formatter, "get status"),
         }
     }
 }
@@ -450,46 +477,40 @@ impl Display for BlockExecutorRequest {
 /// A block validator request.
 #[derive(Debug)]
 #[must_use]
-pub struct BlockValidationRequest<I> {
+pub struct BlockValidationRequest<T, I> {
     /// The proto-block to be validated.
-    pub(crate) proto_block: ProtoBlock,
-    /// The sender of the proto-block, which will be asked to provide all missing deploys.
+    pub(crate) block: T,
+    /// The sender of the block, which will be asked to provide all missing deploys.
     pub(crate) sender: I,
     /// Responder to call with the result.
     ///
     /// Indicates whether or not validation was successful and returns `proto_block` unchanged.
-    pub(crate) responder: Responder<(bool, ProtoBlock)>,
+    pub(crate) responder: Responder<(bool, T)>,
 }
 
-impl<I: Display> Display for BlockValidationRequest<I> {
+impl<T: Display, I: Display> Display for BlockValidationRequest<T, I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let BlockValidationRequest {
-            proto_block,
-            sender,
-            ..
-        } = self;
-        write!(f, "validate block {} from {}", proto_block, sender)
+        let BlockValidationRequest { block, sender, .. } = self;
+        write!(f, "validate block {} from {}", block, sender)
     }
 }
 
 #[derive(Debug)]
 /// Requests issued to the Linear Chain component.
 pub enum LinearChainRequest<I> {
-    /// Request a block header from the linear, chain by hash.
-    BlockHeaderRequest(BlockHash, I),
     /// Request whole block from the linear chain, by hash.
     BlockRequest(BlockHash, I),
+    /// Get last finalized block.
+    LastFinalizedBlock(Responder<Option<LinearBlock>>),
 }
 
 impl<I: Display> Display for LinearChainRequest<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            LinearChainRequest::BlockHeaderRequest(bh, peer) => {
-                write!(f, "block-header request for hash {} from {}", bh, peer)
-            }
             LinearChainRequest::BlockRequest(bh, peer) => {
                 write!(f, "block request for hash {} from {}", bh, peer)
             }
+            LinearChainRequest::LastFinalizedBlock(_) => write!(f, "last finalized block request"),
         }
     }
 }
@@ -498,6 +519,6 @@ impl<I: Display> Display for LinearChainRequest<I> {
 #[must_use]
 /// Consensus component requests.
 pub enum ConsensusRequest {
-    /// Request for consensus to sign a new linear chain block.
-    SignLinearBlock(EraId, BlockHash, Responder<Signature>),
+    /// Request for consensus to sign a new linear chain block and possibly start a new era.
+    HandleLinearBlock(Box<BlockHeader>, Responder<Signature>),
 }

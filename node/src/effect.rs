@@ -66,6 +66,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     future::Future,
+    net::SocketAddr,
     time::{Duration, Instant},
 };
 
@@ -74,20 +75,22 @@ use semver::Version;
 use smallvec::{smallvec, SmallVec};
 use tracing::error;
 
+use casper_execution_engine::{
+    core::{
+        engine_state::{
+            self, execute_request::ExecuteRequest, execution_result::ExecutionResults,
+            genesis::GenesisResult,
+        },
+        execution,
+    },
+    shared::{additive_map::AdditiveMap, transform::Transform},
+    storage::global_state::CommitResult,
+};
 use casper_types::Key;
-use engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResults};
 
 use crate::{
     components::{
-        consensus::{BlockContext, EraId},
-        contract_runtime::{
-            core::{
-                engine_state::{self, genesis::GenesisResult},
-                execution,
-            },
-            shared::{additive_map::AdditiveMap, transform::Transform},
-            storage::global_state::CommitResult,
-        },
+        consensus::BlockContext,
         fetcher::FetchResult,
         small_network::GossipedAddress,
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
@@ -97,7 +100,7 @@ use crate::{
         hash::Digest,
     },
     reactor::{EventQueueHandle, QueueKind},
-    types::{Block, BlockHash, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock},
+    types::{Block, BlockHash, BlockHeader, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock},
     utils::Source,
     Chainspec,
 };
@@ -107,7 +110,8 @@ use announcements::{
 };
 use requests::{
     BlockExecutorRequest, BlockValidationRequest, ConsensusRequest, ContractRuntimeRequest,
-    DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
+    DeployBufferRequest, FetcherRequest, LinearChainRequest, MetricsRequest, NetworkInfoRequest,
+    NetworkRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -346,6 +350,13 @@ impl<REv> EffectBuilder<REv> {
     #[inline(always)]
     pub async fn immediately(self) {}
 
+    /// Reports a fatal error.
+    ///
+    /// Usually causes the node to cease operations quickly and exit/crash.
+    pub async fn fatal<M: Display + ?Sized>(self, file: &str, line: u32, msg: &M) {
+        panic!("fatal error [{}:{}]: {}", file, line, msg);
+    }
+
     /// Sets a timeout.
     pub(crate) async fn set_timeout(self, timeout: Duration) -> Duration {
         let then = Instant::now();
@@ -365,6 +376,17 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Api,
         )
         .await
+    }
+
+    /// Retrieve the last finalized block.
+    ///
+    /// If an error occurred, `None` is returned.
+    pub(crate) async fn get_last_finalized_block<I>(self) -> Option<Block>
+    where
+        REv: From<LinearChainRequest<I>>,
+    {
+        self.make_request(LinearChainRequest::LastFinalizedBlock, QueueKind::Api)
+            .await
     }
 
     /// Sends a network message.
@@ -429,6 +451,19 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets connected network peers.
+    pub async fn network_peers<I>(self) -> HashMap<I, SocketAddr>
+    where
+        REv: From<NetworkInfoRequest<I>>,
+        I: Send + 'static,
+    {
+        self.make_request(
+            |responder| NetworkInfoRequest::GetPeers { responder },
+            QueueKind::Api,
+        )
+        .await
+    }
+
     /// Announces that a network message has been received.
     pub(crate) async fn announce_message_received<I, P>(self, sender: I, payload: P)
     where
@@ -451,6 +486,19 @@ impl<REv> EffectBuilder<REv> {
             .schedule(
                 NetworkAnnouncement::GossipOurAddress(our_address),
                 QueueKind::Regular,
+            )
+            .await;
+    }
+
+    /// Announces that a new peer has connected.
+    pub(crate) async fn announce_new_peer<I, P>(self, peer_id: I)
+    where
+        REv: From<NetworkAnnouncement<I, P>>,
+    {
+        self.0
+            .schedule(
+                NetworkAnnouncement::NewPeer(peer_id),
+                QueueKind::NetworkIncoming,
             )
             .await;
     }
@@ -562,6 +610,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block header from the linear block store.
+    #[allow(unused)]
     pub(crate) async fn get_block_header_from_storage<S>(
         self,
         block_hash: <S::Block as Value>::Id,
@@ -667,6 +716,27 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets the requested block using the `BlockFetcher`
+    pub(crate) async fn fetch_block<I>(
+        self,
+        block_hash: BlockHash,
+        peer: I,
+    ) -> Option<FetchResult<Block>>
+    where
+        REv: From<FetcherRequest<I, Block>>,
+        I: Send + 'static,
+    {
+        self.make_request(
+            |responder| FetcherRequest::Fetch {
+                id: block_hash,
+                peer,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Passes the timestamp of a future block for which deploys are to be proposed.
     // TODO: The input `BlockContext` will probably be a different type than the context in the
     //       return value in the future.
@@ -714,12 +784,12 @@ impl<REv> EffectBuilder<REv> {
         proto_block: ProtoBlock,
     ) -> (bool, ProtoBlock)
     where
-        REv: From<BlockValidationRequest<I>>,
+        REv: From<BlockValidationRequest<ProtoBlock, I>>,
     {
         self.make_request(
             |responder| BlockValidationRequest {
+                block: proto_block,
                 sender,
-                proto_block,
                 responder,
             },
             QueueKind::Regular,
@@ -873,19 +943,26 @@ impl<REv> EffectBuilder<REv> {
         todo!("run_auction")
     }
 
-    /// Request consensus to sign a block from the linear chain.
-    pub(crate) async fn sign_linear_chain_block(
-        self,
-        era_id: EraId,
-        block_hash: BlockHash,
-    ) -> Signature
+    /// Request consensus to sign a block from the linear chain and possibly start a new era.
+    pub(crate) async fn handle_linear_chain_block(self, block_header: BlockHeader) -> Signature
     where
         REv: From<ConsensusRequest>,
     {
         self.make_request(
-            |responder| ConsensusRequest::SignLinearBlock(era_id, block_hash, responder),
+            |responder| ConsensusRequest::HandleLinearBlock(Box::new(block_header), responder),
             QueueKind::Regular,
         )
         .await
     }
+}
+
+/// Construct a fatal error effect.
+///
+/// This macro is a convenient wrapper around `EffectBuilder::fatal` that inserts the `file!()` and
+/// `line!()` number automatically.
+#[macro_export]
+macro_rules! fatal {
+    ($effect_builder:expr, $msg:expr) => {
+        $effect_builder.fatal(file!(), line!(), &$msg).ignore()
+    };
 }

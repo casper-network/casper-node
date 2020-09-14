@@ -8,12 +8,12 @@ use derive_more::From;
 use tokio::net::TcpStream;
 
 use super::{Error, GossipedAddress, Message, NodeId, Transport};
-use crate::effect::requests::NetworkRequest;
+use crate::effect::requests::{NetworkInfoRequest, NetworkRequest};
 
 #[derive(Debug, From)]
 pub enum Event<P> {
     /// Connection to the known node failed.
-    BootstrappingFailed { error: Error },
+    BootstrappingFailed { address: SocketAddr, error: Error },
     /// A new TCP connection has been established from an incoming connection.
     IncomingNew {
         stream: TcpStream,
@@ -49,6 +49,10 @@ pub enum Event<P> {
     #[from]
     NetworkRequest { req: NetworkRequest<NodeId, P> },
 
+    /// Incoming network info request.
+    #[from]
+    NetworkInfoRequest { req: NetworkInfoRequest<NodeId> },
+
     /// The node should gossip its own public listening address.
     GossipOurAddress,
     /// We received a peer's public listening address via gossip.
@@ -58,7 +62,9 @@ pub enum Event<P> {
 impl<P: Display> Display for Event<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::BootstrappingFailed { error } => write!(f, "root failed: {}", error),
+            Event::BootstrappingFailed { address, error } => {
+                write!(f, "bootstrapping failed for node {}: {}", address, error)
+            }
             Event::IncomingNew { address, .. } => write!(f, "incoming connection from {}", address),
             Event::IncomingHandshakeCompleted { result, address } => {
                 write!(f, "handshake from {}, is_err {}", address, result.is_err())
@@ -95,6 +101,7 @@ impl<P: Display> Display for Event<P> {
                 error.is_some()
             ),
             Event::NetworkRequest { req } => write!(f, "request: {}", req),
+            Event::NetworkInfoRequest { req } => write!(f, "request: {}", req),
             Event::GossipOurAddress => write!(f, "gossip our address"),
             Event::PeerAddressReceived(gossiped_address) => {
                 write!(f, "received gossiped peer address {}", gossiped_address)

@@ -1,6 +1,7 @@
 [workspace]
 
 members = [
+    "execution_engine",
     "smart_contracts/contract",
     "smart_contracts/contracts/[!.]*/*",
     "grpc/server",
@@ -13,6 +14,7 @@ members = [
 ]
 
 default-members = [
+    "execution_engine",
     "smart_contracts/contract",
     "grpc/server",
     "grpc/test_support",

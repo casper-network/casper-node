@@ -18,24 +18,18 @@ use rand::{CryptoRng, Rng};
 use semver::Version;
 use tracing::{debug, error, info, trace};
 
+use casper_execution_engine::core::engine_state::{self, genesis::GenesisResult};
+
 use crate::{
-    components::{
-        contract_runtime::core::engine_state::{self, genesis::GenesisResult},
-        storage::Storage,
-        Component,
-    },
+    components::{storage::Storage, Component},
     crypto::hash::Digest,
     effect::{
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
 };
+pub use chainspec::Chainspec;
 pub(crate) use chainspec::{DeployConfig, HighwayConfig};
-// False positive.
-#[allow(unreachable_pub)]
-pub use chainspec::{Chainspec, GenesisAccount};
-// False positive.
-#[allow(unreachable_pub)]
 pub use error::Error;
 
 /// `ChainspecHandler` events.
@@ -148,7 +142,7 @@ where
                             info!("successfully committed genesis");
                             trace!(%post_state_hash, ?effect);
                             self.completed_successfully = Some(true);
-                            self.genesis_post_state_hash = Some(post_state_hash);
+                            self.genesis_post_state_hash = Some(post_state_hash.into());
                         }
                     },
                     Err(error) => {

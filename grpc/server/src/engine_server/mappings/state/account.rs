@@ -4,9 +4,7 @@ use std::{
     mem,
 };
 
-use casper_node::components::contract_runtime::shared::account::{
-    Account, ActionThresholds, AssociatedKeys,
-};
+use casper_execution_engine::shared::account::{Account, ActionThresholds, AssociatedKeys};
 use casper_types::account::{AccountHash, Weight};
 
 use super::NamedKeyMap;
@@ -142,7 +140,7 @@ fn weight_from(value: u32, value_name: &str) -> Result<Weight, ParsingError> {
 mod tests {
     use proptest::proptest;
 
-    use casper_node::components::contract_runtime::shared::account::gens;
+    use casper_execution_engine::shared::account::gens;
 
     use super::*;
     use crate::engine_server::mappings::test_utils;

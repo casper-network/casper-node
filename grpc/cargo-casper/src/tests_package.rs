@@ -21,11 +21,12 @@ const AUCTION_INSTALL: &str = "auction_install.wasm";
 const INTEGRATION_TESTS_RS_CONTENTS: &str = r#"#[cfg(test)]
 mod tests {
     use casper_engine_test_support::{
-        Code, Error, PublicKey, SecretKey, SessionBuilder, TestContextBuilder, Value,
+        Code, Error, SessionBuilder, TestContextBuilder, Value,
     };
-    use casper_types::{runtime_args, RuntimeArgs, U512};
+    use casper_types::{runtime_args, RuntimeArgs, U512, account::AccountHash, PublicKey};
 
     const MY_ACCOUNT: [u8; 32] = [7u8; 32];
+    const MY_ADDR: [u8; 32] = [8u8; 32];
     // define KEY constant to match that in the contract
     const KEY: &str = "special_value";
     const VALUE: &str = "hello world";
@@ -33,12 +34,11 @@ mod tests {
 
     #[test]
     fn should_store_hello_world() {
-        let secret_key = SecretKey::new_ed25519(MY_ACCOUNT);
-        let public_key = PublicKey::from(&secret_key);
-        let account_addr = public_key.to_account_hash();
+        let public_key = PublicKey::Ed25519(MY_ACCOUNT);
+        let account_addr = AccountHash::new(MY_ADDR);
 
         let mut context = TestContextBuilder::new()
-            .with_public_key(public_key, U512::from(128_000_000))
+            .with_public_key(public_key, account_addr, U512::from(128_000_000))
             .build();
 
         // The test framework checks for compiled Wasm files in '<current working dir>/wasm'.  Paths
