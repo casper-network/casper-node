@@ -1,4 +1,5 @@
 //! Contains implementation of a Mint contract functionality.
+mod constants;
 mod runtime_provider;
 mod storage_provider;
 
@@ -6,7 +7,9 @@ use core::convert::TryFrom;
 
 use crate::{account::AccountHash, system_contract_errors::mint::Error, Key, URef, U512};
 
-pub use crate::mint::{runtime_provider::RuntimeProvider, storage_provider::StorageProvider};
+pub use crate::mint::{
+    constants::*, runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+};
 
 const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
 

@@ -19,7 +19,6 @@ use casper_types::{
 
 pub const MODIFIED_MINT_EXT_FUNCTION_NAME: &str = "modified_mint_ext";
 pub const POS_EXT_FUNCTION_NAME: &str = "pos_ext";
-pub const STANDARD_PAYMENT_FUNCTION_NAME: &str = "pay";
 const VERSION_ENTRY_POINT: &str = "version";
 const UPGRADED_VERSION: &str = "1.1.0";
 
