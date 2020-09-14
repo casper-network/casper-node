@@ -208,6 +208,7 @@ where
                 let block_hash = *block.hash();
                 let block_height = block.height();
                 trace!(%block_hash, "Deploys for linear chain block found.");
+                // Reset used peers so we can download next block with the full set.
                 self.reset_peers();
                 // Execute block
                 // Download next block deploys.
