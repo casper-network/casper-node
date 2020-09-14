@@ -77,8 +77,9 @@ pub(crate) use self::{event::Event, gossiped_address::GossipedAddress, message::
 use crate::{
     components::Component,
     effect::{
-        announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, EffectExt,
-        EffectResultExt, Effects,
+        announcements::NetworkAnnouncement,
+        requests::{NetworkInfoRequest, NetworkRequest},
+        EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     fatal,
     reactor::{EventQueueHandle, Finalize, QueueKind},
@@ -496,6 +497,18 @@ where
         self.outgoing.keys().cloned().collect()
     }
 
+    /// Returns the set of connected nodes.
+    pub(crate) fn peers(&self) -> HashMap<NodeId, SocketAddr> {
+        let mut ret: HashMap<NodeId, SocketAddr> = HashMap::new();
+        for x in &self.outgoing {
+            ret.insert(*x.0, x.1.peer_address);
+        }
+        for x in &self.incoming {
+            ret.entry(*x.0).or_insert(*x.1);
+        }
+        ret
+    }
+
     /// Returns the node id of this network node.
     #[cfg(test)]
     pub(crate) fn node_id(&self) -> NodeId {
@@ -639,6 +652,9 @@ where
                 let sent_to = self.gossip_message(rng, Message(payload), count, exclude);
                 responder.respond(sent_to).ignore()
             }
+            Event::NetworkInfoRequest {
+                req: NetworkInfoRequest::GetPeers { responder },
+            } => responder.respond(self.peers()).ignore(),
             Event::GossipOurAddress => self.gossip_our_address(effect_builder),
             Event::PeerAddressReceived(gossiped_address) => {
                 self.connect_to_peer_if_required(gossiped_address.into())

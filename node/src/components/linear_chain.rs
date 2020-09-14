@@ -8,7 +8,7 @@ use crate::{
         EffectExt, Effects,
     },
     protocol::Message,
-    types::{Block, BlockHash, BlockHeader},
+    types::{Block, BlockHash},
 };
 use derive_more::From;
 use effect::requests::{ConsensusRequest, NetworkRequest};
@@ -28,7 +28,8 @@ pub enum Event<I> {
     GetBlockResult(BlockHash, Option<Block>, I),
     /// New finality signature.
     NewFinalitySignature(BlockHash, Signature),
-    PutBlockResult(BlockHeader),
+    /// The result of putting a block to storage.
+    PutBlockResult(Block),
 }
 
 impl<I: Display> Display for Event<I> {
@@ -54,12 +55,16 @@ impl<I: Display> Display for Event<I> {
 #[derive(Debug)]
 pub(crate) struct LinearChain<I> {
     _marker: std::marker::PhantomData<I>,
+    /// The last block this component put to storage which is presumably the last block in the
+    /// linear chain.
+    last_block: Option<Block>,
 }
 
 impl<I> LinearChain<I> {
     pub fn new() -> Self {
         LinearChain {
             _marker: std::marker::PhantomData,
+            last_block: None,
         }
     }
 }
@@ -85,6 +90,9 @@ where
             Event::Request(LinearChainRequest::BlockRequest(bh, sender)) => effect_builder
                 .get_block_from_storage(bh)
                 .event(move |maybe_block| Event::GetBlockResult(bh, maybe_block, sender)),
+            Event::Request(LinearChainRequest::LastFinalizedBlock(responder)) => {
+                responder.respond(self.last_block.clone()).ignore()
+            }
             Event::GetBlockResult(block_hash, maybe_block, sender) => {
                 match maybe_block {
                     None => {
@@ -101,14 +109,15 @@ where
                 }
             }
             Event::LinearChainBlock(block) => {
-                let block_header = block.header().clone();
                 effect_builder
-                .put_block_to_storage(Box::new(block))
-                .event(move |_| Event::PutBlockResult(block_header))
+                .put_block_to_storage(Box::new(block.clone()))
+                .event(move |_| Event::PutBlockResult(block))
             },
-            Event::PutBlockResult(block_header) => {
-                let block_hash = block_header.hash();
-                effect_builder.handle_linear_chain_block(block_header)
+            Event::PutBlockResult(block) => {
+                let block_hash = *block.hash();
+                debug!("LinearChainBlock --block_hash: {}", block_hash);
+                self.last_block = Some(block.clone());
+                effect_builder.handle_linear_chain_block(block.header().clone())
                     .event(move |signature| Event::NewFinalitySignature(block_hash, signature))
             },
             Event::NewFinalitySignature(bh, signature) => {
@@ -126,7 +135,7 @@ where
                         }
                     })
                     .ignore()
-            }
+            },
         }
     }
 }

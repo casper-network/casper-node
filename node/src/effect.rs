@@ -66,6 +66,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     future::Future,
+    net::SocketAddr,
     time::{Duration, Instant},
 };
 
@@ -109,7 +110,8 @@ use announcements::{
 };
 use requests::{
     BlockExecutorRequest, BlockValidationRequest, ConsensusRequest, ContractRuntimeRequest,
-    DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
+    DeployBufferRequest, FetcherRequest, LinearChainRequest, MetricsRequest, NetworkInfoRequest,
+    NetworkRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -376,6 +378,17 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Retrieve the last finalized block.
+    ///
+    /// If an error occurred, `None` is returned.
+    pub(crate) async fn get_last_finalized_block<I>(self) -> Option<Block>
+    where
+        REv: From<LinearChainRequest<I>>,
+    {
+        self.make_request(LinearChainRequest::LastFinalizedBlock, QueueKind::Api)
+            .await
+    }
+
     /// Sends a network message.
     ///
     /// The message is queued in "fire-and-forget" fashion, there is no guarantee that the peer
@@ -434,6 +447,19 @@ impl<REv> EffectBuilder<REv> {
                 responder,
             },
             QueueKind::Network,
+        )
+        .await
+    }
+
+    /// Gets connected network peers.
+    pub async fn network_peers<I>(self) -> HashMap<I, SocketAddr>
+    where
+        REv: From<NetworkInfoRequest<I>>,
+        I: Send + 'static,
+    {
+        self.make_request(
+            |responder| NetworkInfoRequest::GetPeers { responder },
+            QueueKind::Api,
         )
         .await
     }
