@@ -13,6 +13,7 @@ use std::{
 
 use anyhow::Error;
 use casper_types::U512;
+use fmt::Display;
 use num_traits::AsPrimitive;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
@@ -58,8 +59,14 @@ impl EraId {
         }
     }
 
-    fn successor(self) -> EraId {
+    pub(crate) fn successor(self) -> EraId {
         EraId(self.0 + 1)
+    }
+}
+
+impl Display for EraId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "EraId({})", self.0)
     }
 }
 
