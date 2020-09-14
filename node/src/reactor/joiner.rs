@@ -294,7 +294,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         // Used to decide whether era should be activated.
         let timestamp = Timestamp::now();
 
-        let (consensus, consensus_effects) = EraSupervisor::new(
+        let (consensus, init_consensus_effects) = EraSupervisor::new(
             timestamp,
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
@@ -302,15 +302,6 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             &chainspec_loader.chainspec().genesis.highway_config,
             rng,
         )?;
-
-        let init_consensus_effects = if init_hash.is_some() {
-            // If there's a hash to sync with, don't carry on the effects.
-            // We might end up producing separate chain.
-            Effects::new()
-        } else {
-            // If we're not syncing with anything – business as usual.
-            consensus_effects
-        };
 
         Ok((
             Self {
