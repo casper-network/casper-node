@@ -26,7 +26,7 @@ use casper_types::{
         EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
     },
     mint::{self, Mint},
-    proof_of_stake::ProofOfStake,
+    proof_of_stake::{self, ProofOfStake},
     runtime_args,
     standard_payment::StandardPayment,
     system_contract_errors, AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash,
@@ -1783,11 +1783,6 @@ where
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
     ) -> Result<CLValue, Error> {
-        const METHOD_GET_PAYMENT_PURSE: &str = "get_payment_purse";
-        const METHOD_SET_REFUND_PURSE: &str = "set_refund_purse";
-        const METHOD_GET_REFUND_PURSE: &str = "get_refund_purse";
-        const METHOD_FINALIZE_PAYMENT: &str = "finalize_payment";
-
         let state = self.context.state();
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
@@ -1839,23 +1834,26 @@ where
         );
 
         let ret: CLValue = match entry_point_name {
-            METHOD_GET_PAYMENT_PURSE => {
+            proof_of_stake::METHOD_GET_PAYMENT_PURSE => {
                 let rights_controlled_purse =
                     runtime.get_payment_purse().map_err(Self::reverter)?;
                 CLValue::from_t(rights_controlled_purse).map_err(Self::reverter)?
             }
-            METHOD_SET_REFUND_PURSE => {
-                let purse: URef = Self::get_named_argument(&runtime_args, "purse")?;
+            proof_of_stake::METHOD_SET_REFUND_PURSE => {
+                let purse: URef =
+                    Self::get_named_argument(&runtime_args, proof_of_stake::ARG_PURSE)?;
                 runtime.set_refund_purse(purse).map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)?
             }
-            METHOD_GET_REFUND_PURSE => {
+            proof_of_stake::METHOD_GET_REFUND_PURSE => {
                 let maybe_purse = runtime.get_refund_purse().map_err(Self::reverter)?;
                 CLValue::from_t(maybe_purse).map_err(Self::reverter)?
             }
-            METHOD_FINALIZE_PAYMENT => {
-                let amount_spent: U512 = Self::get_named_argument(&runtime_args, "amount")?;
-                let account: AccountHash = Self::get_named_argument(&runtime_args, "account")?;
+            proof_of_stake::METHOD_FINALIZE_PAYMENT => {
+                let amount_spent: U512 =
+                    Self::get_named_argument(&runtime_args, proof_of_stake::ARG_AMOUNT)?;
+                let account: AccountHash =
+                    Self::get_named_argument(&runtime_args, proof_of_stake::ARG_ACCOUNT)?;
                 runtime
                     .finalize_payment(amount_spent, account)
                     .map_err(Self::reverter)?;
