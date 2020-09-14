@@ -117,6 +117,8 @@ pub enum ConsensusAnnouncement {
     Finalized(ProtoBlock),
     /// A block was orphaned.
     Orphaned(ProtoBlock),
+    /// A linear chain block has been handled.
+    Handled(u64),
 }
 
 impl Display for ConsensusAnnouncement {
@@ -131,6 +133,11 @@ impl Display for ConsensusAnnouncement {
             ConsensusAnnouncement::Orphaned(block) => {
                 write!(formatter, "orphaned proto block {}", block)
             }
+            ConsensusAnnouncement::Handled(height) => write!(
+                formatter,
+                "Linear chain block has been handled by consensus, height={}",
+                height
+            ),
         }
     }
 }

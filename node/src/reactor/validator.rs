@@ -7,13 +7,10 @@ mod error;
 #[cfg(test)]
 mod tests;
 
-use std::{
-    convert::TryInto,
-    fmt::{self, Display, Formatter},
-    path::PathBuf,
-};
+use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
+use fmt::Debug;
 use prometheus::Registry;
 use rand::{CryptoRng, Rng};
 use tracing::{debug, error, warn};
@@ -52,8 +49,8 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, EventQueueHandle},
-    types::{Deploy, ProtoBlock, Tag, Timestamp},
-    utils::{Source, WithDir},
+    types::{Block, Deploy, ProtoBlock, Tag},
+    utils::Source,
 };
 pub use config::Config;
 pub use error::Error;
@@ -87,7 +84,7 @@ pub enum Event {
     /// Deploy gossiper event.
     #[from]
     DeployGossiper(gossiper::Event<Deploy>),
-    /// Deploy gossiper event.
+    /// Address gossiper event.
     #[from]
     AddressGossiper(gossiper::Event<GossipedAddress>),
     /// Contract runtime event.
@@ -241,13 +238,14 @@ impl Display for Event {
 }
 
 /// The configuration needed to initialize a Validator reactor
-#[derive(Debug)]
-pub struct ValidatorInitConfig {
-    pub(super) root: PathBuf,
+pub struct ValidatorInitConfig<R: Rng + CryptoRng + ?Sized> {
     pub(super) config: Config,
     pub(super) chainspec_loader: ChainspecLoader,
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
+    pub(super) consensus: EraSupervisor<NodeId, R>,
+    pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
+    pub(super) linear_chain: Vec<Block>,
 }
 
 /// Validator node reactor.
@@ -282,21 +280,25 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
 
     // The "configuration" is in fact the whole state of the joiner reactor, which we
     // deconstruct and reuse.
-    type Config = ValidatorInitConfig;
+    type Config = ValidatorInitConfig<R>;
     type Error = Error;
 
     fn new(
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut R,
+        // We don't need `rng` b/c consensus component was the only one using it,
+        // and now it's being passed on from the `joiner` reactor via `config`.
+        _rng: &mut R,
     ) -> Result<(Self, Effects<Event>), Error> {
         let ValidatorInitConfig {
-            root,
             config,
             chainspec_loader,
             storage,
             contract_runtime,
+            consensus,
+            init_consensus_effects,
+            linear_chain,
         } = config;
 
         let metrics = Metrics::new(registry.clone());
@@ -307,36 +309,6 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         let address_gossiper = Gossiper::new_for_complete_items(config.gossip);
 
         let api_server = ApiServer::new(config.http_server, effect_builder);
-        let timestamp = Timestamp::now();
-        let validator_stakes = chainspec_loader
-            .chainspec()
-            .genesis
-            .accounts
-            .iter()
-            .filter_map(|genesis_account| {
-                if genesis_account.is_genesis_validator() {
-                    let public_key = genesis_account
-                        .public_key()
-                        .expect("should have genesis public key");
-
-                    let crypto_public_key = public_key
-                        .try_into()
-                        .expect("should have valid genesis public key");
-
-                    Some((crypto_public_key, genesis_account.bonded_amount()))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        let (consensus, consensus_effects) = EraSupervisor::new(
-            timestamp,
-            WithDir::new(root, config.consensus),
-            effect_builder,
-            validator_stakes,
-            &chainspec_loader.chainspec().genesis.highway_config,
-            rng,
-        )?;
         let deploy_acceptor = DeployAcceptor::new();
         let deploy_fetcher = Fetcher::new(config.gossip);
         let deploy_gossiper = Gossiper::new_for_partial_items(
@@ -348,12 +320,16 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         let genesis_post_state_hash = chainspec_loader
             .genesis_post_state_hash()
             .expect("should have post state hash");
-        let block_executor = BlockExecutor::new(genesis_post_state_hash);
+        let block_executor =
+            BlockExecutor::new(genesis_post_state_hash).with_parent_map(linear_chain);
         let proto_block_validator = BlockValidator::new();
         let linear_chain = LinearChain::new();
 
         let mut effects = reactor::wrap_effects(Event::Network, net_effects);
-        effects.extend(reactor::wrap_effects(Event::Consensus, consensus_effects));
+        effects.extend(reactor::wrap_effects(
+            Event::Consensus,
+            init_consensus_effects,
+        ));
 
         Ok((
             Reactor {
@@ -607,18 +583,25 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 source: _,
             }) => Effects::new(),
             Event::ConsensusAnnouncement(consensus_announcement) => {
-                let reactor_event = Event::DeployBuffer(match consensus_announcement {
+                let mut reactor_event_dispatch = |dbe: deploy_buffer::Event| {
+                    self.dispatch_event(effect_builder, rng, Event::DeployBuffer(dbe))
+                };
+
+                match consensus_announcement {
                     ConsensusAnnouncement::Proposed(block) => {
-                        deploy_buffer::Event::ProposedProtoBlock(block)
+                        reactor_event_dispatch(deploy_buffer::Event::ProposedProtoBlock(block))
                     }
                     ConsensusAnnouncement::Finalized(block) => {
-                        deploy_buffer::Event::FinalizedProtoBlock(block)
+                        reactor_event_dispatch(deploy_buffer::Event::FinalizedProtoBlock(block))
                     }
                     ConsensusAnnouncement::Orphaned(block) => {
-                        deploy_buffer::Event::OrphanedProtoBlock(block)
+                        reactor_event_dispatch(deploy_buffer::Event::OrphanedProtoBlock(block))
                     }
-                });
-                self.dispatch_event(effect_builder, rng, reactor_event)
+                    ConsensusAnnouncement::Handled(_) => {
+                        debug!("Ignoring `Handled` announcement in `validator` reactor.");
+                        Effects::new()
+                    }
+                }
             }
             Event::BlockExecutorAnnouncement(BlockExecutorAnnouncement::LinearChainBlock(
                 block,

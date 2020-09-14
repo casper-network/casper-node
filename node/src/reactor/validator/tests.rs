@@ -110,7 +110,7 @@ impl TestChain {
                 bail!("failed to initialize successfully");
             }
 
-            let mut joiner_runner = Runner::<joiner::Reactor, TestRng>::new(
+            let mut joiner_runner = Runner::<joiner::Reactor<TestRng>, TestRng>::new(
                 WithDir::new(root.clone(), initializer),
                 rng,
             )
