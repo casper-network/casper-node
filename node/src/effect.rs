@@ -838,6 +838,15 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    pub(crate) async fn announce_block_handled(self, height: u64)
+    where
+        REv: From<ConsensusAnnouncement>,
+    {
+        self.0
+            .schedule(ConsensusAnnouncement::Handled(height), QueueKind::Regular)
+            .await
+    }
+
     /// Runs the genesis process on the contract runtime.
     pub(crate) async fn commit_genesis(
         self,

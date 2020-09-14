@@ -580,18 +580,25 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 source: _,
             }) => Effects::new(),
             Event::ConsensusAnnouncement(consensus_announcement) => {
-                let reactor_event = Event::DeployBuffer(match consensus_announcement {
+                let mut reactor_event_dispatch = |dbe: deploy_buffer::Event| {
+                    self.dispatch_event(effect_builder, rng, Event::DeployBuffer(dbe))
+                };
+
+                match consensus_announcement {
                     ConsensusAnnouncement::Proposed(block) => {
-                        deploy_buffer::Event::ProposedProtoBlock(block)
+                        reactor_event_dispatch(deploy_buffer::Event::ProposedProtoBlock(block))
                     }
                     ConsensusAnnouncement::Finalized(block) => {
-                        deploy_buffer::Event::FinalizedProtoBlock(block)
+                        reactor_event_dispatch(deploy_buffer::Event::FinalizedProtoBlock(block))
                     }
                     ConsensusAnnouncement::Orphaned(block) => {
-                        deploy_buffer::Event::OrphanedProtoBlock(block)
+                        reactor_event_dispatch(deploy_buffer::Event::OrphanedProtoBlock(block))
                     }
-                });
-                self.dispatch_event(effect_builder, rng, reactor_event)
+                    ConsensusAnnouncement::Handled(_) => {
+                        debug!("Ignoring `Handled` announcement in `validator` reactor.");
+                        Effects::new()
+                    }
+                }
             }
             Event::BlockExecutorAnnouncement(BlockExecutorAnnouncement::LinearChainBlock(
                 block,

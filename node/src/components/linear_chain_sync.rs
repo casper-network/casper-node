@@ -46,6 +46,9 @@ pub(crate) struct LinearChainSync<I> {
     is_synced: bool,
     // Linear chain block to start sync from.
     init_hash: Option<BlockHash>,
+    // During synchronization we might see new eras being created.
+    // Track the highest height and wait until it's handled by consensus.
+    highest_block_seen: u64,
 }
 
 impl<I: Clone + 'static> LinearChainSync<I> {
@@ -61,6 +64,7 @@ impl<I: Clone + 'static> LinearChainSync<I> {
             linear_chain_length: 0,
             is_synced: init_hash.is_none(),
             init_hash,
+            highest_block_seen: 0,
         }
     }
 
@@ -147,13 +151,11 @@ where
                 }
             }
             Event::BlockExecutionDone(block_hash, block_height) => {
-                info!(?block_hash, "Finished block execution.");
-                if block_height + 1 == self.linear_chain_length {
-                    // We've executed as many blocks from the linear chain
-                    // as was synchronized.
-                    info!("Finished synchronizing linear chain.");
-                    self.is_synced = true;
-                }
+                info!(
+                    ?block_hash,
+                    ?block_height,
+                    "Finished linear chain blocks execution."
+                );
                 Effects::new()
             }
             Event::GetBlockResult(block_hash, fetch_result) => match fetch_result {
@@ -192,6 +194,13 @@ where
                     trace!(%block_hash, "Downloaded linear chain block.");
                     self.reset_peers();
                     self.new_block(*block.clone());
+                    let curr_height = block.height();
+                    // We instantiate with `highest_block_seen=0`, start downloading with the
+                    // highest block and then download its ancestors. It should
+                    // be updated only once at the start.
+                    if curr_height > self.highest_block_seen {
+                        self.highest_block_seen = curr_height;
+                    }
                     if block.is_genesis_child() {
                         info!("Linear chain downloaded. Starting downloading deploys.");
                         effect_builder
@@ -246,6 +255,13 @@ where
                 // Add to the set of peers we can request things from.
                 self.peers.push(peer_id);
                 effects
+            }
+            Event::BlockHandled(height) => {
+                if height == self.highest_block_seen {
+                    info!(%height, "Finished synchronizing linear chain.");
+                    self.is_synced = true;
+                }
+                Effects::new()
             }
         }
     }

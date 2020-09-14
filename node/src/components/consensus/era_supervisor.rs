@@ -352,6 +352,11 @@ where
             );
             effects.extend(self.handle_consensus_results(new_era_id, results));
         }
+        effects.extend(
+            self.effect_builder
+                .announce_block_handled(block_header.height())
+                .ignore(),
+        );
         effects
     }
 

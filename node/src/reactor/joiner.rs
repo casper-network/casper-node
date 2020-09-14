@@ -445,11 +445,20 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 Event::Consensus,
                 self.consensus.handle_event(effect_builder, rng, event),
             ),
-            Event::ConsensusAnnouncement(announcement) => {
-                // During joining phase we don't need to act on consensus announcements.
-                warn!("Ignoring consensus announcement {}", announcement);
-                Effects::new()
-            }
+            Event::ConsensusAnnouncement(announcement) => match announcement {
+                ConsensusAnnouncement::Handled(height) => reactor::wrap_effects(
+                    Event::LinearChainSync,
+                    self.linear_chain_sync.handle_event(
+                        effect_builder,
+                        rng,
+                        linear_chain_sync::Event::BlockHandled(height),
+                    ),
+                ),
+                other => {
+                    warn!("Ignoring consensus announcement {}", other);
+                    Effects::new()
+                }
+            },
             Event::DeployBufferRequest(request) => {
                 // Consensus component should not be trying to create new blocks during joining
                 // phase.
