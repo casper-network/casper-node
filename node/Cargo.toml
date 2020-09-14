@@ -119,6 +119,7 @@ assets = [
     ["../resources/charlie/accounts.csv", "/etc/casper/accounts.csv", "644"],
     ["../resources/charlie/chainspec.toml", "/etc/casper/chainspec.toml", "644"],
     ["../resources/charlie/README.md", "/etc/casper/README.md", "644"],
+    ["../resources/charlie/CHANGE_LOG.md", "/etc/casper/CHANGE_LOG.md", "644"],
     ["../resources/charlie/config-example.toml", "/etc/casper/config-example.toml", "644"],
     ["../resources/charlie/validator_keys/README.md", "/etc/casper/validator_keys/README.md", "644"]
 ]

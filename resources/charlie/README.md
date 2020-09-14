@@ -133,3 +133,26 @@ To stop:
 
 `sudo systemctl stop casper-node`
 
+## Local Storage
+
+Unless specified in different location in `config.toml` the data for the node will
+be located in `/root/.local/share/casper-node` for a linux system.
+
+## Resetting and upgrading for new run
+
+Prior to a new upgrade and run, we need to clean up our local state.
+
+```
+sudo systemctl stop casper-node
+sudo apt remove casper-node
+sudo rm /root/.local/share/casper-node/*
+```
+
+Pull down new .deb package, install and run.
+
+```
+sudo apt install casper-node_0.1.x-r_amd64.deb`
+```
+ 
+Look at `/etc/casper/CHANGE_LOG.md` for any changes that require action from
+validators. We might need to update `config.toml` to support different fields, for example.
