@@ -27,7 +27,7 @@ use casper_types::{
     },
     mint::{self, Mint},
     proof_of_stake::{self, ProofOfStake},
-    runtime_args,
+    runtime_args, standard_payment,
     standard_payment::StandardPayment,
     system_contract_errors, AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash,
     ContractPackageHash, ContractVersionKey, ContractWasm, EntryPointType, Key, ProtocolVersion,
@@ -1868,7 +1868,8 @@ where
     }
 
     pub fn call_host_standard_payment(&mut self) -> Result<(), Error> {
-        let amount: U512 = Self::get_named_argument(&self.context.args(), "amount")?;
+        let amount: U512 =
+            Self::get_named_argument(&self.context.args(), standard_payment::ARG_AMOUNT)?;
         self.pay(amount).map_err(Self::reverter)
     }
 
