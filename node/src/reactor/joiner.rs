@@ -456,17 +456,17 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                         linear_chain_sync::Event::BlockHandled(height),
                     ),
                 ),
-                    ConsensusAnnouncement::GotMessageInEra(era_id) => {
-                        // note if the era id is later than the latest we've received so far
-                        if self
-                            .latest_received_era_id
-                            .map(|lreid| era_id > lreid)
-                            .unwrap_or(true)
-                        {
-                            self.latest_received_era_id = Some(era_id);
-                        }
-                        Effects::new()
+                ConsensusAnnouncement::GotMessageInEra(era_id) => {
+                    // note if the era id is later than the latest we've received so far
+                    if self
+                        .latest_received_era_id
+                        .map(|lreid| era_id > lreid)
+                        .unwrap_or(true)
+                    {
+                        self.latest_received_era_id = Some(era_id);
                     }
+                    Effects::new()
+                }
                 other => {
                     warn!("Ignoring consensus announcement {}", other);
                     Effects::new()
