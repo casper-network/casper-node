@@ -9,7 +9,7 @@ use derive_more::From;
 use casper_execution_engine::core::engine_state::{self, QueryResult};
 
 use crate::{
-    components::small_network::NodeId,
+    components::{small_network::NodeId, storage::DeployMetadata},
     effect::{requests::ApiRequest, Responder},
     types::{Block, BlockHash, Deploy, DeployHash},
 };
@@ -29,8 +29,8 @@ pub enum Event {
     },
     GetDeployResult {
         hash: DeployHash,
-        result: Box<Option<Deploy>>,
-        main_responder: Responder<Option<Deploy>>,
+        result: Box<Option<(Deploy, DeployMetadata<Block>)>>,
+        main_responder: Responder<Option<(Deploy, DeployMetadata<Block>)>>,
     },
     GetPeersResult {
         peers: HashMap<NodeId, SocketAddr>,

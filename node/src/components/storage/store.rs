@@ -1,6 +1,6 @@
 use smallvec::SmallVec;
 
-use super::{DeployMetadata, Result, Value};
+use super::{DeployAndMetadata, Result, Value};
 use crate::types::ExecutionResult;
 
 pub(super) type Multiple<T> = SmallVec<[T; 3]>;
@@ -23,8 +23,6 @@ pub trait Store: Send + Sync {
     /// Returns a copy of all IDs held by the store.
     fn ids(&self) -> Result<Vec<<Self::Value as Value>::Id>>;
 }
-
-type DeployAndMetadata<D, B> = (D, DeployMetadata<B>);
 
 pub trait DeployStore: Store {
     type Block: Value;
@@ -49,7 +47,7 @@ mod tests {
     use smallvec::smallvec;
 
     use super::{
-        super::{Config, InMemStore, LmdbStore},
+        super::{Config, DeployMetadata, InMemStore, LmdbStore},
         *,
     };
     use crate::{

@@ -51,6 +51,7 @@ pub(crate) type DeployResults<S> = Multiple<Option<<S as StorageType>::Deploy>>;
 pub(crate) type DeployHashes<S> = Multiple<<<S as StorageType>::Deploy as Value>::Id>;
 pub(crate) type DeployHeaderResults<S> =
     Multiple<Option<<<S as StorageType>::Deploy as Value>::Header>>;
+type DeployAndMetadata<D, B> = (D, DeployMetadata<B>);
 
 const BLOCK_STORE_FILENAME: &str = "block_store.db";
 const DEPLOY_STORE_FILENAME: &str = "deploy_store.db";
@@ -334,6 +335,26 @@ pub trait StorageType {
         .ignore()
     }
 
+    fn get_deploy_and_metadata(
+        &self,
+        deploy_hash: <Self::Deploy as Value>::Id,
+        responder: Responder<Option<DeployAndMetadata<Self::Deploy, Self::Block>>>,
+    ) -> Effects<Event<Self>>
+    where
+        Self: Sized,
+    {
+        let deploy_store = self.deploy_store();
+        async move {
+            let result =
+                task::spawn_blocking(move || deploy_store.get_deploy_and_metadata(deploy_hash))
+                    .await
+                    .expect("should run")
+                    .unwrap_or_else(|error| panic!("failed to get deploy and metadata: {}", error));
+            responder.respond(result).await
+        }
+        .ignore()
+    }
+
     fn put_chainspec(
         &self,
         chainspec: Box<Chainspec>,
@@ -419,6 +440,10 @@ where
                 execution_results,
                 responder,
             }) => self.put_execution_results(block_hash, execution_results, responder),
+            Event::Request(StorageRequest::GetDeployAndMetadata {
+                deploy_hash,
+                responder,
+            }) => self.get_deploy_and_metadata(deploy_hash, responder),
             Event::Request(StorageRequest::PutChainspec {
                 chainspec,
                 responder,

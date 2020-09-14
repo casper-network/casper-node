@@ -29,7 +29,9 @@ use super::Responder;
 use crate::{
     components::{
         fetcher::FetchResult,
-        storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
+        storage::{
+            DeployHashes, DeployHeaderResults, DeployMetadata, DeployResults, StorageType, Value,
+        },
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
     types::{
@@ -39,6 +41,11 @@ use crate::{
     utils::DisplayIter,
     Chainspec,
 };
+
+type DeployAndMetadata<S> = (
+    <S as StorageType>::Deploy,
+    DeployMetadata<<S as StorageType>::Block>,
+);
 
 /// A metrics request.
 #[derive(Debug)]
@@ -230,6 +237,13 @@ pub enum StorageRequest<S: StorageType + 'static> {
         /// on this attempt or false if they were previously stored.
         responder: Responder<()>,
     },
+    /// Retrieve deploy and its metadata.
+    GetDeployAndMetadata {
+        /// Hash of deploy to be retrieved.
+        deploy_hash: <S::Deploy as Value>::Id,
+        /// Responder to call with the results.
+        responder: Responder<Option<DeployAndMetadata<S>>>,
+    },
     /// Store given chainspec.
     PutChainspec {
         /// Chainspec.
@@ -265,6 +279,9 @@ impl<S: StorageType> Display for StorageRequest<S> {
             ),
             StorageRequest::PutExecutionResults { block_hash, .. } => {
                 write!(formatter, "put execution results for {}", block_hash)
+            }
+            StorageRequest::GetDeployAndMetadata { deploy_hash, .. } => {
+                write!(formatter, "get deploy and metadata for {}", deploy_hash)
             }
             StorageRequest::PutChainspec { chainspec, .. } => write!(
                 formatter,
@@ -344,12 +361,12 @@ pub enum ApiRequest<I> {
         /// Responder to call with the result.
         responder: Responder<Option<Result<QueryResult, engine_state::Error>>>,
     },
-    /// Return the specified deploy if it exists, else `None`.
+    /// Return the specified deploy and metadata if it exists, else `None`.
     GetDeploy {
         /// The hash of the deploy to be retrieved.
         hash: DeployHash,
         /// Responder to call with the result.
-        responder: Responder<Option<Deploy>>,
+        responder: Responder<Option<(Deploy, DeployMetadata<LinearBlock>)>>,
     },
     /// Return the connected peers.
     GetPeers {

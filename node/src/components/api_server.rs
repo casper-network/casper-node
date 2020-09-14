@@ -24,7 +24,6 @@ use hyper::Server;
 use lazy_static::lazy_static;
 use rand::{CryptoRng, Rng};
 use semver::Version;
-use smallvec::smallvec;
 use tracing::{debug, info, warn};
 use warp::Filter;
 
@@ -237,10 +236,10 @@ where
                 responder,
             }) => self.handle_query(effect_builder, maybe_hash, base_key, path, responder),
             Event::ApiRequest(ApiRequest::GetDeploy { hash, responder }) => effect_builder
-                .get_deploys_from_storage(smallvec![hash])
-                .event(move |mut result| Event::GetDeployResult {
+                .get_deploy_and_metadata_from_storage(hash)
+                .event(move |result| Event::GetDeployResult {
                     hash,
-                    result: Box::new(result.pop().expect("can only contain one result")),
+                    result: Box::new(result),
                     main_responder: responder,
                 }),
             Event::ApiRequest(ApiRequest::GetPeers { responder }) => effect_builder

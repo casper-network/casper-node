@@ -93,7 +93,9 @@ use crate::{
         consensus::{BlockContext, EraId},
         fetcher::FetchResult,
         small_network::GossipedAddress,
-        storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
+        storage::{
+            DeployHashes, DeployHeaderResults, DeployMetadata, DeployResults, StorageType, Value,
+        },
     },
     crypto::{
         asymmetric_key::{PublicKey, Signature},
@@ -705,6 +707,25 @@ impl<REv> EffectBuilder<REv> {
             |responder| StorageRequest::PutExecutionResults {
                 block_hash,
                 execution_results,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested deploys from the deploy store.
+    pub(crate) async fn get_deploy_and_metadata_from_storage<S>(
+        self,
+        deploy_hash: <S::Deploy as Value>::Id,
+    ) -> Option<(S::Deploy, DeployMetadata<S::Block>)>
+    where
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetDeployAndMetadata {
+                deploy_hash,
                 responder,
             },
             QueueKind::Regular,

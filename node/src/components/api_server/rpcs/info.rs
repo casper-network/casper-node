@@ -18,7 +18,7 @@ use crate::{
     crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::DeployHash,
+    types::{DeployHash, ExecutionResult},
 };
 
 pub(in crate::components::api_server) struct GetDeploy {}
@@ -39,6 +39,14 @@ impl RpcWithParams for GetDeploy {
             api_version: Version,
             /// JSON-encoded deploy.
             deploy: String,
+            /// The map of block hash (hex-encoded) to execution result.
+            execution_results: Vec<ExecResult>,
+        }
+
+        #[derive(Serialize)]
+        struct ExecResult {
+            block_hash: String,
+            result: ExecutionResult,
         }
 
         async move {
@@ -54,8 +62,8 @@ impl RpcWithParams for GetDeploy {
                 }
             };
 
-            // Try to get the deploy from storage.
-            let maybe_deploy = effect_builder
+            // Try to get the deploy and metadata from storage.
+            let maybe_deploy_and_metadata = effect_builder
                 .make_request(
                     |responder| ApiRequest::GetDeploy {
                         hash: deploy_hash,
@@ -65,10 +73,10 @@ impl RpcWithParams for GetDeploy {
                 )
                 .await;
 
-            let deploy = match maybe_deploy {
-                Some(deploy) => deploy,
+            let (deploy, metadata) = match maybe_deploy_and_metadata {
+                Some((deploy, metadata)) => (deploy, metadata),
                 None => {
-                    info!("failed to get {} from storage", deploy_hash);
+                    info!("failed to get {} and metadata from storage", deploy_hash);
                     return Ok(response_builder.error(warp_json_rpc::Error::custom(
                         ErrorCode::NoSuchDeploy as i64,
                         "deploy not known",
@@ -77,19 +85,28 @@ impl RpcWithParams for GetDeploy {
             };
 
             // Return the result.
-            match deploy.to_json() {
-                Ok(deploy_as_json) => {
-                    let result = ResponseResult {
-                        api_version: CLIENT_API_VERSION.clone(),
-                        deploy: deploy_as_json,
-                    };
-                    Ok(response_builder.success(result)?)
-                }
+            let deploy_as_json = match deploy.to_json() {
+                Ok(deploy_as_json) => deploy_as_json,
                 Err(error) => {
                     info!("failed to encode deploy to JSON: {}", error);
                     return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
                 }
-            }
+            };
+            let execution_results = metadata
+                .execution_results
+                .into_iter()
+                .map(|(block_hash, result)| ExecResult {
+                    block_hash: hex::encode(block_hash.as_ref()),
+                    result,
+                })
+                .collect();
+
+            let result = ResponseResult {
+                api_version: CLIENT_API_VERSION.clone(),
+                deploy: deploy_as_json,
+                execution_results,
+            };
+            Ok(response_builder.success(result)?)
         }
         .boxed()
     }
