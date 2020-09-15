@@ -90,8 +90,8 @@ bind_port = 7777
 #   /home/alice/.local/share/casper-node
 # * macOS: `$HOME/Library/Application Support/io.CasperLabs.casper-node`, e.g.
 #   /Users/Alice/Library/Application Support/io.CasperLabs.casper-node
-# * Windows: `{FOLDERID_RoamingAppData}\CasperLabs\casper-node\data` e.g.
-#   C:\Users\Alice\AppData\Roaming\CasperLabs\casper-node\data
+# * With packaged systemd service, the location will be
+#   /root/.local/share/casper-node
 # path = 'node-storage'
 
 # Optional maximum size of the database to use for the block store.
