@@ -496,6 +496,21 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                                 LinearChainRequest::BlockRequest(block_hash, sender),
                             ))
                         }
+                        Tag::BlockByHeight => {
+                            let height = match rmp_serde::from_read_ref(&serialized_id) {
+                                Ok(block_by_height) => block_by_height,
+                                Err(error) => {
+                                    error!(
+                                        "failed to decode {:?} from {}: {}",
+                                        serialized_id, sender, error
+                                    );
+                                    return Effects::new();
+                                }
+                            };
+                            Event::LinearChain(linear_chain::Event::Request(
+                                LinearChainRequest::BlockAtHeight(height, sender),
+                            ))
+                        }
                         Tag::GossipedAddress => {
                             warn!("received get request for gossiped-address from {}", sender);
                             return Effects::new();
@@ -519,6 +534,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                             })
                         }
                         Tag::Block => todo!("Handle GET block response"),
+                        Tag::BlockByHeight => todo!("Handle GET BlockByHeight response"),
                         Tag::GossipedAddress => {
                             warn!("received get request for gossiped-address from {}", sender);
                             return Effects::new();

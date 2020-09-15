@@ -50,6 +50,8 @@ enum Event {
     #[from]
     NetworkRequest(NetworkRequest<NodeId, Message>),
     #[from]
+    LinearChainRequest(LinearChainRequest<NodeId>),
+    #[from]
     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
     #[from]
     ApiServerAnnouncement(ApiServerAnnouncement),
@@ -78,6 +80,7 @@ impl Display for Event {
             Event::DeployAcceptorAnnouncement(ann) => {
                 write!(formatter, "deploy-acceptor announcement: {}", ann)
             }
+            Event::LinearChainRequest(req) => write!(formatter, "linear chain request: {}", req),
         }
     }
 }
@@ -239,6 +242,7 @@ impl reactor::Reactor<TestRng> for Reactor {
                 deploy: _,
                 source: _,
             }) => Effects::new(),
+            Event::LinearChainRequest(_) => panic!("No linear chain requests in the test."),
         }
     }
 }

@@ -33,7 +33,8 @@ use crate::{
         },
         requests::{
             BlockExecutorRequest, BlockValidationRequest, ConsensusRequest, ContractRuntimeRequest,
-            DeployBufferRequest, FetcherRequest, NetworkRequest, StorageRequest,
+            DeployBufferRequest, FetcherRequest, LinearChainRequest, NetworkRequest,
+            StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -43,7 +44,7 @@ use crate::{
         validator::{self, Error, ValidatorInitConfig},
         EventQueueHandle, Finalize,
     },
-    types::{Block, BlockHash, Deploy, ProtoBlock, Tag, Timestamp},
+    types::{Block, BlockByHeight, BlockHash, Deploy, ProtoBlock, Tag, Timestamp},
     utils::{Source, WithDir},
 };
 
@@ -62,6 +63,10 @@ pub enum Event {
     /// Linear chain fetcher event.
     #[from]
     BlockFetcher(fetcher::Event<Block>),
+
+    /// Linear chain (by height) fetcher event.
+    #[from]
+    BlockByHeightFetcher(fetcher::Event<BlockByHeight>),
 
     /// Deploy fetcher event.
     #[from]
@@ -96,9 +101,13 @@ pub enum Event {
     AddressGossiper(gossiper::Event<GossipedAddress>),
 
     /// Requests.
-    /// Linear chain fetcher request.
+    /// Linear chain block by hash fetcher request.
     #[from]
     BlockFetcherRequest(FetcherRequest<NodeId, Block>),
+
+    /// Linear chain block by height fetcher request.
+    #[from]
+    BlockByHeightFetcherRequest(FetcherRequest<NodeId, BlockByHeight>),
 
     /// Deploy fetcher request.
     #[from]
@@ -136,6 +145,12 @@ pub enum Event {
     /// Address Gossiper announcement.
     #[from]
     AddressGossiperAnnouncement(GossiperAnnouncement<GossipedAddress>),
+}
+
+impl From<LinearChainRequest<NodeId>> for Event {
+    fn from(req: LinearChainRequest<NodeId>) -> Self {
+        Event::LinearChain(linear_chain::Event::Request(req))
+    }
 }
 
 impl From<StorageRequest<Storage>> for Event {
@@ -185,6 +200,9 @@ impl Display for Event {
             }
             Event::LinearChainSync(event) => write!(f, "linear chain: {}", event),
             Event::BlockFetcher(event) => write!(f, "block fetcher: {}", event),
+            Event::BlockByHeightFetcherRequest(request) => {
+                write!(f, "block by height fetcher request: {}", request)
+            }
             Event::BlockValidator(event) => write!(f, "block validator event: {}", event),
             Event::DeployFetcher(event) => write!(f, "deploy fetcher event: {}", event),
             Event::BlockExecutor(event) => write!(f, "block executor event: {}", event),
@@ -203,6 +221,9 @@ impl Display for Event {
             Event::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
             Event::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
+            }
+            Event::BlockByHeightFetcher(event) => {
+                write!(f, "block by height fetcher event: {}", event)
             }
         }
     }
@@ -230,6 +251,8 @@ pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
     // TODO: remove after proper syncing is implemented
     // `None` means we haven't seen any consensus messages yet
     latest_received_era_id: Option<EraId>,
+    // Handles request for linear chain block by height.
+    pub(super) block_by_height_fetcher: Fetcher<BlockByHeight>,
 }
 
 impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
@@ -281,6 +304,8 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
 
         let deploy_fetcher = Fetcher::new(config.gossip);
 
+        let block_by_height_fetcher = Fetcher::new(config.gossip);
+
         let genesis_post_state_hash = chainspec_loader
             .genesis_post_state_hash()
             .expect("Should have Genesis post state hash");
@@ -323,6 +348,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 consensus,
                 init_consensus_effects,
                 latest_received_era_id: None,
+                block_by_height_fetcher,
             },
             effects,
         ))
@@ -375,6 +401,23 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                     };
                     self.dispatch_event(effect_builder, rng, Event::BlockFetcher(event))
                 }
+                Message::GetResponse {
+                    tag: Tag::BlockByHeight,
+                    serialized_item,
+                } => {
+                    let block_at_height = match rmp_serde::from_read_ref(&serialized_item) {
+                        Ok(block) => Box::new(block),
+                        Err(err) => {
+                            error!("failed to decode block from {}: {}", sender, err);
+                            return Effects::new();
+                        }
+                    };
+                    let event = fetcher::Event::GotRemotely {
+                        item: block_at_height,
+                        source: Source::Peer(sender),
+                    };
+                    self.dispatch_event(effect_builder, rng, Event::BlockFetcher(event))
+                }
                 // needed so that consensus can notify us of the eras it knows of
                 // TODO: remove when proper syncing is implemented
                 Message::Consensus(msg) => self.dispatch_event(
@@ -417,9 +460,19 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 Event::DeployFetcher,
                 self.deploy_fetcher.handle_event(effect_builder, rng, event),
             ),
+            Event::BlockByHeightFetcher(event) => reactor::wrap_effects(
+                Event::BlockByHeightFetcher,
+                self.block_by_height_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
             Event::DeployFetcherRequest(request) => {
                 self.dispatch_event(effect_builder, rng, Event::DeployFetcher(request.into()))
             }
+            Event::BlockByHeightFetcherRequest(request) => self.dispatch_event(
+                effect_builder,
+                rng,
+                Event::BlockByHeightFetcher(request.into()),
+            ),
             Event::BlockExecutor(event) => reactor::wrap_effects(
                 Event::BlockExecutor,
                 self.block_executor.handle_event(effect_builder, rng, event),

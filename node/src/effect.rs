@@ -101,8 +101,8 @@ use crate::{
     },
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        Block, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, FinalizedBlock, Item,
-        ProtoBlock,
+        Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash,
+        FinalizedBlock, Item, ProtoBlock,
     },
     utils::Source,
     Chainspec,
@@ -612,6 +612,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Requests linear chain block at height.
+    // TODO: Should be eventually replaced with call to the linear chain storage.
+    pub(crate) async fn get_block_at_height<I>(self, height: u64) -> Option<BlockByHeight>
+    where
+        REv: From<LinearChainRequest<I>>,
+    {
+        self.make_request(
+            |responder| LinearChainRequest::BlockAtHeightLocal(height, responder),
+            QueueKind::Regular,
+        )
+        .map(|block| block.map(|b| BlockByHeight::new(b)))
+        .await
+    }
+
     /// Gets the requested block header from the linear block store.
     #[allow(unused)]
     pub(crate) async fn get_block_header_from_storage<S>(
@@ -732,6 +746,28 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| FetcherRequest::Fetch {
                 id: block_hash,
+                peer,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests a linear chain block at `block_height`.
+    #[allow(unused)]
+    pub(crate) async fn fetch_block_by_height<I>(
+        self,
+        block_height: u64,
+        peer: I,
+    ) -> Option<FetchResult<BlockByHeight>>
+    where
+        REv: From<FetcherRequest<I, BlockByHeight>>,
+        I: Send + 'static,
+    {
+        self.make_request(
+            |responder| FetcherRequest::Fetch {
+                id: block_height,
                 peer,
                 responder,
             },

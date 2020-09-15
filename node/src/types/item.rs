@@ -30,6 +30,8 @@ pub enum Tag {
     Block,
     /// A gossiped public listening address.
     GossipedAddress,
+    /// A block requested by its height in the linear chain.
+    BlockByHeight,
 }
 
 /// A trait which allows an implementing type to be used by the gossiper and fetcher components, and

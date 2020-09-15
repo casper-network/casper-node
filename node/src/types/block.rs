@@ -604,3 +604,36 @@ impl Item for Block {
         *self.hash()
     }
 }
+
+/// A wrapper around `Block` for the purposes of fetching blocks by height in linear chain.
+#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct BlockByHeight(Block);
+
+impl BlockByHeight {
+    /// Creates a new `BlockByHeight`
+    pub fn new(block: Block) -> Self {
+        Self(block)
+    }
+
+    /// Returns the inner `Block`
+    pub fn into_inner(self) -> Block {
+        self.0
+    }
+}
+
+impl Display for BlockByHeight {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}", self.0)
+    }
+}
+
+impl Item for BlockByHeight {
+    type Id = u64;
+
+    const TAG: Tag = Tag::BlockByHeight;
+    const ID_IS_COMPLETE_ITEM: bool = false;
+
+    fn id(&self) -> Self::Id {
+        self.0.height()
+    }
+}

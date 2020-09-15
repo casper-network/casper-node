@@ -8,7 +8,7 @@ use crate::{
         EffectExt, Effects,
     },
     protocol::Message,
-    types::{Block, BlockHash},
+    types::{Block, BlockByHeight, BlockHash},
 };
 use derive_more::From;
 use effect::requests::{ConsensusRequest, NetworkRequest};
@@ -100,6 +100,22 @@ where
             Event::Request(LinearChainRequest::LastFinalizedBlock(responder)) => {
                 responder.respond(self.last_block.clone()).ignore()
             }
+            Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) =>
+                match self.linear_chain.get(height as usize) {
+                    None => {
+                        debug!(%height, %sender, "Block not found in the linear chain.");
+                        Effects::new()
+                    }
+                    Some(block) => match Message::new_get_response(&BlockByHeight::new(block.clone())) {
+                        Ok(message) => effect_builder.send_message(sender, message).ignore(),
+                        Err(error) => {
+                            error!("failed to create get-response {}", error);
+                            Effects::new()
+                        }
+                }
+            }
+            Event::Request(LinearChainRequest::BlockAtHeightLocal(height, responder)) => 
+                responder.respond(self.linear_chain.get(height as usize).cloned()).ignore(),
             Event::GetBlockResult(block_hash, maybe_block, sender) => {
                 match maybe_block {
                     None => {
