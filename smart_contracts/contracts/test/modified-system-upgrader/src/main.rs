@@ -13,13 +13,16 @@ use casper_contract::{
 };
 use casper_types::{
     contracts::{NamedKeys, Parameters},
+    proof_of_stake::{
+        ARG_ACCOUNT, ARG_AMOUNT, ARG_PURSE, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
+        METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE,
+    },
     CLType, CLValue, ContractHash, ContractVersion, EntryPoint, EntryPointAccess, EntryPointType,
     EntryPoints, Parameter, URef,
 };
 
 pub const MODIFIED_MINT_EXT_FUNCTION_NAME: &str = "modified_mint_ext";
 pub const POS_EXT_FUNCTION_NAME: &str = "pos_ext";
-pub const STANDARD_PAYMENT_FUNCTION_NAME: &str = "pay";
 const VERSION_ENTRY_POINT: &str = "version";
 const UPGRADED_VERSION: &str = "1.1.0";
 
@@ -81,11 +84,6 @@ fn upgrade_mint() -> (ContractHash, ContractVersion) {
 }
 
 fn upgrade_proof_of_stake() -> (ContractHash, ContractVersion) {
-    use pos::{
-        ARG_ACCOUNT_KEY, ARG_AMOUNT, ARG_PURSE, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
-        METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE,
-    };
-
     const HASH_KEY_NAME: &str = "pos_hash";
     const ACCESS_KEY_NAME: &str = "pos_access";
 
@@ -132,7 +130,7 @@ fn upgrade_proof_of_stake() -> (ContractHash, ContractVersion) {
             METHOD_FINALIZE_PAYMENT,
             vec![
                 Parameter::new(ARG_AMOUNT, CLType::U512),
-                Parameter::new(ARG_ACCOUNT_KEY, CLType::FixedList(Box::new(CLType::U8), 32)),
+                Parameter::new(ARG_ACCOUNT, CLType::FixedList(Box::new(CLType::U8), 32)),
             ],
             CLType::Unit,
             EntryPointAccess::Public,
