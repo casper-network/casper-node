@@ -1,6 +1,6 @@
-# Charlie TestNet Setup
+# Casper Node Setup
 
-The purpose of this document is to guide configuring a system with the new Rust node for Charlie TestNet.
+The purpose of this document is to guide configuring a system with the new Rust node to operate within a network.
 
 ## Software Install
 
