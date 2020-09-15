@@ -133,11 +133,11 @@ async fn run_server<REv: ReactorEventT>(config: Config, effect_builder: EffectBu
             }
             Err(error) => {
                 if server_addr.port() == 0 {
-                    warn ! ( % error, "failed to start HTTP server");
+                    warn!(%error, "failed to start HTTP server");
                     return;
                 } else {
                     server_addr.set_port(0);
-                    debug ! (% error, "failed to start HTTP server. retrying on random port");
+                    debug!(%error, "failed to start HTTP server. retrying on random port");
                 }
             }
         }
