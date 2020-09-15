@@ -1,5 +1,6 @@
 //! Contains implementation of a standard payment contract implementation.
 mod account_provider;
+mod constants;
 mod mint_provider;
 mod proof_of_stake_provider;
 
@@ -8,7 +9,7 @@ use core::marker::Sized;
 use crate::{ApiError, U512};
 
 pub use crate::standard_payment::{
-    account_provider::AccountProvider, mint_provider::MintProvider,
+    account_provider::AccountProvider, constants::*, mint_provider::MintProvider,
     proof_of_stake_provider::ProofOfStakeProvider,
 };
 

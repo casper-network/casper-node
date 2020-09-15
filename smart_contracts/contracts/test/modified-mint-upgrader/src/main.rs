@@ -8,11 +8,14 @@ use casper_contract::{
     contract_api::{runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{contracts::NamedKeys, CLValue, ContractHash, ContractVersion, URef};
+use casper_types::{
+    contracts::NamedKeys,
+    mint::{ACCESS_KEY, HASH_KEY},
+    CLValue, ContractHash, ContractVersion, URef,
+};
 
 pub const MODIFIED_MINT_EXT_FUNCTION_NAME: &str = "modified_mint_ext";
 pub const POS_EXT_FUNCTION_NAME: &str = "pos_ext";
-pub const STANDARD_PAYMENT_FUNCTION_NAME: &str = "pay";
 
 #[no_mangle]
 pub extern "C" fn mint() {
@@ -35,14 +38,11 @@ pub extern "C" fn transfer() {
 }
 
 fn upgrade_mint() -> (ContractHash, ContractVersion) {
-    const HASH_KEY_NAME: &str = "mint_hash";
-    const ACCESS_KEY_NAME: &str = "mint_access";
-
-    let mint_package_hash: ContractHash = runtime::get_key(HASH_KEY_NAME)
+    let mint_package_hash: ContractHash = runtime::get_key(HASH_KEY)
         .expect("should have mint")
         .into_hash()
         .expect("should be hash");
-    let _mint_access_key: URef = runtime::get_key(ACCESS_KEY_NAME)
+    let _mint_access_key: URef = runtime::get_key(ACCESS_KEY)
         .unwrap_or_revert()
         .into_uref()
         .expect("should be uref");
