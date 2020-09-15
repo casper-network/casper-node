@@ -1,0 +1,11 @@
+version: '3'
+
+services:
+  deb_1804:
+    build:
+      context: .
+      dockerfile: Dockerfile.U1804
+    volumes:
+      - ./share:/root/share
+    command: /bin/bash -c "/root/share/build_deb.sh"
+    tty: true

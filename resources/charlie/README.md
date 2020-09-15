@@ -158,3 +158,7 @@ sudo apt install casper-node_0.1.x-r_amd64.deb`
  
 Look at `/etc/casper/CHANGE_LOG.md` for any changes that require action from
 validators. We might need to update `config.toml` to support different fields, for example.
+
+## Bugs
+
+Please file and bugs as issues on [the casper-node GitHub repo](https://github.com/CasperLabs/casper-node).
