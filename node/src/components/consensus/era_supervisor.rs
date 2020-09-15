@@ -69,7 +69,7 @@ impl EraId {
 
 impl Display for EraId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "EraId({})", self.0)
+        write!(f, "{:?}", self.0)
     }
 }
 

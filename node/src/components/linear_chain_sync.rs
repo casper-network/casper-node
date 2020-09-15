@@ -2,6 +2,7 @@ mod event;
 
 use super::{fetcher::FetchResult, storage::Storage, Component};
 use crate::{
+    components::consensus::EraId,
     effect::{self, EffectBuilder, EffectExt, EffectOptionExt, Effects},
     types::{Block, BlockHash, FinalizedBlock},
 };
@@ -46,6 +47,9 @@ pub(crate) struct LinearChainSync<I> {
     is_synced: bool,
     // Linear chain block to start sync from.
     init_hash: Option<BlockHash>,
+    // TODO: remove when proper syncing is implemented
+    // The era of the linear chain block to start sync from
+    init_block_era: Option<EraId>,
     // During synchronization we might see new eras being created.
     // Track the highest height and wait until it's handled by consensus.
     highest_block_seen: u64,
@@ -64,6 +68,7 @@ impl<I: Clone + 'static> LinearChainSync<I> {
             linear_chain_length: 0,
             is_synced: init_hash.is_none(),
             init_hash,
+            init_block_era: None,
             highest_block_seen: 0,
         }
     }
@@ -120,6 +125,10 @@ impl<I: Clone + 'static> LinearChainSync<I> {
             Some(block) => fetch_block_deploys(effect_builder, peer, block),
         }
     }
+
+    pub(crate) fn init_block_era(&self) -> Option<EraId> {
+        self.init_block_era
+    }
 }
 
 impl<I, REv, R> Component<REv, R> for LinearChainSync<I>
@@ -166,7 +175,11 @@ where
                     }
                     Some(peer) => fetch_block(effect_builder, peer, block_hash),
                 },
-                Some(FetchResult::FromStorage(_)) => {
+                Some(FetchResult::FromStorage(block)) => {
+                    // remember the era of the init block
+                    if Some(*block.hash()) == self.init_hash {
+                        self.init_block_era = Some(block.era_id());
+                    }
                     // We should be checking the local storage for linear blocks before we start
                     // syncing.
                     trace!(%block_hash, "Linear block found in the local storage.");
@@ -177,6 +190,10 @@ where
                         .event(move |_| Event::LinearChainBlocksDownloaded)
                 }
                 Some(FetchResult::FromPeer(block, peer)) => {
+                    // remember the era of the init block
+                    if Some(*block.hash()) == self.init_hash {
+                        self.init_block_era = Some(block.era_id());
+                    }
                     if *block.hash() != block_hash {
                         warn!(
                             "Block hash mismatch. Expected {} got {} from {}.",

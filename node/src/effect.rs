@@ -90,7 +90,7 @@ use casper_types::Key;
 
 use crate::{
     components::{
-        consensus::BlockContext,
+        consensus::{BlockContext, EraId},
         fetcher::FetchResult,
         small_network::GossipedAddress,
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
@@ -833,6 +833,20 @@ impl<REv> EffectBuilder<REv> {
         self.0
             .schedule(
                 ConsensusAnnouncement::Orphaned(proto_block),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announce that we received a message in a given era
+    /// TODO: Remove when proper linear chain syncing is in place
+    pub(crate) async fn announce_message_in_era(self, era_id: EraId)
+    where
+        REv: From<ConsensusAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ConsensusAnnouncement::GotMessageInEra(era_id),
                 QueueKind::Regular,
             )
             .await
