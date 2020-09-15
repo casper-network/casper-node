@@ -285,7 +285,6 @@ where
         ) {
             Ok(GenesisResult::Success {
                 post_state_hash,
-                chainspec_hash: _chainspec_hash,
                 effect,
             }) => {
                 let success_message = format!("run_genesis successful: {}", post_state_hash);

@@ -29,7 +29,6 @@ pub enum GenesisResult {
     Serialization(bytesrepr::Error),
     Success {
         post_state_hash: Blake2bHash,
-        chainspec_hash: Blake2bHash,
         effect: ExecutionEffect,
     },
 }
@@ -46,18 +45,13 @@ impl fmt::Display for GenesisResult {
             GenesisResult::Success {
                 post_state_hash,
                 effect,
-                chainspec_hash: _chainspec_hash,
             } => write!(f, "Success: {} {:?}", post_state_hash, effect),
         }
     }
 }
 
 impl GenesisResult {
-    pub fn from_commit_result(
-        commit_result: CommitResult,
-        chainspec_hash: Blake2bHash,
-        effect: ExecutionEffect,
-    ) -> Self {
+    pub fn from_commit_result(commit_result: CommitResult, effect: ExecutionEffect) -> Self {
         match commit_result {
             CommitResult::RootNotFound => GenesisResult::RootNotFound,
             CommitResult::KeyNotFound(key) => GenesisResult::KeyNotFound(key),
@@ -65,7 +59,6 @@ impl GenesisResult {
             CommitResult::Serialization(error) => GenesisResult::Serialization(error),
             CommitResult::Success { state_root, .. } => GenesisResult::Success {
                 post_state_hash: state_root,
-                chainspec_hash,
                 effect,
             },
         }

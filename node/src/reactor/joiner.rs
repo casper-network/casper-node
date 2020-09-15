@@ -297,17 +297,15 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         // Used to decide whether era should be activated.
         let timestamp = Timestamp::now();
 
-        let chainspec_hash = chainspec_loader
-            .chainspec_hash()
-            .expect("should have chainspec hash");
-
         let (consensus, init_consensus_effects) = EraSupervisor::new(
             timestamp,
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
             validator_stakes,
-            &chainspec_loader.chainspec().genesis.highway_config,
-            chainspec_hash,
+            chainspec_loader.chainspec(),
+            chainspec_loader
+                .genesis_post_state_hash()
+                .expect("should have genesis post state hash"),
             rng,
         )?;
 
