@@ -1,3 +1,9 @@
+//! This file provides types to allow conversion from an EE `ExecutionResult` into a similar type
+//! which can be serialized to a valid JSON representation.
+//!
+//! It is stored as metadata related to a given deploy, and made available to clients via the
+//! JSON-RPC API.
+
 use std::collections::{BTreeMap, HashMap};
 
 use serde::{Deserialize, Serialize};
@@ -19,8 +25,8 @@ pub struct ExecutionResult {
     error_message: Option<String>,
 }
 
-impl ExecutionResult {
-    pub(crate) fn from(ee_execution_result: &EngineExecutionResult) -> Self {
+impl From<&EngineExecutionResult> for ExecutionResult {
+    fn from(ee_execution_result: &EngineExecutionResult) -> Self {
         match ee_execution_result {
             EngineExecutionResult::Success { effect, cost } => ExecutionResult {
                 effect: effect.into(),
@@ -120,12 +126,9 @@ impl From<&EngineTransform> for Transform {
             EngineTransform::AddUInt128(value) => Transform::AddUInt128(*value),
             EngineTransform::AddUInt256(value) => Transform::AddUInt256(*value),
             EngineTransform::AddUInt512(value) => Transform::AddUInt512(*value),
-            EngineTransform::AddKeys(named_keys) => Transform::AddKeys(
-                named_keys
-                    .iter()
-                    .map(|(name, key)| (name.clone(), key.to_formatted_string()))
-                    .collect(),
-            ),
+            EngineTransform::AddKeys(named_keys) => {
+                Transform::AddKeys(super::convert_named_keys(named_keys))
+            }
             EngineTransform::Failure(error) => Transform::Failure(error.to_string()),
         }
     }

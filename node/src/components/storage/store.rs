@@ -1,7 +1,7 @@
 use smallvec::SmallVec;
 
 use super::{DeployAndMetadata, Result, Value};
-use crate::types::ExecutionResult;
+use crate::types::json_compatibility::ExecutionResult;
 
 pub(super) type Multiple<T> = SmallVec<[T; 3]>;
 

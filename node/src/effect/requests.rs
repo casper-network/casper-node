@@ -35,8 +35,8 @@ use crate::{
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
     types::{
-        Block as LinearBlock, BlockHash, BlockHeader, Deploy, DeployHash, ExecutionResult,
-        FinalizedBlock, Item, ProtoBlockHash, StatusFeed, Timestamp,
+        json_compatibility::ExecutionResult, Block as LinearBlock, BlockHash, BlockHeader, Deploy,
+        DeployHash, FinalizedBlock, Item, ProtoBlockHash, StatusFeed, Timestamp,
     },
     utils::DisplayIter,
     Chainspec,

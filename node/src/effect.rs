@@ -103,8 +103,8 @@ use crate::{
     },
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        Block, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, ExecutionResult,
-        FinalizedBlock, Item, ProtoBlock,
+        json_compatibility::ExecutionResult, Block, BlockHash, BlockHeader, BlockLike, Deploy,
+        DeployHash, FinalizedBlock, Item, ProtoBlock,
     },
     utils::Source,
     Chainspec,

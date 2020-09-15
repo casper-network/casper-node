@@ -31,7 +31,9 @@ use crate::{
         requests::{BlockExecutorRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    types::{Block, BlockHash, Deploy, DeployHash, ExecutionResult, FinalizedBlock},
+    types::{
+        json_compatibility::ExecutionResult, Block, BlockHash, Deploy, DeployHash, FinalizedBlock,
+    },
 };
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `BlockExecutor`

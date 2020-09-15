@@ -18,7 +18,7 @@ use crate::{
     crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{DeployHash, ExecutionResult},
+    types::{json_compatibility::ExecutionResult, DeployHash},
 };
 
 pub(in crate::components::api_server) struct GetDeploy {}

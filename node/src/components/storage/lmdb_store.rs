@@ -7,7 +7,7 @@ use smallvec::smallvec;
 use tracing::info;
 
 use super::{DeployMetadata, DeployStore, Error, Multiple, Result, Store, Value};
-use crate::types::ExecutionResult;
+use crate::types::json_compatibility::ExecutionResult;
 
 /// Used to namespace metadata associated with stored values.
 #[repr(u8)]

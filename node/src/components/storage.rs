@@ -32,7 +32,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     protocol::Message,
-    types::{Block, Deploy, ExecutionResult, Item},
+    types::{json_compatibility::ExecutionResult, Block, Deploy, Item},
 };
 use chainspec_store::ChainspecStore;
 pub use config::Config;

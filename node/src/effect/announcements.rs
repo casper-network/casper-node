@@ -10,7 +10,7 @@ use std::{
 
 use crate::{
     components::{consensus::EraId, small_network::GossipedAddress},
-    types::{Block, Deploy, DeployHash, ExecutionResult, Item, ProtoBlock},
+    types::{json_compatibility::ExecutionResult, Block, Deploy, DeployHash, Item, ProtoBlock},
     utils::Source,
 };
 

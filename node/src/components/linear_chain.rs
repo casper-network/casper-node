@@ -18,7 +18,7 @@ use crate::{
         EffectExt, Effects,
     },
     protocol::Message,
-    types::{Block, BlockHash, DeployHash, ExecutionResult},
+    types::{json_compatibility::ExecutionResult, Block, BlockHash, DeployHash},
 };
 
 #[derive(Debug, From)]

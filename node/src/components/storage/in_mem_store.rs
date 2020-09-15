@@ -5,7 +5,7 @@ use std::{
 };
 
 use super::{DeployMetadata, DeployStore, Multiple, Result, Store, Value};
-use crate::types::ExecutionResult;
+use crate::types::json_compatibility::ExecutionResult;
 
 #[derive(Debug)]
 struct ValueAndMetadata<V, M> {
