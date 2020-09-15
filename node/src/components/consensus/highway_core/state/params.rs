@@ -113,4 +113,10 @@ impl Params {
     pub(crate) fn round_exp_spread(&self) -> u8 {
         self.round_exp_spread
     }
+
+    #[cfg(test)]
+    pub(crate) fn with_init_round_exp(mut self, init_round_exp: u8) -> Params {
+        self.init_round_exp = init_round_exp;
+        self
+    }
 }
