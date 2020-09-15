@@ -112,7 +112,7 @@ Sep 10 10:37:15 joe-ubuntu casper-node[826251]: Sep 10 10:37:15.205 INFO  [caspe
 
 ### Reading logs
 
-The `journalctl` command is used to read logs from a systemd service. Yow specify the unit name and usually flags
+The `journalctl` command is used to read logs from a systemd service. You specify the unit name and usually flags
 to jump to the end (-x) or follow (-f).
 
 This will show logs at the end of the logs:
