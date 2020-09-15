@@ -8,18 +8,11 @@ use casper_contract::{
 };
 use casper_types::{
     account::AccountHash,
-    proof_of_stake::{MintProvider, ProofOfStake, RuntimeProvider},
+    proof_of_stake::{
+        MintProvider, ProofOfStake, RuntimeProvider, ARG_ACCOUNT, ARG_AMOUNT, ARG_PURSE,
+    },
     BlockTime, CLValue, Key, Phase, TransferResult, URef, U512,
 };
-
-pub const METHOD_GET_PAYMENT_PURSE: &str = "get_payment_purse";
-pub const METHOD_SET_REFUND_PURSE: &str = "set_refund_purse";
-pub const METHOD_GET_REFUND_PURSE: &str = "get_refund_purse";
-pub const METHOD_FINALIZE_PAYMENT: &str = "finalize_payment";
-
-pub const ARG_AMOUNT: &str = "amount";
-pub const ARG_PURSE: &str = "purse";
-pub const ARG_ACCOUNT_KEY: &str = "account";
 
 pub struct ProofOfStakeContract;
 
@@ -105,7 +98,7 @@ pub fn finalize_payment() {
     let mut pos_contract = ProofOfStakeContract;
 
     let amount_spent: U512 = runtime::get_named_arg(ARG_AMOUNT);
-    let account: AccountHash = runtime::get_named_arg(ARG_ACCOUNT_KEY);
+    let account: AccountHash = runtime::get_named_arg(ARG_ACCOUNT);
     pos_contract
         .finalize_payment(amount_spent, account)
         .unwrap_or_revert();
