@@ -17,3 +17,6 @@ To provide public key for genesis, please send in the results from the following
 Output should be similar to this: 
 
 `015567f6e69418cbda61e88c4168b9219c259c36e0281d70aa6eee6607c9ceeba0`
+
+The keys will only need to be created once. These are not cleared out with uninstall of .deb or upgrading
+the .deb file. 
