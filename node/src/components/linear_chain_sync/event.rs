@@ -12,7 +12,7 @@ pub enum Event<I> {
     DeploysFound(Box<Block>),
     /// Deploys from the block have not been found.
     DeploysNotFound(Box<Block>),
-    LinearChainBlocksDownloaded,
+    TrustedHashSyncd,
     NewPeerConnected(I),
     BlockExecutionDone(BlockHash, u64),
     BlockHandled(u64),
@@ -32,7 +32,9 @@ where
             Event::DeploysNotFound(block_hash) => {
                 write!(f, "Deploy for block found: {}", block_hash.hash())
             }
-            Event::LinearChainBlocksDownloaded => write!(f, "Linear chain blocks downloaded"),
+            Event::TrustedHashSyncd => {
+                write!(f, "Linear chain blocks up until trusted hash downloaded")
+            }
             Event::NewPeerConnected(peer_id) => write!(f, "A new peer connected: {}", peer_id),
             Event::BlockExecutionDone(block_hash, height) => {
                 write!(f, "Block execution done: {} @ {}", block_hash, height)

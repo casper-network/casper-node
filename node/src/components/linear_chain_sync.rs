@@ -187,7 +187,7 @@ where
                     // its parents as well. If that's not the case then we have a bug.
                     effect_builder
                         .immediately()
-                        .event(move |_| Event::LinearChainBlocksDownloaded)
+                        .event(move |_| Event::TrustedHashSyncd)
                 }
                 Some(FetchResult::FromPeer(block, peer)) => {
                     // remember the era of the init block
@@ -222,7 +222,7 @@ where
                         info!("Linear chain downloaded. Starting downloading deploys.");
                         effect_builder
                             .immediately()
-                            .event(move |_| Event::LinearChainBlocksDownloaded)
+                            .event(move |_| Event::TrustedHashSyncd)
                     } else {
                         let parent_hash = *block.parent_hash();
                         let peer = self.random_peer_unsafe(rng);
@@ -254,7 +254,7 @@ where
                 }
                 Some(peer) => fetch_block_deploys(effect_builder, peer, *block),
             },
-            Event::LinearChainBlocksDownloaded => {
+            Event::TrustedHashSyncd => {
                 // Start downloading deploys from the first block of the linear chain.
                 self.fetch_next_block_deploys(effect_builder, rng)
             }
