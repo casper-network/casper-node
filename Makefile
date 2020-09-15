@@ -185,12 +185,12 @@ clean:
 	$(CARGO) clean
 
 .PHONY: build-for-packaging
-build-for-packaging:
+build-for-packaging: build-system-contracts
 	$(CARGO) build --release
 
 .PHONY: deb
 deb: build-for-packaging
-	cd grpc/server && $(CARGO) deb -p casper-engine-grpc-server --no-build
+	# exit grpc/server && $(CARGO) deb -p casper-engine-grpc-server --no-build
 	cd node && $(CARGO) deb -p casper-node --no-build
 
 grpc/server/.rpm:
