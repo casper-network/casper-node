@@ -13,6 +13,7 @@ use std::{
 
 use anyhow::Error;
 use casper_types::U512;
+use fmt::Display;
 use num_traits::AsPrimitive;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
@@ -61,8 +62,14 @@ impl EraId {
         }
     }
 
-    fn successor(self) -> EraId {
+    pub(crate) fn successor(self) -> EraId {
         EraId(self.0 + 1)
+    }
+}
+
+impl Display for EraId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.0)
     }
 }
 
@@ -343,6 +350,7 @@ where
                 .consensus
                 .deactivate_validator();
             let new_era_id = block_header.era_id().successor();
+            info!(?new_era_id, "Era created");
             let results = self.era_supervisor.new_era(
                 new_era_id,
                 Timestamp::now(), // TODO: This should be passed in.
@@ -352,6 +360,11 @@ where
             );
             effects.extend(self.handle_consensus_results(new_era_id, results));
         }
+        effects.extend(
+            self.effect_builder
+                .announce_block_handled(block_header.height())
+                .ignore(),
+        );
         effects
     }
 
@@ -470,7 +483,7 @@ where
             }
             ConsensusProtocolResult::ValidateConsensusValue(sender, proto_block) => self
                 .effect_builder
-                .validate_proto_block(sender.clone(), proto_block)
+                .validate_block(sender.clone(), proto_block)
                 .event(move |(is_valid, proto_block)| {
                     if is_valid {
                         Event::AcceptProtoBlock {
