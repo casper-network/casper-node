@@ -67,8 +67,11 @@ pub(crate) enum VoteError {
     RoundLength,
     #[error("This would be the third vote in that round. Only two are allowed.")]
     ThreeVotesInRound,
-    #[error("A block must be the leader's first vote, at the beginning of the round.")]
-    NonLeaderBlock,
+    #[error(
+        "A block must be the leader's ({:?}) first vote, at the beginning of the round.",
+        _0
+    )]
+    NonLeaderBlock(ValidatorIndex),
     #[error("The vote is a block, but its parent is already a terminal block.")]
     ValueAfterTerminalBlock,
     #[error("The round exponent moved away from the median by more than the allowed spread.")]
@@ -372,36 +375,43 @@ impl<C: Context> State<C> {
         if wvote.seq_number != panorama.next_seq_num(self, creator) {
             return Err(VoteError::SequenceNumber);
         }
+        let r_id = round_id(timestamp, wvote.round_exp);
         let opt_prev_vote = panorama[creator].correct().map(|vh| self.vote(vh));
         let prev_round_exp = opt_prev_vote.map_or(self.params.init_round_exp(), |v| v.round_exp);
-        let max_re = prev_round_exp.max(wvote.round_exp);
         // The round exponent must only change one step at a time.
-        if prev_round_exp + 1 < max_re || wvote.round_exp + 1 < max_re {
+        if prev_round_exp + 1 < wvote.round_exp || wvote.round_exp + 1 < prev_round_exp {
             return Err(VoteError::RoundLength);
         }
         if let Some(prev_vote) = opt_prev_vote {
-            if prev_round_exp != wvote.round_exp
-                && prev_vote.timestamp >> max_re == timestamp >> max_re
-            {
-                return Err(VoteError::RoundLength);
+            if prev_round_exp != wvote.round_exp {
+                // The round exponent must not change within a round: Even with respect to the
+                // greater of the two exponents, a round boundary must be between the votes.
+                let max_re = prev_round_exp.max(wvote.round_exp);
+                if prev_vote.timestamp >> max_re == timestamp >> max_re {
+                    return Err(VoteError::RoundLength);
+                }
             }
-            let r_id = round_id(timestamp, wvote.round_exp);
-            if wvote.value.is_some()
-                && (prev_vote.round_id() == r_id
-                    || timestamp != r_id
-                    || self.leader(r_id) != creator)
-            {
-                return Err(VoteError::NonLeaderBlock);
-            }
+            // There can be at most two votes per round: proposal/confirmation and witness.
             if let Some(prev2_vote) = prev_vote.previous().map(|h2| self.vote(h2)) {
                 if prev2_vote.round_id() == r_id {
                     return Err(VoteError::ThreeVotesInRound);
                 }
             }
         }
-        let is_terminal = |hash: &C::Hash| self.is_terminal_block(hash);
-        if wvote.value.is_some() && self.fork_choice(panorama).map_or(false, is_terminal) {
-            return Err(VoteError::ValueAfterTerminalBlock);
+        if wvote.value.is_some() {
+            // If this vote is a block, it must be the first vote in this round, its timestamp must
+            // match the round ID, and the creator must be the round leader.
+            if opt_prev_vote.map_or(false, |pv| pv.round_id() == r_id)
+                || timestamp != r_id
+                || self.leader(r_id) != creator
+            {
+                return Err(VoteError::NonLeaderBlock(self.leader(r_id)));
+            }
+            // It's not allowed to create a child block of a terminal block.
+            let is_terminal = |hash: &C::Hash| self.is_terminal_block(hash);
+            if self.fork_choice(panorama).map_or(false, is_terminal) {
+                return Err(VoteError::ValueAfterTerminalBlock);
+            }
         }
         self.check_round_exp_spread(wvote)
     }
@@ -512,7 +522,7 @@ impl<C: Context> State<C> {
             Some(upper_re) => upper_re,
             None => return Ok(()), // The median can't be greater than u8::MAX.
         };
-        // Check that round exponent plus allowed is >= median.
+        // Check that round exponent plus allowed spread is >= median.
         let to_re = |vh: &C::Hash| self.vote(vh).round_exp;
         let init_re = self.params().init_round_exp();
         if panorama

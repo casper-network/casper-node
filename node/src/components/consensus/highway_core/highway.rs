@@ -397,10 +397,10 @@ pub(crate) mod tests {
         };
         let wvote = WireVote {
             panorama: Panorama::new(WEIGHTS.len()),
-            creator: ALICE,
+            creator: CAROL,
             value: Some(0),
             seq_number: 0,
-            timestamp: Timestamp::zero() + 1.into(),
+            timestamp: Timestamp::zero(),
             round_exp: 4,
         };
         let invalid_signature = 1u64;
@@ -415,7 +415,7 @@ pub(crate) mod tests {
 
         // TODO: Also test the `missing_dependency` and `validate_vertex` steps.
 
-        let valid_signature = ALICE_SEC.sign(&wvote.hash(), &mut rng);
+        let valid_signature = CAROL_SEC.sign(&wvote.hash(), &mut rng);
         let correct_signature_vote = SignedWireVote {
             wire_vote: wvote,
             signature: valid_signature,
