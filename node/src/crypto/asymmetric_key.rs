@@ -62,6 +62,15 @@ pub enum SecretKey {
     Secp256k1(k256::SecretKey),
 }
 
+impl Clone for SecretKey {
+    fn clone(&self) -> Self {
+        match self {
+            SecretKey::Ed25519(sk) => Self::ed25519_from_bytes(sk.as_ref()).unwrap(),
+            SecretKey::Secp256k1(sk) => Self::secp256k1_from_bytes(sk.as_bytes()).unwrap(),
+        }
+    }
+}
+
 impl SecretKey {
     /// The length in bytes of an Ed25519 secret key.
     pub const ED25519_LENGTH: usize = ed25519::SECRET_KEY_LENGTH;

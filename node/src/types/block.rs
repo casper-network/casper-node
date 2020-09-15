@@ -469,9 +469,8 @@ impl Block {
         &self.hash
     }
 
-    #[allow(unused)]
-    pub(crate) fn parent(&self) -> &BlockHash {
-        self.header.parent_hash()
+    pub(crate) fn post_state_hash(&self) -> Digest {
+        self.header.post_state_hash
     }
 
     pub(crate) fn deploy_hashes(&self) -> &Vec<DeployHash> {
@@ -480,6 +479,14 @@ impl Block {
 
     pub(crate) fn parent_hash(&self) -> &BlockHash {
         self.header.parent_hash()
+    }
+
+    pub(crate) fn height(&self) -> u64 {
+        self.header.height()
+    }
+
+    pub(crate) fn era_id(&self) -> EraId {
+        self.header.era_id()
     }
 
     pub(crate) fn is_genesis_child(&self) -> bool {

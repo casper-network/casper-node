@@ -8,14 +8,14 @@ use crate::{
         EffectExt, Effects,
     },
     protocol::Message,
-    types::{Block, BlockHash, BlockHeader},
+    types::{Block, BlockHash},
 };
 use derive_more::From;
 use effect::requests::{ConsensusRequest, NetworkRequest};
 use futures::FutureExt;
 use rand::{CryptoRng, Rng};
 use std::fmt::Display;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 #[derive(Debug, From)]
 pub enum Event<I> {
@@ -28,7 +28,8 @@ pub enum Event<I> {
     GetBlockResult(BlockHash, Option<Block>, I),
     /// New finality signature.
     NewFinalitySignature(BlockHash, Signature),
-    PutBlockResult(BlockHeader),
+    /// The result of putting a block to storage.
+    PutBlockResult(Block),
 }
 
 impl<I: Display> Display for Event<I> {
@@ -54,13 +55,24 @@ impl<I: Display> Display for Event<I> {
 #[derive(Debug)]
 pub(crate) struct LinearChain<I> {
     _marker: std::marker::PhantomData<I>,
+    /// A temporary workaround.
+    linear_chain: Vec<Block>,
+    /// The last block this component put to storage which is presumably the last block in the
+    /// linear chain.
+    last_block: Option<Block>,
 }
 
 impl<I> LinearChain<I> {
     pub fn new() -> Self {
         LinearChain {
             _marker: std::marker::PhantomData,
+            linear_chain: Vec::new(),
+            last_block: None,
         }
+    }
+
+    pub fn linear_chain(&self) -> &Vec<Block> {
+        &self.linear_chain
     }
 }
 
@@ -85,6 +97,9 @@ where
             Event::Request(LinearChainRequest::BlockRequest(bh, sender)) => effect_builder
                 .get_block_from_storage(bh)
                 .event(move |maybe_block| Event::GetBlockResult(bh, maybe_block, sender)),
+            Event::Request(LinearChainRequest::LastFinalizedBlock(responder)) => {
+                responder.respond(self.last_block.clone()).ignore()
+            }
             Event::GetBlockResult(block_hash, maybe_block, sender) => {
                 match maybe_block {
                     None => {
@@ -101,13 +116,19 @@ where
                 }
             }
             Event::LinearChainBlock(block) => {
-                let block_header = block.header().clone();
                 effect_builder
-                .put_block_to_storage(Box::new(block))
-                .event(move |_| Event::PutBlockResult(block_header))
+                .put_block_to_storage(Box::new(block.clone()))
+                .event(move |_| Event::PutBlockResult(block))
             },
-            Event::PutBlockResult(block_header) => {
+            Event::PutBlockResult(block) => {
+                self.linear_chain.push(block.clone());
+                self.last_block = Some(block.clone());
+                let block_header = block.take_header();
                 let block_hash = block_header.hash();
+                let era_id = block_header.era_id();
+                let height = block_header.height();
+                // Using `Display` impl for the `block_hash` to not truncate it.
+                info!(?block_hash, ?era_id, ?height, "Linear chain block stored.");
                 effect_builder.handle_linear_chain_block(block_header)
                     .event(move |signature| Event::NewFinalitySignature(block_hash, signature))
             },
@@ -126,7 +147,7 @@ where
                         }
                     })
                     .ignore()
-            }
+            },
         }
     }
 }

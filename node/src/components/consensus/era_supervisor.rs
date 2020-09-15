@@ -13,6 +13,7 @@ use std::{
 
 use anyhow::Error;
 use casper_types::U512;
+use fmt::Display;
 use num_traits::AsPrimitive;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
@@ -46,6 +47,9 @@ use crate::{
 // We use one trillion as a block reward unit because it's large enough to allow precise
 // fractions, and small enough for many block rewards to fit into a u64.
 const BLOCK_REWARD: u64 = 1_000_000_000_000;
+/// The number of recent eras to retain. Eras older than this are dropped from memory.
+// TODO: This needs to be in sync with AUCTION_DELAY/booking_duration_millis. (Already duplicated!)
+const RETAIN_ERAS: u64 = 4;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct EraId(pub(crate) u64);
@@ -58,8 +62,14 @@ impl EraId {
         }
     }
 
-    fn successor(self) -> EraId {
+    pub(crate) fn successor(self) -> EraId {
         EraId(self.0 + 1)
+    }
+}
+
+impl Display for EraId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.0)
     }
 }
 
@@ -217,6 +227,11 @@ where
         };
         let _ = self.active_eras.insert(era_id, era);
 
+        // Remove the era that has become obsolete now.
+        if era_id.0 > RETAIN_ERAS {
+            self.active_eras.remove(&EraId(era_id.0 - RETAIN_ERAS - 1));
+        }
+
         results
     }
 
@@ -337,6 +352,7 @@ where
                 .consensus
                 .deactivate_validator();
             let new_era_id = block_header.era_id().successor();
+            info!(?new_era_id, "Era created");
             let results = self.era_supervisor.new_era(
                 new_era_id,
                 Timestamp::now(), // TODO: This should be passed in.
@@ -347,6 +363,11 @@ where
             );
             effects.extend(self.handle_consensus_results(new_era_id, results));
         }
+        effects.extend(
+            self.effect_builder
+                .announce_block_handled(block_header.height())
+                .ignore(),
+        );
         effects
     }
 
@@ -465,7 +486,7 @@ where
             }
             ConsensusProtocolResult::ValidateConsensusValue(sender, proto_block) => self
                 .effect_builder
-                .validate_proto_block(sender.clone(), proto_block)
+                .validate_block(sender.clone(), proto_block)
                 .event(move |(is_valid, proto_block)| {
                     if is_valid {
                         Event::AcceptProtoBlock {

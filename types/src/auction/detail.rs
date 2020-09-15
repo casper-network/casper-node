@@ -1,8 +1,7 @@
 use alloc::vec::Vec;
 
 use super::{
-    AuctionProvider, BidPurses, UnbondingPurses, BID_PURSES_KEY, SYSTEM_ACCOUNT,
-    UNBONDING_PURSES_KEY,
+    Auction, BidPurses, UnbondingPurses, BID_PURSES_KEY, SYSTEM_ACCOUNT, UNBONDING_PURSES_KEY,
 };
 use crate::{
     system_contract_errors::auction::{Error, Result},
@@ -13,7 +12,7 @@ use crate::{
 /// a specific era is reached.
 ///
 /// This function can be called by the system only.
-pub(crate) fn process_unbond_requests<P: AuctionProvider + ?Sized>(provider: &mut P) -> Result<()> {
+pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> Result<()> {
     if provider.get_caller() != SYSTEM_ACCOUNT {
         return Err(Error::InvalidCaller);
     }

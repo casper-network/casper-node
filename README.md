@@ -6,7 +6,7 @@ Casper is the blockchain platform purpose-built to scale opportunity for everyon
 The status on development is reported during the Community calls and is found [here](https://github.com/CasperLabs/Governance/wiki/Current-Status)
 
 The Casper Testnet is live.
-- Transactions can be sent to: deploy.casperlabs.io via the client or via
+- Transactions can be sent to: deploy.casperlabs.io via the client or via Clarity.
 - [Clarity Block Exporer](https://clarity.casperlabs.io)
 
 ## Specification
@@ -16,9 +16,9 @@ The Casper Testnet is live.
 
 ## Get Started with Smart Contracts
 - [Writing Smart Contracts](https://docs.casperlabs.io/en/latest/dapp-dev-guide/index.html)
-- [Rust Smart Contract SDK](https://crates.io/crates/cargo-casper)
-- [Rust Smart Contract API Docs](https://docs.rs/casper-contract/latest/casper_contract/contract_api/index.html)
-- [AssemblyScript Smart Contract API](https://www.npmjs.com/package/@casper/contract)
+- [Rust Smart Contract SDK](https://crates.io/crates/cargo-casperlabs)
+- [Rust Smart Contract API Docs](https://docs.rs/casperlabs-contract/0.6.1/casperlabs_contract/contract_api/index.html)
+- [AssemblyScript Smart Contract API](https://www.npmjs.com/package/@casperlabs/contract)
 
 ## Community
 

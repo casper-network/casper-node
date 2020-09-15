@@ -66,6 +66,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     future::Future,
+    net::SocketAddr,
     time::{Duration, Instant},
 };
 
@@ -89,7 +90,7 @@ use casper_types::Key;
 
 use crate::{
     components::{
-        consensus::BlockContext,
+        consensus::{BlockContext, EraId},
         fetcher::FetchResult,
         small_network::GossipedAddress,
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
@@ -99,7 +100,10 @@ use crate::{
         hash::Digest,
     },
     reactor::{EventQueueHandle, QueueKind},
-    types::{Block, BlockHash, BlockHeader, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock},
+    types::{
+        Block, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, FinalizedBlock, Item,
+        ProtoBlock,
+    },
     utils::Source,
     Chainspec,
 };
@@ -109,7 +113,8 @@ use announcements::{
 };
 use requests::{
     BlockExecutorRequest, BlockValidationRequest, ConsensusRequest, ContractRuntimeRequest,
-    DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkRequest, StorageRequest,
+    DeployBufferRequest, FetcherRequest, LinearChainRequest, MetricsRequest, NetworkInfoRequest,
+    NetworkRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -376,6 +381,17 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Retrieve the last finalized block.
+    ///
+    /// If an error occurred, `None` is returned.
+    pub(crate) async fn get_last_finalized_block<I>(self) -> Option<Block>
+    where
+        REv: From<LinearChainRequest<I>>,
+    {
+        self.make_request(LinearChainRequest::LastFinalizedBlock, QueueKind::Api)
+            .await
+    }
+
     /// Sends a network message.
     ///
     /// The message is queued in "fire-and-forget" fashion, there is no guarantee that the peer
@@ -434,6 +450,19 @@ impl<REv> EffectBuilder<REv> {
                 responder,
             },
             QueueKind::Network,
+        )
+        .await
+    }
+
+    /// Gets connected network peers.
+    pub async fn network_peers<I>(self) -> HashMap<I, SocketAddr>
+    where
+        REv: From<NetworkInfoRequest<I>>,
+        I: Send + 'static,
+    {
+        self.make_request(
+            |responder| NetworkInfoRequest::GetPeers { responder },
+            QueueKind::Api,
         )
         .await
     }
@@ -691,7 +720,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block using the `BlockFetcher`
-    #[allow(unused)]
     pub(crate) async fn fetch_block<I>(
         self,
         block_hash: BlockHash,
@@ -752,18 +780,15 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Checks whether the deploys included in the proto-block exist on the network.
-    pub(crate) async fn validate_proto_block<I>(
-        self,
-        sender: I,
-        proto_block: ProtoBlock,
-    ) -> (bool, ProtoBlock)
+    /// Checks whether the deploys included in the block exist on the network.
+    pub(crate) async fn validate_block<I, T>(self, sender: I, block: T) -> (bool, T)
     where
-        REv: From<BlockValidationRequest<ProtoBlock, I>>,
+        REv: From<BlockValidationRequest<T, I>>,
+        T: BlockLike + Send + 'static,
     {
         self.make_request(
             |responder| BlockValidationRequest {
-                block: proto_block,
+                block,
                 sender,
                 responder,
             },
@@ -810,6 +835,29 @@ impl<REv> EffectBuilder<REv> {
                 ConsensusAnnouncement::Orphaned(proto_block),
                 QueueKind::Regular,
             )
+            .await
+    }
+
+    /// Announce that we received a message in a given era
+    /// TODO: Remove when proper linear chain syncing is in place
+    pub(crate) async fn announce_message_in_era(self, era_id: EraId)
+    where
+        REv: From<ConsensusAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ConsensusAnnouncement::GotMessageInEra(era_id),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    pub(crate) async fn announce_block_handled(self, height: u64)
+    where
+        REv: From<ConsensusAnnouncement>,
+    {
+        self.0
+            .schedule(ConsensusAnnouncement::Handled(height), QueueKind::Regular)
             .await
     }
 
