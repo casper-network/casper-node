@@ -15,7 +15,7 @@ as `/etc/casper/config-example.toml`. This needs to be updated to `config.toml`.
 modify values as needed. We did not distribute `config.toml` so it isn't overwritten when a deb package is 
 installed to upgrade.
 
-Set `[IP Address]` to your server's external IP.
+In the section of the config named `[network]`, change the `<IP ADDRESS>` in `public_address` to your server's external IP.
 
 The `accounts.csv` and `chainspec.toml` files will be installed in `/etc/casper` with the deb package install. 
 This should allow easy configuration for each network run as they are updated with a new deb package revision.
