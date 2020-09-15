@@ -10,7 +10,7 @@ with no code changes for updates to genesis files.
 
 This package will install both `casper-node` and `casper-client` executables in `/usr/bin`.
 
-Configuration files and other needed files are installed in `/etc/casper/`. And example config file is given
+Configuration files and other needed files are installed in `/etc/casper/`. An example config file is given
 as `/etc/casper/config-example.toml`. This needs to be updated to `config.toml`. You can do a direct copy and 
 modify values as needed. We did not distribute `config.toml` so it isn't overwritten when a deb package is 
 installed to upgrade.
