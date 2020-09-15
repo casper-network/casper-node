@@ -13,21 +13,14 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     contracts::Parameters,
-    mint::{Mint, RuntimeProvider, StorageProvider},
+    mint::{
+        Mint, RuntimeProvider, StorageProvider, ARG_AMOUNT, ARG_PURSE, ARG_SOURCE, ARG_TARGET,
+        METHOD_BALANCE, METHOD_CREATE, METHOD_MINT, METHOD_TRANSFER,
+    },
     system_contract_errors::mint::Error,
     CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
     Parameter, URef, U512,
 };
-
-pub const METHOD_MINT: &str = "mint";
-pub const METHOD_CREATE: &str = "create";
-pub const METHOD_BALANCE: &str = "balance";
-pub const METHOD_TRANSFER: &str = "transfer";
-
-pub const ARG_AMOUNT: &str = "amount";
-pub const ARG_PURSE: &str = "purse";
-pub const ARG_SOURCE: &str = "source";
-pub const ARG_TARGET: &str = "target";
 
 pub struct MintContract;
 
