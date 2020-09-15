@@ -1,10 +1,11 @@
 use clap::{App, ArgGroup, ArgMatches, SubCommand};
 
 use super::creation_common;
+use crate::command::ClientCommand;
 
 pub struct PutDeploy {}
 
-impl<'a, 'b> crate::Subcommand<'a, 'b> for PutDeploy {
+impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
     const NAME: &'static str = "put-deploy";
     const ABOUT: &'static str = "Creates a new deploy and sends it to the network for execution";
 

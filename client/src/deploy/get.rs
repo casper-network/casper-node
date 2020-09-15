@@ -5,7 +5,7 @@ use futures::executor;
 
 use casper_node::types::Deploy;
 
-use crate::common;
+use crate::{command::ClientCommand, common};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
@@ -39,7 +39,7 @@ mod deploy_hash {
 
 pub struct GetDeploy {}
 
-impl<'a, 'b> crate::Subcommand<'a, 'b> for GetDeploy {
+impl<'a, 'b> ClientCommand<'a, 'b> for GetDeploy {
     const NAME: &'static str = "get-deploy";
     const ABOUT: &'static str = "Retrieves a stored deploy";
 

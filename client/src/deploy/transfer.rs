@@ -5,6 +5,7 @@ use casper_node::crypto::asymmetric_key::PublicKey;
 use casper_types::{bytesrepr::ToBytes, RuntimeArgs, URef, U512};
 
 use super::creation_common::{self, DisplayOrder};
+use crate::command::ClientCommand;
 
 /// Handles providing the arg for and retrieval of the transfer amount.
 pub(super) mod amount {
@@ -151,7 +152,7 @@ fn create_transfer_args(matches: &ArgMatches) -> RuntimeArgs {
 
 pub struct Transfer {}
 
-impl<'a, 'b> crate::Subcommand<'a, 'b> for Transfer {
+impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
     const NAME: &'static str = "transfer";
     const ABOUT: &'static str = "Transfers funds between purses";
 
