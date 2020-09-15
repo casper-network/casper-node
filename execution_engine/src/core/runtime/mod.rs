@@ -25,15 +25,13 @@ use casper_types::{
         self, Contract, ContractPackage, ContractVersion, ContractVersions, DisabledVersions,
         EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
     },
-    mint::Mint,
-    proof_of_stake::ProofOfStake,
-    runtime_args,
+    mint::{self, Mint},
+    proof_of_stake::{self, ProofOfStake},
+    runtime_args, standard_payment,
     standard_payment::StandardPayment,
-    system_contract_errors,
-    system_contract_errors::mint,
-    AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
-    ContractVersionKey, ContractWasm, EntryPointType, Key, ProtocolVersion, RuntimeArgs,
-    SystemContractType, TransferResult, TransferredTo, URef, U128, U256, U512,
+    system_contract_errors, AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash,
+    ContractPackageHash, ContractVersionKey, ContractWasm, EntryPointType, Key, ProtocolVersion,
+    RuntimeArgs, SystemContractType, TransferResult, TransferredTo, URef, U128, U256, U512,
 };
 
 use crate::{
@@ -1690,12 +1688,6 @@ where
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
     ) -> Result<CLValue, Error> {
-        const METHOD_MINT: &str = "mint";
-        const METHOD_CREATE: &str = "create";
-        const METHOD_BALANCE: &str = "balance";
-        const METHOD_TRANSFER: &str = "transfer";
-        const ARG_AMOUNT: &str = "amount";
-
         let state = self.context.state();
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
@@ -1748,29 +1740,31 @@ where
 
         let ret: CLValue = match entry_point_name {
             // Type: `fn mint(amount: U512) -> Result<URef, Error>`
-            METHOD_MINT => {
-                let amount: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
-                let result: Result<URef, mint::Error> = mint_runtime.mint(amount);
+            mint::METHOD_MINT => {
+                let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
+                let result: Result<URef, system_contract_errors::mint::Error> =
+                    mint_runtime.mint(amount);
                 CLValue::from_t(result)?
             }
             // Type: `fn create() -> URef`
-            METHOD_CREATE => {
+            mint::METHOD_CREATE => {
                 let uref = mint_runtime.mint(U512::zero()).map_err(Self::reverter)?;
                 CLValue::from_t(uref).map_err(Self::reverter)?
             }
             // Type: `fn balance(purse: URef) -> Option<U512>`
-            METHOD_BALANCE => {
-                let uref: URef = Self::get_named_argument(&runtime_args, "purse")?;
+            mint::METHOD_BALANCE => {
+                let uref: URef = Self::get_named_argument(&runtime_args, mint::ARG_PURSE)?;
                 let maybe_balance: Option<U512> =
                     mint_runtime.balance(uref).map_err(Self::reverter)?;
                 CLValue::from_t(maybe_balance).map_err(Self::reverter)?
             }
             // Type: `fn transfer(source: URef, target: URef, amount: U512) -> Result<(), Error>`
-            METHOD_TRANSFER => {
-                let source: URef = Self::get_named_argument(&runtime_args, "source")?;
-                let target: URef = Self::get_named_argument(&runtime_args, "target")?;
-                let amount: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
-                let result: Result<(), mint::Error> = mint_runtime.transfer(source, target, amount);
+            mint::METHOD_TRANSFER => {
+                let source: URef = Self::get_named_argument(&runtime_args, mint::ARG_SOURCE)?;
+                let target: URef = Self::get_named_argument(&runtime_args, mint::ARG_TARGET)?;
+                let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
+                let result: Result<(), system_contract_errors::mint::Error> =
+                    mint_runtime.transfer(source, target, amount);
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
             _ => CLValue::from_t(()).map_err(Self::reverter)?,
@@ -1789,11 +1783,6 @@ where
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
     ) -> Result<CLValue, Error> {
-        const METHOD_GET_PAYMENT_PURSE: &str = "get_payment_purse";
-        const METHOD_SET_REFUND_PURSE: &str = "set_refund_purse";
-        const METHOD_GET_REFUND_PURSE: &str = "get_refund_purse";
-        const METHOD_FINALIZE_PAYMENT: &str = "finalize_payment";
-
         let state = self.context.state();
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
@@ -1845,23 +1834,26 @@ where
         );
 
         let ret: CLValue = match entry_point_name {
-            METHOD_GET_PAYMENT_PURSE => {
+            proof_of_stake::METHOD_GET_PAYMENT_PURSE => {
                 let rights_controlled_purse =
                     runtime.get_payment_purse().map_err(Self::reverter)?;
                 CLValue::from_t(rights_controlled_purse).map_err(Self::reverter)?
             }
-            METHOD_SET_REFUND_PURSE => {
-                let purse: URef = Self::get_named_argument(&runtime_args, "purse")?;
+            proof_of_stake::METHOD_SET_REFUND_PURSE => {
+                let purse: URef =
+                    Self::get_named_argument(&runtime_args, proof_of_stake::ARG_PURSE)?;
                 runtime.set_refund_purse(purse).map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)?
             }
-            METHOD_GET_REFUND_PURSE => {
+            proof_of_stake::METHOD_GET_REFUND_PURSE => {
                 let maybe_purse = runtime.get_refund_purse().map_err(Self::reverter)?;
                 CLValue::from_t(maybe_purse).map_err(Self::reverter)?
             }
-            METHOD_FINALIZE_PAYMENT => {
-                let amount_spent: U512 = Self::get_named_argument(&runtime_args, "amount")?;
-                let account: AccountHash = Self::get_named_argument(&runtime_args, "account")?;
+            proof_of_stake::METHOD_FINALIZE_PAYMENT => {
+                let amount_spent: U512 =
+                    Self::get_named_argument(&runtime_args, proof_of_stake::ARG_AMOUNT)?;
+                let account: AccountHash =
+                    Self::get_named_argument(&runtime_args, proof_of_stake::ARG_ACCOUNT)?;
                 runtime
                     .finalize_payment(amount_spent, account)
                     .map_err(Self::reverter)?;
@@ -1876,7 +1868,8 @@ where
     }
 
     pub fn call_host_standard_payment(&mut self) -> Result<(), Error> {
-        let amount: U512 = Self::get_named_argument(&self.context.args(), "amount")?;
+        let amount: U512 =
+            Self::get_named_argument(&self.context.args(), standard_payment::ARG_AMOUNT)?;
         self.pay(amount).map_err(Self::reverter)
     }
 
@@ -3024,7 +3017,7 @@ where
         };
 
         let result = self.call_contract(mint_contract_hash, "transfer", args_values)?;
-        let result: Result<(), mint::Error> = result.into_t()?;
+        let result: Result<(), system_contract_errors::mint::Error> = result.into_t()?;
         Ok(result.map_err(system_contract_errors::Error::from)?)
     }
 
