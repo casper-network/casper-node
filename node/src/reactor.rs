@@ -343,7 +343,7 @@ where
 
 /// Converts a single effect into another by wrapping it.
 #[inline]
-pub fn wrap_effect<Ev, REv, F>(wrap: F, effect: Effect<Ev>) -> Effect<REv>
+fn wrap_effect<Ev, REv, F>(wrap: F, effect: Effect<Ev>) -> Effect<REv>
 where
     F: Fn(Ev) -> REv + Send + 'static,
     Ev: Send + 'static,

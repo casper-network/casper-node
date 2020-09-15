@@ -6,6 +6,9 @@ set -eu
 
 BASEDIR=$(readlink -f $(dirname $0))
 CHAINSPEC=$(mktemp -t chainspec_XXXXXXXX --suffix .toml)
+TRUSTED_HASH="${TRUSTED_HASH:-}"
+TIMESTAMP="${GENESIS_TIMESTAMP:-$(date '+%s000')}"
+echo "GENESIS_TIMESTAMP="$TIMESTAMP
 
 run_node() {
     ID=$1
@@ -13,6 +16,7 @@ run_node() {
     LOGFILE=/tmp/node-${ID}.log
     rm -rf ${STORAGE_DIR}
     rm -f ${LOGFILE}
+    rm -f ${LOGFILE}.stderr
     mkdir -p ${STORAGE_DIR}
 
     if [ $1 -ne 1 ]
@@ -22,13 +26,22 @@ run_node() {
         BIND_ADDRESS_ARG=
     fi
 
+    if ! [ -z "$TRUSTED_HASH" ]
+    then
+        TRUSTED_HASH_ARG=--config-ext=node.trusted_hash="${TRUSTED_HASH}"
+    else
+        TRUSTED_HASH_ARG=
+    fi
+
+    echo "$TRUSTED_HASH_ARG"
+
     systemd-run \
         --user \
         --unit node-$ID \
         --description "Casper Dev Node ${ID}" \
         --collect \
         --property=WorkingDirectory=${BASEDIR} \
-        --setenv=RUST_LOG=debug \
+        --setenv=RUST_LOG=trace \
         --property=StandardOutput=file:${LOGFILE} \
         --property=StandardError=file:${LOGFILE}.stderr \
         -- \
@@ -39,7 +52,8 @@ run_node() {
         --config-ext=storage.path=${STORAGE_DIR} \
         --config-ext=network.gossip_interval=1000 \
         --config-ext=node.chainspec_config_path=${CHAINSPEC} \
-        ${BIND_ADDRESS_ARG}
+        ${BIND_ADDRESS_ARG} \
+        ${TRUSTED_HASH_ARG}
 
     echo "Started node $ID, logfile: ${LOGFILE}"
 
@@ -53,12 +67,16 @@ cargo build -p casper-node
 
 # Update the chainspec to use the current time as the genesis timestamp.
 cp ${BASEDIR}/resources/local/chainspec.toml ${CHAINSPEC}
-sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = $(date '+%s000')/" ${CHAINSPEC}
+sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = ${TIMESTAMP}/" ${CHAINSPEC}
 sed -i 's|\.\./\.\.|'"$BASEDIR"'|' ${CHAINSPEC}
 sed -i 's|accounts\.csv|'"$BASEDIR"'/resources/local/accounts.csv|' ${CHAINSPEC}
 
+NODES="$@"
+
 for i in 1 2 3 4 5; do
-    run_node $i
+    case "$NODES" in
+        *"$i"*) run_node $i
+    esac
 done;
 
 echo "Test network started."

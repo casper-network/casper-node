@@ -10,12 +10,12 @@ with no code changes for updates to genesis files.
 
 This package will install both `casper-node` and `casper-client` executables in `/usr/bin`.
 
-Configuration files and other needed files are installed in `/etc/casper/`. And example config file is given
+Configuration files and other needed files are installed in `/etc/casper/`. An example config file is given
 as `/etc/casper/config-example.toml`. This needs to be updated to `config.toml`. You can do a direct copy and 
 modify values as needed. We did not distribute `config.toml` so it isn't overwritten when a deb package is 
 installed to upgrade.
 
-Set `[IP Address]` to your server's external IP.
+In the section of the config named `[network]`, change the `<IP ADDRESS>` in `public_address` to your server's external IP.
 
 The `accounts.csv` and `chainspec.toml` files will be installed in `/etc/casper` with the deb package install. 
 This should allow easy configuration for each network run as they are updated with a new deb package revision.
@@ -112,7 +112,7 @@ Sep 10 10:37:15 joe-ubuntu casper-node[826251]: Sep 10 10:37:15.205 INFO  [caspe
 
 ### Reading logs
 
-The `journalctl` command is used to read logs from a systemd service. Yow specify the unit name and usually flags
+The `journalctl` command is used to read logs from a systemd service. You specify the unit name and usually flags
 to jump to the end (-x) or follow (-f).
 
 This will show logs at the end of the logs:

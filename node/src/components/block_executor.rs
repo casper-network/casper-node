@@ -185,6 +185,23 @@ impl BlockExecutor {
         }
     }
 
+    pub(crate) fn with_parent_map(mut self, linear_chain: Vec<Block>) -> Self {
+        let parent_map = linear_chain
+            .into_iter()
+            .map(|block| {
+                (
+                    block.height(),
+                    ExecutedBlockSummary {
+                        hash: *block.hash(),
+                        post_state_hash: block.post_state_hash(),
+                    },
+                )
+            })
+            .collect();
+        self.parent_map = parent_map;
+        self
+    }
+
     /// Gets the deploy(s) of the given finalized block from storage.
     fn get_deploys<REv: ReactorEventT>(
         &mut self,
@@ -262,6 +279,8 @@ impl BlockExecutor {
             };
             self.execute_next_deploy_or_create_block(effect_builder, state)
         } else {
+            let height = finalized_block.height();
+            println!("No pre-state hash for height {}", height);
             // The parent block has not been executed yet; delay handling.
             let height = finalized_block.height();
             self.exec_queue.insert(height, (finalized_block, deploys));
@@ -349,7 +368,16 @@ impl<REv: ReactorEventT, R: Rng + CryptoRng + ?Sized> Component<REv, R> for Bloc
         match event {
             Event::Request(BlockExecutorRequest::ExecuteBlock(finalized_block)) => {
                 debug!(?finalized_block, "execute block");
-                self.get_deploys(effect_builder, finalized_block)
+                if finalized_block.proto_block().deploys().is_empty() {
+                    effect_builder
+                        .immediately()
+                        .event(move |_| Event::GetDeploysResult {
+                            finalized_block,
+                            deploys: VecDeque::new(),
+                        })
+                } else {
+                    self.get_deploys(effect_builder, finalized_block)
+                }
             }
 
             Event::GetDeploysResult {

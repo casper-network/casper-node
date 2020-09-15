@@ -15,7 +15,7 @@ use effect::requests::{ConsensusRequest, NetworkRequest};
 use futures::FutureExt;
 use rand::{CryptoRng, Rng};
 use std::fmt::Display;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 #[derive(Debug, From)]
 pub enum Event<I> {
@@ -55,6 +55,8 @@ impl<I: Display> Display for Event<I> {
 #[derive(Debug)]
 pub(crate) struct LinearChain<I> {
     _marker: std::marker::PhantomData<I>,
+    /// A temporary workaround.
+    linear_chain: Vec<Block>,
     /// The last block this component put to storage which is presumably the last block in the
     /// linear chain.
     last_block: Option<Block>,
@@ -64,8 +66,13 @@ impl<I> LinearChain<I> {
     pub fn new() -> Self {
         LinearChain {
             _marker: std::marker::PhantomData,
+            linear_chain: Vec::new(),
             last_block: None,
         }
+    }
+
+    pub fn linear_chain(&self) -> &Vec<Block> {
+        &self.linear_chain
     }
 }
 
@@ -114,10 +121,15 @@ where
                 .event(move |_| Event::PutBlockResult(block))
             },
             Event::PutBlockResult(block) => {
-                let block_hash = *block.hash();
-                debug!("LinearChainBlock --block_hash: {}", block_hash);
+                self.linear_chain.push(block.clone());
                 self.last_block = Some(block.clone());
-                effect_builder.handle_linear_chain_block(block.header().clone())
+                let block_header = block.take_header();
+                let block_hash = block_header.hash();
+                let era_id = block_header.era_id();
+                let height = block_header.height();
+                // Using `Display` impl for the `block_hash` to not truncate it.
+                info!(?block_hash, ?era_id, ?height, "Linear chain block stored.");
+                effect_builder.handle_linear_chain_block(block_header)
                     .event(move |signature| Event::NewFinalitySignature(block_hash, signature))
             },
             Event::NewFinalitySignature(bh, signature) => {

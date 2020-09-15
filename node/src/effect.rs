@@ -90,7 +90,7 @@ use casper_types::Key;
 
 use crate::{
     components::{
-        consensus::BlockContext,
+        consensus::{BlockContext, EraId},
         fetcher::FetchResult,
         small_network::GossipedAddress,
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
@@ -100,7 +100,10 @@ use crate::{
         hash::Digest,
     },
     reactor::{EventQueueHandle, QueueKind},
-    types::{Block, BlockHash, BlockHeader, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock},
+    types::{
+        Block, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, FinalizedBlock, Item,
+        ProtoBlock,
+    },
     utils::Source,
     Chainspec,
 };
@@ -777,18 +780,15 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Checks whether the deploys included in the proto-block exist on the network.
-    pub(crate) async fn validate_proto_block<I>(
-        self,
-        sender: I,
-        proto_block: ProtoBlock,
-    ) -> (bool, ProtoBlock)
+    /// Checks whether the deploys included in the block exist on the network.
+    pub(crate) async fn validate_block<I, T>(self, sender: I, block: T) -> (bool, T)
     where
-        REv: From<BlockValidationRequest<ProtoBlock, I>>,
+        REv: From<BlockValidationRequest<T, I>>,
+        T: BlockLike + Send + 'static,
     {
         self.make_request(
             |responder| BlockValidationRequest {
-                block: proto_block,
+                block,
                 sender,
                 responder,
             },
@@ -835,6 +835,29 @@ impl<REv> EffectBuilder<REv> {
                 ConsensusAnnouncement::Orphaned(proto_block),
                 QueueKind::Regular,
             )
+            .await
+    }
+
+    /// Announce that we received a message in a given era
+    /// TODO: Remove when proper linear chain syncing is in place
+    pub(crate) async fn announce_message_in_era(self, era_id: EraId)
+    where
+        REv: From<ConsensusAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ConsensusAnnouncement::GotMessageInEra(era_id),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    pub(crate) async fn announce_block_handled(self, height: u64)
+    where
+        REv: From<ConsensusAnnouncement>,
+    {
+        self.0
+            .schedule(ConsensusAnnouncement::Handled(height), QueueKind::Regular)
             .await
     }
 
