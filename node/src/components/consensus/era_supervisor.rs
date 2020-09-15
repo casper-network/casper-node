@@ -177,6 +177,7 @@ where
             .iter()
             .take_while(|up| up.activation_point.rank <= block_height)
         {
+            hasher.input(upgrade_point.activation_point.rank.to_le_bytes());
             if let Some(bytes) = upgrade_point.upgrade_installer_bytes.as_ref() {
                 hasher.input(bytes);
             }
