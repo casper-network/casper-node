@@ -69,7 +69,7 @@ gossip_interval = 30000
 [http_server]
 
 # Interface to bind to.  Defaults to loopback address.
-bind_interface = '127.0.0.1'
+bind_interface = '0.0.0.0'
 
 # Port to bind to.  Use 0 for a random port.
 bind_port = 7777

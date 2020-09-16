@@ -46,7 +46,7 @@ log = { version = "0.4.8", features = ["std", "serde", "kv_unstable"] }
 num = { version = "0.2.0", default-features = false }
 num-derive = "0.3.0"
 num-traits = "0.2.10"
-openssl = { version = "0.10.29", features = ["vendored"] }
+openssl = "0.10.29"
 parity-wasm = "0.41.0"
 parking_lot = "0.10.0"
 pem = "0.8.1"
@@ -108,7 +108,7 @@ test = false
 
 [package.metadata.deb]
 features = ["vendored-openssl"]
-revision = "2"  # Increment with releases for updates to charlie data files when not version bumping casper-node.
+revision = "3"  # Increment with releases for updates to charlie data files when not version bumping casper-node.
 assets = [
     ["../target/release/casper-node", "/usr/bin/casper-node", "755"],
     ["../target/release/casper-client", "/usr/bin/casper-client", "755"],

@@ -4,11 +4,14 @@ The purpose of this document is to guide configuring a system with the new Rust 
 
 ## Software Install
 
-The package can be installed with `sudo apt install casper-node_0.1.x-r_amd64.deb`.  
-Where `x` is last minor version of software and `r` is the package revision. We will be pushing revisions
-with no code changes for updates to genesis files.
+The package can be installed with `sudo apt install casper-node_0.1.x-r_amd64.deb`.  Depending on system you
+might need to use `sudo dpkg -i casper-node_0.1.x-r_amd64.deb`.
+
+Where `x` is last minor version of software and `r` is the package revision. We can push revisions
+with no code changes for updates to genesis files or use curl from github files.
 
 This package will install both `casper-node` and `casper-client` executables in `/usr/bin`.
+(These will be separating in two packages the future.)
 
 Configuration files and other needed files are installed in `/etc/casper/`. An example config file is given
 as `/etc/casper/config-example.toml`. This needs to be updated to `config.toml`. You can do a direct copy and 
@@ -20,6 +23,12 @@ In the section of the config named `[network]`, change the `<IP ADDRESS>` in `pu
 The `accounts.csv` and `chainspec.toml` files will be installed in `/etc/casper` with the deb package install. 
 This should allow easy configuration for each network run as they are updated with a new deb package revision.
 
+## External Ports
+
+Port `7777` is needed for http access for the status endpoint: `http://<IP Address>:7777/status`.
+
+Port `34553` is needed for gossip listen with other nodes.
+
 ## Key Generation
 
 Follow commands in `/etc/casper/validator_keys/README.md` to generate keys and get public key hex to send in.
@@ -27,7 +36,7 @@ Follow commands in `/etc/casper/validator_keys/README.md` to generate keys and g
 ## systemd
 
 The deb package installs casper-node service unit for systemd.  If you are unfamiliar with systemd, 
-the [Arch Linux page on systemd](https://wiki.archlinux.org/index.php/systemd) is a good entry into using it.
+the [Arch Linux page on systemd](https://wiki.archlinux.org/index.php/systemd) is a good intro into using it.
 
 Start the casper-node with:
 
@@ -147,7 +156,7 @@ Prior to a new upgrade and run, we need to clean up our local state.
 ```
 sudo systemctl stop casper-node
 sudo apt remove casper-node
-sudo rm /root/.local/share/casper-node/*
+sudo rm -rf /root/.local/share/casper-node
 ```
 
 Pull down new .deb package, install and run.
