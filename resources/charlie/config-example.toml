@@ -86,11 +86,6 @@ bind_port = 7777
 # If the folder doesn't exist, it and any required parents will be created.
 #
 # If unset, defaults to:
-# * Linux: `$XDG_DATA_HOME/casper-node` or `$HOME/.local/share/casper-node`, e.g.
-#   /home/alice/.local/share/casper-node
-# * macOS: `$HOME/Library/Application Support/io.CasperLabs.casper-node`, e.g.
-#   /Users/Alice/Library/Application Support/io.CasperLabs.casper-node
-# * With packaged systemd service, the location will be
 #   /root/.local/share/casper-node
 # path = 'node-storage'
 
