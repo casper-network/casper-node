@@ -11,7 +11,7 @@ use effect::requests::{
 };
 pub use event::Event;
 use rand::{CryptoRng, Rng};
-use std::fmt::Display;
+use std::{fmt::Display, mem};
 use tracing::{error, info, trace, warn};
 
 pub trait ReactorEventT<I>:
@@ -33,26 +33,107 @@ impl<I, REv> ReactorEventT<I> for REv where
 }
 
 #[derive(Debug)]
+#[allow(unused)]
+enum State {
+    // No syncing of the linear chain configured.
+    None,
+    // Synchronizing the linear chain up until trusted hash.
+    SyncingTrustedHash {
+        // Linear chain block to start sync from.
+        trusted_hash: BlockHash,
+        // TODO: remove when proper syncing is implemented
+        // The era of the linear chain block to start sync from
+        init_block_era: Option<EraId>,
+        // During synchronization we might see new eras being created.
+        // Track the highest height and wait until it's handled by consensus.
+        highest_block_seen: u64,
+        // Chain of downloaded blocks from the linear chain.
+        // We will `pop()` when executing blocks.
+        linear_chain: Vec<Block>,
+    },
+    // Synchronizing the descendants of the trusted hash.
+    SyncingDescendants {
+        trusted_hash: BlockHash,
+        // Chain of downloaded blocks from the linear chain.
+        // We will `pop()` when executing blocks.
+        linear_chain: Vec<Block>,
+    },
+    // Synchronizing done.
+    Done,
+}
+
+impl State {
+    fn sync_trusted_hash(trusted_hash: BlockHash) -> Self {
+        State::SyncingTrustedHash {
+            trusted_hash,
+            init_block_era: None,
+            highest_block_seen: 0,
+            linear_chain: Vec::new(),
+        }
+    }
+
+    #[allow(unused)]
+    fn sync_descendants(trusted_hash: BlockHash) -> Self {
+        State::SyncingDescendants {
+            trusted_hash,
+            linear_chain: Vec::new(),
+        }
+    }
+
+    fn block_handled<I>(&mut self, height: u64) -> Effects<Event<I>> {
+        let curr_state = mem::replace(self, State::None);
+        let (new_state, effects) = match curr_state {
+            State::None | State::Done => panic!("Block handled when in {:?} state.", &curr_state),
+            State::SyncingTrustedHash {
+                highest_block_seen, ..
+            } => {
+                if height == highest_block_seen {
+                    info!(%height, "Finished synchronizing linear chain.");
+                    (State::Done, Effects::new())
+                } else {
+                    (curr_state, Effects::new())
+                }
+            }
+            State::SyncingDescendants { .. } => panic!("State not handled at the moment"),
+        };
+        *self = new_state;
+        effects
+    }
+
+    fn block_downloaded(&mut self, block: &Block) {
+        match self {
+            State::None | State::Done => {}
+            State::SyncingTrustedHash {
+                trusted_hash,
+                init_block_era,
+                highest_block_seen,
+                ..
+            } => {
+                // remember the era of the init block
+                if *block.hash() == *trusted_hash {
+                    init_block_era.replace(block.era_id());
+                }
+                let curr_height = block.height();
+                // We instantiate with `highest_block_seen=0`, start downloading with the
+                // highest block and then download its ancestors. It should
+                // be updated only once at the start.
+                if curr_height > *highest_block_seen {
+                    *highest_block_seen = curr_height;
+                }
+            }
+            State::SyncingDescendants { .. } => todo!(),
+        };
+    }
+}
+
+#[derive(Debug)]
 pub(crate) struct LinearChainSync<I> {
     // Set of peers that we can requests block from.
     peers: Vec<I>,
     // Peers we have not yet requested current block from.
     // NOTE: Maybe use a bitmask to decide which peers were tried?.
     peers_to_try: Vec<I>,
-    // Chain of downloaded blocks from the linear chain.
-    linear_chain: Vec<Block>,
-    // How many blocks of the linear chain we've synchronized.
-    linear_chain_length: u64,
-    // Flag indicating whether we have finished syncing linear chain.
-    is_synced: bool,
-    // Linear chain block to start sync from.
-    init_hash: Option<BlockHash>,
-    // TODO: remove when proper syncing is implemented
-    // The era of the linear chain block to start sync from
-    init_block_era: Option<EraId>,
-    // During synchronization we might see new eras being created.
-    // Track the highest height and wait until it's handled by consensus.
-    highest_block_seen: u64,
+    state: State,
 }
 
 impl<I: Clone + 'static> LinearChainSync<I> {
@@ -61,15 +142,13 @@ impl<I: Clone + 'static> LinearChainSync<I> {
         effect_builder: EffectBuilder<REv>,
         init_hash: Option<BlockHash>,
     ) -> Self {
+        let state = init_hash
+            .map(|bh| State::sync_trusted_hash(bh))
+            .unwrap_or_else(|| State::None);
         LinearChainSync {
             peers: Vec::new(),
             peers_to_try: Vec::new(),
-            linear_chain: Vec::new(),
-            linear_chain_length: 0,
-            is_synced: init_hash.is_none(),
-            init_hash,
-            init_block_era: None,
-            highest_block_seen: 0,
+            state,
         }
     }
 
@@ -97,13 +176,19 @@ impl<I: Clone + 'static> LinearChainSync<I> {
     }
 
     fn new_block(&mut self, block: Block) {
-        self.linear_chain.push(block);
-        self.linear_chain_length += 1;
+        match &mut self.state {
+            State::None | State::Done => {}
+            State::SyncingTrustedHash { linear_chain, .. }
+            | State::SyncingDescendants { linear_chain, .. } => linear_chain.push(block),
+        };
     }
 
     /// Returns `true` if we have finished syncing linear chain.
     pub fn is_synced(&self) -> bool {
-        self.is_synced
+        match self.state {
+            State::None | State::Done => true,
+            _ => false,
+        }
     }
 
     fn fetch_next_block_deploys<R, REv>(
@@ -117,7 +202,15 @@ impl<I: Clone + 'static> LinearChainSync<I> {
         REv: ReactorEventT<I>,
     {
         let peer = self.random_peer_unsafe(rng);
-        match self.linear_chain.pop() {
+        let next_block = match &mut self.state {
+            State::None | State::Done => {
+                panic!("Tried fetching next block when in {:?} state.", self.state)
+            }
+            State::SyncingTrustedHash { linear_chain, .. }
+            | State::SyncingDescendants { linear_chain, .. } => linear_chain.pop(),
+        };
+
+        match next_block {
             None => {
                 // We're done syncing but we have to wait for the execution of all blocks.
                 Effects::new()
@@ -127,7 +220,10 @@ impl<I: Clone + 'static> LinearChainSync<I> {
     }
 
     pub(crate) fn init_block_era(&self) -> Option<EraId> {
-        self.init_block_era
+        match self.state {
+            State::SyncingTrustedHash { init_block_era, .. } => init_block_era,
+            _ => None,
+        }
     }
 }
 
@@ -147,25 +243,20 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::Start(init_peer) => {
-                match self.init_hash {
-                    None => {
+                match self.state {
+                    State::None | State::Done => {
                         // No syncing configured.
                         Effects::new()
                     }
-                    Some(init_hash) => {
-                        trace!(?init_hash, "Start synchronization");
+                    State::SyncingTrustedHash { trusted_hash, .. } => {
+                        trace!(?trusted_hash, "Start synchronization");
                         // Start synchronization.
-                        fetch_block(effect_builder, init_peer, init_hash)
+                        fetch_block(effect_builder, init_peer, trusted_hash)
+                    }
+                    State::SyncingDescendants { .. } => {
+                        panic!("`Start` event received when in `SyncingDescendants` state.")
                     }
                 }
-            }
-            Event::BlockExecutionDone(block_hash, block_height) => {
-                info!(
-                    ?block_hash,
-                    ?block_height,
-                    "Finished linear chain blocks execution."
-                );
-                Effects::new()
             }
             Event::GetBlockResult(block_hash, fetch_result) => match fetch_result {
                 None => match self.random_peer(rng) {
@@ -176,10 +267,7 @@ where
                     Some(peer) => fetch_block(effect_builder, peer, block_hash),
                 },
                 Some(FetchResult::FromStorage(block)) => {
-                    // remember the era of the init block
-                    if Some(*block.hash()) == self.init_hash {
-                        self.init_block_era = Some(block.era_id());
-                    }
+                    self.state.block_downloaded(&block);
                     // We should be checking the local storage for linear blocks before we start
                     // syncing.
                     trace!(%block_hash, "Linear block found in the local storage.");
@@ -190,10 +278,7 @@ where
                         .event(move |_| Event::TrustedHashSyncd)
                 }
                 Some(FetchResult::FromPeer(block, peer)) => {
-                    // remember the era of the init block
-                    if Some(*block.hash()) == self.init_hash {
-                        self.init_block_era = Some(block.era_id());
-                    }
+                    self.state.block_downloaded(&block);
                     if *block.hash() != block_hash {
                         warn!(
                             "Block hash mismatch. Expected {} got {} from {}.",
@@ -211,13 +296,6 @@ where
                     trace!(%block_hash, "Downloaded linear chain block.");
                     self.reset_peers();
                     self.new_block(*block.clone());
-                    let curr_height = block.height();
-                    // We instantiate with `highest_block_seen=0`, start downloading with the
-                    // highest block and then download its ancestors. It should
-                    // be updated only once at the start.
-                    if curr_height > self.highest_block_seen {
-                        self.highest_block_seen = curr_height;
-                    }
                     if block.is_genesis_child() {
                         info!("Linear chain downloaded. Starting downloading deploys.");
                         effect_builder
@@ -232,7 +310,6 @@ where
             },
             Event::DeploysFound(block) => {
                 let block_hash = *block.hash();
-                let block_height = block.height();
                 trace!(%block_hash, "Deploys for linear chain block found.");
                 // Reset used peers so we can download next block with the full set.
                 self.reset_peers();
@@ -240,9 +317,7 @@ where
                 // Download next block deploys.
                 let mut effects = self.fetch_next_block_deploys(effect_builder, rng);
                 let finalized_block: FinalizedBlock = (*block).into();
-                let execute_block_effect = effect_builder
-                    .execute_block(finalized_block)
-                    .event(move |_| Event::BlockExecutionDone(block_hash, block_height));
+                let execute_block_effect = effect_builder.execute_block(finalized_block).ignore();
                 effects.extend(execute_block_effect);
                 effects
             }
@@ -273,13 +348,7 @@ where
                 self.peers.push(peer_id);
                 effects
             }
-            Event::BlockHandled(height) => {
-                if height == self.highest_block_seen {
-                    info!(%height, "Finished synchronizing linear chain.");
-                    self.is_synced = true;
-                }
-                Effects::new()
-            }
+            Event::BlockHandled(height) => self.state.block_handled(height),
         }
     }
 }

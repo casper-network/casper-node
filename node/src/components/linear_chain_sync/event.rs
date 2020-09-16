@@ -14,7 +14,6 @@ pub enum Event<I> {
     DeploysNotFound(Box<Block>),
     TrustedHashSyncd,
     NewPeerConnected(I),
-    BlockExecutionDone(BlockHash, u64),
     BlockHandled(u64),
 }
 
@@ -36,9 +35,6 @@ where
                 write!(f, "Linear chain blocks up until trusted hash downloaded")
             }
             Event::NewPeerConnected(peer_id) => write!(f, "A new peer connected: {}", peer_id),
-            Event::BlockExecutionDone(block_hash, height) => {
-                write!(f, "Block execution done: {} @ {}", block_hash, height)
-            }
             Event::BlockHandled(height) => {
                 write!(f, "Block has been handled by consensus {}", height)
             }
