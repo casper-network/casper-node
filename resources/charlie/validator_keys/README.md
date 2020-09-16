@@ -19,4 +19,7 @@ Output should be similar to this:
 `015567f6e69418cbda61e88c4168b9219c259c36e0281d70aa6eee6607c9ceeba0`
 
 The keys will only need to be created once. These are not cleared out with uninstall of .deb or upgrading
-the .deb file. 
+the .deb file.
+
+Note: the public_key_hex value has a leading `01` in addition to the hex value. This is for the `ed25519` 
+algorithm used. By having a prefix byte for the hex, we can identify the algorithm for all three generated files. 
