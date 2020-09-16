@@ -221,7 +221,9 @@ impl<C: Context> Highway<C> {
     pub(crate) fn get_dependency(&self, dependency: &Dependency<C>) -> Option<ValidVertex<C>> {
         let state = &self.state;
         match dependency {
-            Dependency::Vote(hash) => state.wire_vote(hash).map(Vertex::Vote),
+            Dependency::Vote(hash) => state
+                .wire_vote(hash, self.instance_id.clone())
+                .map(Vertex::Vote),
             Dependency::Evidence(idx) => state.opt_evidence(*idx).cloned().map(Vertex::Evidence),
         }
         .map(ValidVertex)
@@ -232,11 +234,15 @@ impl<C: Context> Highway<C> {
         timestamp: Timestamp,
         rng: &mut R,
     ) -> Vec<Effect<C>> {
-        self.map_active_validator(|av, state, rng| av.handle_timer(timestamp, state, rng), rng)
-            .unwrap_or_else(|| {
-                debug!(%timestamp, "Ignoring `handle_timer` event: only an observer node.");
-                vec![]
-            })
+        let instance_id = self.instance_id.clone();
+        self.map_active_validator(
+            |av, state, rng| av.handle_timer(timestamp, state, instance_id, rng),
+            rng,
+        )
+        .unwrap_or_else(|| {
+            debug!(%timestamp, "Ignoring `handle_timer` event: only an observer node.");
+            vec![]
+        })
     }
 
     pub(crate) fn propose<R: Rng + CryptoRng + ?Sized>(
@@ -245,8 +251,9 @@ impl<C: Context> Highway<C> {
         block_context: BlockContext,
         rng: &mut R,
     ) -> Vec<Effect<C>> {
+        let instance_id = self.instance_id.clone();
         self.map_active_validator(
-            |av, state, rng| av.propose(value, block_context, state, rng),
+            |av, state, rng| av.propose(value, block_context, state, instance_id, rng),
             rng,
         )
         .unwrap_or_else(|| {
@@ -269,8 +276,9 @@ impl<C: Context> Highway<C> {
         timestamp: Timestamp,
         rng: &mut R,
     ) -> Vec<Effect<C>> {
+        let instance_id = self.instance_id.clone();
         self.map_active_validator(
-            |av, state, rng| av.on_new_vote(vhash, timestamp, state, rng),
+            |av, state, rng| av.on_new_vote(vhash, timestamp, state, instance_id, rng),
             rng,
         )
         .unwrap_or_default()
@@ -304,6 +312,9 @@ impl<C: Context> Highway<C> {
         match vertex {
             Vertex::Vote(vote) => {
                 let v_id = self.validator_id(&vote).ok_or(VoteError::Creator)?;
+                if vote.wire_vote.instance_id != self.instance_id {
+                    return Err(VoteError::InstanceId.into());
+                }
                 if !C::verify_signature(&vote.hash(), v_id, &vote.signature) {
                     return Err(VoteError::Signature.into());
                 }
@@ -398,6 +409,7 @@ pub(crate) mod tests {
         let wvote = WireVote {
             panorama: Panorama::new(WEIGHTS.len()),
             creator: CAROL,
+            instance_id: highway.instance_id,
             value: Some(0),
             seq_number: 0,
             timestamp: Timestamp::zero(),

@@ -98,6 +98,7 @@ impl<C: Context> SignedWireVote<C> {
 pub(crate) struct WireVote<C: Context> {
     pub(crate) panorama: Panorama<C>,
     pub(crate) creator: ValidatorIndex,
+    pub(crate) instance_id: C::InstanceId,
     pub(crate) value: Option<C::ConsensusValue>,
     pub(crate) seq_number: u64,
     pub(crate) timestamp: Timestamp,
@@ -119,6 +120,7 @@ impl<C: Context> Debug for WireVote<C> {
             .field("hash()", &self.hash())
             .field("value", &self.value.as_ref().map(|_| Ellipsis))
             .field("creator.0", &self.creator.0)
+            .field("instance_id", &self.instance_id)
             .field("seq_number", &self.seq_number)
             .field("timestamp", &self.timestamp.millis())
             .field("panorama", self.panorama.as_ref())

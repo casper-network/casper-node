@@ -16,7 +16,7 @@ macro_rules! panorama {
 /// The short variant is for tests that don't care about timestamps and round lengths: It
 /// automatically picks reasonable values for those.
 macro_rules! add_vote {
-    ($state: ident, $rng: ident, $creator: expr, $val: expr; $($obs:expr),*) => {{
+    ($state: ident, $instance: expr, $rng: ident, $creator: expr, $val: expr; $($obs:expr),*) => {{
         #[allow(unused_imports)] // These might be already imported at the call site.
         use crate::{
             components::consensus::highway_core::{
@@ -59,6 +59,7 @@ macro_rules! add_vote {
         let wvote = WireVote {
             panorama,
             creator,
+            instance_id: $instance,
             value,
             seq_number,
             timestamp,
@@ -68,7 +69,7 @@ macro_rules! add_vote {
         let swvote = SignedWireVote::new(wvote, &TestSecret(($creator).0), &mut $rng);
         $state.add_vote(swvote).map(|()| hash)
     }};
-    ($state: ident, $rng: ident, $creator: expr, $time: expr, $round_exp: expr, $val: expr; $($obs:expr),*) => {{
+    ($state: ident, $instance: expr, $rng: ident, $creator: expr, $time: expr, $round_exp: expr, $val: expr; $($obs:expr),*) => {{
         use crate::components::consensus::highway_core::{
             state::tests::TestSecret,
             highway::{SignedWireVote, WireVote},
@@ -80,6 +81,7 @@ macro_rules! add_vote {
         let wvote = WireVote {
             panorama,
             creator,
+            instance_id: $instance,
             value: ($val).into(),
             seq_number,
             timestamp: ($time).into(),
