@@ -8,25 +8,44 @@ use serde::{Deserialize, Serialize};
 use casper_execution_engine::shared::account::{
     Account as ExecutionEngineAccount, ActionThresholds as ExecutionEngineActionThresholds,
 };
+use casper_types::account::{AccountHash, Weight};
 
 /// Representation of a client's account.
-///
-/// Note that the `account_hash` and `associated_keys` members are deliberately omitted since
-/// account hashes are an internal detail of the EE and should not be provided to users due to
-/// confusion with the account's public key.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub struct Account {
+    account_hash: String,
     named_keys: BTreeMap<String, String>,
     main_purse: String,
+    associated_keys: Vec<AssociatedKey>,
     action_thresholds: ActionThresholds,
 }
 
 impl From<&ExecutionEngineAccount> for Account {
     fn from(ee_account: &ExecutionEngineAccount) -> Self {
         Account {
+            account_hash: hex::encode(ee_account.account_hash().as_bytes()),
             named_keys: super::convert_named_keys(ee_account.named_keys()),
             main_purse: ee_account.main_purse().to_formatted_string(),
+            associated_keys: ee_account
+                .get_associated_keys()
+                .map(AssociatedKey::from)
+                .collect(),
             action_thresholds: ActionThresholds::from(ee_account.action_thresholds()),
+        }
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+pub struct AssociatedKey {
+    account_hash: String,
+    weight: u8,
+}
+
+impl From<(&AccountHash, &Weight)> for AssociatedKey {
+    fn from((ee_account_hash, ee_weight): (&AccountHash, &Weight)) -> Self {
+        AssociatedKey {
+            account_hash: hex::encode(ee_account_hash.as_bytes()),
+            weight: ee_weight.value(),
         }
     }
 }
