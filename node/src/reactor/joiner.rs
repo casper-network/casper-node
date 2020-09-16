@@ -8,14 +8,14 @@ use derive_more::From;
 use prometheus::Registry;
 use rand::{CryptoRng, Rng};
 use small_network::GossipedAddress;
-use tracing::{error, info, trace, warn};
+use tracing::{error, info, warn};
 
 use crate::{
     components::{
         block_executor,
         block_validator::{self, BlockValidator},
         chainspec_loader::ChainspecLoader,
-        consensus::{self, EraId},
+        consensus::{self},
         contract_runtime::{self, ContractRuntime},
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
@@ -248,9 +248,6 @@ pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
     // In the `joining` phase we don't want to handle it,
     // so we carry them forward to the `validator` reactor.
     pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
-    // TODO: remove after proper syncing is implemented
-    // `None` means we haven't seen any consensus messages yet
-    latest_received_era_id: Option<EraId>,
     // Handles request for linear chain block by height.
     pub(super) block_by_height_fetcher: Fetcher<BlockByHeight>,
 }
@@ -347,7 +344,6 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 linear_chain,
                 consensus,
                 init_consensus_effects,
-                latest_received_era_id: None,
                 block_by_height_fetcher,
             },
             effects,
@@ -418,13 +414,6 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                     };
                     self.dispatch_event(effect_builder, rng, Event::BlockByHeightFetcher(event))
                 }
-                // needed so that consensus can notify us of the eras it knows of
-                // TODO: remove when proper syncing is implemented
-                Message::Consensus(msg) => self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    Event::Consensus(consensus::Event::MessageReceived { sender, msg }),
-                ),
                 other => {
                     warn!(?other, "network announcement ignored.");
                     Effects::new()
@@ -509,17 +498,6 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                         linear_chain_sync::Event::BlockHandled(height),
                     ),
                 ),
-                ConsensusAnnouncement::GotMessageInEra(era_id) => {
-                    // note if the era id is later than the latest we've received so far
-                    if self
-                        .latest_received_era_id
-                        .map(|lreid| era_id > lreid)
-                        .unwrap_or(true)
-                    {
-                        self.latest_received_era_id = Some(era_id);
-                    }
-                    Effects::new()
-                }
                 other => {
                     warn!("Ignoring consensus announcement {}", other);
                     Effects::new()
@@ -552,36 +530,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
     }
 
     fn is_stopped(&mut self) -> bool {
-        if self.linear_chain_sync.is_synced() {
-            trace!("Linear chain is synced.");
-            if let (Some(latest_known_era), Some(latest_received_era)) = (
-                self.linear_chain_sync.init_block_era(),
-                self.latest_received_era_id,
-            ) {
-                trace!("Latest known era: {:?}", latest_known_era);
-                trace!("Latest received era: {:?}", latest_received_era);
-                if latest_known_era < latest_received_era {
-                    // We only synchronized up to era N, and the other validators are at least at
-                    // era N+1 - we won't be able to catch up, so we crash
-                    // TODO: remove this once proper syncing is implemented
-                    error!(
-                        "We are now synchronized up to era {:?}. Unfortunately, while we were \
-                        synchronizing, the other validators progressed to era {:?}. Since they \
-                        are ahead of us, we won't be able to participate. Try to restart the node \
-                        with a later trusted block hash.",
-                        latest_known_era, latest_received_era
-                    );
-                    panic!("other validators ahead, won't be able to participate - please restart");
-                }
-            } else {
-                trace!("No latest known era or latest received era!");
-            }
-        }
-        // We want to wait for a consensus message in order to determine the current consensus era,
-        // but only if the trusted hash has been specified
         self.linear_chain_sync.is_synced()
-            && (self.latest_received_era_id.is_some()
-                || self.linear_chain_sync.init_block_era().is_none())
     }
 }
 

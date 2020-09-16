@@ -18,7 +18,7 @@ use crate::{
             self, BlockExecutorRequest, BlockValidationRequest, DeployBufferRequest,
             NetworkRequest, StorageRequest,
         },
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, Effects,
     },
     protocol::Message,
     types::{ProtoBlock, Timestamp},
@@ -181,11 +181,7 @@ where
         let mut handling_es = self.handling_wrapper(effect_builder, rng);
         match event {
             Event::Timer { era_id, timestamp } => handling_es.handle_timer(era_id, timestamp),
-            Event::MessageReceived { sender, msg } => {
-                let mut effects = effect_builder.announce_message_in_era(msg.era_id).ignore();
-                effects.extend(handling_es.handle_message(sender, msg));
-                effects
-            }
+            Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
             Event::NewProtoBlock {
                 era_id,
                 proto_block,

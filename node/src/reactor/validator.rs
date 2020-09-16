@@ -613,8 +613,6 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                     ConsensusAnnouncement::Orphaned(block) => {
                         reactor_event_dispatch(deploy_buffer::Event::OrphanedProtoBlock(block))
                     }
-                    // Only interesting for the joiner
-                    ConsensusAnnouncement::GotMessageInEra(_era_id) => Effects::new(),
                     ConsensusAnnouncement::Handled(_) => {
                         debug!("Ignoring `Handled` announcement in `validator` reactor.");
                         Effects::new()

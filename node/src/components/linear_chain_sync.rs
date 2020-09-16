@@ -2,7 +2,6 @@ mod event;
 
 use super::{fetcher::FetchResult, storage::Storage, Component};
 use crate::{
-    components::consensus::EraId,
     effect::{self, EffectBuilder, EffectExt, EffectOptionExt, Effects},
     types::{Block, BlockByHeight, BlockHash, FinalizedBlock},
 };
@@ -43,9 +42,6 @@ enum State {
     SyncingTrustedHash {
         // Linear chain block to start sync from.
         trusted_hash: BlockHash,
-        // TODO: remove when proper syncing is implemented
-        // The era of the linear chain block to start sync from
-        init_block_era: Option<EraId>,
         // During synchronization we might see new eras being created.
         // Track the highest height and wait until it's handled by consensus.
         highest_block_seen: u64,
@@ -71,7 +67,6 @@ impl State {
     fn sync_trusted_hash(trusted_hash: BlockHash) -> Self {
         State::SyncingTrustedHash {
             trusted_hash,
-            init_block_era: None,
             highest_block_seen: 0,
             linear_chain: Vec::new(),
         }
@@ -89,15 +84,8 @@ impl State {
         match self {
             State::None | State::Done => {}
             State::SyncingTrustedHash {
-                trusted_hash,
-                init_block_era,
-                highest_block_seen,
-                ..
+                highest_block_seen, ..
             } => {
-                // remember the era of the init block
-                if *block.hash() == *trusted_hash {
-                    init_block_era.replace(block.era_id());
-                }
                 let curr_height = block.height();
                 // We instantiate with `highest_block_seen=0`, start downloading with the
                 // highest block and then download its ancestors. It should
@@ -253,13 +241,6 @@ impl<I: Clone + 'static> LinearChainSync<I> {
                 Effects::new()
             }
             Some(block) => fetch_block_deploys(effect_builder, peer, block),
-        }
-    }
-
-    pub(crate) fn init_block_era(&self) -> Option<EraId> {
-        match self.state {
-            State::SyncingTrustedHash { init_block_era, .. } => init_block_era,
-            _ => None,
         }
     }
 }
