@@ -1,15 +1,13 @@
 use std::str;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
-use futures::executor;
 
-use crate::{command::ClientCommand, common};
-use common::RpcClient;
+use crate::{command::ClientCommand, common, rpc::RpcClient};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
     NodeAddress,
-    BlockHash,
+    GlobalStateHash,
     Key,
     Path,
 }
@@ -18,10 +16,9 @@ pub struct GetBalance {}
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct BalanceArgs {
+    pub global_state_hash: String,
     pub key: String,
     pub path: Vec<String>,
-    #[serde(default)]
-    pub block_hash: Option<String>,
 }
 
 mod balance_args {
@@ -30,19 +27,19 @@ mod balance_args {
     mod names {
         pub const KEY: &str = "key";
         pub const PATH: &str = "path";
-        pub const BLOCK_HASH: &str = "block_hash";
+        pub const GLOBAL_STATE_HASH: &str = "global_state_hash";
     }
 
     mod value_names {
         pub const KEY: &str = "HEX STRING";
         pub const PATH: &str = "key1,key2,key3...";
-        pub const BLOCK_HASH: &str = "HEX STRING or null";
+        pub const GLOBAL_STATE_HASH: &str = "HEX STRING";
     }
 
     mod help {
         pub const KEY: &str = "key";
         pub const PATH: &str = "Comma-delimited block hashes";
-        pub const BLOCK_HASH: &str = "block_hash, if omitted will use last";
+        pub const GLOBAL_STATE_HASH: &str = "global state hash";
     }
 
     pub(super) fn key() -> Arg<'static, 'static> {
@@ -63,13 +60,12 @@ mod balance_args {
             .display_order(DisplayOrder::Path as usize)
     }
 
-    pub(super) fn block_hash() -> Arg<'static, 'static> {
-        Arg::with_name(names::BLOCK_HASH)
-            .required(false)
-            .last(true) // because this is optional, it must come last as per clap's rules
-            .value_name(value_names::BLOCK_HASH)
-            .help(help::BLOCK_HASH)
-            .display_order(DisplayOrder::BlockHash as usize)
+    pub(super) fn global_state_hash() -> Arg<'static, 'static> {
+        Arg::with_name(names::GLOBAL_STATE_HASH)
+            .required(true)
+            .value_name(value_names::GLOBAL_STATE_HASH)
+            .help(help::GLOBAL_STATE_HASH)
+            .display_order(DisplayOrder::GlobalStateHash as usize)
     }
 
     pub(super) fn get(matches: &ArgMatches) -> BalanceArgs {
@@ -84,10 +80,13 @@ mod balance_args {
             .map(str::to_string)
             .collect::<Vec<_>>();
 
-        let block_hash = matches.value_of(names::BLOCK_HASH).map(str::to_string);
+        let global_state_hash = matches
+            .value_of(names::GLOBAL_STATE_HASH)
+            .map(str::to_string)
+            .unwrap_or_else(|| panic!("should have {} arg", names::GLOBAL_STATE_HASH));
 
         BalanceArgs {
-            block_hash,
+            global_state_hash,
             key,
             path,
         }
@@ -109,45 +108,21 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {
             .arg(common::node_address::arg(
                 DisplayOrder::NodeAddress as usize,
             ))
+            .arg(balance_args::global_state_hash())
             .arg(balance_args::key())
             .arg(balance_args::path())
-            .arg(balance_args::block_hash())
     }
 
     fn run(matches: &ArgMatches<'_>) {
         let node_address = common::node_address::get(matches);
         let args = balance_args::get(matches);
-
-        let url = format!("{}/{}", node_address, common::RPC_API_PATH);
-        let rpc_req = jsonrpc_lite::JsonRpc::request_with_params(
-            42, // TODO: perhaps we should validate that this conforms
-            Self::RPC_METHOD,
-            serde_json::json!(args),
-        );
-        let client = reqwest::Client::new();
-
-        let body = executor::block_on(async {
-            client
-                .post(&url)
-                .json(&rpc_req)
-                .send()
-                .await
-                .unwrap_or_else(|error| panic!("should get response from node: {}", error))
-                .bytes()
-                .await
-                .unwrap_or_else(|error| panic!("should get bytes from node response: {}", error))
-        });
-
-        let json_encoded = str::from_utf8(body.as_ref())
-            .unwrap_or_else(|error| panic!("should parse node response as JSON: {}", error));
-
-        let rpc_res = match jsonrpc_lite::JsonRpc::parse(json_encoded) {
+        let res = match Self::request_sync(&node_address, &args) {
             Ok(res) => res,
-            Err(error) => {
-                panic!("node response error: {}", error);
+            Err(err) => {
+                println!("error {:?}", err);
+                return;
             }
         };
-
-        println!("{:?}", rpc_res);
+        println!("{}", res);
     }
 }

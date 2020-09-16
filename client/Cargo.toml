@@ -7,6 +7,8 @@ description = "A client for interacting with the Casper network"
 
 [dependencies]
 base64 = "0.12.3"
+anyhow = "1.0.32"
+thiserror = "1.0.20"
 casper-execution-engine = { path = "../execution_engine" }
 casper-node = { path = "../node" }
 casper-types = { path = "../types", features = ["std"] }

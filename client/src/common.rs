@@ -7,13 +7,6 @@ use casper_node::crypto::asymmetric_key::SecretKey;
 /// The node HTTP endpoint to instruct it to put the provided deploy.
 pub const DEPLOY_API_PATH: &str = "deploys";
 
-/// CEP/0009 - /rpc endpoints
-pub const RPC_API_PATH: &str = "rpc";
-
-pub trait RpcClient {
-    const RPC_METHOD: &'static str;
-}
-
 /// Handles providing the arg for and retrieval of the node hostname/IP and port.
 pub mod node_address {
     use super::*;

@@ -4,6 +4,7 @@ mod common;
 mod deploy;
 mod generate_completion;
 mod keygen;
+mod rpc;
 
 use clap::{crate_description, crate_version, App};
 
