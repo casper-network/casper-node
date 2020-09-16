@@ -1,4 +1,5 @@
-# Container for building CasperLabs
+# Container for building casper-node debian packages
+# Based on buildenv and needs much cleanup
 # bionic = 18.04
 FROM ubuntu:bionic
 

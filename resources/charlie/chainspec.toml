@@ -5,7 +5,7 @@
 name = 'casper-charlienet'
 # Timestamp for the genesis block, also used in seeding the pseudo-random number generator used in contract-runtime for
 # computing genesis post-state hash.
-timestamp = 0
+timestamp = 1600218437000
 # Protocol version at genesis.
 protocol_version = '1.0.0'
 # Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the mint
@@ -30,7 +30,7 @@ accounts_path = '/etc/casper/accounts.csv'
 # make key blocks for the upcoming eras.  If the era is over by the time we start the nodes, they'll not be able to
 # produce blocks in it, and there won't be a new era build either.  That means when a completely new network is started,
 # the genesis era start time has to be adjusted to be active at the time.
-genesis_era_start_timestamp = 1583712000000
+genesis_era_start_timestamp = 1600218437000
 # Era duration defined as a fixed number of milliseconds.  604800000 ms = 1 week.
 era_duration_millis = 604800000
 # Minimum number of blocks per era.  An era will take longer than `era_duration_millis` ms if that is necessary to reach the minimum height.
