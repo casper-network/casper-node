@@ -233,6 +233,8 @@ where
                 let av_effects = self.hw_proto.highway.add_valid_vertex(vv.clone(), rng);
                 self.results
                     .extend(self.hw_proto.process_av_effects(av_effects));
+                // Gossip vertex.
+                // We know it's valid one now.
                 let msg = HighwayMessage::NewVertex(vv.into());
                 let serialized_msg = rmp_serde::to_vec(&msg).expect("should serialize message");
                 self.results.extend(self.hw_proto.detect_finality());

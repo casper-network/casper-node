@@ -4,7 +4,7 @@ use super::{fetcher::FetchResult, storage::Storage, Component};
 use crate::{
     components::consensus::EraId,
     effect::{self, EffectBuilder, EffectExt, EffectOptionExt, Effects},
-    types::{Block, BlockHash, FinalizedBlock},
+    types::{Block, BlockByHeight, BlockHash, FinalizedBlock},
 };
 use effect::requests::{
     BlockExecutorRequest, BlockValidationRequest, FetcherRequest, StorageRequest,
@@ -17,6 +17,7 @@ use tracing::{error, info, trace, warn};
 pub trait ReactorEventT<I>:
     From<StorageRequest<Storage>>
     + From<FetcherRequest<I, Block>>
+    + From<FetcherRequest<I, BlockByHeight>>
     + From<BlockValidationRequest<Block, I>>
     + From<BlockExecutorRequest>
     + Send
@@ -26,6 +27,7 @@ pub trait ReactorEventT<I>:
 impl<I, REv> ReactorEventT<I> for REv where
     REv: From<StorageRequest<Storage>>
         + From<FetcherRequest<I, Block>>
+        + From<FetcherRequest<I, BlockByHeight>>
         + From<BlockValidationRequest<Block, I>>
         + From<BlockExecutorRequest>
         + Send
@@ -57,6 +59,9 @@ enum State {
         // Chain of downloaded blocks from the linear chain.
         // We will `pop()` when executing blocks.
         linear_chain: Vec<Block>,
+        // During synchronization we might see new eras being created.
+        // Track the highest height and wait until it's handled by consensus.
+        highest_block_seen: u64,
     },
     // Synchronizing done.
     Done,
@@ -72,32 +77,12 @@ impl State {
         }
     }
 
-    #[allow(unused)]
     fn sync_descendants(trusted_hash: BlockHash) -> Self {
         State::SyncingDescendants {
             trusted_hash,
             linear_chain: Vec::new(),
+            highest_block_seen: 0,
         }
-    }
-
-    fn block_handled<I>(&mut self, height: u64) -> Effects<Event<I>> {
-        let curr_state = mem::replace(self, State::None);
-        let (new_state, effects) = match curr_state {
-            State::None | State::Done => panic!("Block handled when in {:?} state.", &curr_state),
-            State::SyncingTrustedHash {
-                highest_block_seen, ..
-            } => {
-                if height == highest_block_seen {
-                    info!(%height, "Finished synchronizing linear chain.");
-                    (State::Done, Effects::new())
-                } else {
-                    (curr_state, Effects::new())
-                }
-            }
-            State::SyncingDescendants { .. } => panic!("State not handled at the moment"),
-        };
-        *self = new_state;
-        effects
     }
 
     fn block_downloaded(&mut self, block: &Block) {
@@ -121,7 +106,14 @@ impl State {
                     *highest_block_seen = curr_height;
                 }
             }
-            State::SyncingDescendants { .. } => todo!(),
+            State::SyncingDescendants {
+                highest_block_seen, ..
+            } => {
+                let curr_height = block.height();
+                if curr_height > *highest_block_seen {
+                    *highest_block_seen = curr_height;
+                }
+            }
         };
     }
 }
@@ -191,6 +183,51 @@ impl<I: Clone + 'static> LinearChainSync<I> {
         }
     }
 
+    fn block_handled<R, REv>(
+        &mut self,
+        rng: &mut R,
+        effect_builder: EffectBuilder<REv>,
+        block_height: u64,
+    ) -> Effects<Event<I>>
+    where
+        I: Send + Copy + 'static,
+        R: Rng + CryptoRng + ?Sized,
+        REv: ReactorEventT<I>,
+    {
+        let curr_state = mem::replace(&mut self.state, State::None);
+        let (new_state, effects) = match curr_state {
+            State::None | State::Done => panic!("Block handled when in {:?} state.", &curr_state),
+            State::SyncingTrustedHash {
+                highest_block_seen,
+                trusted_hash,
+                ..
+            } => {
+                if block_height == highest_block_seen {
+                    info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
+                    self.reset_peers();
+                    let peer = self.random_peer_unsafe(rng);
+                    // Kick off syncing trusted hash descendants.
+                    let effects = fetch_block_at_height(effect_builder, peer, block_height + 1);
+                    (State::sync_descendants(trusted_hash), effects)
+                } else {
+                    (curr_state, Effects::new())
+                }
+            }
+            State::SyncingDescendants {
+                highest_block_seen, ..
+            } => {
+                if block_height == highest_block_seen {
+                    info!(%block_height, "Finished synchronizing descendants of trusted hash.");
+                    (State::Done, Effects::new())
+                } else {
+                    (curr_state, Effects::new())
+                }
+            }
+        };
+        self.state = new_state;
+        effects
+    }
+
     fn fetch_next_block_deploys<R, REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -258,7 +295,55 @@ where
                     }
                 }
             }
-            Event::GetBlockResult(block_hash, fetch_result) => match fetch_result {
+            Event::GetBlockHeightResult(block_height, fetch_result) => match fetch_result {
+                None => match self.random_peer(rng) {
+                    None => {
+                        // `block_height` not found on any of the peers.
+                        // We have synchronized all, currently existing, descenandants of trusted
+                        // hash.
+                        effect_builder
+                            .immediately()
+                            .event(move |_| Event::StartDownloadingDeploys)
+                    }
+                    Some(peer) => fetch_block_at_height(effect_builder, peer, block_height),
+                },
+                Some(FetchResult::FromStorage(block)) => {
+                    self.state.block_downloaded(&block.into_inner());
+                    // We should be checking the local storage for linear blocks before we start
+                    // syncing.
+                    trace!(%block_height, "Linear block found in the local storage.");
+                    // If we found the linear block in the storage it means we should have all of
+                    // its parents as well. If that's not the case then we have a bug.
+                    effect_builder
+                        .immediately()
+                        .event(move |_| Event::StartDownloadingDeploys)
+                }
+                Some(FetchResult::FromPeer(block, peer)) => {
+                    let block = block.into_inner();
+                    self.state.block_downloaded(&block);
+                    if block.height() != block_height {
+                        warn!(
+                            "Block height mismatch. Expected {} got {} from {}.",
+                            block_height,
+                            block.height(),
+                            peer
+                        );
+                        // NOTE: Signal misbehaving validator to networking layer.
+                        return self.handle_event(
+                            effect_builder,
+                            rng,
+                            Event::GetBlockHeightResult(block_height, None),
+                        );
+                    }
+                    trace!(%block_height, "Downloaded linear chain block.");
+                    self.reset_peers();
+                    self.new_block(block.clone());
+                    let next_height = block.height() + 1;
+                    let peer = self.random_peer_unsafe(rng);
+                    fetch_block_at_height(effect_builder, peer, next_height)
+                }
+            },
+            Event::GetBlockHashResult(block_hash, fetch_result) => match fetch_result {
                 None => match self.random_peer(rng) {
                     None => {
                         error!(%block_hash, "Could not download linear block from any of the peers.");
@@ -275,7 +360,7 @@ where
                     // its parents as well. If that's not the case then we have a bug.
                     effect_builder
                         .immediately()
-                        .event(move |_| Event::TrustedHashSyncd)
+                        .event(move |_| Event::StartDownloadingDeploys)
                 }
                 Some(FetchResult::FromPeer(block, peer)) => {
                     self.state.block_downloaded(&block);
@@ -290,7 +375,7 @@ where
                         return self.handle_event(
                             effect_builder,
                             rng,
-                            Event::GetBlockResult(block_hash, None),
+                            Event::GetBlockHashResult(block_hash, None),
                         );
                     }
                     trace!(%block_hash, "Downloaded linear chain block.");
@@ -300,7 +385,7 @@ where
                         info!("Linear chain downloaded. Starting downloading deploys.");
                         effect_builder
                             .immediately()
-                            .event(move |_| Event::TrustedHashSyncd)
+                            .event(move |_| Event::StartDownloadingDeploys)
                     } else {
                         let parent_hash = *block.parent_hash();
                         let peer = self.random_peer_unsafe(rng);
@@ -329,8 +414,9 @@ where
                 }
                 Some(peer) => fetch_block_deploys(effect_builder, peer, *block),
             },
-            Event::TrustedHashSyncd => {
+            Event::StartDownloadingDeploys => {
                 // Start downloading deploys from the first block of the linear chain.
+                self.reset_peers();
                 self.fetch_next_block_deploys(effect_builder, rng)
             }
             Event::NewPeerConnected(peer_id) => {
@@ -348,7 +434,7 @@ where
                 self.peers.push(peer_id);
                 effects
             }
-            Event::BlockHandled(height) => self.state.block_handled(height),
+            Event::BlockHandled(height) => self.block_handled(rng, effect_builder, height),
         }
     }
 }
@@ -381,7 +467,23 @@ where
     REv: ReactorEventT<I>,
 {
     effect_builder.fetch_block(block_hash, peer).option(
-        move |value| Event::GetBlockResult(block_hash, Some(value)),
-        move || Event::GetBlockResult(block_hash, None),
+        move |value| Event::GetBlockHashResult(block_hash, Some(value)),
+        move || Event::GetBlockHashResult(block_hash, None),
     )
+}
+
+fn fetch_block_at_height<I: Send + Copy + 'static, REv>(
+    effect_builder: EffectBuilder<REv>,
+    peer: I,
+    block_height: u64,
+) -> Effects<Event<I>>
+where
+    REv: ReactorEventT<I>,
+{
+    effect_builder
+        .fetch_block_by_height(block_height, peer)
+        .option(
+            move |value| Event::GetBlockHeightResult(block_height, Some(value)),
+            move || Event::GetBlockHeightResult(block_height, None),
+        )
 }

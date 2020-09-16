@@ -416,7 +416,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                         item: block_at_height,
                         source: Source::Peer(sender),
                     };
-                    self.dispatch_event(effect_builder, rng, Event::BlockFetcher(event))
+                    self.dispatch_event(effect_builder, rng, Event::BlockByHeightFetcher(event))
                 }
                 // needed so that consensus can notify us of the eras it knows of
                 // TODO: remove when proper syncing is implemented
@@ -528,13 +528,13 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             Event::DeployBufferRequest(request) => {
                 // Consensus component should not be trying to create new blocks during joining
                 // phase.
-                warn!("Ignoring deploy buffer request {}", request);
+                error!("Ignoring deploy buffer request {}", request);
                 Effects::new()
             }
             Event::ProtoBlockValidatorRequest(request) => {
                 // During joining phase, consensus component should not be requesting
                 // validation of the proto block.
-                warn!("Ignoring proto block validation request {}", request);
+                error!("Ignoring proto block validation request {}", request);
                 Effects::new()
             }
             Event::AddressGossiper(event) => reactor::wrap_effects(
