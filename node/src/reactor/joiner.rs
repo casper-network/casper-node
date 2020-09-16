@@ -302,7 +302,10 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
             validator_stakes,
-            &chainspec_loader.chainspec().genesis.highway_config,
+            chainspec_loader.chainspec(),
+            chainspec_loader
+                .genesis_post_state_hash()
+                .expect("should have genesis post state hash"),
             rng,
         )?;
 
@@ -382,6 +385,13 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                     rng,
                     Event::Consensus(consensus::Event::MessageReceived { sender, msg }),
                 ),
+                Message::AddressGossiper(message) => {
+                    let event = Event::AddressGossiper(gossiper::Event::MessageReceived {
+                        sender,
+                        message,
+                    });
+                    self.dispatch_event(effect_builder, rng, event)
+                }
                 other => {
                     warn!(?other, "network announcement ignored.");
                     Effects::new()
