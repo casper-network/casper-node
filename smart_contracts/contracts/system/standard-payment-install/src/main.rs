@@ -11,13 +11,9 @@ use casper_contract::{
 };
 use casper_types::{
     contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys, Parameter},
+    standard_payment::{ACCESS_KEY, ARG_AMOUNT, HASH_KEY, METHOD_CALL},
     CLType, CLValue,
 };
-use standard_payment::ARG_AMOUNT;
-
-const METHOD_CALL: &str = "call";
-const HASH_KEY_NAME: &str = "standard_payment_hash";
-const ACCESS_KEY_NAME: &str = "standard_payment_access";
 
 #[no_mangle]
 pub extern "C" fn call() {
@@ -45,8 +41,8 @@ pub extern "C" fn install() {
     };
 
     let (contract_package_hash, access_uref) = storage::create_contract_package_at_hash();
-    runtime::put_key(HASH_KEY_NAME, contract_package_hash.into());
-    runtime::put_key(ACCESS_KEY_NAME, access_uref.into());
+    runtime::put_key(HASH_KEY, contract_package_hash.into());
+    runtime::put_key(ACCESS_KEY, access_uref.into());
 
     let named_keys = NamedKeys::new();
 

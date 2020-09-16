@@ -227,6 +227,7 @@ where
         // The number of rounds after which a block reward is paid out.
         // TODO: Make this configurable?
         let reward_delay = 8;
+        // TODO: The initial round length should be the observed median of the switch block.
         let params = Params::new(
             0, // TODO: get a proper seed.
             BLOCK_REWARD,

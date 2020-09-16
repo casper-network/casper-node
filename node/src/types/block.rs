@@ -489,6 +489,10 @@ impl Block {
         self.header.era_id()
     }
 
+    pub(crate) fn timestamp(&self) -> Timestamp {
+        self.header.timestamp()
+    }
+
     pub(crate) fn is_genesis_child(&self) -> bool {
         self.header.era_id == EraId(0) && self.header.height == 0
     }
