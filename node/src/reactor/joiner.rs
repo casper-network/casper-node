@@ -302,7 +302,10 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
             validator_stakes,
-            &chainspec_loader.chainspec().genesis.highway_config,
+            chainspec_loader.chainspec(),
+            chainspec_loader
+                .genesis_post_state_hash()
+                .expect("should have genesis post state hash"),
             rng,
         )?;
 
