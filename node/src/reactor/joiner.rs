@@ -414,6 +414,13 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                     };
                     self.dispatch_event(effect_builder, rng, Event::BlockByHeightFetcher(event))
                 }
+                Message::AddressGossiper(message) => {
+                    let event = Event::AddressGossiper(gossiper::Event::MessageReceived {
+                        sender,
+                        message,
+                    });
+                    self.dispatch_event(effect_builder, rng, event)
+                }
                 other => {
                     warn!(?other, "network announcement ignored.");
                     Effects::new()
