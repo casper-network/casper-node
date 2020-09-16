@@ -161,4 +161,4 @@ validators. We might need to update `config.toml` to support different fields, f
 
 ## Bugs
 
-Please file and bugs as issues on [the casper-node GitHub repo](https://github.com/CasperLabs/casper-node).
+Please file any bugs as issues on [the casper-node GitHub repo](https://github.com/CasperLabs/casper-node).
