@@ -359,7 +359,7 @@ impl AsRef<[u8]> for BlockHash {
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct BlockHeader {
     parent_hash: BlockHash,
-    post_state_hash: Digest,
+    global_state_hash: Digest,
     body_hash: Digest,
     deploy_hashes: Vec<DeployHash>,
     random_bit: bool,
@@ -378,8 +378,8 @@ impl BlockHeader {
     }
 
     /// The root hash of the resulting global state.
-    pub fn post_state_hash(&self) -> &Digest {
-        &self.post_state_hash
+    pub fn global_state_hash(&self) -> &Digest {
+        &self.global_state_hash
     }
 
     /// The hash of the block's body.
@@ -447,7 +447,7 @@ impl Display for BlockHeader {
             "block header parent hash {}, post-state hash {}, body hash {}, deploys [{}], \
             random bit {}, switch block {}, timestamp {}, system_transactions [{}]",
             self.parent_hash.inner(),
-            self.post_state_hash,
+            self.global_state_hash,
             self.body_hash,
             DisplayIter::new(self.deploy_hashes.iter()),
             self.random_bit,
@@ -471,7 +471,7 @@ pub struct Block {
 impl Block {
     pub(crate) fn new(
         parent_hash: BlockHash,
-        post_state_hash: Digest,
+        global_state_hash: Digest,
         finalized_block: FinalizedBlock,
     ) -> Self {
         let body = ();
@@ -484,7 +484,7 @@ impl Block {
 
         let header = BlockHeader {
             parent_hash,
-            post_state_hash,
+            global_state_hash,
             body_hash,
             deploy_hashes: finalized_block.proto_block.deploys,
             random_bit: finalized_block.proto_block.random_bit,
@@ -514,8 +514,8 @@ impl Block {
         self.header.parent_hash()
     }
 
-    pub(crate) fn post_state_hash(&self) -> &Digest {
-        self.header.post_state_hash()
+    pub(crate) fn global_state_hash(&self) -> &Digest {
+        self.header.global_state_hash()
     }
 
     pub(crate) fn deploy_hashes(&self) -> &Vec<DeployHash> {
@@ -588,8 +588,8 @@ impl Block {
         );
 
         let parent_hash = BlockHash::new(Digest::random(rng));
-        let post_state_hash = Digest::random(rng);
-        let mut block = Block::new(parent_hash, post_state_hash, finalized_block);
+        let global_state_hash = Digest::random(rng);
+        let mut block = Block::new(parent_hash, global_state_hash, finalized_block);
 
         let signatures_count = rng.gen_range(0, 11);
         for _ in 0..signatures_count {
@@ -611,7 +611,7 @@ impl Display for Block {
             random bit {}, timestamp {}, era_id {}, height {}, system_transactions [{}], proofs count {}",
             self.hash.inner(),
             self.header.parent_hash.inner(),
-            self.header.post_state_hash,
+            self.header.global_state_hash,
             self.header.body_hash,
             DisplayIter::new(self.header.deploy_hashes.iter()),
             self.header.random_bit,
@@ -740,7 +740,7 @@ mod json {
     #[derive(Serialize, Deserialize)]
     struct JsonBlockHeader {
         parent_hash: String,
-        post_state_hash: String,
+        global_state_hash: String,
         body_hash: String,
         deploy_hashes: Vec<String>,
         random_bit: bool,
@@ -756,7 +756,7 @@ mod json {
         fn from(header: &BlockHeader) -> Self {
             JsonBlockHeader {
                 parent_hash: hex::encode(header.parent_hash),
-                post_state_hash: hex::encode(header.post_state_hash),
+                global_state_hash: hex::encode(header.global_state_hash),
                 body_hash: hex::encode(header.body_hash),
                 deploy_hashes: header
                     .deploy_hashes
@@ -799,7 +799,7 @@ mod json {
                     Digest::from_hex(&header.parent_hash)
                         .map_err(|error| Error::DecodeFromJson(Box::new(error)))?,
                 ),
-                post_state_hash: Digest::from_hex(&header.post_state_hash)
+                global_state_hash: Digest::from_hex(&header.global_state_hash)
                     .map_err(|error| Error::DecodeFromJson(Box::new(error)))?,
                 body_hash: Digest::from_hex(&header.body_hash)
                     .map_err(|error| Error::DecodeFromJson(Box::new(error)))?,

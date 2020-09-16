@@ -98,6 +98,7 @@ impl ApiServer {
 async fn run_server<REv: ReactorEventT>(config: Config, effect_builder: EffectBuilder<REv>) {
     let put_deploy = rpcs::account::PutDeploy::create_filter(effect_builder);
     let get_block = rpcs::chain::GetBlock::create_filter(effect_builder);
+    let get_global_state_hash = rpcs::chain::GetGlobalStateHash::create_filter(effect_builder);
     let get_item = rpcs::state::GetItem::create_filter(effect_builder);
     let get_deploy = rpcs::info::GetDeploy::create_filter(effect_builder);
     let get_peers = rpcs::info::GetPeers::create_filter(effect_builder);
@@ -107,6 +108,7 @@ async fn run_server<REv: ReactorEventT>(config: Config, effect_builder: EffectBu
     let service = warp_json_rpc::service(
         put_deploy
             .or(get_block)
+            .or(get_global_state_hash)
             .or(get_item)
             .or(get_deploy)
             .or(get_peers)
@@ -162,7 +164,7 @@ impl ApiServer {
                 Either::Right(effect_builder.get_last_finalized_block())
             }
             .await
-            .map(|block| *block.post_state_hash());
+            .map(|block| *block.global_state_hash());
 
             let state_hash = match maybe_state_hash {
                 Some(hash) => hash,

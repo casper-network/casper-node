@@ -203,7 +203,7 @@ impl BlockExecutor {
                     block.height(),
                     ExecutedBlockSummary {
                         hash: *block.hash(),
-                        post_state_hash: *block.post_state_hash(),
+                        post_state_hash: *block.global_state_hash(),
                     },
                 )
             })
