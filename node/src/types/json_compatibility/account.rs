@@ -1,8 +1,5 @@
 //! This file provides types to allow conversion from an EE `Account` into a similar type
 //! which can be serialized to a valid JSON representation.
-//!
-//! It is stored as metadata related to a given deploy, and made available to clients via the
-//! JSON-RPC API.
 
 use std::collections::BTreeMap;
 

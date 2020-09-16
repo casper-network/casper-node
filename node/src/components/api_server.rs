@@ -16,10 +16,7 @@ mod rpcs;
 
 use std::{convert::Infallible, fmt::Debug, net::SocketAddr};
 
-use futures::{
-    future::{self, Either},
-    join,
-};
+use futures::{future, join};
 use hyper::Server;
 use lazy_static::lazy_static;
 use rand::{CryptoRng, Rng};
@@ -33,6 +30,7 @@ use casper_types::Key;
 use super::Component;
 use crate::{
     components::storage::Storage,
+    crypto::hash::Digest,
     effect::{
         announcements::ApiServerAnnouncement,
         requests::{
@@ -42,7 +40,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     small_network::NodeId,
-    types::{BlockHash, StatusFeed},
+    types::StatusFeed,
 };
 pub use config::Config;
 pub(crate) use event::Event;
@@ -150,37 +148,18 @@ impl ApiServer {
     fn handle_query<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        maybe_hash: Option<BlockHash>,
+        global_state_hash: Digest,
         base_key: Key,
         path: Vec<String>,
-        responder: Responder<Option<Result<QueryResult, engine_state::Error>>>,
+        responder: Responder<Result<QueryResult, engine_state::Error>>,
     ) -> Effects<Event> {
-        async move {
-            let maybe_state_hash = if let Some(block_hash) = maybe_hash {
-                // Try to get the block from storage.
-                Either::Left(effect_builder.get_block_from_storage(block_hash))
-            } else {
-                // Get the last block fom the linear chain.
-                Either::Right(effect_builder.get_last_finalized_block())
-            }
-            .await
-            .map(|block| *block.global_state_hash());
-
-            let state_hash = match maybe_state_hash {
-                Some(hash) => hash,
-                None => {
-                    info!("failed to get block for query");
-                    return None;
-                }
-            };
-
-            let query = QueryRequest::new(state_hash.into(), base_key, path);
-            Some(effect_builder.query_global_state(query).await)
-        }
-        .event(move |result| Event::QueryGlobalStateResult {
-            result,
-            main_responder: responder,
-        })
+        let query = QueryRequest::new(global_state_hash.into(), base_key, path);
+        effect_builder
+            .query_global_state(query)
+            .event(move |result| Event::QueryGlobalStateResult {
+                result,
+                main_responder: responder,
+            })
     }
 }
 
@@ -232,11 +211,11 @@ where
                     main_responder: responder,
                 }),
             Event::ApiRequest(ApiRequest::QueryGlobalState {
-                maybe_hash,
+                global_state_hash,
                 base_key,
                 path,
                 responder,
-            }) => self.handle_query(effect_builder, maybe_hash, base_key, path, responder),
+            }) => self.handle_query(effect_builder, global_state_hash, base_key, path, responder),
             Event::ApiRequest(ApiRequest::GetDeploy { hash, responder }) => effect_builder
                 .get_deploy_and_metadata_from_storage(hash)
                 .event(move |result| Event::GetDeployResult {

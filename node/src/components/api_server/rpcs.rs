@@ -37,12 +37,9 @@ enum ErrorCode {
     ParseBlockHash = 32003,
     NoSuchBlock = 32004,
     ParseQueryKey = 32005,
-    QueryYieldedContract = 32006,
-    QueryYieldedContractPackage = 32007,
-    QueryYieldedContractWasm = 32008,
-    QueryFailed = 32009,
-    QueryFailedToExecute = 32010,
-    MetricsNotAvailable = 32011,
+    QueryFailed = 32006,
+    QueryFailedToExecute = 32007,
+    MetricsNotAvailable = 32008,
 }
 
 #[derive(Debug)]

@@ -6,9 +6,11 @@ use casper_types::Key;
 
 mod account;
 mod execution_result;
+mod stored_value;
 
 pub use account::Account;
 pub use execution_result::ExecutionResult;
+pub use stored_value::StoredValue;
 
 fn convert_named_keys(named_keys: &BTreeMap<String, Key>) -> BTreeMap<String, String> {
     named_keys

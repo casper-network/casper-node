@@ -1,4 +1,4 @@
-use std::str;
+use std::{convert::TryFrom, str};
 
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
@@ -8,90 +8,26 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp_json_rpc::Builder;
 
-use casper_execution_engine::{
-    core::engine_state::{self, QueryResult},
-    shared::stored_value::StoredValue,
-};
-use casper_types::{bytesrepr::ToBytes, CLValue, Key};
+use casper_execution_engine::core::engine_state::QueryResult;
+use casper_types::Key;
 
 use super::{ApiRequest, Error, ErrorCode, ReactorEventT, RpcWithParams};
 use crate::{
-    components::api_server::CLIENT_API_VERSION,
-    crypto::hash::Digest,
-    effect::EffectBuilder,
-    reactor::QueueKind,
-    types::{json_compatibility::Account, BlockHash},
+    components::api_server::CLIENT_API_VERSION, crypto::hash::Digest, effect::EffectBuilder,
+    reactor::QueueKind, types::json_compatibility::StoredValue,
 };
 
 #[derive(Deserialize)]
 pub(in crate::components::api_server) struct GetItemParams {
-    /// The block to query, or use the latest block if `None`
-    block_hash: Option<String>,
+    /// The global state hash.
+    global_state_hash: String,
     /// Hex-encoded `casper_types::Key`.
     key: String,
     /// The path components starting from the key as base.
     path: Vec<String>,
 }
 
-impl GetItemParams {
-    fn get_block_hash(&self) -> Result<Option<BlockHash>, String> {
-        match self.block_hash.as_ref() {
-            Some(hex_hash) => Digest::from_hex(hex_hash)
-                .map_err(|error| format!("failed to parse block hash: {}", error))
-                .map(|digest| Some(BlockHash::new(digest))),
-            None => Ok(None),
-        }
-    }
-}
-
 pub(in crate::components::api_server) struct GetItem {}
-
-enum CLValueOrAccount {
-    CLValue(CLValue),
-    Account(Account),
-}
-
-impl GetItem {
-    /// Returns the `CLValue` or `Account` contained in the result, serialized and hex-encoded, or
-    /// else returns an error with the error code and message which should be returned to the
-    /// client.
-    fn cl_value_or_account_from_result(
-        result: Option<Result<QueryResult, engine_state::Error>>,
-    ) -> Result<CLValueOrAccount, (i64, String)> {
-        match result {
-            Some(Ok(QueryResult::Success(StoredValue::CLValue(cl_value)))) => {
-                Ok(CLValueOrAccount::CLValue(cl_value))
-            }
-            Some(Ok(QueryResult::Success(StoredValue::Account(ee_account)))) => {
-                Ok(CLValueOrAccount::Account(Account::from(&ee_account)))
-            }
-            Some(Ok(QueryResult::Success(StoredValue::Contract(_)))) => Err((
-                ErrorCode::QueryYieldedContract as i64,
-                String::from("state query yielded contract, not cl_value"),
-            )),
-            Some(Ok(QueryResult::Success(StoredValue::ContractPackage(_)))) => Err((
-                ErrorCode::QueryYieldedContractPackage as i64,
-                String::from("state query yielded contract package, not cl_value"),
-            )),
-            Some(Ok(QueryResult::Success(StoredValue::ContractWasm(_)))) => Err((
-                ErrorCode::QueryYieldedContractWasm as i64,
-                String::from("state query yielded contract wasm, not cl_value"),
-            )),
-            Some(Ok(query_result)) => Err((
-                ErrorCode::QueryFailed as i64,
-                format!("state query failed: {:?}", query_result),
-            )),
-            Some(Err(error)) => Err((
-                ErrorCode::QueryFailedToExecute as i64,
-                format!("state query failed to execute: {}", error),
-            )),
-            None => Err((
-                ErrorCode::NoSuchBlock as i64,
-                String::from("block not known for state query"),
-            )),
-        }
-    }
-}
 
 impl RpcWithParams for GetItem {
     const METHOD: &'static str = "state_get_item";
@@ -103,25 +39,19 @@ impl RpcWithParams for GetItem {
         response_builder: Builder,
         params: Self::RequestParams,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        /// The JSON-RPC response's "result" if the queried value is a `CLValue`.
+        /// The JSON-RPC response's "result".
         #[derive(Serialize)]
-        struct CLValueResponseResult {
+        struct ResponseResult {
             api_version: Version,
-            /// Hex-encoded, serialized CLValue.
-            cl_value: String,
-        }
-
-        /// The JSON-RPC response's "result" if the queried value is an `Account`.
-        #[derive(Serialize)]
-        struct AccountResponseResult {
-            api_version: Version,
-            account: Account,
+            stored_value: StoredValue,
         }
 
         async move {
-            // Try to parse a block hash from the params.
-            let maybe_hash = match params.get_block_hash() {
-                Ok(maybe_hash) => maybe_hash,
+            // Try to parse the global state hash from the params.
+            let global_state_hash = match Digest::from_hex(&params.global_state_hash)
+                .map_err(|error| format!("failed to parse global state hash: {}", error))
+            {
+                Ok(hash) => hash,
                 Err(error_msg) => {
                     info!("{}", error_msg);
                     return Ok(response_builder.error(warp_json_rpc::Error::custom(
@@ -146,10 +76,10 @@ impl RpcWithParams for GetItem {
             };
 
             // Run the query.
-            let maybe_query_result = effect_builder
+            let query_result = effect_builder
                 .make_request(
                     |responder| ApiRequest::QueryGlobalState {
-                        maybe_hash,
+                        global_state_hash,
                         base_key,
                         path: params.path,
                         responder,
@@ -158,38 +88,39 @@ impl RpcWithParams for GetItem {
                 )
                 .await;
 
-            // Extract the `CLValue` or `Account` from the result.
-            let cl_value_or_account =
-                match Self::cl_value_or_account_from_result(maybe_query_result) {
-                    Ok(cl_value_or_account) => cl_value_or_account,
-                    Err((code, error_msg)) => {
-                        info!("{}", error_msg);
-                        return Ok(response_builder
-                            .error(warp_json_rpc::Error::custom(code, error_msg))?);
-                    }
-                };
+            // Extract the EE `StoredValue` from the result.
+            let ee_stored_value = match query_result {
+                Ok(QueryResult::Success(stored_value)) => stored_value,
+                Ok(query_result) => {
+                    let error_msg = format!("state query failed: {:?}", query_result);
+                    info!("{}", error_msg);
+                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                        ErrorCode::QueryFailed as i64,
+                        error_msg,
+                    ))?);
+                }
+                Err(error) => {
+                    let error_msg = format!("state query failed to execute: {}", error);
+                    info!("{}", error_msg);
+                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                        ErrorCode::QueryFailedToExecute as i64,
+                        error_msg,
+                    ))?);
+                }
+            };
 
             // Return the result.
-            match cl_value_or_account {
-                CLValueOrAccount::CLValue(cl_value) => match cl_value.to_bytes() {
-                    Ok(serialized_cl_value) => {
-                        let result = CLValueResponseResult {
-                            api_version: CLIENT_API_VERSION.clone(),
-                            cl_value: hex::encode(&serialized_cl_value),
-                        };
-                        Ok(response_builder.success(result)?)
-                    }
-                    Err(error) => {
-                        info!("failed to serialize cl_value: {}", error);
-                        return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
-                    }
-                },
-                CLValueOrAccount::Account(account) => {
-                    let result = AccountResponseResult {
+            match StoredValue::try_from(&ee_stored_value) {
+                Ok(stored_value) => {
+                    let result = ResponseResult {
                         api_version: CLIENT_API_VERSION.clone(),
-                        account,
+                        stored_value,
                     };
                     Ok(response_builder.success(result)?)
+                }
+                Err(error) => {
+                    info!("failed to encode stored value: {}", error);
+                    return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
                 }
             }
         }

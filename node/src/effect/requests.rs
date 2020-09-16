@@ -349,17 +349,16 @@ pub enum ApiRequest<I> {
         /// Responder to call with the result.
         responder: Responder<Option<LinearBlock>>,
     },
-    /// If `maybe_hash` is `Some`, the state at the specified block is queried.  If `maybe_hash` is
-    /// `None`, the latest block is used.
+    /// Query the global state at the given root hash.
     QueryGlobalState {
-        /// The block to query, or the latest block if `None`
-        maybe_hash: Option<BlockHash>,
+        /// The global state hash.
+        global_state_hash: Digest,
         /// Hex-encoded `casper_types::Key`.
         base_key: Key,
         /// The path components starting from the key as base.
         path: Vec<String>,
         /// Responder to call with the result.
-        responder: Responder<Option<Result<QueryResult, engine_state::Error>>>,
+        responder: Responder<Result<QueryResult, engine_state::Error>>,
     },
     /// Return the specified deploy and metadata if it exists, else `None`.
     GetDeploy {
@@ -397,24 +396,14 @@ impl<I> Display for ApiRequest<I> {
                 maybe_hash: None, ..
             } => write!(formatter, "get latest block"),
             ApiRequest::QueryGlobalState {
-                maybe_hash: Some(hash),
+                global_state_hash,
                 base_key,
                 path,
                 ..
             } => write!(
                 formatter,
                 "query {}, base_key: {}, path: {:?}",
-                hash, base_key, path
-            ),
-            ApiRequest::QueryGlobalState {
-                maybe_hash: None,
-                base_key,
-                path,
-                ..
-            } => write!(
-                formatter,
-                "query latest block, base_key: {}, path: {:?}",
-                base_key, path
+                global_state_hash, base_key, path
             ),
             ApiRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
             ApiRequest::GetPeers { .. } => write!(formatter, "get peers"),

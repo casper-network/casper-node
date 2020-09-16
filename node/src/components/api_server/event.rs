@@ -24,8 +24,8 @@ pub enum Event {
         main_responder: Responder<Option<Block>>,
     },
     QueryGlobalStateResult {
-        result: Option<Result<QueryResult, engine_state::Error>>,
-        main_responder: Responder<Option<Result<QueryResult, engine_state::Error>>>,
+        result: Result<QueryResult, engine_state::Error>,
+        main_responder: Responder<Result<QueryResult, engine_state::Error>>,
     },
     GetDeployResult {
         hash: DeployHash,
