@@ -71,7 +71,9 @@ sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = ${TIMESTAMP}/" ${CHAINSPEC}
 sed -i 's|\.\./\.\.|'"$BASEDIR"'|' ${CHAINSPEC}
 sed -i 's|accounts\.csv|'"$BASEDIR"'/resources/local/accounts.csv|' ${CHAINSPEC}
 
-NODES="$@"
+ARGS="$@"
+# If no nodes defined, start all.
+NODES="${ARGS:-1 2 3 4 5}"
 
 for i in 1 2 3 4 5; do
     case "$NODES" in
