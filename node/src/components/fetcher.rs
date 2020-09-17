@@ -297,6 +297,7 @@ where
                     }
                 }
             }
+            Event::AbsentRemotely { id, peer } => self.signal(id, None, peer),
             Event::TimeoutPeer { id, peer } => self.signal(id, None, peer),
         }
     }

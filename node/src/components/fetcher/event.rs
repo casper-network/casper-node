@@ -36,6 +36,8 @@ pub enum Event<T: Item> {
         item: Box<T>,
         source: Source<NodeId>,
     },
+    /// An item was not available on the remote peer.
+    AbsentRemotely { id: T::Id, peer: NodeId },
     /// The timeout has elapsed and we should clean up state.
     TimeoutPeer { id: T::Id, peer: NodeId },
 }
@@ -75,6 +77,9 @@ impl<T: Item> Display for Event<T> {
                 "check get from peer timeout for {} with {}",
                 id, peer
             ),
+            Event::AbsentRemotely { id, peer } => {
+                write!(formatter, "Item {} was not available on {}", id, peer)
+            }
         }
     }
 }
