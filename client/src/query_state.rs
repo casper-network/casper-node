@@ -13,33 +13,6 @@ enum DisplayOrder {
     Path,
 }
 
-/// Handles providing the arg for and retrieval of the global state hash.
-mod global_state_hash {
-    use super::*;
-
-    const ARG_NAME: &str = "global-state-hash";
-    const ARG_SHORT: &str = "g";
-    const ARG_VALUE_NAME: &str = "HEX STRING";
-    const ARG_HELP: &str = "Hex-encoded global state hash";
-
-    pub(super) fn arg() -> Arg<'static, 'static> {
-        Arg::with_name(ARG_NAME)
-            .long(ARG_NAME)
-            .short(ARG_SHORT)
-            .required(true)
-            .value_name(ARG_VALUE_NAME)
-            .help(ARG_HELP)
-            .display_order(DisplayOrder::GlobalStateHash as usize)
-    }
-
-    pub(super) fn get(matches: &ArgMatches) -> String {
-        matches
-            .value_of(ARG_NAME)
-            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
-            .to_string()
-    }
-}
-
 /// Handles providing the arg for and retrieval of the key.
 mod key {
     use super::*;
@@ -115,14 +88,16 @@ impl<'a, 'b> ClientCommand<'a, 'b> for QueryState {
             .arg(common::node_address::arg(
                 DisplayOrder::NodeAddress as usize,
             ))
-            .arg(global_state_hash::arg())
+            .arg(common::global_state_hash::arg(
+                DisplayOrder::GlobalStateHash as usize,
+            ))
             .arg(key::arg())
             .arg(path::arg())
     }
 
     fn run(matches: &ArgMatches<'_>) {
         let node_address = common::node_address::get(matches);
-        let global_state_hash = global_state_hash::get(matches);
+        let global_state_hash = common::global_state_hash::get(matches);
         let key = key::get(matches);
         let path = path::get(matches);
 

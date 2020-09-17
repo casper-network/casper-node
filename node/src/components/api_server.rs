@@ -24,7 +24,7 @@ use semver::Version;
 use tracing::{debug, info, warn};
 use warp::Filter;
 
-use casper_execution_engine::core::engine_state::{self, QueryRequest, QueryResult};
+use casper_execution_engine::core::engine_state::{self, QueryRequest, QueryResult, BalanceRequest, BalanceResult};
 use casper_types::Key;
 
 use super::Component;
@@ -102,6 +102,7 @@ async fn run_server<REv: ReactorEventT>(config: Config, effect_builder: EffectBu
     let get_peers = rpcs::info::GetPeers::create_filter(effect_builder);
     let get_status = rpcs::info::GetStatus::create_filter(effect_builder);
     let get_metrics = rpcs::info::GetMetrics::create_filter(effect_builder);
+    let get_balance = rpcs::balance::GetBalance::create_filter(effect_builder);
 
     let service = warp_json_rpc::service(
         put_deploy
@@ -111,6 +112,7 @@ async fn run_server<REv: ReactorEventT>(config: Config, effect_builder: EffectBu
             .or(get_deploy)
             .or(get_peers)
             .or(get_status)
+            .or(get_balance)
             .or(get_metrics),
     );
 
@@ -157,6 +159,22 @@ impl ApiServer {
         effect_builder
             .query_global_state(query)
             .event(move |result| Event::QueryGlobalStateResult {
+                result,
+                main_responder: responder,
+            })
+    }
+
+    fn handle_get_balance<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        global_state_hash: Digest,
+        purse_key: Key,
+        responder: Responder<Result<BalanceResult, engine_state::Error>>,
+    ) -> Effects<Event> {
+        let query = BalanceRequest::new(global_state_hash.into(), purse_key);
+        effect_builder
+            .get_balance(query)
+            .event(move |result| Event::GetBalanceResult {
                 result,
                 main_responder: responder,
             })
@@ -216,6 +234,11 @@ where
                 path,
                 responder,
             }) => self.handle_query(effect_builder, global_state_hash, base_key, path, responder),
+            Event::ApiRequest(ApiRequest::GetBalance {
+                global_state_hash,
+                purse_key,
+                responder,
+            }) => self.handle_get_balance(effect_builder, global_state_hash, purse_key, responder),
             Event::ApiRequest(ApiRequest::GetDeploy { hash, responder }) => effect_builder
                 .get_deploy_and_metadata_from_storage(hash)
                 .event(move |result| Event::GetDeployResult {
@@ -251,6 +274,10 @@ where
                 main_responder,
             } => main_responder.respond(*result).ignore(),
             Event::QueryGlobalStateResult {
+                result,
+                main_responder,
+            } => main_responder.respond(result).ignore(),
+            Event::GetBalanceResult {
                 result,
                 main_responder,
             } => main_responder.respond(result).ignore(),

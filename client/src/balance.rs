@@ -1,6 +1,7 @@
 use std::str;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
+use serde_json::{json, Map, Value};
 
 use crate::{command::ClientCommand, common, rpc::RpcClient};
 
@@ -8,8 +9,7 @@ use crate::{command::ClientCommand, common, rpc::RpcClient};
 enum DisplayOrder {
     NodeAddress,
     GlobalStateHash,
-    Key,
-    Path,
+    PurseKey,
 }
 
 pub struct GetBalance {}
@@ -17,84 +17,56 @@ pub struct GetBalance {}
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct BalanceArgs {
     pub global_state_hash: String,
-    pub key: String,
-    pub path: Vec<String>,
+    pub purse_key: String,
+}
+
+/// Handles providing the arg for and retrieval of the key.
+mod purse_key {
+    use super::*;
+
+    const ARG_NAME: &str = "purse-key";
+    const ARG_SHORT: &str = "p";
+    const ARG_VALUE_NAME: &str = "FORMATTED STRING";
+    const ARG_HELP: &str = "The base key for the query.  This must be a properly formatted uref \
+        \"uref-<HEX STRING>-<THREE DIGIT INTEGER>\"";
+
+    pub(super) fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .short(ARG_SHORT)
+            .required(true)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .display_order(DisplayOrder::PurseKey as usize)
+    }
+
+    pub(super) fn get(matches: &ArgMatches) -> String {
+        matches
+            .value_of(ARG_NAME)
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
+            .to_string()
+    }
 }
 
 mod balance_args {
     use super::*;
 
-    mod names {
-        pub const KEY: &str = "key";
-        pub const PATH: &str = "path";
-        pub const GLOBAL_STATE_HASH: &str = "global_state_hash";
-    }
+    pub(super) fn get(matches: &ArgMatches) -> Map<String, Value> {
+        let purse_key = purse_key::get(&matches);
+        let global_state_hash = common::global_state_hash::get(&matches);
 
-    mod value_names {
-        pub const KEY: &str = "HEX STRING";
-        pub const PATH: &str = "key1,key2,key3...";
-        pub const GLOBAL_STATE_HASH: &str = "HEX STRING";
-    }
-
-    mod help {
-        pub const KEY: &str = "key";
-        pub const PATH: &str = "Comma-delimited block hashes";
-        pub const GLOBAL_STATE_HASH: &str = "global state hash";
-    }
-
-    pub(super) fn key() -> Arg<'static, 'static> {
-        Arg::with_name(names::KEY)
-            .required(true)
-            .value_name(value_names::KEY)
-            .help(help::KEY)
-            .display_order(DisplayOrder::Key as usize)
-    }
-
-    pub(super) fn path() -> Arg<'static, 'static> {
-        Arg::with_name(names::PATH)
-            .required(true)
-            .value_name(value_names::PATH)
-            .help(help::PATH)
-            .use_delimiter(true)
-            .multiple(true)
-            .display_order(DisplayOrder::Path as usize)
-    }
-
-    pub(super) fn global_state_hash() -> Arg<'static, 'static> {
-        Arg::with_name(names::GLOBAL_STATE_HASH)
-            .required(true)
-            .value_name(value_names::GLOBAL_STATE_HASH)
-            .help(help::GLOBAL_STATE_HASH)
-            .display_order(DisplayOrder::GlobalStateHash as usize)
-    }
-
-    pub(super) fn get(matches: &ArgMatches) -> BalanceArgs {
-        let key = matches
-            .value_of(names::KEY)
-            .unwrap_or_else(|| panic!("should have {} arg", names::KEY))
-            .to_string();
-
-        let path = matches
-            .values_of(names::PATH)
-            .unwrap_or_else(|| panic!("should have {} arg", names::PATH))
-            .map(str::to_string)
-            .collect::<Vec<_>>();
-
-        let global_state_hash = matches
-            .value_of(names::GLOBAL_STATE_HASH)
-            .map(str::to_string)
-            .unwrap_or_else(|| panic!("should have {} arg", names::GLOBAL_STATE_HASH));
-
-        BalanceArgs {
+        json!(BalanceArgs {
             global_state_hash,
-            key,
-            path,
-        }
+            purse_key,
+        })
+        .as_object()
+        .unwrap()
+        .clone()
     }
 }
 
 impl RpcClient for GetBalance {
-    const RPC_METHOD: &'static str = "state_get_item";
+    const RPC_METHOD: &'static str = "get_balance";
 }
 
 impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {
@@ -108,22 +80,22 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {
             .arg(common::node_address::arg(
                 DisplayOrder::NodeAddress as usize,
             ))
-            .arg(balance_args::global_state_hash())
-            .arg(balance_args::key())
-            .arg(balance_args::path())
+            .arg(common::global_state_hash::arg(
+                DisplayOrder::GlobalStateHash as usize,
+            ))
+            .arg(purse_key::arg())
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let _node_address = common::node_address::get(matches);
-        let _args = balance_args::get(matches);
-        todo!();
-        // let res = match Self::request_sync(&node_address, &args) {
-        //     Ok(res) => res,
-        //     Err(err) => {
-        //         println!("error {:?}", err);
-        //         return;
-        //     }
-        // };
-        // println!("{}", res);
+        let node_address = common::node_address::get(matches);
+        let args = balance_args::get(matches);
+        let res = match Self::request_with_map_params(&node_address, args) {
+            Ok(res) => res,
+            Err(err) => {
+                println!("error {:?}", err);
+                return;
+            }
+        };
+        println!("{}", res);
     }
 }

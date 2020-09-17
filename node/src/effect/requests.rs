@@ -18,6 +18,7 @@ use casper_execution_engine::{
         execution_result::ExecutionResults,
         genesis::GenesisResult,
         query::{QueryRequest, QueryResult},
+        balance::{BalanceRequest, BalanceResult},
         upgrade::{UpgradeConfig, UpgradeResult},
     },
     shared::{additive_map::AdditiveMap, transform::Transform},
@@ -360,6 +361,15 @@ pub enum ApiRequest<I> {
         /// Responder to call with the result.
         responder: Responder<Result<QueryResult, engine_state::Error>>,
     },
+    /// Query the global state at the given root hash.
+    GetBalance {
+        /// The global state hash.
+        global_state_hash: Digest,
+        /// Hex-encoded `casper_types::Key`.
+        purse_key: Key,
+        /// Responder to call with the result.
+        responder: Responder<Result<BalanceResult, engine_state::Error>>,
+    },
     /// Return the specified deploy and metadata if it exists, else `None`.
     GetDeploy {
         /// The hash of the deploy to be retrieved.
@@ -404,6 +414,15 @@ impl<I> Display for ApiRequest<I> {
                 formatter,
                 "query {}, base_key: {}, path: {:?}",
                 global_state_hash, base_key, path
+            ),
+            ApiRequest::GetBalance {
+                global_state_hash,
+                purse_key,
+                ..
+            } => write!(
+                formatter,
+                "balance {}, purse_key: {}",
+                global_state_hash, purse_key 
             ),
             ApiRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
             ApiRequest::GetPeers { .. } => write!(formatter, "get peers"),
@@ -451,8 +470,15 @@ pub enum ContractRuntimeRequest {
     Query {
         /// Query request.
         query_request: QueryRequest,
-        /// Responder to call with the upgrade result.
+        /// Responder to call with the query result.
         responder: Responder<Result<QueryResult, engine_state::Error>>,
+    },
+    /// A balance request.
+    GetBalance {
+        /// Balance request.
+        balance_request: BalanceRequest,
+        /// Responder to call with the balance result.
+        responder: Responder<Result<BalanceResult, engine_state::Error>>,
     },
 }
 
@@ -488,6 +514,10 @@ impl Display for ContractRuntimeRequest {
 
             ContractRuntimeRequest::Query { query_request, .. } => {
                 write!(formatter, "query request: {:?}", query_request)
+            }
+
+            ContractRuntimeRequest::GetBalance { balance_request, .. } => {
+                write!(formatter, "balance request: {:?}", balance_request)
             }
         }
     }

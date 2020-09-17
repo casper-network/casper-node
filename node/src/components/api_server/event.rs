@@ -6,7 +6,7 @@ use std::{
 
 use derive_more::From;
 
-use casper_execution_engine::core::engine_state::{self, QueryResult};
+use casper_execution_engine::core::engine_state::{self, QueryResult, BalanceResult};
 
 use crate::{
     components::{small_network::NodeId, storage::DeployMetadata},
@@ -40,6 +40,10 @@ pub enum Event {
         text: Option<String>,
         main_responder: Responder<Option<String>>,
     },
+    GetBalanceResult {
+        result: Result<BalanceResult, engine_state::Error>,
+        main_responder: Responder<Result<BalanceResult, engine_state::Error>>,
+    },
 }
 
 impl Display for Event {
@@ -58,6 +62,9 @@ impl Display for Event {
             } => write!(formatter, "get latest block result: {:?}", result),
             Event::QueryGlobalStateResult { result, .. } => {
                 write!(formatter, "query result: {:?}", result)
+            }
+            Event::GetBalanceResult { result, .. } => {
+                write!(formatter, "balance result: {:?}", result)
             }
             Event::GetDeployResult { hash, result, .. } => {
                 write!(formatter, "get deploy result for {}: {:?}", hash, result)
