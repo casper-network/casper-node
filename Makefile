@@ -185,7 +185,7 @@ clean:
 	$(CARGO) clean
 
 .PHONY: build-for-packaging
-build-for-packaging:
+build-for-packaging: build-system-contracts
 	$(CARGO) build --release
 
 .PHONY: deb
