@@ -622,7 +622,7 @@ impl<REv> EffectBuilder<REv> {
             |responder| LinearChainRequest::BlockAtHeightLocal(height, responder),
             QueueKind::Regular,
         )
-        .map(|block| block.map(|b| BlockByHeight::new(b)))
+        .map(|block| block.map(BlockByHeight::new))
         .await
     }
 

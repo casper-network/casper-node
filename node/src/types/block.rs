@@ -613,13 +613,13 @@ impl Item for Block {
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BlockByHeight {
     Absent(u64),
-    Block(Block),
+    Block(Box<Block>),
 }
 
 impl BlockByHeight {
     /// Creates a new `BlockByHeight`
     pub fn new(block: Block) -> Self {
-        BlockByHeight::Block(block)
+        BlockByHeight::Block(Box::new(block))
     }
 
     pub fn height(&self) -> u64 {

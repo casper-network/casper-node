@@ -124,7 +124,7 @@ impl<I: Clone + 'static> LinearChainSync<I> {
         init_hash: Option<BlockHash>,
     ) -> Self {
         let state = init_hash
-            .map(|bh| State::sync_trusted_hash(bh))
+            .map(State::sync_trusted_hash)
             .unwrap_or_else(|| State::None);
         LinearChainSync {
             peers: Vec::new(),
@@ -472,7 +472,7 @@ where
                     }
                     BlockByHeight::Block(block) => Event::GetBlockHeightResult(
                         block_height,
-                        BlockByHeightResult::FromPeer(Box::new(block), peer),
+                        BlockByHeightResult::FromPeer(block, peer),
                     ),
                 },
                 FetchResult::FromStorage(result) => match *result {
@@ -481,7 +481,7 @@ where
                     }
                     BlockByHeight::Block(block) => Event::GetBlockHeightResult(
                         block_height,
-                        BlockByHeightResult::FromStorage(Box::new(block)),
+                        BlockByHeightResult::FromStorage(block),
                     ),
                 },
             },
