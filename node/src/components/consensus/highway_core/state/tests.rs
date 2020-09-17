@@ -154,6 +154,7 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     let mut wvote = WireVote {
         panorama: panorama!(N, b1, c0),
         creator: BOB,
+        instance_id: 1u64,
         value: None,
         seq_number: 3,
         timestamp: state.vote(&b1).timestamp + TimeDiff::from(1),
@@ -279,6 +280,7 @@ fn round_exp_validity() -> Result<(), AddVoteError<TestContext>> {
     let mut wvote = WireVote {
         panorama: panorama!(a0, b1, N),
         creator: BOB,
+        instance_id: 1u64,
         value: None,
         seq_number: 2,
         timestamp: Timestamp::from(32 + 32 + 10), // Witness vote, 2/3 through round 3 (length 16).

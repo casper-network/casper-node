@@ -61,6 +61,8 @@ pub(crate) enum VoteError {
     Timestamps,
     #[error("The creator is not a validator.")]
     Creator,
+    #[error("The vote was created for a wrong instance ID.")]
+    InstanceId,
     #[error("The signature is invalid.")]
     Signature,
     #[error("The round length is invalid.")]
@@ -273,13 +275,18 @@ impl<C: Context> State<C> {
         self.evidence.insert(idx, evidence);
     }
 
-    pub(crate) fn wire_vote(&self, hash: &C::Hash) -> Option<SignedWireVote<C>> {
+    pub(crate) fn wire_vote(
+        &self,
+        hash: &C::Hash,
+        instance_id: C::InstanceId,
+    ) -> Option<SignedWireVote<C>> {
         let vote = self.opt_vote(hash)?.clone();
         let opt_block = self.opt_block(hash);
         let value = opt_block.map(|block| block.value.clone());
         let wvote = WireVote {
             panorama: vote.panorama.clone(),
             creator: vote.creator,
+            instance_id,
             value,
             seq_number: vote.seq_number,
             timestamp: vote.timestamp,
@@ -443,7 +450,7 @@ impl<C: Context> State<C> {
                 // predecessor of wvote must be a predecessor of hash0. So we already have a
                 // conflicting vote with the same sequence number:
                 let prev0 = self.find_in_swimlane(hash0, wvote.seq_number).unwrap();
-                let wvote0 = self.wire_vote(prev0).unwrap();
+                let wvote0 = self.wire_vote(prev0, wvote.instance_id.clone()).unwrap();
                 self.add_evidence(Evidence::Equivocation(wvote0, swvote.clone()));
                 Observation::Faulty
             }
