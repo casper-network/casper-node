@@ -22,9 +22,7 @@ pub trait RpcClient {
     where
         P: Serialize,
     {
-        executor::block_on(async {
-            Ok(request(node_address, RPC_ID, Self::RPC_METHOD, params).await?)
-        })
+        executor::block_on(async { request(node_address, RPC_ID, Self::RPC_METHOD, params).await })
     }
 }
 
