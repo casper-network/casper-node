@@ -136,7 +136,6 @@ impl State<TestContext> {
 fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
     let mut rng = TestRng::new();
-    let instance_id = 1u64;
 
     // Create votes as follows; a0, b0 are blocks:
     //
@@ -145,17 +144,17 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     // Bob:   b0 —— b1
     //          \  /
     // Carol:    c0
-    let a0 = add_vote!(state, instance_id, rng, ALICE, 0xA; N, N, N)?;
-    let b0 = add_vote!(state, instance_id, rng, BOB, 0xB; N, N, N)?;
-    let c0 = add_vote!(state, instance_id, rng, CAROL, None; N, b0, N)?;
-    let b1 = add_vote!(state, instance_id, rng, BOB, None; N, b0, c0)?;
-    let _a1 = add_vote!(state, instance_id, rng, ALICE, None; a0, b1, c0)?;
+    let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
+    let b0 = add_vote!(state, rng, BOB, 0xB; N, N, N)?;
+    let c0 = add_vote!(state, rng, CAROL, None; N, b0, N)?;
+    let b1 = add_vote!(state, rng, BOB, None; N, b0, c0)?;
+    let _a1 = add_vote!(state, rng, ALICE, None; a0, b1, c0)?;
 
     // Wrong sequence number: Bob hasn't produced b2 yet.
     let mut wvote = WireVote {
         panorama: panorama!(N, b1, c0),
         creator: BOB,
-        instance_id,
+        instance_id: 1u64,
         value: None,
         seq_number: 3,
         timestamp: state.vote(&b1).timestamp + TimeDiff::from(1),
@@ -171,7 +170,7 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     assert_eq!(Some(VoteError::ThreeVotesInRound), opt_err);
 
     // Inconsistent panorama: If you see b1, you have to see c0, too.
-    let opt_err = add_vote!(state, instance_id, rng, CAROL, None; N, b1, N)
+    let opt_err = add_vote!(state, rng, CAROL, None; N, b1, N)
         .err()
         .map(vote_err);
     assert_eq!(Some(VoteError::InconsistentPanorama(BOB)), opt_err);
@@ -183,7 +182,7 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     assert_eq!(Some(Dependency::Vote(42)), missing);
 
     // Alice equivocates: A1 doesn't see a1.
-    let ae1 = add_vote!(state, instance_id, rng, ALICE, None; a0, b1, c0)?;
+    let ae1 = add_vote!(state, rng, ALICE, None; a0, b1, c0)?;
     assert!(state.has_evidence(ALICE));
 
     let missing = panorama!(F, b1, c0).missing_dependency(&state);
@@ -192,7 +191,7 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     assert_eq!(None, missing);
 
     // Bob can see the equivocation.
-    let b2 = add_vote!(state, instance_id, rng, BOB, None; F, b1, c0)?;
+    let b2 = add_vote!(state, rng, BOB, None; F, b1, c0)?;
 
     // The state's own panorama has been updated correctly.
     assert_eq!(state.panorama, panorama!(F, b2, c0));
@@ -203,11 +202,10 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
 fn find_in_swimlane() -> Result<(), AddVoteError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
     let mut rng = TestRng::new();
-    let instance_id = 1u64;
-    let a0 = add_vote!(state, instance_id, rng, ALICE, 0xA; N, N, N)?;
+    let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
     let mut a = vec![a0];
     for i in 1..10 {
-        let ai = add_vote!(state, instance_id, rng, ALICE, None; a[i - 1], N, N)?;
+        let ai = add_vote!(state, rng, ALICE, None; a[i - 1], N, N)?;
         a.push(ai);
     }
 
@@ -231,7 +229,6 @@ fn find_in_swimlane() -> Result<(), AddVoteError<TestContext>> {
 fn fork_choice() -> Result<(), AddVoteError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
     let mut rng = TestRng::new();
-    let instance_id = 1u64;
 
     // Create blocks with scores as follows:
     //
@@ -240,13 +237,13 @@ fn fork_choice() -> Result<(), AddVoteError<TestContext>> {
     // b0: 12           b2: 4
     //        \
     //          c0: 5 — c1: 5
-    let b0 = add_vote!(state, instance_id, rng, BOB, 0xB0; N, N, N)?;
-    let c0 = add_vote!(state, instance_id, rng, CAROL, 0xC0; N, b0, N)?;
-    let c1 = add_vote!(state, instance_id, rng, CAROL, 0xC1; N, b0, c0)?;
-    let a0 = add_vote!(state, instance_id, rng, ALICE, 0xA0; N, b0, N)?;
-    let b1 = add_vote!(state, instance_id, rng, BOB, None; a0, b0, N)?; // Just a ballot; not shown above.
-    let a1 = add_vote!(state, instance_id, rng, ALICE, 0xA1; a0, b1, c1)?;
-    let b2 = add_vote!(state, instance_id, rng, BOB, 0xB2; a0, b1, N)?;
+    let b0 = add_vote!(state, rng, BOB, 0xB0; N, N, N)?;
+    let c0 = add_vote!(state, rng, CAROL, 0xC0; N, b0, N)?;
+    let c1 = add_vote!(state, rng, CAROL, 0xC1; N, b0, c0)?;
+    let a0 = add_vote!(state, rng, ALICE, 0xA0; N, b0, N)?;
+    let b1 = add_vote!(state, rng, BOB, None; a0, b0, N)?; // Just a ballot; not shown above.
+    let a1 = add_vote!(state, rng, ALICE, 0xA1; a0, b1, c1)?;
+    let b2 = add_vote!(state, rng, BOB, 0xB2; a0, b1, N)?;
 
     // Alice built `a1` on top of `a0`, which had already 7 points.
     assert_eq!(Some(&a0), state.block(&state.vote(&a1).block).parent());
@@ -270,21 +267,20 @@ fn round_exp_validity() -> Result<(), AddVoteError<TestContext>> {
     .with_init_round_exp(6);
     let mut state = State::new(&[Weight(2), Weight(1), Weight(1)], params);
     let mut rng = TestRng::new();
-    let instance_id = 1u64;
 
     // The initial round exponent is 6, so Bob and Carol count as having round exponent 6.
     // Alice starts with 7. Now 6 and 7 are both median values.
-    let a0 = add_vote!(state, instance_id, rng, ALICE, 0, 7u8, 0xA0; N, N, N)?;
+    let a0 = add_vote!(state, rng, ALICE, 0, 7u8, 0xA0; N, N, N)?;
     // Bob is allowed to start with 5 and even go to 4, which is only two below the median 6.
-    let b0 = add_vote!(state, instance_id, rng, BOB, 1, 5u8, None; a0, N, N)?;
+    let b0 = add_vote!(state, rng, BOB, 1, 5u8, None; a0, N, N)?;
     // To change from 5 to 4, he waits for the next round. Witness vote is at 2/3 through that.
-    let b1 = add_vote!(state, instance_id, rng, BOB, 32 + 21, 4u8, None; a0, b0, N)?;
+    let b1 = add_vote!(state, rng, BOB, 32 + 21, 4u8, None; a0, b0, N)?;
 
     // However, 3 is not allowed, because 5 is not a median.
     let mut wvote = WireVote {
         panorama: panorama!(a0, b1, N),
         creator: BOB,
-        instance_id,
+        instance_id: 1u64,
         value: None,
         seq_number: 2,
         timestamp: Timestamp::from(32 + 32 + 10), // Witness vote, 2/3 through round 3 (length 16).
@@ -295,7 +291,7 @@ fn round_exp_validity() -> Result<(), AddVoteError<TestContext>> {
     assert_eq!(Some(VoteError::RoundExponentSpread), opt_err);
 
     // If Carol also goes to 5, 5 becomes a median, too, so 3 is allowed.
-    let c0 = add_vote!(state, instance_id, rng, CAROL, 1, 5u8, None; a0, N, N)?;
+    let c0 = add_vote!(state, rng, CAROL, 1, 5u8, None; a0, N, N)?;
     wvote.panorama = panorama!(a0, b1, c0);
     let vote = SignedWireVote::new(wvote, &BOB_SEC, &mut rng);
     state.add_vote(vote)

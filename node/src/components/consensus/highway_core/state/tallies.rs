@@ -214,7 +214,6 @@ mod tests {
     fn tallies() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new_test(WEIGHTS, 0);
         let mut rng = TestRng::new();
-        let instance_id = 1u64;
 
         // Create blocks with scores as follows:
         //
@@ -223,13 +222,13 @@ mod tests {
         // b0: 12           b2: 4
         //        \
         //          c0: 5 — c1: 5
-        let b0 = add_vote!(state, instance_id, rng, BOB, 0xB0; N, N, N)?;
-        let c0 = add_vote!(state, instance_id, rng, CAROL, 0xC0; N, b0, N)?;
-        let c1 = add_vote!(state, instance_id, rng, CAROL, 0xC1; N, b0, c0)?;
-        let a0 = add_vote!(state, instance_id, rng, ALICE, 0xA0; N, b0, N)?;
-        let b1 = add_vote!(state, instance_id, rng, BOB, None; a0, b0, N)?; // Just a ballot; not shown above.
-        let a1 = add_vote!(state, instance_id, rng, ALICE, 0xA1; a0, b1, c1)?;
-        let b2 = add_vote!(state, instance_id, rng, BOB, 0xB2; a0, b1, N)?;
+        let b0 = add_vote!(state, rng, BOB, 0xB0; N, N, N)?;
+        let c0 = add_vote!(state, rng, CAROL, 0xC0; N, b0, N)?;
+        let c1 = add_vote!(state, rng, CAROL, 0xC1; N, b0, c0)?;
+        let a0 = add_vote!(state, rng, ALICE, 0xA0; N, b0, N)?;
+        let b1 = add_vote!(state, rng, BOB, None; a0, b0, N)?; // Just a ballot; not shown above.
+        let a1 = add_vote!(state, rng, ALICE, 0xA1; a0, b1, c1)?;
+        let b2 = add_vote!(state, rng, BOB, 0xB2; a0, b1, N)?;
 
         // These are the entries of a panorama seeing `a1`, `b2` and `c0`.
         let vote_entries = vec![
