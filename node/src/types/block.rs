@@ -489,6 +489,14 @@ impl Block {
         self.header.era_id == EraId(0) && self.header.height == 0
     }
 
+    pub(crate) fn era_id(&self) -> EraId {
+        self.header.era_id()
+    }
+
+    pub(crate) fn timestamp(&self) -> Timestamp {
+        self.header.timestamp()
+    }
+
     /// Appends the given signature to this block's proofs.  It should have been validated prior to
     /// this via `BlockHash::verify()`.
     pub(crate) fn append_proof(&mut self, proof: Signature) {

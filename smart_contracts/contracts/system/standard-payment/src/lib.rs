@@ -5,12 +5,12 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    standard_payment::{AccountProvider, MintProvider, ProofOfStakeProvider, StandardPayment},
+    proof_of_stake::METHOD_GET_PAYMENT_PURSE,
+    standard_payment::{
+        AccountProvider, MintProvider, ProofOfStakeProvider, StandardPayment, ARG_AMOUNT,
+    },
     ApiError, RuntimeArgs, URef, U512,
 };
-
-const GET_PAYMENT_PURSE: &str = "get_payment_purse";
-pub const ARG_AMOUNT: &str = "amount";
 
 struct StandardPaymentContract;
 
@@ -34,8 +34,11 @@ impl MintProvider for StandardPaymentContract {
 impl ProofOfStakeProvider for StandardPaymentContract {
     fn get_payment_purse(&mut self) -> Result<URef, ApiError> {
         let pos_pointer = system::get_proof_of_stake();
-        let payment_purse =
-            runtime::call_contract(pos_pointer, GET_PAYMENT_PURSE, RuntimeArgs::default());
+        let payment_purse = runtime::call_contract(
+            pos_pointer,
+            METHOD_GET_PAYMENT_PURSE,
+            RuntimeArgs::default(),
+        );
         Ok(payment_purse)
     }
 }

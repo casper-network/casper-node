@@ -1,6 +1,6 @@
 //! Contains implementation of a Auction contract functionality.
-mod args;
 mod bid;
+mod constants;
 mod delegator;
 mod detail;
 mod era_validators;
@@ -11,8 +11,8 @@ mod types;
 mod unbonding_purse;
 
 use alloc::{collections::BTreeMap, vec::Vec};
-pub use args::*;
 pub use bid::{Bid, Bids};
+pub use constants::*;
 pub use delegator::{DelegatedAmounts, Delegators};
 pub use era_validators::{EraId, EraValidators, ValidatorWeights};
 pub use providers::{RuntimeProvider, StorageProvider, SystemProvider};

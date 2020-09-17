@@ -82,13 +82,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         secret: C::ValidatorSecret,
         timestamp: Timestamp,
     ) -> Vec<CpResult<I, C>> {
-        // TODO: We use the minimum as round exponent here, since it is meant to be optimal.
-        // For adaptive round lengths we will probably want to use the most recent one from the
-        // previous era instead.
-        let round_exp = self.highway.params().min_round_exp();
-        let av_effects = self
-            .highway
-            .activate_validator(our_id, secret, round_exp, timestamp);
+        let av_effects = self.highway.activate_validator(our_id, secret, timestamp);
         self.process_av_effects(av_effects)
     }
 

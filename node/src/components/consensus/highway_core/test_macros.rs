@@ -30,9 +30,9 @@ macro_rules! add_vote {
         let panorama = panorama!($($obs),*);
         let seq_number = panorama.next_seq_num(&$state, creator);
         let opt_parent_hash = panorama[creator].correct();
-        // Use our most recent round exponent, or the configured minimum.
+        // Use our most recent round exponent, or the configured initial one.
         let round_exp = opt_parent_hash.map_or_else(
-            || $state.params().min_round_exp(),
+            || $state.params().init_round_exp(),
             |vh| $state.vote(vh).round_exp,
         );
         let value = Option::from($val);
@@ -43,8 +43,8 @@ macro_rules! add_vote {
             .map(|vote| vote.round_id() + vote.round_len());
         // And our timestamp must not be less than any justification's.
         let mut timestamp = panorama
-            .iter_correct()
-            .map(|vh| $state.vote(vh).timestamp + TimeDiff::from(1))
+            .iter_correct(&$state)
+            .map(|vote| vote.timestamp + TimeDiff::from(1))
             .chain(two_votes_limit)
             .max()
             .unwrap_or_else(Timestamp::zero);
