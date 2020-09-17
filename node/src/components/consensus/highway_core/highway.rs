@@ -32,6 +32,12 @@ pub(crate) enum VertexError {
 /// An error due to invalid evidence.
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum EvidenceError {
+    #[error("The creators in the equivocating votes are different.")]
+    EquivocationDifferentCreators,
+    #[error("The sequence numbers in the equivocating votes are different.")]
+    EquivocationDifferentSeqNumbers,
+    #[error("The instance IDs in the equivocating votes are different.")]
+    EquivocationDifferentInstances,
     #[error("The perpetrator is not a validator.")]
     UnknownPerpetrator,
 }
@@ -321,11 +327,11 @@ impl<C: Context> Highway<C> {
                 Ok(self.state.pre_validate_vote(vote)?)
             }
             Vertex::Evidence(evidence) => {
+                evidence.validate()?;
                 if self.validators.contains(evidence.perpetrator()) {
-                    Ok(())
-                } else {
-                    Err(EvidenceError::UnknownPerpetrator.into())
+                    return Err(EvidenceError::UnknownPerpetrator.into());
                 }
+                Ok(())
             }
         }
     }
