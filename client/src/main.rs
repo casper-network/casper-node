@@ -4,6 +4,7 @@ mod common;
 mod deploy;
 mod error;
 mod generate_completion;
+mod get_global_state_hash;
 mod keygen;
 mod params;
 mod query_state;
@@ -16,6 +17,7 @@ use command::ClientCommand;
 use deploy::{GetDeploy, ListDeploys, PutDeploy, Transfer};
 use error::{Error, Result};
 use generate_completion::GenerateCompletion;
+use get_global_state_hash::GetGlobalStateHash;
 use keygen::Keygen;
 use query_state::QueryState;
 use rpc::RpcClient;
@@ -29,6 +31,7 @@ enum DisplayOrder {
     GetDeploy,
     ListDeploys,
     GetBalance,
+    GetGlobalStateHash,
     QueryState,
     Keygen,
     GenerateCompletion,
@@ -43,6 +46,9 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         .subcommand(GetDeploy::build(DisplayOrder::GetDeploy as usize))
         .subcommand(ListDeploys::build(DisplayOrder::ListDeploys as usize))
         .subcommand(GetBalance::build(DisplayOrder::GetBalance as usize))
+        .subcommand(GetGlobalStateHash::build(
+            DisplayOrder::GetGlobalStateHash as usize,
+        ))
         .subcommand(QueryState::build(DisplayOrder::QueryState as usize))
         .subcommand(Keygen::build(DisplayOrder::Keygen as usize))
         .subcommand(GenerateCompletion::build(
@@ -59,6 +65,7 @@ async fn main() {
         (GetDeploy::NAME, Some(matches)) => GetDeploy::run(matches),
         (ListDeploys::NAME, Some(matches)) => ListDeploys::run(matches),
         (GetBalance::NAME, Some(matches)) => GetBalance::run(matches),
+        (GetGlobalStateHash::NAME, Some(matches)) => GetGlobalStateHash::run(matches),
         (QueryState::NAME, Some(matches)) => QueryState::run(matches),
         (Keygen::NAME, Some(matches)) => Keygen::run(matches),
         (GenerateCompletion::NAME, Some(matches)) => GenerateCompletion::run(matches),

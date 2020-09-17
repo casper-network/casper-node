@@ -9,6 +9,7 @@ use http::Response;
 use hyper::Body;
 use semver::Version;
 use serde::Serialize;
+use serde_json::Value;
 use tracing::info;
 use warp_json_rpc::Builder;
 
@@ -38,7 +39,7 @@ impl RpcWithParams for GetDeploy {
         struct ResponseResult {
             api_version: Version,
             /// JSON-encoded deploy.
-            deploy: String,
+            deploy: Value,
             /// The map of block hash (hex-encoded) to execution result.
             execution_results: Vec<ExecResult>,
         }
@@ -85,13 +86,7 @@ impl RpcWithParams for GetDeploy {
             };
 
             // Return the result.
-            let deploy_as_json = match deploy.to_json() {
-                Ok(deploy_as_json) => deploy_as_json,
-                Err(error) => {
-                    info!("failed to encode deploy to JSON: {}", error);
-                    return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
-                }
-            };
+            let deploy_as_json = deploy.to_json();
             let execution_results = metadata
                 .execution_results
                 .into_iter()

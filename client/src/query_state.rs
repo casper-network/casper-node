@@ -1,6 +1,7 @@
 use std::str;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
+use serde_json::json;
 
 use crate::{command::ClientCommand, common, params::StateGetItem, RpcClient};
 
@@ -125,9 +126,12 @@ impl<'a, 'b> ClientCommand<'a, 'b> for QueryState {
         let key = key::get(matches);
         let path = path::get(matches);
 
-        let params = StateGetItem::new(global_state_hash, key, path);
+        let params = json!(StateGetItem::new(global_state_hash, key, path))
+            .as_object()
+            .cloned()
+            .unwrap_or_else(|| panic!("should be a JSON object"));
 
-        let response_value = Self::request_sync(&node_address, params)
+        let response_value = Self::request_with_map_params(&node_address, params)
             .unwrap_or_else(|error| panic!("response error: {}", error));
         println!("{}", response_value);
     }

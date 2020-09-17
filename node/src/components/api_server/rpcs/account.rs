@@ -5,6 +5,7 @@ use http::Response;
 use hyper::Body;
 use semver::Version;
 use serde::Serialize;
+use serde_json::{Map, Value};
 use tracing::info;
 use warp_json_rpc::Builder;
 
@@ -19,7 +20,7 @@ pub(in crate::components::api_server) struct PutDeploy {}
 impl RpcWithParams for PutDeploy {
     const METHOD: &'static str = "account_put_deploy";
 
-    type RequestParams = String; // JSON-encoded deploy.
+    type RequestParams = Map<String, Value>; // JSON-encoded deploy.
 
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
@@ -35,7 +36,8 @@ impl RpcWithParams for PutDeploy {
 
         async move {
             // Try to parse a deploy from the params.
-            let deploy = match Deploy::from_json(&params).map_err(|error| error.to_string()) {
+            let json_deploy = Value::Object(params);
+            let deploy = match Deploy::from_json(json_deploy).map_err(|error| error.to_string()) {
                 Ok(deploy) => deploy,
                 Err(error_msg) => {
                     info!("failed to put deploy: {}", error_msg);

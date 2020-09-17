@@ -3,7 +3,7 @@
 use serde::Serialize;
 
 /// Params for the RPC with method "state_get_item".
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct StateGetItem {
     /// The global state hash.
     global_state_hash: String,

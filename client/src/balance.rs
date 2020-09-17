@@ -114,15 +114,16 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let node_address = common::node_address::get(matches);
-        let args = balance_args::get(matches);
-        let res = match Self::request_sync(&node_address, &args) {
-            Ok(res) => res,
-            Err(err) => {
-                println!("error {:?}", err);
-                return;
-            }
-        };
-        println!("{}", res);
+        let _node_address = common::node_address::get(matches);
+        let _args = balance_args::get(matches);
+        todo!();
+        // let res = match Self::request_sync(&node_address, &args) {
+        //     Ok(res) => res,
+        //     Err(err) => {
+        //         println!("error {:?}", err);
+        //         return;
+        //     }
+        // };
+        // println!("{}", res);
     }
 }
