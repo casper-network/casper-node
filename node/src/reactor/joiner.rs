@@ -401,16 +401,24 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                     tag: Tag::BlockByHeight,
                     serialized_item,
                 } => {
-                    let block_at_height = match rmp_serde::from_read_ref(&serialized_item) {
-                        Ok(block) => Box::new(block),
-                        Err(err) => {
-                            error!("failed to decode block from {}: {}", sender, err);
-                            return Effects::new();
-                        }
-                    };
-                    let event = fetcher::Event::GotRemotely {
-                        item: block_at_height,
-                        source: Source::Peer(sender),
+                    let block_at_height: BlockByHeight =
+                        match rmp_serde::from_read_ref(&serialized_item) {
+                            Ok(maybe_block) => maybe_block,
+                            Err(err) => {
+                                error!("failed to decode block from {}: {}", sender, err);
+                                return Effects::new();
+                            }
+                        };
+
+                    let event = match block_at_height {
+                        BlockByHeight::Absent(block_height) => fetcher::Event::AbsentRemotely {
+                            id: block_height,
+                            peer: sender,
+                        },
+                        BlockByHeight::Block(block) => fetcher::Event::GotRemotely {
+                            item: Box::new(BlockByHeight::Block(block)),
+                            source: Source::Peer(sender),
+                        },
                     };
                     self.dispatch_event(effect_builder, rng, Event::BlockByHeightFetcher(event))
                 }

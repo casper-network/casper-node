@@ -1,14 +1,14 @@
 use crate::{
     components::fetcher::FetchResult,
-    types::{Block, BlockByHeight, BlockHash},
+    types::{Block, BlockHash},
 };
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 
 #[derive(Debug)]
 pub enum Event<I> {
     Start(I),
     GetBlockHashResult(BlockHash, Option<FetchResult<Block>>),
-    GetBlockHeightResult(u64, Option<FetchResult<BlockByHeight>>),
+    GetBlockHeightResult(u64, BlockByHeightResult<I>),
     /// Deploys from the block have been found.
     DeploysFound(Box<Block>),
     /// Deploys from the block have not been found.
@@ -18,9 +18,16 @@ pub enum Event<I> {
     BlockHandled(u64),
 }
 
+#[derive(Debug)]
+pub enum BlockByHeightResult<I> {
+    Absent,
+    FromStorage(Box<Block>),
+    FromPeer(Box<Block>, I),
+}
+
 impl<I> Display for Event<I>
 where
-    I: Display,
+    I: Debug + Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -37,8 +44,8 @@ where
             Event::BlockHandled(height) => {
                 write!(f, "Block has been handled by consensus {}", height)
             }
-            Event::GetBlockHeightResult(height, r) => {
-                write!(f, "Get block result for {}: {:?}", height, r)
+            Event::GetBlockHeightResult(height, res) => {
+                write!(f, "Get block result for height {}: {:?}", height, res)
             }
         }
     }

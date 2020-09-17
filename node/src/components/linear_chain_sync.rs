@@ -8,6 +8,7 @@ use crate::{
 use effect::requests::{
     BlockExecutorRequest, BlockValidationRequest, FetcherRequest, StorageRequest,
 };
+use event::BlockByHeightResult;
 pub use event::Event;
 use rand::{CryptoRng, Rng};
 use std::{fmt::Display, mem};
@@ -277,7 +278,7 @@ where
                 }
             }
             Event::GetBlockHeightResult(block_height, fetch_result) => match fetch_result {
-                None => match self.random_peer(rng) {
+                BlockByHeightResult::Absent => match self.random_peer(rng) {
                     None => {
                         // `block_height` not found on any of the peers.
                         // We have synchronized all, currently existing, descenandants of trusted
@@ -288,19 +289,19 @@ where
                     }
                     Some(peer) => fetch_block_at_height(effect_builder, peer, block_height),
                 },
-                Some(FetchResult::FromStorage(block)) => {
-                    self.state.block_downloaded(&block.into_inner());
-                    // We should be checking the local storage for linear blocks before we start
-                    // syncing.
+                BlockByHeightResult::FromStorage(block) => {
+                    self.state.block_downloaded(&block);
+                    // We should be checking the local storage for linear blocks before we
+                    // start syncing.
                     trace!(%block_height, "Linear block found in the local storage.");
-                    // If we found the linear block in the storage it means we should have all of
-                    // its parents as well. If that's not the case then we have a bug.
+                    // If we found the linear block in the storage it means we should have
+                    // all of its parents as well. If that's not
+                    // the case then we have a bug.
                     effect_builder
                         .immediately()
                         .event(move |_| Event::StartDownloadingDeploys)
                 }
-                Some(FetchResult::FromPeer(block, peer)) => {
-                    let block = block.into_inner();
+                BlockByHeightResult::FromPeer(block, peer) => {
                     self.state.block_downloaded(&block);
                     if block.height() != block_height {
                         warn!(
@@ -313,13 +314,13 @@ where
                         return self.handle_event(
                             effect_builder,
                             rng,
-                            Event::GetBlockHeightResult(block_height, None),
+                            Event::GetBlockHeightResult(block_height, BlockByHeightResult::Absent),
                         );
                     }
                     trace!(%block_height, "Downloaded linear chain block.");
                     self.reset_peers();
-                    self.new_block(block.clone());
                     let next_height = block.height() + 1;
+                    self.new_block(*block);
                     let peer = self.random_peer_unsafe(rng);
                     fetch_block_at_height(effect_builder, peer, next_height)
                 }
@@ -464,7 +465,26 @@ where
     effect_builder
         .fetch_block_by_height(block_height, peer)
         .option(
-            move |value| Event::GetBlockHeightResult(block_height, Some(value)),
-            move || Event::GetBlockHeightResult(block_height, None),
+            move |value| match value {
+                FetchResult::FromPeer(result, _) => match *result {
+                    BlockByHeight::Absent(_) => {
+                        Event::GetBlockHeightResult(block_height, BlockByHeightResult::Absent)
+                    }
+                    BlockByHeight::Block(block) => Event::GetBlockHeightResult(
+                        block_height,
+                        BlockByHeightResult::FromPeer(Box::new(block), peer),
+                    ),
+                },
+                FetchResult::FromStorage(result) => match *result {
+                    BlockByHeight::Absent(_) => {
+                        panic!("Should not return `Absent` in `FromStorage`.")
+                    }
+                    BlockByHeight::Block(block) => Event::GetBlockHeightResult(
+                        block_height,
+                        BlockByHeightResult::FromStorage(Box::new(block)),
+                    ),
+                },
+            },
+            move || Event::GetBlockHeightResult(block_height, BlockByHeightResult::Absent),
         )
 }

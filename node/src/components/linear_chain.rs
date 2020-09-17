@@ -100,18 +100,14 @@ where
             Event::Request(LinearChainRequest::LastFinalizedBlock(responder)) => {
                 responder.respond(self.last_block.clone()).ignore()
             }
-            Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) =>
-                match self.linear_chain.get(height as usize) {
-                    None => {
-                        debug!(%height, %sender, "Block not found in the linear chain.");
+            Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) => {
+                let block_at_height = self.linear_chain.get(height as usize).map(|block| BlockByHeight::new(block.clone())).unwrap_or_else(|| BlockByHeight::Absent(height));
+                match Message::new_get_response(&block_at_height) {
+                    Ok(message) => effect_builder.send_message(sender, message).ignore(),
+                    Err(error) => {
+                        error!("failed to create get-response {}", error);
                         Effects::new()
                     }
-                    Some(block) => match Message::new_get_response(&BlockByHeight::new(block.clone())) {
-                        Ok(message) => effect_builder.send_message(sender, message).ignore(),
-                        Err(error) => {
-                            error!("failed to create get-response {}", error);
-                            Effects::new()
-                        }
                 }
             }
             Event::Request(LinearChainRequest::BlockAtHeightLocal(height, responder)) =>
