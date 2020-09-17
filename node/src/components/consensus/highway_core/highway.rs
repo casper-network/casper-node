@@ -328,7 +328,7 @@ impl<C: Context> Highway<C> {
             }
             Vertex::Evidence(evidence) => {
                 evidence.validate()?;
-                if self.validators.contains(evidence.perpetrator()) {
+                if !self.validators.contains(evidence.perpetrator()) {
                     return Err(EvidenceError::UnknownPerpetrator.into());
                 }
                 Ok(())
