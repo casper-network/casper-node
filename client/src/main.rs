@@ -2,6 +2,7 @@ mod balance;
 mod command;
 mod common;
 mod deploy;
+mod error;
 mod generate_completion;
 mod keygen;
 mod rpc;
@@ -9,11 +10,11 @@ mod rpc;
 use clap::{crate_description, crate_version, App};
 
 use balance::GetBalance;
+use command::ClientCommand;
 use deploy::{GetDeploy, ListDeploys, PutDeploy, Transfer};
+use error::{Error, Result};
 use generate_completion::GenerateCompletion;
 use keygen::Keygen;
-
-use command::ClientCommand;
 
 const APP_NAME: &str = "Casper client";
 
@@ -23,9 +24,9 @@ enum DisplayOrder {
     Transfer,
     GetDeploy,
     ListDeploys,
+    GetBalance,
     Keygen,
     GenerateCompletion,
-    GetBalance,
 }
 
 fn cli<'a, 'b>() -> App<'a, 'b> {

@@ -1,25 +1,26 @@
-use futures::executor;
 use std::str;
+
+use futures::executor;
+use jsonrpc_lite::{Id as RpcId, JsonRpc};
+use reqwest::Client;
+use serde::Serialize;
+use serde_json::{json, Value};
+
+use crate::{Error, Result};
 
 // CEP/0009 - /rpc endpoints
 const RPC_API_PATH: &str = "rpc";
 
 // magic number for JSON-RPC calls
-const RPC_ID: jsonrpc_lite::Id = jsonrpc_lite::Id::Num(1234);
-
-#[derive(thiserror::Error, Debug)]
-pub enum RpcError {
-    #[error("Incorrect rpc response {0}")]
-    IncorrectResponse(String),
-}
+const RPC_ID: RpcId = RpcId::Num(1234);
 
 pub trait RpcClient {
     const RPC_METHOD: &'static str;
 
     // TODO(dwerner) async-trait
-    fn request_sync<P>(node_address: &str, params: P) -> anyhow::Result<serde_json::Value>
+    fn request_sync<P>(node_address: &str, params: P) -> Result<Value>
     where
-        P: serde::Serialize,
+        P: Serialize,
     {
         executor::block_on(async {
             Ok(request(node_address, RPC_ID, Self::RPC_METHOD, params).await?)
@@ -27,43 +28,30 @@ pub trait RpcClient {
     }
 }
 
-async fn request<P>(
-    node_address: &str,
-    id: jsonrpc_lite::Id,
-    method: &str,
-    params: P,
-) -> anyhow::Result<serde_json::Value>
+async fn request<P>(node_address: &str, id: RpcId, method: &str, params: P) -> Result<Value>
 where
-    P: serde::Serialize,
+    P: Serialize,
 {
     let url = format!("{}/{}", node_address, RPC_API_PATH);
-    let rpc_req = jsonrpc_lite::JsonRpc::request_with_params(id, method, serde_json::json!(params));
-    let client = reqwest::Client::new();
-    let body = client
+    let rpc_req = JsonRpc::request_with_params(id, method, json!(params));
+    let client = Client::new();
+    let rpc_response: JsonRpc = client
         .post(&url)
         .json(&rpc_req)
         .send()
         .await
-        .map_err(|error| anyhow::anyhow!("should get response from node: {}", error))?
-        .bytes()
+        .map_err(Error::FailedToGetResponse)?
+        .json()
         .await
-        .map_err(|error| anyhow::anyhow!("should get bytes from node response: {}", error))?;
+        .map_err(Error::FailedToParseResponse)?;
 
-    if body.is_empty() {
-        return Err(RpcError::IncorrectResponse("empty response".to_string()).into());
+    if let Some(success) = rpc_response.get_result() {
+        return Ok(success.clone());
     }
-    let json_encoded = str::from_utf8(body.as_ref())
-        .map_err(|e| RpcError::IncorrectResponse(format!("Utf8 error {:?}", e)))?;
 
-    println!("{}", json_encoded);
-    let rpc_res = jsonrpc_lite::JsonRpc::parse(&json_encoded)?;
-    let res = match rpc_res {
-        success @ jsonrpc_lite::JsonRpc::Success(_) => success
-            .get_result()
-            .ok_or_else(|| RpcError::IncorrectResponse(json_encoded.to_string()))?
-            .clone(),
-        _ => return Err(RpcError::IncorrectResponse(json_encoded.to_string()).into()),
-    };
+    if let Some(error) = rpc_response.get_error() {
+        return Err(Error::ResponseIsError(error.clone()));
+    }
 
-    Ok(res)
+    Err(Error::InvalidResponse(rpc_response))
 }
