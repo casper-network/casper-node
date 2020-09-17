@@ -87,6 +87,12 @@ impl<C: Context> From<PreValidatedVertex<C>> for Vertex<C> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ValidVertex<C: Context>(pub(super) Vertex<C>);
 
+impl<C: Context> ValidVertex<C> {
+    pub(crate) fn vertex(&self) -> &Vertex<C> {
+        &self.0
+    }
+}
+
 /// A passive instance of the Highway protocol, containing its local state.
 ///
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
@@ -217,6 +223,14 @@ impl<C: Context> Highway<C> {
         match vertex {
             Vertex::Vote(vote) => self.state.has_vote(&vote.hash()),
             Vertex::Evidence(evidence) => self.state.has_evidence(evidence.perpetrator()),
+        }
+    }
+
+    /// Returns whether we have a vertex that satisfies the dependency.
+    pub(crate) fn has_dependency(&self, dependency: &Dependency<C>) -> bool {
+        match dependency {
+            Dependency::Vote(hash) => self.state.has_vote(hash),
+            Dependency::Evidence(idx) => self.state.has_evidence(*idx),
         }
     }
 
