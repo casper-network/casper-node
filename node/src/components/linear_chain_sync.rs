@@ -376,8 +376,8 @@ where
                 }
             },
             Event::DeploysFound(block) => {
-                let block_hash = *block.hash();
-                trace!(%block_hash, "Deploys for linear chain block found.");
+                let block_height = block.height();
+                trace!(%block_height, "Deploys for linear chain block found.");
                 // Reset used peers so we can download next block with the full set.
                 self.reset_peers();
                 // Execute block
