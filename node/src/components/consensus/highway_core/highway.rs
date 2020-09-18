@@ -32,6 +32,12 @@ pub(crate) enum VertexError {
 /// An error due to invalid evidence.
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum EvidenceError {
+    #[error("The creators in the equivocating votes are different.")]
+    EquivocationDifferentCreators,
+    #[error("The sequence numbers in the equivocating votes are different.")]
+    EquivocationDifferentSeqNumbers,
+    #[error("The instance IDs in the equivocating votes are different.")]
+    EquivocationDifferentInstances,
     #[error("The perpetrator is not a validator.")]
     UnknownPerpetrator,
 }
@@ -45,7 +51,7 @@ pub(crate) enum EvidenceError {
 pub(crate) struct PreValidatedVertex<C: Context>(Vertex<C>);
 
 impl<C: Context> PreValidatedVertex<C> {
-    pub(crate) fn vertex(&self) -> &Vertex<C> {
+    pub(crate) fn inner(&self) -> &Vertex<C> {
         &self.0
     }
 
@@ -80,6 +86,12 @@ impl<C: Context> From<PreValidatedVertex<C>> for Vertex<C> {
 /// or inconsistent state otherwise.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ValidVertex<C: Context>(pub(super) Vertex<C>);
+
+impl<C: Context> ValidVertex<C> {
+    pub(crate) fn inner(&self) -> &Vertex<C> {
+        &self.0
+    }
+}
 
 /// A passive instance of the Highway protocol, containing its local state.
 ///
@@ -164,7 +176,7 @@ impl<C: Context> Highway<C> {
     ///
     /// If this returns `None`, `validate_vertex` can be called.
     pub(crate) fn missing_dependency(&self, pvv: &PreValidatedVertex<C>) -> Option<Dependency<C>> {
-        match pvv.vertex() {
+        match pvv.inner() {
             Vertex::Evidence(_) => None,
             Vertex::Vote(vote) => vote.wire_vote.panorama.missing_dependency(&self.state),
         }
@@ -177,7 +189,7 @@ impl<C: Context> Highway<C> {
         &self,
         pvv: PreValidatedVertex<C>,
     ) -> Result<ValidVertex<C>, (PreValidatedVertex<C>, VertexError)> {
-        match self.do_validate_vertex(pvv.vertex()) {
+        match self.do_validate_vertex(pvv.inner()) {
             Err(err) => Err((pvv, err)),
             Ok(()) => Ok(ValidVertex(pvv.0)),
         }
@@ -214,6 +226,14 @@ impl<C: Context> Highway<C> {
         }
     }
 
+    /// Returns whether we have a vertex that satisfies the dependency.
+    pub(crate) fn has_dependency(&self, dependency: &Dependency<C>) -> bool {
+        match dependency {
+            Dependency::Vote(hash) => self.state.has_vote(hash),
+            Dependency::Evidence(idx) => self.state.has_evidence(*idx),
+        }
+    }
+
     /// Returns a vertex that satisfies the dependency, if available.
     ///
     /// If we send a vertex to a peer who is missing a dependency, they will ask us for it. In that
@@ -221,7 +241,9 @@ impl<C: Context> Highway<C> {
     pub(crate) fn get_dependency(&self, dependency: &Dependency<C>) -> Option<ValidVertex<C>> {
         let state = &self.state;
         match dependency {
-            Dependency::Vote(hash) => state.wire_vote(hash).map(Vertex::Vote),
+            Dependency::Vote(hash) => state
+                .wire_vote(hash, self.instance_id.clone())
+                .map(Vertex::Vote),
             Dependency::Evidence(idx) => state.opt_evidence(*idx).cloned().map(Vertex::Evidence),
         }
         .map(ValidVertex)
@@ -232,11 +254,15 @@ impl<C: Context> Highway<C> {
         timestamp: Timestamp,
         rng: &mut R,
     ) -> Vec<Effect<C>> {
-        self.map_active_validator(|av, state, rng| av.handle_timer(timestamp, state, rng), rng)
-            .unwrap_or_else(|| {
-                debug!(%timestamp, "Ignoring `handle_timer` event: only an observer node.");
-                vec![]
-            })
+        let instance_id = self.instance_id.clone();
+        self.map_active_validator(
+            |av, state, rng| av.handle_timer(timestamp, state, instance_id, rng),
+            rng,
+        )
+        .unwrap_or_else(|| {
+            debug!(%timestamp, "Ignoring `handle_timer` event: only an observer node.");
+            vec![]
+        })
     }
 
     pub(crate) fn propose<R: Rng + CryptoRng + ?Sized>(
@@ -245,8 +271,9 @@ impl<C: Context> Highway<C> {
         block_context: BlockContext,
         rng: &mut R,
     ) -> Vec<Effect<C>> {
+        let instance_id = self.instance_id.clone();
         self.map_active_validator(
-            |av, state, rng| av.propose(value, block_context, state, rng),
+            |av, state, rng| av.propose(value, block_context, state, instance_id, rng),
             rng,
         )
         .unwrap_or_else(|| {
@@ -269,8 +296,9 @@ impl<C: Context> Highway<C> {
         timestamp: Timestamp,
         rng: &mut R,
     ) -> Vec<Effect<C>> {
+        let instance_id = self.instance_id.clone();
         self.map_active_validator(
-            |av, state, rng| av.on_new_vote(vhash, timestamp, state, rng),
+            |av, state, rng| av.on_new_vote(vhash, timestamp, state, instance_id, rng),
             rng,
         )
         .unwrap_or_default()
@@ -304,17 +332,20 @@ impl<C: Context> Highway<C> {
         match vertex {
             Vertex::Vote(vote) => {
                 let v_id = self.validator_id(&vote).ok_or(VoteError::Creator)?;
+                if vote.wire_vote.instance_id != self.instance_id {
+                    return Err(VoteError::InstanceId.into());
+                }
                 if !C::verify_signature(&vote.hash(), v_id, &vote.signature) {
                     return Err(VoteError::Signature.into());
                 }
                 Ok(self.state.pre_validate_vote(vote)?)
             }
             Vertex::Evidence(evidence) => {
-                if self.validators.contains(evidence.perpetrator()) {
-                    Ok(())
-                } else {
-                    Err(EvidenceError::UnknownPerpetrator.into())
+                evidence.validate()?;
+                if !self.validators.contains(evidence.perpetrator()) {
+                    return Err(EvidenceError::UnknownPerpetrator.into());
                 }
+                Ok(())
             }
         }
     }
@@ -398,6 +429,7 @@ pub(crate) mod tests {
         let wvote = WireVote {
             panorama: Panorama::new(WEIGHTS.len()),
             creator: CAROL,
+            instance_id: highway.instance_id,
             value: Some(0),
             seq_number: 0,
             timestamp: Timestamp::zero(),
