@@ -145,8 +145,8 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     //          \  /
     // Carol:    c0
     let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
-    let b0 = add_vote!(state, rng, BOB, 0xB; N, N, N)?;
-    let c0 = add_vote!(state, rng, CAROL, None; N, b0, N)?;
+    let b0 = add_vote!(state, rng, BOB, 48, 4u8, 0xB; N, N, N)?;
+    let c0 = add_vote!(state, rng, CAROL, 49, 4u8, None; N, b0, N)?;
     let b1 = add_vote!(state, rng, BOB, None; N, b0, c0)?;
     let _a1 = add_vote!(state, rng, ALICE, None; a0, b1, c0)?;
 
@@ -157,8 +157,8 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
         instance_id: 1u64,
         value: None,
         seq_number: 3,
-        timestamp: state.vote(&b1).timestamp + TimeDiff::from(1),
-        round_exp: state.vote(&b1).round_exp,
+        timestamp: 51.into(),
+        round_exp: 4u8,
     };
     let vote = SignedWireVote::new(wvote.clone(), &BOB_SEC, &mut rng);
     let opt_err = state.add_vote(vote).err().map(vote_err);
@@ -174,6 +174,13 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
         .err()
         .map(vote_err);
     assert_eq!(Some(VoteError::InconsistentPanorama(BOB)), opt_err);
+    // And you can't change the round exponent within a round.
+    let opt_err = add_vote!(state, rng, CAROL, 50, 5u8, None; N, b1, c0)
+        .err()
+        .map(vote_err);
+    assert_eq!(Some(VoteError::RoundLength), opt_err);
+    // After the round from 48 to 64 has ended, the exponent can change.
+    let c1 = add_vote!(state, rng, CAROL, 65, 5u8, None; N, b1, c0)?;
 
     // Alice has not equivocated yet, and not produced message A1.
     let missing = panorama!(F, b1, c0).missing_dependency(&state);
@@ -194,7 +201,7 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     let b2 = add_vote!(state, rng, BOB, None; F, b1, c0)?;
 
     // The state's own panorama has been updated correctly.
-    assert_eq!(state.panorama, panorama!(F, b2, c0));
+    assert_eq!(state.panorama, panorama!(F, b2, c1));
     Ok(())
 }
 
