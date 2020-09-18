@@ -79,7 +79,7 @@ use casper_execution_engine::{
     core::{
         engine_state::{
             self, execute_request::ExecuteRequest, execution_result::ExecutionResults,
-            genesis::GenesisResult, QueryRequest, QueryResult, BalanceRequest, BalanceResult,
+            genesis::GenesisResult, BalanceRequest, BalanceResult, QueryRequest, QueryResult,
         },
         execution,
     },

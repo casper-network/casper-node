@@ -6,7 +6,7 @@ use std::{
 
 use derive_more::From;
 
-use casper_execution_engine::core::engine_state::{self, QueryResult, BalanceResult};
+use casper_execution_engine::core::engine_state::{self, BalanceResult, QueryResult};
 
 use crate::{
     components::{small_network::NodeId, storage::DeployMetadata},
