@@ -59,6 +59,7 @@ macro_rules! add_vote {
         let wvote = WireVote {
             panorama,
             creator,
+            instance_id: 1u64,
             value,
             seq_number,
             timestamp,
@@ -80,6 +81,7 @@ macro_rules! add_vote {
         let wvote = WireVote {
             panorama,
             creator,
+            instance_id: 1u64,
             value: ($val).into(),
             seq_number,
             timestamp: ($time).into(),

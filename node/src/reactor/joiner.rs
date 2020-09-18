@@ -385,6 +385,13 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                     rng,
                     Event::Consensus(consensus::Event::MessageReceived { sender, msg }),
                 ),
+                Message::AddressGossiper(message) => {
+                    let event = Event::AddressGossiper(gossiper::Event::MessageReceived {
+                        sender,
+                        message,
+                    });
+                    self.dispatch_event(effect_builder, rng, event)
+                }
                 other => {
                     warn!(?other, "network announcement ignored.");
                     Effects::new()
