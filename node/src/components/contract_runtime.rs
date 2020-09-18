@@ -260,7 +260,7 @@ where
                         let result = engine_state.get_purse_balance(
                             correlation_id,
                             balance_request.state_hash(),
-                            balance_request.purse_key()
+                            balance_request.purse_uref(),
                         );
                         metrics.get_balance.observe(start.elapsed().as_secs_f64());
                         result

@@ -9,7 +9,7 @@ use crate::{command::ClientCommand, common, rpc::RpcClient};
 enum DisplayOrder {
     NodeAddress,
     GlobalStateHash,
-    PurseKey,
+    PurseURef,
 }
 
 pub struct GetBalance {}
@@ -17,17 +17,18 @@ pub struct GetBalance {}
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct BalanceArgs {
     pub global_state_hash: String,
-    pub purse_key: String,
+    pub purse_uref: String,
 }
 
-/// Handles providing the arg for and retrieval of the key.
-mod purse_key {
+/// Handles providing the arg for and retrieval of the purse URef.
+mod purse_uref {
     use super::*;
 
-    const ARG_NAME: &str = "purse-key";
+    const ARG_NAME: &str = "purse-uref";
     const ARG_SHORT: &str = "p";
     const ARG_VALUE_NAME: &str = "FORMATTED STRING";
-    const ARG_HELP: &str = "The base key for the query.  This must be a properly formatted uref \
+    const ARG_HELP: &str =
+        "The URef under which the purse is stored.  This must be a properly formatted URef \
         \"uref-<HEX STRING>-<THREE DIGIT INTEGER>\"";
 
     pub(super) fn arg() -> Arg<'static, 'static> {
@@ -37,7 +38,7 @@ mod purse_key {
             .required(true)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
-            .display_order(DisplayOrder::PurseKey as usize)
+            .display_order(DisplayOrder::PurseURef as usize)
     }
 
     pub(super) fn get(matches: &ArgMatches) -> String {
@@ -52,12 +53,12 @@ mod balance_args {
     use super::*;
 
     pub(super) fn get(matches: &ArgMatches) -> Map<String, Value> {
-        let purse_key = purse_key::get(&matches);
+        let purse_uref = purse_uref::get(&matches);
         let global_state_hash = common::global_state_hash::get(&matches);
 
         json!(BalanceArgs {
             global_state_hash,
-            purse_key,
+            purse_uref,
         })
         .as_object()
         .unwrap()
@@ -66,7 +67,7 @@ mod balance_args {
 }
 
 impl RpcClient for GetBalance {
-    const RPC_METHOD: &'static str = "get_balance";
+    const RPC_METHOD: &'static str = "state_get_balance";
 }
 
 impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {
@@ -83,19 +84,14 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {
             .arg(common::global_state_hash::arg(
                 DisplayOrder::GlobalStateHash as usize,
             ))
-            .arg(purse_key::arg())
+            .arg(purse_uref::arg())
     }
 
     fn run(matches: &ArgMatches<'_>) {
         let node_address = common::node_address::get(matches);
         let args = balance_args::get(matches);
-        let res = match Self::request_with_map_params(&node_address, args) {
-            Ok(res) => res,
-            Err(err) => {
-                println!("error {:?}", err);
-                return;
-            }
-        };
+        let res = Self::request_with_map_params(&node_address, args)
+            .unwrap_or_else(|error| panic!("response error: {}", error));
         println!("{}", res);
     }
 }

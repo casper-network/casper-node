@@ -1,28 +1,24 @@
-use casper_types::{Key, U512};
+use casper_types::{URef, U512};
 
-use crate::{
-    shared::newtypes::Blake2bHash,
-};
+use crate::shared::newtypes::Blake2bHash;
 
 #[derive(Debug)]
 pub enum BalanceResult {
     RootNotFound,
-    ValueNotFound(String),
-    CircularReference(String),
     Success(U512),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BalanceRequest {
     state_hash: Blake2bHash,
-    purse_key: Key,
+    purse_uref: URef,
 }
 
 impl BalanceRequest {
-    pub fn new(state_hash: Blake2bHash, purse_key: Key) -> Self {
+    pub fn new(state_hash: Blake2bHash, purse_uref: URef) -> Self {
         BalanceRequest {
             state_hash,
-            purse_key,
+            purse_uref,
         }
     }
 
@@ -30,7 +26,7 @@ impl BalanceRequest {
         self.state_hash
     }
 
-    pub fn purse_key(&self) -> Key {
-        self.purse_key
+    pub fn purse_uref(&self) -> URef {
+        self.purse_uref
     }
 }

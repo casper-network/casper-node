@@ -6,7 +6,6 @@ pub(super) mod account;
 pub(super) mod chain;
 pub(super) mod info;
 pub(super) mod state;
-pub(super) mod balance;
 
 use std::str;
 
@@ -41,7 +40,7 @@ enum ErrorCode {
     QueryFailed = 32006,
     QueryFailedToExecute = 32007,
     MetricsNotAvailable = 32008,
-    ParseGetBalanceKey = 32009,
+    ParseGetBalanceURef = 32009,
     GetBalanceFailed = 32010,
     GetBalanceFailedToExecute = 32011,
 }

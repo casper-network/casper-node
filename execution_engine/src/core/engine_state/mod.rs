@@ -1,3 +1,4 @@
+pub mod balance;
 pub mod deploy_item;
 pub mod engine_config;
 mod error;
@@ -8,7 +9,6 @@ pub mod execution_result;
 pub mod genesis;
 pub mod op;
 pub mod query;
-pub mod balance;
 pub mod run_genesis_request;
 pub mod system_contract_cache;
 mod transfer;
@@ -36,6 +36,7 @@ use casper_types::{
 };
 
 pub use self::{
+    balance::{BalanceRequest, BalanceResult},
     deploy_item::DeployItem,
     engine_config::EngineConfig,
     error::{Error, RootNotFound},
@@ -44,7 +45,6 @@ pub use self::{
     execution_result::{ExecutionResult, ForcedTransferResult},
     genesis::{ExecConfig, GenesisResult, POS_PAYMENT_PURSE, POS_REWARDS_PURSE},
     query::{QueryRequest, QueryResult},
-    balance::{BalanceRequest, BalanceResult},
     system_contract_cache::SystemContractCache,
     transfer::{TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::{UpgradeConfig, UpgradeResult},
@@ -989,13 +989,13 @@ where
         &self,
         correlation_id: CorrelationId,
         state_hash: Blake2bHash,
-        purse_key: Key,
+        purse_uref: URef,
     ) -> Result<BalanceResult, Error> {
         let mut tracking_copy = match self.tracking_copy(state_hash)? {
             Some(tracking_copy) => tracking_copy,
             None => return Ok(BalanceResult::RootNotFound),
         };
-        let balance_key = tracking_copy.get_purse_balance_key(correlation_id, purse_key)?;
+        let balance_key = tracking_copy.get_purse_balance_key(correlation_id, purse_uref.into())?;
         let balance = tracking_copy.get_purse_balance(correlation_id, balance_key)?;
         Ok(BalanceResult::Success(balance.value()))
     }

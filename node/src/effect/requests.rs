@@ -14,17 +14,17 @@ use semver::Version;
 use casper_execution_engine::{
     core::engine_state::{
         self,
+        balance::{BalanceRequest, BalanceResult},
         execute_request::ExecuteRequest,
         execution_result::ExecutionResults,
         genesis::GenesisResult,
         query::{QueryRequest, QueryResult},
-        balance::{BalanceRequest, BalanceResult},
         upgrade::{UpgradeConfig, UpgradeResult},
     },
     shared::{additive_map::AdditiveMap, transform::Transform},
     storage::global_state::CommitResult,
 };
-use casper_types::Key;
+use casper_types::{Key, URef};
 
 use super::Responder;
 use crate::{
@@ -365,8 +365,8 @@ pub enum ApiRequest<I> {
     GetBalance {
         /// The global state hash.
         global_state_hash: Digest,
-        /// Hex-encoded `casper_types::Key`.
-        purse_key: Key,
+        /// The purse URef.
+        purse_uref: URef,
         /// Responder to call with the result.
         responder: Responder<Result<BalanceResult, engine_state::Error>>,
     },
@@ -417,12 +417,12 @@ impl<I> Display for ApiRequest<I> {
             ),
             ApiRequest::GetBalance {
                 global_state_hash,
-                purse_key,
+                purse_uref,
                 ..
             } => write!(
                 formatter,
-                "balance {}, purse_key: {}",
-                global_state_hash, purse_key 
+                "balance {}, purse_uref: {}",
+                global_state_hash, purse_uref
             ),
             ApiRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
             ApiRequest::GetPeers { .. } => write!(formatter, "get peers"),
@@ -516,9 +516,9 @@ impl Display for ContractRuntimeRequest {
                 write!(formatter, "query request: {:?}", query_request)
             }
 
-            ContractRuntimeRequest::GetBalance { balance_request, .. } => {
-                write!(formatter, "balance request: {:?}", balance_request)
-            }
+            ContractRuntimeRequest::GetBalance {
+                balance_request, ..
+            } => write!(formatter, "balance request: {:?}", balance_request),
         }
     }
 }
