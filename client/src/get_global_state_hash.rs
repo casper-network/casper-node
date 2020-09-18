@@ -1,7 +1,11 @@
 use std::str;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
-use serde_json::Value;
+
+use casper_node::rpcs::{
+    chain::{GetGlobalStateHash, GetGlobalStateHashParams},
+    RpcWithOptionalParams,
+};
 
 use crate::{command::ClientCommand, common, RpcClient};
 
@@ -37,10 +41,8 @@ mod block_hash {
     }
 }
 
-pub struct GetGlobalStateHash {}
-
 impl RpcClient for GetGlobalStateHash {
-    const RPC_METHOD: &'static str = "chain_get_global_state_hash";
+    const RPC_METHOD: &'static str = Self::METHOD;
 }
 
 impl<'a, 'b> ClientCommand<'a, 'b> for GetGlobalStateHash {
@@ -63,7 +65,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetGlobalStateHash {
 
         let response_value = match maybe_block_hash {
             Some(block_hash) => {
-                Self::request_with_array_params(&node_address, vec![Value::String(block_hash)])
+                let params = GetGlobalStateHashParams { block_hash };
+                Self::request_with_map_params(&node_address, params)
             }
             None => Self::request(&node_address),
         }

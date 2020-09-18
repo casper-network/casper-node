@@ -1,9 +1,13 @@
 use std::str;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
-use serde_json::json;
 
-use crate::{command::ClientCommand, common, params::StateGetItem, RpcClient};
+use casper_node::rpcs::{
+    state::{GetItem, GetItemParams},
+    RpcWithParams,
+};
+
+use crate::{command::ClientCommand, common, RpcClient};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
@@ -71,13 +75,11 @@ mod path {
     }
 }
 
-pub struct QueryState {}
-
-impl RpcClient for QueryState {
-    const RPC_METHOD: &'static str = "state_get_item";
+impl RpcClient for GetItem {
+    const RPC_METHOD: &'static str = Self::METHOD;
 }
 
-impl<'a, 'b> ClientCommand<'a, 'b> for QueryState {
+impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
     const NAME: &'static str = "query-state";
     const ABOUT: &'static str = "Retrieves a stored value from global state";
 
@@ -101,10 +103,11 @@ impl<'a, 'b> ClientCommand<'a, 'b> for QueryState {
         let key = key::get(matches);
         let path = path::get(matches);
 
-        let params = json!(StateGetItem::new(global_state_hash, key, path))
-            .as_object()
-            .cloned()
-            .unwrap_or_else(|| panic!("should be a JSON object"));
+        let params = GetItemParams {
+            global_state_hash,
+            key,
+            path,
+        };
 
         let response_value = Self::request_with_map_params(&node_address, params)
             .unwrap_or_else(|error| panic!("response error: {}", error));

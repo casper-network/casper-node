@@ -1,9 +1,11 @@
 use std::str;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
-use serde_json::json;
 
-// use casper_node::types::Deploy;
+use casper_node::rpcs::{
+    info::{GetDeploy, GetDeployParams},
+    RpcWithParams,
+};
 
 use crate::{command::ClientCommand, common, RpcClient};
 
@@ -37,10 +39,8 @@ mod deploy_hash {
     }
 }
 
-pub struct GetDeploy {}
-
 impl RpcClient for GetDeploy {
-    const RPC_METHOD: &'static str = "info_get_deploy";
+    const RPC_METHOD: &'static str = Self::METHOD;
 }
 
 impl<'a, 'b> ClientCommand<'a, 'b> for GetDeploy {
@@ -59,36 +59,11 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetDeploy {
 
     fn run(matches: &ArgMatches<'_>) {
         let node_address = common::node_address::get(matches);
-        let params = vec![json!(deploy_hash::get(matches))];
+        let deploy_hash = deploy_hash::get(matches);
+        let params = GetDeployParams { deploy_hash };
 
-        let response_value = Self::request_with_array_params(&node_address, params)
+        let response_value = Self::request_with_map_params(&node_address, params)
             .unwrap_or_else(|error| panic!("response error: {}", error));
         println!("{}", response_value);
-
-        todo!("parse deploy for printing");
-        // let url = format!(
-        //     "{}/{}/{}",
-        //     node_address,
-        //     common::DEPLOY_API_PATH,
-        //     deploy_hash
-        // );
-        // let body = executor::block_on(async {
-        //     reqwest::get(&url)
-        //         .await
-        //         .unwrap_or_else(|error| panic!("should get response from node: {}", error))
-        //         .bytes()
-        //         .await
-        //         .unwrap_or_else(|error| panic!("should get bytes from node response: {}", error))
-        // });
-        //
-        // let json_encoded = str::from_utf8(body.as_ref())
-        //     .unwrap_or_else(|error| panic!("should parse node response as JSON: {}", error));
-        // if json_encoded == "null" {
-        //     println!("Deploy not found");
-        // } else {
-        //     let deploy = Deploy::from_json(json_encoded)
-        //         .unwrap_or_else(|error| panic!("should deserialize deploy from JSON: {}",
-        // error));     println!("{}", deploy);
-        // }
     }
 }

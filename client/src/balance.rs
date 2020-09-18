@@ -1,7 +1,11 @@
 use std::str;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
-use serde_json::{json, Map, Value};
+
+use casper_node::rpcs::{
+    state::{GetBalance, GetBalanceParams},
+    RpcWithParams,
+};
 
 use crate::{command::ClientCommand, common, rpc::RpcClient};
 
@@ -10,14 +14,6 @@ enum DisplayOrder {
     NodeAddress,
     GlobalStateHash,
     PurseURef,
-}
-
-pub struct GetBalance {}
-
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub struct BalanceArgs {
-    pub global_state_hash: String,
-    pub purse_uref: String,
 }
 
 /// Handles providing the arg for and retrieval of the purse URef.
@@ -52,22 +48,19 @@ mod purse_uref {
 mod balance_args {
     use super::*;
 
-    pub(super) fn get(matches: &ArgMatches) -> Map<String, Value> {
-        let purse_uref = purse_uref::get(&matches);
+    pub(super) fn get(matches: &ArgMatches) -> <GetBalance as RpcWithParams>::RequestParams {
         let global_state_hash = common::global_state_hash::get(&matches);
+        let purse_uref = purse_uref::get(&matches);
 
-        json!(BalanceArgs {
+        GetBalanceParams {
             global_state_hash,
             purse_uref,
-        })
-        .as_object()
-        .unwrap()
-        .clone()
+        }
     }
 }
 
 impl RpcClient for GetBalance {
-    const RPC_METHOD: &'static str = "state_get_balance";
+    const RPC_METHOD: &'static str = Self::METHOD;
 }
 
 impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {

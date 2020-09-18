@@ -10,11 +10,11 @@ use std::{
 use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches};
 use lazy_static::lazy_static;
 use serde::{self, Deserialize};
-use serde_json::{Map, Value};
 
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_node::{
     crypto::hash::Digest,
+    rpcs::account::PutDeployParams,
     types::{Deploy, TimeDiff, Timestamp},
 };
 use casper_types::{
@@ -738,7 +738,7 @@ pub(super) fn apply_common_creation_options<'a, 'b>(subcommand: App<'a, 'b>) -> 
 pub(super) fn construct_deploy(
     matches: &ArgMatches<'_>,
     session: ExecutableDeployItem,
-) -> Map<String, Value> {
+) -> PutDeployParams {
     // If we printed the arg examples, exit the process.
     if show_arg_examples::get(matches) {
         process::exit(0);
@@ -767,9 +767,10 @@ pub(super) fn construct_deploy(
         &mut rng,
     );
 
-    deploy
+    let deploy = deploy
         .to_json()
         .as_object()
         .unwrap_or_else(|| panic!("should encode to JSON object type"))
-        .clone()
+        .clone();
+    PutDeployParams { deploy }
 }

@@ -1,19 +1,25 @@
 use std::str;
 
+use casper_node::rpcs::{
+    account::PutDeployParams,
+    chain::{GetBlockParams, GetGlobalStateHashParams},
+    info::GetDeployParams,
+    state::{GetBalanceParams, GetItemParams},
+    RPC_API_PATH,
+};
+
 use futures::executor;
 use jsonrpc_lite::{Id as RpcId, JsonRpc, Params};
 use reqwest::Client;
-use serde_json::{Map, Value};
+use serde::Serialize;
+use serde_json::{json, Map, Value};
 
 use crate::{Error, Result};
 
-// CEP/0009 - /rpc endpoints
-const RPC_API_PATH: &str = "rpc";
-
-// magic number for JSON-RPC calls
+// Magic number for JSON-RPC calls.
 const RPC_ID: RpcId = RpcId::Num(1234);
 
-pub trait RpcClient {
+pub(crate) trait RpcClient {
     const RPC_METHOD: &'static str;
 
     fn request(node_address: &str) -> Result<Value> {
@@ -22,15 +28,15 @@ pub trait RpcClient {
         })
     }
 
-    fn request_with_array_params(node_address: &str, params: Vec<Value>) -> Result<Value> {
+    fn request_with_map_params<T: IntoJsonMap>(node_address: &str, params: T) -> Result<Value> {
         executor::block_on(async {
-            request(node_address, RPC_ID, Self::RPC_METHOD, params.into()).await
-        })
-    }
-
-    fn request_with_map_params(node_address: &str, params: Map<String, Value>) -> Result<Value> {
-        executor::block_on(async {
-            request(node_address, RPC_ID, Self::RPC_METHOD, params.into()).await
+            request(
+                node_address,
+                RPC_ID,
+                Self::RPC_METHOD,
+                Params::from(params.into_json_map()),
+            )
+            .await
         })
     }
 }
@@ -65,3 +71,22 @@ async fn request(node_address: &str, id: RpcId, method: &str, params: Params) ->
 
     Err(Error::InvalidResponse(rpc_response))
 }
+
+pub(crate) trait IntoJsonMap: Serialize {
+    fn into_json_map(self) -> Map<String, Value>
+    where
+        Self: Sized,
+    {
+        json!(self)
+            .as_object()
+            .unwrap_or_else(|| panic!("should be a JSON object"))
+            .clone()
+    }
+}
+
+impl IntoJsonMap for PutDeployParams {}
+impl IntoJsonMap for GetBlockParams {}
+impl IntoJsonMap for GetGlobalStateHashParams {}
+impl IntoJsonMap for GetDeployParams {}
+impl IntoJsonMap for GetBalanceParams {}
+impl IntoJsonMap for GetItemParams {}

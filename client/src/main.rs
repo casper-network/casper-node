@@ -6,20 +6,23 @@ mod error;
 mod generate_completion;
 mod get_global_state_hash;
 mod keygen;
-mod params;
 mod query_state;
 mod rpc;
 
 use clap::{crate_description, crate_version, App};
 
-use balance::GetBalance;
+use casper_node::rpcs::{
+    account::PutDeploy,
+    chain::GetGlobalStateHash,
+    info::GetDeploy,
+    state::{GetBalance, GetItem as QueryState},
+};
+
 use command::ClientCommand;
-use deploy::{GetDeploy, ListDeploys, PutDeploy, Transfer};
+use deploy::{ListDeploys, Transfer};
 use error::{Error, Result};
 use generate_completion::GenerateCompletion;
-use get_global_state_hash::GetGlobalStateHash;
 use keygen::Keygen;
-use query_state::QueryState;
 use rpc::RpcClient;
 
 const APP_NAME: &str = "Casper client";

@@ -14,6 +14,7 @@ use hex_fmt::{HexFmt, HexList};
 #[cfg(test)]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value as JsonValue};
 use thiserror::Error;
 
 use super::{Item, Tag, Timestamp};
@@ -540,15 +541,15 @@ impl Block {
         self.proofs.push(proof)
     }
 
-    /// Try to convert the `Block` to JSON-encoded string.
-    pub fn to_json(&self) -> Result<String, Error> {
-        let json = json::JsonBlock::from(self);
-        Ok(serde_json::to_string(&json)?)
+    /// Convert the `Block` to a JSON value.
+    pub fn to_json(&self) -> JsonValue {
+        let json_block = json::JsonBlock::from(self);
+        json!(json_block)
     }
 
-    /// Try to convert the JSON-encoded string to a `Block`.
-    pub fn from_json(input: &str) -> Result<Self, Error> {
-        let json: json::JsonBlock = serde_json::from_str(input)?;
+    /// Try to convert the JSON value to a `Block`.
+    pub fn from_json(input: JsonValue) -> Result<Self, Error> {
+        let json: json::JsonBlock = serde_json::from_value(input)?;
         Block::try_from(json)
     }
 
@@ -854,6 +855,8 @@ mod json {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
     use crate::testing::TestRng;
 
@@ -861,8 +864,9 @@ mod tests {
     fn json_roundtrip() {
         let mut rng = TestRng::new();
         let block = Block::random(&mut rng);
-        let json = block.to_json().unwrap();
-        let decoded = Block::from_json(&json).unwrap();
+        let json_string = block.to_json().to_string();
+        let json = JsonValue::from_str(json_string.as_str()).unwrap();
+        let decoded = Block::from_json(json).unwrap();
         assert_eq!(block, decoded);
     }
 }

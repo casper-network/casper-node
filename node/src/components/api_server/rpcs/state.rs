@@ -1,3 +1,5 @@
+//! RPCs related to the global state.
+
 use std::{convert::TryFrom, str};
 
 use futures::{future::BoxFuture, FutureExt};
@@ -11,41 +13,47 @@ use warp_json_rpc::Builder;
 use casper_execution_engine::core::engine_state::{BalanceResult, QueryResult};
 use casper_types::{Key, URef, U512};
 
-use super::{ApiRequest, Error, ErrorCode, ReactorEventT, RpcWithParams};
+use super::{ApiRequest, Error, ErrorCode, ReactorEventT, RpcWithParams, RpcWithParamsExt};
 use crate::{
     components::api_server::CLIENT_API_VERSION, crypto::hash::Digest, effect::EffectBuilder,
     reactor::QueueKind, types::json_compatibility::StoredValue,
 };
 
-#[derive(Deserialize)]
-pub(in crate::components::api_server) struct GetItemParams {
-    /// The global state hash.
-    global_state_hash: String,
-    /// Hex-encoded `casper_types::Key`.
-    key: String,
+/// Params for "state_get_item" RPC request.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetItemParams {
+    /// Hex-encoded global state hash.
+    pub global_state_hash: String,
+    /// `casper_types::Key` as formatted string.
+    pub key: String,
     /// The path components starting from the key as base.
-    path: Vec<String>,
+    pub path: Vec<String>,
 }
 
-pub(in crate::components::api_server) struct GetItem {}
+/// Result for "state_get_item" RPC response.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetItemResult {
+    /// The RPC API version.
+    pub api_version: Version,
+    /// The stored value.
+    pub stored_value: StoredValue,
+}
+
+/// "state_get_item" RPC.
+pub struct GetItem {}
 
 impl RpcWithParams for GetItem {
     const METHOD: &'static str = "state_get_item";
-
     type RequestParams = GetItemParams;
+    type ResponseResult = GetItemResult;
+}
 
+impl RpcWithParamsExt for GetItem {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         params: Self::RequestParams,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        /// The JSON-RPC response's "result".
-        #[derive(Serialize)]
-        struct ResponseResult {
-            api_version: Version,
-            stored_value: StoredValue,
-        }
-
         async move {
             // Try to parse the global state hash from the params.
             let global_state_hash = match Digest::from_hex(&params.global_state_hash)
@@ -112,7 +120,7 @@ impl RpcWithParams for GetItem {
             // Return the result.
             match StoredValue::try_from(&ee_stored_value) {
                 Ok(stored_value) => {
-                    let result = ResponseResult {
+                    let result = Self::ResponseResult {
                         api_version: CLIENT_API_VERSION.clone(),
                         stored_value,
                     };
@@ -128,33 +136,39 @@ impl RpcWithParams for GetItem {
     }
 }
 
-#[derive(Deserialize)]
-pub(in crate::components::api_server) struct GetBalanceParams {
-    /// The global state hash.
-    global_state_hash: String,
+/// Params for "state_get_balance" RPC request.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetBalanceParams {
+    /// Hex-encoded global state hash.
+    pub global_state_hash: String,
     /// Formatted URef.
-    purse_uref: String,
+    pub purse_uref: String,
 }
 
-pub(in crate::components::api_server) struct GetBalance {}
+/// Result for "state_get_balance" RPC response.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetBalanceResult {
+    /// The RPC API version.
+    pub api_version: Version,
+    /// The balance value.
+    pub balance_value: U512,
+}
+
+/// "state_get_balance" RPC.
+pub struct GetBalance {}
 
 impl RpcWithParams for GetBalance {
     const METHOD: &'static str = "state_get_balance";
-
     type RequestParams = GetBalanceParams;
+    type ResponseResult = GetBalanceResult;
+}
 
+impl RpcWithParamsExt for GetBalance {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         params: Self::RequestParams,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        /// The JSON-RPC response's "result".
-        #[derive(Serialize)]
-        struct ResponseResult {
-            api_version: Version,
-            balance_value: U512,
-        }
-
         async move {
             // Try to parse the global state hash from the params.
             let global_state_hash = match Digest::from_hex(&params.global_state_hash)
@@ -217,7 +231,7 @@ impl RpcWithParams for GetBalance {
             };
 
             // Return the result.
-            let result = ResponseResult {
+            let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
                 balance_value,
             };

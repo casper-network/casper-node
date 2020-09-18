@@ -1,42 +1,56 @@
+//! RPCs related to accounts.
+
 use std::str;
 
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
 use hyper::Body;
 use semver::Version;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tracing::info;
 use warp_json_rpc::Builder;
 
-use super::{ApiRequest, Error, ErrorCode, ReactorEventT, RpcWithParams};
+use super::{ApiRequest, Error, ErrorCode, ReactorEventT, RpcWithParams, RpcWithParamsExt};
 use crate::{
     components::api_server::CLIENT_API_VERSION, effect::EffectBuilder, reactor::QueueKind,
     types::Deploy,
 };
 
-pub(in crate::components::api_server) struct PutDeploy {}
+/// Params for "account_put_deploy" RPC request.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PutDeployParams {
+    /// JSON-encoded deploy.
+    pub deploy: Map<String, Value>,
+}
+
+/// Result for "account_put_deploy" RPC response.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PutDeployResult {
+    /// The RPC API version.
+    pub api_version: Version,
+    /// The deploy hash.
+    pub deploy_hash: String,
+}
+
+/// "account_put_deploy" RPC
+pub struct PutDeploy {}
 
 impl RpcWithParams for PutDeploy {
     const METHOD: &'static str = "account_put_deploy";
+    type RequestParams = PutDeployParams;
+    type ResponseResult = PutDeployResult;
+}
 
-    type RequestParams = Map<String, Value>; // JSON-encoded deploy.
-
+impl RpcWithParamsExt for PutDeploy {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         params: Self::RequestParams,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        /// The JSON-RPC response's "result".
-        #[derive(Serialize)]
-        struct ResponseResult {
-            api_version: Version,
-            deploy_hash: String,
-        }
-
         async move {
             // Try to parse a deploy from the params.
-            let json_deploy = Value::Object(params);
+            let json_deploy = Value::Object(params.deploy);
             let deploy = match Deploy::from_json(json_deploy).map_err(|error| error.to_string()) {
                 Ok(deploy) => deploy,
                 Err(error_msg) => {
@@ -62,7 +76,7 @@ impl RpcWithParams for PutDeploy {
                 .await;
 
             // Return the result.
-            let result = ResponseResult {
+            let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
                 deploy_hash: hex::encode(deploy_hash.inner()),
             };
