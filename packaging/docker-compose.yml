@@ -10,11 +10,20 @@ services:
     command: /bin/bash -c "/root/share/build_deb.sh _U18.04"
     tty: true
 
-#  deb_2004:
+  deb_2004:
+    build:
+      context: .
+      dockerfile: Dockerfile.U2004
+    volumes:
+      - ./share:/root/share
+    command: /bin/bash -c "/root/share/build_deb.sh _U20.04"
+    tty: true
+#
+#  deb_buster:
 #    build:
 #      context: .
-#      dockerfile: Dockerfile.U1804
+#      dockerfile: Dockerfile.DebianBuster
 #    volumes:
 #      - ./share:/root/share
-#    command: /bin/bash -c "/root/share/build_deb.sh _U20.04"
+#    command: /bin/bash -c "/root/share/build_deb.sh _debian_buster"
 #    tty: true
