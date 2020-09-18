@@ -95,6 +95,7 @@ impl<C: Context> ActiveValidator<C> {
         &mut self,
         timestamp: Timestamp,
         state: &State<C>,
+        instance_id: C::InstanceId,
         rng: &mut R,
     ) -> Vec<Effect<C>> {
         if self.is_faulty(state) {
@@ -110,11 +111,12 @@ impl<C: Context> ActiveValidator<C> {
         let r_id = state::round_id(timestamp, r_exp);
         let r_len = state::round_len(r_exp);
         if timestamp == r_id && state.leader(r_id) == self.vidx {
-            effects.extend(self.request_new_block(state, timestamp, rng))
+            effects.extend(self.request_new_block(state, instance_id, timestamp, rng))
         } else if timestamp == r_id + self.witness_offset(r_len) {
             let panorama = state.panorama().cutoff(state, timestamp);
             if panorama.has_correct() {
-                let witness_vote = self.new_vote(panorama, timestamp, None, state, rng);
+                let witness_vote =
+                    self.new_vote(panorama, timestamp, None, state, instance_id, rng);
                 effects.push(Effect::NewVertex(ValidVertex(Vertex::Vote(witness_vote))))
             }
         }
@@ -127,6 +129,7 @@ impl<C: Context> ActiveValidator<C> {
         vhash: &C::Hash,
         timestamp: Timestamp,
         state: &State<C>,
+        instance_id: C::InstanceId,
         rng: &mut R,
     ) -> Vec<Effect<C>> {
         if let Some(evidence) = state.opt_evidence(self.vidx) {
@@ -137,7 +140,8 @@ impl<C: Context> ActiveValidator<C> {
         } else if self.should_send_confirmation(vhash, timestamp, state) {
             let panorama = self.confirmation_panorama(vhash, state);
             if panorama.has_correct() {
-                let confirmation_vote = self.new_vote(panorama, timestamp, None, state, rng);
+                let confirmation_vote =
+                    self.new_vote(panorama, timestamp, None, state, instance_id, rng);
                 let vv = ValidVertex(Vertex::Vote(confirmation_vote));
                 return vec![Effect::NewVertex(vv)];
             }
@@ -153,6 +157,7 @@ impl<C: Context> ActiveValidator<C> {
     pub(crate) fn request_new_block<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         state: &State<C>,
+        instance_id: C::InstanceId,
         timestamp: Timestamp,
         rng: &mut R,
     ) -> Option<Effect<C>> {
@@ -166,7 +171,7 @@ impl<C: Context> ActiveValidator<C> {
         let panorama = state.panorama().cutoff(state, timestamp);
         let opt_parent_hash = state.fork_choice(&panorama);
         if opt_parent_hash.map_or(false, |hash| state.is_terminal_block(hash)) {
-            let proposal_vote = self.new_vote(panorama, timestamp, None, state, rng);
+            let proposal_vote = self.new_vote(panorama, timestamp, None, state, instance_id, rng);
             return Some(Effect::NewVertex(ValidVertex(Vertex::Vote(proposal_vote))));
         }
         let opt_parent = opt_parent_hash.map(|bh| state.block(bh));
@@ -182,6 +187,7 @@ impl<C: Context> ActiveValidator<C> {
         value: C::ConsensusValue,
         block_context: BlockContext,
         state: &State<C>,
+        instance_id: C::InstanceId,
         rng: &mut R,
     ) -> Vec<Effect<C>> {
         let timestamp = block_context.timestamp();
@@ -206,7 +212,8 @@ impl<C: Context> ActiveValidator<C> {
             warn!("unexpected proposal value");
             return vec![];
         };
-        let proposal_vote = self.new_vote(panorama, timestamp, Some(value), state, rng);
+        let proposal_vote =
+            self.new_vote(panorama, timestamp, Some(value), state, instance_id, rng);
         vec![Effect::NewVertex(ValidVertex(Vertex::Vote(proposal_vote)))]
     }
 
@@ -260,6 +267,7 @@ impl<C: Context> ActiveValidator<C> {
         timestamp: Timestamp,
         value: Option<C::ConsensusValue>,
         state: &State<C>,
+        instance_id: C::InstanceId,
         rng: &mut R,
     ) -> SignedWireVote<C> {
         if let Some((prop_time, _)) = self.next_proposal.take() {
@@ -276,6 +284,7 @@ impl<C: Context> ActiveValidator<C> {
         let wvote = WireVote {
             panorama,
             creator: self.vidx,
+            instance_id,
             value,
             seq_number,
             timestamp,
@@ -392,6 +401,7 @@ mod tests {
         let mut state = State::new_test(&[Weight(3), Weight(4)], 0);
         let mut rng = TestRng::new();
         let mut fd = FinalityDetector::new(Weight(2));
+        let instance_id = 1u64;
 
         // We start at time 410, with round length 16, so the first leader tick is 416, and the
         // first witness tick 426.
@@ -404,11 +414,11 @@ mod tests {
         assert_eq!([Eff::ScheduleTimer(426.into())], *effects);
 
         assert!(alice_av
-            .handle_timer(415.into(), &state, &mut rng)
+            .handle_timer(415.into(), &state, instance_id, &mut rng)
             .is_empty()); // Too early: No new effects.
 
         // Alice wants to propose a block, and also make her witness vote at 426.
-        let bctx = match &*alice_av.handle_timer(416.into(), &state, &mut rng) {
+        let bctx = match &*alice_av.handle_timer(416.into(), &state, instance_id, &mut rng) {
             [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock(bctx)]
                 if *timestamp == 426.into() =>
             {
@@ -419,21 +429,21 @@ mod tests {
         assert_eq!(Timestamp::from(416), bctx.timestamp());
 
         // She has a pending deploy from Colin who wants to pay for a hot beverage.
-        let effects = alice_av.propose(0xC0FFEE, bctx, &state, &mut rng);
+        let effects = alice_av.propose(0xC0FFEE, bctx, &state, instance_id, &mut rng);
         let proposal_wvote = unwrap_single(effects).unwrap_vote();
         let prop_hash = proposal_wvote.hash();
         state.add_vote(proposal_wvote)?;
         assert!(alice_av
-            .on_new_vote(&prop_hash, 417.into(), &state, &mut rng)
+            .on_new_vote(&prop_hash, 417.into(), &state, instance_id, &mut rng)
             .is_empty());
 
         // Bob creates a confirmation vote for Alice's proposal.
-        let effects = bob_av.on_new_vote(&prop_hash, 419.into(), &state, &mut rng);
+        let effects = bob_av.on_new_vote(&prop_hash, 419.into(), &state, instance_id, &mut rng);
         state.add_vote(unwrap_single(effects).unwrap_vote())?;
 
         // Bob creates his witness message 2/3 through the round.
         let mut effects = bob_av
-            .handle_timer(426.into(), &state, &mut rng)
+            .handle_timer(426.into(), &state, instance_id, &mut rng)
             .into_iter();
         assert_eq!(Some(Eff::ScheduleTimer(432.into())), effects.next()); // Bob is the next leader.
         state.add_vote(effects.next().unwrap().unwrap_vote())?;
@@ -444,7 +454,7 @@ mod tests {
 
         // Alice also sends her own witness message, completing the summit for her proposal.
         let mut effects = alice_av
-            .handle_timer(426.into(), &state, &mut rng)
+            .handle_timer(426.into(), &state, instance_id, &mut rng)
             .into_iter();
         assert_eq!(Some(Eff::ScheduleTimer(442.into())), effects.next()); // Timer for witness vote.
         state.add_vote(effects.next().unwrap().unwrap_vote())?;
