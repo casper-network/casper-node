@@ -32,7 +32,9 @@ use crate::{
 
 #[derive(Debug)]
 pub(crate) struct HighwayProtocol<I, C: Context> {
+    /// Incoming vertices we can't add yet because they are still missing a dependency.
     vertex_deps: BTreeMap<Dependency<C>, Vec<(I, PreValidatedVertex<C>)>>,
+    /// Incoming blocks we can't add yet because we are waiting for validation.
     pending_values: HashMap<C::ConsensusValue, Vec<ValidVertex<C>>>,
     finality_detector: FinalityDetector<C>,
     highway: Highway<C>,
@@ -102,6 +104,8 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
             .map(ConsensusProtocolResult::FinalizedBlock)
     }
 
+    /// Adds the given vertices to the protocol state, if possible, or requests missing
+    /// dependencies or validation. Recursively adds everything that is unblocked now.
     fn add_vertices<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         mut pvvs: Vec<(I, PreValidatedVertex<C>)>,
@@ -119,8 +123,9 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
             let mut state_changed = false;
             for (sender, pvv) in pvvs.drain(..) {
                 if self.highway.has_vertex(pvv.inner()) {
-                    continue;
+                    continue; // Vertex is already in the protocol state. Ignore.
                 } else if let Some(dep) = self.highway.missing_dependency(&pvv) {
+                    // Store it in the map and request the missing dependency from the sender.
                     self.vertex_deps
                         .entry(dep.clone())
                         .or_default()
@@ -134,6 +139,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
                     match self.highway.validate_vertex(pvv) {
                         Ok(vv) => {
                             if let Some(value) = vv.inner().value().cloned() {
+                                // It's a block: Request validation before adding it to the state.
                                 self.pending_values
                                     .entry(value.clone())
                                     .or_default()
@@ -142,6 +148,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
                                     sender, value,
                                 ));
                             } else {
+                                // It's not a block: Add it to the state.
                                 results.extend(self.add_valid_vertex(vv, rng));
                                 state_changed = true;
                             }
@@ -154,7 +161,10 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
                 }
             }
             if state_changed {
+                // If we added new vertices to the state, check whether any dependencies we were
+                // waiting for are now satisfied, and try adding the pending vertices as well.
                 pvvs.extend(self.remove_satisfied_deps());
+                // Check whether any new blocks were finalized.
                 results.extend(self.detect_finality());
             }
         }
@@ -285,6 +295,7 @@ where
                 .collect_vec();
             let satisfied_pvvs = self.remove_satisfied_deps().collect();
             results.extend(self.add_vertices(satisfied_pvvs, rng));
+            results.extend(self.detect_finality());
             Ok(results)
         } else {
             // TODO: Slash proposer?
