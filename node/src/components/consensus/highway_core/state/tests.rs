@@ -254,50 +254,6 @@ fn fork_choice() -> Result<(), AddVoteError<TestContext>> {
 }
 
 #[test]
-fn round_exp_validity() -> Result<(), AddVoteError<TestContext>> {
-    let params = Params::new(
-        0, // seed
-        TEST_BLOCK_REWARD,
-        TEST_BLOCK_REWARD / 5,
-        TEST_REWARD_DELAY,
-        2, // minimum round exponent
-        u64::MAX,
-        Timestamp::from(u64::MAX),
-    )
-    .with_init_round_exp(6);
-    let mut state = State::new(&[Weight(2), Weight(1), Weight(1)], params);
-    let mut rng = TestRng::new();
-
-    // The initial round exponent is 6, so Bob and Carol count as having round exponent 6.
-    // Alice starts with 7. Now 6 and 7 are both median values.
-    let a0 = add_vote!(state, rng, ALICE, 0, 7u8, 0xA0; N, N, N)?;
-    // Bob is allowed to start with 5 and even go to 4, which is only two below the median 6.
-    let b0 = add_vote!(state, rng, BOB, 1, 5u8, None; a0, N, N)?;
-    // To change from 5 to 4, he waits for the next round. Witness vote is at 2/3 through that.
-    let b1 = add_vote!(state, rng, BOB, 32 + 21, 4u8, None; a0, b0, N)?;
-
-    // However, 3 is not allowed, because 5 is not a median.
-    let mut wvote = WireVote {
-        panorama: panorama!(a0, b1, N),
-        creator: BOB,
-        instance_id: 1u64,
-        value: None,
-        seq_number: 2,
-        timestamp: Timestamp::from(32 + 32 + 10), // Witness vote, 2/3 through round 3 (length 16).
-        round_exp: 3,
-    };
-    let vote = SignedWireVote::new(wvote.clone(), &BOB_SEC, &mut rng);
-    let opt_err = state.add_vote(vote).err().map(vote_err);
-    assert_eq!(Some(VoteError::RoundExponentSpread), opt_err);
-
-    // If Carol also goes to 5, 5 becomes a median, too, so 3 is allowed.
-    let c0 = add_vote!(state, rng, CAROL, 1, 5u8, None; a0, N, N)?;
-    wvote.panorama = panorama!(a0, b1, c0);
-    let vote = SignedWireVote::new(wvote, &BOB_SEC, &mut rng);
-    state.add_vote(vote)
-}
-
-#[test]
 fn test_log2() {
     assert_eq!(2, log2(0b100));
     assert_eq!(2, log2(0b101));
