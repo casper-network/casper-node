@@ -13,9 +13,7 @@ use tracing::info;
 
 use crate::{
     components::consensus::{
-        consensus_protocol::{
-            BlockContext, ConsensusProtocol, ConsensusProtocolResult, ProtocolState, VertexTrait,
-        },
+        consensus_protocol::{BlockContext, ConsensusProtocol, ConsensusProtocolResult},
         highway_core::{
             active_validator::Effect as AvEffect,
             finality_detector::FinalityDetector,
@@ -31,34 +29,6 @@ use crate::{
     },
     types::{ProtoBlock, Timestamp},
 };
-
-impl<C: Context> VertexTrait for PreValidatedVertex<C> {
-    type Id = Dependency<C>;
-    type Value = C::ConsensusValue;
-
-    fn id(&self) -> Dependency<C> {
-        self.vertex().id()
-    }
-
-    fn value(&self) -> Option<&C::ConsensusValue> {
-        self.vertex().value()
-    }
-}
-
-impl<C: Context> ProtocolState for Highway<C> {
-    type Error = String;
-    type VId = Dependency<C>;
-    type Value = C::ConsensusValue;
-    type Vertex = PreValidatedVertex<C>;
-
-    fn missing_dependency(&self, pvv: &Self::Vertex) -> Option<Dependency<C>> {
-        self.missing_dependency(pvv)
-    }
-
-    fn get_vertex(&self, v: Dependency<C>) -> Result<Option<PreValidatedVertex<C>>, Self::Error> {
-        Ok(self.get_dependency(&v).map(PreValidatedVertex::from))
-    }
-}
 
 #[derive(Debug)]
 pub(crate) struct HighwayProtocol<I, C: Context> {

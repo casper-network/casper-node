@@ -5,9 +5,6 @@ use rand::{CryptoRng, Rng};
 
 use crate::{components::consensus::traits::ConsensusValueT, types::Timestamp};
 
-mod protocol_state;
-pub(crate) use protocol_state::{ProtocolState, VertexTrait};
-
 /// Information about the context in which a new block is created.
 #[derive(Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
 pub struct BlockContext {
