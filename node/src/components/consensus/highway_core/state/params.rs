@@ -11,7 +11,6 @@ pub(crate) struct Params {
     init_round_exp: u8,
     end_height: u64,
     end_timestamp: Timestamp,
-    round_exp_spread: u8,
 }
 
 impl Params {
@@ -56,7 +55,6 @@ impl Params {
             init_round_exp: min_round_exp, // TODO: The median seen by previous era's switch block?
             end_height,
             end_timestamp,
-            round_exp_spread: 2, // TODO: Make configurable.
         }
     }
 
@@ -106,17 +104,5 @@ impl Params {
     /// Returns the minimum timestamp of the last block.
     pub(crate) fn end_timestamp(&self) -> Timestamp {
         self.end_timestamp
-    }
-
-    /// Returns the maximum difference for how far a vote's round exponent is allowed to move below
-    /// the median.
-    pub(crate) fn round_exp_spread(&self) -> u8 {
-        self.round_exp_spread
-    }
-
-    #[cfg(test)]
-    pub(crate) fn with_init_round_exp(mut self, init_round_exp: u8) -> Params {
-        self.init_round_exp = init_round_exp;
-        self
     }
 }
