@@ -118,7 +118,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         while !pvvs.is_empty() {
             let mut state_changed = false;
             for (sender, pvv) in pvvs.drain(..) {
-                if self.highway.has_vertex(pvv.vertex()) {
+                if self.highway.has_vertex(pvv.inner()) {
                     continue;
                 } else if let Some(dep) = self.highway.missing_dependency(&pvv) {
                     self.vertex_deps
@@ -133,7 +133,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
                 } else {
                     match self.highway.validate_vertex(pvv) {
                         Ok(vv) => {
-                            if let Some(value) = vv.vertex().value().cloned() {
+                            if let Some(value) = vv.inner().value().cloned() {
                                 self.pending_values
                                     .entry(value.clone())
                                     .or_default()

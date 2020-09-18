@@ -51,7 +51,7 @@ pub(crate) enum EvidenceError {
 pub(crate) struct PreValidatedVertex<C: Context>(Vertex<C>);
 
 impl<C: Context> PreValidatedVertex<C> {
-    pub(crate) fn vertex(&self) -> &Vertex<C> {
+    pub(crate) fn inner(&self) -> &Vertex<C> {
         &self.0
     }
 
@@ -88,7 +88,7 @@ impl<C: Context> From<PreValidatedVertex<C>> for Vertex<C> {
 pub(crate) struct ValidVertex<C: Context>(pub(super) Vertex<C>);
 
 impl<C: Context> ValidVertex<C> {
-    pub(crate) fn vertex(&self) -> &Vertex<C> {
+    pub(crate) fn inner(&self) -> &Vertex<C> {
         &self.0
     }
 }
@@ -176,7 +176,7 @@ impl<C: Context> Highway<C> {
     ///
     /// If this returns `None`, `validate_vertex` can be called.
     pub(crate) fn missing_dependency(&self, pvv: &PreValidatedVertex<C>) -> Option<Dependency<C>> {
-        match pvv.vertex() {
+        match pvv.inner() {
             Vertex::Evidence(_) => None,
             Vertex::Vote(vote) => vote.wire_vote.panorama.missing_dependency(&self.state),
         }
@@ -189,7 +189,7 @@ impl<C: Context> Highway<C> {
         &self,
         pvv: PreValidatedVertex<C>,
     ) -> Result<ValidVertex<C>, (PreValidatedVertex<C>, VertexError)> {
-        match self.do_validate_vertex(pvv.vertex()) {
+        match self.do_validate_vertex(pvv.inner()) {
             Err(err) => Err((pvv, err)),
             Ok(()) => Ok(ValidVertex(pvv.0)),
         }
