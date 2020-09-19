@@ -52,13 +52,6 @@ impl<C: Context> Vertex<C> {
             Vertex::Evidence(_) => None,
         }
     }
-
-    pub(crate) fn id(&self) -> Dependency<C> {
-        match self {
-            Vertex::Vote(swvote) => Dependency::Vote(swvote.hash()),
-            Vertex::Evidence(ev) => Dependency::Evidence(ev.perpetrator()),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
