@@ -9,7 +9,7 @@
     "@assemblyscript/loader": "^0.9.4",
     "assemblyscript": "^0.10.0",
     "ava": "^3.12.1",
-    "concat-md": "^0.3.2",
+    "concat-md": "^0.3.5",
     "ts-loader": "^6.2.1",
     "ts-node": "^8.5.4",
     "typedoc": "^0.17.0",
