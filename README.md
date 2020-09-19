@@ -62,9 +62,9 @@ The node ships with an [example configuration file](resources/local/config.toml)
 
 For launching, the following configurations must be properly set:
 
-* `network.known_addresses` must refer to public listening addresses of one or more currently-running nodes.  If the node cannot connect to any of these addresses, it will panic.
-
-   The node _can_ be run with this referring to its own address, but it will be equivalent to specifying an empty list for `known_addresses` - i.e. the node will run and listen, but will be reliant on other nodes connecting to it in order to join the network.  This would be normal for the very first node of a network, but all subsequent nodes should normally specify that first  node's public listening address as their `known_addresses`.
+| Setting                   | Description |
+| :-------------------------| :---------- |
+| `network.known_addresses` | Must refer to public listening addresses of one or more currently-running nodes.  If the node cannot connect to any of these addresses, it will panic.  The node _can_ be run with this referring to its own address, but it will be equivalent to specifying an empty list for `known_addresses` - i.e. the node will run and listen, but will be reliant on other nodes connecting to it in order to join the network.  This would be normal for the very first node of a network, but all subsequent nodes should normally specify that first  node's public listening address as their `known_addresses`. |
 
 
 ### Running multiple nodes on one machine
@@ -72,18 +72,16 @@ For launching, the following configurations must be properly set:
 If you want to run multiple instances on the same machine, you will need to modify the following
 configuration values:
 
-* the secret key path `consensus.secret_key_path` must be different for each node
-* the storage path `storage.path` must be different for each node, e.g. `/tmp/node-2-storage` for
-  the second node
-* the bind address `network.bind_address` must be different for each node, although it can be set to
-  port `0` instead, which will cause the node to select a random port
+| Setting                     | Description |
+| :---------------------------| :---------- |
+| `consensus.secret_key_path` | The path to the secret key must be different for each node, as no two nodes should be using an identical secret key. |
+| `storage.path`              | Storage must be separate for each node, e.g. `/tmp/node-2-storage` for the second node |
+| `network.bind_address`      | Each node requires a different bind address, although the port can be set to `0`, which will cause the node to select a random port. |
+| `network.gossip_interval`   | (optional) To reduce the initial time to become fully interconnected, this value can be reduced, e.g. set  to `1000` for once every second.  However, beware thatthis will also increase the network traffic, as gossip rounds between the nodes will continue to be exchanged at this frequency for the duration of the network. |
 
 The nodes can take quite a long time to become fully interconnected.  This is dependent on the
 `network.gossip_interval` value (in milliseconds).  Nodes gossip their own listening addresses at
-this frequency.  To reduce the initial time to become fully interconnected, this value can be
-reduced, e.g. set `network.gossip_interval` to `1000` for once every second. However, beware that
-this will also increase the network traffic, as gossip rounds between the nodes will continue to be
-exchanged at this frequency for the duration of the network.
+this frequency.
 
 There is a [shell script](run-dev.sh) which automates the process of running multiple nodes on a single machine.
 
