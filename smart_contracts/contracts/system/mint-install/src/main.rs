@@ -5,10 +5,11 @@ use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{contracts::NamedKeys, CLValue};
-
-const HASH_KEY_NAME: &str = "mint_hash";
-const ACCESS_KEY_NAME: &str = "mint_access";
+use casper_types::{
+    contracts::NamedKeys,
+    mint::{ACCESS_KEY, HASH_KEY},
+    CLValue,
+};
 
 #[no_mangle]
 pub extern "C" fn mint() {
@@ -35,8 +36,8 @@ pub extern "C" fn install() {
     let entry_points = mint_token::get_entry_points();
 
     let (contract_package_hash, access_uref) = storage::create_contract_package_at_hash();
-    runtime::put_key(HASH_KEY_NAME, contract_package_hash.into());
-    runtime::put_key(ACCESS_KEY_NAME, access_uref.into());
+    runtime::put_key(HASH_KEY, contract_package_hash.into());
+    runtime::put_key(ACCESS_KEY, access_uref.into());
 
     let named_keys = NamedKeys::new();
 

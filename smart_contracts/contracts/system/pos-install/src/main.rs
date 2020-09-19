@@ -14,23 +14,18 @@ use casper_types::{
         EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys, Parameter,
         CONTRACT_INITIAL_VERSION,
     },
+    proof_of_stake::{
+        ACCESS_KEY, ARG_ACCOUNT, ARG_AMOUNT, ARG_PURSE, HASH_KEY, METHOD_FINALIZE_PAYMENT,
+        METHOD_GET_PAYMENT_PURSE, METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE,
+        POS_PAYMENT_PURSE, POS_REWARDS_PURSE,
+    },
     runtime_args,
     system_contract_errors::mint,
     CLType, CLValue, ContractPackageHash, RuntimeArgs, URef, U512,
 };
-use pos::{
-    ARG_ACCOUNT_KEY, ARG_AMOUNT, ARG_PURSE, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
-    METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE,
-};
-
-const POS_PAYMENT_PURSE: &str = "pos_payment_purse";
-const POS_REWARDS_PURSE: &str = "pos_rewards_purse";
 
 const ARG_MINT_PACKAGE_HASH: &str = "mint_contract_package_hash";
 const ENTRY_POINT_MINT: &str = "mint";
-
-const HASH_KEY_NAME: &str = "pos_hash";
-const ACCESS_KEY_NAME: &str = "pos_access";
 
 #[no_mangle]
 pub extern "C" fn get_payment_purse() {
@@ -72,7 +67,7 @@ pub extern "C" fn install() {
         let mut entry_points = EntryPoints::new();
 
         let get_payment_purse = EntryPoint::new(
-            METHOD_GET_PAYMENT_PURSE.to_string(),
+            METHOD_GET_PAYMENT_PURSE,
             vec![],
             CLType::URef,
             EntryPointAccess::Public,
@@ -81,7 +76,7 @@ pub extern "C" fn install() {
         entry_points.add_entry_point(get_payment_purse);
 
         let set_refund_purse = EntryPoint::new(
-            METHOD_SET_REFUND_PURSE.to_string(),
+            METHOD_SET_REFUND_PURSE,
             vec![Parameter::new(ARG_PURSE, CLType::URef)],
             CLType::Unit,
             EntryPointAccess::Public,
@@ -90,7 +85,7 @@ pub extern "C" fn install() {
         entry_points.add_entry_point(set_refund_purse);
 
         let get_refund_purse = EntryPoint::new(
-            METHOD_GET_REFUND_PURSE.to_string(),
+            METHOD_GET_REFUND_PURSE,
             vec![],
             CLType::Option(Box::new(CLType::URef)),
             EntryPointAccess::Public,
@@ -99,10 +94,10 @@ pub extern "C" fn install() {
         entry_points.add_entry_point(get_refund_purse);
 
         let finalize_payment = EntryPoint::new(
-            METHOD_FINALIZE_PAYMENT.to_string(),
+            METHOD_FINALIZE_PAYMENT,
             vec![
                 Parameter::new(ARG_AMOUNT, CLType::U512),
-                Parameter::new(ARG_ACCOUNT_KEY, CLType::FixedList(Box::new(CLType::U8), 32)),
+                Parameter::new(ARG_ACCOUNT, CLType::FixedList(Box::new(CLType::U8), 32)),
             ],
             CLType::Unit,
             EntryPointAccess::Public,
@@ -114,8 +109,8 @@ pub extern "C" fn install() {
     };
 
     let (contract_package_hash, access_uref) = storage::create_contract_package_at_hash();
-    runtime::put_key(HASH_KEY_NAME, contract_package_hash.into());
-    runtime::put_key(ACCESS_KEY_NAME, access_uref.into());
+    runtime::put_key(HASH_KEY, contract_package_hash.into());
+    runtime::put_key(ACCESS_KEY, access_uref.into());
 
     let (contract_key, _contract_version) =
         storage::add_contract_version(contract_package_hash, entry_points, named_keys);

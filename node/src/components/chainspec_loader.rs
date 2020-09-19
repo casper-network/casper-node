@@ -28,12 +28,8 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
 };
-pub(crate) use chainspec::{DeployConfig, HighwayConfig};
-// False positive.
-#[allow(unreachable_pub)]
 pub use chainspec::Chainspec;
-// False positive.
-#[allow(unreachable_pub)]
+pub(crate) use chainspec::{DeployConfig, HighwayConfig};
 pub use error::Error;
 
 /// `ChainspecHandler` events.
@@ -100,8 +96,8 @@ impl ChainspecLoader {
         self.completed_successfully.unwrap_or_default()
     }
 
-    pub(crate) fn genesis_post_state_hash(self) -> Option<Digest> {
-        self.genesis_post_state_hash
+    pub(crate) fn genesis_post_state_hash(&self) -> &Option<Digest> {
+        &self.genesis_post_state_hash
     }
 
     pub(crate) fn chainspec(&self) -> &Chainspec {

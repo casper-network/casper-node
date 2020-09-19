@@ -1,4 +1,5 @@
 //! Contains implementation of a Proof Of Stake contract functionality.
+mod constants;
 mod mint_provider;
 mod runtime_provider;
 
@@ -6,7 +7,9 @@ use core::marker::Sized;
 
 use crate::{account::AccountHash, system_contract_errors::pos::Result, AccessRights, URef, U512};
 
-pub use crate::proof_of_stake::{mint_provider::MintProvider, runtime_provider::RuntimeProvider};
+pub use crate::proof_of_stake::{
+    constants::*, mint_provider::MintProvider, runtime_provider::RuntimeProvider,
+};
 
 /// Proof of stake functionality implementation.
 pub trait ProofOfStake: MintProvider + RuntimeProvider + Sized {

@@ -7,7 +7,7 @@ use crate::{
     components::consensus::{
         highway_core::{
             highway::Dependency,
-            state::{State, VoteError},
+            state::{State, Vote, VoteError},
             validators::{ValidatorIndex, ValidatorMap},
         },
         traits::Context,
@@ -103,9 +103,13 @@ impl<C: Context> Panorama<C> {
         self.iter().any(Observation::is_correct)
     }
 
-    /// Returns an iterator over all hashes of the honest validators' latest messages.
-    pub(crate) fn iter_correct(&self) -> impl Iterator<Item = &C::Hash> {
-        self.iter().filter_map(Observation::correct)
+    /// Returns an iterator over all honest validators' latest messages.
+    pub(crate) fn iter_correct<'a>(
+        &'a self,
+        state: &'a State<C>,
+    ) -> impl Iterator<Item = &'a Vote<C>> {
+        let to_vote = move |vh: &C::Hash| state.vote(vh);
+        self.iter().filter_map(Observation::correct).map(to_vote)
     }
 
     /// Returns the correct sequence number for a new vote by `vidx` with this panorama.
