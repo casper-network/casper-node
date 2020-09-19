@@ -60,7 +60,7 @@ casper-node validator /etc/casper-node/config.toml
 
 The node ships with an [example configuration file](resources/local/config.toml) that should be setup first.  There is also a commented [local chainspec](resources/local/chainspec.toml) in the same folder.
 
-For launching, the following configurations must be properly set:
+For launching, the following configuration values must be properly set:
 
 | Setting                   | Description |
 | :-------------------------| :---------- |
