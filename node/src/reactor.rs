@@ -176,6 +176,9 @@ where
 struct RunnerMetrics {
     /// Total number of events processed.
     events: IntCounter,
+
+    /// Handle to the metrics registry, in case we need to unregister.
+    registry: Registry,
 }
 
 impl RunnerMetrics {
@@ -184,7 +187,18 @@ impl RunnerMetrics {
         let events = IntCounter::new("runner_events", "total event count")?;
         registry.register(Box::new(events.clone()))?;
 
-        Ok(RunnerMetrics { events })
+        Ok(RunnerMetrics {
+            events,
+            registry: registry.clone(),
+        })
+    }
+}
+
+impl Drop for RunnerMetrics {
+    fn drop(&mut self) {
+        self.registry
+            .unregister(Box::new(self.events.clone()))
+            .expect("did not expect deregistering metrics to fail")
     }
 }
 
