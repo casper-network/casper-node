@@ -4,8 +4,9 @@
 //! top-level module documentation for details.
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
+    net::SocketAddr,
 };
 
 use semver::Version;
@@ -27,12 +28,14 @@ use casper_types::Key;
 use super::Responder;
 use crate::{
     components::{
-        consensus::EraId,
         fetcher::FetchResult,
         storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
-    types::{BlockHash, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlockHash, Timestamp},
+    types::{
+        Block as LinearBlock, BlockHash, BlockHeader, Deploy, DeployHash, FinalizedBlock, Item,
+        ProtoBlockHash, Timestamp,
+    },
     utils::DisplayIter,
     Chainspec,
 };
@@ -145,10 +148,30 @@ where
     }
 }
 
+/// A networking info request.
 #[derive(Debug)]
-// TODO: remove once all variants are used.
+#[must_use]
+pub enum NetworkInfoRequest<I> {
+    /// Get incoming and outgoing peers.
+    GetPeers {
+        /// Responder to be called with all connected peers.
+        responder: Responder<HashMap<I, SocketAddr>>,
+    },
+}
+
+impl<I> Display for NetworkInfoRequest<I>
+where
+    I: Display,
+{
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            NetworkInfoRequest::GetPeers { responder: _ } => write!(formatter, "get peers"),
+        }
+    }
+}
+
+#[derive(Debug)]
 /// A storage request.
-#[allow(dead_code)]
 #[must_use]
 pub enum StorageRequest<S: StorageType + 'static> {
     /// Store given block.
@@ -311,6 +334,11 @@ pub enum ApiRequest {
         /// Responder to call with the result.
         responder: Responder<Option<String>>,
     },
+    /// Return string formatted status or `None` if an error occurred.
+    GetStatus {
+        /// Responder to call with the result.
+        responder: Responder<Option<String>>,
+    },
 }
 
 impl Display for ApiRequest {
@@ -320,6 +348,7 @@ impl Display for ApiRequest {
             ApiRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
             ApiRequest::ListDeploys { .. } => write!(formatter, "list deploys"),
             ApiRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
+            ApiRequest::GetStatus { .. } => write!(formatter, "get status"),
         }
     }
 }
@@ -449,13 +478,13 @@ impl Display for BlockExecutorRequest {
 #[derive(Debug)]
 #[must_use]
 pub struct BlockValidationRequest<T, I> {
-    /// The proto-block to be validated.
+    /// The block to be validated.
     pub(crate) block: T,
     /// The sender of the block, which will be asked to provide all missing deploys.
     pub(crate) sender: I,
     /// Responder to call with the result.
     ///
-    /// Indicates whether or not validation was successful and returns `proto_block` unchanged.
+    /// Indicates whether or not validation was successful and returns `block` unchanged.
     pub(crate) responder: Responder<(bool, T)>,
 }
 
@@ -471,6 +500,8 @@ impl<T: Display, I: Display> Display for BlockValidationRequest<T, I> {
 pub enum LinearChainRequest<I> {
     /// Request whole block from the linear chain, by hash.
     BlockRequest(BlockHash, I),
+    /// Get last finalized block.
+    LastFinalizedBlock(Responder<Option<LinearBlock>>),
 }
 
 impl<I: Display> Display for LinearChainRequest<I> {
@@ -479,6 +510,7 @@ impl<I: Display> Display for LinearChainRequest<I> {
             LinearChainRequest::BlockRequest(bh, peer) => {
                 write!(f, "block request for hash {} from {}", bh, peer)
             }
+            LinearChainRequest::LastFinalizedBlock(_) => write!(f, "last finalized block request"),
         }
     }
 }
@@ -487,6 +519,6 @@ impl<I: Display> Display for LinearChainRequest<I> {
 #[must_use]
 /// Consensus component requests.
 pub enum ConsensusRequest {
-    /// Request for consensus to sign a new linear chain block.
-    SignLinearBlock(EraId, BlockHash, Responder<Signature>),
+    /// Request for consensus to sign a new linear chain block and possibly start a new era.
+    HandleLinearBlock(Box<BlockHeader>, Responder<Signature>),
 }

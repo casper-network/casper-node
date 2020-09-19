@@ -18,7 +18,7 @@ use crate::{
             self, BlockExecutorRequest, BlockValidationRequest, DeployBufferRequest,
             NetworkRequest, StorageRequest,
         },
-        EffectBuilder, Effects,
+        EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
     types::{ProtoBlock, Timestamp},
@@ -181,17 +181,20 @@ where
         let mut handling_es = self.handling_wrapper(effect_builder, rng);
         match event {
             Event::Timer { era_id, timestamp } => handling_es.handle_timer(era_id, timestamp),
-            Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
+            Event::MessageReceived { sender, msg } => {
+                let mut effects = effect_builder.announce_message_in_era(msg.era_id).ignore();
+                effects.extend(handling_es.handle_message(sender, msg));
+                effects
+            }
             Event::NewProtoBlock {
                 era_id,
                 proto_block,
                 block_context,
             } => handling_es.handle_new_proto_block(era_id, proto_block, block_context),
-            Event::ConsensusRequest(requests::ConsensusRequest::SignLinearBlock(
-                era_id,
-                block_hash,
+            Event::ConsensusRequest(requests::ConsensusRequest::HandleLinearBlock(
+                block_header,
                 responder,
-            )) => handling_es.sign_linear_chain_block(era_id, block_hash, responder),
+            )) => handling_es.handle_linear_chain_block(*block_header, responder),
             Event::AcceptProtoBlock {
                 era_id,
                 proto_block,

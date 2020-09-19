@@ -160,7 +160,7 @@ impl Cli {
                 }
 
                 let mut joiner_runner =
-                    Runner::<joiner::Reactor, _>::new(WithDir::new(root, initializer), &mut rng)
+                    Runner::<joiner::Reactor<_>, _>::new(WithDir::new(root, initializer), &mut rng)
                         .await?;
                 joiner_runner.run(&mut rng).await;
 

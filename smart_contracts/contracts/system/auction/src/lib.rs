@@ -13,7 +13,7 @@ use casper_contract::{
 use casper_types::{
     account::AccountHash,
     auction::{
-        AuctionProvider, DelegationRate, RuntimeProvider, SeigniorageRecipients, StorageProvider,
+        Auction, DelegationRate, RuntimeProvider, SeigniorageRecipients, StorageProvider,
         SystemProvider, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
         ARG_SOURCE_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_KEYS, ARG_VALIDATOR_PUBLIC_KEYS,
         METHOD_ADD_BID, METHOD_BOND, METHOD_DELEGATE, METHOD_QUASH_BID,
@@ -68,7 +68,7 @@ impl RuntimeProvider for AuctionContract {
     }
 }
 
-impl AuctionProvider for AuctionContract {}
+impl Auction for AuctionContract {}
 
 #[no_mangle]
 pub extern "C" fn read_winners() {

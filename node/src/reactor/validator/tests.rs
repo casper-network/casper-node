@@ -12,6 +12,7 @@ use crate::{
     crypto::asymmetric_key::{PublicKey, SecretKey},
     reactor::{initializer, joiner, validator, Runner},
     testing::{self, network::Network, ConditionCheckReactor, TestRng},
+    types::Timestamp,
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
     Chainspec,
 };
@@ -48,6 +49,9 @@ impl TestChain {
                 )
             })
             .collect();
+        // TODO: This is duplicated. Remove the `HighwayConfig` field.
+        chainspec.genesis.timestamp = Timestamp::now();
+        chainspec.genesis.highway_config.genesis_era_start_timestamp = Timestamp::now();
 
         TestChain {
             keys,
@@ -106,7 +110,7 @@ impl TestChain {
                 bail!("failed to initialize successfully");
             }
 
-            let mut joiner_runner = Runner::<joiner::Reactor, TestRng>::new(
+            let mut joiner_runner = Runner::<joiner::Reactor<TestRng>, TestRng>::new(
                 WithDir::new(root.clone(), initializer),
                 rng,
             )

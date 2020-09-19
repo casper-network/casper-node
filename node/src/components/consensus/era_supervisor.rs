@@ -12,7 +12,12 @@ use std::{
 };
 
 use anyhow::Error;
+use blake2::{
+    digest::{Input, VariableOutput},
+    VarBlake2b,
+};
 use casper_types::U512;
+use fmt::Display;
 use num_traits::AsPrimitive;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
@@ -22,7 +27,7 @@ use casper_execution_engine::shared::motes::Motes;
 
 use crate::{
     components::{
-        chainspec_loader::HighwayConfig,
+        chainspec_loader::{Chainspec, HighwayConfig},
         consensus::{
             consensus_protocol::{
                 BlockContext, ConsensusProtocol, ConsensusProtocolResult,
@@ -39,13 +44,16 @@ use crate::{
         hash,
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
-    types::{BlockHash, FinalizedBlock, ProtoBlock, SystemTransaction, Timestamp},
+    types::{BlockHeader, FinalizedBlock, ProtoBlock, SystemTransaction, Timestamp},
     utils::WithDir,
 };
 
 // We use one trillion as a block reward unit because it's large enough to allow precise
 // fractions, and small enough for many block rewards to fit into a u64.
 const BLOCK_REWARD: u64 = 1_000_000_000_000;
+/// The number of recent eras to retain. Eras older than this are dropped from memory.
+// TODO: This needs to be in sync with AUCTION_DELAY/booking_duration_millis. (Already duplicated!)
+const RETAIN_ERAS: u64 = 4;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct EraId(pub(crate) u64);
@@ -58,8 +66,14 @@ impl EraId {
         }
     }
 
-    fn successor(self) -> EraId {
+    pub(crate) fn successor(self) -> EraId {
         EraId(self.0 + 1)
+    }
+}
+
+impl Display for EraId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.0)
     }
 }
 
@@ -78,7 +92,7 @@ pub(crate) struct EraSupervisor<I, R: Rng + CryptoRng + ?Sized> {
     pub(super) public_signing_key: PublicKey,
     validator_stakes: Vec<(PublicKey, Motes)>,
     current_era: EraId,
-    highway_config: HighwayConfig,
+    chainspec: Chainspec,
 }
 
 impl<I, R: Rng + CryptoRng + ?Sized> Debug for EraSupervisor<I, R> {
@@ -99,7 +113,8 @@ where
         config: WithDir<Config>,
         effect_builder: EffectBuilder<REv>,
         validator_stakes: Vec<(PublicKey, Motes)>,
-        highway_config: &HighwayConfig,
+        chainspec: &Chainspec,
+        genesis_post_state_hash: hash::Digest,
         rng: &mut R,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
         let (root, config) = config.into_parts();
@@ -112,15 +127,16 @@ where
             public_signing_key,
             current_era: EraId(0),
             validator_stakes: validator_stakes.clone(),
-            highway_config: *highway_config,
+            chainspec: chainspec.clone(),
         };
 
         let results = era_supervisor.new_era(
             EraId(0),
             timestamp,
             validator_stakes,
-            highway_config.genesis_era_start_timestamp,
+            chainspec.genesis.highway_config.genesis_era_start_timestamp,
             0,
+            genesis_post_state_hash,
         );
         let effects = era_supervisor
             .handling_wrapper(effect_builder, rng)
@@ -143,6 +159,39 @@ where
         }
     }
 
+    fn highway_config(&self) -> HighwayConfig {
+        self.chainspec.genesis.highway_config
+    }
+
+    fn instance_id(&self, post_state_hash: hash::Digest, block_height: u64) -> hash::Digest {
+        let mut result = [0; hash::Digest::LENGTH];
+        let mut hasher = VarBlake2b::new(hash::Digest::LENGTH).expect("should create hasher");
+
+        hasher.input(&self.chainspec.genesis.name);
+        hasher.input(self.chainspec.genesis.timestamp.millis().to_le_bytes());
+        hasher.input(post_state_hash);
+
+        for upgrade_point in self
+            .chainspec
+            .upgrades
+            .iter()
+            .take_while(|up| up.activation_point.rank <= block_height)
+        {
+            hasher.input(upgrade_point.activation_point.rank.to_le_bytes());
+            if let Some(bytes) = upgrade_point.upgrade_installer_bytes.as_ref() {
+                hasher.input(bytes);
+            }
+            if let Some(bytes) = upgrade_point.upgrade_installer_args.as_ref() {
+                hasher.input(bytes);
+            }
+        }
+
+        hasher.variable_result(|slice| {
+            result.copy_from_slice(slice);
+        });
+        result.into()
+    }
+
     /// Starts a new era; panics if it already exists.
     fn new_era(
         &mut self,
@@ -151,6 +200,7 @@ where
         validator_stakes: Vec<(PublicKey, Motes)>,
         start_time: Timestamp,
         start_height: u64,
+        post_state_hash: hash::Digest,
     ) -> Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>> {
         if self.active_eras.contains_key(&era_id) {
             panic!("{:?} already exists", era_id);
@@ -171,39 +221,58 @@ where
         let validators: Validators<PublicKey> =
             validator_stakes.into_iter().map(scale_stake).collect();
 
-        let instance_id = hash::hash(format!("Highway era {}", era_id.0));
-        let secret =
-            HighwaySecret::new(Rc::clone(&self.secret_signing_key), self.public_signing_key);
         let ftt = validators.total_weight()
-            * u64::from(self.highway_config.finality_threshold_percent)
+            * u64::from(self.highway_config().finality_threshold_percent)
             / 100;
         // The number of rounds after which a block reward is paid out.
         // TODO: Make this configurable?
         let reward_delay = 8;
+        // TODO: The initial round length should be the observed median of the switch block.
         let params = Params::new(
             0, // TODO: get a proper seed.
             BLOCK_REWARD,
             BLOCK_REWARD / 5, // TODO: Make reduced block reward configurable?
             reward_delay,
-            self.highway_config.minimum_round_exponent,
-            self.highway_config.minimum_era_height,
-            start_time + self.highway_config.era_duration,
+            self.highway_config().minimum_round_exponent,
+            self.highway_config().minimum_era_height,
+            start_time + self.highway_config().era_duration,
         );
-        let (highway, results) = HighwayProtocol::<I, HighwayContext>::new(
-            instance_id,
+
+        // Activate the era if it is still ongoing based on its minimum duration, and if we are one
+        // of the validators.
+        let our_id = self.public_signing_key;
+        let min_end_time = start_time
+            + self
+                .highway_config()
+                .era_duration
+                .max(params.min_round_len() * params.end_height());
+        let should_activate =
+            min_end_time >= timestamp && validators.iter().any(|v| *v.id() == our_id);
+
+        let mut highway = HighwayProtocol::<I, HighwayContext>::new(
+            self.instance_id(post_state_hash, start_height),
             validators,
             params,
-            self.public_signing_key,
-            secret,
             ftt,
-            timestamp,
         );
+
+        let results = if should_activate {
+            let secret = HighwaySecret::new(Rc::clone(&self.secret_signing_key), our_id);
+            highway.activate_validator(our_id, secret, timestamp.max(start_time))
+        } else {
+            Vec::new()
+        };
 
         let era = Era {
             consensus: Box::new(highway),
             start_height,
         };
         let _ = self.active_eras.insert(era_id, era);
+
+        // Remove the era that has become obsolete now.
+        if era_id.0 > RETAIN_ERAS {
+            self.active_eras.remove(&EraId(era_id.0 - RETAIN_ERAS - 1));
+        }
 
         results
     }
@@ -299,20 +368,49 @@ where
         effects
     }
 
-    pub(super) fn sign_linear_chain_block(
+    pub(super) fn handle_linear_chain_block(
         &mut self,
-        _era_id: EraId,
-        block_hash: BlockHash,
+        block_header: BlockHeader,
         responder: Responder<Signature>,
     ) -> Effects<Event<I>> {
+        assert_eq!(
+            block_header.era_id(),
+            self.era_supervisor.current_era,
+            "executed block in unexpected era"
+        );
         // TODO - we should only sign if we're a validator for the given era ID.
         let signature = asymmetric_key::sign(
-            block_hash.inner(),
+            block_header.hash().inner(),
             &self.era_supervisor.secret_signing_key,
             &self.era_supervisor.public_signing_key,
             self.rng,
         );
-        responder.respond(signature).ignore()
+        let mut effects = responder.respond(signature).ignore();
+        if block_header.switch_block() {
+            // TODO: Learn the new weights from contract (validator rotation).
+            let validator_stakes = self.era_supervisor.validator_stakes.clone();
+            self.era_supervisor
+                .current_era_mut()
+                .consensus
+                .deactivate_validator();
+            let new_era_id = block_header.era_id().successor();
+            info!(?new_era_id, "Era created");
+            let results = self.era_supervisor.new_era(
+                new_era_id,
+                Timestamp::now(), // TODO: This should be passed in.
+                validator_stakes,
+                block_header.timestamp(),
+                block_header.height() + 1,
+                *block_header.post_state_hash(),
+            );
+            effects.extend(self.handle_consensus_results(new_era_id, results));
+        }
+        effects.extend(
+            self.effect_builder
+                .announce_block_handled(block_header.height())
+                .ignore(),
+        );
+        effects
     }
 
     pub(super) fn handle_accept_proto_block(
@@ -407,10 +505,6 @@ where
                     .effect_builder
                     .announce_finalized_proto_block(proto_block.clone())
                     .ignore();
-                assert_eq!(
-                    era_id, self.era_supervisor.current_era,
-                    "finalized block in unexpected era"
-                );
                 // Create instructions for slashing equivocators.
                 let mut system_transactions: Vec<_> = new_equivocators
                     .into_iter()
@@ -428,30 +522,13 @@ where
                     self.era_supervisor.active_eras[&era_id].start_height + height,
                     proposer,
                 );
-                if fb.switch_block() {
-                    // TODO: Learn the new weights from contract (validator rotation).
-                    let validator_stakes = self.era_supervisor.validator_stakes.clone();
-                    self.era_supervisor
-                        .current_era_mut()
-                        .consensus
-                        .deactivate_validator();
-                    let results = self.era_supervisor.new_era(
-                        fb.era_id().successor(),
-                        fb.timestamp(),
-                        validator_stakes,
-                        fb.timestamp(),
-                        fb.height() + 1,
-                    );
-                    let new_era_id = era_id.successor();
-                    effects.extend(self.handle_consensus_results(new_era_id, results));
-                }
                 // Request execution of the finalized block.
                 effects.extend(self.effect_builder.execute_block(fb).ignore());
                 effects
             }
             ConsensusProtocolResult::ValidateConsensusValue(sender, proto_block) => self
                 .effect_builder
-                .validate_proto_block(sender.clone(), proto_block)
+                .validate_block(sender.clone(), proto_block)
                 .event(move |(is_valid, proto_block)| {
                     if is_valid {
                         Event::AcceptProtoBlock {

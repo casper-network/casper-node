@@ -61,12 +61,19 @@ pub(crate) enum VoteError {
     Timestamps,
     #[error("The creator is not a validator.")]
     Creator,
+    #[error("The vote was created for a wrong instance ID.")]
+    InstanceId,
     #[error("The signature is invalid.")]
     Signature,
     #[error("The round length is invalid.")]
     RoundLength,
     #[error("This would be the third vote in that round. Only two are allowed.")]
     ThreeVotesInRound,
+    #[error(
+        "A block must be the leader's ({:?}) first vote, at the beginning of the round.",
+        _0
+    )]
+    NonLeaderBlock(ValidatorIndex),
     #[error("The vote is a block, but its parent is already a terminal block.")]
     ValueAfterTerminalBlock,
 }
@@ -266,13 +273,18 @@ impl<C: Context> State<C> {
         self.evidence.insert(idx, evidence);
     }
 
-    pub(crate) fn wire_vote(&self, hash: &C::Hash) -> Option<SignedWireVote<C>> {
+    pub(crate) fn wire_vote(
+        &self,
+        hash: &C::Hash,
+        instance_id: C::InstanceId,
+    ) -> Option<SignedWireVote<C>> {
         let vote = self.opt_vote(hash)?.clone();
         let opt_block = self.opt_block(hash);
         let value = opt_block.map(|block| block.value.clone());
         let wvote = WireVote {
             panorama: vote.panorama.clone(),
             creator: vote.creator,
+            instance_id,
             value,
             seq_number: vote.seq_number,
             timestamp: vote.timestamp,
@@ -359,44 +371,48 @@ impl<C: Context> State<C> {
     pub(crate) fn validate_vote(&self, swvote: &SignedWireVote<C>) -> Result<(), VoteError> {
         let wvote = &swvote.wire_vote;
         let creator = wvote.creator;
-        wvote.panorama.validate(self)?;
-        let mut justifications = wvote.panorama.iter_correct();
-        if !justifications.all(|vh| self.vote(vh).timestamp <= wvote.timestamp) {
+        let panorama = &wvote.panorama;
+        let timestamp = wvote.timestamp;
+        panorama.validate(self)?;
+        if panorama.iter_correct(self).any(|v| v.timestamp > timestamp) {
             return Err(VoteError::Timestamps);
         }
-        match wvote.panorama.get(creator) {
-            Observation::Faulty => {
-                error!("Vote from faulty validator should be rejected in `pre_validate_vote`.");
-                return Err(VoteError::FaultyCreator); // Should be unreachable.
+        if wvote.seq_number != panorama.next_seq_num(self, creator) {
+            return Err(VoteError::SequenceNumber);
+        }
+        let r_id = round_id(timestamp, wvote.round_exp);
+        let opt_prev_vote = panorama[creator].correct().map(|vh| self.vote(vh));
+        let prev_round_exp = opt_prev_vote.map_or(self.params.init_round_exp(), |v| v.round_exp);
+        if let Some(prev_vote) = opt_prev_vote {
+            if prev_round_exp != wvote.round_exp {
+                // The round exponent must not change within a round: Even with respect to the
+                // greater of the two exponents, a round boundary must be between the votes.
+                let max_re = prev_round_exp.max(wvote.round_exp);
+                if prev_vote.timestamp >> max_re == timestamp >> max_re {
+                    return Err(VoteError::RoundLength);
+                }
             }
-            Observation::None if wvote.seq_number == 0 => (),
-            Observation::None => return Err(VoteError::SequenceNumber),
-            Observation::Correct(hash) => {
-                let prev_vote = self.vote(hash);
-                // The sequence number must be one more than the previous vote's.
-                if wvote.seq_number != 1 + prev_vote.seq_number {
-                    return Err(VoteError::SequenceNumber);
-                }
-                // The round exponent must only change one step at a time, and not within a round.
-                if prev_vote.round_exp != wvote.round_exp {
-                    let max_re = prev_vote.round_exp.max(wvote.round_exp);
-                    if prev_vote.round_exp + 1 < max_re
-                        || wvote.round_exp + 1 < max_re
-                        || prev_vote.timestamp >> max_re == wvote.timestamp >> max_re
-                    {
-                        return Err(VoteError::RoundLength);
-                    }
-                }
-                if let Some(prev2_vote) = prev_vote.previous().map(|h2| self.vote(h2)) {
-                    if prev2_vote.round_id() == round_id(wvote.timestamp, wvote.round_exp) {
-                        return Err(VoteError::ThreeVotesInRound);
-                    }
+            // There can be at most two votes per round: proposal/confirmation and witness.
+            if let Some(prev2_vote) = prev_vote.previous().map(|h2| self.vote(h2)) {
+                if prev2_vote.round_id() == r_id {
+                    return Err(VoteError::ThreeVotesInRound);
                 }
             }
         }
-        let is_terminal = |hash: &C::Hash| self.is_terminal_block(hash);
-        if wvote.value.is_some() && self.fork_choice(&wvote.panorama).map_or(false, is_terminal) {
-            return Err(VoteError::ValueAfterTerminalBlock);
+        if wvote.value.is_some() {
+            // If this vote is a block, it must be the first vote in this round, its timestamp must
+            // match the round ID, and the creator must be the round leader.
+            if opt_prev_vote.map_or(false, |pv| pv.round_id() == r_id)
+                || timestamp != r_id
+                || self.leader(r_id) != creator
+            {
+                return Err(VoteError::NonLeaderBlock(self.leader(r_id)));
+            }
+            // It's not allowed to create a child block of a terminal block.
+            let is_terminal = |hash: &C::Hash| self.is_terminal_block(hash);
+            if self.fork_choice(panorama).map_or(false, is_terminal) {
+                return Err(VoteError::ValueAfterTerminalBlock);
+            }
         }
         Ok(())
     }
@@ -428,7 +444,7 @@ impl<C: Context> State<C> {
                 // predecessor of wvote must be a predecessor of hash0. So we already have a
                 // conflicting vote with the same sequence number:
                 let prev0 = self.find_in_swimlane(hash0, wvote.seq_number).unwrap();
-                let wvote0 = self.wire_vote(prev0).unwrap();
+                let wvote0 = self.wire_vote(prev0, wvote.instance_id.clone()).unwrap();
                 self.add_evidence(Evidence::Equivocation(wvote0, swvote.clone()));
                 Observation::Faulty
             }

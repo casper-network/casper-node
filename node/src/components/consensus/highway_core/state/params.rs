@@ -1,4 +1,4 @@
-use super::Timestamp;
+use super::{TimeDiff, Timestamp};
 
 /// Protocol parameters for Highway.
 #[derive(Debug, Clone)]
@@ -8,6 +8,7 @@ pub(crate) struct Params {
     reduced_block_reward: u64,
     reward_delay: u64,
     min_round_exp: u8,
+    init_round_exp: u8,
     end_height: u64,
     end_timestamp: Timestamp,
 }
@@ -51,6 +52,7 @@ impl Params {
             reduced_block_reward,
             reward_delay,
             min_round_exp,
+            init_round_exp: min_round_exp, // TODO: The median seen by previous era's switch block?
             end_height,
             end_timestamp,
         }
@@ -82,6 +84,16 @@ impl Params {
     /// round length.
     pub(crate) fn min_round_exp(&self) -> u8 {
         self.min_round_exp
+    }
+
+    /// Returns the initial round exponent.
+    pub(crate) fn init_round_exp(&self) -> u8 {
+        self.init_round_exp
+    }
+
+    /// Returns the minimum round length, i.e. `1 << self.min_round_exp()` milliseconds.
+    pub(crate) fn min_round_len(&self) -> TimeDiff {
+        super::round_len(self.min_round_exp)
     }
 
     /// Returns the minimum height of the last block.

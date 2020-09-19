@@ -1,4 +1,5 @@
 use std::{
+    convert::TryInto,
     fmt::{self, Debug, Formatter},
     path::Path,
 };
@@ -170,6 +171,31 @@ pub(crate) struct GenesisConfig {
     pub(crate) costs: WasmCosts,
     pub(crate) deploy_config: DeployConfig,
     pub(crate) highway_config: HighwayConfig,
+}
+
+impl GenesisConfig {
+    /// Returns a vector of Genesis validators' public key and their stake.
+    pub fn genesis_validator_stakes(&self) -> Vec<(PublicKey, Motes)> {
+        self.accounts
+            .iter()
+            .filter_map(|genesis_account| {
+                if genesis_account.is_genesis_validator() {
+                    let public_key = genesis_account
+                        .public_key()
+                        .expect("should have genesis public key");
+
+                    let crypto_public_key = public_key
+                        .try_into()
+                        .expect("should have valid genesis public key");
+
+                    Some((crypto_public_key, genesis_account.bonded_amount()))
+                } else {
+                    None
+                }
+            })
+            .clone()
+            .collect()
+    }
 }
 
 impl Debug for GenesisConfig {

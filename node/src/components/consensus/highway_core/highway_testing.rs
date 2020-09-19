@@ -683,9 +683,6 @@ struct HighwayTestHarnessBuilder<DS: DeliveryStrategy> {
     /// Seed for `Highway`.
     /// Defaults to 0.
     seed: u64,
-    /// Round exponent.
-    /// Defaults to 12.
-    round_exp: u8,
 }
 
 // Default strategy for message delivery.
@@ -726,7 +723,6 @@ impl HighwayTestHarnessBuilder<InstantDeliveryNoDropping> {
             start_time: Timestamp::zero(),
             weight_distribution: Distribution::Uniform,
             seed: 0,
-            round_exp: 12,
         }
     }
 }
@@ -774,7 +770,6 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
 
         let instance_id = 0;
         let seed = self.seed;
-        let round_exp = self.round_exp;
         let start_time = self.start_time;
 
         let (lower, upper) = {
@@ -883,7 +878,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                     Timestamp::zero(), // Length depends only on block number.
                 );
                 let mut highway = Highway::new(instance_id, validators.clone(), params);
-                let effects = highway.activate_validator(vid, v_sec, round_exp, start_time);
+                let effects = highway.activate_validator(vid, v_sec, start_time);
 
                 let finality_detector = FinalityDetector::new(Weight(ftt));
 
