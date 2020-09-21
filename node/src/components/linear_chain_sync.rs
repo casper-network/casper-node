@@ -105,6 +105,13 @@ impl State {
             }
         };
     }
+
+    fn is_done(&self) -> bool {
+        match self {
+            State::Done => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -133,10 +140,12 @@ impl<I: Clone + 'static> LinearChainSync<I> {
         }
     }
 
+    /// Resets `peers_to_try` back to all `peers` we know of.
     fn reset_peers(&mut self) {
         self.peers_to_try = self.peers.clone();
     }
 
+    /// Returns a random peer.
     fn random_peer<R: Rng + ?Sized>(&mut self, rand: &mut R) -> Option<I> {
         let peers_count = self.peers_to_try.len();
         if peers_count == 0 {
@@ -156,7 +165,8 @@ impl<I: Clone + 'static> LinearChainSync<I> {
             .expect("At least one peer available.")
     }
 
-    fn new_block(&mut self, block: Block) {
+    /// Add new block to linear chain.
+    fn add_block(&mut self, block: Block) {
         match &mut self.state {
             State::None | State::Done => {}
             State::SyncingTrustedHash { linear_chain, .. }
@@ -172,6 +182,9 @@ impl<I: Clone + 'static> LinearChainSync<I> {
         }
     }
 
+    /// Handle an event indicating that a linear chain block has been handled by consensus
+    /// component.
+    /// Returns effects that are created as a response to that event.
     fn block_handled<R, REv>(
         &mut self,
         rng: &mut R,
@@ -184,7 +197,7 @@ impl<I: Clone + 'static> LinearChainSync<I> {
         REv: ReactorEventT<I>,
     {
         let curr_state = mem::replace(&mut self.state, State::None);
-        let (new_state, effects) = match curr_state {
+        let (new_state, mut effects) = match curr_state {
             State::None | State::Done => panic!("Block handled when in {:?} state.", &curr_state),
             State::SyncingTrustedHash {
                 highest_block_seen,
@@ -214,9 +227,15 @@ impl<I: Clone + 'static> LinearChainSync<I> {
             }
         };
         self.state = new_state;
+        if !self.state.is_done() {
+            // Download next block deploys.
+            let next_block_deploys_effect = self.fetch_next_block_deploys(effect_builder, rng);
+            effects.extend(next_block_deploys_effect);
+        }
         effects
     }
 
+    /// Returns effects for fetching next block's deploys.
     fn fetch_next_block_deploys<R, REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -228,13 +247,53 @@ impl<I: Clone + 'static> LinearChainSync<I> {
         REv: ReactorEventT<I>,
     {
         let peer = self.random_peer_unsafe(rng);
-        let next_block = match &mut self.state {
+
+        let curr_state = mem::replace(&mut self.state, State::None);
+
+        let (next_state, next_block) = match curr_state {
             State::None | State::Done => {
-                panic!("Tried fetching next block when in {:?} state.", self.state)
+                panic!("Tried fetching next block when in {:?} state.", curr_state)
             }
-            State::SyncingTrustedHash { linear_chain, .. }
-            | State::SyncingDescendants { linear_chain, .. } => linear_chain.pop(),
+            State::SyncingTrustedHash {
+                trusted_hash,
+                highest_block_seen,
+                mut linear_chain,
+                ..
+            } => {
+                let next_block = linear_chain.pop().clone();
+                let new_state = State::SyncingTrustedHash {
+                    trusted_hash,
+                    highest_block_seen,
+                    linear_chain,
+                };
+                (new_state, next_block)
+            }
+            State::SyncingDescendants {
+                ref linear_chain,
+                trusted_hash,
+                highest_block_seen,
+            } => {
+                if linear_chain.is_empty() {
+                    (curr_state, None)
+                } else {
+                    // We want to download deploys from lowest to highest block height.
+                    // When downloading descendants of trusted hash,
+                    // last element in the `linear_chain` has the highest height so we cannot use
+                    // `pop()`.
+                    let (head, tail) = linear_chain.split_at(1);
+                    (
+                        State::SyncingDescendants {
+                            linear_chain: tail.into(),
+                            trusted_hash,
+                            highest_block_seen,
+                        },
+                        Some(head[0].clone()),
+                    )
+                }
+            }
         };
+
+        self.state = next_state;
 
         match next_block {
             None => {
@@ -265,12 +324,13 @@ where
                 match self.state {
                     State::None | State::Done => {
                         // No syncing configured.
+                        trace!("Received `Start` event when in {:?} state.", self.state);
                         Effects::new()
                     }
                     State::SyncingTrustedHash { trusted_hash, .. } => {
                         trace!(?trusted_hash, "Start synchronization");
                         // Start synchronization.
-                        fetch_block(effect_builder, init_peer, trusted_hash)
+                        fetch_block_by_hash(effect_builder, init_peer, trusted_hash)
                     }
                     State::SyncingDescendants { .. } => {
                         panic!("`Start` event received when in `SyncingDescendants` state.")
@@ -281,7 +341,7 @@ where
                 BlockByHeightResult::Absent => match self.random_peer(rng) {
                     None => {
                         // `block_height` not found on any of the peers.
-                        // We have synchronized all, currently existing, descenandants of trusted
+                        // We have synchronized all, currently existing, descendants of trusted
                         // hash.
                         effect_builder
                             .immediately()
@@ -318,9 +378,9 @@ where
                         );
                     }
                     trace!(%block_height, "Downloaded linear chain block.");
-                    self.reset_peers();
                     let next_height = block.height() + 1;
-                    self.new_block(*block);
+                    self.add_block(*block);
+                    self.reset_peers();
                     let peer = self.random_peer_unsafe(rng);
                     fetch_block_at_height(effect_builder, peer, next_height)
                 }
@@ -331,7 +391,7 @@ where
                         error!(%block_hash, "Could not download linear block from any of the peers.");
                         panic!("Failed to download linear chain.")
                     }
-                    Some(peer) => fetch_block(effect_builder, peer, block_hash),
+                    Some(peer) => fetch_block_by_hash(effect_builder, peer, block_hash),
                 },
                 Some(FetchResult::FromStorage(block)) => {
                     self.state.block_downloaded(&block);
@@ -361,17 +421,18 @@ where
                         );
                     }
                     trace!(%block_hash, "Downloaded linear chain block.");
-                    self.reset_peers();
-                    self.new_block(*block.clone());
+                    self.add_block(*block.clone());
+
                     if block.is_genesis_child() {
                         info!("Linear chain downloaded. Starting downloading deploys.");
                         effect_builder
                             .immediately()
                             .event(move |_| Event::StartDownloadingDeploys)
                     } else {
+                        self.reset_peers();
                         let parent_hash = *block.parent_hash();
                         let peer = self.random_peer_unsafe(rng);
-                        fetch_block(effect_builder, peer, parent_hash)
+                        fetch_block_by_hash(effect_builder, peer, parent_hash)
                     }
                 }
             },
@@ -381,12 +442,8 @@ where
                 // Reset used peers so we can download next block with the full set.
                 self.reset_peers();
                 // Execute block
-                // Download next block deploys.
-                let mut effects = self.fetch_next_block_deploys(effect_builder, rng);
                 let finalized_block: FinalizedBlock = (*block).into();
-                let execute_block_effect = effect_builder.execute_block(finalized_block).ignore();
-                effects.extend(execute_block_effect);
-                effects
+                effect_builder.execute_block(finalized_block).ignore()
             }
             Event::DeploysNotFound(block) => match self.random_peer(rng) {
                 None => {
@@ -403,6 +460,7 @@ where
             }
             Event::NewPeerConnected(peer_id) => {
                 trace!(%peer_id, "New peer connected");
+                // Add to the set of peers we can request things from.
                 let mut effects = Effects::new();
                 if self.peers.is_empty() {
                     // First peer connected, start dowloading.
@@ -412,11 +470,13 @@ where
                             .event(move |_| Event::Start(peer_id)),
                     );
                 }
-                // Add to the set of peers we can request things from.
                 self.peers.push(peer_id);
                 effects
             }
-            Event::BlockHandled(height) => self.block_handled(rng, effect_builder, height),
+            Event::BlockHandled(block_height) => {
+                trace!(?block_height, "Block handled.");
+                self.block_handled(rng, effect_builder, block_height)
+            }
         }
     }
 }
@@ -440,7 +500,7 @@ where
         })
 }
 
-fn fetch_block<I: Send + Copy + 'static, REv>(
+fn fetch_block_by_hash<I: Send + Copy + 'static, REv>(
     effect_builder: EffectBuilder<REv>,
     peer: I,
     block_hash: BlockHash,
@@ -467,7 +527,11 @@ where
         .option(
             move |value| match value {
                 FetchResult::FromPeer(result, _) => match *result {
-                    BlockByHeight::Absent(_) => {
+                    BlockByHeight::Absent(ret_height) => {
+                        assert!(
+                            ret_height != block_height,
+                            "Fetcher returned result for invalid height."
+                        );
                         Event::GetBlockHeightResult(block_height, BlockByHeightResult::Absent)
                     }
                     BlockByHeight::Block(block) => Event::GetBlockHeightResult(
@@ -477,6 +541,8 @@ where
                 },
                 FetchResult::FromStorage(result) => match *result {
                     BlockByHeight::Absent(_) => {
+                        // Fetcher should try downloading the block from a peer
+                        // when it can't find it in the storage.
                         panic!("Should not return `Absent` in `FromStorage`.")
                     }
                     BlockByHeight::Block(block) => Event::GetBlockHeightResult(
