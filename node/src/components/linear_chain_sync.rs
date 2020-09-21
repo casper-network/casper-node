@@ -260,7 +260,7 @@ impl<I: Clone + 'static> LinearChainSync<I> {
                 mut linear_chain,
                 ..
             } => {
-                let next_block = linear_chain.pop().clone();
+                let next_block = linear_chain.pop();
                 let new_state = State::SyncingTrustedHash {
                     trusted_hash,
                     highest_block_seen,
