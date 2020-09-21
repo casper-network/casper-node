@@ -48,7 +48,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeDeploy {
                 println!("Successfully wrote deploy to {:?}", output_path);
             }
             Ok(()) => {}
-            Err(err) => panic!("Error writing deploy to {:?}: {:?}", output_path, err)
+            Err(err) => panic!("Error writing deploy to {:?}: {:?}", output_path, err),
         }
     }
 }

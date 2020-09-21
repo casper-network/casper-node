@@ -19,7 +19,7 @@ use casper_node::rpcs::{
     state::{GetBalance, GetItem as QueryState},
 };
 
-use deploy::{ MakeDeploy, SignDeploy, SendDeploy };
+use deploy::{MakeDeploy, SendDeploy, SignDeploy};
 
 use command::ClientCommand;
 use deploy::{ListDeploys, Transfer};

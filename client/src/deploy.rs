@@ -1,13 +1,15 @@
 mod creation_common;
 mod get;
 mod list;
-mod put;
-mod transfer;
 mod make;
-mod sign;
+mod put;
 mod send;
+mod sign;
+mod transfer;
 
 pub use list::ListDeploys;
 pub use transfer::Transfer;
 
-pub use { make::MakeDeploy, sign::SignDeploy, send::SendDeploy };
+pub use make::MakeDeploy;
+pub use send::SendDeploy;
+pub use sign::SignDeploy;

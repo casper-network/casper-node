@@ -14,7 +14,8 @@ impl RpcClient for SendDeploy {
 
 impl<'a, 'b> ClientCommand<'a, 'b> for SendDeploy {
     const NAME: &'static str = "send-deploy";
-    const ABOUT: &'static str = "Deploy a smart contract file to the Casper network via an existing running node.";
+    const ABOUT: &'static str =
+        "Deploy a smart contract file to the Casper network via an existing running node.";
 
     fn build(display_order: usize) -> App<'a, 'b> {
         let subcommand = SubCommand::with_name(Self::NAME)

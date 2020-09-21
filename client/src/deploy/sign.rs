@@ -1,7 +1,4 @@
-use std::{
-    io::Write,
-    fs
-};
+use std::{fs, io::Write};
 
 use clap::{App, ArgMatches, SubCommand};
 
@@ -36,8 +33,9 @@ impl<'a, 'b> ClientCommand<'a, 'b> for SignDeploy {
             .unwrap_or_else(|e| panic!("unable to open input file {} - {:?}", input_path, e));
 
         let input = String::from_utf8(input).unwrap();
-        let mut deploy = serde_json::from_str::<Deploy>(&input)
-            .unwrap_or_else(|e| panic!("unable to deserialize deploy file {} - {:?}", input_path, e));
+        let mut deploy = serde_json::from_str::<Deploy>(&input).unwrap_or_else(|e| {
+            panic!("unable to deserialize deploy file {} - {:?}", input_path, e)
+        });
 
         let secret_key = common::secret_key::get(matches);
         let mut rng = rand::thread_rng();
