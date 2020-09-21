@@ -1,4 +1,5 @@
 mod balance;
+mod block;
 mod command;
 mod common;
 mod deploy;
@@ -14,7 +15,7 @@ use clap::{crate_description, crate_version, App};
 use casper_node::rpcs::{
     account::PutDeploy,
     chain::GetGlobalStateHash,
-    info::GetDeploy,
+    info::{GetDeploy, GetBlock},
     state::{GetBalance, GetItem as QueryState},
 };
 
@@ -32,6 +33,7 @@ enum DisplayOrder {
     PutDeploy,
     Transfer,
     GetDeploy,
+    GetBlock,
     ListDeploys,
     GetBalance,
     GetGlobalStateHash,
@@ -47,6 +49,7 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         .subcommand(PutDeploy::build(DisplayOrder::PutDeploy as usize))
         .subcommand(Transfer::build(DisplayOrder::Transfer as usize))
         .subcommand(GetDeploy::build(DisplayOrder::GetDeploy as usize))
+        .subcommand(GetBlock::build(DisplayOrder::GetBlock as usize))
         .subcommand(ListDeploys::build(DisplayOrder::ListDeploys as usize))
         .subcommand(GetBalance::build(DisplayOrder::GetBalance as usize))
         .subcommand(GetGlobalStateHash::build(
@@ -66,6 +69,7 @@ async fn main() {
         (PutDeploy::NAME, Some(matches)) => PutDeploy::run(matches),
         (Transfer::NAME, Some(matches)) => Transfer::run(matches),
         (GetDeploy::NAME, Some(matches)) => GetDeploy::run(matches),
+        (GetBlock::NAME, Some(matches)) => GetBlock::run(matches),
         (ListDeploys::NAME, Some(matches)) => ListDeploys::run(matches),
         (GetBalance::NAME, Some(matches)) => GetBalance::run(matches),
         (GetGlobalStateHash::NAME, Some(matches)) => GetGlobalStateHash::run(matches),
