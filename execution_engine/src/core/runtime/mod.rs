@@ -1939,7 +1939,9 @@ where
             }
 
             auction::METHOD_READ_SEIGNIORAGE_RECIPIENTS => {
-                let result = runtime.read_seigniorage_recipients();
+                let result = runtime
+                    .read_seigniorage_recipients()
+                    .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
@@ -1953,7 +1955,7 @@ where
                     Self::get_named_argument(&runtime_args, auction::ARG_DELEGATION_RATE)?;
                 let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
 
-                let result = self
+                let result = runtime
                     .add_bid(account_hash, source_purse, delegation_rate, amount)
                     .map_err(Self::reverter)?;
 
@@ -1965,7 +1967,7 @@ where
                     Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
                 let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
 
-                let result = self
+                let result = runtime
                     .withdraw_bid(account_hash, amount)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)?
@@ -1978,7 +1980,7 @@ where
                 let validator = Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
                 let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
 
-                let result = self
+                let result = runtime
                     .delegate(delegator, source_purse, validator, amount)
                     .map_err(Self::reverter)?;
 
@@ -1990,7 +1992,7 @@ where
                 let validator = Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
                 let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
 
-                let result = self
+                let result = runtime
                     .undelegate(delegator, validator, amount)
                     .map_err(Self::reverter)?;
 
@@ -2251,6 +2253,14 @@ where
                     );
                 } else if self.is_proof_of_stake(key) {
                     return self.call_host_proof_of_stake(
+                        self.context.protocol_version(),
+                        entry_point.name(),
+                        &mut named_keys,
+                        &args,
+                        &extra_keys,
+                    );
+                } else if self.is_auction(key) {
+                    return self.call_host_auction(
                         self.context.protocol_version(),
                         entry_point.name(),
                         &mut named_keys,

@@ -145,8 +145,8 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     //          \  /
     // Carol:    c0
     let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
-    let b0 = add_vote!(state, rng, BOB, 0xB; N, N, N)?;
-    let c0 = add_vote!(state, rng, CAROL, None; N, b0, N)?;
+    let b0 = add_vote!(state, rng, BOB, 48, 4u8, 0xB; N, N, N)?;
+    let c0 = add_vote!(state, rng, CAROL, 49, 4u8, None; N, b0, N)?;
     let b1 = add_vote!(state, rng, BOB, None; N, b0, c0)?;
     let _a1 = add_vote!(state, rng, ALICE, None; a0, b1, c0)?;
 
@@ -157,8 +157,8 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
         instance_id: 1u64,
         value: None,
         seq_number: 3,
-        timestamp: state.vote(&b1).timestamp + TimeDiff::from(1),
-        round_exp: state.vote(&b1).round_exp,
+        timestamp: 51.into(),
+        round_exp: 4u8,
     };
     let vote = SignedWireVote::new(wvote.clone(), &BOB_SEC, &mut rng);
     let opt_err = state.add_vote(vote).err().map(vote_err);
@@ -174,6 +174,13 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
         .err()
         .map(vote_err);
     assert_eq!(Some(VoteError::InconsistentPanorama(BOB)), opt_err);
+    // And you can't change the round exponent within a round.
+    let opt_err = add_vote!(state, rng, CAROL, 50, 5u8, None; N, b1, c0)
+        .err()
+        .map(vote_err);
+    assert_eq!(Some(VoteError::RoundLength), opt_err);
+    // After the round from 48 to 64 has ended, the exponent can change.
+    let c1 = add_vote!(state, rng, CAROL, 65, 5u8, None; N, b1, c0)?;
 
     // Alice has not equivocated yet, and not produced message A1.
     let missing = panorama!(F, b1, c0).missing_dependency(&state);
@@ -194,7 +201,7 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     let b2 = add_vote!(state, rng, BOB, None; F, b1, c0)?;
 
     // The state's own panorama has been updated correctly.
-    assert_eq!(state.panorama, panorama!(F, b2, c0));
+    assert_eq!(state.panorama, panorama!(F, b2, c1));
     Ok(())
 }
 
@@ -251,50 +258,6 @@ fn fork_choice() -> Result<(), AddVoteError<TestContext>> {
     // At height 2, `b2` wins against `a1`. `c1` has most points but is not a child of `a0`.
     assert_eq!(Some(&b2), state.fork_choice(&state.panorama));
     Ok(())
-}
-
-#[test]
-fn round_exp_validity() -> Result<(), AddVoteError<TestContext>> {
-    let params = Params::new(
-        0, // seed
-        TEST_BLOCK_REWARD,
-        TEST_BLOCK_REWARD / 5,
-        TEST_REWARD_DELAY,
-        2, // minimum round exponent
-        u64::MAX,
-        Timestamp::from(u64::MAX),
-    )
-    .with_init_round_exp(6);
-    let mut state = State::new(&[Weight(2), Weight(1), Weight(1)], params);
-    let mut rng = TestRng::new();
-
-    // The initial round exponent is 6, so Bob and Carol count as having round exponent 6.
-    // Alice starts with 7. Now 6 and 7 are both median values.
-    let a0 = add_vote!(state, rng, ALICE, 0, 7u8, 0xA0; N, N, N)?;
-    // Bob is allowed to start with 5 and even go to 4, which is only two below the median 6.
-    let b0 = add_vote!(state, rng, BOB, 1, 5u8, None; a0, N, N)?;
-    // To change from 5 to 4, he waits for the next round. Witness vote is at 2/3 through that.
-    let b1 = add_vote!(state, rng, BOB, 32 + 21, 4u8, None; a0, b0, N)?;
-
-    // However, 3 is not allowed, because 5 is not a median.
-    let mut wvote = WireVote {
-        panorama: panorama!(a0, b1, N),
-        creator: BOB,
-        instance_id: 1u64,
-        value: None,
-        seq_number: 2,
-        timestamp: Timestamp::from(32 + 32 + 10), // Witness vote, 2/3 through round 3 (length 16).
-        round_exp: 3,
-    };
-    let vote = SignedWireVote::new(wvote.clone(), &BOB_SEC, &mut rng);
-    let opt_err = state.add_vote(vote).err().map(vote_err);
-    assert_eq!(Some(VoteError::RoundExponentSpread), opt_err);
-
-    // If Carol also goes to 5, 5 becomes a median, too, so 3 is allowed.
-    let c0 = add_vote!(state, rng, CAROL, 1, 5u8, None; a0, N, N)?;
-    wvote.panorama = panorama!(a0, b1, c0);
-    let vote = SignedWireVote::new(wvote, &BOB_SEC, &mut rng);
-    state.add_vote(vote)
 }
 
 #[test]
