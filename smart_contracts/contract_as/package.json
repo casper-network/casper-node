@@ -33,7 +33,6 @@
   "author": "Michał Papierski <michal@papierski.net>",
   "license": "Apache-2.0",
   "ava": {
-    "compileEnhancements": true,
     "extensions": [
       "ts"
     ],
