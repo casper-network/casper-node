@@ -1,12 +1,12 @@
 use clap::{App, ArgGroup, ArgMatches, SubCommand};
 
+use casper_node::rpcs::{account::PutDeploy, RpcWithParams};
+
 use super::creation_common;
 use crate::{command::ClientCommand, common, RpcClient};
 
-pub struct PutDeploy {}
-
 impl RpcClient for PutDeploy {
-    const RPC_METHOD: &'static str = "account_put_deploy";
+    const RPC_METHOD: &'static str = Self::METHOD;
 }
 
 impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {

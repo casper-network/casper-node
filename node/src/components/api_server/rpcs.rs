@@ -2,17 +2,17 @@
 //!
 //! See https://github.com/CasperLabs/ceps/blob/master/text/0009-client-api.md#rpcs for info.
 
-pub(super) mod account;
-pub(super) mod chain;
-pub(super) mod info;
-pub(super) mod state;
+pub mod account;
+pub mod chain;
+pub mod info;
+pub mod state;
 
 use std::str;
 
 use futures::{future::BoxFuture, TryFutureExt};
 use http::Response;
 use hyper::Body;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use warp::{
     filters::BoxedFilter,
     reject::{self, Reject},
@@ -24,7 +24,7 @@ use super::{ApiRequest, ReactorEventT};
 use crate::effect::EffectBuilder;
 
 /// The URL path.
-const RPC_API_PATH: &str = "rpc";
+pub const RPC_API_PATH: &str = "rpc";
 
 /// Error code returned if the JSON-RPC response indicates failure.
 ///
@@ -56,14 +56,20 @@ impl From<anyhow::Error> for Error {
     }
 }
 
-/// A trait for creating a JSON-RPC filter where the request is required to have "params".
-pub(super) trait RpcWithParams {
+/// A JSON-RPC requiring the "params" field to be present.
+pub trait RpcWithParams {
     /// The JSON-RPC "method" name.
     const METHOD: &'static str;
 
     /// The JSON-RPC request's "params" type.
-    type RequestParams: for<'de> Deserialize<'de> + Send + 'static;
+    type RequestParams: Serialize + for<'de> Deserialize<'de> + Send + 'static;
 
+    /// The JSON-RPC response's "result" type.
+    type ResponseResult: Serialize + for<'de> Deserialize<'de> + Send + 'static;
+}
+
+/// A trait for creating a JSON-RPC filter where the request is required to have "params".
+pub(super) trait RpcWithParamsExt: RpcWithParams {
     /// Creates the warp filter for this particular RPC.
     fn create_filter<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
@@ -89,11 +95,17 @@ pub(super) trait RpcWithParams {
     ) -> BoxFuture<'static, Result<Response<Body>, Error>>;
 }
 
-/// A trait for creating a JSON-RPC filter where the request is not required to have "params".
-pub(super) trait RpcWithoutParams {
+/// A JSON-RPC requiring the "params" field to be absent.
+pub trait RpcWithoutParams {
     /// The JSON-RPC "method" name.
     const METHOD: &'static str;
 
+    /// The JSON-RPC response's "result" type.
+    type ResponseResult: Serialize + for<'de> Deserialize<'de> + Send + 'static;
+}
+
+/// A trait for creating a JSON-RPC filter where the request is not required to have "params".
+pub(super) trait RpcWithoutParamsExt: RpcWithoutParams {
     /// Creates the warp filter for this particular RPC.
     fn create_filter<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
@@ -114,15 +126,21 @@ pub(super) trait RpcWithoutParams {
     ) -> BoxFuture<'static, Result<Response<Body>, Error>>;
 }
 
-/// A trait for creating a JSON-RPC filter where the request may optionally have "params".
-pub(super) trait RpcWithOptionalParams {
+/// A JSON-RPC with the "params" field optional.
+pub trait RpcWithOptionalParams {
     /// The JSON-RPC "method" name.
     const METHOD: &'static str;
 
     /// The JSON-RPC request's "params" type.  This will be passed to the handler wrapped in an
     /// `Option`.
-    type RequestParams: for<'de> Deserialize<'de> + Send + 'static;
+    type OptionalRequestParams: Serialize + for<'de> Deserialize<'de> + Send + 'static;
 
+    /// The JSON-RPC response's "result" type.
+    type ResponseResult: Serialize + for<'de> Deserialize<'de> + Send + 'static;
+}
+
+/// A trait for creating a JSON-RPC filter where the request may optionally have "params".
+pub(super) trait RpcWithOptionalParamsExt: RpcWithOptionalParams {
     /// Creates the warp filter for this particular RPC.
     fn create_filter<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
@@ -130,9 +148,9 @@ pub(super) trait RpcWithOptionalParams {
         let with_params = warp::path(RPC_API_PATH)
             .and(filters::json_rpc())
             .and(filters::method(Self::METHOD))
-            .and(filters::params::<Self::RequestParams>())
+            .and(filters::params::<Self::OptionalRequestParams>())
             .and_then(
-                move |response_builder: Builder, params: Self::RequestParams| {
+                move |response_builder: Builder, params: Self::OptionalRequestParams| {
                     Self::handle_request(effect_builder, response_builder, Some(params))
                         .map_err(reject::custom)
                 },
@@ -150,6 +168,6 @@ pub(super) trait RpcWithOptionalParams {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
-        params: Option<Self::RequestParams>,
+        maybe_params: Option<Self::OptionalRequestParams>,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>>;
 }
