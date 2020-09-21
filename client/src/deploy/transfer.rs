@@ -5,6 +5,7 @@ use casper_node::crypto::asymmetric_key::PublicKey;
 use casper_types::{bytesrepr::ToBytes, RuntimeArgs, URef, U512};
 
 use super::creation_common::{self, DisplayOrder};
+use crate::{command::ClientCommand, common, RpcClient};
 
 /// Handles providing the arg for and retrieval of the transfer amount.
 pub(super) mod amount {
@@ -151,7 +152,11 @@ fn create_transfer_args(matches: &ArgMatches) -> RuntimeArgs {
 
 pub struct Transfer {}
 
-impl<'a, 'b> crate::Subcommand<'a, 'b> for Transfer {
+impl RpcClient for Transfer {
+    const RPC_METHOD: &'static str = "account_put_deploy";
+}
+
+impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
     const NAME: &'static str = "transfer";
     const ABOUT: &'static str = "Transfers funds between purses";
 
@@ -174,6 +179,8 @@ impl<'a, 'b> crate::Subcommand<'a, 'b> for Transfer {
     }
 
     fn run(matches: &ArgMatches<'_>) {
+        let node_address = common::node_address::get(matches);
+
         let transfer_args = create_transfer_args(matches)
             .to_bytes()
             .expect("should serialize");
@@ -181,6 +188,10 @@ impl<'a, 'b> crate::Subcommand<'a, 'b> for Transfer {
             args: transfer_args,
         };
 
-        creation_common::construct_and_send_deploy_to_node(matches, session)
+        let params = creation_common::construct_deploy(matches, session);
+
+        let response_value = Self::request_with_map_params(&node_address, params)
+            .unwrap_or_else(|error| panic!("response error: {}", error));
+        println!("{}", response_value);
     }
 }

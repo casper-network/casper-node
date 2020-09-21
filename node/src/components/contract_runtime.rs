@@ -70,6 +70,7 @@ pub struct ContractRuntimeMetrics {
     apply_effect: Histogram,
     commit_upgrade: Histogram,
     run_query: Histogram,
+    get_balance: Histogram,
 }
 
 /// Value of upper bound of histogram.
@@ -87,6 +88,8 @@ const RUN_QUERY_NAME: &str = "contract_runtime_run_query";
 const RUN_QUERY_HELP: &str = "tracking run of engine_state.run_query.";
 const COMMIT_UPGRADE_NAME: &str = "contract_runtime_commit_upgrade";
 const COMMIT_UPGRADE_HELP: &str = "tracking run of engine_state.commit_upgrade";
+const GET_BALANCE_NAME: &str = "contract_runtime_get_balance";
+const GET_BALANCE_HELP: &str = "tracking run of engine_state.get_balance.";
 
 /// Create prometheus Histogram and register.
 fn register_histogram_metric(
@@ -121,6 +124,7 @@ impl ContractRuntimeMetrics {
                 COMMIT_UPGRADE_NAME,
                 COMMIT_UPGRADE_HELP,
             )?,
+            get_balance: register_histogram_metric(registry, GET_BALANCE_NAME, GET_BALANCE_HELP)?,
         })
     }
 }
@@ -238,6 +242,32 @@ where
                     .await
                     .expect("should run");
                     trace!(?result, "query result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            Event::Request(ContractRuntimeRequest::GetBalance {
+                balance_request,
+                responder,
+            }) => {
+                trace!(?balance_request, "balance");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        let start = Instant::now();
+                        let result = engine_state.get_purse_balance(
+                            correlation_id,
+                            balance_request.state_hash(),
+                            balance_request.purse_uref(),
+                        );
+                        metrics.get_balance.observe(start.elapsed().as_secs_f64());
+                        result
+                    })
+                    .await
+                    .expect("should run");
+                    trace!(?result, "balance result");
                     responder.respond(result).await
                 }
                 .ignore()

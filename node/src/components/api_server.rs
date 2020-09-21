@@ -1,41 +1,33 @@
 //! API server
 //!
-//! The API server provides clients with a REST-like API for query state and sending commands to the
-//! node. The actual server is run in a backgrounded tasks, various requests are translated into
+//! The API server provides clients with a JSON-RPC API for query state and sending commands to the
+//! node. The actual server is run in backgrounded tasks, various requests are translated into
 //! reactor-requests to various components.
 //!
 //! This module currently provides both halves of what is required for an API server: An abstract
-//! API Server that handles API requests and an external service endpoint based on HTTP+JSON.
+//! API Server that handles API requests and an external service endpoint based on HTTP & JSON-RPC.
 //!
-//! API
-//! * To store a deploy, send an HTTP POST request to "/deploys" where the body is the
-//!   JSON-serialized deploy.  The response will be the deploy's hash (hex-encoded) or an error
-//!   message on failure.
-//! * To retrieve a deploy, send an HTTP GET request to "/deploys/<ID>" where <ID> is the
-//!   hex-encoded deploy hash.  The response will be the JSON-serialized deploy, "null"  if the
-//!   deploy doesn't exist or an error message on failure..
-//! * To list all stored deploy hashes, send an HTTP GET request to "/deploys".  The response will
-//!   be the JSON-serialized list of hex-encoded deploy hashes or an error message on failure.
+//! For the list of supported RPCs, see
+//! https://github.com/CasperLabs/ceps/blob/master/text/0009-client-api.md#rpcs
 
 mod config;
 mod event;
+mod rpcs;
 
-use std::{borrow::Cow, error::Error as StdError, fmt::Debug, net::SocketAddr, str};
+use std::{convert::Infallible, fmt::Debug, net::SocketAddr};
 
-use bytes::Bytes;
-use futures::{join, FutureExt};
-use http::Response;
+use futures::{future, join};
+use hyper::Server;
+use lazy_static::lazy_static;
 use rand::{CryptoRng, Rng};
-use smallvec::smallvec;
-use tracing::{debug, error, info, warn};
-use warp::{
-    body,
-    filters::path::Tail,
-    http::StatusCode,
-    reject::Rejection,
-    reply::{self, Json, WithStatus},
-    Filter,
+use semver::Version;
+use tracing::{debug, info, warn};
+use warp::Filter;
+
+use casper_execution_engine::core::engine_state::{
+    self, BalanceRequest, BalanceResult, QueryRequest, QueryResult,
 };
+use casper_types::{Key, URef};
 
 use super::Component;
 use crate::{
@@ -47,18 +39,42 @@ use crate::{
             ApiRequest, ContractRuntimeRequest, LinearChainRequest, MetricsRequest,
             NetworkInfoRequest, StorageRequest,
         },
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, EffectExt, Effects, Responder,
     },
-    reactor::QueueKind,
     small_network::NodeId,
-    types::{Deploy, DeployHash, StatusFeed},
+    types::StatusFeed,
 };
 pub use config::Config;
 pub(crate) use event::Event;
+use rpcs::{RpcWithOptionalParams, RpcWithParams, RpcWithoutParams};
 
-const DEPLOYS_API_PATH: &str = "deploys";
-const METRICS_API_PATH: &str = "metrics";
-const STATUS_API_PATH: &str = "status";
+// TODO - confirm if we want to use the protocol version for this.
+lazy_static! {
+    static ref CLIENT_API_VERSION: Version = Version::new(1, 0, 0);
+}
+
+/// A helper trait whose bounds represent the requirements for a reactor event that `run_server` can
+/// work with.
+trait ReactorEventT:
+    From<Event>
+    + From<ApiRequest<NodeId>>
+    + From<StorageRequest<Storage>>
+    + From<LinearChainRequest<NodeId>>
+    + From<ContractRuntimeRequest>
+    + Send
+{
+}
+
+impl<REv> ReactorEventT for REv where
+    REv: From<Event>
+        + From<ApiRequest<NodeId>>
+        + From<StorageRequest<Storage>>
+        + From<LinearChainRequest<NodeId>>
+        + From<ContractRuntimeRequest>
+        + Send
+        + 'static
+{
+}
 
 #[derive(Debug)]
 pub(crate) struct ApiServer {}
@@ -66,7 +82,12 @@ pub(crate) struct ApiServer {}
 impl ApiServer {
     pub(crate) fn new<REv>(config: Config, effect_builder: EffectBuilder<REv>) -> Self
     where
-        REv: From<Event> + From<ApiRequest> + From<StorageRequest<Storage>> + Send,
+        REv: From<Event>
+            + From<ApiRequest<NodeId>>
+            + From<StorageRequest<Storage>>
+            + From<LinearChainRequest<NodeId>>
+            + From<ContractRuntimeRequest>
+            + Send,
     {
         tokio::spawn(run_server(config, effect_builder));
         ApiServer {}
@@ -74,53 +95,45 @@ impl ApiServer {
 }
 
 /// Run the HTTP server.
-async fn run_server<REv>(config: Config, effect_builder: EffectBuilder<REv>)
-where
-    REv: From<Event> + From<ApiRequest> + From<StorageRequest<Storage>> + Send,
-{
-    let post_deploy = warp::post()
-        .and(warp::path(DEPLOYS_API_PATH))
-        .and(body::bytes())
-        .and_then(move |encoded_deploy| parse_post_deploy_request(effect_builder, encoded_deploy));
+async fn run_server<REv: ReactorEventT>(config: Config, effect_builder: EffectBuilder<REv>) {
+    let put_deploy = rpcs::account::PutDeploy::create_filter(effect_builder);
+    let get_block = rpcs::chain::GetBlock::create_filter(effect_builder);
+    let get_global_state_hash = rpcs::chain::GetGlobalStateHash::create_filter(effect_builder);
+    let get_item = rpcs::state::GetItem::create_filter(effect_builder);
+    let get_balance = rpcs::state::GetBalance::create_filter(effect_builder);
+    let get_deploy = rpcs::info::GetDeploy::create_filter(effect_builder);
+    let get_peers = rpcs::info::GetPeers::create_filter(effect_builder);
+    let get_status = rpcs::info::GetStatus::create_filter(effect_builder);
+    let get_metrics = rpcs::info::GetMetrics::create_filter(effect_builder);
 
-    let get_deploy = warp::get()
-        .and(warp::path(DEPLOYS_API_PATH))
-        .and(warp::path::tail())
-        .and_then(move |hex_digest| parse_get_deploy_request(effect_builder, hex_digest));
-
-    let get_metrics = warp::get()
-        .and(warp::path(METRICS_API_PATH))
-        .and_then(move || {
-            effect_builder
-                .make_request(
-                    |responder| ApiRequest::GetMetrics { responder },
-                    QueueKind::Api,
-                )
-                .map(|text_opt| match text_opt {
-                    Some(text) => {
-                        Ok::<_, Rejection>(reply::with_status(Cow::from(text), StatusCode::OK))
-                    }
-                    None => Ok(reply::with_status(
-                        Cow::from("failed to collect metrics. sorry!"),
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                    )),
-                })
-        });
-
-    let get_status = warp::get()
-        .and(warp::path(STATUS_API_PATH))
-        .and_then(move || handle_get_status(effect_builder));
+    let service = warp_json_rpc::service(
+        put_deploy
+            .or(get_block)
+            .or(get_global_state_hash)
+            .or(get_item)
+            .or(get_balance)
+            .or(get_deploy)
+            .or(get_peers)
+            .or(get_status)
+            .or(get_metrics),
+    );
 
     let mut server_addr = SocketAddr::from((config.bind_interface, config.bind_port));
 
-    let filter = post_deploy.or(get_deploy).or(get_metrics).or(get_status);
-
-    debug!(%server_addr, "starting HTTP server");
+    // Try to bind to the user's chosen port, or if that fails, try once to bind to any port then
+    // error out if that fails too.
     loop {
-        match warp::serve(filter).try_bind_ephemeral(server_addr) {
-            Ok((addr, server_fut)) => {
-                info!(%addr, "started HTTP server");
-                return server_fut.await;
+        match Server::try_bind(&server_addr) {
+            Ok(builder) => {
+                let make_svc = hyper::service::make_service_fn(move |_| {
+                    future::ok::<_, Infallible>(service.clone())
+                });
+                let server = builder.serve(make_svc);
+                info!(address = %server.local_addr(), "started HTTP server");
+                if let Err(error) = server.await {
+                    debug!(%error, "error running HTTP server");
+                }
+                return;
             }
             Err(error) => {
                 if server_addr.port() == 0 {
@@ -135,175 +148,39 @@ where
     }
 }
 
-async fn parse_post_deploy_request<REv>(
-    effect_builder: EffectBuilder<REv>,
-    encoded_deploy: Bytes,
-) -> Result<WithStatus<Json>, Rejection>
-where
-    REv: From<Event> + From<ApiRequest> + Send,
-{
-    let deploy = match str::from_utf8(encoded_deploy.as_ref())
-        .map_err(|error| error.to_string())
-        .and_then(|encoded_deploy_str| {
-            Deploy::from_json(encoded_deploy_str).map_err(|error| error.to_string())
-        }) {
-        Ok(deploy) => deploy,
-        Err(error) => {
-            info!("failed to put deploy: {}", error);
-            let error_reply = format!("Failed to parse as JSON-encoded Deploy: {}", error);
-            let json = reply::json(&error_reply);
-            return Ok(reply::with_status(json, StatusCode::BAD_REQUEST));
-        }
-    };
-
-    effect_builder
-        .make_request(
-            |responder| ApiRequest::SubmitDeploy {
-                deploy: Box::new(deploy),
-                responder,
-            },
-            QueueKind::Api,
-        )
-        .await;
-
-    let json = reply::json(&"");
-    Ok(reply::with_status(json, StatusCode::OK))
-}
-
-async fn parse_get_deploy_request<REv>(
-    effect_builder: EffectBuilder<REv>,
-    tail: Tail,
-) -> Result<Response<String>, Rejection>
-where
-    REv: From<Event> + From<ApiRequest> + From<StorageRequest<Storage>> + Send,
-{
-    if tail.as_str().is_empty() {
-        handle_list_deploys_request(effect_builder).await
-    } else {
-        handle_get_deploy_request(effect_builder, tail).await
+impl ApiServer {
+    fn handle_query<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        global_state_hash: Digest,
+        base_key: Key,
+        path: Vec<String>,
+        responder: Responder<Result<QueryResult, engine_state::Error>>,
+    ) -> Effects<Event> {
+        let query = QueryRequest::new(global_state_hash.into(), base_key, path);
+        effect_builder
+            .query_global_state(query)
+            .event(move |result| Event::QueryGlobalStateResult {
+                result,
+                main_responder: responder,
+            })
     }
-}
 
-async fn handle_list_deploys_request<REv>(
-    effect_builder: EffectBuilder<REv>,
-) -> Result<Response<String>, Rejection>
-where
-    REv: From<Event> + From<ApiRequest> + From<StorageRequest<Storage>> + Send,
-{
-    let deploy_hashes = effect_builder
-        .make_request(
-            |responder| ApiRequest::ListDeploys { responder },
-            QueueKind::Api,
-        )
-        .await;
-    let error_body = |error: &dyn std::error::Error| -> String {
-        format!(
-            r#""Internal server error listing deploys.  Error: {}""#,
-            error
-        )
-    };
-
-    let hex_hashes = deploy_hashes
-        .into_iter()
-        .map(|deploy_hash| hex::encode(deploy_hash.inner()))
-        .collect::<Vec<_>>();
-    // TODO - paginate these?
-    let (body, status) = match serde_json::to_string(&hex_hashes) {
-        Ok(body) => (body, StatusCode::OK),
-        Err(error) => (error_body(&error), StatusCode::INTERNAL_SERVER_ERROR),
-    };
-
-    Ok(Response::builder()
-        .header("content-type", "application/json")
-        .status(status)
-        .body(body)
-        .unwrap())
-}
-
-async fn handle_get_deploy_request<REv>(
-    effect_builder: EffectBuilder<REv>,
-    hex_digest: Tail,
-) -> Result<Response<String>, Rejection>
-where
-    REv: From<Event> + From<ApiRequest> + From<StorageRequest<Storage>> + Send,
-{
-    let digest = match Digest::from_hex(hex_digest.as_str()) {
-        Ok(digest) => digest,
-        Err(error) => {
-            info!(%error, "failed to get deploy");
-            let error_reply = format!(
-                "Failed to parse '{}' as hex-encoded DeployHash.  Error: {}",
-                hex_digest.as_str(),
-                error
-            );
-            let response = Response::builder()
-                .header("content-type", "application/json")
-                .status(StatusCode::BAD_REQUEST)
-                .body(error_reply)
-                .unwrap();
-            return Ok(response);
-        }
-    };
-
-    let maybe_deploy = effect_builder
-        .make_request(
-            |responder| ApiRequest::GetDeploy {
-                hash: DeployHash::new(digest),
-                responder,
-            },
-            QueueKind::Api,
-        )
-        .await;
-
-    let error_body = |error: &dyn StdError| -> String {
-        format!(
-            r#""Internal server error retrieving {}.  Error: {}""#,
-            hex_digest.as_str(),
-            error
-        )
-    };
-
-    let (body, status) = match maybe_deploy {
-        Some(deploy) => match deploy.to_json() {
-            Ok(deploy_as_json) => (deploy_as_json, StatusCode::OK),
-            Err(error) => (error_body(&error), StatusCode::INTERNAL_SERVER_ERROR),
-        },
-        None => ("null".to_string(), StatusCode::OK),
-    };
-
-    Ok(Response::builder()
-        .header("content-type", "application/json")
-        .status(status)
-        .body(body)
-        .unwrap())
-}
-
-async fn handle_get_status<REv>(
-    effect_builder: EffectBuilder<REv>,
-) -> Result<Response<String>, Rejection>
-where
-    REv: From<Event> + From<ApiRequest> + Send,
-{
-    let status_feed_json = effect_builder
-        .make_request(
-            |responder| ApiRequest::GetStatus { responder },
-            QueueKind::Api,
-        )
-        .await;
-
-    let (body, status) = match status_feed_json {
-        Some(body) => (body, StatusCode::OK),
-        None => (
-            String::from("status unavailable"),
-            StatusCode::INTERNAL_SERVER_ERROR,
-        ),
-    };
-
-    Ok(Response::builder()
-        .header("content-type", "application/json")
-        .status(status)
-        .body(body)
-        .unwrap())
+    fn handle_get_balance<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        global_state_hash: Digest,
+        purse_uref: URef,
+        responder: Responder<Result<BalanceResult, engine_state::Error>>,
+    ) -> Effects<Event> {
+        let query = BalanceRequest::new(global_state_hash.into(), purse_uref);
+        effect_builder
+            .get_balance(query)
+            .event(move |result| Event::GetBalanceResult {
+                result,
+                main_responder: responder,
+            })
+    }
 }
 
 impl<REv, R> Component<REv, R> for ApiServer
@@ -314,6 +191,8 @@ where
         + From<ContractRuntimeRequest>
         + From<MetricsRequest>
         + From<StorageRequest<Storage>>
+        + From<Event>
+        + From<ApiRequest<NodeId>>
         + Send,
     R: Rng + CryptoRng + ?Sized,
 {
@@ -331,23 +210,48 @@ where
                 effects.extend(responder.respond(()).ignore());
                 effects
             }
+            Event::ApiRequest(ApiRequest::GetBlock {
+                maybe_hash: Some(hash),
+                responder,
+            }) => effect_builder
+                .get_block_from_storage(hash)
+                .event(move |result| Event::GetBlockResult {
+                    maybe_hash: Some(hash),
+                    result: Box::new(result),
+                    main_responder: responder,
+                }),
+            Event::ApiRequest(ApiRequest::GetBlock {
+                maybe_hash: None,
+                responder,
+            }) => effect_builder
+                .get_last_finalized_block()
+                .event(move |result| Event::GetBlockResult {
+                    maybe_hash: None,
+                    result: Box::new(result),
+                    main_responder: responder,
+                }),
+            Event::ApiRequest(ApiRequest::QueryGlobalState {
+                global_state_hash,
+                base_key,
+                path,
+                responder,
+            }) => self.handle_query(effect_builder, global_state_hash, base_key, path, responder),
+            Event::ApiRequest(ApiRequest::GetBalance {
+                global_state_hash,
+                purse_uref,
+                responder,
+            }) => self.handle_get_balance(effect_builder, global_state_hash, purse_uref, responder),
             Event::ApiRequest(ApiRequest::GetDeploy { hash, responder }) => effect_builder
-                .get_deploys_from_storage(smallvec![hash])
-                .event(move |mut result| Event::GetDeployResult {
+                .get_deploy_and_metadata_from_storage(hash)
+                .event(move |result| Event::GetDeployResult {
                     hash,
-                    result: Box::new(result.pop().expect("can only contain one result")),
+                    result: Box::new(result),
                     main_responder: responder,
                 }),
-            Event::ApiRequest(ApiRequest::ListDeploys { responder }) => effect_builder
-                .list_deploys()
-                .event(move |result| Event::ListDeploysResult {
-                    result,
-                    main_responder: responder,
-                }),
-            Event::ApiRequest(ApiRequest::GetMetrics { responder }) => effect_builder
-                .get_metrics()
-                .event(move |text| Event::GetMetricsResult {
-                    text,
+            Event::ApiRequest(ApiRequest::GetPeers { responder }) => effect_builder
+                .network_peers()
+                .event(move |peers| Event::GetPeersResult {
+                    peers,
                     main_responder: responder,
                 }),
             Event::ApiRequest(ApiRequest::GetStatus { responder }) => async move {
@@ -357,28 +261,37 @@ where
                 );
                 let status_feed = StatusFeed::new(last_finalized_block, peers);
                 debug!("GetStatus --status_feed: {:?}", status_feed);
-                let json = {
-                    match serde_json::to_string(&status_feed) {
-                        Ok(json) => json,
-                        Err(error) => {
-                            error!("GetStatus --error: {:?}", error);
-                            serde_json::to_string(&StatusFeed::default())
-                                .unwrap_or_else(|_| String::default())
-                        }
-                    }
-                };
-                responder.respond(Some(json)).await;
+                responder.respond(status_feed).await;
             }
             .ignore(),
+            Event::ApiRequest(ApiRequest::GetMetrics { responder }) => effect_builder
+                .get_metrics()
+                .event(move |text| Event::GetMetricsResult {
+                    text,
+                    main_responder: responder,
+                }),
+            Event::GetBlockResult {
+                maybe_hash: _,
+                result,
+                main_responder,
+            } => main_responder.respond(*result).ignore(),
+            Event::QueryGlobalStateResult {
+                result,
+                main_responder,
+            } => main_responder.respond(result).ignore(),
+            Event::GetBalanceResult {
+                result,
+                main_responder,
+            } => main_responder.respond(result).ignore(),
             Event::GetDeployResult {
                 hash: _,
                 result,
                 main_responder,
             } => main_responder.respond(*result).ignore(),
-            Event::ListDeploysResult {
-                result,
+            Event::GetPeersResult {
+                peers,
                 main_responder,
-            } => main_responder.respond(result).ignore(),
+            } => main_responder.respond(peers).ignore(),
             Event::GetMetricsResult {
                 text,
                 main_responder,

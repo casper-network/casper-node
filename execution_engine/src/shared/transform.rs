@@ -29,6 +29,15 @@ pub enum Error {
     TypeMismatch(TypeMismatch),
 }
 
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            Error::Serialization(error) => write!(f, "{}", error),
+            Error::TypeMismatch(error) => write!(f, "{}", error),
+        }
+    }
+}
+
 impl From<TypeMismatch> for Error {
     fn from(t: TypeMismatch) -> Error {
         Error::TypeMismatch(t)
