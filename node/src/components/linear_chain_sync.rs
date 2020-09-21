@@ -11,7 +11,7 @@ use effect::requests::{
 use event::BlockByHeightResult;
 pub use event::Event;
 use rand::{CryptoRng, Rng};
-use std::{fmt::Display, mem};
+use std::{collections::VecDeque, fmt::Display, mem};
 use tracing::{error, info, trace, warn};
 
 pub trait ReactorEventT<I>:
@@ -54,8 +54,7 @@ enum State {
     SyncingDescendants {
         trusted_hash: BlockHash,
         // Chain of downloaded blocks from the linear chain.
-        // We will `pop()` when executing blocks.
-        linear_chain: Vec<Block>,
+        linear_chain: VecDeque<Block>,
         // During synchronization we might see new eras being created.
         // Track the highest height and wait until it's handled by consensus.
         highest_block_seen: u64,
@@ -76,7 +75,7 @@ impl State {
     fn sync_descendants(trusted_hash: BlockHash) -> Self {
         State::SyncingDescendants {
             trusted_hash,
-            linear_chain: Vec::new(),
+            linear_chain: VecDeque::new(),
             highest_block_seen: 0,
         }
     }
@@ -169,8 +168,8 @@ impl<I: Clone + 'static> LinearChainSync<I> {
     fn add_block(&mut self, block: Block) {
         match &mut self.state {
             State::None | State::Done => {}
-            State::SyncingTrustedHash { linear_chain, .. }
-            | State::SyncingDescendants { linear_chain, .. } => linear_chain.push(block),
+            State::SyncingTrustedHash { linear_chain, .. } => linear_chain.push(block),
+            State::SyncingDescendants { linear_chain, .. } => linear_chain.push_back(block),
         };
     }
 
@@ -269,27 +268,17 @@ impl<I: Clone + 'static> LinearChainSync<I> {
                 (new_state, next_block)
             }
             State::SyncingDescendants {
-                ref linear_chain,
+                mut linear_chain,
                 trusted_hash,
                 highest_block_seen,
             } => {
-                if linear_chain.is_empty() {
-                    (curr_state, None)
-                } else {
-                    // We want to download deploys from lowest to highest block height.
-                    // When downloading descendants of trusted hash,
-                    // last element in the `linear_chain` has the highest height so we cannot use
-                    // `pop()`.
-                    let (head, tail) = linear_chain.split_at(1);
-                    (
-                        State::SyncingDescendants {
-                            linear_chain: tail.into(),
-                            trusted_hash,
-                            highest_block_seen,
-                        },
-                        Some(head[0].clone()),
-                    )
-                }
+                let next_block = linear_chain.pop_front();
+                let new_state = State::SyncingDescendants {
+                    linear_chain,
+                    trusted_hash,
+                    highest_block_seen,
+                };
+                (new_state, next_block)
             }
         };
 
@@ -424,7 +413,7 @@ where
                     self.add_block(*block.clone());
 
                     if block.is_genesis_child() {
-                        info!("Linear chain downloaded. Starting downloading deploys.");
+                        info!("Linear chain downloaded. Start downloading deploys.");
                         effect_builder
                             .immediately()
                             .event(move |_| Event::StartDownloadingDeploys)
@@ -525,7 +514,7 @@ where
     effect_builder
         .fetch_block_by_height(block_height, peer)
         .option(
-            move |value| match value {
+            move |fetch_result| match fetch_result {
                 FetchResult::FromPeer(result, _) => match *result {
                     BlockByHeight::Absent(ret_height) => {
                         assert!(
