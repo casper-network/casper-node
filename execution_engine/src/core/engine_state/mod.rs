@@ -1,3 +1,4 @@
+pub mod balance;
 pub mod deploy_item;
 pub mod engine_config;
 mod error;
@@ -35,6 +36,7 @@ use casper_types::{
 };
 
 pub use self::{
+    balance::{BalanceRequest, BalanceResult},
     deploy_item::DeployItem,
     engine_config::EngineConfig,
     error::{Error, RootNotFound},
@@ -981,6 +983,21 @@ where
         }
 
         Ok(account)
+    }
+
+    pub fn get_purse_balance(
+        &self,
+        correlation_id: CorrelationId,
+        state_hash: Blake2bHash,
+        purse_uref: URef,
+    ) -> Result<BalanceResult, Error> {
+        let mut tracking_copy = match self.tracking_copy(state_hash)? {
+            Some(tracking_copy) => tracking_copy,
+            None => return Ok(BalanceResult::RootNotFound),
+        };
+        let balance_key = tracking_copy.get_purse_balance_key(correlation_id, purse_uref.into())?;
+        let balance = tracking_copy.get_purse_balance(correlation_id, balance_key)?;
+        Ok(BalanceResult::Success(balance.value()))
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -9,7 +9,7 @@ use lazy_static::lazy_static;
 
 use casper_node::crypto::asymmetric_key::{PublicKey, SecretKey};
 
-use crate::{common, Subcommand as CrateSubcommand};
+use crate::{command::ClientCommand, common};
 
 const PUBLIC_KEY_HEX: &str = "public_key_hex";
 const SECRET_KEY_PEM: &str = "secret_key.pem";
@@ -90,7 +90,7 @@ mod algorithm {
 
 pub struct Keygen {}
 
-impl<'a, 'b> crate::Subcommand<'a, 'b> for Keygen {
+impl<'a, 'b> ClientCommand<'a, 'b> for Keygen {
     const NAME: &'static str = "keygen";
     const ABOUT: &'static str = "Generates account key files in the given directory";
 

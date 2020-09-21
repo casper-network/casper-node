@@ -79,7 +79,7 @@ use casper_execution_engine::{
     core::{
         engine_state::{
             self, execute_request::ExecuteRequest, execution_result::ExecutionResults,
-            genesis::GenesisResult, QueryRequest, QueryResult,
+            genesis::GenesisResult, BalanceRequest, BalanceResult, QueryRequest, QueryResult,
         },
         execution,
     },
@@ -992,6 +992,24 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| ContractRuntimeRequest::Query {
                 query_request,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests a query be executed on the Contract Runtime component.
+    pub(crate) async fn get_balance(
+        self,
+        balance_request: BalanceRequest,
+    ) -> Result<BalanceResult, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetBalance {
+                balance_request,
                 responder,
             },
             QueueKind::Regular,

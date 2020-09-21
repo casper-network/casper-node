@@ -3,11 +3,11 @@ use std::str;
 use clap::{App, ArgMatches, SubCommand};
 use futures::executor;
 
-use crate::common;
+use crate::{command::ClientCommand, common};
 
 pub struct ListDeploys {}
 
-impl<'a, 'b> crate::Subcommand<'a, 'b> for ListDeploys {
+impl<'a, 'b> ClientCommand<'a, 'b> for ListDeploys {
     const NAME: &'static str = "list-deploys";
     const ABOUT: &'static str = "Gets the list of all stored deploys' hashes";
 
