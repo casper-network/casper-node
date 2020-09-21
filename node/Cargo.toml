@@ -1,6 +1,6 @@
 [package]
 name = "casper-node"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Marc Brinkmann <marc@casperlabs.io>", "Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "The Casper blockchain node"
@@ -108,7 +108,7 @@ test = false
 
 [package.metadata.deb]
 features = ["vendored-openssl"]
-revision = "3"  # Increment with releases for updates to charlie data files when not version bumping casper-node.
+revision = "0"  # Increment with releases for updates to charlie data files when not version bumping casper-node.
 assets = [
     ["../target/release/casper-node", "/usr/bin/casper-node", "755"],
     ["../target/release/casper-client", "/usr/bin/casper-client", "755"],
