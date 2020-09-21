@@ -8,7 +8,7 @@ use core::{
 use hex_fmt::HexFmt;
 
 use crate::{
-    account::{AccountHash, TryFromSliceForAccountHashError},
+    account::{self, AccountHash, TryFromSliceForAccountHashError},
     bytesrepr::{self, Error, FromBytes, ToBytes},
     uref::{self, URef, UREF_SERIALIZED_LENGTH},
 };
@@ -17,7 +17,6 @@ const ACCOUNT_ID: u8 = 0;
 const HASH_ID: u8 = 1;
 const UREF_ID: u8 = 2;
 
-const ACCOUNT_PREFIX: &str = "account-account_hash-";
 const HASH_PREFIX: &str = "hash-";
 
 /// The number of bytes in a Blake2b hash
@@ -66,6 +65,7 @@ pub enum FromStrError {
     Hex(base16::DecodeError),
     Account(TryFromSliceForAccountHashError),
     Hash(TryFromSliceError),
+    AccountHash(account::FromStrError),
     URef(uref::FromStrError),
 }
 
@@ -84,6 +84,12 @@ impl From<TryFromSliceForAccountHashError> for FromStrError {
 impl From<TryFromSliceError> for FromStrError {
     fn from(error: TryFromSliceError) -> Self {
         FromStrError::Hash(error)
+    }
+}
+
+impl From<account::FromStrError> for FromStrError {
+    fn from(error: account::FromStrError) -> Self {
+        FromStrError::AccountHash(error)
     }
 }
 
@@ -121,11 +127,7 @@ impl Key {
     /// Returns a human-readable version of `self`, with the inner bytes encoded to Base16.
     pub fn to_formatted_string(&self) -> String {
         match self {
-            Key::Account(account_hash) => format!(
-                "{}{}",
-                ACCOUNT_PREFIX,
-                base16::encode_lower(&account_hash.value())
-            ),
+            Key::Account(account_hash) => account_hash.to_formatted_string(),
             Key::Hash(addr) => format!("{}{}", HASH_PREFIX, base16::encode_lower(addr)),
             Key::URef(uref) => uref.to_formatted_string(),
         }
@@ -133,8 +135,8 @@ impl Key {
 
     /// Parses a string formatted as per `Self::as_string()` into a `Key`.
     pub fn from_formatted_str(input: &str) -> Result<Key, FromStrError> {
-        if let Some(hex) = input.strip_prefix(ACCOUNT_PREFIX) {
-            Ok(Key::Account(AccountHash::try_from(&base16::decode(hex)?)?))
+        if let Ok(account_hash) = AccountHash::from_formatted_str(input) {
+            Ok(Key::Account(account_hash))
         } else if let Some(hex) = input.strip_prefix(HASH_PREFIX) {
             Ok(Key::Hash(HashAddr::try_from(
                 base16::decode(hex)?.as_ref(),
@@ -417,15 +419,12 @@ mod tests {
         assert!(Key::from_formatted_str(invalid_prefix).is_err());
 
         let short_addr = "00000000000000000000000000000000000000000000000000000000000000";
-        assert!(Key::from_formatted_str(&format!("{}{}", ACCOUNT_PREFIX, short_addr)).is_err());
         assert!(Key::from_formatted_str(&format!("{}{}", HASH_PREFIX, short_addr)).is_err());
 
         let long_addr = "000000000000000000000000000000000000000000000000000000000000000000";
-        assert!(Key::from_formatted_str(&format!("{}{}", ACCOUNT_PREFIX, long_addr)).is_err());
         assert!(Key::from_formatted_str(&format!("{}{}", HASH_PREFIX, long_addr)).is_err());
 
         let invalid_hex = "000000000000000000000000000000000000000000000000000000000000000g";
-        assert!(Key::from_formatted_str(&format!("{}{}", ACCOUNT_PREFIX, invalid_hex)).is_err());
         assert!(Key::from_formatted_str(&format!("{}{}", HASH_PREFIX, invalid_hex)).is_err());
     }
 }
