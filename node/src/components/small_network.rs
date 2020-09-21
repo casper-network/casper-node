@@ -287,7 +287,7 @@ where
             }
         } else {
             // We are not connected, so the reconnection is likely already in progress.
-            warn!(%dest, ?msg, "{}: dropped outgoing message, no connection", self.our_id);
+            debug!(%dest, ?msg, "{}: dropped outgoing message, no connection", self.our_id);
         }
     }
 
