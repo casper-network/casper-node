@@ -295,7 +295,15 @@ impl Deploy {
     /// Try to convert the JSON-encoded string to a `Deploy`.
     pub fn from_json(input: &str) -> Result<Self, Error> {
         let json: json::JsonDeploy = serde_json::from_str(input)?;
-        Deploy::try_from(json)
+        let deploy = Deploy::try_from(json)?;
+
+        // Serialize and deserialize to run validity checks in deserialization.
+        let serialized =
+            rmp_serde::to_vec(&deploy).map_err(|error| Error::DecodeFromJson(Box::new(error)))?;
+        let _: Deploy = rmp_serde::from_read_ref(&serialized)
+            .map_err(|error| Error::DecodeFromJson(Box::new(error)))?;
+
+        Ok(deploy)
     }
 
     /// Returns the `ExecutableDeployItem` for payment code.

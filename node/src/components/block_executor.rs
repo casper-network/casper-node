@@ -16,7 +16,7 @@ use casper_execution_engine::{
         self,
         deploy_item::DeployItem,
         execute_request::ExecuteRequest,
-        execution_result::{ExecutionResult, ExecutionResults},
+        execution_result::{ExecutionResult as EngineExecutionResult, ExecutionResults},
         RootNotFound,
     },
     storage::global_state::CommitResult,
@@ -31,7 +31,9 @@ use crate::{
         requests::{BlockExecutorRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    types::{Block, BlockHash, Deploy, FinalizedBlock},
+    types::{
+        json_compatibility::ExecutionResult, Block, BlockHash, Deploy, DeployHash, FinalizedBlock,
+    },
 };
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `BlockExecutor`
@@ -70,14 +72,16 @@ pub enum Event {
     /// The result of executing a single deploy.
     DeployExecutionResult {
         /// State of this request.
-        state: State,
+        state: Box<State>,
+        /// The ID of the deploy currently being executed.
+        deploy_hash: DeployHash,
         /// Result of deploy execution.
         result: Result<ExecutionResults, RootNotFound>,
     },
     /// The result of committing a single set of transforms after executing a single deploy.
     CommitExecutionEffects {
         /// State of this request.
-        state: State,
+        state: Box<State>,
         /// Commit result for execution request.
         commit_result: Result<CommitResult, engine_state::Error>,
     },
@@ -98,21 +102,25 @@ impl Display for Event {
             ),
             Event::DeployExecutionResult {
                 state,
+                deploy_hash,
                 result: Ok(_),
             } => write!(
                 f,
-                "deploys execution result for finalized block with height {} with \
+                "execution result for {} of finalized block with height {} with \
                 pre-state hash {}: success",
+                deploy_hash,
                 state.finalized_block.height(),
                 state.pre_state_hash
             ),
             Event::DeployExecutionResult {
                 state,
+                deploy_hash,
                 result: Err(_),
             } => write!(
                 f,
-                "deploys execution result for finalized block with height {} with \
+                "execution result for {} of finalized block with height {} with \
                 pre-state hash {}: root not found",
+                deploy_hash,
                 state.finalized_block.height(),
                 state.pre_state_hash
             ),
@@ -121,7 +129,7 @@ impl Display for Event {
                 commit_result: Ok(CommitResult::Success { state_root, .. }),
             } => write!(
                 f,
-                "commit execution effects for finalized block with height {} with \
+                "commit execution effects of finalized block with height {} with \
                 pre-state hash {}: success with post-state hash {}",
                 state.finalized_block.height(),
                 state.pre_state_hash,
@@ -132,7 +140,7 @@ impl Display for Event {
                 commit_result,
             } => write!(
                 f,
-                "commit execution effects for finalized block with height {} with \
+                "commit execution effects of finalized block with height {} with \
                 pre-state hash {}: failed {:?}",
                 state.finalized_block.height(),
                 state.pre_state_hash,
@@ -148,6 +156,8 @@ pub struct State {
     finalized_block: FinalizedBlock,
     /// Deploys which have still to be executed.
     remaining_deploys: VecDeque<Deploy>,
+    /// A collection of result of executing the deploys.
+    execution_results: HashMap<DeployHash, ExecutionResult>,
     /// Current pre-state hash of global storage.  Is initialized with the parent block's
     /// post-state hash, and is updated after each commit.
     pre_state_hash: Digest,
@@ -193,7 +203,7 @@ impl BlockExecutor {
                     block.height(),
                     ExecutedBlockSummary {
                         hash: *block.hash(),
-                        post_state_hash: block.post_state_hash(),
+                        post_state_hash: *block.global_state_hash(),
                     },
                 )
             })
@@ -230,7 +240,7 @@ impl BlockExecutor {
     fn execute_next_deploy_or_create_block<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        mut state: State,
+        mut state: Box<State>,
     ) -> Effects<Event> {
         let next_deploy = match state.remaining_deploys.pop_front() {
             Some(deploy) => deploy,
@@ -239,7 +249,10 @@ impl BlockExecutor {
                 // hash.
                 let next_height = state.finalized_block.height() + 1;
                 let block = self.create_block(state.finalized_block, state.pre_state_hash);
-                let mut effects = effect_builder.announce_linear_chain_block(block).ignore();
+
+                let mut effects = effect_builder
+                    .announce_linear_chain_block(block, state.execution_results)
+                    .ignore();
                 // If the child is already finalized, start execution.
                 if let Some((finalized_block, deploys)) = self.exec_queue.remove(&next_height) {
                     effects.extend(self.handle_get_deploys_result(
@@ -251,6 +264,7 @@ impl BlockExecutor {
                 return effects;
             }
         };
+        let deploy_hash = *next_deploy.id();
         let deploy_item = DeployItem::from(next_deploy);
 
         let execute_request = ExecuteRequest::new(
@@ -262,7 +276,11 @@ impl BlockExecutor {
 
         effect_builder
             .request_execute(execute_request)
-            .event(move |result| Event::DeployExecutionResult { state, result })
+            .event(move |result| Event::DeployExecutionResult {
+                state,
+                deploy_hash,
+                result,
+            })
     }
 
     fn handle_get_deploys_result<REv: ReactorEventT>(
@@ -272,11 +290,12 @@ impl BlockExecutor {
         deploys: VecDeque<Deploy>,
     ) -> Effects<Event> {
         if let Some(pre_state_hash) = self.pre_state_hash(&finalized_block) {
-            let state = State {
+            let state = Box::new(State {
                 finalized_block,
                 remaining_deploys: deploys,
+                execution_results: HashMap::new(),
                 pre_state_hash,
-            };
+            });
             self.execute_next_deploy_or_create_block(effect_builder, state)
         } else {
             let height = finalized_block.height();
@@ -292,19 +311,25 @@ impl BlockExecutor {
     fn commit_execution_effects<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        state: State,
+        mut state: Box<State>,
+        deploy_hash: DeployHash,
         execution_results: ExecutionResults,
     ) -> Effects<Event> {
-        let execution_effect = match execution_results
+        let ee_execution_result = execution_results
             .into_iter()
             .exactly_one()
-            .expect("should only be one exec result")
-        {
-            ExecutionResult::Success { effect, cost } => {
+            .expect("should only be one exec result");
+        let execution_result = ExecutionResult::from(&ee_execution_result);
+        let _ = state
+            .execution_results
+            .insert(deploy_hash, execution_result);
+
+        let execution_effect = match ee_execution_result {
+            EngineExecutionResult::Success { effect, cost } => {
                 debug!(?effect, %cost, "execution succeeded");
                 effect
             }
-            ExecutionResult::Failure {
+            EngineExecutionResult::Failure {
                 error,
                 effect,
                 cost,
@@ -388,11 +413,15 @@ impl<REv: ReactorEventT, R: Rng + CryptoRng + ?Sized> Component<REv, R> for Bloc
                 self.handle_get_deploys_result(effect_builder, finalized_block, deploys)
             }
 
-            Event::DeployExecutionResult { state, result } => {
-                trace!(?state, ?result, "deploy execution result");
+            Event::DeployExecutionResult {
+                state,
+                deploy_hash,
+                result,
+            } => {
+                trace!(?state, %deploy_hash, ?result, "deploy execution result");
                 // As for now a given state is expected to exist.
                 let execution_results = result.unwrap();
-                self.commit_execution_effects(effect_builder, state, execution_results)
+                self.commit_execution_effects(effect_builder, state, deploy_hash, execution_results)
             }
 
             Event::CommitExecutionEffects {

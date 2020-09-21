@@ -151,7 +151,7 @@ fn is_valid(deploy: &Deploy, chainspec: Chainspec) -> bool {
             deploy_hash = %deploy.id(),
             deploy_header = %deploy.header(),
             chain_name = %chainspec.genesis.name,
-            "deploy ttl excessive"
+            "invalid chain identifier"
         );
         return false;
     }
@@ -163,7 +163,7 @@ fn is_valid(deploy: &Deploy, chainspec: Chainspec) -> bool {
             deploy_hash = %deploy.id(),
             deploy_header = %deploy.header(),
             max_dependencies = %chainspec.genesis.deploy_config.max_dependencies,
-            "deploy ttl excessive"
+            "deploy dependency ceiling exceeded"
         );
         return false;
     }
