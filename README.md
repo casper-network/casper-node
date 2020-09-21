@@ -41,51 +41,86 @@ make setup-rs
 make build-system-contracts -j
 ```
 
+The node software can be compiled afterwards:
+
+```
+cargo build -p casper-node --release
+```
+
+The result will be a `casper-node` binary found in `target/release`.  Copy this somewhere into your
+PATH, or substitute `target/release/casper-node` for `casper-node` in all examples below.
+
 ### Running one node
 
-To run a validator node you will need to specify a config file.  For example, this is one with
-[local configuration options](resources/local/config.toml).
-
-Note that all paths specified in the config file must be absolute paths or relative to the config file itself.
-
-It is possible to specify individual config file options from the command line using one or more args in the form of
-`-C=<SECTION>.<KEY>=<VALUE>`.  These will override values set in a config file if provided, or will override the
-default values otherwise.  For example:
+To run a validator node you will need to specify a config file and launch the validator subcommand, for example
 
 ```
-cargo run --release -- validator resources/local/config.toml -C=consensus.secret_key_path=secret_keys/node-1.pem
+casper-node validator /etc/casper-node/config.toml
 ```
 
-Note that `network.known_addresses` must refer to public listening addresses of one or more
-currently-running nodes.  If the node cannot connect to any of these addresses, it will panic.  The
-node _can_ be run with this referring to its own address, but it will be equivalent to specifying an
-empty list for `known_addresses` - i.e. the node will run and listen, but will be reliant on other
-nodes connecting to it in order to join the network.  This would be normal for the very first node
-of a network, but all subsequent nodes should normally specify that first node's public listening
-address as their `known_addresses`.
+The node ships with an [example configuration file](resources/local/config.toml) that should be setup first.  There is also a commented [local chainspec](resources/local/chainspec.toml) in the same folder.
 
-As well as the commented [local config file](resources/local/config.toml), there is a commented
-[local chainspec](resources/local/chainspec.toml) in the same folder.
+For launching, the following configuration values must be properly set:
+
+| Setting                   | Description |
+| :-------------------------| :---------- |
+| `network.known_addresses` | Must refer to public listening addresses of one or more currently-running nodes.  If the node cannot connect to any of these addresses, it will panic.  The node _can_ be run with this referring to its own address, but it will be equivalent to specifying an empty list for `known_addresses` - i.e. the node will run and listen, but will be reliant on other nodes connecting to it in order to join the network.  This would be normal for the very first node of a network, but all subsequent nodes should normally specify that first  node's public listening address as their `known_addresses`. |
+
 
 ### Running multiple nodes on one machine
 
-If you want to run multiple instances on the same machine, you will need to modify the following values from the
-[local configuration options](resources/local/config.toml):
+If you want to run multiple instances on the same machine, you will need to modify the following
+configuration values:
 
-* the secret key path should be different for each node, e.g. `-C=consensus.secret_key_path=secret_keys/node-2.pem`
-* the storage path should be different for each node, e.g. `-C=storage.path=/tmp/node-2-storage`
-* the bind port should be different for each node, but if you set it to 0, the node will automatically be assigned a
-random port, e.g. `-C=network.bind_port=0`
+| Setting                     | Description |
+| :---------------------------| :---------- |
+| `consensus.secret_key_path` | The path to the secret key must be different for each node, as no two nodes should be using an identical secret key. |
+| `storage.path`              | Storage must be separate for each node, e.g. `/tmp/node-2-storage` for the second node |
+| `network.bind_address`      | Each node requires a different bind address, although the port can be set to `0`, which will cause the node to select a random port. |
+| `network.gossip_interval`   | (optional) To reduce the initial time to become fully interconnected, this value can be reduced, e.g. set  to `1000` for once every second.  However, beware thatthis will also increase the network traffic, as gossip rounds between the nodes will continue to be exchanged at this frequency for the duration of the network. |
 
-The nodes can take quite a long time to become fully interconnected.  This is dependent on the `network.gossip_interval`
-value (in milliseconds).  Nodes gossip their own listening addresses at this frequency.  To reduce the initial time to
-become fully interconnected, this value can be reduced, e.g. `-C=network.gossip_interval=1000` for once every second.
-However, beware that this will also increase the network traffic, as gossip rounds between the nodes will continue to
-be exchanged at this frequency for the duration of the network.
+The nodes can take quite a long time to become fully interconnected.  This is dependent on the
+`network.gossip_interval` value (in milliseconds).  Nodes gossip their own listening addresses at
+this frequency.
 
 There is a [shell script](run-dev.sh) which automates the process of running multiple nodes on a single machine.
 
 Note that running multiple nodes on a single machine is normally only recommended for test purposes.
+
+## Configuration
+
+In general nodes are configured through a configuration file, typically named `config.toml`.  This
+file may reference other files or locations through relative paths.  When it does, note that all
+paths that are not absolute will be resolved relative to `config.toml` directory.
+
+### CLI overrides
+
+It is possible to override config file options from the command line using one or more args in the
+form of `-C=<SECTION>.<KEY>=<VALUE>`.  These will override values set in a config file if provided,
+or will override the default values otherwise.  For example
+
+```
+casper-node validator /etc/casper-node/config.toml \
+    -C=consensus.secret_key_path=secret_keys/node-1.pem \
+    -C=network.known_addresses="[1.2.3.4:34553, 200.201.203.204:34553]"
+```
+
+will override the `consensus.secret_key_path` and the `network.known_addresses` configuration
+setting.
+
+Be aware that semicolons are prohibited (even escaped) from being used in any option passed on the
+command line.
+
+### Environment overrides
+
+Some environments may call for overriding options through the environment rather than the command line.  In this scenario, the `NODE_CONFIG` environment variable can be used. For example, the command from the previous section can be alternatively expressed as
+
+```
+export NODE_CONFIG=consensus.secret_key_path=secret_keys/node-1.pem;network.known_addresses=[1.2.3.4:34553, 200.201.203.204:34553]
+casper-node validator /etc/casper-node/config.toml
+```
+
+Note how the semicolon is used to separate configuration overrides here.
 
 ## Logging
 
