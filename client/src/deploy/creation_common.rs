@@ -735,15 +735,17 @@ pub(super) fn apply_common_creation_options<'a, 'b>(subcommand: App<'a, 'b>) -> 
         )
 }
 
-pub(super) fn construct_deploy(
-    matches: &ArgMatches<'_>,
-    session: ExecutableDeployItem,
-) -> PutDeployParams {
+pub(super) fn show_arg_examples_and_exit_if_required(matches: &ArgMatches<'_>) {
     // If we printed the arg examples, exit the process.
     if show_arg_examples::get(matches) {
         process::exit(0);
     }
+}
 
+pub(super) fn construct_deploy(
+    matches: &ArgMatches<'_>,
+    session: ExecutableDeployItem,
+) -> PutDeployParams {
     let secret_key = common::secret_key::get(matches);
     let timestamp = timestamp::get(matches);
     let ttl = ttl::get(matches);
