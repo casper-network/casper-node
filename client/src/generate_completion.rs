@@ -3,7 +3,7 @@ use std::{fs::File, path::PathBuf, process, str::FromStr};
 use clap::{crate_name, App, Arg, ArgMatches, Shell, SubCommand};
 use lazy_static::lazy_static;
 
-use crate::common;
+use crate::{command::ClientCommand, common};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
@@ -79,7 +79,7 @@ mod shell {
 
 pub struct GenerateCompletion {}
 
-impl<'a, 'b> crate::Subcommand<'a, 'b> for GenerateCompletion {
+impl<'a, 'b> ClientCommand<'a, 'b> for GenerateCompletion {
     const NAME: &'static str = "generate-completion";
     const ABOUT: &'static str = "Generates a shell completion script";
 

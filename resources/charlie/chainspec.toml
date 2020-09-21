@@ -43,9 +43,12 @@ booking_duration_millis = 0
 entropy_duration_millis = 0
 # Keep voting on the switch block for a fixed amount of time; effective if the summit level is zero.
 # 172800000 ms = 2 days.
-voting_period_duration_millis = 0
-# Integer between 0 and 99 representing the fault tolerance threshold as a percentage, used by the internal finalizer.
-finality_threshold_percent = 20
+voting_period_duration_millis = 172800000
+# Integer between 1 and 99 representing the fault tolerance threshold as a percentage, used by the internal finalizer.
+# It is the percentage of validators that would need to equivocate to make two honest nodes see two conflicting
+# blocks as finalized: A higher value F makes it safer to rely on finalized blocks. It also makes it more difficult to
+# finalize blocks, however, and requires at least 50% + F/2 validators to be working correctly.
+finality_threshold_percent = 10
 # Integer between 0 and 255. The power of two that is the number of milliseconds in the minimum round length, and
 # therefore the minimum delay between a block and its child. E.g. 14 means 2^14 milliseconds, i.e. about 16 seconds.
 minimum_round_exponent = 17

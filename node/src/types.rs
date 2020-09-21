@@ -3,6 +3,7 @@
 mod block;
 mod deploy;
 mod item;
+pub mod json_compatibility;
 mod node_config;
 mod status_feed;
 mod timestamp;

@@ -19,7 +19,6 @@ backtrace = "0.3.50"
 base16 = "0.2.1"
 base64 = "0.12.3"
 blake2 = { version = "0.8.1", default-features = false }
-bytes = "0.5.4"
 casper-execution-engine = { path = "../execution_engine" }
 casper-types = { version = "0.6.0", path = "../types", features = ["std", "gens"] }
 chrono = "0.4.10"
@@ -36,6 +35,7 @@ hex = "0.4.2"
 hex_fmt = "0.3.0"
 hostname = "0.3.0"
 http = "0.2.1"
+hyper = "0.13.7"
 itertools = "0.8.2"
 k256 = { version = "0.4.2", features = ["ecdsa", "zeroize"] }
 lazy_static = "1.4.0"
@@ -81,6 +81,7 @@ untrusted = "0.7.1"
 uuid = { version = "0.8.1", features = ["serde", "v4"] }
 wabt = "0.10.0"
 warp = "0.2.4"
+warp-json-rpc = "0.1.6"
 wasmi = "0.6.2"
 
 [dev-dependencies]

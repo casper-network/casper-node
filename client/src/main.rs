@@ -1,31 +1,43 @@
+mod balance;
+mod block;
+mod command;
 mod common;
 mod deploy;
+mod error;
 mod generate_completion;
+mod get_global_state_hash;
 mod keygen;
+mod query_state;
+mod rpc;
 
-use clap::{crate_description, crate_version, App, ArgMatches};
+use clap::{crate_description, crate_version, App};
 
-use deploy::{GetDeploy, ListDeploys, PutDeploy, Transfer};
+use casper_node::rpcs::{
+    account::PutDeploy,
+    chain::{GetBlock, GetGlobalStateHash},
+    info::GetDeploy,
+    state::{GetBalance, GetItem as QueryState},
+};
+
+use command::ClientCommand;
+use deploy::{ListDeploys, Transfer};
+use error::{Error, Result};
 use generate_completion::GenerateCompletion;
 use keygen::Keygen;
+use rpc::RpcClient;
 
 const APP_NAME: &str = "Casper client";
-
-pub trait Subcommand<'a, 'b> {
-    const NAME: &'static str;
-    const ABOUT: &'static str;
-    /// Constructs the clap `SubCommand` and returns the clap `App`.
-    fn build(display_order: usize) -> App<'a, 'b>;
-    /// Parses the arg matches and runs the subcommand.
-    fn run(matches: &ArgMatches<'_>);
-}
 
 /// This struct defines the order in which the subcommands are shown in the app's help message.
 enum DisplayOrder {
     PutDeploy,
     Transfer,
     GetDeploy,
+    GetBlock,
     ListDeploys,
+    GetBalance,
+    GetGlobalStateHash,
+    QueryState,
     Keygen,
     GenerateCompletion,
 }
@@ -37,7 +49,13 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         .subcommand(PutDeploy::build(DisplayOrder::PutDeploy as usize))
         .subcommand(Transfer::build(DisplayOrder::Transfer as usize))
         .subcommand(GetDeploy::build(DisplayOrder::GetDeploy as usize))
+        .subcommand(GetBlock::build(DisplayOrder::GetBlock as usize))
         .subcommand(ListDeploys::build(DisplayOrder::ListDeploys as usize))
+        .subcommand(GetBalance::build(DisplayOrder::GetBalance as usize))
+        .subcommand(GetGlobalStateHash::build(
+            DisplayOrder::GetGlobalStateHash as usize,
+        ))
+        .subcommand(QueryState::build(DisplayOrder::QueryState as usize))
         .subcommand(Keygen::build(DisplayOrder::Keygen as usize))
         .subcommand(GenerateCompletion::build(
             DisplayOrder::GenerateCompletion as usize,
@@ -51,7 +69,11 @@ async fn main() {
         (PutDeploy::NAME, Some(matches)) => PutDeploy::run(matches),
         (Transfer::NAME, Some(matches)) => Transfer::run(matches),
         (GetDeploy::NAME, Some(matches)) => GetDeploy::run(matches),
+        (GetBlock::NAME, Some(matches)) => GetBlock::run(matches),
         (ListDeploys::NAME, Some(matches)) => ListDeploys::run(matches),
+        (GetBalance::NAME, Some(matches)) => GetBalance::run(matches),
+        (GetGlobalStateHash::NAME, Some(matches)) => GetGlobalStateHash::run(matches),
+        (QueryState::NAME, Some(matches)) => QueryState::run(matches),
         (Keygen::NAME, Some(matches)) => Keygen::run(matches),
         (GenerateCompletion::NAME, Some(matches)) => GenerateCompletion::run(matches),
         _ => panic!("You must choose a subcommand to execute"),

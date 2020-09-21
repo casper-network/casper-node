@@ -93,6 +93,59 @@ pub mod force {
     }
 }
 
+/// Handles providing the arg for and retrieval of the global state hash.
+pub mod global_state_hash {
+    use super::*;
+
+    const ARG_NAME: &str = "global-state-hash";
+    const ARG_SHORT: &str = "g";
+    const ARG_VALUE_NAME: &str = "HEX STRING";
+    const ARG_HELP: &str = "Hex-encoded global state hash";
+
+    pub(crate) fn arg(order: usize) -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .short(ARG_SHORT)
+            .required(true)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .display_order(order)
+    }
+
+    pub(crate) fn get(matches: &ArgMatches) -> String {
+        matches
+            .value_of(ARG_NAME)
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
+            .to_string()
+    }
+}
+
+/// Handles providing the arg for and retrieval of the block hash.
+pub mod block_hash {
+    use super::*;
+
+    const ARG_NAME: &str = "block-hash";
+    const ARG_SHORT: &str = "b";
+    const ARG_VALUE_NAME: &str = "HEX STRING";
+    const ARG_HELP: &str =
+        "Hex-encoded block hash.  If not given, the latest finalized block as known at the given \
+        node will be used";
+
+    pub(crate) fn arg(order: usize) -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .short(ARG_SHORT)
+            .required(false)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .display_order(order)
+    }
+
+    pub(crate) fn get(matches: &ArgMatches) -> Option<String> {
+        matches.value_of(ARG_NAME).map(ToString::to_string)
+    }
+}
+
 pub fn read_file(path: &str) -> Vec<u8> {
     fs::read(path).unwrap_or_else(|error| panic!("should read {}: {}", path, error))
 }

@@ -401,7 +401,7 @@ where
                 validator_stakes,
                 block_header.timestamp(),
                 block_header.height() + 1,
-                *block_header.post_state_hash(),
+                *block_header.global_state_hash(),
             );
             effects.extend(self.handle_consensus_results(new_era_id, results));
         }

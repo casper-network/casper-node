@@ -20,6 +20,7 @@ use casper_node::{
     reactor::{initializer, joiner, validator, Runner},
     utils::WithDir,
 };
+use prometheus::Registry;
 
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
 #[derive(Debug, StructOpt)]
@@ -145,9 +146,13 @@ impl Cli {
                 // performance reasons.
                 let mut rng = ChaCha20Rng::from_entropy();
 
-                let mut initializer_runner = Runner::<initializer::Reactor, _>::new(
+                // The metrics are shared across all reactors.
+                let registry = Registry::new();
+
+                let mut initializer_runner = Runner::<initializer::Reactor, _>::with_metrics(
                     WithDir::new(root.clone(), validator_config),
                     &mut rng,
+                    &registry,
                 )
                 .await?;
                 initializer_runner.run(&mut rng).await;
@@ -159,9 +164,12 @@ impl Cli {
                     bail!("failed to initialize successfully");
                 }
 
-                let mut joiner_runner =
-                    Runner::<joiner::Reactor<_>, _>::new(WithDir::new(root, initializer), &mut rng)
-                        .await?;
+                let mut joiner_runner = Runner::<joiner::Reactor<_>, _>::with_metrics(
+                    WithDir::new(root, initializer),
+                    &mut rng,
+                    &registry,
+                )
+                .await?;
                 joiner_runner.run(&mut rng).await;
 
                 info!("finished joining");
@@ -169,7 +177,8 @@ impl Cli {
                 let config = joiner_runner.into_inner().into_validator_config().await;
 
                 let mut validator_runner =
-                    Runner::<validator::Reactor<_>, _>::new(config, &mut rng).await?;
+                    Runner::<validator::Reactor<_>, _>::with_metrics(config, &mut rng, &registry)
+                        .await?;
                 validator_runner.run(&mut rng).await;
             }
         }

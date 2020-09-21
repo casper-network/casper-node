@@ -14,6 +14,7 @@ use semver::Version;
 use casper_execution_engine::{
     core::engine_state::{
         self,
+        balance::{BalanceRequest, BalanceResult},
         execute_request::ExecuteRequest,
         execution_result::ExecutionResults,
         genesis::GenesisResult,
@@ -23,22 +24,29 @@ use casper_execution_engine::{
     shared::{additive_map::AdditiveMap, transform::Transform},
     storage::global_state::CommitResult,
 };
-use casper_types::Key;
+use casper_types::{Key, URef};
 
 use super::Responder;
 use crate::{
     components::{
         fetcher::FetchResult,
-        storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
+        storage::{
+            DeployHashes, DeployHeaderResults, DeployMetadata, DeployResults, StorageType, Value,
+        },
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
     types::{
-        Block as LinearBlock, BlockHash, BlockHeader, Deploy, DeployHash, FinalizedBlock, Item,
-        ProtoBlockHash, Timestamp,
+        json_compatibility::ExecutionResult, Block as LinearBlock, BlockHash, BlockHeader, Deploy,
+        DeployHash, FinalizedBlock, Item, ProtoBlockHash, StatusFeed, Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
 };
+
+type DeployAndMetadata<S> = (
+    <S as StorageType>::Deploy,
+    DeployMetadata<<S as StorageType>::Block>,
+);
 
 /// A metrics request.
 #[derive(Debug)]
@@ -220,10 +228,22 @@ pub enum StorageRequest<S: StorageType + 'static> {
         /// Responder to call with the results.
         responder: Responder<DeployHeaderResults<S>>,
     },
-    /// List all deploy hashes.
-    ListDeploys {
-        /// Responder to call with the result.
-        responder: Responder<Vec<<S::Deploy as Value>::Id>>,
+    /// Store the given execution results for the deploys in the given block.
+    PutExecutionResults {
+        /// Hash of block.
+        block_hash: <S::Block as Value>::Id,
+        /// Execution results.
+        execution_results: HashMap<<S::Deploy as Value>::Id, ExecutionResult>,
+        /// Responder to call with the result.  Returns true if the execution results were stored
+        /// on this attempt or false if they were previously stored.
+        responder: Responder<()>,
+    },
+    /// Retrieve deploy and its metadata.
+    GetDeployAndMetadata {
+        /// Hash of deploy to be retrieved.
+        deploy_hash: <S::Deploy as Value>::Id,
+        /// Responder to call with the results.
+        responder: Responder<Option<DeployAndMetadata<S>>>,
     },
     /// Store given chainspec.
     PutChainspec {
@@ -258,7 +278,12 @@ impl<S: StorageType> Display for StorageRequest<S> {
                 "get headers {}",
                 DisplayIter::new(deploy_hashes.iter())
             ),
-            StorageRequest::ListDeploys { .. } => write!(formatter, "list deploys"),
+            StorageRequest::PutExecutionResults { block_hash, .. } => {
+                write!(formatter, "put execution results for {}", block_hash)
+            }
+            StorageRequest::GetDeployAndMetadata { deploy_hash, .. } => {
+                write!(formatter, "get deploy and metadata for {}", deploy_hash)
+            }
             StorageRequest::PutChainspec { chainspec, .. } => write!(
                 formatter,
                 "put chainspec {}",
@@ -309,7 +334,7 @@ impl Display for DeployBufferRequest {
 /// transport.
 #[derive(Debug)]
 #[must_use]
-pub enum ApiRequest {
+pub enum ApiRequest<I> {
     /// Submit a deploy to be announced.
     SubmitDeploy {
         /// The deploy to be announced.
@@ -317,38 +342,92 @@ pub enum ApiRequest {
         /// Responder to call.
         responder: Responder<()>,
     },
-    /// Return the specified deploy if it exists, else `None`.
+    /// If `maybe_hash` is `Some`, return the specified block if it exists, else `None`.  If
+    /// `maybe_hash` is `None`, return the latest block.
+    GetBlock {
+        /// The hash of the block to be retrieved.
+        maybe_hash: Option<BlockHash>,
+        /// Responder to call with the result.
+        responder: Responder<Option<LinearBlock>>,
+    },
+    /// Query the global state at the given root hash.
+    QueryGlobalState {
+        /// The global state hash.
+        global_state_hash: Digest,
+        /// Hex-encoded `casper_types::Key`.
+        base_key: Key,
+        /// The path components starting from the key as base.
+        path: Vec<String>,
+        /// Responder to call with the result.
+        responder: Responder<Result<QueryResult, engine_state::Error>>,
+    },
+    /// Query the global state at the given root hash.
+    GetBalance {
+        /// The global state hash.
+        global_state_hash: Digest,
+        /// The purse URef.
+        purse_uref: URef,
+        /// Responder to call with the result.
+        responder: Responder<Result<BalanceResult, engine_state::Error>>,
+    },
+    /// Return the specified deploy and metadata if it exists, else `None`.
     GetDeploy {
         /// The hash of the deploy to be retrieved.
         hash: DeployHash,
         /// Responder to call with the result.
-        responder: Responder<Option<Deploy>>,
+        responder: Responder<Option<(Deploy, DeployMetadata<LinearBlock>)>>,
     },
-    /// Return the list of all deploy hashes stored on this node.
-    ListDeploys {
+    /// Return the connected peers.
+    GetPeers {
         /// Responder to call with the result.
-        responder: Responder<Vec<DeployHash>>,
+        responder: Responder<HashMap<I, SocketAddr>>,
+    },
+    /// Return string formatted status or `None` if an error occurred.
+    GetStatus {
+        /// Responder to call with the result.
+        responder: Responder<StatusFeed<I>>,
     },
     /// Return string formatted, prometheus compatible metrics or `None` if an error occurred.
     GetMetrics {
         /// Responder to call with the result.
         responder: Responder<Option<String>>,
     },
-    /// Return string formatted status or `None` if an error occurred.
-    GetStatus {
-        /// Responder to call with the result.
-        responder: Responder<Option<String>>,
-    },
 }
 
-impl Display for ApiRequest {
+impl<I> Display for ApiRequest<I> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ApiRequest::SubmitDeploy { deploy, .. } => write!(formatter, "submit {}", *deploy),
+            ApiRequest::GetBlock {
+                maybe_hash: Some(hash),
+                ..
+            } => write!(formatter, "get {}", hash),
+            ApiRequest::GetBlock {
+                maybe_hash: None, ..
+            } => write!(formatter, "get latest block"),
+            ApiRequest::QueryGlobalState {
+                global_state_hash,
+                base_key,
+                path,
+                ..
+            } => write!(
+                formatter,
+                "query {}, base_key: {}, path: {:?}",
+                global_state_hash, base_key, path
+            ),
+            ApiRequest::GetBalance {
+                global_state_hash,
+                purse_uref,
+                ..
+            } => write!(
+                formatter,
+                "balance {}, purse_uref: {}",
+                global_state_hash, purse_uref
+            ),
             ApiRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
-            ApiRequest::ListDeploys { .. } => write!(formatter, "list deploys"),
-            ApiRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
+            ApiRequest::GetPeers { .. } => write!(formatter, "get peers"),
             ApiRequest::GetStatus { .. } => write!(formatter, "get status"),
+            ApiRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
         }
     }
 }
@@ -391,8 +470,15 @@ pub enum ContractRuntimeRequest {
     Query {
         /// Query request.
         query_request: QueryRequest,
-        /// Responder to call with the upgrade result.
+        /// Responder to call with the query result.
         responder: Responder<Result<QueryResult, engine_state::Error>>,
+    },
+    /// A balance request.
+    GetBalance {
+        /// Balance request.
+        balance_request: BalanceRequest,
+        /// Responder to call with the balance result.
+        responder: Responder<Result<BalanceResult, engine_state::Error>>,
     },
 }
 
@@ -429,6 +515,10 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::Query { query_request, .. } => {
                 write!(formatter, "query request: {:?}", query_request)
             }
+
+            ContractRuntimeRequest::GetBalance {
+                balance_request, ..
+            } => write!(formatter, "balance request: {:?}", balance_request),
         }
     }
 }
