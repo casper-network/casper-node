@@ -8,10 +8,9 @@ use std::{
 };
 
 use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches};
-use futures::executor;
 use lazy_static::lazy_static;
-use reqwest::{Client, StatusCode};
 use serde::{self, Deserialize};
+use serde_json::{Map, Value};
 
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_node::{
@@ -736,16 +735,15 @@ pub(super) fn apply_common_creation_options<'a, 'b>(subcommand: App<'a, 'b>) -> 
         )
 }
 
-pub(super) fn construct_and_send_deploy_to_node(
+pub(super) fn construct_deploy(
     matches: &ArgMatches<'_>,
     session: ExecutableDeployItem,
-) {
+) -> Map<String, Value> {
     // If we printed the arg examples, exit the process.
     if show_arg_examples::get(matches) {
         process::exit(0);
     }
 
-    let node_address = common::node_address::get(matches);
     let secret_key = common::secret_key::get(matches);
     let timestamp = timestamp::get(matches);
     let ttl = ttl::get(matches);
@@ -769,29 +767,9 @@ pub(super) fn construct_and_send_deploy_to_node(
         &mut rng,
     );
 
-    let deploy_hash = *deploy.id();
-
-    let body = deploy.to_json().expect("should serialize deploy to JSON");
-
-    let client = Client::new();
-    let url = format!("{}/{}", node_address, common::DEPLOY_API_PATH);
-
-    let response = executor::block_on(async {
-        client
-            .post(&url)
-            .body(body)
-            .send()
-            .await
-            .unwrap_or_else(|error| panic!("should get response from node: {}", error))
-    });
-
-    if response.status() == StatusCode::OK {
-        println!(
-            "Node received deploy with deploy-hash:\n{:?}",
-            deploy_hash.inner()
-        );
-    } else {
-        eprintln!("Sending {} failed\n{:?}", deploy_hash, response);
-        process::exit(1);
-    }
+    deploy
+        .to_json()
+        .as_object()
+        .unwrap_or_else(|| panic!("should encode to JSON object type"))
+        .clone()
 }

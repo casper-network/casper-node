@@ -1,10 +1,15 @@
 use clap::{App, ArgGroup, ArgMatches, SubCommand};
 
 use super::creation_common;
+use crate::{command::ClientCommand, common, RpcClient};
 
 pub struct PutDeploy {}
 
-impl<'a, 'b> crate::Subcommand<'a, 'b> for PutDeploy {
+impl RpcClient for PutDeploy {
+    const RPC_METHOD: &'static str = "account_put_deploy";
+}
+
+impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
     const NAME: &'static str = "put-deploy";
     const ABOUT: &'static str = "Creates a new deploy and sends it to the network for execution";
 
@@ -26,7 +31,12 @@ impl<'a, 'b> crate::Subcommand<'a, 'b> for PutDeploy {
     }
 
     fn run(matches: &ArgMatches<'_>) {
+        let node_address = common::node_address::get(matches);
         let session = creation_common::parse_session_info(matches);
-        creation_common::construct_and_send_deploy_to_node(matches, session)
+        let params = creation_common::construct_deploy(matches, session);
+
+        let response_value = Self::request_with_map_params(&node_address, params)
+            .unwrap_or_else(|error| panic!("response error: {}", error));
+        println!("{}", response_value);
     }
 }

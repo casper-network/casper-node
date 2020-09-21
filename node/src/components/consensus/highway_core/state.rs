@@ -61,6 +61,8 @@ pub(crate) enum VoteError {
     Timestamps,
     #[error("The creator is not a validator.")]
     Creator,
+    #[error("The vote was created for a wrong instance ID.")]
+    InstanceId,
     #[error("The signature is invalid.")]
     Signature,
     #[error("The round length is invalid.")]
@@ -74,8 +76,6 @@ pub(crate) enum VoteError {
     NonLeaderBlock(ValidatorIndex),
     #[error("The vote is a block, but its parent is already a terminal block.")]
     ValueAfterTerminalBlock,
-    #[error("The round exponent moved away from the median by more than the allowed spread.")]
-    RoundExponentSpread,
 }
 
 /// A passive instance of the Highway protocol, containing its local state.
@@ -273,13 +273,18 @@ impl<C: Context> State<C> {
         self.evidence.insert(idx, evidence);
     }
 
-    pub(crate) fn wire_vote(&self, hash: &C::Hash) -> Option<SignedWireVote<C>> {
+    pub(crate) fn wire_vote(
+        &self,
+        hash: &C::Hash,
+        instance_id: C::InstanceId,
+    ) -> Option<SignedWireVote<C>> {
         let vote = self.opt_vote(hash)?.clone();
         let opt_block = self.opt_block(hash);
         let value = opt_block.map(|block| block.value.clone());
         let wvote = WireVote {
             panorama: vote.panorama.clone(),
             creator: vote.creator,
+            instance_id,
             value,
             seq_number: vote.seq_number,
             timestamp: vote.timestamp,
@@ -378,10 +383,6 @@ impl<C: Context> State<C> {
         let r_id = round_id(timestamp, wvote.round_exp);
         let opt_prev_vote = panorama[creator].correct().map(|vh| self.vote(vh));
         let prev_round_exp = opt_prev_vote.map_or(self.params.init_round_exp(), |v| v.round_exp);
-        // The round exponent must only change one step at a time.
-        if prev_round_exp + 1 < wvote.round_exp || wvote.round_exp + 1 < prev_round_exp {
-            return Err(VoteError::RoundLength);
-        }
         if let Some(prev_vote) = opt_prev_vote {
             if prev_round_exp != wvote.round_exp {
                 // The round exponent must not change within a round: Even with respect to the
@@ -413,7 +414,7 @@ impl<C: Context> State<C> {
                 return Err(VoteError::ValueAfterTerminalBlock);
             }
         }
-        self.check_round_exp_spread(wvote)
+        Ok(())
     }
 
     /// Returns `true` if the `bhash` is a block that can have no children.
@@ -443,7 +444,7 @@ impl<C: Context> State<C> {
                 // predecessor of wvote must be a predecessor of hash0. So we already have a
                 // conflicting vote with the same sequence number:
                 let prev0 = self.find_in_swimlane(hash0, wvote.seq_number).unwrap();
-                let wvote0 = self.wire_vote(prev0).unwrap();
+                let wvote0 = self.wire_vote(prev0, wvote.instance_id.clone()).unwrap();
                 self.add_evidence(Evidence::Equivocation(wvote0, swvote.clone()));
                 Observation::Faulty
             }
@@ -507,35 +508,6 @@ impl<C: Context> State<C> {
             }
         }
         equivocators
-    }
-
-    /// Returns an error if the vote's round exponent was changed away from the cited votes' median
-    /// by more than the allowed spread.
-    fn check_round_exp_spread(&self, wvote: &WireVote<C>) -> Result<(), VoteError> {
-        let panorama = &wvote.panorama;
-        if let Observation::Correct(vh) = &panorama[wvote.creator] {
-            if wvote.round_exp >= self.vote(vh).round_exp {
-                return Ok(()); // Round exponent was not decreased.
-            }
-        }
-        let upper_re = match wvote.round_exp.checked_add(self.params.round_exp_spread()) {
-            Some(upper_re) => upper_re,
-            None => return Ok(()), // The median can't be greater than u8::MAX.
-        };
-        // Check that round exponent plus allowed spread is >= median.
-        let to_re = |vh: &C::Hash| self.vote(vh).round_exp;
-        let init_re = self.params().init_round_exp();
-        if panorama
-            .iter()
-            .zip(&self.weights)
-            .filter(|(obs, _)| obs.correct().map_or(init_re, to_re) > upper_re)
-            .map(|(_, w)| w)
-            .sum::<Weight>()
-            > self.total_weight() / 2
-        {
-            return Err(VoteError::RoundExponentSpread);
-        }
-        Ok(())
     }
 }
 

@@ -79,7 +79,7 @@ use casper_execution_engine::{
     core::{
         engine_state::{
             self, execute_request::ExecuteRequest, execution_result::ExecutionResults,
-            genesis::GenesisResult,
+            genesis::GenesisResult, BalanceRequest, BalanceResult, QueryRequest, QueryResult,
         },
         execution,
     },
@@ -93,7 +93,9 @@ use crate::{
         consensus::BlockContext,
         fetcher::FetchResult,
         small_network::GossipedAddress,
-        storage::{DeployHashes, DeployHeaderResults, DeployResults, StorageType, Value},
+        storage::{
+            DeployHashes, DeployHeaderResults, DeployMetadata, DeployResults, StorageType, Value,
+        },
     },
     crypto::{
         asymmetric_key::{PublicKey, Signature},
@@ -101,8 +103,8 @@ use crate::{
     },
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash,
-        FinalizedBlock, Item, ProtoBlock,
+        json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, Deploy,
+        DeployHash, FinalizedBlock, Item, ProtoBlock,
     },
     utils::Source,
     Chainspec,
@@ -568,13 +570,19 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announce new block has been created.
-    pub(crate) async fn announce_linear_chain_block(self, block: Block)
-    where
+    pub(crate) async fn announce_linear_chain_block(
+        self,
+        block: Block,
+        execution_results: HashMap<DeployHash, ExecutionResult>,
+    ) where
         REv: From<BlockExecutorAnnouncement>,
     {
         self.0
             .schedule(
-                BlockExecutorAnnouncement::LinearChainBlock(block),
+                BlockExecutorAnnouncement::LinearChainBlock {
+                    block,
+                    execution_results,
+                },
                 QueueKind::Regular,
             )
             .await
@@ -699,14 +707,41 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Lists all deploy hashes held in the deploy store.
-    pub(crate) async fn list_deploys<S>(self) -> Vec<<S::Deploy as Value>::Id>
+    /// Stores the given execution results for the deploys in the given block in the linear block
+    /// store.
+    pub(crate) async fn put_execution_results_to_storage<S>(
+        self,
+        block_hash: <S::Block as Value>::Id,
+        execution_results: HashMap<<S::Deploy as Value>::Id, ExecutionResult>,
+    ) where
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
+    {
+        self.make_request(
+            |responder| StorageRequest::PutExecutionResults {
+                block_hash,
+                execution_results,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested deploys from the deploy store.
+    pub(crate) async fn get_deploy_and_metadata_from_storage<S>(
+        self,
+        deploy_hash: <S::Deploy as Value>::Id,
+    ) -> Option<(S::Deploy, DeployMetadata<S::Block>)>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| StorageRequest::ListDeploys { responder },
+            |responder| StorageRequest::GetDeployAndMetadata {
+                deploy_hash,
+                responder,
+            },
             QueueKind::Regular,
         )
         .await
@@ -961,6 +996,42 @@ impl<REv> EffectBuilder<REv> {
             |responder| ContractRuntimeRequest::Commit {
                 pre_state_hash,
                 effects,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests a query be executed on the Contract Runtime component.
+    pub(crate) async fn query_global_state(
+        self,
+        query_request: QueryRequest,
+    ) -> Result<QueryResult, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::Query {
+                query_request,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests a query be executed on the Contract Runtime component.
+    pub(crate) async fn get_balance(
+        self,
+        balance_request: BalanceRequest,
+    ) -> Result<BalanceResult, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetBalance {
+                balance_request,
                 responder,
             },
             QueueKind::Regular,

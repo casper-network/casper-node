@@ -153,8 +153,8 @@ impl From<StorageRequest<Storage>> for Event {
     }
 }
 
-impl From<ApiRequest> for Event {
-    fn from(request: ApiRequest) -> Self {
+impl From<ApiRequest<NodeId>> for Event {
+    fn from(request: ApiRequest<NodeId>) -> Self {
         Event::ApiServer(api_server::Event::ApiRequest(request))
     }
 }
@@ -619,11 +619,14 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                     }
                 }
             }
-            Event::BlockExecutorAnnouncement(BlockExecutorAnnouncement::LinearChainBlock(
+            Event::BlockExecutorAnnouncement(BlockExecutorAnnouncement::LinearChainBlock {
                 block,
-            )) => {
-                let reactor_event =
-                    Event::LinearChain(linear_chain::Event::LinearChainBlock(block));
+                execution_results,
+            }) => {
+                let reactor_event = Event::LinearChain(linear_chain::Event::LinearChainBlock {
+                    block,
+                    execution_results,
+                });
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::DeployGossiperAnnouncement(_ann) => {

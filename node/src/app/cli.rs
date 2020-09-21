@@ -2,6 +2,8 @@
 //!
 //! Most configuration is done via config files (see [`config`](../config/index.html) for details).
 
+pub mod arglang;
+
 use std::{env, fs, path::PathBuf, str::FromStr};
 
 use anyhow::{self, bail, Context};
@@ -31,7 +33,13 @@ pub enum Cli {
         /// Path to configuration file.
         config: PathBuf,
 
-        #[structopt(short = "C", long, env = "NODE_CONFIG", use_delimiter(true))]
+        #[structopt(
+            short = "C",
+            long,
+            env = "NODE_CONFIG",
+            use_delimiter(true),
+            value_delimiter(";")
+        )]
         /// Overrides and extensions for configuration file entries in the form
         /// <SECTION>.<KEY>=<VALUE>.  For example, '-C=node.chainspec_config_path=chainspec.toml'
         config_ext: Vec<ConfigExt>,
@@ -48,16 +56,25 @@ pub struct ConfigExt {
 
 impl ConfigExt {
     /// Updates TOML table with updated or extended key value pairs.
-    fn update_toml_table(&self, toml_value: &mut Value) -> Option<()> {
-        let table = toml_value.as_table_mut()?;
+    ///
+    /// Returns errors if the respective sections to be updated are not TOML tables or if parsing
+    /// the command line options failed.
+    fn update_toml_table(&self, toml_value: &mut Value) -> anyhow::Result<()> {
+        let table = toml_value
+            .as_table_mut()
+            .ok_or_else(|| anyhow::anyhow!("configuration table is not a table"))?;
+
         if !table.contains_key(&self.section) {
             table.insert(self.section.clone(), Value::Table(Table::new()));
         }
-        let val = parse_toml_value(&self.value);
+        let val = arglang::parse(&self.value)?;
         table[&self.section]
-            .as_table_mut()?
+            .as_table_mut()
+            .ok_or_else(|| {
+                anyhow::anyhow!("configuration section {} is not a table", self.section)
+            })?
             .insert(self.key.clone(), val);
-        Some(())
+        Ok(())
     }
 }
 
@@ -90,18 +107,6 @@ impl FromStr for ConfigExt {
     }
 }
 
-/// Convenience function to parse values passed via command line into appropriate `toml::Value`
-/// representations.
-fn parse_toml_value(raw: &str) -> Value {
-    if let Ok(value) = i64::from_str(raw) {
-        return Value::Integer(value);
-    }
-    if let Ok(value) = bool::from_str(raw) {
-        return Value::Boolean(value);
-    }
-    Value::String(raw.to_string())
-}
-
 impl Cli {
     /// Executes selected CLI command.
     pub async fn run(self) -> anyhow::Result<()> {
@@ -125,7 +130,7 @@ impl Cli {
 
                 // If any command line overrides to the config values are passed, apply them.
                 for item in config_ext {
-                    item.update_toml_table(&mut config_table);
+                    item.update_toml_table(&mut config_table)?;
                 }
 
                 // Create validator config, including any overridden values.
