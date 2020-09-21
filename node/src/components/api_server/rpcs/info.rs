@@ -24,7 +24,7 @@ use crate::{
     crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{json_compatibility::ExecutionResult, DeployHash, BlockHash},
+    types::{json_compatibility::ExecutionResult, DeployHash},
 };
 
 /// Params for "info_get_deploy" RPC request.
@@ -33,13 +33,6 @@ pub struct GetDeployParams {
     /// Hex-encoded deploy hash.
     pub deploy_hash: String,
 }
-/// Params for "info_get_block" RPC request. 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct GetBlockParams {
-    /// Hex-encoded block hash.
-    pub block_hash: String,
-}
-
 
 /// The execution result of a single deploy.
 #[derive(Serialize, Deserialize, Debug)]
@@ -61,94 +54,13 @@ pub struct GetDeployResult {
     pub execution_results: Vec<JsonExecutionResult>,
 }
 
-/// Result for "info_get_block" RPC response. 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct GetBlockResult {
-    /// The RPC API version.
-    pub api_version: Version,
-    /// JSON-encoded deploy.
-    pub block: Value,
-}
-
 /// "info_get_deploy" RPC.
 pub struct GetDeploy {}
-
-/// "info_get_block" RPC. 
-pub struct GetBlock {}
 
 impl RpcWithParams for GetDeploy {
     const METHOD: &'static str = "info_get_deploy";
     type RequestParams = GetDeployParams;
     type ResponseResult = GetDeployResult;
-}
-
-impl RpcWithParams for GetBlock {
-    const METHOD: &'static str = "info_get_block";
-    type RequestParams = GetBlockParams;
-    type ResponseResult = GetBlockResult;
-}
-
-impl RpcWithParamsExt for GetBlock {
-    fn handle_request<REv: ReactorEventT>(
-        effect_builder: EffectBuilder<REv>,
-        response_builder: Builder,
-        params: Self::RequestParams,
-    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        async move {
-            // Try to parse the block hash from the params
-            let block_hash = 
-                match Digest::from_hex(&params.block_hash).map_err(|error| error.to_string()) {
-                    Ok(digest) => BlockHash::new(digest),
-                    Err(error_msg) => {
-                        info!("failed to get deploy: {}", error_msg);
-                        return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                            ErrorCode::ParseDeployHash as i64,
-                            error_msg,
-                        ))?);
-                    }
-                };
-            // Try to get the deploy and metadata from storage.
-            let maybe_block = effect_builder
-                .make_request(
-                    |responder| ApiRequest::GetBlock {
-                        maybe_hash: Some(block_hash),
-                        responder,
-                    },
-                    QueueKind::Api,
-                )
-                .await;
-            
-            let block = match maybe_block {
-                Some(block) => block,
-                None => {
-                    info!("failed to get {} and metadata from storage", block_hash);
-                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                        ErrorCode::NoSuchBlock as i64,
-                        "block not known",
-                    ))?);
-                }
-            };
-
-            let block_as_json = block.to_json();
-            /*
-            let execution_results = metadata
-                .execution_results
-                .into_iter()
-                .map(|(block_hash, result)| JsonExecutionResult {
-                    block_hash: hex::encode(block_hash.as_ref()),
-                    result,
-                })
-                .collect();
-            */
-            let result = Self::ResponseResult {
-                api_version: CLIENT_API_VERSION.clone(),
-                block: block_as_json,
-                //execution_results,
-            };
-            Ok(response_builder.success(result)?)
-        }
-        .boxed()
-    }
 }
 
 impl RpcWithParamsExt for GetDeploy {

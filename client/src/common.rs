@@ -7,33 +7,6 @@ use casper_node::crypto::asymmetric_key::SecretKey;
 /// The node HTTP endpoint to instruct it to put the provided deploy.
 pub const DEPLOY_API_PATH: &str = "deploys";
 
-/// Handles providing the arg for and retrieval of the global state hash.
-pub mod global_state_hash {
-    use super::*;
-
-    const ARG_NAME: &str = "global-state-hash";
-    const ARG_SHORT: &str = "g";
-    const ARG_VALUE_NAME: &str = "HEX STRING";
-    const ARG_HELP: &str = "Hex-encoded global state hash";
-
-    pub(crate) fn arg(order: usize) -> Arg<'static, 'static> {
-        Arg::with_name(ARG_NAME)
-            .long(ARG_NAME)
-            .short(ARG_SHORT)
-            .required(true)
-            .value_name(ARG_VALUE_NAME)
-            .help(ARG_HELP)
-            .display_order(order)
-    }
-
-    pub(crate) fn get(matches: &ArgMatches) -> String {
-        matches
-            .value_of(ARG_NAME)
-            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
-            .to_string()
-    }
-}
-
 /// Handles providing the arg for and retrieval of the node hostname/IP and port.
 pub mod node_address {
     use super::*;
@@ -117,6 +90,59 @@ pub mod force {
 
     pub fn get(matches: &ArgMatches) -> bool {
         matches.is_present(ARG_NAME)
+    }
+}
+
+/// Handles providing the arg for and retrieval of the global state hash.
+pub mod global_state_hash {
+    use super::*;
+
+    const ARG_NAME: &str = "global-state-hash";
+    const ARG_SHORT: &str = "g";
+    const ARG_VALUE_NAME: &str = "HEX STRING";
+    const ARG_HELP: &str = "Hex-encoded global state hash";
+
+    pub(crate) fn arg(order: usize) -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .short(ARG_SHORT)
+            .required(true)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .display_order(order)
+    }
+
+    pub(crate) fn get(matches: &ArgMatches) -> String {
+        matches
+            .value_of(ARG_NAME)
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
+            .to_string()
+    }
+}
+
+/// Handles providing the arg for and retrieval of the block hash.
+pub mod block_hash {
+    use super::*;
+
+    const ARG_NAME: &str = "block-hash";
+    const ARG_SHORT: &str = "b";
+    const ARG_VALUE_NAME: &str = "HEX STRING";
+    const ARG_HELP: &str =
+        "Hex-encoded block hash.  If not given, the latest finalized block as known at the given \
+        node will be used";
+
+    pub(crate) fn arg(order: usize) -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .short(ARG_SHORT)
+            .required(false)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .display_order(order)
+    }
+
+    pub(crate) fn get(matches: &ArgMatches) -> Option<String> {
+        matches.value_of(ARG_NAME).map(ToString::to_string)
     }
 }
 

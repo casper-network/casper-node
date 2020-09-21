@@ -14,8 +14,8 @@ use clap::{crate_description, crate_version, App};
 
 use casper_node::rpcs::{
     account::PutDeploy,
-    chain::GetGlobalStateHash,
-    info::{GetDeploy, GetBlock},
+    chain::{GetBlock, GetGlobalStateHash},
+    info::GetDeploy,
     state::{GetBalance, GetItem as QueryState},
 };
 

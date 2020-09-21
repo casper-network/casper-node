@@ -1,6 +1,6 @@
 use std::str;
 
-use clap::{App, Arg, ArgMatches, SubCommand};
+use clap::{App, ArgMatches, SubCommand};
 
 use casper_node::rpcs::{
     chain::{GetGlobalStateHash, GetGlobalStateHashParams},
@@ -13,32 +13,6 @@ use crate::{command::ClientCommand, common, RpcClient};
 enum DisplayOrder {
     NodeAddress,
     BlockHash,
-}
-
-/// Handles providing the arg for and retrieval of the block hash.
-mod block_hash {
-    use super::*;
-
-    const ARG_NAME: &str = "block-hash";
-    const ARG_SHORT: &str = "b";
-    const ARG_VALUE_NAME: &str = "HEX STRING";
-    const ARG_HELP: &str =
-        "Hex-encoded block hash.  If not given, the latest finalized block as known at the given \
-        node will be used";
-
-    pub(super) fn arg() -> Arg<'static, 'static> {
-        Arg::with_name(ARG_NAME)
-            .long(ARG_NAME)
-            .short(ARG_SHORT)
-            .required(false)
-            .value_name(ARG_VALUE_NAME)
-            .help(ARG_HELP)
-            .display_order(DisplayOrder::BlockHash as usize)
-    }
-
-    pub(super) fn get(matches: &ArgMatches) -> Option<String> {
-        matches.value_of(ARG_NAME).map(ToString::to_string)
-    }
 }
 
 impl RpcClient for GetGlobalStateHash {
@@ -56,12 +30,12 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetGlobalStateHash {
             .arg(common::node_address::arg(
                 DisplayOrder::NodeAddress as usize,
             ))
-            .arg(block_hash::arg())
+            .arg(common::block_hash::arg(DisplayOrder::BlockHash as usize))
     }
 
     fn run(matches: &ArgMatches<'_>) {
         let node_address = common::node_address::get(matches);
-        let maybe_block_hash = block_hash::get(matches);
+        let maybe_block_hash = common::block_hash::get(matches);
 
         let response_value = match maybe_block_hash {
             Some(block_hash) => {
