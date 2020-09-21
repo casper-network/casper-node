@@ -3,6 +3,8 @@
 
 use std::{
     convert::{TryFrom, TryInto},
+    fs::OpenOptions,
+    io::{self, Write},
     process,
     str::FromStr,
 };
@@ -742,10 +744,7 @@ pub(super) fn show_arg_examples_and_exit_if_required(matches: &ArgMatches<'_>) {
     }
 }
 
-pub(super) fn construct_deploy(
-    matches: &ArgMatches<'_>,
-    session: ExecutableDeployItem,
-) -> PutDeployParams {
+pub(super) fn parse_deploy(matches: &ArgMatches<'_>, session: ExecutableDeployItem) -> Deploy {
     let secret_key = common::secret_key::get(matches);
     let timestamp = timestamp::get(matches);
     let ttl = ttl::get(matches);
@@ -757,7 +756,7 @@ pub(super) fn construct_deploy(
 
     let payment = parse_payment_info(matches);
 
-    let deploy = Deploy::new(
+    Deploy::new(
         timestamp,
         ttl,
         gas_price,
@@ -767,12 +766,80 @@ pub(super) fn construct_deploy(
         session,
         &secret_key,
         &mut rng,
-    );
+    )
+}
 
+pub(super) fn deploy_into_params(deploy: Deploy) -> PutDeployParams {
     let deploy = deploy
         .to_json()
         .as_object()
         .unwrap_or_else(|| panic!("should encode to JSON object type"))
         .clone();
     PutDeployParams { deploy }
+}
+
+pub(super) fn construct_deploy(
+    matches: &ArgMatches<'_>,
+    session: ExecutableDeployItem,
+) -> PutDeployParams {
+    let deploy = parse_deploy(matches, session);
+    deploy_into_params(deploy)
+}
+
+pub(super) mod output {
+    use super::*;
+
+    const ARG_NAME: &str = "output";
+    const ARG_SHORT_NAME: &str = "o";
+    const ARG_VALUE_NAME: &str = "/path/to/file";
+    const ARG_HELP: &str = "Path to output deploy file. If omitted, defaults to stdout.";
+
+    pub fn arg(order: usize) -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .required(false)
+            .short(ARG_SHORT_NAME)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .display_order(order)
+    }
+
+    pub fn get(matches: &ArgMatches) -> Option<String> {
+        matches.value_of(ARG_NAME).map(|v| v.to_string())
+    }
+
+    pub fn output_or_stdout(matches: &ArgMatches) -> io::Result<Box<dyn Write>> {
+        match self::get(matches) {
+            Some(output_path) => OpenOptions::new()
+                .write(true)
+                .create(true)
+                .open(&output_path)
+                .map(|f| Box::new(f) as Box<dyn Write>),
+            None => Ok(Box::new(std::io::stdout()) as Box<dyn Write>),
+        }
+    }
+}
+
+pub(super) mod input {
+    use super::*;
+
+    const ARG_NAME: &str = "input";
+    const ARG_SHORT_NAME: &str = "i";
+    const ARG_VALUE_NAME: &str = "/path/to/file";
+    const ARG_HELP: &str = "Path to input deploy file.";
+
+    pub fn arg(order: usize) -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .required(true)
+            .short(ARG_SHORT_NAME)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .display_order(order)
+    }
+
+    pub fn get(matches: &ArgMatches) -> String {
+        matches
+            .value_of(ARG_NAME)
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
+            .to_string()
+    }
 }
