@@ -12,7 +12,7 @@
 
 mod config;
 mod event;
-mod rpcs;
+pub mod rpcs;
 
 use std::{convert::Infallible, fmt::Debug, net::SocketAddr};
 
@@ -46,7 +46,7 @@ use crate::{
 };
 pub use config::Config;
 pub(crate) use event::Event;
-use rpcs::{RpcWithOptionalParams, RpcWithParams, RpcWithoutParams};
+use rpcs::{RpcWithOptionalParamsExt, RpcWithParamsExt, RpcWithoutParamsExt};
 
 // TODO - confirm if we want to use the protocol version for this.
 lazy_static! {

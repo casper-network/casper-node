@@ -1,3 +1,5 @@
+//! RPCs returning ancillary information.
+
 use std::{
     collections::{BTreeMap, HashMap},
     net::SocketAddr,
@@ -8,12 +10,15 @@ use futures::{future::BoxFuture, FutureExt};
 use http::Response;
 use hyper::Body;
 use semver::Version;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::info;
 use warp_json_rpc::Builder;
 
-use super::{ApiRequest, Error, ErrorCode, ReactorEventT, RpcWithParams, RpcWithoutParams};
+use super::{
+    ApiRequest, Error, ErrorCode, ReactorEventT, RpcWithParams, RpcWithParamsExt, RpcWithoutParams,
+    RpcWithoutParamsExt,
+};
 use crate::{
     components::{api_server::CLIENT_API_VERSION, small_network::NodeId},
     crypto::hash::Digest,
@@ -22,46 +27,61 @@ use crate::{
     types::{json_compatibility::ExecutionResult, DeployHash},
 };
 
-pub(in crate::components::api_server) struct GetDeploy {}
+/// Params for "info_get_deploy" RPC request.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetDeployParams {
+    /// Hex-encoded deploy hash.
+    pub deploy_hash: String,
+}
+
+/// The execution result of a single deploy.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct JsonExecutionResult {
+    /// Hex-encoded block hash.
+    pub block_hash: String,
+    /// Execution result.
+    pub result: ExecutionResult,
+}
+
+/// Result for "info_get_deploy" RPC response.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetDeployResult {
+    /// The RPC API version.
+    pub api_version: Version,
+    /// JSON-encoded deploy.
+    pub deploy: Value,
+    /// The map of block hash to execution result.
+    pub execution_results: Vec<JsonExecutionResult>,
+}
+
+/// "info_get_deploy" RPC.
+pub struct GetDeploy {}
 
 impl RpcWithParams for GetDeploy {
     const METHOD: &'static str = "info_get_deploy";
+    type RequestParams = GetDeployParams;
+    type ResponseResult = GetDeployResult;
+}
 
-    type RequestParams = String; // Deploy hash.
-
+impl RpcWithParamsExt for GetDeploy {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         params: Self::RequestParams,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        /// The JSON-RPC response's "result".
-        #[derive(Serialize)]
-        struct ResponseResult {
-            api_version: Version,
-            /// JSON-encoded deploy.
-            deploy: Value,
-            /// The map of block hash (hex-encoded) to execution result.
-            execution_results: Vec<ExecResult>,
-        }
-
-        #[derive(Serialize)]
-        struct ExecResult {
-            block_hash: String,
-            result: ExecutionResult,
-        }
-
         async move {
             // Try to parse a deploy hash from the params.
-            let deploy_hash = match Digest::from_hex(&params).map_err(|error| error.to_string()) {
-                Ok(digest) => DeployHash::new(digest),
-                Err(error_msg) => {
-                    info!("failed to get deploy: {}", error_msg);
-                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                        ErrorCode::ParseDeployHash as i64,
-                        error_msg,
-                    ))?);
-                }
-            };
+            let deploy_hash =
+                match Digest::from_hex(&params.deploy_hash).map_err(|error| error.to_string()) {
+                    Ok(digest) => DeployHash::new(digest),
+                    Err(error_msg) => {
+                        info!("failed to get deploy: {}", error_msg);
+                        return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                            ErrorCode::ParseDeployHash as i64,
+                            error_msg,
+                        ))?);
+                    }
+                };
 
             // Try to get the deploy and metadata from storage.
             let maybe_deploy_and_metadata = effect_builder
@@ -90,13 +110,13 @@ impl RpcWithParams for GetDeploy {
             let execution_results = metadata
                 .execution_results
                 .into_iter()
-                .map(|(block_hash, result)| ExecResult {
+                .map(|(block_hash, result)| JsonExecutionResult {
                     block_hash: hex::encode(block_hash.as_ref()),
                     result,
                 })
                 .collect();
 
-            let result = ResponseResult {
+            let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
                 deploy: deploy_as_json,
                 execution_results,
@@ -107,22 +127,28 @@ impl RpcWithParams for GetDeploy {
     }
 }
 
-pub(in crate::components::api_server) struct GetPeers {}
+/// Result for "info_get_peers" RPC response.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetPeersResult {
+    /// The RPC API version.
+    pub api_version: Version,
+    /// The node ID and network address of each connected peer.
+    pub peers: BTreeMap<String, SocketAddr>,
+}
+
+/// "info_get_peers" RPC.
+pub struct GetPeers {}
 
 impl RpcWithoutParams for GetPeers {
     const METHOD: &'static str = "info_get_peers";
+    type ResponseResult = GetPeersResult;
+}
 
+impl RpcWithoutParamsExt for GetPeers {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        /// The JSON-RPC response's "result".
-        #[derive(Serialize)]
-        struct ResponseResult {
-            api_version: Version,
-            peers: BTreeMap<String, SocketAddr>,
-        }
-
         async move {
             let peers = effect_builder
                 .make_request(
@@ -132,7 +158,7 @@ impl RpcWithoutParams for GetPeers {
                 .await;
 
             let peers = peers_hashmap_to_btreemap(peers);
-            let result = ResponseResult {
+            let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
                 peers,
             };
@@ -142,25 +168,30 @@ impl RpcWithoutParams for GetPeers {
     }
 }
 
-pub(in crate::components::api_server) struct GetStatus {}
+/// Result for "info_get_status" RPC response.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetStatusResult {
+    /// The RPC API version.
+    pub api_version: Version,
+    /// The node ID and network address of each connected peer.
+    pub peers: BTreeMap<String, SocketAddr>,
+    /// The last block from the linear chain, JSON-encoded.
+    pub last_finalized_block: Option<Value>,
+}
+
+/// "info_get_status" RPC.
+pub struct GetStatus {}
 
 impl RpcWithoutParams for GetStatus {
     const METHOD: &'static str = "info_get_status";
+    type ResponseResult = GetStatusResult;
+}
 
+impl RpcWithoutParamsExt for GetStatus {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        /// The JSON-RPC response's "result".
-        #[derive(Serialize)]
-        struct ResponseResult {
-            api_version: Version,
-            /// The last block from the linear chain, JSON-encoded.
-            last_finalized_block: Option<String>,
-            /// The connected peers' Node IDs and network addresses.
-            peers: BTreeMap<String, SocketAddr>,
-        }
-
         async move {
             // Get the status.
             let status_feed = effect_builder
@@ -172,18 +203,11 @@ impl RpcWithoutParams for GetStatus {
 
             // Convert to `ResponseResult` and send.
             let peers = peers_hashmap_to_btreemap(status_feed.peers);
-            let last_finalized_block = match status_feed.last_finalized_block {
-                Some(block) => match block.to_json() {
-                    Ok(block_as_json) => Some(block_as_json),
-                    Err(error) => {
-                        info!("failed to encode block to JSON: {}", error);
-                        return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
-                    }
-                },
-                None => None,
-            };
+            let last_finalized_block = status_feed
+                .last_finalized_block
+                .map(|block| block.to_json());
 
-            let result = ResponseResult {
+            let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
                 peers,
                 last_finalized_block,
@@ -194,22 +218,28 @@ impl RpcWithoutParams for GetStatus {
     }
 }
 
-pub(in crate::components::api_server) struct GetMetrics {}
+/// Result for "info_get_metrics" RPC response.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetMetricsResult {
+    /// The RPC API version.
+    pub api_version: Version,
+    /// JSON-encoded metrics.
+    pub metrics: String,
+}
+
+/// "info_get_metrics" RPC.
+pub struct GetMetrics {}
 
 impl RpcWithoutParams for GetMetrics {
     const METHOD: &'static str = "info_get_metrics";
+    type ResponseResult = GetMetricsResult;
+}
 
+impl RpcWithoutParamsExt for GetMetrics {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        /// The JSON-RPC response's "result".
-        #[derive(Serialize)]
-        struct ResponseResult {
-            api_version: Version,
-            metrics: String,
-        }
-
         async move {
             let maybe_metrics = effect_builder
                 .make_request(
@@ -220,7 +250,7 @@ impl RpcWithoutParams for GetMetrics {
 
             match maybe_metrics {
                 Some(metrics) => {
-                    let result = ResponseResult {
+                    let result = Self::ResponseResult {
                         api_version: CLIENT_API_VERSION.clone(),
                         metrics,
                     };

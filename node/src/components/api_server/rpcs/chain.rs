@@ -1,14 +1,19 @@
+//! RPCs related to the block chain.
+
 use std::str;
 
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
 use hyper::Body;
 use semver::Version;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tracing::info;
 use warp_json_rpc::Builder;
 
-use super::{ApiRequest, Error, ErrorCode, ReactorEventT, RpcWithOptionalParams};
+use super::{
+    ApiRequest, Error, ErrorCode, ReactorEventT, RpcWithOptionalParams, RpcWithOptionalParamsExt,
+};
 use crate::{
     components::api_server::CLIENT_API_VERSION,
     crypto::hash::Digest,
@@ -17,48 +22,49 @@ use crate::{
     types::{Block, BlockHash},
 };
 
-pub(in crate::components::api_server) struct GetBlock {}
+/// Params for "chain_get_block" RPC request.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetBlockParams {
+    /// Hex-encoded block hash.
+    pub block_hash: String,
+}
+
+/// Result for "chain_get_block" RPC response.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetBlockResult {
+    /// The RPC API version.
+    pub api_version: Version,
+    /// JSON-encoded block.
+    pub block: Option<Value>,
+}
+
+/// "chain_get_block" RPC.
+pub struct GetBlock {}
 
 impl RpcWithOptionalParams for GetBlock {
     const METHOD: &'static str = "chain_get_block";
+    type OptionalRequestParams = GetBlockParams;
+    type ResponseResult = GetBlockResult;
+}
 
-    type RequestParams = String; // Block hash.
-
+impl RpcWithOptionalParamsExt for GetBlock {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
-        params: Option<Self::RequestParams>,
+        maybe_params: Option<Self::OptionalRequestParams>,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        /// The JSON-RPC response's "result".
-        #[derive(Serialize)]
-        struct ResponseResult {
-            api_version: Version,
-            /// JSON-encoded block.
-            block: Option<String>,
-        }
-
         async move {
             // Get the block.
-            let maybe_block = match get_block(params, effect_builder).await {
+            let maybe_block_hash = maybe_params.map(|params| params.block_hash);
+            let maybe_block = match get_block(maybe_block_hash, effect_builder).await {
                 Ok(maybe_block) => maybe_block,
                 Err(error) => return Ok(response_builder.error(error)?),
             };
 
             // Return the result.
-            let maybe_block_as_json = match maybe_block {
-                Some(block) => match block.to_json() {
-                    Ok(block_as_json) => Some(block_as_json),
-                    Err(error) => {
-                        info!("failed to encode block to JSON: {}", error);
-                        return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
-                    }
-                },
-                None => None,
-            };
-
-            let result = ResponseResult {
+            let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
-                block: maybe_block_as_json,
+                block: maybe_block.map(|block| block.to_json()),
             };
             Ok(response_builder.success(result)?)
         }
@@ -66,35 +72,47 @@ impl RpcWithOptionalParams for GetBlock {
     }
 }
 
-pub(in crate::components::api_server) struct GetGlobalStateHash {}
+/// Params for "chain_get_global_state_hash" RPC request.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetGlobalStateHashParams {
+    /// Hex-encoded block hash.
+    pub block_hash: String,
+}
+
+/// Result for "chain_get_global_state_hash" RPC response.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetGlobalStateHashResult {
+    /// The RPC API version.
+    pub api_version: Version,
+    /// Hex-encoded global state hash.
+    pub global_state_hash: Option<String>,
+}
+
+/// "chain_get_global_state_hash" RPC.
+pub struct GetGlobalStateHash {}
 
 impl RpcWithOptionalParams for GetGlobalStateHash {
     const METHOD: &'static str = "chain_get_global_state_hash";
+    type OptionalRequestParams = GetGlobalStateHashParams;
+    type ResponseResult = GetGlobalStateHashResult;
+}
 
-    type RequestParams = String; // Block hash.
-
+impl RpcWithOptionalParamsExt for GetGlobalStateHash {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
-        params: Option<Self::RequestParams>,
+        maybe_params: Option<Self::OptionalRequestParams>,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        /// The JSON-RPC response's "result".
-        #[derive(Serialize)]
-        struct ResponseResult {
-            api_version: Version,
-            /// hex-encoded global state hash.
-            global_state_hash: Option<String>,
-        }
-
         async move {
             // Get the block.
-            let maybe_block = match get_block(params, effect_builder).await {
+            let maybe_block_hash = maybe_params.map(|params| params.block_hash);
+            let maybe_block = match get_block(maybe_block_hash, effect_builder).await {
                 Ok(maybe_block) => maybe_block,
                 Err(error) => return Ok(response_builder.error(error)?),
             };
 
             // Return the result.
-            let result = ResponseResult {
+            let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
                 global_state_hash: maybe_block.map(|block| hex::encode(block.global_state_hash())),
             };
