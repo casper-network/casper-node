@@ -45,7 +45,7 @@ entropy_duration_millis = 10800000
 # 172800000 ms = 2 days.
 voting_period_duration_millis = 172800000
 # Integer between 1 and 99 representing the fault tolerance threshold as a percentage, used by the internal finalizer.
-# It is the percentage of validators that would need to be malicious to make two honest nodes see two conflicting
+# It is the percentage of validators that would need to equivocate to make two honest nodes see two conflicting
 # blocks as finalized: A higher value F makes it safer to rely on finalized blocks. It also makes it more difficult to
 # finalize blocks, however, and requires at least 50% - F/2 validators to be working correctly.
 finality_threshold_percent = 10
