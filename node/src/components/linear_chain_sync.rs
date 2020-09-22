@@ -10,7 +10,7 @@
 //! 5. Fetch child block of trusted hash (it's the block with the highest `block_height`).
 //! 6. Fetch deploys of that block.
 //! 7. Execute the block (validate correctness – TBD).
-//! 8. Repeat steps 4-7 as longs as there's a child in the linear chain.
+//! 8. Repeat steps 4-7 as long as there's a child in the linear chain.
 //!
 //! The order of "download block – download deploys – execute" block steps differ,
 //! in order to increase the chances of catching up with the linear chain quicker.
@@ -58,7 +58,6 @@ impl<I, REv> ReactorEventT<I> for REv where
 }
 
 #[derive(Debug)]
-#[allow(unused)]
 enum State {
     // No syncing of the linear chain configured.
     None,
@@ -108,9 +107,6 @@ impl State {
             State::None | State::Done => {}
             State::SyncingTrustedHash {
                 highest_block_seen, ..
-            }
-            | State::SyncingDescendants {
-                highest_block_seen, ..
             } => {
                 let curr_height = block.height();
                 if curr_height > *highest_block_seen {
@@ -144,9 +140,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         effect_builder: EffectBuilder<REv>,
         init_hash: Option<BlockHash>,
     ) -> Self {
-        let state = init_hash
-            .map(State::sync_trusted_hash)
-            .unwrap_or_else(|| State::None);
+        let state = init_hash.map_or(State::None, State::sync_trusted_hash);
         LinearChainSync {
             peers: Vec::new(),
             peers_to_try: Vec::new(),
@@ -174,12 +168,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     // Peer misbehaved (returned us invalid data).
     // Remove it from the set of nodes we request data from.
     fn ban_peer(&mut self, peer: I) {
-        let remove_peer = |vec: &mut Vec<I>| {
-            let index = vec.iter().position(|p| *p == peer);
-            index.map(|idx| vec.remove(idx));
-        };
-        remove_peer(&mut self.peers);
-        remove_peer(&mut self.peers_to_try);
+        let index = self.peers.iter().position(|p| *p == peer);
+        index.map(|idx| self.peers.remove(idx));
     }
 
     /// Add new block to linear chain.
@@ -199,7 +189,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         }
     }
 
-    /// Handle an event indicating that a linear chain block has been handled by consensus
+    /// Handles an event indicating that a linear chain block has been handled by consensus
     /// component.
     /// Returns effects that are created as a response to that event.
     fn block_handled<R, REv>(
@@ -304,7 +294,7 @@ where
         match event {
             Event::Start(init_peer) => {
                 match self.state {
-                    State::None | State::Done => {
+                    State::None | State::Done | State::SyncingDescendants { .. } => {
                         // No syncing configured.
                         trace!("Received `Start` event when in {:?} state.", self.state);
                         Effects::new()
@@ -313,9 +303,6 @@ where
                         trace!(?trusted_hash, "Start synchronization");
                         // Start synchronization.
                         fetch_block_by_hash(effect_builder, init_peer, trusted_hash)
-                    }
-                    State::SyncingDescendants { .. } => {
-                        panic!("`Start` event received when in `SyncingDescendants` state.")
                     }
                 }
             }
@@ -344,7 +331,6 @@ where
                         .event(move |_| Event::StartDownloadingDeploys)
                 }
                 BlockByHeightResult::FromPeer(block, peer) => {
-                    self.state.block_downloaded(&block);
                     if block.height() != block_height {
                         warn!(
                             "Block height mismatch. Expected {} got {} from {}.",
@@ -360,6 +346,7 @@ where
                             Event::GetBlockHeightResult(block_height, BlockByHeightResult::Absent),
                         );
                     }
+                    self.state.block_downloaded(&block);
                     trace!(%block_height, "Downloaded linear chain block.");
                     let next_height = block.height() + 1;
                     self.add_block(*block);
@@ -388,7 +375,6 @@ where
                         .event(move |_| Event::StartDownloadingDeploys)
                 }
                 Some(FetchResult::FromPeer(block, peer)) => {
-                    self.state.block_downloaded(&block);
                     if *block.hash() != block_hash {
                         warn!(
                             "Block hash mismatch. Expected {} got {} from {}.",
@@ -406,6 +392,7 @@ where
                             Event::GetBlockHashResult(block_hash, None),
                         );
                     }
+                    self.state.block_downloaded(&block);
                     trace!(%block_hash, "Downloaded linear chain block.");
                     self.add_block(*block.clone());
 
@@ -514,9 +501,9 @@ where
             move |fetch_result| match fetch_result {
                 FetchResult::FromPeer(result, _) => match *result {
                     BlockByHeight::Absent(ret_height) => {
-                        assert!(
-                            ret_height != block_height,
-                            "Fetcher returned result for invalid height."
+                        warn!(
+                            "Fetcher returned result for invalid height. Expected {}, got {}",
+                            block_height, ret_height
                         );
                         Event::GetBlockHeightResult(block_height, BlockByHeightResult::Absent)
                     }
