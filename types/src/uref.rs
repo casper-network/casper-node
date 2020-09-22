@@ -16,7 +16,7 @@ pub const UREF_ADDR_LENGTH: usize = 32;
 /// The number of bytes in a serialized [`URef`] where the [`AccessRights`] are not `None`.
 pub const UREF_SERIALIZED_LENGTH: usize = UREF_ADDR_LENGTH + ACCESS_RIGHTS_SERIALIZED_LENGTH;
 
-const PREFIX: &str = "uref-";
+const FORMATTED_STRING_PREFIX: &str = "uref-";
 
 /// The address of a [`URef`](types::URef) (unforgeable reference) on the network.
 pub type URefAddr = [u8; UREF_ADDR_LENGTH];
@@ -111,7 +111,7 @@ impl URef {
         self.1.is_addable()
     }
 
-    /// Formats the address and access rights of the [`URef`] in an unique way that could be used as
+    /// Formats the address and access rights of the [`URef`] in a unique way that could be used as
     /// a name when storing the given `URef` in a global state.
     pub fn to_formatted_string(&self) -> String {
         // Extract bits as numerical value, with no flags marked as 0.
@@ -120,16 +120,16 @@ impl URef {
         // be represented as maximum of 3 octal digits.
         format!(
             "{}{}-{:03o}",
-            PREFIX,
+            FORMATTED_STRING_PREFIX,
             base16::encode_lower(&self.addr()),
             access_rights_bits
         )
     }
 
-    /// Parses a string formatted as per `Self::as_string()` into a `URef`.
+    /// Parses a string formatted as per `Self::to_formatted_string()` into a `URef`.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         let remainder = input
-            .strip_prefix(PREFIX)
+            .strip_prefix(FORMATTED_STRING_PREFIX)
             .ok_or_else(|| FromStrError::InvalidPrefix)?;
         let parts = remainder.splitn(2, '-').collect::<Vec<_>>();
         if parts.len() != 2 {
