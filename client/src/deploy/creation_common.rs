@@ -848,8 +848,7 @@ pub(super) mod output {
             .unwrap_or_else(|e| panic!("unable to open {} : {:?}", target, e));
         let content = deploy.to_json().to_string();
         match out.write_all(content.as_bytes()) {
-            Ok(_) if target == "stdout" => {} /* Successfully wrote to stdout - don't add our
-                                                * log to it with println */
+            Ok(_) if target == "stdout" => {}
             Ok(_) => println!("Successfully wrote deploy to file {}", target),
             Err(err) => panic!("Error writing deploy to {} : {:?}", target, err),
         }
