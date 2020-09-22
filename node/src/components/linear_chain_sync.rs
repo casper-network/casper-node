@@ -107,6 +107,9 @@ impl State {
             State::None | State::Done => {}
             State::SyncingTrustedHash {
                 highest_block_seen, ..
+            }
+            | State::SyncingDescendants {
+                highest_block_seen, ..
             } => {
                 let curr_height = block.height();
                 if curr_height > *highest_block_seen {
