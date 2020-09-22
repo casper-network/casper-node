@@ -175,6 +175,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
                     .arg(target_purse::ARG_NAME)
                     .required(false),
             );
+        let subcommand = creation_common::apply_common_purchase_options(subcommand);
         creation_common::apply_common_creation_options(subcommand, true)
     }
 

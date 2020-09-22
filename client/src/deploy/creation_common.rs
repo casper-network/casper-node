@@ -677,13 +677,54 @@ pub(super) fn parse_session_info(matches: &ArgMatches<'_>) -> ExecutableDeployIt
     }
 }
 
-pub(super) fn parse_payment_info(matches: &ArgMatches<'_>) -> ExecutableDeployItem {
-    // If we're using the standard-payment system contract, just return empty module bytes.
+pub(super) fn parse_payment_deploy_item(matches: &ArgMatches) -> ExecutableDeployItem {
+    let (module_bytes, payment_args) = parse_payment_module_args(matches);
+    let version = deploy_args::PAYMENT_VERSION_ARG
+        .get(matches)
+        .map(|v| v.parse::<u32>().expect("invalid version"));
+
+    if let Some(hex) = deploy_args::PAYMENT_HASH_ARG.get(matches) {
+        if let Key::Hash(hash) = Key::from_formatted_str(&hex).expect("invalid hash") {
+            return ExecutableDeployItem::StoredContractByHash {
+                hash,
+                args: payment_args.to_bytes().expect("should serialize"),
+                entry_point: require_entry_point(matches),
+            };
+        }
+    }
+    if let Some(hex) = deploy_args::PAYMENT_PACKAGE_HASH_ARG.get(matches) {
+        if let Key::Hash(hash) = Key::from_formatted_str(&hex).expect("invalid hash") {
+            return ExecutableDeployItem::StoredVersionedContractByHash {
+                hash,
+                version,
+                args: payment_args.to_bytes().expect("should serialize"),
+                entry_point: require_entry_point(matches),
+            };
+        }
+    }
+
+    // TODO : add more variants
+
+    ExecutableDeployItem::ModuleBytes {
+        module_bytes,
+        args: payment_args.to_bytes().expect("should serialize"),
+    }
+}
+
+fn require_entry_point(matches: &ArgMatches) -> String {
+    deploy_args::PAYMENT_ENTRY_POINT_ARG
+        .get(matches)
+        .unwrap_or_else(|| {
+            panic!(
+                "{} must be present",
+                deploy_args::PAYMENT_ENTRY_POINT_ARG.name,
+            )
+        })
+}
+
+pub(super) fn parse_payment_module_args(matches: &ArgMatches) -> (Vec<u8>, RuntimeArgs) {
     if let Some(payment_args) = standard_payment::get(matches) {
-        return ExecutableDeployItem::ModuleBytes {
-            module_bytes: vec![],
-            args: payment_args.to_bytes().expect("should serialize"),
-        };
+        return (vec![], payment_args);
     }
 
     // Get the payment code and args options.
@@ -692,7 +733,12 @@ pub(super) fn parse_payment_info(matches: &ArgMatches<'_>) -> ExecutableDeployIt
         arg_simple::payment::get(matches),
         args_complex::payment::get(matches),
     );
+    (module_bytes, payment_args)
+}
 
+pub(super) fn parse_payment_info(matches: &ArgMatches<'_>) -> ExecutableDeployItem {
+    // If we're using the standard-payment system contract, just return empty module bytes.
+    let (module_bytes, payment_args) = parse_payment_module_args(matches);
     ExecutableDeployItem::ModuleBytes {
         module_bytes,
         args: payment_args.to_bytes().expect("should serialize"),
@@ -759,6 +805,25 @@ pub(super) fn apply_common_session_options<'a, 'b>(subcommand: App<'a, 'b>) -> A
                 .arg(args_complex::session::ARG_NAME)
                 .required(false),
         )
+        .arg(deploy_args::DEPENDENCIES_ARG.arg())
+        .arg(deploy_args::SESSION_PACKAGE_HASH_ARG.arg())
+        .arg(deploy_args::SESSION_PACKAGE_NAME_ARG.arg())
+        .arg(deploy_args::SESSION_HASH_ARG.arg())
+        .arg(deploy_args::SESSION_NAME_ARG.arg())
+        .arg(deploy_args::SESSION_ENTRY_POINT_ARG.arg())
+        .arg(deploy_args::SESSION_VERSION_ARG.arg())
+}
+
+pub(crate) fn apply_common_purchase_options(
+    subcommand: App<'static, 'static>,
+) -> App<'static, 'static> {
+    subcommand
+        .arg(deploy_args::PAYMENT_PACKAGE_HASH_ARG.arg())
+        .arg(deploy_args::PAYMENT_PACKAGE_NAME_ARG.arg())
+        .arg(deploy_args::PAYMENT_HASH_ARG.arg())
+        .arg(deploy_args::PAYMENT_NAME_ARG.arg())
+        .arg(deploy_args::PAYMENT_ENTRY_POINT_ARG.arg())
+        .arg(deploy_args::PAYMENT_VERSION_ARG.arg())
 }
 
 pub(super) fn show_arg_examples_and_exit_if_required(matches: &ArgMatches<'_>) {
@@ -901,6 +966,12 @@ pub(super) mod deploy_args {
         SessionPackageName,
         SessionEntryPoint,
         SessionVersion,
+        PaymentHash,
+        PaymentName,
+        PaymentPackageHash,
+        PaymentPackageName,
+        PaymentEntryPoint,
+        PaymentVersion,
     }
 
     pub(crate) struct MyArg {
@@ -912,18 +983,8 @@ pub(super) mod deploy_args {
     }
 
     impl MyArg {
-        pub fn get_as_string(&self, matches: &ArgMatches) -> String {
-            matches
-                .value_of(self.name)
-                .unwrap_or_else(|| panic!("should have {} arg", ))
-                .to_string()
-        }
-        pub fn get_as_i32(&self, matches: &ArgMatches) -> i32 {
-            matches
-                .value_of(self.name)
-                .unwrap_or_else(|| panic!("should have {} arg", self.name))
-                .parse::<i32>()
-                .unwrap_or_else(|e| panic!("unable to parse arg {} as i32 : {:?}", self.name, e))
+        pub fn get(&self, matches: &ArgMatches) -> Option<String> {
+            matches.value_of(self.name).map(str::to_string)
         }
         pub fn arg(self) -> Arg<'static, 'static> {
             self.into()
@@ -997,4 +1058,51 @@ pub(super) mod deploy_args {
         display_order: DisplayOrder::Dependencies,
     };
 
+    pub(crate) const PAYMENT_HASH_ARG: MyArg = MyArg {
+        name: "payment-hash",
+        value_name: common::ARG_HEX_STRING,
+        help: "Hex-encoded hash of the stored contract to be called as the payment",
+        required: true,
+        display_order: DisplayOrder::PaymentHash,
+    };
+
+    pub(crate) const PAYMENT_NAME_ARG: MyArg = MyArg {
+        name: "payment-name",
+        value_name: "NAME",
+        help: "Name of the stored contract (associated with the executing account) to be called as the payment",
+        required: true,
+        display_order: DisplayOrder::PaymentName,
+    };
+
+    pub(crate) const PAYMENT_PACKAGE_HASH_ARG: MyArg = MyArg {
+        name: "payment-package-hash",
+        value_name: common::ARG_HEX_STRING,
+        help: "Hex-encoded hash of the stored package to be called as the payment",
+        required: true,
+        display_order: DisplayOrder::PaymentPackageHash,
+    };
+
+    pub(crate) const PAYMENT_PACKAGE_NAME_ARG: MyArg = MyArg {
+        name: "payment-package-name",
+        value_name: "NAME",
+        help: "Name of the stored package to be called as the payment",
+        required: true,
+        display_order: DisplayOrder::PaymentPackageName,
+    };
+
+    pub(crate) const PAYMENT_ENTRY_POINT_ARG: MyArg = MyArg {
+        name: "payment-entry-point",
+        value_name: "NAME",
+        help: "Name of the method that will be used when calling the payment contract",
+        required: true,
+        display_order: DisplayOrder::PaymentEntryPoint,
+    };
+
+    pub(crate) const PAYMENT_VERSION_ARG: MyArg = MyArg {
+        name: "payment-version",
+        value_name: "NAME",
+        help: "Version of the called payment contract. Latest will be used by default",
+        required: true,
+        display_order: DisplayOrder::PaymentVersion,
+    };
 }
