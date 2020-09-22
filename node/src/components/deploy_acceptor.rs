@@ -146,22 +146,12 @@ impl<REv: ReactorEventT, R: Rng + CryptoRng + ?Sized> Component<REv, R> for Depl
 }
 
 fn is_valid(deploy: &Deploy, chainspec: Chainspec) -> bool {
-    if deploy.header().chain_name().is_empty() {
-        warn!(
-            deploy_hash = %deploy.id(),
-            deploy_header = %deploy.header(),
-            chain_name = %chainspec.genesis.name,
-            "chain-name is required"
-        );
-        return false;
-    }
-
     if deploy.header().chain_name() != chainspec.genesis.name {
         warn!(
             deploy_hash = %deploy.id(),
             deploy_header = %deploy.header(),
             chain_name = %chainspec.genesis.name,
-            "[{}] is an invalid chain identifier", deploy.header().chain_name(),
+            "invalid chain identifier"
         );
         return false;
     }
