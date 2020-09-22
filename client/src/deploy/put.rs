@@ -9,6 +9,10 @@ impl RpcClient for PutDeploy {
     const RPC_METHOD: &'static str = Self::METHOD;
 }
 
+enum DisplayOrder {
+    Output,
+}
+
 impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
     const NAME: &'static str = "put-deploy";
     const ABOUT: &'static str = "Creates a new deploy and sends it to the network for execution";
@@ -18,7 +22,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
             .about(Self::ABOUT)
             .display_order(display_order);
         let subcommand = creation_common::apply_common_session_options(subcommand)
-            .arg(creation_common::output::arg(display_order));
+            .arg(creation_common::output::arg(DisplayOrder::Output as usize));
         creation_common::apply_common_creation_options(subcommand, true)
     }
 

@@ -534,7 +534,7 @@ pub(super) mod args_complex {
         }
     }
 
-    const ARG_VALUE_NAME: &str = "PATH";
+    const ARG_VALUE_NAME: &str = common::ARG_PATH;
     const ARG_HELP: &str =
         "Path to file containing named and typed args for passing to the Wasm code";
 
@@ -600,7 +600,7 @@ pub(super) mod payment {
     use super::*;
 
     pub(in crate::deploy) const ARG_NAME: &str = "payment-path";
-    const ARG_VALUE_NAME: &str = "PATH";
+    const ARG_VALUE_NAME: &str = common::ARG_PATH;
     const ARG_HELP: &str = "Path to the compiled Wasm payment code";
 
     pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
@@ -882,9 +882,7 @@ pub(super) mod input {
 
     /// Read a deploy from a file
     pub fn read_deploy(input_path: &str) -> Deploy {
-        let input = fs::read(&input_path)
-            .unwrap_or_else(|e| panic!("unable to open input file {} - {:?}", input_path, e));
-
+        let input = common::read_file(&input_path);
         let input = String::from_utf8(input).unwrap();
         let deploy = Deploy::from_json(JsonValue::from_str(input.as_str()).unwrap())
             .unwrap_or_else(|e| panic!("unable to deserialize deploy file {} - {:?}", input, e));
