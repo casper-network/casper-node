@@ -76,6 +76,9 @@ async fn main() {
         (QueryState::NAME, Some(matches)) => QueryState::run(matches),
         (Keygen::NAME, Some(matches)) => Keygen::run(matches),
         (GenerateCompletion::NAME, Some(matches)) => GenerateCompletion::run(matches),
-        _ => panic!("You must choose a subcommand to execute"),
+        _ => {
+            let _ = cli().print_long_help();
+            println!();
+        }
     }
 }
