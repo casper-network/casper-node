@@ -1,3 +1,26 @@
+//! Linear chain synchronizer.
+//!
+//! Synchronizes the linear chain when node joins the network.
+//!
+//! Steps are:
+//! 1. Fetch blocks up to initial, trusted hash.
+//! 2. Fetch deploys up to the trusted hash.
+//! 3. Execute blocks (validate correctness – TBD).
+//! 4. Transition to `SyncingDescendants` state.
+//! 5. Fetch child block of trusted hash (it's the block with the highest `block_height`).
+//! 6. Fetch deploys of that block.
+//! 7. Execute the block (validate correctness – TBD).
+//! 8. Repeat steps 4-7 as longs as there's a child in the linear chain.
+//!
+//! The order of "download block – download deploys – execute" block steps differ,
+//! in order to increase the chances of catching up with the linear chain quicker.
+//! When synchronizing linear chain up to the trusted hash we cannot execute later blocks without
+//! earlier ones. When we're syncing descendants, on the other hand, we can and we want to do it
+//! ASAP so that we can start participating in consensus. That's why deploy fetching and block
+//! execution is interleaved. If we had downloaded the whole chain, and then deploys, and then
+//! execute (as we do in the first, SynchronizeTrustedHash, phase) it would have taken more time and
+//! we might miss more eras.
+
 mod event;
 
 use super::{fetcher::FetchResult, storage::Storage, Component};
@@ -10,7 +33,7 @@ use effect::requests::{
 };
 use event::BlockByHeightResult;
 pub use event::Event;
-use rand::{CryptoRng, Rng};
+use rand::{seq::SliceRandom, CryptoRng, Rng};
 use std::{collections::VecDeque, fmt::Display, mem};
 use tracing::{error, info, trace, warn};
 
@@ -85,16 +108,8 @@ impl State {
             State::None | State::Done => {}
             State::SyncingTrustedHash {
                 highest_block_seen, ..
-            } => {
-                let curr_height = block.height();
-                // We instantiate with `highest_block_seen=0`, start downloading with the
-                // highest block and then download its ancestors. It should
-                // be updated only once at the start.
-                if curr_height > *highest_block_seen {
-                    *highest_block_seen = curr_height;
-                }
             }
-            State::SyncingDescendants {
+            | State::SyncingDescendants {
                 highest_block_seen, ..
             } => {
                 let curr_height = block.height();
@@ -123,7 +138,7 @@ pub(crate) struct LinearChainSync<I> {
     state: State,
 }
 
-impl<I: Clone + 'static> LinearChainSync<I> {
+impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     #[allow(unused)]
     pub fn new<REv: ReactorEventT<I>>(
         effect_builder: EffectBuilder<REv>,
@@ -140,28 +155,31 @@ impl<I: Clone + 'static> LinearChainSync<I> {
     }
 
     /// Resets `peers_to_try` back to all `peers` we know of.
-    fn reset_peers(&mut self) {
+    fn reset_peers<R: Rng + ?Sized>(&mut self, rng: &mut R) {
         self.peers_to_try = self.peers.clone();
+        self.peers_to_try.as_mut_slice().shuffle(rng);
     }
 
     /// Returns a random peer.
-    fn random_peer<R: Rng + ?Sized>(&mut self, rand: &mut R) -> Option<I> {
-        let peers_count = self.peers_to_try.len();
-        if peers_count == 0 {
-            return None;
-        }
-        if peers_count == 1 {
-            return Some(self.peers_to_try.pop().expect("Not to fail"));
-        }
-        let idx = rand.gen_range(0, peers_count);
-        Some(self.peers_to_try.remove(idx))
+    fn random_peer(&mut self) -> Option<I> {
+        self.peers_to_try.pop()
     }
 
     // Unsafe version of `random_peer`.
     // Panics if no peer is available for querying.
-    fn random_peer_unsafe<R: Rng + ?Sized>(&mut self, rand: &mut R) -> I {
-        self.random_peer(rand)
-            .expect("At least one peer available.")
+    fn random_peer_unsafe(&mut self) -> I {
+        self.random_peer().expect("At least one peer available.")
+    }
+
+    // Peer misbehaved (returned us invalid data).
+    // Remove it from the set of nodes we request data from.
+    fn ban_peer(&mut self, peer: I) {
+        let remove_peer = |vec: &mut Vec<I>| {
+            let index = vec.iter().position(|p| *p == peer);
+            index.map(|idx| vec.remove(idx));
+        };
+        remove_peer(&mut self.peers);
+        remove_peer(&mut self.peers_to_try);
     }
 
     /// Add new block to linear chain.
@@ -205,8 +223,8 @@ impl<I: Clone + 'static> LinearChainSync<I> {
             } => {
                 if block_height == highest_block_seen {
                     info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
-                    self.reset_peers();
-                    let peer = self.random_peer_unsafe(rng);
+                    self.reset_peers(rng);
+                    let peer = self.random_peer_unsafe();
                     // Kick off syncing trusted hash descendants.
                     let effects = fetch_block_at_height(effect_builder, peer, block_height + 1);
                     (State::sync_descendants(trusted_hash), effects)
@@ -228,61 +246,36 @@ impl<I: Clone + 'static> LinearChainSync<I> {
         self.state = new_state;
         if !self.state.is_done() {
             // Download next block deploys.
-            let next_block_deploys_effect = self.fetch_next_block_deploys(effect_builder, rng);
+            let next_block_deploys_effect = self.fetch_next_block_deploys(effect_builder);
             effects.extend(next_block_deploys_effect);
         }
         effects
     }
 
     /// Returns effects for fetching next block's deploys.
-    fn fetch_next_block_deploys<R, REv>(
+    fn fetch_next_block_deploys<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        rng: &mut R,
     ) -> Effects<Event<I>>
     where
         I: Send + Copy + 'static,
-        R: Rng + CryptoRng + ?Sized,
         REv: ReactorEventT<I>,
     {
-        let peer = self.random_peer_unsafe(rng);
+        let peer = self.random_peer_unsafe();
 
-        let curr_state = mem::replace(&mut self.state, State::None);
-
-        let (next_state, next_block) = match curr_state {
+        let next_block = match self.state {
             State::None | State::Done => {
-                panic!("Tried fetching next block when in {:?} state.", curr_state)
+                panic!("Tried fetching next block when in {:?} state.", self.state)
             }
             State::SyncingTrustedHash {
-                trusted_hash,
-                highest_block_seen,
-                mut linear_chain,
+                ref mut linear_chain,
                 ..
-            } => {
-                let next_block = linear_chain.pop();
-                let new_state = State::SyncingTrustedHash {
-                    trusted_hash,
-                    highest_block_seen,
-                    linear_chain,
-                };
-                (new_state, next_block)
-            }
+            } => linear_chain.pop(),
             State::SyncingDescendants {
-                mut linear_chain,
-                trusted_hash,
-                highest_block_seen,
-            } => {
-                let next_block = linear_chain.pop_front();
-                let new_state = State::SyncingDescendants {
-                    linear_chain,
-                    trusted_hash,
-                    highest_block_seen,
-                };
-                (new_state, next_block)
-            }
+                ref mut linear_chain,
+                ..
+            } => linear_chain.pop_front(),
         };
-
-        self.state = next_state;
 
         match next_block {
             None => {
@@ -296,7 +289,7 @@ impl<I: Clone + 'static> LinearChainSync<I> {
 
 impl<I, REv, R> Component<REv, R> for LinearChainSync<I>
 where
-    I: Display + Clone + Copy + Send + 'static,
+    I: Display + Clone + Copy + Send + PartialEq + 'static,
     R: Rng + CryptoRng + ?Sized,
     REv: ReactorEventT<I>,
 {
@@ -327,7 +320,7 @@ where
                 }
             }
             Event::GetBlockHeightResult(block_height, fetch_result) => match fetch_result {
-                BlockByHeightResult::Absent => match self.random_peer(rng) {
+                BlockByHeightResult::Absent => match self.random_peer() {
                     None => {
                         // `block_height` not found on any of the peers.
                         // We have synchronized all, currently existing, descendants of trusted
@@ -360,6 +353,7 @@ where
                             peer
                         );
                         // NOTE: Signal misbehaving validator to networking layer.
+                        self.ban_peer(peer);
                         return self.handle_event(
                             effect_builder,
                             rng,
@@ -369,13 +363,13 @@ where
                     trace!(%block_height, "Downloaded linear chain block.");
                     let next_height = block.height() + 1;
                     self.add_block(*block);
-                    self.reset_peers();
-                    let peer = self.random_peer_unsafe(rng);
+                    self.reset_peers(rng);
+                    let peer = self.random_peer_unsafe();
                     fetch_block_at_height(effect_builder, peer, next_height)
                 }
             },
             Event::GetBlockHashResult(block_hash, fetch_result) => match fetch_result {
-                None => match self.random_peer(rng) {
+                None => match self.random_peer() {
                     None => {
                         error!(%block_hash, "Could not download linear block from any of the peers.");
                         panic!("Failed to download linear chain.")
@@ -403,6 +397,9 @@ where
                             peer
                         );
                         // NOTE: Signal misbehaving validator to networking layer.
+                        // NOTE: Cannot call `self.ban_peer` with `peer` value b/c it's fixed for
+                        // `KeyFingerprint` type and we're abstract in what
+                        // peer type is.
                         return self.handle_event(
                             effect_builder,
                             rng,
@@ -418,9 +415,9 @@ where
                             .immediately()
                             .event(move |_| Event::StartDownloadingDeploys)
                     } else {
-                        self.reset_peers();
+                        self.reset_peers(rng);
                         let parent_hash = *block.parent_hash();
-                        let peer = self.random_peer_unsafe(rng);
+                        let peer = self.random_peer_unsafe();
                         fetch_block_by_hash(effect_builder, peer, parent_hash)
                     }
                 }
@@ -429,12 +426,12 @@ where
                 let block_height = block.height();
                 trace!(%block_height, "Deploys for linear chain block found.");
                 // Reset used peers so we can download next block with the full set.
-                self.reset_peers();
+                self.reset_peers(rng);
                 // Execute block
                 let finalized_block: FinalizedBlock = (*block).into();
                 effect_builder.execute_block(finalized_block).ignore()
             }
-            Event::DeploysNotFound(block) => match self.random_peer(rng) {
+            Event::DeploysNotFound(block) => match self.random_peer() {
                 None => {
                     let block_hash = block.hash();
                     error!(%block_hash, "Could not download deploys from linear chain block.");
@@ -444,15 +441,15 @@ where
             },
             Event::StartDownloadingDeploys => {
                 // Start downloading deploys from the first block of the linear chain.
-                self.reset_peers();
-                self.fetch_next_block_deploys(effect_builder, rng)
+                self.reset_peers(rng);
+                self.fetch_next_block_deploys(effect_builder)
             }
             Event::NewPeerConnected(peer_id) => {
                 trace!(%peer_id, "New peer connected");
                 // Add to the set of peers we can request things from.
                 let mut effects = Effects::new();
                 if self.peers.is_empty() {
-                    // First peer connected, start dowloading.
+                    // First peer connected, start downloading.
                     effects.extend(
                         effect_builder
                             .immediately()

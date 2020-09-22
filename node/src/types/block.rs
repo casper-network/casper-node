@@ -871,8 +871,14 @@ impl BlockByHeight {
 }
 
 impl Display for BlockByHeight {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{:?}", self)
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BlockByHeight::Absent(height) => write!(f, "Block at height {} was absent.", height),
+            BlockByHeight::Block(block) => {
+                let hash: BlockHash = block.header().hash();
+                write!(f, "Block at {} with hash {} found.", block.height(), hash)
+            }
+        }
     }
 }
 
