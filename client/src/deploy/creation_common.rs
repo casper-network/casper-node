@@ -889,3 +889,112 @@ pub(super) mod input {
         deploy
     }
 }
+
+pub(super) mod deploy_args {
+    use super::*;
+
+    pub(crate) enum DisplayOrder {
+        Dependencies,
+        SessionHash,
+        SessionName,
+        SessionPackageHash,
+        SessionPackageName,
+        SessionEntryPoint,
+        SessionVersion,
+    }
+
+    pub(crate) struct MyArg {
+        pub name: &'static str,
+        pub value_name: &'static str,
+        pub help: &'static str,
+        pub required: bool,
+        pub display_order: DisplayOrder,
+    }
+
+    impl MyArg {
+        pub fn get_as_string(&self, matches: &ArgMatches) -> String {
+            matches
+                .value_of(self.name)
+                .unwrap_or_else(|| panic!("should have {} arg", ))
+                .to_string()
+        }
+        pub fn get_as_i32(&self, matches: &ArgMatches) -> i32 {
+            matches
+                .value_of(self.name)
+                .unwrap_or_else(|| panic!("should have {} arg", self.name))
+                .parse::<i32>()
+                .unwrap_or_else(|e| panic!("unable to parse arg {} as i32 : {:?}", self.name, e))
+        }
+        pub fn arg(self) -> Arg<'static, 'static> {
+            self.into()
+        }
+    }
+
+    impl<'a, 'b> Into<Arg<'a, 'b>> for MyArg {
+        fn into(self) -> Arg<'a, 'b> {
+            Arg::with_name(self.name)
+                .long(self.name)
+                .value_name(self.value_name)
+                .help(self.help)
+                .required(self.required)
+                .display_order(self.display_order as usize)
+        }
+    }
+
+    pub(crate) const SESSION_HASH_ARG: MyArg = MyArg {
+        name: "session-hash",
+        value_name: common::ARG_HEX_STRING,
+        help: "Hex-encoded hash of the stored contract to be called as the session",
+        required: true,
+        display_order: DisplayOrder::SessionHash,
+    };
+
+    pub(crate) const SESSION_NAME_ARG: MyArg = MyArg {
+        name: "session-name",
+        value_name: "NAME",
+        help: "Name of the stored contract (associated with the executing account) to be called as the session",
+        required: true,
+        display_order: DisplayOrder::SessionName,
+    };
+
+    pub(crate) const SESSION_PACKAGE_HASH_ARG: MyArg = MyArg {
+        name: "session-package-hash",
+        value_name: common::ARG_HEX_STRING,
+        help: "Hex-encoded hash of the stored package to be called as the session",
+        required: true,
+        display_order: DisplayOrder::SessionPackageHash,
+    };
+
+    pub(crate) const SESSION_PACKAGE_NAME_ARG: MyArg = MyArg {
+        name: "session-package-name",
+        value_name: "NAME",
+        help: "Name of the stored package to be called as the session",
+        required: true,
+        display_order: DisplayOrder::SessionPackageName,
+    };
+
+    pub(crate) const SESSION_ENTRY_POINT_ARG: MyArg = MyArg {
+        name: "session-entry-point",
+        value_name: "NAME",
+        help: "Name of the method that will be used when calling the session contract",
+        required: true,
+        display_order: DisplayOrder::SessionEntryPoint,
+    };
+
+    pub(crate) const SESSION_VERSION_ARG: MyArg = MyArg {
+        name: "session-version",
+        value_name: "NAME",
+        help: "Version of the called session contract. Latest will be used by default",
+        required: true,
+        display_order: DisplayOrder::SessionVersion,
+    };
+
+    pub(crate) const DEPENDENCIES_ARG: MyArg = MyArg {
+        name: "dependencies",
+        value_name: "HEX STRING,...",
+        help: "List of hex-encoded deploy hashes representing deploys which must be successfully executed before this one is executed",
+        required: true,
+        display_order: DisplayOrder::Dependencies,
+    };
+
+}

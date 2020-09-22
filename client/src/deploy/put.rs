@@ -9,10 +9,6 @@ impl RpcClient for PutDeploy {
     const RPC_METHOD: &'static str = Self::METHOD;
 }
 
-enum DisplayOrder {
-    Output,
-}
-
 impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
     const NAME: &'static str = "put-deploy";
     const ABOUT: &'static str = "Creates a new deploy and sends it to the network for execution";
@@ -21,8 +17,16 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
         let subcommand = SubCommand::with_name(Self::NAME)
             .about(Self::ABOUT)
             .display_order(display_order);
-        let subcommand = creation_common::apply_common_session_options(subcommand)
-            .arg(creation_common::output::arg(DisplayOrder::Output as usize));
+        let subcommand = creation_common::apply_common_session_options(subcommand);
+        let subcommand = subcommand
+            .arg(creation_common::deploy_args::DEPENDENCIES_ARG.arg())
+            .arg(creation_common::deploy_args::SESSION_PACKAGE_HASH_ARG.arg())
+            .arg(creation_common::deploy_args::SESSION_PACKAGE_NAME_ARG.arg())
+            .arg(creation_common::deploy_args::SESSION_HASH_ARG.arg())
+            .arg(creation_common::deploy_args::SESSION_NAME_ARG.arg())
+            .arg(creation_common::deploy_args::SESSION_ENTRY_POINT_ARG.arg())
+            .arg(creation_common::deploy_args::SESSION_VERSION_ARG.arg());
+
         creation_common::apply_common_creation_options(subcommand, true)
     }
 
