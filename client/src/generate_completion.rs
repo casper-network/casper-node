@@ -18,7 +18,7 @@ mod output_file {
 
     const ARG_NAME: &str = "output";
     const ARG_NAME_SHORT: &str = "o";
-    const ARG_VALUE_NAME: &str = "PATH";
+    const ARG_VALUE_NAME: &str = common::ARG_PATH;
     const ARG_HELP: &str =
         "Path to output file. If the path's parent folder doesn't exist, the command will fail. \
         Default path normally requires running the command with sudo";
@@ -52,7 +52,7 @@ mod shell {
     use super::*;
 
     const ARG_NAME: &str = "shell";
-    const ARG_VALUE_NAME: &str = "STRING";
+    const ARG_VALUE_NAME: &str = common::ARG_STRING;
     const ARG_DEFAULT: &str = "bash";
     const ARG_HELP: &str = "The type of shell to generate the completion script for";
 

@@ -38,7 +38,7 @@ mod output_dir {
     use super::*;
 
     const ARG_NAME: &str = "output-dir";
-    const ARG_VALUE_NAME: &str = "PATH";
+    const ARG_VALUE_NAME: &str = common::ARG_PATH;
     const ARG_HELP: &str =
         "Path to output directory where key files will be created. If the path doesn't exist, it \
         will be created. If not set, the current working directory will be used";
@@ -62,7 +62,7 @@ mod algorithm {
 
     const ARG_NAME: &str = "algorithm";
     const ARG_SHORT: &str = "a";
-    const ARG_VALUE_NAME: &str = "STRING";
+    const ARG_VALUE_NAME: &str = common::ARG_STRING;
     pub(super) const ED25519: &str = "Ed25519";
     pub(super) const SECP256K1: &str = "secp256k1";
     const ARG_HELP: &str = "The type of keys to generate";

@@ -3,7 +3,7 @@
 
 use std::{
     convert::{TryFrom, TryInto},
-    fs::OpenOptions,
+    fs::{self, File},
     io::{self, Write},
     process,
     str::FromStr,
@@ -12,6 +12,7 @@ use std::{
 use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches};
 use lazy_static::lazy_static;
 use serde::{self, Deserialize};
+use serde_json::Value as JsonValue;
 
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_node::{
@@ -205,7 +206,7 @@ pub(super) mod dependencies {
     use casper_node::types::DeployHash;
 
     const ARG_NAME: &str = "dependency";
-    const ARG_VALUE_NAME: &str = "HEX STRING";
+    const ARG_VALUE_NAME: &str = common::ARG_HEX_STRING;
     const ARG_HELP: &str =
         "A hex-encoded deploy hash of a deploy which must be executed before this deploy";
 
@@ -275,7 +276,7 @@ pub(super) mod session {
 
     const ARG_NAME: &str = "session-path";
     const ARG_SHORT: &str = "s";
-    const ARG_VALUE_NAME: &str = "PATH";
+    const ARG_VALUE_NAME: &str = common::ARG_PATH;
     const ARG_HELP: &str = "Path to the compiled Wasm session code";
 
     pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
@@ -698,43 +699,61 @@ pub(super) fn parse_payment_info(matches: &ArgMatches<'_>) -> ExecutableDeployIt
     }
 }
 
-pub(super) fn apply_common_creation_options<'a, 'b>(subcommand: App<'a, 'b>) -> App<'a, 'b> {
-    subcommand
+pub(super) fn apply_common_creation_options<'a, 'b>(subcommand: App<'a, 'b>, include_node_address: bool) -> App<'a, 'b> {
+    let mut subcommand = subcommand
         .setting(AppSettings::NextLineHelp)
-        .arg(show_arg_examples::arg())
-        .arg(
+        .arg(show_arg_examples::arg());
+
+    if include_node_address {
+        subcommand = subcommand.arg(
             common::node_address::arg(DisplayOrder::NodeAddress as usize)
                 .required_unless(show_arg_examples::ARG_NAME),
-        )
-        .arg(
-            common::secret_key::arg(DisplayOrder::SecretKey as usize)
-                .required_unless(show_arg_examples::ARG_NAME),
-        )
-        .arg(timestamp::arg())
-        .arg(ttl::arg())
-        .arg(gas_price::arg())
-        .arg(dependencies::arg())
-        .arg(chain_name::arg())
-        .arg(standard_payment::arg())
-        .arg(payment::arg())
-        .arg(arg_simple::payment::arg())
-        .arg(args_complex::payment::arg())
-        // Group the payment-arg args so only one style is used to ensure consistent ordering.
-        .group(
-            ArgGroup::with_name("payment-args")
-                .arg(arg_simple::payment::ARG_NAME)
-                .arg(args_complex::payment::ARG_NAME)
-                .required(false),
-        )
-        // Group payment-amount, payment-path and show-arg-examples so that we can require only
-        // one of these.
-        .group(
-            ArgGroup::with_name("required-payment-options")
-                .arg(standard_payment::ARG_NAME)
-                .arg(payment::ARG_NAME)
-                .arg(show_arg_examples::ARG_NAME)
-                .required(true),
-        )
+        );
+    }
+
+    subcommand = subcommand.arg(
+        common::secret_key::arg(DisplayOrder::SecretKey as usize)
+            .required_unless(show_arg_examples::ARG_NAME),
+    )
+    .arg(timestamp::arg())
+    .arg(ttl::arg())
+    .arg(gas_price::arg())
+    .arg(dependencies::arg())
+    .arg(chain_name::arg())
+    .arg(standard_payment::arg())
+    .arg(payment::arg())
+    .arg(arg_simple::payment::arg())
+    .arg(args_complex::payment::arg())
+    // Group the payment-arg args so only one style is used to ensure consistent ordering.
+    .group(
+        ArgGroup::with_name("payment-args")
+            .arg(arg_simple::payment::ARG_NAME)
+            .arg(args_complex::payment::ARG_NAME)
+            .required(false),
+    )
+    // Group payment-amount, payment-path and show-arg-examples so that we can require only
+    // one of these.
+    .group(
+        ArgGroup::with_name("required-payment-options")
+            .arg(standard_payment::ARG_NAME)
+            .arg(payment::ARG_NAME)
+            .arg(show_arg_examples::ARG_NAME)
+            .required(true),
+    );
+    subcommand
+}
+
+pub(super) fn apply_common_session_options<'a, 'b>(subcommand: App<'a, 'b>) -> App<'a, 'b> {
+    subcommand.arg(session::arg())
+    .arg(arg_simple::session::arg())
+    .arg(args_complex::session::arg())
+    // Group the session-arg args so only one style is used to ensure consistent ordering.
+    .group(
+        ArgGroup::with_name("session-args")
+            .arg(arg_simple::session::ARG_NAME)
+            .arg(args_complex::session::ARG_NAME)
+            .required(false),
+    )
 }
 
 pub(super) fn show_arg_examples_and_exit_if_required(matches: &ArgMatches<'_>) {
@@ -791,12 +810,13 @@ pub(super) mod output {
 
     const ARG_NAME: &str = "output";
     const ARG_SHORT_NAME: &str = "o";
-    const ARG_VALUE_NAME: &str = "/path/to/file";
-    const ARG_HELP: &str = "Path to output deploy file. If omitted, defaults to stdout.";
+    const ARG_VALUE_NAME: &str = common::ARG_PATH;
+    const ARG_HELP: &str = "Path to output deploy file. If omitted, defaults to stdout. If file exists, it will be overwritten";
 
     pub fn arg(order: usize) -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .required(false)
+            .long(ARG_NAME)
             .short(ARG_SHORT_NAME)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
@@ -807,14 +827,26 @@ pub(super) mod output {
         matches.value_of(ARG_NAME).map(|v| v.to_string())
     }
 
-    pub fn output_or_stdout(matches: &ArgMatches) -> io::Result<Box<dyn Write>> {
-        match self::get(matches) {
-            Some(output_path) => OpenOptions::new()
-                .write(true)
-                .create(true)
-                .open(&output_path)
+    /// Creates a Write trait object for File or Stdout respective to the path value passed
+    /// Stdout is used when None
+    pub fn output_or_stdout(maybe_path: &Option<String>) -> io::Result<Box<dyn Write>> {
+        match maybe_path {
+            Some(output_path) => File::create(&output_path)
                 .map(|f| Box::new(f) as Box<dyn Write>),
             None => Ok(Box::new(std::io::stdout()) as Box<dyn Write>),
+        }
+    }
+
+    /// Write the deploy to a file, or if maybe_path is None, stdout
+    pub fn write_deploy(deploy: &Deploy, maybe_path: Option<String>) {
+        let target = maybe_path.clone().unwrap_or_else(|| "stdout".to_string());
+        let mut out = output_or_stdout(&maybe_path)
+            .unwrap_or_else(|e| panic!("unable to open {} : {:?}", target, e));
+        let content = deploy.to_json().to_string();
+        match out.write_all(content.as_bytes()) {
+            Ok(_) if target == "stdout" => {} // Successfully wrote to stdout - don't add our log to it with println
+            Ok(_) => println!("Successfully wrote deploy to file {}", target),
+            Err(err) => panic!("Error writing deploy to {} : {:?}", target, err),
         }
     }
 }
@@ -824,12 +856,13 @@ pub(super) mod input {
 
     const ARG_NAME: &str = "input";
     const ARG_SHORT_NAME: &str = "i";
-    const ARG_VALUE_NAME: &str = "/path/to/file";
-    const ARG_HELP: &str = "Path to input deploy file.";
+    const ARG_VALUE_NAME: &str = common::ARG_PATH;
+    const ARG_HELP: &str = "Path to input deploy file";
 
     pub fn arg(order: usize) -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .required(true)
+            .long(ARG_NAME)
             .short(ARG_SHORT_NAME)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
@@ -841,5 +874,16 @@ pub(super) mod input {
             .value_of(ARG_NAME)
             .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
             .to_string()
+    }
+
+    /// Read a deploy from a file
+    pub fn read_deploy(input_path: &str) -> Deploy {
+        let input = fs::read(&input_path)
+            .unwrap_or_else(|e| panic!("unable to open input file {} - {:?}", input_path, e));
+
+        let input = String::from_utf8(input).unwrap();
+        let deploy = Deploy::from_json(JsonValue::from_str(input.as_str()).unwrap())
+            .unwrap_or_else(|e| panic!("unable to deserialize deploy file {} - {:?}", input, e));
+        deploy
     }
 }

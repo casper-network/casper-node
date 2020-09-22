@@ -4,6 +4,9 @@ use clap::{Arg, ArgMatches};
 
 use casper_node::crypto::asymmetric_key::SecretKey;
 
+pub const ARG_PATH: &str = "PATH";
+pub const ARG_HEX_STRING: &str = "HEX STRING";
+pub const ARG_STRING: &str = "STRING";
 /// The node HTTP endpoint to instruct it to put the provided deploy.
 pub const DEPLOY_API_PATH: &str = "deploys";
 
@@ -41,12 +44,14 @@ pub mod secret_key {
     use super::*;
 
     const ARG_NAME: &str = "secret-key";
-    const ARG_VALUE_NAME: &str = "PATH";
+    const ARG_SHORT: &str = "k";
+    const ARG_VALUE_NAME: &str = super::ARG_PATH;
     const ARG_HELP: &str = "Path to secret key file";
 
     pub fn arg(order: usize) -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
+            .short(ARG_SHORT)
             .required(true)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
@@ -99,7 +104,7 @@ pub mod global_state_hash {
 
     const ARG_NAME: &str = "global-state-hash";
     const ARG_SHORT: &str = "g";
-    const ARG_VALUE_NAME: &str = "HEX STRING";
+    const ARG_VALUE_NAME: &str = super::ARG_HEX_STRING;
     const ARG_HELP: &str = "Hex-encoded global state hash";
 
     pub(crate) fn arg(order: usize) -> Arg<'static, 'static> {
@@ -126,7 +131,7 @@ pub mod block_hash {
 
     const ARG_NAME: &str = "block-hash";
     const ARG_SHORT: &str = "b";
-    const ARG_VALUE_NAME: &str = "HEX STRING";
+    const ARG_VALUE_NAME: &str = super::ARG_HEX_STRING;
     const ARG_HELP: &str =
         "Hex-encoded block hash.  If not given, the latest finalized block as known at the given \
         node will be used";
