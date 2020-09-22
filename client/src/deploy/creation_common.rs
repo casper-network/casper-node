@@ -699,7 +699,10 @@ pub(super) fn parse_payment_info(matches: &ArgMatches<'_>) -> ExecutableDeployIt
     }
 }
 
-pub(super) fn apply_common_creation_options<'a, 'b>(subcommand: App<'a, 'b>, include_node_address: bool) -> App<'a, 'b> {
+pub(super) fn apply_common_creation_options<'a, 'b>(
+    subcommand: App<'a, 'b>,
+    include_node_address: bool,
+) -> App<'a, 'b> {
     let mut subcommand = subcommand
         .setting(AppSettings::NextLineHelp)
         .arg(show_arg_examples::arg());
@@ -711,49 +714,51 @@ pub(super) fn apply_common_creation_options<'a, 'b>(subcommand: App<'a, 'b>, inc
         );
     }
 
-    subcommand = subcommand.arg(
-        common::secret_key::arg(DisplayOrder::SecretKey as usize)
-            .required_unless(show_arg_examples::ARG_NAME),
-    )
-    .arg(timestamp::arg())
-    .arg(ttl::arg())
-    .arg(gas_price::arg())
-    .arg(dependencies::arg())
-    .arg(chain_name::arg())
-    .arg(standard_payment::arg())
-    .arg(payment::arg())
-    .arg(arg_simple::payment::arg())
-    .arg(args_complex::payment::arg())
-    // Group the payment-arg args so only one style is used to ensure consistent ordering.
-    .group(
-        ArgGroup::with_name("payment-args")
-            .arg(arg_simple::payment::ARG_NAME)
-            .arg(args_complex::payment::ARG_NAME)
-            .required(false),
-    )
-    // Group payment-amount, payment-path and show-arg-examples so that we can require only
-    // one of these.
-    .group(
-        ArgGroup::with_name("required-payment-options")
-            .arg(standard_payment::ARG_NAME)
-            .arg(payment::ARG_NAME)
-            .arg(show_arg_examples::ARG_NAME)
-            .required(true),
-    );
+    subcommand = subcommand
+        .arg(
+            common::secret_key::arg(DisplayOrder::SecretKey as usize)
+                .required_unless(show_arg_examples::ARG_NAME),
+        )
+        .arg(timestamp::arg())
+        .arg(ttl::arg())
+        .arg(gas_price::arg())
+        .arg(dependencies::arg())
+        .arg(chain_name::arg())
+        .arg(standard_payment::arg())
+        .arg(payment::arg())
+        .arg(arg_simple::payment::arg())
+        .arg(args_complex::payment::arg())
+        // Group the payment-arg args so only one style is used to ensure consistent ordering.
+        .group(
+            ArgGroup::with_name("payment-args")
+                .arg(arg_simple::payment::ARG_NAME)
+                .arg(args_complex::payment::ARG_NAME)
+                .required(false),
+        )
+        // Group payment-amount, payment-path and show-arg-examples so that we can require only
+        // one of these.
+        .group(
+            ArgGroup::with_name("required-payment-options")
+                .arg(standard_payment::ARG_NAME)
+                .arg(payment::ARG_NAME)
+                .arg(show_arg_examples::ARG_NAME)
+                .required(true),
+        );
     subcommand
 }
 
 pub(super) fn apply_common_session_options<'a, 'b>(subcommand: App<'a, 'b>) -> App<'a, 'b> {
-    subcommand.arg(session::arg())
-    .arg(arg_simple::session::arg())
-    .arg(args_complex::session::arg())
-    // Group the session-arg args so only one style is used to ensure consistent ordering.
-    .group(
-        ArgGroup::with_name("session-args")
-            .arg(arg_simple::session::ARG_NAME)
-            .arg(args_complex::session::ARG_NAME)
-            .required(false),
-    )
+    subcommand
+        .arg(session::arg())
+        .arg(arg_simple::session::arg())
+        .arg(args_complex::session::arg())
+        // Group the session-arg args so only one style is used to ensure consistent ordering.
+        .group(
+            ArgGroup::with_name("session-args")
+                .arg(arg_simple::session::ARG_NAME)
+                .arg(args_complex::session::ARG_NAME)
+                .required(false),
+        )
 }
 
 pub(super) fn show_arg_examples_and_exit_if_required(matches: &ArgMatches<'_>) {
@@ -831,8 +836,7 @@ pub(super) mod output {
     /// Stdout is used when None
     pub fn output_or_stdout(maybe_path: &Option<String>) -> io::Result<Box<dyn Write>> {
         match maybe_path {
-            Some(output_path) => File::create(&output_path)
-                .map(|f| Box::new(f) as Box<dyn Write>),
+            Some(output_path) => File::create(&output_path).map(|f| Box::new(f) as Box<dyn Write>),
             None => Ok(Box::new(std::io::stdout()) as Box<dyn Write>),
         }
     }
@@ -844,7 +848,8 @@ pub(super) mod output {
             .unwrap_or_else(|e| panic!("unable to open {} : {:?}", target, e));
         let content = deploy.to_json().to_string();
         match out.write_all(content.as_bytes()) {
-            Ok(_) if target == "stdout" => {} // Successfully wrote to stdout - don't add our log to it with println
+            Ok(_) if target == "stdout" => {} /* Successfully wrote to stdout - don't add our
+                                                * log to it with println */
             Ok(_) => println!("Successfully wrote deploy to file {}", target),
             Err(err) => panic!("Error writing deploy to {} : {:?}", target, err),
         }

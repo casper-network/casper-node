@@ -13,7 +13,8 @@ pub struct SignDeploy;
 
 impl<'a, 'b> ClientCommand<'a, 'b> for SignDeploy {
     const NAME: &'static str = "sign-deploy";
-    const ABOUT: &'static str = "Cryptographically signs a deploy and appends signature to existing approvals";
+    const ABOUT: &'static str =
+        "Cryptographically signs a deploy and appends signature to existing approvals";
 
     fn build(display_order: usize) -> App<'a, 'b> {
         SubCommand::with_name(Self::NAME)

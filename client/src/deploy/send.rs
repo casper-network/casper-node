@@ -16,14 +16,15 @@ enum DisplayOrder {
 
 impl<'a, 'b> ClientCommand<'a, 'b> for SendDeploy {
     const NAME: &'static str = "send-deploy";
-    const ABOUT: &'static str =
-        "Sends a deploy to the network for execution";
+    const ABOUT: &'static str = "Sends a deploy to the network for execution";
 
     fn build(display_order: usize) -> App<'a, 'b> {
         SubCommand::with_name(Self::NAME)
             .about(Self::ABOUT)
             .display_order(display_order)
-            .arg(common::node_address::arg(DisplayOrder::NodeAddress as usize))
+            .arg(common::node_address::arg(
+                DisplayOrder::NodeAddress as usize,
+            ))
             .arg(creation_common::input::arg(DisplayOrder::Input as usize))
     }
 
