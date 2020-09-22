@@ -3,7 +3,7 @@
 
 use std::{
     convert::{TryFrom, TryInto},
-    fs::{self, File},
+    fs::File,
     io::{self, Write},
     process,
     str::FromStr,
