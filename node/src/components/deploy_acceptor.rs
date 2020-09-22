@@ -155,7 +155,7 @@ fn is_valid(deploy: &Deploy, chainspec: Chainspec) -> bool {
         );
         return false;
     }
-    
+
     if deploy.header().chain_name() != chainspec.genesis.name {
         warn!(
             deploy_hash = %deploy.id(),
