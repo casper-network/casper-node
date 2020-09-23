@@ -27,7 +27,7 @@ run and learn from this type of operation.
 ### Pull down genesis files:
 
 [chainspec.toml](https://raw.githubusercontent.com/CasperLabs/casper-node/charlie-testnet/resources/charlie/chainspec.toml)
- - md5: ed4870b20a5e8bf2b4152c6a2d389632  chainspec.toml
+ - md5: 52aba00f4362c3da82e79850ea72baba  chainspec.toml
 
 [accounts.csv](https://raw.githubusercontent.com/CasperLabs/casper-node/charlie-testnet/resources/charlie/accounts.csv)
  - md5: e094b414dfe5c13f7f98e81a00c82767  accounts.csv
