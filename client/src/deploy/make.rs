@@ -16,7 +16,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeDeploy {
             .about(Self::ABOUT)
             .display_order(display_order);
         let subcommand = creation_common::apply_common_session_options(subcommand)
-            .arg(creation_common::output::arg(display_order));
+            .arg(creation_common::output::arg());
         creation_common::apply_common_creation_options(subcommand, false)
     }
 

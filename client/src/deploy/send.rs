@@ -9,11 +9,6 @@ impl RpcClient for SendDeploy {
     const RPC_METHOD: &'static str = "account_put_deploy";
 }
 
-enum DisplayOrder {
-    NodeAddress,
-    Input,
-}
-
 impl<'a, 'b> ClientCommand<'a, 'b> for SendDeploy {
     const NAME: &'static str = "send-deploy";
     const ABOUT: &'static str = "Sends a deploy to the network for execution";
@@ -23,9 +18,9 @@ impl<'a, 'b> ClientCommand<'a, 'b> for SendDeploy {
             .about(Self::ABOUT)
             .display_order(display_order)
             .arg(common::node_address::arg(
-                DisplayOrder::NodeAddress as usize,
+                creation_common::DisplayOrder::NodeAddress as usize,
             ))
-            .arg(creation_common::input::arg(DisplayOrder::Input as usize))
+            .arg(creation_common::input::arg())
     }
 
     fn run(matches: &ArgMatches<'_>) {
