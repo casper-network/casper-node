@@ -872,29 +872,6 @@ pub(super) fn apply_common_session_options<'a, 'b>(subcommand: App<'a, 'b>) -> A
         .arg(session_name::arg())
         .arg(session_entry_point::arg())
         .arg(session_version::arg())
-    /*
-    .group(
-        ArgGroup::with_name("session-package-hash-args")
-            .arg(session_package_hash::ARG_NAME)
-            .arg(session_entry_point::ARG_NAME)
-            .arg(session_version::ARG_NAME),
-    )
-    .group(
-        ArgGroup::with_name("session-package-name-args")
-            .arg(session_package_name::ARG_NAME)
-            .arg(session_entry_point::ARG_NAME)
-            .arg(session_version::ARG_NAME),
-    )
-    .group(
-        ArgGroup::with_name("session-hash-args")
-            .arg(session_hash::ARG_NAME)
-            .arg(session_entry_point::ARG_NAME),
-    )
-    .group(
-        ArgGroup::with_name("session-name-args")
-            .arg(session_name::ARG_NAME)
-            .arg(session_entry_point::ARG_NAME),
-    )*/
 }
 
 pub(crate) fn apply_common_purchase_options(
@@ -907,29 +884,6 @@ pub(crate) fn apply_common_purchase_options(
         .arg(payment_name::arg())
         .arg(payment_entry_point::arg())
         .arg(payment_version::arg())
-    /*
-    .group(
-        ArgGroup::with_name("payment-package-hash-args")
-            .arg(payment_package_hash::ARG_NAME)
-            .arg(payment_entry_point::ARG_NAME)
-            .arg(payment_version::ARG_NAME),
-    )
-    .group(
-        ArgGroup::with_name("payment-package-name-args")
-            .arg(payment_package_name::ARG_NAME)
-            .arg(payment_entry_point::ARG_NAME)
-            .arg(payment_version::ARG_NAME),
-    )
-    .group(
-        ArgGroup::with_name("payment-hash-args")
-            .arg(payment_hash::ARG_NAME)
-            .arg(payment_entry_point::ARG_NAME),
-    )
-    .group(
-        ArgGroup::with_name("payment-name-args")
-            .arg(payment_name::ARG_NAME)
-            .arg(payment_entry_point::ARG_NAME),
-    )*/
 }
 
 pub(super) fn show_arg_examples_and_exit_if_required(matches: &ArgMatches<'_>) {
