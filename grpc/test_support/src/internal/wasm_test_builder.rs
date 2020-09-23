@@ -23,8 +23,11 @@ use casper_engine_grpc_server::engine_server::{
 use casper_execution_engine::{
     core::{
         engine_state::{
-            execute_request::ExecuteRequest, execution_result::ExecutionResult,
-            run_genesis_request::RunGenesisRequest, EngineConfig, EngineState, SYSTEM_ACCOUNT_ADDR,
+            era_validators::{GetEraValidatorsRequest, GetEraValidatorsResult},
+            execute_request::ExecuteRequest,
+            execution_result::ExecutionResult,
+            run_genesis_request::RunGenesisRequest,
+            EngineConfig, EngineState, SYSTEM_ACCOUNT_ADDR,
         },
         execution,
     },
@@ -47,11 +50,12 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash,
+    auction::{EraId, ValidatorWeights},
     bytesrepr::{self},
     CLValue, Contract, ContractHash, ContractWasm, Key, URef, U512,
 };
 
-use crate::internal::utils;
+use crate::internal::{utils, DEFAULT_PROTOCOL_VERSION};
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
 ///
@@ -672,6 +676,21 @@ where
             .expect_success()
             .commit()
             .finish()
+    }
+
+    pub fn get_era_validators(&mut self, era_id: EraId) -> ValidatorWeights {
+        let correlation_id = CorrelationId::new();
+        let state_hash = Blake2bHash::try_from(self.get_post_state_hash().as_slice())
+            .expect("should create state hash");
+        let request = GetEraValidatorsRequest::new(state_hash, era_id, *DEFAULT_PROTOCOL_VERSION);
+        let result = self
+            .engine_state
+            .get_era_validators(correlation_id, request)
+            .expect("should get era validators");
+        match result {
+            GetEraValidatorsResult::Success { validator_weights } => validator_weights,
+            other => panic!("get_era_validators: {:?}", other),
+        }
     }
 }
 

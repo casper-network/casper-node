@@ -453,8 +453,10 @@ fn should_calculate_era_validators() {
         era_validators
     ); // eraindex==1 - ran once
 
+    let lookup_era_id = consensus_next_era_id - 1;
+
     let validator_weights = era_validators
-        .get(&(consensus_next_era_id - 1)) // indexed from 0
+        .get(&lookup_era_id) // indexed from 0
         .unwrap_or_else(|| {
             panic!(
                 "should have era_index=={} entry {:?}",
@@ -474,6 +476,9 @@ fn should_calculate_era_validators() {
             .expect("should have bid account in this era"),
         &U512::from(ADD_BID_AMOUNT_1)
     );
+
+    let era_validators_result = builder.get_era_validators(lookup_era_id);
+    assert_eq!(era_validators_result, *validator_weights);
 }
 
 #[ignore]
@@ -571,14 +576,14 @@ fn should_get_first_seigniorage_recipients() {
         .unwrap();
     assert_eq!(seigniorage_recipients.len(), 2);
 
-    let era_validators: EraValidators = get_value(&mut builder, auction_hash, "era_validators");
+    let mut era_validators: EraValidators = get_value(&mut builder, auction_hash, "era_validators");
     assert_eq!(era_validators.len(), SNAPSHOT_SIZE, "{:?}", era_validators); // eraindex==1 - ran once
 
     assert!(era_validators.contains_key(&(AUCTION_DELAY as u64 + 1)));
 
     let era_id = AUCTION_DELAY - 1;
 
-    let validator_weights = era_validators.get(&era_id).unwrap_or_else(|| {
+    let validator_weights = era_validators.remove(&era_id).unwrap_or_else(|| {
         panic!(
             "should have era_index=={} entry {:?}",
             era_id, era_validators
@@ -594,6 +599,9 @@ fn should_get_first_seigniorage_recipients() {
         validator_weights.get(&ACCOUNT_2_PK).unwrap(),
         &U512::from(ACCOUNT_2_BOND)
     );
+
+    let first_validator_weights = builder.get_era_validators(era_id);
+    assert_eq!(first_validator_weights, validator_weights);
 }
 
 #[ignore]
@@ -654,4 +662,29 @@ fn should_release_founder_stake() {
     let (founding_validator, entry) = bids.into_iter().next().unwrap();
     assert_eq!(entry.funds_locked, None);
     assert_eq!(founding_validator, ACCOUNT_1_PK);
+}
+
+#[should_panic(expected = "InvalidEra")]
+#[ignore]
+#[test]
+fn should_fail_to_get_era_validators() {
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let account_1 = GenesisAccount::new(
+            ACCOUNT_1_PK,
+            ACCOUNT_1_ADDR,
+            Motes::new(ACCOUNT_1_BALANCE.into()),
+            Motes::new(ACCOUNT_1_BOND.into()),
+        );
+        tmp.push(account_1);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+
+    let _era_validators = builder.get_era_validators(u64::max_value());
 }

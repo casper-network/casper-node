@@ -78,8 +78,12 @@ use tracing::error;
 use casper_execution_engine::{
     core::{
         engine_state::{
-            self, execute_request::ExecuteRequest, execution_result::ExecutionResults,
-            genesis::GenesisResult, BalanceRequest, BalanceResult, QueryRequest, QueryResult,
+            self,
+            era_validators::{GetEraValidatorsRequest, GetEraValidatorsResult},
+            execute_request::ExecuteRequest,
+            execution_result::ExecutionResults,
+            genesis::GenesisResult,
+            BalanceRequest, BalanceResult, QueryRequest, QueryResult,
         },
         execution,
     },
@@ -97,10 +101,7 @@ use crate::{
             DeployHashes, DeployHeaderResults, DeployMetadata, DeployResults, StorageType, Value,
         },
     },
-    crypto::{
-        asymmetric_key::{PublicKey, Signature},
-        hash::Digest,
-    },
+    crypto::{asymmetric_key::Signature, hash::Digest},
     reactor::{EventQueueHandle, QueueKind},
     types::{
         json_compatibility::ExecutionResult, Block, BlockHash, BlockHeader, BlockLike, Deploy,
@@ -1023,10 +1024,19 @@ impl<REv> EffectBuilder<REv> {
     #[allow(dead_code)]
     pub(crate) async fn get_validators(
         self,
-        _root_hash: Digest,
-        _era: u64,
-    ) -> Result<Option<HashMap<PublicKey, u64>>, execution::Error> {
-        todo!("get_validators")
+        get_request: GetEraValidatorsRequest,
+    ) -> Result<GetEraValidatorsResult, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetEraValidators {
+                get_request,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
     }
 
     /// Runs auction using the system smart contract.

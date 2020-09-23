@@ -1,6 +1,7 @@
 pub mod balance;
 pub mod deploy_item;
 pub mod engine_config;
+pub mod era_validators;
 mod error;
 pub mod executable_deploy_item;
 pub mod execute_request;
@@ -20,12 +21,14 @@ use std::{
     rc::Rc,
 };
 
+use era_validators::{GetEraValidatorsRequest, GetEraValidatorsResult};
 use num_traits::Zero;
 use parity_wasm::elements::Module;
 use tracing::{debug, warn};
 
 use casper_types::{
     account::AccountHash,
+    auction::{EraValidators, ERA_VALIDATORS_KEY},
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
     runtime_args,
@@ -74,6 +77,8 @@ use crate::{
 };
 use execution_result::ExecutionResults;
 use genesis::GenesisAccount;
+
+use super::tracking_copy::TrackingCopyQueryResult;
 
 // TODO?: MAX_PAYMENT && CONV_RATE values are currently arbitrary w/ real values
 // TBD gas * CONV_RATE = motes
@@ -1797,5 +1802,55 @@ where
             CommitResult::Success { state_root, .. } => Ok(CommitResult::Success { state_root }),
             commit_result => Ok(commit_result),
         }
+    }
+
+    /// Obtains validator weights for given era.
+    pub fn get_era_validators(
+        &self,
+        correlation_id: CorrelationId,
+        get_era_validators_request: GetEraValidatorsRequest,
+    ) -> Result<GetEraValidatorsResult, Error> {
+        let protocol_version = get_era_validators_request.protocol_version();
+
+        let tracking_copy = match self.tracking_copy(get_era_validators_request.state_hash())? {
+            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
+            None => return Ok(GetEraValidatorsResult::RootNotFound),
+        };
+
+        let tracking_copy = tracking_copy.borrow();
+
+        let protocol_data = match self.get_protocol_data(protocol_version) {
+            Ok(Some(protocol_data)) => protocol_data,
+            Ok(None) => return Err(Error::InvalidProtocolVersion(protocol_version)),
+            Err(err) => return Err(err),
+        };
+
+        let query_key = Key::Hash(protocol_data.auction());
+
+        let result = tracking_copy
+            .query(correlation_id, query_key, &[ERA_VALIDATORS_KEY.to_string()])
+            .map_err(|err| Error::Exec(err.into()))?;
+
+        let mut era_validators: EraValidators = match result {
+            TrackingCopyQueryResult::Success(StoredValue::CLValue(cl_value)) => {
+                match cl_value.into_t() {
+                    Ok(validator_weights) => validator_weights,
+                    Err(_) => return Ok(GetEraValidatorsResult::ValueError),
+                }
+            }
+
+            TrackingCopyQueryResult::Success(_)
+            | TrackingCopyQueryResult::ValueNotFound(_)
+            | TrackingCopyQueryResult::CircularReference(_) => {
+                return Ok(GetEraValidatorsResult::ValueError)
+            }
+        };
+
+        let validator_weights = match era_validators.remove(&get_era_validators_request.era_id()) {
+            Some(validator_weights) => validator_weights,
+            None => return Ok(GetEraValidatorsResult::InvalidEra),
+        };
+
+        Ok(GetEraValidatorsResult::Success { validator_weights })
     }
 }

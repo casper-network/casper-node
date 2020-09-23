@@ -31,6 +31,7 @@ use log::{info, warn, Level};
 use casper_execution_engine::{
     core::{
         engine_state::{
+            era_validators::{GetEraValidatorsRequest, GetEraValidatorsResult},
             execute_request::ExecuteRequest,
             genesis::GenesisResult,
             query::{QueryRequest, QueryResult},
@@ -368,6 +369,56 @@ where
         };
 
         SingleResponse::completed(upgrade_response)
+    }
+
+    fn get_era_validators(
+        &self,
+        _request_options: RequestOptions,
+        get_era_validators_request: ipc::GetEraValidatorsRequest,
+    ) -> SingleResponse<ipc::GetEraValidatorsResponse> {
+        let correlation_id = CorrelationId::new();
+
+        let get_era_validators_request: GetEraValidatorsRequest =
+            match get_era_validators_request.try_into() {
+                Ok(result) => result,
+                Err(error) => {
+                    let err_msg = format!("{}", error);
+                    warn!("get era validators request error: {}", err_msg);
+                    let mut get_era_validators_response = ipc::GetEraValidatorsResponse::new();
+                    get_era_validators_response.mut_error().set_message(err_msg);
+                    return SingleResponse::completed(get_era_validators_response);
+                }
+            };
+
+        let pre_state_hash = get_era_validators_request.state_hash();
+        let era_id = get_era_validators_request.era_id();
+
+        let mut response = ipc::GetEraValidatorsResponse::new();
+
+        match self.get_era_validators(correlation_id, get_era_validators_request) {
+            Ok(GetEraValidatorsResult::Success { validator_weights }) => {
+                match ipc::GetEraValidatorsResponse_ValidatorWeights::try_from(validator_weights) {
+                    Ok(pb_validator_weights) => response.set_success(pb_validator_weights),
+                    Err(mapping_error) => {
+                        response.mut_error().set_message(mapping_error.to_string())
+                    }
+                }
+            }
+
+            Ok(GetEraValidatorsResult::RootNotFound) => response
+                .mut_missing_prestate()
+                .set_hash(pre_state_hash.to_vec()),
+
+            Ok(GetEraValidatorsResult::InvalidEra) => response.mut_invalid_era().set_era_id(era_id),
+
+            Ok(GetEraValidatorsResult::ValueError) => response.set_value_error(Default::default()),
+
+            Err(error) => {
+                response.mut_error().set_message(error.to_string());
+            }
+        }
+
+        SingleResponse::completed(response)
     }
 
     fn bid_state(

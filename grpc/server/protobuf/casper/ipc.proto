@@ -382,6 +382,45 @@ message UpgradeResponse {
 
 // --- END EXECUTION ENGINE SERVICE DEFINITION --- //
 
+// --- BEGIN AUCTION SERVICE DEFINITION --- //
+
+message GetEraValidatorsRequest {
+    bytes parent_state_hash = 1;
+    uint64 era_id = 2;
+    casper.state.ProtocolVersion protocol_version = 3;
+}
+
+message GetEraValidatorsResponse {
+    message ValidatorWeights {
+        message ValidatorWeight {
+            bytes public_key_bytes = 1;
+            casper.state.BigInt weight = 2;
+        }
+        repeated ValidatorWeight validator_weights = 1;
+    }
+
+    message InvalidEra {
+        uint64 era_id = 1;
+    }
+
+    message ValueError {
+    }
+
+    message GetEraValidatorsError {
+        string message = 1;
+    }
+
+    oneof result {
+        ValidatorWeights success = 1;
+        RootNotFound missing_prestate = 2;
+        InvalidEra invalid_era = 3;
+        ValueError value_error = 4;
+        GetEraValidatorsError error = 5;
+    }
+}
+
+// --- END AUCTION SERVICE DEFINITION --- //
+
 // --- BEGIN PROOF-OF-STAKE SERVICE DEFINITION --- //
 
 message BidStateRequest {
@@ -491,6 +530,8 @@ service ExecutionEngineService {
     rpc execute (ExecuteRequest) returns (ExecuteResponse) {}
     rpc run_genesis (RunGenesisRequest) returns (GenesisResponse) {}
     rpc upgrade (UpgradeRequest) returns (UpgradeResponse) {}
+    // auction endpoints
+    rpc get_era_validators (GetEraValidatorsRequest) returns (GetEraValidatorsResponse) {}
     // proof-of-stake endpoints
     rpc bid_state(BidStateRequest) returns (BidStateResponse) {}
     rpc distribute_rewards(DistributeRewardsRequest) returns (DistributeRewardsResponse) {}
