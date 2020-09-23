@@ -7,8 +7,10 @@ set -eu
 BASEDIR=$(readlink -f $(dirname $0))
 CHAINSPEC=$(mktemp -t chainspec_XXXXXXXX --suffix .toml)
 TRUSTED_HASH="${TRUSTED_HASH:-}"
-TIMESTAMP="${GENESIS_TIMESTAMP:-$(date '+%s000')}"
+OFFSET="${OFFSET:-30}"
+TIMESTAMP=${GENESIS_TIMESTAMP:-$(date '+%s000' -d "+$OFFSET sec")}
 echo "GENESIS_TIMESTAMP="$TIMESTAMP
+date -d @$(echo "$TIMESTAMP/1000" | bc)
 
 run_node() {
     ID=$1
