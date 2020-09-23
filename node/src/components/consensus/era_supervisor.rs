@@ -214,6 +214,14 @@ where
             !sum_stakes.value().is_zero(),
             "cannot start era with total weight 0"
         );
+        info!(
+            ?validator_stakes,
+            ?start_time,
+            ?timestamp,
+            ?start_height,
+            "starting era {}",
+            era_id.0
+        );
         // For Highway, we need u64 weights. Scale down by  sum / u64::MAX,  rounded up.
         // If we round up the divisor, the resulting sum is guaranteed to be  <= u64::MAX.
         let scaling_factor = (sum_stakes.value() + U512::from(u64::MAX) - 1) / U512::from(u64::MAX);
@@ -257,9 +265,11 @@ where
         );
 
         let results = if should_activate {
+            info!("start voting in era {}", era_id.0);
             let secret = HighwaySecret::new(Rc::clone(&self.secret_signing_key), our_id);
             highway.activate_validator(our_id, secret, timestamp.max(start_time))
         } else {
+            info!("not voting in era {}", era_id.0);
             Vec::new()
         };
 
