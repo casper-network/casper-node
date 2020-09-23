@@ -5,7 +5,7 @@
 name = 'casper-charlie-testnet-4'
 # Timestamp for the genesis block, also used in seeding the pseudo-random number generator used in contract-runtime for
 # computing genesis post-state hash.
-timestamp = 1600880400000
+timestamp = 1600966800000
 # Protocol version at genesis.
 protocol_version = '1.0.0'
 # Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the mint
@@ -30,7 +30,7 @@ accounts_path = '/etc/casper/accounts.csv'
 # make key blocks for the upcoming eras.  If the era is over by the time we start the nodes, they'll not be able to
 # produce blocks in it, and there won't be a new era build either.  That means when a completely new network is started,
 # the genesis era start time has to be adjusted to be active at the time.
-genesis_era_start_timestamp = 1600880400000
+genesis_era_start_timestamp = 1600966800000
 # Era duration defined as a fixed number of milliseconds. 1800000 ms = 30 minutes
 era_duration_millis = 1800000
 # Minimum number of blocks per era.  An era will take longer than `era_duration_millis` ms if that is necessary to reach the minimum height.
@@ -48,7 +48,7 @@ voting_period_duration_millis = 172800000
 # It is the percentage of validators that would need to equivocate to make two honest nodes see two conflicting
 # blocks as finalized: A higher value F makes it safer to rely on finalized blocks. It also makes it more difficult to
 # finalize blocks, however, and requires at least 50% + F/2 validators to be working correctly.
-finality_threshold_percent = 20
+finality_threshold_percent = 12
 # Integer between 0 and 255. The power of two that is the number of milliseconds in the minimum round length, and
 # therefore the minimum delay between a block and its child. E.g. 14 means 2^14 milliseconds, i.e. about 16 seconds.
 minimum_round_exponent = 17
