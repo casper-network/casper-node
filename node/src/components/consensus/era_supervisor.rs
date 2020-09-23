@@ -93,6 +93,7 @@ pub(crate) struct EraSupervisor<I, R: Rng + CryptoRng + ?Sized> {
     validator_stakes: Vec<(PublicKey, Motes)>,
     current_era: EraId,
     chainspec: Chainspec,
+    node_start_time: Timestamp,
 }
 
 impl<I, R: Rng + CryptoRng + ?Sized> Debug for EraSupervisor<I, R> {
@@ -128,6 +129,7 @@ where
             current_era: EraId(0),
             validator_stakes: validator_stakes.clone(),
             chainspec: chainspec.clone(),
+            node_start_time: Timestamp::now(),
         };
 
         let results = era_supervisor.new_era(
@@ -212,6 +214,14 @@ where
             !sum_stakes.value().is_zero(),
             "cannot start era with total weight 0"
         );
+        info!(
+            ?validator_stakes,
+            ?start_time,
+            ?timestamp,
+            ?start_height,
+            "starting era {}",
+            era_id.0
+        );
         // For Highway, we need u64 weights. Scale down by  sum / u64::MAX,  rounded up.
         // If we round up the divisor, the resulting sum is guaranteed to be  <= u64::MAX.
         let scaling_factor = (sum_stakes.value() + U512::from(u64::MAX) - 1) / U512::from(u64::MAX);
@@ -238,16 +248,14 @@ where
             start_time + self.highway_config().era_duration,
         );
 
-        // Activate the era if it is still ongoing based on its minimum duration, and if we are one
-        // of the validators.
+        // Activate the era if this node was already running when the era began, it is still
+        // ongoing based on its minimum duration, and we are one of the validators.
         let our_id = self.public_signing_key;
-        let min_end_time = start_time
-            + self
-                .highway_config()
-                .era_duration
-                .max(params.min_round_len() * params.end_height());
-        let should_activate =
-            min_end_time >= timestamp && validators.iter().any(|v| *v.id() == our_id);
+        let era_rounds_len = params.min_round_len() * params.end_height();
+        let min_end_time = start_time + self.highway_config().era_duration.max(era_rounds_len);
+        let should_activate = self.node_start_time < start_time
+            && min_end_time >= timestamp
+            && validators.iter().any(|v| *v.id() == our_id);
 
         let mut highway = HighwayProtocol::<I, HighwayContext>::new(
             self.instance_id(post_state_hash, start_height),
@@ -257,9 +265,11 @@ where
         );
 
         let results = if should_activate {
+            info!("start voting in era {}", era_id.0);
             let secret = HighwaySecret::new(Rc::clone(&self.secret_signing_key), our_id);
             highway.activate_validator(our_id, secret, timestamp.max(start_time))
         } else {
+            info!("not voting in era {}", era_id.0);
             Vec::new()
         };
 

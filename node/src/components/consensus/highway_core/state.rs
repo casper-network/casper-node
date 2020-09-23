@@ -27,7 +27,7 @@ use itertools::Itertools;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
-use tracing::error;
+use tracing::{error, info};
 
 use crate::{
     components::consensus::{
@@ -270,6 +270,7 @@ impl<C: Context> State<C> {
 
     pub(crate) fn add_evidence(&mut self, evidence: Evidence<C>) {
         let idx = evidence.perpetrator();
+        info!(?evidence, "marking validator #{} as faulty", idx.0);
         self.evidence.insert(idx, evidence);
     }
 
