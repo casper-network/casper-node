@@ -3,12 +3,6 @@ use clap::{App, ArgMatches, SubCommand};
 use super::creation_common;
 use crate::{command::ClientCommand, common};
 
-enum DisplayOrder {
-    SecretKey,
-    Input,
-    Output,
-}
-
 pub struct SignDeploy;
 
 impl<'a, 'b> ClientCommand<'a, 'b> for SignDeploy {
@@ -20,9 +14,11 @@ impl<'a, 'b> ClientCommand<'a, 'b> for SignDeploy {
         SubCommand::with_name(Self::NAME)
             .about(Self::ABOUT)
             .display_order(display_order)
-            .arg(common::secret_key::arg(DisplayOrder::SecretKey as usize))
-            .arg(creation_common::input::arg(DisplayOrder::Input as usize))
-            .arg(creation_common::output::arg(DisplayOrder::Output as usize))
+            .arg(common::secret_key::arg(
+                creation_common::DisplayOrder::SecretKey as usize,
+            ))
+            .arg(creation_common::input::arg())
+            .arg(creation_common::output::arg())
     }
 
     fn run(matches: &ArgMatches<'_>) {

@@ -33,6 +33,8 @@ pub(super) enum DisplayOrder {
     ShowArgExamples,
     NodeAddress,
     SecretKey,
+    Input,
+    Output,
     TransferAmount,
     TransferSourcePurse,
     TransferTargetAccount,
@@ -818,14 +820,14 @@ pub(super) mod output {
     const ARG_VALUE_NAME: &str = common::ARG_PATH;
     const ARG_HELP: &str = "Path to output deploy file. If omitted, defaults to stdout. If file exists, it will be overwritten";
 
-    pub fn arg(order: usize) -> Arg<'static, 'static> {
+    pub fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .required(false)
             .long(ARG_NAME)
             .short(ARG_SHORT_NAME)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
-            .display_order(order)
+            .display_order(DisplayOrder::Output as usize)
     }
 
     pub fn get(matches: &ArgMatches) -> Option<String> {
@@ -863,14 +865,14 @@ pub(super) mod input {
     const ARG_VALUE_NAME: &str = common::ARG_PATH;
     const ARG_HELP: &str = "Path to input deploy file";
 
-    pub fn arg(order: usize) -> Arg<'static, 'static> {
+    pub fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .required(true)
             .long(ARG_NAME)
             .short(ARG_SHORT_NAME)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
-            .display_order(order)
+            .display_order(DisplayOrder::Input as usize)
     }
 
     pub fn get(matches: &ArgMatches) -> String {
