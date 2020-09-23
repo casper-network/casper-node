@@ -50,8 +50,8 @@ impl TestChain {
             })
             .collect();
         // TODO: This is duplicated. Remove the `HighwayConfig` field.
-        chainspec.genesis.timestamp = Timestamp::now();
-        chainspec.genesis.highway_config.genesis_era_start_timestamp = Timestamp::now();
+        chainspec.genesis.timestamp = Timestamp::now() + 30000.into();
+        chainspec.genesis.highway_config.genesis_era_start_timestamp = chainspec.genesis.timestamp;
 
         TestChain {
             keys,
@@ -179,7 +179,7 @@ async fn run_validator_network() {
     };
 
     // Wait for all nodes to agree on one era.
-    net.settle_on(&mut rng, is_in_era(1), Duration::from_secs(60))
+    net.settle_on(&mut rng, is_in_era(1), Duration::from_secs(90))
         .await;
 
     net.settle_on(&mut rng, is_in_era(2), Duration::from_secs(60))
