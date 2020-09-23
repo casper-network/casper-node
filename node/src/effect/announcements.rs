@@ -10,7 +10,10 @@ use std::{
 
 use crate::{
     components::small_network::GossipedAddress,
-    types::{json_compatibility::ExecutionResult, Block, Deploy, DeployHash, Item, ProtoBlock},
+    types::{
+        json_compatibility::ExecutionResult, Block, BlockHeader, Deploy, DeployHash, Item,
+        ProtoBlock,
+    },
     utils::Source,
 };
 
@@ -121,7 +124,7 @@ pub enum ConsensusAnnouncement {
     /// A block was orphaned.
     Orphaned(ProtoBlock),
     /// A linear chain block has been handled.
-    Handled(u64),
+    Handled(Box<BlockHeader>),
 }
 
 impl Display for ConsensusAnnouncement {
@@ -136,10 +139,11 @@ impl Display for ConsensusAnnouncement {
             ConsensusAnnouncement::Orphaned(block) => {
                 write!(formatter, "orphaned proto block {}", block)
             }
-            ConsensusAnnouncement::Handled(height) => write!(
+            ConsensusAnnouncement::Handled(block_header) => write!(
                 formatter,
-                "Linear chain block has been handled by consensus, height={}",
-                height
+                "Linear chain block has been handled by consensus, height={}, hash={}",
+                block_header.height(),
+                block_header.hash()
             ),
         }
     }

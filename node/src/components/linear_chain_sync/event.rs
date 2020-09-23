@@ -1,6 +1,6 @@
 use crate::{
     components::fetcher::FetchResult,
-    types::{Block, BlockHash},
+    types::{Block, BlockHash, BlockHeader},
 };
 use std::fmt::{Debug, Display};
 
@@ -10,12 +10,12 @@ pub enum Event<I> {
     GetBlockHashResult(BlockHash, Option<FetchResult<Block>>),
     GetBlockHeightResult(u64, BlockByHeightResult<I>),
     /// Deploys from the block have been found.
-    DeploysFound(Box<Block>),
+    DeploysFound(Box<BlockHeader>),
     /// Deploys from the block have not been found.
-    DeploysNotFound(Box<Block>),
+    DeploysNotFound(Box<BlockHeader>),
     StartDownloadingDeploys,
     NewPeerConnected(I),
-    BlockHandled(u64),
+    BlockHandled(Box<BlockHeader>),
 }
 
 #[derive(Debug)]
@@ -41,8 +41,14 @@ where
             }
             Event::StartDownloadingDeploys => write!(f, "Start downloading deploys event."),
             Event::NewPeerConnected(peer_id) => write!(f, "A new peer connected: {}", peer_id),
-            Event::BlockHandled(height) => {
-                write!(f, "Block has been handled by consensus {}", height)
+            Event::BlockHandled(block) => {
+                let hash = block.hash();
+                let height = block.height();
+                write!(
+                    f,
+                    "Block has been handled by consensus. Hash {}, height {}",
+                    hash, height
+                )
             }
             Event::GetBlockHeightResult(height, res) => {
                 write!(f, "Get block result for height {}: {:?}", height, res)

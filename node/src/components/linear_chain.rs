@@ -11,7 +11,6 @@ use tracing::{debug, error, info, warn};
 
 use super::{storage::Storage, Component};
 use crate::{
-    components::storage::Value,
     crypto::asymmetric_key::Signature,
     effect::{
         requests::{ConsensusRequest, LinearChainRequest, NetworkRequest, StorageRequest},

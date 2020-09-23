@@ -909,12 +909,12 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    pub(crate) async fn announce_block_handled(self, height: u64)
+    pub(crate) async fn announce_block_handled(self, block: Box<BlockHeader>)
     where
         REv: From<ConsensusAnnouncement>,
     {
         self.0
-            .schedule(ConsensusAnnouncement::Handled(height), QueueKind::Regular)
+            .schedule(ConsensusAnnouncement::Handled(block), QueueKind::Regular)
             .await
     }
 

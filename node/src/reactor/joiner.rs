@@ -44,7 +44,7 @@ use crate::{
         validator::{self, Error, ValidatorInitConfig},
         EventQueueHandle, Finalize,
     },
-    types::{Block, BlockByHeight, BlockHash, Deploy, ProtoBlock, Tag, Timestamp},
+    types::{Block, BlockByHeight, BlockHash, BlockHeader, Deploy, ProtoBlock, Tag, Timestamp},
     utils::{Source, WithDir},
 };
 
@@ -74,7 +74,7 @@ pub enum Event {
 
     /// Block validator event.
     #[from]
-    BlockValidator(block_validator::Event<Block, NodeId>),
+    BlockValidator(block_validator::Event<BlockHeader, NodeId>),
 
     /// Linear chain event.
     #[from]
@@ -115,7 +115,7 @@ pub enum Event {
 
     /// Block validation request.
     #[from]
-    BlockValidatorRequest(BlockValidationRequest<Block, NodeId>),
+    BlockValidatorRequest(BlockValidationRequest<BlockHeader, NodeId>),
 
     /// Block executor request.
     #[from]
@@ -239,7 +239,7 @@ pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
     pub(super) contract_runtime: ContractRuntime,
     pub(super) linear_chain_fetcher: Fetcher<Block>,
     pub(super) linear_chain_sync: LinearChainSync<NodeId>,
-    pub(super) block_validator: BlockValidator<Block, NodeId>,
+    pub(super) block_validator: BlockValidator<BlockHeader, NodeId>,
     pub(super) deploy_fetcher: Fetcher<Deploy>,
     pub(super) block_executor: BlockExecutor,
     pub(super) linear_chain: linear_chain::LinearChain<NodeId>,
@@ -511,12 +511,12 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 self.consensus.handle_event(effect_builder, rng, event),
             ),
             Event::ConsensusAnnouncement(announcement) => match announcement {
-                ConsensusAnnouncement::Handled(height) => reactor::wrap_effects(
+                ConsensusAnnouncement::Handled(block_header) => reactor::wrap_effects(
                     Event::LinearChainSync,
                     self.linear_chain_sync.handle_event(
                         effect_builder,
                         rng,
-                        linear_chain_sync::Event::BlockHandled(height),
+                        linear_chain_sync::Event::BlockHandled(block_header),
                     ),
                 ),
                 other => {
