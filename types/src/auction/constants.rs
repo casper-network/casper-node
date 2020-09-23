@@ -37,6 +37,8 @@ pub const ARG_VALIDATOR_PURSE: &str = "validator_purse";
 pub const ARG_VALIDATOR_KEYS: &str = "validator_keys";
 /// Named constant for `validator_public_keys`.
 pub const ARG_VALIDATOR_PUBLIC_KEYS: &str = "validator_public_keys";
+/// Named constant for `reward_factors`.
+pub const ARG_REWARD_FACTORS: &str = "reward_factors";
 
 /// Named constant for method `read_winners`.
 pub const METHOD_READ_WINNERS: &str = "read_winners";
@@ -62,6 +64,8 @@ pub const METHOD_UNBOND: &str = "unbond";
 pub const METHOD_SLASH: &str = "slash";
 /// Named constant for method `release_founder_stake`.
 pub const METHOD_RELEASE_FOUNDER_STAKE: &str = "release_founder_stake";
+/// Named constant for method `distribute`.
+pub const METHOD_DISTRIBUTE: &str = "distribute";
 
 /// Storage for `Bids`.
 pub const BIDS_KEY: &str = "bids";
