@@ -23,7 +23,7 @@ use casper_node::{
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self, ToBytes},
-    AccessRights, CLType, CLValue, Key, NamedArg, RuntimeArgs, URef, U128, U256, U512,
+    AccessRights, CLType, CLTyped, CLValue, Key, NamedArg, RuntimeArgs, URef, U128, U256, U512,
 };
 
 use crate::common;
@@ -103,6 +103,10 @@ pub(super) mod show_arg_examples {
         println!(
             "key_uref_name:key='{}'",
             Key::URef(URef::new(array, AccessRights::NONE)).to_formatted_string()
+        );
+        println!(
+            "account_hash_name:account_hash='{}'",
+            AccountHash::new(array).to_formatted_string()
         );
         println!(
             "uref_name:uref='{}'",
@@ -320,6 +324,7 @@ pub(super) mod arg_simple {
             ("unit", CLType::Unit),
             ("string", CLType::String),
             ("key", CLType::Key),
+            ("account_hash", AccountHash::cl_type()),
             ("uref", CLType::URef),
         ];
         static ref SUPPORTED_LIST: String = {
@@ -413,6 +418,7 @@ pub(super) mod arg_simple {
             t if t == SUPPORTED_TYPES[10].0 => SUPPORTED_TYPES[10].1.clone(),
             t if t == SUPPORTED_TYPES[11].0 => SUPPORTED_TYPES[11].1.clone(),
             t if t == SUPPORTED_TYPES[12].0 => SUPPORTED_TYPES[12].1.clone(),
+            t if t == SUPPORTED_TYPES[13].0 => SUPPORTED_TYPES[13].1.clone(),
             _ => panic!(
                 "unknown variant {}, expected one of {}",
                 parts[1], *SUPPORTED_LIST
@@ -485,6 +491,16 @@ pub(super) mod arg_simple {
                     .unwrap_or_else(|error| panic!("can't parse {} as Key: {:?}", value, error));
                 CLValue::from_t(key).unwrap()
             }
+            CLType::FixedList(ty, 32) => match *ty {
+                CLType::U8 => {
+                    let account_hash =
+                        AccountHash::from_formatted_str(value).unwrap_or_else(|error| {
+                            panic!("can't parse {} as AccountHash: {:?}", value, error)
+                        });
+                    CLValue::from_t(account_hash).unwrap()
+                }
+                _ => unreachable!(),
+            },
             CLType::URef => {
                 let uref = URef::from_formatted_str(value)
                     .unwrap_or_else(|error| panic!("can't parse {} as URef: {:?}", value, error));

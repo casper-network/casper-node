@@ -5,7 +5,7 @@ pub(crate) use vertex::{Dependency, SignedWireVote, Vertex, WireVote};
 
 use rand::{CryptoRng, Rng};
 use thiserror::Error;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 use crate::{
     components::consensus::{
@@ -124,6 +124,7 @@ impl<C: Context> Highway<C> {
         validators: Validators<C::ValidatorId>,
         params: Params,
     ) -> Highway<C> {
+        info!(?validators, "creating Highway instance {:?}", instance_id);
         let state = State::new(validators.iter().map(Validator::weight), params);
         Highway {
             instance_id,

@@ -1,7 +1,8 @@
 //! Contains types and constants associated with user accounts.
 
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box, format, string::String, vec::Vec};
 use core::{
+    array::TryFromSliceError,
     convert::TryFrom,
     fmt::{Debug, Display, Formatter},
 };
@@ -14,6 +15,8 @@ use crate::{
     CLType, CLTyped,
 };
 
+const FORMATTED_STRING_PREFIX: &str = "account-hash-";
+
 // This error type is not intended to be used by third party crates.
 #[doc(hidden)]
 #[derive(Debug, Eq, PartialEq)]
@@ -22,6 +25,29 @@ pub struct TryFromIntError(());
 /// Associated error type of `TryFrom<&[u8]>` for [`AccountHash`].
 #[derive(Debug)]
 pub struct TryFromSliceForAccountHashError(());
+
+/// Error returned when decoding an `AccountHash` from a formatted string.
+#[derive(Debug)]
+pub enum FromStrError {
+    /// The prefix is invalid.
+    InvalidPrefix,
+    /// The hash is not valid hex.
+    Hex(base16::DecodeError),
+    /// The hash is the wrong length.
+    Hash(TryFromSliceError),
+}
+
+impl From<base16::DecodeError> for FromStrError {
+    fn from(error: base16::DecodeError) -> Self {
+        FromStrError::Hex(error)
+    }
+}
+
+impl From<TryFromSliceError> for FromStrError {
+    fn from(error: TryFromSliceError) -> Self {
+        FromStrError::Hash(error)
+    }
+}
 
 /// The various types of action which can be performed in the context of a given account.
 #[repr(u32)]
@@ -172,6 +198,24 @@ impl AccountHash {
     /// Returns the raw bytes of the account hash as a `slice`.
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
+    }
+
+    /// Formats the `AccountHash` for users getting and putting.
+    pub fn to_formatted_string(&self) -> String {
+        format!(
+            "{}{}",
+            FORMATTED_STRING_PREFIX,
+            base16::encode_lower(&self.0),
+        )
+    }
+
+    /// Parses a string formatted as per `Self::to_formatted_string()` into an `AccountHash`.
+    pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
+        let remainder = input
+            .strip_prefix(FORMATTED_STRING_PREFIX)
+            .ok_or_else(|| FromStrError::InvalidPrefix)?;
+        let bytes = AccountHashBytes::try_from(base16::decode(remainder)?.as_ref())?;
+        Ok(AccountHash(bytes))
     }
 }
 
@@ -409,5 +453,33 @@ mod tests {
             "Did you forget to update `UpdateKeyFailure::try_from` for a new variant of \
                    `UpdateKeyFailure`, or `max_valid_value_for_variant` in this test?"
         );
+    }
+
+    #[test]
+    fn account_hash_from_str() {
+        let account_hash = AccountHash([3; 32]);
+        let encoded = account_hash.to_formatted_string();
+        let decoded = AccountHash::from_formatted_str(&encoded).unwrap();
+        assert_eq!(account_hash, decoded);
+
+        let invalid_prefix =
+            "accounthash-0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(AccountHash::from_formatted_str(invalid_prefix).is_err());
+
+        let invalid_prefix =
+            "account-hash0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(AccountHash::from_formatted_str(invalid_prefix).is_err());
+
+        let short_addr =
+            "account-hash-00000000000000000000000000000000000000000000000000000000000000";
+        assert!(AccountHash::from_formatted_str(short_addr).is_err());
+
+        let long_addr =
+            "account-hash-000000000000000000000000000000000000000000000000000000000000000000";
+        assert!(AccountHash::from_formatted_str(long_addr).is_err());
+
+        let invalid_hex =
+            "account-hash-000000000000000000000000000000000000000000000000000000000000000g";
+        assert!(AccountHash::from_formatted_str(invalid_hex).is_err());
     }
 }
