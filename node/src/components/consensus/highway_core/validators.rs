@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fmt,
     hash::Hash,
     iter::FromIterator,
     ops::{Add, Index, IndexMut},
@@ -94,6 +95,16 @@ impl<VID: Ord + Hash + Clone, W: Into<Weight>> FromIterator<(VID, W)> for Valida
             index_by_id,
             validators,
         }
+    }
+}
+
+impl<VID: Ord + Hash + fmt::Debug> fmt::Display for Validators<VID> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Validators: index, ID, weight")?;
+        for (i, val) in self.validators.iter().enumerate() {
+            writeln!(f, "{:3}, {:?}, {}", i, val.id(), val.weight().0)?
+        }
+        Ok(())
     }
 }
 
