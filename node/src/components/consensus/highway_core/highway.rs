@@ -42,6 +42,8 @@ pub(crate) enum EvidenceError {
     EquivocationSameVote,
     #[error("The perpetrator is not a validator.")]
     UnknownPerpetrator,
+    #[error("The signature is invalid.")]
+    Signature,
 }
 
 /// A vertex that has passed initial validation.
@@ -344,11 +346,12 @@ impl<C: Context> Highway<C> {
                 Ok(self.state.pre_validate_vote(vote)?)
             }
             Vertex::Evidence(evidence) => {
-                evidence.validate()?;
-                if !self.validators.contains(evidence.perpetrator()) {
-                    return Err(EvidenceError::UnknownPerpetrator.into());
-                }
-                Ok(())
+                let v_id = self
+                    .validators
+                    .get_by_index(evidence.perpetrator())
+                    .map(Validator::id)
+                    .ok_or(EvidenceError::UnknownPerpetrator)?;
+                Ok(evidence.validate(v_id)?)
             }
         }
     }
