@@ -7,6 +7,7 @@
 
 use std::{
     collections::HashMap,
+    convert::TryInto,
     fmt::{self, Debug, Formatter},
     rc::Rc,
 };
@@ -23,7 +24,10 @@ use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, trace, warn};
 
-use casper_execution_engine::shared::motes::Motes;
+use casper_execution_engine::{
+    core::engine_state::era_validators::GetEraValidatorsRequest, shared::motes::Motes,
+};
+use casper_types::{auction::ValidatorWeights, ProtocolVersion};
 use casper_types::{auction::BLOCK_REWARD, U512};
 
 use crate::{
@@ -128,7 +132,6 @@ where
     active_eras: HashMap<EraId, Era<I, R>>,
     pub(super) secret_signing_key: Rc<SecretKey>,
     pub(super) public_signing_key: PublicKey,
-    validator_stakes: Vec<(PublicKey, Motes)>,
     current_era: EraId,
     chainspec: Chainspec,
     node_start_time: Timestamp,
@@ -165,7 +168,6 @@ where
             secret_signing_key,
             public_signing_key,
             current_era: EraId(0),
-            validator_stakes: validator_stakes.clone(),
             chainspec: chainspec.clone(),
             node_start_time: Timestamp::now(),
         };
@@ -443,30 +445,70 @@ where
             return effects;
         }
         if block_header.switch_block() {
-            // TODO: Learn the new weights from contract (validator rotation).
-            let validator_stakes = self.era_supervisor.validator_stakes.clone();
-            self.era_supervisor
-                .current_era_mut()
-                .consensus
-                .deactivate_validator();
-            let new_era_id = block_header.era_id().successor();
-            info!(?new_era_id, "Era created");
-            let results = self.era_supervisor.new_era(
-                new_era_id,
-                Timestamp::now(), // TODO: This should be passed in.
-                validator_stakes,
-                block_header.timestamp(),
-                block_header.height() + 1,
-                *block_header.global_state_hash(),
+            // if the block is a switch block, we have to get the validators for the new era and
+            // create it, before we can say we handled the block
+            let request = GetEraValidatorsRequest::new(
+                (*block_header.global_state_hash()).into(),
+                block_header.era_id().successor().0,
+                ProtocolVersion::V1_0_0,
             );
-            effects.extend(self.handle_consensus_results(new_era_id, results));
+            effects.extend(self.effect_builder.get_validators(request).event(|result| {
+                Event::GetValidatorsResponse {
+                    switch_block_header: block_header,
+                    get_validators_result: result,
+                }
+            }));
+        } else {
+            // if it's not a switch block, we can already declare it handled
+            effects.extend(
+                self.effect_builder
+                    .announce_block_handled(block_header)
+                    .ignore(),
+            );
         }
-        effects.extend(
-            self.effect_builder
-                .announce_block_handled(block_header)
-                .ignore(),
-        );
         effects
+    }
+
+    pub(super) fn handle_validators_response(
+        &mut self,
+        block_header: BlockHeader,
+        validators: Option<ValidatorWeights>,
+    ) -> Effects<Event<I>> {
+        match validators {
+            Some(validator_weights) => {
+                let validator_stakes = validator_weights
+                    .into_iter()
+                    .map(|(key, stake)| {
+                        (
+                            key.try_into().ok().expect("keys should convert correctly"),
+                            Motes::new(stake),
+                        )
+                    })
+                    .collect();
+                self.era_supervisor
+                    .current_era_mut()
+                    .consensus
+                    .deactivate_validator();
+                let new_era_id = block_header.era_id().successor();
+                info!(?new_era_id, "Era created");
+                let results = self.era_supervisor.new_era(
+                    new_era_id,
+                    Timestamp::now(), // TODO: This should be passed in.
+                    validator_stakes,
+                    block_header.timestamp(),
+                    block_header.height() + 1,
+                    *block_header.global_state_hash(),
+                );
+                let mut effects = self.handle_consensus_results(new_era_id, results);
+                effects.extend(
+                    self.effect_builder
+                        .announce_block_handled(block_header)
+                        .ignore(),
+                );
+                effects
+            }
+            None => todo!(),
+        }
     }
 
     pub(super) fn handle_accept_proto_block(

@@ -11,19 +11,23 @@ mod traits;
 use datasize::DataSize;
 use std::fmt::{self, Debug, Display, Formatter};
 
+use casper_execution_engine::core::engine_state::era_validators::GetEraValidatorsError;
+use casper_types::auction::ValidatorWeights;
+
 use crate::{
     components::{storage::Storage, Component},
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
-            self, BlockExecutorRequest, BlockValidationRequest, DeployBufferRequest,
-            NetworkRequest, StorageRequest,
+            self, BlockExecutorRequest, BlockValidationRequest, ContractRuntimeRequest,
+            DeployBufferRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
     protocol::Message,
-    types::{ProtoBlock, Timestamp},
+    types::{BlockHeader, ProtoBlock, Timestamp},
 };
+
 pub use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraEnd};
 use derive_more::From;
@@ -31,6 +35,7 @@ pub(crate) use era_supervisor::{EraId, EraSupervisor};
 use hex_fmt::HexFmt;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
+use tracing::error;
 use traits::NodeIdT;
 
 #[derive(DataSize, Clone, Serialize, Deserialize)]
@@ -70,6 +75,11 @@ pub enum Event<I> {
         era_id: EraId,
         sender: I,
         proto_block: ProtoBlock,
+    },
+    /// Response from the Contract Runtime, containing the validators for the new era
+    GetValidatorsResponse {
+        switch_block_header: BlockHeader,
+        get_validators_result: Result<Option<ValidatorWeights>, GetEraValidatorsError>,
     },
 }
 
@@ -135,6 +145,14 @@ impl<I: Debug> Display for Event<I> {
                 "A proto-block received from {:?} turned out to be invalid for era {:?}: {:?}",
                 sender, era_id, proto_block
             ),
+            Event::GetValidatorsResponse {
+                get_validators_result,
+                ..
+            } => write!(
+                f,
+                "We received the response to get_validators from the contract runtime: {:?}",
+                get_validators_result
+            ),
         }
     }
 }
@@ -150,6 +168,7 @@ pub trait ReactorEventT<I>:
     + From<BlockExecutorRequest>
     + From<BlockValidationRequest<ProtoBlock, I>>
     + From<StorageRequest<Storage>>
+    + From<ContractRuntimeRequest>
 {
 }
 
@@ -162,6 +181,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<BlockExecutorRequest>
         + From<BlockValidationRequest<ProtoBlock, I>>
         + From<StorageRequest<Storage>>
+        + From<ContractRuntimeRequest>
 {
 }
 
@@ -201,6 +221,16 @@ where
                 sender,
                 proto_block,
             } => handling_es.handle_invalid_proto_block(era_id, sender, proto_block),
+            Event::GetValidatorsResponse {
+                switch_block_header,
+                get_validators_result,
+            } => match get_validators_result {
+                Ok(result) => handling_es.handle_validators_response(switch_block_header, result),
+                Err(error) => {
+                    error!(%error, "get_validators returned an error");
+                    Default::default()
+                }
+            },
         }
     }
 }
