@@ -6,7 +6,7 @@ use auction::{
 use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
@@ -687,4 +687,36 @@ fn should_fail_to_get_era_validators() {
     builder.run_genesis(&run_genesis_request);
 
     let _era_validators = builder.get_era_validators(u64::max_value());
+}
+
+#[ignore]
+#[test]
+fn should_use_era_validators_endpoint_for_first_era() {
+    let extra_accounts = vec![GenesisAccount::new(
+        ACCOUNT_1_PK,
+        ACCOUNT_1_ADDR,
+        Motes::new(ACCOUNT_1_BALANCE.into()),
+        Motes::new(ACCOUNT_1_BOND.into()),
+    )];
+
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        tmp.extend(extra_accounts.clone());
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts.clone());
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+
+    let era_validators = builder.get_era_validators(0);
+    assert!(!era_validators.is_empty());
+    assert_eq!(
+        era_validators.keys().len(),
+        extra_accounts.len() + DEFAULT_ACCOUNTS.len()
+    );
+    assert!(era_validators.contains_key(&ACCOUNT_1_PK));
+    assert!(era_validators.contains_key(&DEFAULT_ACCOUNT_PUBLIC_KEY));
 }
