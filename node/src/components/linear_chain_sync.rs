@@ -72,7 +72,7 @@ enum State {
         highest_block_seen: u64,
         /// Chain of downloaded blocks from the linear chain.
         /// We will `pop()` when executing blocks.
-        linear_chain: Box<Vec<BlockHeader>>,
+        linear_chain: Vec<BlockHeader>,
         /// Block being downloaded.
         /// Block we received from a node and are currently executing.
         /// Will be used to verify whether results we got from the execution are the same.
@@ -119,7 +119,7 @@ impl State {
         State::SyncingTrustedHash {
             trusted_hash,
             highest_block_seen: 0,
-            linear_chain: Box::new(Vec::new()),
+            linear_chain: Vec::new(),
             current_block: Box::new(None),
         }
     }
