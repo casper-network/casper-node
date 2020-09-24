@@ -253,7 +253,6 @@ pub(super) mod chain_name {
 
     const ARG_NAME: &str = "chain-name";
     const ARG_VALUE_NAME: &str = "NAME";
-    const ARG_DEFAULT: &str = "casper-example";
     const ARG_HELP: &str =
         "Name of the chain, to avoid the deploy from being accidentally or maliciously included in \
         a different chain";
@@ -261,9 +260,8 @@ pub(super) mod chain_name {
     pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
-            .required(false)
+            .required(true)
             .value_name(ARG_VALUE_NAME)
-            .default_value(ARG_DEFAULT)
             .help(ARG_HELP)
             .display_order(DisplayOrder::ChainName as usize)
     }
