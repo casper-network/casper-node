@@ -27,7 +27,7 @@ mod key {
     const ARG_HELP: &str =
         "The base key for the query.  This must be a properly formatted account hash, contract \
         address hash or URef.  The format for each respectively is \
-        \"account-account_hash-<HEX STRING>\", \"hash-<HEX STRING>\" and \
+        \"account-hash-<HEX STRING>\", \"hash-<HEX STRING>\" and \
         \"uref-<HEX STRING>-<THREE DIGIT INTEGER>\"";
 
     pub(super) fn arg() -> Arg<'static, 'static> {

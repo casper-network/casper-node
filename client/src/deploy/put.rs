@@ -1,4 +1,4 @@
-use clap::{App, ArgGroup, ArgMatches, SubCommand};
+use clap::{App, ArgMatches, SubCommand};
 
 use casper_node::rpcs::{account::PutDeploy, RpcWithParams};
 
@@ -16,18 +16,9 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
     fn build(display_order: usize) -> App<'a, 'b> {
         let subcommand = SubCommand::with_name(Self::NAME)
             .about(Self::ABOUT)
-            .display_order(display_order)
-            .arg(creation_common::session::arg())
-            .arg(creation_common::arg_simple::session::arg())
-            .arg(creation_common::args_complex::session::arg())
-            // Group the session-arg args so only one style is used to ensure consistent ordering.
-            .group(
-                ArgGroup::with_name("session-args")
-                    .arg(creation_common::arg_simple::session::ARG_NAME)
-                    .arg(creation_common::args_complex::session::ARG_NAME)
-                    .required(false),
-            );
-        creation_common::apply_common_creation_options(subcommand)
+            .display_order(display_order);
+        let subcommand = creation_common::apply_common_session_options(subcommand);
+        creation_common::apply_common_creation_options(subcommand, true)
     }
 
     fn run(matches: &ArgMatches<'_>) {
