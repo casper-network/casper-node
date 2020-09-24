@@ -90,6 +90,7 @@ use casper_types::Key;
 
 use crate::{
     components::{
+        chainspec_loader::ChainspecInfo,
         consensus::{BlockContext, EraId},
         fetcher::FetchResult,
         small_network::GossipedAddress,
@@ -114,9 +115,9 @@ use announcements::{
     DeployAcceptorAnnouncement, GossiperAnnouncement, NetworkAnnouncement,
 };
 use requests::{
-    BlockExecutorRequest, BlockValidationRequest, ConsensusRequest, ContractRuntimeRequest,
-    DeployBufferRequest, FetcherRequest, LinearChainRequest, MetricsRequest, NetworkInfoRequest,
-    NetworkRequest, StorageRequest,
+    BlockExecutorRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
+    ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, LinearChainRequest,
+    MetricsRequest, NetworkInfoRequest, NetworkRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -941,6 +942,15 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
+    }
+
+    /// Gets the requested chainspec info from the chainspec loader.
+    pub(crate) async fn get_chainspec_info(self) -> ChainspecInfo
+    where
+        REv: From<ChainspecLoaderRequest> + Send,
+    {
+        self.make_request(ChainspecLoaderRequest::GetChainspecInfo, QueueKind::Regular)
+            .await
     }
 
     /// Requests an execution of deploys using Contract Runtime.

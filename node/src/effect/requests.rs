@@ -29,6 +29,7 @@ use casper_types::{Key, URef};
 use super::Responder;
 use crate::{
     components::{
+        chainspec_loader::ChainspecInfo,
         fetcher::FetchResult,
         storage::{
             DeployHashes, DeployHeaderResults, DeployMetadata, DeployResults, StorageType, Value,
@@ -611,4 +612,19 @@ impl<I: Display> Display for LinearChainRequest<I> {
 pub enum ConsensusRequest {
     /// Request for consensus to sign a new linear chain block and possibly start a new era.
     HandleLinearBlock(Box<BlockHeader>, Responder<Signature>),
+}
+
+/// ChainspecLoader componenent requests.
+#[derive(Debug)]
+pub enum ChainspecLoaderRequest {
+    /// Chainspec info request.
+    GetChainspecInfo(Responder<ChainspecInfo>),
+}
+
+impl Display for ChainspecLoaderRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChainspecLoaderRequest::GetChainspecInfo(_) => write!(f, "get chainspec info"),
+        }
+    }
 }
