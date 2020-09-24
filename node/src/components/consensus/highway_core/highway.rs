@@ -396,25 +396,26 @@ pub(crate) mod tests {
         types::Timestamp,
     };
 
+    fn test_validators() -> Validators<u32> {
+        let vid_weights: Vec<(u32, u64)> =
+            vec![(ALICE_SEC, ALICE), (BOB_SEC, BOB), (CAROL_SEC, CAROL)]
+                .into_iter()
+                .map(|(sk, vid)| {
+                    assert_eq!(sk.0, vid.0);
+                    (sk.0, WEIGHTS[vid.0 as usize].0)
+                })
+                .collect();
+        Validators::from_iter(vid_weights)
+    }
+
     #[test]
     fn invalid_signature_error() {
         let mut rng = TestRng::new();
 
         let state: State<TestContext> = State::new_test(WEIGHTS, 0);
-        let validators = {
-            let vid_weights: Vec<(u32, u64)> =
-                vec![(ALICE_SEC, ALICE), (BOB_SEC, BOB), (CAROL_SEC, CAROL)]
-                    .into_iter()
-                    .map(|(sk, vid)| {
-                        assert_eq!(sk.0, vid.0);
-                        (sk.0, WEIGHTS[vid.0 as usize].0)
-                    })
-                    .collect();
-            Validators::from_iter(vid_weights)
-        };
         let mut highway = Highway {
             instance_id: 1u64,
-            validators,
+            validators: test_validators(),
             state,
             active_validator: None,
         };
@@ -456,20 +457,9 @@ pub(crate) mod tests {
         let mut rng = TestRng::new();
 
         let state: State<TestContext> = State::new_test(WEIGHTS, 0);
-        let validators = {
-            let vid_weights: Vec<(u32, u64)> =
-                vec![(ALICE_SEC, ALICE), (BOB_SEC, BOB), (CAROL_SEC, CAROL)]
-                    .into_iter()
-                    .map(|(sk, vid)| {
-                        assert_eq!(sk.0, vid.0);
-                        (sk.0, WEIGHTS[vid.0 as usize].0)
-                    })
-                    .collect();
-            Validators::from_iter(vid_weights)
-        };
         let highway = Highway {
             instance_id: 1u64,
-            validators,
+            validators: test_validators(),
             state,
             active_validator: None,
         };
