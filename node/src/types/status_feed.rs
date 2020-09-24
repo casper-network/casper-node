@@ -13,14 +13,14 @@ pub struct StatusFeed<I> {
     /// The peer nodes which are connected to this node.
     pub peers: HashMap<I, SocketAddr>,
     /// The chainspec info for this node.
-    pub chainspec_info: Option<ChainspecInfo>,
+    pub chainspec_info: ChainspecInfo,
 }
 
 impl<I> StatusFeed<I> {
     pub(crate) fn new(
         last_finalized_block: Option<Block>,
         peers: HashMap<I, SocketAddr>,
-        chainspec_info: Option<ChainspecInfo>,
+        chainspec_info: ChainspecInfo,
     ) -> Self {
         StatusFeed {
             last_finalized_block,
