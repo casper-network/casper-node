@@ -43,6 +43,9 @@ impl<C: Context> Evidence<C> {
                 if vote1.wire_vote.instance_id != vote2.wire_vote.instance_id {
                     return Err(EvidenceError::EquivocationDifferentInstances);
                 }
+                if vote1 == vote2 {
+                    return Err(EvidenceError::EquivocationSameVote);
+                }
                 Ok(())
             }
         }

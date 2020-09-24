@@ -38,6 +38,8 @@ pub(crate) enum EvidenceError {
     EquivocationDifferentSeqNumbers,
     #[error("The instance IDs in the equivocating votes are different.")]
     EquivocationDifferentInstances,
+    #[error("The two votes are equal.")]
+    EquivocationSameVote,
     #[error("The perpetrator is not a validator.")]
     UnknownPerpetrator,
 }
