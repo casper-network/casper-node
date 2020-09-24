@@ -207,9 +207,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             State::SyncingTrustedHash { linear_chain, .. } => linear_chain.push(block_header),
             State::SyncingDescendants {
                 linear_chain_block, ..
-            } => {
-                let _ = linear_chain_block.replace(block_header);
-            }
+            } => *linear_chain_block = Box::new(Some(block_header)),
         };
     }
 

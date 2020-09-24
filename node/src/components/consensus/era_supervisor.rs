@@ -417,7 +417,7 @@ where
         }
         effects.extend(
             self.effect_builder
-                .announce_block_handled(Box::new(block_header))
+                .announce_block_handled(block_header)
                 .ignore(),
         );
         effects
