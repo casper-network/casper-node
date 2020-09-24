@@ -261,8 +261,7 @@ where
                     effect_builder.network_peers(),
                     effect_builder.get_chainspec_info()
                 );
-                let status_feed =
-                    StatusFeed::new(last_finalized_block, peers, chainspec_info);
+                let status_feed = StatusFeed::new(last_finalized_block, peers, chainspec_info);
                 info!("GetStatus --status_feed: {:?}", status_feed);
                 responder.respond(status_feed).await;
             }
