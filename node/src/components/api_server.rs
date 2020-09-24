@@ -263,7 +263,7 @@ where
                 );
                 let status_feed =
                     StatusFeed::new(last_finalized_block, peers, Some(chainspec_info));
-                debug!("GetStatus --status_feed: {:?}", status_feed);
+                info!("GetStatus --status_feed: {:?}", status_feed);
                 responder.respond(status_feed).await;
             }
             .ignore(),
