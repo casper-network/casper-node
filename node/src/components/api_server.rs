@@ -98,10 +98,10 @@ impl TicketCounterHandle {
     fn acquire_ticket(&self) -> bool {
         if self.0.fetch_sub(1, Ordering::SeqCst) <= 0 {
             self.0.fetch_add(1, Ordering::SeqCst);
-            return false;
+            false
+        } else {
+            true
         }
-
-        return true;
     }
 
     /// Increase the amount of available tickets by `amount`, up to `limit`.
@@ -228,7 +228,7 @@ where
 {
     // If we're exceeding the acceptable rate of incoming deploys, return an HTTP 429.
     if !ticket_counter.acquire_ticket() {
-        let error_reply = format!("Deploy rate limit exceeded.",);
+        let error_reply = "Deploy rate limit exceeded.";
         let json = reply::json(&error_reply);
         return Ok(reply::with_status(json, StatusCode::TOO_MANY_REQUESTS));
     }
