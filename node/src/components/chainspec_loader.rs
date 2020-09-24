@@ -45,20 +45,6 @@ pub enum Event {
     CommitGenesisResult(Result<GenesisResult, engine_state::Error>),
 }
 
-/*
-impl From<ChainspecLoaderRequest> for Event {
-    fn from(request: ChainspecLoaderRequest) -> Self {
-        match request {
-            ChainspecLoaderRequest::GetChainspecInfo (
-                responder
-            ) => Event::Request (
-                responder,
-            ),
-        }
-    }
-}
-*/
-
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
