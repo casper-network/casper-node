@@ -335,7 +335,7 @@ impl<C: Context> Highway<C> {
                     .get_by_index(evidence.perpetrator())
                     .map(Validator::id)
                     .ok_or(EvidenceError::UnknownPerpetrator)?;
-                Ok(evidence.validate(v_id)?)
+                Ok(evidence.validate(v_id, &self.instance_id)?)
             }
         }
     }
