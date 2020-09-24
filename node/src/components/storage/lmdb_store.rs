@@ -1,4 +1,4 @@
-use std::{fmt::Debug, marker::PhantomData, path::Path};
+use std::{fmt::Debug, marker::PhantomData, path::Path, thread::sleep, time::Duration};
 
 use lmdb::{
     self, Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags,
@@ -7,6 +7,7 @@ use smallvec::smallvec;
 use tracing::info;
 
 use super::{Error, Multiple, Result, Store, Value};
+use rand::{thread_rng, Rng};
 
 /// LMDB version of a store.
 #[derive(Debug)]
@@ -45,18 +46,33 @@ impl<V: Value> LmdbStore<V> {
         for id in serialized_ids {
             match id {
                 Ok(id) => {
-                    match txn.get(self.db, &id) {
-                        Ok(serialized_value) => {
-                            let value_result = rmp_serde::from_read_ref(serialized_value)
-                                .map(Some)
-                                .map_err(Error::from);
-                            values.push(value_result)
-                        }
-                        Err(lmdb::Error::NotFound) => {
-                            values.push(Ok(None));
-                        }
-                        Err(error) => panic!("should get: {:?}", error),
-                    };
+                    loop {
+                        match txn.get(self.db, &id) {
+                            Ok(serialized_value) => {
+                                let value_result = rmp_serde::from_read_ref(serialized_value)
+                                    .map(Some)
+                                    .map_err(Error::from);
+                                values.push(value_result);
+                                break;
+                            }
+                            Err(lmdb::Error::NotFound) => {
+                                values.push(Ok(None));
+                                break;
+                            }
+                            Err(lmdb::Error::ReadersFull) => {
+                                // HOTFIX only. We do not want to spawn new RNGs or even handle it
+                                // this way in the long term, but this is a quick fix that will keep
+                                // loaded nodes from crashing by delaying IO ops.
+
+                                // We have exceeded the limit of readers. Back-off randomly and
+                                // retry.
+                                let mut rng = thread_rng();
+                                sleep(Duration::from_millis(rng.gen_range(1, 100)));
+                                continue;
+                            }
+                            Err(error) => panic!("should get: {:?}", error),
+                        };
+                    }
                 }
                 Err(error) => values.push(Err(error)),
             }
