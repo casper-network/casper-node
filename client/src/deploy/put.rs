@@ -31,6 +31,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
     }
 
     fn run(matches: &ArgMatches<'_>) {
+        creation_common::show_arg_examples_and_exit_if_required(matches);
+
         let node_address = common::node_address::get(matches);
         let session = creation_common::parse_session_info(matches);
         let params = creation_common::construct_deploy(matches, session);

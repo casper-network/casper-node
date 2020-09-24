@@ -179,6 +179,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
     }
 
     fn run(matches: &ArgMatches<'_>) {
+        creation_common::show_arg_examples_and_exit_if_required(matches);
+
         let node_address = common::node_address::get(matches);
 
         let transfer_args = create_transfer_args(matches)

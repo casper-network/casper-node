@@ -176,6 +176,9 @@ where
 struct RunnerMetrics {
     /// Total number of events processed.
     events: IntCounter,
+
+    /// Handle to the metrics registry, in case we need to unregister.
+    registry: Registry,
 }
 
 impl RunnerMetrics {
@@ -184,7 +187,18 @@ impl RunnerMetrics {
         let events = IntCounter::new("runner_events", "total event count")?;
         registry.register(Box::new(events.clone()))?;
 
-        Ok(RunnerMetrics { events })
+        Ok(RunnerMetrics {
+            events,
+            registry: registry.clone(),
+        })
+    }
+}
+
+impl Drop for RunnerMetrics {
+    fn drop(&mut self) {
+        self.registry
+            .unregister(Box::new(self.events.clone()))
+            .expect("did not expect deregistering metrics to fail")
     }
 }
 
@@ -195,8 +209,22 @@ where
     RNG: Rng + CryptoRng + ?Sized,
 {
     /// Creates a new runner from a given configuration.
+    ///
+    /// Creates a metrics registry that is only going to be used in this runner.
     #[inline]
     pub async fn new(cfg: R::Config, rng: &mut RNG) -> Result<Self, R::Error> {
+        // Instantiate a new registry for metrics for this reactor.
+        let registry = Registry::new();
+        Self::with_metrics(cfg, rng, &registry).await
+    }
+
+    /// Creates a new runner from a given configuration, using existing metrics.
+    #[inline]
+    pub async fn with_metrics(
+        cfg: R::Config,
+        rng: &mut RNG,
+        registry: &Registry,
+    ) -> Result<Self, R::Error> {
         let event_size = mem::size_of::<R::Event>();
 
         // Check if the event is of a reasonable size. This only emits a runtime warning at startup
@@ -208,11 +236,8 @@ where
 
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
 
-        // Instantiate a new registry for metrics for this reactor.
-        let registry = Registry::new();
-
         let event_queue = EventQueueHandle::new(scheduler);
-        let (reactor, initial_effects) = R::new(cfg, &registry, event_queue, rng)?;
+        let (reactor, initial_effects) = R::new(cfg, registry, event_queue, rng)?;
 
         // Run all effects from component instantiation.
         let span = debug_span!("process initial effects");
@@ -226,7 +251,7 @@ where
             scheduler,
             reactor,
             event_count: 0,
-            metrics: RunnerMetrics::new(&registry)?,
+            metrics: RunnerMetrics::new(registry)?,
         })
     }
 
