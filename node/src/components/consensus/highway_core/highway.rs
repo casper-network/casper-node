@@ -379,10 +379,12 @@ pub(crate) mod tests {
     use crate::{
         components::consensus::{
             highway_core::{
+                evidence::{Evidence, EvidenceError},
                 highway::{Highway, SignedWireVote, Vertex, VertexError, VoteError, WireVote},
                 state::{
                     tests::{
-                        TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC, WEIGHTS,
+                        TestContext, TestSecret, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC,
+                        WEIGHTS,
                     },
                     Panorama, State,
                 },
@@ -447,5 +449,110 @@ pub(crate) mod tests {
         assert_eq!(None, highway.missing_dependency(&pvv));
         let vv = highway.validate_vertex(pvv).unwrap();
         assert!(highway.add_valid_vertex(vv, &mut rng).is_empty());
+    }
+
+    #[test]
+    fn invalid_evidence() {
+        let mut rng = TestRng::new();
+
+        let state: State<TestContext> = State::new_test(WEIGHTS, 0);
+        let validators = {
+            let vid_weights: Vec<(u32, u64)> =
+                vec![(ALICE_SEC, ALICE), (BOB_SEC, BOB), (CAROL_SEC, CAROL)]
+                    .into_iter()
+                    .map(|(sk, vid)| {
+                        assert_eq!(sk.0, vid.0);
+                        (sk.0, WEIGHTS[vid.0 as usize].0)
+                    })
+                    .collect();
+            Validators::from_iter(vid_weights)
+        };
+        let highway = Highway {
+            instance_id: 1u64,
+            validators,
+            state,
+            active_validator: None,
+        };
+
+        let mut validate = |wvote0: &WireVote<TestContext>,
+                            signer0: &TestSecret,
+                            wvote1: &WireVote<TestContext>,
+                            signer1: &TestSecret| {
+            let swvote0 = SignedWireVote::new(wvote0.clone(), signer0, &mut rng);
+            let swvote1 = SignedWireVote::new(wvote1.clone(), signer1, &mut rng);
+            let evidence = Evidence::Equivocation(swvote0, swvote1);
+            let vertex = Vertex::Evidence(evidence);
+            highway
+                .pre_validate_vertex(vertex.clone())
+                .map_err(|(v, err)| {
+                    assert_eq!(v, vertex);
+                    err
+                })
+        };
+
+        // Two votes with different values and the same sequence number. Carol equivocated!
+        let mut wvote0 = WireVote {
+            panorama: Panorama::new(WEIGHTS.len()),
+            creator: CAROL,
+            instance_id: highway.instance_id,
+            value: Some(0),
+            seq_number: 0,
+            timestamp: Timestamp::zero(),
+            round_exp: 4,
+        };
+        let wvote1 = WireVote {
+            panorama: Panorama::new(WEIGHTS.len()),
+            creator: CAROL,
+            instance_id: highway.instance_id,
+            value: Some(1),
+            seq_number: 0,
+            timestamp: Timestamp::zero(),
+            round_exp: 4,
+        };
+
+        assert!(validate(&wvote0, &CAROL_SEC, &wvote1, &CAROL_SEC,).is_ok());
+
+        // It's only an equivocation if the two votes are different.
+        assert_eq!(
+            Err(VertexError::Evidence(EvidenceError::EquivocationSameVote)),
+            validate(&wvote0, &CAROL_SEC, &wvote0, &CAROL_SEC)
+        );
+
+        // Both votes have Carol as their creator; Bob's signature would be invalid.
+        assert_eq!(
+            Err(VertexError::Evidence(EvidenceError::Signature)),
+            validate(&wvote0, &CAROL_SEC, &wvote1, &BOB_SEC)
+        );
+        assert_eq!(
+            Err(VertexError::Evidence(EvidenceError::Signature)),
+            validate(&wvote0, &BOB_SEC, &wvote1, &CAROL_SEC)
+        );
+
+        // If the first vote was actually Bob's and the second Carol's, nobody equivocated.
+        wvote0.creator = BOB;
+        assert_eq!(
+            Err(VertexError::Evidence(
+                EvidenceError::EquivocationDifferentCreators
+            )),
+            validate(&wvote0, &BOB_SEC, &wvote1, &CAROL_SEC)
+        );
+        wvote0.creator = CAROL;
+
+        // If the votes have different sequence numbers they might belong to the same fork.
+        wvote0.seq_number = 1;
+        assert_eq!(
+            Err(VertexError::Evidence(
+                EvidenceError::EquivocationDifferentSeqNumbers
+            )),
+            validate(&wvote0, &CAROL_SEC, &wvote1, &CAROL_SEC)
+        );
+        wvote0.seq_number = 0;
+
+        // If the votes are from a different network or era we don't accept the evidence.
+        wvote0.instance_id = 2;
+        assert_eq!(
+            Err(VertexError::Evidence(EvidenceError::EquivocationInstanceId)),
+            validate(&wvote0, &CAROL_SEC, &wvote1, &CAROL_SEC)
+        );
     }
 }
