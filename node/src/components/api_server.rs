@@ -20,7 +20,18 @@
 mod config;
 mod event;
 
-use std::{borrow::Cow, error::Error as StdError, fmt::Debug, net::SocketAddr, str};
+use std::{
+    borrow::Cow,
+    error::Error as StdError,
+    fmt::Debug,
+    net::SocketAddr,
+    str,
+    sync::{
+        atomic::{AtomicI64, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 use bytes::Bytes;
 use futures::{join, FutureExt};
@@ -73,15 +84,87 @@ impl ApiServer {
     }
 }
 
+/// A cloneable handle to a ticket counter.
+#[derive(Clone, Debug)]
+struct TicketCounterHandle(Arc<AtomicI64>);
+
+impl TicketCounterHandle {
+    /// Creates a new ticket counter and returns a handle to it.
+    fn create_counter() -> Self {
+        TicketCounterHandle(Arc::new(AtomicI64::new(0)))
+    }
+
+    /// Tries to acquire a ticket, returning true on success.
+    fn acquire_ticket(&self) -> bool {
+        if self.0.fetch_sub(1, Ordering::SeqCst) <= 0 {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            return false;
+        }
+
+        return true;
+    }
+
+    /// Increase the amount of available tickets by `amount`, up to `limit`.
+    fn add_tickets(&self, amount: i64, limit: i64) {
+        // Add the desired number of tickets.
+        let prev = self.0.fetch_add(amount, Ordering::SeqCst);
+
+        // If we overshoot, correct, possibly going negative.
+        let overshoot = (prev + amount) - limit;
+
+        if overshoot > 0 {
+            self.0.fetch_sub(overshoot, Ordering::SeqCst);
+        }
+    }
+}
+
+/// A background task that increases a ticket counter periodically.
+#[derive(Debug)]
+struct TicketServer {
+    counter: TicketCounterHandle,
+    rate_limit: i64,
+    burst_limit: i64,
+}
+
+impl TicketServer {
+    /// Creates a new ticket server from the given configuration.
+    fn new(counter: TicketCounterHandle, config: &Config) -> Self {
+        TicketServer {
+            counter,
+            rate_limit: config.accepted_deploy_rate_limit as i64,
+            burst_limit: config.accepted_deploy_burst_limit as i64,
+        }
+    }
+
+    /// Runs the ticket server task.
+    async fn run(self) {
+        // We opt to keep it running indefinitely like the warp server.
+        loop {
+            // Wait for a second, then add more tickets.
+            tokio::time::delay_for(Duration::from_secs(1)).await;
+
+            self.counter.add_tickets(self.rate_limit, self.burst_limit);
+        }
+    }
+}
+
 /// Run the HTTP server.
 async fn run_server<REv>(config: Config, effect_builder: EffectBuilder<REv>)
 where
     REv: From<Event> + From<ApiRequest> + From<StorageRequest<Storage>> + Send,
 {
+    let ticket_counter = TicketCounterHandle::create_counter();
+
+    // Spawn a ticket increasing task.
+    let ticket_server = TicketServer::new(ticket_counter.clone(), &config);
+    tokio::spawn(ticket_server.run());
+
     let post_deploy = warp::post()
         .and(warp::path(DEPLOYS_API_PATH))
         .and(body::bytes())
-        .and_then(move |encoded_deploy| parse_post_deploy_request(effect_builder, encoded_deploy));
+        .and_then(move |encoded_deploy| {
+            parse_post_deploy_request(effect_builder, encoded_deploy, ticket_counter.clone())
+        });
 
     let get_deploy = warp::get()
         .and(warp::path(DEPLOYS_API_PATH))
@@ -117,7 +200,7 @@ where
 
     debug!(%server_addr, "starting HTTP server");
     loop {
-        match warp::serve(filter).try_bind_ephemeral(server_addr) {
+        match warp::serve(filter.clone()).try_bind_ephemeral(server_addr) {
             Ok((addr, server_fut)) => {
                 info!(%addr, "started HTTP server");
                 return server_fut.await;
@@ -138,10 +221,18 @@ where
 async fn parse_post_deploy_request<REv>(
     effect_builder: EffectBuilder<REv>,
     encoded_deploy: Bytes,
+    ticket_counter: TicketCounterHandle,
 ) -> Result<WithStatus<Json>, Rejection>
 where
     REv: From<Event> + From<ApiRequest> + Send,
 {
+    // If we're exceeding the acceptable rate of incoming deploys, return an HTTP 429.
+    if !ticket_counter.acquire_ticket() {
+        let error_reply = format!("Deploy rate limit exceeded.",);
+        let json = reply::json(&error_reply);
+        return Ok(reply::with_status(json, StatusCode::TOO_MANY_REQUESTS));
+    }
+
     let deploy = match str::from_utf8(encoded_deploy.as_ref())
         .map_err(|error| error.to_string())
         .and_then(|encoded_deploy_str| {

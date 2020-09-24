@@ -75,6 +75,12 @@ bind_interface = '127.0.0.1'
 # Port to bind to.  Use 0 for a random port.
 bind_port = 7777
 
+# Maximum number of deploys to accept on average.
+accepted_deploy_rate_limit = 50
+
+# Allow exceeding deploy rate for short bursts following periods of inactivity by this many deploys.
+accepted_deploy_burst_limit = 1000
+
 
 # ===============================================
 # Configuration options for the storage component
