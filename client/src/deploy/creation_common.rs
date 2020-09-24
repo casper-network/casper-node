@@ -1038,7 +1038,6 @@ pub(crate) mod session_hash {
             .help(ARG_HELP)
             .required(false)
             .requires(session_entry_point::ARG_NAME)
-            .conflicts_with_all(PAYMENT_ARG_NAMES)
             .display_order(DisplayOrder::SessionHash as usize)
     }
 
@@ -1059,7 +1058,6 @@ pub(crate) mod session_name {
             .help(ARG_HELP)
             .required(false)
             .requires(session_entry_point::ARG_NAME)
-            .conflicts_with_all(PAYMENT_ARG_NAMES)
             .display_order(DisplayOrder::SessionName as usize)
     }
     pub fn get(matches: &ArgMatches) -> Option<String> {
@@ -1080,7 +1078,6 @@ pub(crate) mod session_package_hash {
             .help(ARG_HELP)
             .required(false)
             .requires(session_entry_point::ARG_NAME)
-            .conflicts_with_all(PAYMENT_ARG_NAMES)
             .display_order(DisplayOrder::SessionPackageHash as usize)
     }
 
@@ -1102,7 +1099,6 @@ pub(crate) mod session_package_name {
             .help(ARG_HELP)
             .required(false)
             .requires(session_entry_point::ARG_NAME)
-            .conflicts_with_all(PAYMENT_ARG_NAMES)
             .display_order(DisplayOrder::SessionPackageName as usize)
     }
 
@@ -1123,7 +1119,6 @@ pub(crate) mod session_entry_point {
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
             .required(false)
-            .conflicts_with_all(PAYMENT_ARG_NAMES)
             .display_order(DisplayOrder::SessionEntryPoint as usize)
     }
 
@@ -1144,7 +1139,6 @@ pub(crate) mod session_version {
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
             .required(false)
-            .conflicts_with_all(PAYMENT_ARG_NAMES)
             .display_order(DisplayOrder::SessionVersion as usize)
     }
 
@@ -1155,14 +1149,6 @@ pub(crate) mod session_version {
             .flatten()
     }
 }
-
-const SESSION_ARG_NAMES: &[&'static str] = &[
-    session_hash::ARG_NAME,
-    session_name::ARG_NAME,
-    session_entry_point::ARG_NAME,
-    session_package_hash::ARG_NAME,
-    session_package_name::ARG_NAME,
-];
 
 pub(crate) mod payment_hash {
     use super::*;
@@ -1177,7 +1163,6 @@ pub(crate) mod payment_hash {
             .help(ARG_HELP)
             .required(false)
             .requires(payment_entry_point::ARG_NAME)
-            .conflicts_with_all(SESSION_ARG_NAMES)
             .display_order(DisplayOrder::PaymentHash as usize)
     }
 
@@ -1200,7 +1185,6 @@ pub(crate) mod payment_name {
             .help(ARG_HELP)
             .required(false)
             .requires(payment_entry_point::ARG_NAME)
-            .conflicts_with_all(SESSION_ARG_NAMES)
             .display_order(DisplayOrder::PaymentName as usize)
     }
 
@@ -1222,7 +1206,6 @@ pub(crate) mod payment_package_hash {
             .help(ARG_HELP)
             .required(false)
             .requires(payment_entry_point::ARG_NAME)
-            .conflicts_with_all(SESSION_ARG_NAMES)
             .display_order(DisplayOrder::PaymentPackageHash as usize)
     }
 
@@ -1244,7 +1227,6 @@ pub(crate) mod payment_package_name {
             .help(ARG_HELP)
             .required(false)
             .requires(payment_entry_point::ARG_NAME)
-            .conflicts_with_all(SESSION_ARG_NAMES)
             .display_order(DisplayOrder::PaymentPackageName as usize)
     }
 
@@ -1265,7 +1247,6 @@ pub(crate) mod payment_entry_point {
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
             .required(false)
-            .conflicts_with_all(SESSION_ARG_NAMES)
             .display_order(DisplayOrder::PaymentEntryPoint as usize)
     }
 
@@ -1286,7 +1267,6 @@ pub(crate) mod payment_version {
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
             .required(false)
-            .conflicts_with_all(SESSION_ARG_NAMES)
             .display_order(DisplayOrder::PaymentVersion as usize)
     }
 
@@ -1297,11 +1277,3 @@ pub(crate) mod payment_version {
             .flatten()
     }
 }
-
-const PAYMENT_ARG_NAMES: &[&'static str] = &[
-    payment_hash::ARG_NAME,
-    payment_name::ARG_NAME,
-    payment_entry_point::ARG_NAME,
-    payment_package_hash::ARG_NAME,
-    payment_package_name::ARG_NAME,
-];
