@@ -72,19 +72,19 @@ enum State {
         highest_block_seen: u64,
         /// Chain of downloaded blocks from the linear chain.
         /// We will `pop()` when executing blocks.
-        linear_chain: Vec<BlockHeader>,
+        linear_chain: Box<Vec<BlockHeader>>,
         /// Block being downloaded.
         /// Block we received from a node and are currently executing.
         /// Will be used to verify whether results we got from the execution are the same.
-        current_block: Option<BlockHeader>,
+        current_block: Box<Option<BlockHeader>>,
     },
     /// Synchronizing the descendants of the trusted hash.
     SyncingDescendants {
         trusted_hash: BlockHash,
         /// Linear chain block being downloaded.
-        linear_chain_block: Option<BlockHeader>,
+        linear_chain_block: Box<Option<BlockHeader>>,
         /// Block we received from a node and are currently executing.
-        current_block: Option<BlockHeader>,
+        current_block: Box<Option<BlockHeader>>,
         /// During synchronization we might see new eras being created.
         /// Track the highest height and wait until it's handled by consensus.
         highest_block_seen: u64,
@@ -119,16 +119,16 @@ impl State {
         State::SyncingTrustedHash {
             trusted_hash,
             highest_block_seen: 0,
-            linear_chain: Vec::new(),
-            current_block: None,
+            linear_chain: Box::new(Vec::new()),
+            current_block: Box::new(None),
         }
     }
 
     fn sync_descendants(trusted_hash: BlockHash) -> Self {
         State::SyncingDescendants {
             trusted_hash,
-            linear_chain_block: None,
-            current_block: None,
+            linear_chain_block: Box::new(None),
+            current_block: Box::new(None),
             highest_block_seen: 0,
             is_done: false,
         }
