@@ -509,11 +509,6 @@ where
                 terminal,
                 proposer,
             }) => {
-                // Announce the finalized proto block.
-                let mut effects = self
-                    .effect_builder
-                    .announce_finalized_proto_block(proto_block.clone())
-                    .ignore();
                 // Create instructions for slashing equivocators.
                 let mut system_transactions: Vec<_> = new_equivocators
                     .into_iter()
@@ -522,7 +517,7 @@ where
                 if !rewards.is_empty() {
                     system_transactions.push(SystemTransaction::Rewards(rewards));
                 };
-                let fb = FinalizedBlock::new(
+                let finalized_block = FinalizedBlock::new(
                     proto_block,
                     timestamp,
                     system_transactions,
@@ -531,8 +526,13 @@ where
                     self.era_supervisor.active_eras[&era_id].start_height + height,
                     proposer,
                 );
+                // Announce the finalized proto block.
+                let mut effects = self
+                    .effect_builder
+                    .announce_finalized_block(finalized_block.clone())
+                    .ignore();
                 // Request execution of the finalized block.
-                effects.extend(self.effect_builder.execute_block(fb).ignore());
+                effects.extend(self.effect_builder.execute_block(finalized_block).ignore());
                 effects
             }
             ConsensusProtocolResult::ValidateConsensusValue(sender, proto_block) => self

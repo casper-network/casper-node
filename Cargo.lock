@@ -499,6 +499,7 @@ dependencies = [
  "criterion",
  "csv",
  "hex",
+ "hex-buffer-serde",
  "hex_fmt",
  "hostname",
  "itertools 0.8.2",
@@ -517,7 +518,6 @@ dependencies = [
  "rand_chacha 0.2.2",
  "rmp-serde",
  "serde",
- "serde_bytes",
  "serde_json",
  "tempfile",
  "thiserror",
@@ -553,6 +553,7 @@ dependencies = [
  "futures 0.3.5",
  "getrandom",
  "hex",
+ "hex-buffer-serde",
  "hex_fmt",
  "hostname",
  "http",
@@ -580,6 +581,7 @@ dependencies = [
  "rand_core 0.5.1",
  "rand_pcg 0.2.1",
  "regex",
+ "reqwest",
  "rmp-serde",
  "sd-notify",
  "semver 0.10.0",
@@ -608,6 +610,7 @@ dependencies = [
  "warp",
  "warp-json-rpc",
  "wasmi",
+ "wheelbuf",
 ]
 
 [[package]]
@@ -628,6 +631,7 @@ dependencies = [
  "rmp-serde",
  "serde",
  "serde-big-array",
+ "serde_json",
  "uint",
  "version-sync",
 ]
@@ -1854,6 +1858,16 @@ version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "644f9158b2f133fd50f5fb3242878846d9eb792e445c893805ff0e3824006e35"
 dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "hex-buffer-serde"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eee5bb4371e826050b4082c65740da707cb759bf08650051f365d6315901f82b"
+dependencies = [
+ "hex",
  "serde",
 ]
 
@@ -5265,6 +5279,12 @@ dependencies = [
  "memory_units 0.4.0",
  "winapi 0.3.9",
 ]
+
+[[package]]
+name = "wheelbuf"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62945bc99a6a121cb2759c7bfa7b779ddf0e69b68bb35a9b23ab72276cfdcd3c"
 
 [[package]]
 name = "winapi"

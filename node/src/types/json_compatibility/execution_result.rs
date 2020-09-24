@@ -6,6 +6,8 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+#[cfg(test)]
+use rand::{seq::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::{
@@ -17,12 +19,54 @@ use casper_execution_engine::{
 };
 use casper_types::{bytesrepr::ToBytes, U128, U256, U512};
 
+#[cfg(test)]
+use crate::testing::TestRng;
+
 /// The result of executing a single deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub struct ExecutionResult {
     effect: ExecutionEffect,
     cost: U512,
     error_message: Option<String>,
+}
+
+impl ExecutionResult {
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let mut effect = ExecutionEffect::default();
+        let op_count = rng.gen_range(0, 6);
+        for _ in 0..op_count {
+            let op = [
+                Operation::Read,
+                Operation::Add,
+                Operation::NoOp,
+                Operation::Write,
+            ]
+            .choose(rng)
+            .unwrap();
+            effect.operations.insert(rng.gen::<u64>().to_string(), *op);
+        }
+
+        let transform_count = rng.gen_range(0, 6);
+        for _ in 0..transform_count {
+            effect
+                .transforms
+                .insert(rng.gen::<u64>().to_string(), Transform::random(rng));
+        }
+
+        let error_message = if rng.gen() {
+            Some(format!("Error message {}", rng.gen::<u64>()))
+        } else {
+            None
+        };
+
+        ExecutionResult {
+            effect,
+            cost: rng.gen::<u64>().into(),
+            error_message,
+        }
+    }
 }
 
 impl From<&EngineExecutionResult> for ExecutionResult {
@@ -47,7 +91,7 @@ impl From<&EngineExecutionResult> for ExecutionResult {
 }
 
 /// The effect of executing a single deploy.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
 struct ExecutionEffect {
     /// The resulting operations.  The map's key is the formatted string of the EE `Key`.
     operations: HashMap<String, Operation>,
@@ -72,7 +116,7 @@ impl From<&EngineExecutionEffect> for ExecutionEffect {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Debug)]
 enum Operation {
     Read,
     Write,
@@ -106,6 +150,35 @@ enum Transform {
     AddUInt512(U512),
     AddKeys(BTreeMap<String, String>),
     Failure(String),
+}
+
+impl Transform {
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        match rng.gen_range(0, 13) {
+            0 => Transform::Identity,
+            1 => Transform::WriteCLValue(rng.gen::<u64>().to_string()),
+            2 => Transform::WriteAccount,
+            3 => Transform::WriteContractWasm,
+            4 => Transform::WriteContract,
+            5 => Transform::WriteContractPackage,
+            6 => Transform::AddInt32(rng.gen()),
+            7 => Transform::AddUInt64(rng.gen()),
+            8 => Transform::AddUInt128(rng.gen::<u64>().into()),
+            9 => Transform::AddUInt256(rng.gen::<u64>().into()),
+            10 => Transform::AddUInt512(rng.gen::<u64>().into()),
+            11 => {
+                let mut map = BTreeMap::new();
+                for _ in 0..rng.gen_range(1, 6) {
+                    let _ = map.insert(rng.gen::<u64>().to_string(), rng.gen::<u64>().to_string());
+                }
+                Transform::AddKeys(map)
+            }
+            12 => Transform::Failure(rng.gen::<u64>().to_string()),
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl From<&EngineTransform> for Transform {
