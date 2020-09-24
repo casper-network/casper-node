@@ -1077,7 +1077,7 @@ pub(crate) mod session_package_hash {
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
             .required(false)
-            .requires_all(&[session_entry_point::ARG_NAME, session_version::ARG_NAME])
+            .requires(session_entry_point::ARG_NAME)
             .display_order(DisplayOrder::SessionPackageHash as usize)
     }
 
@@ -1098,7 +1098,7 @@ pub(crate) mod session_package_name {
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
             .required(false)
-            .requires_all(&[session_entry_point::ARG_NAME, session_version::ARG_NAME])
+            .requires(session_entry_point::ARG_NAME)
             .display_order(DisplayOrder::SessionPackageName as usize)
     }
 
@@ -1205,7 +1205,7 @@ pub(crate) mod payment_package_hash {
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
             .required(false)
-            .requires_all(&[payment_entry_point::ARG_NAME, payment_version::ARG_NAME])
+            .requires(payment_entry_point::ARG_NAME)
             .display_order(DisplayOrder::PaymentPackageHash as usize)
     }
 
@@ -1226,7 +1226,7 @@ pub(crate) mod payment_package_name {
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
             .required(false)
-            .requires_all(&[payment_entry_point::ARG_NAME, payment_version::ARG_NAME])
+            .requires(payment_entry_point::ARG_NAME)
             .display_order(DisplayOrder::PaymentPackageName as usize)
     }
 
