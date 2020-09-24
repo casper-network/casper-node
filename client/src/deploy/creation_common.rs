@@ -874,7 +874,7 @@ pub(super) fn apply_common_session_options<'a, 'b>(subcommand: App<'a, 'b>) -> A
         .arg(session_version::arg())
 }
 
-pub(crate) fn apply_common_purchase_options(
+pub(crate) fn apply_common_payment_options(
     subcommand: App<'static, 'static>,
 ) -> App<'static, 'static> {
     subcommand
