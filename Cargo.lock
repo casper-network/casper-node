@@ -581,6 +581,7 @@ dependencies = [
  "rand_pcg 0.2.1",
  "regex",
  "rmp-serde",
+ "sd-notify",
  "semver 0.10.0",
  "serde",
  "serde-big-array",
@@ -3691,6 +3692,12 @@ name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
+
+[[package]]
+name = "sd-notify"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aef40838bbb143707f8309b1e92e6ba3225287592968ba6f6e3b6de4a9816486"
 
 [[package]]
 name = "security-framework"

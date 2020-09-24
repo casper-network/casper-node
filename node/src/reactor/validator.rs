@@ -304,7 +304,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         let metrics = Metrics::new(registry.clone());
 
         let effect_builder = EffectBuilder::new(event_queue);
-        let (net, net_effects) = SmallNetwork::new(event_queue, config.network)?;
+        let (net, net_effects) = SmallNetwork::new(event_queue, config.network, true)?;
 
         let address_gossiper = Gossiper::new_for_complete_items(config.gossip);
 
