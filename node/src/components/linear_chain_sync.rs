@@ -3,15 +3,16 @@
 //! Synchronizes the linear chain when node joins the network.
 //!
 //! Steps are:
-//! 1. Fetch blocks up to initial, trusted hash.
-//! 2. Fetch deploys of the next block.
-//! 3. Execute the next block (validate correctness – TBD).
+//! 1. Fetch blocks up to initial, trusted hash (blocks are downloaded starting from trusted hash up
+//! until Genesis).
+//! 2. Fetch deploys of the lowest height block.
+//! 3. Execute that block.
 //! 4. Repeat steps 2-3 until trusted hash is reached.
 //! 5. Transition to `SyncingDescendants` state.
-//! 6. Fetch child block of trusted hash (it's the block with the highest `block_height`).
+//! 6. Fetch child block of highest block.
 //! 7. Fetch deploys of that block.
-//! 8. Execute the block (validate correctness – TBD).
-//! 9. Repeat steps 4-7 as long as there's a child in the linear chain.
+//! 8. Execute that block.
+//! 9. Repeat steps 6-8 as long as there's a child in the linear chain.
 //!
 //! The order of "download block – download deploys – execute" block steps differ,
 //! in order to increase the chances of catching up with the linear chain quicker.
@@ -35,7 +36,7 @@ use effect::requests::{
 use event::BlockByHeightResult;
 pub use event::Event;
 use rand::{seq::SliceRandom, CryptoRng, Rng};
-use std::{collections::VecDeque, fmt::Display, mem};
+use std::{fmt::Display, mem};
 use tracing::{error, info, trace, warn};
 
 pub trait ReactorEventT<I>:
@@ -60,39 +61,37 @@ impl<I, REv> ReactorEventT<I> for REv where
 
 #[derive(Debug)]
 enum State {
-    // No syncing of the linear chain configured.
+    /// No syncing of the linear chain configured.
     None,
-    // Synchronizing the linear chain up until trusted hash.
+    /// Synchronizing the linear chain up until trusted hash.
     SyncingTrustedHash {
-        // Linear chain block to start sync from.
+        /// Linear chain block to start sync from.
         trusted_hash: BlockHash,
-        // During synchronization we might see new eras being created.
-        // Track the highest height and wait until it's handled by consensus.
+        /// During synchronization we might see new eras being created.
+        /// Track the highest height and wait until it's handled by consensus.
         highest_block_seen: u64,
-        // Chain of downloaded blocks from the linear chain.
-        // We will `pop()` when executing blocks.
+        /// Chain of downloaded blocks from the linear chain.
+        /// We will `pop()` when executing blocks.
         linear_chain: Vec<BlockHeader>,
-        // Block being downloaded.
-        // Block we received from a node and are currently executing.
-        // Will be used to verify whether results we got from the execution are the same.
+        /// Block being downloaded.
+        /// Block we received from a node and are currently executing.
+        /// Will be used to verify whether results we got from the execution are the same.
         current_block: Option<BlockHeader>,
     },
-    // Synchronizing the descendants of the trusted hash.
+    /// Synchronizing the descendants of the trusted hash.
     SyncingDescendants {
         trusted_hash: BlockHash,
-        // Chain of downloaded blocks from the linear chain.
-        linear_chain: VecDeque<BlockHeader>,
-        // Block being downloaded.
-        // Block we received from a node and are currently executing.
-        // Will be used to verify whether results we got from the execution are the same.
+        /// Linear chain block being downloaded.
+        linear_chain_block: Option<BlockHeader>,
+        /// Block we received from a node and are currently executing.
         current_block: Option<BlockHeader>,
-        // During synchronization we might see new eras being created.
-        // Track the highest height and wait until it's handled by consensus.
+        /// During synchronization we might see new eras being created.
+        /// Track the highest height and wait until it's handled by consensus.
         highest_block_seen: u64,
-        // Indicates whether we have downloaded whole available linear chain.
+        /// Indicates whether we have downloaded whole available linear chain.
         is_done: bool,
     },
-    // Synchronizing done.
+    /// Synchronizing done.
     Done,
 }
 
@@ -128,7 +127,7 @@ impl State {
     fn sync_descendants(trusted_hash: BlockHash) -> Self {
         State::SyncingDescendants {
             trusted_hash,
-            linear_chain: VecDeque::new(),
+            linear_chain_block: None,
             current_block: None,
             highest_block_seen: 0,
             is_done: false,
@@ -206,7 +205,11 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         match &mut self.state {
             State::None | State::Done => {}
             State::SyncingTrustedHash { linear_chain, .. } => linear_chain.push(block_header),
-            State::SyncingDescendants { linear_chain, .. } => linear_chain.push_back(block_header),
+            State::SyncingDescendants {
+                linear_chain_block, ..
+            } => {
+                let _ = linear_chain_block.replace(block_header);
+            }
         };
     }
 
@@ -282,11 +285,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 ref current_block,
                 ..
             } => {
-                if let Some(expected) = current_block.as_ref() {
-                    assert_eq!(
+                match current_block.as_ref() {
+                    Some(expected) => assert_eq!(
                         expected, &block_header,
                         "Block execution result doesn't match received block."
-                    )
+                    ),
+                    None => panic!("Unexpected block execution results."),
                 }
                 if block_height == highest_block_seen {
                     info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
@@ -302,11 +306,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             State::SyncingDescendants {
                 ref current_block, ..
             } => {
-                if let Some(expected) = current_block.as_ref() {
-                    assert_eq!(
+                match current_block.as_ref() {
+                    Some(expected) => assert_eq!(
                         expected, &block_header,
                         "Block execution result doesn't match received block."
-                    )
+                    ),
+                    None => panic!("Unexpected block execution results."),
                 }
                 self.state = curr_state;
                 self.fetch_next_block(effect_builder, rng, &block_header)
@@ -343,10 +348,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 }
             },
             State::SyncingDescendants {
-                ref mut linear_chain,
+                ref mut linear_chain_block,
                 ref mut current_block,
                 ..
-            } => match linear_chain.pop_front() {
+            } => match linear_chain_block.take() {
                 None => None,
                 Some(block) => {
                     // Update `current_block` so that we can verify whether result of execution
@@ -357,7 +362,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             },
         };
 
-        next_block.map_or(Effects::new(), |block| {
+        next_block.map_or_else(Effects::new, |block| {
             fetch_block_deploys(effect_builder, peer, block)
         })
     }
@@ -384,7 +389,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 let next_height = block_header.height() + 1;
                 fetch_block_at_height(effect_builder, peer, next_height)
             }
-            _ => panic!("Tried fetching block when in {:?} state", self.state),
+            State::Done | State::None => {
+                panic!("Tried fetching block when in {:?} state", self.state)
+            }
         }
     }
 }
