@@ -72,12 +72,20 @@ enum State {
         // Chain of downloaded blocks from the linear chain.
         // We will `pop()` when executing blocks.
         linear_chain: Vec<BlockHeader>,
+        // Block being downloaded.
+        // Block we received from a node and are currently executing.
+        // Will be used to verify whether results we got from the execution are the same.
+        current_block: Option<BlockHeader>,
     },
     // Synchronizing the descendants of the trusted hash.
     SyncingDescendants {
         trusted_hash: BlockHash,
         // Chain of downloaded blocks from the linear chain.
         linear_chain: VecDeque<BlockHeader>,
+        // Block being downloaded.
+        // Block we received from a node and are currently executing.
+        // Will be used to verify whether results we got from the execution are the same.
+        current_block: Option<BlockHeader>,
         // During synchronization we might see new eras being created.
         // Track the highest height and wait until it's handled by consensus.
         highest_block_seen: u64,
@@ -113,6 +121,7 @@ impl State {
             trusted_hash,
             highest_block_seen: 0,
             linear_chain: Vec::new(),
+            current_block: None,
         }
     }
 
@@ -120,6 +129,7 @@ impl State {
         State::SyncingDescendants {
             trusted_hash,
             linear_chain: VecDeque::new(),
+            current_block: None,
             highest_block_seen: 0,
             is_done: false,
         }
@@ -246,7 +256,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     }
 
     /// Handles an event indicating that a linear chain block has been executed and handled by
-    /// consensus component.
+    /// consensus component. This is a signal that we can safely continue with the next blocks,
+    /// without worrying about timing and/or ordering issues.
     /// Returns effects that are created as a response to that event.
     fn block_handled<R, REv>(
         &mut self,
@@ -259,6 +270,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         R: Rng + CryptoRng + ?Sized,
         REv: ReactorEventT<I>,
     {
+        // Reset peers before creating new requests.
         self.reset_peers(rng);
         let block_height = block_header.height();
         let curr_state = mem::replace(&mut self.state, State::None);
@@ -267,8 +279,15 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             State::SyncingTrustedHash {
                 highest_block_seen,
                 trusted_hash,
+                ref current_block,
                 ..
             } => {
+                current_block.as_ref().map(|expected| {
+                    assert_eq!(
+                        expected, &block_header,
+                        "Block execution result doesn't match received block."
+                    )
+                });
                 if block_height == highest_block_seen {
                     info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
                     let peer = self.random_peer_unsafe();
@@ -280,7 +299,15 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     self.fetch_next_block_deploys(effect_builder)
                 }
             }
-            State::SyncingDescendants { .. } => {
+            State::SyncingDescendants {
+                ref current_block, ..
+            } => {
+                current_block.as_ref().map(|expected| {
+                    assert_eq!(
+                        expected, &block_header,
+                        "Block execution result doesn't match received block."
+                    )
+                });
                 self.state = curr_state;
                 self.fetch_next_block(effect_builder, rng, &block_header)
             }
@@ -304,12 +331,30 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             }
             State::SyncingTrustedHash {
                 ref mut linear_chain,
+                ref mut current_block,
                 ..
-            } => linear_chain.pop(),
+            } => match linear_chain.pop() {
+                None => None,
+                Some(block) => {
+                    // Update `current_block` so that we can verify whether result of execution
+                    // matches the expected value.
+                    current_block.replace(block.clone());
+                    Some(block)
+                }
+            },
             State::SyncingDescendants {
                 ref mut linear_chain,
+                ref mut current_block,
                 ..
-            } => linear_chain.pop_front(),
+            } => match linear_chain.pop_front() {
+                None => None,
+                Some(block) => {
+                    // Update `current_block` so that we can verify whether result of execution
+                    // matches the expected value.
+                    current_block.replace(block.clone());
+                    Some(block)
+                }
+            },
         };
 
         next_block.map_or(Effects::new(), |block| {
