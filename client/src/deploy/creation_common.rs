@@ -48,13 +48,13 @@ pub(super) enum DisplayOrder {
     SessionCode,
     SessionArgSimple,
     SessionArgsComplex,
-    StandardPayment,
     SessionHash,
     SessionName,
     SessionPackageHash,
     SessionPackageName,
     SessionEntryPoint,
     SessionVersion,
+    StandardPayment,
     PaymentCode,
     PaymentArgSimple,
     PaymentArgsComplex,
@@ -784,7 +784,7 @@ pub(super) fn parse_payment_info(matches: &ArgMatches) -> ExecutableDeployItem {
 
 fn require_session_entry_point(matches: &ArgMatches) -> String {
     session_entry_point::get(matches)
-        .unwrap_or_else(|| panic!("{} must be present", payment_entry_point::ARG_NAME,))
+        .unwrap_or_else(|| panic!("{} must be present", session_entry_point::ARG_NAME,))
 }
 
 fn require_payment_entry_point(matches: &ArgMatches) -> String {
@@ -1048,9 +1048,11 @@ pub(crate) mod session_hash {
 
 pub(crate) mod session_name {
     use super::*;
+
     pub const ARG_NAME: &str = "session-name";
     const ARG_VALUE_NAME: &str = "NAME";
     const ARG_HELP: &str = "Name of the stored contract (associated with the executing account) to be called as the session";
+
     pub fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
@@ -1060,6 +1062,7 @@ pub(crate) mod session_name {
             .requires(session_entry_point::ARG_NAME)
             .display_order(DisplayOrder::SessionName as usize)
     }
+
     pub fn get(matches: &ArgMatches) -> Option<String> {
         matches.value_of(ARG_NAME).map(str::to_string)
     }
@@ -1067,6 +1070,7 @@ pub(crate) mod session_name {
 
 pub(crate) mod session_package_hash {
     use super::*;
+
     pub const ARG_NAME: &str = "session-package-hash";
     const ARG_VALUE_NAME: &str = common::ARG_HEX_STRING;
     const ARG_HELP: &str = "Hex-encoded hash of the stored package to be called as the session";
@@ -1088,6 +1092,7 @@ pub(crate) mod session_package_hash {
 
 pub(crate) mod session_package_name {
     use super::*;
+
     pub const ARG_NAME: &str = "session-package-name";
     const ARG_VALUE_NAME: &str = "NAME";
     const ARG_HELP: &str = "Name of the stored package to be called as the session";
@@ -1109,6 +1114,7 @@ pub(crate) mod session_package_name {
 
 pub(crate) mod session_entry_point {
     use super::*;
+
     pub const ARG_NAME: &str = "session-entry-point";
     const ARG_VALUE_NAME: &str = "NAME";
     const ARG_HELP: &str = "Name of the method that will be used when calling the session contract";
@@ -1129,8 +1135,9 @@ pub(crate) mod session_entry_point {
 
 pub(crate) mod session_version {
     use super::*;
+
     pub const ARG_NAME: &str = "session-version";
-    const ARG_VALUE_NAME: &str = "NAME";
+    const ARG_VALUE_NAME: &str = "INTEGER";
     const ARG_HELP: &str = "Version of the called session contract. Latest will be used by default";
 
     pub fn arg() -> Arg<'static, 'static> {
@@ -1152,6 +1159,7 @@ pub(crate) mod session_version {
 
 pub(crate) mod payment_hash {
     use super::*;
+
     pub const ARG_NAME: &str = "payment-hash";
     const ARG_VALUE_NAME: &str = common::ARG_HEX_STRING;
     const ARG_HELP: &str = "Hex-encoded hash of the stored contract to be called as the payment";
@@ -1173,6 +1181,7 @@ pub(crate) mod payment_hash {
 
 pub(crate) mod payment_name {
     use super::*;
+
     pub const ARG_NAME: &str = "payment-name";
     const ARG_VALUE_NAME: &str = "NAME";
     const ARG_HELP: &str = "Name of the stored contract (associated with the executing account) \
@@ -1195,6 +1204,7 @@ pub(crate) mod payment_name {
 
 pub(crate) mod payment_package_hash {
     use super::*;
+
     pub const ARG_NAME: &str = "payment-package-hash";
     const ARG_VALUE_NAME: &str = common::ARG_HEX_STRING;
     const ARG_HELP: &str = "Hex-encoded hash of the stored package to be called as the payment";
@@ -1216,6 +1226,7 @@ pub(crate) mod payment_package_hash {
 
 pub(crate) mod payment_package_name {
     use super::*;
+
     pub const ARG_NAME: &str = "payment-package-name";
     const ARG_VALUE_NAME: &str = "NAME";
     const ARG_HELP: &str = "Name of the stored package to be called as the payment";
@@ -1237,6 +1248,7 @@ pub(crate) mod payment_package_name {
 
 pub(crate) mod payment_entry_point {
     use super::*;
+
     pub const ARG_NAME: &str = "payment-entry-point";
     const ARG_VALUE_NAME: &str = "NAME";
     const ARG_HELP: &str = "Name of the method that will be used when calling the payment contract";
@@ -1257,8 +1269,9 @@ pub(crate) mod payment_entry_point {
 
 pub(crate) mod payment_version {
     use super::*;
+
     pub const ARG_NAME: &str = "payment-version";
-    const ARG_VALUE_NAME: &str = "NAME";
+    const ARG_VALUE_NAME: &str = "INTEGER";
     const ARG_HELP: &str = "Version of the called payment contract. Latest will be used by default";
 
     pub fn arg() -> Arg<'static, 'static> {
