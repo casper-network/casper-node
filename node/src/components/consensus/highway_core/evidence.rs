@@ -1,9 +1,25 @@
-use super::validators::ValidatorIndex;
-use crate::components::consensus::{
-    highway_core::highway::{EvidenceError, SignedWireVote},
-    traits::Context,
-};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+use super::validators::ValidatorIndex;
+use crate::components::consensus::{highway_core::highway::SignedWireVote, traits::Context};
+
+/// An error due to invalid evidence.
+#[derive(Debug, Error, PartialEq)]
+pub(crate) enum EvidenceError {
+    #[error("The creators in the equivocating votes are different.")]
+    EquivocationDifferentCreators,
+    #[error("The sequence numbers in the equivocating votes are different.")]
+    EquivocationDifferentSeqNumbers,
+    #[error("The instance IDs in the equivocating votes are different.")]
+    EquivocationDifferentInstances,
+    #[error("The two votes are equal.")]
+    EquivocationSameVote,
+    #[error("The perpetrator is not a validator.")]
+    UnknownPerpetrator,
+    #[error("The signature is invalid.")]
+    Signature,
+}
 
 /// Evidence that a validator is faulty.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

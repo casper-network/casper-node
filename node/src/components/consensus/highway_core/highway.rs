@@ -12,6 +12,7 @@ use crate::{
         consensus_protocol::BlockContext,
         highway_core::{
             active_validator::{ActiveValidator, Effect},
+            evidence::EvidenceError,
             state::{State, VoteError},
             validators::{Validator, Validators},
         },
@@ -27,23 +28,6 @@ pub(crate) enum VertexError {
     Vote(#[from] VoteError),
     #[error("The vertex contains invalid evidence.")]
     Evidence(#[from] EvidenceError),
-}
-
-/// An error due to invalid evidence.
-#[derive(Debug, Error, PartialEq)]
-pub(crate) enum EvidenceError {
-    #[error("The creators in the equivocating votes are different.")]
-    EquivocationDifferentCreators,
-    #[error("The sequence numbers in the equivocating votes are different.")]
-    EquivocationDifferentSeqNumbers,
-    #[error("The instance IDs in the equivocating votes are different.")]
-    EquivocationDifferentInstances,
-    #[error("The two votes are equal.")]
-    EquivocationSameVote,
-    #[error("The perpetrator is not a validator.")]
-    UnknownPerpetrator,
-    #[error("The signature is invalid.")]
-    Signature,
 }
 
 /// A vertex that has passed initial validation.
