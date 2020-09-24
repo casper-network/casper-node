@@ -282,12 +282,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 ref current_block,
                 ..
             } => {
-                current_block.as_ref().map(|expected| {
+                if let Some(expected) = current_block.as_ref() {
                     assert_eq!(
                         expected, &block_header,
                         "Block execution result doesn't match received block."
                     )
-                });
+                }
                 if block_height == highest_block_seen {
                     info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
                     let peer = self.random_peer_unsafe();
@@ -302,12 +302,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             State::SyncingDescendants {
                 ref current_block, ..
             } => {
-                current_block.as_ref().map(|expected| {
+                if let Some(expected) = current_block.as_ref() {
                     assert_eq!(
                         expected, &block_header,
                         "Block execution result doesn't match received block."
                     )
-                });
+                }
                 self.state = curr_state;
                 self.fetch_next_block(effect_builder, rng, &block_header)
             }
