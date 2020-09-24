@@ -31,9 +31,8 @@ fn get_upgraded_wasm_costs() -> WasmCosts {
         div: 1,
         mul: 1,
         mem: 1,
-        initial_mem: 4096,
+        initial_mem: 64,
         grow_mem: 8192,
-        memcpy: 1,
         max_stack_height: 64 * 1024,
         opcodes_mul: 3,
         opcodes_div: 8,
@@ -387,7 +386,11 @@ fn should_allow_only_wasm_costs_minor_version() {
         .get_upgrade_response(0)
         .expect("should have response");
 
-    assert!(upgrade_response.has_success(), "expected success");
+    assert!(
+        upgrade_response.has_success(),
+        "expected success {:?}",
+        upgrade_response
+    );
 
     let upgraded_wasm_costs = builder
         .get_engine_state()

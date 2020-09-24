@@ -53,7 +53,6 @@ impl UpgradeRequestBuilder {
         new_costs.set_initial_mem(wasm_costs.initial_mem);
         new_costs.set_max_stack_height(wasm_costs.max_stack_height);
         new_costs.set_mem(wasm_costs.mem);
-        new_costs.set_memcpy(wasm_costs.memcpy);
         self.new_costs = Some(new_costs);
         self
     }

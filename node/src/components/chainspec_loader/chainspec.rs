@@ -428,10 +428,9 @@ mod tests {
         assert_eq!(spec.genesis.costs.mem, 16);
         assert_eq!(spec.genesis.costs.initial_mem, 17);
         assert_eq!(spec.genesis.costs.grow_mem, 18);
-        assert_eq!(spec.genesis.costs.memcpy, 19);
-        assert_eq!(spec.genesis.costs.max_stack_height, 20);
-        assert_eq!(spec.genesis.costs.opcodes_mul, 21);
-        assert_eq!(spec.genesis.costs.opcodes_div, 22);
+        assert_eq!(spec.genesis.costs.max_stack_height, 19);
+        assert_eq!(spec.genesis.costs.opcodes_mul, 20);
+        assert_eq!(spec.genesis.costs.opcodes_div, 21);
 
         assert_eq!(spec.upgrades.len(), 2);
 
@@ -449,10 +448,9 @@ mod tests {
         assert_eq!(upgrade0.new_costs.unwrap().mem, 27);
         assert_eq!(upgrade0.new_costs.unwrap().initial_mem, 28);
         assert_eq!(upgrade0.new_costs.unwrap().grow_mem, 29);
-        assert_eq!(upgrade0.new_costs.unwrap().memcpy, 30);
-        assert_eq!(upgrade0.new_costs.unwrap().max_stack_height, 31);
-        assert_eq!(upgrade0.new_costs.unwrap().opcodes_mul, 32);
-        assert_eq!(upgrade0.new_costs.unwrap().opcodes_div, 33);
+        assert_eq!(upgrade0.new_costs.unwrap().max_stack_height, 30);
+        assert_eq!(upgrade0.new_costs.unwrap().opcodes_mul, 31);
+        assert_eq!(upgrade0.new_costs.unwrap().opcodes_div, 32);
         assert_eq!(
             upgrade0.new_deploy_config.unwrap().max_payment_cost,
             Motes::new(U512::from(34))

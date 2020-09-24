@@ -78,11 +78,9 @@ mul = 2
 # Memory (load/store) operations multiplier. (A mem should cost 4_700_000)
 mem = 23
 # Amount of free memory (in 64kB pages) each contract can use for stack.
-initial_mem = 4096
+initial_mem = 64
 # Grow memory cost, per page (64kB).
 grow_mem = 240_000_000
-# Memory copy cost, per byte.
-memcpy = 420_000
 # Max stack height (native WebAssembly stack limiter).
 max_stack_height = 65_536
 # Cost of wasm opcode is calculated as TABLE_ENTRY_COST * `opcodes_mul` / `opcodes_div`.
@@ -91,7 +89,6 @@ opcodes_div = 1
 
 # Host function declarations are located in smart_contracts/contract/src/ext_ffi.rs
 [host_function_costs]
-
 add = 5_800_000
 add_associated_key = 9_000_000
 add_contract_version = 200_000_000 # Not instrumented yet, assuming a sufficiently large number
