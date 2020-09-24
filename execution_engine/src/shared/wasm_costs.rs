@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
 
-const NUM_FIELDS: usize = 10;
+const NUM_FIELDS: usize = 9;
 pub const WASM_COSTS_SERIALIZED_LENGTH: usize = NUM_FIELDS * U32_SERIALIZED_LENGTH;
 
 // Taken (partially) from parity-ethereum
@@ -21,21 +21,20 @@ pub struct WasmCosts {
     pub mul: u32,
     /// Memory (load/store) operations multiplier.
     pub mem: u32,
-    /// Memory stipend. Amount of free memory (in 64kb pages) each contract can
-    /// use for stack.
-    pub initial_mem: u32,
     /// Grow memory cost, per page (64kb)
     pub grow_mem: u32,
-    /// Memory copy cost, per byte
-    pub memcpy: u32,
-    /// Max stack height (native WebAssembly stack limiter)
-    pub max_stack_height: u32,
     /// Cost of wasm opcode is calculated as TABLE_ENTRY_COST * `opcodes_mul` /
     /// `opcodes_div`
     pub opcodes_mul: u32,
     /// Cost of wasm opcode is calculated as TABLE_ENTRY_COST * `opcodes_mul` /
     /// `opcodes_div`
     pub opcodes_div: u32,
+
+    /// Memory stipend. Amount of free memory (in 64kb pages) each contract can
+    /// use for stack.
+    pub initial_mem: u32,
+    /// Max stack height (native WebAssembly stack limiter)
+    pub max_stack_height: u32,
 }
 
 impl WasmCosts {
@@ -63,7 +62,6 @@ impl Default for WasmCosts {
             mem: 2,
             initial_mem: 4096,
             grow_mem: 8192,
-            memcpy: 1,
             max_stack_height: 65536,
             opcodes_mul: 3,
             opcodes_div: 8,
@@ -79,7 +77,6 @@ impl Distribution<WasmCosts> for Standard {
             mem: rng.gen(),
             initial_mem: rng.gen(),
             grow_mem: rng.gen(),
-            memcpy: rng.gen(),
             max_stack_height: rng.gen(),
             opcodes_mul: rng.gen(),
             opcodes_div: rng.gen(),
@@ -96,7 +93,6 @@ impl ToBytes for WasmCosts {
         ret.append(&mut self.mem.to_bytes()?);
         ret.append(&mut self.initial_mem.to_bytes()?);
         ret.append(&mut self.grow_mem.to_bytes()?);
-        ret.append(&mut self.memcpy.to_bytes()?);
         ret.append(&mut self.max_stack_height.to_bytes()?);
         ret.append(&mut self.opcodes_mul.to_bytes()?);
         ret.append(&mut self.opcodes_div.to_bytes()?);
@@ -116,7 +112,6 @@ impl FromBytes for WasmCosts {
         let (mem, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
         let (initial_mem, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
         let (grow_mem, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
-        let (memcpy, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
         let (max_stack_height, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
         let (opcodes_mul, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
         let (opcodes_div, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
@@ -127,7 +122,6 @@ impl FromBytes for WasmCosts {
             mem,
             initial_mem,
             grow_mem,
-            memcpy,
             max_stack_height,
             opcodes_mul,
             opcodes_div,
@@ -150,7 +144,6 @@ pub mod gens {
             mem in num::u32::ANY,
             initial_mem in num::u32::ANY,
             grow_mem in num::u32::ANY,
-            memcpy in num::u32::ANY,
             max_stack_height in num::u32::ANY,
             opcodes_mul in num::u32::ANY,
             opcodes_div in num::u32::ANY,
@@ -162,7 +155,6 @@ pub mod gens {
                 mem,
                 initial_mem,
                 grow_mem,
-                memcpy,
                 max_stack_height,
                 opcodes_mul,
                 opcodes_div,
@@ -188,7 +180,6 @@ mod tests {
             mem: 2,
             initial_mem: 4096,
             grow_mem: 8192,
-            memcpy: 1,
             max_stack_height: 64 * 1024,
             opcodes_mul: 3,
             opcodes_div: 8,
@@ -203,7 +194,6 @@ mod tests {
             mem: 0,
             initial_mem: 4096,
             grow_mem: 8192,
-            memcpy: 0,
             max_stack_height: 64 * 1024,
             opcodes_mul: 1,
             opcodes_div: 1,

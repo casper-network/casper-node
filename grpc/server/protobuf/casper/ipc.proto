@@ -337,8 +337,6 @@ message ChainSpec {
             uint32 initial_mem = 5;
             // Grow memory cost, per page (64kb)
             uint32 grow_mem = 6;
-            // Memory copy cost, per byte
-            uint32 memcpy = 7;
             // Max stack height (native WebAssembly stack limiter)
             uint32 max_stack_height = 8;
             // Cost of wasm opcode is calculated as TABLE_ENTRY_COST * `opcodes_mul` / `opcodes_div`

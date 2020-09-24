@@ -33,16 +33,15 @@ mul = 15
 mem = 16
 initial_mem = 17
 grow_mem = 18
-memcpy = 19
-max_stack_height = 20
-opcodes_mul = 21
-opcodes_div = 22
+max_stack_height = 19
+opcodes_mul = 20
+opcodes_div = 21
 
 [storage]
 gas_per_byte = 101
 
+# Host function declarations are located in smart_contracts/contract/src/ext_ffi.rs
 [host_function_costs]
-
 add = 102
 add_associated_key = 103
 add_contract_version = 104 
@@ -99,10 +98,9 @@ mul = 26
 mem = 27
 initial_mem = 28
 grow_mem = 29
-memcpy = 30
-max_stack_height = 31
-opcodes_mul = 32
-opcodes_div = 33
+max_stack_height = 30
+opcodes_mul = 31
+opcodes_div = 32
 
 [upgrade.new_deploy_config]
 max_payment_cost = '34'
