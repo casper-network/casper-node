@@ -88,8 +88,6 @@ enum State {
         /// During synchronization we might see new eras being created.
         /// Track the highest height and wait until it's handled by consensus.
         highest_block_seen: u64,
-        /// Indicates whether we have downloaded whole available linear chain.
-        is_done: bool,
     },
     /// Synchronizing done.
     Done,
@@ -130,7 +128,6 @@ impl State {
             linear_chain_block: Box::new(None),
             current_block: Box::new(None),
             highest_block_seen: 0,
-            is_done: false,
         }
     }
 
@@ -434,6 +431,7 @@ where
                         // We have synchronized all, currently existing, descendants of trusted
                         // hash.
                         self.mark_done();
+                        info!("Finished synchronizing descendants of the trusted hash.");
                         Effects::new()
                     }
                     Some(peer) => fetch_block_at_height(effect_builder, peer, block_height),
