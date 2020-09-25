@@ -279,16 +279,14 @@ impl FinalizedBlock {
     }
 }
 
-impl From<Block> for FinalizedBlock {
-    fn from(b: Block) -> Self {
-        let proto_block =
-            ProtoBlock::new(b.header().deploy_hashes().clone(), b.header().random_bit);
+impl From<BlockHeader> for FinalizedBlock {
+    fn from(header: BlockHeader) -> Self {
+        let proto_block = ProtoBlock::new(header.deploy_hashes().clone(), header.random_bit);
 
-        let timestamp = b.header().timestamp();
-        let switch_block = b.header().switch_block;
-        let era_id = b.header().era_id;
-        let height = b.header().height;
-        let header = b.take_header();
+        let timestamp = header.timestamp();
+        let switch_block = header.switch_block;
+        let era_id = header.era_id;
+        let height = header.height;
         let proposer = header.proposer;
         let system_transactions = header.system_transactions;
 
@@ -428,6 +426,12 @@ impl BlockHeader {
         &self.proposer
     }
 
+    /// Returns true if block is Genesis' child.
+    /// Genesis child block is from era 0 and height 0.
+    pub(crate) fn is_genesis_child(&self) -> bool {
+        self.era_id() == EraId(0) && self.height() == 0
+    }
+
     // Serialize the block header.
     fn serialize(&self) -> Result<Vec<u8>, rmp_serde::encode::Error> {
         rmp_serde::to_vec(self)
@@ -507,12 +511,16 @@ impl Block {
         }
     }
 
-    pub(crate) fn hash(&self) -> &BlockHash {
-        &self.hash
+    pub(crate) fn header(&self) -> &BlockHeader {
+        &self.header
     }
 
-    pub(crate) fn parent_hash(&self) -> &BlockHash {
-        self.header.parent_hash()
+    pub(crate) fn take_header(self) -> BlockHeader {
+        self.header
+    }
+
+    pub(crate) fn hash(&self) -> &BlockHash {
+        &self.hash
     }
 
     pub(crate) fn global_state_hash(&self) -> &Digest {
@@ -525,14 +533,6 @@ impl Block {
 
     pub(crate) fn height(&self) -> u64 {
         self.header.height()
-    }
-
-    pub(crate) fn era_id(&self) -> EraId {
-        self.header.era_id()
-    }
-
-    pub(crate) fn is_genesis_child(&self) -> bool {
-        self.header.era_id == EraId(0) && self.header.height == 0
     }
 
     /// Appends the given signature to this block's proofs.  It should have been validated prior to
@@ -626,6 +626,12 @@ impl Display for Block {
 }
 
 impl BlockLike for Block {
+    fn deploys(&self) -> &Vec<DeployHash> {
+        self.deploy_hashes()
+    }
+}
+
+impl BlockLike for BlockHeader {
     fn deploys(&self) -> &Vec<DeployHash> {
         self.deploy_hashes()
     }
@@ -850,6 +856,50 @@ mod json {
                 proofs,
             })
         }
+    }
+}
+
+/// A wrapper around `Block` for the purposes of fetching blocks by height in linear chain.
+#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum BlockByHeight {
+    Absent(u64),
+    Block(Box<Block>),
+}
+
+impl BlockByHeight {
+    /// Creates a new `BlockByHeight`
+    pub fn new(block: Block) -> Self {
+        BlockByHeight::Block(Box::new(block))
+    }
+
+    pub fn height(&self) -> u64 {
+        match self {
+            BlockByHeight::Absent(height) => *height,
+            BlockByHeight::Block(block) => block.height(),
+        }
+    }
+}
+
+impl Display for BlockByHeight {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BlockByHeight::Absent(height) => write!(f, "Block at height {} was absent.", height),
+            BlockByHeight::Block(block) => {
+                let hash: BlockHash = block.header().hash();
+                write!(f, "Block at {} with hash {} found.", block.height(), hash)
+            }
+        }
+    }
+}
+
+impl Item for BlockByHeight {
+    type Id = u64;
+
+    const TAG: Tag = Tag::BlockByHeight;
+    const ID_IS_COMPLETE_ITEM: bool = false;
+
+    fn id(&self) -> Self::Id {
+        self.height()
     }
 }
 

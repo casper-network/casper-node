@@ -10,12 +10,12 @@ use tracing::{debug, error};
 use crate::{
     components::{fetcher::event::FetchResponder, storage::Storage, Component},
     effect::{
-        requests::{NetworkRequest, StorageRequest},
+        requests::{LinearChainRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
     small_network::NodeId,
-    types::{Block, BlockHash, Deploy, DeployHash, Item},
+    types::{Block, BlockByHeight, BlockHash, Deploy, DeployHash, Item},
     utils::Source,
     GossipConfig,
 };
@@ -27,6 +27,8 @@ pub trait ReactorEventT<T>:
     From<Event<T>>
     + From<NetworkRequest<NodeId, Message>>
     + From<StorageRequest<Storage>>
+    // Won't be needed when we implement "get block by height" feature in storage.
+    + From<LinearChainRequest<NodeId>>
     + Send
     + 'static
 where
@@ -42,6 +44,7 @@ where
     REv: From<Event<T>>
         + From<NetworkRequest<NodeId, Message>>
         + From<StorageRequest<Storage>>
+        + From<LinearChainRequest<NodeId>>
         + Send
         + 'static,
 {
@@ -225,6 +228,34 @@ impl ItemFetcher<Block> for Fetcher<Block> {
     }
 }
 
+impl ItemFetcher<BlockByHeight> for Fetcher<BlockByHeight> {
+    fn responders(
+        &mut self,
+    ) -> &mut HashMap<u64, HashMap<NodeId, Vec<FetchResponder<BlockByHeight>>>> {
+        &mut self.responders
+    }
+
+    fn peer_timeout(&self) -> Duration {
+        self.get_from_peer_timeout
+    }
+
+    fn get_from_storage<REv: ReactorEventT<BlockByHeight>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        id: u64,
+        peer: NodeId,
+    ) -> Effects<Event<BlockByHeight>> {
+        //TODO: Replace with querying the storage instead of in-mem of linear chain.
+        effect_builder
+            .get_block_at_height(id)
+            .event(move |result| Event::GetFromStorageResult {
+                id,
+                peer,
+                maybe_item: Box::new(result),
+            })
+    }
+}
+
 impl<T, REv, R> Component<REv, R> for Fetcher<T>
 where
     Fetcher<T>: ItemFetcher<T>,
@@ -266,6 +297,7 @@ where
                     }
                 }
             }
+            Event::AbsentRemotely { id, peer } => self.signal(id, None, peer),
             Event::TimeoutPeer { id, peer } => self.signal(id, None, peer),
         }
     }

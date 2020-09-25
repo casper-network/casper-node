@@ -12,6 +12,19 @@ TIMESTAMP=${GENESIS_TIMESTAMP:-$(date '+%s000' -d "+$OFFSET sec")}
 echo "GENESIS_TIMESTAMP="$TIMESTAMP
 date -d @$(echo "$TIMESTAMP/1000" | bc)
 
+# Build the node first, so that `sleep` in the loop has an effect.
+cargo build -p casper-node
+
+# Update the chainspec to use the current time as the genesis timestamp.
+cp ${BASEDIR}/resources/local/chainspec.toml ${CHAINSPEC}
+sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = ${TIMESTAMP}/" ${CHAINSPEC}
+sed -i 's|\.\./\.\.|'"$BASEDIR"'|' ${CHAINSPEC}
+sed -i 's|accounts\.csv|'"$BASEDIR"'/resources/local/accounts.csv|' ${CHAINSPEC}
+
+ARGS="$@"
+# If no nodes defined, start all.
+NODES="${ARGS:-1 2 3 4 5}"
+
 run_node() {
     ID=$1
     STORAGE_DIR=/tmp/node-${ID}-storage
@@ -71,17 +84,6 @@ run_node() {
     # Hopefully, fixes some of the race condition issues during startup.
     sleep 1;
 }
-
-# Build the node first, so that `sleep` in the loop has an effect.
-cargo build -p casper-node
-
-# Update the chainspec to use the current time as the genesis timestamp.
-cp ${BASEDIR}/resources/local/chainspec.toml ${CHAINSPEC}
-sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = ${TIMESTAMP}/" ${CHAINSPEC}
-sed -i 's|\.\./\.\.|'"$BASEDIR"'|' ${CHAINSPEC}
-sed -i 's|accounts\.csv|'"$BASEDIR"'/resources/local/accounts.csv|' ${CHAINSPEC}
-
-NODES="$@"
 
 for i in 1 2 3 4 5; do
     case "$NODES" in

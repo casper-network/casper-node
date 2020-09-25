@@ -9,8 +9,11 @@ use std::{
 };
 
 use crate::{
-    components::{consensus::EraId, small_network::GossipedAddress},
-    types::{json_compatibility::ExecutionResult, Block, Deploy, DeployHash, Item, ProtoBlock},
+    components::small_network::GossipedAddress,
+    types::{
+        json_compatibility::ExecutionResult, Block, BlockHeader, Deploy, DeployHash, Item,
+        ProtoBlock,
+    },
     utils::Source,
 };
 
@@ -121,10 +124,7 @@ pub enum ConsensusAnnouncement {
     /// A block was orphaned.
     Orphaned(ProtoBlock),
     /// A linear chain block has been handled.
-    Handled(u64),
-    /// TODO: this is only for purposes of detecting incomplete linear chain synchronization,
-    /// remove when proper syncing is implemented
-    GotMessageInEra(EraId),
+    Handled(Box<BlockHeader>),
 }
 
 impl Display for ConsensusAnnouncement {
@@ -139,14 +139,12 @@ impl Display for ConsensusAnnouncement {
             ConsensusAnnouncement::Orphaned(block) => {
                 write!(formatter, "orphaned proto block {}", block)
             }
-            ConsensusAnnouncement::Handled(height) => write!(
+            ConsensusAnnouncement::Handled(block_header) => write!(
                 formatter,
-                "Linear chain block has been handled by consensus, height={}",
-                height
+                "Linear chain block has been handled by consensus, height={}, hash={}",
+                block_header.height(),
+                block_header.hash()
             ),
-            ConsensusAnnouncement::GotMessageInEra(era_id) => {
-                write!(formatter, "message in era {:?} received", era_id)
-            }
         }
     }
 }

@@ -91,7 +91,7 @@ use casper_types::Key;
 use crate::{
     components::{
         chainspec_loader::ChainspecInfo,
-        consensus::{BlockContext, EraId},
+        consensus::BlockContext,
         fetcher::FetchResult,
         small_network::GossipedAddress,
         storage::{
@@ -104,8 +104,8 @@ use crate::{
     },
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        json_compatibility::ExecutionResult, Block, BlockHash, BlockHeader, BlockLike, Deploy,
-        DeployHash, FinalizedBlock, Item, ProtoBlock,
+        json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, BlockHeader,
+        BlockLike, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock,
     },
     utils::Source,
     Chainspec,
@@ -621,6 +621,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Requests linear chain block at height.
+    // TODO: Should be eventually replaced with call to the linear chain storage.
+    pub(crate) async fn get_block_at_height<I>(self, height: u64) -> Option<BlockByHeight>
+    where
+        REv: From<LinearChainRequest<I>>,
+    {
+        self.make_request(
+            |responder| LinearChainRequest::BlockAtHeightLocal(height, responder),
+            QueueKind::Regular,
+        )
+        .map(|block| block.map(BlockByHeight::new))
+        .await
+    }
+
     /// Gets the requested block header from the linear block store.
     #[allow(unused)]
     pub(crate) async fn get_block_header_from_storage<S>(
@@ -776,6 +790,28 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Requests a linear chain block at `block_height`.
+    #[allow(unused)]
+    pub(crate) async fn fetch_block_by_height<I>(
+        self,
+        block_height: u64,
+        peer: I,
+    ) -> Option<FetchResult<BlockByHeight>>
+    where
+        REv: From<FetcherRequest<I, BlockByHeight>>,
+        I: Send + 'static,
+    {
+        self.make_request(
+            |responder| FetcherRequest::Fetch {
+                id: block_height,
+                peer,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Passes the timestamp of a future block for which deploys are to be proposed.
     // TODO: The input `BlockContext` will probably be a different type than the context in the
     //       return value in the future.
@@ -874,26 +910,15 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Announce that we received a message in a given era
-    /// TODO: Remove when proper linear chain syncing is in place
-    pub(crate) async fn announce_message_in_era(self, era_id: EraId)
+    pub(crate) async fn announce_block_handled(self, block_header: BlockHeader)
     where
         REv: From<ConsensusAnnouncement>,
     {
         self.0
             .schedule(
-                ConsensusAnnouncement::GotMessageInEra(era_id),
+                ConsensusAnnouncement::Handled(Box::new(block_header)),
                 QueueKind::Regular,
             )
-            .await
-    }
-
-    pub(crate) async fn announce_block_handled(self, height: u64)
-    where
-        REv: From<ConsensusAnnouncement>,
-    {
-        self.0
-            .schedule(ConsensusAnnouncement::Handled(height), QueueKind::Regular)
             .await
     }
 
