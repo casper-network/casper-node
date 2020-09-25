@@ -18,6 +18,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
             .about(Self::ABOUT)
             .display_order(display_order);
         let subcommand = creation_common::apply_common_session_options(subcommand);
+        let subcommand = creation_common::apply_common_payment_options(subcommand);
         creation_common::apply_common_creation_options(subcommand, true)
     }
 
