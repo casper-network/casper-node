@@ -26,53 +26,55 @@ max_block_size = 12
 block_max_deploy_count = 125
 block_gas_limit = 13
 
-[wasm_costs]
+[wasm_config]
+initial_mem = 17
+max_stack_height = 19
+
+[wasm_config.opcode_costs]
 regular = 13
 div = 14
 mul = 15
 mem = 16
-initial_mem = 17
 grow_mem = 18
-max_stack_height = 19
 opcodes_mul = 20
 opcodes_div = 21
 
-[storage]
+[wasm_config.storage_costs]
 gas_per_byte = 101
 
 # Host function declarations are located in smart_contracts/contract/src/ext_ffi.rs
-[host_function_costs]
-add = 102
-add_associated_key = 103
-add_contract_version = 104 
+[wasm_config.host_function_costs]
+add = [102]
+add_associated_key = [103]
+add_contract_version = [104] 
 add_local = [105, 106]
 call_contract = [107, 108]
 call_versioned_contract = [109, 110]
-create_content_package_at_hash = 111
-create_contract_user_group = 112
-create_purse = 113
-disable_contract_version = 114
-get_balance = 115
-get_blocktime = 116
-get_caller = 117
+create_contract_package_at_hash = [111]
+create_contract_user_group = [112]
+create_purse = [113]
+disable_contract_version = [114]
+get_balance = [115]
+get_blocktime = [116]
+get_caller = [117]
 get_key = [118, 119]
-get_main_purse = 120
+get_main_purse = [120]
 get_named_arg = [121, 122]
-get_named_arg_size = 123
-get_phase = 124
-get_system_contract = 125
+get_named_arg_size = [123]
+get_phase = [124]
+get_system_contract = [125]
 has_key = [126, 127]
-is_valid_uref = 128
-load_named_keys = 129
+is_valid_uref = [128]
+load_named_keys = [129]
 new_uref = [130, 131]
-provision_contract_user_group_uref = 132
+provision_contract_user_group_uref = [132]
 put_key = [133, 134]
 read_host_buffer = [135, 136]
-read_value = 137
+read_value = [137]
 read_value_local = [138, 139]
-remove_associated_key = 140
-remove_contract_user_group = 141
-remove_contract_user_group_urefs = 142
+remove_associated_key = [140]
+remove_contract_user_group = [141]
+remove_contract_user_group_urefs = [142]
 remove_key = [143, 144]
 ret = [145, 146, 147]
 revert = [148]
@@ -83,6 +85,7 @@ transfer_to_account = [152]
 update_associated_key = [153]
 write = [154, 155]
 write_local = [156, 157, 158]
+print = [{ name = "text_size", value = 159 }, 160]
 
 [[upgrade]]
 protocol_version = '0.2.0'
@@ -91,16 +94,65 @@ upgrade_installer_path = 'upgrade.wasm'
 [upgrade.activation_point]
 rank = 23
 
-[upgrade.new_costs]
+[upgrade.new_wasm_config]
+initial_mem = 17
+max_stack_height = 19
+
+[upgrade.new_wasm_config.opcode_costs]
 regular = 24
 div = 25
 mul = 26
 mem = 27
-initial_mem = 28
 grow_mem = 29
-max_stack_height = 30
 opcodes_mul = 31
 opcodes_div = 32
+
+[upgrade.new_wasm_config.storage_costs]
+gas_per_byte = 101
+
+[upgrade.new_wasm_config.host_function_costs]
+add = [161]
+add_associated_key = [162]
+add_contract_version = [163] 
+add_local = [164, 165]
+call_contract = [166, 167]
+call_versioned_contract = [168, 169]
+create_contract_package_at_hash = [170]
+create_contract_user_group = [171]
+create_purse = [172]
+disable_contract_version = [173]
+get_balance = [174]
+get_blocktime = [175]
+get_caller = [176]
+get_key = [177, 178]
+get_main_purse = [179]
+get_named_arg = [180, 181]
+get_named_arg_size = [182]
+get_phase = [183]
+get_system_contract = [184]
+has_key = [185, 185]
+is_valid_uref = [186]
+load_named_keys = [187]
+new_uref = [188, 189]
+provision_contract_user_group_uref = [190]
+put_key = [191, 191]
+read_host_buffer = [192, 193]
+read_value = [194]
+read_value_local = [195, 196]
+remove_associated_key = [197]
+remove_contract_user_group = [198]
+remove_contract_user_group_urefs = [199]
+remove_key = [200, 201]
+ret = [202, 203, 204]
+revert = [205]
+set_action_threshold = [206]
+transfer_from_purse_to_account = [207]
+transfer_from_purse_to_purse = [208]
+transfer_to_account = [209]
+update_associated_key = [210]
+write = [211, 212]
+write_local = [213, 214, 215]
+print = [{ name = "text_size", value = 216 }, 217]
 
 [upgrade.new_deploy_config]
 max_payment_cost = '34'

@@ -69,55 +69,61 @@ block_gas_limit = 10_000_000_000_000
 # Gas charged per byte stored in the global state.
 gas_per_byte = 630_000_000
 
-[wasm_costs]
-# Default opcode cost.
-regular = 210_000
-# Div operations multiplier. (A div should cost 320_000)
-div = 2
-# Mul operations multiplier. (A mul should cost 240_000)
-mul = 2
-# Memory (load/store) operations multiplier. (A mem should cost 4_700_000)
-mem = 23
+[wasm_config]
 # Amount of free memory (in 64kB pages) each contract can use for stack.
 initial_mem = 64
-# Grow memory cost, per page (64kB).
-grow_mem = 8_192
 # Max stack height (native WebAssembly stack limiter).
-max_stack_height = 65_536
+max_stack_height = 65536
+
+[wasm_config.opcode_costs]
+# Default opcode cost.
+regular = 1
+# Div operations multiplier.
+div = 16
+# Mul operations multiplier.
+mul = 4
+# Memory (load/store) operations multiplier.
+mem = 2
+# Grow memory cost, per page (64kB).
+grow_mem = 8192
+
+[wasm_config.storage_costs]
+# Gas charged per byte stored in the global state.
+gas_per_byte = 630_000_000
 
 # Host function declarations are located in smart_contracts/contract/src/ext_ffi.rs
-[host_function_costs]
-add = 5_800_000
-add_associated_key = 9_000_000
-add_contract_version = 200_000_000 # Not instrumented yet, assuming a sufficiently large number
+[wasm_config.host_function_costs]
+add = [5_800_000]
+add_associated_key = [9_000_000]
+add_contract_version = [200_000_000] # Not instrumented yet, assuming a sufficiently large number
 add_local = [810, 4_700_000]
 call_contract = [420, 4_500_000]
 call_versioned_contract = [420, 4_500_000] # Not instrumented yet, assuming the same as call_contract
-create_content_package_at_hash = 200_000_000 # Not instrumented yet, assuming a sufficiently large number
-create_contract_user_group = 200_000_000 # Not instrumented yet, assuming a sufficiently large number
-create_purse = 170_000_000
-disable_contract_version = 200_000_000 # Not instrumented yet, assuming a sufficiently large number
-get_balance = 3_800_000
-get_blocktime = 330_000
-get_caller = 380_000
+create_contract_package_at_hash = [200_000_000] # Not instrumented yet, assuming a sufficiently large number
+create_contract_user_group = [200_000_000] # Not instrumented yet, assuming a sufficiently large number
+create_purse = [170_000_000]
+disable_contract_version = [200_000_000] # Not instrumented yet, assuming a sufficiently large number
+get_balance = [3_800_000]
+get_blocktime = [330_000]
+get_caller = [380_000]
 get_key = [440, 2_000_000]
-get_main_purse = 1_300_000
+get_main_purse = [1_300_000]
 get_named_arg = [76, 2_500_000]
-get_named_arg_size = 450_000
-get_phase = 710_000
-get_system_contract = 1_100_000
+get_named_arg_size = [450_000]
+get_phase = [710_000]
+get_system_contract = [1_100_000]
 has_key = [840, 1_500_000]
-is_valid_uref = 760_000
-load_named_keys = 42_000_000
+is_valid_uref = [760_000]
+load_named_keys = [42_000_000]
 new_uref = [590, 17_000_000]
-provision_contract_user_group_uref = 200_000_000 # Not instrumented yet, assuming a sufficiently large number
+provision_contract_user_group_uref = [200_000_000] # Not instrumented yet, assuming a sufficiently large number
 put_key = [1_100, 38_000_000]
 read_host_buffer = [310, 3_500_000]
-read_value = 6_000_000
+read_value = [6_000_000]
 read_value_local = [590, 5_500_000]
-remove_associated_key = 4_200_000
-remove_contract_user_group = 200_000_000 # Not instrumented yet, assuming a sufficiently large number
-remove_contract_user_group_urefs = 200_000_000 # Not instrumented yet, assuming a sufficiently large number
+remove_associated_key = [4_200_000]
+remove_contract_user_group = [200_000_000] # Not instrumented yet, assuming a sufficiently large number
+remove_contract_user_group_urefs = [200_000_000] # Not instrumented yet, assuming a sufficiently large number
 remove_key = [3_200, 61_000_000]
 ret = [420_000, 260, 23_000_000]
 revert = [500_000]
@@ -128,3 +134,4 @@ transfer_to_account = [24_000_000]
 update_associated_key = [4_200_000]
 write = [980, 14_000_000]
 write_local = [1_800, 520, 9_500_000]
+print = [{ name = "text_size", value = 4_600 }, 20_000_000]

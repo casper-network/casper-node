@@ -2,7 +2,7 @@ use lazy_static::lazy_static;
 
 use casper_engine_test_support::{
     internal::{
-        utils, InMemoryWasmTestBuilder, AUCTION_INSTALL_CONTRACT, DEFAULT_WASM_COSTS,
+        utils, InMemoryWasmTestBuilder, AUCTION_INSTALL_CONTRACT, DEFAULT_WASM_CONFIG,
         MINT_INSTALL_CONTRACT, POS_INSTALL_CONTRACT, STANDARD_PAYMENT_INSTALL_CONTRACT,
     },
     AccountHash,
@@ -65,7 +65,7 @@ fn should_run_genesis() {
         utils::read_wasm_file_bytes(STANDARD_PAYMENT_INSTALL_CONTRACT);
     let auction_installer_bytes = utils::read_wasm_file_bytes(AUCTION_INSTALL_CONTRACT);
     let protocol_version = ProtocolVersion::V1_0_0;
-    let wasm_costs = *DEFAULT_WASM_COSTS;
+    let wasm_costs = DEFAULT_WASM_CONFIG.clone();
 
     let exec_config = ExecConfig::new(
         mint_installer_bytes,
@@ -131,7 +131,7 @@ fn should_fail_if_bad_mint_install_contract_is_provided() {
             utils::read_wasm_file_bytes(STANDARD_PAYMENT_INSTALL_CONTRACT);
         let auction_installer_bytes = utils::read_wasm_file_bytes(AUCTION_INSTALL_CONTRACT);
         let protocol_version = ProtocolVersion::V1_0_0;
-        let wasm_costs = *DEFAULT_WASM_COSTS;
+        let wasm_costs = DEFAULT_WASM_CONFIG.clone();
 
         let exec_config = ExecConfig::new(
             mint_installer_bytes,
@@ -161,7 +161,7 @@ fn should_fail_if_bad_pos_install_contract_is_provided() {
             utils::read_wasm_file_bytes(STANDARD_PAYMENT_INSTALL_CONTRACT);
         let auction_installer_bytes = utils::read_wasm_file_bytes(AUCTION_INSTALL_CONTRACT);
         let protocol_version = ProtocolVersion::V1_0_0;
-        let wasm_costs = *DEFAULT_WASM_COSTS;
+        let wasm_costs = DEFAULT_WASM_CONFIG.clone();
         let exec_config = ExecConfig::new(
             mint_installer_bytes,
             pos_installer_bytes,

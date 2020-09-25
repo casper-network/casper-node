@@ -7,12 +7,12 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
 
-const NUM_FIELDS: usize = 9;
-pub const WASM_COSTS_SERIALIZED_LENGTH: usize = NUM_FIELDS * U32_SERIALIZED_LENGTH;
+const NUM_FIELDS: usize = 7;
+pub const OPCODE_COSTS_SERIALIZED_LENGTH: usize = NUM_FIELDS * U32_SERIALIZED_LENGTH;
 
 // Taken (partially) from parity-ethereum
-#[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
-pub struct WasmCosts {
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+pub struct OpCodeCosts {
     /// Default opcode cost
     pub regular: u32,
     /// Div operations multiplier.
@@ -29,15 +29,9 @@ pub struct WasmCosts {
     /// Cost of wasm opcode is calculated as TABLE_ENTRY_COST * `opcodes_mul` /
     /// `opcodes_div`
     pub opcodes_div: u32,
-
-    /// Memory stipend. Amount of free memory (in 64kb pages) each contract can
-    /// use for stack.
-    pub initial_mem: u32,
-    /// Max stack height (native WebAssembly stack limiter)
-    pub max_stack_height: u32,
 }
 
-impl WasmCosts {
+impl OpCodeCosts {
     pub(crate) fn to_set(&self) -> Set {
         let meterings = {
             let mut tmp = BTreeMap::new();
@@ -53,76 +47,67 @@ impl WasmCosts {
     }
 }
 
-impl Default for WasmCosts {
+impl Default for OpCodeCosts {
     fn default() -> Self {
-        WasmCosts {
+        OpCodeCosts {
             regular: 1,
             div: 16,
             mul: 4,
             mem: 2,
-            initial_mem: 4096,
             grow_mem: 8192,
-            max_stack_height: 65536,
             opcodes_mul: 3,
             opcodes_div: 8,
         }
     }
 }
-impl Distribution<WasmCosts> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> WasmCosts {
-        WasmCosts {
+
+impl Distribution<OpCodeCosts> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> OpCodeCosts {
+        OpCodeCosts {
             regular: rng.gen(),
             div: rng.gen(),
             mul: rng.gen(),
             mem: rng.gen(),
-            initial_mem: rng.gen(),
             grow_mem: rng.gen(),
-            max_stack_height: rng.gen(),
             opcodes_mul: rng.gen(),
             opcodes_div: rng.gen(),
         }
     }
 }
 
-impl ToBytes for WasmCosts {
+impl ToBytes for OpCodeCosts {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
         ret.append(&mut self.regular.to_bytes()?);
         ret.append(&mut self.div.to_bytes()?);
         ret.append(&mut self.mul.to_bytes()?);
         ret.append(&mut self.mem.to_bytes()?);
-        ret.append(&mut self.initial_mem.to_bytes()?);
         ret.append(&mut self.grow_mem.to_bytes()?);
-        ret.append(&mut self.max_stack_height.to_bytes()?);
         ret.append(&mut self.opcodes_mul.to_bytes()?);
         ret.append(&mut self.opcodes_div.to_bytes()?);
         Ok(ret)
     }
 
     fn serialized_length(&self) -> usize {
-        WASM_COSTS_SERIALIZED_LENGTH
+        OPCODE_COSTS_SERIALIZED_LENGTH
     }
 }
 
-impl FromBytes for WasmCosts {
+impl FromBytes for OpCodeCosts {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (regular, rem): (u32, &[u8]) = FromBytes::from_bytes(bytes)?;
         let (div, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
         let (mul, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
         let (mem, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
-        let (initial_mem, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
         let (grow_mem, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
-        let (max_stack_height, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
         let (opcodes_mul, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
         let (opcodes_div, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
-        let wasm_costs = WasmCosts {
+        let wasm_costs = OpCodeCosts {
             regular,
             div,
             mul,
             mem,
-            initial_mem,
             grow_mem,
-            max_stack_height,
             opcodes_mul,
             opcodes_div,
         };
@@ -134,28 +119,24 @@ impl FromBytes for WasmCosts {
 pub mod gens {
     use proptest::{num, prop_compose};
 
-    use crate::shared::wasm_costs::WasmCosts;
+    use crate::shared::opcode_costs::OpCodeCosts;
 
     prop_compose! {
-        pub fn wasm_costs_arb()(
+        pub fn opcode_costs_arb()(
             regular in num::u32::ANY,
             div in num::u32::ANY,
             mul in num::u32::ANY,
             mem in num::u32::ANY,
-            initial_mem in num::u32::ANY,
             grow_mem in num::u32::ANY,
-            max_stack_height in num::u32::ANY,
             opcodes_mul in num::u32::ANY,
             opcodes_div in num::u32::ANY,
-        ) -> WasmCosts {
-            WasmCosts {
+        ) -> OpCodeCosts {
+            OpCodeCosts {
                 regular,
                 div,
                 mul,
                 mem,
-                initial_mem,
                 grow_mem,
-                max_stack_height,
                 opcodes_mul,
                 opcodes_div,
             }
@@ -170,50 +151,13 @@ mod tests {
     use casper_types::bytesrepr;
 
     use super::gens;
-    use crate::shared::wasm_costs::WasmCosts;
-
-    fn wasm_costs_mock() -> WasmCosts {
-        WasmCosts {
-            regular: 1,
-            div: 16,
-            mul: 4,
-            mem: 2,
-            initial_mem: 4096,
-            grow_mem: 8192,
-            max_stack_height: 64 * 1024,
-            opcodes_mul: 3,
-            opcodes_div: 8,
-        }
-    }
-
-    fn wasm_costs_free() -> WasmCosts {
-        WasmCosts {
-            regular: 0,
-            div: 0,
-            mul: 0,
-            mem: 0,
-            initial_mem: 4096,
-            grow_mem: 8192,
-            max_stack_height: 64 * 1024,
-            opcodes_mul: 1,
-            opcodes_div: 1,
-        }
-    }
-
-    #[test]
-    fn should_serialize_and_deserialize() {
-        let mock = wasm_costs_mock();
-        let free = wasm_costs_free();
-        bytesrepr::test_serialization_roundtrip(&mock);
-        bytesrepr::test_serialization_roundtrip(&free);
-    }
 
     proptest! {
         #[test]
         fn should_serialize_and_deserialize_with_arbitrary_values(
-            wasm_costs in gens::wasm_costs_arb()
+            opcode_costs in gens::opcode_costs_arb()
         ) {
-            bytesrepr::test_serialization_roundtrip(&wasm_costs);
+            bytesrepr::test_serialization_roundtrip(&opcode_costs);
         }
     }
 }

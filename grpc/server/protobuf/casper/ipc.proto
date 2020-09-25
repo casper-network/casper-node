@@ -283,7 +283,7 @@ message ChainSpec {
             // genesis account information
             repeated GenesisAccount accounts = 4;
             // costs at genesis
-            CostTable costs = 5;
+            WasmConfig wasm_config = 5;
 
             message GenesisAccount {
                 bytes public_key_bytes = 1;
@@ -320,11 +320,8 @@ message ChainSpec {
 
     }
 
-    message CostTable {
-        WasmCosts wasm = 1;
-        // TODO (https://casperlabs.atlassian.net/browse/EE-638): design host function costs
-
-        message WasmCosts {
+    message WasmConfig {
+        message OpCodeCosts {
             // Default opcode cost
             uint32 regular = 1;
             // Div operations multiplier.
@@ -343,6 +340,82 @@ message ChainSpec {
             uint32 opcodes_mul = 9;
             uint32 opcodes_div = 10;
         }
+
+        message StorageCosts {
+            // Gas charged per byte stored in the global state.
+            uint32 gas_per_byte = 1;
+        }
+
+        message HostFunctionCosts {
+            message HostFunctionCost {
+                message Polynomial {
+                    message Variable {
+                        string name = 1;
+                        uint32 value = 2;
+                    }
+
+                    oneof variant {
+                        uint32 coefficient = 1;
+                        Variable variable = 2;
+                    }
+                }
+                repeated Polynomial polynomials = 1;
+            }
+
+            HostFunctionCost read_value = 1;
+            HostFunctionCost read_value_local = 2;
+            HostFunctionCost write = 3;
+            HostFunctionCost write_local = 4;
+            HostFunctionCost add = 5;
+            HostFunctionCost add_local = 6;
+            HostFunctionCost new_uref = 7;
+            HostFunctionCost load_named_keys = 8;
+            HostFunctionCost ret = 9;
+            HostFunctionCost get_key = 10;
+            HostFunctionCost has_key = 11;
+            HostFunctionCost put_key = 12;
+            HostFunctionCost remove_key = 13;
+            HostFunctionCost revert = 14;
+            HostFunctionCost is_valid_uref = 15;
+            HostFunctionCost add_associated_key = 16;
+            HostFunctionCost remove_associated_key = 17;
+            HostFunctionCost update_associated_key = 18;
+            HostFunctionCost set_action_threshold = 19;
+            HostFunctionCost get_caller = 20;
+            HostFunctionCost get_blocktime = 21;
+            HostFunctionCost create_purse = 22;
+            HostFunctionCost transfer_to_account = 23;
+            HostFunctionCost transfer_from_purse_to_account = 24;
+            HostFunctionCost transfer_from_purse_to_purse = 25;
+            HostFunctionCost get_balance = 26;
+            HostFunctionCost get_phase = 27;
+            HostFunctionCost get_system_contract = 28;
+            HostFunctionCost get_main_purse = 29;
+            HostFunctionCost read_host_buffer = 30;
+            HostFunctionCost create_contract_package_at_hash = 31;
+            HostFunctionCost create_contract_user_group = 32;
+            HostFunctionCost add_contract_version = 33;
+            HostFunctionCost disable_contract_version = 34;
+            HostFunctionCost call_contract = 35;
+            HostFunctionCost call_versioned_contract = 36;
+            HostFunctionCost get_named_arg_size = 37;
+            HostFunctionCost get_named_arg = 38;
+            HostFunctionCost remove_contract_user_group = 39;
+            HostFunctionCost provision_contract_user_group_uref = 40;
+            HostFunctionCost remove_contract_user_group_urefs = 41;
+            HostFunctionCost print = 42;
+        }
+
+        // Memory stipend. Amount of free memory (in 64kb pages) each contract can use for stack.
+        uint32 initial_mem = 1;
+        // Max stack height (native WebAssembly stack limiter)
+        uint32 max_stack_height = 2;
+        // Wasm opcode costs
+        OpCodeCosts opcode_costs = 3;
+        // Storage costs
+        StorageCosts storage_costs = 4;
+        // Host function costs
+        HostFunctionCosts host_function_costs = 5;
     }
 
     message UpgradePoint {
@@ -353,8 +426,8 @@ message ChainSpec {
         casper.state.ProtocolVersion protocol_version = 2;
         // bytes for a contract to run that applies the upgrades to system contracts
         DeployCode upgrade_installer = 3;
-        // Note: this is optional; only needed when costs are changing
-        CostTable new_costs = 4;
+        // Note: this is optional; only needed when wasm config is changing
+        WasmConfig new_wasm_config = 4;
         DeployConfig new_deploy_config = 5;
     }
 
