@@ -91,7 +91,7 @@ use casper_types::Key;
 use crate::{
     components::{
         chainspec_loader::ChainspecInfo,
-        consensus::{BlockContext, EraId},
+        consensus::BlockContext,
         fetcher::FetchResult,
         small_network::GossipedAddress,
         storage::{
