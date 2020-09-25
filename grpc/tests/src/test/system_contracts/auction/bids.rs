@@ -705,7 +705,7 @@ fn should_use_era_validators_endpoint_for_first_era() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts.clone());
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
