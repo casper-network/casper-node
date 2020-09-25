@@ -275,7 +275,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             contract_runtime,
         } = initializer;
 
-        let (net, net_effects) = SmallNetwork::new(event_queue, config.network.clone())?;
+        let (net, net_effects) = SmallNetwork::new(event_queue, config.network.clone(), false)?;
 
         let linear_chain_fetcher = Fetcher::new(config.gossip);
         let effects = reactor::wrap_effects(Event::Network, net_effects);

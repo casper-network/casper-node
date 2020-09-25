@@ -56,10 +56,6 @@ pub(crate) struct Validators<VID: Eq + Hash> {
 }
 
 impl<VID: Eq + Hash> Validators<VID> {
-    pub(crate) fn contains(&self, idx: ValidatorIndex) -> bool {
-        self.validators.len() as u32 > idx.0
-    }
-
     pub(crate) fn total_weight(&self) -> Weight {
         self.validators.iter().fold(Weight(0), |sum, v| {
             sum.checked_add(v.weight())

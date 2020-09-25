@@ -37,8 +37,10 @@ run_node() {
     if [ $1 -ne 1 ]
     then
         BIND_ADDRESS_ARG=--config-ext=network.bind_address='0.0.0.0:0'
+        DEPS="--property=After=node-1.service --property=Requires=node-1.service"
     else
         BIND_ADDRESS_ARG=
+        DEPS=
     fi
 
     if ! [ -z "$TRUSTED_HASH" ]
@@ -50,12 +52,17 @@ run_node() {
 
     echo "$TRUSTED_HASH_ARG"
 
+    # We run with a 10 minute timeout, to allow for compilation and loading.
     systemd-run \
         --user \
         --unit node-$ID \
         --description "Casper Dev Node ${ID}" \
         --collect \
+        --no-block \
+        --property=Type=notify \
+        --property=TimeoutSec=600 \
         --property=WorkingDirectory=${BASEDIR} \
+        $DEPS \
         --setenv=RUST_LOG=trace \
         --property=StandardOutput=file:${LOGFILE} \
         --property=StandardError=file:${LOGFILE}.stderr \
@@ -63,6 +70,7 @@ run_node() {
         cargo run -p casper-node \
         validator \
         resources/local/config.toml \
+        --config-ext=network.systemd_support=true \
         --config-ext=consensus.secret_key_path=secret_keys/node-${ID}.pem \
         --config-ext=storage.path=${STORAGE_DIR} \
         --config-ext=network.gossip_interval=1000 \
@@ -83,7 +91,7 @@ for i in 1 2 3 4 5; do
     esac
 done;
 
-echo "Test network started."
+echo "Test network starting."
 echo
 echo "To stop all nodes, run"
 echo "  systemctl --user stop node-\\*"

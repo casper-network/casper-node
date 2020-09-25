@@ -23,7 +23,8 @@ use casper_node::{
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self, ToBytes},
-    AccessRights, CLType, CLTyped, CLValue, Key, NamedArg, RuntimeArgs, URef, U128, U256, U512,
+    AccessRights, CLType, CLTyped, CLValue, ContractHash, Key, NamedArg, RuntimeArgs, URef, U128,
+    U256, U512,
 };
 
 use crate::common;
@@ -47,10 +48,22 @@ pub(super) enum DisplayOrder {
     SessionCode,
     SessionArgSimple,
     SessionArgsComplex,
+    SessionHash,
+    SessionName,
+    SessionPackageHash,
+    SessionPackageName,
+    SessionEntryPoint,
+    SessionVersion,
     StandardPayment,
     PaymentCode,
     PaymentArgSimple,
     PaymentArgsComplex,
+    PaymentHash,
+    PaymentName,
+    PaymentPackageHash,
+    PaymentPackageName,
+    PaymentEntryPoint,
+    PaymentVersion,
 }
 
 /// Handles providing the arg for and executing the show-arg-examples option.
@@ -253,7 +266,6 @@ pub(super) mod chain_name {
 
     const ARG_NAME: &str = "chain-name";
     const ARG_VALUE_NAME: &str = "NAME";
-    const ARG_DEFAULT: &str = "casper-example";
     const ARG_HELP: &str =
         "Name of the chain, to avoid the deploy from being accidentally or maliciously included in \
         a different chain";
@@ -261,9 +273,8 @@ pub(super) mod chain_name {
     pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
-            .required(false)
+            .required(true)
             .value_name(ARG_VALUE_NAME)
-            .default_value(ARG_DEFAULT)
             .help(ARG_HELP)
             .display_order(DisplayOrder::ChainName as usize)
     }
@@ -682,26 +693,106 @@ fn args_from_simple_or_complex(
     }
 }
 
-pub(super) fn parse_session_info(matches: &ArgMatches<'_>) -> ExecutableDeployItem {
+pub(super) fn parse_session_module_args(matches: &ArgMatches<'_>) -> (Vec<u8>, RuntimeArgs) {
     let module_bytes = session::get(matches);
     let session_args = args_from_simple_or_complex(
         arg_simple::session::get(matches),
         args_complex::session::get(matches),
     );
+    (module_bytes, session_args)
+}
 
+pub(super) fn parse_session_info(matches: &ArgMatches) -> ExecutableDeployItem {
+    let (module_bytes, session_args) = parse_session_module_args(matches);
+    if let Some(name) = session_name::get(matches) {
+        return ExecutableDeployItem::StoredContractByName {
+            name,
+            args: session_args.to_bytes().expect("should serialize"),
+            entry_point: require_session_entry_point(matches),
+        };
+    }
+    if let Some(hash) = session_hash::get(matches) {
+        return ExecutableDeployItem::StoredContractByHash {
+            hash,
+            args: session_args.to_bytes().expect("should serialize"),
+            entry_point: require_session_entry_point(matches),
+        };
+    }
+    let version = session_version::get(matches);
+    if let Some(name) = session_package_name::get(matches) {
+        return ExecutableDeployItem::StoredVersionedContractByName {
+            name,
+            version, // defaults to highest enabled version
+            args: session_args.to_bytes().expect("should serialize"),
+            entry_point: require_session_entry_point(matches),
+        };
+    }
+    if let Some(hash) = session_package_hash::get(matches) {
+        return ExecutableDeployItem::StoredVersionedContractByHash {
+            hash,
+            version, // defaults to highest enabled version
+            args: session_args.to_bytes().expect("should serialize"),
+            entry_point: require_session_entry_point(matches),
+        };
+    }
     ExecutableDeployItem::ModuleBytes {
         module_bytes,
         args: session_args.to_bytes().expect("should serialize"),
     }
 }
 
-pub(super) fn parse_payment_info(matches: &ArgMatches<'_>) -> ExecutableDeployItem {
-    // If we're using the standard-payment system contract, just return empty module bytes.
-    if let Some(payment_args) = standard_payment::get(matches) {
-        return ExecutableDeployItem::ModuleBytes {
-            module_bytes: vec![],
+pub(super) fn parse_payment_info(matches: &ArgMatches) -> ExecutableDeployItem {
+    let (module_bytes, payment_args) = parse_payment_module_args(matches);
+    if let Some(name) = payment_name::get(matches) {
+        return ExecutableDeployItem::StoredContractByName {
+            name,
             args: payment_args.to_bytes().expect("should serialize"),
+            entry_point: require_payment_entry_point(matches),
         };
+    }
+    if let Some(hash) = payment_hash::get(matches) {
+        return ExecutableDeployItem::StoredContractByHash {
+            hash,
+            args: payment_args.to_bytes().expect("should serialize"),
+            entry_point: require_payment_entry_point(matches),
+        };
+    }
+    let version = payment_version::get(matches);
+    if let Some(name) = payment_package_name::get(matches) {
+        return ExecutableDeployItem::StoredVersionedContractByName {
+            name,
+            version, // defaults to highest enabled version
+            args: payment_args.to_bytes().expect("should serialize"),
+            entry_point: require_payment_entry_point(matches),
+        };
+    }
+    if let Some(hash) = payment_package_hash::get(matches) {
+        return ExecutableDeployItem::StoredVersionedContractByHash {
+            hash,
+            version, // defaults to highest enabled version
+            args: payment_args.to_bytes().expect("should serialize"),
+            entry_point: require_payment_entry_point(matches),
+        };
+    }
+    ExecutableDeployItem::ModuleBytes {
+        module_bytes,
+        args: payment_args.to_bytes().expect("should serialize"),
+    }
+}
+
+fn require_session_entry_point(matches: &ArgMatches) -> String {
+    session_entry_point::get(matches)
+        .unwrap_or_else(|| panic!("{} must be present", session_entry_point::ARG_NAME,))
+}
+
+fn require_payment_entry_point(matches: &ArgMatches) -> String {
+    payment_entry_point::get(matches)
+        .unwrap_or_else(|| panic!("{} must be present", payment_entry_point::ARG_NAME,))
+}
+
+pub(super) fn parse_payment_module_args(matches: &ArgMatches) -> (Vec<u8>, RuntimeArgs) {
+    if let Some(payment_args) = standard_payment::get(matches) {
+        return (vec![], payment_args);
     }
 
     // Get the payment code and args options.
@@ -710,11 +801,7 @@ pub(super) fn parse_payment_info(matches: &ArgMatches<'_>) -> ExecutableDeployIt
         arg_simple::payment::get(matches),
         args_complex::payment::get(matches),
     );
-
-    ExecutableDeployItem::ModuleBytes {
-        module_bytes,
-        args: payment_args.to_bytes().expect("should serialize"),
-    }
+    (module_bytes, payment_args)
 }
 
 pub(super) fn apply_common_creation_options<'a, 'b>(
@@ -777,6 +864,24 @@ pub(super) fn apply_common_session_options<'a, 'b>(subcommand: App<'a, 'b>) -> A
                 .arg(args_complex::session::ARG_NAME)
                 .required(false),
         )
+        .arg(session_package_hash::arg())
+        .arg(session_package_name::arg())
+        .arg(session_hash::arg())
+        .arg(session_name::arg())
+        .arg(session_entry_point::arg())
+        .arg(session_version::arg())
+}
+
+pub(crate) fn apply_common_payment_options(
+    subcommand: App<'static, 'static>,
+) -> App<'static, 'static> {
+    subcommand
+        .arg(payment_package_hash::arg())
+        .arg(payment_package_name::arg())
+        .arg(payment_hash::arg())
+        .arg(payment_name::arg())
+        .arg(payment_entry_point::arg())
+        .arg(payment_version::arg())
 }
 
 pub(super) fn show_arg_examples_and_exit_if_required(matches: &ArgMatches<'_>) {
@@ -905,5 +1010,281 @@ pub(super) mod input {
         let deploy = Deploy::from_json(JsonValue::from_str(input.as_str()).unwrap())
             .unwrap_or_else(|e| panic!("unable to deserialize deploy file {} - {:?}", input, e));
         deploy
+    }
+}
+
+fn get_contract_hash(name: &str, matches: &ArgMatches) -> Option<ContractHash> {
+    if let Some(v) = matches.value_of(name) {
+        if let Ok(Key::Hash(hash)) = Key::from_formatted_str(v) {
+            return Some(hash);
+        }
+    }
+    None
+}
+
+pub(crate) mod session_hash {
+    use super::*;
+
+    pub const ARG_NAME: &str = "session-hash";
+    const ARG_VALUE_NAME: &str = common::ARG_HEX_STRING;
+    const ARG_HELP: &str = "Hex-encoded hash of the stored contract to be called as the session";
+
+    pub fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .required(false)
+            .requires(session_entry_point::ARG_NAME)
+            .display_order(DisplayOrder::SessionHash as usize)
+    }
+
+    pub fn get(matches: &ArgMatches) -> Option<ContractHash> {
+        get_contract_hash(ARG_NAME, matches)
+    }
+}
+
+pub(crate) mod session_name {
+    use super::*;
+
+    pub const ARG_NAME: &str = "session-name";
+    const ARG_VALUE_NAME: &str = "NAME";
+    const ARG_HELP: &str = "Name of the stored contract (associated with the executing account) to be called as the session";
+
+    pub fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .required(false)
+            .requires(session_entry_point::ARG_NAME)
+            .display_order(DisplayOrder::SessionName as usize)
+    }
+
+    pub fn get(matches: &ArgMatches) -> Option<String> {
+        matches.value_of(ARG_NAME).map(str::to_string)
+    }
+}
+
+pub(crate) mod session_package_hash {
+    use super::*;
+
+    pub const ARG_NAME: &str = "session-package-hash";
+    const ARG_VALUE_NAME: &str = common::ARG_HEX_STRING;
+    const ARG_HELP: &str = "Hex-encoded hash of the stored package to be called as the session";
+
+    pub fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .required(false)
+            .requires(session_entry_point::ARG_NAME)
+            .display_order(DisplayOrder::SessionPackageHash as usize)
+    }
+
+    pub fn get(matches: &ArgMatches) -> Option<ContractHash> {
+        get_contract_hash(ARG_NAME, matches)
+    }
+}
+
+pub(crate) mod session_package_name {
+    use super::*;
+
+    pub const ARG_NAME: &str = "session-package-name";
+    const ARG_VALUE_NAME: &str = "NAME";
+    const ARG_HELP: &str = "Name of the stored package to be called as the session";
+
+    pub fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .required(false)
+            .requires(session_entry_point::ARG_NAME)
+            .display_order(DisplayOrder::SessionPackageName as usize)
+    }
+
+    pub fn get(matches: &ArgMatches) -> Option<String> {
+        matches.value_of(ARG_NAME).map(str::to_string)
+    }
+}
+
+pub(crate) mod session_entry_point {
+    use super::*;
+
+    pub const ARG_NAME: &str = "session-entry-point";
+    const ARG_VALUE_NAME: &str = "NAME";
+    const ARG_HELP: &str = "Name of the method that will be used when calling the session contract";
+
+    pub fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .required(false)
+            .display_order(DisplayOrder::SessionEntryPoint as usize)
+    }
+
+    pub fn get(matches: &ArgMatches) -> Option<String> {
+        matches.value_of(ARG_NAME).map(str::to_string)
+    }
+}
+
+pub(crate) mod session_version {
+    use super::*;
+
+    pub const ARG_NAME: &str = "session-version";
+    const ARG_VALUE_NAME: &str = "INTEGER";
+    const ARG_HELP: &str = "Version of the called session contract. Latest will be used by default";
+
+    pub fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .required(false)
+            .display_order(DisplayOrder::SessionVersion as usize)
+    }
+
+    pub fn get(matches: &ArgMatches) -> Option<u32> {
+        matches
+            .value_of(ARG_NAME)
+            .map(|s| s.parse::<u32>().ok())
+            .flatten()
+    }
+}
+
+pub(crate) mod payment_hash {
+    use super::*;
+
+    pub const ARG_NAME: &str = "payment-hash";
+    const ARG_VALUE_NAME: &str = common::ARG_HEX_STRING;
+    const ARG_HELP: &str = "Hex-encoded hash of the stored contract to be called as the payment";
+
+    pub fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .required(false)
+            .requires(payment_entry_point::ARG_NAME)
+            .display_order(DisplayOrder::PaymentHash as usize)
+    }
+
+    pub fn get(matches: &ArgMatches) -> Option<ContractHash> {
+        get_contract_hash(ARG_NAME, matches)
+    }
+}
+
+pub(crate) mod payment_name {
+    use super::*;
+
+    pub const ARG_NAME: &str = "payment-name";
+    const ARG_VALUE_NAME: &str = "NAME";
+    const ARG_HELP: &str = "Name of the stored contract (associated with the executing account) \
+    to be called as the payment";
+
+    pub fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .required(false)
+            .requires(payment_entry_point::ARG_NAME)
+            .display_order(DisplayOrder::PaymentName as usize)
+    }
+
+    pub fn get(matches: &ArgMatches) -> Option<String> {
+        matches.value_of(ARG_NAME).map(str::to_string)
+    }
+}
+
+pub(crate) mod payment_package_hash {
+    use super::*;
+
+    pub const ARG_NAME: &str = "payment-package-hash";
+    const ARG_VALUE_NAME: &str = common::ARG_HEX_STRING;
+    const ARG_HELP: &str = "Hex-encoded hash of the stored package to be called as the payment";
+
+    pub fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .required(false)
+            .requires(payment_entry_point::ARG_NAME)
+            .display_order(DisplayOrder::PaymentPackageHash as usize)
+    }
+
+    pub fn get(matches: &ArgMatches) -> Option<ContractHash> {
+        get_contract_hash(ARG_NAME, matches)
+    }
+}
+
+pub(crate) mod payment_package_name {
+    use super::*;
+
+    pub const ARG_NAME: &str = "payment-package-name";
+    const ARG_VALUE_NAME: &str = "NAME";
+    const ARG_HELP: &str = "Name of the stored package to be called as the payment";
+
+    pub fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .required(false)
+            .requires(payment_entry_point::ARG_NAME)
+            .display_order(DisplayOrder::PaymentPackageName as usize)
+    }
+
+    pub fn get(matches: &ArgMatches) -> Option<String> {
+        matches.value_of(ARG_NAME).map(str::to_string)
+    }
+}
+
+pub(crate) mod payment_entry_point {
+    use super::*;
+
+    pub const ARG_NAME: &str = "payment-entry-point";
+    const ARG_VALUE_NAME: &str = "NAME";
+    const ARG_HELP: &str = "Name of the method that will be used when calling the payment contract";
+
+    pub fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .required(false)
+            .display_order(DisplayOrder::PaymentEntryPoint as usize)
+    }
+
+    pub fn get(matches: &ArgMatches) -> Option<String> {
+        matches.value_of(ARG_NAME).map(str::to_string)
+    }
+}
+
+pub(crate) mod payment_version {
+    use super::*;
+
+    pub const ARG_NAME: &str = "payment-version";
+    const ARG_VALUE_NAME: &str = "INTEGER";
+    const ARG_HELP: &str = "Version of the called payment contract. Latest will be used by default";
+
+    pub fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .required(false)
+            .display_order(DisplayOrder::PaymentVersion as usize)
+    }
+
+    pub fn get(matches: &ArgMatches) -> Option<u32> {
+        matches
+            .value_of(ARG_NAME)
+            .map(|s| s.parse::<u32>().ok())
+            .flatten()
     }
 }

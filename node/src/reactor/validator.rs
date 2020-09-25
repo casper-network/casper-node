@@ -22,7 +22,7 @@ use crate::{
         api_server::{self, ApiServer},
         block_executor::{self, BlockExecutor},
         block_validator::{self, BlockValidator},
-        chainspec_loader::ChainspecLoader,
+        chainspec_loader::{self, ChainspecLoader},
         consensus::{self, EraSupervisor},
         contract_runtime::{self, ContractRuntime},
         deploy_acceptor::{self, DeployAcceptor},
@@ -41,9 +41,9 @@ use crate::{
             DeployAcceptorAnnouncement, GossiperAnnouncement, NetworkAnnouncement,
         },
         requests::{
-            ApiRequest, BlockExecutorRequest, BlockValidationRequest, ConsensusRequest,
-            ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, LinearChainRequest,
-            MetricsRequest, NetworkInfoRequest, NetworkRequest, StorageRequest,
+            ApiRequest, BlockExecutorRequest, BlockValidationRequest, ChainspecLoaderRequest,
+            ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
+            LinearChainRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -72,6 +72,9 @@ pub enum Event {
     #[from]
     /// API server event.
     ApiServer(api_server::Event),
+    #[from]
+    /// Chainspec Loader event.
+    ChainspecLoader(chainspec_loader::Event),
     #[from]
     /// Consensus event.
     Consensus(consensus::Event<NodeId>),
@@ -122,6 +125,9 @@ pub enum Event {
     /// Metrics request.
     #[from]
     MetricsRequest(MetricsRequest),
+    /// Chainspec info request
+    #[from]
+    ChainspecLoaderRequest(ChainspecLoaderRequest),
 
     // Announcements
     /// Network announcement.
@@ -202,6 +208,7 @@ impl Display for Event {
             Event::DeployBuffer(event) => write!(f, "deploy buffer: {}", event),
             Event::Storage(event) => write!(f, "storage: {}", event),
             Event::ApiServer(event) => write!(f, "api server: {}", event),
+            Event::ChainspecLoader(event) => write!(f, "chainspec loader: {}", event),
             Event::Consensus(event) => write!(f, "consensus: {}", event),
             Event::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
             Event::DeployFetcher(event) => write!(f, "deploy fetcher: {}", event),
@@ -213,6 +220,7 @@ impl Display for Event {
             Event::ProtoBlockValidator(event) => write!(f, "block validator: {}", event),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
             Event::NetworkInfoRequest(req) => write!(f, "network info request: {}", req),
+            Event::ChainspecLoaderRequest(req) => write!(f, "chainspec loader request: {}", req),
             Event::DeployFetcherRequest(req) => write!(f, "deploy fetcher request: {}", req),
             Event::DeployBufferRequest(req) => write!(f, "deploy buffer request: {}", req),
             Event::BlockExecutorRequest(req) => write!(f, "block executor request: {}", req),
@@ -257,6 +265,7 @@ pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
     storage: Storage,
     contract_runtime: ContractRuntime,
     api_server: ApiServer,
+    chainspec_loader: ChainspecLoader,
     consensus: EraSupervisor<NodeId, R>,
     deploy_acceptor: DeployAcceptor,
     deploy_fetcher: Fetcher<Deploy>,
@@ -304,7 +313,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         let metrics = Metrics::new(registry.clone());
 
         let effect_builder = EffectBuilder::new(event_queue);
-        let (net, net_effects) = SmallNetwork::new(event_queue, config.network)?;
+        let (net, net_effects) = SmallNetwork::new(event_queue, config.network, true)?;
 
         let address_gossiper = Gossiper::new_for_complete_items(config.gossip);
 
@@ -339,6 +348,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 storage,
                 contract_runtime,
                 api_server,
+                chainspec_loader,
                 consensus,
                 deploy_acceptor,
                 deploy_fetcher,
@@ -374,6 +384,11 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             Event::ApiServer(event) => reactor::wrap_effects(
                 Event::ApiServer,
                 self.api_server.handle_event(effect_builder, rng, event),
+            ),
+            Event::ChainspecLoader(event) => reactor::wrap_effects(
+                Event::ChainspecLoader,
+                self.chainspec_loader
+                    .handle_event(effect_builder, rng, event),
             ),
             Event::Consensus(event) => reactor::wrap_effects(
                 Event::Consensus,
@@ -448,6 +463,9 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 Event::MetricsRequest,
                 self.metrics.handle_event(effect_builder, rng, req),
             ),
+            Event::ChainspecLoaderRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::ChainspecLoader(req.into()))
+            }
 
             // Announcements:
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
