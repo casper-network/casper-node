@@ -2,7 +2,7 @@
 
 use casper_types::{account::AccountHash, contracts::NamedKeys, AccessRights, Key, URef};
 
-use crate::shared::{account::Account, stored_value::StoredValue, wasm_costs::WasmCosts};
+use crate::shared::{account::Account, opcode_costs::OpCodeCosts, stored_value::StoredValue};
 
 /// Returns an account value paired with its key
 pub fn mocked_account(account_hash: AccountHash) -> Vec<(Key, StoredValue)> {
@@ -11,29 +11,25 @@ pub fn mocked_account(account_hash: AccountHash) -> Vec<(Key, StoredValue)> {
     vec![(Key::Account(account_hash), StoredValue::Account(account))]
 }
 
-pub fn wasm_costs_mock() -> WasmCosts {
-    WasmCosts {
+pub fn wasm_costs_mock() -> OpCodeCosts {
+    OpCodeCosts {
         regular: 1,
         div: 16,
         mul: 4,
         mem: 2,
-        initial_mem: 64,
         grow_mem: 8192,
-        max_stack_height: 64 * 1024,
         opcodes_mul: 3,
         opcodes_div: 8,
     }
 }
 
-pub fn wasm_costs_free() -> WasmCosts {
-    WasmCosts {
+pub fn wasm_costs_free() -> OpCodeCosts {
+    OpCodeCosts {
         regular: 0,
         div: 0,
         mul: 0,
         mem: 0,
-        initial_mem: 4096,
         grow_mem: 8192,
-        max_stack_height: 64 * 1024,
         opcodes_mul: 1,
         opcodes_div: 1,
     }

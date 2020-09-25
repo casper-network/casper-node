@@ -4,7 +4,7 @@ use casper_types::{bytesrepr, Key, ProtocolVersion};
 
 use crate::{
     core::engine_state::execution_effect::ExecutionEffect,
-    shared::{newtypes::Blake2bHash, wasm_costs::WasmCosts, TypeMismatch},
+    shared::{newtypes::Blake2bHash, wasm_config::WasmConfig, TypeMismatch},
     storage::global_state::CommitResult,
 };
 
@@ -61,7 +61,7 @@ pub struct UpgradeConfig {
     new_protocol_version: ProtocolVersion,
     upgrade_installer_args: Option<Vec<u8>>,
     upgrade_installer_bytes: Option<Vec<u8>>,
-    wasm_costs: Option<WasmCosts>,
+    wasm_config: Option<WasmConfig>,
     activation_point: Option<ActivationPoint>,
 }
 
@@ -72,7 +72,7 @@ impl UpgradeConfig {
         new_protocol_version: ProtocolVersion,
         upgrade_installer_args: Option<Vec<u8>>,
         upgrade_installer_bytes: Option<Vec<u8>>,
-        wasm_costs: Option<WasmCosts>,
+        wasm_config: Option<WasmConfig>,
         activation_point: Option<ActivationPoint>,
     ) -> Self {
         UpgradeConfig {
@@ -81,7 +81,7 @@ impl UpgradeConfig {
             new_protocol_version,
             upgrade_installer_args,
             upgrade_installer_bytes,
-            wasm_costs,
+            wasm_config,
             activation_point,
         }
     }
@@ -108,8 +108,8 @@ impl UpgradeConfig {
         Some(bytes.as_slice())
     }
 
-    pub fn wasm_costs(&self) -> Option<WasmCosts> {
-        self.wasm_costs
+    pub fn wasm_config(&self) -> Option<&WasmConfig> {
+        self.wasm_config.as_ref()
     }
 
     pub fn activation_point(&self) -> Option<u64> {

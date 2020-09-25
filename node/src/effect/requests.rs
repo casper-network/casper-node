@@ -463,7 +463,7 @@ pub enum ContractRuntimeRequest {
     /// A request to run upgrade.
     Upgrade {
         /// Upgrade config.
-        upgrade_config: UpgradeConfig,
+        upgrade_config: Box<UpgradeConfig>,
         /// Responder to call with the upgrade result.
         responder: Responder<Result<UpgradeResult, engine_state::Error>>,
     },

@@ -1391,7 +1391,7 @@ where
         &self.context
     }
 
-    pub fn protocol_data(&self) -> ProtocolData {
+    pub fn protocol_data(&self) -> &ProtocolData {
         self.context.protocol_data()
     }
 
@@ -1728,7 +1728,7 @@ where
             protocol_version,
             correlation_id,
             phase,
-            protocol_data,
+            protocol_data.clone(),
         );
 
         let mut mint_runtime = Runtime::new(
@@ -1823,7 +1823,7 @@ where
             protocol_version,
             correlation_id,
             phase,
-            protocol_data,
+            protocol_data.clone(),
         );
 
         let mut runtime = Runtime::new(
@@ -1921,7 +1921,7 @@ where
             protocol_version,
             correlation_id,
             phase,
-            protocol_data,
+            protocol_data.clone(),
         );
 
         let mut runtime = Runtime::new(
@@ -2337,7 +2337,7 @@ where
             protocol_version,
             self.context.correlation_id(),
             self.context.phase(),
-            self.context.protocol_data(),
+            self.context.protocol_data().clone(),
         );
 
         let mut runtime = Runtime {

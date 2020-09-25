@@ -19,7 +19,7 @@ use casper_types::{
     ProtocolVersion, RuntimeArgs, URef, U512,
 };
 
-use crate::internal::{utils, WasmTestBuilder, DEFAULT_WASM_COSTS};
+use crate::internal::{utils, WasmTestBuilder, DEFAULT_WASM_CONFIG};
 
 /// This function allows executing the contract stored in the given `wasm_file`, while capturing the
 /// output. It is essentially the same functionality as `Executor::exec`, but the return value of
@@ -87,7 +87,13 @@ where
         let pos = builder.get_mint_contract_hash();
         let standard_payment = builder.get_standard_payment_contract_hash();
         let auction = builder.get_auction_contract_hash();
-        ProtocolData::new(*DEFAULT_WASM_COSTS, mint, pos, standard_payment, auction)
+        ProtocolData::new(
+            DEFAULT_WASM_CONFIG.clone(),
+            mint,
+            pos,
+            standard_payment,
+            auction,
+        )
     };
 
     let context = RuntimeContext::new(
@@ -117,7 +123,7 @@ where
         args: Vec::new(),
     };
 
-    let wasm_costs = *DEFAULT_WASM_COSTS;
+    let wasm_costs = DEFAULT_WASM_CONFIG.clone();
 
     let preprocessor = Preprocessor::new(wasm_costs);
     let parity_module = builder

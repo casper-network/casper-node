@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::{
     core::engine_state::genesis::GenesisAccount,
-    shared::{motes::Motes, wasm_costs::WasmCosts},
+    shared::{motes::Motes, wasm_config::WasmConfig},
 };
 use casper_types::U512;
 
@@ -142,7 +142,7 @@ struct UpgradePoint {
     protocol_version: Version,
     upgrade_installer_path: Option<External<Vec<u8>>>,
     activation_point: chainspec::ActivationPoint,
-    new_costs: Option<WasmCosts>,
+    new_wasm_config: Option<WasmConfig>,
     new_deploy_config: Option<DeployConfig>,
 }
 
@@ -152,7 +152,7 @@ impl From<&chainspec::UpgradePoint> for UpgradePoint {
             protocol_version: upgrade_point.protocol_version.clone(),
             upgrade_installer_path: Some(External::path(DEFAULT_UPGRADE_INSTALLER_PATH)),
             activation_point: upgrade_point.activation_point,
-            new_costs: upgrade_point.new_costs,
+            new_wasm_config: upgrade_point.new_wasm_config.clone(),
             new_deploy_config: upgrade_point.new_deploy_config.map(DeployConfig::from),
         }
     }
@@ -180,7 +180,7 @@ impl UpgradePoint {
             protocol_version: self.protocol_version,
             upgrade_installer_bytes,
             upgrade_installer_args,
-            new_costs: self.new_costs,
+            new_wasm_config: self.new_wasm_config,
             new_deploy_config,
         })
     }
@@ -193,8 +193,8 @@ pub(super) struct ChainspecConfig {
     genesis: Genesis,
     highway: HighwayConfig,
     deploys: DeployConfig,
-    wasm_costs: WasmCosts,
     upgrade: Option<Vec<UpgradePoint>>,
+    wasm_config: WasmConfig,
 }
 
 impl From<&chainspec::Chainspec> for ChainspecConfig {
@@ -231,7 +231,7 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
         };
 
         let deploys = chainspec.genesis.deploy_config.into();
-        let wasm_costs = chainspec.genesis.costs;
+        let wasm_config = chainspec.genesis.wasm_config.clone();
 
         let upgrades = chainspec
             .upgrades
@@ -248,8 +248,8 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
             genesis,
             highway,
             deploys,
-            wasm_costs,
             upgrade,
+            wasm_config,
         }
     }
 }
@@ -312,7 +312,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         standard_payment_installer_bytes,
         auction_installer_bytes,
         accounts,
-        costs: chainspec.wasm_costs,
+        wasm_config: chainspec.wasm_config,
         deploy_config: chainspec.deploys.try_into()?,
         highway_config,
     };

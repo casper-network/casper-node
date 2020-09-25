@@ -64,7 +64,7 @@ use crate::{
         newtypes::{Blake2bHash, CorrelationId},
         stored_value::StoredValue,
         transform::Transform,
-        wasm_costs::WasmCosts,
+        wasm_config::WasmConfig,
         wasm_prep::{self, Preprocessor},
     },
     storage::{
@@ -136,12 +136,12 @@ where
         &self.config
     }
 
-    pub fn wasm_costs(
+    pub fn wasm_config(
         &self,
         protocol_version: ProtocolVersion,
-    ) -> Result<Option<WasmCosts>, Error> {
+    ) -> Result<Option<WasmConfig>, Error> {
         match self.get_protocol_data(protocol_version)? {
-            Some(protocol_data) => Ok(Some(*protocol_data.wasm_costs())),
+            Some(protocol_data) => Ok(Some(protocol_data.wasm_config().clone())),
             None => Ok(None),
         }
     }
@@ -170,8 +170,8 @@ where
         let phase = Phase::System;
 
         let initial_root_hash = self.state.empty_root();
-        let wasm_costs = ee_config.wasm_costs();
-        let preprocessor = Preprocessor::new(wasm_costs);
+        let wasm_config = ee_config.wasm_config();
+        let preprocessor = Preprocessor::new(wasm_config.clone());
 
         // Spec #3: Create "virtual system account" object.
         let mut virtual_system_account = {
@@ -305,7 +305,7 @@ where
         // Note: this deviates from the implementation strategy described in the original
         // specification.
         let protocol_data = ProtocolData::partial_without_standard_payment(
-            wasm_costs,
+            wasm_config.clone(),
             mint_hash,
             proof_of_stake_hash,
         );
@@ -347,7 +347,7 @@ where
                 correlation_id,
                 tracking_copy,
                 phase,
-                protocol_data,
+                protocol_data.clone(),
                 system_contract_cache,
             )?
         };
@@ -415,7 +415,7 @@ where
 
         // Spec #2: Associate given CostTable with given ProtocolVersion.
         let protocol_data = ProtocolData::new(
-            wasm_costs,
+            wasm_config.clone(),
             mint_hash,
             proof_of_stake_hash,
             standard_payment_hash,
@@ -511,7 +511,7 @@ where
                         correlation_id,
                         tracking_copy_exec,
                         phase,
-                        protocol_data,
+                        protocol_data.clone(),
                         system_contract_cache,
                     )?;
 
@@ -594,14 +594,14 @@ where
         }
 
         // 3.1.1.1.1.6 resolve wasm CostTable for new protocol version
-        let new_wasm_costs = match upgrade_config.wasm_costs() {
+        let new_wasm_config = match upgrade_config.wasm_config() {
             Some(new_wasm_costs) => new_wasm_costs,
-            None => *current_protocol_data.wasm_costs(),
+            None => current_protocol_data.wasm_config(),
         };
 
         // 3.1.2.2 persist wasm CostTable
         let mut new_protocol_data = ProtocolData::new(
-            new_wasm_costs,
+            new_wasm_config.clone(),
             current_protocol_data.mint(),
             current_protocol_data.proof_of_stake(),
             current_protocol_data.standard_payment(),
@@ -626,7 +626,7 @@ where
 
                 // preprocess installer module
                 let upgrade_installer_module = {
-                    let preprocessor = Preprocessor::new(new_wasm_costs);
+                    let preprocessor = Preprocessor::new(new_wasm_config.clone());
                     preprocessor.preprocess(bytes)?
                 };
 
@@ -698,7 +698,7 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     phase,
-                    new_protocol_data,
+                    new_protocol_data.clone(),
                     system_contract_cache,
                 )?;
 
@@ -762,12 +762,12 @@ where
         mut exec_request: ExecuteRequest,
     ) -> Result<ExecutionResults, RootNotFound> {
         // TODO: do not unwrap
-        let wasm_costs = self
-            .wasm_costs(exec_request.protocol_version)
+        let wasm_config = self
+            .wasm_config(exec_request.protocol_version)
             .unwrap()
             .unwrap();
         let executor = Executor::new(self.config);
-        let preprocessor = Preprocessor::new(wasm_costs);
+        let preprocessor = Preprocessor::new(wasm_config);
 
         let deploys = exec_request.take_deploys();
         let mut results = ExecutionResults::with_capacity(deploys.len());
@@ -1111,7 +1111,7 @@ where
                             correlation_id,
                             Rc::clone(&tracking_copy),
                             Phase::Session,
-                            protocol_data,
+                            protocol_data.clone(),
                             SystemContractCache::clone(&self.system_contract_cache),
                         );
                     match maybe_uref {
@@ -1493,7 +1493,7 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     phase,
-                    protocol_data,
+                    protocol_data.clone(),
                     system_contract_cache,
                     &payment_package,
                 )
@@ -1526,7 +1526,7 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     phase,
-                    protocol_data,
+                    protocol_data.clone(),
                     system_contract_cache,
                 ) {
                     Ok((_instance, runtime)) => runtime,
@@ -1698,7 +1698,7 @@ where
                 correlation_id,
                 Rc::clone(&session_tracking_copy),
                 Phase::Session,
-                protocol_data,
+                protocol_data.clone(),
                 system_contract_cache,
                 &session_package,
             )

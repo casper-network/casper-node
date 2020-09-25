@@ -1,11 +1,11 @@
 use casper_engine_grpc_server::engine_server::{
     ipc::{
-        ChainSpec_ActivationPoint, ChainSpec_CostTable, ChainSpec_CostTable_WasmCosts,
-        ChainSpec_UpgradePoint, DeployCode, UpgradeRequest,
+        ChainSpec_ActivationPoint, ChainSpec_UpgradePoint, ChainSpec_WasmConfig, DeployCode,
+        UpgradeRequest,
     },
     state,
 };
-use casper_execution_engine::shared::wasm_costs::WasmCosts;
+use casper_execution_engine::shared::wasm_config::WasmConfig;
 use casper_types::ProtocolVersion;
 
 pub struct UpgradeRequestBuilder {
@@ -13,7 +13,7 @@ pub struct UpgradeRequestBuilder {
     current_protocol_version: state::ProtocolVersion,
     new_protocol_version: state::ProtocolVersion,
     upgrade_installer: DeployCode,
-    new_costs: Option<ChainSpec_CostTable_WasmCosts>,
+    new_wasm_config: Option<ChainSpec_WasmConfig>,
     activation_point: ChainSpec_ActivationPoint,
 }
 
@@ -42,18 +42,8 @@ impl UpgradeRequestBuilder {
         self
     }
 
-    pub fn with_new_costs(mut self, wasm_costs: WasmCosts) -> Self {
-        let mut new_costs = ChainSpec_CostTable_WasmCosts::new();
-        new_costs.set_regular(wasm_costs.regular);
-        new_costs.set_opcodes_mul(wasm_costs.opcodes_mul);
-        new_costs.set_opcodes_div(wasm_costs.opcodes_div);
-        new_costs.set_mul(wasm_costs.mul);
-        new_costs.set_div(wasm_costs.div);
-        new_costs.set_grow_mem(wasm_costs.grow_mem);
-        new_costs.set_initial_mem(wasm_costs.initial_mem);
-        new_costs.set_max_stack_height(wasm_costs.max_stack_height);
-        new_costs.set_mem(wasm_costs.mem);
-        self.new_costs = Some(new_costs);
+    pub fn with_new_wasm_config(mut self, opcode_costs: WasmConfig) -> Self {
+        self.new_wasm_config = Some(opcode_costs.into());
         self
     }
 
@@ -69,13 +59,8 @@ impl UpgradeRequestBuilder {
     pub fn build(self) -> UpgradeRequest {
         let mut upgrade_point = ChainSpec_UpgradePoint::new();
         upgrade_point.set_activation_point(self.activation_point);
-        match self.new_costs {
-            None => {}
-            Some(new_costs) => {
-                let mut cost_table = ChainSpec_CostTable::new();
-                cost_table.set_wasm(new_costs);
-                upgrade_point.set_new_costs(cost_table);
-            }
+        if let Some(new_wasm_config) = self.new_wasm_config {
+            upgrade_point.set_new_wasm_config(new_wasm_config)
         }
         upgrade_point.set_protocol_version(self.new_protocol_version);
         upgrade_point.set_upgrade_installer(self.upgrade_installer);
@@ -94,7 +79,7 @@ impl Default for UpgradeRequestBuilder {
             current_protocol_version: Default::default(),
             new_protocol_version: Default::default(),
             upgrade_installer: Default::default(),
-            new_costs: None,
+            new_wasm_config: None,
             activation_point: Default::default(),
         }
     }

@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::{
     core::engine_state::genesis::{ExecConfig, GenesisAccount},
-    shared::{motes::Motes, wasm_costs::WasmCosts},
+    shared::{motes::Motes, wasm_config::WasmConfig},
 };
 use casper_types::U512;
 
@@ -168,7 +168,7 @@ pub(crate) struct GenesisConfig {
     pub(crate) standard_payment_installer_bytes: Vec<u8>,
     pub(crate) auction_installer_bytes: Vec<u8>,
     pub(crate) accounts: Vec<GenesisAccount>,
-    pub(crate) costs: WasmCosts,
+    pub(crate) wasm_config: WasmConfig,
     pub(crate) deploy_config: DeployConfig,
     pub(crate) highway_config: HighwayConfig,
 }
@@ -221,7 +221,7 @@ impl Debug for GenesisConfig {
                 &format_args!("[{} bytes]", self.standard_payment_installer_bytes.len()),
             )
             .field("accounts", &self.accounts)
-            .field("costs", &self.costs)
+            .field("costs", &self.wasm_config)
             .field("deploy_config", &self.deploy_config)
             .field("highway_config", &self.highway_config)
             .finish()
@@ -257,7 +257,7 @@ impl GenesisConfig {
             standard_payment_installer_bytes,
             auction_installer_bytes,
             accounts,
-            costs,
+            wasm_config: costs,
             deploy_config,
             highway_config,
         }
@@ -275,7 +275,7 @@ pub(crate) struct UpgradePoint {
     pub(crate) protocol_version: Version,
     pub(crate) upgrade_installer_bytes: Option<Vec<u8>>,
     pub(crate) upgrade_installer_args: Option<Vec<u8>>,
-    pub(crate) new_costs: Option<WasmCosts>,
+    pub(crate) new_wasm_config: Option<WasmConfig>,
     pub(crate) new_deploy_config: Option<DeployConfig>,
 }
 
@@ -313,7 +313,7 @@ impl UpgradePoint {
             protocol_version,
             upgrade_installer_bytes,
             upgrade_installer_args,
-            new_costs,
+            new_wasm_config: new_costs,
             new_deploy_config,
         }
     }
@@ -353,13 +353,20 @@ impl Into<ExecConfig> for Chainspec {
             self.genesis.standard_payment_installer_bytes,
             self.genesis.auction_installer_bytes,
             self.genesis.accounts,
-            self.genesis.costs,
+            self.genesis.wasm_config,
         )
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use casper_execution_engine::shared::{
+        host_function_costs::{HostFunctionCost, HostFunctionCosts, PolynomialExpr},
+        opcode_costs::OpCodeCosts,
+        storage_costs::StorageCosts,
+        wasm_config::WasmConfig,
+    };
+
     use super::*;
     use crate::testing::{self, TestRng};
 
@@ -422,15 +429,149 @@ mod tests {
         assert_eq!(spec.genesis.deploy_config.max_block_size, 12);
         assert_eq!(spec.genesis.deploy_config.block_gas_limit, 13);
 
-        assert_eq!(spec.genesis.costs.regular, 13);
-        assert_eq!(spec.genesis.costs.div, 14);
-        assert_eq!(spec.genesis.costs.mul, 15);
-        assert_eq!(spec.genesis.costs.mem, 16);
-        assert_eq!(spec.genesis.costs.initial_mem, 17);
-        assert_eq!(spec.genesis.costs.grow_mem, 18);
-        assert_eq!(spec.genesis.costs.max_stack_height, 19);
-        assert_eq!(spec.genesis.costs.opcodes_mul, 20);
-        assert_eq!(spec.genesis.costs.opcodes_div, 21);
+        assert_eq!(
+            spec.genesis.wasm_config,
+            WasmConfig {
+                initial_mem: 17,
+                max_stack_height: 19,
+                opcode_costs: OpCodeCosts {
+                    regular: 13,
+                    div: 14,
+                    mul: 15,
+                    mem: 16,
+                    grow_mem: 18,
+                    opcodes_mul: 20,
+                    opcodes_div: 21
+                },
+                storage_costs: StorageCosts { gas_per_byte: 101 },
+                host_function_costs: HostFunctionCosts {
+                    read_value: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(137)]),
+                    read_value_local: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(138),
+                        PolynomialExpr::Coefficient(139)
+                    ]),
+                    write: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(154),
+                        PolynomialExpr::Coefficient(155)
+                    ]),
+                    write_local: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(156),
+                        PolynomialExpr::Coefficient(157),
+                        PolynomialExpr::Coefficient(158)
+                    ]),
+                    add: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(102)]),
+                    add_local: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(105),
+                        PolynomialExpr::Coefficient(106)
+                    ]),
+                    new_uref: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(130),
+                        PolynomialExpr::Coefficient(131)
+                    ]),
+                    load_named_keys: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(129)]),
+                    ret: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(145),
+                        PolynomialExpr::Coefficient(146),
+                        PolynomialExpr::Coefficient(147)
+                    ]),
+                    get_key: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(118),
+                        PolynomialExpr::Coefficient(119)
+                    ]),
+                    has_key: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(126),
+                        PolynomialExpr::Coefficient(127)
+                    ]),
+                    put_key: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(133),
+                        PolynomialExpr::Coefficient(134)
+                    ]),
+                    remove_key: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(143),
+                        PolynomialExpr::Coefficient(144)
+                    ]),
+                    revert: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(148)]),
+                    is_valid_uref: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(128)]),
+                    add_associated_key: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(
+                        103
+                    )]),
+                    remove_associated_key: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(140)
+                    ]),
+                    update_associated_key: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(153)
+                    ]),
+                    set_action_threshold: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(149)
+                    ]),
+                    get_caller: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(117)]),
+                    get_blocktime: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(116)]),
+                    create_purse: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(113)]),
+                    transfer_to_account: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(
+                        152
+                    )]),
+                    transfer_from_purse_to_account: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(150)
+                    ]),
+                    transfer_from_purse_to_purse: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(151)
+                    ]),
+                    get_balance: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(115)]),
+                    get_phase: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(124)]),
+                    get_system_contract: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(
+                        125
+                    )]),
+                    get_main_purse: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(120)]),
+                    read_host_buffer: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(135),
+                        PolynomialExpr::Coefficient(136)
+                    ]),
+                    create_contract_package_at_hash: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(111)
+                    ]),
+                    create_contract_user_group: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(112)
+                    ]),
+                    add_contract_version: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(104)
+                    ]),
+                    disable_contract_version: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(114)
+                    ]),
+                    call_contract: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(107),
+                        PolynomialExpr::Coefficient(108)
+                    ]),
+                    call_versioned_contract: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(109),
+                        PolynomialExpr::Coefficient(110)
+                    ]),
+                    get_named_arg_size: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(
+                        123
+                    )]),
+                    get_named_arg: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(121),
+                        PolynomialExpr::Coefficient(122)
+                    ]),
+                    remove_contract_user_group: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(141)
+                    ]),
+                    provision_contract_user_group_uref: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(132)
+                    ]),
+                    remove_contract_user_group_urefs: HostFunctionCost::from(vec![
+                        PolynomialExpr::Coefficient(142)
+                    ]),
+                    print: HostFunctionCost::from(vec![
+                        PolynomialExpr::Variable {
+                            name: "text_size".into(),
+                            value: 159
+                        },
+                        PolynomialExpr::Coefficient(160)
+                    ])
+                }
+            }
+        );
 
         assert_eq!(spec.upgrades.len(), 2);
 
@@ -442,15 +583,59 @@ mod tests {
             Some(b"Upgrade installer bytes".to_vec())
         );
         assert!(upgrade0.upgrade_installer_args.is_none());
-        assert_eq!(upgrade0.new_costs.unwrap().regular, 24);
-        assert_eq!(upgrade0.new_costs.unwrap().div, 25);
-        assert_eq!(upgrade0.new_costs.unwrap().mul, 26);
-        assert_eq!(upgrade0.new_costs.unwrap().mem, 27);
-        assert_eq!(upgrade0.new_costs.unwrap().initial_mem, 28);
-        assert_eq!(upgrade0.new_costs.unwrap().grow_mem, 29);
-        assert_eq!(upgrade0.new_costs.unwrap().max_stack_height, 30);
-        assert_eq!(upgrade0.new_costs.unwrap().opcodes_mul, 31);
-        assert_eq!(upgrade0.new_costs.unwrap().opcodes_div, 32);
+        assert_eq!(
+            upgrade0
+                .new_wasm_config
+                .as_ref()
+                .unwrap()
+                .opcode_costs
+                .regular,
+            24
+        );
+        assert_eq!(
+            upgrade0.new_wasm_config.as_ref().unwrap().opcode_costs.div,
+            25
+        );
+        assert_eq!(
+            upgrade0.new_wasm_config.as_ref().unwrap().opcode_costs.mul,
+            26
+        );
+        assert_eq!(
+            upgrade0.new_wasm_config.as_ref().unwrap().opcode_costs.mem,
+            27
+        );
+        assert_eq!(upgrade0.new_wasm_config.as_ref().unwrap().initial_mem, 17);
+        assert_eq!(
+            upgrade0
+                .new_wasm_config
+                .as_ref()
+                .unwrap()
+                .opcode_costs
+                .grow_mem,
+            29
+        );
+        assert_eq!(
+            upgrade0.new_wasm_config.as_ref().unwrap().max_stack_height,
+            19
+        );
+        assert_eq!(
+            upgrade0
+                .new_wasm_config
+                .as_ref()
+                .unwrap()
+                .opcode_costs
+                .opcodes_mul,
+            31
+        );
+        assert_eq!(
+            upgrade0
+                .new_wasm_config
+                .as_ref()
+                .unwrap()
+                .opcode_costs
+                .opcodes_div,
+            32
+        );
         assert_eq!(
             upgrade0.new_deploy_config.unwrap().max_payment_cost,
             Motes::new(U512::from(34))
@@ -468,7 +653,7 @@ mod tests {
         assert_eq!(upgrade1.protocol_version, Version::from((0, 3, 0)));
         assert!(upgrade1.upgrade_installer_bytes.is_none());
         assert!(upgrade1.upgrade_installer_args.is_none());
-        assert!(upgrade1.new_costs.is_none());
+        assert!(upgrade1.new_wasm_config.is_none());
         assert!(upgrade1.new_deploy_config.is_none());
     }
 
