@@ -21,7 +21,7 @@ use fmt::Display;
 use num_traits::AsPrimitive;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
-use tracing::{error, info};
+use tracing::{error, info, trace};
 
 use casper_execution_engine::shared::motes::Motes;
 
@@ -383,11 +383,6 @@ where
         block_header: BlockHeader,
         responder: Responder<Signature>,
     ) -> Effects<Event<I>> {
-        assert_eq!(
-            block_header.era_id(),
-            self.era_supervisor.current_era,
-            "executed block in unexpected era"
-        );
         // TODO - we should only sign if we're a validator for the given era ID.
         let signature = asymmetric_key::sign(
             block_header.hash().inner(),
@@ -396,6 +391,10 @@ where
             self.rng,
         );
         let mut effects = responder.respond(signature).ignore();
+        if block_header.era_id() < self.era_supervisor.current_era {
+            trace!("executed block in old era {}", block_header.era_id().0);
+            return effects;
+        }
         if block_header.switch_block() {
             // TODO: Learn the new weights from contract (validator rotation).
             let validator_stakes = self.era_supervisor.validator_stakes.clone();
