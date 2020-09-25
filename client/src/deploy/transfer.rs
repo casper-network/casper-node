@@ -20,7 +20,7 @@ pub(super) mod amount {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
             .short(ARG_SHORT)
-            .required(true)
+            .required_unless(creation_common::show_arg_examples::ARG_NAME)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
             .display_order(DisplayOrder::TransferAmount as usize)
@@ -168,11 +168,12 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
             .arg(source_purse::arg())
             .arg(target_account::arg())
             .arg(target_purse::arg())
-            // Group the target args to ensure one is given.
+            // Group the target args to ensure exactly one is required.
             .group(
-                ArgGroup::with_name("target-args")
+                ArgGroup::with_name("required-target-args")
                     .arg(target_account::ARG_NAME)
                     .arg(target_purse::ARG_NAME)
+                    .arg(creation_common::show_arg_examples::ARG_NAME)
                     .required(true),
             );
         let subcommand = creation_common::apply_common_payment_options(subcommand);

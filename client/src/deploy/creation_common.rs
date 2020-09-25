@@ -273,7 +273,7 @@ pub(super) mod chain_name {
     pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
-            .required(true)
+            .required_unless(show_arg_examples::ARG_NAME)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
             .display_order(DisplayOrder::ChainName as usize)
@@ -988,7 +988,7 @@ pub(super) mod input {
 
     pub fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
-            .required(true)
+            .required_unless(show_arg_examples::ARG_NAME)
             .long(ARG_NAME)
             .short(ARG_SHORT_NAME)
             .value_name(ARG_VALUE_NAME)
