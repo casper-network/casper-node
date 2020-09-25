@@ -173,7 +173,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
                 ArgGroup::with_name("target-args")
                     .arg(target_account::ARG_NAME)
                     .arg(target_purse::ARG_NAME)
-                    .required(false),
+                    .required(true),
             );
         let subcommand = creation_common::apply_common_payment_options(subcommand);
         creation_common::apply_common_creation_options(subcommand, true)
