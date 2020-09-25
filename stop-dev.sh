@@ -8,7 +8,7 @@ BASEDIR=$(readlink -f $(dirname $0))
 CHAINSPEC=$(mktemp -t chainspec_XXXXXXXX --suffix .toml)
 
 ARGS="$@"
-# If no nodes defined, start all.
+# If no nodes defined, stop all.
 NODES="${ARGS:-1 2 3 4 5}"
 
 for i in 1 2 3 4 5; do

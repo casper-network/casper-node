@@ -360,9 +360,13 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             },
         };
 
-        next_block.map_or_else(Effects::new, |block| {
-            fetch_block_deploys(effect_builder, peer, block)
-        })
+        next_block.map_or_else(
+            || {
+                warn!("Tried fetching next block deploys when there was no block.");
+                Effects::new()
+            },
+            |block| fetch_block_deploys(effect_builder, peer, block),
+        )
     }
 
     fn fetch_next_block<R, REv>(
