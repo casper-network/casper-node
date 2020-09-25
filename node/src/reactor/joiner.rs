@@ -425,6 +425,30 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                     };
                     self.dispatch_event(effect_builder, rng, Event::BlockByHeightFetcher(event))
                 }
+                Message::GetResponse {
+                    tag: Tag::Deploy,
+                    serialized_item,
+                } => {
+                    let deploy = match rmp_serde::from_read_ref(&serialized_item) {
+                        Ok(deploy) => Box::new(deploy),
+                        Err(err) => {
+                            error!("failed to decode deploy from {}: {}", sender, err);
+                            return Effects::new();
+                        }
+                    };
+                    let event = fetcher::Event::GotRemotely {
+                        item: deploy,
+                        source: Source::Peer(sender),
+                    };
+                    self.dispatch_event(effect_builder, rng, Event::DeployFetcher(event))
+                }
+                // needed so that consensus can notify us of the eras it knows of
+                // TODO: remove when proper syncing is implemented
+                Message::Consensus(msg) => self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    Event::Consensus(consensus::Event::MessageReceived { sender, msg }),
+                ),
                 Message::AddressGossiper(message) => {
                     let event = Event::AddressGossiper(gossiper::Event::MessageReceived {
                         sender,
