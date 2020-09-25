@@ -107,8 +107,8 @@ mod target_purse {
     const ARG_VALUE_NAME: &str = "HEX STRING";
     const ARG_HELP: &str = "Hex-encoded URef of the target purse";
 
-    // Conflicts with --target-account, but that's handled via an `ArgGroup` in the subcommand.  Don't
-    // add a `conflicts_with()` to the arg or the `ArgGroup` fails to work correctly.
+    // Conflicts with --target-account, but that's handled via an `ArgGroup` in the subcommand.
+    // Don't add a `conflicts_with()` to the arg or the `ArgGroup` fails to work correctly.
     pub(super) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
