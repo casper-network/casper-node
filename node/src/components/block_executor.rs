@@ -392,6 +392,15 @@ impl<REv: ReactorEventT, R: Rng + CryptoRng + ?Sized> Component<REv, R> for Bloc
     ) -> Effects<Self::Event> {
         match event {
             Event::Request(BlockExecutorRequest::ExecuteBlock(finalized_block)) => {
+                if self
+                    .exec_queue
+                    .keys()
+                    .chain(self.parent_map.keys())
+                    .any(|h| *h >= finalized_block.height())
+                {
+                    trace!(?finalized_block, "dropping outdated request",);
+                    return Effects::new();
+                }
                 debug!(?finalized_block, "execute block");
                 if finalized_block.proto_block().deploys().is_empty() {
                     effect_builder
