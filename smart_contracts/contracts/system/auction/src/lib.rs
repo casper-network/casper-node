@@ -3,7 +3,7 @@
 #[macro_use]
 extern crate alloc;
 
-use alloc::vec::Vec;
+use alloc::{boxed::Box, collections::BTreeMap, vec::Vec};
 use core::result::Result as StdResult;
 
 use casper_contract::{
@@ -15,10 +15,10 @@ use casper_types::{
     auction::{
         Auction, DelegationRate, RuntimeProvider, SeigniorageRecipients, StorageProvider,
         SystemProvider, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
-        ARG_SOURCE_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_KEYS, ARG_VALIDATOR_PUBLIC_KEYS,
-        METHOD_ADD_BID, METHOD_BOND, METHOD_DELEGATE, METHOD_QUASH_BID,
-        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS, METHOD_RUN_AUCTION, METHOD_SLASH,
-        METHOD_UNBOND, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
+        ARG_REWARD_FACTORS, ARG_SOURCE_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_KEYS,
+        ARG_VALIDATOR_PUBLIC_KEYS, METHOD_ADD_BID, METHOD_BOND, METHOD_DELEGATE, METHOD_DISTRIBUTE,
+        METHOD_QUASH_BID, METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS,
+        METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNBOND, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
     },
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::Error,
@@ -195,6 +195,14 @@ pub extern "C" fn slash() {
         .unwrap_or_revert();
 }
 
+#[no_mangle]
+pub fn distribute() {
+    let _reward_factors: BTreeMap<PublicKey, u64> = runtime::get_named_arg(ARG_REWARD_FACTORS);
+
+    let cl_value = CLValue::from_t(()).unwrap_or_revert();
+    runtime::ret(cl_value)
+}
+
 pub fn get_entry_points() -> EntryPoints {
     let mut entry_points = EntryPoints::new();
 
@@ -314,6 +322,21 @@ pub fn get_entry_points() -> EntryPoints {
     let entry_point = EntryPoint::new(
         METHOD_SLASH,
         vec![],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_DISTRIBUTE,
+        vec![Parameter::new(
+            ARG_REWARD_FACTORS,
+            CLType::Map {
+                key: Box::new(CLType::PublicKey),
+                value: Box::new(CLType::U64),
+            },
+        )],
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Contract,
