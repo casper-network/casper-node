@@ -31,7 +31,7 @@ use log::{info, warn, Level};
 use casper_execution_engine::{
     core::{
         engine_state::{
-            era_validators::{GetEraValidatorsRequest, GetEraValidatorsResult},
+            era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
             execute_request::ExecuteRequest,
             genesis::GenesisResult,
             query::{QueryRequest, QueryResult},
@@ -396,7 +396,7 @@ where
         let mut response = ipc::GetEraValidatorsResponse::new();
 
         match self.get_era_validators(correlation_id, get_era_validators_request) {
-            Ok(GetEraValidatorsResult::Success { validator_weights }) => {
+            Ok(validator_weights) => {
                 match ipc::GetEraValidatorsResponse_ValidatorWeights::try_from(validator_weights) {
                     Ok(pb_validator_weights) => response.set_success(pb_validator_weights),
                     Err(mapping_error) => {
@@ -405,13 +405,13 @@ where
                 }
             }
 
-            Ok(GetEraValidatorsResult::RootNotFound) => response
+            Err(GetEraValidatorsError::RootNotFound) => response
                 .mut_missing_prestate()
                 .set_hash(pre_state_hash.to_vec()),
 
-            Ok(GetEraValidatorsResult::InvalidEra) => response.mut_invalid_era().set_era_id(era_id),
+            Err(GetEraValidatorsError::InvalidEra) => response.mut_invalid_era().set_era_id(era_id),
 
-            Ok(GetEraValidatorsResult::ValueError) => response.set_value_error(Default::default()),
+            Err(GetEraValidatorsError::ValueError) => response.set_value_error(Default::default()),
 
             Err(error) => {
                 response.mut_error().set_message(error.to_string());

@@ -15,7 +15,7 @@ use casper_execution_engine::{
     core::engine_state::{
         self,
         balance::{BalanceRequest, BalanceResult},
-        era_validators::{GetEraValidatorsRequest, GetEraValidatorsResult},
+        era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
         execute_request::ExecuteRequest,
         execution_result::ExecutionResults,
         genesis::GenesisResult,
@@ -25,7 +25,7 @@ use casper_execution_engine::{
     shared::{additive_map::AdditiveMap, transform::Transform},
     storage::global_state::CommitResult,
 };
-use casper_types::{Key, URef};
+use casper_types::{auction::ValidatorWeights, Key, URef};
 
 use super::Responder;
 use crate::{
@@ -486,7 +486,7 @@ pub enum ContractRuntimeRequest {
         /// Get era validators request.
         get_request: GetEraValidatorsRequest,
         /// Responder to call with the result.
-        responder: Responder<Result<GetEraValidatorsResult, engine_state::Error>>,
+        responder: Responder<Result<ValidatorWeights, GetEraValidatorsError>>,
     },
 }
 

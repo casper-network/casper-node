@@ -1,20 +1,22 @@
-use casper_types::{
-    auction::{EraId, ValidatorWeights},
-    ProtocolVersion,
-};
+use casper_types::{auction::EraId, ProtocolVersion};
+use thiserror::Error;
 
-use crate::shared::newtypes::Blake2bHash;
+use crate::{core::engine_state::error::Error, shared::newtypes::Blake2bHash};
 
-#[derive(Debug)]
-pub enum GetEraValidatorsResult {
-    /// A successful query operation returned validator weights for given era.
-    Success { validator_weights: ValidatorWeights },
+#[derive(Debug, Error)]
+pub enum GetEraValidatorsError {
     /// Invalid state hash was used to make this request
+    #[error("Invalid state hash")]
     RootNotFound,
     /// Wrong era passed. There is no snapshot of validator weights for given era.
+    #[error("Invalid era id")]
     InvalidEra,
     /// Indicates that queried value is missing, or has invalid type.
+    #[error("Value error")]
     ValueError,
+    /// Engine state error
+    #[error(transparent)]
+    Other(#[from] Error),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

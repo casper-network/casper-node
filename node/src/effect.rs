@@ -79,7 +79,7 @@ use casper_execution_engine::{
     core::{
         engine_state::{
             self,
-            era_validators::{GetEraValidatorsRequest, GetEraValidatorsResult},
+            era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
             execute_request::ExecuteRequest,
             execution_result::ExecutionResults,
             genesis::GenesisResult,
@@ -90,7 +90,7 @@ use casper_execution_engine::{
     shared::{additive_map::AdditiveMap, transform::Transform},
     storage::global_state::CommitResult,
 };
-use casper_types::Key;
+use casper_types::{auction::ValidatorWeights, Key};
 
 use crate::{
     components::{
@@ -1025,7 +1025,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_validators(
         self,
         get_request: GetEraValidatorsRequest,
-    ) -> Result<GetEraValidatorsResult, engine_state::Error>
+    ) -> Result<ValidatorWeights, GetEraValidatorsError>
     where
         REv: From<ContractRuntimeRequest>,
     {

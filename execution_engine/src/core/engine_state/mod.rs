@@ -21,14 +21,14 @@ use std::{
     rc::Rc,
 };
 
-use era_validators::{GetEraValidatorsRequest, GetEraValidatorsResult};
+use era_validators::{GetEraValidatorsError, GetEraValidatorsRequest};
 use num_traits::Zero;
 use parity_wasm::elements::Module;
 use tracing::{debug, warn};
 
 use casper_types::{
     account::AccountHash,
-    auction::{EraValidators, ERA_VALIDATORS_KEY},
+    auction::{EraValidators, ValidatorWeights, ERA_VALIDATORS_KEY},
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
     runtime_args,
@@ -1809,20 +1809,19 @@ where
         &self,
         correlation_id: CorrelationId,
         get_era_validators_request: GetEraValidatorsRequest,
-    ) -> Result<GetEraValidatorsResult, Error> {
+    ) -> Result<ValidatorWeights, GetEraValidatorsError> {
         let protocol_version = get_era_validators_request.protocol_version();
 
         let tracking_copy = match self.tracking_copy(get_era_validators_request.state_hash())? {
             Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
-            None => return Ok(GetEraValidatorsResult::RootNotFound),
+            None => return Err(GetEraValidatorsError::RootNotFound),
         };
 
         let tracking_copy = tracking_copy.borrow();
 
-        let protocol_data = match self.get_protocol_data(protocol_version) {
-            Ok(Some(protocol_data)) => protocol_data,
-            Ok(None) => return Err(Error::InvalidProtocolVersion(protocol_version)),
-            Err(err) => return Err(err),
+        let protocol_data = match self.get_protocol_data(protocol_version)? {
+            Some(protocol_data) => protocol_data,
+            None => return Err(Error::InvalidProtocolVersion(protocol_version).into()),
         };
 
         let query_key = Key::Hash(protocol_data.auction());
@@ -1835,22 +1834,22 @@ where
             TrackingCopyQueryResult::Success(StoredValue::CLValue(cl_value)) => {
                 match cl_value.into_t() {
                     Ok(validator_weights) => validator_weights,
-                    Err(_) => return Ok(GetEraValidatorsResult::ValueError),
+                    Err(_) => return Err(GetEraValidatorsError::ValueError),
                 }
             }
 
             TrackingCopyQueryResult::Success(_)
             | TrackingCopyQueryResult::ValueNotFound(_)
             | TrackingCopyQueryResult::CircularReference(_) => {
-                return Ok(GetEraValidatorsResult::ValueError)
+                return Err(GetEraValidatorsError::ValueError)
             }
         };
 
         let validator_weights = match era_validators.remove(&get_era_validators_request.era_id()) {
             Some(validator_weights) => validator_weights,
-            None => return Ok(GetEraValidatorsResult::InvalidEra),
+            None => return Err(GetEraValidatorsError::InvalidEra),
         };
 
-        Ok(GetEraValidatorsResult::Success { validator_weights })
+        Ok(validator_weights)
     }
 }
