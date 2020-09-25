@@ -14,7 +14,7 @@ use crate::{
         EffectExt, Effects,
     },
     small_network::NodeId,
-    types::{Deploy, Timestamp},
+    types::Deploy,
     utils::Source,
 };
 
@@ -174,17 +174,6 @@ fn is_valid(deploy: &Deploy, chainspec: Chainspec) -> bool {
             deploy_header = %deploy.header(),
             max_ttl = %chainspec.genesis.deploy_config.max_ttl,
             "deploy ttl excessive"
-        );
-        return false;
-    }
-
-    let now = Timestamp::now();
-    if now > deploy.header().expires() {
-        warn!(
-            deploy_hash = %deploy.id(),
-            deploy_header = %deploy.header(),
-            %now,
-            "deploy expired"
         );
         return false;
     }
