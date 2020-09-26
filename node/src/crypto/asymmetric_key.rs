@@ -9,6 +9,7 @@ use std::{
     path::Path,
 };
 
+use datasize::DataSize;
 use derp::{Der, Tag};
 use ed25519_dalek::{self as ed25519, ExpandedSecretKey};
 use hex_fmt::HexFmt;
@@ -53,11 +54,13 @@ const SECP256K1_PEM_SECRET_KEY_TAG: &str = "EC PRIVATE KEY";
 const SECP256K1_PEM_PUBLIC_KEY_TAG: &str = "PUBLIC KEY";
 
 /// A secret or private asymmetric key.
-#[derive(Serialize, Deserialize)]
+#[derive(DataSize, Serialize, Deserialize)]
 pub enum SecretKey {
     /// Ed25519 secret key.
+    #[data_size(skip)] // Manually verified to have no data on the heap.
     Ed25519(ed25519::SecretKey),
     /// secp256k1 secret key.
+    #[data_size(skip)] // Manually verified to have no data on the heap.
     #[serde(with = "secp256k1_secret_key_serde")]
     Secp256k1(k256::SecretKey),
 }
@@ -412,12 +415,14 @@ mod secp256k1_secret_key_serde {
 }
 
 /// A public asymmetric key.
-#[derive(Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, DataSize, Eq, PartialEq, Serialize, Deserialize)]
 pub enum PublicKey {
     /// Ed25519 public key.
+    #[data_size(skip)] // Manually verified to have no data on the heap.
     Ed25519(ed25519::PublicKey),
     /// secp256k1 public key.
     #[serde(with = "secp256k1_public_key_serde")]
+    #[data_size(skip)] // Manually verified to have no data on the heap.
     Secp256k1(k256::PublicKey),
 }
 
@@ -860,7 +865,7 @@ mod big_array {
 }
 
 /// A signature of given data.
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, DataSize, Serialize, Deserialize)]
 pub enum Signature {
     /// Ed25519 signature.
     //
@@ -870,6 +875,7 @@ pub enum Signature {
     Ed25519(#[serde(with = "big_array::BigArray")] [u8; ed25519::SIGNATURE_LENGTH]),
     /// secp256k1 signature.
     #[serde(with = "secp256k1_signature_serde")]
+    #[data_size(skip)] // Manually verified to have no data on the heap.
     Secp256k1(Secp256k1Signature),
 }
 

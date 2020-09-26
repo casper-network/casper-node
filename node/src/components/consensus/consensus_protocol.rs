@@ -1,12 +1,13 @@
 use std::{collections::BTreeMap, fmt::Debug};
 
 use anyhow::Error;
+use datasize::DataSize;
 use rand::{CryptoRng, Rng};
 
 use crate::{components::consensus::traits::ConsensusValueT, types::Timestamp};
 
 /// Information about the context in which a new block is created.
-#[derive(Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
+#[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd)]
 pub struct BlockContext {
     timestamp: Timestamp,
     height: u64,

@@ -2,6 +2,8 @@
 
 use std::fmt::{self, Display, Formatter};
 
+use datasize::DataSize;
+
 use block_executor::BlockExecutor;
 use consensus::EraSupervisor;
 use deploy_acceptor::DeployAcceptor;
@@ -250,7 +252,11 @@ impl Display for Event {
 }
 
 /// Joining node reactor.
-pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
+#[derive(DataSize)]
+pub struct Reactor<R>
+where
+    R: Rng + CryptoRng + ?Sized,
+{
     pub(super) net: SmallNetwork<Event, Message>,
     pub(super) address_gossiper: Gossiper<GossipedAddress, Event>,
     pub(super) config: validator::Config,
@@ -267,6 +273,8 @@ pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
     // Effects consensus component returned during creation.
     // In the `joining` phase we don't want to handle it,
     // so we carry them forward to the `validator` reactor.
+    #[data_size(skip)]
+    // Unfortunately, we have no way of inspecting the future and its heap allocations at all.
     pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
     // Handles request for linear chain block by height.
     pub(super) block_by_height_fetcher: Fetcher<BlockByHeight>,

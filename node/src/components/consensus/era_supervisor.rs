@@ -17,6 +17,7 @@ use blake2::{
     VarBlake2b,
 };
 use casper_types::U512;
+use datasize::DataSize;
 use fmt::Display;
 use num_traits::AsPrimitive;
 use rand::{CryptoRng, Rng};
@@ -55,7 +56,9 @@ const BLOCK_REWARD: u64 = 1_000_000_000_000;
 // TODO: This needs to be in sync with AUCTION_DELAY/booking_duration_millis. (Already duplicated!)
 const RETAIN_ERAS: u64 = 4;
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    DataSize, Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
+)]
 pub struct EraId(pub(crate) u64);
 
 impl EraId {
@@ -77,14 +80,18 @@ impl Display for EraId {
     }
 }
 
-pub(crate) struct Era<I, R: Rng + CryptoRng + ?Sized> {
+pub struct Era<I, R: Rng + CryptoRng + ?Sized> {
     /// The consensus protocol instance.
     consensus: Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey, R>>,
     /// The height of this era's first block.
     start_height: u64,
 }
 
-pub(crate) struct EraSupervisor<I, R: Rng + CryptoRng + ?Sized> {
+#[derive(DataSize)]
+pub struct EraSupervisor<I, R>
+where
+    R: Rng + CryptoRng + ?Sized,
+{
     /// A map of active consensus protocols.
     /// A value is a trait so that we can run different consensus protocol instances per era.
     active_eras: HashMap<EraId, Era<I, R>>,

@@ -25,6 +25,8 @@
 
 mod event;
 
+use datasize::DataSize;
+
 use super::{fetcher::FetchResult, storage::Storage, Component};
 use crate::{
     effect::{self, EffectBuilder, EffectExt, EffectOptionExt, Effects},
@@ -59,7 +61,7 @@ impl<I, REv> ReactorEventT<I> for REv where
 {
 }
 
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 enum State {
     /// No syncing of the linear chain configured.
     None,
@@ -149,7 +151,7 @@ impl State {
     }
 }
 
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 pub(crate) struct LinearChainSync<I> {
     // Set of peers that we can requests block from.
     peers: Vec<I>,

@@ -5,6 +5,7 @@ use std::{
     fmt::{Debug, Display},
 };
 
+use datasize::DataSize;
 use derive_more::From;
 use itertools::Itertools;
 use rand::{CryptoRng, Rng};
@@ -163,7 +164,7 @@ pub struct State {
     pre_state_hash: Digest,
 }
 
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 struct ExecutedBlockSummary {
     hash: BlockHash,
     post_state_hash: Digest,
@@ -172,7 +173,7 @@ struct ExecutedBlockSummary {
 type BlockHeight = u64;
 
 /// The Block executor component.
-#[derive(Debug, Default)]
+#[derive(DataSize, Debug, Default)]
 pub(crate) struct BlockExecutor {
     genesis_post_state_hash: Digest,
     /// A mapping from proto block to executed block's ID and post-state hash, to allow

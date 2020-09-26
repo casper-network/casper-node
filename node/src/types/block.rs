@@ -9,6 +9,7 @@ use std::{
     hash::Hash,
 };
 
+use datasize::DataSize;
 use hex::FromHexError;
 use hex_fmt::{HexFmt, HexList};
 #[cfg(test)]
@@ -63,7 +64,18 @@ pub trait BlockLike: Eq + Hash {
 
 /// A cryptographic hash identifying a `ProtoBlock`.
 #[derive(
-    Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, Default,
+    Copy,
+    Clone,
+    DataSize,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Debug,
+    Default,
 )]
 pub struct ProtoBlockHash(Digest);
 
@@ -99,7 +111,7 @@ impl Display for ProtoBlockHash {
 ///
 /// The word "proto" does _not_ refer to "protocol" or "protobuf"! It is just a prefix to highlight
 /// that this comes before a block in the linear, executed, finalized blockchain is produced.
-#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ProtoBlock {
     hash: ProtoBlockHash,
     deploys: Vec<DeployHash>,
@@ -169,7 +181,7 @@ impl BlockLike for ProtoBlock {
 }
 
 /// System transactions like slashing and rewards.
-#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SystemTransaction {
     /// A validator has equivocated and should be slashed.
     Slash(PublicKey),
@@ -215,7 +227,7 @@ impl Display for SystemTransaction {
 
 /// The piece of information that will become the content of a future block after it was finalized
 /// and before execution happened yet.
-#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FinalizedBlock {
     proto_block: ProtoBlock,
     timestamp: Timestamp,
@@ -321,7 +333,9 @@ impl Display for FinalizedBlock {
 }
 
 /// A cryptographic hash identifying a [`Block`](struct.Block.html).
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(
+    Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug,
+)]
 pub struct BlockHash(Digest);
 
 impl BlockHash {
@@ -355,7 +369,7 @@ impl AsRef<[u8]> for BlockHash {
 }
 
 /// The header portion of a [`Block`](struct.Block.html).
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct BlockHeader {
     parent_hash: BlockHash,
     global_state_hash: Digest,
@@ -465,7 +479,7 @@ impl Display for BlockHeader {
 
 /// A proto-block after execution, with the resulting post-state-hash.  This is the core component
 /// of the Casper linear blockchain.
-#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(DataSize, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Block {
     hash: BlockHash,
     header: BlockHeader,

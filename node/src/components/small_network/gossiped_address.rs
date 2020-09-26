@@ -3,12 +3,15 @@ use std::{
     net::SocketAddr,
 };
 
+use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use crate::types::{Item, Tag};
 
 /// Used to gossip our public listening address to peers.
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize, Debug)]
+#[derive(
+    Copy, Clone, DataSize, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize, Debug,
+)]
 pub struct GossipedAddress {
     /// Our public listening address.
     address: SocketAddr,
