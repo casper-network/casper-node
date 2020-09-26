@@ -1,7 +1,7 @@
 mod event;
 // mod tests;
 
-use std::fmt::Debug;
+use std::{collections::HashMap, fmt::Debug};
 
 use rand::{CryptoRng, Rng};
 use semver::Version;
@@ -40,7 +40,9 @@ impl<REv> ReactorEventT for REv where
 /// It validates a new `Deploy` as far as possible, stores it if valid, then announces the newly-
 /// accepted `Deploy`.
 #[derive(Debug, Default)]
-pub(crate) struct DeployAcceptor {}
+pub(crate) struct DeployAcceptor {
+    chainspecs: HashMap<Version, Chainspec>,
+}
 
 impl DeployAcceptor {
     pub(crate) fn new() -> Self {
@@ -56,14 +58,27 @@ impl DeployAcceptor {
     ) -> Effects<Event> {
         // TODO - where to get version from?
         let chainspec_version = Version::new(1, 0, 0);
-        effect_builder
-            .get_chainspec(chainspec_version.clone())
-            .event(move |maybe_chainspec| Event::GetChainspecResult {
-                deploy,
-                source,
-                chainspec_version,
-                maybe_chainspec: Box::new(maybe_chainspec),
-            })
+        let cached_chainspec = self.chainspecs.get(&chainspec_version).cloned();
+        match cached_chainspec {
+            Some(chainspec) => {
+                effect_builder
+                    .immediately()
+                    .event(move |_| Event::GetChainspecResult {
+                        deploy,
+                        source,
+                        chainspec_version,
+                        maybe_chainspec: Box::new(Some(chainspec)),
+                    })
+            }
+            None => effect_builder
+                .get_chainspec(chainspec_version.clone())
+                .event(move |maybe_chainspec| Event::GetChainspecResult {
+                    deploy,
+                    source,
+                    chainspec_version,
+                    maybe_chainspec: Box::new(maybe_chainspec),
+                }),
+        }
     }
 
     fn validate<REv: ReactorEventT>(
@@ -133,7 +148,11 @@ impl<REv: ReactorEventT, R: Rng + CryptoRng + ?Sized> Component<REv, R> for Depl
                 chainspec_version,
                 maybe_chainspec,
             } => match *maybe_chainspec {
-                Some(chainspec) => self.validate(effect_builder, deploy, source, chainspec),
+                Some(chainspec) => {
+                    // Update chainspec cache.
+                    self.chainspecs.insert(chainspec_version, chainspec.clone());
+                    self.validate(effect_builder, deploy, source, chainspec)
+                }
                 None => self.failed_to_get_chainspec(deploy, source, chainspec_version),
             },
             Event::PutToStorageResult {
