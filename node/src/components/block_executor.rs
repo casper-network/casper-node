@@ -219,11 +219,9 @@ impl BlockExecutor {
         finalized_block: FinalizedBlock,
     ) -> Effects<Event> {
         let deploy_hashes = SmallVec::from_slice(finalized_block.proto_block().deploys());
-        let err_message = format!(
-            "deploy for block in era={} and height={} is expected to exist in the storage",
-            finalized_block.era_id(),
-            finalized_block.height()
-        );
+        let era_id = finalized_block.era_id();
+        let height = finalized_block.height();
+
         // Get all deploys in order they appear in the finalized block.
         effect_builder
             .get_deploys_from_storage(deploy_hashes)
@@ -232,7 +230,7 @@ impl BlockExecutor {
                 deploys: result
                     .into_iter()
                     // Assumes all deploys are present
-                    .map(|maybe_deploy| maybe_deploy.expect(&err_message))
+                    .map(|maybe_deploy| maybe_deploy.unwrap_or_else(|| panic!("deploy for block in era={} and height={} is expected to exist in the storage", era_id, height)))
                     .collect(),
             })
     }
