@@ -9,8 +9,8 @@ CHAINSPEC=$(mktemp -t chainspec_XXXXXXXX --suffix .toml)
 TRUSTED_HASH="${TRUSTED_HASH:-}"
 OFFSET="${OFFSET:-30}"
 TIMESTAMP=${GENESIS_TIMESTAMP:-$(date '+%s000' -d "+$OFFSET sec")}
-echo "GENESIS_TIMESTAMP="$TIMESTAMP
-date -d @$(echo "$TIMESTAMP/1000" | bc)
+echo "GENESIS_TIMESTAMP=${TIMESTAMP}"
+date -d @$(($TIMESTAMP/1000))
 
 # Build the node first, so that `sleep` in the loop has an effect.
 cargo build -p casper-node
