@@ -41,6 +41,9 @@ pub enum Error {
     /// Unable to obtain a key by its name.
     #[fail(display = "Missing key")]
     MissingKey = 8,
+    /// Base round reward not found.
+    #[fail(display = "Missing key")]
+    BaseRoundRewardNotFound = 9,
 }
 
 impl From<PurseError> for Error {

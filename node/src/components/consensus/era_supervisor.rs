@@ -16,7 +16,6 @@ use blake2::{
     digest::{Input, VariableOutput},
     VarBlake2b,
 };
-use casper_types::U512;
 use fmt::Display;
 use num_traits::AsPrimitive;
 use rand::{CryptoRng, Rng};
@@ -24,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info, trace};
 
 use casper_execution_engine::shared::motes::Motes;
+use casper_types::{auction::BLOCK_REWARD, U512};
 
 use crate::{
     components::{
@@ -48,9 +48,6 @@ use crate::{
     utils::WithDir,
 };
 
-// We use one trillion as a block reward unit because it's large enough to allow precise
-// fractions, and small enough for many block rewards to fit into a u64.
-const BLOCK_REWARD: u64 = 1_000_000_000_000;
 /// The number of recent eras to retain. Eras older than this are dropped from memory.
 // TODO: This needs to be in sync with AUCTION_DELAY/booking_duration_millis. (Already duplicated!)
 const RETAIN_ERAS: u64 = 4;

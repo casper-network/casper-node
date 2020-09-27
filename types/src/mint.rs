@@ -1,5 +1,6 @@
 //! Contains implementation of a Mint contract functionality.
 mod constants;
+mod round_reward;
 mod runtime_provider;
 mod storage_provider;
 
@@ -8,7 +9,8 @@ use core::convert::TryFrom;
 use crate::{account::AccountHash, system_contract_errors::mint::Error, Key, URef, U512};
 
 pub use crate::mint::{
-    constants::*, runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+    constants::*, round_reward::*, runtime_provider::RuntimeProvider,
+    storage_provider::StorageProvider,
 };
 
 const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
@@ -72,5 +74,18 @@ pub trait Mint: RuntimeProvider + StorageProvider {
         self.write(source_balance, source_value - amount)?;
         self.add(target_balance, amount)?;
         Ok(())
+    }
+
+    /// Retrieves the base round reward.
+    fn read_base_round_reward(&mut self) -> Result<U512, Error> {
+        let base_round_reward_uref = match self.get_key(BASE_ROUND_REWARD_KEY) {
+            Some(Key::URef(uref)) => uref,
+            Some(_) => return Err(Error::MissingKey), // TODO
+            None => return Err(Error::MissingKey),
+        };
+        match self.read(base_round_reward_uref)? {
+            Some(reward) => Ok(reward),
+            None => Err(Error::BaseRoundRewardNotFound),
+        }
     }
 }
