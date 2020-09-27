@@ -7,10 +7,12 @@ set -eu
 BASEDIR=$(readlink -f $(dirname $0))
 CHAINSPEC=$(mktemp -t chainspec_XXXXXXXX --suffix .toml)
 TRUSTED_HASH="${TRUSTED_HASH:-}"
+
+# Generate a genesis timestamp 30 seconds into the future, unless explicity given a different one.
 OFFSET="${OFFSET:-30}"
 TIMESTAMP=${GENESIS_TIMESTAMP:-$(date '+%s000' -d "+$OFFSET sec")}
-echo "GENESIS_TIMESTAMP=${TIMESTAMP}"
-date -d @$(($TIMESTAMP/1000))
+
+echo "GENESIS_TIMESTAMP=${TIMESTAMP}  [$(date -d @$(($TIMESTAMP/1000)))]"
 
 # Build the node first, so that `sleep` in the loop has an effect.
 cargo build -p casper-node
