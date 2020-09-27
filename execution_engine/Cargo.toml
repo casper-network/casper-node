@@ -16,6 +16,7 @@ base16 = "0.2.1"
 blake2 = "0.8.1"
 casper-types = { version = "0.6.0", path = "../types", package = "casper-types", features = ["std", "gens"] }
 chrono = "0.4.10"
+datasize = "0.1.1"
 csv = "1.1.3"
 hex = "0.4.2"
 hex_fmt = "0.3.0"
@@ -44,8 +45,6 @@ uint = "0.8.3"
 uuid = { version = "0.8.1", features = ["serde", "v4"] }
 wabt = "0.10.0"
 wasmi = "0.6.2"
-
-datasize = { path = "../../datasize/datasize" }
 
 [dev-dependencies]
 assert_matches = "1.3.0"

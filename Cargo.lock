@@ -1003,7 +1003,9 @@ dependencies = [
 
 [[package]]
 name = "datasize"
-version = "0.1.0"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93de26b919316206b20672da2dee5a73c257e25956a017a2456b76cded7146a1"
 dependencies = [
  "datasize_derive",
  "fake_instant",
@@ -1014,7 +1016,9 @@ dependencies = [
 
 [[package]]
 name = "datasize_derive"
-version = "0.1.0"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f39aa3c8d02084919760b6478b95ddfbe3e0ac71d227cf97cfa149d34123478"
 dependencies = [
  "proc-macro2 1.0.21",
  "quote 1.0.7",
