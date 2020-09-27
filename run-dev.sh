@@ -21,9 +21,8 @@ sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = ${TIMESTAMP}/" ${CHAINSPEC}
 sed -i 's|\.\./\.\.|'"$BASEDIR"'|' ${CHAINSPEC}
 sed -i 's|accounts\.csv|'"$BASEDIR"'/resources/local/accounts.csv|' ${CHAINSPEC}
 
-ARGS="$@"
 # If no nodes defined, start all.
-NODES="${ARGS:-1 2 3 4 5}"
+NODES="${@:-1 2 3 4 5}"
 
 run_node() {
     ID=$1
@@ -85,10 +84,8 @@ run_node() {
     sleep 1;
 }
 
-for i in 1 2 3 4 5; do
-    case "$NODES" in
-        *"$i"*) run_node $i
-    esac
+for i in $NODES; do
+    run_node $i
 done;
 
 echo "Test network starting."
