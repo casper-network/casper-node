@@ -85,7 +85,12 @@ warp-json-rpc = "0.1.6"
 wasmi = "0.6.2"
 sd-notify = "0.1.1"
 
-datasize = { path = "../../datasize/datasize", features = ["futures-types", "smallvec-types", "tokio-types"] }
+datasize = { path = "../../datasize/datasize", features = [
+    "fake_clock-types",
+    "futures-types",
+    "smallvec-types",
+    "tokio-types",
+] }
 
 [dev-dependencies]
 assert_matches = "1.3.0"

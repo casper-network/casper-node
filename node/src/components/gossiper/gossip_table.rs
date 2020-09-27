@@ -106,12 +106,10 @@ pub(crate) struct GossipTable<T> {
     current: HashMap<T, State>,
     /// Data IDs for which gossiping is complete.  The map's values are the times after which the
     /// relevant entries can be removed.
-    #[data_size(skip)] // Conditional redefinition of `Instant` prevents us from counting this.
     finished: HashMap<T, Instant>,
     /// Data IDs for which gossiping has been paused (likely due to detecting that the data was not
     /// correct as per our current knowledge).  Such data could later be decided as still requiring
     /// to be gossiped, so we retain the `State` part here in order to resume gossiping.
-    #[data_size(skip)] // Conditional redefinition of `Instant` prevents us from counting this.
     paused: HashMap<T, (State, Instant)>,
     /// See `Config::infection_target`.
     infection_target: usize,

@@ -1006,6 +1006,7 @@ name = "datasize"
 version = "0.1.0"
 dependencies = [
  "datasize_derive",
+ "fake_instant",
  "futures 0.3.5",
  "smallvec 1.4.2",
  "tokio 0.2.22",
