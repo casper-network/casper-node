@@ -4,6 +4,8 @@ use std::fmt::{self, Display, Formatter};
 
 use block_executor::BlockExecutor;
 use consensus::EraSupervisor;
+use deploy_acceptor::DeployAcceptor;
+use deploy_buffer::DeployBuffer;
 use derive_more::From;
 use prometheus::Registry;
 use rand::{CryptoRng, Rng};
@@ -17,6 +19,7 @@ use crate::{
         chainspec_loader::ChainspecLoader,
         consensus::{self, EraId},
         contract_runtime::{self, ContractRuntime},
+        deploy_acceptor, deploy_buffer,
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
         linear_chain,
@@ -28,8 +31,8 @@ use crate::{
     crypto::hash::Digest,
     effect::{
         announcements::{
-            BlockExecutorAnnouncement, ConsensusAnnouncement, GossiperAnnouncement,
-            NetworkAnnouncement,
+            BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
+            GossiperAnnouncement, NetworkAnnouncement,
         },
         requests::{
             BlockExecutorRequest, BlockValidationRequest, ConsensusRequest, ContractRuntimeRequest,
@@ -55,6 +58,10 @@ pub enum Event {
     #[from]
     Network(small_network::Event<Message>),
 
+    /// Deploy buffer event.
+    #[from]
+    DeployBuffer(deploy_buffer::Event),
+
     /// Storage event.
     #[from]
     Storage(storage::Event<Storage>),
@@ -66,6 +73,10 @@ pub enum Event {
     /// Deploy fetcher event.
     #[from]
     DeployFetcher(fetcher::Event<Deploy>),
+
+    /// Deploy acceptor event.
+    #[from]
+    DeployAcceptor(deploy_acceptor::Event),
 
     /// Block validator event.
     #[from]
@@ -136,6 +147,10 @@ pub enum Event {
     /// Address Gossiper announcement.
     #[from]
     AddressGossiperAnnouncement(GossiperAnnouncement<GossipedAddress>),
+
+    /// DeployAcceptor announcement.
+    #[from]
+    DeployAcceptorAnnouncement(DeployAcceptorAnnouncement<NodeId>),
 }
 
 impl From<StorageRequest<Storage>> for Event {
@@ -204,6 +219,11 @@ impl Display for Event {
             Event::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
             }
+            Event::DeployAcceptorAnnouncement(ann) => {
+                write!(f, "deploy acceptor announcement: {}", ann)
+            }
+            Event::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
+            Event::DeployBuffer(event) => write!(f, "deploy buffer: {}", event),
         }
     }
 }
@@ -227,6 +247,9 @@ pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
     // In the `joining` phase we don't want to handle it,
     // so we carry them forward to the `validator` reactor.
     pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
+    // Handles request for linear chain block by height.
+    pub(super) deploy_acceptor: DeployAcceptor,
+    pub(super) deploy_buffer: DeployBuffer,
     // TODO: remove after proper syncing is implemented
     // `None` means we haven't seen any consensus messages yet
     latest_received_era_id: Option<EraId>,
@@ -281,6 +304,10 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
 
         let deploy_fetcher = Fetcher::new(config.gossip);
 
+        let deploy_acceptor = DeployAcceptor::new();
+
+        let deploy_buffer = DeployBuffer::new(config.node.block_max_deploy_count as usize);
+
         let genesis_post_state_hash = chainspec_loader
             .genesis_post_state_hash()
             .expect("Should have Genesis post state hash");
@@ -325,6 +352,8 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 linear_chain,
                 consensus,
                 init_consensus_effects,
+                deploy_acceptor,
+                deploy_buffer,
                 latest_received_era_id: None,
             },
             effects,
@@ -338,6 +367,10 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
+            Event::DeployBuffer(event) => reactor::wrap_effects(
+                Event::DeployBuffer,
+                self.deploy_buffer.handle_event(effect_builder, rng, event),
+            ),
             Event::Network(event) => reactor::wrap_effects(
                 Event::Network,
                 self.net.handle_event(effect_builder, rng, event),
@@ -385,6 +418,23 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                     rng,
                     Event::Consensus(consensus::Event::MessageReceived { sender, msg }),
                 ),
+                Message::GetResponse {
+                    tag: Tag::Deploy,
+                    serialized_item,
+                } => {
+                    let deploy = match rmp_serde::from_read_ref(&serialized_item) {
+                        Ok(deploy) => Box::new(deploy),
+                        Err(err) => {
+                            error!("failed to decode deploy from {}: {}", sender, err);
+                            return Effects::new();
+                        }
+                    };
+                    let event = Event::DeployAcceptor(deploy_acceptor::Event::Accept {
+                        deploy,
+                        source: Source::Peer(sender),
+                    });
+                    self.dispatch_event(effect_builder, rng, event)
+                }
                 Message::AddressGossiper(message) => {
                     let event = Event::AddressGossiper(gossiper::Event::MessageReceived {
                         sender,
@@ -397,6 +447,38 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                     Effects::new()
                 }
             },
+            Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::AcceptedNewDeploy {
+                deploy,
+                source,
+            }) => {
+                let event = deploy_buffer::Event::Buffer {
+                    hash: *deploy.id(),
+                    header: Box::new(deploy.header().clone()),
+                };
+                let mut effects =
+                    self.dispatch_event(effect_builder, rng, Event::DeployBuffer(event));
+
+                let event = fetcher::Event::GotRemotely {
+                    item: deploy,
+                    source,
+                };
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    Event::DeployFetcher(event),
+                ));
+
+                effects
+            }
+            Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
+                deploy,
+                source,
+            }) => {
+                let deploy_hash = *deploy.id();
+                let peer = source;
+                warn!(?deploy_hash, ?peer, "Invalid deploy received from a peer.");
+                Effects::new()
+            }
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
@@ -404,10 +486,14 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             Event::BlockFetcherRequest(request) => {
                 self.dispatch_event(effect_builder, rng, Event::BlockFetcher(request.into()))
             }
-
             Event::BlockValidatorRequest(request) => {
                 self.dispatch_event(effect_builder, rng, Event::BlockValidator(request.into()))
             }
+            Event::DeployAcceptor(event) => reactor::wrap_effects(
+                Event::DeployAcceptor,
+                self.deploy_acceptor
+                    .handle_event(effect_builder, rng, event),
+            ),
             Event::LinearChainSync(event) => reactor::wrap_effects(
                 Event::LinearChainSync,
                 self.linear_chain_sync
