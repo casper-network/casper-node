@@ -2,40 +2,63 @@ use casper_engine_grpc_server::engine_server::{ipc, state};
 use casper_types::{ProtocolVersion, U512};
 
 #[derive(Debug)]
-pub struct StepItem {
+pub struct SlashItem {
+    validator_id: Vec<u8>,
+}
+
+impl SlashItem {
+    pub fn new(validator_id: Vec<u8>) -> Self {
+        SlashItem { validator_id }
+    }
+}
+
+impl Default for SlashItem {
+    fn default() -> Self {
+        SlashItem {
+            validator_id: Default::default(),
+        }
+    }
+}
+
+impl From<SlashItem> for ipc::SlashItem {
+    fn from(slash_item: SlashItem) -> Self {
+        let mut item = ipc::SlashItem::new();
+        item.set_validator_id(slash_item.validator_id);
+        item
+    }
+}
+
+#[derive(Debug)]
+pub struct RewardItem {
     validator_id: Vec<u8>,
     value: U512,
 }
 
-impl StepItem {
+#[allow(dead_code)]
+impl RewardItem {
     pub fn new(validator_id: Vec<u8>, value: U512) -> Self {
-        StepItem {
+        RewardItem {
             validator_id,
             value,
         }
     }
-
-    pub fn as_slash_item(self) -> ipc::SlashItem {
-        let mut item = ipc::SlashItem::new();
-        item.set_validator_id(self.validator_id);
-        item.set_value(self.value.into());
-        item
-    }
-
-    pub fn as_reward_item(self) -> ipc::RewardItem {
-        let mut item = ipc::RewardItem::new();
-        item.set_validator_id(self.validator_id);
-        item.set_value(self.value.into());
-        item
-    }
 }
 
-impl Default for StepItem {
+impl Default for RewardItem {
     fn default() -> Self {
-        StepItem {
+        RewardItem {
             validator_id: Default::default(),
             value: Default::default(),
         }
+    }
+}
+
+impl From<RewardItem> for ipc::RewardItem {
+    fn from(reward_item: RewardItem) -> Self {
+        let mut item = ipc::RewardItem::new();
+        item.set_validator_id(reward_item.validator_id);
+        item.set_value(reward_item.value.into());
+        item
     }
 }
 

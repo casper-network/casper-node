@@ -494,7 +494,6 @@ message StepRequest {
 
 message SlashItem{
     bytes validator_id = 1;
-    casper.state.BigInt value = 2;
 }
 
 message RewardItem {

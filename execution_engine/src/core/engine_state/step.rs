@@ -11,15 +11,11 @@ use uint::static_assertions::_core::fmt::Formatter;
 #[derive(Debug)]
 pub struct SlashItem {
     pub validator_id: Vec<u8>,
-    pub value: U512,
 }
 
 impl SlashItem {
-    pub fn new(validator_id: Vec<u8>, value: U512) -> Self {
-        Self {
-            validator_id,
-            value,
-        }
+    pub fn new(validator_id: Vec<u8>) -> Self {
+        Self { validator_id }
     }
 }
 

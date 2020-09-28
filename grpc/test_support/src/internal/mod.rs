@@ -23,7 +23,7 @@ use super::DEFAULT_ACCOUNT_INITIAL_BALANCE;
 pub use additive_map_diff::AdditiveMapDiff;
 pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
-pub use step_request_builder::{StepItem, StepRequestBuilder};
+pub use step_request_builder::{SlashItem, StepRequestBuilder};
 pub use upgrade_request_builder::UpgradeRequestBuilder;
 pub use wasm_test_builder::{
     InMemoryWasmTestBuilder, LmdbWasmTestBuilder, WasmTestBuilder, WasmTestResult,

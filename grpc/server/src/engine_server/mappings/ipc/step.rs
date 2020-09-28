@@ -16,8 +16,7 @@ impl TryFrom<ipc::SlashItem> for SlashItem {
             .get_validator_id()
             .try_into()
             .map_err(|_| MappingError::Parsing(ParsingError("validator_id".to_string())))?;
-        let value: U512 = pb_slash_item.get_value().clone().try_into()?;
-        Ok(SlashItem::new(validator_id, value))
+        Ok(SlashItem::new(validator_id))
     }
 }
 
@@ -25,7 +24,6 @@ impl From<SlashItem> for ipc::SlashItem {
     fn from(slash_item: SlashItem) -> Self {
         let mut result = ipc::SlashItem::new();
         result.set_validator_id(slash_item.validator_id);
-        result.set_value(slash_item.value.into());
         result
     }
 }

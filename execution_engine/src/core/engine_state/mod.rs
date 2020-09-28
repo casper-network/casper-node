@@ -1894,7 +1894,6 @@ where
                 return Ok(StepResult::Serialization(error));
             }
         };
-        println!("slashed_validators {:?}", slashed_validators);
 
         let slash_args = runtime_args! {"validator_public_keys" => slashed_validators};
 
@@ -1902,6 +1901,58 @@ where
             DirectSystemContractCall::Slash,
             auction_module.clone(),
             slash_args,
+            &mut named_keys,
+            Default::default(),
+            base_key,
+            &system_account,
+            authorization_keys.clone(),
+            BlockTime::default(),
+            deploy_hash,
+            gas_limit,
+            step_request.protocol_version,
+            correlation_id,
+            Rc::clone(&tracking_copy),
+            Phase::Session,
+            protocol_data,
+            SystemContractCache::clone(&self.system_contract_cache),
+        );
+
+        if execution_result.has_precondition_failure() {
+            return Ok(StepResult::PreconditionError);
+        }
+
+        let distribute_args = runtime_args! {}; // TODO: distribute args?
+
+        let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
+            DirectSystemContractCall::DistributeRewards,
+            auction_module.clone(),
+            distribute_args,
+            &mut named_keys,
+            Default::default(),
+            base_key,
+            &system_account,
+            authorization_keys.clone(),
+            BlockTime::default(),
+            deploy_hash,
+            gas_limit,
+            step_request.protocol_version,
+            correlation_id,
+            Rc::clone(&tracking_copy),
+            Phase::Session,
+            protocol_data,
+            SystemContractCache::clone(&self.system_contract_cache),
+        );
+
+        if execution_result.has_precondition_failure() {
+            return Ok(StepResult::PreconditionError);
+        }
+
+        let run_auction_args = runtime_args! {};
+
+        let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
+            DirectSystemContractCall::RunAuction,
+            auction_module.clone(),
+            run_auction_args,
             &mut named_keys,
             Default::default(),
             base_key,
