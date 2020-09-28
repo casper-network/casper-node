@@ -198,9 +198,10 @@ impl MemoryMetrics {
         self.mem_linear_chain.set(linear_chain);
 
         // Stop the timer explicitly, don't count logging.
-        drop(timer);
+        let duration_s = timer.stop_and_record();
 
         debug!(%total,
+               %duration_s,
                %net,
                %address_gossiper,
                %storage,
