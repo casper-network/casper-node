@@ -25,8 +25,8 @@ pub(crate) fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> 
     let panorama = &payout_vote.panorama;
     let mut rewards = ValidatorMap::from(vec![0u64; panorama.len()]);
     let mut prev_block = payout_block;
-    while let Some(prop_hash) = prev_block.parent() {
-        for (vidx, r) in compute_rewards_for(state, panorama, prop_hash).enumerate() {
+    while let Some(proposal_hash) = prev_block.parent() {
+        for (vidx, r) in compute_rewards_for(state, panorama, proposal_hash).enumerate() {
             match rewards[vidx].checked_add(*r) {
                 Some(sum) => rewards[vidx] = sum,
                 None => {

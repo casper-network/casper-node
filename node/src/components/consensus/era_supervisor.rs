@@ -238,7 +238,6 @@ where
         let ftt = validators.total_weight()
             * u64::from(self.highway_config().finality_threshold_percent)
             / 100;
-        // The number of rounds after which a block reward is paid out.
         // TODO: The initial round length should be the observed median of the switch block.
         let params = Params::new(
             0, // TODO: get a proper seed.
@@ -396,7 +395,7 @@ where
             trace!("executed block in old era {}", block_header.era_id().0);
             return effects;
         }
-        if block_header.era_end().is_some() {
+        if block_header.switch_block() {
             // TODO: Learn the new weights from contract (validator rotation).
             let validator_stakes = self.era_supervisor.validator_stakes.clone();
             self.era_supervisor

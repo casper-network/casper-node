@@ -379,6 +379,11 @@ impl BlockHeader {
         self.era_end.as_ref()
     }
 
+    /// Returns `true` if this block is the last one in the current era.
+    pub fn switch_block(&self) -> bool {
+        self.era_end.is_some()
+    }
+
     /// Era ID in which this block was created.
     pub fn era_id(&self) -> EraId {
         self.era_id
