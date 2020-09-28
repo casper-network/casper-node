@@ -1,5 +1,3 @@
-use tracing::error;
-
 use super::Horizon;
 use crate::{
     components::consensus::{
@@ -29,11 +27,10 @@ pub(crate) fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> 
         for (vidx, r) in compute_rewards_for(state, panorama, proposal_hash).enumerate() {
             match rewards[vidx].checked_add(*r) {
                 Some(sum) => rewards[vidx] = sum,
-                None => {
-                    let r0 = rewards[vidx];
-                    error!("rewards for {:?}, {} + {}, saturate u64", vidx, r0, r);
-                    rewards[vidx] = u64::MAX;
-                }
+                None => panic!(
+                    "rewards for {:?}, {} + {}, overflow u64",
+                    vidx, rewards[vidx], r
+                ),
             }
         }
         prev_block = state.block(proposal_hash);
