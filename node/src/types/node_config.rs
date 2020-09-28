@@ -1,3 +1,4 @@
+use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use crate::{utils::External, Chainspec};
@@ -6,7 +7,7 @@ const DEFAULT_CHAINSPEC_CONFIG_PATH: &str = "chainspec.toml";
 const DEFAULT_BLOCK_MAX_DEPLOY_COUNT: u32 = 3;
 
 /// Node configuration.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(DataSize, Debug, Deserialize, Serialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct NodeConfig {

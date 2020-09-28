@@ -6,6 +6,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use datasize::DataSize;
 #[cfg(test)]
 use rand::{seq::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
@@ -23,7 +24,7 @@ use casper_types::{bytesrepr::ToBytes, U128, U256, U512};
 use crate::testing::TestRng;
 
 /// The result of executing a single deploy.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, DataSize)]
 pub struct ExecutionResult {
     effect: ExecutionEffect,
     cost: U512,
@@ -91,7 +92,7 @@ impl From<&EngineExecutionResult> for ExecutionResult {
 }
 
 /// The effect of executing a single deploy.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug, DataSize)]
 struct ExecutionEffect {
     /// The resulting operations.  The map's key is the formatted string of the EE `Key`.
     operations: HashMap<String, Operation>,
@@ -116,7 +117,7 @@ impl From<&EngineExecutionEffect> for ExecutionEffect {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Debug, DataSize)]
 enum Operation {
     Read,
     Write,
@@ -135,7 +136,7 @@ impl From<&Op> for Operation {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, DataSize)]
 enum Transform {
     Identity,
     WriteCLValue(String),

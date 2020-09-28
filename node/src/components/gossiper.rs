@@ -5,15 +5,15 @@ mod gossip_table;
 mod message;
 mod tests;
 
+use datasize::DataSize;
+use futures::FutureExt;
+use rand::{CryptoRng, Rng};
+use smallvec::smallvec;
 use std::{
     collections::HashSet,
     fmt::{self, Debug, Formatter},
     time::Duration,
 };
-
-use futures::FutureExt;
-use rand::{CryptoRng, Rng};
-use smallvec::smallvec;
 use tracing::{debug, error};
 
 use crate::{
@@ -91,10 +91,16 @@ pub(crate) fn get_deploy_from_storage<T: Item + 'static, REv: ReactorEventT<T>>(
 
 /// The component which gossips to peers and handles incoming gossip messages from peers.
 #[allow(clippy::type_complexity)]
-pub(crate) struct Gossiper<T: Item + 'static, REv: ReactorEventT<T>> {
+#[derive(DataSize)]
+pub(crate) struct Gossiper<T, REv>
+where
+    T: Item + 'static,
+    REv: ReactorEventT<T>,
+{
     table: GossipTable<T::Id>,
     gossip_timeout: Duration,
     get_from_peer_timeout: Duration,
+    #[data_size(skip)] // Not well supported by datasize.
     get_from_holder:
         Box<dyn Fn(EffectBuilder<REv>, T::Id, NodeId) -> Effects<Event<T>> + Send + 'static>,
 }

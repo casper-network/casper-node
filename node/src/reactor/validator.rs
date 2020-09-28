@@ -9,6 +9,7 @@ mod tests;
 
 use std::fmt::{self, Display, Formatter};
 
+use datasize::DataSize;
 use derive_more::From;
 use fmt::Debug;
 use prometheus::Registry;
@@ -262,8 +263,11 @@ pub struct ValidatorInitConfig<R: Rng + CryptoRng + ?Sized> {
 }
 
 /// Validator node reactor.
-#[derive(Debug)]
-pub struct Reactor<R: Rng + CryptoRng + ?Sized> {
+#[derive(DataSize, Debug)]
+pub struct Reactor<R>
+where
+    R: Rng + CryptoRng + ?Sized,
+{
     metrics: Metrics,
     net: SmallNetwork<Event, Message>,
     address_gossiper: Gossiper<GossipedAddress, Event>,

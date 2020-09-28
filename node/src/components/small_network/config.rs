@@ -1,8 +1,8 @@
 #[cfg(test)]
 use std::net::{Ipv4Addr, SocketAddr};
-
 use std::time::Duration;
 
+use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
@@ -35,7 +35,7 @@ impl Default for Config {
 }
 
 /// Small network configuration.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(DataSize, Debug, Clone, Deserialize, Serialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {

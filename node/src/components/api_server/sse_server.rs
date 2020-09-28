@@ -1,5 +1,6 @@
 //! Types and functions used by the http server to manage the event-stream.
 
+use datasize::DataSize;
 use futures::{Stream, StreamExt};
 use lazy_static::lazy_static;
 #[cfg(test)]
@@ -43,10 +44,11 @@ lazy_static! {
 type Id = u32;
 
 /// The "data" field of the events sent on the event stream to clients.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub enum SseData {
     /// The version of this node's API server.  This event will always be the first sent to a new
     /// client, and will have no associated event ID provided.
+    #[data_size(skip)]
     ApiVersion(Version),
     /// The given block has been finalized.
     BlockFinalized(FinalizedBlock),

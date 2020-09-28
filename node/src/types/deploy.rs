@@ -7,6 +7,7 @@ use std::{
     iter::FromIterator,
 };
 
+use datasize::DataSize;
 use hex::FromHexError;
 use itertools::Itertools;
 #[cfg(test)]
@@ -77,7 +78,18 @@ impl From<TryFromSliceError> for Error {
 
 /// The cryptographic hash of a [`Deploy`](struct.Deploy.html).
 #[derive(
-    Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, Default,
+    Copy,
+    Clone,
+    DataSize,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Debug,
+    Default,
 )]
 pub struct DeployHash(Digest);
 
@@ -112,7 +124,7 @@ impl AsRef<[u8]> for DeployHash {
 }
 
 /// The header portion of a [`Deploy`](struct.Deploy.html).
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct DeployHeader {
     account: PublicKey,
     timestamp: Timestamp,
@@ -184,7 +196,7 @@ impl Display for DeployHeader {
 }
 
 /// A struct containing a signature and the public key of the signer.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct Approval {
     signer: PublicKey,
     signature: Signature,
@@ -209,7 +221,7 @@ impl Display for Approval {
 }
 
 /// A deploy; an item containing a smart contract along with the requester's signature(s).
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 pub struct Deploy {
     hash: DeployHash,
     header: DeployHeader,

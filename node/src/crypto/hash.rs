@@ -10,6 +10,7 @@ use blake2::{
     digest::{Input, VariableOutput},
     VarBlake2b,
 };
+use datasize::DataSize;
 use hex_buffer_serde::{Hex, HexForm};
 use hex_fmt::HexFmt;
 #[cfg(test)]
@@ -24,7 +25,9 @@ use super::Error;
 use crate::testing::TestRng;
 
 /// The hash digest; a wrapped `u8` array.
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Default)]
+#[derive(
+    Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Default,
+)]
 pub struct Digest(#[serde(with = "HexForm::<[u8; Digest::LENGTH]>")] [u8; Digest::LENGTH]);
 
 impl Digest {

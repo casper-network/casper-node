@@ -1,6 +1,7 @@
 use alloc::vec::Vec;
 use core::{cmp, fmt};
 
+use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -22,7 +23,7 @@ mod big_array {
     big_array! { BigArray; super::SECP256K1_PUBLIC_KEY_LENGTH }
 }
 
-#[derive(Copy, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, DataSize, Serialize, Deserialize)]
 pub struct Secp256k1Bytes(#[serde(with = "big_array::BigArray")] [u8; SECP256K1_PUBLIC_KEY_LENGTH]);
 
 impl Secp256k1Bytes {
@@ -89,7 +90,7 @@ impl ToBytes for Secp256k1Bytes {
 }
 
 /// Simplified raw data type
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(DataSize, Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum PublicKey {
     /// Ed25519 public key.
     Ed25519([u8; ED25519_PUBLIC_KEY_LENGTH]),

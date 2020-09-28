@@ -3,6 +3,7 @@ mod event;
 
 use std::fmt::Debug;
 
+use datasize::DataSize;
 use rand::{CryptoRng, Rng};
 use semver::Version;
 use tracing::{debug, error, warn};
@@ -39,7 +40,7 @@ impl<REv> ReactorEventT for REv where
 ///
 /// It validates a new `Deploy` as far as possible, stores it if valid, then announces the newly-
 /// accepted `Deploy`.
-#[derive(Debug, Default)]
+#[derive(DataSize, Debug, Default)]
 pub(crate) struct DeployAcceptor {}
 
 impl DeployAcceptor {

@@ -1,3 +1,4 @@
+use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 /// Default binding address for the HTTP server.
@@ -9,7 +10,7 @@ const DEFAULT_ADDRESS: &str = "0.0.0.0:7777";
 const DEFAULT_EVENT_STREAM_BUFFER_LENGTH: u32 = 100;
 
 /// API server configuration.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(DataSize, Debug, Deserialize, Serialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {

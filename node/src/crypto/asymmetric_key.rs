@@ -10,6 +10,7 @@ use std::{
     result::Result as StdResult,
 };
 
+use datasize::DataSize;
 use derp::{Der, Tag};
 use ed25519_dalek::{self as ed25519, ExpandedSecretKey};
 use hex_fmt::HexFmt;
@@ -57,10 +58,13 @@ const SECP256K1_PEM_SECRET_KEY_TAG: &str = "EC PRIVATE KEY";
 const SECP256K1_PEM_PUBLIC_KEY_TAG: &str = "PUBLIC KEY";
 
 /// A secret or private asymmetric key.
+#[derive(DataSize)]
 pub enum SecretKey {
     /// Ed25519 secret key.
+    #[data_size(skip)] // Manually verified to have no data on the heap.
     Ed25519(ed25519::SecretKey),
     /// secp256k1 secret key.
+    #[data_size(skip)] // Manually verified to have no data on the heap.
     Secp256k1(k256::SecretKey),
 }
 
@@ -385,11 +389,13 @@ impl<'de> Deserialize<'de> for SecretKey {
 }
 
 /// A public asymmetric key.
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, DataSize, Eq, PartialEq)]
 pub enum PublicKey {
     /// Ed25519 public key.
+    #[data_size(skip)] // Manually verified to have no data on the heap.
     Ed25519(ed25519::PublicKey),
     /// secp256k1 public key.
+    #[data_size(skip)] // Manually verified to have no data on the heap.
     Secp256k1(k256::PublicKey),
 }
 
@@ -775,7 +781,7 @@ pub fn generate_secp256k1_keypair() -> (SecretKey, PublicKey) {
 }
 
 /// A signature of given data.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, DataSize)]
 pub enum Signature {
     /// Ed25519 signature.
     //
@@ -784,6 +790,7 @@ pub enum Signature {
     // it is convenient and cheap to use `signature.as_ref()`.
     Ed25519([u8; ed25519::SIGNATURE_LENGTH]),
     /// secp256k1 signature.
+    #[data_size(skip)] // Manually verified to have no data on the heap.
     Secp256k1(Secp256k1Signature),
 }
 

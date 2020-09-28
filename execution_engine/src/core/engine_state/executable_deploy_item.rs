@@ -1,5 +1,6 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
+use datasize::DataSize;
 use hex_buffer_serde::{Hex, HexForm};
 use hex_fmt::HexFmt;
 use rand::{
@@ -17,7 +18,7 @@ use casper_types::{
 use super::error;
 use crate::{core::execution, shared::account::Account};
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Clone, DataSize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum ExecutableDeployItem {
     ModuleBytes {
         #[serde(with = "HexForm::<Vec<u8>>")]

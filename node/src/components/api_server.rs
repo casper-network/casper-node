@@ -21,6 +21,7 @@ mod sse_server;
 
 use std::fmt::Debug;
 
+use datasize::DataSize;
 use futures::join;
 use lazy_static::lazy_static;
 use rand::{CryptoRng, Rng};
@@ -80,9 +81,11 @@ impl<REv> ReactorEventT for REv where
 {
 }
 
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 pub(crate) struct ApiServer {
     /// Channel sender to pass event-stream data to the event-stream server.
+    // TODO - this should not be skipped.  Awaiting support for `UnboundedSender` in datasize crate.
+    #[data_size(skip)]
     sse_data_sender: UnboundedSender<SseData>,
 }
 
