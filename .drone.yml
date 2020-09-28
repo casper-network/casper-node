@@ -97,6 +97,7 @@ trigger:
   - trying
   - staging
 
+---
 kind: pipeline
 name: bintray-tests
 
@@ -147,6 +148,7 @@ trigger:
   event:
   - push
 
+---
 kind: pipeline
 name: on-tag
 
