@@ -36,7 +36,7 @@ pub(crate) fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> 
                 }
             }
         }
-        prev_block = state.block(prop_hash);
+        prev_block = state.block(proposal_hash);
     }
     rewards
 }
