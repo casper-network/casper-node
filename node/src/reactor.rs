@@ -46,6 +46,7 @@ use crate::{
     utils::{self, WeightedRoundRobin},
 };
 pub use queue_kind::QueueKind;
+use tokio::time::{Duration, Instant};
 
 /// Event scheduler
 ///
@@ -173,8 +174,17 @@ where
     /// Counter for events, to aid tracing.
     event_count: usize,
 
+    /// Timestamp of last reactor metrics update.
+    last_metrics: Instant,
+
     /// Metrics for the runner.
     metrics: RunnerMetrics,
+
+    /// Check if we need to update reactor metrics every this many events.
+    event_metrics_threshold: usize,
+
+    /// Only update reactor metrics if at least this much time has passed.
+    event_metrics_min_delay: Duration,
 }
 
 /// Metric data for the Runner
@@ -258,6 +268,9 @@ where
             reactor,
             event_count: 0,
             metrics: RunnerMetrics::new(registry)?,
+            last_metrics: Instant::now(),
+            event_metrics_min_delay: Duration::from_secs(30),
+            event_metrics_threshold: 1000,
         })
     }
 
@@ -286,11 +299,23 @@ where
         let crank_span = debug_span!("crank", ev = self.event_count);
         let _inner_enter = crank_span.enter();
 
-        self.event_count += 1;
         self.metrics.events.inc();
 
         let event_queue = EventQueueHandle::new(self.scheduler);
         let effect_builder = EffectBuilder::new(event_queue);
+
+        // Update metrics like memory usage.
+        if self.event_count % self.event_metrics_threshold == 0 {
+            let now = Instant::now();
+
+            // We update metrics on the first very event as well to get a good baseline.
+            if self.event_count == 0
+                || now.duration_since(self.last_metrics) >= self.event_metrics_min_delay
+            {
+                self.reactor.update_metrics();
+                self.last_metrics = now;
+            }
+        }
 
         let (event, q) = self.scheduler.pop().await;
 
@@ -313,6 +338,7 @@ where
         process_effects(self.scheduler, effects)
             .instrument(effect_span)
             .await;
+
         self.event_count += 1;
     }
 
