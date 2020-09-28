@@ -1,9 +1,10 @@
 use std::net::{IpAddr, Ipv4Addr};
 
+use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 /// API server configuration.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(DataSize, Debug, Deserialize, Serialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {

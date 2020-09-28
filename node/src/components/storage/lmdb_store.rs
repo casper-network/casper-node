@@ -1,5 +1,6 @@
 use std::{fmt::Debug, marker::PhantomData, path::Path};
 
+use datasize::DataSize;
 use lmdb::{
     self, Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags,
 };
@@ -19,9 +20,14 @@ enum Tag {
 }
 
 /// LMDB version of a store.
-#[derive(Debug)]
-pub(super) struct LmdbStore<V: Value, M> {
+#[derive(DataSize, Debug)]
+pub struct LmdbStore<V, M>
+where
+    V: Value,
+{
+    #[data_size(skip)] // Just a pointer to an external C lib
     env: Environment,
+    #[data_size(skip)] // Just a pointer to an external C lib
     db: Database,
     _phantom: PhantomData<(V, M)>,
 }

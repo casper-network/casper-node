@@ -127,7 +127,7 @@ impl<C: Context> ActiveValidator<C> {
     pub(crate) fn on_new_vote<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         vhash: &C::Hash,
-        timestamp: Timestamp,
+        mut timestamp: Timestamp,
         state: &State<C>,
         instance_id: C::InstanceId,
         rng: &mut R,
@@ -135,9 +135,10 @@ impl<C: Context> ActiveValidator<C> {
         if let Some(evidence) = state.opt_evidence(self.vidx) {
             return vec![Effect::WeEquivocated(evidence.clone())];
         }
-        if self.earliest_vote_time(state) > timestamp {
-            warn!(%timestamp, "skipping outdated confirmation");
-        } else if self.should_send_confirmation(vhash, timestamp, state) {
+        // TODO: `timestamp` should be the _current_ timestamp and we need to delay incoming votes
+        // with a future timestamp.
+        timestamp = self.earliest_vote_time(state).max(timestamp);
+        if self.should_send_confirmation(vhash, timestamp, state) {
             let panorama = self.confirmation_panorama(vhash, state);
             if panorama.has_correct() {
                 let confirmation_vote =
@@ -319,11 +320,16 @@ impl<C: Context> ActiveValidator<C> {
         vec![Effect::ScheduleTimer(self.next_timer)]
     }
 
-    /// Returns the earliest timestamp where we can cast our next vote without equivocating, i.e.
-    /// the timestamp of our previous vote, or 0 if there is none.
+    /// Returns the earliest timestamp where we can cast our next vote: It can't be earlier than
+    /// our previous vote, and it can't be the third vote in a single round.
     fn earliest_vote_time(&self, state: &State<C>) -> Timestamp {
         self.latest_vote(state)
-            .map_or_else(Timestamp::zero, |vh| vh.timestamp)
+            .map_or_else(Timestamp::zero, |vote| {
+                vote.previous().map_or(vote.timestamp, |vh2| {
+                    let vote2 = state.vote(vh2);
+                    vote.timestamp.max(vote2.round_id() + vote2.round_len())
+                })
+            })
     }
 
     /// Returns the most recent vote by this validator.

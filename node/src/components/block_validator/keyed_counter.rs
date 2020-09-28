@@ -6,12 +6,14 @@ use std::{
     ops::{AddAssign, SubAssign},
 };
 
+use datasize::DataSize;
+
 /// A key-counter.
 ///
 /// Allows tracking a counter for any key `K`.
 ///
 /// Any counter that is set to `0` will not use any memory.
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 pub(super) struct KeyedCounter<K>(HashMap<K, usize>);
 
 impl<K> KeyedCounter<K> {

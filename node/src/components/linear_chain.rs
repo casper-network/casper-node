@@ -4,6 +4,7 @@ use std::{
     marker::PhantomData,
 };
 
+use datasize::DataSize;
 use derive_more::From;
 use futures::FutureExt;
 use rand::{CryptoRng, Rng};
@@ -69,7 +70,7 @@ impl<I: Display> Display for Event<I> {
     }
 }
 
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 pub(crate) struct LinearChain<I> {
     /// A temporary workaround.
     linear_chain: Vec<Block>,

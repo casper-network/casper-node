@@ -1,3 +1,4 @@
+use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::shared::utils;
@@ -6,7 +7,7 @@ const DEFAULT_MAX_GLOBAL_STATE_SIZE: usize = 805_306_368_000; // 750 GiB
 const DEFAULT_USE_SYSTEM_CONTRACTS: bool = false;
 
 /// Contract runtime configuration.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, DataSize, Debug, Deserialize, Serialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {

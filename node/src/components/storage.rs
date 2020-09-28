@@ -16,6 +16,7 @@ use std::{
     sync::Arc,
 };
 
+use datasize::DataSize;
 use futures::TryFutureExt;
 use rand::{CryptoRng, Rng};
 use semver::Version;
@@ -490,8 +491,12 @@ impl<B: Value + 'static, D: Value + Item + 'static> StorageType for InMemStorage
 }
 
 // Concrete type of `Storage` backed by LMDB stores.
-#[derive(Debug)]
-pub struct LmdbStorage<B: Value, D: Value> {
+#[derive(DataSize, Debug)]
+pub struct LmdbStorage<B, D>
+where
+    B: Value,
+    D: Value,
+{
     block_store: Arc<LmdbStore<B, BlockMetadata>>,
     deploy_store: Arc<LmdbStore<D, DeployMetadata<B>>>,
     chainspec_store: Arc<LmdbChainspecStore>,

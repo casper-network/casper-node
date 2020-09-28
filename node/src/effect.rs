@@ -70,6 +70,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use semver::Version;
 use smallvec::{smallvec, SmallVec};
@@ -136,6 +137,7 @@ type Multiple<T> = SmallVec<[T; 2]>;
 
 /// A responder satisfying a request.
 #[must_use]
+#[derive(DataSize)]
 pub struct Responder<T>(Option<oneshot::Sender<T>>);
 
 impl<T: 'static + Send> Responder<T> {

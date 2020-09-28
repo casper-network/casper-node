@@ -8,6 +8,7 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
+use datasize::DataSize;
 use derive_more::From;
 use rand::{CryptoRng, Rng};
 use semver::Version;
@@ -76,7 +77,7 @@ impl Display for Event {
 }
 
 /// Deploy buffer.
-#[derive(Debug, Clone)]
+#[derive(DataSize, Debug, Clone)]
 pub(crate) struct DeployBuffer {
     block_max_deploy_count: usize,
     collected_deploys: HashMap<DeployHash, DeployHeader>,

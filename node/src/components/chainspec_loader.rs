@@ -14,6 +14,7 @@ mod error;
 
 use std::fmt::{self, Display, Formatter};
 
+use datasize::DataSize;
 use derive_more::From;
 use rand::{CryptoRng, Rng};
 use semver::Version;
@@ -62,7 +63,7 @@ impl Display for Event {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(DataSize, Debug, Serialize, Deserialize)]
 pub struct ChainspecInfo {
     // Name of the chainspec.
     name: String,
@@ -85,7 +86,7 @@ impl From<ChainspecLoader> for ChainspecInfo {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, DataSize, Debug, Serialize, Deserialize)]
 pub(crate) struct ChainspecLoader {
     chainspec: Chainspec,
     // If `Some`, we're finished.  The value of the bool indicates success (true) or not.
