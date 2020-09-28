@@ -6,6 +6,7 @@ use std::{
 };
 
 use anyhow::Error;
+use datasize::DataSize;
 use itertools::Itertools;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
@@ -30,8 +31,11 @@ use crate::{
     types::{ProtoBlock, Timestamp},
 };
 
-#[derive(Debug)]
-pub(crate) struct HighwayProtocol<I, C: Context> {
+#[derive(DataSize, Debug)]
+pub(crate) struct HighwayProtocol<I, C>
+where
+    C: Context,
+{
     /// Incoming vertices we can't add yet because they are still missing a dependency.
     vertex_deps: BTreeMap<Dependency<C>, Vec<(I, PreValidatedVertex<C>)>>,
     /// Incoming blocks we can't add yet because we are waiting for validation.
@@ -213,7 +217,7 @@ type CpResult<I, C> =
 impl<I, C, R> ConsensusProtocol<I, C::ConsensusValue, C::ValidatorId, R> for HighwayProtocol<I, C>
 where
     I: NodeIdT,
-    C: Context,
+    C: Context + 'static,
     R: Rng + CryptoRng + ?Sized,
 {
     fn handle_message(
@@ -308,6 +312,10 @@ where
     /// Turns this instance into a passive observer, that does not create any new vertices.
     fn deactivate_validator(&mut self) {
         self.highway.deactivate_validator()
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

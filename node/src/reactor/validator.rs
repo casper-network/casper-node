@@ -316,6 +316,9 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
 
         let metrics = Metrics::new(registry.clone());
 
+        // Temporary memory metrics.
+        // TODO
+
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, config.network, true)?;
 
@@ -344,26 +347,25 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             init_consensus_effects,
         ));
 
-        Ok((
-            Reactor {
-                metrics,
-                net,
-                address_gossiper,
-                storage,
-                contract_runtime,
-                api_server,
-                chainspec_loader,
-                consensus,
-                deploy_acceptor,
-                deploy_fetcher,
-                deploy_gossiper,
-                deploy_buffer,
-                block_executor,
-                proto_block_validator,
-                linear_chain,
-            },
-            effects,
-        ))
+        let reactor = Reactor {
+            metrics,
+            net,
+            address_gossiper,
+            storage,
+            contract_runtime,
+            api_server,
+            chainspec_loader,
+            consensus,
+            deploy_acceptor,
+            deploy_fetcher,
+            deploy_gossiper,
+            deploy_buffer,
+            block_executor,
+            proto_block_validator,
+            linear_chain,
+        };
+        error!("MEMORY METRICS: {:?}", reactor.estimate_heap_size());
+        Ok((reactor, effects))
     }
 
     fn dispatch_event(
