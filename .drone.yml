@@ -207,7 +207,10 @@ steps:
 - name: build-deb-tag
   <<: *buildenv
   commands:
+    - "make build-system-contracts -j"
     - "make deb"
+  depends_on:
+  - build-deb-make-setup-rs
 
 - name: publish-bintray-tag
   <<: *buildenv
