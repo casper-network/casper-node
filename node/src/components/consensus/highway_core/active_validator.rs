@@ -230,17 +230,30 @@ impl<C: Context> ActiveValidator<C> {
             warn!(%vote.timestamp, %timestamp, "added a vote with a future timestamp");
             return false;
         }
-        let r_exp = self.round_exp(state, timestamp);
-        timestamp >> r_exp == vote.timestamp >> r_exp // Current round.
-            && state.leader(vote.timestamp) == vote.creator // The creator is the round's leader.
-            && vote.timestamp == state::round_id(vote.timestamp, vote.round_exp) // It's a proposal.
-            && vote.creator != self.vidx // We didn't send it ourselves.
-            && !state.has_evidence(vote.creator) // The creator is not faulty.
-            && !self.is_faulty(state) // We are not faulty.
-            && self.latest_vote(state)
-                .map_or(true, |vote| {
-                    !vote.panorama.sees_correct(state, vhash)
-                }) // We haven't confirmed it already.
+        // If it's not a proposal, the sender is faulty, or we are, don't send a confirmation.
+        if vote.creator == self.vidx
+            || self.is_faulty(state)
+            || state.has_evidence(vote.creator)
+            || state.leader(vote.timestamp) != vote.creator
+            || vote.timestamp != state::round_id(vote.timestamp, vote.round_exp)
+        {
+            return false;
+        }
+        if let Some(vote) = self.latest_vote(state) {
+            if vote.panorama.sees_correct(state, vhash) {
+                error!(%vhash, "called on_new_vote with already confirmed proposal");
+                return false; // We already sent a confirmation.
+            }
+        }
+        let r_id = state::round_id(timestamp, self.round_exp(state, timestamp));
+        if vote.timestamp != r_id {
+            warn!(
+                %vote.timestamp, %r_id,
+                "received proposal from unexpected round",
+            );
+            return false;
+        }
+        true
     }
 
     /// Returns the panorama of the confirmation for the leader vote `vhash`.
