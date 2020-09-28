@@ -11,5 +11,6 @@ mod genesis_account;
 mod genesis_config;
 mod query_request;
 mod run_genesis_request;
+mod step;
 mod upgrade_request;
 mod wasm_costs;

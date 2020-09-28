@@ -10,6 +10,7 @@ pub mod genesis;
 pub mod op;
 pub mod query;
 pub mod run_genesis_request;
+pub mod step;
 pub mod system_contract_cache;
 mod transfer;
 pub mod upgrade;

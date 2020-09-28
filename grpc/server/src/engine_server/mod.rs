@@ -52,7 +52,8 @@ use self::{
     ipc::{
         BidStateRequest, BidStateResponse, CommitRequest, CommitResponse, DistributeRewardsRequest,
         DistributeRewardsResponse, ExecuteResponse, GenesisResponse, QueryResponse, SlashRequest,
-        SlashResponse, UnbondPayoutRequest, UnbondPayoutResponse, UpgradeRequest, UpgradeResponse,
+        SlashResponse, StepRequest, StepResponse, UnbondPayoutRequest, UnbondPayoutResponse,
+        UpgradeRequest, UpgradeResponse,
     },
     ipc_grpc::{ExecutionEngineService, ExecutionEngineServiceServer},
     mappings::{ParsingError, TransformMap},
@@ -399,6 +400,14 @@ where
         _request_options: RequestOptions,
         _unbond_payout_request: UnbondPayoutRequest,
     ) -> SingleResponse<UnbondPayoutResponse> {
+        SingleResponse::err(GrpcError::Panic(UNIMPLEMENTED.to_string()))
+    }
+
+    fn step(
+        &self,
+        _request_options: RequestOptions,
+        _step_request: StepRequest,
+    ) -> SingleResponse<StepResponse> {
         SingleResponse::err(GrpcError::Panic(UNIMPLEMENTED.to_string()))
     }
 }

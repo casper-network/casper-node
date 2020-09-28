@@ -1,3 +1,6 @@
+use casper_engine_test_support::internal::{InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST};
+// use casper_execution_engine::core::engine_state::step::StepRequest;
+
 /*
 TODO's:
 * add new endpoint, request, and response to ipc.proto engine state service
@@ -35,6 +38,12 @@ fn should_slash() {
 
         TODO: check Michal's existing tests of slash to figure out how it is meant to work
     */
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    // let step_request = //todo: make a request builder;
+    // builder.step(step_request);
+    unreachable!()
 }
 
 /// Should be able to apply slashing per era.

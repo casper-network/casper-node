@@ -24,7 +24,8 @@ use casper_execution_engine::{
     core::{
         engine_state::{
             execute_request::ExecuteRequest, execution_result::ExecutionResult,
-            run_genesis_request::RunGenesisRequest, EngineConfig, EngineState, SYSTEM_ACCOUNT_ADDR,
+            run_genesis_request::RunGenesisRequest, step::StepRequest, EngineConfig, EngineState,
+            SYSTEM_ACCOUNT_ADDR,
         },
         execution,
     },
@@ -478,6 +479,10 @@ where
 
         self.upgrade_responses.push(upgrade_response.clone());
         self
+    }
+
+    pub fn step(&mut self, mut _step_request: StepRequest) -> &mut Self {
+        unreachable!()
     }
 
     /// Expects a successful run and caches transformations
