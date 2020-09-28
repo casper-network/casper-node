@@ -199,6 +199,11 @@ steps:
       - ./.cargo/.crates.toml
     restore: true
 
+- name: build-deb-make-setup-rs
+  <<: *buildend
+  commands:
+    - "make setup-rs"
+
 - name: build-deb-tag
   <<: *buildenv
   commands:
