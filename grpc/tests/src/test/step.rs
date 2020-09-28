@@ -1,4 +1,8 @@
-use casper_engine_test_support::internal::{InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST};
+use casper_engine_test_support::internal::{
+    InMemoryWasmTestBuilder, StepItem, StepRequestBuilder, DEFAULT_RUN_GENESIS_REQUEST,
+};
+use casper_types::{bytesrepr::ToBytes, ProtocolVersion, U512};
+
 // use casper_execution_engine::core::engine_state::step::StepRequest;
 
 /*
@@ -35,15 +39,19 @@ fn should_slash() {
         how to determine success?
             check auction contract state after slash; victim should be gone and all others
             should still exist.
-
-        TODO: check Michal's existing tests of slash to figure out how it is meant to work
     */
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
-    // let step_request = //todo: make a request builder;
-    // builder.step(step_request);
-    unreachable!()
+    let validator_id = casper_types::PublicKey::Ed25519([42; 32])
+        .to_bytes()
+        .expect("should serialize to bytes");
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_slash_item(StepItem::new(validator_id, U512::from(1000)).as_slash_item())
+        .build();
+    builder.step(step_request);
 }
 
 /// Should be able to apply slashing per era.

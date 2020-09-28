@@ -502,31 +502,20 @@ message RewardItem {
     casper.state.BigInt value = 2;
 }
 
-message NoStepOp {}
-
 message StepResponse {
-    message SlashResult {
-        oneof slash_result {
-            // effects of slashing are committed automatically, so commit result is returned in the success case
+    message StepError {
+        string message = 1;
+    }
+
+    message StepResult {
+        oneof step_result {
             CommitResult success = 1;
             RootNotFound missing_parent = 2;
-            SlashError error = 3;
-            NoStepOp no_op = 4;
+            StepError error =3;
         }
     }
 
-    message DistributeRewardsResult {
-        oneof distribute_rewards_result {
-            // effects of rewards distribution are committed automatically, so commit result is returned in the success case
-            CommitResult success = 1;
-            RootNotFound missing_parent = 2;
-            DistibuteRewardsError error = 3;
-            NoStepOp no_op = 4;
-        }
-    }
-
-    SlashResult slash_result = 1;
-    DistributeRewardsResult distribute_rewards_result = 2;
+    StepResult step_result = 1;
 }
 
 // Definition of the service.

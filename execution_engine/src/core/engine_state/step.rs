@@ -1,8 +1,12 @@
 use std::vec::Vec;
 
-use casper_types::{ProtocolVersion, U512};
+use casper_types::{bytesrepr, Key, ProtocolVersion, PublicKey, U512};
 
-use crate::shared::newtypes::Blake2bHash;
+use crate::shared::{newtypes::Blake2bHash, TypeMismatch};
+use casper_types::bytesrepr::FromBytes;
+use core::fmt;
+use std::fmt::Display;
+use uint::static_assertions::_core::fmt::Formatter;
 
 #[derive(Debug)]
 pub struct SlashItem {
@@ -56,5 +60,31 @@ impl StepRequest {
             slash_items,
             reward_items,
         }
+    }
+
+    pub fn slashed_validators(&self) -> Result<Vec<PublicKey>, bytesrepr::Error> {
+        let mut ret = vec![];
+        for slash_item in &self.slash_items {
+            let (public_key, _) = PublicKey::from_bytes(slash_item.validator_id.as_slice())?;
+            ret.push(public_key);
+        }
+        Ok(ret)
+    }
+}
+
+#[derive(Debug)]
+pub enum StepResult {
+    RootNotFound,
+    PreconditionError,
+    InvalidProtocolVersion,
+    KeyNotFound(Key),
+    TypeMismatch(TypeMismatch),
+    Serialization(bytesrepr::Error),
+    Success { post_state_hash: Blake2bHash },
+}
+
+impl Display for StepResult {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }

@@ -35,6 +35,7 @@ use casper_execution_engine::{
             genesis::GenesisResult,
             query::{QueryRequest, QueryResult},
             run_genesis_request::RunGenesisRequest,
+            step::StepResult,
             upgrade::{UpgradeConfig, UpgradeResult},
             EngineState, Error as EngineError,
         },
@@ -52,12 +53,12 @@ use self::{
     ipc::{
         BidStateRequest, BidStateResponse, CommitRequest, CommitResponse, DistributeRewardsRequest,
         DistributeRewardsResponse, ExecuteResponse, GenesisResponse, QueryResponse, SlashRequest,
-        SlashResponse, StepRequest, StepResponse, UnbondPayoutRequest, UnbondPayoutResponse,
-        UpgradeRequest, UpgradeResponse,
+        SlashResponse, UnbondPayoutRequest, UnbondPayoutResponse, UpgradeRequest, UpgradeResponse,
     },
     ipc_grpc::{ExecutionEngineService, ExecutionEngineServiceServer},
     mappings::{ParsingError, TransformMap},
 };
+use casper_execution_engine::core::engine_state::step::StepRequest;
 
 const UNIMPLEMENTED: &str = "unimplemented";
 
@@ -406,9 +407,53 @@ where
     fn step(
         &self,
         _request_options: RequestOptions,
-        _step_request: StepRequest,
-    ) -> SingleResponse<StepResponse> {
-        SingleResponse::err(GrpcError::Panic(UNIMPLEMENTED.to_string()))
+        step_request: ipc::StepRequest,
+    ) -> SingleResponse<ipc::StepResponse> {
+        let correlation_id = CorrelationId::new();
+
+        let request: StepRequest = match step_request.try_into() {
+            Ok(request) => request,
+            Err(error) => {
+                let err_msg = error.to_string();
+                warn!("{}", err_msg);
+                let error_response = {
+                    let mut response = ipc::StepResponse::new();
+                    let mut step_result = ipc::StepResponse_StepResult::new();
+                    let mut step_error = ipc::StepResponse_StepError::new();
+                    step_error.set_message(err_msg);
+                    step_result.set_error(step_error);
+                    response.set_step_result(step_result);
+                    response
+                };
+                return SingleResponse::completed(error_response);
+            }
+        };
+
+        let response = match self.commit_step(correlation_id, request) {
+            Ok(StepResult::Success { post_state_hash }) => {
+                info!("step successful: {}", post_state_hash);
+                let mut ret = ipc::StepResponse::new();
+                let success = ret.mut_step_result().mut_success();
+                success.set_poststate_hash(post_state_hash.to_vec());
+                ret
+            }
+            Ok(result) => {
+                let err_msg = result.to_string();
+                warn!("{}", err_msg);
+                let mut ret = ipc::StepResponse::new();
+                ret.mut_step_result().mut_error().set_message(err_msg);
+                ret
+            }
+            Err(err) => {
+                let err_msg = err.to_string();
+                warn!("{}", err_msg);
+                let mut ret = ipc::StepResponse::new();
+                ret.mut_step_result().mut_error().set_message(err_msg);
+                ret
+            }
+        };
+
+        SingleResponse::completed(response.into())
     }
 }
 

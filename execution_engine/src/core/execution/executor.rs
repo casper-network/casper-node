@@ -280,6 +280,14 @@ impl Executor {
         T: FromBytes + CLTyped,
     {
         match direct_system_contract_call {
+            DirectSystemContractCall::Slash => {
+                if protocol_data.auction() != base_key.into_seed() {
+                    panic!(
+                        "{} should only be called with the auction contract",
+                        direct_system_contract_call.entry_point_name()
+                    );
+                }
+            }
             DirectSystemContractCall::FinalizePayment => {
                 if protocol_data.proof_of_stake() != base_key.into_seed() {
                     panic!(
@@ -575,6 +583,7 @@ impl Executor {
 }
 
 pub enum DirectSystemContractCall {
+    Slash,
     FinalizePayment,
     CreatePurse,
     Transfer,
@@ -583,6 +592,7 @@ pub enum DirectSystemContractCall {
 impl DirectSystemContractCall {
     fn entry_point_name(&self) -> &str {
         match self {
+            DirectSystemContractCall::Slash => "slash",
             DirectSystemContractCall::FinalizePayment => "finalize_payment",
             DirectSystemContractCall::CreatePurse => "create",
             DirectSystemContractCall::Transfer => "transfer",
@@ -605,6 +615,13 @@ impl DirectSystemContractCall {
     {
         let entry_point_name = self.entry_point_name();
         let result = match self {
+            DirectSystemContractCall::Slash => runtime.call_host_auction(
+                protocol_version,
+                entry_point_name,
+                named_keys,
+                runtime_args,
+                extra_keys,
+            ),
             DirectSystemContractCall::FinalizePayment => runtime.call_host_proof_of_stake(
                 protocol_version,
                 entry_point_name,

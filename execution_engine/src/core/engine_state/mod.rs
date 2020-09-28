@@ -23,7 +23,7 @@ use std::{
 
 use num_traits::Zero;
 use parity_wasm::elements::Module;
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 use casper_types::{
     account::AccountHash,
@@ -52,6 +52,7 @@ pub use self::{
 };
 use crate::{
     core::{
+        engine_state::step::{StepRequest, StepResult},
         execution::{
             self, AddressGenerator, AddressGeneratorBuilder, DirectSystemContractCall, Executor,
         },
@@ -157,6 +158,7 @@ where
             _ => Ok(None),
         }
     }
+
     pub fn commit_genesis(
         &self,
         correlation_id: CorrelationId,
@@ -1797,6 +1799,153 @@ where
         match self.state.commit(correlation_id, pre_state_hash, effects)? {
             CommitResult::Success { state_root, .. } => Ok(CommitResult::Success { state_root }),
             commit_result => Ok(commit_result),
+        }
+    }
+
+    pub fn commit_step(
+        &self,
+        correlation_id: CorrelationId,
+        step_request: StepRequest,
+    ) -> Result<StepResult, Error> {
+        let protocol_data = match self.state.get_protocol_data(step_request.protocol_version) {
+            Ok(Some(protocol_data)) => protocol_data,
+            Ok(None) => {
+                return Ok(StepResult::InvalidProtocolVersion);
+            }
+            Err(_) => {
+                return Ok(StepResult::PreconditionError);
+            }
+        };
+
+        let tracking_copy = match self.tracking_copy(step_request.parent_state_hash) {
+            Err(_) => return Ok(StepResult::PreconditionError),
+            Ok(None) => return Ok(StepResult::RootNotFound),
+            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
+        };
+
+        let executor = Executor::new(self.config);
+
+        let preprocessor = {
+            let wasm_costs = self
+                .wasm_costs(step_request.protocol_version)
+                .unwrap()
+                .unwrap();
+            Preprocessor::new(wasm_costs)
+        };
+
+        let auction_hash = protocol_data.auction();
+
+        let auction_contract = match tracking_copy
+            .borrow_mut()
+            .get_contract(correlation_id, auction_hash)
+        {
+            Ok(contract) => contract,
+            Err(_) => {
+                return Ok(StepResult::PreconditionError);
+            }
+        };
+
+        let auction_module = match tracking_copy.borrow_mut().get_system_module(
+            correlation_id,
+            auction_contract.contract_wasm_hash(),
+            self.config.use_system_contracts(),
+            &preprocessor,
+        ) {
+            Ok(module) => module,
+            Err(_) => {
+                return Ok(StepResult::PreconditionError);
+            }
+        };
+
+        if !self.system_contract_cache.has(auction_hash) {
+            self.system_contract_cache
+                .insert(auction_hash, auction_module.clone());
+        }
+
+        let system_account = Account::new(
+            SYSTEM_ACCOUNT_ADDR,
+            Default::default(),
+            URef::new(Default::default(), AccessRights::READ_ADD_WRITE),
+            Default::default(),
+            Default::default(),
+        );
+        let authorization_keys = {
+            let mut ret = BTreeSet::new();
+            ret.insert(SYSTEM_ACCOUNT_ADDR);
+            ret
+        };
+        let mut named_keys = auction_contract.named_keys().to_owned();
+        let gas_limit = Gas::new(U512::from(std::u64::MAX));
+        let deploy_hash = {
+            // seeds address generator w/ protocol version
+            let bytes: Vec<u8> = step_request.protocol_version.value().into_bytes()?.to_vec();
+            Blake2bHash::new(&bytes).value()
+        };
+
+        let base_key = Key::from(protocol_data.auction());
+
+        let slashed_validators = match step_request.slashed_validators() {
+            Ok(slashed_validators) => slashed_validators,
+            Err(error) => {
+                error!(
+                    "failed to deserialize validator_ids for slashing: {}",
+                    error.to_string()
+                );
+                return Ok(StepResult::Serialization(error));
+            }
+        };
+        println!("slashed_validators {:?}", slashed_validators);
+
+        let slash_args = runtime_args! {"validator_public_keys" => slashed_validators};
+
+        let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
+            DirectSystemContractCall::Slash,
+            auction_module.clone(),
+            slash_args,
+            &mut named_keys,
+            Default::default(),
+            base_key,
+            &system_account,
+            authorization_keys.clone(),
+            BlockTime::default(),
+            deploy_hash,
+            gas_limit,
+            step_request.protocol_version,
+            correlation_id,
+            Rc::clone(&tracking_copy),
+            Phase::Session,
+            protocol_data,
+            SystemContractCache::clone(&self.system_contract_cache),
+        );
+
+        if execution_result.has_precondition_failure() {
+            return Ok(StepResult::PreconditionError);
+        }
+
+        let effects = tracking_copy.borrow().effect();
+
+        // commit
+        let commit_result = self
+            .state
+            .commit(
+                correlation_id,
+                step_request.parent_state_hash,
+                effects.transforms.to_owned(),
+            )
+            .map_err(Into::into)?;
+
+        match commit_result {
+            CommitResult::Success { state_root } => Ok(StepResult::Success {
+                post_state_hash: state_root,
+            }),
+            CommitResult::RootNotFound => Ok(StepResult::RootNotFound),
+            CommitResult::KeyNotFound(key) => Ok(StepResult::KeyNotFound(key)),
+            CommitResult::TypeMismatch(type_mismatch) => {
+                Ok(StepResult::TypeMismatch(type_mismatch))
+            }
+            CommitResult::Serialization(bytesrepr_error) => {
+                Ok(StepResult::Serialization(bytesrepr_error))
+            }
         }
     }
 }

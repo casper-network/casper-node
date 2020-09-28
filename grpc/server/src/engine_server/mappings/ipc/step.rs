@@ -118,3 +118,5 @@ impl From<StepRequest> for ipc::StepRequest {
         result
     }
 }
+
+// impl From<Vec<SlashItem>> for ipc::

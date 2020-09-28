@@ -13,7 +13,7 @@ use log::LevelFilter;
 
 use casper_engine_grpc_server::engine_server::{
     ipc::{
-        CommitRequest, CommitResponse, GenesisResponse, QueryRequest, UpgradeRequest,
+        CommitRequest, CommitResponse, GenesisResponse, QueryRequest, StepRequest, UpgradeRequest,
         UpgradeResponse,
     },
     ipc_grpc::ExecutionEngineService,
@@ -24,8 +24,7 @@ use casper_execution_engine::{
     core::{
         engine_state::{
             execute_request::ExecuteRequest, execution_result::ExecutionResult,
-            run_genesis_request::RunGenesisRequest, step::StepRequest, EngineConfig, EngineState,
-            SYSTEM_ACCOUNT_ADDR,
+            run_genesis_request::RunGenesisRequest, EngineConfig, EngineState, SYSTEM_ACCOUNT_ADDR,
         },
         execution,
     },
@@ -481,8 +480,17 @@ where
         self
     }
 
-    pub fn step(&mut self, mut _step_request: StepRequest) -> &mut Self {
-        unreachable!()
+    pub fn step(&mut self, step_request: StepRequest) -> &mut Self {
+        let response = self
+            .engine_state
+            .step(RequestOptions::new(), step_request)
+            .wait_drop_metadata()
+            .expect("should step");
+
+        let result = response.get_step_result();
+        let success = result.get_success();
+        self.post_state_hash = Some(success.get_poststate_hash().to_vec());
+        self
     }
 
     /// Expects a successful run and caches transformations
