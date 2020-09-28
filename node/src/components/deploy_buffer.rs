@@ -6,6 +6,8 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Display, Formatter},
+    time::Duration,
+    sync::{ Arc, Mutex },
 };
 
 use datasize::DataSize;
@@ -23,6 +25,8 @@ use crate::{
     types::{DeployHash, DeployHeader, ProtoBlock, ProtoBlockHash, Timestamp},
     Chainspec,
 };
+
+const DEPLOY_BUFFER_PRUNE_INTERVAL: Duration = Duration::from_secs(10);
 
 /// An event for when using the deploy buffer as a component.
 #[derive(Debug, From)]
@@ -76,25 +80,71 @@ impl Display for Event {
     }
 }
 
+type DeployCollection = HashMap<DeployHash, DeployHeader>;
+type ProtoBlockCollection = HashMap<ProtoBlockHash, DeployCollection>;
+/// Deploy buffer.
+#[derive(DataSize, Debug, Default, Clone)]
+struct DeployBufferInner {
+    block_max_deploy_count: usize,
+    collected_deploys: DeployCollection,
+    processed: ProtoBlockCollection,
+    finalized: ProtoBlockCollection,
+}
+
 /// Deploy buffer.
 #[derive(DataSize, Debug, Clone)]
 pub(crate) struct DeployBuffer {
-    block_max_deploy_count: usize,
-    collected_deploys: HashMap<DeployHash, DeployHeader>,
-    processed: HashMap<ProtoBlockHash, HashMap<DeployHash, DeployHeader>>,
-    finalized: HashMap<ProtoBlockHash, HashMap<DeployHash, DeployHeader>>,
+    inner: Arc<Mutex<DeployBufferInner>> // Don't hand out references to internal mutable state
 }
 
 impl DeployBuffer {
     /// Creates a new, empty deploy buffer instance.
     pub(crate) fn new(block_max_deploy_count: usize) -> Self {
-        DeployBuffer {
+        let inner = Arc::new(Mutex::new(DeployBufferInner {
             block_max_deploy_count,
-            collected_deploys: HashMap::new(),
-            processed: HashMap::new(),
-            finalized: HashMap::new(),
-        }
+            ..Default::default()
+        }));
+        let weak = Arc::downgrade(&inner);
+        tokio::spawn(async move {
+            while let Some(buffer) = weak.upgrade() {
+                let pruned_items = buffer.lock().unwrap().prune();
+                log::info!("{} items pruned from deploy buffer", pruned_items);
+                tokio::time::delay_for(DEPLOY_BUFFER_PRUNE_INTERVAL).await;
+            }
+            log::debug!("DeployBuffer dropped");
+        });
+        Self{ inner }
     }
+}
+
+#[cfg(test)]
+impl DeployBuffer {
+    fn remaining_deploys(
+        &mut self,
+        deploy_config: DeployConfig,
+        current_instant: Timestamp,
+        past_blocks: HashSet<ProtoBlockHash>,
+    ) -> HashSet<DeployHash> {
+        self.inner.lock().unwrap().remaining_deploys(deploy_config, current_instant, past_blocks)
+    }
+
+    fn add_deploy(&mut self, hash: DeployHash, header: DeployHeader) {
+        self.inner.lock().unwrap().add_deploy(hash, header)
+    }
+
+    fn added_block<I>(&mut self, block: ProtoBlockHash, deploys: I)
+    where
+        I: IntoIterator<Item = DeployHash>,
+    {
+        self.inner.lock().unwrap().added_block(block, deploys)
+    }
+    /// Notifies the deploy buffer that a block has been finalized.
+    fn finalized_block(&mut self, block: ProtoBlockHash) {
+        self.inner.lock().unwrap().finalized_block(block)
+    }
+}
+
+impl DeployBufferInner {
 
     /// Adds a deploy to the deploy buffer.
     ///
@@ -226,9 +276,59 @@ impl DeployBuffer {
             error!("orphaned block that hasn't been processed!");
         }
     }
+
+    /// Prunes stale deploy information from the DeployBuffer
+    fn prune(&mut self) -> usize {
+        /// Prunes DeployCollection and return the total (DeployHash, DeployHeader) entries pruned
+        fn prune_collection(map: &mut DeployCollection) -> usize {
+            let initial_len = map.len();
+            map.retain(|_hash, header| {
+                let now = Timestamp::now();
+                let lifespan = header.timestamp() + header.ttl();
+                lifespan > now
+            });
+            initial_len - map.len()
+        }
+        /// Prunes ProtoBlockCollection and return the total (DeployHash, DeployHeader) entries pruned
+        fn prune_proto_collection(proto_collection: &mut ProtoBlockCollection) -> usize {
+            let mut pruned = 0;
+            let mut remove = Vec::new();
+            {
+                for (proto_hash, processed) in proto_collection.iter_mut() {
+                    pruned += prune_collection(processed);
+                    if processed.is_empty() {
+                        remove.push(proto_hash.clone());
+                    }
+                }
+            }
+            proto_collection.retain(|k,_v| !remove.contains(&k));
+            pruned
+        }
+        let collected = prune_collection(&mut self.collected_deploys);
+        let processed = prune_proto_collection(&mut self.processed);
+        let finalized = prune_proto_collection(&mut self.finalized);
+        collected + processed + finalized
+    }
 }
 
 impl<REv, R> Component<REv, R> for DeployBuffer
+where
+    REv: From<StorageRequest<Storage>> + Send,
+    R: Rng + CryptoRng + ?Sized,
+{
+    type Event = Event;
+
+    fn handle_event(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        rng: &mut R,
+        event: Self::Event,
+    ) -> Effects<Self::Event> {
+        return self.inner.lock().unwrap().handle_event(effect_builder, rng, event)
+    }
+}
+
+impl<REv, R> Component<REv, R> for DeployBufferInner
 where
     REv: From<StorageRequest<Storage>> + Send,
     R: Rng + CryptoRng + ?Sized,
@@ -327,8 +427,8 @@ mod tests {
         (*deploy.id(), deploy.take_header())
     }
 
-    #[test]
-    fn add_and_take_deploys() {
+    #[tokio::test] // Tests of DeployBuffer *must* be tokio::test as it relies on a tokio::time::delay
+    async fn add_and_take_deploys() {
         let creation_time = Timestamp::from(100);
         let ttl = TimeDiff::from(100);
         let block_time1 = Timestamp::from(80);
@@ -425,8 +525,50 @@ mod tests {
         assert!(deploys.contains(&hash4));
     }
 
-    #[test]
-    fn test_deploy_dependencies() {
+
+    #[tokio::test]
+    async fn test_prune() {
+        let creation_time = Timestamp::from(100);
+        let ttl = TimeDiff::from(100);
+
+        let mut rng = TestRng::new();
+        let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
+        let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
+        let mut buffer = DeployBuffer::new(NodeConfig::default().block_max_deploy_count as usize);
+
+        // collected_deploys
+        buffer.add_deploy(hash1.clone(), deploy1);
+
+        let block_hash1 = ProtoBlockHash::new(hash(random::<[u8; 16]>()));
+        // collected_deploys => processed
+        buffer.added_block(block_hash1.clone(), vec![hash1]);
+
+        // processed => finalized
+        buffer.finalized_block(block_hash1.clone());
+
+        buffer.add_deploy(hash2.clone(), deploy2);
+        let block_hash2 = ProtoBlockHash::new(hash(random::<[u8; 16]>()));
+        buffer.added_block(block_hash2.clone(), vec![hash2]);
+
+        {
+            let inner = buffer.inner.lock().unwrap();
+            assert_eq!(inner.collected_deploys.len(), 0);
+            assert_eq!(inner.processed.get(&block_hash2).unwrap().len(), 1);
+            assert_eq!(inner.finalized.get(&block_hash1).unwrap().len(), 1);
+        }
+
+        tokio::time::delay_for(DEPLOY_BUFFER_PRUNE_INTERVAL + Duration::from_secs(1)).await;
+        
+        {
+            let inner = buffer.inner.lock().unwrap();
+            assert_eq!(inner.collected_deploys.len(), 0);
+            assert_eq!(inner.processed.get(&block_hash2), None);
+            assert_eq!(inner.finalized.get(&block_hash1), None);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_deploy_dependencies() {
         let creation_time = Timestamp::from(100);
         let ttl = TimeDiff::from(100);
         let block_time = Timestamp::from(120);
