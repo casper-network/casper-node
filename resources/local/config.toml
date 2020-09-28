@@ -32,7 +32,7 @@ format = "text"
 
 # Path (absolute, or relative to this config.toml) to validator's secret key file used to sign
 # consensus messages.
-secret_key_path = 'secret_key.pem'
+secret_key_path = '../secret_key.pem'
 
 
 # ====================================
@@ -93,7 +93,7 @@ bind_port = 7777
 #   /Users/Alice/Library/Application Support/io.CasperLabs.casper-node
 # * Windows: `{FOLDERID_RoamingAppData}\CasperLabs\casper-node\data` e.g.
 #   C:\Users\Alice\AppData\Roaming\CasperLabs\casper-node\data
-#path = 'node-storage'
+path = '../node-storage'
 
 # Optional maximum size of the database to use for the block store.
 #

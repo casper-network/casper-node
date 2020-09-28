@@ -16,6 +16,7 @@ use std::{
 
 use lazy_static::lazy_static;
 use libc::{c_long, sysconf, _SC_PAGESIZE};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::warn;
 
@@ -161,7 +162,7 @@ pub fn read_file_to_string<P: AsRef<Path>>(filename: P) -> Result<String, ReadFi
 /// With-directory context.
 ///
 /// Associates a type with a "working directory".
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct WithDir<T> {
     path: PathBuf,
     value: T,

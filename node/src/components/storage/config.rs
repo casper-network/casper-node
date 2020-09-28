@@ -7,6 +7,7 @@ use tempfile::TempDir;
 use tracing::warn;
 
 use casper_execution_engine::shared::utils;
+use crate::utils::WithDir;
 
 const QUALIFIER: &str = "io";
 const ORGANIZATION: &str = "CasperLabs";
@@ -35,7 +36,7 @@ pub struct Config {
     ///   /Users/Alice/Library/Application Support/io.CasperLabs.casper-node
     /// * Windows: `{FOLDERID_RoamingAppData}\CasperLabs\casper-node\data` e.g.
     ///   C:\Users\Alice\AppData\Roaming\CasperLabs\casper-node\data
-    path: Option<PathBuf>,
+    path: WithDir<PathBuf>,
     /// The maximum size of the database to use for the block store.
     ///
     /// Defaults to 483,183,820,800 == 450 GiB.
@@ -62,7 +63,7 @@ impl Config {
     #[cfg(test)]
     pub(crate) fn default_for_tests() -> (Self, TempDir) {
         let tempdir = tempfile::tempdir().expect("should get tempdir");
-        let path = Some(tempdir.path().join("lmdb"));
+        let path = WithDir::new(tempdir, "lmdb");
 
         let config = Config {
             path,
@@ -74,10 +75,9 @@ impl Config {
     }
 
     pub(crate) fn path(&self) -> PathBuf {
-        match self.path {
-            Some(ref path) => path.clone(),
-            None => Self::default_path(),
-        }
+        let (mut context, path) = self.path.clone().into_parts();
+        context.push(path);
+        context
     }
 
     pub(crate) fn max_block_store_size(&self) -> usize {
@@ -116,7 +116,9 @@ impl Config {
 
 impl Default for Config {
     fn default() -> Self {
-        let path = Some(Self::default_path());
+        let tempdir = tempfile::tempdir().expect("should get tempdir");
+        let path = WithDir::default_path(PathBuf::from("lmdb"));
+
         Config {
             path,
             max_block_store_size: Some(DEFAULT_MAX_BLOCK_STORE_SIZE),
