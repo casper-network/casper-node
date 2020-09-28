@@ -453,7 +453,7 @@ where
             }
         };
 
-        SingleResponse::completed(response.into())
+        SingleResponse::completed(response)
     }
 }
 

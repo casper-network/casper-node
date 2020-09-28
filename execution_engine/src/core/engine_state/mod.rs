@@ -1953,13 +1953,13 @@ where
             let (_, execution_result): (Option<()>, ExecutionResult) = executor
                 .exec_system_contract(
                     DirectSystemContractCall::RunAuction,
-                    auction_module.clone(),
+                    auction_module,
                     run_auction_args,
                     &mut named_keys,
                     Default::default(),
                     base_key,
                     &system_account,
-                    authorization_keys.clone(),
+                    authorization_keys,
                     BlockTime::default(),
                     deploy_hash,
                     gas_limit,
@@ -1984,7 +1984,7 @@ where
             .commit(
                 correlation_id,
                 step_request.parent_state_hash,
-                effects.transforms.to_owned(),
+                effects.transforms,
             )
             .map_err(Into::into)?;
 
