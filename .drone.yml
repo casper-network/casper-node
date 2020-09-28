@@ -207,7 +207,7 @@ steps:
 - name: build-make-system-contracts
   <<: *buildenv
   commands:
-    - "make setup-rs"
+    - "make build-system-contracts -j"
   depends_on:
   - build-make-setup-rs
 
