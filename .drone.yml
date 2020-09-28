@@ -98,57 +98,12 @@ trigger:
   - staging
 
 ---
-kind: pipeline
-name: bintray-tests
+# Anchor for default buildenv
+__buildenv: &buildenv
+  image: "casperlabs/buildenv:latest"
+  environment:
+    CARGO_HOME: ".cargo"
 
-steps:
-- name: restore-cache-tag
-  image: drillster/drone-volume-cache
-  volumes:
-  - name: cache
-    path: /cache
-  settings:
-    mount:
-      - ./.cargo/bin/
-      - ./.cargo/registry/index/
-      - ./.cargo/registry/cache/
-      - ./.cargo/git/db/
-      - ./.cargo/.crates.toml
-    restore: true
-
-- name: build-release-tag
-  <<: *buildenv
-  commands:
-  - "cargo build --release"
-  depends_on:
-  - restore-cache-tag
-
-- name: build-deb-tag
-  <<: *buildenv
-  commands:
-    - "cd grpc/server && cargo deb -p casper-engine-grpc-server --no-build"
-    - "cd node && cargo deb -p casper-node --no-build"
-  depends_on:
-  - build-release-tag
-
-- name: publish-bintray-tag
-  <<: *buildenv
-  commands:
-  - "./upload.sh"
-  depends_on:
-  - build-deb-tag
-
-volumes:
-  - name: cache
-    host:
-      path: /tmp/cache
-trigger:
-  branch:
-  - OP-1540
-  event:
-  - push
-
----
 kind: pipeline
 name: on-tag
 
@@ -219,6 +174,59 @@ volumes:
 trigger:
   ref:
   - refs/tags/v*
+
+---
+kind: pipeline
+name: bintray-tests
+
+steps:
+- name: restore-cache-tag
+  image: drillster/drone-volume-cache
+  volumes:
+  - name: cache
+    path: /cache
+  settings:
+    mount:
+      - ./.cargo/bin/
+      - ./.cargo/registry/index/
+      - ./.cargo/registry/cache/
+      - ./.cargo/git/db/
+      - ./.cargo/.crates.toml
+    restore: true
+
+- name: build-release-tag
+  <<: *buildenv
+  commands:
+  - "cargo build --release"
+  depends_on:
+  - restore-cache-tag
+
+- name: build-deb-tag
+  <<: *buildenv
+  commands:
+    - "cd grpc/server && cargo deb -p casper-engine-grpc-server --no-build"
+    - "cd node && cargo deb -p casper-node --no-build"
+  depends_on:
+  - build-release-tag
+
+- name: publish-bintray-tag
+  <<: *buildenv
+  commands:
+  - "./upload.sh"
+  depends_on:
+  - build-deb-tag
+
+volumes:
+  - name: cache
+    host:
+      path: /tmp/cache
+
+trigger:
+  branch:
+  - OP-1540
+  event:
+  - push
+
 
 ---
 kind: pipeline
