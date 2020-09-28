@@ -1,15 +1,14 @@
 #!/bin/bash
 
-export GIT_TAG='0.1.2'
-export DRONE_TAG="$GIT_TAG"
+export GIT_TAG="$DRONE_TAG"
 export API_URL="https://api.bintray.com"
-export UPLOAD_DIR=$(pwd)/artifacts/${DRONE_BRANCH}
+export UPLOAD_DIR="$(pwd)/artifacts/target/debian"
 export BINTRAY_USER='casperlabs-service'
 export BINTRAY_ORG_NAME='casperlabs'
 export BINTRAY_REPO_NAME='casper-debian-tests'
 export BINTRAY_PACKAGE_NAME='casper-node'
 export BINTRAY_REPO_URL="$BINTRAY_ORG_NAME/$BINTRAY_REPO_NAME/$BINTRAY_PACKAGE_NAME"
-export CL_VAULT_URL="$CL_VAULT_HOST/v1/sre/cicd/bintray/credentials"
+export CL_VAULT_URL="${CL_VAULT_HOST}/v1/sre/cicd/bintray/credentials"
 
 abspath() {
   # generate absolute path from relative path
@@ -28,7 +27,10 @@ abspath() {
   fi
 }
 
-echo "running for GIT_TAG: $GIT_TAG"
+echo -e "VARS:\n"
+echo "GIT_TAG: $GIT_TAG"
+echo "CL_VAULT_HOST: $CL_VAULT_HOST"
+echo "BINTRAY_REPO_URL: $BINTRAY_REPO_URL"
 
 export RUN_DIR=$(dirname $(abspath $0))
 export CREDENTIAL_FILE="$RUN_DIR/credentials.json"
@@ -41,12 +43,19 @@ echo "-H \"X-Vault-Token: $CL_VAULT_TOKEN\"" > ~/.curlrc
 curl -s -q -X GET $CL_VAULT_URL --output $CREDENTIAL_FILE_TMP
 if [ ! -f $CREDENTIAL_FILE_TMP ]; then
   echo "[ERROR] Unable to fetch credentails for bintray from vault: $CL_VAULT_URL"
+  exit 1
 else
   echo "Found bintray credentials file - $CREDENTIAL_FILE_TMP"
   # get just the body required by bintray, strip off vault payload
   /bin/cat $CREDENTIAL_FILE_TMP | jq -r .data > $CREDENTIAL_FILE
 fi
-cd $UPLOAD_DIR
+
+if [ -d "$UPLOAD_DIR" ]; then
+  cd $UPLOAD_DIR
+else
+  echo "[ERROR] Not such dir: $UPLOAD_DIR"
+  exit 1
+fi
 
 echo "Uploading file to bintray:${DRONE_TAG} ..."
 echo -e "\nDEBIAN" && find . -maxdepth 1 -type f -iregex ".*\\.deb" -printf "%f\n" | xargs -I {} sh -c "echo Attempting to upload [{}] && curl -T {} -u$BINTRAY_USER:$BINTRAY_API_KEY $API_URL/content/$BINTRAY_REPO_URL/${DRONE_TAG}/{} && echo"
