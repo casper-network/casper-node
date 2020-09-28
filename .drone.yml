@@ -253,6 +253,9 @@ volumes:
 trigger:
   branch:
   - OP-1540
+  - OP-1540-new
+  event:
+  - push
 
 ---
 kind: pipeline
