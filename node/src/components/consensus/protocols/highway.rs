@@ -282,7 +282,6 @@ where
         Ok(self.process_av_effects(effects))
     }
 
-    /// Marks `value` as valid.
     fn resolve_validity(
         &mut self,
         value: &C::ConsensusValue,
@@ -309,7 +308,6 @@ where
         }
     }
 
-    /// Turns this instance into a passive observer, that does not create any new vertices.
     fn deactivate_validator(&mut self) {
         self.highway.deactivate_validator()
     }
