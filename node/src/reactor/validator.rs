@@ -4,6 +4,7 @@
 
 mod config;
 mod error;
+mod memory_metrics;
 #[cfg(test)]
 mod tests;
 
@@ -56,6 +57,7 @@ use crate::{
 pub use config::Config;
 pub use error::Error;
 use linear_chain::LinearChain;
+use memory_metrics::MemoryMetrics;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From)]
@@ -278,6 +280,10 @@ where
     block_executor: BlockExecutor,
     proto_block_validator: BlockValidator<ProtoBlock, NodeId>,
     linear_chain: LinearChain<NodeId>,
+
+    // Non-components.
+    #[data_size(skip)] // Never allocates heap data.
+    memory_metrics: MemoryMetrics,
 }
 
 #[cfg(test)]
@@ -314,10 +320,9 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             linear_chain,
         } = config;
 
-        let metrics = Metrics::new(registry.clone());
+        let memory_metrics = MemoryMetrics::new(registry.clone())?;
 
-        // Temporary memory metrics.
-        // TODO
+        let metrics = Metrics::new(registry.clone());
 
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, config.network, true)?;
@@ -347,25 +352,27 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             init_consensus_effects,
         ));
 
-        let reactor = Reactor {
-            metrics,
-            net,
-            address_gossiper,
-            storage,
-            contract_runtime,
-            api_server,
-            chainspec_loader,
-            consensus,
-            deploy_acceptor,
-            deploy_fetcher,
-            deploy_gossiper,
-            deploy_buffer,
-            block_executor,
-            proto_block_validator,
-            linear_chain,
-        };
-        error!("MEMORY METRICS: {:?}", reactor.estimate_heap_size());
-        Ok((reactor, effects))
+        Ok((
+            Reactor {
+                metrics,
+                net,
+                address_gossiper,
+                storage,
+                contract_runtime,
+                api_server,
+                chainspec_loader,
+                consensus,
+                deploy_acceptor,
+                deploy_fetcher,
+                deploy_gossiper,
+                deploy_buffer,
+                block_executor,
+                proto_block_validator,
+                linear_chain,
+                memory_metrics,
+            },
+            effects,
+        ))
     }
 
     fn dispatch_event(
@@ -663,6 +670,10 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
         }
+    }
+
+    fn update_metrics(&mut self) {
+        self.memory_metrics.estimate(&self)
     }
 }
 

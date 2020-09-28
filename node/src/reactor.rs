@@ -136,6 +136,9 @@ pub trait Reactor<R: Rng + CryptoRng + ?Sized>: Sized {
     fn is_stopped(&mut self) -> bool {
         false
     }
+
+    /// Instructs the reactor to update performance metrics, if any.
+    fn update_metrics(&mut self) {}
 }
 
 /// A drop-like trait for `async` compatible drop-and-wait.
