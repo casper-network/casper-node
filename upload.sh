@@ -28,6 +28,8 @@ abspath() {
   fi
 }
 
+echo "running for GIT_TAG: $GIT_TAG"
+
 export RUN_DIR=$(dirname $(abspath $0))
 export CREDENTIAL_FILE="$RUN_DIR/credentials.json"
 export CREDENTIAL_FILE_TMP="$RUN_DIR/vault_output.json"
