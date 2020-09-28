@@ -2,7 +2,6 @@
 
 export GIT_TAG='0.1.2'
 export DRONE_TAG="$GIT_TAG"
-
 export API_URL="https://api.bintray.com"
 export UPLOAD_DIR=$(pwd)/artifacts/${DRONE_BRANCH}
 export BINTRAY_USER='casperlabs-service'
