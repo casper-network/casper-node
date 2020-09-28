@@ -8,9 +8,6 @@ pub enum GetEraValidatorsError {
     /// Invalid state hash was used to make this request
     #[error("Invalid state hash")]
     RootNotFound,
-    /// Indicates that queried value is missing, or has invalid type.
-    #[error("Value error")]
-    ValueError,
     /// Engine state error
     #[error(transparent)]
     Other(#[from] Error),

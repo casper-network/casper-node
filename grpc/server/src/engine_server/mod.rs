@@ -410,8 +410,6 @@ where
                 .mut_missing_prestate()
                 .set_hash(pre_state_hash.to_vec()),
 
-            Err(GetEraValidatorsError::ValueError) => response.set_value_error(Default::default()),
-
             Err(error) => {
                 response.mut_error().set_message(error.to_string());
             }
