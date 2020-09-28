@@ -396,11 +396,8 @@ message GetEraValidatorsResponse {
             bytes public_key_bytes = 1;
             casper.state.BigInt weight = 2;
         }
-        repeated ValidatorWeight validator_weights = 1;
-    }
 
-    message InvalidEra {
-        uint64 era_id = 1;
+        repeated ValidatorWeight validator_weights = 1;
     }
 
     message ValueError {
@@ -413,7 +410,6 @@ message GetEraValidatorsResponse {
     oneof result {
         ValidatorWeights success = 1;
         RootNotFound missing_prestate = 2;
-        InvalidEra invalid_era = 3;
         ValueError value_error = 4;
         GetEraValidatorsError error = 5;
     }

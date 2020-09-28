@@ -1808,7 +1808,7 @@ where
         &self,
         correlation_id: CorrelationId,
         get_era_validators_request: GetEraValidatorsRequest,
-    ) -> Result<ValidatorWeights, GetEraValidatorsError> {
+    ) -> Result<Option<ValidatorWeights>, GetEraValidatorsError> {
         let protocol_version = get_era_validators_request.protocol_version();
 
         let tracking_copy = match self.tracking_copy(get_era_validators_request.state_hash())? {
@@ -1896,6 +1896,6 @@ where
             return Err(error.into());
         }
 
-        Ok(era_validators.unwrap_or_default())
+        Ok(era_validators)
     }
 }

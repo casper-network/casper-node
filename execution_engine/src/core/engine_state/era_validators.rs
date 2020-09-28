@@ -8,9 +8,6 @@ pub enum GetEraValidatorsError {
     /// Invalid state hash was used to make this request
     #[error("Invalid state hash")]
     RootNotFound,
-    /// Wrong era passed. There is no snapshot of validator weights for given era.
-    #[error("Invalid era id")]
-    InvalidEra,
     /// Indicates that queried value is missing, or has invalid type.
     #[error("Value error")]
     ValueError,

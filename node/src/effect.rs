@@ -1062,7 +1062,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_validators(
         self,
         get_request: GetEraValidatorsRequest,
-    ) -> Result<ValidatorWeights, GetEraValidatorsError>
+    ) -> Result<Option<ValidatorWeights>, GetEraValidatorsError>
     where
         REv: From<ContractRuntimeRequest>,
     {

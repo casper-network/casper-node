@@ -46,9 +46,9 @@ pub trait Auction: StorageProvider + SystemProvider + RuntimeProvider {
     ///
     /// Publicly accessible, but intended for periodic use by the PoS contract to update its own
     /// internal data structures recording current and past winners.
-    fn get_era_validators(&mut self, era_id: EraId) -> Result<ValidatorWeights> {
+    fn get_era_validators(&mut self, era_id: EraId) -> Result<Option<ValidatorWeights>> {
         let mut era_validators = internal::get_era_validators(self)?;
-        era_validators.remove(&era_id).ok_or(Error::InvalidEra)
+        Ok(era_validators.remove(&era_id))
     }
 
     /// Returns validators in era_validators, mapped to their bids or founding stakes, delegation

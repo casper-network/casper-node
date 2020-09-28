@@ -677,7 +677,7 @@ where
             .finish()
     }
 
-    pub fn get_era_validators(&mut self, era_id: EraId) -> ValidatorWeights {
+    pub fn get_era_validators(&mut self, era_id: EraId) -> Option<ValidatorWeights> {
         let correlation_id = CorrelationId::new();
         let state_hash = Blake2bHash::try_from(self.get_post_state_hash().as_slice())
             .expect("should create state hash");

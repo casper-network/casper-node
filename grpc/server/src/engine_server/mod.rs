@@ -391,12 +391,11 @@ where
             };
 
         let pre_state_hash = get_era_validators_request.state_hash();
-        let era_id = get_era_validators_request.era_id();
 
         let mut response = ipc::GetEraValidatorsResponse::new();
 
         match self.get_era_validators(correlation_id, get_era_validators_request) {
-            Ok(validator_weights) => {
+            Ok(Some(validator_weights)) => {
                 match ipc::GetEraValidatorsResponse_ValidatorWeights::try_from(validator_weights) {
                     Ok(pb_validator_weights) => response.set_success(pb_validator_weights),
                     Err(mapping_error) => {
@@ -405,11 +404,11 @@ where
                 }
             }
 
+            Ok(None) => {}
+
             Err(GetEraValidatorsError::RootNotFound) => response
                 .mut_missing_prestate()
                 .set_hash(pre_state_hash.to_vec()),
-
-            Err(GetEraValidatorsError::InvalidEra) => response.mut_invalid_era().set_era_id(era_id),
 
             Err(GetEraValidatorsError::ValueError) => response.set_value_error(Default::default()),
 

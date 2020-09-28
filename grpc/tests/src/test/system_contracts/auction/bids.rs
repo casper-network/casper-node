@@ -478,7 +478,9 @@ fn should_calculate_era_validators() {
         &U512::from(ADD_BID_AMOUNT_1)
     );
 
-    let era_validators_result = builder.get_era_validators(lookup_era_id);
+    let era_validators_result = builder
+        .get_era_validators(lookup_era_id)
+        .expect("should have validator weights");
     assert_eq!(era_validators_result, *validator_weights);
 }
 
@@ -601,7 +603,9 @@ fn should_get_first_seigniorage_recipients() {
         &U512::from(ACCOUNT_2_BOND)
     );
 
-    let first_validator_weights = builder.get_era_validators(era_id);
+    let first_validator_weights = builder
+        .get_era_validators(era_id)
+        .expect("should have validator weights");
     assert_eq!(first_validator_weights, validator_weights);
 }
 
@@ -665,7 +669,6 @@ fn should_release_founder_stake() {
     assert_eq!(founding_validator, ACCOUNT_1_PK);
 }
 
-#[should_panic(expected = "ApiError::AuctionError(21)")] // InvalidEra
 #[ignore]
 #[test]
 fn should_fail_to_get_era_validators() {
@@ -687,7 +690,11 @@ fn should_fail_to_get_era_validators() {
 
     builder.run_genesis(&run_genesis_request);
 
-    let _era_validators = builder.get_era_validators(u64::max_value());
+    assert_eq!(
+        builder.get_era_validators(u64::max_value()),
+        None,
+        "should not have era validators for invalid era"
+    );
 }
 
 #[ignore]
@@ -712,7 +719,9 @@ fn should_use_era_validators_endpoint_for_first_era() {
 
     builder.run_genesis(&run_genesis_request);
 
-    let validator_weights = builder.get_era_validators(0);
+    let validator_weights = builder
+        .get_era_validators(0)
+        .expect("should have validator weights for era 0");
 
     assert_eq!(validator_weights.len(), 1);
     assert_eq!(validator_weights[&ACCOUNT_1_PK], ACCOUNT_1_BOND.into());

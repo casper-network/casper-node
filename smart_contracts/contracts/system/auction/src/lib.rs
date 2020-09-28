@@ -10,7 +10,22 @@ use casper_contract::{
     contract_api::{runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter, PublicKey, U512, URef, account::AccountHash, auction::{ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_ERA_ID, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_SOURCE_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_KEYS, ARG_VALIDATOR_PUBLIC_KEYS, Auction, DelegationRate, METHOD_ADD_BID, METHOD_BOND, METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_QUASH_BID, METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNBOND, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID, RuntimeProvider, SeigniorageRecipients, StorageProvider, SystemProvider, ValidatorWeights}, bytesrepr::{FromBytes, ToBytes}, system_contract_errors::auction::Error};
+use casper_types::{
+    account::AccountHash,
+    auction::{
+        Auction, DelegationRate, RuntimeProvider, SeigniorageRecipients, StorageProvider,
+        SystemProvider, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
+        ARG_ERA_ID, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_SOURCE_PURSE, ARG_VALIDATOR,
+        ARG_VALIDATOR_KEYS, ARG_VALIDATOR_PUBLIC_KEYS, METHOD_ADD_BID, METHOD_BOND,
+        METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_QUASH_BID,
+        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNBOND,
+        METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
+    },
+    bytesrepr::{FromBytes, ToBytes},
+    system_contract_errors::auction::Error,
+    CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
+    Parameter, PublicKey, URef, U512,
+};
 
 struct AuctionContract;
 

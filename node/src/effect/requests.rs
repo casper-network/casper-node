@@ -488,7 +488,7 @@ pub enum ContractRuntimeRequest {
         /// Get era validators request.
         get_request: GetEraValidatorsRequest,
         /// Responder to call with the result.
-        responder: Responder<Result<ValidatorWeights, GetEraValidatorsError>>,
+        responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
     },
 }
 
