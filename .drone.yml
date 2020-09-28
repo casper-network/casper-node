@@ -199,24 +199,36 @@ steps:
       - ./.cargo/.crates.toml
     restore: true
 
-- name: build-make-setup-rs
+- name: cargo-fmt
   <<: *buildenv
   commands:
-    - "make setup-rs"
+  - rustup component add rustfmt
+  - cargo fmt --all -- --check
 
-- name: build-make-system-contracts
+- name: cargo-clippy
+  <<: *buildenv
+  environment:
+    RUSTFLAGS: '-D warnings'
+  commands:
+  - make setup-rs
+  - rustup component add clippy
+  - cargo clippy --all-targets --all-features --workspace
+
+- name: cargo-audit
   <<: *buildenv
   commands:
-    - "make build-system-contracts -j"
+  - cargo install cargo-audit
+  - cargo generate-lockfile
+  - cargo audit
   depends_on:
-  - build-make-setup-rs
+  - cargo-clippy
 
 - name: build-deb-tag
   <<: *buildenv
   commands:
     - "make deb"
   depends_on:
-  - build-make-system-contracts
+  - cargo-audit
 
 - name: publish-bintray-tag
   <<: *buildenv
