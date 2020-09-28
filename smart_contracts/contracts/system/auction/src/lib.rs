@@ -214,7 +214,7 @@ pub fn get_entry_points() -> EntryPoints {
     let entry_point = EntryPoint::new(
         METHOD_GET_ERA_VALIDATORS,
         vec![],
-        ValidatorWeights::cl_type(),
+        Option::<ValidatorWeights>::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );
