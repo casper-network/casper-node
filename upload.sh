@@ -9,7 +9,6 @@ export BINTRAY_ORG_NAME='casperlabs'
 export BINTRAY_REPO_NAME='casper-debian-tests'
 export BINTRAY_PACKAGE_NAME='casper-node'
 export BINTRAY_REPO_URL="$BINTRAY_ORG_NAME/$BINTRAY_REPO_NAME/$BINTRAY_PACKAGE_NAME"
-export CL_VAULT_HOST='http://vault.casperlabs.lan:8200'
 export CL_VAULT_URL="$CL_VAULT_HOST/v1/sre/cicd/bintray/credentials"
 
 abspath() {
