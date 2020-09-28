@@ -132,8 +132,7 @@ steps:
 - name: build-deb-tag
   <<: *buildenv
   commands:
-    - "cd grpc/server && cargo deb -p casper-engine-grpc-server --no-build"
-    - "cd node && cargo deb -p casper-node --no-build"
+    - "make deb"
   depends_on:
   - build-release-tag
 
