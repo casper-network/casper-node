@@ -224,12 +224,7 @@ impl<C: Context> ActiveValidator<C> {
             return false;
         }
         // If it's not a proposal, the sender is faulty, or we are, don't send a confirmation.
-        if vote.creator == self.vidx
-            || self.is_faulty(state)
-            || state.has_evidence(vote.creator)
-            || state.leader(vote.timestamp) != vote.creator
-            || vote.timestamp != state::round_id(vote.timestamp, vote.round_exp)
-        {
+        if vote.creator == self.vidx || self.is_faulty(state) || !state.is_correct_proposal(vote) {
             return false;
         }
         if let Some(vote) = self.latest_vote(state) {
