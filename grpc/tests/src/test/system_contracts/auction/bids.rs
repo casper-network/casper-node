@@ -20,8 +20,7 @@ use casper_types::{
         self, Bids, DelegationRate, Delegators, EraValidators, ARG_AMOUNT, ARG_DELEGATION_RATE,
         ARG_VALIDATOR, BIDS_KEY,
     },
-    bytesrepr::FromBytes,
-    runtime_args, CLTyped, ContractHash, PublicKey, RuntimeArgs, U512,
+    runtime_args, PublicKey, RuntimeArgs, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -62,23 +61,6 @@ const ACCOUNT_2_BOND: u64 = 200_000;
 
 const BID_ACCOUNT_PK: PublicKey = PublicKey::Ed25519([204; 32]);
 const BID_ACCOUNT_ADDR: AccountHash = AccountHash::new([205; 32]);
-
-fn get_value<T>(builder: &mut InMemoryWasmTestBuilder, contract_hash: ContractHash, name: &str) -> T
-where
-    T: FromBytes + CLTyped,
-{
-    let contract = builder
-        .get_contract(contract_hash)
-        .expect("should have contract");
-    let key = contract.named_keys().get(name).expect("should have purse");
-    let stored_value = builder.query(None, *key, &[]).expect("should query");
-    let cl_value = stored_value
-        .as_cl_value()
-        .cloned()
-        .expect("should be cl value");
-    let result: T = cl_value.into_t().expect("should convert");
-    result
-}
 
 #[ignore]
 #[test]
@@ -165,8 +147,7 @@ fn should_run_add_bid() {
         // Since we don't pay out immediately `WITHDRAW_BID_AMOUNT_2` is locked in unbonding queue
         U512::from(ADD_BID_AMOUNT_1 + BID_AMOUNT_2)
     );
-    let unbonding_purses: UnbondingPurses =
-        get_value(&mut builder, auction_hash, "unbonding_purses");
+    let unbonding_purses: UnbondingPurses = builder.get_value(auction_hash, "unbonding_purses");
     let unbond_list = unbonding_purses
         .get(&BID_ACCOUNT_PK)
         .expect("should have unbond");
