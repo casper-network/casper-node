@@ -6,8 +6,8 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Display, Formatter},
+    sync::{Arc, Mutex},
     time::Duration,
-    sync::{ Arc, Mutex },
 };
 
 use datasize::DataSize;
@@ -94,7 +94,7 @@ struct DeployBufferInner {
 /// Deploy buffer.
 #[derive(DataSize, Debug, Clone)]
 pub(crate) struct DeployBuffer {
-    inner: Arc<Mutex<DeployBufferInner>> // Don't hand out references to internal mutable state
+    inner: Arc<Mutex<DeployBufferInner>>, // Don't hand out references to internal mutable state
 }
 
 impl DeployBuffer {
@@ -113,7 +113,7 @@ impl DeployBuffer {
             }
             log::debug!("DeployBuffer dropped");
         });
-        Self{ inner }
+        Self { inner }
     }
 }
 
@@ -125,7 +125,10 @@ impl DeployBuffer {
         current_instant: Timestamp,
         past_blocks: HashSet<ProtoBlockHash>,
     ) -> HashSet<DeployHash> {
-        self.inner.lock().unwrap().remaining_deploys(deploy_config, current_instant, past_blocks)
+        self.inner
+            .lock()
+            .unwrap()
+            .remaining_deploys(deploy_config, current_instant, past_blocks)
     }
 
     fn add_deploy(&mut self, hash: DeployHash, header: DeployHeader) {
@@ -145,7 +148,6 @@ impl DeployBuffer {
 }
 
 impl DeployBufferInner {
-
     /// Adds a deploy to the deploy buffer.
     ///
     /// Returns `false` if the deploy has been rejected.
@@ -289,19 +291,18 @@ impl DeployBufferInner {
             });
             initial_len - map.len()
         }
-        /// Prunes ProtoBlockCollection and return the total (DeployHash, DeployHeader) entries pruned
+        /// Prunes ProtoBlockCollection and return the total (DeployHash, DeployHeader) entries
+        /// pruned
         fn prune_proto_collection(proto_collection: &mut ProtoBlockCollection) -> usize {
             let mut pruned = 0;
             let mut remove = Vec::new();
-            {
-                for (proto_hash, processed) in proto_collection.iter_mut() {
-                    pruned += prune_collection(processed);
-                    if processed.is_empty() {
-                        remove.push(proto_hash.clone());
-                    }
+            for (proto_hash, processed) in proto_collection.iter_mut() {
+                pruned += prune_collection(processed);
+                if processed.is_empty() {
+                    remove.push(*proto_hash);
                 }
             }
-            proto_collection.retain(|k,_v| !remove.contains(&k));
+            proto_collection.retain(|k, _v| !remove.contains(&k));
             pruned
         }
         let collected = prune_collection(&mut self.collected_deploys);
@@ -324,7 +325,11 @@ where
         rng: &mut R,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        return self.inner.lock().unwrap().handle_event(effect_builder, rng, event)
+        self
+            .inner
+            .lock()
+            .unwrap()
+            .handle_event(effect_builder, rng, event)
     }
 }
 
@@ -525,7 +530,6 @@ mod tests {
         assert!(deploys.contains(&hash4));
     }
 
-
     #[tokio::test]
     async fn test_prune() {
         let creation_time = Timestamp::from(100);
@@ -558,7 +562,7 @@ mod tests {
         }
 
         tokio::time::delay_for(DEPLOY_BUFFER_PRUNE_INTERVAL + Duration::from_secs(1)).await;
-        
+
         {
             let inner = buffer.inner.lock().unwrap();
             assert_eq!(inner.collected_deploys.len(), 0);
