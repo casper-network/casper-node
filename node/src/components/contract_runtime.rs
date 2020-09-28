@@ -9,6 +9,7 @@ use std::{
     time::Instant,
 };
 
+use datasize::DataSize;
 use derive_more::From;
 use lmdb::DatabaseFlags;
 use prometheus::{self, Histogram, HistogramOpts, Registry};
@@ -36,6 +37,7 @@ use crate::{
 };
 
 /// The contract runtime components.
+#[derive(DataSize)]
 pub(crate) struct ContractRuntime {
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<ContractRuntimeMetrics>,

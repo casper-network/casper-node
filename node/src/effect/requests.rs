@@ -9,6 +9,7 @@ use std::{
     net::SocketAddr,
 };
 
+use datasize::DataSize;
 use semver::Version;
 
 use casper_execution_engine::{
@@ -619,7 +620,7 @@ impl<I: Display> Display for LinearChainRequest<I> {
     }
 }
 
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 #[must_use]
 /// Consensus component requests.
 pub enum ConsensusRequest {

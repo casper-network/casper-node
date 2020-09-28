@@ -1,5 +1,6 @@
 use std::{fmt, iter};
 
+use datasize::DataSize;
 use num_traits::Zero;
 use rand::{
     distributions::{Distribution, Standard},
@@ -65,7 +66,7 @@ impl GenesisResult {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(DataSize, Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenesisAccount {
     /// Assumed to be a system account if `public_key` is not specified.
     public_key: Option<PublicKey>,

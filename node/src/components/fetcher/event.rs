@@ -6,9 +6,10 @@ use crate::{
     small_network::NodeId,
     utils::Source,
 };
+use datasize::DataSize;
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum FetchResult<T: Item> {
+#[derive(Clone, DataSize, Debug, PartialEq)]
+pub enum FetchResult<T> {
     FromStorage(Box<T>),
     FromPeer(Box<T>, NodeId),
 }

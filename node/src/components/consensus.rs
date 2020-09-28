@@ -8,6 +8,7 @@ mod protocols;
 mod tests;
 mod traits;
 
+use datasize::DataSize;
 use std::fmt::{self, Debug, Display, Formatter};
 
 use crate::{
@@ -32,7 +33,7 @@ use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use traits::NodeIdT;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(DataSize, Clone, Serialize, Deserialize)]
 pub struct ConsensusMessage {
     era_id: EraId,
     payload: Vec<u8>,
@@ -45,7 +46,7 @@ impl ConsensusMessage {
 }
 
 /// Consensus component event.
-#[derive(Debug, From)]
+#[derive(DataSize, Debug, From)]
 pub enum Event<I> {
     /// An incoming network message.
     MessageReceived { sender: I, msg: ConsensusMessage },

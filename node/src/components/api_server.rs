@@ -16,6 +16,7 @@ pub mod rpcs;
 
 use std::{convert::Infallible, fmt::Debug, net::SocketAddr};
 
+use datasize::DataSize;
 use futures::{future, join};
 use hyper::Server;
 use lazy_static::lazy_static;
@@ -76,7 +77,7 @@ impl<REv> ReactorEventT for REv where
 {
 }
 
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 pub(crate) struct ApiServer {}
 
 impl ApiServer {

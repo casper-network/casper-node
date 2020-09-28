@@ -50,6 +50,7 @@ use std::{
 };
 
 use anyhow::Context;
+use datasize::DataSize;
 use futures::{
     future::{select, BoxFuture, Either},
     stream::{SplitSink, SplitStream},
@@ -94,13 +95,18 @@ pub use error::Error;
 /// The key fingerprint found on TLS certificates.
 pub(crate) type NodeId = KeyFingerprint;
 
-#[derive(Debug)]
-struct OutgoingConnection<P> {
+#[derive(DataSize, Debug)]
+pub(crate) struct OutgoingConnection<P> {
+    #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
     sender: UnboundedSender<Message<P>>,
     peer_address: SocketAddr,
 }
 
-pub(crate) struct SmallNetwork<REv: 'static, P> {
+#[derive(DataSize)]
+pub(crate) struct SmallNetwork<REv, P>
+where
+    REv: 'static,
+{
     /// Server certificate.
     certificate: Arc<TlsCert>,
     /// Server secret key.

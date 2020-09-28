@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use datasize::DataSize;
 use pwasm_utils::rules::{InstructionType, Metering, Set};
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
@@ -10,7 +11,7 @@ const NUM_FIELDS: usize = 10;
 pub const WASM_COSTS_SERIALIZED_LENGTH: usize = NUM_FIELDS * U32_SERIALIZED_LENGTH;
 
 // Taken (partially) from parity-ethereum
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct WasmCosts {
     /// Default opcode cost
     pub regular: u32,

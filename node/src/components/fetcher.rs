@@ -3,6 +3,7 @@ mod tests;
 
 use std::{collections::HashMap, fmt::Debug, time::Duration};
 
+use datasize::DataSize;
 use rand::{CryptoRng, Rng};
 use smallvec::smallvec;
 use tracing::{debug, error};
@@ -158,8 +159,11 @@ pub trait ItemFetcher<T: Item + 'static> {
 }
 
 /// The component which fetches an item from local storage or asks a peer if it's not in storage.
-#[derive(Debug)]
-pub(crate) struct Fetcher<T: Item + 'static> {
+#[derive(DataSize, Debug)]
+pub(crate) struct Fetcher<T>
+where
+    T: Item + 'static,
+{
     get_from_peer_timeout: Duration,
     responders: HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>,
 }

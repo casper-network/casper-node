@@ -25,6 +25,7 @@ mod macro_code {
     use uint::construct_uint;
 
     construct_uint! {
+        #[derive(datasize::DataSize)]
         pub struct U512(8);
     }
     construct_uint! {
