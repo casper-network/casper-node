@@ -200,7 +200,7 @@ steps:
     restore: true
 
 - name: build-deb-make-setup-rs
-  <<: *buildend
+  <<: *buildenv
   commands:
     - "make setup-rs"
 
