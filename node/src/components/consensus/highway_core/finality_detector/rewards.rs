@@ -14,26 +14,24 @@ use crate::{
 ///
 /// This is the sum of all rewards for finalization of ancestors of `bhash`, as seen from `bhash`.
 pub(crate) fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> ValidatorMap<u64> {
-    // The newly finalized block, in which the rewards are paid out.
-    let payout_block = state.block(bhash);
     // The vote that introduced the payout block.
     let payout_vote = state.vote(bhash);
     // The panorama of the payout block: Rewards must only use this panorama, since it defines
     // what everyone who has the block can already see.
     let panorama = &payout_vote.panorama;
     let mut rewards = ValidatorMap::from(vec![0u64; panorama.len()]);
-    let mut prev_block = payout_block;
-    while let Some(proposal_hash) = prev_block.parent() {
+    for proposal_hash in state.ancestor_hashes(bhash) {
         for (vidx, r) in compute_rewards_for(state, panorama, proposal_hash).enumerate() {
             match rewards[vidx].checked_add(*r) {
                 Some(sum) => rewards[vidx] = sum,
+                // Rewards should not overflow. We use one trillion for a block reward, so the full
+                // rewards for 18 million blocks fit into a u64.
                 None => panic!(
                     "rewards for {:?}, {} + {}, overflow u64",
                     vidx, rewards[vidx], r
                 ),
             }
         }
-        prev_block = state.block(proposal_hash);
     }
     rewards
 }

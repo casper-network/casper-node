@@ -459,6 +459,20 @@ impl<C: Context> State<C> {
             Some((current, vote))
         })
     }
+
+    /// Returns an iterator over all hashes of ancestors of the block `bhash`, excluding `bhash`
+    /// itself. Panics if `bhash` is not the hash of a known block.
+    pub(crate) fn ancestor_hashes<'a>(
+        &'a self,
+        bhash: &'a C::Hash,
+    ) -> impl Iterator<Item = &'a C::Hash> {
+        let mut next = self.block(bhash).parent();
+        iter::from_fn(move || {
+            let current = next?;
+            next = self.block(current).parent();
+            Some(current)
+        })
+    }
 }
 
 /// Returns the round length, given the round exponent.
