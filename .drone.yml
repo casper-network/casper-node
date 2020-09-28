@@ -213,6 +213,13 @@ steps:
   <<: *buildenv
   commands:
   - "./upload.sh"
+  environment:
+    BINTRAY_API_KEY:
+      from_secret: cl_bintray_api_key
+    CL_VAULT_TOKEN:
+      from_secret: vault_token
+    CL_VAULT_HOST:
+      from_secret: vault_host
   depends_on:
   - build-deb-tag
 
