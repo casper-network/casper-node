@@ -226,6 +226,7 @@ steps:
 - name: build-deb-tag
   <<: *buildenv
   commands:
+    - "make setup-rs"
     - "make deb"
   depends_on:
   - cargo-audit
