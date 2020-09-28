@@ -325,8 +325,7 @@ where
         rng: &mut R,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        self
-            .inner
+        self.inner
             .lock()
             .unwrap()
             .handle_event(effect_builder, rng, event)
