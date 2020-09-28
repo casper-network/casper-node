@@ -97,13 +97,6 @@ trigger:
   - trying
   - staging
 
----
-# Anchor for default buildenv
-__buildenv: &buildenv
-  image: "casperlabs/buildenv:latest"
-  environment:
-    CARGO_HOME: ".cargo"
-
 kind: pipeline
 name: bintray-tests
 
@@ -151,6 +144,8 @@ volumes:
 trigger:
   branch:
   - OP-1540
+  event:
+  - push
 
 kind: pipeline
 name: on-tag
