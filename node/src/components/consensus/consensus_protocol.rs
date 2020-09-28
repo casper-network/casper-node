@@ -40,7 +40,7 @@ impl BlockContext {
     deserialize = "VID: Ord + Deserialize<'de>",
 ))]
 pub struct EraEnd<VID> {
-    /// The set of newly detected equivocators.
+    /// The set of equivocators.
     pub(crate) equivocators: Vec<VID>,
     /// Rewards for finalization of earlier blocks.
     ///
