@@ -84,11 +84,14 @@ impl TryFrom<ipc::StepRequest> for StepRequest {
             ret
         };
 
+        let run_auction = pb_step_request.get_run_auction();
+
         Ok(StepRequest::new(
             parent_state_hash,
             protocol_version,
             slash_items,
             reward_items,
+            run_auction,
         ))
     }
 }

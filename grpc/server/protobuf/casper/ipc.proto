@@ -489,7 +489,7 @@ message StepRequest {
 
     repeated SlashItem slash_items = 3;
     repeated RewardItem reward_items = 4;
-//    RunAuctionRequest run_auction_request = 5;
+    bool run_auction = 5;
 }
 
 message SlashItem{

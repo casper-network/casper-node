@@ -41,6 +41,7 @@ pub struct StepRequest {
 
     pub slash_items: Vec<SlashItem>,
     pub reward_items: Vec<RewardItem>,
+    pub run_auction: bool,
 }
 
 impl StepRequest {
@@ -49,12 +50,14 @@ impl StepRequest {
         protocol_version: ProtocolVersion,
         slash_items: Vec<SlashItem>,
         reward_items: Vec<RewardItem>,
+        run_auction: bool,
     ) -> Self {
         Self {
             parent_state_hash,
             protocol_version,
             slash_items,
             reward_items,
+            run_auction,
         }
     }
 

@@ -1947,30 +1947,33 @@ where
             return Ok(StepResult::PreconditionError);
         }
 
-        let run_auction_args = runtime_args! {};
+        if step_request.run_auction {
+            let run_auction_args = runtime_args! {};
 
-        let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
-            DirectSystemContractCall::RunAuction,
-            auction_module.clone(),
-            run_auction_args,
-            &mut named_keys,
-            Default::default(),
-            base_key,
-            &system_account,
-            authorization_keys.clone(),
-            BlockTime::default(),
-            deploy_hash,
-            gas_limit,
-            step_request.protocol_version,
-            correlation_id,
-            Rc::clone(&tracking_copy),
-            Phase::Session,
-            protocol_data,
-            SystemContractCache::clone(&self.system_contract_cache),
-        );
+            let (_, execution_result): (Option<()>, ExecutionResult) = executor
+                .exec_system_contract(
+                    DirectSystemContractCall::RunAuction,
+                    auction_module.clone(),
+                    run_auction_args,
+                    &mut named_keys,
+                    Default::default(),
+                    base_key,
+                    &system_account,
+                    authorization_keys.clone(),
+                    BlockTime::default(),
+                    deploy_hash,
+                    gas_limit,
+                    step_request.protocol_version,
+                    correlation_id,
+                    Rc::clone(&tracking_copy),
+                    Phase::Session,
+                    protocol_data,
+                    SystemContractCache::clone(&self.system_contract_cache),
+                );
 
-        if execution_result.has_precondition_failure() {
-            return Ok(StepResult::PreconditionError);
+            if execution_result.has_precondition_failure() {
+                return Ok(StepResult::PreconditionError);
+            }
         }
 
         let effects = tracking_copy.borrow().effect();

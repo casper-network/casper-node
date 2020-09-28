@@ -1,10 +1,17 @@
 use casper_engine_test_support::internal::{
-    utils, InMemoryWasmTestBuilder, SlashItem, StepRequestBuilder, DEFAULT_ACCOUNTS,
+    utils, InMemoryWasmTestBuilder, SlashItem, StepRequestBuilder, WasmTestBuilder,
+    DEFAULT_ACCOUNTS,
 };
-use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
+use casper_execution_engine::{
+    core::engine_state::genesis::GenesisAccount, shared::motes::Motes,
+    storage::global_state::in_memory::InMemoryGlobalState,
+};
 use casper_types::{
     account::AccountHash,
-    auction::{BidPurses, BID_PURSES_KEY},
+    auction::{
+        BidPurses, SeigniorageRecipientsSnapshot, BID_PURSES_KEY,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+    },
     bytesrepr::{FromBytes, ToBytes},
     CLTyped, ContractHash, ProtocolVersion, PublicKey,
 };
@@ -59,10 +66,7 @@ fn get_value<T: FromBytes + CLTyped>(
     result
 }
 
-/// Should be able to apply slashing per era.
-#[ignore]
-#[test]
-fn should_slash() {
+fn initialize_builder() -> WasmTestBuilder<InMemoryGlobalState> {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     let accounts = {
@@ -87,11 +91,21 @@ fn should_slash() {
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
     builder.run_genesis(&run_genesis_request);
+    builder
+}
+
+/// Should be able to step slashing, rewards, and run auction.
+#[ignore]
+#[test]
+fn should_step() {
+    let mut builder = initialize_builder();
+
     let validator_id = ACCOUNT_1_PK.to_bytes().expect("should serialize to bytes");
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
         .with_slash_item(SlashItem::new(validator_id).into())
+        .with_run_auction(true)
         .build();
 
     let auction_hash = builder.get_auction_contract_hash();
@@ -106,6 +120,12 @@ fn should_slash() {
     //     "should contain slashed validator)"
     // );
 
+    let before_auction_seigniorage: SeigniorageRecipientsSnapshot = get_value(
+        &mut builder,
+        auction_hash,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+    );
+
     builder.step(step_request);
 
     let bid_purses_after_slashing: BidPurses =
@@ -115,28 +135,22 @@ fn should_slash() {
         !bid_purses_after_slashing.contains_key(&ACCOUNT_1_PK),
         "should not contain slashed validator)"
     );
+
+    let after_auction_seigniorage: SeigniorageRecipientsSnapshot = get_value(
+        &mut builder,
+        auction_hash,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+    );
+
+    assert!(
+        !before_auction_seigniorage
+            .keys()
+            .all(|key| after_auction_seigniorage.contains_key(key)),
+        "run auction should have changed seigniorage keys"
+    );
 }
 
-/// Should be able to distribute rewards per era.
-#[ignore]
-#[test]
-fn should_run_auction() {
-    /*
-        get a builder & do genesis plus some number of commits to build up state
-            how much min state is necessary before being able to auction?
-                maybe genesis + 1 block / post state hash is all that is necessary; verify
-            should be able to just assert era 2 as to the EE era is just an arg
-        run auction in such a way to force a new winning bidder / new validator to be included
-            upgrade .step(...) function on test builder to support auction
-            check the auction contract validator set before auction
-        how to determine success?
-            check auction contract state after auction; new winning bidder should be present
-
-        TODO: check Michal's existing tests of run_auction to figure out how it is meant to work
-    */
-}
-
-/// Should be able to distribute rewards per era.
+/// Should be able to distribute rewards.
 #[ignore]
 #[test]
 fn should_distribute_rewards() {
@@ -150,8 +164,7 @@ fn should_distribute_rewards() {
             determine what state is available pre-reward distro to serve as control set
         how to determine success?
             determine what state is available post-reward distro to compare against previous state
-                and what the expected final resting state is; may not be able to do this
-                until henry's new logic completely lands in which case, allow test to pass
-                but add TODO! and link to Henry's ticket.
+                and what the expected final resting state is;
+                TODO: not be able to do this until henry's new logic completely lands
     */
 }
