@@ -199,20 +199,10 @@ steps:
       - ./.cargo/.crates.toml
     restore: true
 
-- name: build-release-tag
-  <<: *buildenv
-  commands:
-  - "cargo build --release"
-  depends_on:
-  - restore-cache-tag
-
 - name: build-deb-tag
   <<: *buildenv
   commands:
-    - "cd grpc/server && cargo deb -p casper-engine-grpc-server --no-build"
-    - "cd node && cargo deb -p casper-node --no-build"
-  depends_on:
-  - build-release-tag
+    - "make deb"
 
 - name: publish-bintray-tag
   <<: *buildenv
