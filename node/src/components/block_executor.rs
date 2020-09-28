@@ -5,6 +5,7 @@ use std::{
     fmt::{Debug, Display},
 };
 
+use datasize::DataSize;
 use derive_more::From;
 use itertools::Itertools;
 use rand::{CryptoRng, Rng};
@@ -163,7 +164,7 @@ pub struct State {
     pre_state_hash: Digest,
 }
 
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 struct ExecutedBlockSummary {
     hash: BlockHash,
     post_state_hash: Digest,
@@ -172,7 +173,7 @@ struct ExecutedBlockSummary {
 type BlockHeight = u64;
 
 /// The Block executor component.
-#[derive(Debug, Default)]
+#[derive(DataSize, Debug, Default)]
 pub(crate) struct BlockExecutor {
     genesis_post_state_hash: Digest,
     /// A mapping from proto block to executed block's ID and post-state hash, to allow
@@ -219,6 +220,8 @@ impl BlockExecutor {
         finalized_block: FinalizedBlock,
     ) -> Effects<Event> {
         let deploy_hashes = SmallVec::from_slice(finalized_block.proto_block().deploys());
+        let era_id = finalized_block.era_id();
+        let height = finalized_block.height();
 
         // Get all deploys in order they appear in the finalized block.
         effect_builder
@@ -228,9 +231,7 @@ impl BlockExecutor {
                 deploys: result
                     .into_iter()
                     // Assumes all deploys are present
-                    .map(|maybe_deploy| {
-                        maybe_deploy.expect("deploy is expected to exist in the storage")
-                    })
+                    .map(|maybe_deploy| maybe_deploy.unwrap_or_else(|| panic!("deploy for block in era={} and height={} is expected to exist in the storage", era_id, height)))
                     .collect(),
             })
     }

@@ -8,6 +8,7 @@ mod protocols;
 mod tests;
 mod traits;
 
+use datasize::DataSize;
 use std::fmt::{self, Debug, Display, Formatter};
 
 use crate::{
@@ -18,7 +19,7 @@ use crate::{
             self, BlockExecutorRequest, BlockValidationRequest, DeployBufferRequest,
             NetworkRequest, StorageRequest,
         },
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, Effects,
     },
     protocol::Message,
     types::{ProtoBlock, Timestamp},
@@ -32,7 +33,7 @@ use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use traits::NodeIdT;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(DataSize, Clone, Serialize, Deserialize)]
 pub struct ConsensusMessage {
     era_id: EraId,
     payload: Vec<u8>,
@@ -45,7 +46,7 @@ impl ConsensusMessage {
 }
 
 /// Consensus component event.
-#[derive(Debug, From)]
+#[derive(DataSize, Debug, From)]
 pub enum Event<I> {
     /// An incoming network message.
     MessageReceived { sender: I, msg: ConsensusMessage },
@@ -181,11 +182,7 @@ where
         let mut handling_es = self.handling_wrapper(effect_builder, rng);
         match event {
             Event::Timer { era_id, timestamp } => handling_es.handle_timer(era_id, timestamp),
-            Event::MessageReceived { sender, msg } => {
-                let mut effects = effect_builder.announce_message_in_era(msg.era_id).ignore();
-                effects.extend(handling_es.handle_message(sender, msg));
-                effects
-            }
+            Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
             Event::NewProtoBlock {
                 era_id,
                 proto_block,

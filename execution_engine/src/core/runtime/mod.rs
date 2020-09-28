@@ -31,7 +31,8 @@ use casper_types::{
     standard_payment::StandardPayment,
     system_contract_errors, AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash,
     ContractPackageHash, ContractVersionKey, ContractWasm, EntryPointType, Key, ProtocolVersion,
-    RuntimeArgs, SystemContractType, TransferResult, TransferredTo, URef, U128, U256, U512,
+    PublicKey, RuntimeArgs, SystemContractType, TransferResult, TransferredTo, URef, U128, U256,
+    U512,
 };
 
 use crate::{
@@ -2044,6 +2045,13 @@ where
                 runtime
                     .slash(validator_public_keys)
                     .map_err(Self::reverter)?;
+                CLValue::from_t(()).map_err(Self::reverter)?
+            }
+            // Type: `fn distribute(reward_factors: BTreeMap<PublicKey, u64>) -> Result<(), Error>`
+            auction::METHOD_DISTRIBUTE => {
+                let _reward_factors: BTreeMap<PublicKey, u64> =
+                    Self::get_named_argument(&runtime_args, auction::ARG_REWARD_FACTORS)?;
+
                 CLValue::from_t(()).map_err(Self::reverter)?
             }
 

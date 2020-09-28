@@ -9,6 +9,7 @@ use std::{
     net::SocketAddr,
 };
 
+use datasize::DataSize;
 use semver::Version;
 
 use casper_execution_engine::{
@@ -30,6 +31,7 @@ use casper_types::{auction::ValidatorWeights, Key, URef};
 use super::Responder;
 use crate::{
     components::{
+        chainspec_loader::ChainspecInfo,
         fetcher::FetchResult,
         storage::{
             DeployHashes, DeployHeaderResults, DeployMetadata, DeployResults, StorageType, Value,
@@ -597,6 +599,8 @@ impl<T: Display, I: Display> Display for BlockValidationRequest<T, I> {
     }
 }
 
+type BlockHeight = u64;
+
 #[derive(Debug)]
 /// Requests issued to the Linear Chain component.
 pub enum LinearChainRequest<I> {
@@ -604,6 +608,11 @@ pub enum LinearChainRequest<I> {
     BlockRequest(BlockHash, I),
     /// Get last finalized block.
     LastFinalizedBlock(Responder<Option<LinearBlock>>),
+    /// Request for a linear chain block at height.
+    BlockAtHeight(BlockHeight, I),
+    /// A local request for linear block at given height.
+    /// Temporary until we have implemented this functionality in the storage.
+    BlockAtHeightLocal(BlockHeight, Responder<Option<LinearBlock>>),
 }
 
 impl<I: Display> Display for LinearChainRequest<I> {
@@ -613,14 +622,35 @@ impl<I: Display> Display for LinearChainRequest<I> {
                 write!(f, "block request for hash {} from {}", bh, peer)
             }
             LinearChainRequest::LastFinalizedBlock(_) => write!(f, "last finalized block request"),
+            LinearChainRequest::BlockAtHeight(height, sender) => {
+                write!(f, "block request for {} from {}", height, sender)
+            }
+            LinearChainRequest::BlockAtHeightLocal(height, _) => {
+                write!(f, "local block request for {}", height)
+            }
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 #[must_use]
 /// Consensus component requests.
 pub enum ConsensusRequest {
     /// Request for consensus to sign a new linear chain block and possibly start a new era.
     HandleLinearBlock(Box<BlockHeader>, Responder<Signature>),
+}
+
+/// ChainspecLoader componenent requests.
+#[derive(Debug)]
+pub enum ChainspecLoaderRequest {
+    /// Chainspec info request.
+    GetChainspecInfo(Responder<ChainspecInfo>),
+}
+
+impl Display for ChainspecLoaderRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChainspecLoaderRequest::GetChainspecInfo(_) => write!(f, "get chainspec info"),
+        }
+    }
 }

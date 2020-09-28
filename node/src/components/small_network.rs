@@ -50,6 +50,7 @@ use std::{
 };
 
 use anyhow::Context;
+use datasize::DataSize;
 use futures::{
     future::{select, BoxFuture, Either},
     stream::{SplitSink, SplitStream},
@@ -94,13 +95,18 @@ pub use error::Error;
 /// The key fingerprint found on TLS certificates.
 pub(crate) type NodeId = KeyFingerprint;
 
-#[derive(Debug)]
-struct OutgoingConnection<P> {
+#[derive(DataSize, Debug)]
+pub(crate) struct OutgoingConnection<P> {
+    #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
     sender: UnboundedSender<Message<P>>,
     peer_address: SocketAddr,
 }
 
-pub(crate) struct SmallNetwork<REv: 'static, P> {
+#[derive(DataSize)]
+pub(crate) struct SmallNetwork<REv, P>
+where
+    REv: 'static,
+{
     /// Server certificate.
     certificate: Arc<TlsCert>,
     /// Server secret key.
@@ -137,10 +143,15 @@ where
     P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
     REv: Send + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
 {
+    /// Creates a new small network component instance.
+    ///
+    /// If `notify` is set to `false`, no systemd notifications will be sent, regardless of
+    /// configuration.
     #[allow(clippy::type_complexity)]
     pub(crate) fn new(
         event_queue: EventQueueHandle<REv>,
         cfg: Config,
+        notify: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         // First, we generate the TLS keys.
         let (cert, secret_key) = tls::generate_node_cert().map_err(Error::CertificateGeneration)?;
@@ -150,6 +161,21 @@ where
         let bind_address = utils::resolve_address(&cfg.bind_address).map_err(Error::ResolveAddr)?;
         let listener = TcpListener::bind(bind_address)
             .map_err(|error| Error::ListenerCreation(error, bind_address))?;
+
+        // Once the port has been bound, we can notify systemd if instructed to do so.
+        if notify {
+            if cfg.systemd_support {
+                if sd_notify::booted().map_err(Error::SystemD)? {
+                    info!("notifying systemd that the network is ready to receive connections");
+                    sd_notify::notify(true, &[sd_notify::NotifyState::Ready])
+                        .map_err(Error::SystemD)?;
+                } else {
+                    warn!("systemd_support enabled but not booted with systemd, ignoring");
+                }
+            } else {
+                debug!("systemd_support disabled, not notifying");
+            }
+        }
         let local_address = listener.local_addr().map_err(Error::ListenerAddr)?;
 
         let mut public_address =

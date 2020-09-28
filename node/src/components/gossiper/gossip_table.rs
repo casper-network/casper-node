@@ -7,6 +7,7 @@ use std::{
     time::Duration,
 };
 
+use datasize::DataSize;
 #[cfg(test)]
 use fake_instant::FakeClock as Instant;
 use tracing::warn;
@@ -42,8 +43,8 @@ pub(crate) struct ShouldGossip {
     pub(crate) is_already_held: bool,
 }
 
-#[derive(Debug, Default)]
-struct State {
+#[derive(DataSize, Debug, Default)]
+pub(crate) struct State {
     /// The peers excluding us which hold the data.
     holders: HashSet<NodeId>,
     /// Whether we hold the full data locally yet or not.
@@ -99,7 +100,7 @@ impl State {
     }
 }
 
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 pub(crate) struct GossipTable<T> {
     /// Data IDs for which gossiping is still ongoing.
     current: HashMap<T, State>,

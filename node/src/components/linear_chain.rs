@@ -4,6 +4,7 @@ use std::{
     marker::PhantomData,
 };
 
+use datasize::DataSize;
 use derive_more::From;
 use futures::FutureExt;
 use rand::{CryptoRng, Rng};
@@ -11,14 +12,13 @@ use tracing::{debug, error, info, warn};
 
 use super::{storage::Storage, Component};
 use crate::{
-    components::storage::Value,
     crypto::asymmetric_key::Signature,
     effect::{
         requests::{ConsensusRequest, LinearChainRequest, NetworkRequest, StorageRequest},
         EffectExt, Effects,
     },
     protocol::Message,
-    types::{json_compatibility::ExecutionResult, Block, BlockHash, DeployHash},
+    types::{json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, DeployHash},
 };
 
 #[derive(Debug, From)]
@@ -70,7 +70,7 @@ impl<I: Display> Display for Event<I> {
     }
 }
 
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 pub(crate) struct LinearChain<I> {
     /// A temporary workaround.
     linear_chain: Vec<Block>,
@@ -118,6 +118,18 @@ where
             Event::Request(LinearChainRequest::LastFinalizedBlock(responder)) => {
                 responder.respond(self.last_block.clone()).ignore()
             }
+            Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) => {
+                let block_at_height = self.linear_chain.get(height as usize).map(|block| BlockByHeight::new(block.clone())).unwrap_or_else(|| BlockByHeight::Absent(height));
+                match Message::new_get_response(&block_at_height) {
+                    Ok(message) => effect_builder.send_message(sender, message).ignore(),
+                    Err(error) => {
+                        error!("failed to create get-response {}", error);
+                        Effects::new()
+                    }
+                }
+            }
+            Event::Request(LinearChainRequest::BlockAtHeightLocal(height, responder)) =>
+                responder.respond(self.linear_chain.get(height as usize).cloned()).ignore(),
             Event::GetBlockResult(block_hash, maybe_block, sender) => {
                 match maybe_block {
                     None => {
@@ -146,10 +158,7 @@ where
                 let block_hash = block_header.hash();
                 let era_id = block_header.era_id();
                 let height = block_header.height();
-
-                // Using `Debug` impl for the `block_hash` to not truncate it.
                 info!(?block_hash, ?era_id, ?height, "Linear chain block stored.");
-
                 let mut effects = effect_builder.put_execution_results_to_storage(block_hash, execution_results).ignore();
                 effects.extend(
                     effect_builder.handle_linear_chain_block(block_header)

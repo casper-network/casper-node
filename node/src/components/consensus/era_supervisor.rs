@@ -17,11 +17,12 @@ use blake2::{
     VarBlake2b,
 };
 use casper_types::U512;
+use datasize::DataSize;
 use fmt::Display;
 use num_traits::AsPrimitive;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
-use tracing::{error, info};
+use tracing::{error, info, trace};
 
 use casper_execution_engine::shared::motes::Motes;
 
@@ -55,7 +56,9 @@ const BLOCK_REWARD: u64 = 1_000_000_000_000;
 // TODO: This needs to be in sync with AUCTION_DELAY/booking_duration_millis. (Already duplicated!)
 const RETAIN_ERAS: u64 = 4;
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    DataSize, Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
+)]
 pub struct EraId(pub(crate) u64);
 
 impl EraId {
@@ -77,14 +80,18 @@ impl Display for EraId {
     }
 }
 
-pub(crate) struct Era<I, R: Rng + CryptoRng + ?Sized> {
+pub struct Era<I, R: Rng + CryptoRng + ?Sized> {
     /// The consensus protocol instance.
     consensus: Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey, R>>,
     /// The height of this era's first block.
     start_height: u64,
 }
 
-pub(crate) struct EraSupervisor<I, R: Rng + CryptoRng + ?Sized> {
+#[derive(DataSize)]
+pub struct EraSupervisor<I, R>
+where
+    R: Rng + CryptoRng + ?Sized,
+{
     /// A map of active consensus protocols.
     /// A value is a trait so that we can run different consensus protocol instances per era.
     active_eras: HashMap<EraId, Era<I, R>>,
@@ -383,11 +390,6 @@ where
         block_header: BlockHeader,
         responder: Responder<Signature>,
     ) -> Effects<Event<I>> {
-        assert_eq!(
-            block_header.era_id(),
-            self.era_supervisor.current_era,
-            "executed block in unexpected era"
-        );
         // TODO - we should only sign if we're a validator for the given era ID.
         let signature = asymmetric_key::sign(
             block_header.hash().inner(),
@@ -396,6 +398,10 @@ where
             self.rng,
         );
         let mut effects = responder.respond(signature).ignore();
+        if block_header.era_id() < self.era_supervisor.current_era {
+            trace!("executed block in old era {}", block_header.era_id().0);
+            return effects;
+        }
         if block_header.switch_block() {
             // TODO: Learn the new weights from contract (validator rotation).
             let validator_stakes = self.era_supervisor.validator_stakes.clone();
@@ -417,7 +423,7 @@ where
         }
         effects.extend(
             self.effect_builder
-                .announce_block_handled(block_header.height())
+                .announce_block_handled(block_header)
                 .ignore(),
         );
         effects

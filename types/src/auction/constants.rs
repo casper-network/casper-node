@@ -39,6 +39,8 @@ pub const ARG_VALIDATOR_KEYS: &str = "validator_keys";
 pub const ARG_VALIDATOR_PUBLIC_KEYS: &str = "validator_public_keys";
 /// Named constant for `era_id`.
 pub const ARG_ERA_ID: &str = "era_id";
+/// Named constant for `reward_factors`.
+pub const ARG_REWARD_FACTORS: &str = "reward_factors";
 
 /// Named constant for method `get_era_validators`.
 pub const METHOD_GET_ERA_VALIDATORS: &str = "get_era_validators";
@@ -64,6 +66,8 @@ pub const METHOD_UNBOND: &str = "unbond";
 pub const METHOD_SLASH: &str = "slash";
 /// Named constant for method `release_founder_stake`.
 pub const METHOD_RELEASE_FOUNDER_STAKE: &str = "release_founder_stake";
+/// Named constant for method `distribute`.
+pub const METHOD_DISTRIBUTE: &str = "distribute";
 
 /// Storage for `Bids`.
 pub const BIDS_KEY: &str = "bids";

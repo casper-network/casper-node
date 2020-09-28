@@ -1,8 +1,8 @@
 #[cfg(test)]
 use std::net::{Ipv4Addr, SocketAddr};
-
 use std::time::Duration;
 
+use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
@@ -29,12 +29,13 @@ impl Default for Config {
             public_address: DEFAULT_PUBLIC_ADDRESS.to_string(),
             known_addresses: Vec::new(),
             gossip_interval: DEFAULT_GOSSIP_INTERVAL,
+            systemd_support: false,
         }
     }
 }
 
 /// Small network configuration.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(DataSize, Debug, Clone, Deserialize, Serialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -49,6 +50,8 @@ pub struct Config {
     /// Interval in milliseconds used for gossiping.
     #[serde(with = "crate::utils::milliseconds")]
     pub gossip_interval: Duration,
+    /// Enable systemd startup notification.
+    pub systemd_support: bool,
 }
 
 #[cfg(test)]
@@ -69,6 +72,7 @@ impl Config {
             public_address: bind_address.to_string(),
             known_addresses: Vec::new(),
             gossip_interval: DEFAULT_TEST_GOSSIP_INTERVAL,
+            systemd_support: false,
         }
     }
 
@@ -84,6 +88,7 @@ impl Config {
             public_address: format_address(TEST_BIND_INTERFACE, 0),
             known_addresses: vec![format_address(TEST_BIND_INTERFACE, known_peer_port)],
             gossip_interval: DEFAULT_TEST_GOSSIP_INTERVAL,
+            systemd_support: false,
         }
     }
 }

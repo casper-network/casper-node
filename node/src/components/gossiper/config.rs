@@ -1,3 +1,4 @@
+use datasize::DataSize;
 use serde::{
     de::{Deserializer, Error as SerdeError, Unexpected},
     Deserialize, Serialize,
@@ -15,7 +16,7 @@ const DEFAULT_GOSSIP_REQUEST_TIMEOUT_SECS: u64 = 10;
 const DEFAULT_GET_REMAINDER_TIMEOUT_SECS: u64 = 60;
 
 /// Configuration options for gossiping.
-#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
+#[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
 pub struct Config {
     /// Target number of peers to infect with a given piece of data.
     infection_target: u8,

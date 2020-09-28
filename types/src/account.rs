@@ -7,6 +7,7 @@ use core::{
     fmt::{Debug, Display, Formatter},
 };
 
+use datasize::DataSize;
 use failure::Fail;
 use serde::{Deserialize, Serialize};
 
@@ -181,7 +182,7 @@ pub type AccountHashBytes = [u8; ACCOUNT_HASH_LENGTH];
 
 /// A newtype wrapping a [`AccountHashBytes`] which is the raw bytes of
 /// the AccountHash, a hash of Public Key and Algorithm
-#[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
+#[derive(DataSize, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
 pub struct AccountHash(AccountHashBytes);
 
 impl AccountHash {

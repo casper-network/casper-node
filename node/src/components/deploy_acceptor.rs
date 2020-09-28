@@ -3,6 +3,7 @@ mod event;
 
 use std::fmt::Debug;
 
+use datasize::DataSize;
 use rand::{CryptoRng, Rng};
 use semver::Version;
 use tracing::{debug, error, warn};
@@ -14,7 +15,7 @@ use crate::{
         EffectExt, Effects,
     },
     small_network::NodeId,
-    types::{Deploy, Timestamp},
+    types::Deploy,
     utils::Source,
 };
 
@@ -39,7 +40,7 @@ impl<REv> ReactorEventT for REv where
 ///
 /// It validates a new `Deploy` as far as possible, stores it if valid, then announces the newly-
 /// accepted `Deploy`.
-#[derive(Debug, Default)]
+#[derive(DataSize, Debug, Default)]
 pub(crate) struct DeployAcceptor {}
 
 impl DeployAcceptor {
@@ -174,17 +175,6 @@ fn is_valid(deploy: &Deploy, chainspec: Chainspec) -> bool {
             deploy_header = %deploy.header(),
             max_ttl = %chainspec.genesis.deploy_config.max_ttl,
             "deploy ttl excessive"
-        );
-        return false;
-    }
-
-    let now = Timestamp::now();
-    if now > deploy.header().expires() {
-        warn!(
-            deploy_hash = %deploy.id(),
-            deploy_header = %deploy.header(),
-            %now,
-            "deploy expired"
         );
         return false;
     }

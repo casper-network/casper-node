@@ -1,9 +1,14 @@
+use datasize::DataSize;
+
 use super::State;
 use crate::components::consensus::traits::Context;
 
 /// A block: Chains of blocks are the consensus values in the CBC Casper sense.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct Block<C: Context> {
+#[derive(Clone, DataSize, Debug, Eq, PartialEq)]
+pub(crate) struct Block<C>
+where
+    C: Context,
+{
     /// The total number of ancestors, i.e. the height in the blockchain.
     pub(crate) height: u64,
     /// The payload, e.g. a list of transactions.

@@ -20,7 +20,7 @@ pub(super) mod amount {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
             .short(ARG_SHORT)
-            .required(true)
+            .required_unless(creation_common::show_arg_examples::ARG_NAME)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
             .display_order(DisplayOrder::TransferAmount as usize)
@@ -75,13 +75,14 @@ mod target_account {
         "Hex-encoded public key of the account from which the main purse will be used as the \
         target.";
 
+    // Conflicts with --target-purse, but that's handled via an `ArgGroup` in the subcommand.  Don't
+    // add a `conflicts_with()` to the arg or the `ArgGroup` fails to work correctly.
     pub(super) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
             .short(ARG_SHORT)
             .required(false)
             .value_name(ARG_VALUE_NAME)
-            .conflicts_with(super::target_purse::ARG_NAME)
             .help(ARG_HELP)
             .display_order(DisplayOrder::TransferTargetAccount as usize)
     }
@@ -106,6 +107,8 @@ mod target_purse {
     const ARG_VALUE_NAME: &str = "HEX STRING";
     const ARG_HELP: &str = "Hex-encoded URef of the target purse";
 
+    // Conflicts with --target-account, but that's handled via an `ArgGroup` in the subcommand.
+    // Don't add a `conflicts_with()` to the arg or the `ArgGroup` fails to work correctly.
     pub(super) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
@@ -168,13 +171,15 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
             .arg(source_purse::arg())
             .arg(target_account::arg())
             .arg(target_purse::arg())
-            // Group the target args to ensure one is given.
+            // Group the target args to ensure exactly one is required.
             .group(
-                ArgGroup::with_name("target-args")
+                ArgGroup::with_name("required-target-args")
                     .arg(target_account::ARG_NAME)
                     .arg(target_purse::ARG_NAME)
-                    .required(false),
+                    .arg(creation_common::show_arg_examples::ARG_NAME)
+                    .required(true),
             );
+        let subcommand = creation_common::apply_common_payment_options(subcommand);
         creation_common::apply_common_creation_options(subcommand, true)
     }
 

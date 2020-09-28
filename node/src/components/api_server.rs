@@ -16,6 +16,7 @@ pub mod rpcs;
 
 use std::{convert::Infallible, fmt::Debug, net::SocketAddr};
 
+use datasize::DataSize;
 use futures::{future, join};
 use hyper::Server;
 use lazy_static::lazy_static;
@@ -36,8 +37,8 @@ use crate::{
     effect::{
         announcements::ApiServerAnnouncement,
         requests::{
-            ApiRequest, ContractRuntimeRequest, LinearChainRequest, MetricsRequest,
-            NetworkInfoRequest, StorageRequest,
+            ApiRequest, ChainspecLoaderRequest, ContractRuntimeRequest, LinearChainRequest,
+            MetricsRequest, NetworkInfoRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects, Responder,
     },
@@ -76,7 +77,7 @@ impl<REv> ReactorEventT for REv where
 {
 }
 
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 pub(crate) struct ApiServer {}
 
 impl ApiServer {
@@ -189,6 +190,7 @@ where
         + From<NetworkInfoRequest<NodeId>>
         + From<LinearChainRequest<NodeId>>
         + From<ContractRuntimeRequest>
+        + From<ChainspecLoaderRequest>
         + From<MetricsRequest>
         + From<StorageRequest<Storage>>
         + From<Event>
@@ -255,12 +257,13 @@ where
                     main_responder: responder,
                 }),
             Event::ApiRequest(ApiRequest::GetStatus { responder }) => async move {
-                let (last_finalized_block, peers) = join!(
+                let (last_finalized_block, peers, chainspec_info) = join!(
                     effect_builder.get_last_finalized_block(),
-                    effect_builder.network_peers()
+                    effect_builder.network_peers(),
+                    effect_builder.get_chainspec_info()
                 );
-                let status_feed = StatusFeed::new(last_finalized_block, peers);
-                debug!("GetStatus --status_feed: {:?}", status_feed);
+                let status_feed = StatusFeed::new(last_finalized_block, peers, chainspec_info);
+                info!("GetStatus --status_feed: {:?}", status_feed);
                 responder.respond(status_feed).await;
             }
             .ignore(),

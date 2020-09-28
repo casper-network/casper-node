@@ -6,6 +6,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use datasize::DataSize;
 use derive_more::{Add, AddAssign, From, Shl, Shr, Sub, SubAssign};
 #[cfg(test)]
 use rand::Rng;
@@ -16,7 +17,19 @@ use crate::testing::TestRng;
 
 /// A timestamp type, representing a concrete moment in time.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash, Shr, Shl,
+    DataSize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    Hash,
+    Shr,
+    Shl,
 )]
 pub struct Timestamp(u64);
 
@@ -25,6 +38,7 @@ pub struct Timestamp(u64);
     Debug,
     Clone,
     Copy,
+    DataSize,
     PartialEq,
     Eq,
     PartialOrd,

@@ -23,6 +23,12 @@ casper-execution-engine = { path = "../execution_engine" }
 casper-types = { version = "0.6.0", path = "../types", features = ["std", "gens"] }
 chrono = "0.4.10"
 csv = "1.1.3"
+datasize = { version = "0.2.0", features = [
+    "fake_clock-types",
+    "futures-types",
+    "smallvec-types",
+    "tokio-types",
+] }
 derive_more = "0.99.7"
 derp = "0.0.14"
 directories = "2.0.2"
@@ -83,6 +89,7 @@ wabt = "0.10.0"
 warp = "0.2.4"
 warp-json-rpc = "0.1.6"
 wasmi = "0.6.2"
+sd-notify = "0.1.1"
 
 [dev-dependencies]
 assert_matches = "1.3.0"
