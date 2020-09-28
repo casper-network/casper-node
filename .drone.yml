@@ -199,18 +199,24 @@ steps:
       - ./.cargo/.crates.toml
     restore: true
 
-- name: build-deb-make-setup-rs
+- name: build-make-setup-rs
   <<: *buildenv
   commands:
     - "make setup-rs"
 
+- name: build-make-system-contracts
+  <<: *buildenv
+  commands:
+    - "make setup-rs"
+  depends_on:
+  - build-make-setup-rs
+
 - name: build-deb-tag
   <<: *buildenv
   commands:
-    - "make build-system-contracts -j"
     - "make deb"
   depends_on:
-  - build-deb-make-setup-rs
+  - build-make-system-contracts
 
 - name: publish-bintray-tag
   <<: *buildenv
