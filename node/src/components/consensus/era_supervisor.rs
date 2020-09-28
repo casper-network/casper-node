@@ -37,7 +37,7 @@ use crate::{
             highway_core::{highway::Params, validators::Validators},
             protocols::highway::{HighwayContext, HighwayProtocol, HighwaySecret},
             traits::NodeIdT,
-            Config, ConsensusMessage, Event, ReactorEventT,
+            Config, ConsensusMessage, Event, ReactorEventT, BLOCK_REWARD,
         },
     },
     crypto::{
@@ -45,13 +45,10 @@ use crate::{
         hash,
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
-    types::{BlockHeader, FinalizedBlock, ProtoBlock, SystemTransaction, Timestamp},
+    types::{BlockHeader, FinalizedBlock, ProtoBlock, Timestamp},
     utils::WithDir,
 };
 
-// We use one trillion as a block reward unit because it's large enough to allow precise
-// fractions, and small enough for many block rewards to fit into a u64.
-const BLOCK_REWARD: u64 = 1_000_000_000_000;
 /// The number of recent eras to retain. Eras older than this are dropped from memory.
 // TODO: This needs to be in sync with AUCTION_DELAY/booking_duration_millis. (Already duplicated!)
 const RETAIN_ERAS: u64 = 4;
@@ -242,14 +239,11 @@ where
             * u64::from(self.highway_config().finality_threshold_percent)
             / 100;
         // The number of rounds after which a block reward is paid out.
-        // TODO: Make this configurable?
-        let reward_delay = 8;
         // TODO: The initial round length should be the observed median of the switch block.
         let params = Params::new(
             0, // TODO: get a proper seed.
             BLOCK_REWARD,
             BLOCK_REWARD / 5, // TODO: Make reduced block reward configurable?
-            reward_delay,
             self.highway_config().minimum_round_exponent,
             self.highway_config().minimum_era_height,
             start_time + self.highway_config().era_duration,
@@ -402,7 +396,7 @@ where
             trace!("executed block in old era {}", block_header.era_id().0);
             return effects;
         }
-        if block_header.switch_block() {
+        if block_header.era_end().is_some() {
             // TODO: Learn the new weights from contract (validator rotation).
             let validator_stakes = self.era_supervisor.validator_stakes.clone();
             self.era_supervisor
@@ -509,11 +503,9 @@ where
                 }),
             ConsensusProtocolResult::FinalizedBlock(CpFinalizedBlock {
                 value: proto_block,
-                new_equivocators,
-                rewards,
                 timestamp,
                 height,
-                terminal,
+                era_end,
                 proposer,
             }) => {
                 // Announce the finalized proto block.
@@ -521,19 +513,10 @@ where
                     .effect_builder
                     .announce_finalized_proto_block(proto_block.clone())
                     .ignore();
-                // Create instructions for slashing equivocators.
-                let mut system_transactions: Vec<_> = new_equivocators
-                    .into_iter()
-                    .map(SystemTransaction::Slash)
-                    .collect();
-                if !rewards.is_empty() {
-                    system_transactions.push(SystemTransaction::Rewards(rewards));
-                };
                 let fb = FinalizedBlock::new(
                     proto_block,
                     timestamp,
-                    system_transactions,
-                    terminal,
+                    era_end,
                     era_id,
                     self.era_supervisor.active_eras[&era_id].start_height + height,
                     proposer,

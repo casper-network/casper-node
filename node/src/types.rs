@@ -9,9 +9,7 @@ mod status_feed;
 mod timestamp;
 
 pub use block::{Block, BlockHash, BlockHeader};
-pub(crate) use block::{
-    BlockByHeight, BlockLike, FinalizedBlock, ProtoBlock, ProtoBlockHash, SystemTransaction,
-};
+pub(crate) use block::{BlockByHeight, BlockLike, FinalizedBlock, ProtoBlock, ProtoBlockHash};
 pub use deploy::{Approval, Deploy, DeployHash, DeployHeader, Error as DeployError};
 pub use item::{Item, Tag};
 pub use node_config::NodeConfig;

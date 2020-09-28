@@ -25,13 +25,17 @@ use crate::{
     types::{ProtoBlock, Timestamp},
 };
 pub use config::Config;
-pub(crate) use consensus_protocol::BlockContext;
+pub(crate) use consensus_protocol::{BlockContext, EraEnd};
 use derive_more::From;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 use hex_fmt::HexFmt;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use traits::NodeIdT;
+
+// We use one trillion as a block reward unit because it's large enough to allow precise
+// fractions, and small enough for many block rewards to fit into a u64.
+pub(crate) const BLOCK_REWARD: u64 = 1_000_000_000_000;
 
 #[derive(DataSize, Clone, Serialize, Deserialize)]
 pub struct ConsensusMessage {
