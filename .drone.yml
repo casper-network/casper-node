@@ -176,6 +176,12 @@ trigger:
   - refs/tags/v*
 
 ---
+# Anchor for default buildenv
+__buildenv: &buildenv
+  image: "casperlabs/buildenv:latest"
+  environment:
+    CARGO_HOME: ".cargo"
+
 kind: pipeline
 name: bintray-tests
 
