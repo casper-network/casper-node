@@ -1871,31 +1871,33 @@ where
             Blake2bHash::new(&bytes).value()
         };
 
-        let (era_validators, execution_result): (Option<ValidatorWeights>, ExecutionResult) =
-            executor.exec_system_contract(
-                DirectSystemContractCall::GetEraValidators,
-                auction_module,
-                auction_args,
-                &mut named_keys,
-                Default::default(),
-                base_key,
-                &virtual_system_account,
-                authorization_keys,
-                blocktime,
-                deploy_hash,
-                gas_limit,
-                protocol_version,
-                correlation_id,
-                Rc::clone(&tracking_copy),
-                Phase::Session,
-                protocol_data,
-                SystemContractCache::clone(&self.system_contract_cache),
-            );
+        let (era_validators, execution_result): (
+            Option<Option<ValidatorWeights>>,
+            ExecutionResult,
+        ) = executor.exec_system_contract(
+            DirectSystemContractCall::GetEraValidators,
+            auction_module,
+            auction_args,
+            &mut named_keys,
+            Default::default(),
+            base_key,
+            &virtual_system_account,
+            authorization_keys,
+            blocktime,
+            deploy_hash,
+            gas_limit,
+            protocol_version,
+            correlation_id,
+            Rc::clone(&tracking_copy),
+            Phase::Session,
+            protocol_data,
+            SystemContractCache::clone(&self.system_contract_cache),
+        );
 
         if let Some(error) = execution_result.take_error() {
             return Err(error.into());
         }
 
-        Ok(era_validators)
+        Ok(era_validators.flatten())
     }
 }
