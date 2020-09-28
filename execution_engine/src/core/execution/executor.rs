@@ -9,9 +9,9 @@ use tracing::warn;
 use wasmi::ModuleRef;
 
 use casper_types::{
-    account::AccountHash, bytesrepr::FromBytes, contracts::NamedKeys, AccessRights, BlockTime,
-    CLTyped, CLValue, ContractPackage, EntryPoint, EntryPointType, Key, Phase, ProtocolVersion,
-    RuntimeArgs,
+    account::AccountHash, auction, bytesrepr::FromBytes, contracts::NamedKeys, AccessRights,
+    BlockTime, CLTyped, CLValue, ContractPackage, EntryPoint, EntryPointType, Key, Phase,
+    ProtocolVersion, RuntimeArgs,
 };
 
 use crate::{
@@ -292,6 +292,14 @@ impl Executor {
                 if protocol_data.mint() != base_key.into_seed() {
                     panic!(
                         "{} should only be called with the mint contract",
+                        direct_system_contract_call.entry_point_name()
+                    );
+                }
+            }
+            DirectSystemContractCall::GetEraValidators => {
+                if protocol_data.auction() != base_key.into_seed() {
+                    panic!(
+                        "{} should only be called with the auction contract",
                         direct_system_contract_call.entry_point_name()
                     );
                 }
@@ -578,6 +586,7 @@ pub enum DirectSystemContractCall {
     FinalizePayment,
     CreatePurse,
     Transfer,
+    GetEraValidators,
 }
 
 impl DirectSystemContractCall {
@@ -586,6 +595,7 @@ impl DirectSystemContractCall {
             DirectSystemContractCall::FinalizePayment => "finalize_payment",
             DirectSystemContractCall::CreatePurse => "create",
             DirectSystemContractCall::Transfer => "transfer",
+            DirectSystemContractCall::GetEraValidators => auction::METHOD_GET_ERA_VALIDATORS,
         }
     }
 
@@ -620,6 +630,13 @@ impl DirectSystemContractCall {
                     runtime_args,
                     extra_keys,
                 ),
+            DirectSystemContractCall::GetEraValidators => runtime.call_host_auction(
+                protocol_version,
+                entry_point_name,
+                named_keys,
+                runtime_args,
+                extra_keys,
+            ),
         };
 
         match result {

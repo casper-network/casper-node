@@ -42,12 +42,13 @@ pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
 
 /// Bonding auction contract interface
 pub trait Auction: StorageProvider + SystemProvider + RuntimeProvider {
-    /// Returns era_validators.
+    /// Returns validator weights for given era.
     ///
     /// Publicly accessible, but intended for periodic use by the PoS contract to update its own
     /// internal data structures recording current and past winners.
-    fn read_winners(&mut self) -> Result<EraValidators> {
-        internal::get_era_validators(self)
+    fn get_era_validators(&mut self, era_id: EraId) -> Result<ValidatorWeights> {
+        let mut era_validators = internal::get_era_validators(self)?;
+        era_validators.remove(&era_id).ok_or(Error::InvalidEra)
     }
 
     /// Returns validators in era_validators, mapped to their bids or founding stakes, delegation

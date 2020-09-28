@@ -75,6 +75,9 @@ pub enum Error {
     /// Attempted to bond with a stake which was too small.
     #[fail(display = "Bond is too small")]
     BondTooSmall = 20,
+    /// Provided era id is invalid.
+    #[fail(display = "Invalid era id")]
+    InvalidEra = 21,
 }
 
 impl CLTyped for Error {

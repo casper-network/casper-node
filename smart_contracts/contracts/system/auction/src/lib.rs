@@ -14,11 +14,11 @@ use casper_types::{
     account::AccountHash,
     auction::{
         Auction, DelegationRate, RuntimeProvider, SeigniorageRecipients, StorageProvider,
-        SystemProvider, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
-        ARG_SOURCE_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_KEYS, ARG_VALIDATOR_PUBLIC_KEYS,
-        METHOD_ADD_BID, METHOD_BOND, METHOD_DELEGATE, METHOD_QUASH_BID,
-        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_READ_WINNERS, METHOD_RUN_AUCTION, METHOD_SLASH,
-        METHOD_UNBOND, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
+        SystemProvider, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
+        ARG_ERA_ID, ARG_PUBLIC_KEY, ARG_SOURCE_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_KEYS,
+        ARG_VALIDATOR_PUBLIC_KEYS, METHOD_ADD_BID, METHOD_BOND, METHOD_DELEGATE,
+        METHOD_GET_ERA_VALIDATORS, METHOD_QUASH_BID, METHOD_READ_SEIGNIORAGE_RECIPIENTS,
+        METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNBOND, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
     },
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::Error,
@@ -71,8 +71,12 @@ impl RuntimeProvider for AuctionContract {
 impl Auction for AuctionContract {}
 
 #[no_mangle]
-pub extern "C" fn read_winners() {
-    let result = AuctionContract.read_winners().unwrap_or_revert();
+pub extern "C" fn get_era_validators() {
+    let era_id = runtime::get_named_arg(ARG_ERA_ID);
+
+    let result = AuctionContract
+        .get_era_validators(era_id)
+        .unwrap_or_revert();
 
     let cl_value = CLValue::from_t(result).unwrap_or_revert();
     runtime::ret(cl_value)
@@ -199,9 +203,9 @@ pub fn get_entry_points() -> EntryPoints {
     let mut entry_points = EntryPoints::new();
 
     let entry_point = EntryPoint::new(
-        METHOD_READ_WINNERS,
+        METHOD_GET_ERA_VALIDATORS,
         vec![],
-        <Vec<AccountHash>>::cl_type(),
+        ValidatorWeights::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );

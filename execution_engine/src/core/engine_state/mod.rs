@@ -18,6 +18,7 @@ pub mod upgrade;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
+    iter::FromIterator,
     rc::Rc,
 };
 
@@ -28,7 +29,7 @@ use tracing::{debug, warn};
 
 use casper_types::{
     account::AccountHash,
-    auction::{EraValidators, ValidatorWeights, ERA_VALIDATORS_KEY},
+    auction::{ValidatorWeights, ARG_ERA_ID},
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
     runtime_args,
@@ -77,8 +78,6 @@ use crate::{
 };
 use execution_result::ExecutionResults;
 use genesis::GenesisAccount;
-
-use super::tracking_copy::TrackingCopyQueryResult;
 
 // TODO?: MAX_PAYMENT && CONV_RATE values are currently arbitrary w/ real values
 // TBD gas * CONV_RATE = motes
@@ -1817,39 +1816,86 @@ where
             None => return Err(GetEraValidatorsError::RootNotFound),
         };
 
-        let tracking_copy = tracking_copy.borrow();
-
         let protocol_data = match self.get_protocol_data(protocol_version)? {
             Some(protocol_data) => protocol_data,
             None => return Err(Error::InvalidProtocolVersion(protocol_version).into()),
         };
 
-        let query_key = Key::Hash(protocol_data.auction());
+        let wasm_costs = protocol_data.wasm_costs();
 
-        let result = tracking_copy
-            .query(correlation_id, query_key, &[ERA_VALIDATORS_KEY.to_string()])
-            .map_err(|err| Error::Exec(err.into()))?;
+        let preprocessor = Preprocessor::new(*wasm_costs);
 
-        let mut era_validators: EraValidators = match result {
-            TrackingCopyQueryResult::Success(StoredValue::CLValue(cl_value)) => {
-                match cl_value.into_t() {
-                    Ok(validator_weights) => validator_weights,
-                    Err(_) => return Err(GetEraValidatorsError::ValueError),
-                }
-            }
+        let auction_contract: Contract = tracking_copy
+            .borrow_mut()
+            .get_contract(correlation_id, protocol_data.auction())
+            .map_err(Error::from)?;
 
-            TrackingCopyQueryResult::Success(_)
-            | TrackingCopyQueryResult::ValueNotFound(_)
-            | TrackingCopyQueryResult::CircularReference(_) => {
-                return Err(GetEraValidatorsError::ValueError)
-            }
+        let auction_module = {
+            let contract_wasm_hash = auction_contract.contract_wasm_hash();
+            let use_system_contracts = self.config.use_system_contracts();
+            tracking_copy
+                .borrow_mut()
+                .get_system_module(
+                    correlation_id,
+                    contract_wasm_hash,
+                    use_system_contracts,
+                    &preprocessor,
+                )
+                .map_err(Error::from)?
         };
 
-        let validator_weights = match era_validators.remove(&get_era_validators_request.era_id()) {
-            Some(validator_weights) => validator_weights,
-            None => return Err(GetEraValidatorsError::InvalidEra),
+        let executor = Executor::new(self.config);
+
+        let auction_args = runtime_args! {
+            ARG_ERA_ID => get_era_validators_request.era_id(),
         };
 
-        Ok(validator_weights)
+        let mut named_keys = auction_contract.named_keys().to_owned();
+        let base_key = Key::from(protocol_data.auction());
+        let gas_limit = Gas::new(U512::from(std::u64::MAX));
+        let virtual_system_account = {
+            let named_keys = NamedKeys::new();
+            let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
+            Account::create(SYSTEM_ACCOUNT_ADDR, named_keys, purse)
+        };
+        let authorization_keys = BTreeSet::from_iter(vec![SYSTEM_ACCOUNT_ADDR]);
+        let blocktime = BlockTime::default();
+        let deploy_hash = {
+            // seeds address generator w/ protocol version
+            let bytes: Vec<u8> = get_era_validators_request
+                .protocol_version()
+                .value()
+                .into_bytes()
+                .map_err(Error::from)?
+                .to_vec();
+            Blake2bHash::new(&bytes).value()
+        };
+
+        let (era_validators, execution_result): (Option<ValidatorWeights>, ExecutionResult) =
+            executor.exec_system_contract(
+                DirectSystemContractCall::GetEraValidators,
+                auction_module,
+                auction_args,
+                &mut named_keys,
+                Default::default(),
+                base_key,
+                &virtual_system_account,
+                authorization_keys,
+                blocktime,
+                deploy_hash,
+                gas_limit,
+                protocol_version,
+                correlation_id,
+                Rc::clone(&tracking_copy),
+                Phase::Session,
+                protocol_data,
+                SystemContractCache::clone(&self.system_contract_cache),
+            );
+
+        if let Some(error) = execution_result.take_error() {
+            return Err(error.into());
+        }
+
+        Ok(era_validators.unwrap_or_default())
     }
 }
