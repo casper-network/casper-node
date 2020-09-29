@@ -170,7 +170,6 @@ where
             },
             Event::NewFinalitySignature(block_hash, signature) => {
                 effect_builder
-                .clone()
                     .get_block_from_storage(block_hash)
                     .then(move |maybe_block| match maybe_block {
                         Some(mut block) => {
