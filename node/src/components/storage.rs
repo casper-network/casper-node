@@ -33,6 +33,7 @@ use crate::{
     },
     protocol::Message,
     types::{json_compatibility::ExecutionResult, Block, Deploy, Item},
+    utils::WithDir,
 };
 use chainspec_store::ChainspecStore;
 pub use config::Config;
@@ -135,7 +136,7 @@ pub trait StorageType {
         &self,
     ) -> Arc<dyn DeployStore<Block = Self::Block, Deploy = Self::Deploy, Value = Self::Deploy>>;
     fn chainspec_store(&self) -> Arc<dyn ChainspecStore>;
-    fn new(config: &Config) -> Result<Self>
+    fn new(config: WithDir<Config>) -> Result<Self>
     where
         Self: Sized;
 
@@ -480,7 +481,7 @@ impl<B: Value + 'static, D: Value + Item + 'static> StorageType for InMemStorage
         Arc::clone(&self.chainspec_store) as Arc<dyn ChainspecStore>
     }
 
-    fn new(_config: &Config) -> Result<Self> {
+    fn new(_config: WithDir<Config>) -> Result<Self> {
         Ok(InMemStorage {
             block_store: Arc::new(InMemStore::new()),
             deploy_store: Arc::new(InMemStore::new()),
@@ -502,8 +503,13 @@ impl<B: Value + 'static, D: Value + Item + 'static> StorageType for LmdbStorage<
     type Block = B;
     type Deploy = D;
 
-    fn new(config: &Config) -> Result<Self> {
-        let path = config.path();
+    fn new(config: WithDir<Config>) -> Result<Self> {
+        let (root, config) = config.into_parts();
+        let path = if config.path().is_relative() {
+            root.join(config.path())
+        } else {
+            config.path()
+        };
         fs::create_dir_all(&path).map_err(|error| Error::CreateDir {
             dir: path.display().to_string(),
             source: error,
