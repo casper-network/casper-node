@@ -540,18 +540,18 @@ mod tests {
         let mut buffer = DeployBuffer::new(NodeConfig::default().block_max_deploy_count as usize);
 
         // collected_deploys
-        buffer.add_deploy(hash1.clone(), deploy1);
+        buffer.add_deploy(hash1, deploy1);
 
         let block_hash1 = ProtoBlockHash::new(hash(random::<[u8; 16]>()));
         // collected_deploys => processed
-        buffer.added_block(block_hash1.clone(), vec![hash1]);
+        buffer.added_block(block_hash1, vec![hash1]);
 
         // processed => finalized
-        buffer.finalized_block(block_hash1.clone());
+        buffer.finalized_block(block_hash1);
 
-        buffer.add_deploy(hash2.clone(), deploy2);
+        buffer.add_deploy(hash2, deploy2);
         let block_hash2 = ProtoBlockHash::new(hash(random::<[u8; 16]>()));
-        buffer.added_block(block_hash2.clone(), vec![hash2]);
+        buffer.added_block(block_hash2, vec![hash2]);
 
         {
             let inner = buffer.inner.lock().unwrap();
