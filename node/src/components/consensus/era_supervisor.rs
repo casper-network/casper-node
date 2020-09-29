@@ -45,7 +45,7 @@ use crate::{
         hash,
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
-    types::{BlockHeader, FinalizedBlock, ProtoBlock, SystemTransaction, Timestamp},
+    types::{BlockHeader, FinalizedBlock, ProtoBlock, Timestamp},
     utils::WithDir,
 };
 
@@ -238,15 +238,11 @@ where
         let ftt = validators.total_weight()
             * u64::from(self.highway_config().finality_threshold_percent)
             / 100;
-        // The number of rounds after which a block reward is paid out.
-        // TODO: Make this configurable?
-        let reward_delay = 8;
         // TODO: The initial round length should be the observed median of the switch block.
         let params = Params::new(
             0, // TODO: get a proper seed.
             BLOCK_REWARD,
             BLOCK_REWARD / 5, // TODO: Make reduced block reward configurable?
-            reward_delay,
             self.highway_config().minimum_round_exponent,
             self.highway_config().minimum_era_height,
             start_time + self.highway_config().era_duration,
@@ -506,11 +502,9 @@ where
                 }),
             ConsensusProtocolResult::FinalizedBlock(CpFinalizedBlock {
                 value: proto_block,
-                new_equivocators,
-                rewards,
                 timestamp,
                 height,
-                terminal,
+                era_end,
                 proposer,
             }) => {
                 // Announce the finalized proto block.
@@ -518,19 +512,10 @@ where
                     .effect_builder
                     .announce_finalized_proto_block(proto_block.clone())
                     .ignore();
-                // Create instructions for slashing equivocators.
-                let mut system_transactions: Vec<_> = new_equivocators
-                    .into_iter()
-                    .map(SystemTransaction::Slash)
-                    .collect();
-                if !rewards.is_empty() {
-                    system_transactions.push(SystemTransaction::Rewards(rewards));
-                };
                 let fb = FinalizedBlock::new(
                     proto_block,
                     timestamp,
-                    system_transactions,
-                    terminal,
+                    era_end,
                     era_id,
                     self.era_supervisor.active_eras[&era_id].start_height + height,
                     proposer,

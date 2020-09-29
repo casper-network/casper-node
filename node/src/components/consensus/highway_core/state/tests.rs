@@ -7,10 +7,7 @@ use rand::{CryptoRng, Rng, RngCore};
 use super::*;
 use crate::{
     components::consensus::{
-        highway_core::{
-            highway::Dependency,
-            highway_testing::{TEST_BLOCK_REWARD, TEST_REWARD_DELAY},
-        },
+        highway_core::{highway::Dependency, highway_testing::TEST_BLOCK_REWARD},
         traits::ValidatorSecret,
     },
     testing::TestRng,
@@ -110,7 +107,6 @@ impl State<TestContext> {
             seed,
             TEST_BLOCK_REWARD,
             TEST_BLOCK_REWARD / 5,
-            TEST_REWARD_DELAY,
             4,
             u64::MAX,
             Timestamp::from(u64::MAX),
