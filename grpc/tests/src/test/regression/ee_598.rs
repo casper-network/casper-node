@@ -18,7 +18,7 @@ const ARG_PUBLIC_KEY: &str = "public_key";
 const ARG_ENTRY_POINT: &str = "entry_point";
 const ARG_ACCOUNT_HASH: &str = "account_hash";
 
-const CONTRACT_MINT_BONDING: &str = "mint_bonding.wasm";
+const CONTRACT_AUCTION_BONDING: &str = "auction_bonding.wasm";
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([7u8; 32]);
 
 const GENESIS_VALIDATOR_STAKE: u64 = 50_000;
@@ -51,7 +51,7 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_MINT_BONDING,
+        CONTRACT_AUCTION_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => "seed_new_account",
             ARG_ACCOUNT_HASH => ACCOUNT_1_ADDR,
@@ -94,7 +94,7 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
     assert!(
         error_message.contains(&format!(
             "{:?}",
-            ApiError::from(auction::Error::UnbondTooLarge)
+            ApiError::from(auction::Error::InvalidAmount)
         )),
         error_message
     );

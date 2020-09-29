@@ -77,7 +77,7 @@ pub trait Auction: StorageProvider + SystemProvider + RuntimeProvider {
     ) -> Result<(URef, U512)> {
         // Creates new purse with desired amount taken from `source_purse`
         // Bonds whole amount from the newly created purse
-        let (bonding_purse, _total_amount) = self.bond(public_key, source, amount)?;
+        let (bonding_purse, _total_amount) = detail::bond(self, public_key, source, amount)?;
 
         // Update bids or stakes
         let mut validators = internal::get_bids(self)?;
@@ -134,7 +134,7 @@ pub trait Auction: StorageProvider + SystemProvider + RuntimeProvider {
 
         internal::set_bids(self, bids)?;
 
-        let (unbonding_purse, _total_amount) = self.unbond(public_key, amount)?;
+        let (unbonding_purse, _total_amount) = detail::unbond(self, public_key, amount)?;
 
         Ok((unbonding_purse, new_amount))
     }
@@ -157,7 +157,8 @@ pub trait Auction: StorageProvider + SystemProvider + RuntimeProvider {
             return Err(Error::ValidatorNotFound);
         }
 
-        let (bonding_purse, _total_amount) = self.bond(delegator_public_key, source, amount)?;
+        let (bonding_purse, _total_amount) =
+            detail::bond(self, delegator_public_key, source, amount)?;
 
         let new_amount = {
             let mut delegators = internal::get_delegators(self)?;
@@ -195,7 +196,7 @@ pub trait Auction: StorageProvider + SystemProvider + RuntimeProvider {
             return Err(Error::ValidatorNotFound);
         }
 
-        let (_unbonding_purse, _total_amount) = self.unbond(delegator_public_key, amount)?;
+        let (_unbonding_purse, _total_amount) = detail::unbond(self, delegator_public_key, amount)?;
 
         let mut delegators = internal::get_delegators(self)?;
         let delegators_map = delegators
@@ -248,87 +249,6 @@ pub trait Auction: StorageProvider + SystemProvider + RuntimeProvider {
         }
 
         Ok(())
-    }
-
-    /// Creates a new purse in bid_purses corresponding to a validator's key, or tops off an
-    /// existing one.
-    ///
-    /// Returns the bid purse's key and current amount of motes.
-    fn bond(&mut self, public_key: PublicKey, source: URef, amount: U512) -> Result<(URef, U512)> {
-        if amount.is_zero() {
-            return Err(Error::BondTooSmall);
-        }
-
-        let bid_purses_uref = self
-            .get_key(BID_PURSES_KEY)
-            .and_then(Key::into_uref)
-            .ok_or(Error::MissingKey)?;
-
-        let mut bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
-
-        let target = match bid_purses.get(&public_key) {
-            Some(purse) => *purse,
-            None => {
-                let new_purse = self.create_purse();
-                bid_purses.insert(public_key, new_purse);
-                self.write(bid_purses_uref, bid_purses)?;
-                new_purse
-            }
-        };
-
-        self.transfer_from_purse_to_purse(source, target, amount)?;
-
-        let total_amount = self.get_balance(target)?.unwrap();
-
-        Ok((target, total_amount))
-    }
-
-    /// Creates a new purse in unbonding_purses given a validator's key and amount, returning
-    /// the new purse's key and the amount of motes remaining in the validator's bid purse.
-    fn unbond(&mut self, public_key: PublicKey, amount: U512) -> Result<(URef, U512)> {
-        let bid_purses_uref = self
-            .get_key(BID_PURSES_KEY)
-            .and_then(Key::into_uref)
-            .ok_or(Error::MissingKey)?;
-
-        let bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
-
-        let bid_purse = bid_purses
-            .get(&public_key)
-            .copied()
-            .ok_or(Error::BondNotFound)?;
-
-        if self.get_balance(bid_purse)?.unwrap_or_default() < amount {
-            return Err(Error::UnbondTooLarge);
-        }
-
-        // Creates new unbonding purse with requested tokens
-        let unbond_purse = self.create_purse();
-
-        // Update `unbonding_purses` data
-        let unbonding_purses_uref = self
-            .get_key(UNBONDING_PURSES_KEY)
-            .and_then(Key::into_uref)
-            .ok_or(Error::MissingKey)?;
-        let mut unbonding_purses: UnbondingPurses =
-            self.read(unbonding_purses_uref)?.ok_or(Error::Storage)?;
-
-        let current_era_id = self.read_era_id()?;
-        let new_unbonding_purse = UnbondingPurse {
-            purse: unbond_purse,
-            origin: public_key,
-            era_of_withdrawal: current_era_id + DEFAULT_UNBONDING_DELAY,
-            amount,
-        };
-        unbonding_purses
-            .entry(public_key)
-            .or_default()
-            .push(new_unbonding_purse);
-        self.write(unbonding_purses_uref, unbonding_purses)?;
-
-        // Remaining motes in the validator's bid purse
-        let remaining_bond = self.get_balance(bid_purse)?.unwrap_or_default();
-        Ok((unbond_purse, remaining_bond))
     }
 
     /// Slashes each validator.

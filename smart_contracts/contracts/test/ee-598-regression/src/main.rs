@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+use auction::DelegationRate;
 use casper_contract::contract_api::{account, runtime, system};
 use casper_types::{auction, runtime_args, ContractHash, PublicKey, RuntimeArgs, URef, U512};
 
@@ -14,11 +15,12 @@ fn bond(
     bonding_purse: URef,
 ) {
     let runtime_args = runtime_args! {
-        auction::ARG_AMOUNT => bond_amount,
-        auction::ARG_SOURCE_PURSE => bonding_purse,
         auction::ARG_PUBLIC_KEY => public_key,
+        auction::ARG_SOURCE_PURSE => bonding_purse,
+        auction::ARG_DELEGATION_RATE => DelegationRate::from(42u8),
+        auction::ARG_AMOUNT => bond_amount,
     };
-    runtime::call_contract::<(URef, U512)>(contract_hash, auction::METHOD_BOND, runtime_args);
+    runtime::call_contract::<(URef, U512)>(contract_hash, auction::METHOD_ADD_BID, runtime_args);
 }
 
 fn unbond(contract_hash: ContractHash, public_key: PublicKey, unbond_amount: U512) {
@@ -26,7 +28,7 @@ fn unbond(contract_hash: ContractHash, public_key: PublicKey, unbond_amount: U51
         auction::ARG_AMOUNT => unbond_amount,
         auction::ARG_PUBLIC_KEY => public_key,
     };
-    runtime::call_contract::<(URef, U512)>(contract_hash, auction::METHOD_UNBOND, args);
+    runtime::call_contract::<(URef, U512)>(contract_hash, auction::METHOD_WITHDRAW_BID, args);
 }
 
 #[no_mangle]

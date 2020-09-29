@@ -20,7 +20,7 @@ use casper_types::{
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
-const CONTRACT_MINT_BONDING: &str = "mint_bonding.wasm";
+const CONTRACT_AUCTION_BONDING: &str = "auction_bonding.wasm";
 const CONTRACT_AUCTION_BIDS: &str = "auction_bids.wasm";
 
 const GENESIS_VALIDATOR_STAKE: u64 = 50_000;
@@ -88,7 +88,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_MINT_BONDING,
+        CONTRACT_AUCTION_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => String::from(TEST_BOND),
             ARG_AMOUNT => U512::from(GENESIS_ACCOUNT_STAKE),
@@ -119,7 +119,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_MINT_BONDING,
+        CONTRACT_AUCTION_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => String::from(TEST_UNBOND),
             ARG_AMOUNT => unbond_amount,
@@ -211,7 +211,7 @@ fn should_fail_bonding_with_insufficient_funds() {
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_MINT_BONDING,
+        CONTRACT_AUCTION_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => TEST_SEED_NEW_ACCOUNT,
             ARG_ACCOUNT_HASH => account_1_hash,
@@ -221,7 +221,7 @@ fn should_fail_bonding_with_insufficient_funds() {
     .build();
     let exec_request_2 = ExecuteRequestBuilder::standard(
         account_1_hash,
-        CONTRACT_MINT_BONDING,
+        CONTRACT_AUCTION_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => TEST_BOND_FROM_MAIN_PURSE,
             ARG_AMOUNT => *DEFAULT_PAYMENT + GENESIS_ACCOUNT_STAKE,
@@ -255,7 +255,7 @@ fn should_fail_bonding_with_insufficient_funds() {
 
 #[ignore]
 #[test]
-fn should_fail_unbonding_validator_without_bonding_first() {
+fn should_fail_unbonding_validator_with_locked_funds() {
     let account_1_public_key = PublicKey::Ed25519([42; 32]);
     let account_1_hash = AccountHash::new([43; 32]);
 
@@ -275,7 +275,7 @@ fn should_fail_unbonding_validator_without_bonding_first() {
 
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_MINT_BONDING,
+        CONTRACT_AUCTION_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => TEST_UNBOND,
             ARG_AMOUNT => U512::from(42),
@@ -301,7 +301,46 @@ fn should_fail_unbonding_validator_without_bonding_first() {
     assert!(
         error_message.contains(&format!(
             "{:?}",
-            ApiError::from(auction::Error::BondNotFound)
+            ApiError::from(auction::Error::ValidatorFundsLocked)
+        )),
+        "error {:?}",
+        error_message
+    );
+}
+
+#[ignore]
+#[test]
+fn should_fail_unbonding_validator_without_bonding_first() {
+    let account_1_public_key = PublicKey::Ed25519([42; 32]);
+
+    let exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_AUCTION_BONDING,
+        runtime_args! {
+            ARG_ENTRY_POINT => TEST_UNBOND,
+            ARG_AMOUNT => U512::from(42),
+            ARG_PUBLIC_KEY => account_1_public_key,
+        },
+    )
+    .build();
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    builder.exec(exec_request).commit();
+
+    let response = builder
+        .get_exec_response(0)
+        .expect("should have a response")
+        .to_owned();
+
+    let error_message = utils::get_error_message(response);
+
+    assert!(
+        error_message.contains(&format!(
+            "{:?}",
+            ApiError::from(auction::Error::ValidatorNotFound)
         )),
         "error {:?}",
         error_message
@@ -336,7 +375,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_MINT_BONDING,
+        CONTRACT_AUCTION_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => String::from(TEST_BOND),
             ARG_AMOUNT => U512::from(GENESIS_ACCOUNT_STAKE),
@@ -384,7 +423,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_MINT_BONDING,
+        CONTRACT_AUCTION_BONDING,
         runtime_args! {
             ARG_ENTRY_POINT => String::from(TEST_UNBOND),
             ARG_AMOUNT => unbond_amount,

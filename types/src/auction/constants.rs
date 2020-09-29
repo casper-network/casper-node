@@ -60,10 +60,6 @@ pub const METHOD_UNDELEGATE: &str = "undelegate";
 pub const METHOD_QUASH_BID: &str = "quash_bid";
 /// Named constant for method `run_auction`.
 pub const METHOD_RUN_AUCTION: &str = "run_auction";
-/// Named constant for method `bond`.
-pub const METHOD_BOND: &str = "bond";
-/// Named constant for method `unbond`.
-pub const METHOD_UNBOND: &str = "unbond";
 /// Named constant for method `slash`.
 pub const METHOD_SLASH: &str = "slash";
 /// Named constant for method `release_founder_stake`.
