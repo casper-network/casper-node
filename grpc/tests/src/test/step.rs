@@ -12,7 +12,7 @@ use casper_types::{
         BidPurses, SeigniorageRecipientsSnapshot, BID_PURSES_KEY,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    bytesrepr::{FromBytes, ToBytes},
+    bytesrepr::FromBytes,
     CLTyped, ContractHash, ProtocolVersion, PublicKey,
 };
 
@@ -100,11 +100,10 @@ fn initialize_builder() -> WasmTestBuilder<InMemoryGlobalState> {
 fn should_step() {
     let mut builder = initialize_builder();
 
-    let validator_id = ACCOUNT_1_PK.to_bytes().expect("should serialize to bytes");
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_slash_item(SlashItem::new(validator_id).into())
+        .with_slash_item(SlashItem::new(ACCOUNT_1_PK))
         .with_run_auction(true)
         .build();
 

@@ -1,34 +1,38 @@
 use casper_engine_grpc_server::engine_server::{ipc, state};
-use casper_types::{ProtocolVersion, U512};
+use casper_types::{bytesrepr, bytesrepr::ToBytes, ProtocolVersion, PublicKey, U512};
+use std::convert::{TryFrom, TryInto};
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SlashItem {
-    validator_id: Vec<u8>,
+    validator_id: PublicKey,
 }
 
 impl SlashItem {
-    pub fn new(validator_id: Vec<u8>) -> Self {
+    pub fn new(validator_id: PublicKey) -> Self {
         SlashItem { validator_id }
     }
 }
 
-impl From<SlashItem> for ipc::SlashItem {
-    fn from(slash_item: SlashItem) -> Self {
+impl TryFrom<SlashItem> for ipc::SlashItem {
+    type Error = bytesrepr::Error;
+
+    fn try_from(slash_item: SlashItem) -> Result<Self, Self::Error> {
+        let validator_id = slash_item.validator_id.to_bytes()?;
         let mut item = ipc::SlashItem::new();
-        item.set_validator_id(slash_item.validator_id);
-        item
+        item.set_validator_id(validator_id);
+        Ok(item)
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct RewardItem {
-    validator_id: Vec<u8>,
+    validator_id: PublicKey,
     value: U512,
 }
 
 #[allow(dead_code)]
 impl RewardItem {
-    pub fn new(validator_id: Vec<u8>, value: U512) -> Self {
+    pub fn new(validator_id: PublicKey, value: U512) -> Self {
         RewardItem {
             validator_id,
             value,
@@ -36,12 +40,14 @@ impl RewardItem {
     }
 }
 
-impl From<RewardItem> for ipc::RewardItem {
-    fn from(reward_item: RewardItem) -> Self {
+impl TryFrom<RewardItem> for ipc::RewardItem {
+    type Error = bytesrepr::Error;
+
+    fn try_from(reward_item: RewardItem) -> Result<Self, Self::Error> {
+        let validator_id = reward_item.validator_id.to_bytes()?;
         let mut item = ipc::RewardItem::new();
-        item.set_validator_id(reward_item.validator_id);
-        item.set_value(reward_item.value.into());
-        item
+        item.set_validator_id(validator_id);
+        Ok(item)
     }
 }
 
@@ -69,13 +75,13 @@ impl StepRequestBuilder {
         self
     }
 
-    pub fn with_slash_item(mut self, slash_item: ipc::SlashItem) -> Self {
-        self.slash_items.push(slash_item);
+    pub fn with_slash_item(mut self, slash_item: SlashItem) -> Self {
+        self.slash_items.push(slash_item.try_into().unwrap());
         self
     }
 
-    pub fn with_reward_item(mut self, reward_item: ipc::RewardItem) -> Self {
-        self.reward_items.push(reward_item);
+    pub fn with_reward_item(mut self, reward_item: RewardItem) -> Self {
+        self.reward_items.push(reward_item.try_into().unwrap());
         self
     }
 
@@ -102,7 +108,7 @@ impl Default for StepRequestBuilder {
             protocol_version: Default::default(),
             slash_items: Default::default(),
             reward_items: Default::default(),
-            run_auction: true,
+            run_auction: true, //<-- run_auction by default
         }
     }
 }

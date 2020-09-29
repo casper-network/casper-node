@@ -3,29 +3,30 @@ use std::vec::Vec;
 use casper_types::{bytesrepr, Key, ProtocolVersion, PublicKey, U512};
 
 use crate::shared::{newtypes::Blake2bHash, TypeMismatch};
+use casper_types::bytesrepr::ToBytes;
 use core::fmt;
 use std::fmt::Display;
 use uint::static_assertions::_core::fmt::Formatter;
 
 #[derive(Debug)]
 pub struct SlashItem {
-    pub validator_id: Vec<u8>,
+    pub validator_id: PublicKey,
 }
 
 impl SlashItem {
-    pub fn new(validator_id: Vec<u8>) -> Self {
+    pub fn new(validator_id: PublicKey) -> Self {
         Self { validator_id }
     }
 }
 
 #[derive(Debug)]
 pub struct RewardItem {
-    pub validator_id: Vec<u8>,
+    pub validator_id: PublicKey,
     pub value: U512,
 }
 
 impl RewardItem {
-    pub fn new(validator_id: Vec<u8>, value: U512) -> Self {
+    pub fn new(validator_id: PublicKey, value: U512) -> Self {
         Self {
             validator_id,
             value,
@@ -63,7 +64,8 @@ impl StepRequest {
     pub fn slashed_validators(&self) -> Result<Vec<PublicKey>, bytesrepr::Error> {
         let mut ret = vec![];
         for slash_item in &self.slash_items {
-            let public_key: PublicKey = bytesrepr::deserialize(slash_item.validator_id.clone())?;
+            let public_key: PublicKey =
+                bytesrepr::deserialize(slash_item.validator_id.clone().to_bytes()?)?;
             ret.push(public_key);
         }
         Ok(ret)
