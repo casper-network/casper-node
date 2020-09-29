@@ -1,12 +1,11 @@
-use std::vec::Vec;
+use std::{collections::BTreeMap, fmt::Display, vec::Vec};
 
-use casper_types::{bytesrepr, Key, ProtocolVersion, PublicKey, U512};
+use core::fmt;
+use uint::static_assertions::_core::fmt::Formatter;
+
+use casper_types::{bytesrepr, bytesrepr::ToBytes, Key, ProtocolVersion, PublicKey};
 
 use crate::shared::{newtypes::Blake2bHash, TypeMismatch};
-use casper_types::bytesrepr::ToBytes;
-use core::fmt;
-use std::fmt::Display;
-use uint::static_assertions::_core::fmt::Formatter;
 
 #[derive(Debug)]
 pub struct SlashItem {
@@ -22,11 +21,11 @@ impl SlashItem {
 #[derive(Debug)]
 pub struct RewardItem {
     pub validator_id: PublicKey,
-    pub value: U512,
+    pub value: u64,
 }
 
 impl RewardItem {
-    pub fn new(validator_id: PublicKey, value: U512) -> Self {
+    pub fn new(validator_id: PublicKey, value: u64) -> Self {
         Self {
             validator_id,
             value,
@@ -67,6 +66,14 @@ impl StepRequest {
             let public_key: PublicKey =
                 bytesrepr::deserialize(slash_item.validator_id.clone().to_bytes()?)?;
             ret.push(public_key);
+        }
+        Ok(ret)
+    }
+
+    pub fn reward_factors(&self) -> Result<BTreeMap<PublicKey, u64>, bytesrepr::Error> {
+        let mut ret = BTreeMap::new();
+        for reward_item in &self.reward_items {
+            ret.insert(reward_item.validator_id, reward_item.value);
         }
         Ok(ret)
     }

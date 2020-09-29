@@ -1,5 +1,5 @@
 use casper_engine_test_support::internal::{
-    utils, InMemoryWasmTestBuilder, SlashItem, StepRequestBuilder, WasmTestBuilder,
+    utils, InMemoryWasmTestBuilder, RewardItem, SlashItem, StepRequestBuilder, WasmTestBuilder,
     DEFAULT_ACCOUNTS,
 };
 use casper_execution_engine::{
@@ -25,25 +25,6 @@ const ACCOUNT_2_PK: PublicKey = PublicKey::Ed25519([202; 32]);
 const ACCOUNT_2_ADDR: AccountHash = AccountHash::new([203; 32]);
 const ACCOUNT_2_BALANCE: u64 = 25_000_000;
 const ACCOUNT_2_BOND: u64 = 200_000;
-
-/*
-TODO's:
-* add new endpoint, request, and response to ipc.proto engine state service
-** what should request / response contain?
-*** set up similar to exec / deploy w/ oneof's
-*** add Slashing first & wire all the way thru, should be easy to add more variants thereafter
-* add new step function, domain request & response types to EE engine_state
-* add From mappings for ipc / domain types in grpc host
-* implement call to auction slashing in EE function; self commit afterwards.
-* iterate until should_slash test passes
-
-* Implement should_run_auction test; iterate to success
-* Implement should_distribute_rewards test; iterate to success
-* create a separate EE ticket to track this portion of the work and submit a PR.
-
-* Complete wire up of ContractRuntime & BlockExecutor on ndrs-307 story and cut a
-    second PR based on the first.
-*/
 
 fn get_value<T: FromBytes + CLTyped>(
     builder: &mut InMemoryWasmTestBuilder,
@@ -104,7 +85,7 @@ fn should_step() {
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
         .with_slash_item(SlashItem::new(ACCOUNT_1_PK))
-        .with_run_auction(true)
+        .with_reward_item(RewardItem::new(ACCOUNT_2_PK, 100))
         .build();
 
     let auction_hash = builder.get_auction_contract_hash();
@@ -124,6 +105,8 @@ fn should_step() {
         auction_hash,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     );
+
+    // TODO: capture state prior to reward pay out
 
     builder.step(step_request);
 
@@ -147,23 +130,6 @@ fn should_step() {
             .all(|key| after_auction_seigniorage.contains_key(key)),
         "run auction should have changed seigniorage keys"
     );
-}
 
-/// Should be able to distribute rewards.
-#[ignore]
-#[test]
-fn should_distribute_rewards() {
-    /*
-        get a builder & do genesis plus some number of commits to build up state
-            how much min state is necessary before being able to distro rewards?
-                maybe genesis + 1 block / post state hash is all that is necessary; verify
-            should be able to just assert era 2 as to the EE era is just an arg
-        distribute rewards a validator
-            upgrade .step(...) function on test builder to support reward distro
-            determine what state is available pre-reward distro to serve as control set
-        how to determine success?
-            determine what state is available post-reward distro to compare against previous state
-                and what the expected final resting state is;
-                TODO: not be able to do this until henry's new logic completely lands
-    */
+    // TODO: capture state after reward pay out & verify outcome
 }

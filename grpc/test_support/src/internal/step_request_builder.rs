@@ -1,5 +1,5 @@
 use casper_engine_grpc_server::engine_server::{ipc, state};
-use casper_types::{bytesrepr, bytesrepr::ToBytes, ProtocolVersion, PublicKey, U512};
+use casper_types::{bytesrepr, bytesrepr::ToBytes, ProtocolVersion, PublicKey};
 use std::convert::{TryFrom, TryInto};
 
 #[derive(Debug)]
@@ -27,12 +27,12 @@ impl TryFrom<SlashItem> for ipc::SlashItem {
 #[derive(Debug)]
 pub struct RewardItem {
     validator_id: PublicKey,
-    value: U512,
+    value: u64,
 }
 
 #[allow(dead_code)]
 impl RewardItem {
-    pub fn new(validator_id: PublicKey, value: U512) -> Self {
+    pub fn new(validator_id: PublicKey, value: u64) -> Self {
         RewardItem {
             validator_id,
             value,

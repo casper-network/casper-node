@@ -27,6 +27,7 @@ use tracing::{debug, error, warn};
 
 use casper_types::{
     account::AccountHash,
+    auction::{ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS},
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
     runtime_args,
@@ -1862,13 +1863,11 @@ where
                 .insert(auction_hash, auction_module.clone());
         }
 
-        let system_account = Account::new(
-            SYSTEM_ACCOUNT_ADDR,
-            Default::default(),
-            URef::new(Default::default(), AccessRights::READ_ADD_WRITE),
-            Default::default(),
-            Default::default(),
-        );
+        let virtual_system_account = {
+            let named_keys = NamedKeys::new();
+            let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
+            Account::create(SYSTEM_ACCOUNT_ADDR, named_keys, purse)
+        };
         let authorization_keys = {
             let mut ret = BTreeSet::new();
             ret.insert(SYSTEM_ACCOUNT_ADDR);
@@ -1895,7 +1894,7 @@ where
             }
         };
 
-        let slash_args = runtime_args! {"validator_public_keys" => slashed_validators};
+        let slash_args = runtime_args! {ARG_VALIDATOR_PUBLIC_KEYS => slashed_validators};
 
         let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
             DirectSystemContractCall::Slash,
@@ -1904,33 +1903,7 @@ where
             &mut named_keys,
             Default::default(),
             base_key,
-            &system_account,
-            authorization_keys.clone(),
-            BlockTime::default(),
-            deploy_hash,
-            gas_limit,
-            step_request.protocol_version,
-            correlation_id,
-            Rc::clone(&tracking_copy),
-            Phase::Session,
-            protocol_data,
-            SystemContractCache::clone(&self.system_contract_cache),
-        );
-
-        if execution_result.has_precondition_failure() {
-            return Ok(StepResult::PreconditionError);
-        }
-
-        let distribute_args = runtime_args! {}; // TODO: distribute args?
-
-        let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
-            DirectSystemContractCall::DistributeRewards,
-            auction_module.clone(),
-            distribute_args,
-            &mut named_keys,
-            Default::default(),
-            base_key,
-            &system_account,
+            &virtual_system_account,
             authorization_keys.clone(),
             BlockTime::default(),
             deploy_hash,
@@ -1953,13 +1926,13 @@ where
             let (_, execution_result): (Option<()>, ExecutionResult) = executor
                 .exec_system_contract(
                     DirectSystemContractCall::RunAuction,
-                    auction_module,
+                    auction_module.clone(),
                     run_auction_args,
                     &mut named_keys,
                     Default::default(),
                     base_key,
-                    &system_account,
-                    authorization_keys,
+                    &virtual_system_account,
+                    authorization_keys.clone(),
                     BlockTime::default(),
                     deploy_hash,
                     gas_limit,
@@ -1974,6 +1947,43 @@ where
             if execution_result.has_precondition_failure() {
                 return Ok(StepResult::PreconditionError);
             }
+        }
+
+        let reward_factors = match step_request.reward_factors() {
+            Ok(reward_factors) => reward_factors,
+            Err(error) => {
+                error!(
+                    "failed to deserialize reward factors: {}",
+                    error.to_string()
+                );
+                return Ok(StepResult::Serialization(error));
+            }
+        };
+
+        let reward_args = runtime_args! {ARG_REWARD_FACTORS => reward_factors};
+
+        let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
+            DirectSystemContractCall::DistributeRewards,
+            auction_module,
+            reward_args,
+            &mut named_keys,
+            Default::default(),
+            base_key,
+            &virtual_system_account,
+            authorization_keys,
+            BlockTime::default(),
+            deploy_hash,
+            gas_limit,
+            step_request.protocol_version,
+            correlation_id,
+            Rc::clone(&tracking_copy),
+            Phase::Session,
+            protocol_data,
+            SystemContractCache::clone(&self.system_contract_cache),
+        );
+
+        if execution_result.has_precondition_failure() {
+            return Ok(StepResult::PreconditionError);
         }
 
         let effects = tracking_copy.borrow().effect();

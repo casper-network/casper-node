@@ -1,13 +1,17 @@
 use std::convert::{TryFrom, TryInto};
 
 use casper_execution_engine::core::engine_state::step::{RewardItem, SlashItem, StepRequest};
-use casper_types::{bytesrepr, PublicKey, U512};
+use casper_types::{bytesrepr, bytesrepr::ToBytes, PublicKey};
 
 use crate::engine_server::{
     ipc,
     mappings::{MappingError, ParsingError},
 };
-use casper_types::bytesrepr::ToBytes;
+
+const PARENT_STATE_HASH: &str = "parent_state_hash";
+const REWARD_ITEMS: &str = "reward_items";
+const SLASH_ITEMS: &str = "slash_items";
+const VALIDATOR_ID: &str = "validator_id";
 
 impl TryFrom<ipc::SlashItem> for SlashItem {
     type Error = MappingError;
@@ -16,7 +20,7 @@ impl TryFrom<ipc::SlashItem> for SlashItem {
         let bytes: Vec<u8> = pb_slash_item
             .get_validator_id()
             .try_into()
-            .map_err(|_| MappingError::Parsing(ParsingError("validator_id".to_string())))?;
+            .map_err(|_| MappingError::Parsing(ParsingError(VALIDATOR_ID.to_string())))?;
 
         let validator_id: PublicKey =
             bytesrepr::deserialize(bytes).map_err(MappingError::Serialization)?;
@@ -43,11 +47,11 @@ impl TryFrom<ipc::RewardItem> for RewardItem {
         let bytes: Vec<u8> = pb_reward_item
             .get_validator_id()
             .try_into()
-            .map_err(|_| MappingError::Parsing(ParsingError("validator_id".to_string())))?;
+            .map_err(|_| MappingError::Parsing(ParsingError(VALIDATOR_ID.to_string())))?;
 
         let validator_id: PublicKey =
             bytesrepr::deserialize(bytes).map_err(MappingError::Serialization)?;
-        let value: U512 = pb_reward_item.get_value().clone().try_into()?;
+        let value: u64 = pb_reward_item.get_value();
 
         Ok(RewardItem::new(validator_id, value))
     }
@@ -71,7 +75,7 @@ impl TryFrom<ipc::StepRequest> for StepRequest {
         let parent_state_hash = pb_step_request
             .get_parent_state_hash()
             .try_into()
-            .map_err(|_| MappingError::InvalidStateHash("parent_state_hash".to_string()))?;
+            .map_err(|_| MappingError::InvalidStateHash(PARENT_STATE_HASH.to_string()))?;
 
         let protocol_version = pb_step_request.take_protocol_version().into();
 
@@ -80,7 +84,7 @@ impl TryFrom<ipc::StepRequest> for StepRequest {
             for item in pb_step_request.take_slash_items().into_iter() {
                 let slash_item: SlashItem = item
                     .try_into()
-                    .map_err(|_| MappingError::Parsing(ParsingError("slash_items".to_string())))?;
+                    .map_err(|_| MappingError::Parsing(ParsingError(SLASH_ITEMS.to_string())))?;
                 ret.push(slash_item);
             }
             ret
@@ -91,7 +95,7 @@ impl TryFrom<ipc::StepRequest> for StepRequest {
             for item in pb_step_request.take_reward_items().into_iter() {
                 let reward_item: RewardItem = item
                     .try_into()
-                    .map_err(|_| MappingError::Parsing(ParsingError("reward_items".to_string())))?;
+                    .map_err(|_| MappingError::Parsing(ParsingError(REWARD_ITEMS.to_string())))?;
                 ret.push(reward_item);
             }
             ret
