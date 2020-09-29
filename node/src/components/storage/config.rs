@@ -7,7 +7,6 @@ use tempfile::TempDir;
 use tracing::warn;
 
 use casper_execution_engine::shared::utils;
-use crate::utils::WithDir;
 
 const QUALIFIER: &str = "io";
 const ORGANIZATION: &str = "CasperLabs";
@@ -29,14 +28,8 @@ pub struct Config {
     ///
     /// If the folder doesn't exist, it and any required parents will be created.
     ///
-    /// Defaults to:
-    /// * Linux: `$XDG_DATA_HOME/casper-node` or `$HOME/.local/share/casper-node`, e.g.
-    ///   /home/alice/.local/share/casper-node
-    /// * macOS: `$HOME/Library/Application Support/io.CasperLabs.casper-node`, e.g.
-    ///   /Users/Alice/Library/Application Support/io.CasperLabs.casper-node
-    /// * Windows: `{FOLDERID_RoamingAppData}\CasperLabs\casper-node\data` e.g.
-    ///   C:\Users\Alice\AppData\Roaming\CasperLabs\casper-node\data
-    path: WithDir<PathBuf>,
+    /// If unset via the configuration file, the value must be provided via the CLI. 
+    path: PathBuf,
     /// The maximum size of the database to use for the block store.
     ///
     /// Defaults to 483,183,820,800 == 450 GiB.
@@ -63,7 +56,7 @@ impl Config {
     #[cfg(test)]
     pub(crate) fn default_for_tests() -> (Self, TempDir) {
         let tempdir = tempfile::tempdir().expect("should get tempdir");
-        let path = WithDir::new(tempdir, "lmdb");
+        let path = tempdir.path().join("lmdb");
 
         let config = Config {
             path,
@@ -75,9 +68,7 @@ impl Config {
     }
 
     pub(crate) fn path(&self) -> PathBuf {
-        let (mut context, path) = self.path.clone().into_parts();
-        context.push(path);
-        context
+        self.path.clone()
     }
 
     pub(crate) fn max_block_store_size(&self) -> usize {
@@ -116,8 +107,7 @@ impl Config {
 
 impl Default for Config {
     fn default() -> Self {
-        let tempdir = tempfile::tempdir().expect("should get tempdir");
-        let path = WithDir::default_path(PathBuf::from("lmdb"));
+        let path = Self::default_path();
 
         Config {
             path,
