@@ -1,7 +1,6 @@
 use alloc::vec::Vec;
 
 use num_rational::Ratio;
-use num_traits::Zero;
 
 use super::{
     Auction, BidPurses, UnbondingPurses, BID_PURSES_KEY, SYSTEM_ACCOUNT, UNBONDING_PURSES_KEY,
@@ -97,11 +96,11 @@ pub fn update_delegator_rewards<P>(
     provider: &mut P,
     validator_public_key: PublicKey,
     rewards: impl Iterator<Item = (PublicKey, Ratio<U512>)>,
-) -> Result<Ratio<U512>>
+) -> Result<U512>
 where
     P: MintProvider + RuntimeProvider + StorageProvider + SystemProvider + ?Sized,
 {
-    let mut remainder = Ratio::zero();
+    let mut total_delegator_payout = U512::zero();
     let mut outer = internal::get_delegator_reward_map(provider)?;
     let mut inner = outer.remove(&validator_public_key).unwrap_or_default();
 
@@ -111,12 +110,12 @@ where
             .entry(delegator_key)
             .and_modify(|sum| *sum += delegator_reward_trunc)
             .or_insert_with(|| delegator_reward_trunc);
-        remainder += delegator_reward.fract();
+        total_delegator_payout += delegator_reward_trunc;
     }
 
     outer.insert(validator_public_key, inner);
     internal::set_delegator_reward_map(provider, outer)?;
-    Ok(remainder)
+    Ok(total_delegator_payout)
 }
 
 /// Update validator reward map.

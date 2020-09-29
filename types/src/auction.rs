@@ -588,10 +588,10 @@ pub trait Auction:
                         let reward = delegators_part * reward_multiplier;
                         (*delegator_key, reward)
                     });
-            let remainder: Ratio<U512> =
+            let total_delegator_payout: U512 =
                 detail::update_delegator_rewards(self, public_key, delegator_rewards)?;
 
-            let validators_part: Ratio<U512> = total_reward - delegators_part + remainder;
+            let validators_part: Ratio<U512> = total_reward - Ratio::from(total_delegator_payout);
             let validator_reward = validators_part.to_integer();
             detail::update_validator_reward(self, public_key, validator_reward)?;
 
@@ -610,8 +610,6 @@ pub trait Auction:
             )
             .map_err(|_| Error::Transfer)?;
 
-            let delegators_reward: U512 = (delegators_part - remainder).ceil().to_integer();
-
             // TODO: add "mint into existing purse" facility
             let delegator_reward_purse = self
                 .get_key(DELEGATOR_REWARD_PURSE)
@@ -619,12 +617,12 @@ pub trait Auction:
                 .into_uref()
                 .ok_or(Error::InvalidKeyVariant)?;
             let tmp_delegator_reward_purse = self
-                .mint(delegators_reward)
+                .mint(total_delegator_payout)
                 .map_err(|_| Error::MintReward)?;
             self.transfer_purse_to_purse(
                 tmp_delegator_reward_purse,
                 delegator_reward_purse,
-                delegators_reward,
+                total_delegator_payout,
             )
             .map_err(|_| Error::Transfer)?;
         }
