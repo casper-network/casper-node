@@ -42,7 +42,7 @@ pub enum Error {
     #[fail(display = "Missing key")]
     MissingKey = 8,
     /// Base round reward not found.
-    #[fail(display = "Missing key")]
+    #[fail(display = "Base round reward not found")]
     BaseRoundRewardNotFound = 9,
 }
 

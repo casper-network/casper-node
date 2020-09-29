@@ -179,7 +179,7 @@ pub trait Auction:
         Ok((bonding_purse, new_delegation_amount))
     }
 
-    /// Removes a amount (or the entry altogether, if the remaining amount is 0) of motes from
+    /// Removes an amount of motes (or the entry altogether, if the remaining amount is 0) from
     /// the entry in delegators and calls unbond in the Mint contract to create a new unbonding
     /// purse.
     ///

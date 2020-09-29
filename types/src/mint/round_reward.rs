@@ -24,7 +24,7 @@ pub fn initial_supply_motes() -> Ratio<U512> {
 #[inline]
 pub fn round_seigniorage_rate() -> Ratio<U512> {
     const ROUND_SEIGNIORAGE_RATE_NUMER: u64 = 102881230202;
-    const ROUND_SEIGNIORAGE_RATE_DENOM: u64 = 10000000000000000000;
+    const ROUND_SEIGNIORAGE_RATE_DENOM: u64 = 10_000_000_000_000_000_000;
     Ratio::new(
         U512::from(ROUND_SEIGNIORAGE_RATE_NUMER),
         U512::from(ROUND_SEIGNIORAGE_RATE_DENOM),
