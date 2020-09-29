@@ -86,7 +86,7 @@ bind_port = 7777
 #
 # If the folder doesn't exist, it and any required parents will be created.
 #
-# If unset, the path must be supplied as an argument via the CLI:
+# If unset, the path must be supplied as an argument via the CLI.
 path = '../node-storage'
 
 # Optional maximum size of the database to use for the block store.
