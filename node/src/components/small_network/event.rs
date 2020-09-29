@@ -13,16 +13,19 @@ use crate::effect::requests::{NetworkInfoRequest, NetworkRequest};
 #[derive(Debug, From)]
 pub enum Event<P> {
     /// Connection to the known node failed.
-    BootstrappingFailed { address: SocketAddr, error: Error },
+    BootstrappingFailed {
+        peer_address: SocketAddr,
+        error: Error,
+    },
     /// A new TCP connection has been established from an incoming connection.
     IncomingNew {
         stream: TcpStream,
-        address: SocketAddr,
+        peer_address: SocketAddr,
     },
     /// The TLS handshake completed on the incoming connection.
     IncomingHandshakeCompleted {
         result: Result<(NodeId, Transport), Error>,
-        address: SocketAddr,
+        peer_address: SocketAddr,
     },
     /// Received network message.
     IncomingMessage { peer_id: NodeId, msg: Message<P> },
@@ -30,7 +33,7 @@ pub enum Event<P> {
     IncomingClosed {
         result: io::Result<()>,
         peer_id: NodeId,
-        address: SocketAddr,
+        peer_address: SocketAddr,
     },
 
     /// A new outgoing connection was successfully established.
@@ -62,19 +65,32 @@ pub enum Event<P> {
 impl<P: Display> Display for Event<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::BootstrappingFailed { address, error } => {
-                write!(f, "bootstrapping failed for node {}: {}", address, error)
+            Event::BootstrappingFailed {
+                peer_address,
+                error,
+            } => write!(
+                f,
+                "bootstrapping failed for node {}: {}",
+                peer_address, error
+            ),
+            Event::IncomingNew { peer_address, .. } => {
+                write!(f, "incoming connection from {}", peer_address)
             }
-            Event::IncomingNew { address, .. } => write!(f, "incoming connection from {}", address),
-            Event::IncomingHandshakeCompleted { result, address } => {
-                write!(f, "handshake from {}, is_err {}", address, result.is_err())
-            }
+            Event::IncomingHandshakeCompleted {
+                result,
+                peer_address,
+            } => write!(
+                f,
+                "handshake from {}, is_err {}",
+                peer_address,
+                result.is_err()
+            ),
             Event::IncomingMessage {
                 peer_id: node_id,
                 msg,
             } => write!(f, "msg from {}: {}", node_id, msg),
-            Event::IncomingClosed { address, .. } => {
-                write!(f, "closed connection from {}", address)
+            Event::IncomingClosed { peer_address, .. } => {
+                write!(f, "closed connection from {}", peer_address)
             }
             Event::OutgoingEstablished {
                 peer_id: node_id, ..

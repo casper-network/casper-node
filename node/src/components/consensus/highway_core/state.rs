@@ -428,6 +428,13 @@ impl<C: Context> State<C> {
         self.panorama[wvote.creator] = new_obs;
     }
 
+    /// Returns `true` if this is a proposal and the creator is not faulty.
+    pub(super) fn is_correct_proposal(&self, vote: &Vote<C>) -> bool {
+        !self.has_evidence(vote.creator)
+            && self.leader(vote.timestamp) == vote.creator
+            && vote.timestamp == round_id(vote.timestamp, vote.round_exp)
+    }
+
     /// Returns the hash of the message with the given sequence number from the creator of `hash`,
     /// or `None` if the sequence number is higher than that of the vote with `hash`.
     fn find_in_swimlane<'a>(&'a self, hash: &'a C::Hash, seq_number: u64) -> Option<&'a C::Hash> {
