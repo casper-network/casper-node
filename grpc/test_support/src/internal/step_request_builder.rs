@@ -1,7 +1,7 @@
 use casper_engine_grpc_server::engine_server::{ipc, state};
 use casper_types::{ProtocolVersion, U512};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct SlashItem {
     validator_id: Vec<u8>,
 }
@@ -9,14 +9,6 @@ pub struct SlashItem {
 impl SlashItem {
     pub fn new(validator_id: Vec<u8>) -> Self {
         SlashItem { validator_id }
-    }
-}
-
-impl Default for SlashItem {
-    fn default() -> Self {
-        SlashItem {
-            validator_id: Default::default(),
-        }
     }
 }
 
@@ -28,7 +20,7 @@ impl From<SlashItem> for ipc::SlashItem {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct RewardItem {
     validator_id: Vec<u8>,
     value: U512,
@@ -40,15 +32,6 @@ impl RewardItem {
         RewardItem {
             validator_id,
             value,
-        }
-    }
-}
-
-impl Default for RewardItem {
-    fn default() -> Self {
-        RewardItem {
-            validator_id: Default::default(),
-            value: Default::default(),
         }
     }
 }
