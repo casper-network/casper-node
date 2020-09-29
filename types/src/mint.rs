@@ -83,9 +83,7 @@ pub trait Mint: RuntimeProvider + StorageProvider {
             Some(_) => return Err(Error::MissingKey), // TODO
             None => return Err(Error::MissingKey),
         };
-        match self.read(base_round_reward_uref)? {
-            Some(reward) => Ok(reward),
-            None => Err(Error::BaseRoundRewardNotFound),
-        }
+        self.read(base_round_reward_uref)?
+            .ok_or(Error::BaseRoundRewardNotFound)
     }
 }

@@ -184,6 +184,7 @@ pub trait Auction:
     /// purse.
     ///
     /// The arguments are the delegator’s key, the validator key and quantity of motes.
+    /// The return value is the remaining bond after this quantity is subtracted.
     fn undelegate(
         &mut self,
         delegator_public_key: PublicKey,
@@ -202,12 +203,12 @@ pub trait Auction:
         let mut delegators = internal::get_delegators(self)?;
         let delegators_map = delegators
             .get_mut(&validator_public_key)
-            .ok_or(Error::DelegatorNotFound)?;
+            .ok_or(Error::ValidatorNotFound)?;
 
         let new_amount = {
             let delegators_amount = delegators_map
                 .get_mut(&delegator_public_key)
-                .ok_or(Error::ValidatorNotFound)?;
+                .ok_or(Error::DelegatorNotFound)?;
 
             let new_amount = delegators_amount
                 .checked_sub(amount)
@@ -223,6 +224,18 @@ pub trait Auction:
                 .remove(&validator_public_key)
                 .ok_or(Error::ValidatorNotFound)?;
             debug_assert!(_value.is_zero());
+
+            let mut outer = internal::get_delegator_reward_map(self)?;
+            let mut inner = outer
+                .remove(&validator_public_key)
+                .ok_or(Error::ValidatorNotFound)?;
+            inner
+                .remove(&delegator_public_key)
+                .ok_or(Error::DelegatorNotFound)?;
+            if !inner.is_empty() {
+                outer.insert(validator_public_key, inner);
+            };
+            internal::set_delegator_reward_map(self, outer)?;
         }
 
         internal::set_delegators(self, delegators)?;
@@ -538,10 +551,9 @@ pub trait Auction:
         }
 
         for (public_key, reward_factor) in reward_factors {
-            let recipient = match seigniorage_recipients.get(&public_key) {
-                Some(recipient) => recipient,
-                None => return Err(Error::ValidatorNotFound),
-            };
+            let recipient = seigniorage_recipients
+                .get(&public_key)
+                .ok_or(Error::ValidatorNotFound)?;
 
             let total_stake = recipient.total_stake();
             if total_stake.is_zero() {
@@ -598,7 +610,7 @@ pub trait Auction:
             )
             .map_err(|_| Error::Transfer)?;
 
-            let delegators_reward: U512 = delegators_part.to_integer();
+            let delegators_reward: U512 = (delegators_part - remainder).ceil().to_integer();
 
             // TODO: add "mint into existing purse" facility
             let delegator_reward_purse = self
