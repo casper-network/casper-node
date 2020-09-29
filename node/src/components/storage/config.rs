@@ -28,7 +28,7 @@ pub struct Config {
     ///
     /// If the folder doesn't exist, it and any required parents will be created.
     ///
-    /// If unset via the configuration file, the value must be provided via the CLI. 
+    /// If unset via the configuration file, the value must be provided via the CLI.
     path: PathBuf,
     /// The maximum size of the database to use for the block store.
     ///
