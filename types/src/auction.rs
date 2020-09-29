@@ -224,10 +224,9 @@ pub trait Auction:
         debug_assert!(_unbonding_purse_balance > new_amount);
 
         if new_amount.is_zero() {
-            // Inner map's mapped value should be zero as we subtracted mutable value.
             let _value = delegators_map
-                .remove(&validator_public_key)
-                .ok_or(Error::ValidatorNotFound)?;
+                .remove(&delegator_public_key)
+                .ok_or(Error::DelegatorNotFound)?;
             debug_assert!(_value.is_zero());
 
             let mut outer = internal::get_delegator_reward_map(self)?;
