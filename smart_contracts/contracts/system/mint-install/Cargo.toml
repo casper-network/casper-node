@@ -18,3 +18,4 @@ std = ["casper-contract/std", "casper-types/std"]
 casper-contract = { path = "../../../contract" }
 casper-types = { path = "../../../../types" }
 mint-token = { path = "../mint-token" }
+num-rational = { version = "0.3.0", default-features = false }
