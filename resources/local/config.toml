@@ -66,7 +66,7 @@ gossip_interval = 30000
 # Enable systemd support. If enabled, the node will notify systemd once it has synced and its
 # listening socket for incoming connections is open.
 #
-# It is usally better to leave this option off and enable it explicitly via command-line override
+# It is usually better to leave this option off and enable it explicitly via command-line override
 # only in the unit files themselves via `-C=network.systemd_support=true`.
 systemd_support = false
 
@@ -81,7 +81,7 @@ systemd_support = false
 # If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
 # the HTTP server will not run, but the node will be otherwise unaffected.
 #
-# The actual bound address will be reported via a log line if loggging is enabled.
+# The actual bound address will be reported via a log line if logging is enabled.
 address = '0.0.0.0:7777'
 
 # The number of event-stream events to buffer.

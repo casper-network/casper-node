@@ -74,7 +74,7 @@ gossip_interval = 30000
 # If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
 # the HTTP server will not run, but the node will be otherwise unaffected.
 #
-# The actual bound address will be reported via a log line if loggging is enabled.
+# The actual bound address will be reported via a log line if logging is enabled.
 address = '0.0.0.0:7777'
 
 # The number of event-stream events to buffer.
