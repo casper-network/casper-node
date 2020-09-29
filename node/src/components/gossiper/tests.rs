@@ -32,7 +32,7 @@ use crate::{
         ConditionCheckReactor, TestRng,
     },
     types::{Deploy, Tag},
-    utils::Loadable,
+    utils::{Loadable, WithDir},
 };
 
 /// Top-level event for the reactor.
@@ -125,7 +125,7 @@ impl reactor::Reactor<TestRng> for Reactor {
         let network = NetworkController::create_node(event_queue, rng);
 
         let (storage_config, _storage_tempdir) = storage::Config::default_for_tests();
-        let storage = Storage::new(&storage_config).unwrap();
+        let storage = Storage::new(WithDir::new(_storage_tempdir.path(), storage_config)).unwrap();
 
         let deploy_acceptor = DeployAcceptor::new();
         let deploy_gossiper = Gossiper::new_for_partial_items(config, get_deploy_from_storage);
