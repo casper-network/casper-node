@@ -98,11 +98,11 @@ parse_args "$@"
 export RUN_DIR=$(dirname $(abspath $0))
 export CREDENTIAL_FILE="$RUN_DIR/credentials.json"
 export CREDENTIAL_FILE_TMP="$RUN_DIR/vault_output.json"
-export BINTRAY_REPO_URL="$BINTRAY_ORG_NAME/$BINTRAY_REPO_NAME/$BINTRAY_PACKAGE_NAME"
 export API_URL="https://api.bintray.com"
 export UPLOAD_DIR="$(pwd)/target/debian"
 export BINTRAY_USER='casperlabs-service'
 export BINTRAY_ORG_NAME='casperlabs'
+export BINTRAY_REPO_URL="$BINTRAY_ORG_NAME/$BINTRAY_REPO_NAME/$BINTRAY_PACKAGE_NAME"
 export CL_VAULT_URL="${CL_VAULT_HOST}/v1/sre/cicd/bintray/credentials"
 
 echo "Run dir set to: $RUN_DIR"
@@ -129,19 +129,19 @@ else
 fi
 
 echo "Uploading file to bintray:${DRONE_TAG} ..."
-echo -e "\nDEBIAN" && find . -maxdepth 1 -type f -iregex ".*\\.deb" -printf "%f\n" | xargs -I {} sh -c "echo Attempting to upload [{}] && curl -T {} -u$BINTRAY_USER:$BINTRAY_API_KEY $API_URL/content/$BINTRAY_REPO_URL/${PACKAGE_VERSION}/{} && echo"
+echo -e "\nDEBIAN" && find . -maxdepth 1 -type f -iregex "casper-node.*\\.deb" -printf "%f\n" | xargs -I {} sh -c "echo Attempting to upload [{}] && curl -T {} -u$BINTRAY_USER:$BINTRAY_API_KEY $API_URL/content/$BINTRAY_REPO_URL/${PACKAGE_VERSION}/{} && echo"
 
 # sleep 10 && echo -e "\nPublishing CL Packages on bintray..."
-curl -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY $API_URL/content/$BINTRAY_REPO_URL/${PACAKGE_VERSION}/publish
+curl -s -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY $API_URL/content/$BINTRAY_REPO_URL/${PACAKGE_VERSION}/publish
 
 # sleep 10 && echo -e "\nGPG Signing CL Packages on bintray..."
-curl -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY -H "Content-Type: application/json" --data "@$CREDENTIAL_FILE" $API_URL/gpg/$BINTRAY_REPO_URL/versions/${PACKAGE_VERSION}
+curl -s -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY -H "Content-Type: application/json" --data "@$CREDENTIAL_FILE" $API_URL/gpg/$BINTRAY_REPO_URL/versions/${PACKAGE_VERSION}
 
 # sleep 10 && echo -e "\nPublishing GPG Signatures on bintray..."
-curl -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY $API_URL/content/$BINTRAY_REPO_URL/${PACKAGE_VERSION}/publish
+curl -s -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY $API_URL/content/$BINTRAY_REPO_URL/${PACKAGE_VERSION}/publish
 
 # sleep 10 && echo -e "\nCalculating repo metadata on bintray..."
-curl -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY -H "Content-Type: application/json" --data '{"private_key": "'$BINTRAY_PK'", "passphrase": "'$BINTRAY_GPG_PASSPHRASE'"}' $API_URL/calc_metadata/$BINTRAY_REPO_URL/${PACKAGE_VERSION}
+curl -s -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY -H "Content-Type: application/json" --data '{"private_key": "'$BINTRAY_PK'", "passphrase": "'$BINTRAY_GPG_PASSPHRASE'"}' $API_URL/calc_metadata/$BINTRAY_REPO_URL/${PACKAGE_VERSION}
 
 TEMP_DEB_FILE=uploaded_contents_debian_${PACKAGE_VERSION}.json
 curl -s -X GET -u$BINTRAY_USER:$BINTRAY_API_KEY -H "Content-Type: application/json" $API_URL/packages/$BINTRAY_REPO_URL/files?include_unpublished=1 > $TEMP_DEB_FILE.json
