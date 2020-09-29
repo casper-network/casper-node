@@ -16,7 +16,6 @@ use blake2::{
     digest::{Input, VariableOutput},
     VarBlake2b,
 };
-use casper_types::U512;
 use datasize::DataSize;
 use fmt::Display;
 use num_traits::AsPrimitive;
@@ -25,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info, trace};
 
 use casper_execution_engine::shared::motes::Motes;
+use casper_types::{auction::BLOCK_REWARD, U512};
 
 use crate::{
     components::{
@@ -37,7 +37,7 @@ use crate::{
             highway_core::{highway::Params, validators::Validators},
             protocols::highway::{HighwayContext, HighwayProtocol, HighwaySecret},
             traits::NodeIdT,
-            Config, ConsensusMessage, Event, ReactorEventT, BLOCK_REWARD,
+            Config, ConsensusMessage, Event, ReactorEventT,
         },
     },
     crypto::{

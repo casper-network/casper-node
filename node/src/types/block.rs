@@ -18,13 +18,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 use thiserror::Error;
 
-use super::{Item, Tag, Timestamp};
 #[cfg(test)]
-use crate::{
-    components::consensus::BLOCK_REWARD,
-    crypto::asymmetric_key::{self, SecretKey},
-    testing::TestRng,
-};
+use casper_types::auction::BLOCK_REWARD;
+
+use super::{Item, Tag, Timestamp};
 use crate::{
     components::{
         consensus::{self, EraId},
@@ -36,6 +33,11 @@ use crate::{
     },
     types::DeployHash,
     utils::DisplayIter,
+};
+#[cfg(test)]
+use crate::{
+    crypto::asymmetric_key::{self, SecretKey},
+    testing::TestRng,
 };
 
 /// Error returned from constructing or validating a `Block`.
