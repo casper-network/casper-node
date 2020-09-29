@@ -507,12 +507,7 @@ where
                 era_end,
                 proposer,
             }) => {
-                // Announce the finalized proto block.
-                let mut effects = self
-                    .effect_builder
-                    .announce_finalized_proto_block(proto_block.clone())
-                    .ignore();
-                let fb = FinalizedBlock::new(
+                let finalized_block = FinalizedBlock::new(
                     proto_block,
                     timestamp,
                     era_end,
@@ -520,8 +515,13 @@ where
                     self.era_supervisor.active_eras[&era_id].start_height + height,
                     proposer,
                 );
+                // Announce the finalized proto block.
+                let mut effects = self
+                    .effect_builder
+                    .announce_finalized_block(finalized_block.clone())
+                    .ignore();
                 // Request execution of the finalized block.
-                effects.extend(self.effect_builder.execute_block(fb).ignore());
+                effects.extend(self.effect_builder.execute_block(finalized_block).ignore());
                 effects
             }
             ConsensusProtocolResult::ValidateConsensusValue(sender, proto_block) => self

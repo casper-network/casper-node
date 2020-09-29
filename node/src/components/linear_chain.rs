@@ -14,6 +14,7 @@ use super::{storage::Storage, Component};
 use crate::{
     crypto::asymmetric_key::Signature,
     effect::{
+        announcements::LinearChainAnnouncement,
         requests::{ConsensusRequest, LinearChainRequest, NetworkRequest, StorageRequest},
         EffectExt, Effects,
     },
@@ -99,6 +100,7 @@ where
     REv: From<StorageRequest<Storage>>
         + From<ConsensusRequest>
         + From<NetworkRequest<I, Message>>
+        + From<LinearChainAnnouncement>
         + Send,
     R: Rng + CryptoRng + ?Sized,
     I: Display + Send + 'static,
@@ -161,8 +163,9 @@ where
                 info!(?block_hash, ?era_id, ?height, "Linear chain block stored.");
                 let mut effects = effect_builder.put_execution_results_to_storage(block_hash, execution_results).ignore();
                 effects.extend(
-                    effect_builder.handle_linear_chain_block(block_header)
+                    effect_builder.handle_linear_chain_block(block_header.clone())
                     .event(move |signature| Event::NewFinalitySignature(block_hash, signature)));
+                effects.extend(effect_builder.announce_block_added(block_hash, block_header).ignore());
                 effects
             },
             Event::NewFinalitySignature(block_hash, signature) => {

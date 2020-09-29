@@ -11,6 +11,7 @@ use blake2::{
     VarBlake2b,
 };
 use datasize::DataSize;
+use hex_buffer_serde::{Hex, HexForm};
 use hex_fmt::HexFmt;
 #[cfg(test)]
 use rand::Rng;
@@ -27,7 +28,7 @@ use crate::testing::TestRng;
 #[derive(
     Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Default,
 )]
-pub struct Digest([u8; Digest::LENGTH]);
+pub struct Digest(#[serde(with = "HexForm::<[u8; Digest::LENGTH]>")] [u8; Digest::LENGTH]);
 
 impl Digest {
     /// Length of `Digest` in bytes.
@@ -69,7 +70,7 @@ impl From<[u8; Digest::LENGTH]> for Digest {
     }
 }
 
-impl<'a> TryFrom<&'a [u8]> for Digest {
+impl TryFrom<&[u8]> for Digest {
     type Error = TryFromSliceError;
 
     fn try_from(slice: &[u8]) -> Result<Digest, Self::Error> {
