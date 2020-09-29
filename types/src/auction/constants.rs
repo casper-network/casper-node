@@ -19,6 +19,10 @@ pub const INITIAL_ERA_ID: EraId = 0;
 /// Default lock period for new bid entries represented in eras.
 pub const DEFAULT_LOCKED_FUNDS_PERIOD: EraId = 15;
 
+/// We use one trillion as a block reward unit because it's large enough to allow precise
+/// fractions, and small enough for many block rewards to fit into a u64.
+pub const BLOCK_REWARD: u64 = 1_000_000_000_000;
+
 /// Named constant for `amount`.
 pub const ARG_AMOUNT: &str = "amount";
 /// Named constant for `delegation_rate`.

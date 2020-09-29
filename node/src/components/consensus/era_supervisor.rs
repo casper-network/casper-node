@@ -16,7 +16,6 @@ use blake2::{
     digest::{Input, VariableOutput},
     VarBlake2b,
 };
-use casper_types::U512;
 use datasize::DataSize;
 use fmt::Display;
 use num_traits::AsPrimitive;
@@ -25,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info, trace};
 
 use casper_execution_engine::shared::motes::Motes;
+use casper_types::{auction::BLOCK_REWARD, U512};
 
 use crate::{
     components::{
@@ -45,13 +45,10 @@ use crate::{
         hash,
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
-    types::{BlockHeader, FinalizedBlock, ProtoBlock, SystemTransaction, Timestamp},
+    types::{BlockHeader, FinalizedBlock, ProtoBlock, Timestamp},
     utils::WithDir,
 };
 
-// We use one trillion as a block reward unit because it's large enough to allow precise
-// fractions, and small enough for many block rewards to fit into a u64.
-const BLOCK_REWARD: u64 = 1_000_000_000_000;
 /// The number of recent eras to retain. Eras older than this are dropped from memory.
 // TODO: This needs to be in sync with AUCTION_DELAY/booking_duration_millis. (Already duplicated!)
 const RETAIN_ERAS: u64 = 4;
@@ -241,15 +238,11 @@ where
         let ftt = validators.total_weight()
             * u64::from(self.highway_config().finality_threshold_percent)
             / 100;
-        // The number of rounds after which a block reward is paid out.
-        // TODO: Make this configurable?
-        let reward_delay = 8;
         // TODO: The initial round length should be the observed median of the switch block.
         let params = Params::new(
             0, // TODO: get a proper seed.
             BLOCK_REWARD,
             BLOCK_REWARD / 5, // TODO: Make reduced block reward configurable?
-            reward_delay,
             self.highway_config().minimum_round_exponent,
             self.highway_config().minimum_era_height,
             start_time + self.highway_config().era_duration,
@@ -509,11 +502,9 @@ where
                 }),
             ConsensusProtocolResult::FinalizedBlock(CpFinalizedBlock {
                 value: proto_block,
-                new_equivocators,
-                rewards,
                 timestamp,
                 height,
-                terminal,
+                era_end,
                 proposer,
             }) => {
                 // Announce the finalized proto block.
@@ -521,19 +512,10 @@ where
                     .effect_builder
                     .announce_finalized_proto_block(proto_block.clone())
                     .ignore();
-                // Create instructions for slashing equivocators.
-                let mut system_transactions: Vec<_> = new_equivocators
-                    .into_iter()
-                    .map(SystemTransaction::Slash)
-                    .collect();
-                if !rewards.is_empty() {
-                    system_transactions.push(SystemTransaction::Rewards(rewards));
-                };
                 let fb = FinalizedBlock::new(
                     proto_block,
                     timestamp,
-                    system_transactions,
-                    terminal,
+                    era_end,
                     era_id,
                     self.era_supervisor.active_eras[&era_id].start_height + height,
                     proposer,
