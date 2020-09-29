@@ -13,7 +13,7 @@ use casper_types::{
         DelegationRate, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY,
         ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, BLOCK_REWARD,
         DELEGATION_RATE_DENOMINATOR, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_DISTRIBUTE,
-        METHOD_RUN_AUCTION, METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
+        METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
     },
     mint, runtime_args, PublicKey, RuntimeArgs, U512,
 };
@@ -37,18 +37,6 @@ const DELEGATOR_2: PublicKey = PublicKey::Ed25519([206; 32]);
 const DELEGATOR_2_ADDR: AccountHash = AccountHash::new([207; 32]);
 const DELEGATOR_3: PublicKey = PublicKey::Ed25519([208; 32]);
 const DELEGATOR_3_ADDR: AccountHash = AccountHash::new([209; 32]);
-
-fn run_auction(builder: &mut InMemoryWasmTestBuilder) {
-    let run_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
-        CONTRACT_AUCTION_BIDS,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_RUN_AUCTION
-        },
-    )
-    .build();
-    builder.exec(run_request).commit().expect_success();
-}
 
 fn withdraw_validator_reward(
     builder: &mut InMemoryWasmTestBuilder,
@@ -224,7 +212,7 @@ fn should_distribute_delegation_rate_zero() {
     }
 
     for _ in 0..5 {
-        run_auction(&mut builder);
+        super::run_auction(&mut builder);
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -392,7 +380,7 @@ fn should_distribute_delegation_rate_half() {
     }
 
     for _ in 0..5 {
-        run_auction(&mut builder);
+        super::run_auction(&mut builder);
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -540,7 +528,7 @@ fn should_distribute_delegation_rate_full() {
     }
 
     for _ in 0..5 {
-        run_auction(&mut builder);
+        super::run_auction(&mut builder);
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -694,7 +682,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
     }
 
     for _ in 0..5 {
-        run_auction(&mut builder);
+        super::run_auction(&mut builder);
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -848,7 +836,7 @@ fn should_distribute_by_factor() {
     }
 
     for _ in 0..5 {
-        run_auction(&mut builder);
+        super::run_auction(&mut builder);
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -1004,7 +992,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
     }
 
     for _ in 0..5 {
-        run_auction(&mut builder);
+        super::run_auction(&mut builder);
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -1162,7 +1150,7 @@ fn should_distribute_by_factor_uneven() {
     }
 
     for _ in 0..5 {
-        run_auction(&mut builder);
+        super::run_auction(&mut builder);
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -1396,7 +1384,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     }
 
     for _ in 0..5 {
-        run_auction(&mut builder);
+        super::run_auction(&mut builder);
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -1646,7 +1634,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     }
 
     for _ in 0..5 {
-        run_auction(&mut builder);
+        super::run_auction(&mut builder);
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {

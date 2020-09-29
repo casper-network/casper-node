@@ -185,14 +185,14 @@ pub trait Auction:
     /// the entry in delegators and calls unbond in the Mint contract to create a new unbonding
     /// purse.
     ///
-    /// The arguments are the delegator’s key, the validator key and quantity of motes.
-    /// The return value is the remaining bond after this quantity is subtracted.
+    /// The arguments are the delegator’s key, the validator key and quantity of motes and
+    /// returns a tuple of the unbonding purse along with the remaining bid amount.
     fn undelegate(
         &mut self,
         delegator_public_key: PublicKey,
         validator_public_key: PublicKey,
         amount: U512,
-    ) -> Result<U512> {
+    ) -> Result<(URef, U512)> {
         let bids = internal::get_bids(self)?;
 
         // Return early if target validator is not in `bids`
@@ -200,7 +200,8 @@ pub trait Auction:
             return Err(Error::ValidatorNotFound);
         }
 
-        let (_unbonding_purse, _total_amount) = detail::unbond(self, delegator_public_key, amount)?;
+        let (unbonding_purse, _unbonding_purse_balance) =
+            detail::unbond(self, delegator_public_key, amount)?;
 
         let mut delegators = internal::get_delegators(self)?;
         let delegators_map = delegators
@@ -219,6 +220,8 @@ pub trait Auction:
             *delegators_amount = new_amount;
             new_amount
         };
+
+        debug_assert!(_unbonding_purse_balance > new_amount);
 
         if new_amount.is_zero() {
             // Inner map's mapped value should be zero as we subtracted mutable value.
@@ -242,7 +245,7 @@ pub trait Auction:
 
         internal::set_delegators(self, delegators)?;
 
-        Ok(new_amount)
+        Ok((unbonding_purse, new_amount))
     }
 
     /// Removes validator entries from either founders or validators, wherever they
