@@ -3,7 +3,6 @@ use std::vec::Vec;
 use casper_types::{bytesrepr, Key, ProtocolVersion, PublicKey, U512};
 
 use crate::shared::{newtypes::Blake2bHash, TypeMismatch};
-use casper_types::bytesrepr::FromBytes;
 use core::fmt;
 use std::fmt::Display;
 use uint::static_assertions::_core::fmt::Formatter;
@@ -64,7 +63,7 @@ impl StepRequest {
     pub fn slashed_validators(&self) -> Result<Vec<PublicKey>, bytesrepr::Error> {
         let mut ret = vec![];
         for slash_item in &self.slash_items {
-            let (public_key, _) = PublicKey::from_bytes(slash_item.validator_id.as_slice())?;
+            let public_key: PublicKey = bytesrepr::deserialize(slash_item.validator_id.clone())?;
             ret.push(public_key);
         }
         Ok(ret)
