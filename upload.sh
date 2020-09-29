@@ -93,6 +93,8 @@ abspath() {
   fi
 }
 
+parse_args "$@"
+
 export RUN_DIR=$(dirname $(abspath $0))
 export CREDENTIAL_FILE="$RUN_DIR/credentials.json"
 export CREDENTIAL_FILE_TMP="$RUN_DIR/vault_output.json"
