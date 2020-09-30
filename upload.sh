@@ -128,19 +128,19 @@ else
   exit 1
 fi
 
-echo "Uploading file to bintray:${DRONE_TAG} ..."
-echo -e "\nDEBIAN" && find . -maxdepth 1 -type f -iregex "casper-node.*\\.deb" -printf "%f\n" | xargs -I {} sh -c "echo Attempting to upload [{}] && curl -T {} -u$BINTRAY_USER:$BINTRAY_API_KEY $API_URL/content/$BINTRAY_REPO_URL/${PACKAGE_VERSION}/{} && echo"
+echo "Uploading file to bintray:${PACKAGE_VERSION} ..."
+echo -e "\nDEBIAN" && find . -maxdepth 1 -type f -iregex ".*casper-node.*\\.deb" -printf "%f\n" | xargs -I {} sh -c "echo Attempting to upload [{}] && curl -T {} -u$BINTRAY_USER:$BINTRAY_API_KEY $API_URL/content/$BINTRAY_REPO_URL/${PACKAGE_VERSION}/{} && echo"
 
-# sleep 10 && echo -e "\nPublishing CL Packages on bintray..."
-curl -s -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY $API_URL/content/$BINTRAY_REPO_URL/${PACAKGE_VERSION}/publish
-
-# sleep 10 && echo -e "\nGPG Signing CL Packages on bintray..."
-curl -s -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY -H "Content-Type: application/json" --data "@$CREDENTIAL_FILE" $API_URL/gpg/$BINTRAY_REPO_URL/versions/${PACKAGE_VERSION}
-
-# sleep 10 && echo -e "\nPublishing GPG Signatures on bintray..."
+sleep 5 && echo -e "\nPublishing CL Packages on bintray..."
 curl -s -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY $API_URL/content/$BINTRAY_REPO_URL/${PACKAGE_VERSION}/publish
 
-# sleep 10 && echo -e "\nCalculating repo metadata on bintray..."
+sleep 5 && echo -e "\nGPG Signing CL Packages on bintray..."
+curl -s -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY -H "Content-Type: application/json" --data "@$CREDENTIAL_FILE" $API_URL/gpg/$BINTRAY_REPO_URL/versions/${PACKAGE_VERSION}
+
+sleep 5 && echo -e "\nPublishing GPG Signatures on bintray..."
+curl -s -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY $API_URL/content/$BINTRAY_REPO_URL/${PACKAGE_VERSION}/publish
+
+sleep 5 && echo -e "\nCalculating repo metadata on bintray..."
 curl -s -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY -H "Content-Type: application/json" --data '{"private_key": "'$BINTRAY_PK'", "passphrase": "'$BINTRAY_GPG_PASSPHRASE'"}' $API_URL/calc_metadata/$BINTRAY_REPO_URL/${PACKAGE_VERSION}
 
 TEMP_DEB_FILE=uploaded_contents_debian_${PACKAGE_VERSION}.json
