@@ -27,8 +27,6 @@ pub(super) struct MemoryMetrics {
     mem_chainspec_loader: IntGauge,
     /// Estimated heap memory usage of consensus component.
     mem_consensus: IntGauge,
-    /// Estimated heap memory usage of deploy acceptor component.
-    mem_deploy_acceptor: IntGauge,
     /// Estimated heap memory usage of deploy fetcher component.
     mem_deploy_fetcher: IntGauge,
     /// Estimated heap memory usage of deploy gossiper component.
@@ -128,7 +126,6 @@ impl MemoryMetrics {
             mem_api_server,
             mem_chainspec_loader,
             mem_consensus,
-            mem_deploy_acceptor,
             mem_deploy_fetcher,
             mem_deploy_gossiper,
             mem_deploy_buffer,
@@ -155,7 +152,6 @@ impl MemoryMetrics {
         let api_server = reactor.api_server.estimate_heap_size() as i64;
         let chainspec_loader = reactor.chainspec_loader.estimate_heap_size() as i64;
         let consensus = reactor.consensus.estimate_heap_size() as i64;
-        let deploy_acceptor = reactor.deploy_acceptor.estimate_heap_size() as i64;
         let deploy_fetcher = reactor.deploy_fetcher.estimate_heap_size() as i64;
         let deploy_gossiper = reactor.deploy_gossiper.estimate_heap_size() as i64;
         let deploy_buffer = reactor.deploy_buffer.estimate_heap_size() as i64;
@@ -172,7 +168,6 @@ impl MemoryMetrics {
             + api_server
             + chainspec_loader
             + consensus
-            + deploy_acceptor
             + deploy_fetcher
             + deploy_gossiper
             + deploy_buffer
@@ -189,7 +184,6 @@ impl MemoryMetrics {
         self.mem_api_server.set(api_server);
         self.mem_chainspec_loader.set(chainspec_loader);
         self.mem_consensus.set(consensus);
-        self.mem_deploy_acceptor.set(deploy_acceptor);
         self.mem_deploy_fetcher.set(deploy_fetcher);
         self.mem_deploy_gossiper.set(deploy_gossiper);
         self.mem_deploy_buffer.set(deploy_buffer);
@@ -210,7 +204,6 @@ impl MemoryMetrics {
                %api_server,
                %chainspec_loader,
                %consensus,
-               %deploy_acceptor,
                %deploy_fetcher,
                %deploy_gossiper,
                %deploy_buffer,
@@ -250,9 +243,6 @@ impl Drop for MemoryMetrics {
         self.registry
             .unregister(Box::new(self.mem_consensus.clone()))
             .expect("did not expect deregistering mem_consensus, to fail");
-        self.registry
-            .unregister(Box::new(self.mem_deploy_acceptor.clone()))
-            .expect("did not expect deregistering mem_deploy_acceptor, to fail");
         self.registry
             .unregister(Box::new(self.mem_deploy_fetcher.clone()))
             .expect("did not expect deregistering mem_deploy_fetcher, to fail");
