@@ -13,7 +13,7 @@ use itertools::Itertools;
 #[cfg(test)]
 use rand::RngCore;
 use rand::{CryptoRng, Rng};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{json, Value as JsonValue};
 use thiserror::Error;
 use tracing::warn;
@@ -301,14 +301,12 @@ impl Deploy {
 
     /// Convert the `Deploy` to a JSON value.
     pub fn to_json(&self) -> JsonValue {
-        let json_deploy = json::JsonDeploy::from(self);
-        json!(json_deploy)
+        json!(self)
     }
 
     /// Try to convert the JSON value to a `Deploy`.
     pub fn from_json(input: JsonValue) -> Result<Self, Error> {
-        let json: json::JsonDeploy = serde_json::from_value(input)?;
-        let deploy = Deploy::try_from(json)?;
+        let deploy: Deploy = serde_json::from_value(input)?;
 
         // Serialize and deserialize to run validity checks in deserialization.
         let serialized =
@@ -344,14 +342,8 @@ impl Deploy {
         ];
         let chain_name = String::from("casper-example");
 
-        let payment = ExecutableDeployItem::ModuleBytes {
-            module_bytes: hash::hash(rng.next_u64().to_le_bytes()).as_ref().to_vec(),
-            args: hash::hash(rng.next_u64().to_le_bytes()).as_ref().to_vec(),
-        };
-        let session = ExecutableDeployItem::ModuleBytes {
-            module_bytes: hash::hash(rng.next_u64().to_le_bytes()).as_ref().to_vec(),
-            args: hash::hash(rng.next_u64().to_le_bytes()).as_ref().to_vec(),
-        };
+        let payment = rng.gen();
+        let session = rng.gen();
 
         let secret_key = SecretKey::random(rng);
 
@@ -390,8 +382,30 @@ fn deserialize_body(
     rmp_serde::from_read_ref(serialized_body)
 }
 
+/// A helper to allow us to derive `Serialize` and `Deserialize` for use with human-readable
+/// (de)serializer types.
+#[derive(Serialize, Deserialize)]
+struct HumanReadableHelper {
+    hash: DeployHash,
+    header: DeployHeader,
+    payment: ExecutableDeployItem,
+    session: ExecutableDeployItem,
+    approvals: Vec<Approval>,
+}
+
 impl Serialize for Deploy {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            return HumanReadableHelper {
+                hash: self.hash,
+                header: self.header.clone(),
+                payment: self.payment.clone(),
+                session: self.session.clone(),
+                approvals: self.approvals.clone(),
+            }
+            .serialize(serializer);
+        }
+
         let deploy_hash = self.hash.as_ref();
         let serialized_header =
             serialize_header(&self.header).map_err(serde::ser::Error::custom)?;
@@ -410,6 +424,17 @@ impl Serialize for Deploy {
 
 impl<'de> Deserialize<'de> for Deploy {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if deserializer.is_human_readable() {
+            let helper = HumanReadableHelper::deserialize(deserializer)?;
+            return Ok(Deploy {
+                hash: helper.hash,
+                header: helper.header,
+                payment: helper.payment,
+                session: helper.session,
+                approvals: helper.approvals,
+            });
+        }
+
         let (bridging_deploy, approvals) =
             <(BridgingDeploy, Vec<Approval>)>::deserialize(deserializer)?;
 
@@ -422,11 +447,11 @@ impl<'de> Deserialize<'de> for Deploy {
                 DESER_ERROR_MSG_GENERAL,
                 DEPLOY_HASH_MISMATCH_MSG
             );
-            return Err(serde::de::Error::custom(DEPLOY_HASH_MISMATCH_MSG));
+            return Err(SerdeError::custom(DEPLOY_HASH_MISMATCH_MSG));
         }
 
-        let header = deserialize_header(&bridging_deploy.serialized_header)
-            .map_err(serde::de::Error::custom)?;
+        let header =
+            deserialize_header(&bridging_deploy.serialized_header).map_err(SerdeError::custom)?;
 
         let actual_body_hash = hash::hash(&bridging_deploy.serialized_body);
         if actual_body_hash != header.body_hash {
@@ -437,15 +462,15 @@ impl<'de> Deserialize<'de> for Deploy {
                 DESER_ERROR_MSG_GENERAL,
                 DEPLOY_BODY_HASH_MISMATCH_MSG
             );
-            return Err(serde::de::Error::custom(DEPLOY_BODY_HASH_MISMATCH_MSG));
+            return Err(SerdeError::custom(DEPLOY_BODY_HASH_MISMATCH_MSG));
         }
 
         let (payment, session) =
-            deserialize_body(&bridging_deploy.serialized_body).map_err(serde::de::Error::custom)?;
+            deserialize_body(&bridging_deploy.serialized_body).map_err(SerdeError::custom)?;
 
         let deploy = Deploy {
             hash: DeployHash::from(
-                Digest::try_from(bridging_deploy.deploy_hash).map_err(serde::de::Error::custom)?,
+                Digest::try_from(bridging_deploy.deploy_hash).map_err(SerdeError::custom)?,
             ),
             header,
             payment,
@@ -459,7 +484,7 @@ impl<'de> Deserialize<'de> for Deploy {
             {
                 let error_msg = format!("failed to verify approval {}", index);
                 warn!("{}: {}: {}", DESER_ERROR_MSG_GENERAL, error_msg, error);
-                return Err(serde::de::Error::custom(error_msg));
+                return Err(SerdeError::custom(error_msg));
             }
         }
 
@@ -537,311 +562,6 @@ struct BridgingDeploy<'a> {
     serialized_body: Vec<u8>,
 }
 
-/// This module provides structs which map to the main deploy types, but which are suitable for
-/// encoding to and decoding from JSON.  For all fields with binary data, this is converted to/from
-/// hex strings.
-mod json {
-    use std::convert::{TryFrom, TryInto};
-
-    use serde::{Deserialize, Serialize};
-
-    use super::*;
-    use crate::{
-        crypto::{
-            asymmetric_key::{PublicKey, Signature},
-            hash::Digest,
-        },
-        types::{TimeDiff, Timestamp},
-    };
-    use casper_types::ContractVersion;
-
-    #[derive(Serialize, Deserialize)]
-    struct JsonDeployHash(String);
-
-    #[derive(Serialize, Deserialize)]
-    enum JsonExecutableDeployItem {
-        ModuleBytes {
-            module_bytes: String,
-            args: String,
-        },
-        StoredContractByHash {
-            hash: String,
-            entry_point: String,
-            args: String,
-        },
-        StoredContractByName {
-            name: String,
-            entry_point: String,
-            args: String,
-        },
-        StoredVersionedContractByName {
-            name: String,
-            version: Option<ContractVersion>, // defaults to highest enabled version
-            entry_point: String,
-            args: String,
-        },
-        StoredVersionedContractByHash {
-            hash: String,
-            version: Option<ContractVersion>, // defaults to highest enabled version
-            entry_point: String,
-            args: String,
-        },
-        Transfer {
-            args: String,
-        },
-    }
-
-    impl From<&DeployHash> for JsonDeployHash {
-        fn from(hash: &DeployHash) -> Self {
-            JsonDeployHash(hex::encode(hash.0))
-        }
-    }
-
-    impl TryFrom<JsonDeployHash> for DeployHash {
-        type Error = Error;
-
-        fn try_from(hash: JsonDeployHash) -> Result<Self, Self::Error> {
-            let hash = Digest::from_hex(&hash.0)
-                .map_err(|error| Error::DecodeFromJson(Box::new(error)))?;
-            Ok(DeployHash(hash))
-        }
-    }
-
-    impl From<ExecutableDeployItem> for JsonExecutableDeployItem {
-        fn from(executable_deploy_item: ExecutableDeployItem) -> Self {
-            match executable_deploy_item {
-                ExecutableDeployItem::ModuleBytes { module_bytes, args } => {
-                    JsonExecutableDeployItem::ModuleBytes {
-                        module_bytes: hex::encode(&module_bytes),
-                        args: hex::encode(&args),
-                    }
-                }
-                ExecutableDeployItem::StoredContractByHash {
-                    hash,
-                    entry_point,
-                    args,
-                } => JsonExecutableDeployItem::StoredContractByHash {
-                    hash: hex::encode(&hash),
-                    entry_point,
-                    args: hex::encode(&args),
-                },
-                ExecutableDeployItem::StoredContractByName {
-                    name,
-                    entry_point,
-                    args,
-                } => JsonExecutableDeployItem::StoredContractByName {
-                    name,
-                    entry_point,
-                    args: hex::encode(&args),
-                },
-                ExecutableDeployItem::StoredVersionedContractByName {
-                    name,
-                    version,
-                    entry_point,
-                    args,
-                } => JsonExecutableDeployItem::StoredVersionedContractByName {
-                    name,
-                    version,
-                    entry_point,
-                    args: hex::encode(&args),
-                },
-                ExecutableDeployItem::StoredVersionedContractByHash {
-                    hash,
-                    version,
-                    entry_point,
-                    args,
-                } => JsonExecutableDeployItem::StoredVersionedContractByHash {
-                    hash: hex::encode(&hash),
-                    version,
-                    entry_point,
-                    args: hex::encode(&args),
-                },
-                ExecutableDeployItem::Transfer { args } => JsonExecutableDeployItem::Transfer {
-                    args: hex::encode(&args),
-                },
-            }
-        }
-    }
-
-    impl TryFrom<JsonExecutableDeployItem> for ExecutableDeployItem {
-        type Error = Error;
-        fn try_from(value: JsonExecutableDeployItem) -> Result<Self, Self::Error> {
-            let executable_deploy_item = match value {
-                JsonExecutableDeployItem::ModuleBytes { module_bytes, args } => {
-                    ExecutableDeployItem::ModuleBytes {
-                        module_bytes: hex::decode(&module_bytes)?,
-                        args: hex::decode(&args)?,
-                    }
-                }
-                JsonExecutableDeployItem::StoredContractByHash {
-                    hash,
-                    entry_point,
-                    args,
-                } => ExecutableDeployItem::StoredContractByHash {
-                    hash: hex::decode(&hash)?.as_slice().try_into()?,
-                    entry_point,
-                    args: hex::decode(&args)?,
-                },
-                JsonExecutableDeployItem::StoredContractByName {
-                    name,
-                    entry_point,
-                    args,
-                } => ExecutableDeployItem::StoredContractByName {
-                    name,
-                    entry_point,
-                    args: hex::decode(&args)?,
-                },
-                JsonExecutableDeployItem::StoredVersionedContractByName {
-                    name,
-                    version,
-                    entry_point,
-                    args,
-                } => ExecutableDeployItem::StoredVersionedContractByName {
-                    name,
-                    version,
-                    entry_point,
-                    args: hex::decode(&args)?,
-                },
-                JsonExecutableDeployItem::StoredVersionedContractByHash {
-                    hash,
-                    version,
-                    entry_point,
-                    args,
-                } => ExecutableDeployItem::StoredVersionedContractByHash {
-                    hash: hex::decode(&hash)?.as_slice().try_into()?,
-                    version,
-                    entry_point,
-                    args: hex::decode(&args)?,
-                },
-                JsonExecutableDeployItem::Transfer { args } => ExecutableDeployItem::Transfer {
-                    args: hex::decode(&args)?,
-                },
-            };
-            Ok(executable_deploy_item)
-        }
-    }
-
-    #[derive(Serialize, Deserialize)]
-    struct JsonDeployHeader {
-        account: String,
-        timestamp: Timestamp,
-        ttl: TimeDiff,
-        gas_price: u64,
-        body_hash: String,
-        dependencies: Vec<JsonDeployHash>,
-        chain_name: String,
-    }
-
-    impl From<&DeployHeader> for JsonDeployHeader {
-        fn from(header: &DeployHeader) -> Self {
-            JsonDeployHeader {
-                account: header.account.to_hex(),
-                timestamp: header.timestamp,
-                ttl: header.ttl,
-                gas_price: header.gas_price,
-                body_hash: hex::encode(header.body_hash),
-                dependencies: header.dependencies.iter().map(Into::into).collect(),
-                chain_name: header.chain_name.clone(),
-            }
-        }
-    }
-
-    impl TryFrom<JsonDeployHeader> for DeployHeader {
-        type Error = Error;
-
-        fn try_from(header: JsonDeployHeader) -> Result<Self, Self::Error> {
-            let account = PublicKey::from_hex(&header.account)
-                .map_err(|error| Error::DecodeFromJson(Box::new(error)))?;
-
-            let body_hash = Digest::from_hex(&header.body_hash)
-                .map_err(|error| Error::DecodeFromJson(Box::new(error)))?;
-
-            let mut dependencies = vec![];
-            for dep in header.dependencies.into_iter() {
-                let hash = dep.try_into()?;
-                dependencies.push(hash);
-            }
-
-            Ok(DeployHeader {
-                account,
-                timestamp: header.timestamp,
-                ttl: header.ttl,
-                gas_price: header.gas_price,
-                body_hash,
-                dependencies,
-                chain_name: header.chain_name,
-            })
-        }
-    }
-
-    #[derive(Serialize, Deserialize)]
-    pub(super) struct JsonApproval {
-        signer: String,
-        signature: String,
-    }
-
-    impl From<&Approval> for JsonApproval {
-        fn from(approval: &Approval) -> Self {
-            JsonApproval {
-                signer: approval.signer.to_hex(),
-                signature: approval.signature.to_hex(),
-            }
-        }
-    }
-
-    impl TryFrom<JsonApproval> for Approval {
-        type Error = Error;
-
-        fn try_from(approval: JsonApproval) -> Result<Self, Self::Error> {
-            let signer = PublicKey::from_hex(&approval.signer)
-                .map_err(|error| Error::DecodeFromJson(Box::new(error)))?;
-            let signature = Signature::from_hex(&approval.signature)
-                .map_err(|error| Error::DecodeFromJson(Box::new(error)))?;
-            Ok(Approval { signer, signature })
-        }
-    }
-
-    #[derive(Serialize, Deserialize)]
-    pub(super) struct JsonDeploy {
-        hash: JsonDeployHash,
-        header: JsonDeployHeader,
-        payment: JsonExecutableDeployItem,
-        session: JsonExecutableDeployItem,
-        approvals: Vec<JsonApproval>,
-    }
-
-    impl From<&Deploy> for JsonDeploy {
-        fn from(deploy: &Deploy) -> Self {
-            JsonDeploy {
-                hash: (&deploy.hash).into(),
-                header: (&deploy.header).into(),
-                payment: deploy.payment.clone().into(),
-                session: deploy.session.clone().into(),
-                approvals: deploy.approvals.iter().map(JsonApproval::from).collect(),
-            }
-        }
-    }
-
-    impl TryFrom<JsonDeploy> for Deploy {
-        type Error = Error;
-
-        fn try_from(deploy: JsonDeploy) -> Result<Self, Self::Error> {
-            let mut approvals = vec![];
-            for json_approval in deploy.approvals.into_iter() {
-                let approval = Approval::try_from(json_approval)?;
-                approvals.push(approval);
-            }
-            Ok(Deploy {
-                hash: deploy.hash.try_into()?,
-                header: deploy.header.try_into()?,
-                payment: deploy.payment.try_into()?,
-                session: deploy.session.try_into()?,
-                approvals,
-            })
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
@@ -860,7 +580,7 @@ mod tests {
     }
 
     #[test]
-    fn serde_roundtrip() {
+    fn msgpack_roundtrip() {
         let mut rng = TestRng::new();
         let deploy = Deploy::random(&mut rng);
         let serialized = rmp_serde::to_vec(&deploy).unwrap();

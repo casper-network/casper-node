@@ -7,7 +7,6 @@ use http::Response;
 use hyper::Body;
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use tracing::info;
 use warp_json_rpc::Builder;
 
@@ -34,8 +33,8 @@ pub struct GetBlockParams {
 pub struct GetBlockResult {
     /// The RPC API version.
     pub api_version: Version,
-    /// JSON-encoded block.
-    pub block: Option<Value>,
+    /// The block, if found.
+    pub block: Option<Block>,
 }
 
 /// "chain_get_block" RPC.
@@ -64,7 +63,7 @@ impl RpcWithOptionalParamsExt for GetBlock {
             // Return the result.
             let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
-                block: maybe_block.map(|block| block.to_json()),
+                block: maybe_block,
             };
             Ok(response_builder.success(result)?)
         }

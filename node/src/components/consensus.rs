@@ -25,7 +25,7 @@ use crate::{
     types::{ProtoBlock, Timestamp},
 };
 pub use config::Config;
-pub(crate) use consensus_protocol::BlockContext;
+pub(crate) use consensus_protocol::{BlockContext, EraEnd};
 use derive_more::From;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 use hex_fmt::HexFmt;

@@ -7,6 +7,7 @@ use std::{
     hash::{Hash, Hasher},
     iter,
     path::Path,
+    result::Result as StdResult,
 };
 
 use datasize::DataSize;
@@ -20,7 +21,10 @@ use pem::Pem;
 #[cfg(test)]
 use rand::RngCore;
 use rand::{CryptoRng, Rng};
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{Deserializer, Error as SerdeError},
+    Deserialize, Serialize, Serializer,
+};
 use signature::{RandomizedSigner, Signature as Sig, Verifier};
 use untrusted::Input;
 
@@ -54,14 +58,13 @@ const SECP256K1_PEM_SECRET_KEY_TAG: &str = "EC PRIVATE KEY";
 const SECP256K1_PEM_PUBLIC_KEY_TAG: &str = "PUBLIC KEY";
 
 /// A secret or private asymmetric key.
-#[derive(DataSize, Serialize, Deserialize)]
+#[derive(DataSize)]
 pub enum SecretKey {
     /// Ed25519 secret key.
     #[data_size(skip)] // Manually verified to have no data on the heap.
     Ed25519(ed25519::SecretKey),
     /// secp256k1 secret key.
     #[data_size(skip)] // Manually verified to have no data on the heap.
-    #[serde(with = "secp256k1_secret_key_serde")]
     Secp256k1(k256::SecretKey),
 }
 
@@ -198,7 +201,6 @@ impl SecretKey {
         SecretKey::new_secp256k1(bytes)
     }
 
-    #[cfg(test)]
     fn tag(&self) -> u8 {
         match self {
             SecretKey::Ed25519(_) => ED25519_TAG,
@@ -374,54 +376,25 @@ impl Display for SecretKey {
     }
 }
 
-/// Helper module required for serialization and deserialization of `k256::SecretKey`, as it doesn't
-/// implement serde `Serialize` and `Deserialize`.
-mod secp256k1_secret_key_serde {
-    use std::fmt::{self, Formatter};
-
-    use serde::{
-        de::{Deserializer, Error as SerdeError, Visitor},
-        Serializer,
-    };
-
-    pub(super) fn serialize<S: Serializer>(
-        secret_key: &k256::SecretKey,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        serializer.serialize_bytes(secret_key.as_bytes())
+impl Serialize for SecretKey {
+    fn serialize<S: Serializer>(&self, serializer: S) -> StdResult<S::Ok, S::Error> {
+        serialize(self, serializer)
     }
+}
 
-    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<k256::SecretKey, D::Error> {
-        struct SecretKeyVisitor;
-
-        impl<'de> Visitor<'de> for SecretKeyVisitor {
-            type Value = k256::SecretKey;
-
-            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-                formatter.write_str("a secp256k1 secret key as 32 bytes")
-            }
-
-            fn visit_bytes<E: SerdeError>(self, bytes: &[u8]) -> Result<k256::SecretKey, E> {
-                k256::SecretKey::from_bytes(bytes).map_err(|_| {
-                    SerdeError::custom("failed to deserialize bytes to a secp256k1 secret key")
-                })
-            }
-        }
-
-        deserializer.deserialize_bytes(SecretKeyVisitor)
+impl<'de> Deserialize<'de> for SecretKey {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
+        deserialize(deserializer)
     }
 }
 
 /// A public asymmetric key.
-#[derive(Clone, Copy, DataSize, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, DataSize, Eq, PartialEq)]
 pub enum PublicKey {
     /// Ed25519 public key.
     #[data_size(skip)] // Manually verified to have no data on the heap.
     Ed25519(ed25519::PublicKey),
     /// secp256k1 public key.
-    #[serde(with = "secp256k1_public_key_serde")]
     #[data_size(skip)] // Manually verified to have no data on the heap.
     Secp256k1(k256::PublicKey),
 }
@@ -531,35 +504,13 @@ impl PublicKey {
 
     /// Converts the public key to hex, where the first byte represents the algorithm tag.
     pub fn to_hex(&self) -> String {
-        let bytes = iter::once(&self.tag())
-            .chain(self.as_ref())
-            .copied()
-            .collect::<Vec<u8>>();
-        hex::encode(bytes)
+        to_hex(self)
     }
 
     /// Tries to decode a public key from its hex-representation.  The hex format should be as
     /// produced by `PublicKey::to_hex()`.
     pub fn from_hex<T: AsRef<[u8]>>(input: T) -> Result<Self> {
-        let mut tag = [0u8; 1];
-        hex::decode_to_slice(&input.as_ref()[..2], tag.as_mut())?;
-
-        match tag[0] {
-            ED25519_TAG => {
-                let mut bytes = [0u8; Self::ED25519_LENGTH];
-                hex::decode_to_slice(&input.as_ref()[2..], bytes.as_mut())?;
-                Self::new_ed25519(bytes)
-            }
-            SECP256K1_TAG => {
-                let mut bytes = [0u8; Self::SECP256K1_LENGTH];
-                hex::decode_to_slice(&input.as_ref()[2..], bytes.as_mut())?;
-                Self::new_secp256k1(bytes)
-            }
-            _ => Err(Error::AsymmetricKey(format!(
-                "invalid tag.  Expected {} or {}, got {}",
-                ED25519_TAG, SECP256K1_TAG, tag[0]
-            ))),
-        }
+        from_hex(input)
     }
 
     /// Generates a random instance using a `TestRng`.
@@ -777,42 +728,15 @@ impl From<&SecretKey> for PublicKey {
     }
 }
 
-/// Helper module required for serialization and deserialization of `k256::PublicKey`, as it doesn't
-/// implement serde `Serialize` and `Deserialize`.
-mod secp256k1_public_key_serde {
-    use std::fmt::{self, Formatter};
-
-    use serde::{
-        de::{Deserializer, Error as SerdeError, Visitor},
-        Serializer,
-    };
-
-    pub(super) fn serialize<S: Serializer>(
-        public_key: &k256::PublicKey,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        serializer.serialize_bytes(public_key.as_bytes())
+impl Serialize for PublicKey {
+    fn serialize<S: Serializer>(&self, serializer: S) -> StdResult<S::Ok, S::Error> {
+        serialize(self, serializer)
     }
+}
 
-    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<k256::PublicKey, D::Error> {
-        struct PublicKeyVisitor;
-
-        impl<'de> Visitor<'de> for PublicKeyVisitor {
-            type Value = k256::PublicKey;
-
-            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-                formatter.write_str("a secp256k1 public key as 33 bytes")
-            }
-
-            fn visit_bytes<E: SerdeError>(self, bytes: &[u8]) -> Result<k256::PublicKey, E> {
-                k256::PublicKey::from_bytes(bytes)
-                    .ok_or_else(|| SerdeError::invalid_length(bytes.len(), &self))
-            }
-        }
-
-        deserializer.deserialize_bytes(PublicKeyVisitor)
+impl<'de> Deserialize<'de> for PublicKey {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
+        deserialize(deserializer)
     }
 }
 
@@ -856,25 +780,16 @@ pub fn generate_secp256k1_keypair() -> (SecretKey, PublicKey) {
     (secret_key, public_key)
 }
 
-// This is inside a private module so that the generated `BigArray` does not form part of this
-// crate's public API, and hence also doesn't appear in the rustdocs.
-mod big_array {
-    use serde_big_array::big_array;
-
-    big_array! { BigArray; }
-}
-
 /// A signature of given data.
-#[derive(Clone, Copy, DataSize, Serialize, Deserialize)]
+#[derive(Clone, Copy, DataSize)]
 pub enum Signature {
     /// Ed25519 signature.
     //
     // This is held as a byte array rather than an `ed25519_dalek::Signature` as that type doesn't
     // implement `AsRef` amongst other common traits.  In order to implement these common traits,
     // it is convenient and cheap to use `signature.as_ref()`.
-    Ed25519(#[serde(with = "big_array::BigArray")] [u8; ed25519::SIGNATURE_LENGTH]),
+    Ed25519([u8; ed25519::SIGNATURE_LENGTH]),
     /// secp256k1 signature.
-    #[serde(with = "secp256k1_signature_serde")]
     #[data_size(skip)] // Manually verified to have no data on the heap.
     Secp256k1(Secp256k1Signature),
 }
@@ -1046,46 +961,183 @@ impl Display for Signature {
     }
 }
 
-/// Helper module required for serialization and deserialization of `Secp256k1Signature`, as it
-/// doesn't implement serde `Serialize` and `Deserialize`.
-mod secp256k1_signature_serde {
-    use std::{
-        convert::TryFrom,
-        fmt::{self, Formatter},
-    };
+impl Serialize for Signature {
+    fn serialize<S: Serializer>(&self, serializer: S) -> StdResult<S::Ok, S::Error> {
+        serialize(self, serializer)
+    }
+}
 
-    use k256::ecdsa::Signature as Secp256k1Signature;
-    use serde::{
-        de::{Deserializer, Error as SerdeError, Visitor},
-        Serializer,
-    };
+impl<'de> Deserialize<'de> for Signature {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
+        deserialize(deserializer)
+    }
+}
 
-    pub(super) fn serialize<S: Serializer>(
-        signature: &Secp256k1Signature,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        serializer.serialize_bytes(signature.as_ref())
+trait AsymmetricType {
+    fn t_as_ref(&self) -> &[u8];
+    fn t_tag(&self) -> u8;
+    fn t_ed25519_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self>
+    where
+        Self: Sized;
+    fn t_secp256k1_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self>
+    where
+        Self: Sized;
+}
+
+impl AsymmetricType for SecretKey {
+    fn t_as_ref(&self) -> &[u8] {
+        self.as_secret_slice()
     }
 
-    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<Secp256k1Signature, D::Error> {
-        struct SignatureVisitor;
+    fn t_tag(&self) -> u8 {
+        self.tag()
+    }
 
-        impl<'de> Visitor<'de> for SignatureVisitor {
-            type Value = Secp256k1Signature;
+    fn t_ed25519_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self> {
+        Self::ed25519_from_bytes(bytes)
+    }
 
-            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-                formatter.write_str("a secp256k1 signature as 64 bytes")
-            }
+    fn t_secp256k1_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self> {
+        Self::secp256k1_from_bytes(bytes)
+    }
+}
 
-            fn visit_bytes<E: SerdeError>(self, bytes: &[u8]) -> Result<Secp256k1Signature, E> {
-                Secp256k1Signature::try_from(bytes)
-                    .map_err(|error| SerdeError::custom(error.to_string()))
+impl AsymmetricType for PublicKey {
+    fn t_as_ref(&self) -> &[u8] {
+        self.as_ref()
+    }
+
+    fn t_tag(&self) -> u8 {
+        self.tag()
+    }
+
+    fn t_ed25519_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self> {
+        Self::ed25519_from_bytes(bytes)
+    }
+
+    fn t_secp256k1_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self> {
+        Self::secp256k1_from_bytes(bytes)
+    }
+}
+
+impl AsymmetricType for Signature {
+    fn t_as_ref(&self) -> &[u8] {
+        self.as_ref()
+    }
+
+    fn t_tag(&self) -> u8 {
+        self.tag()
+    }
+
+    fn t_ed25519_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self> {
+        Self::ed25519_from_bytes(bytes)
+    }
+
+    fn t_secp256k1_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self> {
+        Self::secp256k1_from_bytes(bytes)
+    }
+}
+
+/// Converts `A` to hex, where the first byte represents the algorithm tag.
+fn to_hex<A: AsymmetricType>(value: &A) -> String {
+    let bytes = iter::once(&value.t_tag())
+        .chain(value.t_as_ref())
+        .copied()
+        .collect::<Vec<u8>>();
+    hex::encode(bytes)
+}
+
+/// Tries to decode `A` from its hex-representation.  The hex format should be as produced by
+/// `A::to_hex()`.
+fn from_hex<A: AsymmetricType, T: AsRef<[u8]>>(input: T) -> Result<A> {
+    let mut tag = [0u8; 1];
+    hex::decode_to_slice(&input.as_ref()[..2], tag.as_mut())?;
+
+    match tag[0] {
+        ED25519_TAG => {
+            let bytes = hex::decode(&input.as_ref()[2..])?;
+            A::t_ed25519_from_bytes(&bytes)
+        }
+        SECP256K1_TAG => {
+            let bytes = hex::decode(&input.as_ref()[2..])?;
+            A::t_secp256k1_from_bytes(&bytes)
+        }
+        _ => Err(Error::AsymmetricKey(format!(
+            "invalid tag.  Expected {} or {}, got {}",
+            ED25519_TAG, SECP256K1_TAG, tag[0]
+        ))),
+    }
+}
+
+/// Used to serialize and deserialize asymmetric key types where the (de)serializer is not a
+/// human-readable type.
+///
+/// The wrapped contents are the result of calling `t_as_ref()` on the type.
+#[derive(Serialize, Deserialize)]
+enum AsymmetricTypeAsBytes<'a> {
+    Ed25519(&'a [u8]),
+    Secp256k1(&'a [u8]),
+}
+
+impl<'a> From<&'a SecretKey> for AsymmetricTypeAsBytes<'a> {
+    fn from(secret_key: &'a SecretKey) -> Self {
+        match secret_key {
+            SecretKey::Ed25519(ed25519) => AsymmetricTypeAsBytes::Ed25519(ed25519.as_ref()),
+            SecretKey::Secp256k1(secp256k1) => {
+                AsymmetricTypeAsBytes::Secp256k1(secp256k1.as_bytes().as_slice())
             }
         }
+    }
+}
 
-        deserializer.deserialize_bytes(SignatureVisitor)
+impl<'a> From<&'a PublicKey> for AsymmetricTypeAsBytes<'a> {
+    fn from(public_key: &'a PublicKey) -> Self {
+        match public_key {
+            PublicKey::Ed25519(ed25519) => AsymmetricTypeAsBytes::Ed25519(ed25519.as_ref()),
+            PublicKey::Secp256k1(secp256k1) => AsymmetricTypeAsBytes::Secp256k1(secp256k1.as_ref()),
+        }
+    }
+}
+
+impl<'a> From<&'a Signature> for AsymmetricTypeAsBytes<'a> {
+    fn from(signature: &'a Signature) -> Self {
+        match signature {
+            Signature::Ed25519(ed25519) => AsymmetricTypeAsBytes::Ed25519(ed25519.as_ref()),
+            Signature::Secp256k1(secp256k1) => AsymmetricTypeAsBytes::Secp256k1(secp256k1.as_ref()),
+        }
+    }
+}
+
+fn serialize<'a, T, S>(value: &'a T, serializer: S) -> StdResult<S::Ok, S::Error>
+where
+    T: AsymmetricType,
+    AsymmetricTypeAsBytes<'a>: From<&'a T>,
+    S: Serializer,
+{
+    if serializer.is_human_readable() {
+        return to_hex(value).serialize(serializer);
+    }
+
+    AsymmetricTypeAsBytes::from(value).serialize(serializer)
+}
+
+fn deserialize<'de, T: AsymmetricType, D: Deserializer<'de>>(
+    deserializer: D,
+) -> StdResult<T, D::Error> {
+    if deserializer.is_human_readable() {
+        let hex_string = String::deserialize(deserializer)?;
+        let value = from_hex(hex_string.as_bytes()).map_err(D::Error::custom)?;
+        return Ok(value);
+    }
+
+    let as_bytes = AsymmetricTypeAsBytes::deserialize(deserializer)?;
+    match as_bytes {
+        AsymmetricTypeAsBytes::Ed25519(raw_bytes) => {
+            T::t_ed25519_from_bytes(raw_bytes).map_err(D::Error::custom)
+        }
+        AsymmetricTypeAsBytes::Secp256k1(raw_bytes) => {
+            T::t_secp256k1_from_bytes(raw_bytes).map_err(D::Error::custom)
+        }
     }
 }
 
@@ -1166,8 +1218,15 @@ mod tests {
     type OpenSSLPublicKey = PKey<Public>;
 
     fn secret_key_serialization_roundtrip(secret_key: SecretKey) {
+        // Try to/from MsgPack.
         let serialized = rmp_serde::to_vec(&secret_key).unwrap();
         let deserialized: SecretKey = rmp_serde::from_read_ref(&serialized).unwrap();
+        assert_eq!(secret_key.as_secret_slice(), deserialized.as_secret_slice());
+        assert_eq!(secret_key.tag(), deserialized.tag());
+
+        // Try to/from JSON.
+        let serialized = serde_json::to_vec_pretty(&secret_key).unwrap();
+        let deserialized: SecretKey = serde_json::from_slice(&serialized).unwrap();
         assert_eq!(secret_key.as_secret_slice(), deserialized.as_secret_slice());
         assert_eq!(secret_key.tag(), deserialized.tag());
     }
@@ -1213,8 +1272,15 @@ mod tests {
     }
 
     fn public_key_serialization_roundtrip(public_key: PublicKey) {
+        // Try to/from MsgPack.
         let serialized = rmp_serde::to_vec(&public_key).unwrap();
         let deserialized = rmp_serde::from_read_ref(&serialized).unwrap();
+        assert_eq!(public_key, deserialized);
+        assert_eq!(public_key.tag(), deserialized.tag());
+
+        // Try to/from JSON.
+        let serialized = serde_json::to_vec_pretty(&public_key).unwrap();
+        let deserialized = serde_json::from_slice(&serialized).unwrap();
         assert_eq!(public_key, deserialized);
         assert_eq!(public_key.tag(), deserialized.tag());
     }
@@ -1270,11 +1336,15 @@ mod tests {
     }
 
     fn signature_serialization_roundtrip(signature: Signature) {
-        // TODO: Why does it fail with serde_json?
-        // let serialized = serde_json::to_vec_pretty(&signature).unwrap();
-        // let deserialized: Signature = serde_json::from_slice(&serialized).unwrap();
+        // Try to/from MsgPack.
         let serialized = rmp_serde::to_vec(&signature).unwrap();
         let deserialized: Signature = rmp_serde::from_read_ref(&serialized).unwrap();
+        assert_eq!(signature, deserialized);
+        assert_eq!(signature.tag(), deserialized.tag());
+
+        // Try to/from JSON.
+        let serialized = serde_json::to_vec_pretty(&signature).unwrap();
+        let deserialized = serde_json::from_slice(&serialized).unwrap();
         assert_eq!(signature, deserialized);
         assert_eq!(signature.tag(), deserialized.tag());
     }
@@ -1433,6 +1503,16 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
             let mut rng = TestRng::new();
             let public_key = PublicKey::random_ed25519(&mut rng);
             public_key_hex_roundtrip(public_key);
+        }
+
+        #[test]
+        fn signature_serialization_roundtrip() {
+            let mut rng = TestRng::new();
+            let secret_key = SecretKey::random_ed25519(&mut rng);
+            let public_key = PublicKey::from(&secret_key);
+            let data = b"data";
+            let signature = sign(data, &secret_key, &public_key, &mut rng);
+            super::signature_serialization_roundtrip(signature);
         }
 
         #[test]
@@ -1644,6 +1724,16 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
 
             // Check the same bytes but of the right length succeeds.
             assert!(Signature::secp256k1_from_bytes(&bytes[1..]).is_ok());
+        }
+
+        #[test]
+        fn signature_key_to_and_from_hex() {
+            let mut rng = TestRng::new();
+            let secret_key = SecretKey::random_secp256k1(&mut rng);
+            let public_key = PublicKey::from(&secret_key);
+            let data = b"data";
+            let signature = sign(data, &secret_key, &public_key, &mut rng);
+            signature_hex_roundtrip(signature);
         }
 
         #[test]

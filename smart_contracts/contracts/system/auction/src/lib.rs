@@ -13,27 +13,27 @@ use casper_contract::{
 use casper_types::{
     account::AccountHash,
     auction::{
-        Auction, DelegationRate, RuntimeProvider, SeigniorageRecipients, StorageProvider,
-        SystemProvider, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
-        ARG_ERA_ID, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_SOURCE_PURSE, ARG_VALIDATOR,
-        ARG_VALIDATOR_KEYS, ARG_VALIDATOR_PUBLIC_KEYS, METHOD_ADD_BID, METHOD_BOND,
+        Auction, DelegationRate, MintProvider, RuntimeProvider, SeigniorageRecipients,
+        StorageProvider, SystemProvider, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE,
+        ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_ERA_ID, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS,
+        ARG_SOURCE_PURSE, ARG_TARGET_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_KEYS,
+        ARG_VALIDATOR_PUBLIC_KEY, ARG_VALIDATOR_PUBLIC_KEYS, METHOD_ADD_BID, METHOD_BOND,
         METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_QUASH_BID,
-        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNBOND,
-        METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
+        METHOD_READ_ERA_ID, METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_SLASH,
+        METHOD_UNBOND, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID, METHOD_WITHDRAW_DELEGATOR_REWARD,
+        METHOD_WITHDRAW_VALIDATOR_REWARD,
     },
     bytesrepr::{FromBytes, ToBytes},
+    mint::{METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD},
+    system_contract_errors,
     system_contract_errors::auction::Error,
     CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
-    Parameter, PublicKey, URef, U512,
+    Parameter, PublicKey, RuntimeArgs, TransferResult, URef, U512,
 };
 
 struct AuctionContract;
 
 impl StorageProvider for AuctionContract {
-    fn get_key(&mut self, name: &str) -> Option<Key> {
-        runtime::get_key(name)
-    }
-
     fn read<T: FromBytes + CLTyped>(&mut self, uref: URef) -> Result<Option<T>, Error> {
         Ok(storage::read(uref)?)
     }
@@ -66,6 +66,58 @@ impl SystemProvider for AuctionContract {
 impl RuntimeProvider for AuctionContract {
     fn get_caller(&self) -> AccountHash {
         runtime::get_caller()
+    }
+
+    fn get_key(&self, name: &str) -> Option<Key> {
+        runtime::get_key(name)
+    }
+
+    fn put_key(&mut self, name: &str, key: Key) {
+        runtime::put_key(name, key)
+    }
+}
+
+impl MintProvider for AuctionContract {
+    fn transfer_purse_to_account(
+        &mut self,
+        source: URef,
+        target: AccountHash,
+        amount: U512,
+    ) -> TransferResult {
+        system::transfer_from_purse_to_account(source, target, amount)
+    }
+
+    fn transfer_purse_to_purse(
+        &mut self,
+        source: URef,
+        target: URef,
+        amount: U512,
+    ) -> Result<(), ()> {
+        system::transfer_from_purse_to_purse(source, target, amount).map_err(|_| ())
+    }
+
+    fn balance(&mut self, purse: URef) -> Option<U512> {
+        system::get_balance(purse)
+    }
+
+    fn read_base_round_reward(&mut self) -> Result<U512, Error> {
+        let mint_contract = system::get_mint();
+        let runtime_args = RuntimeArgs::default();
+        let result: Result<U512, system_contract_errors::mint::Error> =
+            runtime::call_contract(mint_contract, METHOD_READ_BASE_ROUND_REWARD, runtime_args);
+        result.map_err(|_| Error::MissingValue)
+    }
+
+    fn mint(&mut self, amount: U512) -> Result<URef, Error> {
+        let mint_contract = system::get_mint();
+        let runtime_args = {
+            let mut tmp = RuntimeArgs::new();
+            tmp.insert(ARG_AMOUNT, amount);
+            tmp
+        };
+        let result: Result<URef, system_contract_errors::mint::Error> =
+            runtime::call_contract(mint_contract, METHOD_MINT, runtime_args);
+        result.map_err(|_| Error::MintReward)
     }
 }
 
@@ -202,7 +254,38 @@ pub extern "C" fn slash() {
 
 #[no_mangle]
 pub fn distribute() {
-    let _reward_factors: BTreeMap<PublicKey, u64> = runtime::get_named_arg(ARG_REWARD_FACTORS);
+    let reward_factors: BTreeMap<PublicKey, u64> = runtime::get_named_arg(ARG_REWARD_FACTORS);
+
+    AuctionContract
+        .distribute(reward_factors)
+        .unwrap_or_revert();
+
+    let cl_value = CLValue::from_t(()).unwrap_or_revert();
+    runtime::ret(cl_value)
+}
+
+#[no_mangle]
+pub fn withdraw_delegator_reward() {
+    let validator_public_key: PublicKey = runtime::get_named_arg(ARG_VALIDATOR_PUBLIC_KEY);
+    let delegator_public_key: PublicKey = runtime::get_named_arg(ARG_DELEGATOR_PUBLIC_KEY);
+    let target_purse: URef = runtime::get_named_arg(ARG_TARGET_PURSE);
+
+    AuctionContract
+        .withdraw_delegator_reward(validator_public_key, delegator_public_key, target_purse)
+        .unwrap_or_revert();
+
+    let cl_value = CLValue::from_t(()).unwrap_or_revert();
+    runtime::ret(cl_value)
+}
+
+#[no_mangle]
+pub fn withdraw_validator_reward() {
+    let validator_public_key: PublicKey = runtime::get_named_arg(ARG_VALIDATOR_PUBLIC_KEY);
+    let target_purse: URef = runtime::get_named_arg(ARG_TARGET_PURSE);
+
+    AuctionContract
+        .withdraw_validator_reward(validator_public_key, target_purse)
+        .unwrap_or_revert();
 
     let cl_value = CLValue::from_t(()).unwrap_or_revert();
     runtime::ret(cl_value)
@@ -343,6 +426,40 @@ pub fn get_entry_points() -> EntryPoints {
             },
         )],
         CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_WITHDRAW_DELEGATOR_REWARD,
+        vec![
+            Parameter::new(ARG_VALIDATOR_PUBLIC_KEY, CLType::PublicKey),
+            Parameter::new(ARG_DELEGATOR_PUBLIC_KEY, CLType::PublicKey),
+            Parameter::new(ARG_TARGET_PURSE, CLType::URef),
+        ],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_WITHDRAW_VALIDATOR_REWARD,
+        vec![
+            Parameter::new(ARG_VALIDATOR_PUBLIC_KEY, CLType::PublicKey),
+            Parameter::new(ARG_TARGET_PURSE, CLType::URef),
+        ],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_READ_ERA_ID,
+        vec![],
+        CLType::U64,
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );

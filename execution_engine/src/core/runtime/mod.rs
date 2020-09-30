@@ -1768,6 +1768,13 @@ where
                     mint_runtime.transfer(source, target, amount);
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
+            // Type: `fn read_base_round_reward() -> Result<U512, Error>`
+            mint::METHOD_READ_BASE_ROUND_REWARD => {
+                let result: U512 = mint_runtime
+                    .read_base_round_reward()
+                    .map_err(Self::reverter)?;
+                CLValue::from_t(result).map_err(Self::reverter)?
+            }
             _ => CLValue::from_t(()).map_err(Self::reverter)?,
         };
         let urefs = extract_urefs(&ret)?;
@@ -2049,10 +2056,45 @@ where
             }
             // Type: `fn distribute(reward_factors: BTreeMap<PublicKey, u64>) -> Result<(), Error>`
             auction::METHOD_DISTRIBUTE => {
-                let _reward_factors: BTreeMap<PublicKey, u64> =
+                let reward_factors: BTreeMap<PublicKey, u64> =
                     Self::get_named_argument(&runtime_args, auction::ARG_REWARD_FACTORS)?;
-
+                runtime.distribute(reward_factors).map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)?
+            }
+            // Type: `fn withdraw_delegator_reward(validator_public_key: PublicKey,
+            // delegator_public_key: PublicKey, target_purse: URef) -> Result<(), Error>`
+            auction::METHOD_WITHDRAW_DELEGATOR_REWARD => {
+                let validator_public_key: PublicKey =
+                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
+                let delegator_public_key: PublicKey =
+                    Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR_PUBLIC_KEY)?;
+                let target_purse: URef =
+                    Self::get_named_argument(&runtime_args, auction::ARG_TARGET_PURSE)?;
+                runtime
+                    .withdraw_delegator_reward(
+                        validator_public_key,
+                        delegator_public_key,
+                        target_purse,
+                    )
+                    .map_err(Self::reverter)?;
+                CLValue::from_t(()).map_err(Self::reverter)?
+            }
+            // Type: `fn withdraw_delegator_reward(validator_public_key: PublicKey, target_purse:
+            // URef) -> Result<(), Error>`
+            auction::METHOD_WITHDRAW_VALIDATOR_REWARD => {
+                let validator_public_key: PublicKey =
+                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
+                let target_purse: URef =
+                    Self::get_named_argument(&runtime_args, auction::ARG_TARGET_PURSE)?;
+                runtime
+                    .withdraw_validator_reward(validator_public_key, target_purse)
+                    .map_err(Self::reverter)?;
+                CLValue::from_t(()).map_err(Self::reverter)?
+            }
+            // Type: `fn read_era_id() -> Result<EraId, Error>`
+            auction::METHOD_READ_ERA_ID => {
+                let result = runtime.read_era_id().map_err(Self::reverter)?;
+                CLValue::from_t(result).map_err(Self::reverter)?
             }
 
             _ => CLValue::from_t(()).map_err(Self::reverter)?,
@@ -3002,6 +3044,32 @@ where
     /// Returned URef is already attenuated depending on the calling account.
     fn get_auction_contract(&self) -> ContractHash {
         self.context.protocol_data().auction()
+    }
+
+    /// Calls the `read_base_round_reward` method on the mint contract at the given mint
+    /// contract key
+    fn mint_read_base_round_reward(
+        &mut self,
+        mint_contract_hash: ContractHash,
+    ) -> Result<U512, Error> {
+        let result = self.call_contract(
+            mint_contract_hash,
+            mint::METHOD_READ_BASE_ROUND_REWARD,
+            RuntimeArgs::default(),
+        )?;
+        let reward = result.into_t()?;
+        Ok(reward)
+    }
+
+    /// Calls the `mint` method on the mint contract at the given mint
+    /// contract key
+    fn mint_mint(&mut self, mint_contract_hash: ContractHash, amount: U512) -> Result<URef, Error> {
+        let runtime_args = runtime_args! {
+            mint::ARG_AMOUNT => amount,
+        };
+        let result = self.call_contract(mint_contract_hash, mint::METHOD_MINT, runtime_args)?;
+        let result: Result<URef, system_contract_errors::mint::Error> = result.into_t()?;
+        Ok(result.map_err(system_contract_errors::Error::from)?)
     }
 
     /// Calls the "create" method on the mint contract at the given mint

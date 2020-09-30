@@ -41,7 +41,7 @@ impl Default for Config {
 pub struct Config {
     /// Address to bind to.
     pub bind_address: String,
-    /// Publically advertised address, in case the node has a different external IP.
+    /// Publicly advertised address, in case the node has a different external IP.
     ///
     /// If the port is specified as `0`, it will be replaced with the actually bound port.
     pub public_address: String,

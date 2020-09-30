@@ -4,6 +4,7 @@
 
 mod config;
 mod error;
+mod memory_metrics;
 #[cfg(test)]
 mod tests;
 
@@ -39,7 +40,8 @@ use crate::{
     effect::{
         announcements::{
             ApiServerAnnouncement, BlockExecutorAnnouncement, ConsensusAnnouncement,
-            DeployAcceptorAnnouncement, GossiperAnnouncement, NetworkAnnouncement,
+            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
+            NetworkAnnouncement,
         },
         requests::{
             ApiRequest, BlockExecutorRequest, BlockValidationRequest, ChainspecLoaderRequest,
@@ -56,6 +58,7 @@ use crate::{
 pub use config::Config;
 pub use error::Error;
 use linear_chain::LinearChain;
+use memory_metrics::MemoryMetrics;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From)]
@@ -152,6 +155,9 @@ pub enum Event {
     /// Address Gossiper announcement.
     #[from]
     AddressGossiperAnnouncement(GossiperAnnouncement<GossipedAddress>),
+    /// Linear chain announcement.
+    #[from]
+    LinearChainAnnouncement(LinearChainAnnouncement),
 }
 
 impl From<StorageRequest<Storage>> for Event {
@@ -242,6 +248,7 @@ impl Display for Event {
             Event::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
             }
+            Event::LinearChainAnnouncement(ann) => write!(f, "linear chain announcement: {}", ann),
         }
     }
 }
@@ -278,6 +285,10 @@ where
     block_executor: BlockExecutor,
     proto_block_validator: BlockValidator<ProtoBlock, NodeId>,
     linear_chain: LinearChain<NodeId>,
+
+    // Non-components.
+    #[data_size(skip)] // Never allocates heap data.
+    memory_metrics: MemoryMetrics,
 }
 
 #[cfg(test)]
@@ -313,6 +324,8 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             init_consensus_effects,
             linear_chain,
         } = config;
+
+        let memory_metrics = MemoryMetrics::new(registry.clone())?;
 
         let metrics = Metrics::new(registry.clone());
 
@@ -361,6 +374,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 block_executor,
                 proto_block_validator,
                 linear_chain,
+                memory_metrics,
             },
             effects,
         ))
@@ -630,7 +644,13 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                         reactor_event_dispatch(deploy_buffer::Event::ProposedProtoBlock(block))
                     }
                     ConsensusAnnouncement::Finalized(block) => {
-                        reactor_event_dispatch(deploy_buffer::Event::FinalizedProtoBlock(block))
+                        let mut effects = reactor_event_dispatch(
+                            deploy_buffer::Event::FinalizedProtoBlock(block.proto_block().clone()),
+                        );
+                        let reactor_event =
+                            Event::ApiServer(api_server::Event::BlockFinalized(block));
+                        effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                        effects
                     }
                     ConsensusAnnouncement::Orphaned(block) => {
                         reactor_event_dispatch(deploy_buffer::Event::OrphanedProtoBlock(block))
@@ -645,11 +665,22 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 block,
                 execution_results,
             }) => {
+                let block_hash = *block.hash();
                 let reactor_event = Event::LinearChain(linear_chain::Event::LinearChainBlock {
                     block,
-                    execution_results,
+                    execution_results: execution_results.clone(),
                 });
-                self.dispatch_event(effect_builder, rng, reactor_event)
+                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
+
+                for (deploy_hash, execution_result) in execution_results {
+                    let reactor_event = Event::ApiServer(api_server::Event::DeployProcessed {
+                        deploy_hash,
+                        block_hash,
+                        execution_result,
+                    });
+                    effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                }
+                effects
             }
             Event::DeployGossiperAnnouncement(_ann) => {
                 unreachable!("the deploy gossiper should never make an announcement")
@@ -660,7 +691,21 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                     Event::Network(small_network::Event::PeerAddressReceived(gossiped_address));
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
+            Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded {
+                block_hash,
+                block_header,
+            }) => {
+                let reactor_event = Event::ApiServer(api_server::Event::BlockAdded {
+                    block_hash,
+                    block_header,
+                });
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
         }
+    }
+
+    fn update_metrics(&mut self) {
+        self.memory_metrics.estimate(&self)
     }
 }
 
