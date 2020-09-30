@@ -309,8 +309,8 @@ where
             let now = Instant::now();
 
             // We update metrics on the first very event as well to get a good baseline.
-            if self.event_count == 0
-                || now.duration_since(self.last_metrics) >= self.event_metrics_min_delay
+            if now.duration_since(self.last_metrics) >= self.event_metrics_min_delay
+                || self.event_count == 0
             {
                 self.reactor.update_metrics();
                 self.last_metrics = now;
