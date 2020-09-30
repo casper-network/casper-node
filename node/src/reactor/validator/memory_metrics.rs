@@ -68,10 +68,6 @@ impl MemoryMetrics {
             "chainspec_loader memory usage in bytes",
         )?;
         let mem_consensus = IntGauge::new("mem_consensus", "consensus memory usage in bytes")?;
-        let mem_deploy_acceptor = IntGauge::new(
-            "mem_deploy_acceptor",
-            "deploy_acceptor memory usage in bytes",
-        )?;
         let mem_deploy_fetcher =
             IntGauge::new("mem_deploy_fetcher", "deploy_fetcher memory usage in bytes")?;
         let mem_deploy_gossiper = IntGauge::new(
@@ -107,7 +103,6 @@ impl MemoryMetrics {
         registry.register(Box::new(mem_api_server.clone()))?;
         registry.register(Box::new(mem_chainspec_loader.clone()))?;
         registry.register(Box::new(mem_consensus.clone()))?;
-        registry.register(Box::new(mem_deploy_acceptor.clone()))?;
         registry.register(Box::new(mem_deploy_fetcher.clone()))?;
         registry.register(Box::new(mem_deploy_gossiper.clone()))?;
         registry.register(Box::new(mem_deploy_buffer.clone()))?;
