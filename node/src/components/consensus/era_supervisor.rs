@@ -270,6 +270,19 @@ where
             highway.activate_validator(our_id, secret, timestamp.max(start_time))
         } else {
             info!("not voting in era {}", era_id.0);
+            if start_time >= self.node_start_time {
+                info!(
+                    "node was started at time {}, which is not earlier than the era start {}",
+                    self.node_start_time, start_time
+                );
+            } else if min_end_time < timestamp {
+                info!(
+                    "era started too long ago ({}; earliest end {}), current timestamp {}",
+                    start_time, min_end_time, timestamp
+                );
+            } else {
+                info!("not a validator; our ID: {}", our_id);
+            }
             Vec::new()
         };
 
