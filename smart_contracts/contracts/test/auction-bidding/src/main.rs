@@ -5,6 +5,7 @@ extern crate alloc;
 
 use alloc::string::String;
 
+use auction::{DelegationRate, METHOD_ADD_BID, METHOD_WITHDRAW_BID};
 use casper_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
@@ -17,8 +18,8 @@ use casper_types::{
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_ENTRY_POINT: &str = "entry_point";
-const ARG_BOND: &str = "bond";
-const ARG_UNBOND: &str = "unbond";
+const ARG_ADD_BID: &str = "add_bid";
+const ARG_WITHDRAW_BID: &str = "withdraw_bid";
 const ARG_ACCOUNT_HASH: &str = "account_hash";
 const ARG_PUBLIC_KEY: &str = "public_key";
 const TEST_BOND_FROM_MAIN_PURSE: &str = "bond-from-main-purse";
@@ -35,15 +36,15 @@ pub extern "C" fn call() {
     let command: String = runtime::get_named_arg(ARG_ENTRY_POINT);
 
     match command.as_str() {
-        ARG_BOND => bond(),
-        ARG_UNBOND => unbond(),
+        ARG_ADD_BID => add_bid(),
+        ARG_WITHDRAW_BID => withdraw_bid(),
         TEST_BOND_FROM_MAIN_PURSE => bond_from_main_purse(),
         TEST_SEED_NEW_ACCOUNT => seed_new_account(),
         _ => runtime::revert(ApiError::User(Error::UnknownCommand as u16)),
     }
 }
 
-fn bond() {
+fn add_bid() {
     let auction_contract_hash = system::get_auction();
     // Creates new purse with desired amount based on main purse and sends funds
     let amount = runtime::get_named_arg(ARG_AMOUNT);
@@ -70,15 +71,16 @@ fn bond_from_main_purse() {
 
 fn call_bond(auction: ContractHash, public_key: PublicKey, bond_amount: U512, bonding_purse: URef) {
     let args = runtime_args! {
-        auction::ARG_AMOUNT => bond_amount,
-        auction::ARG_SOURCE_PURSE => bonding_purse,
         auction::ARG_PUBLIC_KEY => public_key,
+        auction::ARG_SOURCE_PURSE => bonding_purse,
+        auction::ARG_DELEGATION_RATE => DelegationRate::from(42u8),
+        auction::ARG_AMOUNT => bond_amount,
     };
 
-    let (_purse, _amount): (URef, U512) = runtime::call_contract(auction, ARG_BOND, args);
+    let (_purse, _amount): (URef, U512) = runtime::call_contract(auction, METHOD_ADD_BID, args);
 }
 
-fn unbond() {
+fn withdraw_bid() {
     let auction_contract_hash = system::get_auction();
     let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
     let public_key: PublicKey = runtime::get_named_arg(ARG_PUBLIC_KEY);
@@ -90,7 +92,7 @@ fn call_unbond(auction: ContractHash, public_key: PublicKey, unbond_amount: U512
         ARG_AMOUNT => unbond_amount,
         ARG_PUBLIC_KEY => public_key,
     };
-    runtime::call_contract(auction, ARG_UNBOND, args)
+    runtime::call_contract(auction, METHOD_WITHDRAW_BID, args)
 }
 
 fn seed_new_account() {

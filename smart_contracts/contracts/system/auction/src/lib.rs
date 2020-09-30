@@ -17,9 +17,9 @@ use casper_types::{
         StorageProvider, SystemProvider, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
         ARG_DELEGATOR_PUBLIC_KEY, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_SOURCE_PURSE,
         ARG_TARGET_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_KEYS, ARG_VALIDATOR_PUBLIC_KEY,
-        ARG_VALIDATOR_PUBLIC_KEYS, METHOD_ADD_BID, METHOD_BOND, METHOD_DELEGATE, METHOD_DISTRIBUTE,
+        ARG_VALIDATOR_PUBLIC_KEYS, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_DISTRIBUTE,
         METHOD_QUASH_BID, METHOD_READ_ERA_ID, METHOD_READ_SEIGNIORAGE_RECIPIENTS,
-        METHOD_READ_WINNERS, METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNBOND, METHOD_UNDELEGATE,
+        METHOD_READ_WINNERS, METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE,
         METHOD_WITHDRAW_BID, METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
     },
     bytesrepr::{FromBytes, ToBytes},
@@ -217,29 +217,6 @@ pub extern "C" fn read_era_id() {
 }
 
 #[no_mangle]
-pub extern "C" fn bond() {
-    let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
-    let source = runtime::get_named_arg(ARG_SOURCE_PURSE);
-    let amount = runtime::get_named_arg(ARG_AMOUNT);
-    let result = AuctionContract
-        .bond(public_key, source, amount)
-        .unwrap_or_revert();
-    let ret = CLValue::from_t(result).unwrap_or_revert();
-    runtime::ret(ret);
-}
-
-#[no_mangle]
-pub extern "C" fn unbond() {
-    let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
-    let amount = runtime::get_named_arg(ARG_AMOUNT);
-    let result = AuctionContract
-        .unbond(public_key, amount)
-        .unwrap_or_revert();
-    let ret = CLValue::from_t(result).unwrap_or_revert();
-    runtime::ret(ret)
-}
-
-#[no_mangle]
 pub extern "C" fn slash() {
     let validator_public_keys = runtime::get_named_arg(ARG_VALIDATOR_PUBLIC_KEYS);
     AuctionContract
@@ -374,27 +351,6 @@ pub fn get_entry_points() -> EntryPoints {
 
     let entry_point = EntryPoint::new(
         METHOD_RUN_AUCTION,
-        vec![],
-        CLType::Unit,
-        EntryPointAccess::Public,
-        EntryPointType::Contract,
-    );
-    entry_points.add_entry_point(entry_point);
-
-    let entry_point = EntryPoint::new(
-        METHOD_BOND,
-        vec![
-            Parameter::new(ARG_SOURCE_PURSE, CLType::URef),
-            Parameter::new(ARG_AMOUNT, CLType::U512),
-        ],
-        CLType::Unit,
-        EntryPointAccess::Public,
-        EntryPointType::Contract,
-    );
-    entry_points.add_entry_point(entry_point);
-
-    let entry_point = EntryPoint::new(
-        METHOD_UNBOND,
         vec![],
         CLType::Unit,
         EntryPointAccess::Public,
