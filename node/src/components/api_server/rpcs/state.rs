@@ -22,8 +22,8 @@ use crate::{
 /// Params for "state_get_item" RPC request.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetItemParams {
-    /// Hex-encoded global state hash.
-    pub global_state_hash: String,
+    /// Global state hash.
+    pub global_state_hash: Digest,
     /// `casper_types::Key` as formatted string.
     pub key: String,
     /// The path components starting from the key as base.
@@ -55,20 +55,6 @@ impl RpcWithParamsExt for GetItem {
         params: Self::RequestParams,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
-            // Try to parse the global state hash from the params.
-            let global_state_hash = match Digest::from_hex(&params.global_state_hash)
-                .map_err(|error| format!("failed to parse global state hash: {}", error))
-            {
-                Ok(hash) => hash,
-                Err(error_msg) => {
-                    info!("{}", error_msg);
-                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                        ErrorCode::ParseBlockHash as i64,
-                        error_msg,
-                    ))?);
-                }
-            };
-
             // Try to parse a `casper_types::Key` from the params.
             let base_key = match Key::from_formatted_str(&params.key)
                 .map_err(|error| format!("failed to parse key: {:?}", error))
@@ -87,7 +73,7 @@ impl RpcWithParamsExt for GetItem {
             let query_result = effect_builder
                 .make_request(
                     |responder| ApiRequest::QueryGlobalState {
-                        global_state_hash,
+                        global_state_hash: params.global_state_hash,
                         base_key,
                         path: params.path,
                         responder,
@@ -139,8 +125,8 @@ impl RpcWithParamsExt for GetItem {
 /// Params for "state_get_balance" RPC request.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetBalanceParams {
-    /// Hex-encoded global state hash.
-    pub global_state_hash: String,
+    /// The global state hash.
+    pub global_state_hash: Digest,
     /// Formatted URef.
     pub purse_uref: String,
 }
@@ -170,20 +156,6 @@ impl RpcWithParamsExt for GetBalance {
         params: Self::RequestParams,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
-            // Try to parse the global state hash from the params.
-            let global_state_hash = match Digest::from_hex(&params.global_state_hash)
-                .map_err(|error| format!("failed to parse global state hash: {}", error))
-            {
-                Ok(hash) => hash,
-                Err(error_msg) => {
-                    info!("{}", error_msg);
-                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                        ErrorCode::ParseBlockHash as i64,
-                        error_msg,
-                    ))?);
-                }
-            };
-
             // Try to parse the purse's URef from the params.
             let purse_uref = match URef::from_formatted_str(&params.purse_uref)
                 .map_err(|error| format!("failed to parse purse_uref: {:?}", error))
@@ -202,7 +174,7 @@ impl RpcWithParamsExt for GetBalance {
             let balance_result = effect_builder
                 .make_request(
                     |responder| ApiRequest::GetBalance {
-                        global_state_hash,
+                        global_state_hash: params.global_state_hash,
                         purse_uref,
                         responder,
                     },

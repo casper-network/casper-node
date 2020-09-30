@@ -11,7 +11,6 @@ use http::Response;
 use hyper::Body;
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use tracing::info;
 use warp_json_rpc::Builder;
 
@@ -21,26 +20,26 @@ use super::{
 };
 use crate::{
     components::{api_server::CLIENT_API_VERSION, consensus::EraId, small_network::NodeId},
-    crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
     types::{
-        json_compatibility::ExecutionResult, Block, BlockHash, DeployHash, StatusFeed, Timestamp,
+        json_compatibility::ExecutionResult, Block, BlockHash, Deploy, DeployHash, StatusFeed,
+        Timestamp,
     },
 };
 
 /// Params for "info_get_deploy" RPC request.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetDeployParams {
-    /// Hex-encoded deploy hash.
-    pub deploy_hash: String,
+    /// The deploy hash.
+    pub deploy_hash: DeployHash,
 }
 
 /// The execution result of a single deploy.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct JsonExecutionResult {
-    /// Hex-encoded block hash.
-    pub block_hash: String,
+    /// The block hash.
+    pub block_hash: BlockHash,
     /// Execution result.
     pub result: ExecutionResult,
 }
@@ -50,8 +49,8 @@ pub struct JsonExecutionResult {
 pub struct GetDeployResult {
     /// The RPC API version.
     pub api_version: Version,
-    /// JSON-encoded deploy.
-    pub deploy: Value,
+    /// The deploy.
+    pub deploy: Deploy,
     /// The map of block hash to execution result.
     pub execution_results: Vec<JsonExecutionResult>,
 }
@@ -72,24 +71,11 @@ impl RpcWithParamsExt for GetDeploy {
         params: Self::RequestParams,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
-            // Try to parse a deploy hash from the params.
-            let deploy_hash =
-                match Digest::from_hex(&params.deploy_hash).map_err(|error| error.to_string()) {
-                    Ok(digest) => DeployHash::new(digest),
-                    Err(error_msg) => {
-                        info!("failed to get deploy: {}", error_msg);
-                        return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                            ErrorCode::ParseDeployHash as i64,
-                            error_msg,
-                        ))?);
-                    }
-                };
-
             // Try to get the deploy and metadata from storage.
             let maybe_deploy_and_metadata = effect_builder
                 .make_request(
                     |responder| ApiRequest::GetDeploy {
-                        hash: deploy_hash,
+                        hash: params.deploy_hash,
                         responder,
                     },
                     QueueKind::Api,
@@ -99,7 +85,10 @@ impl RpcWithParamsExt for GetDeploy {
             let (deploy, metadata) = match maybe_deploy_and_metadata {
                 Some((deploy, metadata)) => (deploy, metadata),
                 None => {
-                    info!("failed to get {} and metadata from storage", deploy_hash);
+                    info!(
+                        "failed to get {} and metadata from storage",
+                        params.deploy_hash
+                    );
                     return Ok(response_builder.error(warp_json_rpc::Error::custom(
                         ErrorCode::NoSuchDeploy as i64,
                         "deploy not known",
@@ -108,19 +97,15 @@ impl RpcWithParamsExt for GetDeploy {
             };
 
             // Return the result.
-            let deploy_as_json = deploy.to_json();
             let execution_results = metadata
                 .execution_results
                 .into_iter()
-                .map(|(block_hash, result)| JsonExecutionResult {
-                    block_hash: hex::encode(block_hash.as_ref()),
-                    result,
-                })
+                .map(|(block_hash, result)| JsonExecutionResult { block_hash, result })
                 .collect();
 
             let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
-                deploy: deploy_as_json,
+                deploy,
                 execution_results,
             };
             Ok(response_builder.success(result)?)
