@@ -698,7 +698,7 @@ where
         let key = contract
             .named_keys()
             .get(name)
-            .expect("should have bid purses");
+            .expect("should have named key");
         let stored_value = self.query(None, *key, &[]).expect("should query");
         let cl_value = stored_value
             .as_cl_value()
