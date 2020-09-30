@@ -876,12 +876,15 @@ fn should_calculate_era_validators_multiple_new_bids() {
 #[ignore]
 #[test]
 fn undelegated_funds_should_be_released() {
+    // TODO: investigate why this is needed for use-system-contracts but not the host-side version
+    const SYSTEM_TRANSFER_AMOUNT: u64 = 1_000_000_000;
+
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
             "target" => SYSTEM_ADDR,
-            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+            ARG_AMOUNT => U512::from(SYSTEM_TRANSFER_AMOUNT)
         },
     )
     .build();
@@ -994,12 +997,15 @@ fn undelegated_funds_should_be_released() {
 #[ignore]
 #[test]
 fn fully_undelegated_funds_should_be_released() {
+    // TODO: investigate why this is needed for use-system-contracts but not the host-side version
+    const SYSTEM_TRANSFER_AMOUNT: u64 = 1_000_000_000;
+
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
             "target" => SYSTEM_ADDR,
-            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+            ARG_AMOUNT => U512::from(SYSTEM_TRANSFER_AMOUNT)
         },
     )
     .build();
