@@ -20,11 +20,13 @@ use super::{
     RpcWithoutParamsExt,
 };
 use crate::{
-    components::{api_server::CLIENT_API_VERSION, small_network::NodeId},
+    components::{api_server::CLIENT_API_VERSION, consensus::EraId, small_network::NodeId},
     crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{json_compatibility::ExecutionResult, Block, DeployHash},
+    types::{
+        json_compatibility::ExecutionResult, Block, BlockHash, DeployHash, StatusFeed, Timestamp,
+    },
 };
 
 /// Params for "info_get_deploy" RPC request.
@@ -168,6 +170,26 @@ impl RpcWithoutParamsExt for GetPeers {
     }
 }
 
+/// Minimal info of a `Block`.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MinimalBlockInfo {
+    hash: BlockHash,
+    timestamp: Timestamp,
+    era_id: EraId,
+    height: u64,
+}
+
+impl From<Block> for MinimalBlockInfo {
+    fn from(block: Block) -> Self {
+        MinimalBlockInfo {
+            hash: *block.hash(),
+            timestamp: block.header().timestamp(),
+            era_id: block.header().era_id(),
+            height: block.header().height(),
+        }
+    }
+}
+
 /// Result for "info_get_status" RPC response.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetStatusResult {
@@ -175,8 +197,18 @@ pub struct GetStatusResult {
     pub api_version: Version,
     /// The node ID and network address of each connected peer.
     pub peers: BTreeMap<String, SocketAddr>,
-    /// The last block from the linear chain.
-    pub last_finalized_block: Option<Block>,
+    /// The minimal info of the last block from the linear chain.
+    pub last_finalized_block_info: Option<MinimalBlockInfo>,
+}
+
+impl From<StatusFeed<NodeId>> for GetStatusResult {
+    fn from(status_feed: StatusFeed<NodeId>) -> Self {
+        GetStatusResult {
+            api_version: CLIENT_API_VERSION.clone(),
+            peers: peers_hashmap_to_btreemap(status_feed.peers),
+            last_finalized_block_info: status_feed.last_finalized_block.map(Into::into),
+        }
+    }
 }
 
 /// "info_get_status" RPC.
@@ -202,63 +234,8 @@ impl RpcWithoutParamsExt for GetStatus {
                 .await;
 
             // Convert to `ResponseResult` and send.
-            let result = Self::ResponseResult {
-                api_version: CLIENT_API_VERSION.clone(),
-                peers: peers_hashmap_to_btreemap(status_feed.peers),
-                last_finalized_block: status_feed.last_finalized_block,
-            };
+            let result = Self::ResponseResult::from(status_feed);
             Ok(response_builder.success(result)?)
-        }
-        .boxed()
-    }
-}
-
-/// Result for "info_get_metrics" RPC response.
-#[derive(Serialize, Deserialize, Debug)]
-pub struct GetMetricsResult {
-    /// The RPC API version.
-    pub api_version: Version,
-    /// JSON-encoded metrics.
-    pub metrics: String,
-}
-
-/// "info_get_metrics" RPC.
-pub struct GetMetrics {}
-
-impl RpcWithoutParams for GetMetrics {
-    const METHOD: &'static str = "info_get_metrics";
-    type ResponseResult = GetMetricsResult;
-}
-
-impl RpcWithoutParamsExt for GetMetrics {
-    fn handle_request<REv: ReactorEventT>(
-        effect_builder: EffectBuilder<REv>,
-        response_builder: Builder,
-    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        async move {
-            let maybe_metrics = effect_builder
-                .make_request(
-                    |responder| ApiRequest::GetMetrics { responder },
-                    QueueKind::Api,
-                )
-                .await;
-
-            match maybe_metrics {
-                Some(metrics) => {
-                    let result = Self::ResponseResult {
-                        api_version: CLIENT_API_VERSION.clone(),
-                        metrics,
-                    };
-                    Ok(response_builder.success(result)?)
-                }
-                None => {
-                    info!("metrics not available");
-                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                        ErrorCode::MetricsNotAvailable as i64,
-                        "metrics not available",
-                    ))?);
-                }
-            }
         }
         .boxed()
     }

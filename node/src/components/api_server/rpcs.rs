@@ -38,10 +38,9 @@ enum ErrorCode {
     ParseQueryKey = 32005,
     QueryFailed = 32006,
     QueryFailedToExecute = 32007,
-    MetricsNotAvailable = 32008,
-    ParseGetBalanceURef = 32009,
-    GetBalanceFailed = 32010,
-    GetBalanceFailedToExecute = 32011,
+    ParseGetBalanceURef = 32008,
+    GetBalanceFailed = 32009,
+    GetBalanceFailedToExecute = 32010,
 }
 
 #[derive(Debug)]

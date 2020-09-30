@@ -14,6 +14,7 @@ use warp::Filter;
 use wheelbuf::WheelBuf;
 
 use super::{
+    rest_server,
     rpcs::{self, RpcWithOptionalParamsExt, RpcWithParamsExt, RpcWithoutParamsExt},
     sse_server::{self, BroadcastChannelMessage, ServerSentEvent, SSE_INITIAL_EVENT},
     Config, ReactorEventT, SseData,
@@ -29,31 +30,35 @@ pub(super) async fn run<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
     mut data_receiver: mpsc::UnboundedReceiver<SseData>,
 ) {
+    // REST filters.
+    let rest_status = rest_server::create_status_filter(effect_builder);
+    let rest_metrics = rest_server::create_metrics_filter(effect_builder);
+
     // RPC filters.
-    let put_deploy = rpcs::account::PutDeploy::create_filter(effect_builder);
-    let get_block = rpcs::chain::GetBlock::create_filter(effect_builder);
-    let get_global_state_hash = rpcs::chain::GetGlobalStateHash::create_filter(effect_builder);
-    let get_item = rpcs::state::GetItem::create_filter(effect_builder);
-    let get_balance = rpcs::state::GetBalance::create_filter(effect_builder);
-    let get_deploy = rpcs::info::GetDeploy::create_filter(effect_builder);
-    let get_peers = rpcs::info::GetPeers::create_filter(effect_builder);
-    let get_status = rpcs::info::GetStatus::create_filter(effect_builder);
-    let get_metrics = rpcs::info::GetMetrics::create_filter(effect_builder);
+    let rpc_put_deploy = rpcs::account::PutDeploy::create_filter(effect_builder);
+    let rpc_get_block = rpcs::chain::GetBlock::create_filter(effect_builder);
+    let rpc_get_global_state_hash = rpcs::chain::GetGlobalStateHash::create_filter(effect_builder);
+    let rpc_get_item = rpcs::state::GetItem::create_filter(effect_builder);
+    let rpc_get_balance = rpcs::state::GetBalance::create_filter(effect_builder);
+    let rpc_get_deploy = rpcs::info::GetDeploy::create_filter(effect_builder);
+    let rpc_get_peers = rpcs::info::GetPeers::create_filter(effect_builder);
+    let rpc_get_status = rpcs::info::GetStatus::create_filter(effect_builder);
 
     // Event stream channels and filter.
     let (broadcaster, mut new_subscriber_info_receiver, sse_filter) =
         sse_server::create_channels_and_filter();
 
     let service = warp_json_rpc::service(
-        put_deploy
-            .or(get_block)
-            .or(get_global_state_hash)
-            .or(get_item)
-            .or(get_balance)
-            .or(get_deploy)
-            .or(get_peers)
-            .or(get_status)
-            .or(get_metrics)
+        rest_status
+            .or(rest_metrics)
+            .or(rpc_put_deploy)
+            .or(rpc_get_block)
+            .or(rpc_get_global_state_hash)
+            .or(rpc_get_item)
+            .or(rpc_get_balance)
+            .or(rpc_get_deploy)
+            .or(rpc_get_peers)
+            .or(rpc_get_status)
             .or(sse_filter),
     );
 
