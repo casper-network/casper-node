@@ -143,7 +143,25 @@ curl -s -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY $API_URL/content/$BINTRAY_REPO_
 sleep 5 && echo -e "\nCalculating repo metadata on bintray..."
 curl -s -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY -H "Content-Type: application/json" --data '{"private_key": "'$BINTRAY_PK'", "passphrase": "'$BINTRAY_GPG_PASSPHRASE'"}' $API_URL/calc_metadata/$BINTRAY_REPO_URL/${PACKAGE_VERSION}
 
+echo -e "\n Fetch meta data for uploaded files"
 TEMP_DEB_FILE=uploaded_contents_debian_${PACKAGE_VERSION}.json
-curl -s -X GET -u$BINTRAY_USER:$BINTRAY_API_KEY -H "Content-Type: application/json" $API_URL/packages/$BINTRAY_REPO_URL/files?include_unpublished=1 > $TEMP_DEB_FILE.json
+curl -s -X GET -u$BINTRAY_USER:$BINTRAY_API_KEY -H "Content-Type: application/json" $API_URL/packages/$BINTRAY_REPO_URL/files?include_unpublished=1 > $TEMP_DEB_FILE
 
-cat $TEMP_DEB_FILE.json | jq -r '.[] | select (.version == "'${PACKAGE_VERSION}'") | .path'
+# checking
+DEB_FILE_NAME=$(cat $TEMP_DEB_FILE.json | jq -r '.[] | select (.version == "'${PACKAGE_VERSION}'") | .path' | sort | head -1)
+
+DEB_ASC_FILE_NAME=$(cat $TEMP_DEB_FILE.json | jq -r '.[] | select (.version == "'${PACKAGE_VERSION}'") | .path' | sort | head -2)
+
+if [[ "$DEB_FILE_NAME" =~ casper-node.*.deb$ ]]; then
+  echo "Found $DEB_FILE_NAME on bintray";
+else
+  echo "[ERRROR] Unable to find uploaded packages on bintray - missing $DEB_FILE_NAME"
+  exit 1
+fi
+
+if [[ "$DEB_ASC_FILE_NAME" =~ casper-node.*.deb.asc$ ]]; then
+  echo "Found $DEB_ASC_FILE_NAME on bintray";
+else
+  echo "[ERRROR] Unable to find uploaded packages on bintray - missing $DEB_ASC_FILE_NAME"
+  exit 1
+fi
