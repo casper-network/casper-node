@@ -96,8 +96,8 @@ impl MemoryMetrics {
                 "mem_estimator_runtime_s",
                 "time taken to estimate memory usage, in seconds",
             )
-            //  Create buckets from one nanosecond to four seconds.
-            .buckets(exponential_buckets(0.000_000_001, 2.0, 32)?),
+            //  Create buckets from one nanosecond to eight seconds.
+            .buckets(exponential_buckets(0.000_000_004, 2.0, 32)?),
         )?;
 
         registry.register(Box::new(mem_total.clone()))?;
