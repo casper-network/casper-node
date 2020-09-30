@@ -1,4 +1,5 @@
 use std::{
+    any::Any,
     collections::{BTreeMap, HashMap},
     fmt::Debug,
     iter,
@@ -312,7 +313,7 @@ where
         self.highway.deactivate_validator()
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(&self) -> &dyn Any {
         self
     }
 }
