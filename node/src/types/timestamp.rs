@@ -190,6 +190,13 @@ impl From<TimeDiff> for Duration {
 }
 
 #[cfg(test)]
+impl From<Duration> for TimeDiff {
+    fn from(duration: Duration) -> TimeDiff {
+        TimeDiff(duration.as_millis() as u64)
+    }
+}
+
+#[cfg(test)]
 impl From<u64> for Timestamp {
     fn from(arg: u64) -> Timestamp {
         Timestamp(arg)

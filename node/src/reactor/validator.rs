@@ -328,7 +328,9 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             config.gossip,
             gossiper::get_deploy_from_storage::<Deploy, Event>,
         );
-        let deploy_buffer = DeployBuffer::new(config.node.block_max_deploy_count as usize);
+        let (deploy_buffer, deploy_buffer_effects) =
+            DeployBuffer::new(event_queue, config.node.block_max_deploy_count as usize);
+        let mut effects = reactor::wrap_effects(Event::DeployBuffer, deploy_buffer_effects);
         // Post state hash is expected to be present.
         let genesis_post_state_hash = chainspec_loader
             .genesis_post_state_hash()
@@ -338,7 +340,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         let proto_block_validator = BlockValidator::new();
         let linear_chain = LinearChain::new();
 
-        let mut effects = reactor::wrap_effects(Event::Network, net_effects);
+        effects.extend(reactor::wrap_effects(Event::Network, net_effects));
         effects.extend(reactor::wrap_effects(
             Event::Consensus,
             init_consensus_effects,

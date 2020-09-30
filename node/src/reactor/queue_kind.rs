@@ -52,7 +52,7 @@ impl QueueKind {
     }
 
     /// Return weights of all possible `Queue`s.
-    pub(super) fn weights() -> Vec<(Self, NonZeroUsize)> {
+    pub(crate) fn weights() -> Vec<(Self, NonZeroUsize)> {
         QueueKind::into_enum_iter()
             .map(|q| (q, q.weight()))
             .collect()

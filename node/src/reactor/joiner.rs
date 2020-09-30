@@ -308,7 +308,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         let (net, net_effects) = SmallNetwork::new(event_queue, config.network.clone(), false)?;
 
         let linear_chain_fetcher = Fetcher::new(config.gossip);
-        let effects = reactor::wrap_effects(Event::Network, net_effects);
+        let mut effects = reactor::wrap_effects(Event::Network, net_effects);
 
         let address_gossiper = Gossiper::new_for_complete_items(config.gossip);
 
@@ -335,7 +335,12 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
 
         let deploy_acceptor = DeployAcceptor::new();
 
-        let deploy_buffer = DeployBuffer::new(config.node.block_max_deploy_count as usize);
+        let (deploy_buffer, deploy_buffer_effects) =
+            DeployBuffer::new(event_queue, config.node.block_max_deploy_count as usize);
+        effects.extend(reactor::wrap_effects(
+            Event::DeployBuffer,
+            deploy_buffer_effects,
+        ));
 
         let genesis_post_state_hash = chainspec_loader
             .genesis_post_state_hash()

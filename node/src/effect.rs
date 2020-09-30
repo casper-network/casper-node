@@ -1036,7 +1036,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests a query be executed on the Contract Runtime component.
+    /// Requests a get_balance be executed on the Contract Runtime component.
     pub(crate) async fn get_balance(
         self,
         balance_request: BalanceRequest,
