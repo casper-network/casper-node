@@ -903,7 +903,7 @@ fn undelegated_funds_should_be_released() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => BID_ACCOUNT_ADDR,
+            "target" => BID_ACCOUNT_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -922,13 +922,13 @@ fn undelegated_funds_should_be_released() {
     .build();
 
     let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
-        BID_ACCOUNT_ADDR,
+        BID_ACCOUNT_1_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => ARG_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1,
-            ARG_DELEGATOR => BID_ACCOUNT_PK,
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK,
         },
     )
     .build();
@@ -954,13 +954,13 @@ fn undelegated_funds_should_be_released() {
     }
 
     let delegator_1_undelegate_request = ExecuteRequestBuilder::standard(
-        BID_ACCOUNT_ADDR,
+        BID_ACCOUNT_1_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => ARG_UNDELEGATE,
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1,
-            ARG_DELEGATOR => BID_ACCOUNT_PK,
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK,
         },
     )
     .build();
@@ -971,7 +971,7 @@ fn undelegated_funds_should_be_released() {
         .expect_success();
 
     let delegator_1_undelegate_purse = builder
-        .get_account(BID_ACCOUNT_ADDR)
+        .get_account(BID_ACCOUNT_1_ADDR)
         .expect("should have account")
         .named_keys()
         .get(UNDELEGATE_PURSE)
@@ -1024,7 +1024,7 @@ fn fully_undelegated_funds_should_be_released() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => BID_ACCOUNT_ADDR,
+            "target" => BID_ACCOUNT_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1043,13 +1043,13 @@ fn fully_undelegated_funds_should_be_released() {
     .build();
 
     let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
-        BID_ACCOUNT_ADDR,
+        BID_ACCOUNT_1_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => ARG_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1,
-            ARG_DELEGATOR => BID_ACCOUNT_PK,
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK,
         },
     )
     .build();
@@ -1075,13 +1075,13 @@ fn fully_undelegated_funds_should_be_released() {
     }
 
     let delegator_1_undelegate_request = ExecuteRequestBuilder::standard(
-        BID_ACCOUNT_ADDR,
+        BID_ACCOUNT_1_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => ARG_UNDELEGATE,
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1,
-            ARG_DELEGATOR => BID_ACCOUNT_PK,
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK,
         },
     )
     .build();
@@ -1092,7 +1092,7 @@ fn fully_undelegated_funds_should_be_released() {
         .expect_success();
 
     let delegator_1_undelegate_purse = builder
-        .get_account(BID_ACCOUNT_ADDR)
+        .get_account(BID_ACCOUNT_1_ADDR)
         .expect("should have account")
         .named_keys()
         .get(UNDELEGATE_PURSE)
