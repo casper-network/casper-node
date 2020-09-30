@@ -1,9 +1,9 @@
 use datasize::DataSize;
 use prometheus::{exponential_buckets, Histogram, HistogramOpts, IntGauge, Registry};
 use rand::{CryptoRng, Rng};
+use tracing::debug;
 
 use super::Reactor;
-use tracing::debug;
 
 /// Metrics for memory usage.
 #[derive(Debug)]
