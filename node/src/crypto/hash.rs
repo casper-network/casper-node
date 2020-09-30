@@ -10,6 +10,7 @@ use blake2::{
     digest::{Input, VariableOutput},
     VarBlake2b,
 };
+use datasize::DataSize;
 use hex_fmt::HexFmt;
 #[cfg(test)]
 use rand::Rng;
@@ -23,7 +24,9 @@ use super::Error;
 use crate::testing::TestRng;
 
 /// The hash digest; a wrapped `u8` array.
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Default)]
+#[derive(
+    Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Default,
+)]
 pub struct Digest([u8; Digest::LENGTH]);
 
 impl Digest {

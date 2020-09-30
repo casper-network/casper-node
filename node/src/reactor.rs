@@ -34,6 +34,7 @@ use std::{
     mem,
 };
 
+use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use prometheus::{self, IntCounter, Registry};
 use rand::{CryptoRng, Rng};
@@ -59,8 +60,10 @@ pub type Scheduler<Ev> = WeightedRoundRobin<Ev, QueueKind>;
 /// The event queue handle is how almost all parts of the application interact with the reactor
 /// outside of the normal event loop. It gives different parts a chance to schedule messages that
 /// stem from things like external IO.
-#[derive(Debug)]
-pub struct EventQueueHandle<REv: 'static>(&'static Scheduler<REv>);
+#[derive(DataSize, Debug)]
+pub struct EventQueueHandle<REv>(&'static Scheduler<REv>)
+where
+    REv: 'static;
 
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `R` and `Ev` otherwise.
 impl<REv> Clone for EventQueueHandle<REv> {

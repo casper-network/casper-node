@@ -1,11 +1,16 @@
 //! Home of the Auction contract's [`Error`] type.
 use alloc::vec::Vec;
-use core::result::Result as StdResult;
+use core::{
+    convert::{TryFrom, TryInto},
+    result,
+};
 
 use failure::Fail;
 
-use crate::{bytesrepr, CLType, CLTyped};
-use bytesrepr::{ToBytes, U8_SERIALIZED_LENGTH};
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    CLType, CLTyped,
+};
 
 /// Errors which can occur while executing the Auction contract.
 #[derive(Fail, Debug, Copy, Clone, PartialEq, Eq)]
@@ -75,6 +80,17 @@ pub enum Error {
     /// Attempted to bond with a stake which was too small.
     #[fail(display = "Bond is too small")]
     BondTooSmall = 20,
+    /// Raised when rewards are to be distributed to delegators, but the validator has no
+    /// delegations.
+    #[fail(display = "Validators has not received any delegations")]
+    MissingDelegations = 21,
+    /// The validators returned by the consensus component should match
+    /// current era validators when distributing rewards.
+    #[fail(display = "Mismatched era validator sets to distribute rewards")]
+    MismatchedEraValidators = 22,
+    /// Failed to mint reward tokens
+    #[fail(display = "Failed to mint rewards")]
+    MintReward,
 }
 
 impl CLTyped for Error {
@@ -83,14 +99,66 @@ impl CLTyped for Error {
     }
 }
 
+// This error type is not intended to be used by third party crates.
+#[doc(hidden)]
+pub struct TryFromU8ForError(());
+
+// This conversion is not intended to be used by third party crates.
+#[doc(hidden)]
+impl TryFrom<u8> for Error {
+    type Error = TryFromU8ForError;
+
+    fn try_from(value: u8) -> result::Result<Self, Self::Error> {
+        match value {
+            d if d == Error::MissingKey as u8 => Ok(Error::MissingKey),
+            d if d == Error::InvalidKeyVariant as u8 => Ok(Error::InvalidKeyVariant),
+            d if d == Error::MissingValue as u8 => Ok(Error::MissingValue),
+            d if d == Error::Serialization as u8 => Ok(Error::Serialization),
+            d if d == Error::Transfer as u8 => Ok(Error::Transfer),
+            d if d == Error::InvalidAmount as u8 => Ok(Error::InvalidAmount),
+            d if d == Error::BidNotFound as u8 => Ok(Error::BidNotFound),
+            d if d == Error::ValidatorNotFound as u8 => Ok(Error::ValidatorNotFound),
+            d if d == Error::DelegatorNotFound as u8 => Ok(Error::DelegatorNotFound),
+            d if d == Error::Storage as u8 => Ok(Error::Storage),
+            d if d == Error::Bonding as u8 => Ok(Error::Bonding),
+            d if d == Error::Unbonding as u8 => Ok(Error::Unbonding),
+            d if d == Error::ReleaseFounderStake as u8 => Ok(Error::ReleaseFounderStake),
+            d if d == Error::GetBalance as u8 => Ok(Error::GetBalance),
+            d if d == Error::InvalidContext as u8 => Ok(Error::InvalidContext),
+            d if d == Error::ValidatorFundsLocked as u8 => Ok(Error::ValidatorFundsLocked),
+            d if d == Error::InvalidCaller as u8 => Ok(Error::InvalidCaller),
+            d if d == Error::BondNotFound as u8 => Ok(Error::BondNotFound),
+            d if d == Error::CreatePurseFailed as u8 => Ok(Error::CreatePurseFailed),
+            d if d == Error::UnbondTooLarge as u8 => Ok(Error::UnbondTooLarge),
+            d if d == Error::BondTooSmall as u8 => Ok(Error::BondTooSmall),
+            d if d == Error::MissingDelegations as u8 => Ok(Error::MissingDelegations),
+            d if d == Error::MismatchedEraValidators as u8 => Ok(Error::MismatchedEraValidators),
+            d if d == Error::MintReward as u8 => Ok(Error::MintReward),
+            _ => Err(TryFromU8ForError(())),
+        }
+    }
+}
+
 impl ToBytes for Error {
-    fn to_bytes(&self) -> StdResult<Vec<u8>, bytesrepr::Error> {
+    fn to_bytes(&self) -> result::Result<Vec<u8>, bytesrepr::Error> {
         let value = *self as u8;
         value.to_bytes()
     }
 
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
+    }
+}
+
+impl FromBytes for Error {
+    fn from_bytes(bytes: &[u8]) -> result::Result<(Self, &[u8]), bytesrepr::Error> {
+        let (value, rem): (u8, _) = FromBytes::from_bytes(bytes)?;
+        let error: Error = value
+            .try_into()
+            // In case an Error variant is unable to be determined it would return an
+            // Error::Formatting as if its unable to be correctly deserialized.
+            .map_err(|_| bytesrepr::Error::Formatting)?;
+        Ok((error, rem))
     }
 }
 
@@ -101,4 +169,20 @@ impl From<bytesrepr::Error> for Error {
 }
 
 /// An alias for `Result<T, auction::Error>`.
-pub type Result<T> = StdResult<T, Error>;
+pub type Result<T> = result::Result<T, Error>;
+
+// This error type is not intended to be used by third party crates.
+#[doc(hidden)]
+pub enum PurseLookupError {
+    KeyNotFound,
+    KeyUnexpectedType,
+}
+
+impl From<PurseLookupError> for Error {
+    fn from(error: PurseLookupError) -> Self {
+        match error {
+            PurseLookupError::KeyNotFound => Error::MissingKey,
+            PurseLookupError::KeyUnexpectedType => Error::InvalidKeyVariant,
+        }
+    }
+}

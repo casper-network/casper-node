@@ -3,6 +3,7 @@
 use std::{fmt, io};
 
 use ansi_term::{Color, Style};
+use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use tracing::{Event, Level, Subscriber};
@@ -18,7 +19,7 @@ use tracing_subscriber::{
 };
 
 /// Logging configuration.
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(DataSize, Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LoggingConfig {
     /// Output format for log.
@@ -43,7 +44,7 @@ impl LoggingConfig {
 /// Logging output format.
 ///
 /// Defaults to "text"".
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(DataSize, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LoggingFormat {
     /// Text format.

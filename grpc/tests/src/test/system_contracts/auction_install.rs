@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use casper_engine_test_support::{
     internal::{
         exec_with_return, ExecuteRequestBuilder, WasmTestBuilder, DEFAULT_BLOCK_TIME,
@@ -9,12 +11,12 @@ use casper_execution_engine::core::engine_state::EngineConfig;
 use casper_types::{
     account::AccountHash,
     auction::{
-        BIDS_KEY, BID_PURSES_KEY, DELEGATORS_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_PURSES_KEY,
+        BIDS_KEY, BID_PURSES_KEY, DELEGATORS_KEY, DELEGATOR_REWARD_MAP, DELEGATOR_REWARD_PURSE,
+        ERA_ID_KEY, ERA_VALIDATORS_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_PURSES_KEY,
+        VALIDATOR_REWARD_MAP, VALIDATOR_REWARD_PURSE,
     },
     runtime_args, ContractHash, RuntimeArgs, U512,
 };
-use std::collections::BTreeMap;
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const TRANSFER_AMOUNT: u64 = 250_000_000 + 1000;
@@ -22,7 +24,7 @@ const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 const DEPLOY_HASH_2: [u8; 32] = [2u8; 32];
 
 // one named_key for each validator and three for the purses
-const EXPECTED_KNOWN_KEYS_LEN: usize = 7;
+const EXPECTED_KNOWN_KEYS_LEN: usize = 11;
 
 #[ignore]
 #[test]
@@ -99,4 +101,8 @@ fn should_run_auction_install_contract() {
     assert!(named_keys.contains_key(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY));
     assert!(named_keys.contains_key(BID_PURSES_KEY));
     assert!(named_keys.contains_key(UNBONDING_PURSES_KEY));
+    assert!(named_keys.contains_key(DELEGATOR_REWARD_PURSE));
+    assert!(named_keys.contains_key(VALIDATOR_REWARD_PURSE));
+    assert!(named_keys.contains_key(DELEGATOR_REWARD_MAP));
+    assert!(named_keys.contains_key(VALIDATOR_REWARD_MAP));
 }

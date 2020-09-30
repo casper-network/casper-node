@@ -2,6 +2,7 @@
 
 use std::fmt::{self, Display, Formatter};
 
+use datasize::DataSize;
 use derive_more::From;
 use prometheus::Registry;
 use rand::{CryptoRng, Rng};
@@ -94,7 +95,7 @@ pub enum Error {
 }
 
 /// Initializer node reactor.
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 pub struct Reactor {
     pub(super) config: validator::Config,
     pub(super) chainspec_loader: ChainspecLoader,

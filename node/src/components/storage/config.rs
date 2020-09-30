@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use datasize::DataSize;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
@@ -20,7 +21,7 @@ const DEFAULT_MAX_CHAINSPEC_STORE_SIZE: usize = 1_073_741_824; // 1 GiB
 const DEFAULT_TEST_MAX_DB_SIZE: usize = 52_428_800; // 50 MiB
 
 /// On-disk storage configuration.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {

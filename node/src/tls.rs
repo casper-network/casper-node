@@ -32,6 +32,7 @@ use std::{
 };
 
 use anyhow::Context;
+use datasize::DataSize;
 use hex_fmt::HexFmt;
 use nid::Nid;
 use openssl::{
@@ -79,7 +80,7 @@ const SIGNATURE_DIGEST: Nid = Nid::SHA512;
 type SslResult<T> = Result<T, ErrorStack>;
 
 /// SHA512 hash.
-#[derive(Copy, Clone, Deserialize, Serialize)]
+#[derive(Copy, Clone, DataSize, Deserialize, Serialize)]
 struct Sha512(#[serde(with = "big_array::BigArray")] [u8; Sha512::SIZE]);
 
 impl Sha512 {
@@ -129,7 +130,7 @@ impl Sha512 {
 }
 
 /// Certificate fingerprint.
-#[derive(Copy, Clone, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Copy, Clone, DataSize, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub(crate) struct CertFingerprint(Sha512);
 
 impl Debug for CertFingerprint {
@@ -139,7 +140,7 @@ impl Debug for CertFingerprint {
 }
 
 /// Public key fingerprint.
-#[derive(Copy, Clone, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Copy, Clone, DataSize, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct KeyFingerprint(Sha512);
 
 impl Debug for KeyFingerprint {
@@ -177,9 +178,10 @@ impl Debug for Signature {
 /// TLS certificate.
 ///
 /// Thin wrapper around `X509` enabling things like Serde serialization and fingerprint caching.
-#[derive(Clone)]
+#[derive(Clone, DataSize)]
 pub struct TlsCert {
     /// The wrapped x509 certificate.
+    #[data_size(skip)] // Skip OpenSSL type.
     x509: X509,
 
     /// Cached certificate fingerprint.

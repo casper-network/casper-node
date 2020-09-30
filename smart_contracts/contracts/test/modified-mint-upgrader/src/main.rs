@@ -37,6 +37,11 @@ pub extern "C" fn transfer() {
     modified_mint::transfer();
 }
 
+#[no_mangle]
+pub extern "C" fn read_base_round_reward() {
+    modified_mint::read_base_round_reward();
+}
+
 fn upgrade_mint() -> (ContractHash, ContractVersion) {
     let mint_package_hash: ContractHash = runtime::get_key(HASH_KEY)
         .expect("should have mint")

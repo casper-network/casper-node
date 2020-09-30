@@ -1,8 +1,5 @@
-use auction::{
-    EraId, SeigniorageRecipients, UnbondingPurses, ARG_DELEGATOR, ARG_PUBLIC_KEY, AUCTION_DELAY,
-    DEFAULT_LOCKED_FUNDS_PERIOD, DEFAULT_UNBONDING_DELAY, ERA_ID_KEY, INITIAL_ERA_ID,
-    SNAPSHOT_SIZE,
-};
+use std::iter::FromIterator;
+
 use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
@@ -15,13 +12,14 @@ use casper_types::{
     self,
     account::AccountHash,
     auction::{
-        self, Bids, DelegationRate, Delegators, EraValidators, ARG_AMOUNT, ARG_DELEGATION_RATE,
-        ARG_VALIDATOR, BIDS_KEY,
+        Bids, DelegationRate, Delegators, EraId, EraValidators, SeigniorageRecipients,
+        UnbondingPurses, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
+        ARG_VALIDATOR, AUCTION_DELAY, BIDS_KEY, DEFAULT_LOCKED_FUNDS_PERIOD,
+        DEFAULT_UNBONDING_DELAY, ERA_ID_KEY, INITIAL_ERA_ID, SNAPSHOT_SIZE,
     },
     bytesrepr::FromBytes,
     runtime_args, CLTyped, ContractHash, PublicKey, RuntimeArgs, U512,
 };
-use std::iter::FromIterator;
 
 const ARG_ENTRY_POINT: &str = "entry_point";
 

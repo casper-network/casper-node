@@ -8,7 +8,7 @@ use super::{
     state::{Observation, State, Weight},
     validators::ValidatorIndex,
 };
-use crate::components::consensus::{consensus_protocol::FinalizedBlock, traits::Context};
+use crate::components::consensus::{consensus_protocol::FinalizedBlock, traits::Context, EraEnd};
 use horizon::Horizon;
 
 /// An error returned if the configured fault tolerance has been exceeded.
@@ -56,19 +56,25 @@ impl<C: Context> FinalityDetector<C> {
                 let opt_validator = highway.validators().get_by_index(vidx);
                 opt_validator.unwrap().id().clone() // Index exists, since we have votes from them.
             };
-            let new_equivocators_iter = state.get_new_equivocators(bhash).into_iter();
-            let rewards = rewards::compute_rewards(state, bhash);
-            let rewards_iter = rewards.enumerate();
             let block = state.block(bhash);
             let vote = state.vote(bhash);
+            let era_end = if state.is_terminal_block(bhash) {
+                let rewards = rewards::compute_rewards(state, bhash);
+                let rewards_iter = rewards.enumerate();
+                let faulty_iter = vote.panorama.enumerate().filter(|(_, obs)| obs.is_faulty());
+                Some(EraEnd {
+                    equivocators: faulty_iter.map(|(vidx, _)| to_id(vidx)).collect(),
+                    rewards: rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect(),
+                })
+            } else {
+                None
+            };
 
             Some(FinalizedBlock {
                 value: block.value.clone(),
-                new_equivocators: new_equivocators_iter.map(to_id).collect(),
-                rewards: rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect(),
                 timestamp: vote.timestamp,
                 height: block.height,
-                terminal: state.is_terminal_block(bhash),
+                era_end,
                 proposer: to_id(vote.creator),
             })
         }))
@@ -234,13 +240,10 @@ mod tests {
         let b2 = add_vote!(state, rng, BOB, None; a1, b1, F)?;
         let a2 = add_vote!(state, rng, ALICE, 0xA2; a1, b2, F)?;
         assert_eq!(Some(&a0), fd4.next_finalized(&state, 1.into()));
-        // A1 is the first block that sees CAROL equivocating.
-        assert_eq!(vec![CAROL], state.get_new_equivocators(&a1));
         assert_eq!(Some(&a1), fd4.next_finalized(&state, 1.into()));
         // Finalize A2. It should not report CAROL as equivocator anymore.
         let b3 = add_vote!(state, rng, BOB, None; a2, b2, F)?;
         let _a3 = add_vote!(state, rng, ALICE, None; a2, b3, F)?;
-        assert!(state.get_new_equivocators(&a2).is_empty());
         assert_eq!(Some(&a2), fd4.next_finalized(&state, 1.into()));
 
         // Test that an initial block reports equivocators as well.
@@ -251,7 +254,6 @@ mod tests {
         let a0 = add_vote!(bstate, rng, ALICE, 0xA0; N, N, F)?;
         let b0 = add_vote!(bstate, rng, BOB, None; a0, N, F)?;
         let _a1 = add_vote!(bstate, rng, ALICE, None; a0, b0, F)?;
-        assert_eq!(vec![CAROL], bstate.get_new_equivocators(&a0));
         assert_eq!(Some(&a0), fde4.next_finalized(&bstate, 1.into()));
         Ok(())
     }

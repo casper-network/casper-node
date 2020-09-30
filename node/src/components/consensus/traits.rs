@@ -3,10 +3,11 @@ use std::{
     hash::Hash,
 };
 
+use datasize::DataSize;
 use rand::{CryptoRng, Rng};
 use serde::{de::DeserializeOwned, Serialize};
 
-pub(crate) trait NodeIdT: Clone + Debug + Send + Eq + Hash + 'static {}
+pub trait NodeIdT: Clone + Debug + Send + Eq + Hash + 'static {}
 impl<I> NodeIdT for I where I: Clone + Debug + Send + Eq + Hash + 'static {}
 
 /// A validator identifier.
@@ -42,7 +43,7 @@ pub(crate) trait ValidatorSecret {
 // parameter. Split this up or replace the derives with explicit implementations.
 pub(crate) trait Context: Clone + Debug + Eq + Ord + Hash {
     /// The consensus value type, e.g. a list of transactions.
-    type ConsensusValue: ConsensusValueT;
+    type ConsensusValue: ConsensusValueT + DataSize;
     /// Unique identifiers for validators.
     type ValidatorId: ValidatorIdT;
     /// A validator's secret signing key.

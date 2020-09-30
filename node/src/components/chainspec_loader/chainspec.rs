@@ -5,6 +5,7 @@ use std::{
 };
 
 use csv::ReaderBuilder;
+use datasize::DataSize;
 use num_traits::Zero;
 #[cfg(test)]
 use rand::Rng;
@@ -26,7 +27,7 @@ use crate::{
     utils::Loadable,
 };
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, DataSize, Debug, PartialEq, Eq, Serialize, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub(crate) struct DeployConfig {
@@ -71,7 +72,7 @@ impl DeployConfig {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, DataSize, Debug, PartialEq, Eq, Serialize, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub(crate) struct HighwayConfig {
@@ -156,12 +157,14 @@ impl Loadable for Vec<GenesisAccount> {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, DataSize, PartialEq, Eq, Serialize, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub(crate) struct GenesisConfig {
     pub(crate) name: String,
     pub(crate) timestamp: Timestamp,
+    // We don't have an implementation for the semver version type, we skip it for now
+    #[data_size(skip)]
     pub(crate) protocol_version: Version,
     pub(crate) mint_installer_bytes: Vec<u8>,
     pub(crate) pos_installer_bytes: Vec<u8>,
@@ -264,14 +267,15 @@ impl GenesisConfig {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, DataSize, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ActivationPoint {
     pub(crate) rank: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, DataSize, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct UpgradePoint {
     pub(crate) activation_point: ActivationPoint,
+    #[data_size(skip)]
     pub(crate) protocol_version: Version,
     pub(crate) upgrade_installer_bytes: Option<Vec<u8>>,
     pub(crate) upgrade_installer_args: Option<Vec<u8>>,
@@ -322,7 +326,7 @@ impl UpgradePoint {
 /// A collection of configuration settings describing the state of the system at genesis and
 /// upgrades to basic system functionality (including system contracts and gas costs) occurring
 /// after genesis.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, DataSize, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Chainspec {
     pub(crate) genesis: GenesisConfig,
     pub(crate) upgrades: Vec<UpgradePoint>,

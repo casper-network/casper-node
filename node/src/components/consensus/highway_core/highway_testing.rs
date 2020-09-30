@@ -44,7 +44,6 @@ const TEST_MIN_ROUND_EXP: u8 = 12;
 const TEST_END_HEIGHT: u64 = 100000;
 pub(crate) const TEST_BLOCK_REWARD: u64 = 1_000_000_000_000;
 pub(crate) const TEST_REDUCED_BLOCK_REWARD: u64 = 200_000_000_000;
-pub(crate) const TEST_REWARD_DELAY: u64 = 8;
 
 #[derive(Clone, Eq, PartialEq)]
 enum HighwayMessage {
@@ -475,27 +474,27 @@ where
             .expect("FTT exceeded but not handled");
         for FinalizedBlock {
             value,
-            new_equivocators,
-            rewards,
             timestamp: _,
             height,
-            terminal,
+            era_end,
             proposer: _,
         } in finalized_values
         {
-            if !new_equivocators.is_empty() {
-                warn!("New equivocators detected: {:?}", new_equivocators);
-                recipient.new_equivocators(new_equivocators.into_iter());
-            }
-            if !rewards.is_empty() {
-                warn!("Rewards are not verified yet: {:?}", rewards);
-            }
             trace!(
                 "{}consensus value finalized: {:?}, height: {:?}",
-                if terminal { "last " } else { "" },
+                if era_end.is_some() { "last " } else { "" },
                 value,
                 height
             );
+            if let Some(ee) = era_end {
+                if !ee.equivocators.is_empty() {
+                    warn!("New equivocators detected: {:?}", ee.equivocators);
+                    recipient.new_equivocators(ee.equivocators);
+                }
+                if !ee.rewards.is_empty() {
+                    warn!("Rewards are not verified yet: {:?}", ee.rewards);
+                }
+            }
             recipient.push_finalized(value);
         }
 
@@ -872,7 +871,6 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                     seed,
                     TEST_BLOCK_REWARD,
                     TEST_REDUCED_BLOCK_REWARD,
-                    TEST_REWARD_DELAY,
                     TEST_MIN_ROUND_EXP,
                     TEST_END_HEIGHT,
                     Timestamp::zero(), // Length depends only on block number.

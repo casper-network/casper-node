@@ -9,6 +9,7 @@ use std::{
     hash::Hash,
 };
 
+use datasize::DataSize;
 use hex::FromHexError;
 use hex_fmt::{HexFmt, HexList};
 #[cfg(test)]
@@ -17,9 +18,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 use thiserror::Error;
 
+#[cfg(test)]
+use casper_types::auction::BLOCK_REWARD;
+
 use super::{Item, Tag, Timestamp};
 use crate::{
-    components::{consensus::EraId, storage::Value},
+    components::{
+        consensus::{self, EraId},
+        storage::Value,
+    },
     crypto::{
         asymmetric_key::{PublicKey, Signature},
         hash::{self, Digest},
@@ -63,7 +70,18 @@ pub trait BlockLike: Eq + Hash {
 
 /// A cryptographic hash identifying a `ProtoBlock`.
 #[derive(
-    Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, Default,
+    Copy,
+    Clone,
+    DataSize,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Debug,
+    Default,
 )]
 pub struct ProtoBlockHash(Digest);
 
@@ -99,7 +117,7 @@ impl Display for ProtoBlockHash {
 ///
 /// The word "proto" does _not_ refer to "protocol" or "protobuf"! It is just a prefix to highlight
 /// that this comes before a block in the linear, executed, finalized blockchain is produced.
-#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ProtoBlock {
     hash: ProtoBlockHash,
     deploys: Vec<DeployHash>,
@@ -168,59 +186,28 @@ impl BlockLike for ProtoBlock {
     }
 }
 
-/// System transactions like slashing and rewards.
-#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum SystemTransaction {
-    /// A validator has equivocated and should be slashed.
-    Slash(PublicKey),
-    /// Block reward information, in trillionths (10^-12) of the total reward for one block.
-    /// This includes the delegator reward.
-    Rewards(BTreeMap<PublicKey, u64>),
-}
+/// Equivocation and reward information to be included in the terminal finalized block.
+pub type EraEnd = consensus::EraEnd<PublicKey>;
 
-impl SystemTransaction {
-    /// Generates a random instance using a `TestRng`.
-    #[cfg(test)]
-    pub fn random(rng: &mut TestRng) -> Self {
-        if rng.gen() {
-            SystemTransaction::Slash(PublicKey::random(rng))
-        } else {
-            let count = rng.gen_range(2, 11);
-            let rewards = iter::repeat_with(|| {
-                let public_key = PublicKey::random(rng);
-                let amount = rng.gen();
-                (public_key, amount)
-            })
-            .take(count)
-            .collect();
-            SystemTransaction::Rewards(rewards)
-        }
-    }
-}
-
-impl Display for SystemTransaction {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            SystemTransaction::Slash(public_key) => write!(formatter, "slash {}", public_key),
-            SystemTransaction::Rewards(rewards) => {
-                let rewards = rewards
-                    .iter()
-                    .map(|(public_key, amount)| format!("{}: {}", public_key, amount))
-                    .collect::<Vec<_>>();
-                write!(formatter, "rewards [{}]", DisplayIter::new(rewards.iter()))
-            }
-        }
+impl Display for EraEnd {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let slashings = DisplayIter::new(&self.equivocators);
+        let rewards = DisplayIter::new(
+            self.rewards
+                .iter()
+                .map(|(public_key, amount)| format!("{}: {}", public_key, amount)),
+        );
+        write!(f, "era end: slash {}, reward {}", slashings, rewards)
     }
 }
 
 /// The piece of information that will become the content of a future block after it was finalized
 /// and before execution happened yet.
-#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FinalizedBlock {
     proto_block: ProtoBlock,
     timestamp: Timestamp,
-    system_transactions: Vec<SystemTransaction>,
-    switch_block: bool,
+    era_end: Option<EraEnd>,
     era_id: EraId,
     height: u64,
     proposer: PublicKey,
@@ -230,8 +217,7 @@ impl FinalizedBlock {
     pub(crate) fn new(
         proto_block: ProtoBlock,
         timestamp: Timestamp,
-        system_transactions: Vec<SystemTransaction>,
-        switch_block: bool,
+        era_end: Option<EraEnd>,
         era_id: EraId,
         height: u64,
         proposer: PublicKey,
@@ -239,8 +225,7 @@ impl FinalizedBlock {
         FinalizedBlock {
             proto_block,
             timestamp,
-            system_transactions,
-            switch_block,
+            era_end,
             era_id,
             height,
             proposer,
@@ -255,11 +240,6 @@ impl FinalizedBlock {
     /// The timestamp from when the proto block was proposed.
     pub(crate) fn timestamp(&self) -> Timestamp {
         self.timestamp
-    }
-
-    /// Instructions for system transactions like slashing and rewards.
-    pub(crate) fn system_transactions(&self) -> &Vec<SystemTransaction> {
-        &self.system_transactions
     }
 
     /// Returns the ID of the era this block belongs to.
@@ -283,21 +263,13 @@ impl From<BlockHeader> for FinalizedBlock {
     fn from(header: BlockHeader) -> Self {
         let proto_block = ProtoBlock::new(header.deploy_hashes().clone(), header.random_bit);
 
-        let timestamp = header.timestamp();
-        let switch_block = header.switch_block;
-        let era_id = header.era_id;
-        let height = header.height;
-        let proposer = header.proposer;
-        let system_transactions = header.system_transactions;
-
         FinalizedBlock {
             proto_block,
-            timestamp,
-            system_transactions,
-            switch_block,
-            era_id,
-            height,
-            proposer,
+            timestamp: header.timestamp,
+            era_end: header.era_end,
+            era_id: header.era_id,
+            height: header.height,
+            proposer: header.proposer,
         }
     }
 }
@@ -306,22 +278,26 @@ impl Display for FinalizedBlock {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "finalized {}block {:10} in era {:?}, height {}, deploys {:10}, random bit {}, \
-            timestamp {}, system_transactions: [{}]",
-            if self.switch_block { "switch " } else { "" },
+            "finalized block {:10} in era {:?}, height {}, deploys {:10}, random bit {}, \
+            timestamp {}",
             HexFmt(self.proto_block.hash().inner()),
             self.era_id,
             self.height,
             HexList(&self.proto_block.deploys),
             self.proto_block.random_bit,
-            self.timestamp(),
-            DisplayIter::new(self.system_transactions().iter())
-        )
+            self.timestamp,
+        )?;
+        if let Some(ee) = &self.era_end {
+            write!(formatter, ", era_end: {}", ee)?;
+        }
+        Ok(())
     }
 }
 
 /// A cryptographic hash identifying a [`Block`](struct.Block.html).
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(
+    Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug,
+)]
 pub struct BlockHash(Digest);
 
 impl BlockHash {
@@ -355,16 +331,15 @@ impl AsRef<[u8]> for BlockHash {
 }
 
 /// The header portion of a [`Block`](struct.Block.html).
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct BlockHeader {
     parent_hash: BlockHash,
     global_state_hash: Digest,
     body_hash: Digest,
     deploy_hashes: Vec<DeployHash>,
     random_bit: bool,
-    switch_block: bool,
+    era_end: Option<EraEnd>,
     timestamp: Timestamp,
-    system_transactions: Vec<SystemTransaction>,
     era_id: EraId,
     height: u64,
     proposer: PublicKey,
@@ -391,11 +366,6 @@ impl BlockHeader {
         &self.deploy_hashes
     }
 
-    /// Returns `true` if this is the last block of an era.
-    pub fn switch_block(&self) -> bool {
-        self.switch_block
-    }
-
     /// A random bit needed for initializing a future era.
     pub fn random_bit(&self) -> bool {
         self.random_bit
@@ -406,9 +376,14 @@ impl BlockHeader {
         self.timestamp
     }
 
-    /// Instructions for system transactions like slashing and rewards.
-    pub fn system_transactions(&self) -> &Vec<SystemTransaction> {
-        &self.system_transactions
+    /// Returns reward and slashing information if this is the era's last block.
+    pub fn era_end(&self) -> Option<&EraEnd> {
+        self.era_end.as_ref()
+    }
+
+    /// Returns `true` if this block is the last one in the current era.
+    pub fn switch_block(&self) -> bool {
+        self.era_end.is_some()
     }
 
     /// Era ID in which this block was created.
@@ -450,22 +425,24 @@ impl Display for BlockHeader {
         write!(
             formatter,
             "block header parent hash {}, post-state hash {}, body hash {}, deploys [{}], \
-            random bit {}, switch block {}, timestamp {}, system_transactions [{}]",
+            random bit {}, timestamp {}",
             self.parent_hash.inner(),
             self.global_state_hash,
             self.body_hash,
             DisplayIter::new(self.deploy_hashes.iter()),
             self.random_bit,
-            self.switch_block,
             self.timestamp,
-            DisplayIter::new(self.system_transactions.iter()),
-        )
+        )?;
+        if let Some(ee) = &self.era_end {
+            write!(formatter, ", era_end: {}", ee)?;
+        }
+        Ok(())
     }
 }
 
 /// A proto-block after execution, with the resulting post-state-hash.  This is the core component
 /// of the Casper linear blockchain.
-#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(DataSize, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Block {
     hash: BlockHash,
     header: BlockHeader,
@@ -493,9 +470,8 @@ impl Block {
             body_hash,
             deploy_hashes: finalized_block.proto_block.deploys,
             random_bit: finalized_block.proto_block.random_bit,
-            switch_block: finalized_block.switch_block,
+            era_end: finalized_block.era_end,
             timestamp: finalized_block.timestamp,
-            system_transactions: finalized_block.system_transactions,
             era_id,
             height,
             proposer: finalized_block.proposer,
@@ -569,11 +545,26 @@ impl Block {
 
         // TODO - make Timestamp deterministic.
         let timestamp = Timestamp::now();
-        let system_transactions_count = rng.gen_range(1, 11);
-        let system_transactions = iter::repeat_with(|| SystemTransaction::random(rng))
-            .take(system_transactions_count)
-            .collect();
-        let switch_block = rng.gen_bool(0.1);
+        let era_end = if rng.gen_bool(0.1) {
+            let equivocators_count = rng.gen_range(0, 5);
+            let rewards_count = rng.gen_range(0, 5);
+            Some(EraEnd {
+                equivocators: iter::repeat_with(|| {
+                    PublicKey::from(&SecretKey::new_ed25519(rng.gen()))
+                })
+                .take(equivocators_count)
+                .collect(),
+                rewards: iter::repeat_with(|| {
+                    let pub_key = PublicKey::from(&SecretKey::new_ed25519(rng.gen()));
+                    let reward = rng.gen_range(1, BLOCK_REWARD + 1);
+                    (pub_key, reward)
+                })
+                .take(rewards_count)
+                .collect(),
+            })
+        } else {
+            None
+        };
         let era = rng.gen_range(0, 5);
         let secret_key: SecretKey = SecretKey::new_ed25519(rng.gen());
         let public_key = PublicKey::from(&secret_key);
@@ -581,8 +572,7 @@ impl Block {
         let finalized_block = FinalizedBlock::new(
             proto_block,
             timestamp,
-            system_transactions,
-            switch_block,
+            era_end,
             EraId(era),
             era * 10 + rng.gen_range(0, 10),
             public_key,
@@ -609,7 +599,7 @@ impl Display for Block {
         write!(
             formatter,
             "executed block {}, parent hash {}, post-state hash {}, body hash {}, deploys [{}], \
-            random bit {}, timestamp {}, era_id {}, height {}, system_transactions [{}], proofs count {}",
+            random bit {}, timestamp {}, era_id {}, height {}, proofs count {}",
             self.hash.inner(),
             self.header.parent_hash.inner(),
             self.header.global_state_hash,
@@ -619,9 +609,12 @@ impl Display for Block {
             self.header.timestamp,
             self.header.era_id.0,
             self.header.height,
-            DisplayIter::new(self.header.system_transactions.iter()),
             self.proofs.len()
-        )
+        )?;
+        if let Some(ee) = &self.header.era_end {
+            write!(formatter, ", era_end: {}", ee)?;
+        }
+        Ok(())
     }
 }
 
@@ -702,45 +695,49 @@ mod json {
     }
 
     #[derive(Serialize, Deserialize)]
-    enum JsonSystemTransaction {
-        Slash(String),
-        Rewards(BTreeMap<String, u64>),
+    struct JsonEraEnd {
+        equivocators: Vec<String>,
+        rewards: BTreeMap<String, u64>,
     }
 
-    impl From<&SystemTransaction> for JsonSystemTransaction {
-        fn from(txn: &SystemTransaction) -> Self {
-            match txn {
-                SystemTransaction::Slash(public_key) => {
-                    JsonSystemTransaction::Slash(public_key.to_hex())
-                }
-                SystemTransaction::Rewards(map) => JsonSystemTransaction::Rewards(
-                    map.iter()
-                        .map(|(public_key, amount)| (public_key.to_hex(), *amount))
-                        .collect(),
-                ),
+    impl From<&EraEnd> for JsonEraEnd {
+        fn from(era_end: &EraEnd) -> Self {
+            JsonEraEnd {
+                equivocators: era_end.equivocators.iter().map(PublicKey::to_hex).collect(),
+                rewards: era_end
+                    .rewards
+                    .iter()
+                    .map(|(pub_key, amount)| (pub_key.to_hex(), *amount))
+                    .collect(),
             }
         }
     }
 
-    impl TryFrom<JsonSystemTransaction> for SystemTransaction {
+    impl TryFrom<JsonEraEnd> for EraEnd {
         type Error = Error;
 
-        fn try_from(json_txn: JsonSystemTransaction) -> Result<Self, Self::Error> {
-            match json_txn {
-                JsonSystemTransaction::Slash(hex_public_key) => Ok(SystemTransaction::Slash(
-                    PublicKey::from_hex(&hex_public_key)
-                        .map_err(|error| Error::DecodeFromJson(Box::new(error)))?,
-                )),
-                JsonSystemTransaction::Rewards(json_map) => {
-                    let mut map = BTreeMap::new();
-                    for (hex_public_key, amount) in json_map.iter() {
-                        let public_key = PublicKey::from_hex(&hex_public_key)
-                            .map_err(|error| Error::DecodeFromJson(Box::new(error)))?;
-                        let _ = map.insert(public_key, *amount);
-                    }
-                    Ok(SystemTransaction::Rewards(map))
-                }
-            }
+        fn try_from(era_end: JsonEraEnd) -> Result<Self, Self::Error> {
+            let equivocators = era_end
+                .equivocators
+                .into_iter()
+                .map(|pub_key_str| {
+                    PublicKey::from_hex(pub_key_str)
+                        .map_err(|error| Error::DecodeFromJson(Box::new(error)))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let rewards = era_end
+                .rewards
+                .into_iter()
+                .map(|(pub_key_str, amount): (String, u64)| {
+                    PublicKey::from_hex(pub_key_str)
+                        .map_err(|error| Error::DecodeFromJson(Box::new(error)))
+                        .map(|pub_key| (pub_key, amount))
+                })
+                .collect::<Result<BTreeMap<_, _>, _>>()?;
+            Ok(EraEnd {
+                equivocators,
+                rewards,
+            })
         }
     }
 
@@ -751,9 +748,8 @@ mod json {
         body_hash: String,
         deploy_hashes: Vec<String>,
         random_bit: bool,
-        switch_block: bool,
         timestamp: Timestamp,
-        system_transactions: Vec<JsonSystemTransaction>,
+        era_end: Option<JsonEraEnd>,
         era_id: EraId,
         height: u64,
         proposer: String,
@@ -771,9 +767,8 @@ mod json {
                     .map(|deploy_hash| hex::encode(deploy_hash.as_ref()))
                     .collect(),
                 random_bit: header.random_bit,
-                switch_block: header.switch_block,
                 timestamp: header.timestamp,
-                system_transactions: header.system_transactions.iter().map(Into::into).collect(),
+                era_end: header.era_end.as_ref().map(JsonEraEnd::from),
                 era_id: header.era_id,
                 height: header.height,
                 proposer: header.proposer.to_hex(),
@@ -785,12 +780,6 @@ mod json {
         type Error = Error;
 
         fn try_from(header: JsonBlockHeader) -> Result<Self, Self::Error> {
-            let mut system_transactions = vec![];
-            for json_txn in header.system_transactions {
-                let txn = json_txn.try_into()?;
-                system_transactions.push(txn);
-            }
-
             let mut deploy_hashes = vec![];
             for hex_deploy_hash in header.deploy_hashes.iter() {
                 let hash = Digest::from_hex(&hex_deploy_hash)
@@ -812,9 +801,8 @@ mod json {
                     .map_err(|error| Error::DecodeFromJson(Box::new(error)))?,
                 deploy_hashes,
                 random_bit: header.random_bit,
-                switch_block: header.switch_block,
                 timestamp: header.timestamp,
-                system_transactions,
+                era_end: header.era_end.map(EraEnd::try_from).transpose()?,
                 era_id: header.era_id,
                 height: header.height,
                 proposer,
