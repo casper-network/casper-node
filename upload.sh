@@ -148,9 +148,9 @@ TEMP_DEB_FILE=uploaded_contents_debian_${PACKAGE_VERSION}.json
 curl -s -X GET -u$BINTRAY_USER:$BINTRAY_API_KEY -H "Content-Type: application/json" $API_URL/packages/$BINTRAY_REPO_URL/files?include_unpublished=1 > $TEMP_DEB_FILE
 
 # checking
-DEB_FILE_NAME=$(cat $TEMP_DEB_FILE | jq -r '.[] | select (.version == "'${PACKAGE_VERSION}'") | .path' | sort | head -1)
+DEB_FILE_NAME=$(cat $TEMP_DEB_FILE | jq -r 'nth(1; .[] | select (.version == "'${PACKAGE_VERSION}'") ) | .path' )
 
-DEB_ASC_FILE_NAME=$(cat $TEMP_DEB_FILE | jq -r '.[] | select (.version == "'${PACKAGE_VERSION}'") | .path' | sort | head -2)
+DEB_ASC_FILE_NAME=$(cat $TEMP_DEB_FILE |  jq -r 'nth(0; .[] | select (.version == "'${PACKAGE_VERSION}'") ) | .path' )
 
 if [[ "$DEB_FILE_NAME" =~ casper-node.*.deb$ ]]; then
   echo "Found $DEB_FILE_NAME on bintray";
