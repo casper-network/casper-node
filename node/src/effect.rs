@@ -113,7 +113,7 @@ use crate::{
 };
 use announcements::{
     ApiServerAnnouncement, BlockExecutorAnnouncement, ConsensusAnnouncement,
-    DeployAcceptorAnnouncement, GossiperAnnouncement, NetworkAnnouncement,
+    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
 };
 use requests::{
     BlockExecutorRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
@@ -886,13 +886,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that a proto block has been finalized.
-    pub(crate) async fn announce_finalized_proto_block(self, proto_block: ProtoBlock)
+    pub(crate) async fn announce_finalized_block(self, finalized_block: FinalizedBlock)
     where
         REv: From<ConsensusAnnouncement>,
     {
         self.0
             .schedule(
-                ConsensusAnnouncement::Finalized(proto_block),
+                ConsensusAnnouncement::Finalized(Box::new(finalized_block)),
                 QueueKind::Regular,
             )
             .await
@@ -919,6 +919,22 @@ impl<REv> EffectBuilder<REv> {
         self.0
             .schedule(
                 ConsensusAnnouncement::Handled(Box::new(block_header)),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// The linear chain has stored a newly-created block.
+    pub(crate) async fn announce_block_added(self, block_hash: BlockHash, block_header: BlockHeader)
+    where
+        REv: From<LinearChainAnnouncement>,
+    {
+        self.0
+            .schedule(
+                LinearChainAnnouncement::BlockAdded {
+                    block_hash,
+                    block_header: Box::new(block_header),
+                },
                 QueueKind::Regular,
             )
             .await

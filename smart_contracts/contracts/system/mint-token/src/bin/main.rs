@@ -20,3 +20,8 @@ pub extern "C" fn balance() {
 pub extern "C" fn transfer() {
     mint_token::transfer();
 }
+
+#[no_mangle]
+pub extern "C" fn read_base_round_reward() {
+    mint_token::read_base_round_reward();
+}

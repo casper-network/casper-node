@@ -16,15 +16,15 @@ use blake2::{
     digest::{Input, VariableOutput},
     VarBlake2b,
 };
-use casper_types::U512;
 use datasize::DataSize;
 use fmt::Display;
 use num_traits::AsPrimitive;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
-use tracing::{error, info, trace};
+use tracing::{error, info, trace, warn};
 
 use casper_execution_engine::shared::motes::Motes;
+use casper_types::{auction::BLOCK_REWARD, U512};
 
 use crate::{
     components::{
@@ -45,13 +45,10 @@ use crate::{
         hash,
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
-    types::{BlockHeader, FinalizedBlock, ProtoBlock, SystemTransaction, Timestamp},
+    types::{BlockHeader, FinalizedBlock, ProtoBlock, Timestamp},
     utils::WithDir,
 };
 
-// We use one trillion as a block reward unit because it's large enough to allow precise
-// fractions, and small enough for many block rewards to fit into a u64.
-const BLOCK_REWARD: u64 = 1_000_000_000_000;
 /// The number of recent eras to retain. Eras older than this are dropped from memory.
 // TODO: This needs to be in sync with AUCTION_DELAY/booking_duration_millis. (Already duplicated!)
 const RETAIN_ERAS: u64 = 4;
@@ -80,11 +77,45 @@ impl Display for EraId {
     }
 }
 
-pub struct Era<I, R: Rng + CryptoRng + ?Sized> {
+pub struct Era<I, R>
+where
+    R: Rng + CryptoRng + ?Sized,
+{
     /// The consensus protocol instance.
     consensus: Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey, R>>,
     /// The height of this era's first block.
     start_height: u64,
+}
+
+impl<I, R> DataSize for Era<I, R>
+where
+    R: Rng + CryptoRng + ?Sized,
+    I: 'static,
+{
+    const IS_DYNAMIC: bool = true;
+
+    const STATIC_HEAP_SIZE: usize = 0;
+
+    #[inline]
+    fn estimate_heap_size(&self) -> usize {
+        // `DataSize` cannot be made object safe due its use of associated constants. We implement
+        // it manually here, downcasting the consensus protocol as a workaround.
+
+        let consensus_heap_size = {
+            let any_ref = self.consensus.as_any();
+
+            if let Some(highway) = any_ref.downcast_ref::<HighwayProtocol<I, HighwayContext>>() {
+                highway.estimate_heap_size()
+            } else {
+                warn!(
+                    "could not downcast consensus protocol to HighwayProtocol<I, HighwayContext> to determine heap allocation size"
+                );
+                0
+            }
+        };
+
+        consensus_heap_size + self.start_height.estimate_heap_size()
+    }
 }
 
 #[derive(DataSize)]
@@ -241,15 +272,11 @@ where
         let ftt = validators.total_weight()
             * u64::from(self.highway_config().finality_threshold_percent)
             / 100;
-        // The number of rounds after which a block reward is paid out.
-        // TODO: Make this configurable?
-        let reward_delay = 8;
         // TODO: The initial round length should be the observed median of the switch block.
         let params = Params::new(
             0, // TODO: get a proper seed.
             BLOCK_REWARD,
             BLOCK_REWARD / 5, // TODO: Make reduced block reward configurable?
-            reward_delay,
             self.highway_config().minimum_round_exponent,
             self.highway_config().minimum_era_height,
             start_time + self.highway_config().era_duration,
@@ -277,6 +304,19 @@ where
             highway.activate_validator(our_id, secret, timestamp.max(start_time))
         } else {
             info!("not voting in era {}", era_id.0);
+            if start_time >= self.node_start_time {
+                info!(
+                    "node was started at time {}, which is not earlier than the era start {}",
+                    self.node_start_time, start_time
+                );
+            } else if min_end_time < timestamp {
+                info!(
+                    "era started too long ago ({}; earliest end {}), current timestamp {}",
+                    start_time, min_end_time, timestamp
+                );
+            } else {
+                info!("not a validator; our ID: {}", our_id);
+            }
             Vec::new()
         };
 
@@ -509,37 +549,26 @@ where
                 }),
             ConsensusProtocolResult::FinalizedBlock(CpFinalizedBlock {
                 value: proto_block,
-                new_equivocators,
-                rewards,
                 timestamp,
                 height,
-                terminal,
+                era_end,
                 proposer,
             }) => {
-                // Announce the finalized proto block.
-                let mut effects = self
-                    .effect_builder
-                    .announce_finalized_proto_block(proto_block.clone())
-                    .ignore();
-                // Create instructions for slashing equivocators.
-                let mut system_transactions: Vec<_> = new_equivocators
-                    .into_iter()
-                    .map(SystemTransaction::Slash)
-                    .collect();
-                if !rewards.is_empty() {
-                    system_transactions.push(SystemTransaction::Rewards(rewards));
-                };
-                let fb = FinalizedBlock::new(
+                let finalized_block = FinalizedBlock::new(
                     proto_block,
                     timestamp,
-                    system_transactions,
-                    terminal,
+                    era_end,
                     era_id,
                     self.era_supervisor.active_eras[&era_id].start_height + height,
                     proposer,
                 );
+                // Announce the finalized proto block.
+                let mut effects = self
+                    .effect_builder
+                    .announce_finalized_block(finalized_block.clone())
+                    .ignore();
                 // Request execution of the finalized block.
-                effects.extend(self.effect_builder.execute_block(fb).ignore());
+                effects.extend(self.effect_builder.execute_block(finalized_block).ignore());
                 effects
             }
             ConsensusProtocolResult::ValidateConsensusValue(sender, proto_block) => self

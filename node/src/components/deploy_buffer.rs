@@ -24,7 +24,6 @@ use crate::{
     },
     reactor::EventQueueHandle,
     types::{DeployHash, DeployHeader, ProtoBlock, ProtoBlockHash, Timestamp},
-    Chainspec,
 };
 
 const DEPLOY_BUFFER_PRUNE_INTERVAL: Duration = Duration::from_secs(10);
@@ -49,7 +48,8 @@ pub enum Event {
     OrphanedProtoBlock(ProtoBlock),
     /// The result of the `DeployBuffer` getting the chainspec from the storage component.
     GetChainspecResult {
-        maybe_chainspec: Box<Option<Chainspec>>,
+        maybe_deploy_config: Box<Option<DeployConfig>>,
+        chainspec_version: Version,
         current_instant: Timestamp,
         past_blocks: HashSet<ProtoBlockHash>,
         responder: Responder<HashSet<DeployHash>>,
@@ -72,9 +72,10 @@ impl Display for Event {
                 write!(f, "deploy-buffer orphaned proto block {}", block)
             }
             Event::GetChainspecResult {
-                maybe_chainspec, ..
+                maybe_deploy_config,
+                ..
             } => {
-                if maybe_chainspec.is_some() {
+                if maybe_deploy_config.is_some() {
                     write!(f, "deploy-buffer got chainspec")
                 } else {
                     write!(f, "deploy-buffer failed to get chainspec")
@@ -104,6 +105,10 @@ pub(crate) struct DeployBuffer {
     pending: DeployCollection,
     proposed: ProtoBlockCollection,
     finalized: ProtoBlockCollection,
+    // We don't need the whole Chainspec here (it's also unnecessarily big), just the deploy
+    // config.
+    #[data_size(skip)]
+    chainspecs: HashMap<Version, DeployConfig>,
 }
 
 impl DeployBuffer {
@@ -120,6 +125,7 @@ impl DeployBuffer {
             pending: HashMap::new(),
             proposed: HashMap::new(),
             finalized: HashMap::new(),
+            chainspecs: HashMap::new(),
         };
         let effect_builder = EffectBuilder::new(event_queue);
         let cleanup = effect_builder
@@ -145,20 +151,59 @@ impl DeployBuffer {
         }
     }
 
-    /// Gets the chainspec from storage in order to call `remaining_deploys()`.
-    fn get_chainspec_from_storage<REv: ReactorEventT>(
+    /// Gets the chainspec from the cache or, if not cached, from the storage.
+    fn get_chainspec<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         current_instant: Timestamp,
         past_blocks: HashSet<ProtoBlockHash>,
         responder: Responder<HashSet<DeployHash>>,
-    ) -> Effects<Event> {
+    ) -> Effects<Event>
+    where
+        REv: ReactorEventT,
+    {
         // TODO - should the current protocol version be passed in here?
-        let version = Version::from((1, 0, 0));
+        let chainspec_version = Version::from((1, 0, 0));
+        let cached_chainspec = self.chainspecs.get(&chainspec_version).cloned();
+        match cached_chainspec {
+            Some(chainspec) => {
+                effect_builder
+                    .immediately()
+                    .event(move |_| Event::GetChainspecResult {
+                        maybe_deploy_config: Box::new(Some(chainspec)),
+                        chainspec_version,
+                        current_instant,
+                        past_blocks,
+                        responder,
+                    })
+            }
+            None => self.get_chainspec_from_storage(
+                effect_builder,
+                chainspec_version,
+                current_instant,
+                past_blocks,
+                responder,
+            ),
+        }
+    }
+
+    /// Gets the chainspec from storage in order to call `remaining_deploys()`.
+    fn get_chainspec_from_storage<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        chainspec_version: Version,
+        current_instant: Timestamp,
+        past_blocks: HashSet<ProtoBlockHash>,
+        responder: Responder<HashSet<DeployHash>>,
+    ) -> Effects<Event>
+    where
+        REv: From<StorageRequest<Storage>> + Send,
+    {
         effect_builder
-            .get_chainspec(version)
+            .get_chainspec(chainspec_version.clone())
             .event(move |maybe_chainspec| Event::GetChainspecResult {
-                maybe_chainspec: Box::new(maybe_chainspec),
+                maybe_deploy_config: Box::new(maybe_chainspec.map(|c| c.genesis.deploy_config)),
+                chainspec_version,
                 current_instant,
                 past_blocks,
                 responder,
@@ -311,12 +356,7 @@ where
                 past_blocks,
                 responder,
             }) => {
-                return self.get_chainspec_from_storage(
-                    effect_builder,
-                    current_instant,
-                    past_blocks,
-                    responder,
-                );
+                return self.get_chainspec(effect_builder, current_instant, past_blocks, responder);
             }
             Event::Buffer { hash, header } => self.add_deploy(hash, *header),
             Event::ProposedProtoBlock(block) => {
@@ -326,17 +366,16 @@ where
             Event::FinalizedProtoBlock(block) => self.finalized_block(*block.hash()),
             Event::OrphanedProtoBlock(block) => self.orphaned_block(*block.hash()),
             Event::GetChainspecResult {
-                maybe_chainspec,
+                maybe_deploy_config,
+                chainspec_version,
                 current_instant,
                 past_blocks,
                 responder,
             } => {
-                let chainspec = maybe_chainspec.expect("should return chainspec");
-                let deploys = self.remaining_deploys(
-                    chainspec.genesis.deploy_config,
-                    current_instant,
-                    past_blocks,
-                );
+                let deploy_config = maybe_deploy_config.expect("should return chainspec");
+                // Update chainspec cache.
+                self.chainspecs.insert(chainspec_version, deploy_config);
+                let deploys = self.remaining_deploys(deploy_config, current_instant, past_blocks);
                 return responder.respond(deploys).ignore();
             }
         }

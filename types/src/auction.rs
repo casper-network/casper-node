@@ -1,7 +1,6 @@
 //! Contains implementation of a Auction contract functionality.
 mod bid;
 mod constants;
-mod delegator;
 mod detail;
 mod era_validators;
 mod internal;
@@ -11,21 +10,23 @@ mod types;
 mod unbonding_purse;
 
 use alloc::{collections::BTreeMap, vec::Vec};
-pub use bid::{Bid, Bids};
-pub use constants::*;
-pub use delegator::{DelegatedAmounts, Delegators};
-pub use era_validators::{EraId, EraValidators, ValidatorWeights};
-pub use providers::{RuntimeProvider, StorageProvider, SystemProvider};
-pub use seigniorage_recipient::{
-    SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
-};
-pub use types::DelegationRate;
-pub use unbonding_purse::{UnbondingPurse, UnbondingPurses};
+
+use num_rational::Ratio;
 
 use crate::{
     system_contract_errors::auction::{Error, Result},
     Key, PublicKey, URef, U512,
 };
+
+pub use bid::{Bid, Bids};
+pub use constants::*;
+pub use era_validators::{EraId, EraValidators, ValidatorWeights};
+pub use providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvider};
+pub use seigniorage_recipient::{
+    SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
+};
+pub use types::*;
+pub use unbonding_purse::{UnbondingPurse, UnbondingPurses};
 
 /// Bidders mapped to their bidding purses and tokens contained therein. Delegators' tokens
 /// are kept in the validator bid purses, available for withdrawal up to the delegated number
@@ -41,7 +42,9 @@ pub const UNBONDING_PURSES_KEY: &str = "unbonding_purses";
 pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
 
 /// Bonding auction contract interface
-pub trait Auction: StorageProvider + SystemProvider + RuntimeProvider {
+pub trait Auction:
+    StorageProvider + SystemProvider + RuntimeProvider + MintProvider + Sized
+{
     /// Returns era_validators.
     ///
     /// Publicly accessible, but intended for periodic use by the PoS contract to update its own
@@ -159,29 +162,29 @@ pub trait Auction: StorageProvider + SystemProvider + RuntimeProvider {
 
         let (bonding_purse, _total_amount) = self.bond(delegator_public_key, source, amount)?;
 
-        let new_amount = {
-            let mut delegators = internal::get_delegators(self)?;
+        let new_delegation_amount =
+            detail::update_delegators(self, validator_public_key, delegator_public_key, amount)?;
 
-            let new_amount = *delegators
+        // Initialize delegator_reward_pool_map entry if it doesn't exist.
+        {
+            let mut delegator_reward_map = internal::get_delegator_reward_map(self)?;
+            delegator_reward_map
                 .entry(validator_public_key)
                 .or_default()
                 .entry(delegator_public_key)
-                .and_modify(|delegator| *delegator += amount)
-                .or_insert_with(|| amount);
+                .or_insert_with(U512::zero);
+            internal::set_delegator_reward_map(self, delegator_reward_map)?;
+        }
 
-            internal::set_delegators(self, delegators)?;
-
-            new_amount
-        };
-
-        Ok((bonding_purse, new_amount))
+        Ok((bonding_purse, new_delegation_amount))
     }
 
-    /// Removes a amount (or the entry altogether, if the remaining amount is 0) of motes from
+    /// Removes an amount of motes (or the entry altogether, if the remaining amount is 0) from
     /// the entry in delegators and calls unbond in the Mint contract to create a new unbonding
     /// purse.
     ///
-    /// Returns the new unbonding purse and the amount of remaining delegated motes.
+    /// The arguments are the delegator’s key, the validator key and quantity of motes.
+    /// The return value is the remaining bond after this quantity is subtracted.
     fn undelegate(
         &mut self,
         delegator_public_key: PublicKey,
@@ -200,12 +203,12 @@ pub trait Auction: StorageProvider + SystemProvider + RuntimeProvider {
         let mut delegators = internal::get_delegators(self)?;
         let delegators_map = delegators
             .get_mut(&validator_public_key)
-            .ok_or(Error::DelegatorNotFound)?;
+            .ok_or(Error::ValidatorNotFound)?;
 
         let new_amount = {
             let delegators_amount = delegators_map
                 .get_mut(&delegator_public_key)
-                .ok_or(Error::ValidatorNotFound)?;
+                .ok_or(Error::DelegatorNotFound)?;
 
             let new_amount = delegators_amount
                 .checked_sub(amount)
@@ -217,8 +220,22 @@ pub trait Auction: StorageProvider + SystemProvider + RuntimeProvider {
 
         if new_amount.is_zero() {
             // Inner map's mapped value should be zero as we subtracted mutable value.
-            let _value = delegators_map.remove(&validator_public_key).unwrap();
+            let _value = delegators_map
+                .remove(&validator_public_key)
+                .ok_or(Error::ValidatorNotFound)?;
             debug_assert!(_value.is_zero());
+
+            let mut outer = internal::get_delegator_reward_map(self)?;
+            let mut inner = outer
+                .remove(&validator_public_key)
+                .ok_or(Error::ValidatorNotFound)?;
+            inner
+                .remove(&delegator_public_key)
+                .ok_or(Error::DelegatorNotFound)?;
+            if !inner.is_empty() {
+                outer.insert(validator_public_key, inner);
+            };
+            internal::set_delegator_reward_map(self, outer)?;
         }
 
         internal::set_delegators(self, delegators)?;
@@ -517,6 +534,168 @@ pub trait Auction: StorageProvider + SystemProvider + RuntimeProvider {
         }
 
         Ok(())
+    }
+
+    /// Mint and distribute seigniorage rewards to validators and their delegators,
+    /// according to `reward_factors` returned by the consensus component.
+    fn distribute(&mut self, reward_factors: BTreeMap<PublicKey, u64>) -> Result<()> {
+        if self.get_caller() != SYSTEM_ACCOUNT {
+            return Err(Error::InvalidContext);
+        }
+
+        let seigniorage_recipients = self.read_seigniorage_recipients()?;
+        let base_round_reward = self.read_base_round_reward()?;
+
+        if reward_factors.keys().ne(seigniorage_recipients.keys()) {
+            return Err(Error::MismatchedEraValidators);
+        }
+
+        for (public_key, reward_factor) in reward_factors {
+            let recipient = seigniorage_recipients
+                .get(&public_key)
+                .ok_or(Error::ValidatorNotFound)?;
+
+            let total_stake = recipient.total_stake();
+            if total_stake.is_zero() {
+                // TODO: error?
+                continue;
+            }
+
+            let total_reward: Ratio<U512> = {
+                let reward_rate = Ratio::new(U512::from(reward_factor), U512::from(BLOCK_REWARD));
+                reward_rate * base_round_reward
+            };
+
+            let delegator_total_stake: U512 = recipient.delegator_total_stake();
+
+            let delegators_part: Ratio<U512> = {
+                let commission_rate = Ratio::new(
+                    U512::from(recipient.delegation_rate),
+                    U512::from(DELEGATION_RATE_DENOMINATOR),
+                );
+                let reward_multiplier: Ratio<U512> = Ratio::new(delegator_total_stake, total_stake);
+                let delegator_reward: Ratio<U512> = total_reward * reward_multiplier;
+                let commission: Ratio<U512> = delegator_reward * commission_rate;
+                delegator_reward - commission
+            };
+
+            let delegator_rewards =
+                recipient
+                    .delegators
+                    .iter()
+                    .map(|(delegator_key, delegator_stake)| {
+                        let reward_multiplier = Ratio::new(*delegator_stake, delegator_total_stake);
+                        let reward = delegators_part * reward_multiplier;
+                        (*delegator_key, reward)
+                    });
+            let total_delegator_payout: U512 =
+                detail::update_delegator_rewards(self, public_key, delegator_rewards)?;
+
+            let validators_part: Ratio<U512> = total_reward - Ratio::from(total_delegator_payout);
+            let validator_reward = validators_part.to_integer();
+            detail::update_validator_reward(self, public_key, validator_reward)?;
+
+            // TODO: add "mint into existing purse" facility
+            let validator_reward_purse = self
+                .get_key(VALIDATOR_REWARD_PURSE)
+                .ok_or(Error::MissingKey)?
+                .into_uref()
+                .ok_or(Error::InvalidKeyVariant)?;
+            let tmp_validator_reward_purse =
+                self.mint(validator_reward).map_err(|_| Error::MintReward)?;
+            self.transfer_purse_to_purse(
+                tmp_validator_reward_purse,
+                validator_reward_purse,
+                validator_reward,
+            )
+            .map_err(|_| Error::Transfer)?;
+
+            // TODO: add "mint into existing purse" facility
+            let delegator_reward_purse = self
+                .get_key(DELEGATOR_REWARD_PURSE)
+                .ok_or(Error::MissingKey)?
+                .into_uref()
+                .ok_or(Error::InvalidKeyVariant)?;
+            let tmp_delegator_reward_purse = self
+                .mint(total_delegator_payout)
+                .map_err(|_| Error::MintReward)?;
+            self.transfer_purse_to_purse(
+                tmp_delegator_reward_purse,
+                delegator_reward_purse,
+                total_delegator_payout,
+            )
+            .map_err(|_| Error::Transfer)?;
+        }
+        Ok(())
+    }
+
+    /// Allows delegators to withdraw the seigniorage rewards they have earned.
+    /// Pays out the entire accumulated amount to the destination purse.
+    fn withdraw_delegator_reward(
+        &mut self,
+        validator_public_key: PublicKey,
+        delegator_public_key: PublicKey,
+        target_purse: URef,
+    ) -> Result<U512> {
+        let mut outer: DelegatorRewardMap = internal::get_delegator_reward_map(self)?;
+        let mut inner = outer
+            .remove(&validator_public_key)
+            .ok_or(Error::ValidatorNotFound)?;
+
+        let reward_amount: &mut U512 = inner
+            .get_mut(&delegator_public_key)
+            .ok_or(Error::DelegatorNotFound)?;
+
+        let ret = *reward_amount;
+
+        if !ret.is_zero() {
+            let source_purse = self
+                .get_key(DELEGATOR_REWARD_PURSE)
+                .ok_or(Error::MissingKey)?
+                .into_uref()
+                .ok_or(Error::InvalidKeyVariant)?;
+
+            self.transfer_purse_to_purse(source_purse, target_purse, *reward_amount)
+                .map_err(|_| Error::Transfer)?;
+
+            *reward_amount = U512::zero();
+        }
+
+        outer.insert(validator_public_key, inner);
+        internal::set_delegator_reward_map(self, outer)?;
+        Ok(ret)
+    }
+
+    /// Allows validators to withdraw the seigniorage rewards they have earned.
+    /// Pays out the entire accumulated amount to the destination purse.
+    fn withdraw_validator_reward(
+        &mut self,
+        validator_public_key: PublicKey,
+        target_purse: URef,
+    ) -> Result<U512> {
+        let mut validator_reward_map = internal::get_validator_reward_map(self)?;
+
+        let reward_amount: &mut U512 = validator_reward_map
+            .get_mut(&validator_public_key)
+            .ok_or(Error::ValidatorNotFound)?;
+
+        let ret = *reward_amount;
+
+        if !ret.is_zero() {
+            let source_purse = self
+                .get_key(VALIDATOR_REWARD_PURSE)
+                .ok_or(Error::MissingKey)?
+                .into_uref()
+                .ok_or(Error::InvalidKeyVariant)?;
+
+            self.transfer_purse_to_purse(source_purse, target_purse, *reward_amount)
+                .map_err(|_| Error::Transfer)?;
+
+            *reward_amount = U512::zero();
+        }
+
+        internal::set_validator_reward_map(self, validator_reward_map)?;
+        Ok(ret)
     }
 
     /// Reads current era id.

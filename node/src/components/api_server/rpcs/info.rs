@@ -24,7 +24,7 @@ use crate::{
     crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{json_compatibility::ExecutionResult, DeployHash},
+    types::{json_compatibility::ExecutionResult, Block, DeployHash},
 };
 
 /// Params for "info_get_deploy" RPC request.
@@ -175,8 +175,8 @@ pub struct GetStatusResult {
     pub api_version: Version,
     /// The node ID and network address of each connected peer.
     pub peers: BTreeMap<String, SocketAddr>,
-    /// The last block from the linear chain, JSON-encoded.
-    pub last_finalized_block: Option<Value>,
+    /// The last block from the linear chain.
+    pub last_finalized_block: Option<Block>,
 }
 
 /// "info_get_status" RPC.
@@ -202,15 +202,10 @@ impl RpcWithoutParamsExt for GetStatus {
                 .await;
 
             // Convert to `ResponseResult` and send.
-            let peers = peers_hashmap_to_btreemap(status_feed.peers);
-            let last_finalized_block = status_feed
-                .last_finalized_block
-                .map(|block| block.to_json());
-
             let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
-                peers,
-                last_finalized_block,
+                peers: peers_hashmap_to_btreemap(status_feed.peers),
+                last_finalized_block: status_feed.last_finalized_block,
             };
             Ok(response_builder.success(result)?)
         }

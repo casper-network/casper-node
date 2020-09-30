@@ -15,8 +15,12 @@ pub const METHOD_CREATE: &str = "create";
 pub const METHOD_BALANCE: &str = "balance";
 /// Named constant for method `transfer`.
 pub const METHOD_TRANSFER: &str = "transfer";
+/// Named constant for method `read_base_round_reward`.
+pub const METHOD_READ_BASE_ROUND_REWARD: &str = "read_base_round_reward";
 
 /// Storage for mint contract hash.
 pub const HASH_KEY: &str = "mint_hash";
 /// Storage for mint access key.
 pub const ACCESS_KEY: &str = "mint_access";
+/// Storage for base round reward key.
+pub const BASE_ROUND_REWARD_KEY: &str = "mint_base_round_reward";
