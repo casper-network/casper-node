@@ -31,7 +31,6 @@ pub const RPC_API_PATH: &str = "rpc";
 /// See https://www.jsonrpc.org/specification#error_object for details.
 #[repr(i64)]
 enum ErrorCode {
-    ParseDeploy = 32000,
     ParseDeployHash = 32001,
     NoSuchDeploy = 32002,
     ParseBlockHash = 32003,

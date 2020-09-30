@@ -101,7 +101,10 @@ impl<V: Value, M: Send + Sync> Store for LmdbStore<V, M> {
             self.db,
             &serialized_id,
             &serialized_value,
-            WriteFlags::NO_OVERWRITE,
+            // TODO - this should be changed back to `WriteFlags::NO_OVERWRITE` once the mutable
+            //        data (i.e. blocks' proofs) are handled via metadata as per deploys'
+            //        execution results.
+            WriteFlags::default(),
         ) {
             Ok(()) => true,
             Err(lmdb::Error::KeyExist) => false,

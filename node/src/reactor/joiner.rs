@@ -34,7 +34,7 @@ use crate::{
     effect::{
         announcements::{
             BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, NetworkAnnouncement,
+            GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
         },
         requests::{
             BlockExecutorRequest, BlockValidationRequest, ConsensusRequest, ContractRuntimeRequest,
@@ -162,6 +162,10 @@ pub enum Event {
     /// DeployAcceptor announcement.
     #[from]
     DeployAcceptorAnnouncement(DeployAcceptorAnnouncement<NodeId>),
+
+    /// Linear chain announcement.
+    #[from]
+    LinearChainAnnouncement(LinearChainAnnouncement),
 }
 
 impl From<LinearChainRequest<NodeId>> for Event {
@@ -247,6 +251,7 @@ impl Display for Event {
             }
             Event::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
             Event::DeployBuffer(event) => write!(f, "deploy buffer: {}", event),
+            Event::LinearChainAnnouncement(ann) => write!(f, "linear chain announcement: {}", ann),
         }
     }
 }
@@ -647,6 +652,10 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 let reactor_event =
                     Event::Network(small_network::Event::PeerAddressReceived(gossiped_address));
                 self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            Event::LinearChainAnnouncement(ann) => {
+                warn!("Ignoring linear chain announcement {}", ann);
+                Effects::new()
             }
         }
     }

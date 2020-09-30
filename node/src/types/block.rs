@@ -2,8 +2,6 @@
 use std::iter;
 use std::{
     array::TryFromSliceError,
-    collections::BTreeMap,
-    convert::TryFrom,
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
     hash::Hash,
@@ -15,7 +13,6 @@ use hex_fmt::{HexFmt, HexList};
 #[cfg(test)]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value as JsonValue};
 use thiserror::Error;
 
 #[cfg(test)]
@@ -256,6 +253,52 @@ impl FinalizedBlock {
     /// Genesis child block is from era 0 and height 0.
     pub(crate) fn is_genesis_child(&self) -> bool {
         self.era_id() == EraId(0) && self.height() == 0
+    }
+
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let deploy_count = rng.gen_range(0, 11);
+        let deploy_hashes = iter::repeat_with(|| DeployHash::new(Digest::random(rng)))
+            .take(deploy_count)
+            .collect();
+        let random_bit = rng.gen();
+        let proto_block = ProtoBlock::new(deploy_hashes, random_bit);
+
+        // TODO - make Timestamp deterministic.
+        let timestamp = Timestamp::now();
+        let era_end = if rng.gen_bool(0.1) {
+            let equivocators_count = rng.gen_range(0, 5);
+            let rewards_count = rng.gen_range(0, 5);
+            Some(EraEnd {
+                equivocators: iter::repeat_with(|| {
+                    PublicKey::from(&SecretKey::new_ed25519(rng.gen()))
+                })
+                .take(equivocators_count)
+                .collect(),
+                rewards: iter::repeat_with(|| {
+                    let pub_key = PublicKey::from(&SecretKey::new_ed25519(rng.gen()));
+                    let reward = rng.gen_range(1, BLOCK_REWARD + 1);
+                    (pub_key, reward)
+                })
+                .take(rewards_count)
+                .collect(),
+            })
+        } else {
+            None
+        };
+        let era = rng.gen_range(0, 5);
+        let secret_key: SecretKey = SecretKey::new_ed25519(rng.gen());
+        let public_key = PublicKey::from(&secret_key);
+
+        FinalizedBlock::new(
+            proto_block,
+            timestamp,
+            era_end,
+            EraId(era),
+            era * 10 + rng.gen_range(0, 10),
+            public_key,
+        )
     }
 }
 
@@ -517,18 +560,6 @@ impl Block {
         self.proofs.push(proof)
     }
 
-    /// Convert the `Block` to a JSON value.
-    pub fn to_json(&self) -> JsonValue {
-        let json_block = json::JsonBlock::from(self);
-        json!(json_block)
-    }
-
-    /// Try to convert the JSON value to a `Block`.
-    pub fn from_json(input: JsonValue) -> Result<Self, Error> {
-        let json: json::JsonBlock = serde_json::from_value(input)?;
-        Block::try_from(json)
-    }
-
     fn serialize_body(body: &()) -> Result<Vec<u8>, rmp_serde::encode::Error> {
         rmp_serde::to_vec(body)
     }
@@ -536,50 +567,10 @@ impl Block {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let deploy_count = rng.gen_range(0, 11);
-        let deploy_hashes = iter::repeat_with(|| DeployHash::new(Digest::random(rng)))
-            .take(deploy_count)
-            .collect();
-        let random_bit = rng.gen();
-        let proto_block = ProtoBlock::new(deploy_hashes, random_bit);
-
-        // TODO - make Timestamp deterministic.
-        let timestamp = Timestamp::now();
-        let era_end = if rng.gen_bool(0.1) {
-            let equivocators_count = rng.gen_range(0, 5);
-            let rewards_count = rng.gen_range(0, 5);
-            Some(EraEnd {
-                equivocators: iter::repeat_with(|| {
-                    PublicKey::from(&SecretKey::new_ed25519(rng.gen()))
-                })
-                .take(equivocators_count)
-                .collect(),
-                rewards: iter::repeat_with(|| {
-                    let pub_key = PublicKey::from(&SecretKey::new_ed25519(rng.gen()));
-                    let reward = rng.gen_range(1, BLOCK_REWARD + 1);
-                    (pub_key, reward)
-                })
-                .take(rewards_count)
-                .collect(),
-            })
-        } else {
-            None
-        };
-        let era = rng.gen_range(0, 5);
-        let secret_key: SecretKey = SecretKey::new_ed25519(rng.gen());
-        let public_key = PublicKey::from(&secret_key);
-
-        let finalized_block = FinalizedBlock::new(
-            proto_block,
-            timestamp,
-            era_end,
-            EraId(era),
-            era * 10 + rng.gen_range(0, 10),
-            public_key,
-        );
-
         let parent_hash = BlockHash::new(Digest::random(rng));
         let global_state_hash = Digest::random(rng);
+        let finalized_block = FinalizedBlock::random(rng);
+
         let mut block = Block::new(parent_hash, global_state_hash, finalized_block);
 
         let signatures_count = rng.gen_range(0, 11);
@@ -658,195 +649,6 @@ impl Item for Block {
     }
 }
 
-/// This module provides structs which map to the main block types, but which are suitable for
-/// encoding to and decoding from JSON.  For all fields with binary data, this is converted to/from
-/// hex strings.
-mod json {
-    use std::convert::{TryFrom, TryInto};
-
-    use serde::{Deserialize, Serialize};
-
-    use super::*;
-    use crate::{
-        crypto::{
-            asymmetric_key::{PublicKey, Signature},
-            hash::Digest,
-        },
-        types::Timestamp,
-    };
-
-    #[derive(Serialize, Deserialize)]
-    struct JsonBlockHash(String);
-
-    impl From<&BlockHash> for JsonBlockHash {
-        fn from(hash: &BlockHash) -> Self {
-            JsonBlockHash(hex::encode(hash.0))
-        }
-    }
-
-    impl TryFrom<JsonBlockHash> for BlockHash {
-        type Error = Error;
-
-        fn try_from(hash: JsonBlockHash) -> Result<Self, Self::Error> {
-            let hash = Digest::from_hex(&hash.0)
-                .map_err(|error| Error::DecodeFromJson(Box::new(error)))?;
-            Ok(BlockHash(hash))
-        }
-    }
-
-    #[derive(Serialize, Deserialize)]
-    struct JsonEraEnd {
-        equivocators: Vec<String>,
-        rewards: BTreeMap<String, u64>,
-    }
-
-    impl From<&EraEnd> for JsonEraEnd {
-        fn from(era_end: &EraEnd) -> Self {
-            JsonEraEnd {
-                equivocators: era_end.equivocators.iter().map(PublicKey::to_hex).collect(),
-                rewards: era_end
-                    .rewards
-                    .iter()
-                    .map(|(pub_key, amount)| (pub_key.to_hex(), *amount))
-                    .collect(),
-            }
-        }
-    }
-
-    impl TryFrom<JsonEraEnd> for EraEnd {
-        type Error = Error;
-
-        fn try_from(era_end: JsonEraEnd) -> Result<Self, Self::Error> {
-            let equivocators = era_end
-                .equivocators
-                .into_iter()
-                .map(|pub_key_str| {
-                    PublicKey::from_hex(pub_key_str)
-                        .map_err(|error| Error::DecodeFromJson(Box::new(error)))
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            let rewards = era_end
-                .rewards
-                .into_iter()
-                .map(|(pub_key_str, amount): (String, u64)| {
-                    PublicKey::from_hex(pub_key_str)
-                        .map_err(|error| Error::DecodeFromJson(Box::new(error)))
-                        .map(|pub_key| (pub_key, amount))
-                })
-                .collect::<Result<BTreeMap<_, _>, _>>()?;
-            Ok(EraEnd {
-                equivocators,
-                rewards,
-            })
-        }
-    }
-
-    #[derive(Serialize, Deserialize)]
-    struct JsonBlockHeader {
-        parent_hash: String,
-        global_state_hash: String,
-        body_hash: String,
-        deploy_hashes: Vec<String>,
-        random_bit: bool,
-        timestamp: Timestamp,
-        era_end: Option<JsonEraEnd>,
-        era_id: EraId,
-        height: u64,
-        proposer: String,
-    }
-
-    impl From<&BlockHeader> for JsonBlockHeader {
-        fn from(header: &BlockHeader) -> Self {
-            JsonBlockHeader {
-                parent_hash: hex::encode(header.parent_hash),
-                global_state_hash: hex::encode(header.global_state_hash),
-                body_hash: hex::encode(header.body_hash),
-                deploy_hashes: header
-                    .deploy_hashes
-                    .iter()
-                    .map(|deploy_hash| hex::encode(deploy_hash.as_ref()))
-                    .collect(),
-                random_bit: header.random_bit,
-                timestamp: header.timestamp,
-                era_end: header.era_end.as_ref().map(JsonEraEnd::from),
-                era_id: header.era_id,
-                height: header.height,
-                proposer: header.proposer.to_hex(),
-            }
-        }
-    }
-
-    impl TryFrom<JsonBlockHeader> for BlockHeader {
-        type Error = Error;
-
-        fn try_from(header: JsonBlockHeader) -> Result<Self, Self::Error> {
-            let mut deploy_hashes = vec![];
-            for hex_deploy_hash in header.deploy_hashes.iter() {
-                let hash = Digest::from_hex(&hex_deploy_hash)
-                    .map_err(|error| Error::DecodeFromJson(Box::new(error)))?;
-                deploy_hashes.push(DeployHash::from(hash));
-            }
-
-            let proposer = PublicKey::from_hex(&header.proposer)
-                .map_err(|error| Error::DecodeFromJson(Box::new(error)))?;
-
-            Ok(BlockHeader {
-                parent_hash: BlockHash::from(
-                    Digest::from_hex(&header.parent_hash)
-                        .map_err(|error| Error::DecodeFromJson(Box::new(error)))?,
-                ),
-                global_state_hash: Digest::from_hex(&header.global_state_hash)
-                    .map_err(|error| Error::DecodeFromJson(Box::new(error)))?,
-                body_hash: Digest::from_hex(&header.body_hash)
-                    .map_err(|error| Error::DecodeFromJson(Box::new(error)))?,
-                deploy_hashes,
-                random_bit: header.random_bit,
-                timestamp: header.timestamp,
-                era_end: header.era_end.map(EraEnd::try_from).transpose()?,
-                era_id: header.era_id,
-                height: header.height,
-                proposer,
-            })
-        }
-    }
-
-    #[derive(Serialize, Deserialize)]
-    pub(super) struct JsonBlock {
-        hash: JsonBlockHash,
-        header: JsonBlockHeader,
-        proofs: Vec<String>,
-    }
-
-    impl From<&Block> for JsonBlock {
-        fn from(block: &Block) -> Self {
-            JsonBlock {
-                hash: (&block.hash).into(),
-                header: (&block.header).into(),
-                proofs: block.proofs.iter().map(Signature::to_hex).collect(),
-            }
-        }
-    }
-
-    impl TryFrom<JsonBlock> for Block {
-        type Error = Error;
-
-        fn try_from(block: JsonBlock) -> Result<Self, Self::Error> {
-            let mut proofs = vec![];
-            for json_proof in block.proofs.iter() {
-                let proof = Signature::from_hex(json_proof)
-                    .map_err(|error| Error::DecodeFromJson(Box::new(error)))?;
-                proofs.push(proof);
-            }
-            Ok(Block {
-                hash: block.hash.try_into()?,
-                header: block.header.try_into()?,
-                body: (),
-                proofs,
-            })
-        }
-    }
-}
-
 /// A wrapper around `Block` for the purposes of fetching blocks by height in linear chain.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BlockByHeight {
@@ -893,18 +695,24 @@ impl Item for BlockByHeight {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use super::*;
     use crate::testing::TestRng;
 
     #[test]
-    fn json_roundtrip() {
+    fn json_block_roundtrip() {
         let mut rng = TestRng::new();
         let block = Block::random(&mut rng);
-        let json_string = block.to_json().to_string();
-        let json = JsonValue::from_str(json_string.as_str()).unwrap();
-        let decoded = Block::from_json(json).unwrap();
+        let json_string = serde_json::to_string_pretty(&block).unwrap();
+        let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(block, decoded);
+    }
+
+    #[test]
+    fn json_finalized_block_roundtrip() {
+        let mut rng = TestRng::new();
+        let finalized_block = FinalizedBlock::random(&mut rng);
+        let json_string = serde_json::to_string_pretty(&finalized_block).unwrap();
+        let decoded = serde_json::from_str(&json_string).unwrap();
+        assert_eq!(finalized_block, decoded);
     }
 }

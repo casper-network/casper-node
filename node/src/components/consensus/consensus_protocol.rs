@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fmt::Debug};
+use std::{any::Any, collections::BTreeMap, fmt::Debug};
 
 use anyhow::Error;
 use datasize::DataSize;
@@ -91,6 +91,11 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
 
 /// An API for a single instance of the consensus.
 pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID, R: Rng + CryptoRng + ?Sized> {
+    /// Upcasts consensus protocol into `dyn Any`.
+    ///
+    /// Typically called on a boxed trait object for downcasting afterwards.
+    fn as_any(&self) -> &dyn Any;
+
     /// Handles an incoming message (like NewVote, RequestDependency).
     fn handle_message(
         &mut self,
