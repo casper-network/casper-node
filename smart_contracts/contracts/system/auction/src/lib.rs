@@ -14,12 +14,12 @@ use casper_types::{
     account::AccountHash,
     auction::{
         Auction, DelegationRate, MintProvider, RuntimeProvider, SeigniorageRecipients,
-        StorageProvider, SystemProvider, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
-        ARG_DELEGATOR_PUBLIC_KEY, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_SOURCE_PURSE,
-        ARG_TARGET_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_KEYS, ARG_VALIDATOR_PUBLIC_KEY,
-        ARG_VALIDATOR_PUBLIC_KEYS, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_DISTRIBUTE,
-        METHOD_QUASH_BID, METHOD_READ_ERA_ID, METHOD_READ_SEIGNIORAGE_RECIPIENTS,
-        METHOD_READ_WINNERS, METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE,
+        StorageProvider, SystemProvider, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE,
+        ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_ERA_ID, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS,
+        ARG_SOURCE_PURSE, ARG_TARGET_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_KEYS,
+        ARG_VALIDATOR_PUBLIC_KEY, ARG_VALIDATOR_PUBLIC_KEYS, METHOD_ADD_BID, METHOD_DELEGATE,
+        METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_QUASH_BID, METHOD_READ_ERA_ID,
+        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE,
         METHOD_WITHDRAW_BID, METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
     },
     bytesrepr::{FromBytes, ToBytes},
@@ -123,8 +123,12 @@ impl MintProvider for AuctionContract {
 impl Auction for AuctionContract {}
 
 #[no_mangle]
-pub extern "C" fn read_winners() {
-    let result = AuctionContract.read_winners().unwrap_or_revert();
+pub extern "C" fn get_era_validators() {
+    let era_id = runtime::get_named_arg(ARG_ERA_ID);
+
+    let result = AuctionContract
+        .get_era_validators(era_id)
+        .unwrap_or_revert();
 
     let cl_value = CLValue::from_t(result).unwrap_or_revert();
     runtime::ret(cl_value)
@@ -267,9 +271,9 @@ pub fn get_entry_points() -> EntryPoints {
     let mut entry_points = EntryPoints::new();
 
     let entry_point = EntryPoint::new(
-        METHOD_READ_WINNERS,
+        METHOD_GET_ERA_VALIDATORS,
         vec![],
-        <Vec<AccountHash>>::cl_type(),
+        Option::<ValidatorWeights>::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );

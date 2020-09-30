@@ -1,6 +1,7 @@
 pub mod balance;
 pub mod deploy_item;
 pub mod engine_config;
+pub mod era_validators;
 mod error;
 pub mod executable_deploy_item;
 pub mod execute_request;
@@ -17,6 +18,7 @@ pub mod upgrade;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
+    iter::FromIterator,
     rc::Rc,
 };
 
@@ -26,6 +28,7 @@ use tracing::{debug, warn};
 
 use casper_types::{
     account::AccountHash,
+    auction::{ValidatorWeights, ARG_ERA_ID},
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
     runtime_args,
@@ -39,11 +42,12 @@ pub use self::{
     balance::{BalanceRequest, BalanceResult},
     deploy_item::DeployItem,
     engine_config::EngineConfig,
+    era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
     error::{Error, RootNotFound},
     executable_deploy_item::ExecutableDeployItem,
     execute_request::ExecuteRequest,
-    execution_result::{ExecutionResult, ForcedTransferResult},
-    genesis::{ExecConfig, GenesisResult, POS_PAYMENT_PURSE, POS_REWARDS_PURSE},
+    execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},
+    genesis::{ExecConfig, GenesisAccount, GenesisResult, POS_PAYMENT_PURSE, POS_REWARDS_PURSE},
     query::{QueryRequest, QueryResult},
     system_contract_cache::SystemContractCache,
     transfer::{TransferRuntimeArgsBuilder, TransferTargetMode},
@@ -72,8 +76,6 @@ use crate::{
         protocol_data::ProtocolData,
     },
 };
-use execution_result::ExecutionResults;
-use genesis::GenesisAccount;
 
 // TODO?: MAX_PAYMENT && CONV_RATE values are currently arbitrary w/ real values
 // TBD gas * CONV_RATE = motes
@@ -1797,5 +1799,103 @@ where
             CommitResult::Success { state_root, .. } => Ok(CommitResult::Success { state_root }),
             commit_result => Ok(commit_result),
         }
+    }
+
+    /// Obtains validator weights for given era.
+    pub fn get_era_validators(
+        &self,
+        correlation_id: CorrelationId,
+        get_era_validators_request: GetEraValidatorsRequest,
+    ) -> Result<Option<ValidatorWeights>, GetEraValidatorsError> {
+        let protocol_version = get_era_validators_request.protocol_version();
+
+        let tracking_copy = match self.tracking_copy(get_era_validators_request.state_hash())? {
+            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
+            None => return Err(GetEraValidatorsError::RootNotFound),
+        };
+
+        let protocol_data = match self.get_protocol_data(protocol_version)? {
+            Some(protocol_data) => protocol_data,
+            None => return Err(Error::InvalidProtocolVersion(protocol_version).into()),
+        };
+
+        let wasm_costs = protocol_data.wasm_costs();
+
+        let preprocessor = Preprocessor::new(*wasm_costs);
+
+        let auction_contract: Contract = tracking_copy
+            .borrow_mut()
+            .get_contract(correlation_id, protocol_data.auction())
+            .map_err(Error::from)?;
+
+        let auction_module = {
+            let contract_wasm_hash = auction_contract.contract_wasm_hash();
+            let use_system_contracts = self.config.use_system_contracts();
+            tracking_copy
+                .borrow_mut()
+                .get_system_module(
+                    correlation_id,
+                    contract_wasm_hash,
+                    use_system_contracts,
+                    &preprocessor,
+                )
+                .map_err(Error::from)?
+        };
+
+        let executor = Executor::new(self.config);
+
+        let auction_args = runtime_args! {
+            ARG_ERA_ID => get_era_validators_request.era_id(),
+        };
+
+        let mut named_keys = auction_contract.named_keys().to_owned();
+        let base_key = Key::from(protocol_data.auction());
+        let gas_limit = Gas::new(U512::from(std::u64::MAX));
+        let virtual_system_account = {
+            let named_keys = NamedKeys::new();
+            let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
+            Account::create(SYSTEM_ACCOUNT_ADDR, named_keys, purse)
+        };
+        let authorization_keys = BTreeSet::from_iter(vec![SYSTEM_ACCOUNT_ADDR]);
+        let blocktime = BlockTime::default();
+        let deploy_hash = {
+            // seeds address generator w/ protocol version
+            let bytes: Vec<u8> = get_era_validators_request
+                .protocol_version()
+                .value()
+                .into_bytes()
+                .map_err(Error::from)?
+                .to_vec();
+            Blake2bHash::new(&bytes).value()
+        };
+
+        let (era_validators, execution_result): (
+            Option<Option<ValidatorWeights>>,
+            ExecutionResult,
+        ) = executor.exec_system_contract(
+            DirectSystemContractCall::GetEraValidators,
+            auction_module,
+            auction_args,
+            &mut named_keys,
+            Default::default(),
+            base_key,
+            &virtual_system_account,
+            authorization_keys,
+            blocktime,
+            deploy_hash,
+            gas_limit,
+            protocol_version,
+            correlation_id,
+            Rc::clone(&tracking_copy),
+            Phase::Session,
+            protocol_data,
+            SystemContractCache::clone(&self.system_contract_cache),
+        );
+
+        if let Some(error) = execution_result.take_error() {
+            return Err(error.into());
+        }
+
+        Ok(era_validators.flatten())
     }
 }

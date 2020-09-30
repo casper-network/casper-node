@@ -13,10 +13,9 @@ use casper_types::{
         DEFAULT_UNBONDING_DELAY, INITIAL_ERA_ID, METHOD_RUN_AUCTION, METHOD_SLASH,
         UNBONDING_PURSES_KEY,
     },
-    bytesrepr::FromBytes,
     runtime_args,
     system_contract_errors::auction,
-    ApiError, CLTyped, ContractHash, PublicKey, RuntimeArgs, U512,
+    ApiError, PublicKey, RuntimeArgs, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
@@ -39,27 +38,6 @@ const ARG_ACCOUNT_HASH: &str = "account_hash";
 const ARG_RUN_AUCTION: &str = "run_auction";
 
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
-
-fn get_value<T: FromBytes + CLTyped>(
-    builder: &mut InMemoryWasmTestBuilder,
-    contract_hash: ContractHash,
-    name: &str,
-) -> T {
-    let contract = builder
-        .get_contract(contract_hash)
-        .expect("should have contract");
-    let key = contract
-        .named_keys()
-        .get(name)
-        .expect("should have bid purses");
-    let stored_value = builder.query(None, *key, &[]).expect("should query");
-    let cl_value = stored_value
-        .as_cl_value()
-        .cloned()
-        .expect("should be cl value");
-    let result: T = cl_value.into_t().expect("should convert");
-    result
-}
 
 #[ignore]
 #[test]
@@ -99,7 +77,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let bid_purses: BidPurses = get_value(&mut builder, auction, BID_PURSES_KEY);
+    let bid_purses: BidPurses = builder.get_value(auction, BID_PURSES_KEY);
     let bid_purse = bid_purses
         .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
         .expect("should have bid purse");
@@ -108,7 +86,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         GENESIS_ACCOUNT_STAKE.into()
     );
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 0);
 
     //
@@ -130,7 +108,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     builder.exec(exec_request_2).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
@@ -160,7 +138,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     builder.exec(exec_request_3).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
@@ -192,13 +170,13 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     builder.exec(exec_request_4).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     let unbond_list = unbond_purses
         .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 0); // removed unbonds
 
-    let bid_purses: BidPurses = get_value(&mut builder, auction, BID_PURSES_KEY);
+    let bid_purses: BidPurses = builder.get_value(auction, BID_PURSES_KEY);
 
     assert!(bid_purses.is_empty());
 }
@@ -386,7 +364,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let bid_purses: BidPurses = get_value(&mut builder, auction, BID_PURSES_KEY);
+    let bid_purses: BidPurses = builder.get_value(auction, BID_PURSES_KEY);
     let bid_purse = bid_purses
         .get(&default_public_key_arg)
         .expect("should have bid purse");
@@ -395,7 +373,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
         GENESIS_ACCOUNT_STAKE.into()
     );
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 0);
 
     //
@@ -434,7 +412,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     builder.exec(exec_request_2).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
@@ -466,7 +444,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     builder.exec(exec_request_3).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
@@ -526,13 +504,13 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     assert_eq!(builder.get_purse_balance(unbond_purse), unbond_amount);
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert!(
         !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_PUBLIC_KEY),
         "Unbond entry should be removed"
     );
 
-    let bid_purses: BidPurses = get_value(&mut builder, auction, BID_PURSES_KEY);
+    let bid_purses: BidPurses = builder.get_value(auction, BID_PURSES_KEY);
 
     assert!(!bid_purses.is_empty());
     assert_eq!(
