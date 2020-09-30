@@ -567,6 +567,24 @@ where
         self.outgoing.keys().cloned().collect()
     }
 
+    /// Returns the set of partially connected nodes, (Incoming, Outgoing)
+    #[cfg(test)]
+    pub(crate) fn partly_connected_nodes(&self) -> (HashSet<NodeId>, HashSet<NodeId>) {
+        let incoming = self.incoming.keys().cloned().collect::<HashSet<_>>();
+        let outgoing = self.outgoing.keys().cloned().collect::<HashSet<_>>();
+        (incoming.difference(&outgoing).cloned().collect(), outgoing.difference(&incoming).cloned().collect())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn cheat_remove_incoming(&mut self, peer_id: &NodeId) {
+        let _ = self.incoming.remove(&peer_id);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn cheat_remove_outgoing(&mut self, peer_id: &NodeId) {
+        let _ = self.outgoing.remove(&peer_id);
+    }
+
     /// Returns the set of connected nodes.
     pub(crate) fn peers(&self) -> HashMap<NodeId, SocketAddr> {
         let mut ret: HashMap<NodeId, SocketAddr> = HashMap::new();

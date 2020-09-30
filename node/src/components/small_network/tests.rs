@@ -281,6 +281,48 @@ async fn run_two_node_network_five_times() {
     }
 }
 
+/// Sanity check that we fail to settle with .
+#[tokio::test]
+async fn malicious_drop_incoming_connections() {
+    init_logging();
+
+    let mut rng = TestRng::new();
+
+    let iface = datalink::interfaces()
+        .into_iter()
+        .find(|net| !net.ips.is_empty() && !net.ips.iter().any(|ip| ip.ip().is_loopback()))
+        .expect("could not find a single networking interface that isn't localhost");
+
+    let local_addr = iface
+        .ips
+        .into_iter()
+        .next()
+        .expect("found a interface with no ips")
+        .ip();
+    let port = testing::unused_port_on_localhost();
+
+    let local_net_config = Config::new((local_addr, port).into());
+
+    let mut net = Network::<TestReactor>::new();
+    let (peer1, _) = net.add_node_with_config(local_net_config, &mut rng)
+        .await
+        .unwrap();
+   
+    let port = testing::unused_port_on_localhost();
+    let local_net_config = Config::new((local_addr, port).into());
+    let (_peer2, runner ) = net.add_node_with_config(local_net_config, &mut rng)
+        .await
+        .unwrap();
+
+    runner.reactor_mut().inner_mut().net.cheat_remove_incoming(&peer1);
+
+    // The network should be fully connected.
+    let timeout = Duration::from_secs(2);
+    net.settle_on(&mut rng, network_is_complete, timeout).await;
+
+    net.finalize().await;
+}
+
 /// Sanity check that we can bind to a real network.
 ///
 /// Very unlikely to ever fail on a real machine.
