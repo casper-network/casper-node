@@ -2,8 +2,8 @@ use std::fmt::{self, Display, Formatter};
 
 use semver::Version;
 
-use super::Source;
-use crate::{components::chainspec_loader::Chainspec, small_network::NodeId, types::Deploy};
+use super::{DeployAcceptorConfig, Source};
+use crate::{small_network::NodeId, types::Deploy};
 
 /// `DeployAcceptor` events.
 #[derive(Debug)]
@@ -18,7 +18,7 @@ pub enum Event {
         deploy: Box<Deploy>,
         source: Source<NodeId>,
         chainspec_version: Version,
-        maybe_chainspec: Box<Option<Chainspec>>,
+        maybe_deploy_config: Box<Option<DeployAcceptorConfig>>,
     },
     /// The result of the `DeployAcceptor` putting a `Deploy` to the storage component.
     PutToStorageResult {
@@ -36,10 +36,10 @@ impl Display for Event {
             }
             Event::GetChainspecResult {
                 chainspec_version,
-                maybe_chainspec,
+                maybe_deploy_config,
                 ..
             } => {
-                if maybe_chainspec.is_some() {
+                if maybe_deploy_config.is_some() {
                     write!(formatter, "got chainspec at {}", chainspec_version)
                 } else {
                     write!(

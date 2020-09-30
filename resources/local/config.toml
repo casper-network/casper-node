@@ -93,19 +93,13 @@ event_stream_buffer_length = 100
 # ===============================================
 [storage]
 
-# Optional path (absolute, or relative to this config.toml) to the folder where any files created
+# Path (absolute, or relative to this config.toml) to the folder where any files created
 # or read by the storage component will exist.
 #
 # If the folder doesn't exist, it and any required parents will be created.
 #
-# If unset, defaults to:
-# * Linux: `$XDG_DATA_HOME/casper-node` or `$HOME/.local/share/casper-node`, e.g.
-#   /home/alice/.local/share/casper-node
-# * macOS: `$HOME/Library/Application Support/io.CasperLabs.casper-node`, e.g.
-#   /Users/Alice/Library/Application Support/io.CasperLabs.casper-node
-# * Windows: `{FOLDERID_RoamingAppData}\CasperLabs\casper-node\data` e.g.
-#   C:\Users\Alice\AppData\Roaming\CasperLabs\casper-node\data
-#path = 'node-storage'
+# If unset, the path must be supplied as an argument via the CLI.
+path = '../node-storage'
 
 # Optional maximum size of the database to use for the block store.
 #

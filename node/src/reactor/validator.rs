@@ -278,6 +278,7 @@ where
     api_server: ApiServer,
     chainspec_loader: ChainspecLoader,
     consensus: EraSupervisor<NodeId, R>,
+    #[data_size(skip)]
     deploy_acceptor: DeployAcceptor,
     deploy_fetcher: Fetcher<Deploy>,
     deploy_gossiper: Gossiper<Deploy, Event>,
