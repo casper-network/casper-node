@@ -1,5 +1,6 @@
-use casper_types::{auction::EraId, ProtocolVersion};
 use thiserror::Error;
+
+use casper_types::{auction::EraId, ProtocolVersion};
 
 use crate::{core::engine_state::error::Error, shared::newtypes::Blake2bHash};
 
