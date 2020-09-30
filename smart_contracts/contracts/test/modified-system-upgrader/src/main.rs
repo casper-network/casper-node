@@ -13,6 +13,7 @@ use casper_contract::{
 };
 use casper_types::{
     contracts::{NamedKeys, Parameters},
+    mint::{ACCESS_KEY, HASH_KEY},
     proof_of_stake::{
         ARG_ACCOUNT, ARG_AMOUNT, ARG_PURSE, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
         METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE,
@@ -47,6 +48,11 @@ pub extern "C" fn transfer() {
 }
 
 #[no_mangle]
+pub extern "C" fn read_base_round_reward() {
+    modified_mint::read_base_round_reward()
+}
+
+#[no_mangle]
 pub extern "C" fn version() {
     runtime::ret(CLValue::from_t(UPGRADED_VERSION).unwrap_or_revert());
 }
@@ -57,14 +63,11 @@ pub extern "C" fn call() {
 }
 
 fn upgrade_mint() -> (ContractHash, ContractVersion) {
-    const HASH_KEY_NAME: &str = "mint_hash";
-    const ACCESS_KEY_NAME: &str = "mint_access";
-
-    let mint_package_hash: ContractHash = runtime::get_key(HASH_KEY_NAME)
+    let mint_package_hash: ContractHash = runtime::get_key(HASH_KEY)
         .expect("should have mint")
         .into_hash()
         .expect("should be hash");
-    let _mint_access_key: URef = runtime::get_key(ACCESS_KEY_NAME)
+    let _mint_access_key: URef = runtime::get_key(ACCESS_KEY)
         .unwrap_or_revert()
         .into_uref()
         .expect("shuold be uref");

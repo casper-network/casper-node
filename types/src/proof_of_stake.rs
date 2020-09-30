@@ -43,11 +43,10 @@ pub trait ProofOfStake: MintProvider + RuntimeProvider + Sized {
 mod internal {
     use crate::{
         account::AccountHash,
+        proof_of_stake::{MintProvider, RuntimeProvider},
         system_contract_errors::pos::{Error, PurseLookupError, Result},
         Key, Phase, URef, U512,
     };
-
-    use crate::proof_of_stake::{mint_provider::MintProvider, runtime_provider::RuntimeProvider};
 
     /// Account used to run system functions (in particular `finalize_payment`).
     const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0u8; 32]);

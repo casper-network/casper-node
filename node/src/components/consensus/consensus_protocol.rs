@@ -3,6 +3,7 @@ use std::{collections::BTreeMap, fmt::Debug};
 use anyhow::Error;
 use datasize::DataSize;
 use rand::{CryptoRng, Rng};
+use serde::{Deserialize, Serialize};
 
 use crate::{components::consensus::traits::ConsensusValueT, types::Timestamp};
 
@@ -32,6 +33,22 @@ impl BlockContext {
     }
 }
 
+/// Equivocation and reward information to be included in the terminal finalized block.
+#[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "VID: Ord + Serialize",
+    deserialize = "VID: Ord + Deserialize<'de>",
+))]
+pub struct EraEnd<VID> {
+    /// The set of equivocators.
+    pub(crate) equivocators: Vec<VID>,
+    /// Rewards for finalization of earlier blocks.
+    ///
+    /// This is a measure of the value of each validator's contribution to consensus, in
+    /// fractions of the configured maximum block reward.
+    pub(crate) rewards: BTreeMap<VID, u64>,
+}
+
 /// A finalized block. All nodes are guaranteed to see the same sequence of blocks, and to agree
 /// about all the information contained in this type, as long as the total weight of faulty
 /// validators remains below the threshold.
@@ -39,19 +56,13 @@ impl BlockContext {
 pub(crate) struct FinalizedBlock<C: ConsensusValueT, VID> {
     /// The finalized value.
     pub(crate) value: C,
-    /// The set of newly detected equivocators.
-    pub(crate) new_equivocators: Vec<VID>,
-    /// Rewards for finalization of earlier blocks.
-    ///
-    /// This is a measure of the value of each validator's contribution to consensus, in
-    /// fractions of the configured maximum block reward.
-    pub(crate) rewards: BTreeMap<VID, u64>,
     /// The timestamp at which this value was proposed.
     pub(crate) timestamp: Timestamp,
     /// The relative height in this instance of the protocol.
     pub(crate) height: u64,
-    /// Whether this is a terminal block, i.e. the last one to be finalized.
-    pub(crate) terminal: bool,
+    /// If this is a terminal block, i.e. the last one to be finalized, this includes reward and
+    /// equivocator information.
+    pub(crate) era_end: Option<EraEnd<VID>>,
     /// Proposer of this value
     pub(crate) proposer: VID,
 }

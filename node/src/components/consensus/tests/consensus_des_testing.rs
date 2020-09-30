@@ -134,7 +134,10 @@ where
         &mut self.validator
     }
 
-    pub(crate) fn new_equivocators<I: Iterator<Item = ValidatorId>>(&mut self, equivocators: I) {
+    pub(crate) fn new_equivocators<I>(&mut self, equivocators: I)
+    where
+        I: IntoIterator<Item = ValidatorId>,
+    {
         self.equivocators_seen.extend(equivocators);
     }
 

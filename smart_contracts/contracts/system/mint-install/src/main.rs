@@ -7,8 +7,8 @@ use casper_contract::{
 };
 use casper_types::{
     contracts::NamedKeys,
-    mint::{ACCESS_KEY, HASH_KEY},
-    CLValue,
+    mint::{self, ACCESS_KEY, BASE_ROUND_REWARD_KEY, HASH_KEY},
+    CLValue, URef,
 };
 
 #[no_mangle]
@@ -32,14 +32,28 @@ pub extern "C" fn transfer() {
 }
 
 #[no_mangle]
+pub extern "C" fn read_base_round_reward() {
+    mint_token::read_base_round_reward();
+}
+
+#[no_mangle]
 pub extern "C" fn install() {
     let entry_points = mint_token::get_entry_points();
+
+    let base_round_reward_uref: URef = {
+        let base_round_reward = mint::initial_supply_motes() * mint::round_seigniorage_rate();
+        storage::new_uref(base_round_reward.to_integer()) // TODO: pass as Ratio<U512>
+    };
 
     let (contract_package_hash, access_uref) = storage::create_contract_package_at_hash();
     runtime::put_key(HASH_KEY, contract_package_hash.into());
     runtime::put_key(ACCESS_KEY, access_uref.into());
 
-    let named_keys = NamedKeys::new();
+    let named_keys = {
+        let mut tmp = NamedKeys::new();
+        tmp.insert(BASE_ROUND_REWARD_KEY.into(), base_round_reward_uref.into());
+        tmp
+    };
 
     let (contract_key, _contract_version) =
         storage::add_contract_version(contract_package_hash, entry_points, named_keys);

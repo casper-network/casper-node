@@ -20,3 +20,8 @@ pub extern "C" fn balance() {
 pub extern "C" fn transfer() {
     modified_mint::transfer();
 }
+
+#[no_mangle]
+pub extern "C" fn read_base_round_reward() {
+    modified_mint::read_base_round_reward()
+}
