@@ -108,7 +108,6 @@ test = false
 
 [package.metadata.deb]
 features = ["vendored-openssl"]
-revision = "0"  # Increment with releases for updates to charlie data files when not version bumping casper-node.
 assets = [
     ["../target/release/casper-node", "/usr/bin/casper-node", "755"],
     ["../target/release/casper-client", "/usr/bin/casper-client", "755"],
