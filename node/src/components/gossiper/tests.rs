@@ -124,8 +124,8 @@ impl reactor::Reactor<TestRng> for Reactor {
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let network = NetworkController::create_node(event_queue, rng);
 
-        let (storage_config, _storage_tempdir) = storage::Config::default_for_tests();
-        let storage = Storage::new(WithDir::new(_storage_tempdir.path(), storage_config)).unwrap();
+        let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
+        let storage = Storage::new(WithDir::new(storage_tempdir.path(), storage_config)).unwrap();
 
         let deploy_acceptor = DeployAcceptor::new();
         let deploy_gossiper = Gossiper::new_for_partial_items(config, get_deploy_from_storage);
@@ -135,7 +135,7 @@ impl reactor::Reactor<TestRng> for Reactor {
             storage,
             deploy_acceptor,
             deploy_gossiper,
-            _storage_tempdir,
+            _storage_tempdir: storage_tempdir,
         };
 
         let effects = Effects::new();
