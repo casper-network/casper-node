@@ -88,7 +88,7 @@ use crate::{
     fatal,
     reactor::{EventQueueHandle, Finalize, QueueKind},
     tls::{self, KeyFingerprint, TlsCert},
-    types::CryptoRngCore,
+    types::{CryptoRngCore, TimeDiff, Timestamp},
     utils,
 };
 pub use config::Config;
@@ -104,6 +104,13 @@ pub(crate) struct OutgoingConnection<P> {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
     sender: UnboundedSender<Message<P>>,
     peer_address: SocketAddr,
+    established: Timestamp,
+}
+
+#[derive(DataSize, Debug)]
+pub(crate) struct IncomingConnection {
+    peer_address: SocketAddr,
+    established: Timestamp,
 }
 
 #[derive(DataSize)]
@@ -121,10 +128,12 @@ where
     our_id: NodeId,
     /// Handle to event queue.
     event_queue: EventQueueHandle<REv>,
+
     /// Incoming network connection addresses.
-    incoming: HashMap<NodeId, SocketAddr>,
+    incoming: HashMap<NodeId, IncomingConnection>,
     /// Outgoing network connections' messages.
     outgoing: HashMap<NodeId, OutgoingConnection<P>>,
+
     /// Pending outgoing connections: ones for which we are currently trying to make a connection.
     pending: HashSet<SocketAddr>,
     /// The interval between each fresh round of gossiping the node's public listening address.
@@ -366,7 +375,13 @@ where
                 // The sink is never used, as we only read data from incoming connections.
                 let (_sink, stream) = framed::<P>(transport).split();
 
-                let _ = self.incoming.insert(peer_id, peer_address);
+                let _ = self.incoming.insert(
+                    peer_id,
+                    IncomingConnection {
+                        peer_address,
+                        established: Timestamp::now(),
+                    },
+                );
 
                 // If the connection is now complete, announce the new peer before starting reader.
                 let mut effects = self.check_connection_complete(effect_builder, peer_id);
@@ -432,6 +447,7 @@ where
         let connection = OutgoingConnection {
             peer_address,
             sender,
+            established: Timestamp::now(),
         };
         if self.outgoing.insert(peer_id, connection).is_some() {
             // We assume that for a reconnect to have happened, the outgoing entry must have
@@ -501,6 +517,23 @@ where
         effects
     }
 
+    fn check_for_connection_parity(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Effects<Event<P>> {
+        let (partial_incoming, partial_outgoing) = self.partly_connected_nodes(Timestamp::now());
+
+        // TODO: more than just this, because while this does remove any connection that does not
+        // have it's match it still does not update the higher-level Network container that
+        // a node's connections are bogus...
+        self.incoming.retain(|k, _| !partial_incoming.contains(k));
+        self.outgoing.retain(|k, _| !partial_outgoing.contains(k));
+
+        effect_builder
+            .set_timeout(self.gossip_interval * 2 + Duration::from_secs(1))
+            .event(|_| Event::ConnectionParityCheck)
+    }
+
     /// Handles a received message.
     fn handle_message(
         &mut self,
@@ -564,8 +597,49 @@ where
 
     /// Returns the set of connected nodes.
     #[cfg(test)]
-    pub(crate) fn connected_nodes(&self) -> HashSet<NodeId> {
+    pub(crate) fn outgoing_connected_nodes(&self) -> HashSet<NodeId> {
         self.outgoing.keys().cloned().collect()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn incoming_connected_nodes(&self) -> HashSet<NodeId> {
+        self.incoming.keys().cloned().collect()
+    }
+
+    /// Returns the set of partially connected nodes, (Incoming, Outgoing)
+    pub(crate) fn partly_connected_nodes(
+        &self,
+        current_instant: Timestamp,
+    ) -> (HashSet<NodeId>, HashSet<NodeId>) {
+        let ttl = TimeDiff::from(self.gossip_interval.as_millis() as u64 * 2 + 1000);
+        let incoming = self
+            .incoming
+            .iter()
+            .filter_map(|(k, v)| {
+                if v.established + ttl < current_instant {
+                    Some(k)
+                } else {
+                    None
+                }
+            })
+            .cloned()
+            .collect::<HashSet<_>>();
+        let outgoing = self
+            .outgoing
+            .iter()
+            .filter_map(|(k, v)| {
+                if v.established + ttl < current_instant {
+                    Some(k)
+                } else {
+                    None
+                }
+            })
+            .cloned()
+            .collect::<HashSet<_>>();
+        (
+            incoming.difference(&outgoing).cloned().collect(),
+            outgoing.difference(&incoming).cloned().collect(),
+        )
     }
 
     /// Returns the set of connected nodes.
@@ -575,7 +649,7 @@ where
             ret.insert(*x.0, x.1.peer_address);
         }
         for x in &self.incoming {
-            ret.entry(*x.0).or_insert(*x.1);
+            ret.entry(*x.0).or_insert(x.1.peer_address);
         }
         ret
     }
@@ -638,6 +712,7 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
+            Event::ConnectionParityCheck => self.check_for_connection_parity(effect_builder),
             Event::BootstrappingFailed {
                 peer_address,
                 error,
