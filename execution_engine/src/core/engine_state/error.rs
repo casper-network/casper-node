@@ -1,3 +1,4 @@
+use datasize::DataSize;
 use thiserror::Error;
 
 use casper_types::{bytesrepr, system_contract_errors::mint, ProtocolVersion};
@@ -72,6 +73,19 @@ impl From<bytesrepr::Error> for Error {
 impl From<mint::Error> for Error {
     fn from(error: mint::Error) -> Self {
         Error::Mint(format!("{}", error))
+    }
+}
+
+impl DataSize for Error {
+    const IS_DYNAMIC: bool = true;
+
+    // TODO
+    const STATIC_HEAP_SIZE: usize = 8;
+
+    // TODO
+    #[inline]
+    fn estimate_heap_size(&self) -> usize {
+        12 // TODO: replace with some actual estimation
     }
 }
 
