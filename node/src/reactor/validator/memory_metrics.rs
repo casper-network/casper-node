@@ -1,5 +1,5 @@
 use datasize::DataSize;
-use prometheus::{exponential_buckets, Histogram, HistogramOpts, IntGauge, Registry};
+use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
 use rand::{CryptoRng, Rng};
 use tracing::debug;
 
@@ -97,7 +97,7 @@ impl MemoryMetrics {
                 "time taken to estimate memory usage, in seconds",
             )
             //  Create buckets from one nanosecond to eight seconds.
-            .buckets(exponential_buckets(0.000_000_004, 2.0, 32)?),
+            .buckets(prometheus::exponential_buckets(0.000_000_004, 2.0, 32)?),
         )?;
 
         registry.register(Box::new(mem_total.clone()))?;
