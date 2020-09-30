@@ -202,6 +202,7 @@ impl MemoryMetrics {
 
         debug!(%total,
                %duration_s,
+               %metrics,
                %net,
                %address_gossiper,
                %storage,
