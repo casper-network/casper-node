@@ -154,7 +154,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "auction-bids"
+name = "auction-bidding"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
@@ -162,7 +162,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "auction-bonding"
+name = "auction-bids"
 version = "0.1.0"
 dependencies = [
  "casper-contract",

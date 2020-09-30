@@ -1,11 +1,11 @@
 [package]
-name = "auction-bonding"
+name = "auction-bidding"
 version = "0.1.0"
 authors = ["Michał Papierski <michal@casperlabs.io>"]
 edition = "2018"
 
 [[bin]]
-name = "auction_bonding"
+name = "auction_bidding"
 path = "src/main.rs"
 bench = false
 doctest = false

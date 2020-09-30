@@ -8,7 +8,7 @@ use casper_types::{auction, runtime_args, ContractHash, PublicKey, RuntimeArgs, 
 const ARG_AMOUNT: &str = "amount";
 const ARG_PUBLIC_KEY: &str = "public_key";
 
-fn bond(
+fn add_bid(
     contract_hash: ContractHash,
     public_key: PublicKey,
     bond_amount: U512,
@@ -23,7 +23,7 @@ fn bond(
     runtime::call_contract::<(URef, U512)>(contract_hash, auction::METHOD_ADD_BID, runtime_args);
 }
 
-fn unbond(contract_hash: ContractHash, public_key: PublicKey, unbond_amount: U512) {
+fn withdraw_bid(contract_hash: ContractHash, public_key: PublicKey, unbond_amount: U512) {
     let args = runtime_args! {
         auction::ARG_AMOUNT => unbond_amount,
         auction::ARG_PUBLIC_KEY => public_key,
@@ -37,6 +37,6 @@ pub extern "C" fn call() {
     let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
     // unbond attempt for more than is staked should fail
     let contract_hash = system::get_auction();
-    bond(contract_hash, public_key, amount, account::get_main_purse());
-    unbond(contract_hash, public_key, amount + 1);
+    add_bid(contract_hash, public_key, amount, account::get_main_purse());
+    withdraw_bid(contract_hash, public_key, amount + 1);
 }
