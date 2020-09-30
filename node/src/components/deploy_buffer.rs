@@ -21,7 +21,6 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{DeployHash, DeployHeader, ProtoBlock, ProtoBlockHash, Timestamp},
-    Chainspec,
 };
 
 /// An event for when using the deploy buffer as a component.
@@ -42,7 +41,7 @@ pub enum Event {
     OrphanedProtoBlock(ProtoBlock),
     /// The result of the `DeployBuffer` getting the chainspec from the storage component.
     GetChainspecResult {
-        maybe_chainspec: Box<Option<Chainspec>>,
+        maybe_deploy_config: Box<Option<DeployConfig>>,
         chainspec_version: Version,
         current_instant: Timestamp,
         past_blocks: HashSet<ProtoBlockHash>,
@@ -65,9 +64,10 @@ impl Display for Event {
                 write!(f, "deploy-buffer orphaned proto block {}", block)
             }
             Event::GetChainspecResult {
-                maybe_chainspec, ..
+                maybe_deploy_config,
+                ..
             } => {
-                if maybe_chainspec.is_some() {
+                if maybe_deploy_config.is_some() {
                     write!(f, "deploy-buffer got chainspec")
                 } else {
                     write!(f, "deploy-buffer failed to get chainspec")
@@ -84,8 +84,10 @@ pub(crate) struct DeployBuffer {
     collected_deploys: HashMap<DeployHash, DeployHeader>,
     processed: HashMap<ProtoBlockHash, HashMap<DeployHash, DeployHeader>>,
     finalized: HashMap<ProtoBlockHash, HashMap<DeployHash, DeployHeader>>,
+    // We don't need the whole Chainspec here (it's also unnecessarily big), just the deploy
+    // config.
     #[data_size(skip)]
-    chainspecs: HashMap<Version, Chainspec>,
+    chainspecs: HashMap<Version, DeployConfig>,
 }
 
 impl DeployBuffer {
@@ -136,7 +138,7 @@ impl DeployBuffer {
                 effect_builder
                     .immediately()
                     .event(move |_| Event::GetChainspecResult {
-                        maybe_chainspec: Box::new(Some(chainspec)),
+                        maybe_deploy_config: Box::new(Some(chainspec)),
                         chainspec_version,
                         current_instant,
                         past_blocks,
@@ -168,7 +170,7 @@ impl DeployBuffer {
         effect_builder
             .get_chainspec(chainspec_version.clone())
             .event(move |maybe_chainspec| Event::GetChainspecResult {
-                maybe_chainspec: Box::new(maybe_chainspec),
+                maybe_deploy_config: Box::new(maybe_chainspec.map(|c| c.genesis.deploy_config)),
                 chainspec_version,
                 current_instant,
                 past_blocks,
@@ -297,20 +299,16 @@ where
             Event::FinalizedProtoBlock(block) => self.finalized_block(*block.hash()),
             Event::OrphanedProtoBlock(block) => self.orphaned_block(*block.hash()),
             Event::GetChainspecResult {
-                maybe_chainspec,
+                maybe_deploy_config,
                 chainspec_version,
                 current_instant,
                 past_blocks,
                 responder,
             } => {
-                let chainspec = maybe_chainspec.expect("should return chainspec");
+                let deploy_config = maybe_deploy_config.expect("should return chainspec");
                 // Update chainspec cache.
-                self.chainspecs.insert(chainspec_version, chainspec.clone());
-                let deploys = self.remaining_deploys(
-                    chainspec.genesis.deploy_config,
-                    current_instant,
-                    past_blocks,
-                );
+                self.chainspecs.insert(chainspec_version, deploy_config);
+                let deploys = self.remaining_deploys(deploy_config, current_instant, past_blocks);
                 return responder.respond(deploys).ignore();
             }
         }
