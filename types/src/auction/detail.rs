@@ -1,10 +1,13 @@
 use alloc::vec::Vec;
 
+use num_rational::Ratio;
+
 use super::{
     Auction, BidPurses, UnbondingPurse, UnbondingPurses, BID_PURSES_KEY, DEFAULT_UNBONDING_DELAY,
     SYSTEM_ACCOUNT, UNBONDING_PURSES_KEY,
 };
 use crate::{
+    auction::{internal, MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
     system_contract_errors::auction::{Error, Result},
     Key, PublicKey, URef, U512,
 };
@@ -157,4 +160,70 @@ pub(crate) fn unbond<P: Auction + ?Sized>(
     // Remaining motes in the validator's bid purse
     let remaining_bond = provider.get_balance(bid_purse)?.unwrap_or_default();
     Ok((unbond_purse, remaining_bond))
+}
+
+/// Update delegators entry. Initialize if it doesn't exist.
+pub fn update_delegators<P>(
+    provider: &mut P,
+    validator_public_key: PublicKey,
+    delegator_public_key: PublicKey,
+    delegation_amount: U512,
+) -> Result<U512>
+where
+    P: RuntimeProvider + StorageProvider + ?Sized,
+{
+    let mut delegators = internal::get_delegators(provider)?;
+    let new_quantity = *delegators
+        .entry(validator_public_key)
+        .or_default()
+        .entry(delegator_public_key)
+        .and_modify(|delegation| *delegation += delegation_amount)
+        .or_insert_with(|| delegation_amount);
+    internal::set_delegators(provider, delegators)?;
+    Ok(new_quantity)
+}
+
+/// Update validator reward map.
+pub fn update_delegator_rewards<P>(
+    provider: &mut P,
+    validator_public_key: PublicKey,
+    rewards: impl Iterator<Item = (PublicKey, Ratio<U512>)>,
+) -> Result<U512>
+where
+    P: MintProvider + RuntimeProvider + StorageProvider + SystemProvider + ?Sized,
+{
+    let mut total_delegator_payout = U512::zero();
+    let mut outer = internal::get_delegator_reward_map(provider)?;
+    let mut inner = outer.remove(&validator_public_key).unwrap_or_default();
+
+    for (delegator_key, delegator_reward) in rewards {
+        let delegator_reward_trunc = delegator_reward.to_integer();
+        inner
+            .entry(delegator_key)
+            .and_modify(|sum| *sum += delegator_reward_trunc)
+            .or_insert_with(|| delegator_reward_trunc);
+        total_delegator_payout += delegator_reward_trunc;
+    }
+
+    outer.insert(validator_public_key, inner);
+    internal::set_delegator_reward_map(provider, outer)?;
+    Ok(total_delegator_payout)
+}
+
+/// Update validator reward map.
+pub fn update_validator_reward<P>(
+    provider: &mut P,
+    validator_public_key: PublicKey,
+    amount: U512,
+) -> Result<()>
+where
+    P: MintProvider + RuntimeProvider + StorageProvider + SystemProvider + ?Sized,
+{
+    let mut validator_reward_map = internal::get_validator_reward_map(provider)?;
+    validator_reward_map
+        .entry(validator_public_key)
+        .and_modify(|sum| *sum += amount)
+        .or_insert_with(|| amount);
+    internal::set_validator_reward_map(provider, validator_reward_map)?;
+    Ok(())
 }

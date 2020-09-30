@@ -15,7 +15,7 @@ use casper_types::{
     contracts::Parameters,
     mint::{
         Mint, RuntimeProvider, StorageProvider, ARG_AMOUNT, ARG_PURSE, ARG_SOURCE, ARG_TARGET,
-        METHOD_BALANCE, METHOD_CREATE, METHOD_MINT, METHOD_TRANSFER,
+        METHOD_BALANCE, METHOD_CREATE, METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD, METHOD_TRANSFER,
     },
     system_contract_errors::mint::Error,
     CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
@@ -104,6 +104,13 @@ pub fn transfer() {
     runtime::ret(ret);
 }
 
+pub fn read_base_round_reward() {
+    let mut mint_contract = MintContract;
+    let result: Result<U512, Error> = mint_contract.read_base_round_reward();
+    let ret = CLValue::from_t(result).unwrap_or_revert();
+    runtime::ret(ret);
+}
+
 pub fn get_entry_points() -> EntryPoints {
     let mut entry_points = EntryPoints::new();
 
@@ -148,6 +155,15 @@ pub fn get_entry_points() -> EntryPoints {
             ok: Box::new(CLType::Unit),
             err: Box::new(CLType::U8),
         },
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_READ_BASE_ROUND_REWARD,
+        Parameters::new(),
+        CLType::U512,
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );

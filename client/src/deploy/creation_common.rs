@@ -916,21 +916,12 @@ pub(super) fn parse_deploy(matches: &ArgMatches<'_>, session: ExecutableDeployIt
     )
 }
 
-pub(super) fn deploy_into_params(deploy: Deploy) -> PutDeployParams {
-    let deploy = deploy
-        .to_json()
-        .as_object()
-        .unwrap_or_else(|| panic!("should encode to JSON object type"))
-        .clone();
-    PutDeployParams { deploy }
-}
-
 pub(super) fn construct_deploy(
     matches: &ArgMatches<'_>,
     session: ExecutableDeployItem,
 ) -> PutDeployParams {
     let deploy = parse_deploy(matches, session);
-    deploy_into_params(deploy)
+    PutDeployParams { deploy }
 }
 
 pub(super) mod output {

@@ -11,7 +11,10 @@ use casper_execution_engine::core::engine_state::{self, BalanceResult, QueryResu
 use crate::{
     components::{small_network::NodeId, storage::DeployMetadata},
     effect::{requests::ApiRequest, Responder},
-    types::{Block, BlockHash, Deploy, DeployHash},
+    types::{
+        json_compatibility::ExecutionResult, Block, BlockHash, BlockHeader, Deploy, DeployHash,
+        FinalizedBlock,
+    },
 };
 
 #[derive(Debug, From)]
@@ -44,6 +47,16 @@ pub enum Event {
         result: Result<BalanceResult, engine_state::Error>,
         main_responder: Responder<Result<BalanceResult, engine_state::Error>>,
     },
+    BlockFinalized(Box<FinalizedBlock>),
+    BlockAdded {
+        block_hash: BlockHash,
+        block_header: Box<BlockHeader>,
+    },
+    DeployProcessed {
+        deploy_hash: DeployHash,
+        block_hash: BlockHash,
+        execution_result: ExecutionResult,
+    },
 }
 
 impl Display for Event {
@@ -74,6 +87,15 @@ impl Display for Event {
                 Some(txt) => write!(formatter, "get metrics ({} bytes)", txt.len()),
                 None => write!(formatter, "get metrics (failed)"),
             },
+            Event::BlockFinalized(finalized_block) => write!(
+                formatter,
+                "block finalized {}",
+                finalized_block.proto_block().hash()
+            ),
+            Event::BlockAdded { block_hash, .. } => write!(formatter, "block added {}", block_hash),
+            Event::DeployProcessed { deploy_hash, .. } => {
+                write!(formatter, "deploy processed {}", deploy_hash)
+            }
         }
     }
 }

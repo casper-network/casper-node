@@ -487,6 +487,7 @@ dependencies = [
  "grpc",
  "lazy_static",
  "log 0.4.11",
+ "num-rational 0.3.0",
  "num-traits",
  "rand 0.7.3",
  "serde_json",
@@ -508,6 +509,7 @@ dependencies = [
  "csv",
  "datasize",
  "hex",
+ "hex-buffer-serde",
  "hex_fmt",
  "hostname",
  "itertools 0.8.2",
@@ -526,7 +528,6 @@ dependencies = [
  "rand_chacha 0.2.2",
  "rmp-serde",
  "serde",
- "serde_bytes",
  "serde_json",
  "tempfile",
  "thiserror",
@@ -563,6 +564,7 @@ dependencies = [
  "futures 0.3.5",
  "getrandom",
  "hex",
+ "hex-buffer-serde",
  "hex_fmt",
  "hostname",
  "http",
@@ -590,6 +592,7 @@ dependencies = [
  "rand_core 0.5.1",
  "rand_pcg 0.2.1",
  "regex",
+ "reqwest",
  "rmp-serde",
  "sd-notify",
  "semver 0.10.0",
@@ -618,6 +621,7 @@ dependencies = [
  "warp",
  "warp-json-rpc",
  "wasmi",
+ "wheelbuf",
 ]
 
 [[package]]
@@ -634,11 +638,13 @@ dependencies = [
  "hex_fmt",
  "num-derive",
  "num-integer",
+ "num-rational 0.3.0",
  "num-traits",
  "proptest",
  "rmp-serde",
  "serde",
  "serde-big-array",
+ "serde_json",
  "uint",
  "version-sync",
 ]
@@ -1893,6 +1899,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "hex-buffer-serde"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eee5bb4371e826050b4082c65740da707cb759bf08650051f365d6315901f82b"
+dependencies = [
+ "hex",
+ "serde",
+]
+
+[[package]]
 name = "hex_fmt"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2410,6 +2426,7 @@ dependencies = [
  "casper-contract",
  "casper-types",
  "mint-token",
+ "num-rational 0.3.0",
 ]
 
 [[package]]
@@ -2592,7 +2609,7 @@ dependencies = [
  "num-complex",
  "num-integer",
  "num-iter",
- "num-rational",
+ "num-rational 0.2.4",
  "num-traits",
 ]
 
@@ -2601,6 +2618,17 @@ name = "num-bigint"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "090c7f9998ee0ff65aa5b723e4009f7b217707f1fb5ea551329cc4d6231fb304"
+dependencies = [
+ "autocfg 1.0.1",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
+name = "num-bigint"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7f3fc75e3697059fb1bc465e3d8cca6cf92f56854f201158b3f9c77d5a3cfa0"
 dependencies = [
  "autocfg 1.0.1",
  "num-integer",
@@ -2656,7 +2684,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c000134b5dbf44adc5cb772486d335293351644b801551abe8f75c84cfa4aef"
 dependencies = [
  "autocfg 1.0.1",
- "num-bigint",
+ "num-bigint 0.2.6",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
+name = "num-rational"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5b4d7360f362cfb50dde8143501e6940b22f644be75a4cc90b2d81968908138"
+dependencies = [
+ "autocfg 1.0.1",
+ "num-bigint 0.3.0",
  "num-integer",
  "num-traits",
 ]
@@ -5248,7 +5288,7 @@ checksum = "bf617d864d25af3587aa745529f7aaa541066c876d57e050c0d0c85c61c92aff"
 dependencies = [
  "libc",
  "memory_units 0.3.0",
- "num-rational",
+ "num-rational 0.2.4",
  "num-traits",
  "parity-wasm",
  "wasmi-validation",
@@ -5284,6 +5324,12 @@ dependencies = [
  "memory_units 0.4.0",
  "winapi 0.3.9",
 ]
+
+[[package]]
+name = "wheelbuf"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62945bc99a6a121cb2759c7bfa7b779ddf0e69b68bb35a9b23ab72276cfdcd3c"
 
 [[package]]
 name = "winapi"
