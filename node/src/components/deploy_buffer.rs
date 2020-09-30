@@ -43,6 +43,7 @@ pub enum Event {
     /// The result of the `DeployBuffer` getting the chainspec from the storage component.
     GetChainspecResult {
         maybe_chainspec: Box<Option<Chainspec>>,
+        chainspec_version: Version,
         current_instant: Timestamp,
         past_blocks: HashSet<ProtoBlockHash>,
         responder: Responder<HashSet<DeployHash>>,
@@ -83,6 +84,8 @@ pub(crate) struct DeployBuffer {
     collected_deploys: HashMap<DeployHash, DeployHeader>,
     processed: HashMap<ProtoBlockHash, HashMap<DeployHash, DeployHeader>>,
     finalized: HashMap<ProtoBlockHash, HashMap<DeployHash, DeployHeader>>,
+    #[data_size(skip)]
+    chainspecs: HashMap<Version, Chainspec>,
 }
 
 impl DeployBuffer {
@@ -93,6 +96,7 @@ impl DeployBuffer {
             collected_deploys: HashMap::new(),
             processed: HashMap::new(),
             finalized: HashMap::new(),
+            chainspecs: HashMap::new(),
         }
     }
 
@@ -113,8 +117,8 @@ impl DeployBuffer {
         }
     }
 
-    /// Gets the chainspec from storage in order to call `remaining_deploys()`.
-    fn get_chainspec_from_storage<REv>(
+    /// Gets the chainspec from the cache or, if not cached, from the storage.
+    fn get_chainspec<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         current_instant: Timestamp,
@@ -125,11 +129,47 @@ impl DeployBuffer {
         REv: From<StorageRequest<Storage>> + Send,
     {
         // TODO - should the current protocol version be passed in here?
-        let version = Version::from((1, 0, 0));
+        let chainspec_version = Version::from((1, 0, 0));
+        let cached_chainspec = self.chainspecs.get(&chainspec_version).cloned();
+        match cached_chainspec {
+            Some(chainspec) => {
+                effect_builder
+                    .immediately()
+                    .event(move |_| Event::GetChainspecResult {
+                        maybe_chainspec: Box::new(Some(chainspec)),
+                        chainspec_version,
+                        current_instant,
+                        past_blocks,
+                        responder,
+                    })
+            }
+            None => self.get_chainspec_from_storage(
+                effect_builder,
+                chainspec_version,
+                current_instant,
+                past_blocks,
+                responder,
+            ),
+        }
+    }
+
+    /// Gets the chainspec from storage in order to call `remaining_deploys()`.
+    fn get_chainspec_from_storage<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        chainspec_version: Version,
+        current_instant: Timestamp,
+        past_blocks: HashSet<ProtoBlockHash>,
+        responder: Responder<HashSet<DeployHash>>,
+    ) -> Effects<Event>
+    where
+        REv: From<StorageRequest<Storage>> + Send,
+    {
         effect_builder
-            .get_chainspec(version)
+            .get_chainspec(chainspec_version.clone())
             .event(move |maybe_chainspec| Event::GetChainspecResult {
                 maybe_chainspec: Box::new(maybe_chainspec),
+                chainspec_version,
                 current_instant,
                 past_blocks,
                 responder,
@@ -247,12 +287,7 @@ where
                 past_blocks,
                 responder,
             }) => {
-                return self.get_chainspec_from_storage(
-                    effect_builder,
-                    current_instant,
-                    past_blocks,
-                    responder,
-                );
+                return self.get_chainspec(effect_builder, current_instant, past_blocks, responder);
             }
             Event::Buffer { hash, header } => self.add_deploy(hash, *header),
             Event::ProposedProtoBlock(block) => {
@@ -263,11 +298,14 @@ where
             Event::OrphanedProtoBlock(block) => self.orphaned_block(*block.hash()),
             Event::GetChainspecResult {
                 maybe_chainspec,
+                chainspec_version,
                 current_instant,
                 past_blocks,
                 responder,
             } => {
                 let chainspec = maybe_chainspec.expect("should return chainspec");
+                // Update chainspec cache.
+                self.chainspecs.insert(chainspec_version, chainspec.clone());
                 let deploys = self.remaining_deploys(
                     chainspec.genesis.deploy_config,
                     current_instant,
