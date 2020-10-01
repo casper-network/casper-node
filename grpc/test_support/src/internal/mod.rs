@@ -2,6 +2,7 @@ mod additive_map_diff;
 mod deploy_item_builder;
 pub mod exec_with_return;
 mod execute_request_builder;
+mod step_request_builder;
 mod upgrade_request_builder;
 pub mod utils;
 mod wasm_test_builder;
@@ -22,6 +23,7 @@ use super::DEFAULT_ACCOUNT_INITIAL_BALANCE;
 pub use additive_map_diff::AdditiveMapDiff;
 pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
+pub use step_request_builder::{RewardItem, SlashItem, StepRequestBuilder};
 pub use upgrade_request_builder::UpgradeRequestBuilder;
 pub use wasm_test_builder::{
     InMemoryWasmTestBuilder, LmdbWasmTestBuilder, WasmTestBuilder, WasmTestResult,

@@ -12,5 +12,6 @@ mod genesis_config;
 mod get_era_validators_request;
 mod query_request;
 mod run_genesis_request;
+mod step;
 mod upgrade_request;
 mod wasm_costs;
