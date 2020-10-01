@@ -240,6 +240,11 @@ impl FinalizedBlock {
     }
 
     /// Returns the ID of the era this block belongs to.
+    pub(crate) fn era_end(&self) -> &Option<EraEnd> {
+        &self.era_end
+    }
+
+    /// Returns the ID of the era this block belongs to.
     pub(crate) fn era_id(&self) -> EraId {
         self.era_id
     }
