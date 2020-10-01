@@ -79,13 +79,12 @@ impl From<mint::Error> for Error {
 impl DataSize for Error {
     const IS_DYNAMIC: bool = true;
 
-    // TODO
-    const STATIC_HEAP_SIZE: usize = 8;
+    const STATIC_HEAP_SIZE: usize = 0;
 
     // TODO
     #[inline]
     fn estimate_heap_size(&self) -> usize {
-        12 // TODO: replace with some actual estimation
+        12 // TODO: replace with some actual estimation depending on the variant
     }
 }
 
