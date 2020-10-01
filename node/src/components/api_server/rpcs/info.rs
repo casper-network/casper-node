@@ -11,7 +11,6 @@ use http::Response;
 use hyper::Body;
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use tracing::info;
 use warp_json_rpc::Builder;
 
@@ -20,25 +19,27 @@ use super::{
     RpcWithoutParamsExt,
 };
 use crate::{
-    components::{api_server::CLIENT_API_VERSION, small_network::NodeId},
-    crypto::hash::Digest,
+    components::{api_server::CLIENT_API_VERSION, consensus::EraId, small_network::NodeId},
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{json_compatibility::ExecutionResult, Block, DeployHash},
+    types::{
+        json_compatibility::ExecutionResult, Block, BlockHash, Deploy, DeployHash, StatusFeed,
+        Timestamp,
+    },
 };
 
 /// Params for "info_get_deploy" RPC request.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetDeployParams {
-    /// Hex-encoded deploy hash.
-    pub deploy_hash: String,
+    /// The deploy hash.
+    pub deploy_hash: DeployHash,
 }
 
 /// The execution result of a single deploy.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct JsonExecutionResult {
-    /// Hex-encoded block hash.
-    pub block_hash: String,
+    /// The block hash.
+    pub block_hash: BlockHash,
     /// Execution result.
     pub result: ExecutionResult,
 }
@@ -48,8 +49,8 @@ pub struct JsonExecutionResult {
 pub struct GetDeployResult {
     /// The RPC API version.
     pub api_version: Version,
-    /// JSON-encoded deploy.
-    pub deploy: Value,
+    /// The deploy.
+    pub deploy: Deploy,
     /// The map of block hash to execution result.
     pub execution_results: Vec<JsonExecutionResult>,
 }
@@ -70,24 +71,11 @@ impl RpcWithParamsExt for GetDeploy {
         params: Self::RequestParams,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
-            // Try to parse a deploy hash from the params.
-            let deploy_hash =
-                match Digest::from_hex(&params.deploy_hash).map_err(|error| error.to_string()) {
-                    Ok(digest) => DeployHash::new(digest),
-                    Err(error_msg) => {
-                        info!("failed to get deploy: {}", error_msg);
-                        return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                            ErrorCode::ParseDeployHash as i64,
-                            error_msg,
-                        ))?);
-                    }
-                };
-
             // Try to get the deploy and metadata from storage.
             let maybe_deploy_and_metadata = effect_builder
                 .make_request(
                     |responder| ApiRequest::GetDeploy {
-                        hash: deploy_hash,
+                        hash: params.deploy_hash,
                         responder,
                     },
                     QueueKind::Api,
@@ -97,7 +85,10 @@ impl RpcWithParamsExt for GetDeploy {
             let (deploy, metadata) = match maybe_deploy_and_metadata {
                 Some((deploy, metadata)) => (deploy, metadata),
                 None => {
-                    info!("failed to get {} and metadata from storage", deploy_hash);
+                    info!(
+                        "failed to get {} and metadata from storage",
+                        params.deploy_hash
+                    );
                     return Ok(response_builder.error(warp_json_rpc::Error::custom(
                         ErrorCode::NoSuchDeploy as i64,
                         "deploy not known",
@@ -106,19 +97,15 @@ impl RpcWithParamsExt for GetDeploy {
             };
 
             // Return the result.
-            let deploy_as_json = deploy.to_json();
             let execution_results = metadata
                 .execution_results
                 .into_iter()
-                .map(|(block_hash, result)| JsonExecutionResult {
-                    block_hash: hex::encode(block_hash.as_ref()),
-                    result,
-                })
+                .map(|(block_hash, result)| JsonExecutionResult { block_hash, result })
                 .collect();
 
             let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
-                deploy: deploy_as_json,
+                deploy,
                 execution_results,
             };
             Ok(response_builder.success(result)?)
@@ -168,6 +155,26 @@ impl RpcWithoutParamsExt for GetPeers {
     }
 }
 
+/// Minimal info of a `Block`.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MinimalBlockInfo {
+    hash: BlockHash,
+    timestamp: Timestamp,
+    era_id: EraId,
+    height: u64,
+}
+
+impl From<Block> for MinimalBlockInfo {
+    fn from(block: Block) -> Self {
+        MinimalBlockInfo {
+            hash: *block.hash(),
+            timestamp: block.header().timestamp(),
+            era_id: block.header().era_id(),
+            height: block.header().height(),
+        }
+    }
+}
+
 /// Result for "info_get_status" RPC response.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetStatusResult {
@@ -175,8 +182,18 @@ pub struct GetStatusResult {
     pub api_version: Version,
     /// The node ID and network address of each connected peer.
     pub peers: BTreeMap<String, SocketAddr>,
-    /// The last block from the linear chain.
-    pub last_finalized_block: Option<Block>,
+    /// The minimal info of the last block from the linear chain.
+    pub last_finalized_block_info: Option<MinimalBlockInfo>,
+}
+
+impl From<StatusFeed<NodeId>> for GetStatusResult {
+    fn from(status_feed: StatusFeed<NodeId>) -> Self {
+        GetStatusResult {
+            api_version: CLIENT_API_VERSION.clone(),
+            peers: peers_hashmap_to_btreemap(status_feed.peers),
+            last_finalized_block_info: status_feed.last_finalized_block.map(Into::into),
+        }
+    }
 }
 
 /// "info_get_status" RPC.
@@ -202,63 +219,8 @@ impl RpcWithoutParamsExt for GetStatus {
                 .await;
 
             // Convert to `ResponseResult` and send.
-            let result = Self::ResponseResult {
-                api_version: CLIENT_API_VERSION.clone(),
-                peers: peers_hashmap_to_btreemap(status_feed.peers),
-                last_finalized_block: status_feed.last_finalized_block,
-            };
+            let result = Self::ResponseResult::from(status_feed);
             Ok(response_builder.success(result)?)
-        }
-        .boxed()
-    }
-}
-
-/// Result for "info_get_metrics" RPC response.
-#[derive(Serialize, Deserialize, Debug)]
-pub struct GetMetricsResult {
-    /// The RPC API version.
-    pub api_version: Version,
-    /// JSON-encoded metrics.
-    pub metrics: String,
-}
-
-/// "info_get_metrics" RPC.
-pub struct GetMetrics {}
-
-impl RpcWithoutParams for GetMetrics {
-    const METHOD: &'static str = "info_get_metrics";
-    type ResponseResult = GetMetricsResult;
-}
-
-impl RpcWithoutParamsExt for GetMetrics {
-    fn handle_request<REv: ReactorEventT>(
-        effect_builder: EffectBuilder<REv>,
-        response_builder: Builder,
-    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
-        async move {
-            let maybe_metrics = effect_builder
-                .make_request(
-                    |responder| ApiRequest::GetMetrics { responder },
-                    QueueKind::Api,
-                )
-                .await;
-
-            match maybe_metrics {
-                Some(metrics) => {
-                    let result = Self::ResponseResult {
-                        api_version: CLIENT_API_VERSION.clone(),
-                        metrics,
-                    };
-                    Ok(response_builder.success(result)?)
-                }
-                None => {
-                    info!("metrics not available");
-                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                        ErrorCode::MetricsNotAvailable as i64,
-                        "metrics not available",
-                    ))?);
-                }
-            }
         }
         .boxed()
     }
