@@ -478,11 +478,12 @@ where
     ) -> Effects<Event<I>> {
         let validator_stakes = validator_weights
             .into_iter()
-            .map(|(key, stake)| {
-                (
-                    key.try_into().ok().expect("keys should convert correctly"),
-                    Motes::new(stake),
-                )
+            .filter_map(|(key, stake)| match key.try_into() {
+                Ok(key) => Some((key, Motes::new(stake))),
+                Err(error) => {
+                    warn!(%error, "error converting the bonded key: {:?}", error);
+                    None
+                }
             })
             .collect();
         self.era_supervisor
