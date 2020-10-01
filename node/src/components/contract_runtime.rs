@@ -13,7 +13,6 @@ use datasize::DataSize;
 use derive_more::From;
 use lmdb::DatabaseFlags;
 use prometheus::{self, Histogram, HistogramOpts, Registry};
-use rand::{CryptoRng, Rng};
 use thiserror::Error;
 use tokio::task;
 use tracing::trace;
@@ -33,6 +32,7 @@ use crate::{
     components::Component,
     crypto::hash,
     effect::{requests::ContractRuntimeRequest, EffectBuilder, EffectExt, Effects},
+    types::CryptoRngCore,
     Chainspec, StorageConfig,
 };
 
@@ -139,17 +139,16 @@ impl ContractRuntimeMetrics {
     }
 }
 
-impl<REv, R> Component<REv, R> for ContractRuntime
+impl<REv> Component<REv> for ContractRuntime
 where
     REv: From<Event> + Send,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event;
 
     fn handle_event(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

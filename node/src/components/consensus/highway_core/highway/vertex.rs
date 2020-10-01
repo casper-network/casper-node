@@ -1,6 +1,5 @@
 use std::fmt::Debug;
 
-use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -12,7 +11,7 @@ use crate::{
         },
         traits::{Context, ValidatorSecret},
     },
-    types::Timestamp,
+    types::{CryptoRngCore, Timestamp},
 };
 
 /// A dependency of a `Vertex` that can be satisfied by one or more other vertices.
@@ -65,10 +64,10 @@ pub(crate) struct SignedWireVote<C: Context> {
 }
 
 impl<C: Context> SignedWireVote<C> {
-    pub(crate) fn new<R: Rng + CryptoRng + ?Sized>(
+    pub(crate) fn new(
         wire_vote: WireVote<C>,
         secret_key: &C::ValidatorSecret,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Self {
         let signature = secret_key.sign(&wire_vote.hash(), rng);
         SignedWireVote {

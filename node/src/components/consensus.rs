@@ -25,7 +25,7 @@ use crate::{
         EffectBuilder, Effects,
     },
     protocol::Message,
-    types::{BlockHeader, ProtoBlock, Timestamp},
+    types::{BlockHeader, CryptoRngCore, ProtoBlock, Timestamp},
 };
 
 pub use config::Config;
@@ -33,7 +33,6 @@ pub(crate) use consensus_protocol::{BlockContext, EraEnd};
 use derive_more::From;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 use hex_fmt::HexFmt;
-use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 use traits::NodeIdT;
@@ -186,21 +185,20 @@ impl<REv, I> ReactorEventT<I> for REv where
 {
 }
 
-impl<I, REv, R> Component<REv, R> for EraSupervisor<I, R>
+impl<I, REv> Component<REv> for EraSupervisor<I>
 where
     I: NodeIdT,
     REv: ReactorEventT<I>,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event<I>;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        rng: &mut R,
+        mut rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        let mut handling_es = self.handling_wrapper(effect_builder, rng);
+        let mut handling_es = self.handling_wrapper(effect_builder, &mut rng);
         match event {
             Event::Timer { era_id, timestamp } => handling_es.handle_timer(era_id, timestamp),
             Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),

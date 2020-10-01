@@ -18,7 +18,6 @@ use std::{
 
 use datasize::DataSize;
 use futures::TryFutureExt;
-use rand::{CryptoRng, Rng};
 use semver::Version;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
@@ -33,7 +32,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     protocol::Message,
-    types::{json_compatibility::ExecutionResult, Block, Deploy, Item},
+    types::{json_compatibility::ExecutionResult, Block, CryptoRngCore, Deploy, Item},
     utils::WithDir,
 };
 use chainspec_store::ChainspecStore;
@@ -396,10 +395,9 @@ pub trait StorageType {
     }
 }
 
-impl<REv, R, S> Component<REv, R> for S
+impl<REv, S> Component<REv> for S
 where
     REv: From<NetworkRequest<NodeId, Message>> + Send,
-    R: Rng + CryptoRng + ?Sized,
     S: StorageType,
     Self: Sized + 'static,
 {
@@ -408,7 +406,7 @@ where
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

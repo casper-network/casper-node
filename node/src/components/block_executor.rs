@@ -8,7 +8,6 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use itertools::Itertools;
-use rand::{CryptoRng, Rng};
 use smallvec::SmallVec;
 use tracing::{debug, error, trace};
 
@@ -33,7 +32,8 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     types::{
-        json_compatibility::ExecutionResult, Block, BlockHash, Deploy, DeployHash, FinalizedBlock,
+        json_compatibility::ExecutionResult, Block, BlockHash, CryptoRngCore, Deploy, DeployHash,
+        FinalizedBlock,
     },
 };
 
@@ -382,13 +382,13 @@ impl BlockExecutor {
     }
 }
 
-impl<REv: ReactorEventT, R: Rng + CryptoRng + ?Sized> Component<REv, R> for BlockExecutor {
+impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
     type Event = Event;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
