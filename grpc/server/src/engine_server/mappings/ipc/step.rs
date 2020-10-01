@@ -118,7 +118,7 @@ impl TryFrom<StepRequest> for ipc::StepRequest {
 
     fn try_from(step_request: StepRequest) -> Result<Self, Self::Error> {
         let mut result = ipc::StepRequest::new();
-        result.set_parent_state_hash(step_request.parent_state_hash.to_vec());
+        result.set_parent_state_hash(step_request.pre_state_hash.to_vec());
         result.set_protocol_version(step_request.protocol_version.into());
 
         let slash_items = {

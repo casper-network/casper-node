@@ -1917,7 +1917,7 @@ where
             }
         };
 
-        let tracking_copy = match self.tracking_copy(step_request.parent_state_hash) {
+        let tracking_copy = match self.tracking_copy(step_request.pre_state_hash) {
             Err(_) => return Ok(StepResult::PreconditionError),
             Ok(None) => return Ok(StepResult::RootNotFound),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
@@ -2092,7 +2092,7 @@ where
             .state
             .commit(
                 correlation_id,
-                step_request.parent_state_hash,
+                step_request.pre_state_hash,
                 effects.transforms,
             )
             .map_err(Into::into)?;
