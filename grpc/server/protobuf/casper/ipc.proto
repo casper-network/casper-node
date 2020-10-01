@@ -234,6 +234,14 @@ message GenesisDeployError {
     string message = 1;
 }
 
+message RunGenesisRequest {
+    // Hash of the Genesis configuration.
+    bytes genesis_config_hash = 1;
+    casper.state.ProtocolVersion protocol_version = 2;
+    // Genesis configuration for the ExecutionEngine.
+    ChainSpec.GenesisConfig.ExecConfig ee_config = 3;
+}
+
 message GenesisResponse {
     oneof result {
         GenesisResult success = 1;
@@ -411,109 +419,6 @@ message GetEraValidatorsResponse {
     }
 }
 
-// --- END AUCTION SERVICE DEFINITION --- //
-
-// --- BEGIN PROOF-OF-STAKE SERVICE DEFINITION --- //
-
-message BidStateRequest {
-    bytes parent_state_hash = 1;
-    casper.state.ProtocolVersion protocol_version = 2;
-}
-
-message BidState {
-    repeated Bid bids = 1;
-
-    message Bid {
-        bytes id = 1;
-        casper.state.BigInt value = 2;
-    }
-}
-
-message BidStateResponse {
-    oneof result {
-        BidState success = 1;
-        RootNotFound missing_parent = 2;
-    }
-}
-
-message DistributeRewardsRequest {
-    bytes parent_state_hash = 1;
-    repeated ValidatorReward rewards = 2;
-    casper.state.ProtocolVersion protocol_version = 3;
-
-    message ValidatorReward {
-        bytes validator_id = 1;
-        casper.state.BigInt value = 2;
-    }
-}
-
-message DistibuteRewardsError {
-    string message = 1; // TODO: enum of possible errors
-}
-
-message DistributeRewardsResponse {
-    oneof result {
-        // effects of rewards distribution are committed automatically, so commit result is returned in the success case
-        CommitResult success = 1;
-        RootNotFound missing_parent = 2;
-        DistibuteRewardsError error = 3;
-    }
-}
-
-message SlashRequest {
-    bytes parent_state_hash = 1;
-    repeated ValidatorSlash slashes = 2;
-    casper.state.ProtocolVersion protocol_version = 3;
-
-    message ValidatorSlash{
-        bytes validator_id = 1;
-        casper.state.BigInt value = 2;
-    }
-}
-
-message SlashError {
-    string message = 1; // TODO: enum of possible errors
-}
-
-message SlashResponse {
-    oneof result {
-        // effects of slashing are committed automatically, so commit result is returned in the success case
-        CommitResult success = 1;
-        RootNotFound missing_parent = 2;
-        SlashError error = 3;
-    }
-}
-
-message UnbondPayoutRequest {
-    bytes parent_state_hash = 1;
-    uint64 era_height = 2;
-    casper.state.ProtocolVersion protocol_version = 3;
-}
-
-message UnbondPayoutError {
-    string message = 1; // TODO: enum of possible errors
-}
-
-message UnbondPayoutResponse {
-    oneof result {
-        // effects of unbond payment are committed automatically, so commit result is returned in the success case
-        CommitResult success = 1;
-        RootNotFound missing_parent = 2;
-        UnbondPayoutError error = 3;
-    }
-}
-
-message RunGenesisRequest {
-    // Hash of the Genesis configuration.
-    bytes genesis_config_hash = 1;
-    casper.state.ProtocolVersion protocol_version = 2;
-    // Genesis configuration for the ExecutionEngine.
-    ChainSpec.GenesisConfig.ExecConfig ee_config = 3;
-}
-
-// --- END PROOF-OF-STAKE SERVICE DEFINITION --- //
-
-
 message StepRequest {
     bytes parent_state_hash = 1;
     casper.state.ProtocolVersion protocol_version = 2;
@@ -548,22 +453,16 @@ message StepResponse {
     StepResult step_result = 1;
 }
 
+// --- END AUCTION SERVICE DEFINITION --- //
+
 // Definition of the service.
 // ExecutionEngine implements server part while Consensus implements client part.
 service ExecutionEngineService {
-    // execution endpoints
     rpc commit (CommitRequest) returns (CommitResponse) {}
     rpc query (QueryRequest) returns (QueryResponse) {}
     rpc execute (ExecuteRequest) returns (ExecuteResponse) {}
     rpc run_genesis (RunGenesisRequest) returns (GenesisResponse) {}
     rpc upgrade (UpgradeRequest) returns (UpgradeResponse) {}
-    // auction endpoints
     rpc get_era_validators (GetEraValidatorsRequest) returns (GetEraValidatorsResponse) {}
-    // proof-of-stake endpoints
-    rpc bid_state(BidStateRequest) returns (BidStateResponse) {}
-    rpc distribute_rewards(DistributeRewardsRequest) returns (DistributeRewardsResponse) {}
-    rpc slash(SlashRequest) returns (SlashResponse) {}
-    rpc unbond_payout(UnbondPayoutRequest) returns (UnbondPayoutResponse) {}
-    // auction endpoint
     rpc step(StepRequest) returns (StepResponse) {}
 }

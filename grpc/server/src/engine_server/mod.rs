@@ -25,7 +25,7 @@ use std::{
     marker::{Send, Sync},
 };
 
-use grpc::{Error as GrpcError, RequestOptions, ServerBuilder, SingleResponse};
+use grpc::{RequestOptions, ServerBuilder, SingleResponse};
 use log::{info, warn, Level};
 
 use casper_execution_engine::{
@@ -52,16 +52,13 @@ use casper_types::bytesrepr::ToBytes;
 
 use self::{
     ipc::{
-        BidStateRequest, BidStateResponse, CommitRequest, CommitResponse, DistributeRewardsRequest,
-        DistributeRewardsResponse, ExecuteResponse, GenesisResponse, QueryResponse, SlashRequest,
-        SlashResponse, UnbondPayoutRequest, UnbondPayoutResponse, UpgradeRequest, UpgradeResponse,
+        CommitRequest, CommitResponse, ExecuteResponse, GenesisResponse, QueryResponse,
+        UpgradeRequest, UpgradeResponse,
     },
     ipc_grpc::{ExecutionEngineService, ExecutionEngineServiceServer},
     mappings::{ParsingError, TransformMap},
 };
 use casper_execution_engine::core::engine_state::step::StepRequest;
-
-const UNIMPLEMENTED: &str = "unimplemented";
 
 // Idea is that Engine will represent the core of the execution engine project.
 // It will act as an entry point for execution of Wasm binaries.
@@ -418,38 +415,6 @@ where
         }
 
         SingleResponse::completed(response)
-    }
-
-    fn bid_state(
-        &self,
-        _request_options: RequestOptions,
-        _bid_state_request: BidStateRequest,
-    ) -> SingleResponse<BidStateResponse> {
-        SingleResponse::err(GrpcError::Panic(UNIMPLEMENTED.to_string()))
-    }
-
-    fn distribute_rewards(
-        &self,
-        _request_options: RequestOptions,
-        _distribute_rewards_request: DistributeRewardsRequest,
-    ) -> SingleResponse<DistributeRewardsResponse> {
-        SingleResponse::err(GrpcError::Panic(UNIMPLEMENTED.to_string()))
-    }
-
-    fn slash(
-        &self,
-        _request_options: RequestOptions,
-        _slash_request: SlashRequest,
-    ) -> SingleResponse<SlashResponse> {
-        SingleResponse::err(GrpcError::Panic(UNIMPLEMENTED.to_string()))
-    }
-
-    fn unbond_payout(
-        &self,
-        _request_options: RequestOptions,
-        _unbond_payout_request: UnbondPayoutRequest,
-    ) -> SingleResponse<UnbondPayoutResponse> {
-        SingleResponse::err(GrpcError::Panic(UNIMPLEMENTED.to_string()))
     }
 
     fn step(

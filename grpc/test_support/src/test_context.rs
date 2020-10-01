@@ -150,9 +150,9 @@ pub struct TestContextBuilder {
 
 impl TestContextBuilder {
     /// Constructs a new `TestContextBuilder` initialised with default values for an account, i.e.
-    /// an account at [`DEFAULT_ACCOUNT_ADDR`](crate::DEFAULT_ACCOUNT_ADDR) with an initial balance
-    /// of [`DEFAULT_ACCOUNT_INITIAL_BALANCE`](crate::DEFAULT_ACCOUNT_INITIAL_BALANCE) which will be
-    /// added to the Genesis block.
+    /// an account at [`DEFAULT_ACCOUNT_ADDR`](static@crate::DEFAULT_ACCOUNT_ADDR) with an initial
+    /// balance of [`DEFAULT_ACCOUNT_INITIAL_BALANCE`](crate::DEFAULT_ACCOUNT_INITIAL_BALANCE)
+    /// which will be added to the Genesis block.
     pub fn new() -> Self {
         TestContextBuilder {
             genesis_config: DEFAULT_GENESIS_CONFIG.clone(),
