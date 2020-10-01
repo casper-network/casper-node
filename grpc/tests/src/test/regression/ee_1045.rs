@@ -78,7 +78,7 @@ fn should_run_ee_1045_squash_validators() {
 
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        tmp.extend(extra_accounts.clone());
+        tmp.extend(extra_accounts);
         tmp
     };
 
@@ -178,7 +178,7 @@ fn should_run_ee_1045_squash_validators() {
     let rhs = BTreeSet::from_iter(post_round_1_auction_weights.keys().copied());
     assert_eq!(
         lhs.difference(&rhs).copied().collect::<BTreeSet<_>>(),
-        BTreeSet::from_iter(round_1_validator_squash.clone())
+        BTreeSet::from_iter(round_1_validator_squash)
     );
 
     //
