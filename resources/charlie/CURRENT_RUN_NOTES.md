@@ -30,7 +30,7 @@ run and learn from this type of operation.
  - md5: 0b5fa5e7b22ae186c72f8cc1a5825548  chainspec.toml
 
 [accounts.csv](https://raw.githubusercontent.com/CasperLabs/casper-node/charlie-testnet/resources/charlie/accounts.csv)
- - md5: e094b414dfe5c13f7f98e81a00c82767  accounts.csv
+ - md5: e511b7407731ccbed243cec2ad5221fa  accounts.csv
 
 ```
 sudo curl -o /etc/casper/chainspec.toml https://raw.githubusercontent.com/CasperLabs/casper-node/charlie-testnet/resources/charlie/chainspec.toml
