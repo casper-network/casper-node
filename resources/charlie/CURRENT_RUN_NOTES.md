@@ -11,7 +11,6 @@
  - Caching chainspec.toml for helping deal with chainspec db access.
  - Removed panic of outdated block is exectuted.
  - impl Display for validators to clean up logs.
- - Changed systemd package to append logs.
  
 ## Testing
 
@@ -48,7 +47,6 @@ Pull down to `/etc/casper/`
 `sudo rm -rf /root/.local/share/casper-node`
 
 ### Rename Log 
-This is now optional as append works.
 
 `sudo mv /var/log/casper-node.log /var/log/casper-node.log.$(date "+%s")`
 
