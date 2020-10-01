@@ -11,7 +11,7 @@
  - Caching chainspec.toml for helping deal with chainspec db access.
  - Removed panic of outdated block is exectuted.
  - impl Display for validators to clean up logs.
- - CHanged systemd package to append logs.
+ - Changed systemd package to append logs.
  
 ## Testing
 
