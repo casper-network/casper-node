@@ -47,6 +47,7 @@ impl TryFrom<RewardItem> for ipc::RewardItem {
         let validator_id = reward_item.validator_id.to_bytes()?;
         let mut item = ipc::RewardItem::new();
         item.set_validator_id(validator_id);
+        item.set_value(reward_item.value);
         Ok(item)
     }
 }

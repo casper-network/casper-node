@@ -598,7 +598,7 @@ impl DirectSystemContractCall {
         match self {
             DirectSystemContractCall::Slash => "slash",
             DirectSystemContractCall::RunAuction => "run_auction",
-            DirectSystemContractCall::DistributeRewards => "distribute_rewards",
+            DirectSystemContractCall::DistributeRewards => "distribute",
             DirectSystemContractCall::FinalizePayment => "finalize_payment",
             DirectSystemContractCall::CreatePurse => "create",
             DirectSystemContractCall::Transfer => "transfer",
