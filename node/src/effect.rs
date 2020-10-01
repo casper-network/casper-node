@@ -1072,7 +1072,6 @@ impl<REv> EffectBuilder<REv> {
     /// Returns a map of validators for given `era` to their weights as known from `root_hash`.
     ///
     /// This operation is read only.
-    #[allow(dead_code)]
     pub(crate) async fn get_validators(
         self,
         get_request: GetEraValidatorsRequest,
@@ -1091,7 +1090,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Runs the end of era step using the system smart contract.
-    #[allow(dead_code)]
     pub(crate) async fn run_step(
         self,
         step_request: StepRequest,
