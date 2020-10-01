@@ -2,6 +2,7 @@ use std::{
     convert::TryInto,
     fmt::{self, Debug, Formatter},
     path::Path,
+    str::FromStr,
 };
 
 use csv::ReaderBuilder;
@@ -42,7 +43,7 @@ impl Default for DeployConfig {
     fn default() -> Self {
         DeployConfig {
             max_payment_cost: Motes::zero(),
-            max_ttl: TimeDiff::from(86_400_000), // 1 day
+            max_ttl: TimeDiff::from_str("1day").unwrap(),
             max_dependencies: 10,
             max_block_size: 10_485_760,
             block_gas_limit: 10_000_000_000_000,
@@ -94,12 +95,12 @@ pub(crate) struct HighwayConfig {
 impl Default for HighwayConfig {
     fn default() -> Self {
         HighwayConfig {
-            genesis_era_start_timestamp: Timestamp::zero() + TimeDiff::from(1_583_712_000_000),
-            era_duration: TimeDiff::from(604_800_000), // 1 week
+            genesis_era_start_timestamp: Timestamp::from_str("2020-10-01T00:00:01.000Z").unwrap(),
+            era_duration: TimeDiff::from_str("1week").unwrap(),
             minimum_era_height: 100,
-            booking_duration: TimeDiff::from(864_000_000), // 10 days
-            entropy_duration: TimeDiff::from(10_800_000),  // 3 hours
-            voting_period_duration: TimeDiff::from(172_800_000), // 2 days
+            booking_duration: TimeDiff::from_str("10days").unwrap(),
+            entropy_duration: TimeDiff::from_str("3hours").unwrap(),
+            voting_period_duration: TimeDiff::from_str("2days").unwrap(),
             finality_threshold_percent: 10,
             minimum_round_exponent: 14, // 2**14 ms = ~16 seconds
         }
@@ -369,7 +370,7 @@ mod tests {
 
     fn check_spec(spec: Chainspec) {
         assert_eq!(spec.genesis.name, "test-chain");
-        assert_eq!(spec.genesis.timestamp.millis(), 1);
+        assert_eq!(spec.genesis.timestamp.millis(), 1600454700000);
         assert_eq!(spec.genesis.protocol_version, Version::from((0, 1, 0)));
         assert_eq!(spec.genesis.mint_installer_bytes, b"Mint installer bytes");
         assert_eq!(
@@ -398,21 +399,24 @@ mod tests {
                 .highway_config
                 .genesis_era_start_timestamp
                 .millis(),
-            2
+            1600454700000
         );
-        assert_eq!(spec.genesis.highway_config.era_duration, TimeDiff::from(3));
+        assert_eq!(
+            spec.genesis.highway_config.era_duration,
+            TimeDiff::from(180000)
+        );
         assert_eq!(spec.genesis.highway_config.minimum_era_height, 9);
         assert_eq!(
             spec.genesis.highway_config.booking_duration,
-            TimeDiff::from(4)
+            TimeDiff::from(14400000)
         );
         assert_eq!(
             spec.genesis.highway_config.entropy_duration,
-            TimeDiff::from(5)
+            TimeDiff::from(432000000)
         );
         assert_eq!(
             spec.genesis.highway_config.voting_period_duration,
-            TimeDiff::from(6)
+            TimeDiff::from(3628800000)
         );
         assert_eq!(spec.genesis.highway_config.finality_threshold_percent, 8);
         assert_eq!(spec.genesis.highway_config.minimum_round_exponent, 13);
@@ -421,7 +425,10 @@ mod tests {
             spec.genesis.deploy_config.max_payment_cost,
             Motes::new(U512::from(9))
         );
-        assert_eq!(spec.genesis.deploy_config.max_ttl, TimeDiff::from(10));
+        assert_eq!(
+            spec.genesis.deploy_config.max_ttl,
+            TimeDiff::from(26300160000)
+        );
         assert_eq!(spec.genesis.deploy_config.max_dependencies, 11);
         assert_eq!(spec.genesis.deploy_config.max_block_size, 12);
         assert_eq!(spec.genesis.deploy_config.block_gas_limit, 13);
@@ -463,7 +470,7 @@ mod tests {
         );
         assert_eq!(
             upgrade0.new_deploy_config.unwrap().max_ttl,
-            TimeDiff::from(35)
+            TimeDiff::from(1104516000000)
         );
         assert_eq!(upgrade0.new_deploy_config.unwrap().max_dependencies, 36);
         assert_eq!(upgrade0.new_deploy_config.unwrap().max_block_size, 37);
