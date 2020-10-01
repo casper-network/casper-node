@@ -6,6 +6,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
+    net::SocketAddr,
     time::{Duration, Instant},
 };
 
@@ -207,12 +208,15 @@ fn network_is_complete(
         .iter()
         .map(|(_, runner)| {
             let net = &runner.reactor().inner().net;
-            let mut actual = net.connected_nodes();
+            let mut actual = net
+                .outgoing_connected_nodes()
+                .intersection(&net.incoming_connected_nodes())
+                .cloned()
+                .collect::<HashSet<_>>();
 
             // All nodes should be connected to every other node, except itself, so we add it to the
             // set of nodes and pretend we have a loopback connection.
             actual.insert(net.node_id());
-
             actual
         })
         .all(|actual| actual == expected)
@@ -283,7 +287,7 @@ async fn run_two_node_network_five_times() {
 
 /// Sanity check that we fail to settle with .
 #[tokio::test]
-async fn malicious_drop_incoming_connections() {
+async fn bad_node_partially_connects() {
     init_logging();
 
     let mut rng = TestRng::new();
@@ -304,20 +308,25 @@ async fn malicious_drop_incoming_connections() {
     let local_net_config = Config::new((local_addr, port).into());
 
     let mut net = Network::<TestReactor>::new();
-    let (peer1, _) = net.add_node_with_config(local_net_config, &mut rng)
+    let (peer1, _) = net
+        .add_node_with_config(local_net_config, &mut rng)
         .await
         .unwrap();
-   
+
     let port = testing::unused_port_on_localhost();
     let local_net_config = Config::new((local_addr, port).into());
-    let (_peer2, runner ) = net.add_node_with_config(local_net_config, &mut rng)
+    let (_peer2, runner2) = net
+        .add_node_with_config(local_net_config, &mut rng)
         .await
         .unwrap();
 
-    runner.reactor_mut().inner_mut().net.cheat_remove_incoming(&peer1);
+    let badguy = &mut runner2.reactor_mut().inner_mut().net;
+    badguy.public_address = SocketAddr::from(([254, 1, 1, 1], 0)); // cause the gossipped address to be wrong
 
-    // The network should be fully connected.
-    let timeout = Duration::from_secs(2);
+    let innocent_node = &net.nodes().get(&peer1).unwrap().reactor().inner().net;
+
+    // The network should be fully connected but with only one node
+    let timeout = innocent_node.gossip_interval * 3 + Duration::from_secs(5);
     net.settle_on(&mut rng, network_is_complete, timeout).await;
 
     net.finalize().await;
