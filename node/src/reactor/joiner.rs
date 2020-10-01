@@ -342,7 +342,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         let deploy_acceptor = DeployAcceptor::new();
 
         let (deploy_buffer, deploy_buffer_effects) =
-            DeployBuffer::new(event_queue, config.node.block_max_deploy_count as usize);
+            DeployBuffer::new(effect_builder, config.node.block_max_deploy_count as usize);
         effects.extend(reactor::wrap_effects(
             Event::DeployBuffer,
             deploy_buffer_effects,
