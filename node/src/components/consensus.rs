@@ -78,7 +78,8 @@ pub enum Event<I> {
     },
     /// Response from the Contract Runtime, containing the validators for the new era
     GetValidatorsResponse {
-        switch_block_header: Box<BlockHeader>,
+        /// The header of the switch block
+        block_header: Box<BlockHeader>,
         get_validators_result: Result<Option<ValidatorWeights>, GetEraValidatorsError>,
     },
 }
@@ -222,17 +223,17 @@ where
                 proto_block,
             } => handling_es.handle_invalid_proto_block(era_id, sender, proto_block),
             Event::GetValidatorsResponse {
-                switch_block_header,
+                block_header,
                 get_validators_result,
             } => match get_validators_result {
                 Ok(Some(result)) => {
-                    handling_es.handle_validators_response(*switch_block_header, result)
+                    handling_es.handle_get_validators_response(*block_header, result)
                 }
                 result => {
                     error!(
                         ?result,
                         "get_validators in era {} returned an error: {:?}",
-                        switch_block_header.era_id(),
+                        block_header.era_id(),
                         result
                     );
                     panic!("couldn't get validators");

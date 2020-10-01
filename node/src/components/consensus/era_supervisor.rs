@@ -456,7 +456,7 @@ where
             );
             effects.extend(self.effect_builder.get_validators(request).event(|result| {
                 Event::GetValidatorsResponse {
-                    switch_block_header: Box::new(block_header),
+                    block_header: Box::new(block_header),
                     get_validators_result: result,
                 }
             }));
@@ -471,7 +471,7 @@ where
         effects
     }
 
-    pub(super) fn handle_validators_response(
+    pub(super) fn handle_get_validators_response(
         &mut self,
         block_header: BlockHeader,
         validator_weights: ValidatorWeights,
