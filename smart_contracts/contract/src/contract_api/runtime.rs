@@ -12,7 +12,7 @@ use casper_types::{
     bytesrepr::{self, FromBytes},
     contracts::{ContractVersion, NamedKeys},
     ApiError, BlockTime, CLTyped, CLValue, ContractHash, ContractPackageHash, Key, Phase,
-    RuntimeArgs, URef, BLOCKTIME_SERIALIZED_LENGTH, PHASE_SERIALIZED_LENGTH,
+    RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH, BLOCKTIME_SERIALIZED_LENGTH, PHASE_SERIALIZED_LENGTH,
 };
 
 use crate::{contract_api, ext_ffi, unwrap_or_revert::UnwrapOrRevert};
@@ -303,6 +303,20 @@ pub fn is_valid_uref(uref: URef) -> bool {
     let (uref_ptr, uref_size, _bytes) = contract_api::to_ptr(uref);
     let result = unsafe { ext_ffi::is_valid_uref(uref_ptr, uref_size) };
     result != 0
+}
+
+/// Returns a 32-byte BLAKE2b digest
+pub fn blake2b<T: AsRef<[u8]>>(input: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
+    let mut ret = [0; BLAKE2B_DIGEST_LENGTH];
+    unsafe {
+        ext_ffi::blake2b(
+            input.as_ref().as_ptr(),
+            input.as_ref().len(),
+            ret.as_mut_ptr(),
+            BLAKE2B_DIGEST_LENGTH,
+        )
+    };
+    ret
 }
 
 fn read_host_buffer_into(dest: &mut [u8]) -> Result<usize, ApiError> {

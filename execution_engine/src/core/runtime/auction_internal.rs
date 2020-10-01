@@ -1,9 +1,10 @@
 use casper_types::{
+    account,
     account::AccountHash,
     auction::{Auction, MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::Error,
-    ApiError, CLTyped, CLValue, Key, TransferredTo, URef, U512,
+    ApiError, CLTyped, CLValue, Key, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 use super::Runtime;
@@ -78,6 +79,10 @@ where
         self.context
             .put_key(name.to_string(), key)
             .expect("should put key")
+    }
+
+    fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
+        account::blake2b(data)
     }
 }
 

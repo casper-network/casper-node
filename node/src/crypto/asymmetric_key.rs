@@ -1580,6 +1580,19 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
             assert!(verify(message, &signature, &wrong_type_public_key).is_err());
             assert!(verify(&message[1..], &signature, &public_key).is_err());
         }
+
+        #[test]
+        fn account_hash_generation_is_consistent() {
+            let mut rng = TestRng::new();
+            let secret_key = SecretKey::random_ed25519(&mut rng);
+
+            let public_key_node = PublicKey::from(&secret_key);
+            let public_key_types: casper_types::PublicKey = public_key_node.into();
+
+            let hash_node: AccountHash = public_key_node.to_account_hash();
+            let hash_types: AccountHash = public_key_types.into();
+            assert_eq!(hash_types, hash_node)
+        }
     }
 
     mod secp256k1 {
@@ -1760,6 +1773,19 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
             let signature_low = Signature::new_secp256k1([1; SIGNATURE_LENGTH]).unwrap();
             let signature_high = Signature::new_secp256k1([3; SIGNATURE_LENGTH]).unwrap();
             check_ord_and_hash(signature_low, signature_high)
+        }
+
+        #[test]
+        fn account_hash_generation_is_consistent() {
+            let mut rng = TestRng::new();
+            let secret_key = SecretKey::random_secp256k1(&mut rng);
+
+            let public_key_node = PublicKey::from(&secret_key);
+            let public_key_types: casper_types::PublicKey = public_key_node.into();
+
+            let hash_node: AccountHash = public_key_node.to_account_hash();
+            let hash_types: AccountHash = public_key_types.into();
+            assert_eq!(hash_types, hash_node)
         }
     }
 

@@ -626,7 +626,14 @@ extern "C" {
         urefs_ptr: *const u8,
         urefs_size: usize,
     ) -> i32;
-
+    /// Returns a 32-byte BLAKE2b hash digest from the given input bytes
+    ///
+    /// # Arguments
+    /// * `in_ptr` - pointer to bytes
+    /// * `in_size` - length of bytes
+    /// * `out_ptr` - pointer to the location where argument bytes will be copied from the host side
+    /// * `out_size` - size of output pointer
+    pub fn blake2b(in_ptr: *const u8, in_size: usize, out_ptr: *mut u8, out_size: usize);
     /// Prints data directly to stanadard output on the host.
     ///
     /// # Arguments

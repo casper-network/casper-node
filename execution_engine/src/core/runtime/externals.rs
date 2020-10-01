@@ -3,6 +3,7 @@ use std::{collections::BTreeSet, convert::TryFrom};
 use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
 use casper_types::{
+    account,
     account::AccountHash,
     api_error,
     bytesrepr::{self, ToBytes},
@@ -667,6 +668,18 @@ where
                     urefs_size,
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
+
+            FunctionIndex::Blake2b => {
+                let (in_ptr, in_size, out_ptr, out_size): (u32, u32, u32, u32) = Args::parse(args)?;
+                scoped_instrumenter.add_property("in_size", in_size.to_string());
+                scoped_instrumenter.add_property("out_size", out_size.to_string());
+                let input: Vec<u8> = self.bytes_from_mem(in_ptr, in_size as usize)?;
+                let digest = account::blake2b(&input);
+                self.memory
+                    .set(out_ptr, &digest)
+                    .map_err(|error| Error::Interpreter(error.into()))?;
+                Ok(None)
             }
         }
     }
