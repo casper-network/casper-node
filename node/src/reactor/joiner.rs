@@ -7,7 +7,6 @@ use datasize::DataSize;
 use block_executor::BlockExecutor;
 use consensus::EraSupervisor;
 use deploy_acceptor::DeployAcceptor;
-use deploy_buffer::DeployBuffer;
 use derive_more::From;
 use prometheus::Registry;
 use rand::{CryptoRng, Rng};
@@ -21,7 +20,7 @@ use crate::{
         chainspec_loader::ChainspecLoader,
         consensus::{self},
         contract_runtime::{self, ContractRuntime},
-        deploy_acceptor, deploy_buffer,
+        deploy_acceptor,
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
         linear_chain,
@@ -60,10 +59,6 @@ pub enum Event {
     /// Network event.
     #[from]
     Network(small_network::Event<Message>),
-
-    /// Deploy buffer event.
-    #[from]
-    DeployBuffer(deploy_buffer::Event),
 
     /// Storage event.
     #[from]
@@ -250,7 +245,6 @@ impl Display for Event {
                 write!(f, "deploy acceptor announcement: {}", ann)
             }
             Event::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
-            Event::DeployBuffer(event) => write!(f, "deploy buffer: {}", event),
             Event::LinearChainAnnouncement(ann) => write!(f, "linear chain announcement: {}", ann),
         }
     }
@@ -285,7 +279,6 @@ where
     pub(super) block_by_height_fetcher: Fetcher<BlockByHeight>,
     #[data_size(skip)]
     pub(super) deploy_acceptor: DeployAcceptor,
-    pub(super) deploy_buffer: DeployBuffer,
 }
 
 impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
@@ -341,8 +334,6 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
 
         let deploy_acceptor = DeployAcceptor::new();
 
-        let deploy_buffer = DeployBuffer::new(config.node.block_max_deploy_count as usize);
-
         let genesis_post_state_hash = chainspec_loader
             .genesis_post_state_hash()
             .expect("Should have Genesis post state hash");
@@ -389,7 +380,6 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 init_consensus_effects,
                 block_by_height_fetcher,
                 deploy_acceptor,
-                deploy_buffer,
             },
             effects,
         ))
@@ -402,10 +392,6 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::DeployBuffer(event) => reactor::wrap_effects(
-                Event::DeployBuffer,
-                self.deploy_buffer.handle_event(effect_builder, rng, event),
-            ),
             Event::Network(event) => reactor::wrap_effects(
                 Event::Network,
                 self.net.handle_event(effect_builder, rng, event),
@@ -511,24 +497,11 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 deploy,
                 source,
             }) => {
-                let event = deploy_buffer::Event::Buffer {
-                    hash: *deploy.id(),
-                    header: Box::new(deploy.header().clone()),
-                };
-                let mut effects =
-                    self.dispatch_event(effect_builder, rng, Event::DeployBuffer(event));
-
                 let event = fetcher::Event::GotRemotely {
                     item: deploy,
                     source,
                 };
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    Event::DeployFetcher(event),
-                ));
-
-                effects
+                self.dispatch_event(effect_builder, rng, Event::DeployFetcher(event))
             }
             Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
                 deploy,
