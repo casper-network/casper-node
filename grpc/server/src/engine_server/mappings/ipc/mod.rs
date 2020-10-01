@@ -9,6 +9,7 @@ mod execute_request;
 mod execution_effect;
 mod genesis_account;
 mod genesis_config;
+mod get_era_validators_request;
 mod query_request;
 mod run_genesis_request;
 mod upgrade_request;

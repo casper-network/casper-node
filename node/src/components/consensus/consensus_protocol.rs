@@ -107,7 +107,7 @@ pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID, R: Rng + CryptoRn
     /// Triggers consensus' timer.
     fn handle_timer(
         &mut self,
-        timerstamp: Timestamp,
+        timestamp: Timestamp,
         rng: &mut R,
     ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
 

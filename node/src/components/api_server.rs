@@ -16,6 +16,7 @@
 mod config;
 mod event;
 mod http_server;
+mod rest_server;
 pub mod rpcs;
 mod sse_server;
 

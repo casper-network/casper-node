@@ -127,12 +127,12 @@ impl<RNG: Rng + CryptoRng + ?Sized> reactor::Reactor<RNG> for Reactor {
             .node
             .chainspec_config_path
             .clone()
-            .load(root)
+            .load(root.clone())
             .map_err(|err| Error::ConfigError(err.to_string()))?;
 
         let effect_builder = EffectBuilder::new(event_queue);
 
-        let storage = Storage::new(&config.storage)?;
+        let storage = Storage::new(WithDir::new(&root, config.storage.clone()))?;
         let contract_runtime =
             ContractRuntime::new(&config.storage, config.contract_runtime, registry)?;
         let (chainspec_loader, chainspec_effects) =

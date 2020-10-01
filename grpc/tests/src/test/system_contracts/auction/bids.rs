@@ -1,4 +1,4 @@
-use std::iter::FromIterator;
+use std::{collections::BTreeSet, iter::FromIterator};
 
 use casper_engine_test_support::{
     internal::{
@@ -13,12 +13,12 @@ use casper_types::{
     account::AccountHash,
     auction::{
         Bids, DelegationRate, Delegators, EraId, EraValidators, SeigniorageRecipients,
-        UnbondingPurses, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
-        ARG_VALIDATOR, AUCTION_DELAY, BIDS_KEY, DEFAULT_LOCKED_FUNDS_PERIOD,
-        DEFAULT_UNBONDING_DELAY, ERA_ID_KEY, INITIAL_ERA_ID, SNAPSHOT_SIZE,
+        UnbondingPurses, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
+        ARG_PUBLIC_KEY, ARG_VALIDATOR, AUCTION_DELAY, BIDS_KEY, DEFAULT_LOCKED_FUNDS_PERIOD,
+        DEFAULT_UNBONDING_DELAY, DELEGATORS_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY, INITIAL_ERA_ID,
+        SNAPSHOT_SIZE,
     },
-    bytesrepr::FromBytes,
-    runtime_args, CLTyped, ContractHash, PublicKey, RuntimeArgs, U512,
+    runtime_args, PublicKey, RuntimeArgs, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -29,8 +29,10 @@ const TRANSFER_AMOUNT: u64 = 250_000_000 + 1000;
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 const NON_FOUNDER_VALIDATOR_1: PublicKey = PublicKey::Ed25519([3; 32]);
 const NON_FOUNDER_VALIDATOR_1_ADDR: AccountHash = AccountHash::new([4; 32]);
+const NON_FOUNDER_VALIDATOR_2_ADDR: AccountHash = AccountHash::new([6; 32]);
 
 const ADD_BID_AMOUNT_1: u64 = 95_000;
+const ADD_BID_AMOUNT_2: u64 = 47_500;
 const ADD_BID_DELEGATION_RATE_1: DelegationRate = 125;
 const BID_AMOUNT_2: u64 = 5_000;
 const ADD_BID_DELEGATION_RATE_2: DelegationRate = 126;
@@ -57,25 +59,10 @@ const ACCOUNT_2_ADDR: AccountHash = AccountHash::new([203; 32]);
 const ACCOUNT_2_BALANCE: u64 = 25_000_000;
 const ACCOUNT_2_BOND: u64 = 200_000;
 
-const BID_ACCOUNT_PK: PublicKey = PublicKey::Ed25519([204; 32]);
-const BID_ACCOUNT_ADDR: AccountHash = AccountHash::new([205; 32]);
+const BID_ACCOUNT_1_PK: PublicKey = PublicKey::Ed25519([204; 32]);
+const BID_ACCOUNT_1_ADDR: AccountHash = AccountHash::new([205; 32]);
 
-fn get_value<T>(builder: &mut InMemoryWasmTestBuilder, contract_hash: ContractHash, name: &str) -> T
-where
-    T: FromBytes + CLTyped,
-{
-    let contract = builder
-        .get_contract(contract_hash)
-        .expect("should have contract");
-    let key = contract.named_keys().get(name).expect("should have purse");
-    let stored_value = builder.query(None, *key, &[]).expect("should query");
-    let cl_value = stored_value
-        .as_cl_value()
-        .cloned()
-        .expect("should be cl value");
-    let result: T = cl_value.into_t().expect("should convert");
-    result
-}
+const BID_ACCOUNT_2_PK: PublicKey = PublicKey::Ed25519([206; 32]);
 
 #[ignore]
 #[test]
@@ -91,7 +78,7 @@ fn should_run_add_bid() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
-            ARG_PUBLIC_KEY => BID_ACCOUNT_PK,
+            ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK,
             ARG_ENTRY_POINT => ARG_ADD_BID,
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
@@ -101,11 +88,11 @@ fn should_run_add_bid() {
 
     builder.exec(exec_request_1).commit().expect_success();
 
-    let bids: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
+    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
 
     assert_eq!(bids.len(), 1);
 
-    let active_bid = bids.get(&BID_ACCOUNT_PK.clone()).unwrap();
+    let active_bid = bids.get(&BID_ACCOUNT_1_PK.clone()).unwrap();
     assert_eq!(
         builder.get_purse_balance(active_bid.bonding_purse),
         U512::from(ADD_BID_AMOUNT_1)
@@ -118,7 +105,7 @@ fn should_run_add_bid() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
-            ARG_PUBLIC_KEY => BID_ACCOUNT_PK,
+            ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK,
             ARG_ENTRY_POINT => ARG_ADD_BID,
             ARG_AMOUNT => U512::from(BID_AMOUNT_2),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_2,
@@ -128,11 +115,11 @@ fn should_run_add_bid() {
 
     builder.exec(exec_request_2).commit().expect_success();
 
-    let bids: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
+    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
 
     assert_eq!(bids.len(), 1);
 
-    let active_bid = bids.get(&BID_ACCOUNT_PK.clone()).unwrap();
+    let active_bid = bids.get(&BID_ACCOUNT_1_PK.clone()).unwrap();
     assert_eq!(
         builder.get_purse_balance(active_bid.bonding_purse),
         U512::from(ADD_BID_AMOUNT_1 + BID_AMOUNT_2)
@@ -145,30 +132,29 @@ fn should_run_add_bid() {
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => ARG_WITHDRAW_BID,
-            ARG_PUBLIC_KEY => BID_ACCOUNT_PK,
+            ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK,
             ARG_AMOUNT => U512::from(WITHDRAW_BID_AMOUNT_2),
         },
     )
     .build();
     builder.exec(exec_request_3).commit().expect_success();
 
-    let bids: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
+    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
 
     assert_eq!(bids.len(), 1);
 
-    let active_bid = bids.get(&BID_ACCOUNT_PK.clone()).unwrap();
+    let active_bid = bids.get(&BID_ACCOUNT_1_PK.clone()).unwrap();
     assert_eq!(
         builder.get_purse_balance(active_bid.bonding_purse),
         // Since we don't pay out immediately `WITHDRAW_BID_AMOUNT_2` is locked in unbonding queue
         U512::from(ADD_BID_AMOUNT_1 + BID_AMOUNT_2)
     );
-    let unbonding_purses: UnbondingPurses =
-        get_value(&mut builder, auction_hash, "unbonding_purses");
+    let unbonding_purses: UnbondingPurses = builder.get_value(auction_hash, "unbonding_purses");
     let unbond_list = unbonding_purses
-        .get(&BID_ACCOUNT_PK)
+        .get(&BID_ACCOUNT_1_PK)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
-    assert_eq!(unbond_list[0].origin, BID_ACCOUNT_PK);
+    assert_eq!(unbond_list[0].origin, BID_ACCOUNT_1_PK);
     // `WITHDRAW_BID_AMOUNT_2` is in unbonding list
     assert_eq!(
         builder.get_purse_balance(unbond_list[0].purse),
@@ -227,7 +213,7 @@ fn should_run_delegate_and_undelegate() {
 
     let auction_hash = builder.get_auction_contract_hash();
 
-    let bids: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
+    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
     assert_eq!(bids.len(), 1);
     let active_bid = bids.get(&NON_FOUNDER_VALIDATOR_1).unwrap();
     assert_eq!(
@@ -251,18 +237,18 @@ fn should_run_delegate_and_undelegate() {
             ARG_ENTRY_POINT => ARG_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1,
-            ARG_DELEGATOR => BID_ACCOUNT_PK,
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK,
         },
     )
     .build();
 
     builder.exec(exec_request_1).commit().expect_success();
-    let delegators: Delegators = get_value(&mut builder, auction_hash, "delegators");
+    let delegators: Delegators = builder.get_value(auction_hash, DELEGATORS_KEY);
     assert_eq!(delegators.len(), 1);
 
     let delegated_amount_1 = delegators
         .get(&NON_FOUNDER_VALIDATOR_1.clone())
-        .and_then(|map| map.get(&BID_ACCOUNT_PK.clone()))
+        .and_then(|map| map.get(&BID_ACCOUNT_1_PK.clone()))
         .cloned()
         .unwrap_or_default();
     assert_eq!(
@@ -280,19 +266,19 @@ fn should_run_delegate_and_undelegate() {
             ARG_ENTRY_POINT => ARG_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_2),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1,
-            ARG_DELEGATOR => BID_ACCOUNT_PK,
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK,
         },
     )
     .build();
 
     builder.exec(exec_request_2).commit().expect_success();
 
-    let delegators: Delegators = get_value(&mut builder, auction_hash, "delegators");
+    let delegators: Delegators = builder.get_value(auction_hash, DELEGATORS_KEY);
     assert_eq!(delegators.len(), 1);
 
     let delegated_amount_2 = delegators
         .get(&NON_FOUNDER_VALIDATOR_1)
-        .and_then(|map| map.get(&BID_ACCOUNT_PK.clone()))
+        .and_then(|map| map.get(&BID_ACCOUNT_1_PK.clone()))
         .cloned()
         .unwrap_or_default();
     assert_eq!(
@@ -309,22 +295,22 @@ fn should_run_delegate_and_undelegate() {
             ARG_ENTRY_POINT => ARG_UNDELEGATE,
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1,
-            ARG_DELEGATOR => BID_ACCOUNT_PK,
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK,
         },
     )
     .build();
     builder.exec(exec_request_3).commit().expect_success();
 
-    let bids: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
+    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
 
     assert_eq!(bids.len(), 1);
 
-    let delegators: Delegators = get_value(&mut builder, auction_hash, "delegators");
+    let delegators: Delegators = builder.get_value(auction_hash, DELEGATORS_KEY);
     assert_eq!(delegators.len(), 1);
 
     let delegated_amount_3 = delegators
         .get(&NON_FOUNDER_VALIDATOR_1.clone())
-        .and_then(|map| map.get(&BID_ACCOUNT_PK.clone()))
+        .and_then(|map| map.get(&BID_ACCOUNT_1_PK.clone()))
         .cloned()
         .unwrap_or_default();
     assert_eq!(
@@ -339,7 +325,7 @@ fn should_run_delegate_and_undelegate() {
 #[test]
 fn should_calculate_era_validators() {
     assert_ne!(ACCOUNT_1_ADDR, ACCOUNT_2_ADDR,);
-    assert_ne!(ACCOUNT_2_ADDR, BID_ACCOUNT_ADDR,);
+    assert_ne!(ACCOUNT_2_ADDR, BID_ACCOUNT_1_ADDR,);
     assert_ne!(ACCOUNT_2_ADDR, *DEFAULT_ACCOUNT_ADDR,);
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
@@ -386,8 +372,20 @@ fn should_calculate_era_validators() {
     builder.run_genesis(&run_genesis_request);
 
     let auction_hash = builder.get_auction_contract_hash();
-    let bids: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
+    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
     assert_eq!(bids.len(), 2, "founding validators {:?}", bids);
+
+    // Verify first era validators
+    let first_validator_weights: ValidatorWeights = builder
+        .get_era_validators(INITIAL_ERA_ID)
+        .expect("should have first era validator weights");
+    assert_eq!(
+        first_validator_weights
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from_iter(vec![ACCOUNT_1_PK, ACCOUNT_2_PK])
+    );
 
     builder.exec(transfer_request_1).commit().expect_success();
     builder.exec(transfer_request_2).commit().expect_success();
@@ -397,7 +395,7 @@ fn should_calculate_era_validators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
-            ARG_PUBLIC_KEY => BID_ACCOUNT_PK,
+            ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK,
             ARG_ENTRY_POINT => ARG_ADD_BID,
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
@@ -407,7 +405,7 @@ fn should_calculate_era_validators() {
 
     builder.exec(add_bid_request_1).commit().expect_success();
 
-    let pre_era_id: EraId = get_value(&mut builder, auction_hash, ERA_ID_KEY);
+    let pre_era_id: EraId = builder.get_value(auction_hash, ERA_ID_KEY);
     assert_eq!(pre_era_id, 0);
 
     // non-founding validator request
@@ -425,10 +423,10 @@ fn should_calculate_era_validators() {
         .commit()
         .expect_success();
 
-    let post_era_id: EraId = get_value(&mut builder, auction_hash, ERA_ID_KEY);
+    let post_era_id: EraId = builder.get_value(auction_hash, ERA_ID_KEY);
     assert_eq!(post_era_id, 1);
 
-    let era_validators: EraValidators = get_value(&mut builder, auction_hash, "era_validators");
+    let era_validators: EraValidators = builder.get_value(auction_hash, "era_validators");
 
     // Check if there are no missing eras after the calculation, but we don't care about what the
     // elements are
@@ -451,8 +449,10 @@ fn should_calculate_era_validators() {
         era_validators
     ); // eraindex==1 - ran once
 
+    let lookup_era_id = consensus_next_era_id - 1;
+
     let validator_weights = era_validators
-        .get(&(consensus_next_era_id - 1)) // indexed from 0
+        .get(&lookup_era_id) // indexed from 0
         .unwrap_or_else(|| {
             panic!(
                 "should have era_index=={} entry {:?}",
@@ -468,10 +468,19 @@ fn should_calculate_era_validators() {
     ); //2 genesis validators "winners"
     assert_eq!(
         validator_weights
-            .get(&BID_ACCOUNT_PK)
+            .get(&BID_ACCOUNT_1_PK)
             .expect("should have bid account in this era"),
         &U512::from(ADD_BID_AMOUNT_1)
     );
+
+    // Check validator weights using the API
+    let era_validators_result = builder
+        .get_era_validators(lookup_era_id)
+        .expect("should have validator weights");
+    assert_eq!(era_validators_result, *validator_weights);
+
+    // Make sure looked up era validators are different than initial era validators
+    assert_ne!(era_validators_result, first_validator_weights);
 }
 
 #[ignore]
@@ -513,7 +522,7 @@ fn should_get_first_seigniorage_recipients() {
     .build();
 
     let auction_hash = builder.get_auction_contract_hash();
-    let bids: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
+    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
     assert_eq!(bids.len(), 2);
 
     let founding_validator_1 = bids.get(&ACCOUNT_1_PK).expect("should have account 1 pk");
@@ -569,14 +578,14 @@ fn should_get_first_seigniorage_recipients() {
         .unwrap();
     assert_eq!(seigniorage_recipients.len(), 2);
 
-    let era_validators: EraValidators = get_value(&mut builder, auction_hash, "era_validators");
+    let mut era_validators: EraValidators = builder.get_value(auction_hash, "era_validators");
     assert_eq!(era_validators.len(), SNAPSHOT_SIZE, "{:?}", era_validators); // eraindex==1 - ran once
 
     assert!(era_validators.contains_key(&(AUCTION_DELAY as u64 + 1)));
 
     let era_id = AUCTION_DELAY - 1;
 
-    let validator_weights = era_validators.get(&era_id).unwrap_or_else(|| {
+    let validator_weights = era_validators.remove(&era_id).unwrap_or_else(|| {
         panic!(
             "should have era_index=={} entry {:?}",
             era_id, era_validators
@@ -592,6 +601,11 @@ fn should_get_first_seigniorage_recipients() {
         validator_weights.get(&ACCOUNT_2_PK).unwrap(),
         &U512::from(ACCOUNT_2_BOND)
     );
+
+    let first_validator_weights = builder
+        .get_era_validators(era_id)
+        .expect("should have validator weights");
+    assert_eq!(first_validator_weights, validator_weights);
 }
 
 #[ignore]
@@ -627,7 +641,7 @@ fn should_release_founder_stake() {
     .build();
 
     let auction_hash = builder.get_auction_contract_hash();
-    let bids: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
+    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
     assert_eq!(bids.len(), 1);
     let (founding_validator, entry) = bids.into_iter().next().unwrap();
     assert_eq!(entry.funds_locked, Some(DEFAULT_LOCKED_FUNDS_PERIOD));
@@ -647,9 +661,212 @@ fn should_release_founder_stake() {
         builder.exec(run_auction_request).commit().expect_success();
     }
 
-    let bids: Bids = get_value(&mut builder, auction_hash, BIDS_KEY);
+    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
     assert_eq!(bids.len(), 1);
     let (founding_validator, entry) = bids.into_iter().next().unwrap();
     assert_eq!(entry.funds_locked, None);
     assert_eq!(founding_validator, ACCOUNT_1_PK);
+}
+
+#[ignore]
+#[test]
+fn should_fail_to_get_era_validators() {
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let account_1 = GenesisAccount::new(
+            ACCOUNT_1_PK,
+            ACCOUNT_1_ADDR,
+            Motes::new(ACCOUNT_1_BALANCE.into()),
+            Motes::new(ACCOUNT_1_BOND.into()),
+        );
+        tmp.push(account_1);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+
+    assert_eq!(
+        builder.get_era_validators(u64::max_value()),
+        None,
+        "should not have era validators for invalid era"
+    );
+}
+
+#[ignore]
+#[test]
+fn should_use_era_validators_endpoint_for_first_era() {
+    let extra_accounts = vec![GenesisAccount::new(
+        ACCOUNT_1_PK,
+        ACCOUNT_1_ADDR,
+        Motes::new(ACCOUNT_1_BALANCE.into()),
+        Motes::new(ACCOUNT_1_BOND.into()),
+    )];
+
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        tmp.extend(extra_accounts);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+
+    let validator_weights = builder
+        .get_era_validators(INITIAL_ERA_ID)
+        .expect("should have validator weights for era 0");
+
+    assert_eq!(validator_weights.len(), 1);
+    assert_eq!(validator_weights[&ACCOUNT_1_PK], ACCOUNT_1_BOND.into());
+
+    let era_validators: EraValidators =
+        builder.get_value(builder.get_auction_contract_hash(), ERA_VALIDATORS_KEY);
+    assert_eq!(era_validators[&0], validator_weights);
+}
+
+#[ignore]
+#[test]
+fn should_calculate_era_validators_multiple_new_bids() {
+    assert_ne!(ACCOUNT_1_ADDR, ACCOUNT_2_ADDR,);
+    assert_ne!(ACCOUNT_2_ADDR, BID_ACCOUNT_1_ADDR,);
+    assert_ne!(ACCOUNT_2_ADDR, *DEFAULT_ACCOUNT_ADDR,);
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let account_1 = GenesisAccount::new(
+            ACCOUNT_1_PK,
+            ACCOUNT_1_ADDR,
+            Motes::new(ACCOUNT_1_BALANCE.into()),
+            Motes::new(ACCOUNT_1_BOND.into()),
+        );
+        let account_2 = GenesisAccount::new(
+            ACCOUNT_2_PK,
+            ACCOUNT_2_ADDR,
+            Motes::new(ACCOUNT_2_BALANCE.into()),
+            Motes::new(ACCOUNT_2_BOND.into()),
+        );
+        tmp.push(account_1);
+        tmp.push(account_2);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&run_genesis_request);
+
+    let genesis_validator_weights = builder
+        .get_era_validators(INITIAL_ERA_ID)
+        .expect("should have genesis validators for initial era");
+
+    // new_era is the first era in the future where new era validator weights will be calculated
+    let new_era = INITIAL_ERA_ID + AUCTION_DELAY + 1;
+    assert!(builder.get_era_validators(new_era).is_none());
+    assert_eq!(
+        builder.get_era_validators(new_era - 1).unwrap(),
+        builder.get_era_validators(INITIAL_ERA_ID).unwrap()
+    );
+
+    assert_eq!(
+        genesis_validator_weights
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from_iter(vec![ACCOUNT_1_PK, ACCOUNT_2_PK])
+    );
+
+    // Fund additional accounts
+    for target in &[
+        SYSTEM_ADDR,
+        NON_FOUNDER_VALIDATOR_1_ADDR,
+        NON_FOUNDER_VALIDATOR_2_ADDR,
+    ] {
+        let transfer_request_1 = ExecuteRequestBuilder::standard(
+            *DEFAULT_ACCOUNT_ADDR,
+            CONTRACT_TRANSFER_TO_ACCOUNT,
+            runtime_args! {
+                "target" => *target,
+                ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+            },
+        )
+        .build();
+        builder.exec(transfer_request_1).commit().expect_success();
+    }
+
+    // non-founding validator request
+    let add_bid_request_1 = ExecuteRequestBuilder::standard(
+        NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK,
+            ARG_ENTRY_POINT => ARG_ADD_BID,
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+    let add_bid_request_2 = ExecuteRequestBuilder::standard(
+        NON_FOUNDER_VALIDATOR_2_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_PUBLIC_KEY => BID_ACCOUNT_2_PK,
+            ARG_ENTRY_POINT => ARG_ADD_BID,
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_2),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_2,
+        },
+    )
+    .build();
+
+    builder.exec(add_bid_request_1).commit().expect_success();
+    builder.exec(add_bid_request_2).commit().expect_success();
+
+    // run auction and compute validators for new era
+    let run_auction_request_1 = ExecuteRequestBuilder::standard(
+        SYSTEM_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_ENTRY_POINT => ARG_RUN_AUCTION,
+        },
+    )
+    .build();
+
+    builder
+        .exec(run_auction_request_1)
+        .commit()
+        .expect_success();
+
+    // Verify first era validators
+    let new_validator_weights: ValidatorWeights = builder
+        .get_era_validators(new_era)
+        .expect("should have first era validator weights");
+
+    // check that the new computed era has exactly the state we expect
+    let lhs = new_validator_weights
+        .keys()
+        .copied()
+        .collect::<BTreeSet<_>>();
+
+    let rhs = BTreeSet::from_iter(vec![
+        ACCOUNT_1_PK,
+        ACCOUNT_2_PK,
+        BID_ACCOUNT_1_PK,
+        BID_ACCOUNT_2_PK,
+    ]);
+
+    assert_eq!(lhs, rhs);
+
+    // make sure that new validators are exactly those that were part of add_bid requests
+    let new_validators: BTreeSet<_> = rhs
+        .difference(&genesis_validator_weights.keys().copied().collect())
+        .copied()
+        .collect();
+    assert_eq!(
+        new_validators,
+        BTreeSet::from_iter(vec![BID_ACCOUNT_1_PK, BID_ACCOUNT_2_PK,])
+    );
 }

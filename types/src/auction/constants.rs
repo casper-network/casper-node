@@ -45,6 +45,8 @@ pub const ARG_VALIDATOR_PURSE: &str = "validator_purse";
 pub const ARG_VALIDATOR_KEYS: &str = "validator_keys";
 /// Named constant for `validator_public_keys`.
 pub const ARG_VALIDATOR_PUBLIC_KEYS: &str = "validator_public_keys";
+/// Named constant for `era_id`.
+pub const ARG_ERA_ID: &str = "era_id";
 /// Named constant for `reward_factors`.
 pub const ARG_REWARD_FACTORS: &str = "reward_factors";
 /// Named constant for `validator_public_key`.
@@ -54,8 +56,8 @@ pub const ARG_DELEGATOR_PUBLIC_KEY: &str = "delegator_public_key";
 /// Named constant for `target_purse`.
 pub const ARG_TARGET_PURSE: &str = "target_purse";
 
-/// Named constant for method `read_winners`.
-pub const METHOD_READ_WINNERS: &str = "read_winners";
+/// Named constant for method `get_era_validators`.
+pub const METHOD_GET_ERA_VALIDATORS: &str = "get_era_validators";
 /// Named constant for method `read_seigniorage_recipients`.
 pub const METHOD_READ_SEIGNIORAGE_RECIPIENTS: &str = "read_seigniorage_recipients";
 /// Named constant for method `add_bid`.
@@ -70,10 +72,6 @@ pub const METHOD_UNDELEGATE: &str = "undelegate";
 pub const METHOD_QUASH_BID: &str = "quash_bid";
 /// Named constant for method `run_auction`.
 pub const METHOD_RUN_AUCTION: &str = "run_auction";
-/// Named constant for method `bond`.
-pub const METHOD_BOND: &str = "bond";
-/// Named constant for method `unbond`.
-pub const METHOD_UNBOND: &str = "unbond";
 /// Named constant for method `slash`.
 pub const METHOD_SLASH: &str = "slash";
 /// Named constant for method `release_founder_stake`.

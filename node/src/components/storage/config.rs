@@ -29,14 +29,8 @@ pub struct Config {
     ///
     /// If the folder doesn't exist, it and any required parents will be created.
     ///
-    /// Defaults to:
-    /// * Linux: `$XDG_DATA_HOME/casper-node` or `$HOME/.local/share/casper-node`, e.g.
-    ///   /home/alice/.local/share/casper-node
-    /// * macOS: `$HOME/Library/Application Support/io.CasperLabs.casper-node`, e.g.
-    ///   /Users/Alice/Library/Application Support/io.CasperLabs.casper-node
-    /// * Windows: `{FOLDERID_RoamingAppData}\CasperLabs\casper-node\data` e.g.
-    ///   C:\Users\Alice\AppData\Roaming\CasperLabs\casper-node\data
-    path: Option<PathBuf>,
+    /// If unset via the configuration file, the value must be provided via the CLI.
+    path: PathBuf,
     /// The maximum size of the database to use for the block store.
     ///
     /// Defaults to 483,183,820,800 == 450 GiB.
@@ -63,7 +57,7 @@ impl Config {
     #[cfg(test)]
     pub(crate) fn default_for_tests() -> (Self, TempDir) {
         let tempdir = tempfile::tempdir().expect("should get tempdir");
-        let path = Some(tempdir.path().join("lmdb"));
+        let path = tempdir.path().join("lmdb");
 
         let config = Config {
             path,
@@ -75,10 +69,7 @@ impl Config {
     }
 
     pub(crate) fn path(&self) -> PathBuf {
-        match self.path {
-            Some(ref path) => path.clone(),
-            None => Self::default_path(),
-        }
+        self.path.clone()
     }
 
     pub(crate) fn max_block_store_size(&self) -> usize {
@@ -117,7 +108,8 @@ impl Config {
 
 impl Default for Config {
     fn default() -> Self {
-        let path = Some(Self::default_path());
+        let path = Self::default_path();
+
         Config {
             path,
             max_block_store_size: Some(DEFAULT_MAX_BLOCK_STORE_SIZE),

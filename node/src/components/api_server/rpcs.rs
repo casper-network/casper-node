@@ -31,17 +31,14 @@ pub const RPC_API_PATH: &str = "rpc";
 /// See https://www.jsonrpc.org/specification#error_object for details.
 #[repr(i64)]
 enum ErrorCode {
-    ParseDeployHash = 32001,
-    NoSuchDeploy = 32002,
-    ParseBlockHash = 32003,
-    NoSuchBlock = 32004,
-    ParseQueryKey = 32005,
-    QueryFailed = 32006,
-    QueryFailedToExecute = 32007,
-    MetricsNotAvailable = 32008,
-    ParseGetBalanceURef = 32009,
-    GetBalanceFailed = 32010,
-    GetBalanceFailedToExecute = 32011,
+    NoSuchDeploy = 32000,
+    NoSuchBlock = 32001,
+    ParseQueryKey = 32002,
+    QueryFailed = 32003,
+    QueryFailedToExecute = 32004,
+    ParseGetBalanceURef = 32005,
+    GetBalanceFailed = 32006,
+    GetBalanceFailedToExecute = 32007,
 }
 
 #[derive(Debug)]
