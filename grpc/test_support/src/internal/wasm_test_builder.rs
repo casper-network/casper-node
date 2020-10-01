@@ -7,13 +7,14 @@ use std::{
     sync::Arc,
 };
 
+use bytesrepr::FromBytes;
 use grpc::RequestOptions;
 use lmdb::DatabaseFlags;
 use log::LevelFilter;
 
 use casper_engine_grpc_server::engine_server::{
     ipc::{
-        CommitRequest, CommitResponse, GenesisResponse, QueryRequest, UpgradeRequest,
+        CommitRequest, CommitResponse, GenesisResponse, QueryRequest, StepRequest, UpgradeRequest,
         UpgradeResponse,
     },
     ipc_grpc::ExecutionEngineService,
@@ -23,8 +24,9 @@ use casper_engine_grpc_server::engine_server::{
 use casper_execution_engine::{
     core::{
         engine_state::{
-            execute_request::ExecuteRequest, execution_result::ExecutionResult,
-            run_genesis_request::RunGenesisRequest, EngineConfig, EngineState, SYSTEM_ACCOUNT_ADDR,
+            era_validators::GetEraValidatorsRequest, execute_request::ExecuteRequest,
+            execution_result::ExecutionResult, run_genesis_request::RunGenesisRequest,
+            EngineConfig, EngineState, SYSTEM_ACCOUNT_ADDR,
         },
         execution,
     },
@@ -47,11 +49,12 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash,
+    auction::{EraId, ValidatorWeights},
     bytesrepr::{self},
-    CLValue, Contract, ContractHash, ContractWasm, Key, URef, U512,
+    CLTyped, CLValue, Contract, ContractHash, ContractWasm, Key, URef, U512,
 };
 
-use crate::internal::utils;
+use crate::internal::{utils, DEFAULT_PROTOCOL_VERSION};
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
 ///
@@ -480,6 +483,19 @@ where
         self
     }
 
+    pub fn step(&mut self, step_request: StepRequest) -> &mut Self {
+        let response = self
+            .engine_state
+            .step(RequestOptions::new(), step_request)
+            .wait_drop_metadata()
+            .expect("should step");
+
+        let result = response.get_step_result();
+        let success = result.get_success();
+        self.post_state_hash = Some(success.get_poststate_hash().to_vec());
+        self
+    }
+
     /// Expects a successful run and caches transformations
     pub fn expect_success(&mut self) -> &mut Self {
         // Check first result, as only first result is interesting for a simple test
@@ -672,6 +688,37 @@ where
             .expect_success()
             .commit()
             .finish()
+    }
+
+    pub fn get_era_validators(&mut self, era_id: EraId) -> Option<ValidatorWeights> {
+        let correlation_id = CorrelationId::new();
+        let state_hash = Blake2bHash::try_from(self.get_post_state_hash().as_slice())
+            .expect("should create state hash");
+        let request = GetEraValidatorsRequest::new(state_hash, era_id, *DEFAULT_PROTOCOL_VERSION);
+        self.engine_state
+            .get_era_validators(correlation_id, request)
+            .expect("should get era validators")
+    }
+
+    pub fn get_value<T: FromBytes + CLTyped>(
+        &mut self,
+        contract_hash: ContractHash,
+        name: &str,
+    ) -> T {
+        let contract = self
+            .get_contract(contract_hash)
+            .expect("should have contract");
+        let key = contract
+            .named_keys()
+            .get(name)
+            .expect("should have named key");
+        let stored_value = self.query(None, *key, &[]).expect("should query");
+        let cl_value = stored_value
+            .as_cl_value()
+            .cloned()
+            .expect("should be cl value");
+        let result: T = cl_value.into_t().expect("should convert");
+        result
     }
 }
 

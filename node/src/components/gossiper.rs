@@ -7,7 +7,6 @@ mod tests;
 
 use datasize::DataSize;
 use futures::FutureExt;
-use rand::{CryptoRng, Rng};
 use smallvec::smallvec;
 use std::{
     collections::HashSet,
@@ -24,7 +23,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message as NodeMessage,
-    types::{Deploy, DeployHash, Item},
+    types::{CryptoRngCore, Deploy, DeployHash, Item},
     utils::Source,
 };
 pub use config::Config;
@@ -415,18 +414,17 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
     }
 }
 
-impl<T, REv, R> Component<REv, R> for Gossiper<T, REv>
+impl<T, REv> Component<REv> for Gossiper<T, REv>
 where
     T: Item + 'static,
     REv: ReactorEventT<T>,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event<T>;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         debug!(?event, "handling event");

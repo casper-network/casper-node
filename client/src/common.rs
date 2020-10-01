@@ -2,13 +2,14 @@ use std::{fs, path::PathBuf};
 
 use clap::{Arg, ArgMatches};
 
-use casper_node::crypto::asymmetric_key::SecretKey;
+use casper_node::{
+    crypto::{asymmetric_key::SecretKey, hash::Digest},
+    types::BlockHash,
+};
 
 pub const ARG_PATH: &str = "PATH";
 pub const ARG_HEX_STRING: &str = "HEX STRING";
 pub const ARG_STRING: &str = "STRING";
-/// The node HTTP endpoint to instruct it to put the provided deploy.
-pub const DEPLOY_API_PATH: &str = "deploys";
 
 /// Handles providing the arg for and retrieval of the node hostname/IP and port.
 pub mod node_address {
@@ -117,11 +118,12 @@ pub mod global_state_hash {
             .display_order(order)
     }
 
-    pub(crate) fn get(matches: &ArgMatches) -> String {
-        matches
+    pub(crate) fn get(matches: &ArgMatches) -> Digest {
+        let hex_str = matches
             .value_of(ARG_NAME)
-            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
-            .to_string()
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME));
+        Digest::from_hex(hex_str)
+            .unwrap_or_else(|error| panic!("cannot parse as a global state hash: {}", error))
     }
 }
 
@@ -146,8 +148,12 @@ pub mod block_hash {
             .display_order(order)
     }
 
-    pub(crate) fn get(matches: &ArgMatches) -> Option<String> {
-        matches.value_of(ARG_NAME).map(ToString::to_string)
+    pub(crate) fn get(matches: &ArgMatches) -> Option<BlockHash> {
+        matches.value_of(ARG_NAME).map(|hex_str| {
+            let hash = Digest::from_hex(hex_str)
+                .unwrap_or_else(|error| panic!("cannot parse as a block hash: {}", error));
+            BlockHash::new(hash)
+        })
     }
 }
 

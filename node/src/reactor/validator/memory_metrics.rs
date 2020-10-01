@@ -1,6 +1,5 @@
 use datasize::DataSize;
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
-use rand::{CryptoRng, Rng};
 use tracing::debug;
 
 use super::Reactor;
@@ -133,10 +132,7 @@ impl MemoryMetrics {
     }
 
     /// Estimates memory usage and updates metrics.
-    pub(super) fn estimate<R>(&self, reactor: &Reactor<R>)
-    where
-        R: CryptoRng + Rng + ?Sized,
-    {
+    pub(super) fn estimate(&self, reactor: &Reactor) {
         let timer = self.mem_estimator_runtime_s.start_timer();
 
         let metrics = reactor.metrics.estimate_heap_size() as i64;

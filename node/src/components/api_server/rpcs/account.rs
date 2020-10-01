@@ -11,8 +11,10 @@ use warp_json_rpc::Builder;
 
 use super::{ApiRequest, Error, ReactorEventT, RpcWithParams, RpcWithParamsExt};
 use crate::{
-    components::api_server::CLIENT_API_VERSION, effect::EffectBuilder, reactor::QueueKind,
-    types::Deploy,
+    components::api_server::CLIENT_API_VERSION,
+    effect::EffectBuilder,
+    reactor::QueueKind,
+    types::{Deploy, DeployHash},
 };
 
 /// Params for "account_put_deploy" RPC request.
@@ -28,7 +30,7 @@ pub struct PutDeployResult {
     /// The RPC API version.
     pub api_version: Version,
     /// The deploy hash.
-    pub deploy_hash: String,
+    pub deploy_hash: DeployHash,
 }
 
 /// "account_put_deploy" RPC
@@ -63,7 +65,7 @@ impl RpcWithParamsExt for PutDeploy {
             // Return the result.
             let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
-                deploy_hash: hex::encode(deploy_hash.inner()),
+                deploy_hash,
             };
             Ok(response_builder.success(result)?)
         }

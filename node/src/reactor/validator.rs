@@ -14,7 +14,6 @@ use datasize::DataSize;
 use derive_more::From;
 use fmt::Debug;
 use prometheus::Registry;
-use rand::{CryptoRng, Rng};
 use tracing::{debug, error, warn};
 
 #[cfg(test)]
@@ -52,7 +51,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, EventQueueHandle},
-    types::{Block, Deploy, ProtoBlock, Tag},
+    types::{Block, CryptoRngCore, Deploy, ProtoBlock, Tag},
     utils::Source,
 };
 pub use config::Config;
@@ -254,22 +253,19 @@ impl Display for Event {
 }
 
 /// The configuration needed to initialize a Validator reactor
-pub struct ValidatorInitConfig<R: Rng + CryptoRng + ?Sized> {
+pub struct ValidatorInitConfig {
     pub(super) config: Config,
     pub(super) chainspec_loader: ChainspecLoader,
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
-    pub(super) consensus: EraSupervisor<NodeId, R>,
+    pub(super) consensus: EraSupervisor<NodeId>,
     pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
     pub(super) linear_chain: Vec<Block>,
 }
 
 /// Validator node reactor.
 #[derive(DataSize, Debug)]
-pub struct Reactor<R>
-where
-    R: Rng + CryptoRng + ?Sized,
-{
+pub struct Reactor {
     metrics: Metrics,
     net: SmallNetwork<Event, Message>,
     address_gossiper: Gossiper<GossipedAddress, Event>,
@@ -277,7 +273,7 @@ where
     contract_runtime: ContractRuntime,
     api_server: ApiServer,
     chainspec_loader: ChainspecLoader,
-    consensus: EraSupervisor<NodeId, R>,
+    consensus: EraSupervisor<NodeId>,
     #[data_size(skip)]
     deploy_acceptor: DeployAcceptor,
     deploy_fetcher: Fetcher<Deploy>,
@@ -293,19 +289,19 @@ where
 }
 
 #[cfg(test)]
-impl<R: Rng + CryptoRng + ?Sized> Reactor<R> {
+impl Reactor {
     /// Inspect consensus.
-    pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId, R> {
+    pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId> {
         &self.consensus
     }
 }
 
-impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
+impl reactor::Reactor for Reactor {
     type Event = Event;
 
     // The "configuration" is in fact the whole state of the joiner reactor, which we
     // deconstruct and reuse.
-    type Config = ValidatorInitConfig<R>;
+    type Config = ValidatorInitConfig;
     type Error = Error;
 
     fn new(
@@ -314,7 +310,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         event_queue: EventQueueHandle<Self::Event>,
         // We don't need `rng` b/c consensus component was the only one using it,
         // and now it's being passed on from the `joiner` reactor via `config`.
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
     ) -> Result<(Self, Effects<Event>), Error> {
         let ValidatorInitConfig {
             config,
@@ -384,7 +380,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
     fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -711,7 +707,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
 }
 
 #[cfg(test)]
-impl<R: Rng + CryptoRng + ?Sized> NetworkedReactor for Reactor<R> {
+impl NetworkedReactor for Reactor {
     type NodeId = NodeId;
     fn node_id(&self) -> Self::NodeId {
         self.net.node_id()

@@ -11,8 +11,7 @@ use datasize::DataSize;
 use hex::FromHexError;
 use itertools::Itertools;
 #[cfg(test)]
-use rand::RngCore;
-use rand::{CryptoRng, Rng};
+use rand::{Rng, RngCore};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{json, Value as JsonValue};
 use thiserror::Error;
@@ -22,7 +21,7 @@ use casper_execution_engine::core::engine_state::{
     executable_deploy_item::ExecutableDeployItem, DeployItem,
 };
 
-use super::{Item, Tag, TimeDiff, Timestamp};
+use super::{CryptoRngCore, Item, Tag, TimeDiff, Timestamp};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
@@ -233,7 +232,7 @@ pub struct Deploy {
 impl Deploy {
     /// Constructs a new `Deploy`.
     #[allow(clippy::too_many_arguments)]
-    pub fn new<R: Rng + CryptoRng + ?Sized>(
+    pub fn new(
         timestamp: Timestamp,
         ttl: TimeDiff,
         gas_price: u64,
@@ -242,7 +241,7 @@ impl Deploy {
         payment: ExecutableDeployItem,
         session: ExecutableDeployItem,
         secret_key: &SecretKey,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Deploy {
         let serialized_body = serialize_body(&payment, &session)
             .unwrap_or_else(|error| panic!("should serialize deploy body: {}", error));
@@ -277,7 +276,7 @@ impl Deploy {
     }
 
     /// Adds a signature of this deploy's hash to its approvals.
-    pub fn sign<R: Rng + CryptoRng + ?Sized>(&mut self, secret_key: &SecretKey, rng: &mut R) {
+    pub fn sign(&mut self, secret_key: &SecretKey, rng: &mut dyn CryptoRngCore) {
         let signer = PublicKey::from(secret_key);
         let signature = asymmetric_key::sign(&self.hash, secret_key, &signer, rng);
         let approval = Approval { signer, signature };

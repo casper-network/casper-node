@@ -13,7 +13,6 @@ use datasize::DataSize;
 use derive_more::From;
 use lmdb::DatabaseFlags;
 use prometheus::{self, Histogram, HistogramOpts, Registry};
-use rand::{CryptoRng, Rng};
 use thiserror::Error;
 use tokio::task;
 use tracing::trace;
@@ -33,6 +32,7 @@ use crate::{
     components::Component,
     crypto::hash,
     effect::{requests::ContractRuntimeRequest, EffectBuilder, EffectExt, Effects},
+    types::CryptoRngCore,
     Chainspec, StorageConfig,
 };
 
@@ -73,6 +73,7 @@ pub struct ContractRuntimeMetrics {
     commit_upgrade: Histogram,
     run_query: Histogram,
     get_balance: Histogram,
+    get_validator_weights: Histogram,
 }
 
 /// Value of upper bound of histogram.
@@ -92,6 +93,8 @@ const COMMIT_UPGRADE_NAME: &str = "contract_runtime_commit_upgrade";
 const COMMIT_UPGRADE_HELP: &str = "tracking run of engine_state.commit_upgrade";
 const GET_BALANCE_NAME: &str = "contract_runtime_get_balance";
 const GET_BALANCE_HELP: &str = "tracking run of engine_state.get_balance.";
+const GET_VALIDATOR_WEIGHTS_NAME: &str = "contract_runtime_get_validator_weights";
+const GET_VALIDATOR_WEIGHTS_HELP: &str = "tracking run of engine_state.get_validator_weights.";
 
 /// Create prometheus Histogram and register.
 fn register_histogram_metric(
@@ -127,21 +130,25 @@ impl ContractRuntimeMetrics {
                 COMMIT_UPGRADE_HELP,
             )?,
             get_balance: register_histogram_metric(registry, GET_BALANCE_NAME, GET_BALANCE_HELP)?,
+            get_validator_weights: register_histogram_metric(
+                registry,
+                GET_VALIDATOR_WEIGHTS_NAME,
+                GET_VALIDATOR_WEIGHTS_HELP,
+            )?,
         })
     }
 }
 
-impl<REv, R> Component<REv, R> for ContractRuntime
+impl<REv> Component<REv> for ContractRuntime
 where
     REv: From<Event> + Send,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event;
 
     fn handle_event(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -270,6 +277,28 @@ where
                     .await
                     .expect("should run");
                     trace!(?result, "balance result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            Event::Request(ContractRuntimeRequest::GetEraValidators {
+                get_request,
+                responder,
+            }) => {
+                trace!(?get_request, "get era validators request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        let start = Instant::now();
+                        let result = engine_state.get_era_validators(correlation_id, get_request);
+                        metrics.get_balance.observe(start.elapsed().as_secs_f64());
+                        result
+                    })
+                    .await
+                    .expect("should run");
+                    trace!(?result, "get era validators response");
                     responder.respond(result).await
                 }
                 .ignore()

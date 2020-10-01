@@ -30,7 +30,7 @@ use crate::{
         ConditionCheckReactor, TestRng,
     },
     types::{Deploy, DeployHash, Tag},
-    utils::Loadable,
+    utils::{Loadable, WithDir},
 };
 
 const TIMEOUT: Duration = Duration::from_secs(1);
@@ -106,7 +106,7 @@ impl Drop for Reactor {
     }
 }
 
-impl reactor::Reactor<TestRng> for Reactor {
+impl reactor::Reactor for Reactor {
     type Event = Event;
     type Config = GossipConfig;
     type Error = Error;
@@ -115,12 +115,12 @@ impl reactor::Reactor<TestRng> for Reactor {
         config: Self::Config,
         _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut TestRng,
+        rng: &mut dyn CryptoRngCore,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let network = NetworkController::create_node(event_queue, rng);
 
         let (storage_config, _storage_tempdir) = storage::Config::default_for_tests();
-        let storage = Storage::new(&storage_config).unwrap();
+        let storage = Storage::new(WithDir::new(_storage_tempdir.path(), storage_config)).unwrap();
 
         let deploy_acceptor = DeployAcceptor::new();
         let deploy_fetcher = Fetcher::<Deploy>::new(config);
@@ -141,7 +141,7 @@ impl reactor::Reactor<TestRng> for Reactor {
     fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut TestRng,
+        rng: &mut dyn CryptoRngCore,
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -318,7 +318,7 @@ async fn assert_settled(
     rng: &mut TestRng,
     timeout: Duration,
 ) {
-    let has_responded = |_nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>, _>>| {
+    let has_responded = |_nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
         fetched.lock().unwrap().0
     };
 

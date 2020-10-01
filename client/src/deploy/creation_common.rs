@@ -164,11 +164,13 @@ pub(super) mod ttl {
     use super::*;
 
     const ARG_NAME: &str = "ttl";
-    const ARG_VALUE_NAME: &str = "MILLISECONDS";
-    const ARG_DEFAULT: &str = "3600000";
+    const ARG_VALUE_NAME: &str = "DURATION";
+    const ARG_DEFAULT: &str = "1hour";
     const ARG_HELP: &str =
-        "Time (in milliseconds) that the deploy will remain valid for. A deploy can only be \
-        included in a block between `timestamp` and `timestamp + ttl`.";
+        "Time that the deploy will remain valid for. A deploy can only be included in a block \
+        between `timestamp` and `timestamp + ttl`. Input examples: '1hr 12min', '30min 50sec', \
+        '1day'. For all options, see \
+        https://docs.rs/humantime/latest/humantime/fn.parse_duration.html";
 
     pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
