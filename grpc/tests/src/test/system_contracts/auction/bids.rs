@@ -876,7 +876,6 @@ fn should_calculate_era_validators_multiple_new_bids() {
 #[ignore]
 #[test]
 fn undelegated_funds_should_be_released() {
-    // TODO: investigate why this is needed for use-system-contracts but not the host-side version
     const SYSTEM_TRANSFER_AMOUNT: u64 = 1_000_000_000;
 
     let system_fund_request = ExecuteRequestBuilder::standard(
@@ -997,7 +996,6 @@ fn undelegated_funds_should_be_released() {
 #[ignore]
 #[test]
 fn fully_undelegated_funds_should_be_released() {
-    // TODO: investigate why this is needed for use-system-contracts but not the host-side version
     const SYSTEM_TRANSFER_AMOUNT: u64 = 1_000_000_000;
 
     let system_fund_request = ExecuteRequestBuilder::standard(
