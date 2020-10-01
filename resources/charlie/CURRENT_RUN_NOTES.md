@@ -1,6 +1,6 @@
-# Charlie-5 Run Notes
+# Charlie-6 Run Notes
 
-## Start Time: 2020-09-24 17:00 UTC
+## Start Time: 2020-10-01 17:00 UTC
 
 ## Changes
 
