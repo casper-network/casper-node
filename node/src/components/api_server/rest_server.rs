@@ -1,9 +1,7 @@
 use futures::FutureExt;
 use http::Response;
 use hyper::Body;
-use semver::Version;
-use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::warn;
 use warp::{
     filters::BoxedFilter,
     http::StatusCode,
@@ -12,7 +10,7 @@ use warp::{
     Filter,
 };
 
-use super::{rpcs::info::GetStatusResult, ReactorEventT, CLIENT_API_VERSION};
+use super::{rpcs::info::GetStatusResult, ReactorEventT};
 use crate::{
     effect::{requests::ApiRequest, EffectBuilder},
     reactor::QueueKind,
@@ -43,15 +41,6 @@ pub(super) fn create_status_filter<REv: ReactorEventT>(
         .boxed()
 }
 
-/// Response for a metrics request.
-#[derive(Serialize, Deserialize, Debug)]
-pub struct MetricsResponse {
-    /// The RPC API version.
-    pub api_version: Version,
-    /// The prometheus metrics as a string.
-    pub metrics: String,
-}
-
 pub(super) fn create_metrics_filter<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
 ) -> BoxedFilter<(Response<Body>,)> {
@@ -64,15 +53,11 @@ pub(super) fn create_metrics_filter<REv: ReactorEventT>(
                     QueueKind::Api,
                 )
                 .map(|maybe_metrics| match maybe_metrics {
-                    Some(metrics) => {
-                        let body = MetricsResponse {
-                            api_version: CLIENT_API_VERSION.clone(),
-                            metrics,
-                        };
-                        Ok::<_, Rejection>(reply::json(&body).into_response())
-                    }
+                    Some(metrics) => Ok::<_, Rejection>(
+                        reply::with_status(metrics, StatusCode::OK).into_response(),
+                    ),
                     None => {
-                        info!("metrics not available");
+                        warn!("metrics not available");
                         Ok(reply::with_status(
                             "metrics not available",
                             StatusCode::INTERNAL_SERVER_ERROR,
