@@ -851,35 +851,13 @@ impl Signature {
 
     /// Converts the signature to hex, where the first byte represents the algorithm tag.
     pub fn to_hex(&self) -> String {
-        let bytes = iter::once(&self.tag())
-            .chain(self.as_ref())
-            .copied()
-            .collect::<Vec<u8>>();
-        hex::encode(bytes)
+        to_hex(self)
     }
 
     /// Tries to decode a signature from its hex-representation.  The hex format should be as
     /// produced by `Signature::to_hex()`.
     pub fn from_hex<T: AsRef<[u8]>>(input: T) -> Result<Self> {
-        let mut tag = [0u8; 1];
-        hex::decode_to_slice(&input.as_ref()[..2], tag.as_mut())?;
-
-        match tag[0] {
-            ED25519_TAG => {
-                let mut bytes = [0u8; Self::ED25519_LENGTH];
-                hex::decode_to_slice(&input.as_ref()[2..], bytes.as_mut())?;
-                Self::new_ed25519(bytes)
-            }
-            SECP256K1_TAG => {
-                let mut bytes = [0u8; Self::SECP256K1_LENGTH];
-                hex::decode_to_slice(&input.as_ref()[2..], bytes.as_mut())?;
-                Self::new_secp256k1(bytes)
-            }
-            _ => Err(Error::AsymmetricKey(format!(
-                "invalid tag.  Expected {} or {}, got {}",
-                ED25519_TAG, SECP256K1_TAG, tag[0]
-            ))),
-        }
+        from_hex(input)
     }
 
     fn tag(&self) -> u8 {
@@ -1050,16 +1028,21 @@ fn to_hex<A: AsymmetricType>(value: &A) -> String {
 /// Tries to decode `A` from its hex-representation.  The hex format should be as produced by
 /// `A::to_hex()`.
 fn from_hex<A: AsymmetricType, T: AsRef<[u8]>>(input: T) -> Result<A> {
+    if input.as_ref().len() < 2 {
+        return Err(Error::AsymmetricKey("too short".to_string()));
+    }
+
+    let (tag_bytes, key_bytes) = input.as_ref().split_at(2);
     let mut tag = [0u8; 1];
-    hex::decode_to_slice(&input.as_ref()[..2], tag.as_mut())?;
+    hex::decode_to_slice(tag_bytes, tag.as_mut())?;
 
     match tag[0] {
         ED25519_TAG => {
-            let bytes = hex::decode(&input.as_ref()[2..])?;
+            let bytes = hex::decode(key_bytes)?;
             A::t_ed25519_from_bytes(&bytes)
         }
         SECP256K1_TAG => {
-            let bytes = hex::decode(&input.as_ref()[2..])?;
+            let bytes = hex::decode(key_bytes)?;
             A::t_secp256k1_from_bytes(&bytes)
         }
         _ => Err(Error::AsymmetricKey(format!(
@@ -1332,6 +1315,7 @@ mod tests {
         assert_eq!(public_key.tag(), decoded.tag());
 
         // Ensure malformed encoded version fails to decode.
+        PublicKey::from_hex(&hex_encoded[..1]).unwrap_err();
         PublicKey::from_hex(&hex_encoded[1..]).unwrap_err();
     }
 
@@ -1356,6 +1340,7 @@ mod tests {
         assert_eq!(signature.tag(), decoded.tag());
 
         // Ensure malformed encoded version fails to decode.
+        Signature::from_hex(&hex_encoded[..1]).unwrap_err();
         Signature::from_hex(&hex_encoded[1..]).unwrap_err();
     }
 
