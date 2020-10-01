@@ -456,7 +456,7 @@ where
             );
             effects.extend(self.effect_builder.get_validators(request).event(|result| {
                 Event::GetValidatorsResponse {
-                    switch_block_header: block_header,
+                    switch_block_header: Box::new(block_header),
                     get_validators_result: result,
                 }
             }));

@@ -78,7 +78,7 @@ pub enum Event<I> {
     },
     /// Response from the Contract Runtime, containing the validators for the new era
     GetValidatorsResponse {
-        switch_block_header: BlockHeader,
+        switch_block_header: Box<BlockHeader>,
         get_validators_result: Result<Option<ValidatorWeights>, GetEraValidatorsError>,
     },
 }
@@ -226,7 +226,7 @@ where
                 get_validators_result,
             } => match get_validators_result {
                 Ok(Some(result)) => {
-                    handling_es.handle_validators_response(switch_block_header, result)
+                    handling_es.handle_validators_response(*switch_block_header, result)
                 }
                 result => {
                     error!(
