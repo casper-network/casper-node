@@ -397,15 +397,14 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     }
 }
 
-impl<I, REv, R> Component<REv, R> for LinearChainSync<I>
+impl<I, REv> Component<REv> for LinearChainSync<I>
 where
     I: Display + Clone + Copy + Send + PartialEq + 'static,
-    R: Rng + CryptoRng + ?Sized,
     REv: ReactorEventT<I>,
 {
     type Event = Event<I>;
 
-    fn handle_event(
+    fn handle_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut R,

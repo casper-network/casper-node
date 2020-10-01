@@ -139,14 +139,13 @@ impl ContractRuntimeMetrics {
     }
 }
 
-impl<REv, R> Component<REv, R> for ContractRuntime
+impl<REv> Component<REv> for ContractRuntime
 where
     REv: From<Event> + Send,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event;
 
-    fn handle_event(
+    fn handle_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

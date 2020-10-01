@@ -258,10 +258,7 @@ impl Display for Event {
 
 /// Joining node reactor.
 #[derive(DataSize)]
-pub struct Reactor<R>
-where
-    R: Rng + CryptoRng + ?Sized,
-{
+pub struct Reactor {
     pub(super) net: SmallNetwork<Event, Message>,
     pub(super) address_gossiper: Gossiper<GossipedAddress, Event>,
     pub(super) config: validator::Config,
@@ -274,7 +271,7 @@ where
     pub(super) deploy_fetcher: Fetcher<Deploy>,
     pub(super) block_executor: BlockExecutor,
     pub(super) linear_chain: linear_chain::LinearChain<NodeId>,
-    pub(super) consensus: EraSupervisor<NodeId, R>,
+    pub(super) consensus: EraSupervisor<NodeId>,
     // Effects consensus component returned during creation.
     // In the `joining` phase we don't want to handle it,
     // so we carry them forward to the `validator` reactor.
@@ -288,7 +285,7 @@ where
     pub(super) deploy_buffer: DeployBuffer,
 }
 
-impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
+impl reactor::Reactor for Reactor {
     type Event = Event;
 
     // The "configuration" is in fact the whole state of the initializer reactor, which we
@@ -296,7 +293,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
     type Config = WithDir<initializer::Reactor>;
     type Error = Error;
 
-    fn new(
+    fn new<R: Rng + CryptoRng + ?Sized>(
         initializer: Self::Config,
         _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
@@ -395,7 +392,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         ))
     }
 
-    fn dispatch_event(
+    fn dispatch_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
         rng: &mut R,
@@ -665,11 +662,11 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
     }
 }
 
-impl<R: Rng + CryptoRng + ?Sized> Reactor<R> {
+impl Reactor {
     /// Deconstructs the reactor into config useful for creating a Validator reactor. Shuts down
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
-    pub async fn into_validator_config(self) -> ValidatorInitConfig<R> {
+    pub async fn into_validator_config(self) -> ValidatorInitConfig {
         let (net, config) = (
             self.net,
             ValidatorInitConfig {

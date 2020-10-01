@@ -134,14 +134,13 @@ impl ChainspecLoader {
     }
 }
 
-impl<REv, R> Component<REv, R> for ChainspecLoader
+impl<REv> Component<REv> for ChainspecLoader
 where
     REv: From<Event> + From<StorageRequest<Storage>> + From<ContractRuntimeRequest> + Send,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event;
 
-    fn handle_event(
+    fn handle_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

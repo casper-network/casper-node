@@ -260,16 +260,15 @@ impl ItemFetcher<BlockByHeight> for Fetcher<BlockByHeight> {
     }
 }
 
-impl<T, REv, R> Component<REv, R> for Fetcher<T>
+impl<T, REv> Component<REv> for Fetcher<T>
 where
     Fetcher<T>: ItemFetcher<T>,
     T: Item + 'static,
     REv: ReactorEventT<T>,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event<T>;
 
-    fn handle_event(
+    fn handle_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

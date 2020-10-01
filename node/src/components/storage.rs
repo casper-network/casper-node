@@ -396,16 +396,15 @@ pub trait StorageType {
     }
 }
 
-impl<REv, R, S> Component<REv, R> for S
+impl<REv, S> Component<REv> for S
 where
     REv: From<NetworkRequest<NodeId, Message>> + Send,
-    R: Rng + CryptoRng + ?Sized,
     S: StorageType,
     Self: Sized + 'static,
 {
     type Event = Event<S>;
 
-    fn handle_event(
+    fn handle_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

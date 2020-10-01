@@ -79,7 +79,7 @@ impl<T, I> BlockValidator<T, I> {
     }
 }
 
-impl<T, I, REv, R> Component<REv, R> for BlockValidator<T, I>
+impl<T, I, REv> Component<REv> for BlockValidator<T, I>
 where
     T: BlockLike + Send + Clone + 'static,
     I: Clone + Send + 'static,
@@ -87,11 +87,10 @@ where
         + From<BlockValidationRequest<T, I>>
         + From<FetcherRequest<I, Deploy>>
         + Send,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event<T, I>;
 
-    fn handle_event(
+    fn handle_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

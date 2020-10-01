@@ -45,7 +45,7 @@ use crate::{
         hash,
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
-    types::{BlockHeader, FinalizedBlock, ProtoBlock, Timestamp},
+    types::{BlockHeader, CryptoRngCore, FinalizedBlock, ProtoBlock, Timestamp},
     utils::WithDir,
 };
 
@@ -77,19 +77,15 @@ impl Display for EraId {
     }
 }
 
-pub struct Era<I, R>
-where
-    R: Rng + CryptoRng + ?Sized,
-{
+pub struct Era<I> {
     /// The consensus protocol instance.
-    consensus: Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey, R>>,
+    consensus: Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>>,
     /// The height of this era's first block.
     start_height: u64,
 }
 
-impl<I, R> DataSize for Era<I, R>
+impl<I> DataSize for Era<I>
 where
-    R: Rng + CryptoRng + ?Sized,
     I: 'static,
 {
     const IS_DYNAMIC: bool = true;
@@ -119,13 +115,10 @@ where
 }
 
 #[derive(DataSize)]
-pub struct EraSupervisor<I, R>
-where
-    R: Rng + CryptoRng + ?Sized,
-{
+pub struct EraSupervisor<I> {
     /// A map of active consensus protocols.
     /// A value is a trait so that we can run different consensus protocol instances per era.
-    active_eras: HashMap<EraId, Era<I, R>>,
+    active_eras: HashMap<EraId, Era<I>>,
     pub(super) secret_signing_key: Rc<SecretKey>,
     pub(super) public_signing_key: PublicKey,
     validator_stakes: Vec<(PublicKey, Motes)>,
@@ -134,27 +127,26 @@ where
     node_start_time: Timestamp,
 }
 
-impl<I, R: Rng + CryptoRng + ?Sized> Debug for EraSupervisor<I, R> {
+impl<I> Debug for EraSupervisor<I> {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         let ae: Vec<_> = self.active_eras.keys().collect();
         write!(formatter, "EraSupervisor {{ active_eras: {:?}, .. }}", ae)
     }
 }
 
-impl<I, R> EraSupervisor<I, R>
+impl<I> EraSupervisor<I>
 where
     I: NodeIdT,
-    R: Rng + CryptoRng + ?Sized,
 {
     /// Creates a new `EraSupervisor`, starting in era 0.
-    pub(crate) fn new<REv: ReactorEventT<I>>(
+    pub(crate) fn new<REv: ReactorEventT<I>, R: Rng + CryptoRng + ?Sized>(
         timestamp: Timestamp,
         config: WithDir<Config>,
         effect_builder: EffectBuilder<REv>,
         validator_stakes: Vec<(PublicKey, Motes)>,
         chainspec: &Chainspec,
         genesis_post_state_hash: hash::Digest,
-        rng: &mut R,
+        mut rng: &mut R,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
         let (root, config) = config.into_parts();
         let secret_signing_key = Rc::new(config.secret_key_path.load(root)?);
@@ -179,7 +171,7 @@ where
             genesis_post_state_hash,
         );
         let effects = era_supervisor
-            .handling_wrapper(effect_builder, rng)
+            .handling_wrapper(effect_builder, &mut rng)
             .handle_consensus_results(EraId(0), results);
 
         Ok((era_supervisor, effects))
@@ -190,8 +182,8 @@ where
     pub(super) fn handling_wrapper<'a, REv: ReactorEventT<I>>(
         &'a mut self,
         effect_builder: EffectBuilder<REv>,
-        rng: &'a mut R,
-    ) -> EraSupervisorHandlingWrapper<'a, I, REv, R> {
+        rng: &'a mut dyn CryptoRngCore,
+    ) -> EraSupervisorHandlingWrapper<'a, I, REv> {
         EraSupervisorHandlingWrapper {
             era_supervisor: self,
             effect_builder,
@@ -335,7 +327,7 @@ where
     }
 
     /// Returns the current era.
-    fn current_era_mut(&mut self) -> &mut Era<I, R> {
+    fn current_era_mut(&mut self) -> &mut Era<I> {
         self.active_eras
             .get_mut(&self.current_era)
             .expect("current era does not exist")
@@ -343,7 +335,7 @@ where
 
     /// Inspect the active eras.
     #[cfg(test)]
-    pub(crate) fn active_eras(&self) -> &HashMap<EraId, Era<I, R>> {
+    pub(crate) fn active_eras(&self) -> &HashMap<EraId, Era<I>> {
         &self.active_eras
     }
 }
@@ -353,24 +345,23 @@ where
 /// This is a short-lived convenience type to avoid passing the effect builder through lots of
 /// message calls, and making every method individually generic in `REv`. It is only instantiated
 /// for the duration of handling a single event.
-pub(super) struct EraSupervisorHandlingWrapper<'a, I, REv: 'static, R: Rng + CryptoRng + ?Sized> {
-    pub(super) era_supervisor: &'a mut EraSupervisor<I, R>,
+pub(super) struct EraSupervisorHandlingWrapper<'a, I, REv: 'static> {
+    pub(super) era_supervisor: &'a mut EraSupervisor<I>,
     pub(super) effect_builder: EffectBuilder<REv>,
-    pub(super) rng: &'a mut R,
+    pub(super) rng: &'a mut dyn CryptoRngCore,
 }
 
-impl<'a, I, REv, R> EraSupervisorHandlingWrapper<'a, I, REv, R>
+impl<'a, I, REv> EraSupervisorHandlingWrapper<'a, I, REv>
 where
     I: NodeIdT,
     REv: ReactorEventT<I>,
-    R: Rng + CryptoRng + ?Sized,
 {
     /// Applies `f` to the consensus protocol of the specified era.
     fn delegate_to_era<F>(&mut self, era_id: EraId, f: F) -> Effects<Event<I>>
     where
         F: FnOnce(
-            &mut dyn ConsensusProtocol<I, ProtoBlock, PublicKey, R>,
-            &mut R,
+            &mut dyn ConsensusProtocol<I, ProtoBlock, PublicKey>,
+            &mut dyn CryptoRngCore,
         ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>>, Error>,
     {
         match self.era_supervisor.active_eras.get_mut(&era_id) {

@@ -92,7 +92,7 @@ impl<REv> EventQueueHandle<REv> {
 /// Reactor core.
 ///
 /// Any reactor should implement this trait and be executed by the `reactor::run` function.
-pub trait Reactor<R: Rng + CryptoRng + ?Sized>: Sized {
+pub trait Reactor: Sized {
     // Note: We've gone for the `Sized` bound here, since we return an instance in `new`. As an
     // alternative, `new` could return a boxed instance instead, removing this requirement.
 
@@ -112,7 +112,7 @@ pub trait Reactor<R: Rng + CryptoRng + ?Sized>: Sized {
     /// This function is typically only called by the reactor itself to dispatch an event. It is
     /// safe to call regardless, but will cause the event to skip the queue and things like
     /// accounting.
-    fn dispatch_event(
+    fn dispatch_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
         rng: &mut R,
@@ -125,7 +125,7 @@ pub trait Reactor<R: Rng + CryptoRng + ?Sized>: Sized {
     /// instance along with the effects that the components generated upon instantiation.
     ///
     /// If any instantiation fails, an error is returned.
-    fn new(
+    fn new<R: Rng + CryptoRng + ?Sized>(
         cfg: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
@@ -160,10 +160,9 @@ pub trait Finalize: Sized {
 /// The runner manages a reactors event queue and reactor itself and can run it either continuously
 /// or in a step-by-step manner.
 #[derive(Debug)]
-pub struct Runner<R, RNG>
+pub struct Runner<R>
 where
-    R: Reactor<RNG>,
-    RNG: Rng + CryptoRng + ?Sized,
+    R: Reactor,
 {
     /// The scheduler used for the reactor.
     scheduler: &'static Scheduler<R::Event>,
@@ -218,17 +217,19 @@ impl Drop for RunnerMetrics {
     }
 }
 
-impl<R, RNG> Runner<R, RNG>
+impl<R> Runner<R>
 where
-    R: Reactor<RNG>,
+    R: Reactor,
     R::Error: From<prometheus::Error>,
-    RNG: Rng + CryptoRng + ?Sized,
 {
     /// Creates a new runner from a given configuration.
     ///
     /// Creates a metrics registry that is only going to be used in this runner.
     #[inline]
-    pub async fn new(cfg: R::Config, rng: &mut RNG) -> Result<Self, R::Error> {
+    pub async fn new<RNG: Rng + CryptoRng + ?Sized>(
+        cfg: R::Config,
+        rng: &mut RNG,
+    ) -> Result<Self, R::Error> {
         // Instantiate a new registry for metrics for this reactor.
         let registry = Registry::new();
         Self::with_metrics(cfg, rng, &registry).await
@@ -236,7 +237,7 @@ where
 
     /// Creates a new runner from a given configuration, using existing metrics.
     #[inline]
-    pub async fn with_metrics(
+    pub async fn with_metrics<RNG: Rng + CryptoRng + ?Sized>(
         cfg: R::Config,
         rng: &mut RNG,
         registry: &Registry,
@@ -294,7 +295,7 @@ where
 
     /// Processes a single event on the event queue.
     #[inline]
-    pub async fn crank(&mut self, rng: &mut RNG) {
+    pub async fn crank<RNG: Rng + CryptoRng + ?Sized>(&mut self, rng: &mut RNG) {
         // Create another span for tracing the processing of one event.
         let crank_span = debug_span!("crank", ev = self.event_count);
         let _inner_enter = crank_span.enter();
@@ -344,7 +345,7 @@ where
 
     /// Processes a single event if there is one, returns `None` otherwise.
     #[inline]
-    pub async fn try_crank(&mut self, rng: &mut RNG) -> Option<()> {
+    pub async fn try_crank<RNG: Rng + CryptoRng>(&mut self, rng: &mut RNG) -> Option<()> {
         if self.scheduler.item_count() == 0 {
             None
         } else {
@@ -355,7 +356,7 @@ where
 
     /// Runs the reactor until `is_stopped()` returns true.
     #[inline]
-    pub async fn run(&mut self, rng: &mut RNG) {
+    pub async fn run<RNG: Rng + CryptoRng + ?Sized>(&mut self, rng: &mut RNG) {
         while !self.reactor.is_stopped() {
             self.crank(rng).await;
         }

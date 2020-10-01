@@ -2,12 +2,12 @@ use std::fmt::{self, Debug, Formatter};
 
 use futures::future::BoxFuture;
 use prometheus::Registry;
+use rand::{CryptoRng, Rng};
 
 use super::network::NetworkedReactor;
 use crate::{
     effect::{EffectBuilder, Effects},
     reactor::{EventQueueHandle, Finalize, Reactor},
-    testing::TestRng,
 };
 
 /// A reactor wrapping an inner reactor, and which has an optional hook into
@@ -18,13 +18,13 @@ use crate::{
 /// been met.
 ///
 /// Once the condition is met, the hook is reset to `None`.
-pub struct ConditionCheckReactor<R: Reactor<TestRng>> {
+pub struct ConditionCheckReactor<R: Reactor> {
     reactor: R,
     condition_checker: Option<Box<dyn Fn(&R::Event) -> bool + Send>>,
     condition_result: bool,
 }
 
-impl<R: Reactor<TestRng>> ConditionCheckReactor<R> {
+impl<R: Reactor> ConditionCheckReactor<R> {
     /// Sets the condition checker hook.
     pub fn set_condition_checker(
         &mut self,
@@ -49,16 +49,16 @@ impl<R: Reactor<TestRng>> ConditionCheckReactor<R> {
     }
 }
 
-impl<R: Reactor<TestRng>> Reactor<TestRng> for ConditionCheckReactor<R> {
+impl<R: Reactor> Reactor for ConditionCheckReactor<R> {
     type Event = R::Event;
     type Config = R::Config;
     type Error = R::Error;
 
-    fn new(
+    fn new<RNG: Rng + CryptoRng + ?Sized>(
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut TestRng,
+        rng: &mut RNG,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let (reactor, effects) = R::new(config, registry, event_queue, rng)?;
         Ok((
@@ -71,10 +71,10 @@ impl<R: Reactor<TestRng>> Reactor<TestRng> for ConditionCheckReactor<R> {
         ))
     }
 
-    fn dispatch_event(
+    fn dispatch_event<RNG: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut TestRng,
+        rng: &mut RNG,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         self.condition_result = self
@@ -89,13 +89,13 @@ impl<R: Reactor<TestRng>> Reactor<TestRng> for ConditionCheckReactor<R> {
     }
 }
 
-impl<R: Reactor<TestRng> + Finalize> Finalize for ConditionCheckReactor<R> {
+impl<R: Reactor + Finalize> Finalize for ConditionCheckReactor<R> {
     fn finalize(self) -> BoxFuture<'static, ()> {
         self.reactor.finalize()
     }
 }
 
-impl<R: Reactor<TestRng> + NetworkedReactor> NetworkedReactor for ConditionCheckReactor<R> {
+impl<R: Reactor + NetworkedReactor> NetworkedReactor for ConditionCheckReactor<R> {
     type NodeId = R::NodeId;
 
     fn node_id(&self) -> Self::NodeId {
@@ -103,7 +103,7 @@ impl<R: Reactor<TestRng> + NetworkedReactor> NetworkedReactor for ConditionCheck
     }
 }
 
-impl<R: Reactor<TestRng> + Debug> Debug for ConditionCheckReactor<R> {
+impl<R: Reactor + Debug> Debug for ConditionCheckReactor<R> {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         formatter
             .debug_struct("ConditionCheckReactor")

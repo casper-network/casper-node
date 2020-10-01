@@ -254,22 +254,19 @@ impl Display for Event {
 }
 
 /// The configuration needed to initialize a Validator reactor
-pub struct ValidatorInitConfig<R: Rng + CryptoRng + ?Sized> {
+pub struct ValidatorInitConfig {
     pub(super) config: Config,
     pub(super) chainspec_loader: ChainspecLoader,
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
-    pub(super) consensus: EraSupervisor<NodeId, R>,
+    pub(super) consensus: EraSupervisor<NodeId>,
     pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
     pub(super) linear_chain: Vec<Block>,
 }
 
 /// Validator node reactor.
 #[derive(DataSize, Debug)]
-pub struct Reactor<R>
-where
-    R: Rng + CryptoRng + ?Sized,
-{
+pub struct Reactor {
     metrics: Metrics,
     net: SmallNetwork<Event, Message>,
     address_gossiper: Gossiper<GossipedAddress, Event>,
@@ -277,7 +274,7 @@ where
     contract_runtime: ContractRuntime,
     api_server: ApiServer,
     chainspec_loader: ChainspecLoader,
-    consensus: EraSupervisor<NodeId, R>,
+    consensus: EraSupervisor<NodeId>,
     #[data_size(skip)]
     deploy_acceptor: DeployAcceptor,
     deploy_fetcher: Fetcher<Deploy>,
@@ -293,22 +290,22 @@ where
 }
 
 #[cfg(test)]
-impl<R: Rng + CryptoRng + ?Sized> Reactor<R> {
+impl Reactor {
     /// Inspect consensus.
-    pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId, R> {
+    pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId> {
         &self.consensus
     }
 }
 
-impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
+impl reactor::Reactor for Reactor {
     type Event = Event;
 
     // The "configuration" is in fact the whole state of the joiner reactor, which we
     // deconstruct and reuse.
-    type Config = ValidatorInitConfig<R>;
+    type Config = ValidatorInitConfig;
     type Error = Error;
 
-    fn new(
+    fn new<R: Rng + CryptoRng + ?Sized>(
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
@@ -381,7 +378,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
         ))
     }
 
-    fn dispatch_event(
+    fn dispatch_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
         rng: &mut R,
@@ -711,7 +708,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
 }
 
 #[cfg(test)]
-impl<R: Rng + CryptoRng + ?Sized> NetworkedReactor for Reactor<R> {
+impl NetworkedReactor for Reactor {
     type NodeId = NodeId;
     fn node_id(&self) -> Self::NodeId {
         self.net.node_id()

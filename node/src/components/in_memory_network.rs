@@ -493,14 +493,13 @@ where
     }
 }
 
-impl<P, REv, R> Component<REv, R> for InMemoryNetwork<P>
+impl<P, REv> Component<REv> for InMemoryNetwork<P>
 where
     P: Display + Clone,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = NetworkRequest<NodeId, P>;
 
-    fn handle_event(
+    fn handle_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
         rng: &mut R,

@@ -149,10 +149,10 @@ impl DeployAcceptor {
     }
 }
 
-impl<REv: ReactorEventT, R: Rng + CryptoRng + ?Sized> Component<REv, R> for DeployAcceptor {
+impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
     type Event = Event;
 
-    fn handle_event(
+    fn handle_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

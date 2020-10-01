@@ -110,16 +110,16 @@ impl Reactor {
     }
 }
 
-impl<RNG: Rng + CryptoRng + ?Sized> reactor::Reactor<RNG> for Reactor {
+impl reactor::Reactor for Reactor {
     type Event = Event;
     type Config = WithDir<validator::Config>;
     type Error = Error;
 
-    fn new(
+    fn new<R: Rng + CryptoRng + ?Sized>(
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut RNG,
+        _rng: &mut R,
     ) -> Result<(Self, Effects<Self::Event>), Error> {
         let (root, config) = config.into_parts();
 
@@ -151,10 +151,10 @@ impl<RNG: Rng + CryptoRng + ?Sized> reactor::Reactor<RNG> for Reactor {
         ))
     }
 
-    fn dispatch_event(
+    fn dispatch_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut RNG,
+        rng: &mut R,
         event: Event,
     ) -> Effects<Self::Event> {
         match event {

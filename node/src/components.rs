@@ -46,7 +46,7 @@ use crate::effect::{EffectBuilder, Effects};
 ///
 /// Components place restrictions on reactor events (`REv`s), indicating what kind of effects they
 /// need to be able to produce to operate.
-pub trait Component<REv, R: Rng + CryptoRng + ?Sized> {
+pub trait Component<REv> {
     /// Event associated with `Component`.
     ///
     /// The event type that is handled by the component.
@@ -56,7 +56,7 @@ pub trait Component<REv, R: Rng + CryptoRng + ?Sized> {
     ///
     /// This function must not ever perform any blocking or CPU intensive work, as it is expected
     /// to return very quickly.
-    fn handle_event(
+    fn handle_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut R,

@@ -415,15 +415,14 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
     }
 }
 
-impl<T, REv, R> Component<REv, R> for Gossiper<T, REv>
+impl<T, REv> Component<REv> for Gossiper<T, REv>
 where
     T: Item + 'static,
     REv: ReactorEventT<T>,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event<T>;
 
-    fn handle_event(
+    fn handle_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

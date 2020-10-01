@@ -270,14 +270,13 @@ impl DeployBuffer {
     }
 }
 
-impl<REv, R> Component<REv, R> for DeployBuffer
+impl<REv> Component<REv> for DeployBuffer
 where
     REv: From<StorageRequest<Storage>> + Send,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event;
 
-    fn handle_event(
+    fn handle_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

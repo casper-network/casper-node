@@ -36,6 +36,8 @@ use crate::{
     },
     utils::Source,
 };
+use rand::Rng;
+use rand_core::CryptoRng;
 
 /// Test-reactor event.
 #[derive(Debug, From)]
@@ -97,16 +99,16 @@ struct TestReactor {
     address_gossiper: Gossiper<GossipedAddress, Event>,
 }
 
-impl Reactor<TestRng> for TestReactor {
+impl Reactor for TestReactor {
     type Event = Event;
     type Config = Config;
     type Error = anyhow::Error;
 
-    fn new(
+    fn new<R: Rng + CryptoRng + ?Sized>(
         cfg: Self::Config,
         _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut TestRng,
+        _rng: &mut R,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let (net, effects) = SmallNetwork::new(event_queue, cfg, false)?;
         let gossiper_config = gossiper::Config::default();
@@ -121,10 +123,10 @@ impl Reactor<TestRng> for TestReactor {
         ))
     }
 
-    fn dispatch_event(
+    fn dispatch_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut TestRng,
+        rng: &mut R,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -190,7 +192,7 @@ impl Finalize for TestReactor {
 
 /// Checks whether or not a given network is completely connected.
 fn network_is_complete(
-    nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<TestReactor>, TestRng>>,
+    nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<TestReactor>>>,
 ) -> bool {
     // We need at least one node.
     if nodes.is_empty() {

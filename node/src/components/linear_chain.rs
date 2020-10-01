@@ -95,19 +95,18 @@ impl<I> LinearChain<I> {
     }
 }
 
-impl<I, REv, R> Component<REv, R> for LinearChain<I>
+impl<I, REv> Component<REv> for LinearChain<I>
 where
     REv: From<StorageRequest<Storage>>
         + From<ConsensusRequest>
         + From<NetworkRequest<I, Message>>
         + From<LinearChainAnnouncement>
         + Send,
-    R: Rng + CryptoRng + ?Sized,
     I: Display + Send + 'static,
 {
     type Event = Event<I>;
 
-    fn handle_event(
+    fn handle_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect_builder: crate::effect::EffectBuilder<REv>,
         _rng: &mut R,

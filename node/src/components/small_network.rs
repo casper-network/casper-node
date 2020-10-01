@@ -622,16 +622,15 @@ where
     }
 }
 
-impl<REv, R, P> Component<REv, R> for SmallNetwork<REv, P>
+impl<REv, P> Component<REv> for SmallNetwork<REv, P>
 where
     REv: Send + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
-    R: Rng + CryptoRng + ?Sized,
     P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
 {
     type Event = Event<P>;
 
     #[allow(clippy::cognitive_complexity)]
-    fn handle_event(
+    fn handle_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut R,

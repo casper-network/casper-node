@@ -41,10 +41,10 @@ pub(crate) struct Metrics {
     registry: Registry,
 }
 
-impl<REv, R: Rng + CryptoRng + ?Sized> Component<REv, R> for Metrics {
+impl<REv> Component<REv> for Metrics {
     type Event = MetricsRequest;
 
-    fn handle_event(
+    fn handle_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
         _rng: &mut R,

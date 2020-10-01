@@ -8,6 +8,7 @@ use std::{
 };
 
 use futures::future::{BoxFuture, FutureExt};
+use rand::{CryptoRng, Rng};
 use tokio::time;
 use tracing::{debug, error_span};
 use tracing_futures::Instrument;
@@ -22,8 +23,7 @@ use crate::{
 /// Type alias for set of nodes inside a network.
 ///
 /// Provided as a convenience for writing condition functions for `settle_on` and friends.
-pub type Nodes<R> =
-    HashMap<<R as NetworkedReactor>::NodeId, Runner<ConditionCheckReactor<R>, TestRng>>;
+pub type Nodes<R> = HashMap<<R as NetworkedReactor>::NodeId, Runner<ConditionCheckReactor<R>>>;
 
 /// A reactor with networking functionality.
 pub trait NetworkedReactor: Sized {
@@ -43,16 +43,16 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 /// `crank_all`. As an alternative, the `settle` and `settle_all` functions can be used to continue
 /// cranking until a condition has been reached.
 #[derive(Debug, Default)]
-pub struct Network<R: Reactor<TestRng> + NetworkedReactor> {
+pub struct Network<R: Reactor + NetworkedReactor> {
     /// Current network.
-    nodes: HashMap<<R as NetworkedReactor>::NodeId, Runner<ConditionCheckReactor<R>, TestRng>>,
+    nodes: HashMap<<R as NetworkedReactor>::NodeId, Runner<ConditionCheckReactor<R>>>,
 }
 
 impl<R> Network<R>
 where
-    R: Reactor<TestRng> + NetworkedReactor,
+    R: Reactor + NetworkedReactor,
     R::Config: Default,
-    <R as Reactor<TestRng>>::Error: Debug,
+    <R as Reactor>::Error: Debug,
     R::Error: From<prometheus::Error>,
 {
     /// Creates a new networking node on the network using the default root node port.
@@ -64,7 +64,7 @@ where
     pub async fn add_node(
         &mut self,
         rng: &mut TestRng,
-    ) -> Result<(R::NodeId, &mut Runner<ConditionCheckReactor<R>, TestRng>), R::Error> {
+    ) -> Result<(R::NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
         self.add_node_with_config(Default::default(), rng).await
     }
 
@@ -81,7 +81,7 @@ where
 
 impl<R> Network<R>
 where
-    R: Reactor<TestRng> + NetworkedReactor,
+    R: Reactor + NetworkedReactor,
     R::Error: From<prometheus::Error> + From<R::Error>,
 {
     /// Creates a new network.
@@ -96,12 +96,12 @@ where
     /// # Panics
     ///
     /// Panics if a duplicate node ID is being inserted.
-    pub async fn add_node_with_config(
+    pub async fn add_node_with_config<RNG: Rng + CryptoRng + ?Sized>(
         &mut self,
         cfg: R::Config,
-        rng: &mut TestRng,
-    ) -> Result<(R::NodeId, &mut Runner<ConditionCheckReactor<R>, TestRng>), R::Error> {
-        let runner: Runner<ConditionCheckReactor<R>, _> = Runner::new(cfg, rng).await?;
+        rng: &mut RNG,
+    ) -> Result<(R::NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
+        let runner: Runner<ConditionCheckReactor<R>> = Runner::new(cfg, rng).await?;
 
         let node_id = runner.reactor().node_id();
 
@@ -118,10 +118,7 @@ where
     }
 
     /// Removes a node from the network.
-    pub fn remove_node(
-        &mut self,
-        node_id: &R::NodeId,
-    ) -> Option<Runner<ConditionCheckReactor<R>, TestRng>> {
+    pub fn remove_node(&mut self, node_id: &R::NodeId) -> Option<Runner<ConditionCheckReactor<R>>> {
         self.nodes.remove(node_id)
     }
 
@@ -268,7 +265,7 @@ where
     }
 
     /// Returns the internal map of nodes.
-    pub fn nodes(&self) -> &HashMap<R::NodeId, Runner<ConditionCheckReactor<R>, TestRng>> {
+    pub fn nodes(&self) -> &HashMap<R::NodeId, Runner<ConditionCheckReactor<R>>> {
         &self.nodes
     }
 
@@ -292,7 +289,7 @@ where
 
 impl<R> Finalize for Network<R>
 where
-    R: Finalize + NetworkedReactor + Reactor<TestRng> + Send + 'static,
+    R: Finalize + NetworkedReactor + Reactor + Send + 'static,
     R::NodeId: Send,
     R::Error: From<prometheus::Error>,
 {

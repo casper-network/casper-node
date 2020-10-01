@@ -165,21 +165,20 @@ impl<REv, I> ReactorEventT<I> for REv where
 {
 }
 
-impl<I, REv, R> Component<REv, R> for EraSupervisor<I, R>
+impl<I, REv> Component<REv> for EraSupervisor<I>
 where
     I: NodeIdT,
     REv: ReactorEventT<I>,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event<I>;
 
-    fn handle_event(
+    fn handle_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        rng: &mut R,
+        mut rng: &mut R,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        let mut handling_es = self.handling_wrapper(effect_builder, rng);
+        let mut handling_es = self.handling_wrapper(effect_builder, &mut rng);
         match event {
             Event::Timer { era_id, timestamp } => handling_es.handle_timer(era_id, timestamp),
             Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),

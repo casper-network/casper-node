@@ -147,7 +147,7 @@ impl ApiServer {
     }
 }
 
-impl<REv, R> Component<REv, R> for ApiServer
+impl<REv> Component<REv> for ApiServer
 where
     REv: From<ApiServerAnnouncement>
         + From<NetworkInfoRequest<NodeId>>
@@ -159,11 +159,10 @@ where
         + From<Event>
         + From<ApiRequest<NodeId>>
         + Send,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event;
 
-    fn handle_event(
+    fn handle_event<R: Rng + CryptoRng + ?Sized>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         _rng: &mut R,
