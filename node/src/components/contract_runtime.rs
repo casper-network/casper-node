@@ -303,6 +303,28 @@ where
                 }
                 .ignore()
             }
+            Event::Request(ContractRuntimeRequest::Step {
+                step_request,
+                responder,
+            }) => {
+                trace!(?step_request, "step request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        let start = Instant::now();
+                        let result = engine_state.commit_step(correlation_id, step_request);
+                        metrics.get_balance.observe(start.elapsed().as_secs_f64());
+                        result
+                    })
+                    .await
+                    .expect("should run");
+                    trace!(?result, "step response");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
         }
     }
 }
