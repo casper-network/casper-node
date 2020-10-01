@@ -14,7 +14,7 @@ use log::LevelFilter;
 
 use casper_engine_grpc_server::engine_server::{
     ipc::{
-        CommitRequest, CommitResponse, GenesisResponse, QueryRequest, UpgradeRequest,
+        CommitRequest, CommitResponse, GenesisResponse, QueryRequest, StepRequest, UpgradeRequest,
         UpgradeResponse,
     },
     ipc_grpc::ExecutionEngineService,
@@ -480,6 +480,19 @@ where
         self.post_state_hash = Some(upgrade_success.get_post_state_hash().to_vec());
 
         self.upgrade_responses.push(upgrade_response.clone());
+        self
+    }
+
+    pub fn step(&mut self, step_request: StepRequest) -> &mut Self {
+        let response = self
+            .engine_state
+            .step(RequestOptions::new(), step_request)
+            .wait_drop_metadata()
+            .expect("should step");
+
+        let result = response.get_step_result();
+        let success = result.get_success();
+        self.post_state_hash = Some(success.get_poststate_hash().to_vec());
         self
     }
 
