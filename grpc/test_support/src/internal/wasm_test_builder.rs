@@ -687,18 +687,14 @@ where
             .expect("should get era validators")
     }
 
-    pub fn get_value<T: FromBytes + CLTyped>(
-        &mut self,
-        contract_hash: ContractHash,
-        name: &str,
-    ) -> T {
+    pub fn get_value<T>(&mut self, contract_hash: ContractHash, name: &str) -> T
+    where
+        T: FromBytes + CLTyped,
+    {
         let contract = self
             .get_contract(contract_hash)
             .expect("should have contract");
-        let key = contract
-            .named_keys()
-            .get(name)
-            .expect("should have named key");
+        let key = contract.named_keys().get(name).expect("should have purse");
         let stored_value = self.query(None, *key, &[]).expect("should query");
         let cl_value = stored_value
             .as_cl_value()
