@@ -546,7 +546,8 @@ impl Block {
         self.header.global_state_hash()
     }
 
-    pub(crate) fn deploy_hashes(&self) -> &Vec<DeployHash> {
+    /// The deploy hashes included in this block.
+    pub fn deploy_hashes(&self) -> &Vec<DeployHash> {
         self.header.deploy_hashes()
     }
 

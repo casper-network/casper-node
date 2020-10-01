@@ -10,8 +10,6 @@ use casper_node::{
 pub const ARG_PATH: &str = "PATH";
 pub const ARG_HEX_STRING: &str = "HEX STRING";
 pub const ARG_STRING: &str = "STRING";
-/// The node HTTP endpoint to instruct it to put the provided deploy.
-pub const DEPLOY_API_PATH: &str = "deploys";
 
 /// Handles providing the arg for and retrieval of the node hostname/IP and port.
 pub mod node_address {
