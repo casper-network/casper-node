@@ -283,6 +283,7 @@ where
     pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
     // Handles request for linear chain block by height.
     pub(super) block_by_height_fetcher: Fetcher<BlockByHeight>,
+    #[data_size(skip)]
     pub(super) deploy_acceptor: DeployAcceptor,
     pub(super) deploy_buffer: DeployBuffer,
 }

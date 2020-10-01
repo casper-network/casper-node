@@ -1,9 +1,8 @@
 mod event;
 // mod tests;
 
-use std::fmt::Debug;
+use std::{collections::HashMap, fmt::Debug};
 
-use datasize::DataSize;
 use rand::{CryptoRng, Rng};
 use semver::Version;
 use tracing::{debug, error, warn};
@@ -21,6 +20,8 @@ use crate::{
 
 pub use event::Event;
 
+use super::chainspec_loader::DeployConfig;
+
 /// A helper trait constraining `DeployAcceptor` compatible reactor events.
 pub trait ReactorEventT:
     From<Event> + From<DeployAcceptorAnnouncement<NodeId>> + From<StorageRequest<Storage>> + Send
@@ -35,17 +36,36 @@ impl<REv> ReactorEventT for REv where
 {
 }
 
+#[derive(Debug, Clone)]
+pub struct DeployAcceptorConfig {
+    chain_name: String,
+    deploy_config: DeployConfig,
+}
+
+impl From<Chainspec> for DeployAcceptorConfig {
+    fn from(c: Chainspec) -> Self {
+        DeployAcceptorConfig {
+            chain_name: c.genesis.name,
+            deploy_config: c.genesis.deploy_config,
+        }
+    }
+}
+
 /// The `DeployAcceptor` is the component which handles all new `Deploy`s immediately after they're
 /// received by this node, regardless of whether they were provided by a peer or a client.
 ///
 /// It validates a new `Deploy` as far as possible, stores it if valid, then announces the newly-
 /// accepted `Deploy`.
-#[derive(DataSize, Debug, Default)]
-pub(crate) struct DeployAcceptor {}
+#[derive(Debug)]
+pub(crate) struct DeployAcceptor {
+    cached_deploy_configs: HashMap<Version, DeployAcceptorConfig>,
+}
 
 impl DeployAcceptor {
     pub(crate) fn new() -> Self {
-        Self::default()
+        DeployAcceptor {
+            cached_deploy_configs: HashMap::new(),
+        }
     }
 
     /// Handles receiving a new `Deploy` from a peer or client.
@@ -57,14 +77,27 @@ impl DeployAcceptor {
     ) -> Effects<Event> {
         // TODO - where to get version from?
         let chainspec_version = Version::new(1, 0, 0);
-        effect_builder
-            .get_chainspec(chainspec_version.clone())
-            .event(move |maybe_chainspec| Event::GetChainspecResult {
-                deploy,
-                source,
-                chainspec_version,
-                maybe_chainspec: Box::new(maybe_chainspec),
-            })
+        let cached_config = self.cached_deploy_configs.get(&chainspec_version).cloned();
+        match cached_config {
+            Some(genesis_config) => {
+                effect_builder
+                    .immediately()
+                    .event(move |_| Event::GetChainspecResult {
+                        deploy,
+                        source,
+                        chainspec_version,
+                        maybe_deploy_config: Box::new(Some(genesis_config)),
+                    })
+            }
+            None => effect_builder
+                .get_chainspec(chainspec_version.clone())
+                .event(move |maybe_chainspec| Event::GetChainspecResult {
+                    deploy,
+                    source,
+                    chainspec_version,
+                    maybe_deploy_config: Box::new(maybe_chainspec.map(|c| c.into())),
+                }),
+        }
     }
 
     fn validate<REv: ReactorEventT>(
@@ -72,9 +105,9 @@ impl DeployAcceptor {
         effect_builder: EffectBuilder<REv>,
         deploy: Box<Deploy>,
         source: Source<NodeId>,
-        chainspec: Chainspec,
+        deploy_config: DeployAcceptorConfig,
     ) -> Effects<Event> {
-        if is_valid(&*deploy, chainspec) {
+        if is_valid(&*deploy, deploy_config) {
             let cloned_deploy = deploy.clone();
             effect_builder
                 .put_deploy_to_storage(cloned_deploy)
@@ -132,9 +165,14 @@ impl<REv: ReactorEventT, R: Rng + CryptoRng + ?Sized> Component<REv, R> for Depl
                 deploy,
                 source,
                 chainspec_version,
-                maybe_chainspec,
-            } => match *maybe_chainspec {
-                Some(chainspec) => self.validate(effect_builder, deploy, source, chainspec),
+                maybe_deploy_config,
+            } => match *maybe_deploy_config {
+                Some(deploy_config) => {
+                    // Update chainspec cache.
+                    self.cached_deploy_configs
+                        .insert(chainspec_version, deploy_config.clone());
+                    self.validate(effect_builder, deploy, source, deploy_config)
+                }
                 None => self.failed_to_get_chainspec(deploy, source, chainspec_version),
             },
             Event::PutToStorageResult {
@@ -146,34 +184,32 @@ impl<REv: ReactorEventT, R: Rng + CryptoRng + ?Sized> Component<REv, R> for Depl
     }
 }
 
-fn is_valid(deploy: &Deploy, chainspec: Chainspec) -> bool {
-    if deploy.header().chain_name() != chainspec.genesis.name {
+fn is_valid(deploy: &Deploy, config: DeployAcceptorConfig) -> bool {
+    if deploy.header().chain_name() != config.chain_name {
         warn!(
             deploy_hash = %deploy.id(),
             deploy_header = %deploy.header(),
-            chain_name = %chainspec.genesis.name,
+            chain_name = %config.chain_name,
             "invalid chain identifier"
         );
         return false;
     }
 
-    if deploy.header().dependencies().len()
-        > chainspec.genesis.deploy_config.max_dependencies as usize
-    {
+    if deploy.header().dependencies().len() > config.deploy_config.max_dependencies as usize {
         warn!(
             deploy_hash = %deploy.id(),
             deploy_header = %deploy.header(),
-            max_dependencies = %chainspec.genesis.deploy_config.max_dependencies,
+            max_dependencies = %config.deploy_config.max_dependencies,
             "deploy dependency ceiling exceeded"
         );
         return false;
     }
 
-    if deploy.header().ttl() > chainspec.genesis.deploy_config.max_ttl {
+    if deploy.header().ttl() > config.deploy_config.max_ttl {
         warn!(
             deploy_hash = %deploy.id(),
             deploy_header = %deploy.header(),
-            max_ttl = %chainspec.genesis.deploy_config.max_ttl,
+            max_ttl = %config.deploy_config.max_ttl,
             "deploy ttl excessive"
         );
         return false;

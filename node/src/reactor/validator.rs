@@ -4,6 +4,7 @@
 
 mod config;
 mod error;
+mod memory_metrics;
 #[cfg(test)]
 mod tests;
 
@@ -57,6 +58,7 @@ use crate::{
 pub use config::Config;
 pub use error::Error;
 use linear_chain::LinearChain;
+use memory_metrics::MemoryMetrics;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From)]
@@ -276,6 +278,7 @@ where
     api_server: ApiServer,
     chainspec_loader: ChainspecLoader,
     consensus: EraSupervisor<NodeId, R>,
+    #[data_size(skip)]
     deploy_acceptor: DeployAcceptor,
     deploy_fetcher: Fetcher<Deploy>,
     deploy_gossiper: Gossiper<Deploy, Event>,
@@ -283,6 +286,10 @@ where
     block_executor: BlockExecutor,
     proto_block_validator: BlockValidator<ProtoBlock, NodeId>,
     linear_chain: LinearChain<NodeId>,
+
+    // Non-components.
+    #[data_size(skip)] // Never allocates heap data.
+    memory_metrics: MemoryMetrics,
 }
 
 #[cfg(test)]
@@ -318,6 +325,8 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
             init_consensus_effects,
             linear_chain,
         } = config;
+
+        let memory_metrics = MemoryMetrics::new(registry.clone())?;
 
         let metrics = Metrics::new(registry.clone());
 
@@ -366,6 +375,7 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 block_executor,
                 proto_block_validator,
                 linear_chain,
+                memory_metrics,
             },
             effects,
         ))
@@ -693,6 +703,10 @@ impl<R: Rng + CryptoRng + ?Sized> reactor::Reactor<R> for Reactor<R> {
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
         }
+    }
+
+    fn update_metrics(&mut self) {
+        self.memory_metrics.estimate(&self)
     }
 }
 

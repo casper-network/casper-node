@@ -130,6 +130,7 @@ dist
 # End of https://www.toptal.com/developers/gitignore/api/rust,node
 
 resources/production/*.wasm
+resources/node-storage/*
 
 # CLion
 .idea/

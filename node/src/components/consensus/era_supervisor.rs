@@ -21,7 +21,7 @@ use fmt::Display;
 use num_traits::AsPrimitive;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
-use tracing::{error, info, trace};
+use tracing::{error, info, trace, warn};
 
 use casper_execution_engine::shared::motes::Motes;
 use casper_types::{auction::BLOCK_REWARD, U512};
@@ -77,11 +77,45 @@ impl Display for EraId {
     }
 }
 
-pub struct Era<I, R: Rng + CryptoRng + ?Sized> {
+pub struct Era<I, R>
+where
+    R: Rng + CryptoRng + ?Sized,
+{
     /// The consensus protocol instance.
     consensus: Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey, R>>,
     /// The height of this era's first block.
     start_height: u64,
+}
+
+impl<I, R> DataSize for Era<I, R>
+where
+    R: Rng + CryptoRng + ?Sized,
+    I: 'static,
+{
+    const IS_DYNAMIC: bool = true;
+
+    const STATIC_HEAP_SIZE: usize = 0;
+
+    #[inline]
+    fn estimate_heap_size(&self) -> usize {
+        // `DataSize` cannot be made object safe due its use of associated constants. We implement
+        // it manually here, downcasting the consensus protocol as a workaround.
+
+        let consensus_heap_size = {
+            let any_ref = self.consensus.as_any();
+
+            if let Some(highway) = any_ref.downcast_ref::<HighwayProtocol<I, HighwayContext>>() {
+                highway.estimate_heap_size()
+            } else {
+                warn!(
+                    "could not downcast consensus protocol to HighwayProtocol<I, HighwayContext> to determine heap allocation size"
+                );
+                0
+            }
+        };
+
+        consensus_heap_size + self.start_height.estimate_heap_size()
+    }
 }
 
 #[derive(DataSize)]
@@ -270,6 +304,19 @@ where
             highway.activate_validator(our_id, secret, timestamp.max(start_time))
         } else {
             info!("not voting in era {}", era_id.0);
+            if start_time >= self.node_start_time {
+                info!(
+                    "node was started at time {}, which is not earlier than the era start {}",
+                    self.node_start_time, start_time
+                );
+            } else if min_end_time < timestamp {
+                info!(
+                    "era started too long ago ({}; earliest end {}), current timestamp {}",
+                    start_time, min_end_time, timestamp
+                );
+            } else {
+                info!("not a validator; our ID: {}", our_id);
+            }
             Vec::new()
         };
 

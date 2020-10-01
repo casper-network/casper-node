@@ -1940,8 +1940,10 @@ where
         );
 
         let ret: CLValue = match entry_point_name {
-            auction::METHOD_READ_WINNERS => {
-                let result = runtime.read_winners().map_err(Self::reverter)?;
+            auction::METHOD_GET_ERA_VALIDATORS => {
+                let era_id = Self::get_named_argument(&runtime_args, auction::ARG_ERA_ID)?;
+
+                let result = runtime.get_era_validators(era_id).map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
@@ -2023,26 +2025,6 @@ where
                 CLValue::from_t(()).map_err(Self::reverter)?
             }
 
-            // Type: `fn bond(account_hash: AccountHash, source_purse: URef, amount: U512) ->
-            // Result<(URef, U512), Error>`
-            auction::METHOD_BOND => {
-                let public_key = Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
-                let source_purse: URef =
-                    Self::get_named_argument(&runtime_args, auction::ARG_SOURCE_PURSE)?;
-                let amount: U512 = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
-                let result = runtime
-                    .bond(public_key, source_purse, amount)
-                    .map_err(Self::reverter)?;
-                CLValue::from_t(result).map_err(Self::reverter)?
-            }
-            // Type: `fn unbond(account_hash: AccountHash, source_purse: URef, amount: U512) ->
-            // Result<(URef, U512), Error>`
-            auction::METHOD_UNBOND => {
-                let public_key = Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
-                let amount: U512 = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
-                let result = runtime.unbond(public_key, amount).map_err(Self::reverter)?;
-                CLValue::from_t(result).map_err(Self::reverter)?
-            }
             // Type: `fn slash(validator_account_hashes: &[AccountHash]) -> Result<(), Error>`
             auction::METHOD_SLASH => {
                 let validator_public_keys =

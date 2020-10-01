@@ -154,6 +154,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "auction-bidding"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "auction-bids"
 version = "0.1.0"
 dependencies = [
@@ -2412,14 +2420,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mint-bonding"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
 name = "mint-install"
 version = "0.1.0"
 dependencies = [
@@ -3032,14 +3032,6 @@ name = "pos"
 version = "0.1.0"
 dependencies = [
  "base16",
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
-name = "pos-bonding"
-version = "0.1.0"
-dependencies = [
  "casper-contract",
  "casper-types",
 ]

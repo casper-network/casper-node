@@ -13,24 +13,23 @@ use casper_types::{
         DEFAULT_UNBONDING_DELAY, INITIAL_ERA_ID, METHOD_RUN_AUCTION, METHOD_SLASH,
         UNBONDING_PURSES_KEY,
     },
-    bytesrepr::FromBytes,
     runtime_args,
     system_contract_errors::auction,
-    ApiError, CLTyped, ContractHash, PublicKey, RuntimeArgs, U512,
+    ApiError, PublicKey, RuntimeArgs, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
-const CONTRACT_MINT_BONDING: &str = "mint_bonding.wasm";
+const CONTRACT_AUCTION_BIDDING: &str = "auction_bidding.wasm";
 const CONTRACT_AUCTION_BIDS: &str = "auction_bids.wasm";
 
 const GENESIS_VALIDATOR_STAKE: u64 = 50_000;
 const GENESIS_ACCOUNT_STAKE: u64 = 100_000;
 const TRANSFER_AMOUNT: u64 = 500_000_000;
 
-const TEST_BOND: &str = "bond";
+const TEST_ADD_BID: &str = "add_bid";
 const TEST_BOND_FROM_MAIN_PURSE: &str = "bond-from-main-purse";
 const TEST_SEED_NEW_ACCOUNT: &str = "seed_new_account";
-const TEST_UNBOND: &str = "unbond";
+const TEST_WITHDRAW_BID: &str = "withdraw_bid";
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_PUBLIC_KEY: &str = "public_key";
@@ -39,27 +38,6 @@ const ARG_ACCOUNT_HASH: &str = "account_hash";
 const ARG_RUN_AUCTION: &str = "run_auction";
 
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
-
-fn get_value<T: FromBytes + CLTyped>(
-    builder: &mut InMemoryWasmTestBuilder,
-    contract_hash: ContractHash,
-    name: &str,
-) -> T {
-    let contract = builder
-        .get_contract(contract_hash)
-        .expect("should have contract");
-    let key = contract
-        .named_keys()
-        .get(name)
-        .expect("should have bid purses");
-    let stored_value = builder.query(None, *key, &[]).expect("should query");
-    let cl_value = stored_value
-        .as_cl_value()
-        .cloned()
-        .expect("should be cl value");
-    let result: T = cl_value.into_t().expect("should convert");
-    result
-}
 
 #[ignore]
 #[test]
@@ -88,9 +66,9 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_MINT_BONDING,
+        CONTRACT_AUCTION_BIDDING,
         runtime_args! {
-            ARG_ENTRY_POINT => String::from(TEST_BOND),
+            ARG_ENTRY_POINT => String::from(TEST_ADD_BID),
             ARG_AMOUNT => U512::from(GENESIS_ACCOUNT_STAKE),
             ARG_PUBLIC_KEY => default_public_key_arg,
         },
@@ -99,7 +77,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let bid_purses: BidPurses = get_value(&mut builder, auction, BID_PURSES_KEY);
+    let bid_purses: BidPurses = builder.get_value(auction, BID_PURSES_KEY);
     let bid_purse = bid_purses
         .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
         .expect("should have bid purse");
@@ -108,7 +86,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         GENESIS_ACCOUNT_STAKE.into()
     );
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 0);
 
     //
@@ -119,9 +97,9 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_MINT_BONDING,
+        CONTRACT_AUCTION_BIDDING,
         runtime_args! {
-            ARG_ENTRY_POINT => String::from(TEST_UNBOND),
+            ARG_ENTRY_POINT => String::from(TEST_WITHDRAW_BID),
             ARG_AMOUNT => unbond_amount,
             ARG_PUBLIC_KEY => default_public_key_arg,
         },
@@ -130,7 +108,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     builder.exec(exec_request_2).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
@@ -160,7 +138,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     builder.exec(exec_request_3).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
@@ -192,13 +170,13 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     builder.exec(exec_request_4).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     let unbond_list = unbond_purses
         .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 0); // removed unbonds
 
-    let bid_purses: BidPurses = get_value(&mut builder, auction, BID_PURSES_KEY);
+    let bid_purses: BidPurses = builder.get_value(auction, BID_PURSES_KEY);
 
     assert!(bid_purses.is_empty());
 }
@@ -211,7 +189,7 @@ fn should_fail_bonding_with_insufficient_funds() {
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_MINT_BONDING,
+        CONTRACT_AUCTION_BIDDING,
         runtime_args! {
             ARG_ENTRY_POINT => TEST_SEED_NEW_ACCOUNT,
             ARG_ACCOUNT_HASH => account_1_hash,
@@ -221,7 +199,7 @@ fn should_fail_bonding_with_insufficient_funds() {
     .build();
     let exec_request_2 = ExecuteRequestBuilder::standard(
         account_1_hash,
-        CONTRACT_MINT_BONDING,
+        CONTRACT_AUCTION_BIDDING,
         runtime_args! {
             ARG_ENTRY_POINT => TEST_BOND_FROM_MAIN_PURSE,
             ARG_AMOUNT => *DEFAULT_PAYMENT + GENESIS_ACCOUNT_STAKE,
@@ -255,7 +233,7 @@ fn should_fail_bonding_with_insufficient_funds() {
 
 #[ignore]
 #[test]
-fn should_fail_unbonding_validator_without_bonding_first() {
+fn should_fail_unbonding_validator_with_locked_funds() {
     let account_1_public_key = PublicKey::Ed25519([42; 32]);
     let account_1_hash = AccountHash::new([43; 32]);
 
@@ -275,9 +253,9 @@ fn should_fail_unbonding_validator_without_bonding_first() {
 
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_MINT_BONDING,
+        CONTRACT_AUCTION_BIDDING,
         runtime_args! {
-            ARG_ENTRY_POINT => TEST_UNBOND,
+            ARG_ENTRY_POINT => TEST_WITHDRAW_BID,
             ARG_AMOUNT => U512::from(42),
             ARG_PUBLIC_KEY => account_1_public_key,
         },
@@ -301,7 +279,46 @@ fn should_fail_unbonding_validator_without_bonding_first() {
     assert!(
         error_message.contains(&format!(
             "{:?}",
-            ApiError::from(auction::Error::BondNotFound)
+            ApiError::from(auction::Error::ValidatorFundsLocked)
+        )),
+        "error {:?}",
+        error_message
+    );
+}
+
+#[ignore]
+#[test]
+fn should_fail_unbonding_validator_without_bonding_first() {
+    let account_1_public_key = PublicKey::Ed25519([42; 32]);
+
+    let exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_AUCTION_BIDDING,
+        runtime_args! {
+            ARG_ENTRY_POINT => TEST_WITHDRAW_BID,
+            ARG_AMOUNT => U512::from(42),
+            ARG_PUBLIC_KEY => account_1_public_key,
+        },
+    )
+    .build();
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    builder.exec(exec_request).commit();
+
+    let response = builder
+        .get_exec_response(0)
+        .expect("should have a response")
+        .to_owned();
+
+    let error_message = utils::get_error_message(response);
+
+    assert!(
+        error_message.contains(&format!(
+            "{:?}",
+            ApiError::from(auction::Error::ValidatorNotFound)
         )),
         "error {:?}",
         error_message
@@ -336,9 +353,9 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_MINT_BONDING,
+        CONTRACT_AUCTION_BIDDING,
         runtime_args! {
-            ARG_ENTRY_POINT => String::from(TEST_BOND),
+            ARG_ENTRY_POINT => String::from(TEST_ADD_BID),
             ARG_AMOUNT => U512::from(GENESIS_ACCOUNT_STAKE),
             ARG_PUBLIC_KEY => default_public_key_arg,
         },
@@ -347,7 +364,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let bid_purses: BidPurses = get_value(&mut builder, auction, BID_PURSES_KEY);
+    let bid_purses: BidPurses = builder.get_value(auction, BID_PURSES_KEY);
     let bid_purse = bid_purses
         .get(&default_public_key_arg)
         .expect("should have bid purse");
@@ -356,7 +373,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
         GENESIS_ACCOUNT_STAKE.into()
     );
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 0);
 
     //
@@ -384,9 +401,9 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_MINT_BONDING,
+        CONTRACT_AUCTION_BIDDING,
         runtime_args! {
-            ARG_ENTRY_POINT => String::from(TEST_UNBOND),
+            ARG_ENTRY_POINT => String::from(TEST_WITHDRAW_BID),
             ARG_AMOUNT => unbond_amount,
             ARG_PUBLIC_KEY => default_public_key_arg,
         },
@@ -395,7 +412,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     builder.exec(exec_request_2).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
@@ -427,7 +444,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     builder.exec(exec_request_3).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
@@ -487,13 +504,13 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     assert_eq!(builder.get_purse_balance(unbond_purse), unbond_amount);
 
-    let unbond_purses: UnbondingPurses = get_value(&mut builder, auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert!(
         !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_PUBLIC_KEY),
         "Unbond entry should be removed"
     );
 
-    let bid_purses: BidPurses = get_value(&mut builder, auction, BID_PURSES_KEY);
+    let bid_purses: BidPurses = builder.get_value(auction, BID_PURSES_KEY);
 
     assert!(!bid_purses.is_empty());
     assert_eq!(

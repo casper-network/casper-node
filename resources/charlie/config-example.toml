@@ -90,10 +90,8 @@ event_stream_buffer_length = 100
 # or read by the storage component will exist.
 #
 # If the folder doesn't exist, it and any required parents will be created.
-#
-# If unset, defaults to:
-#   /root/.local/share/casper-node
-# path = 'node-storage'
+# If unset, the value must be supplied via the CLI.
+path = '/root/.local/share/casper-node'
 
 # Optional maximum size of the database to use for the block store.
 #

@@ -30,7 +30,7 @@ use crate::{
 #[derive(Copy, Clone, DataSize, Debug, PartialEq, Eq, Serialize, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
-pub(crate) struct DeployConfig {
+pub struct DeployConfig {
     pub(crate) max_payment_cost: Motes,
     pub(crate) max_ttl: TimeDiff,
     pub(crate) max_dependencies: u8,
@@ -160,7 +160,7 @@ impl Loadable for Vec<GenesisAccount> {
 #[derive(Clone, DataSize, PartialEq, Eq, Serialize, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
-pub(crate) struct GenesisConfig {
+pub struct GenesisConfig {
     pub(crate) name: String,
     pub(crate) timestamp: Timestamp,
     // We don't have an implementation for the semver version type, we skip it for now
