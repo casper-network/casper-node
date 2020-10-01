@@ -31,6 +31,8 @@ const NON_FOUNDER_VALIDATOR_1: PublicKey = PublicKey::Ed25519([3; 32]);
 const NON_FOUNDER_VALIDATOR_1_ADDR: AccountHash = AccountHash::new([4; 32]);
 const NON_FOUNDER_VALIDATOR_2_ADDR: AccountHash = AccountHash::new([6; 32]);
 
+const UNDELEGATE_PURSE: &str = "undelegate_purse";
+
 const ADD_BID_AMOUNT_1: u64 = 95_000;
 const ADD_BID_AMOUNT_2: u64 = 47_500;
 const ADD_BID_DELEGATION_RATE_1: DelegationRate = 125;
@@ -869,4 +871,244 @@ fn should_calculate_era_validators_multiple_new_bids() {
         new_validators,
         BTreeSet::from_iter(vec![BID_ACCOUNT_1_PK, BID_ACCOUNT_2_PK,])
     );
+}
+
+#[ignore]
+#[test]
+fn undelegated_funds_should_be_released() {
+    const SYSTEM_TRANSFER_AMOUNT: u64 = 1_000_000_000;
+
+    let system_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            "target" => SYSTEM_ADDR,
+            ARG_AMOUNT => U512::from(SYSTEM_TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            "target" => NON_FOUNDER_VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let delegator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            "target" => BID_ACCOUNT_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1,
+            ARG_ENTRY_POINT => ARG_ADD_BID,
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
+        BID_ACCOUNT_1_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_ENTRY_POINT => ARG_DELEGATE,
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1,
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK,
+        },
+    )
+    .build();
+
+    let post_genesis_requests = vec![
+        system_fund_request,
+        delegator_1_fund_request,
+        validator_1_fund_request,
+        validator_1_add_bid_request,
+        delegator_1_validator_1_delegate_request,
+    ];
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    for request in post_genesis_requests {
+        builder.exec(request).commit().expect_success();
+    }
+
+    for _ in 0..5 {
+        super::run_auction(&mut builder);
+    }
+
+    let delegator_1_undelegate_request = ExecuteRequestBuilder::standard(
+        BID_ACCOUNT_1_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_ENTRY_POINT => ARG_UNDELEGATE,
+            ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1,
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK,
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_1_undelegate_request)
+        .commit()
+        .expect_success();
+
+    let delegator_1_undelegate_purse = builder
+        .get_account(BID_ACCOUNT_1_ADDR)
+        .expect("should have account")
+        .named_keys()
+        .get(UNDELEGATE_PURSE)
+        .expect("should have key")
+        .into_uref()
+        .expect("should be uref");
+
+    for _ in 0..=DEFAULT_UNBONDING_DELAY {
+        let delegator_1_undelegate_purse_balance =
+            builder.get_purse_balance(delegator_1_undelegate_purse);
+        assert_eq!(delegator_1_undelegate_purse_balance, U512::zero());
+        super::run_auction(&mut builder);
+    }
+
+    let delegator_1_undelegate_purse_balance =
+        builder.get_purse_balance(delegator_1_undelegate_purse);
+    assert_eq!(
+        delegator_1_undelegate_purse_balance,
+        U512::from(UNDELEGATE_AMOUNT_1)
+    )
+}
+
+#[ignore]
+#[test]
+fn fully_undelegated_funds_should_be_released() {
+    const SYSTEM_TRANSFER_AMOUNT: u64 = 1_000_000_000;
+
+    let system_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            "target" => SYSTEM_ADDR,
+            ARG_AMOUNT => U512::from(SYSTEM_TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            "target" => NON_FOUNDER_VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let delegator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            "target" => BID_ACCOUNT_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1,
+            ARG_ENTRY_POINT => ARG_ADD_BID,
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
+        BID_ACCOUNT_1_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_ENTRY_POINT => ARG_DELEGATE,
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1,
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK,
+        },
+    )
+    .build();
+
+    let post_genesis_requests = vec![
+        system_fund_request,
+        delegator_1_fund_request,
+        validator_1_fund_request,
+        validator_1_add_bid_request,
+        delegator_1_validator_1_delegate_request,
+    ];
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    for request in post_genesis_requests {
+        builder.exec(request).commit().expect_success();
+    }
+
+    for _ in 0..5 {
+        super::run_auction(&mut builder);
+    }
+
+    let delegator_1_undelegate_request = ExecuteRequestBuilder::standard(
+        BID_ACCOUNT_1_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_ENTRY_POINT => ARG_UNDELEGATE,
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1,
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK,
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_1_undelegate_request)
+        .commit()
+        .expect_success();
+
+    let delegator_1_undelegate_purse = builder
+        .get_account(BID_ACCOUNT_1_ADDR)
+        .expect("should have account")
+        .named_keys()
+        .get(UNDELEGATE_PURSE)
+        .expect("should have key")
+        .into_uref()
+        .expect("should be uref");
+
+    for _ in 0..=DEFAULT_UNBONDING_DELAY {
+        let delegator_1_undelegate_purse_balance =
+            builder.get_purse_balance(delegator_1_undelegate_purse);
+        assert_eq!(delegator_1_undelegate_purse_balance, U512::zero());
+        super::run_auction(&mut builder);
+    }
+
+    let delegator_1_undelegate_purse_balance =
+        builder.get_purse_balance(delegator_1_undelegate_purse);
+    assert_eq!(
+        delegator_1_undelegate_purse_balance,
+        U512::from(DELEGATE_AMOUNT_1)
+    )
 }
