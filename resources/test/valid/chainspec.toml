@@ -1,6 +1,6 @@
 [genesis]
 name = 'test-chain'
-timestamp = 1
+timestamp = '2020-09-18T18:45:00Z'
 protocol_version = '0.1.0'
 mint_installer_path = 'mint.wasm'
 pos_installer_path = 'pos.wasm'
@@ -9,18 +9,18 @@ auction_installer_path = 'auction_install.wasm'
 accounts_path = 'accounts.csv'
 
 [highway]
-genesis_era_start_timestamp = 2
-era_duration_millis = 3
+genesis_era_start_timestamp = '2020-09-18T18:45:00Z'
+era_duration = '3minutes'
 minimum_era_height = 9
-booking_duration_millis = 4
-entropy_duration_millis = 5
-voting_period_duration_millis = 6
+booking_duration = '4hours'
+entropy_duration = '5days'
+voting_period_duration = '6weeks'
 finality_threshold_percent = 8
 minimum_round_exponent = 13
 
 [deploys]
 max_payment_cost = '9'
-max_ttl_millis = 10
+max_ttl = '10months'
 max_dependencies = 11
 max_block_size = 12
 block_gas_limit = 13
@@ -58,7 +58,7 @@ opcodes_div = 33
 
 [upgrade.new_deploy_config]
 max_payment_cost = '34'
-max_ttl_millis = 35
+max_ttl = '35years'
 max_dependencies = 36
 max_block_size = 37
 block_gas_limit = 38
