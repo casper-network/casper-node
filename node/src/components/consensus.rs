@@ -225,10 +225,17 @@ where
                 switch_block_header,
                 get_validators_result,
             } => match get_validators_result {
-                Ok(result) => handling_es.handle_validators_response(switch_block_header, result),
-                Err(error) => {
-                    error!(%error, "get_validators returned an error");
-                    Default::default()
+                Ok(Some(result)) => {
+                    handling_es.handle_validators_response(switch_block_header, result)
+                }
+                result => {
+                    error!(
+                        ?result,
+                        "get_validators in era {} returned an error: {:?}",
+                        switch_block_header.era_id(),
+                        result
+                    );
+                    panic!("couldn't get validators");
                 }
             },
         }

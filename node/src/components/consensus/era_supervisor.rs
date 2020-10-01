@@ -27,8 +27,10 @@ use tracing::{error, info, trace, warn};
 use casper_execution_engine::{
     core::engine_state::era_validators::GetEraValidatorsRequest, shared::motes::Motes,
 };
-use casper_types::{auction::ValidatorWeights, ProtocolVersion};
-use casper_types::{auction::BLOCK_REWARD, U512};
+use casper_types::{
+    auction::{ValidatorWeights, BLOCK_REWARD},
+    ProtocolVersion, U512,
+};
 
 use crate::{
     components::{
@@ -472,43 +474,38 @@ where
     pub(super) fn handle_validators_response(
         &mut self,
         block_header: BlockHeader,
-        validators: Option<ValidatorWeights>,
+        validator_weights: ValidatorWeights,
     ) -> Effects<Event<I>> {
-        match validators {
-            Some(validator_weights) => {
-                let validator_stakes = validator_weights
-                    .into_iter()
-                    .map(|(key, stake)| {
-                        (
-                            key.try_into().ok().expect("keys should convert correctly"),
-                            Motes::new(stake),
-                        )
-                    })
-                    .collect();
-                self.era_supervisor
-                    .current_era_mut()
-                    .consensus
-                    .deactivate_validator();
-                let new_era_id = block_header.era_id().successor();
-                info!(?new_era_id, "Era created");
-                let results = self.era_supervisor.new_era(
-                    new_era_id,
-                    Timestamp::now(), // TODO: This should be passed in.
-                    validator_stakes,
-                    block_header.timestamp(),
-                    block_header.height() + 1,
-                    *block_header.global_state_hash(),
-                );
-                let mut effects = self.handle_consensus_results(new_era_id, results);
-                effects.extend(
-                    self.effect_builder
-                        .announce_block_handled(block_header)
-                        .ignore(),
-                );
-                effects
-            }
-            None => todo!(),
-        }
+        let validator_stakes = validator_weights
+            .into_iter()
+            .map(|(key, stake)| {
+                (
+                    key.try_into().ok().expect("keys should convert correctly"),
+                    Motes::new(stake),
+                )
+            })
+            .collect();
+        self.era_supervisor
+            .current_era_mut()
+            .consensus
+            .deactivate_validator();
+        let new_era_id = block_header.era_id().successor();
+        info!(?new_era_id, "Era created");
+        let results = self.era_supervisor.new_era(
+            new_era_id,
+            Timestamp::now(), // TODO: This should be passed in.
+            validator_stakes,
+            block_header.timestamp(),
+            block_header.height() + 1,
+            *block_header.global_state_hash(),
+        );
+        let mut effects = self.handle_consensus_results(new_era_id, results);
+        effects.extend(
+            self.effect_builder
+                .announce_block_handled(block_header)
+                .ignore(),
+        );
+        effects
     }
 
     pub(super) fn handle_accept_proto_block(
