@@ -1,7 +1,7 @@
 use std::{collections::HashSet, time::Duration};
 
 use anyhow::bail;
-use rand::{CryptoRng, Rng};
+use rand::Rng;
 use tempfile::TempDir;
 
 use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
@@ -12,7 +12,7 @@ use crate::{
     crypto::asymmetric_key::{PublicKey, SecretKey},
     reactor::{initializer, joiner, validator, Runner},
     testing::{self, network::Network, ConditionCheckReactor, TestRng},
-    types::Timestamp,
+    types::{CryptoRngCore, Timestamp},
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
     Chainspec,
 };
@@ -87,9 +87,9 @@ impl TestChain {
         cfg
     }
 
-    async fn create_initialized_network<R: Rng + CryptoRng + ?Sized>(
+    async fn create_initialized_network(
         &mut self,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> anyhow::Result<Network<validator::Reactor>> {
         let root = RESOURCES_PATH.join("local");
 

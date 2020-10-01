@@ -22,14 +22,13 @@ use crate::{
         EffectBuilder, Effects,
     },
     protocol::Message,
-    types::{ProtoBlock, Timestamp},
+    types::{CryptoRngCore, ProtoBlock, Timestamp},
 };
 pub use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraEnd};
 use derive_more::From;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 use hex_fmt::HexFmt;
-use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use traits::NodeIdT;
 
@@ -172,10 +171,10 @@ where
 {
     type Event = Event<I>;
 
-    fn handle_event<R: Rng + CryptoRng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        mut rng: &mut R,
+        mut rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         let mut handling_es = self.handling_wrapper(effect_builder, &mut rng);

@@ -7,7 +7,6 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use futures::FutureExt;
-use rand::{CryptoRng, Rng};
 use tracing::{debug, error, info, warn};
 
 use super::{storage::Storage, Component};
@@ -19,7 +18,10 @@ use crate::{
         EffectExt, Effects,
     },
     protocol::Message,
-    types::{json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, DeployHash},
+    types::{
+        json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, CryptoRngCore,
+        DeployHash,
+    },
 };
 
 #[derive(Debug, From)]
@@ -106,10 +108,10 @@ where
 {
     type Event = Event<I>;
 
-    fn handle_event<R: Rng + CryptoRng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: crate::effect::EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

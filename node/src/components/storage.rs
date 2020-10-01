@@ -18,7 +18,6 @@ use std::{
 
 use datasize::DataSize;
 use futures::TryFutureExt;
-use rand::{CryptoRng, Rng};
 use semver::Version;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
@@ -33,7 +32,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     protocol::Message,
-    types::{json_compatibility::ExecutionResult, Block, Deploy, Item},
+    types::{json_compatibility::ExecutionResult, Block, CryptoRngCore, Deploy, Item},
     utils::WithDir,
 };
 use chainspec_store::ChainspecStore;
@@ -404,10 +403,10 @@ where
 {
     type Event = Event<S>;
 
-    fn handle_event<R: Rng + CryptoRng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

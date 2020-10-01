@@ -19,7 +19,7 @@ use blake2::{
 use datasize::DataSize;
 use fmt::Display;
 use num_traits::AsPrimitive;
-use rand::{CryptoRng, Rng};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, trace, warn};
 
@@ -139,14 +139,14 @@ where
     I: NodeIdT,
 {
     /// Creates a new `EraSupervisor`, starting in era 0.
-    pub(crate) fn new<REv: ReactorEventT<I>, R: Rng + CryptoRng + ?Sized>(
+    pub(crate) fn new<REv: ReactorEventT<I>>(
         timestamp: Timestamp,
         config: WithDir<Config>,
         effect_builder: EffectBuilder<REv>,
         validator_stakes: Vec<(PublicKey, Motes)>,
         chainspec: &Chainspec,
         genesis_post_state_hash: hash::Digest,
-        mut rng: &mut R,
+        mut rng: &mut dyn CryptoRngCore,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
         let (root, config) = config.into_parts();
         let secret_signing_key = Rc::new(config.secret_key_path.load(root)?);

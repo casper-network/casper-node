@@ -2,12 +2,12 @@ use std::fmt::{self, Debug, Formatter};
 
 use futures::future::BoxFuture;
 use prometheus::Registry;
-use rand::{CryptoRng, Rng};
 
 use super::network::NetworkedReactor;
 use crate::{
     effect::{EffectBuilder, Effects},
     reactor::{EventQueueHandle, Finalize, Reactor},
+    types::CryptoRngCore,
 };
 
 /// A reactor wrapping an inner reactor, and which has an optional hook into
@@ -54,11 +54,11 @@ impl<R: Reactor> Reactor for ConditionCheckReactor<R> {
     type Config = R::Config;
     type Error = R::Error;
 
-    fn new<RNG: Rng + CryptoRng + ?Sized>(
+    fn new(
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut RNG,
+        rng: &mut dyn CryptoRngCore,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let (reactor, effects) = R::new(config, registry, event_queue, rng)?;
         Ok((
@@ -71,10 +71,10 @@ impl<R: Reactor> Reactor for ConditionCheckReactor<R> {
         ))
     }
 
-    fn dispatch_event<RNG: Rng + CryptoRng + ?Sized>(
+    fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut RNG,
+        rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         self.condition_result = self

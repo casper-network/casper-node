@@ -21,9 +21,10 @@ pub(crate) mod metrics;
 pub(crate) mod small_network;
 pub(crate) mod storage;
 
-use rand::{CryptoRng, Rng};
-
-use crate::effect::{EffectBuilder, Effects};
+use crate::{
+    effect::{EffectBuilder, Effects},
+    types::CryptoRngCore,
+};
 
 /// Core Component.
 ///
@@ -56,10 +57,10 @@ pub trait Component<REv> {
     ///
     /// This function must not ever perform any blocking or CPU intensive work, as it is expected
     /// to return very quickly.
-    fn handle_event<R: Rng + CryptoRng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event>;
 }

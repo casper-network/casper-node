@@ -19,8 +19,7 @@ use k256::ecdsa::{
 };
 use pem::Pem;
 #[cfg(test)]
-use rand::RngCore;
-use rand::{CryptoRng, Rng};
+use rand::{Rng, RngCore};
 use serde::{
     de::{Deserializer, Error as SerdeError},
     Deserialize, Serialize, Serializer,
@@ -33,6 +32,7 @@ use super::{Error, Result};
 use crate::testing::TestRng;
 use crate::{
     crypto::hash::hash,
+    types::CryptoRngCore,
     utils::{read_file, write_file},
 };
 use casper_types::account::AccountHash;
@@ -1142,11 +1142,11 @@ fn deserialize<'de, T: AsymmetricType, D: Deserializer<'de>>(
 }
 
 /// Signs the given message using the given key pair.
-pub fn sign<T: AsRef<[u8]>, R: Rng + CryptoRng + ?Sized>(
+pub fn sign<T: AsRef<[u8]>>(
     message: T,
     secret_key: &SecretKey,
     public_key: &PublicKey,
-    rng: &mut R,
+    rng: &mut dyn CryptoRngCore,
 ) -> Signature {
     match (secret_key, public_key) {
         (SecretKey::Ed25519(secret_key), PublicKey::Ed25519(public_key)) => {

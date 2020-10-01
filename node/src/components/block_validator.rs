@@ -16,7 +16,6 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::{Display, From};
-use rand::{CryptoRng, Rng};
 use smallvec::{smallvec, SmallVec};
 
 use crate::{
@@ -25,7 +24,7 @@ use crate::{
         requests::{BlockValidationRequest, FetcherRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
     },
-    types::{BlockLike, Deploy, DeployHash},
+    types::{BlockLike, CryptoRngCore, Deploy, DeployHash},
 };
 use keyed_counter::KeyedCounter;
 
@@ -90,10 +89,10 @@ where
 {
     type Event = Event<T, I>;
 
-    fn handle_event<R: Rng + CryptoRng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

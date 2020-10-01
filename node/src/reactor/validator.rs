@@ -14,7 +14,6 @@ use datasize::DataSize;
 use derive_more::From;
 use fmt::Debug;
 use prometheus::Registry;
-use rand::{CryptoRng, Rng};
 use tracing::{debug, error, warn};
 
 #[cfg(test)]
@@ -52,7 +51,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, EventQueueHandle},
-    types::{Block, Deploy, ProtoBlock, Tag},
+    types::{Block, CryptoRngCore, Deploy, ProtoBlock, Tag},
     utils::Source,
 };
 pub use config::Config;
@@ -305,13 +304,13 @@ impl reactor::Reactor for Reactor {
     type Config = ValidatorInitConfig;
     type Error = Error;
 
-    fn new<R: Rng + CryptoRng + ?Sized>(
+    fn new(
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         // We don't need `rng` b/c consensus component was the only one using it,
         // and now it's being passed on from the `joiner` reactor via `config`.
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
     ) -> Result<(Self, Effects<Event>), Error> {
         let ValidatorInitConfig {
             config,
@@ -378,10 +377,10 @@ impl reactor::Reactor for Reactor {
         ))
     }
 
-    fn dispatch_event<R: Rng + CryptoRng + ?Sized>(
+    fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         event: Event,
     ) -> Effects<Self::Event> {
         match event {

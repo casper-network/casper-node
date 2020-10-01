@@ -7,7 +7,7 @@ use std::{
 
 use hex_fmt::HexFmt;
 use itertools::Itertools;
-use rand::{CryptoRng, Rng};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::{trace, warn};
 
@@ -181,9 +181,9 @@ enum Distribution {
 
 impl Distribution {
     /// Returns vector of `count` elements of random values between `lower` and `uppwer`.
-    fn gen_range_vec<R: Rng + CryptoRng + ?Sized>(
+    fn gen_range_vec(
         &self,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         lower: u64,
         upper: u64,
         count: u8,
@@ -759,10 +759,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
         self
     }
 
-    fn build<R: Rng + CryptoRng + ?Sized>(
-        self,
-        rng: &mut R,
-    ) -> Result<HighwayTestHarness<DS>, BuilderError> {
+    fn build(self, rng: &mut dyn CryptoRngCore) -> Result<HighwayTestHarness<DS>, BuilderError> {
         let consensus_values = (0..self.consensus_values_count as u32)
             .map(|el| vec![el])
             .collect::<VecDeque<ConsensusValue>>();

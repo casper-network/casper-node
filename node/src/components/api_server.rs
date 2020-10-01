@@ -24,7 +24,6 @@ use std::fmt::Debug;
 use datasize::DataSize;
 use futures::join;
 use lazy_static::lazy_static;
-use rand::{CryptoRng, Rng};
 use semver::Version;
 use tokio::sync::mpsc::{self, UnboundedSender};
 use tracing::info;
@@ -47,7 +46,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     small_network::NodeId,
-    types::StatusFeed,
+    types::{CryptoRngCore, StatusFeed},
 };
 pub use config::Config;
 pub(crate) use event::Event;
@@ -162,10 +161,10 @@ where
 {
     type Event = Event;
 
-    fn handle_event<R: Rng + CryptoRng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

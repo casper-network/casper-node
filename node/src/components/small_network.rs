@@ -61,7 +61,7 @@ use futures::{
 };
 use openssl::pkey;
 use pkey::{PKey, Private};
-use rand::{seq::IteratorRandom, CryptoRng, Rng};
+use rand::seq::IteratorRandom;
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::{
     net::TcpStream,
@@ -88,6 +88,7 @@ use crate::{
     fatal,
     reactor::{EventQueueHandle, Finalize, QueueKind},
     tls::{self, KeyFingerprint, TlsCert},
+    types::CryptoRngCore,
     utils,
 };
 pub use config::Config;
@@ -284,9 +285,9 @@ where
     }
 
     /// Queues a message to `count` random nodes on the network.
-    fn gossip_message<R: Rng + ?Sized>(
+    fn gossip_message(
         &self,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         msg: Message<P>,
         count: usize,
         exclude: HashSet<NodeId>,
@@ -630,10 +631,10 @@ where
     type Event = Event<P>;
 
     #[allow(clippy::cognitive_complexity)]
-    fn handle_event<R: Rng + CryptoRng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

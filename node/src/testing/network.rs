@@ -8,7 +8,6 @@ use std::{
 };
 
 use futures::future::{BoxFuture, FutureExt};
-use rand::{CryptoRng, Rng};
 use tokio::time;
 use tracing::{debug, error_span};
 use tracing_futures::Instrument;
@@ -18,6 +17,7 @@ use crate::{
     effect::{EffectBuilder, Effects},
     reactor::{Finalize, Reactor, Runner},
     testing::TestRng,
+    types::CryptoRngCore,
 };
 
 /// Type alias for set of nodes inside a network.
@@ -96,10 +96,10 @@ where
     /// # Panics
     ///
     /// Panics if a duplicate node ID is being inserted.
-    pub async fn add_node_with_config<RNG: Rng + CryptoRng + ?Sized>(
+    pub async fn add_node_with_config(
         &mut self,
         cfg: R::Config,
-        rng: &mut RNG,
+        rng: &mut dyn CryptoRngCore,
     ) -> Result<(R::NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
         let runner: Runner<ConditionCheckReactor<R>> = Runner::new(cfg, rng).await?;
 

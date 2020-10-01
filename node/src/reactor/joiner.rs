@@ -10,7 +10,6 @@ use deploy_acceptor::DeployAcceptor;
 use deploy_buffer::DeployBuffer;
 use derive_more::From;
 use prometheus::Registry;
-use rand::{CryptoRng, Rng};
 use small_network::GossipedAddress;
 use tracing::{error, info, warn};
 
@@ -49,7 +48,10 @@ use crate::{
         validator::{self, Error, ValidatorInitConfig},
         EventQueueHandle, Finalize,
     },
-    types::{Block, BlockByHeight, BlockHash, BlockHeader, Deploy, ProtoBlock, Tag, Timestamp},
+    types::{
+        Block, BlockByHeight, BlockHash, BlockHeader, CryptoRngCore, Deploy, ProtoBlock, Tag,
+        Timestamp,
+    },
     utils::{Source, WithDir},
 };
 
@@ -293,11 +295,11 @@ impl reactor::Reactor for Reactor {
     type Config = WithDir<initializer::Reactor>;
     type Error = Error;
 
-    fn new<R: Rng + CryptoRng + ?Sized>(
+    fn new(
         initializer: Self::Config,
         _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let (root, initializer) = initializer.into_parts();
 
@@ -392,10 +394,10 @@ impl reactor::Reactor for Reactor {
         ))
     }
 
-    fn dispatch_event<R: Rng + CryptoRng + ?Sized>(
+    fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

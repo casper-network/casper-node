@@ -37,12 +37,12 @@ use std::{
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use prometheus::{self, IntCounter, Registry};
-use rand::{CryptoRng, Rng};
 use tracing::{debug, debug_span, info, trace, warn};
 use tracing_futures::Instrument;
 
 use crate::{
     effect::{Effect, EffectBuilder, Effects},
+    types::CryptoRngCore,
     utils::{self, WeightedRoundRobin},
 };
 pub use queue_kind::QueueKind;
@@ -112,10 +112,10 @@ pub trait Reactor: Sized {
     /// This function is typically only called by the reactor itself to dispatch an event. It is
     /// safe to call regardless, but will cause the event to skip the queue and things like
     /// accounting.
-    fn dispatch_event<R: Rng + CryptoRng + ?Sized>(
+    fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event>;
 
@@ -125,11 +125,11 @@ pub trait Reactor: Sized {
     /// instance along with the effects that the components generated upon instantiation.
     ///
     /// If any instantiation fails, an error is returned.
-    fn new<R: Rng + CryptoRng + ?Sized>(
+    fn new(
         cfg: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error>;
 
     /// Indicates that the reactor has completed all its work and should no longer dispatch events.
@@ -226,10 +226,7 @@ where
     ///
     /// Creates a metrics registry that is only going to be used in this runner.
     #[inline]
-    pub async fn new<RNG: Rng + CryptoRng + ?Sized>(
-        cfg: R::Config,
-        rng: &mut RNG,
-    ) -> Result<Self, R::Error> {
+    pub async fn new(cfg: R::Config, rng: &mut dyn CryptoRngCore) -> Result<Self, R::Error> {
         // Instantiate a new registry for metrics for this reactor.
         let registry = Registry::new();
         Self::with_metrics(cfg, rng, &registry).await
@@ -237,9 +234,9 @@ where
 
     /// Creates a new runner from a given configuration, using existing metrics.
     #[inline]
-    pub async fn with_metrics<RNG: Rng + CryptoRng + ?Sized>(
+    pub async fn with_metrics(
         cfg: R::Config,
-        rng: &mut RNG,
+        rng: &mut dyn CryptoRngCore,
         registry: &Registry,
     ) -> Result<Self, R::Error> {
         let event_size = mem::size_of::<R::Event>();
@@ -295,7 +292,7 @@ where
 
     /// Processes a single event on the event queue.
     #[inline]
-    pub async fn crank<RNG: Rng + CryptoRng + ?Sized>(&mut self, rng: &mut RNG) {
+    pub async fn crank(&mut self, rng: &mut dyn CryptoRngCore) {
         // Create another span for tracing the processing of one event.
         let crank_span = debug_span!("crank", ev = self.event_count);
         let _inner_enter = crank_span.enter();
@@ -345,7 +342,7 @@ where
 
     /// Processes a single event if there is one, returns `None` otherwise.
     #[inline]
-    pub async fn try_crank<RNG: Rng + CryptoRng>(&mut self, rng: &mut RNG) -> Option<()> {
+    pub async fn try_crank(&mut self, rng: &mut dyn CryptoRngCore) -> Option<()> {
         if self.scheduler.item_count() == 0 {
             None
         } else {
@@ -356,7 +353,7 @@ where
 
     /// Runs the reactor until `is_stopped()` returns true.
     #[inline]
-    pub async fn run<RNG: Rng + CryptoRng + ?Sized>(&mut self, rng: &mut RNG) {
+    pub async fn run(&mut self, rng: &mut dyn CryptoRngCore) {
         while !self.reactor.is_stopped() {
             self.crank(rng).await;
         }

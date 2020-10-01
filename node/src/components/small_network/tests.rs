@@ -34,10 +34,9 @@ use crate::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
     },
+    types::CryptoRngCore,
     utils::Source,
 };
-use rand::Rng;
-use rand_core::CryptoRng;
 
 /// Test-reactor event.
 #[derive(Debug, From)]
@@ -104,11 +103,11 @@ impl Reactor for TestReactor {
     type Config = Config;
     type Error = anyhow::Error;
 
-    fn new<R: Rng + CryptoRng + ?Sized>(
+    fn new(
         cfg: Self::Config,
         _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let (net, effects) = SmallNetwork::new(event_queue, cfg, false)?;
         let gossiper_config = gossiper::Config::default();
@@ -123,10 +122,10 @@ impl Reactor for TestReactor {
         ))
     }
 
-    fn dispatch_event<R: Rng + CryptoRng + ?Sized>(
+    fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

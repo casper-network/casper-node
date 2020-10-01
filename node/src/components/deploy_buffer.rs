@@ -10,7 +10,6 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::From;
-use rand::{CryptoRng, Rng};
 use semver::Version;
 use tracing::{error, info};
 
@@ -20,7 +19,7 @@ use crate::{
         requests::{DeployBufferRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{DeployHash, DeployHeader, ProtoBlock, ProtoBlockHash, Timestamp},
+    types::{CryptoRngCore, DeployHash, DeployHeader, ProtoBlock, ProtoBlockHash, Timestamp},
 };
 
 /// An event for when using the deploy buffer as a component.
@@ -276,10 +275,10 @@ where
 {
     type Event = Event;
 
-    fn handle_event<R: Rng + CryptoRng + ?Sized>(
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
