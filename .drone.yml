@@ -236,8 +236,6 @@ steps:
   commands:
   - "./upload.sh --repo-name casper-debian-tests --package-name casper-node"
   environment:
-    BINTRAY_API_KEY:
-      from_secret: cl_bintray_api_key
     CL_VAULT_TOKEN:
       from_secret: vault_token
     CL_VAULT_HOST:

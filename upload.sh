@@ -72,7 +72,7 @@ parse_args() {
 
   # if not set take it from node/Cargo.toml
   if [ -z ${PACKAGE_VERSION+x} ]; then
-    NODE_CONFIG_FILE="$RUN_DIR/node/Config.toml"
+    NODE_CONFIG_FILE="$RUN_DIR/node/Cargo.toml"
     PACKAGE_VERSION="$(grep -oP "^version\s=\s\K.*" $NODE_CONFIG_FILE | sed -e s'/"//')"
   fi
 
@@ -106,15 +106,15 @@ export UPLOAD_DIR="$(pwd)/target/debian"
 export BINTRAY_USER='casperlabs-service'
 export BINTRAY_ORG_NAME='casperlabs'
 export BINTRAY_REPO_URL="$BINTRAY_ORG_NAME/$BINTRAY_REPO_NAME/$BINTRAY_PACKAGE_NAME"
-export CL_VAULT_URL="${CL_VAULT_HOST}/v1/sre/cicd/bintray/credentials"
+export CL_VAULT_URL="${CL_VAULT_HOST}/v1/sre/cicd/bintray"
 
 echo "Run dir set to: $RUN_DIR"
 echo "Repo URL: $BINTRAY_REPO_URL"
 echo "Package version set to: $PACKAGE_VERSION"
 
-# get bintray credentials 
+# get bintray private key and passphrase
 echo "-H \"X-Vault-Token: $CL_VAULT_TOKEN\"" > ~/.curlrc
-curl -s -q -X GET $CL_VAULT_URL --output $CREDENTIAL_FILE_TMP
+curl -s -q -X GET $CL_VAULT_URL/credentials --output $CREDENTIAL_FILE_TMP
 if [ ! -f $CREDENTIAL_FILE_TMP ]; then
   echo "[ERROR] Unable to fetch credentails for bintray from vault: $CL_VAULT_URL"
   exit 1
@@ -123,6 +123,18 @@ else
   # get just the body required by bintray, strip off vault payload
   /bin/cat $CREDENTIAL_FILE_TMP | jq -r .data > $CREDENTIAL_FILE
 fi
+
+# get bintray api key
+curl -s -q -X GET $CL_VAULT_URL/bintray_api_key --output $CREDENTIAL_FILE_TMP
+if [ ! -f $CREDENTIAL_FILE_TMP ]; then
+  echo "[ERROR] Unable to fetch api_key for bintray from vault: $CL_VAULT_URL"
+  exit 1
+else
+  echo "Found bintray credentials file - $CREDENTIAL_FILE_TMP"
+  # get just the body required by bintray, strip off vault payload
+  export BINTRAY_API_KEY=$(/bin/cat $CREDENTIAL_FILE_TMP | jq -r .data.bintray_api_key)
+fi
+
 
 if [ -d "$UPLOAD_DIR" ]; then
   cd $UPLOAD_DIR
