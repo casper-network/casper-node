@@ -297,20 +297,20 @@ impl DeployBuffer {
 
     /// Prunes expired deploy information from the DeployBuffer, returns the total deploys pruned
     fn prune(&mut self, current_instant: Timestamp) -> usize {
-        /// Prunes expired deploy information from an individual DeployCollection, returns the total
+        /// Prunes a deploy from an individual DeployCollection, returns the total
         /// deploys pruned
-        fn prune_deploys(deploys: &mut DeployCollection, current_instant: Timestamp) -> usize {
+        fn prune_deploys(deploys: &mut DeployCollection, expired: DeployHash) -> usize {
             let initial_len = deploys.len();
-            deploys.retain(|_hash, header| !header.expired(current_instant));
+            deploys.retain(|k, v| k != &expired && !v.dependencies().contains(k));
             initial_len - deploys.len()
         }
-        /// Prunes expired deploy information from each ProtoBlockCollection, returns the total
+        /// Prunes an expired deploy information from each ProtoBlockCollection, returns the total
         /// deploys pruned
-        fn prune_blocks(blocks: &mut ProtoBlockCollection, current_instant: Timestamp) -> usize {
+        fn prune_blocks(blocks: &mut ProtoBlockCollection, expired: DeployHash) -> usize {
             let mut pruned = 0;
             let mut remove = Vec::new();
             for (block_hash, deploys) in blocks.iter_mut() {
-                pruned += prune_deploys(deploys, current_instant);
+                pruned += prune_deploys(deploys, expired);
                 if deploys.is_empty() {
                     remove.push(*block_hash);
                 }
@@ -318,10 +318,95 @@ impl DeployBuffer {
             blocks.retain(|k, _v| !remove.contains(&k));
             pruned
         }
-        let collected = prune_deploys(&mut self.pending, current_instant);
-        let proposed = prune_blocks(&mut self.proposed, current_instant);
-        let finalized = prune_blocks(&mut self.finalized, current_instant);
-        collected + proposed + finalized
+
+        /// Create an iterator over all expired deploys in this DeployCollection
+        fn iter_expired_deploys(
+            deploys: &DeployCollection,
+            current_instant: Timestamp,
+        ) -> impl Iterator<Item = &DeployHash> {
+            deploys.iter().filter_map(move |(hash, header)| {
+                if header.expired(current_instant) {
+                    Some(hash)
+                } else {
+                    None
+                }
+            })
+        }
+
+        /// Helper to create iterator over all blocks
+        fn iter_expired_deploys_from_block(
+            blocks: &ProtoBlockCollection,
+            current_instant: Timestamp,
+        ) -> impl Iterator<Item = &DeployHash> {
+            blocks
+                .iter()
+                .flat_map(move |(_block, deploys)| iter_expired_deploys(deploys, current_instant))
+        }
+
+        /// Helper to create iterator over all dependencies of deploys in this DeployCollection
+        fn iter_dependencies_of_expired_deploys<'a>(
+            deploys: &'a DeployCollection,
+            expired_deploys: &'a HashSet<&'a DeployHash>,
+        ) -> impl Iterator<Item = &'a DeployHash> {
+            deploys.iter().filter_map(move |(k, v)| {
+                if v.dependencies().iter().any(|f| expired_deploys.contains(f)) {
+                    Some(k)
+                } else {
+                    None
+                }
+            })
+        }
+
+        /// Helper to create iteraor over all dependencies of deploys contained in this block
+        fn iter_dependencies_of_expired_deploys_from_block<'a>(
+            blocks: &'a ProtoBlockCollection,
+            expired_deploys: &'a HashSet<&'a DeployHash>,
+        ) -> impl Iterator<Item = &'a DeployHash> {
+            blocks.iter().flat_map(move |(_block, deploys)| {
+                iter_dependencies_of_expired_deploys(deploys, expired_deploys)
+            })
+        }
+
+        let expired_deploys = {
+            let expired_deploys = iter_expired_deploys(&self.pending, current_instant)
+                .chain(iter_expired_deploys_from_block(
+                    &self.proposed,
+                    current_instant,
+                ))
+                .chain(iter_expired_deploys_from_block(
+                    &self.finalized,
+                    current_instant,
+                ))
+                .collect::<HashSet<_>>();
+
+            // without traversing to dependencies of dependencies, a best effort here is made to
+            // expire hashes
+            let expired_deploys_iter =
+                iter_dependencies_of_expired_deploys(&self.pending, &expired_deploys)
+                    .chain(iter_dependencies_of_expired_deploys_from_block(
+                        &self.proposed,
+                        &expired_deploys,
+                    ))
+                    .chain(iter_dependencies_of_expired_deploys_from_block(
+                        &self.finalized,
+                        &expired_deploys,
+                    ));
+
+            expired_deploys
+                .iter()
+                .copied()
+                .chain(expired_deploys_iter)
+                .cloned()
+                .collect::<HashSet<_>>()
+        };
+
+        let mut pruned = 0;
+        for expired_hash in expired_deploys {
+            pruned += prune_deploys(&mut self.pending, expired_hash)
+                + prune_blocks(&mut self.proposed, expired_hash)
+                + prune_blocks(&mut self.finalized, expired_hash);
+        }
+        pruned
     }
 }
 
@@ -537,6 +622,56 @@ mod tests {
         assert_eq!(deploys.len(), 2);
         assert!(deploys.contains(&hash3));
         assert!(deploys.contains(&hash4));
+    }
+
+    #[test]
+    fn should_prune_dependencies_of_expired_deploys() {
+        let expired_time = Timestamp::from(201);
+        let creation_time = Timestamp::from(100);
+        let test_time = Timestamp::from(120);
+        let ttl = TimeDiff::from(100);
+
+        let not_expired_time = Timestamp::from(300);
+
+        let mut rng = TestRng::new();
+        let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
+        let (hash2, deploy2) = generate_deploy(&mut rng, not_expired_time, ttl, vec![hash1]);
+        let (mut buffer, _effects) = create_test_buffer();
+
+        // pending
+        buffer.add_deploy(creation_time, hash1, deploy1);
+        buffer.add_deploy(creation_time, hash2, deploy2);
+
+        // pending => proposed
+        let block_hash1 = ProtoBlockHash::new(hash(random::<[u8; 16]>()));
+        let block_hash2 = ProtoBlockHash::new(hash(random::<[u8; 16]>()));
+        buffer.added_block(block_hash1, vec![hash1]);
+        buffer.added_block(block_hash2, vec![hash2]);
+
+        // proposed => finalized
+        buffer.finalized_block(block_hash1);
+
+        assert_eq!(buffer.pending.len(), 0);
+        assert_eq!(buffer.proposed.get(&block_hash2).unwrap().len(), 1);
+        assert_eq!(buffer.finalized.get(&block_hash1).unwrap().len(), 1);
+
+        // test for retained values
+        let pruned = buffer.prune(test_time);
+        assert_eq!(pruned, 0);
+
+        assert_eq!(buffer.pending.len(), 0);
+        assert_eq!(buffer.proposed.len(), 1);
+        assert_eq!(buffer.proposed.get(&block_hash2).unwrap().len(), 1);
+        assert_eq!(buffer.finalized.len(), 1);
+        assert_eq!(buffer.finalized.get(&block_hash1).unwrap().len(), 1);
+
+        // now move the clock to make some things expire
+        let pruned = buffer.prune(expired_time);
+        assert_eq!(pruned, 2);
+
+        assert_eq!(buffer.pending.len(), 0);
+        assert_eq!(buffer.proposed.len(), 0);
+        assert_eq!(buffer.finalized.len(), 0);
     }
 
     #[test]
