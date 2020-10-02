@@ -132,9 +132,10 @@ impl reactor::Reactor for Reactor {
 
         let effect_builder = EffectBuilder::new(event_queue);
 
-        let storage = Storage::new(WithDir::new(&root, config.storage.clone()))?;
+        let storage_config = WithDir::new(&root, config.storage.clone());
+        let storage = Storage::new(storage_config.clone())?;
         let contract_runtime =
-            ContractRuntime::new(&config.storage, config.contract_runtime, registry)?;
+            ContractRuntime::new(storage_config, config.contract_runtime, registry)?;
         let (chainspec_loader, chainspec_effects) =
             ChainspecLoader::new(chainspec, effect_builder)?;
 

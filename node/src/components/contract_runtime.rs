@@ -33,6 +33,7 @@ use crate::{
     crypto::hash,
     effect::{requests::ContractRuntimeRequest, EffectBuilder, EffectExt, Effects},
     types::CryptoRngCore,
+    utils::WithDir,
     Chainspec, StorageConfig,
 };
 
@@ -342,11 +343,11 @@ pub enum ConfigError {
 
 impl ContractRuntime {
     pub(crate) fn new(
-        storage_config: &StorageConfig,
+        storage_config: WithDir<StorageConfig>,
         contract_runtime_config: Config,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
-        let path = storage_config.path();
+        let path = storage_config.with_dir(storage_config.value().path());
         let environment = Arc::new(LmdbEnvironment::new(
             path.as_path(),
             contract_runtime_config.max_global_state_size(),
