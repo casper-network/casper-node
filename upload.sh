@@ -73,7 +73,7 @@ parse_args() {
   # if not set take it from node/Cargo.toml
   if [ -z ${PACKAGE_VERSION+x} ]; then
     NODE_CONFIG_FILE="$RUN_DIR/node/Cargo.toml"
-    PACKAGE_VERSION="$(grep -oP "^version\s=\s\K.*" $NODE_CONFIG_FILE | sed -e s'/"//')"
+    PACKAGE_VERSION="$(grep -oP "^version\s=\s\K.*" $NODE_CONFIG_FILE | sed -e s'/"//g')"
   fi
 
   echo "[INFO] PACKAGE_VERSION set to $PACKAGE_VERSION"
