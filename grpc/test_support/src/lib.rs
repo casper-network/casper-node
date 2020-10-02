@@ -82,7 +82,7 @@ pub use session::{Session, SessionBuilder, SessionTransferInfo};
 pub use test_context::{TestContext, TestContextBuilder};
 pub use value::Value;
 
-/// The address of a [`URef`](types::URef) (unforgeable reference) on the network.
+/// The address of a [`URef`](casper_types::URef) (unforgeable reference) on the network.
 pub type URefAddr = [u8; 32];
 
 /// The hash of a smart contract stored on the network, which can be used to reference the contract.

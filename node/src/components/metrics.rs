@@ -25,12 +25,12 @@
 
 use datasize::DataSize;
 use prometheus::{Encoder, Registry, TextEncoder};
-use rand::{CryptoRng, Rng};
 use tracing::error;
 
 use crate::{
     components::Component,
     effect::{requests::MetricsRequest, EffectBuilder, EffectExt, Effects},
+    types::CryptoRngCore,
 };
 
 /// The metrics component.
@@ -41,13 +41,13 @@ pub(crate) struct Metrics {
     registry: Registry,
 }
 
-impl<REv, R: Rng + CryptoRng + ?Sized> Component<REv, R> for Metrics {
+impl<REv> Component<REv> for Metrics {
     type Event = MetricsRequest;
 
     fn handle_event(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         req: Self::Event,
     ) -> Effects<Self::Event> {
         match req {

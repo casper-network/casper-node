@@ -8,7 +8,6 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use itertools::Itertools;
-use rand::{CryptoRng, Rng};
 use smallvec::SmallVec;
 use tracing::{debug, error, trace};
 
@@ -18,6 +17,7 @@ use casper_execution_engine::{
         deploy_item::DeployItem,
         execute_request::ExecuteRequest,
         execution_result::{ExecutionResult as EngineExecutionResult, ExecutionResults},
+        step::{RewardItem, SlashItem, StepRequest, StepResult},
         RootNotFound,
     },
     storage::global_state::CommitResult,
@@ -33,7 +33,8 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     types::{
-        json_compatibility::ExecutionResult, Block, BlockHash, Deploy, DeployHash, FinalizedBlock,
+        json_compatibility::ExecutionResult, Block, BlockHash, CryptoRngCore, Deploy, DeployHash,
+        FinalizedBlock,
     },
 };
 
@@ -85,6 +86,13 @@ pub enum Event {
         state: Box<State>,
         /// Commit result for execution request.
         commit_result: Result<CommitResult, engine_state::Error>,
+    },
+    /// The result of running the step on a switch block.
+    RunStepResult {
+        /// State of this request.
+        state: Box<State>,
+        /// The result.
+        result: Result<StepResult, engine_state::Error>,
     },
 }
 
@@ -146,6 +154,14 @@ impl Display for Event {
                 state.finalized_block.height(),
                 state.pre_state_hash,
                 commit_result,
+            ),
+            Event::RunStepResult { state, result } => write!(
+                f,
+                "result of running the step after finalized block with height {} \
+                    with pre-state hash {}: {:?}",
+                state.finalized_block.height(),
+                state.pre_state_hash,
+                result
             ),
         }
     }
@@ -236,6 +252,31 @@ impl BlockExecutor {
             })
     }
 
+    /// Creates and announces the linear chain block.
+    fn finalize_block_execution<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        state: Box<State>,
+    ) -> Effects<Event> {
+        // The state hash of the last execute-commit cycle is used as the block's post state
+        // hash.
+        let next_height = state.finalized_block.height() + 1;
+        let block = self.create_block(state.finalized_block, state.pre_state_hash);
+
+        let mut effects = effect_builder
+            .announce_linear_chain_block(block, state.execution_results)
+            .ignore();
+        // If the child is already finalized, start execution.
+        if let Some((finalized_block, deploys)) = self.exec_queue.remove(&next_height) {
+            effects.extend(self.handle_get_deploys_result(
+                effect_builder,
+                finalized_block,
+                deploys,
+            ));
+        }
+        effects
+    }
+
     /// Executes the first deploy in `state.remaining_deploys`, or creates the executed block if
     /// there are no remaining deploys left.
     fn execute_next_deploy_or_create_block<REv: ReactorEventT>(
@@ -246,23 +287,30 @@ impl BlockExecutor {
         let next_deploy = match state.remaining_deploys.pop_front() {
             Some(deploy) => deploy,
             None => {
-                // The state hash of the last execute-commit cycle is used as the block's post state
-                // hash.
-                let next_height = state.finalized_block.height() + 1;
-                let block = self.create_block(state.finalized_block, state.pre_state_hash);
-
-                let mut effects = effect_builder
-                    .announce_linear_chain_block(block, state.execution_results)
-                    .ignore();
-                // If the child is already finalized, start execution.
-                if let Some((finalized_block, deploys)) = self.exec_queue.remove(&next_height) {
-                    effects.extend(self.handle_get_deploys_result(
-                        effect_builder,
-                        finalized_block,
-                        deploys,
-                    ));
-                }
-                return effects;
+                let era_end = match state.finalized_block.era_end().as_ref() {
+                    Some(era_end) => era_end,
+                    None => return self.finalize_block_execution(effect_builder, state),
+                };
+                let reward_items = era_end
+                    .rewards
+                    .iter()
+                    .map(|(&vid, &value)| RewardItem::new(vid.into(), value))
+                    .collect();
+                let slash_items = era_end
+                    .equivocators
+                    .iter()
+                    .map(|&vid| SlashItem::new(vid.into()))
+                    .collect();
+                let request = StepRequest {
+                    pre_state_hash: state.pre_state_hash.into(),
+                    protocol_version: ProtocolVersion::V1_0_0,
+                    reward_items,
+                    slash_items,
+                    run_auction: true,
+                };
+                return effect_builder
+                    .run_step(request)
+                    .event(|result| Event::RunStepResult { state, result });
             }
         };
         let deploy_hash = *next_deploy.id();
@@ -382,13 +430,13 @@ impl BlockExecutor {
     }
 }
 
-impl<REv: ReactorEventT, R: Rng + CryptoRng + ?Sized> Component<REv, R> for BlockExecutor {
+impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
     type Event = Event;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -446,6 +494,20 @@ impl<REv: ReactorEventT, R: Rng + CryptoRng + ?Sized> Component<REv, R> for Bloc
                             "commit failed - internal contract runtime error"
                         );
                         panic!("unable to commit");
+                    }
+                }
+            }
+
+            Event::RunStepResult { mut state, result } => {
+                trace!(?result, "run step result");
+                match result {
+                    Ok(StepResult::Success { post_state_hash }) => {
+                        state.pre_state_hash = post_state_hash.into();
+                        self.finalize_block_execution(effect_builder, state)
+                    }
+                    _ => {
+                        error!(?result, "run step failed - internal contract runtime error");
+                        panic!("unable to run step");
                     }
                 }
             }

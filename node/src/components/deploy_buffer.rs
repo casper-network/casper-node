@@ -12,7 +12,6 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use fmt::Debug;
-use rand::{CryptoRng, Rng};
 use semver::Version;
 use tracing::{error, info, trace};
 
@@ -22,7 +21,7 @@ use crate::{
         requests::{DeployBufferRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{DeployHash, DeployHeader, ProtoBlock, ProtoBlockHash, Timestamp},
+    types::{CryptoRngCore, DeployHash, DeployHeader, ProtoBlock, ProtoBlockHash, Timestamp},
 };
 
 const DEPLOY_BUFFER_PRUNE_INTERVAL: Duration = Duration::from_secs(10);
@@ -332,17 +331,16 @@ impl DeployBuffer {
     }
 }
 
-impl<REv, R> Component<REv, R> for DeployBuffer
+impl<REv> Component<REv> for DeployBuffer
 where
     REv: ReactorEventT,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

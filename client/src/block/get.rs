@@ -9,7 +9,7 @@ use casper_node::rpcs::{
 
 use crate::{command::ClientCommand, common, RpcClient};
 
-/// This struct defines the order in which the args are shown for this subcommand
+/// This struct defines the order in which the args are shown for this subcommand.
 enum DisplayOrder {
     NodeAddress,
     BlockHash,

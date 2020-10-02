@@ -21,6 +21,7 @@ use casper_execution_engine::{
         execution_result::ExecutionResults,
         genesis::GenesisResult,
         query::{QueryRequest, QueryResult},
+        step::{StepRequest, StepResult},
         upgrade::{UpgradeConfig, UpgradeResult},
     },
     shared::{additive_map::AdditiveMap, transform::Transform},
@@ -490,6 +491,14 @@ pub enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
     },
+    /// Performs a step consisting of calculating rewards, slashing and running the auction at the
+    /// end of an era.
+    Step {
+        /// The step request.
+        step_request: StepRequest,
+        /// Responder to call with the result.
+        responder: Responder<Result<StepResult, engine_state::Error>>,
+    },
 }
 
 impl Display for ContractRuntimeRequest {
@@ -532,6 +541,10 @@ impl Display for ContractRuntimeRequest {
 
             ContractRuntimeRequest::GetEraValidators { get_request, .. } => {
                 write!(formatter, "get validator weights: {:?}", get_request)
+            }
+
+            ContractRuntimeRequest::Step { step_request, .. } => {
+                write!(formatter, "step: {:?}", step_request)
             }
         }
     }

@@ -77,16 +77,14 @@ use smallvec::{smallvec, SmallVec};
 use tracing::error;
 
 use casper_execution_engine::{
-    core::{
-        engine_state::{
-            self,
-            era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
-            execute_request::ExecuteRequest,
-            execution_result::ExecutionResults,
-            genesis::GenesisResult,
-            BalanceRequest, BalanceResult, QueryRequest, QueryResult,
-        },
-        execution,
+    core::engine_state::{
+        self,
+        era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
+        execute_request::ExecuteRequest,
+        execution_result::ExecutionResults,
+        genesis::GenesisResult,
+        step::{StepRequest, StepResult},
+        BalanceRequest, BalanceResult, QueryRequest, QueryResult,
     },
     shared::{additive_map::AdditiveMap, transform::Transform},
     storage::global_state::CommitResult,
@@ -1074,7 +1072,6 @@ impl<REv> EffectBuilder<REv> {
     /// Returns a map of validators for given `era` to their weights as known from `root_hash`.
     ///
     /// This operation is read only.
-    #[allow(dead_code)]
     pub(crate) async fn get_validators(
         self,
         get_request: GetEraValidatorsRequest,
@@ -1092,12 +1089,22 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Runs auction using the system smart contract.
-    ///
-    /// Contract is ran on a given pre state hash and returns fully committed post state hash.
-    #[allow(dead_code)]
-    pub(crate) async fn run_auction(self, _root_hash: Digest) -> Result<Digest, execution::Error> {
-        todo!("run_auction")
+    /// Runs the end of era step using the system smart contract.
+    pub(crate) async fn run_step(
+        self,
+        step_request: StepRequest,
+    ) -> Result<StepResult, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::Step {
+                step_request,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
     }
 
     /// Request consensus to sign a block from the linear chain and possibly start a new era.
