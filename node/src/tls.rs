@@ -724,7 +724,7 @@ impl Display for CertFingerprint {
 
 impl Display for KeyFingerprint {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        Display::fmt(&self.0, f)
+        write!(f, "{}", HexFmt(self.0.bytes()))
     }
 }
 

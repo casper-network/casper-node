@@ -7,8 +7,8 @@ use crate::types::CryptoRngCore;
 use datasize::DataSize;
 use serde::{de::DeserializeOwned, Serialize};
 
-pub trait NodeIdT: Clone + Debug + Send + Eq + Hash + 'static {}
-impl<I> NodeIdT for I where I: Clone + Debug + Send + Eq + Hash + 'static {}
+pub trait NodeIdT: Clone + Display + Debug + Send + Eq + Hash + 'static {}
+impl<I> NodeIdT for I where I: Clone + Display + Debug + Send + Eq + Hash + 'static {}
 
 /// A validator identifier.
 pub(crate) trait ValidatorIdT: Eq + Ord + Clone + Debug + Hash {}
