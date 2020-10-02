@@ -9,17 +9,17 @@ CHAINSPEC=$(mktemp -t chainspec_XXXXXXXX --suffix .toml)
 TRUSTED_HASH="${TRUSTED_HASH:-}"
 
 # Generate a genesis timestamp 30 seconds into the future, unless explicity given a different one.
-OFFSET="${OFFSET:-30}"
-TIMESTAMP=${GENESIS_TIMESTAMP:-$(date '+%s000' -d "+$OFFSET sec")}
+TIMESTAMP=$(python3 -c 'from datetime import datetime, timedelta; print((datetime.utcnow() + timedelta(seconds=20)).isoformat("T") + "Z")') 
+TIMESTAMP=${GENESIS_TIMESTAMP:-$TIMESTAMP}
 
-echo "GENESIS_TIMESTAMP=${TIMESTAMP}  [$(date -d @$(($TIMESTAMP/1000)))]"
+echo "GENESIS_TIMESTAMP=${TIMESTAMP}"
 
 # Build the node first, so that `sleep` in the loop has an effect.
 cargo build -p casper-node
 
 # Update the chainspec to use the current time as the genesis timestamp.
 cp ${BASEDIR}/resources/local/chainspec.toml ${CHAINSPEC}
-sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = ${TIMESTAMP}/" ${CHAINSPEC}
+sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = \"${TIMESTAMP}\"/" ${CHAINSPEC}
 sed -i 's|\.\./\.\.|'"$BASEDIR"'|' ${CHAINSPEC}
 sed -i 's|accounts\.csv|'"$BASEDIR"'/resources/local/accounts.csv|' ${CHAINSPEC}
 
