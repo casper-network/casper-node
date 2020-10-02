@@ -286,33 +286,32 @@ impl BlockExecutor {
     ) -> Effects<Event> {
         let next_deploy = match state.remaining_deploys.pop_front() {
             Some(deploy) => deploy,
-            None => match state.finalized_block.era_end().as_ref() {
-                Some(era_end) => {
-                    let reward_items = era_end
-                        .rewards
-                        .iter()
-                        .map(|(&vid, &value)| RewardItem::new(vid.into(), value))
-                        .collect();
-                    let slash_items = era_end
-                        .equivocators
-                        .iter()
-                        .map(|&vid| SlashItem::new(vid.into()))
-                        .collect();
-                    let request = StepRequest {
-                        pre_state_hash: state.pre_state_hash.into(),
-                        protocol_version: ProtocolVersion::V1_0_0,
-                        reward_items,
-                        slash_items,
-                        run_auction: true,
-                    };
-                    return effect_builder
-                        .run_step(request)
-                        .event(|result| Event::RunStepResult { state, result });
-                }
-                None => {
-                    return self.finalize_block_execution(effect_builder, state);
-                }
-            },
+            None => {
+                let era_end = match state.finalized_block.era_end().as_ref() {
+                    Some(era_end) => era_end,
+                    None => return self.finalize_block_execution(effect_builder, state),
+                };
+                let reward_items = era_end
+                    .rewards
+                    .iter()
+                    .map(|(&vid, &value)| RewardItem::new(vid.into(), value))
+                    .collect();
+                let slash_items = era_end
+                    .equivocators
+                    .iter()
+                    .map(|&vid| SlashItem::new(vid.into()))
+                    .collect();
+                let request = StepRequest {
+                    pre_state_hash: state.pre_state_hash.into(),
+                    protocol_version: ProtocolVersion::V1_0_0,
+                    reward_items,
+                    slash_items,
+                    run_auction: true,
+                };
+                return effect_builder
+                    .run_step(request)
+                    .event(|result| Event::RunStepResult { state, result });
+            }
         };
         let deploy_hash = *next_deploy.id();
         let deploy_item = DeployItem::from(next_deploy);
