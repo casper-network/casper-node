@@ -21,7 +21,7 @@ block_max_deploy_count = 3
 # Abbreviate module names in text ouptut.
 abbreviate_modules = false
 
-# Output format. Change this to JSON if you want to parse your logs.
+# Output format.  Possible values are 'text' or 'json'.
 format = "text"
 
 

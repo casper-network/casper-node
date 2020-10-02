@@ -456,18 +456,6 @@ impl PublicKey {
         ))
     }
 
-    /// Constructs a new key from the algorithm name and a byte slice.
-    pub fn key_from_algorithm_name_and_bytes<N: AsRef<str>, T: AsRef<[u8]>>(
-        name: N,
-        bytes: T,
-    ) -> Result<Self> {
-        match &*name.as_ref().trim().to_lowercase() {
-            ED25519_LOWERCASE => Self::ed25519_from_bytes(bytes),
-            SECP256K1_LOWERCASE => Self::secp256k1_from_bytes(bytes),
-            _ => panic!("Invalid algorithm name!"),
-        }
-    }
-
     /// Creates an `AccountHash` from a given `PublicKey` instance.
     pub fn to_account_hash(&self) -> AccountHash {
         // As explained here:
