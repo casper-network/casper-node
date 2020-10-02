@@ -162,7 +162,6 @@ pub(crate) struct LinearChainSync<I> {
 }
 
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
-    #[allow(unused)]
     pub fn new<REv: ReactorEventT<I>>(
         _effect_builder: EffectBuilder<REv>,
         init_hash: Option<BlockHash>,
