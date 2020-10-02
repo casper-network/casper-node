@@ -10,7 +10,6 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::From;
-use rand::{CryptoRng, Rng};
 use semver::Version;
 use tracing::{error, info};
 
@@ -20,7 +19,7 @@ use crate::{
         requests::{DeployBufferRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{DeployHash, DeployHeader, ProtoBlock, ProtoBlockHash, Timestamp},
+    types::{CryptoRngCore, DeployHash, DeployHeader, ProtoBlock, ProtoBlockHash, Timestamp},
 };
 
 /// An event for when using the deploy buffer as a component.
@@ -78,9 +77,8 @@ impl Display for Event {
 }
 
 /// Deploy buffer.
-#[derive(DataSize, Debug, Clone)]
+#[derive(DataSize, Debug, Clone, Default)]
 pub(crate) struct DeployBuffer {
-    block_max_deploy_count: usize,
     collected_deploys: HashMap<DeployHash, DeployHeader>,
     processed: HashMap<ProtoBlockHash, HashMap<DeployHash, DeployHeader>>,
     finalized: HashMap<ProtoBlockHash, HashMap<DeployHash, DeployHeader>>,
@@ -92,14 +90,8 @@ pub(crate) struct DeployBuffer {
 
 impl DeployBuffer {
     /// Creates a new, empty deploy buffer instance.
-    pub(crate) fn new(block_max_deploy_count: usize) -> Self {
-        DeployBuffer {
-            block_max_deploy_count,
-            collected_deploys: HashMap::new(),
-            processed: HashMap::new(),
-            finalized: HashMap::new(),
-            chainspecs: HashMap::new(),
-        }
+    pub(crate) fn new() -> Self {
+        DeployBuffer::default()
     }
 
     /// Adds a deploy to the deploy buffer.
@@ -200,7 +192,7 @@ impl DeployBuffer {
                     && !past_deploys.contains(hash)
             })
             .map(|(hash, _deploy)| *hash)
-            .take(self.block_max_deploy_count)
+            .take(deploy_config.block_max_deploy_count as usize)
             .collect::<HashSet<_>>()
         // TODO: check gas and block size limits
     }
@@ -270,17 +262,16 @@ impl DeployBuffer {
     }
 }
 
-impl<REv, R> Component<REv, R> for DeployBuffer
+impl<REv> Component<REv> for DeployBuffer
 where
     REv: From<StorageRequest<Storage>> + Send,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -327,7 +318,7 @@ mod tests {
     use crate::{
         crypto::{asymmetric_key::SecretKey, hash::hash},
         testing::TestRng,
-        types::{Deploy, DeployHash, DeployHeader, NodeConfig, ProtoBlockHash, TimeDiff},
+        types::{Deploy, DeployHash, DeployHeader, ProtoBlockHash, TimeDiff},
     };
 
     fn generate_deploy(
@@ -372,7 +363,7 @@ mod tests {
         let block_time3 = Timestamp::from(220);
 
         let no_blocks = HashSet::new();
-        let mut buffer = DeployBuffer::new(NodeConfig::default().block_max_deploy_count as usize);
+        let mut buffer = DeployBuffer::new();
         let mut rng = TestRng::new();
         let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
         let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
@@ -473,7 +464,7 @@ mod tests {
         let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![hash1]);
 
         let mut blocks = HashSet::new();
-        let mut buffer = DeployBuffer::new(NodeConfig::default().block_max_deploy_count as usize);
+        let mut buffer = DeployBuffer::new();
 
         // add deploy2
         buffer.add_deploy(hash2, deploy2);

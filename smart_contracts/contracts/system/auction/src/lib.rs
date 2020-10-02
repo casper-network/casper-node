@@ -27,7 +27,7 @@ use casper_types::{
     system_contract_errors,
     system_contract_errors::auction::Error,
     CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
-    Parameter, PublicKey, RuntimeArgs, TransferResult, URef, U512,
+    Parameter, PublicKey, RuntimeArgs, TransferResult, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 struct AuctionContract;
@@ -73,6 +73,10 @@ impl RuntimeProvider for AuctionContract {
 
     fn put_key(&mut self, name: &str, key: Key) {
         runtime::put_key(name, key)
+    }
+
+    fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
+        runtime::blake2b(data)
     }
 }
 
@@ -335,7 +339,7 @@ pub fn get_entry_points() -> EntryPoints {
             Parameter::new(ARG_VALIDATOR, AccountHash::cl_type()),
             Parameter::new(ARG_AMOUNT, U512::cl_type()),
         ],
-        U512::cl_type(),
+        <(URef, U512)>::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );

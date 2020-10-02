@@ -16,7 +16,6 @@ use std::fmt::{self, Display, Formatter};
 
 use datasize::DataSize;
 use derive_more::From;
-use rand::{CryptoRng, Rng};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace};
@@ -30,6 +29,7 @@ use crate::{
         requests::{ChainspecLoaderRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
+    types::CryptoRngCore,
 };
 pub use chainspec::Chainspec;
 pub(crate) use chainspec::{DeployConfig, HighwayConfig};
@@ -134,17 +134,16 @@ impl ChainspecLoader {
     }
 }
 
-impl<REv, R> Component<REv, R> for ChainspecLoader
+impl<REv> Component<REv> for ChainspecLoader
 where
     REv: From<Event> + From<StorageRequest<Storage>> + From<ContractRuntimeRequest> + Send,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

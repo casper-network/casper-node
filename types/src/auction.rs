@@ -14,6 +14,7 @@ use alloc::{collections::BTreeMap, vec::Vec};
 use num_rational::Ratio;
 
 use crate::{
+    account::AccountHash,
     system_contract_errors::auction::{Error, Result},
     Key, PublicKey, URef, U512,
 };
@@ -79,6 +80,11 @@ pub trait Auction:
         delegation_rate: DelegationRate,
         amount: U512,
     ) -> Result<(URef, U512)> {
+        let account_hash = AccountHash::from_public_key(public_key, |x| self.blake2b(x));
+        if self.get_caller() != account_hash {
+            return Err(Error::InvalidCaller);
+        }
+
         // Creates new purse with desired amount taken from `source_purse`
         // Bonds whole amount from the newly created purse
         let (bonding_purse, _total_amount) = detail::bond(self, public_key, source, amount)?;
@@ -120,6 +126,11 @@ pub trait Auction:
     /// The function returns a tuple of the (new) unbonding purse key and the new amount of motes
     /// remaining in the bid. If the target bid does not exist, the function call returns an error.
     fn withdraw_bid(&mut self, public_key: PublicKey, amount: U512) -> Result<(URef, U512)> {
+        let account_hash = AccountHash::from_public_key(public_key, |x| self.blake2b(x));
+        if self.get_caller() != account_hash {
+            return Err(Error::InvalidCaller);
+        }
+
         // Update bids or stakes
         let mut bids = internal::get_bids(self)?;
 
@@ -155,6 +166,11 @@ pub trait Auction:
         validator_public_key: PublicKey,
         amount: U512,
     ) -> Result<(URef, U512)> {
+        let account_hash = AccountHash::from_public_key(delegator_public_key, |x| self.blake2b(x));
+        if self.get_caller() != account_hash {
+            return Err(Error::InvalidCaller);
+        }
+
         let bids = internal::get_bids(self)?;
         if !bids.contains_key(&validator_public_key) {
             // Return early if target validator is not in `bids`
@@ -185,14 +201,19 @@ pub trait Auction:
     /// the entry in delegators and calls unbond in the Mint contract to create a new unbonding
     /// purse.
     ///
-    /// The arguments are the delegator’s key, the validator key and quantity of motes.
-    /// The return value is the remaining bond after this quantity is subtracted.
+    /// The arguments are the delegator’s key, the validator key and quantity of motes and
+    /// returns a tuple of the unbonding purse along with the remaining bid amount.
     fn undelegate(
         &mut self,
         delegator_public_key: PublicKey,
         validator_public_key: PublicKey,
         amount: U512,
-    ) -> Result<U512> {
+    ) -> Result<(URef, U512)> {
+        let account_hash = AccountHash::from_public_key(delegator_public_key, |x| self.blake2b(x));
+        if self.get_caller() != account_hash {
+            return Err(Error::InvalidCaller);
+        }
+
         let bids = internal::get_bids(self)?;
 
         // Return early if target validator is not in `bids`
@@ -200,7 +221,8 @@ pub trait Auction:
             return Err(Error::ValidatorNotFound);
         }
 
-        let (_unbonding_purse, _total_amount) = detail::unbond(self, delegator_public_key, amount)?;
+        let (unbonding_purse, _unbonding_purse_balance) =
+            detail::unbond(self, delegator_public_key, amount)?;
 
         let mut delegators = internal::get_delegators(self)?;
         let delegators_map = delegators
@@ -220,11 +242,12 @@ pub trait Auction:
             new_amount
         };
 
+        debug_assert!(_unbonding_purse_balance > new_amount);
+
         if new_amount.is_zero() {
-            // Inner map's mapped value should be zero as we subtracted mutable value.
             let _value = delegators_map
-                .remove(&validator_public_key)
-                .ok_or(Error::ValidatorNotFound)?;
+                .remove(&delegator_public_key)
+                .ok_or(Error::DelegatorNotFound)?;
             debug_assert!(_value.is_zero());
 
             let mut outer = internal::get_delegator_reward_map(self)?;
@@ -242,7 +265,7 @@ pub trait Auction:
 
         internal::set_delegators(self, delegators)?;
 
-        Ok(new_amount)
+        Ok((unbonding_purse, new_amount))
     }
 
     /// Removes validator entries from either founders or validators, wherever they
@@ -558,6 +581,11 @@ pub trait Auction:
         delegator_public_key: PublicKey,
         target_purse: URef,
     ) -> Result<U512> {
+        let account_hash = AccountHash::from_public_key(delegator_public_key, |x| self.blake2b(x));
+        if self.get_caller() != account_hash {
+            return Err(Error::InvalidCaller);
+        }
+
         let mut outer: DelegatorRewardMap = internal::get_delegator_reward_map(self)?;
         let mut inner = outer
             .remove(&validator_public_key)
@@ -594,6 +622,11 @@ pub trait Auction:
         validator_public_key: PublicKey,
         target_purse: URef,
     ) -> Result<U512> {
+        let account_hash = AccountHash::from_public_key(validator_public_key, |x| self.blake2b(x));
+        if self.get_caller() != account_hash {
+            return Err(Error::InvalidCaller);
+        }
+
         let mut validator_reward_map = internal::get_validator_reward_map(self)?;
 
         let reward_amount: &mut U512 = validator_reward_map

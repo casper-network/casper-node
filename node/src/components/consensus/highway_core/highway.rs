@@ -3,7 +3,6 @@ mod vertex;
 pub(crate) use crate::components::consensus::highway_core::state::Params;
 pub(crate) use vertex::{Dependency, SignedWireVote, Vertex, WireVote};
 
-use rand::{CryptoRng, Rng};
 use thiserror::Error;
 use tracing::{debug, error, info};
 
@@ -18,7 +17,7 @@ use crate::{
         },
         traits::Context,
     },
-    types::Timestamp,
+    types::{CryptoRngCore, Timestamp},
 };
 
 /// An error due to an invalid vertex.
@@ -189,10 +188,10 @@ impl<C: Context> Highway<C> {
     /// The validation must have been performed by _this_ `Highway` instance.
     /// More precisely: The instance on which `add_valid_vertex` is called must contain everything
     /// (and possibly more) that the instance on which `validate_vertex` was called contained.
-    pub(crate) fn add_valid_vertex<R: Rng + CryptoRng + ?Sized>(
+    pub(crate) fn add_valid_vertex(
         &mut self,
         ValidVertex(vertex): ValidVertex<C>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         if !self.has_vertex(&vertex) {
             match vertex {
@@ -238,10 +237,10 @@ impl<C: Context> Highway<C> {
         .map(ValidVertex)
     }
 
-    pub(crate) fn handle_timer<R: Rng + CryptoRng + ?Sized>(
+    pub(crate) fn handle_timer(
         &mut self,
         timestamp: Timestamp,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id.clone();
         self.map_active_validator(
@@ -254,11 +253,11 @@ impl<C: Context> Highway<C> {
         })
     }
 
-    pub(crate) fn propose<R: Rng + CryptoRng + ?Sized>(
+    pub(crate) fn propose(
         &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id.clone();
         self.map_active_validator(
@@ -279,11 +278,11 @@ impl<C: Context> Highway<C> {
         &self.state
     }
 
-    fn on_new_vote<R: Rng + CryptoRng + ?Sized>(
+    fn on_new_vote(
         &mut self,
         vhash: &C::Hash,
         timestamp: Timestamp,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id.clone();
         self.map_active_validator(
@@ -297,10 +296,13 @@ impl<C: Context> Highway<C> {
     ///
     /// Newly created vertices are added to the state. If an equivocation of this validator is
     /// detected, it gets deactivated.
-    fn map_active_validator<F, R>(&mut self, f: F, rng: &mut R) -> Option<Vec<Effect<C>>>
+    fn map_active_validator<F>(
+        &mut self,
+        f: F,
+        rng: &mut dyn CryptoRngCore,
+    ) -> Option<Vec<Effect<C>>>
     where
-        F: FnOnce(&mut ActiveValidator<C>, &State<C>, &mut R) -> Vec<Effect<C>>,
-        R: Rng + CryptoRng + ?Sized,
+        F: FnOnce(&mut ActiveValidator<C>, &State<C>, &mut dyn CryptoRngCore) -> Vec<Effect<C>>,
     {
         let effects = f(self.active_validator.as_mut()?, &self.state, rng);
         let mut result = vec![];
@@ -353,10 +355,10 @@ impl<C: Context> Highway<C> {
     ///
     /// Validity must be checked before calling this! Adding an invalid vote will result in a panic
     /// or an inconsistent state.
-    fn add_valid_vote<R: Rng + CryptoRng + ?Sized>(
+    fn add_valid_vote(
         &mut self,
         swvote: SignedWireVote<C>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         let vote_timestamp = swvote.wire_vote.timestamp;
         let vote_hash = swvote.hash();

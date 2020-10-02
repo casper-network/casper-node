@@ -29,6 +29,8 @@ const ARG_RUN_AUCTION: &str = "run_auction";
 const ARG_READ_SEIGNIORAGE_RECIPIENTS: &str = "read_seigniorage_recipients";
 
 const REWARD_PURSE: &str = "reward_purse";
+const DELEGATE_PURSE: &str = "delegate_purse";
+const UNDELEGATE_PURSE: &str = "undelegate_purse";
 
 #[repr(u16)]
 enum Error {
@@ -95,7 +97,9 @@ fn delegate() {
         ARG_AMOUNT => amount,
     };
 
-    let (_purse, _amount): (URef, U512) = runtime::call_contract(auction, METHOD_DELEGATE, args);
+    let (purse, _amount): (URef, U512) = runtime::call_contract(auction, METHOD_DELEGATE, args);
+
+    runtime::put_key(DELEGATE_PURSE, purse.into())
 }
 
 fn undelegate() {
@@ -110,7 +114,10 @@ fn undelegate() {
         ARG_DELEGATOR => delegator,
     };
 
-    let _total_amount: U512 = runtime::call_contract(auction, METHOD_UNDELEGATE, args);
+    let (purse, _remaining_bid): (URef, U512) =
+        runtime::call_contract(auction, METHOD_UNDELEGATE, args);
+
+    runtime::put_key(UNDELEGATE_PURSE, purse.into());
 }
 
 fn run_auction() {

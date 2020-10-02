@@ -1,7 +1,10 @@
 use clap::{App, Arg, ArgGroup, ArgMatches, SubCommand};
 
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
-use casper_node::crypto::asymmetric_key::PublicKey;
+use casper_node::{
+    crypto::asymmetric_key::PublicKey,
+    rpcs::{account::PutDeploy, RpcWithParams},
+};
 use casper_types::{bytesrepr::ToBytes, RuntimeArgs, URef, U512};
 
 use super::creation_common::{self, DisplayOrder};
@@ -156,7 +159,7 @@ fn create_transfer_args(matches: &ArgMatches) -> RuntimeArgs {
 pub struct Transfer {}
 
 impl RpcClient for Transfer {
-    const RPC_METHOD: &'static str = "account_put_deploy";
+    const RPC_METHOD: &'static str = PutDeploy::METHOD;
 }
 
 impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {

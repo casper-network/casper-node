@@ -11,26 +11,30 @@ mod traits;
 use datasize::DataSize;
 use std::fmt::{self, Debug, Display, Formatter};
 
+use casper_execution_engine::core::engine_state::era_validators::GetEraValidatorsError;
+use casper_types::auction::ValidatorWeights;
+
 use crate::{
     components::{storage::Storage, Component},
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
-            self, BlockExecutorRequest, BlockValidationRequest, DeployBufferRequest,
-            NetworkRequest, StorageRequest,
+            self, BlockExecutorRequest, BlockValidationRequest, ContractRuntimeRequest,
+            DeployBufferRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
     protocol::Message,
-    types::{ProtoBlock, Timestamp},
+    types::{BlockHeader, CryptoRngCore, ProtoBlock, Timestamp},
 };
+
 pub use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraEnd};
 use derive_more::From;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 use hex_fmt::HexFmt;
-use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
+use tracing::error;
 use traits::NodeIdT;
 
 #[derive(DataSize, Clone, Serialize, Deserialize)]
@@ -70,6 +74,12 @@ pub enum Event<I> {
         era_id: EraId,
         sender: I,
         proto_block: ProtoBlock,
+    },
+    /// Response from the Contract Runtime, containing the validators for the new era
+    GetValidatorsResponse {
+        /// The header of the switch block
+        block_header: Box<BlockHeader>,
+        get_validators_result: Result<Option<ValidatorWeights>, GetEraValidatorsError>,
     },
 }
 
@@ -135,6 +145,14 @@ impl<I: Debug> Display for Event<I> {
                 "A proto-block received from {:?} turned out to be invalid for era {:?}: {:?}",
                 sender, era_id, proto_block
             ),
+            Event::GetValidatorsResponse {
+                get_validators_result,
+                ..
+            } => write!(
+                f,
+                "We received the response to get_validators from the contract runtime: {:?}",
+                get_validators_result
+            ),
         }
     }
 }
@@ -150,6 +168,7 @@ pub trait ReactorEventT<I>:
     + From<BlockExecutorRequest>
     + From<BlockValidationRequest<ProtoBlock, I>>
     + From<StorageRequest<Storage>>
+    + From<ContractRuntimeRequest>
 {
 }
 
@@ -162,24 +181,24 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<BlockExecutorRequest>
         + From<BlockValidationRequest<ProtoBlock, I>>
         + From<StorageRequest<Storage>>
+        + From<ContractRuntimeRequest>
 {
 }
 
-impl<I, REv, R> Component<REv, R> for EraSupervisor<I, R>
+impl<I, REv> Component<REv> for EraSupervisor<I>
 where
     I: NodeIdT,
     REv: ReactorEventT<I>,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event<I>;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        rng: &mut R,
+        mut rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        let mut handling_es = self.handling_wrapper(effect_builder, rng);
+        let mut handling_es = self.handling_wrapper(effect_builder, &mut rng);
         match event {
             Event::Timer { era_id, timestamp } => handling_es.handle_timer(era_id, timestamp),
             Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
@@ -201,6 +220,23 @@ where
                 sender,
                 proto_block,
             } => handling_es.handle_invalid_proto_block(era_id, sender, proto_block),
+            Event::GetValidatorsResponse {
+                block_header,
+                get_validators_result,
+            } => match get_validators_result {
+                Ok(Some(result)) => {
+                    handling_es.handle_get_validators_response(*block_header, result)
+                }
+                result => {
+                    error!(
+                        ?result,
+                        "get_validators in era {} returned an error: {:?}",
+                        block_header.era_id(),
+                        result
+                    );
+                    panic!("couldn't get validators");
+                }
+            },
         }
     }
 }

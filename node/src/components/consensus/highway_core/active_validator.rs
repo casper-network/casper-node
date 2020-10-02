@@ -1,6 +1,5 @@
 use std::fmt::{self, Debug};
 
-use rand::{CryptoRng, Rng};
 use tracing::{error, warn};
 
 use super::{
@@ -14,7 +13,7 @@ use crate::{
     components::consensus::{
         consensus_protocol::BlockContext, highway_core::highway::SignedWireVote, traits::Context,
     },
-    types::{TimeDiff, Timestamp},
+    types::{CryptoRngCore, TimeDiff, Timestamp},
 };
 
 /// An action taken by a validator.
@@ -91,12 +90,12 @@ impl<C: Context> ActiveValidator<C> {
 
     /// Returns actions a validator needs to take at the specified `timestamp`, with the given
     /// protocol `state`.
-    pub(crate) fn handle_timer<R: Rng + CryptoRng + ?Sized>(
+    pub(crate) fn handle_timer(
         &mut self,
         timestamp: Timestamp,
         state: &State<C>,
         instance_id: C::InstanceId,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         if self.is_faulty(state) {
             warn!("Creator knows it's faulty. Won't create a message.");
@@ -124,13 +123,13 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// Returns actions a validator needs to take upon receiving a new vote.
-    pub(crate) fn on_new_vote<R: Rng + CryptoRng + ?Sized>(
+    pub(crate) fn on_new_vote(
         &mut self,
         vhash: &C::Hash,
         mut timestamp: Timestamp,
         state: &State<C>,
         instance_id: C::InstanceId,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         if let Some(evidence) = state.opt_evidence(self.vidx) {
             return vec![Effect::WeEquivocated(evidence.clone())];
@@ -155,12 +154,12 @@ impl<C: Context> ActiveValidator<C> {
     /// If we are already waiting for a consensus value, `None` is returned instead.
     /// If the new value would come after a terminal block, the proposal is made immediately, and
     /// without a value.
-    pub(crate) fn request_new_block<R: Rng + CryptoRng + ?Sized>(
+    pub(crate) fn request_new_block(
         &mut self,
         state: &State<C>,
         instance_id: C::InstanceId,
         timestamp: Timestamp,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Option<Effect<C>> {
         if let Some((prop_time, _)) = self.next_proposal {
             warn!(
@@ -183,13 +182,13 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// Proposes a new block with the given consensus value.
-    pub(crate) fn propose<R: Rng + CryptoRng + ?Sized>(
+    pub(crate) fn propose(
         &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
         state: &State<C>,
         instance_id: C::InstanceId,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         let timestamp = block_context.timestamp();
         if self.earliest_vote_time(state) > timestamp {
@@ -270,14 +269,14 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// Returns a new vote with the given data, and the correct sequence number.
-    fn new_vote<R: Rng + CryptoRng + ?Sized>(
+    fn new_vote(
         &mut self,
         mut panorama: Panorama<C>,
         timestamp: Timestamp,
         value: Option<C::ConsensusValue>,
         state: &State<C>,
         instance_id: C::InstanceId,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> SignedWireVote<C> {
         if let Some((prop_time, _)) = self.next_proposal.take() {
             warn!(
@@ -464,7 +463,7 @@ mod tests {
         assert_eq!(None, effects.next());
 
         // Alice has not witnessed Bob's vote yet.
-        assert_eq!(None, fd.next_finalized(&state, 0.into()));
+        assert_eq!(None, fd.next_finalized(&state));
 
         // Alice also sends her own witness message, completing the summit for her proposal.
         let mut effects = alice_av
@@ -475,7 +474,7 @@ mod tests {
         assert_eq!(None, effects.next());
 
         // Payment finalized! "One Pumpkin Spice Mochaccino for Corbyn!"
-        assert_eq!(Some(&prop_hash), fd.next_finalized(&state, 0.into()));
+        assert_eq!(Some(&prop_hash), fd.next_finalized(&state));
         Ok(())
     }
 }

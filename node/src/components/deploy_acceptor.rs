@@ -3,7 +3,6 @@ mod event;
 
 use std::{collections::HashMap, fmt::Debug};
 
-use rand::{CryptoRng, Rng};
 use semver::Version;
 use tracing::{debug, error, warn};
 
@@ -14,7 +13,7 @@ use crate::{
         EffectExt, Effects,
     },
     small_network::NodeId,
-    types::Deploy,
+    types::{CryptoRngCore, Deploy},
     utils::Source,
 };
 
@@ -149,13 +148,13 @@ impl DeployAcceptor {
     }
 }
 
-impl<REv: ReactorEventT, R: Rng + CryptoRng + ?Sized> Component<REv, R> for DeployAcceptor {
+impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
     type Event = Event;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         debug!(?event, "handling event");
