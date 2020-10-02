@@ -625,7 +625,7 @@ mod tests {
     }
 
     #[test]
-    fn should_prune_expired_dependencies() {
+    fn should_prune_dependencies_of_expired_deploys() {
         let expired_time = Timestamp::from(201);
         let creation_time = Timestamp::from(100);
         let test_time = Timestamp::from(120);
