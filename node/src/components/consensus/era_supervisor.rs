@@ -543,12 +543,10 @@ where
         consensus_result: ConsensusProtocolResult<I, ProtoBlock, PublicKey>,
     ) -> Effects<Event<I>> {
         match consensus_result {
-            ConsensusProtocolResult::InvalidIncomingMessage(msg, sender, error) => {
+            ConsensusProtocolResult::InvalidIncomingMessage(_, sender, error) => {
                 // TODO: we will probably want to disconnect from the sender here
-                // TODO: Print a more readable representation of the message.
                 error!(
-                    ?msg,
-                    ?sender,
+                    %sender,
                     ?error,
                     "invalid incoming message to consensus instance"
                 );
