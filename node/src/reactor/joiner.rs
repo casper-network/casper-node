@@ -29,7 +29,6 @@ use crate::{
         storage::{self, Storage},
         Component,
     },
-    crypto::hash::Digest,
     effect::{
         announcements::{
             BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
@@ -48,10 +47,7 @@ use crate::{
         validator::{self, Error, ValidatorInitConfig},
         EventQueueHandle, Finalize,
     },
-    types::{
-        Block, BlockByHeight, BlockHash, BlockHeader, CryptoRngCore, Deploy, ProtoBlock, Tag,
-        Timestamp,
-    },
+    types::{Block, BlockByHeight, BlockHeader, CryptoRngCore, Deploy, ProtoBlock, Tag, Timestamp},
     utils::{Source, WithDir},
 };
 
@@ -319,11 +315,7 @@ impl reactor::Reactor for Reactor {
 
         let effect_builder = EffectBuilder::new(event_queue);
 
-        let init_hash = config
-            .node
-            .trusted_hash
-            .clone()
-            .map(|str_hash| BlockHash::new(Digest::from_hex(str_hash).unwrap()));
+        let init_hash = config.node.trusted_hash;
 
         match init_hash {
             None => info!("No synchronization of the linear chain will be done."),
@@ -341,7 +333,7 @@ impl reactor::Reactor for Reactor {
         let deploy_acceptor = DeployAcceptor::new();
 
         let (deploy_buffer, deploy_buffer_effects) =
-            DeployBuffer::new(effect_builder, config.node.block_max_deploy_count as usize);
+            DeployBuffer::new(effect_builder);
         effects.extend(reactor::wrap_effects(
             Event::DeployBuffer,
             deploy_buffer_effects,

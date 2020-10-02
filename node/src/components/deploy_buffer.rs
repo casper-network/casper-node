@@ -97,9 +97,8 @@ impl<REv> ReactorEventT for REv where
 }
 
 /// Deploy buffer.
-#[derive(DataSize, Debug, Clone)]
+#[derive(DataSize, Debug, Clone, Default)]
 pub(crate) struct DeployBuffer {
-    block_max_deploy_count: usize,
     pending: DeployCollection,
     proposed: ProtoBlockCollection,
     finalized: ProtoBlockCollection,
@@ -113,18 +112,12 @@ impl DeployBuffer {
     /// Creates a new, empty deploy buffer instance.
     pub(crate) fn new<REv>(
         effect_builder: EffectBuilder<REv>,
-        block_max_deploy_count: usize,
     ) -> (Self, Effects<Event>)
     where
         REv: ReactorEventT,
     {
-        let this = DeployBuffer {
-            block_max_deploy_count,
-            pending: HashMap::new(),
-            proposed: HashMap::new(),
-            finalized: HashMap::new(),
-            chainspecs: HashMap::new(),
-        };
+
+        let this = DeployBuffer::default();
         let cleanup = effect_builder
             .set_timeout(DEPLOY_BUFFER_PRUNE_INTERVAL)
             .event(|_| Event::BufferPrune);
@@ -236,7 +229,7 @@ impl DeployBuffer {
                     && !past_deploys.contains(hash)
             })
             .map(|(hash, _deploy)| *hash)
-            .take(self.block_max_deploy_count)
+            .take(deploy_config.block_max_deploy_count as usize)
             .collect::<HashSet<_>>()
         // TODO: check gas and block size limits
     }
@@ -395,7 +388,7 @@ mod tests {
         crypto::{asymmetric_key::SecretKey, hash::hash},
         reactor::{EventQueueHandle, QueueKind, Scheduler},
         testing::TestRng,
-        types::{Deploy, DeployHash, DeployHeader, NodeConfig, ProtoBlockHash, TimeDiff},
+        types::{Deploy, DeployHash, DeployHeader, ProtoBlockHash, TimeDiff},
         utils,
     };
 
@@ -436,8 +429,7 @@ mod tests {
         let scheduler = utils::leak(Scheduler::<Event>::new(QueueKind::weights()));
         let event_queue = EventQueueHandle::new(&scheduler);
         let effect_builder = EffectBuilder::new(event_queue);
-        let node_cfg = NodeConfig::default();
-        DeployBuffer::new(effect_builder, node_cfg.block_max_deploy_count as usize)
+        DeployBuffer::new(effect_builder)
     }
 
     impl From<StorageRequest<Storage>> for Event {

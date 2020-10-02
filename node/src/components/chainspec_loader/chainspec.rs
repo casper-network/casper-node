@@ -36,6 +36,7 @@ pub struct DeployConfig {
     pub(crate) max_ttl: TimeDiff,
     pub(crate) max_dependencies: u8,
     pub(crate) max_block_size: u32,
+    pub(crate) block_max_deploy_count: u32,
     pub(crate) block_gas_limit: u64,
 }
 
@@ -46,6 +47,7 @@ impl Default for DeployConfig {
             max_ttl: TimeDiff::from_str("1day").unwrap(),
             max_dependencies: 10,
             max_block_size: 10_485_760,
+            block_max_deploy_count: 10,
             block_gas_limit: 10_000_000_000_000,
         }
     }
@@ -61,6 +63,7 @@ impl DeployConfig {
         let max_ttl = TimeDiff::from(rng.gen_range(60_000, 3_600_000));
         let max_dependencies = rng.gen();
         let max_block_size = rng.gen_range(1_000_000, 1_000_000_000);
+        let block_max_deploy_count = rng.gen();
         let block_gas_limit = rng.gen_range(100_000_000_000, 1_000_000_000_000_000);
 
         DeployConfig {
@@ -68,6 +71,7 @@ impl DeployConfig {
             max_ttl,
             max_dependencies,
             max_block_size,
+            block_max_deploy_count,
             block_gas_limit,
         }
     }
@@ -431,6 +435,7 @@ mod tests {
         );
         assert_eq!(spec.genesis.deploy_config.max_dependencies, 11);
         assert_eq!(spec.genesis.deploy_config.max_block_size, 12);
+        assert_eq!(spec.genesis.deploy_config.block_max_deploy_count, 125);
         assert_eq!(spec.genesis.deploy_config.block_gas_limit, 13);
 
         assert_eq!(spec.genesis.costs.regular, 13);
@@ -474,6 +479,10 @@ mod tests {
         );
         assert_eq!(upgrade0.new_deploy_config.unwrap().max_dependencies, 36);
         assert_eq!(upgrade0.new_deploy_config.unwrap().max_block_size, 37);
+        assert_eq!(
+            upgrade0.new_deploy_config.unwrap().block_max_deploy_count,
+            375
+        );
         assert_eq!(upgrade0.new_deploy_config.unwrap().block_gas_limit, 38);
 
         let upgrade1 = &spec.upgrades[1];

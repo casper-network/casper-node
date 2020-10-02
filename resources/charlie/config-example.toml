@@ -6,11 +6,8 @@
 # Path (absolute, or relative to this config.toml) to the chainspec configuration file.
 chainspec_config_path = '/etc/casper/chainspec.toml'
 
-# The maximum number of deploys permitted in a single block.
-block_max_deploy_count = 3
-
 # If set, use this hash as a trust anchor when joining an existing network.
-#trusted_hash =
+#trusted_hash = 'HEX-FORMATTED BLOCK HASH'
 
 
 # =================================
@@ -21,8 +18,8 @@ block_max_deploy_count = 3
 # Abbreviate module names in text ouptut.
 abbreviate_modules = false
 
-# Output format. Change this to JSON if you want to parse your logs.
-format = "text"
+# Output format. Change this to 'json' if you want to parse your logs.
+format = 'text'
 
 
 # ===================================
