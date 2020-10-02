@@ -338,7 +338,7 @@ impl reactor::Reactor for Reactor {
             config.gossip,
             gossiper::get_deploy_from_storage::<Deploy, Event>,
         );
-        let deploy_buffer = DeployBuffer::new(config.node.block_max_deploy_count as usize);
+        let deploy_buffer = DeployBuffer::new();
         // Post state hash is expected to be present.
         let genesis_post_state_hash = chainspec_loader
             .genesis_post_state_hash()

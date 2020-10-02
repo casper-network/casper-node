@@ -23,6 +23,7 @@ max_payment_cost = '9'
 max_ttl = '10months'
 max_dependencies = 11
 max_block_size = 12
+block_max_deploy_count = 125
 block_gas_limit = 13
 
 [wasm_costs]
@@ -61,6 +62,7 @@ max_payment_cost = '34'
 max_ttl = '35years'
 max_dependencies = 36
 max_block_size = 37
+block_max_deploy_count = 375
 block_gas_limit = 38
 
 [[upgrade]]
