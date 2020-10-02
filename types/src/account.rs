@@ -7,13 +7,17 @@ use core::{
     fmt::{Debug, Display, Formatter},
 };
 
+use blake2::{
+    digest::{Input, VariableOutput},
+    VarBlake2b,
+};
 use datasize::DataSize;
 use failure::Fail;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    CLType, CLTyped,
+    CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
 };
 
 const FORMATTED_STRING_PREFIX: &str = "account-hash-";
@@ -218,6 +222,45 @@ impl AccountHash {
         let bytes = AccountHashBytes::try_from(base16::decode(remainder)?.as_ref())?;
         Ok(AccountHash(bytes))
     }
+
+    #[doc(hidden)]
+    pub fn from_public_key(
+        public_key: PublicKey,
+        blake2b_hash_fn: impl Fn(Vec<u8>) -> [u8; BLAKE2B_DIGEST_LENGTH],
+    ) -> Self {
+        const ED25519_LOWERCASE: &str = "ed25519";
+        const SECP256K1_LOWERCASE: &str = "secp256k1";
+
+        let algorithm_name = match public_key {
+            PublicKey::Ed25519(_) => ED25519_LOWERCASE,
+            PublicKey::Secp256k1(_) => SECP256K1_LOWERCASE,
+        };
+        let public_key_bytes = public_key.as_ref();
+
+        // Prepare preimage based on the public key parameters.
+        let preimage = {
+            let mut data = Vec::with_capacity(algorithm_name.len() + public_key_bytes.len() + 1);
+            data.extend(algorithm_name.as_bytes());
+            data.push(0);
+            data.extend(public_key_bytes);
+            data
+        };
+        // Hash the preimage data using blake2b256 and return it.
+        let digest = blake2b_hash_fn(preimage);
+        Self::new(digest)
+    }
+}
+
+#[doc(hidden)]
+pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
+    let mut result = [0; BLAKE2B_DIGEST_LENGTH];
+    let mut hasher = VarBlake2b::new(BLAKE2B_DIGEST_LENGTH).expect("should create hasher");
+
+    hasher.input(data);
+    hasher.variable_result(|slice| {
+        result.copy_from_slice(slice);
+    });
+    result
 }
 
 impl TryFrom<&[u8]> for AccountHash {
@@ -237,6 +280,12 @@ impl TryFrom<&alloc::vec::Vec<u8>> for AccountHash {
         AccountHashBytes::try_from(bytes as &[u8])
             .map(AccountHash::new)
             .map_err(|_| TryFromSliceForAccountHashError(()))
+    }
+}
+
+impl From<PublicKey> for AccountHash {
+    fn from(public_key: PublicKey) -> Self {
+        AccountHash::from_public_key(public_key, blake2b)
     }
 }
 

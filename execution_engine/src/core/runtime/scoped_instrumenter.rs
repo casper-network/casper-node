@@ -139,6 +139,7 @@ impl Drop for ScopedInstrumenter {
             FunctionIndex::RemoveContractUserGroupURefsIndex => {
                 "host_remove_contract_user_group_urefs"
             }
+            FunctionIndex::Blake2b => "host_blake2b",
         };
 
         let mut properties = mem::take(&mut self.properties);

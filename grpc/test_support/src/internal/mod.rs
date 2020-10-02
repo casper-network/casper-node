@@ -45,15 +45,7 @@ lazy_static! {
     // NOTE: Those values could be contants but are kept az lazy statics to avoid changes of `*FOO` into `FOO` back and forth.
     pub static ref DEFAULT_GENESIS_CONFIG_HASH: Blake2bHash = [42; 32].into();
     pub static ref DEFAULT_ACCOUNT_PUBLIC_KEY: PublicKey = PublicKey::Ed25519([199; 32]);
-    pub static ref DEFAULT_ACCOUNT_ADDR: AccountHash = {
-        // Default addr initialized to seemingly unique address to avoid accidental collisions
-        // with custom addresses in tests.
-        let mut account_hash_bytes: [u8; 32] = Default::default();
-        for (position, byte) in account_hash_bytes.iter_mut().enumerate() {
-            *byte = 100u8 + position as u8;
-        }
-        AccountHash::new(account_hash_bytes)
-    };
+    pub static ref DEFAULT_ACCOUNT_ADDR: AccountHash = AccountHash::from(*DEFAULT_ACCOUNT_PUBLIC_KEY);
     pub static ref DEFAULT_ACCOUNT_KEY: AccountHash = *DEFAULT_ACCOUNT_ADDR;
     pub static ref DEFAULT_ACCOUNTS: Vec<GenesisAccount> = {
         let mut ret = Vec::new();

@@ -19,10 +19,13 @@ const ARG_ENTRY_POINT: &str = "entry_point";
 const ARG_ACCOUNT_HASH: &str = "account_hash";
 
 const CONTRACT_AUCTION_BIDDING: &str = "auction_bidding.wasm";
-const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([7u8; 32]);
+
+const ACCOUNT_1_PK: PublicKey = PublicKey::Ed25519([4; 32]);
 
 const GENESIS_VALIDATOR_STAKE: u64 = 50_000;
+
 lazy_static! {
+    static ref ACCOUNT_1_ADDR: AccountHash = ACCOUNT_1_PK.into();
     static ref ACCOUNT_1_FUND: U512 = *DEFAULT_PAYMENT;
     static ref ACCOUNT_1_BALANCE: U512 = *ACCOUNT_1_FUND + 100_000;
     static ref ACCOUNT_1_BOND: U512 = 25_000.into();
@@ -31,10 +34,8 @@ lazy_static! {
 #[ignore]
 #[test]
 fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
-    let bond_public_key = PublicKey::Ed25519([111; 32]);
-
     let public_key = PublicKey::Ed25519([42; 32]);
-    let account_hash = AccountHash::new([43; 32]);
+    let account_hash = AccountHash::from(public_key);
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account = GenesisAccount::new(
@@ -54,24 +55,24 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
         CONTRACT_AUCTION_BIDDING,
         runtime_args! {
             ARG_ENTRY_POINT => "seed_new_account",
-            ARG_ACCOUNT_HASH => ACCOUNT_1_ADDR,
+            ARG_ACCOUNT_HASH => *ACCOUNT_1_ADDR,
             ARG_AMOUNT => *ACCOUNT_1_BALANCE,
         },
     )
     .build();
     let exec_request_2 = {
         let deploy = DeployItemBuilder::new()
-            .with_address(ACCOUNT_1_ADDR)
+            .with_address(*ACCOUNT_1_ADDR)
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *ACCOUNT_1_FUND })
             .with_session_code(
                 "ee_598_regression.wasm",
                 runtime_args! {
                     ARG_AMOUNT => *ACCOUNT_1_BOND,
-                    ARG_PUBLIC_KEY => bond_public_key,
+                    ARG_PUBLIC_KEY => ACCOUNT_1_PK,
                 },
             )
             .with_deploy_hash([2u8; 32])
-            .with_authorization_keys(&[ACCOUNT_1_ADDR])
+            .with_authorization_keys(&[*ACCOUNT_1_ADDR])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
