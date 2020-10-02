@@ -181,8 +181,9 @@ __buildenv: &buildenv
   environment:
     CARGO_HOME: ".cargo"
 
+# when we agree release flow, we will move publish step to main pipeline. Instead of keeping this one. 
 kind: pipeline
-name: bintray-tests
+name: bintray-publish-testing
 
 steps:
 - name: restore-cache-tag
@@ -223,7 +224,7 @@ steps:
   depends_on:
   - cargo-clippy
 
-- name: build-deb-tag
+- name: build-deb-master
   <<: *buildenv
   commands:
     - "make setup-rs"
@@ -231,7 +232,7 @@ steps:
   depends_on:
   - cargo-audit
 
-- name: publish-bintray-tag
+- name: publish-test-bintray-master
   <<: *buildenv
   commands:
   - "./upload.sh --repo-name casper-debian-tests --package-name casper-node"
@@ -241,7 +242,7 @@ steps:
     CL_VAULT_HOST:
       from_secret: vault_host
   depends_on:
-  - build-deb-tag
+  - build-deb-master
 
 volumes:
   - name: cache
@@ -254,6 +255,7 @@ trigger:
   - OP-1540-new
   event:
   - push
+  - pull_request
 
 ---
 kind: pipeline
