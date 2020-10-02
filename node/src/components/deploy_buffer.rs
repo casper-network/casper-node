@@ -309,9 +309,9 @@ impl DeployBuffer {
         fn prune_blocks(blocks: &mut ProtoBlockCollection, current_instant: Timestamp) -> usize {
             let mut pruned = 0;
             let mut remove = Vec::new();
-            for (block_hash, proposed) in blocks.iter_mut() {
-                pruned += prune_deploys(proposed, current_instant);
-                if proposed.is_empty() {
+            for (block_hash, deploys) in blocks.iter_mut() {
+                pruned += prune_deploys(deploys, current_instant);
+                if deploys.is_empty() {
                     remove.push(*block_hash);
                 }
             }
