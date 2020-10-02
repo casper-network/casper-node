@@ -70,10 +70,13 @@ parse_args() {
     exit 1
   fi
 
-  # if not set take it from git tag, should be default behavior.
+  # if not set take it from node/Cargo.toml
   if [ -z ${PACKAGE_VERSION+x} ]; then
-    export PACKAGE_VERSION="${DRONE_TAG}"
+    NODE_CONFIG_FILE="$RUN_DIR/node/Config.toml"
+    PACKAGE_VERSION="$(grep -oP "^version\s=\s\K.*" $NODE_CONFIG_FILE | sed -e s'/"//')"
   fi
+
+  echo "[INFO] PACKAGE_VERSION set to $PACKAGE_VERSION"
 }
 
 abspath() {
@@ -93,9 +96,9 @@ abspath() {
   fi
 }
 
+export RUN_DIR=$(dirname $(abspath $0))
 parse_args "$@"
 
-export RUN_DIR=$(dirname $(abspath $0))
 export CREDENTIAL_FILE="$RUN_DIR/credentials.json"
 export CREDENTIAL_FILE_TMP="$RUN_DIR/vault_output.json"
 export API_URL="https://api.bintray.com"

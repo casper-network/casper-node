@@ -234,7 +234,7 @@ steps:
 - name: publish-bintray-tag
   <<: *buildenv
   commands:
-  - "./upload.sh --repo-name casper-debian-tests --package-name casper-node --package-version 0.1.2"
+  - "./upload.sh --repo-name casper-debian-tests --package-name casper-node"
   environment:
     BINTRAY_API_KEY:
       from_secret: cl_bintray_api_key
