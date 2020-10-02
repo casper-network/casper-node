@@ -394,7 +394,7 @@ impl DeployBuffer {
 
             expired_deploys
                 .iter()
-                .map(|r| *r)
+                .copied()
                 .chain(expired_deploys_iter)
                 .cloned()
                 .collect::<HashSet<_>>()
