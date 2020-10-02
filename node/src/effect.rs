@@ -637,7 +637,7 @@ impl<REv> EffectBuilder<REv> {
         .map(|block| block.map(BlockByHeight::new))
         .await
     }
-    
+
     /// Puts the given deploy into the deploy store.
     pub(crate) async fn put_deploy_to_storage<S>(self, deploy: Box<S::Deploy>) -> bool
     where
