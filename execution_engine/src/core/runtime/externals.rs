@@ -676,10 +676,14 @@ where
                 scoped_instrumenter.add_property("out_size", out_size.to_string());
                 let input: Vec<u8> = self.bytes_from_mem(in_ptr, in_size as usize)?;
                 let digest = account::blake2b(&input);
+                if digest.len() != out_size as usize {
+                    let err_value = u32::from(api_error::ApiError::BufferTooSmall) as i32;
+                    return Ok(Some(RuntimeValue::I32(err_value)));
+                }
                 self.memory
                     .set(out_ptr, &digest)
                     .map_err(|error| Error::Interpreter(error.into()))?;
-                Ok(None)
+                Ok(Some(RuntimeValue::I32(0)))
             }
         }
     }

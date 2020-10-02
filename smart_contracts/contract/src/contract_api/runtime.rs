@@ -308,7 +308,7 @@ pub fn is_valid_uref(uref: URef) -> bool {
 /// Returns a 32-byte BLAKE2b digest
 pub fn blake2b<T: AsRef<[u8]>>(input: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
     let mut ret = [0; BLAKE2B_DIGEST_LENGTH];
-    unsafe {
+    let result = unsafe {
         ext_ffi::blake2b(
             input.as_ref().as_ptr(),
             input.as_ref().len(),
@@ -316,6 +316,7 @@ pub fn blake2b<T: AsRef<[u8]>>(input: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
             BLAKE2B_DIGEST_LENGTH,
         )
     };
+    api_error::result_from(result).unwrap_or_revert();
     ret
 }
 

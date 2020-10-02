@@ -205,7 +205,7 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 FunctionIndex::RemoveContractUserGroupURefsIndex.into(),
             ),
             "blake2b" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 4][..], None),
+                Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
                 FunctionIndex::Blake2b.into(),
             ),
             #[cfg(feature = "test-support")]

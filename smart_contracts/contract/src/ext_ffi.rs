@@ -633,7 +633,7 @@ extern "C" {
     /// * `in_size` - length of bytes
     /// * `out_ptr` - pointer to the location where argument bytes will be copied from the host side
     /// * `out_size` - size of output pointer
-    pub fn blake2b(in_ptr: *const u8, in_size: usize, out_ptr: *mut u8, out_size: usize);
+    pub fn blake2b(in_ptr: *const u8, in_size: usize, out_ptr: *mut u8, out_size: usize) -> i32;
     /// Prints data directly to stanadard output on the host.
     ///
     /// # Arguments
