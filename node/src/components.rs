@@ -21,9 +21,10 @@ pub(crate) mod metrics;
 pub(crate) mod small_network;
 pub(crate) mod storage;
 
-use rand::{CryptoRng, Rng};
-
-use crate::effect::{EffectBuilder, Effects};
+use crate::{
+    effect::{EffectBuilder, Effects},
+    types::CryptoRngCore,
+};
 
 /// Core Component.
 ///
@@ -46,7 +47,7 @@ use crate::effect::{EffectBuilder, Effects};
 ///
 /// Components place restrictions on reactor events (`REv`s), indicating what kind of effects they
 /// need to be able to produce to operate.
-pub trait Component<REv, R: Rng + CryptoRng + ?Sized> {
+pub trait Component<REv> {
     /// Event associated with `Component`.
     ///
     /// The event type that is handled by the component.
@@ -59,7 +60,7 @@ pub trait Component<REv, R: Rng + CryptoRng + ?Sized> {
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event>;
 }

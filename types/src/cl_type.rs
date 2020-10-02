@@ -66,7 +66,7 @@ pub enum CLType {
     Key,
     /// [`URef`] system type.
     URef,
-    /// [`PublicKey`] system type.
+    /// [`PublicKey`](crate::PublicKey) system type.
     PublicKey,
     /// `Option` of a `CLType`.
     Option(Box<CLType>),
