@@ -134,25 +134,21 @@ impl Loadable for Vec<GenesisAccount> {
     fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
         #[derive(Debug, Deserialize)]
         struct ParsedAccount {
-            public_key: String,
-            algorithm: String,
-            balance: String,
-            bonded_amount: String,
+            public_key: PublicKey,
+            balance: U512,
+            bonded_amount: U512,
         }
 
         let mut reader = ReaderBuilder::new().has_headers(false).from_path(path)?;
         let mut accounts = vec![];
         for result in reader.deserialize() {
             let parsed: ParsedAccount = result?;
-            let balance = Motes::new(U512::from_dec_str(&parsed.balance)?);
-            let bonded_amount = Motes::new(U512::from_dec_str(&parsed.bonded_amount)?);
-            let key_bytes = hex::decode(parsed.public_key)?;
+            let balance = Motes::new(parsed.balance);
+            let bonded_amount = Motes::new(parsed.bonded_amount);
 
-            let public_key =
-                PublicKey::key_from_algorithm_name_and_bytes(&parsed.algorithm, key_bytes)?;
             let account = GenesisAccount::new(
-                casper_types::PublicKey::from(public_key),
-                public_key.to_account_hash(),
+                casper_types::PublicKey::from(parsed.public_key),
+                parsed.public_key.to_account_hash(),
                 balance,
                 bonded_amount,
             );

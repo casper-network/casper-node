@@ -507,25 +507,23 @@ impl<B: Value + 'static, D: Value + Item + 'static> StorageType for LmdbStorage<
     type Deploy = D;
 
     fn new(config: WithDir<Config>) -> Result<Self> {
-        let (root, config) = config.into_parts();
-        let path = if config.path().is_relative() {
-            root.join(config.path())
-        } else {
-            config.path()
-        };
-        fs::create_dir_all(&path).map_err(|error| Error::CreateDir {
-            dir: path.display().to_string(),
+        let root = config.with_dir(config.value().path());
+        fs::create_dir_all(&root).map_err(|error| Error::CreateDir {
+            dir: root.display().to_string(),
             source: error,
         })?;
 
-        let block_store_path = path.join(BLOCK_STORE_FILENAME);
-        let deploy_store_path = path.join(DEPLOY_STORE_FILENAME);
-        let chainspec_store_path = path.join(CHAINSPEC_STORE_FILENAME);
+        let block_store_path = root.join(BLOCK_STORE_FILENAME);
+        let deploy_store_path = root.join(DEPLOY_STORE_FILENAME);
+        let chainspec_store_path = root.join(CHAINSPEC_STORE_FILENAME);
 
-        let block_store = LmdbStore::new(block_store_path, config.max_block_store_size())?;
-        let deploy_store = LmdbStore::new(deploy_store_path, config.max_deploy_store_size())?;
-        let chainspec_store =
-            LmdbChainspecStore::new(chainspec_store_path, config.max_chainspec_store_size())?;
+        let block_store = LmdbStore::new(block_store_path, config.value().max_block_store_size())?;
+        let deploy_store =
+            LmdbStore::new(deploy_store_path, config.value().max_deploy_store_size())?;
+        let chainspec_store = LmdbChainspecStore::new(
+            chainspec_store_path,
+            config.value().max_chainspec_store_size(),
+        )?;
 
         Ok(LmdbStorage {
             block_store: Arc::new(block_store),

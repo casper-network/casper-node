@@ -456,18 +456,6 @@ impl PublicKey {
         ))
     }
 
-    /// Constructs a new key from the algorithm name and a byte slice.
-    pub fn key_from_algorithm_name_and_bytes<N: AsRef<str>, T: AsRef<[u8]>>(
-        name: N,
-        bytes: T,
-    ) -> Result<Self> {
-        match &*name.as_ref().trim().to_lowercase() {
-            ED25519_LOWERCASE => Self::ed25519_from_bytes(bytes),
-            SECP256K1_LOWERCASE => Self::secp256k1_from_bytes(bytes),
-            _ => panic!("Invalid algorithm name!"),
-        }
-    }
-
     /// Creates an `AccountHash` from a given `PublicKey` instance.
     pub fn to_account_hash(&self) -> AccountHash {
         // As explained here:
@@ -1565,6 +1553,19 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
             assert!(verify(message, &signature, &wrong_type_public_key).is_err());
             assert!(verify(&message[1..], &signature, &public_key).is_err());
         }
+
+        #[test]
+        fn account_hash_generation_is_consistent() {
+            let mut rng = TestRng::new();
+            let secret_key = SecretKey::random_ed25519(&mut rng);
+
+            let public_key_node = PublicKey::from(&secret_key);
+            let public_key_types: casper_types::PublicKey = public_key_node.into();
+
+            let hash_node: AccountHash = public_key_node.to_account_hash();
+            let hash_types: AccountHash = public_key_types.into();
+            assert_eq!(hash_types, hash_node)
+        }
     }
 
     mod secp256k1 {
@@ -1745,6 +1746,19 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
             let signature_low = Signature::new_secp256k1([1; SIGNATURE_LENGTH]).unwrap();
             let signature_high = Signature::new_secp256k1([3; SIGNATURE_LENGTH]).unwrap();
             check_ord_and_hash(signature_low, signature_high)
+        }
+
+        #[test]
+        fn account_hash_generation_is_consistent() {
+            let mut rng = TestRng::new();
+            let secret_key = SecretKey::random_secp256k1(&mut rng);
+
+            let public_key_node = PublicKey::from(&secret_key);
+            let public_key_types: casper_types::PublicKey = public_key_node.into();
+
+            let hash_node: AccountHash = public_key_node.to_account_hash();
+            let hash_types: AccountHash = public_key_types.into();
+            assert_eq!(hash_types, hash_node)
         }
     }
 

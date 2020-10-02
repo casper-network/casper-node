@@ -23,10 +23,12 @@ mod big_array {
     big_array! { BigArray; super::SECP256K1_PUBLIC_KEY_LENGTH }
 }
 
+/// Represents the bytes of a secp256k1 public key.
 #[derive(Copy, Clone, DataSize, Serialize, Deserialize)]
 pub struct Secp256k1Bytes(#[serde(with = "big_array::BigArray")] [u8; SECP256K1_PUBLIC_KEY_LENGTH]);
 
 impl Secp256k1Bytes {
+    /// Returns the underlying bytes.
     pub fn value(self) -> [u8; SECP256K1_PUBLIC_KEY_LENGTH] {
         self.0
     }
@@ -103,6 +105,15 @@ impl PublicKey {
         match self {
             PublicKey::Ed25519(_) => ED25519_VARIANT_ID,
             PublicKey::Secp256k1(_) => SECP256K1_VARIANT_ID,
+        }
+    }
+}
+
+impl AsRef<[u8]> for PublicKey {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            PublicKey::Ed25519(bytes) => bytes.as_ref(),
+            PublicKey::Secp256k1(bytes) => bytes.as_ref(),
         }
     }
 }

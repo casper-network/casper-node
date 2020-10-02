@@ -72,15 +72,21 @@ fn compute_rewards_for<C: Context>(
         }
     }
 
+    let faulty_w: Weight = panorama
+        .iter()
+        .zip(state.weights())
+        .filter(|(obs, _)| obs.is_faulty())
+        .map(|(_, w)| w)
+        .sum();
+
     // Collect the block rewards for each validator who is a member of at least one summit.
     max_quorum
         .iter()
         .zip(state.weights())
         .map(|(quorum, weight)| {
             // If the summit's quorum was not enough to finalize the block, rewards are reduced.
-            // A level-1 summit with quorum  q  has FTT  q - 50%. We consider faulty validators to
-            // be part of the summit, so we need  q + f - 50% > f,  i.e.  q > 50%.
-            let finality_factor = if *quorum > state.total_weight() / 2 {
+            // A level-1 summit with quorum  q  has FTT  q - 50%, so we need  q - 50% > f.
+            let finality_factor = if *quorum > state.total_weight() / 2 + faulty_w {
                 state.params().block_reward()
             } else {
                 state.params().reduced_block_reward()
