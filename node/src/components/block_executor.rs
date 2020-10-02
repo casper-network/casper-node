@@ -291,17 +291,12 @@ impl BlockExecutor {
                     let reward_items = era_end
                         .rewards
                         .iter()
-                        .map(|(&vid, &value)| RewardItem {
-                            validator_id: vid.into(),
-                            value,
-                        })
+                        .map(|(&vid, &value)| RewardItem::new(vid.into(), value))
                         .collect();
                     let slash_items = era_end
                         .equivocators
                         .iter()
-                        .map(|&vid| SlashItem {
-                            validator_id: vid.into(),
-                        })
+                        .map(|&vid| SlashItem::new(vid.into()))
                         .collect();
                     let request = StepRequest {
                         pre_state_hash: state.pre_state_hash.into(),
