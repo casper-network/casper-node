@@ -25,6 +25,10 @@ const ARG_ENTRY_POINT: &str = "entry_point";
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const CONTRACT_AUCTION_BIDS: &str = "auction_bids.wasm";
+const CONTRACT_ADD_BID: &str = "add_bid.wasm";
+const CONTRACT_WITHDRAW_BID: &str = "withdraw_bid.wasm";
+const CONTRACT_DELEGATE: &str = "delegate.wasm";
+const CONTRACT_UNDELEGATE: &str = "undelegate.wasm";
 const TRANSFER_AMOUNT: u64 = 250_000_000 + 1000;
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 const NON_FOUNDER_VALIDATOR_1: PublicKey = PublicKey::Ed25519([3; 32]);
@@ -40,10 +44,6 @@ const BID_AMOUNT_2: u64 = 5_000;
 const ADD_BID_DELEGATION_RATE_2: DelegationRate = 126;
 const WITHDRAW_BID_AMOUNT_2: u64 = 15_000;
 
-const ARG_ADD_BID: &str = "add_bid";
-const ARG_WITHDRAW_BID: &str = "withdraw_bid";
-const ARG_DELEGATE: &str = "delegate";
-const ARG_UNDELEGATE: &str = "undelegate";
 const ARG_RUN_AUCTION: &str = "run_auction";
 const ARG_READ_SEIGNIORAGE_RECIPIENTS: &str = "read_seigniorage_recipients";
 
@@ -78,10 +78,9 @@ fn should_run_add_bid() {
     //
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
             ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK,
-            ARG_ENTRY_POINT => ARG_ADD_BID,
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
         },
@@ -105,10 +104,9 @@ fn should_run_add_bid() {
     // 2nd bid top-up
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
             ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK,
-            ARG_ENTRY_POINT => ARG_ADD_BID,
             ARG_AMOUNT => U512::from(BID_AMOUNT_2),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_2,
         },
@@ -131,9 +129,8 @@ fn should_run_add_bid() {
     // 3. withdraw some amount
     let exec_request_3 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_WITHDRAW_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => ARG_WITHDRAW_BID,
             ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK,
             ARG_AMOUNT => U512::from(WITHDRAW_BID_AMOUNT_2),
         },
@@ -198,10 +195,9 @@ fn should_run_delegate_and_undelegate() {
     // non-founding validator request
     let add_bid_request_1 = ExecuteRequestBuilder::standard(
         NON_FOUNDER_VALIDATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
             ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1,
-            ARG_ENTRY_POINT => ARG_ADD_BID,
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
         },
@@ -234,9 +230,8 @@ fn should_run_delegate_and_undelegate() {
     //
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => ARG_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1,
             ARG_DELEGATOR => BID_ACCOUNT_1_PK,
@@ -263,9 +258,8 @@ fn should_run_delegate_and_undelegate() {
     // 2nd bid top-up
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => ARG_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_2),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1,
             ARG_DELEGATOR => BID_ACCOUNT_1_PK,
@@ -292,9 +286,8 @@ fn should_run_delegate_and_undelegate() {
 
     let exec_request_3 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_UNDELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => ARG_UNDELEGATE,
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1,
             ARG_DELEGATOR => BID_ACCOUNT_1_PK,
@@ -395,10 +388,9 @@ fn should_calculate_era_validators() {
     // non-founding validator request
     let add_bid_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
             ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK,
-            ARG_ENTRY_POINT => ARG_ADD_BID,
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
         },
@@ -803,10 +795,9 @@ fn should_calculate_era_validators_multiple_new_bids() {
     // non-founding validator request
     let add_bid_request_1 = ExecuteRequestBuilder::standard(
         NON_FOUNDER_VALIDATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
             ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK,
-            ARG_ENTRY_POINT => ARG_ADD_BID,
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
         },
@@ -814,10 +805,9 @@ fn should_calculate_era_validators_multiple_new_bids() {
     .build();
     let add_bid_request_2 = ExecuteRequestBuilder::standard(
         NON_FOUNDER_VALIDATOR_2_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
             ARG_PUBLIC_KEY => BID_ACCOUNT_2_PK,
-            ARG_ENTRY_POINT => ARG_ADD_BID,
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_2),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_2,
         },
@@ -910,10 +900,9 @@ fn undelegated_funds_should_be_released() {
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         NON_FOUNDER_VALIDATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
             ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1,
-            ARG_ENTRY_POINT => ARG_ADD_BID,
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
         },
@@ -922,9 +911,8 @@ fn undelegated_funds_should_be_released() {
 
     let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
         BID_ACCOUNT_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => ARG_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1,
             ARG_DELEGATOR => BID_ACCOUNT_1_PK,
@@ -954,9 +942,8 @@ fn undelegated_funds_should_be_released() {
 
     let delegator_1_undelegate_request = ExecuteRequestBuilder::standard(
         BID_ACCOUNT_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_UNDELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => ARG_UNDELEGATE,
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1,
             ARG_DELEGATOR => BID_ACCOUNT_1_PK,
@@ -1030,10 +1017,9 @@ fn fully_undelegated_funds_should_be_released() {
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         NON_FOUNDER_VALIDATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
             ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1,
-            ARG_ENTRY_POINT => ARG_ADD_BID,
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
         },
@@ -1042,9 +1028,8 @@ fn fully_undelegated_funds_should_be_released() {
 
     let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
         BID_ACCOUNT_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => ARG_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1,
             ARG_DELEGATOR => BID_ACCOUNT_1_PK,
@@ -1074,9 +1059,8 @@ fn fully_undelegated_funds_should_be_released() {
 
     let delegator_1_undelegate_request = ExecuteRequestBuilder::standard(
         BID_ACCOUNT_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_UNDELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => ARG_UNDELEGATE,
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1,
             ARG_DELEGATOR => BID_ACCOUNT_1_PK,

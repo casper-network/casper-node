@@ -9,7 +9,7 @@ use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, share
 use casper_types::{
     account::AccountHash,
     auction::{
-        BidPurses, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, BID_PURSES_KEY,
+        BidPurses, DelegationRate, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, BID_PURSES_KEY,
         DEFAULT_UNBONDING_DELAY, INITIAL_ERA_ID, METHOD_RUN_AUCTION, METHOD_SLASH,
         UNBONDING_PURSES_KEY,
     },
@@ -19,6 +19,8 @@ use casper_types::{
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
+const CONTRACT_ADD_BID: &str = "add_bid.wasm";
+const CONTRACT_WITHDRAW_BID: &str = "withdraw_bid.wasm";
 const CONTRACT_AUCTION_BIDDING: &str = "auction_bidding.wasm";
 const CONTRACT_AUCTION_BIDS: &str = "auction_bids.wasm";
 
@@ -26,16 +28,15 @@ const GENESIS_VALIDATOR_STAKE: u64 = 50_000;
 const GENESIS_ACCOUNT_STAKE: u64 = 100_000;
 const TRANSFER_AMOUNT: u64 = 500_000_000;
 
-const TEST_ADD_BID: &str = "add_bid";
 const TEST_BOND_FROM_MAIN_PURSE: &str = "bond-from-main-purse";
 const TEST_SEED_NEW_ACCOUNT: &str = "seed_new_account";
-const TEST_WITHDRAW_BID: &str = "withdraw_bid";
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_PUBLIC_KEY: &str = "public_key";
 const ARG_ENTRY_POINT: &str = "entry_point";
 const ARG_ACCOUNT_HASH: &str = "account_hash";
 const ARG_RUN_AUCTION: &str = "run_auction";
+const ARG_DELEGATION_RATE: &str = "delegation_rate";
 
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
@@ -66,11 +67,11 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_AUCTION_BIDDING,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => String::from(TEST_ADD_BID),
             ARG_AMOUNT => U512::from(GENESIS_ACCOUNT_STAKE),
             ARG_PUBLIC_KEY => default_public_key_arg,
+            ARG_DELEGATION_RATE => DelegationRate::from(42u8),
         },
     )
     .build();
@@ -97,9 +98,8 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_AUCTION_BIDDING,
+        CONTRACT_WITHDRAW_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => String::from(TEST_WITHDRAW_BID),
             ARG_AMOUNT => unbond_amount,
             ARG_PUBLIC_KEY => default_public_key_arg,
         },
@@ -253,9 +253,8 @@ fn should_fail_unbonding_validator_with_locked_funds() {
 
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_AUCTION_BIDDING,
+        CONTRACT_WITHDRAW_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => TEST_WITHDRAW_BID,
             ARG_AMOUNT => U512::from(42),
             ARG_PUBLIC_KEY => account_1_public_key,
         },
@@ -293,9 +292,8 @@ fn should_fail_unbonding_validator_without_bonding_first() {
 
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_AUCTION_BIDDING,
+        CONTRACT_WITHDRAW_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => TEST_WITHDRAW_BID,
             ARG_AMOUNT => U512::from(42),
             ARG_PUBLIC_KEY => account_1_public_key,
         },
@@ -353,11 +351,11 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_AUCTION_BIDDING,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => String::from(TEST_ADD_BID),
             ARG_AMOUNT => U512::from(GENESIS_ACCOUNT_STAKE),
             ARG_PUBLIC_KEY => default_public_key_arg,
+            ARG_DELEGATION_RATE => DelegationRate::from(42u8),
         },
     )
     .build();
@@ -401,9 +399,8 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_AUCTION_BIDDING,
+        CONTRACT_WITHDRAW_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => String::from(TEST_WITHDRAW_BID),
             ARG_AMOUNT => unbond_amount,
             ARG_PUBLIC_KEY => default_public_key_arg,
         },

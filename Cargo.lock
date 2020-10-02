@@ -9,6 +9,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "add-bid"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "add-gas-subcall"
 version = "0.1.0"
 dependencies = [
@@ -322,14 +330,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fa79dedbb091f449f1f39e53edf88d5dbe95f895dae6135a8d7b881fb5af73f5"
 dependencies = [
  "byte-tools",
-]
-
-[[package]]
-name = "bonding"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
 ]
 
 [[package]]
@@ -1039,6 +1039,14 @@ dependencies = [
  "proc-macro2 1.0.21",
  "quote 1.0.7",
  "syn 1.0.41",
+]
+
+[[package]]
+name = "delegate"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -5002,7 +5010,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "unbonding"
+name = "undelegate"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
@@ -5454,6 +5462,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0120db82e8a1e0b9fb3345a539c478767c0048d842860994d96113d5b667bd69"
 dependencies = [
  "winapi 0.3.9",
+]
+
+[[package]]
+name = "withdraw-bid"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
