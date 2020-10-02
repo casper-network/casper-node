@@ -297,13 +297,15 @@ impl DeployBuffer {
 
     /// Prunes expired deploy information from the DeployBuffer, returns the total deploys pruned
     fn prune(&mut self, current_instant: Timestamp) -> usize {
-        /// Prunes expired deploy information from an individual DeployCollection, returns the total deploys pruned
+        /// Prunes expired deploy information from an individual DeployCollection, returns the total
+        /// deploys pruned
         fn prune_deploys(deploys: &mut DeployCollection, current_instant: Timestamp) -> usize {
             let initial_len = deploys.len();
             deploys.retain(|_hash, header| !header.expired(current_instant));
             initial_len - deploys.len()
         }
-        /// Prunes expired deploy information from each ProtoBlockCollection, returns the total deploys pruned
+        /// Prunes expired deploy information from each ProtoBlockCollection, returns the total
+        /// deploys pruned
         fn prune_blocks(blocks: &mut ProtoBlockCollection, current_instant: Timestamp) -> usize {
             let mut pruned = 0;
             let mut remove = Vec::new();
