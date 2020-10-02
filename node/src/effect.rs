@@ -637,27 +637,7 @@ impl<REv> EffectBuilder<REv> {
         .map(|block| block.map(BlockByHeight::new))
         .await
     }
-
-    /// Gets the requested block header from the linear block store.
-    #[allow(unused)]
-    pub(crate) async fn get_block_header_from_storage<S>(
-        self,
-        block_hash: <S::Block as Value>::Id,
-    ) -> Option<<S::Block as Value>::Header>
-    where
-        S: StorageType + 'static,
-        REv: From<StorageRequest<S>>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetBlockHeader {
-                block_hash,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
+    
     /// Puts the given deploy into the deploy store.
     pub(crate) async fn put_deploy_to_storage<S>(self, deploy: Box<S::Deploy>) -> bool
     where
@@ -794,7 +774,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests a linear chain block at `block_height`.
-    #[allow(unused)]
     pub(crate) async fn fetch_block_by_height<I>(
         self,
         block_height: u64,
