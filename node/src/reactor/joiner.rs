@@ -332,8 +332,7 @@ impl reactor::Reactor for Reactor {
 
         let deploy_acceptor = DeployAcceptor::new();
 
-        let (deploy_buffer, deploy_buffer_effects) =
-            DeployBuffer::new(effect_builder);
+        let (deploy_buffer, deploy_buffer_effects) = DeployBuffer::new(effect_builder);
         effects.extend(reactor::wrap_effects(
             Event::DeployBuffer,
             deploy_buffer_effects,

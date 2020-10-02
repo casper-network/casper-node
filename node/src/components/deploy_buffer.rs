@@ -110,13 +110,10 @@ pub(crate) struct DeployBuffer {
 
 impl DeployBuffer {
     /// Creates a new, empty deploy buffer instance.
-    pub(crate) fn new<REv>(
-        effect_builder: EffectBuilder<REv>,
-    ) -> (Self, Effects<Event>)
+    pub(crate) fn new<REv>(effect_builder: EffectBuilder<REv>) -> (Self, Effects<Event>)
     where
         REv: ReactorEventT,
     {
-
         let this = DeployBuffer::default();
         let cleanup = effect_builder
             .set_timeout(DEPLOY_BUFFER_PRUNE_INTERVAL)
