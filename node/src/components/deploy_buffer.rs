@@ -14,7 +14,7 @@ use derive_more::From;
 use fmt::Debug;
 use rand::{CryptoRng, Rng};
 use semver::Version;
-use tracing::{error, info};
+use tracing::{error, info, trace};
 
 use crate::{
     components::{chainspec_loader::DeployConfig, storage::Storage, Component},
@@ -137,7 +137,7 @@ impl DeployBuffer {
     /// Returns `false` if the deploy has been rejected.
     fn add_deploy(&mut self, current_instant: Timestamp, hash: DeployHash, header: DeployHeader) {
         if header.expired(current_instant) {
-            info!("expired deploy {} rejected from the buffer", hash);
+            trace!("expired deploy {} rejected from the buffer", hash);
             return;
         }
         // only add the deploy if it isn't contained in a finalized block
@@ -306,31 +306,28 @@ impl DeployBuffer {
         }
     }
 
-    /// Prunes stale deploy information from the DeployBuffer, returns the total deploys pruned
+    /// Prunes expired deploy information from the DeployBuffer, returns the total deploys pruned
     fn prune(&mut self, current_instant: Timestamp) -> usize {
-        fn prune_collection(map: &mut DeployCollection, current_instant: Timestamp) -> usize {
-            let initial_len = map.len();
-            map.retain(|_hash, header| !header.expired(current_instant));
-            initial_len - map.len()
+        fn prune_deploys(deploys: &mut DeployCollection, current_instant: Timestamp) -> usize {
+            let initial_len = deploys.len();
+            deploys.retain(|_hash, header| !header.expired(current_instant));
+            initial_len - deploys.len()
         }
-        fn prune_proto_collection(
-            proto_collection: &mut ProtoBlockCollection,
-            current_instant: Timestamp,
-        ) -> usize {
+        fn prune_blocks(blocks: &mut ProtoBlockCollection, current_instant: Timestamp) -> usize {
             let mut pruned = 0;
             let mut remove = Vec::new();
-            for (proto_hash, proposed) in proto_collection.iter_mut() {
-                pruned += prune_collection(proposed, current_instant);
+            for (block_hash, proposed) in blocks.iter_mut() {
+                pruned += prune_deploys(proposed, current_instant);
                 if proposed.is_empty() {
-                    remove.push(*proto_hash);
+                    remove.push(*block_hash);
                 }
             }
-            proto_collection.retain(|k, _v| !remove.contains(&k));
+            blocks.retain(|k, _v| !remove.contains(&k));
             pruned
         }
-        let collected = prune_collection(&mut self.pending, current_instant);
-        let proposed = prune_proto_collection(&mut self.proposed, current_instant);
-        let finalized = prune_proto_collection(&mut self.finalized, current_instant);
+        let collected = prune_deploys(&mut self.pending, current_instant);
+        let proposed = prune_blocks(&mut self.proposed, current_instant);
+        let finalized = prune_blocks(&mut self.finalized, current_instant);
         collected + proposed + finalized
     }
 }
