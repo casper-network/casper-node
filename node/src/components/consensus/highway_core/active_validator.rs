@@ -463,7 +463,7 @@ mod tests {
         assert_eq!(None, effects.next());
 
         // Alice has not witnessed Bob's vote yet.
-        assert_eq!(None, fd.next_finalized(&state, 0.into()));
+        assert_eq!(None, fd.next_finalized(&state));
 
         // Alice also sends her own witness message, completing the summit for her proposal.
         let mut effects = alice_av
@@ -474,7 +474,7 @@ mod tests {
         assert_eq!(None, effects.next());
 
         // Payment finalized! "One Pumpkin Spice Mochaccino for Corbyn!"
-        assert_eq!(Some(&prop_hash), fd.next_finalized(&state, 0.into()));
+        assert_eq!(Some(&prop_hash), fd.next_finalized(&state));
         Ok(())
     }
 }
