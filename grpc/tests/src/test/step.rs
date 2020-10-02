@@ -89,15 +89,27 @@ fn should_step() {
         builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
 
     let bids_before_slashing: Bids = builder.get_value(auction_hash, BIDS_KEY);
-    assert!(bids_before_slashing.contains_key(&ACCOUNT_1_PK));
+    assert!(
+        bids_before_slashing.contains_key(&ACCOUNT_1_PK),
+        "should have entry in the genesis bids table {:?}",
+        bids_before_slashing
+    );
 
     let bid_purses_before_slashing: BidPurses = builder.get_value(auction_hash, BID_PURSES_KEY);
-    assert!(bid_purses_before_slashing.contains_key(&ACCOUNT_1_PK));
+    assert!(
+        bid_purses_before_slashing.contains_key(&ACCOUNT_1_PK),
+        "should have bid purse in the bids purses table {:?}",
+        bid_purses_before_slashing
+    );
 
     builder.step(step_request);
 
     let bids_after_slashing: Bids = builder.get_value(auction_hash, BIDS_KEY);
-    assert!(!bids_after_slashing.contains_key(&ACCOUNT_1_PK));
+    assert!(
+        !bids_after_slashing.contains_key(&ACCOUNT_1_PK),
+        "should not have entry in bids table after slashing {:?}",
+        bids_after_slashing
+    );
 
     // bid purses should not have slashed validator after slashing
     let bid_purses_after_slashing: BidPurses = builder.get_value(auction_hash, BID_PURSES_KEY);
@@ -114,7 +126,10 @@ fn should_step() {
     );
 
     let bids_after_slashing: Bids = builder.get_value(auction_hash, BIDS_KEY);
-    assert_ne!(bids_before_slashing, bids_after_slashing);
+    assert_ne!(
+        bids_before_slashing, bids_after_slashing,
+        "bids table should be different before and after slashing"
+    );
 
     // seigniorage snapshot should have changed after auction
     let after_auction_seigniorage: SeigniorageRecipientsSnapshot =
