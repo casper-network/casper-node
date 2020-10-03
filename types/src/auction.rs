@@ -268,30 +268,6 @@ pub trait Auction:
         Ok((unbonding_purse, new_amount))
     }
 
-    /// Removes validator entries from either founders or validators, wherever they
-    /// might be found.
-    ///
-    /// This function is intended to be called together with the slash function in the Mint
-    /// contract.
-    fn quash_bid(&mut self, validator_public_keys: Vec<PublicKey>) -> Result<()> {
-        // Clean up inside `bids`
-        let mut validators = internal::get_bids(self)?;
-
-        let mut modified_validators = 0usize;
-
-        for validator_public_key in &validator_public_keys {
-            if validators.remove(validator_public_key).is_some() {
-                modified_validators += 1;
-            }
-        }
-
-        if modified_validators > 0 {
-            internal::set_bids(self, validators)?;
-        }
-
-        Ok(())
-    }
-
     /// Slashes each validator.
     ///
     /// This can be only invoked through a system call.
@@ -299,6 +275,8 @@ pub trait Auction:
         if self.get_caller() != SYSTEM_ACCOUNT {
             return Err(Error::InvalidCaller);
         }
+
+        detail::quash_bid(self, &validator_public_keys)?;
 
         let bid_purses_uref = self
             .get_key(BID_PURSES_KEY)
