@@ -302,7 +302,7 @@ impl reactor::Reactor for Reactor {
         let (net, net_effects) = SmallNetwork::new(event_queue, config.network.clone(), false)?;
 
         let linear_chain_fetcher = Fetcher::new(config.gossip);
-        let mut effects = reactor::wrap_effects(Event::Network, net_effects);
+        let effects = reactor::wrap_effects(Event::Network, net_effects);
 
         let address_gossiper = Gossiper::new_for_complete_items(config.gossip);
 
