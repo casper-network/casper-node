@@ -6,12 +6,14 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Display, Formatter},
+    time::Duration,
 };
 
 use datasize::DataSize;
 use derive_more::From;
+use fmt::Debug;
 use semver::Version;
-use tracing::{error, info};
+use tracing::{error, info, trace};
 
 use crate::{
     components::{chainspec_loader::DeployConfig, storage::Storage, Component},
@@ -21,6 +23,8 @@ use crate::{
     },
     types::{CryptoRngCore, DeployHash, DeployHeader, ProtoBlock, ProtoBlockHash, Timestamp},
 };
+
+const DEPLOY_BUFFER_PRUNE_INTERVAL: Duration = Duration::from_secs(10);
 
 /// An event for when using the deploy buffer as a component.
 #[derive(Debug, From)]
@@ -32,6 +36,8 @@ pub enum Event {
         hash: DeployHash,
         header: Box<DeployHeader>,
     },
+    /// The deploy-buffer has been asked to prune stale deploys
+    BufferPrune,
     /// A proto block has been proposed. We should not propose duplicates of its deploys.
     ProposedProtoBlock(ProtoBlock),
     /// A proto block has been finalized. We should never propose its deploys again.
@@ -51,6 +57,7 @@ pub enum Event {
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Event::BufferPrune => write!(f, "buffer prune"),
             Event::Request(req) => write!(f, "deploy-buffer request: {}", req),
             Event::Buffer { hash, .. } => write!(f, "deploy-buffer add {}", hash),
             Event::ProposedProtoBlock(block) => {
@@ -76,12 +83,25 @@ impl Display for Event {
     }
 }
 
+type DeployCollection = HashMap<DeployHash, DeployHeader>;
+type ProtoBlockCollection = HashMap<ProtoBlockHash, DeployCollection>;
+
+pub(crate) trait ReactorEventT:
+    From<Event> + From<StorageRequest<Storage>> + Send + 'static
+{
+}
+
+impl<REv> ReactorEventT for REv where
+    REv: From<Event> + From<StorageRequest<Storage>> + Send + 'static
+{
+}
+
 /// Deploy buffer.
 #[derive(DataSize, Debug, Clone, Default)]
 pub(crate) struct DeployBuffer {
-    collected_deploys: HashMap<DeployHash, DeployHeader>,
-    processed: HashMap<ProtoBlockHash, HashMap<DeployHash, DeployHeader>>,
-    finalized: HashMap<ProtoBlockHash, HashMap<DeployHash, DeployHeader>>,
+    pending: DeployCollection,
+    proposed: ProtoBlockCollection,
+    finalized: ProtoBlockCollection,
     // We don't need the whole Chainspec here (it's also unnecessarily big), just the deploy
     // config.
     #[data_size(skip)]
@@ -90,21 +110,32 @@ pub(crate) struct DeployBuffer {
 
 impl DeployBuffer {
     /// Creates a new, empty deploy buffer instance.
-    pub(crate) fn new() -> Self {
-        DeployBuffer::default()
+    pub(crate) fn new<REv>(effect_builder: EffectBuilder<REv>) -> (Self, Effects<Event>)
+    where
+        REv: ReactorEventT,
+    {
+        let this = DeployBuffer::default();
+        let cleanup = effect_builder
+            .set_timeout(DEPLOY_BUFFER_PRUNE_INTERVAL)
+            .event(|_| Event::BufferPrune);
+        (this, cleanup)
     }
 
     /// Adds a deploy to the deploy buffer.
     ///
     /// Returns `false` if the deploy has been rejected.
-    fn add_deploy(&mut self, hash: DeployHash, header: DeployHeader) {
+    fn add_deploy(&mut self, current_instant: Timestamp, hash: DeployHash, header: DeployHeader) {
+        if header.expired(current_instant) {
+            trace!("expired deploy {} rejected from the buffer", hash);
+            return;
+        }
         // only add the deploy if it isn't contained in a finalized block
         if !self
             .finalized
             .values()
             .any(|block| block.contains_key(&hash))
         {
-            self.collected_deploys.insert(hash, header);
+            self.pending.insert(hash, header);
             info!("added deploy {} to the buffer", hash);
         } else {
             info!("deploy {} rejected from the buffer", hash);
@@ -120,7 +151,7 @@ impl DeployBuffer {
         responder: Responder<HashSet<DeployHash>>,
     ) -> Effects<Event>
     where
-        REv: From<StorageRequest<Storage>> + Send,
+        REv: ReactorEventT,
     {
         // TODO - should the current protocol version be passed in here?
         let chainspec_version = Version::from((1, 0, 0));
@@ -148,7 +179,7 @@ impl DeployBuffer {
     }
 
     /// Gets the chainspec from storage in order to call `remaining_deploys()`.
-    fn get_chainspec_from_storage<REv>(
+    fn get_chainspec_from_storage<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         chainspec_version: Version,
@@ -171,6 +202,8 @@ impl DeployBuffer {
     }
 
     /// Returns a list of candidates for inclusion into a block.
+    /// rename to proposed deploys
+    /// maybe use cuckoofilter
     fn remaining_deploys(
         &mut self,
         deploy_config: DeployConfig,
@@ -179,13 +212,14 @@ impl DeployBuffer {
     ) -> HashSet<DeployHash> {
         let past_deploys = past_blocks
             .iter()
-            .filter_map(|block_hash| self.processed.get(block_hash))
+            .filter_map(|block_hash| self.proposed.get(block_hash))
             .chain(self.finalized.values())
             .flat_map(|deploys| deploys.keys())
             .collect::<HashSet<_>>();
-        // deploys_to_return = all deploys in collected_deploys that aren't in finalized blocks or
-        // processed blocks from the set `past_blocks`
-        self.collected_deploys
+
+        // deploys_to_return = all deploys in pending that aren't in finalized blocks or
+        // proposed blocks from the set `past_blocks`
+        self.pending
             .iter()
             .filter(|&(hash, deploy)| {
                 self.is_deploy_valid(deploy, current_instant, &deploy_config, &past_deploys)
@@ -224,47 +258,76 @@ impl DeployBuffer {
     where
         I: IntoIterator<Item = DeployHash>,
     {
-        // TODO: This will ignore deploys that weren't in `collected_deploys`. They might be added
+        // TODO: This will ignore deploys that weren't in `pending`. They might be added
         // later, and then would be proposed as duplicates.
         let deploy_map: HashMap<_, _> = deploys
             .into_iter()
             .filter_map(|deploy_hash| {
-                self.collected_deploys
+                self.pending
                     .get(&deploy_hash)
                     .map(|deploy| (deploy_hash, deploy.clone()))
             })
             .collect();
-        self.collected_deploys
+        self.pending
             .retain(|deploy_hash, _| !deploy_map.contains_key(deploy_hash));
-        self.processed.insert(block, deploy_map);
+        self.proposed.insert(block, deploy_map);
     }
 
     /// Notifies the deploy buffer that a block has been finalized.
     fn finalized_block(&mut self, block: ProtoBlockHash) {
-        if let Some(deploys) = self.processed.remove(&block) {
-            self.collected_deploys
+        if let Some(deploys) = self.proposed.remove(&block) {
+            self.pending
                 .retain(|deploy_hash, _| !deploys.contains_key(deploy_hash));
             self.finalized.insert(block, deploys);
         } else if !block.is_empty() {
             // TODO: Events are not guaranteed to be handled in order, so this could happen!
-            error!("finalized block that hasn't been processed!");
+            error!("finalized block that hasn't been proposed!");
         }
     }
 
     /// Notifies the deploy buffer that a block has been orphaned.
     fn orphaned_block(&mut self, block: ProtoBlockHash) {
-        if let Some(deploys) = self.processed.remove(&block) {
-            self.collected_deploys.extend(deploys);
+        if let Some(deploys) = self.proposed.remove(&block) {
+            self.pending.extend(deploys);
         } else {
             // TODO: Events are not guaranteed to be handled in order, so this could happen!
-            error!("orphaned block that hasn't been processed!");
+            error!("orphaned block that hasn't been proposed!");
         }
+    }
+
+    /// Prunes expired deploy information from the DeployBuffer, returns the total deploys pruned
+    fn prune(&mut self, current_instant: Timestamp) -> usize {
+        /// Prunes expired deploy information from an individual DeployCollection, returns the total
+        /// deploys pruned
+        fn prune_deploys(deploys: &mut DeployCollection, current_instant: Timestamp) -> usize {
+            let initial_len = deploys.len();
+            deploys.retain(|_hash, header| !header.expired(current_instant));
+            initial_len - deploys.len()
+        }
+        /// Prunes expired deploy information from each ProtoBlockCollection, returns the total
+        /// deploys pruned
+        fn prune_blocks(blocks: &mut ProtoBlockCollection, current_instant: Timestamp) -> usize {
+            let mut pruned = 0;
+            let mut remove = Vec::new();
+            for (block_hash, deploys) in blocks.iter_mut() {
+                pruned += prune_deploys(deploys, current_instant);
+                if deploys.is_empty() {
+                    remove.push(*block_hash);
+                }
+            }
+            blocks.retain(|k, _v| !remove.contains(&k));
+            pruned
+        }
+        let collected = prune_deploys(&mut self.pending, current_instant);
+        let proposed = prune_blocks(&mut self.proposed, current_instant);
+        let finalized = prune_blocks(&mut self.finalized, current_instant);
+        collected + proposed + finalized
     }
 }
 
 impl<REv> Component<REv> for DeployBuffer
 where
-    REv: From<StorageRequest<Storage>> + Send,
+    REv: ReactorEventT,
 {
     type Event = Event;
 
@@ -275,6 +338,13 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
+            Event::BufferPrune => {
+                let pruned = self.prune(Timestamp::now());
+                log::debug!("Pruned {} deploys from buffer", pruned);
+                return effect_builder
+                    .set_timeout(DEPLOY_BUFFER_PRUNE_INTERVAL)
+                    .event(|_| Event::BufferPrune);
+            }
             Event::Request(DeployBufferRequest::ListForInclusion {
                 current_instant,
                 past_blocks,
@@ -282,7 +352,7 @@ where
             }) => {
                 return self.get_chainspec(effect_builder, current_instant, past_blocks, responder);
             }
-            Event::Buffer { hash, header } => self.add_deploy(hash, *header),
+            Event::Buffer { hash, header } => self.add_deploy(Timestamp::now(), hash, *header),
             Event::ProposedProtoBlock(block) => {
                 let (hash, deploys, _) = block.destructure();
                 self.added_block(hash, deploys)
@@ -317,8 +387,10 @@ mod tests {
     use super::*;
     use crate::{
         crypto::{asymmetric_key::SecretKey, hash::hash},
+        reactor::{EventQueueHandle, QueueKind, Scheduler},
         testing::TestRng,
         types::{Deploy, DeployHash, DeployHeader, ProtoBlockHash, TimeDiff},
+        utils,
     };
 
     fn generate_deploy(
@@ -354,6 +426,21 @@ mod tests {
         (*deploy.id(), deploy.take_header())
     }
 
+    fn create_test_buffer() -> (DeployBuffer, Effects<Event>) {
+        let scheduler = utils::leak(Scheduler::<Event>::new(QueueKind::weights()));
+        let event_queue = EventQueueHandle::new(&scheduler);
+        let effect_builder = EffectBuilder::new(event_queue);
+        DeployBuffer::new(effect_builder)
+    }
+
+    impl From<StorageRequest<Storage>> for Event {
+        fn from(_: StorageRequest<Storage>) -> Self {
+            // we never send a storage request in our unit tests, but if this does become
+            // meaningful....
+            todo!()
+        }
+    }
+
     #[test]
     fn add_and_take_deploys() {
         let creation_time = Timestamp::from(100);
@@ -363,7 +450,7 @@ mod tests {
         let block_time3 = Timestamp::from(220);
 
         let no_blocks = HashSet::new();
-        let mut buffer = DeployBuffer::new();
+        let (mut buffer, _effects) = create_test_buffer();
         let mut rng = TestRng::new();
         let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
         let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
@@ -375,8 +462,8 @@ mod tests {
             .is_empty());
 
         // add two deploys
-        buffer.add_deploy(hash1, deploy1);
-        buffer.add_deploy(hash2, deploy2.clone());
+        buffer.add_deploy(block_time2, hash1, deploy1);
+        buffer.add_deploy(block_time2, hash2, deploy2.clone());
 
         // if we try to create a block with a timestamp that is too early, we shouldn't get any
         // deploys
@@ -420,7 +507,7 @@ mod tests {
             .is_empty());
 
         // try adding the same deploy again
-        buffer.add_deploy(hash2, deploy2.clone());
+        buffer.add_deploy(block_time2, hash2, deploy2.clone());
 
         // it shouldn't be returned if we include block 1 in the past blocks
         assert!(buffer
@@ -435,14 +522,14 @@ mod tests {
         );
 
         // the previous check removed the deploy from the buffer, let's re-add it
-        buffer.add_deploy(hash2, deploy2);
+        buffer.add_deploy(block_time2, hash2, deploy2);
 
         // finalize the block
         buffer.finalized_block(block_hash1);
 
         // add more deploys
-        buffer.add_deploy(hash3, deploy3);
-        buffer.add_deploy(hash4, deploy4);
+        buffer.add_deploy(block_time2, hash3, deploy3);
+        buffer.add_deploy(block_time2, hash4, deploy4);
 
         let deploys = buffer.remaining_deploys(DeployConfig::default(), block_time2, no_blocks);
 
@@ -450,6 +537,63 @@ mod tests {
         assert_eq!(deploys.len(), 2);
         assert!(deploys.contains(&hash3));
         assert!(deploys.contains(&hash4));
+    }
+
+    #[test]
+    fn test_prune() {
+        let expired_time = Timestamp::from(201);
+        let creation_time = Timestamp::from(100);
+        let test_time = Timestamp::from(120);
+        let ttl = TimeDiff::from(100);
+
+        let mut rng = TestRng::new();
+        let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
+        let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
+        let (hash3, deploy3) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
+        let (hash4, deploy4) = generate_deploy(
+            &mut rng,
+            creation_time + Duration::from_secs(20).into(),
+            ttl,
+            vec![],
+        );
+        let (mut buffer, _effects) = create_test_buffer();
+
+        // pending
+        buffer.add_deploy(creation_time, hash1, deploy1);
+        buffer.add_deploy(creation_time, hash2, deploy2);
+        buffer.add_deploy(creation_time, hash3, deploy3);
+        buffer.add_deploy(creation_time, hash4, deploy4);
+
+        // pending => proposed
+        let block_hash1 = ProtoBlockHash::new(hash(random::<[u8; 16]>()));
+        let block_hash2 = ProtoBlockHash::new(hash(random::<[u8; 16]>()));
+        buffer.added_block(block_hash1, vec![hash1]);
+        buffer.added_block(block_hash2, vec![hash2]);
+
+        // proposed => finalized
+        buffer.finalized_block(block_hash1);
+
+        assert_eq!(buffer.pending.len(), 2);
+        assert_eq!(buffer.proposed.get(&block_hash2).unwrap().len(), 1);
+        assert_eq!(buffer.finalized.get(&block_hash1).unwrap().len(), 1);
+
+        // test for retained values
+        let pruned = buffer.prune(test_time);
+        assert_eq!(pruned, 0);
+
+        assert_eq!(buffer.pending.len(), 2);
+        assert_eq!(buffer.proposed.len(), 1);
+        assert_eq!(buffer.proposed.get(&block_hash2).unwrap().len(), 1);
+        assert_eq!(buffer.finalized.len(), 1);
+        assert_eq!(buffer.finalized.get(&block_hash1).unwrap().len(), 1);
+
+        // now move the clock to make some things expire
+        let pruned = buffer.prune(expired_time);
+        assert_eq!(pruned, 3);
+
+        assert_eq!(buffer.pending.len(), 1); // deploy4 is still valid
+        assert_eq!(buffer.proposed.len(), 0);
+        assert_eq!(buffer.finalized.len(), 0);
     }
 
     #[test]
@@ -464,10 +608,10 @@ mod tests {
         let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![hash1]);
 
         let mut blocks = HashSet::new();
-        let mut buffer = DeployBuffer::new();
+        let (mut buffer, _effects) = create_test_buffer();
 
         // add deploy2
-        buffer.add_deploy(hash2, deploy2);
+        buffer.add_deploy(creation_time, hash2, deploy2);
 
         // deploy2 has an unsatisfied dependency
         assert!(buffer
@@ -475,7 +619,7 @@ mod tests {
             .is_empty());
 
         // add deploy1
-        buffer.add_deploy(hash1, deploy1);
+        buffer.add_deploy(creation_time, hash1, deploy1);
 
         let deploys = buffer.remaining_deploys(DeployConfig::default(), block_time, blocks.clone());
         // only deploy1 should be returned, as it has no dependencies

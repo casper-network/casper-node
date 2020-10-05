@@ -241,6 +241,13 @@ impl<'de> Deserialize<'de> for TimeDiff {
 }
 
 #[cfg(test)]
+impl From<Duration> for TimeDiff {
+    fn from(duration: Duration) -> TimeDiff {
+        TimeDiff(duration.as_millis() as u64)
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::testing::TestRng;

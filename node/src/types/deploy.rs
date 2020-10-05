@@ -150,6 +150,12 @@ impl DeployHeader {
         self.ttl
     }
 
+    /// Has this deploy expired?
+    pub fn expired(&self, current_instant: Timestamp) -> bool {
+        let lifespan = self.timestamp + self.ttl;
+        lifespan < current_instant
+    }
+
     /// Price per gas unit for this deploy.
     pub fn gas_price(&self) -> u64 {
         self.gas_price
