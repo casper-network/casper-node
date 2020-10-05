@@ -1076,7 +1076,7 @@ fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
                 Ok(map.values().cloned().collect())
             }
             (CLType::PublicKey, CLType::URef) => {
-                let map: BTreeMap<casper_types::PublicKey, URef> = cl_value.to_owned().into_t()?;
+                let map: BTreeMap<PublicKey, URef> = cl_value.to_owned().into_t()?;
                 Ok(map.values().cloned().collect())
             }
             (CLType::Bool, CLType::Key) => {
@@ -1124,7 +1124,7 @@ fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
                 Ok(map.values().cloned().filter_map(Key::into_uref).collect())
             }
             (CLType::PublicKey, CLType::Key) => {
-                let map: BTreeMap<casper_types::PublicKey, Key> = cl_value.to_owned().into_t()?;
+                let map: BTreeMap<PublicKey, Key> = cl_value.to_owned().into_t()?;
                 Ok(map.values().cloned().filter_map(Key::into_uref).collect())
             }
             (_, _) => Ok(vec![]),

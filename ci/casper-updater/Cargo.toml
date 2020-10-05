@@ -1,0 +1,14 @@
+[package]
+authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
+description = "A tool to update versions of all published CasperLabs packages."
+edition = "2018"
+license-file = "../../LICENSE"
+name = "casper-updater"
+readme = "README.md"
+version = "0.2.0"
+
+[dependencies]
+clap = "2"
+lazy_static = "1"
+regex = "1"
+semver = "0.11"

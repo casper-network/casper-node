@@ -67,7 +67,7 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
-    fn get_caller(&self) -> casper_types::account::AccountHash {
+    fn get_caller(&self) -> AccountHash {
         self.context.get_caller()
     }
 

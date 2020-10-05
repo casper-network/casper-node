@@ -660,6 +660,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "casper-updater"
+version = "0.2.0"
+dependencies = [
+ "clap",
+ "lazy_static",
+ "regex",
+ "semver 0.11.0",
+]
+
+[[package]]
 name = "cast"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
