@@ -208,7 +208,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 #[test]
 fn should_fail_bonding_with_insufficient_funds() {
     let account_1_public_key: PublicKey = PublicKey::Ed25519([123; 32]);
-    let account_1_hash = AccountHash::new([124; 32]);
+    let account_1_hash = AccountHash::from(account_1_public_key);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -258,14 +258,15 @@ fn should_fail_bonding_with_insufficient_funds() {
 #[test]
 fn should_fail_unbonding_validator_with_locked_funds() {
     let account_1_public_key = PublicKey::Ed25519([42; 32]);
-    let account_1_hash = AccountHash::new([43; 32]);
+    let account_1_hash = AccountHash::from(account_1_public_key);
+    let account_1_balance = U512::from(1_000_000_000);
 
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account = GenesisAccount::new(
             account_1_public_key,
             account_1_hash,
-            Motes::new(GENESIS_VALIDATOR_STAKE.into()) * Motes::new(2.into()),
+            Motes::new(account_1_balance),
             Motes::new(GENESIS_VALIDATOR_STAKE.into()),
         );
         tmp.push(account);
@@ -299,7 +300,7 @@ fn should_fail_unbonding_validator_with_locked_funds() {
         .expect("unbonding purse should be an uref");
 
     let exec_request_2 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
+        account_1_hash,
         CONTRACT_WITHDRAW_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(42),
@@ -332,14 +333,12 @@ fn should_fail_unbonding_validator_with_locked_funds() {
 #[ignore]
 #[test]
 fn should_fail_unbonding_validator_without_bonding_first() {
-    let account_1_public_key = PublicKey::Ed25519([42; 32]);
-
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_WITHDRAW_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(42),
-            ARG_PUBLIC_KEY => account_1_public_key,
+            ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
             ARG_UNBOND_PURSE => Option::<URef>::None,
         },
     )

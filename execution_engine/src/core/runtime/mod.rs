@@ -2013,17 +2013,6 @@ where
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
 
-            auction::METHOD_QUASH_BID => {
-                let validator_public_keys: Vec<casper_types::PublicKey> =
-                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_KEYS)?;
-
-                runtime
-                    .quash_bid(validator_public_keys)
-                    .map_err(Self::reverter)?;
-
-                CLValue::from_t(()).map_err(Self::reverter)?
-            }
-
             auction::METHOD_RUN_AUCTION => {
                 runtime.run_auction().map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)?

@@ -26,6 +26,11 @@ impl Timestamp {
         Timestamp(millis)
     }
 
+    /// Returns the time that has elapsed since this timestamp
+    pub fn elapsed(&self) -> TimeDiff {
+        Timestamp::now() - *self
+    }
+
     /// Returns a zero timestamp
     pub fn zero() -> Self {
         Timestamp(0)

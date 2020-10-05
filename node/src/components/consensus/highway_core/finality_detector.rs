@@ -3,12 +3,21 @@ mod rewards;
 
 use std::iter;
 
-use super::{
-    highway::Highway,
-    state::{Observation, State, Weight},
-    validators::ValidatorIndex,
+use tracing::trace;
+
+use crate::{
+    components::consensus::{
+        consensus_protocol::FinalizedBlock,
+        highway_core::{
+            highway::Highway,
+            state::{Observation, State, Weight},
+            validators::ValidatorIndex,
+        },
+        traits::Context,
+        EraEnd,
+    },
+    types::Timestamp,
 };
-use crate::components::consensus::{consensus_protocol::FinalizedBlock, traits::Context, EraEnd};
 use horizon::Horizon;
 
 /// An error returned if the configured fault tolerance has been exceeded.
@@ -51,7 +60,7 @@ impl<C: Context> FinalityDetector<C> {
             return Err(FttExceeded(fault_w));
         }
         Ok(iter::from_fn(move || {
-            let bhash = self.next_finalized(state, fault_w)?;
+            let bhash = self.next_finalized(state)?;
             let to_id = |vidx: ValidatorIndex| {
                 let opt_validator = highway.validators().get_by_index(vidx);
                 opt_validator.unwrap().id().clone() // Index exists, since we have votes from them.
@@ -81,45 +90,37 @@ impl<C: Context> FinalityDetector<C> {
     }
 
     /// Returns the next block, if any has been finalized since the last call.
-    pub(super) fn next_finalized<'a>(
-        &mut self,
-        state: &'a State<C>,
-        fault_w: Weight,
-    ) -> Option<&'a C::Hash> {
+    pub(super) fn next_finalized<'a>(&mut self, state: &'a State<C>) -> Option<&'a C::Hash> {
+        let start_time = Timestamp::now();
         let candidate = self.next_candidate(state)?;
         // For `lvl` → ∞, the quorum converges to a fixed value. After level 63, it is closer
         // to that limit than 1/2^-63. This won't make a difference in practice, so there is no
         // point looking for higher summits.
         let mut target_lvl = 63;
         while target_lvl > 0 {
-            let lvl = self.find_summit(target_lvl, fault_w, candidate, state);
+            trace!(%target_lvl, "looking for summit");
+            let lvl = self.find_summit(target_lvl, candidate, state);
             if lvl == target_lvl {
                 self.last_finalized = Some(candidate.clone());
+                let elapsed = start_time.elapsed();
+                trace!(%elapsed, "found finalized block");
                 return Some(candidate);
             }
             // The required quorum increases with decreasing level, so choosing `target_lvl`
             // greater than `lvl` would always yield a summit of level `lvl` or lower.
             target_lvl = lvl;
         }
+        let elapsed = start_time.elapsed();
+        trace!(%elapsed, "found no finalized block");
         None
     }
 
     /// Returns the number of levels of the highest summit with a quorum that a `target_lvl` summit
     /// would need for the desired FTT. If the returned number is `target_lvl` that means the
     /// `candidate` is finalized. If not, we need to retry with a lower `target_lvl`.
-    ///
-    /// The faulty validators are considered to be part of any summit, for consistency: That way,
-    /// running the finality detector with the same FTT on a later state always returns at least as
-    /// many values as on the earlier state, as long as the FTT has not been exceeded.
-    fn find_summit(
-        &self,
-        target_lvl: usize,
-        fault_w: Weight,
-        candidate: &C::Hash,
-        state: &State<C>,
-    ) -> usize {
+    fn find_summit(&self, target_lvl: usize, candidate: &C::Hash, state: &State<C>) -> usize {
         let total_w = state.total_weight();
-        let quorum = self.quorum_for_lvl(target_lvl, total_w) - fault_w;
+        let quorum = self.quorum_for_lvl(target_lvl, total_w);
         let latest = state.panorama().iter().map(Observation::correct).collect();
         let sec0 = Horizon::level0(candidate, &state, &latest);
         let horizons_iter = iter::successors(Some(sec0), |sec| sec.next(quorum));
@@ -192,24 +193,15 @@ mod tests {
         //
         // `b0`, `a0` are level 0 for `B0`. `a0`, `b1` are level 1.
         // So the fault tolerance of `B0` is 2 * (9 - 10/2) * (1 - 1/2) = 4.
-        assert_eq!(None, fd6.next_finalized(&state, 0.into()));
-        assert_eq!(Some(&b0), fd4.next_finalized(&state, 0.into()));
-        assert_eq!(None, fd4.next_finalized(&state, 0.into()));
+        assert_eq!(None, fd6.next_finalized(&state));
+        assert_eq!(Some(&b0), fd4.next_finalized(&state));
+        assert_eq!(None, fd4.next_finalized(&state));
 
         // Adding another level to the summit increases `B0`'s fault tolerance to 6.
         let _a2 = add_vote!(state, rng, ALICE, None; a1, b1, c1)?;
         let _b2 = add_vote!(state, rng, BOB, None; a1, b1, c1)?;
-        assert_eq!(Some(&b0), fd6.next_finalized(&state, 0.into()));
-        assert_eq!(None, fd6.next_finalized(&state, 0.into()));
-
-        // If Bob equivocates, the FTT 4 is exceeded, but she counts as being part of any summit,
-        // so `A0` and `A1` get FTT 6. (Bob voted for `A1` and against `B1` in `b2`.)
-        assert_eq!(Weight(0), state.faulty_weight());
-        let _e2 = add_vote!(state, rng, BOB, None; a1, b1, c1)?;
-        assert_eq!(Weight(4), state.faulty_weight());
-        assert_eq!(Some(&a0), fd6.next_finalized(&state, 4.into()));
-        assert_eq!(Some(&a1), fd6.next_finalized(&state, 4.into()));
-        assert_eq!(None, fd6.next_finalized(&state, 4.into()));
+        assert_eq!(Some(&b0), fd6.next_finalized(&state));
+        assert_eq!(None, fd6.next_finalized(&state));
         Ok(())
     }
 
@@ -235,16 +227,16 @@ mod tests {
         let _c1_prime = add_vote!(state, rng, CAROL, None; N, b0, c0)?;
         assert_eq!(Weight(1), state.faulty_weight());
         let b1 = add_vote!(state, rng, BOB, 0xB1; a0, b0, N)?;
-        assert_eq!(Some(&b0), fd4.next_finalized(&state, 1.into()));
+        assert_eq!(Some(&b0), fd4.next_finalized(&state));
         let a1 = add_vote!(state, rng, ALICE, 0xA1; a0, b0, F)?;
         let b2 = add_vote!(state, rng, BOB, None; a1, b1, F)?;
         let a2 = add_vote!(state, rng, ALICE, 0xA2; a1, b2, F)?;
-        assert_eq!(Some(&a0), fd4.next_finalized(&state, 1.into()));
-        assert_eq!(Some(&a1), fd4.next_finalized(&state, 1.into()));
-        // Finalize A2. It should not report CAROL as equivocator anymore.
+        assert_eq!(Some(&a0), fd4.next_finalized(&state));
+        assert_eq!(Some(&a1), fd4.next_finalized(&state));
+        // Finalize A2.
         let b3 = add_vote!(state, rng, BOB, None; a2, b2, F)?;
         let _a3 = add_vote!(state, rng, ALICE, None; a2, b3, F)?;
-        assert_eq!(Some(&a2), fd4.next_finalized(&state, 1.into()));
+        assert_eq!(Some(&a2), fd4.next_finalized(&state));
 
         // Test that an initial block reports equivocators as well.
         let mut bstate: State<TestContext> = State::new_test(&[Weight(5), Weight(4), Weight(1)], 0);
@@ -254,7 +246,7 @@ mod tests {
         let a0 = add_vote!(bstate, rng, ALICE, 0xA0; N, N, F)?;
         let b0 = add_vote!(bstate, rng, BOB, None; a0, N, F)?;
         let _a1 = add_vote!(bstate, rng, ALICE, None; a0, b0, F)?;
-        assert_eq!(Some(&a0), fde4.next_finalized(&bstate, 1.into()));
+        assert_eq!(Some(&a0), fde4.next_finalized(&bstate));
         Ok(())
     }
 }

@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use lazy_static::lazy_static;
 use num_rational::Ratio;
 
 use casper_engine_test_support::{
@@ -28,17 +29,20 @@ const TRANSFER_AMOUNT: u64 = 250_000_000;
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
 const VALIDATOR_1: PublicKey = PublicKey::Ed25519([3; 32]);
-const VALIDATOR_1_ADDR: AccountHash = AccountHash::new([4; 32]);
 const VALIDATOR_2: PublicKey = PublicKey::Ed25519([5; 32]);
-const VALIDATOR_2_ADDR: AccountHash = AccountHash::new([6; 32]);
 const VALIDATOR_3: PublicKey = PublicKey::Ed25519([7; 32]);
-const VALIDATOR_3_ADDR: AccountHash = AccountHash::new([8; 32]);
 const DELEGATOR_1: PublicKey = PublicKey::Ed25519([204; 32]);
-const DELEGATOR_1_ADDR: AccountHash = AccountHash::new([205; 32]);
 const DELEGATOR_2: PublicKey = PublicKey::Ed25519([206; 32]);
-const DELEGATOR_2_ADDR: AccountHash = AccountHash::new([207; 32]);
 const DELEGATOR_3: PublicKey = PublicKey::Ed25519([208; 32]);
-const DELEGATOR_3_ADDR: AccountHash = AccountHash::new([209; 32]);
+
+lazy_static! {
+    static ref VALIDATOR_1_ADDR: AccountHash = VALIDATOR_1.into();
+    static ref VALIDATOR_2_ADDR: AccountHash = VALIDATOR_2.into();
+    static ref VALIDATOR_3_ADDR: AccountHash = VALIDATOR_3.into();
+    static ref DELEGATOR_1_ADDR: AccountHash = DELEGATOR_1.into();
+    static ref DELEGATOR_2_ADDR: AccountHash = DELEGATOR_2.into();
+    static ref DELEGATOR_3_ADDR: AccountHash = DELEGATOR_3.into();
+}
 
 fn withdraw_validator_reward(
     builder: &mut InMemoryWasmTestBuilder,
@@ -123,7 +127,7 @@ fn should_distribute_delegation_rate_zero() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => SYSTEM_ADDR,
+            "target" =>SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -133,7 +137,7 @@ fn should_distribute_delegation_rate_zero() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => VALIDATOR_1_ADDR,
+            "target" => *VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -143,7 +147,7 @@ fn should_distribute_delegation_rate_zero() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => DELEGATOR_1_ADDR,
+            "target" => *DELEGATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -153,14 +157,14 @@ fn should_distribute_delegation_rate_zero() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => DELEGATOR_2_ADDR,
+            "target" => *DELEGATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
     .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_1_ADDR,
+        *VALIDATOR_1_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
@@ -171,7 +175,7 @@ fn should_distribute_delegation_rate_zero() {
     .build();
 
     let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
-        DELEGATOR_1_ADDR,
+        *DELEGATOR_1_ADDR,
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
@@ -182,7 +186,7 @@ fn should_distribute_delegation_rate_zero() {
     .build();
 
     let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
-        DELEGATOR_2_ADDR,
+        *DELEGATOR_2_ADDR,
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
@@ -233,18 +237,18 @@ fn should_distribute_delegation_rate_zero() {
     builder.exec(distribute_request).commit().expect_success();
 
     let validator_1_balance =
-        withdraw_validator_reward(&mut builder, VALIDATOR_1_ADDR, VALIDATOR_1);
+        withdraw_validator_reward(&mut builder, *VALIDATOR_1_ADDR, VALIDATOR_1);
     let expected_validator_1_balance =
         (expected_total_reward * participant_portion + remainders).to_integer();
     assert_eq!(validator_1_balance, expected_validator_1_balance);
 
     let delegator_1_balance =
-        withdraw_delegator_reward(&mut builder, DELEGATOR_1_ADDR, VALIDATOR_1, DELEGATOR_1);
+        withdraw_delegator_reward(&mut builder, *DELEGATOR_1_ADDR, VALIDATOR_1, DELEGATOR_1);
     let expected_delegator_1_balance = (expected_total_reward * participant_portion).to_integer();
     assert_eq!(delegator_1_balance, expected_delegator_1_balance);
 
     let delegator_2_balance =
-        withdraw_delegator_reward(&mut builder, DELEGATOR_2_ADDR, VALIDATOR_1, DELEGATOR_2);
+        withdraw_delegator_reward(&mut builder, *DELEGATOR_2_ADDR, VALIDATOR_1, DELEGATOR_2);
     let expected_delegator_2_balance = (expected_total_reward * participant_portion).to_integer();
     assert_eq!(delegator_2_balance, expected_delegator_2_balance);
 
@@ -253,15 +257,15 @@ fn should_distribute_delegation_rate_zero() {
 
     // Subsequently, there should be no more rewards
     let validator_1_balance =
-        withdraw_validator_reward(&mut builder, VALIDATOR_1_ADDR, VALIDATOR_1);
+        withdraw_validator_reward(&mut builder, *VALIDATOR_1_ADDR, VALIDATOR_1);
     assert!(validator_1_balance.is_zero());
 
     let delegator_1_balance =
-        withdraw_delegator_reward(&mut builder, DELEGATOR_1_ADDR, VALIDATOR_1, DELEGATOR_1);
+        withdraw_delegator_reward(&mut builder, *DELEGATOR_1_ADDR, VALIDATOR_1, DELEGATOR_1);
     assert!(delegator_1_balance.is_zero());
 
     let delegator_2_balance =
-        withdraw_delegator_reward(&mut builder, DELEGATOR_2_ADDR, VALIDATOR_1, DELEGATOR_2);
+        withdraw_delegator_reward(&mut builder, *DELEGATOR_2_ADDR, VALIDATOR_1, DELEGATOR_2);
     assert!(delegator_2_balance.is_zero());
 }
 
@@ -288,7 +292,7 @@ fn should_distribute_delegation_rate_half() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => SYSTEM_ADDR,
+            "target" =>SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -298,7 +302,7 @@ fn should_distribute_delegation_rate_half() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => VALIDATOR_1_ADDR,
+            "target" => *VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -308,7 +312,7 @@ fn should_distribute_delegation_rate_half() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => DELEGATOR_1_ADDR,
+            "target" => *DELEGATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -318,14 +322,14 @@ fn should_distribute_delegation_rate_half() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => DELEGATOR_2_ADDR,
+            "target" => *DELEGATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
     .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_1_ADDR,
+        *VALIDATOR_1_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
@@ -336,7 +340,7 @@ fn should_distribute_delegation_rate_half() {
     .build();
 
     let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
-        DELEGATOR_1_ADDR,
+        *DELEGATOR_1_ADDR,
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
@@ -347,7 +351,7 @@ fn should_distribute_delegation_rate_half() {
     .build();
 
     let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
-        DELEGATOR_2_ADDR,
+        *DELEGATOR_2_ADDR,
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
@@ -398,18 +402,18 @@ fn should_distribute_delegation_rate_half() {
     builder.exec(distribute_request).commit().expect_success();
 
     let validator_1_balance =
-        withdraw_validator_reward(&mut builder, VALIDATOR_1_ADDR, VALIDATOR_1);
+        withdraw_validator_reward(&mut builder, *VALIDATOR_1_ADDR, VALIDATOR_1);
     let expected_validator_1_balance =
         (expected_total_reward * validator_share + remainders).to_integer();
     assert_eq!(validator_1_balance, expected_validator_1_balance);
 
     let delegator_1_balance =
-        withdraw_delegator_reward(&mut builder, DELEGATOR_1_ADDR, VALIDATOR_1, DELEGATOR_1);
+        withdraw_delegator_reward(&mut builder, *DELEGATOR_1_ADDR, VALIDATOR_1, DELEGATOR_1);
     let expected_delegator_1_balance = (expected_total_reward * delegator_shares).to_integer();
     assert_eq!(delegator_1_balance, expected_delegator_1_balance);
 
     let delegator_2_balance =
-        withdraw_delegator_reward(&mut builder, DELEGATOR_2_ADDR, VALIDATOR_1, DELEGATOR_2);
+        withdraw_delegator_reward(&mut builder, *DELEGATOR_2_ADDR, VALIDATOR_1, DELEGATOR_2);
     let expected_delegator_2_balance = (expected_total_reward * delegator_shares).to_integer();
     assert_eq!(delegator_2_balance, expected_delegator_2_balance);
 
@@ -433,7 +437,7 @@ fn should_distribute_delegation_rate_full() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => SYSTEM_ADDR,
+            "target" =>SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -443,7 +447,7 @@ fn should_distribute_delegation_rate_full() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => VALIDATOR_1_ADDR,
+            "target" => *VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -453,7 +457,7 @@ fn should_distribute_delegation_rate_full() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => DELEGATOR_1_ADDR,
+            "target" => *DELEGATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -463,14 +467,14 @@ fn should_distribute_delegation_rate_full() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => DELEGATOR_2_ADDR,
+            "target" => *DELEGATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
     .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_1_ADDR,
+        *VALIDATOR_1_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
@@ -481,7 +485,7 @@ fn should_distribute_delegation_rate_full() {
     .build();
 
     let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
-        DELEGATOR_1_ADDR,
+        *DELEGATOR_1_ADDR,
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
@@ -492,7 +496,7 @@ fn should_distribute_delegation_rate_full() {
     .build();
 
     let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
-        DELEGATOR_2_ADDR,
+        *DELEGATOR_2_ADDR,
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
@@ -543,18 +547,18 @@ fn should_distribute_delegation_rate_full() {
     builder.exec(distribute_request).commit().expect_success();
 
     let validator_1_balance =
-        withdraw_validator_reward(&mut builder, VALIDATOR_1_ADDR, VALIDATOR_1);
+        withdraw_validator_reward(&mut builder, *VALIDATOR_1_ADDR, VALIDATOR_1);
     let expected_validator_1_balance =
         (expected_total_reward * Ratio::from(U512::one())).to_integer();
     assert_eq!(validator_1_balance, expected_validator_1_balance);
 
     let delegator_1_balance =
-        withdraw_delegator_reward(&mut builder, DELEGATOR_1_ADDR, VALIDATOR_1, DELEGATOR_1);
+        withdraw_delegator_reward(&mut builder, *DELEGATOR_1_ADDR, VALIDATOR_1, DELEGATOR_1);
     let expected_delegator_1_balance = U512::zero();
     assert_eq!(delegator_1_balance, expected_delegator_1_balance);
 
     let delegator_2_balance =
-        withdraw_delegator_reward(&mut builder, DELEGATOR_2_ADDR, VALIDATOR_1, DELEGATOR_2);
+        withdraw_delegator_reward(&mut builder, *DELEGATOR_2_ADDR, VALIDATOR_1, DELEGATOR_2);
     let expected_delegator_2_balance = U512::zero();
     assert_eq!(delegator_2_balance, expected_delegator_2_balance);
 
@@ -584,7 +588,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => SYSTEM_ADDR,
+            "target" =>SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -594,7 +598,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => VALIDATOR_1_ADDR,
+            "target" =>*VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -604,7 +608,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => DELEGATOR_1_ADDR,
+            "target" =>*DELEGATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -614,14 +618,14 @@ fn should_distribute_uneven_delegation_rate_zero() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => DELEGATOR_2_ADDR,
+            "target" =>*DELEGATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
     .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_1_ADDR,
+        *VALIDATOR_1_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
@@ -632,7 +636,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
     .build();
 
     let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
-        DELEGATOR_1_ADDR,
+        *DELEGATOR_1_ADDR,
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
@@ -643,7 +647,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
     .build();
 
     let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
-        DELEGATOR_2_ADDR,
+        *DELEGATOR_2_ADDR,
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
@@ -694,18 +698,18 @@ fn should_distribute_uneven_delegation_rate_zero() {
     builder.exec(distribute_request).commit().expect_success();
 
     let validator_1_balance =
-        withdraw_validator_reward(&mut builder, VALIDATOR_1_ADDR, VALIDATOR_1);
+        withdraw_validator_reward(&mut builder, *VALIDATOR_1_ADDR, VALIDATOR_1);
     let expected_validator_1_balance =
         (expected_total_reward * validator_1_portion + remainder).to_integer();
     assert_eq!(validator_1_balance, expected_validator_1_balance);
 
     let delegator_1_balance =
-        withdraw_delegator_reward(&mut builder, DELEGATOR_1_ADDR, VALIDATOR_1, DELEGATOR_1);
+        withdraw_delegator_reward(&mut builder, *DELEGATOR_1_ADDR, VALIDATOR_1, DELEGATOR_1);
     let expected_delegator_1_balance = (expected_total_reward * delegator_1_portion).to_integer();
     assert_eq!(delegator_1_balance, expected_delegator_1_balance);
 
     let delegator_2_balance =
-        withdraw_delegator_reward(&mut builder, DELEGATOR_2_ADDR, VALIDATOR_1, DELEGATOR_2);
+        withdraw_delegator_reward(&mut builder, *DELEGATOR_2_ADDR, VALIDATOR_1, DELEGATOR_2);
     let expected_delegator_2_balance = (expected_total_reward * delegator_2_portion).to_integer();
     assert_eq!(delegator_2_balance, expected_delegator_2_balance);
 
@@ -735,7 +739,7 @@ fn should_distribute_by_factor() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => SYSTEM_ADDR,
+            "target" =>SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -745,7 +749,7 @@ fn should_distribute_by_factor() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => VALIDATOR_1_ADDR,
+            "target" =>*VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -755,7 +759,7 @@ fn should_distribute_by_factor() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => VALIDATOR_2_ADDR,
+            "target" =>*VALIDATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -765,14 +769,14 @@ fn should_distribute_by_factor() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => VALIDATOR_3_ADDR,
+            "target" =>*VALIDATOR_3_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
     .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_1_ADDR,
+        *VALIDATOR_1_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
@@ -783,7 +787,7 @@ fn should_distribute_by_factor() {
     .build();
 
     let validator_2_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_2_ADDR,
+        *VALIDATOR_2_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_2_STAKE),
@@ -794,7 +798,7 @@ fn should_distribute_by_factor() {
     .build();
 
     let validator_3_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_3_ADDR,
+        *VALIDATOR_3_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_3_STAKE),
@@ -847,17 +851,17 @@ fn should_distribute_by_factor() {
     builder.exec(distribute_request).commit().expect_success();
 
     let validator_1_balance =
-        withdraw_validator_reward(&mut builder, VALIDATOR_1_ADDR, VALIDATOR_1);
+        withdraw_validator_reward(&mut builder, *VALIDATOR_1_ADDR, VALIDATOR_1);
     let expected_validator_1_balance = (expected_total_reward * one_third).to_integer();
     assert_eq!(validator_1_balance, expected_validator_1_balance);
 
     let validator_2_balance =
-        withdraw_validator_reward(&mut builder, VALIDATOR_2_ADDR, VALIDATOR_2);
+        withdraw_validator_reward(&mut builder, *VALIDATOR_2_ADDR, VALIDATOR_2);
     let expected_validator_2_balance = (expected_total_reward * one_third).to_integer();
     assert_eq!(validator_2_balance, expected_validator_2_balance);
 
     let validator_3_balance =
-        withdraw_validator_reward(&mut builder, VALIDATOR_3_ADDR, VALIDATOR_3);
+        withdraw_validator_reward(&mut builder, *VALIDATOR_3_ADDR, VALIDATOR_3);
     let expected_validator_3_balance = (expected_total_reward * one_third).to_integer();
     assert_eq!(validator_3_balance, expected_validator_3_balance);
 
@@ -888,7 +892,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => SYSTEM_ADDR,
+            "target" =>SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -898,7 +902,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => VALIDATOR_1_ADDR,
+            "target" =>*VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -908,7 +912,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => VALIDATOR_2_ADDR,
+            "target" =>*VALIDATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -918,14 +922,14 @@ fn should_distribute_by_factor_regardless_of_stake() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => VALIDATOR_3_ADDR,
+            "target" =>*VALIDATOR_3_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
     .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_1_ADDR,
+        *VALIDATOR_1_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
@@ -936,7 +940,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
     .build();
 
     let validator_2_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_2_ADDR,
+        *VALIDATOR_2_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_2_STAKE),
@@ -947,7 +951,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
     .build();
 
     let validator_3_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_3_ADDR,
+        *VALIDATOR_3_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_3_STAKE),
@@ -1000,17 +1004,17 @@ fn should_distribute_by_factor_regardless_of_stake() {
     builder.exec(distribute_request).commit().expect_success();
 
     let validator_1_balance =
-        withdraw_validator_reward(&mut builder, VALIDATOR_1_ADDR, VALIDATOR_1);
+        withdraw_validator_reward(&mut builder, *VALIDATOR_1_ADDR, VALIDATOR_1);
     let expected_validator_1_balance = (expected_total_reward * one_third).to_integer();
     assert_eq!(validator_1_balance, expected_validator_1_balance);
 
     let validator_2_balance =
-        withdraw_validator_reward(&mut builder, VALIDATOR_2_ADDR, VALIDATOR_2);
+        withdraw_validator_reward(&mut builder, *VALIDATOR_2_ADDR, VALIDATOR_2);
     let expected_validator_2_balance = (expected_total_reward * one_third).to_integer();
     assert_eq!(validator_2_balance, expected_validator_2_balance);
 
     let validator_3_balance =
-        withdraw_validator_reward(&mut builder, VALIDATOR_3_ADDR, VALIDATOR_3);
+        withdraw_validator_reward(&mut builder, *VALIDATOR_3_ADDR, VALIDATOR_3);
     let expected_validator_3_balance = (expected_total_reward * one_third).to_integer();
     assert_eq!(validator_3_balance, expected_validator_3_balance);
 
@@ -1043,7 +1047,7 @@ fn should_distribute_by_factor_uneven() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => SYSTEM_ADDR,
+            "target" =>SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1053,7 +1057,7 @@ fn should_distribute_by_factor_uneven() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => VALIDATOR_1_ADDR,
+            "target" =>*VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1063,7 +1067,7 @@ fn should_distribute_by_factor_uneven() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => VALIDATOR_2_ADDR,
+            "target" =>*VALIDATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1073,14 +1077,14 @@ fn should_distribute_by_factor_uneven() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => VALIDATOR_3_ADDR,
+            "target" =>*VALIDATOR_3_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
     .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_1_ADDR,
+        *VALIDATOR_1_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
@@ -1091,7 +1095,7 @@ fn should_distribute_by_factor_uneven() {
     .build();
 
     let validator_2_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_2_ADDR,
+        *VALIDATOR_2_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_2_STAKE),
@@ -1102,7 +1106,7 @@ fn should_distribute_by_factor_uneven() {
     .build();
 
     let validator_3_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_3_ADDR,
+        *VALIDATOR_3_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_3_STAKE),
@@ -1155,17 +1159,17 @@ fn should_distribute_by_factor_uneven() {
     builder.exec(distribute_request).commit().expect_success();
 
     let validator_1_balance =
-        withdraw_validator_reward(&mut builder, VALIDATOR_1_ADDR, VALIDATOR_1);
+        withdraw_validator_reward(&mut builder, *VALIDATOR_1_ADDR, VALIDATOR_1);
     let expected_validator_1_balance = (expected_total_reward * one_half).to_integer();
     assert_eq!(validator_1_balance, expected_validator_1_balance);
 
     let validator_2_balance =
-        withdraw_validator_reward(&mut builder, VALIDATOR_2_ADDR, VALIDATOR_2);
+        withdraw_validator_reward(&mut builder, *VALIDATOR_2_ADDR, VALIDATOR_2);
     let expected_validator_2_balance = (expected_total_reward * three_tenths).to_integer();
     assert_eq!(validator_2_balance, expected_validator_2_balance);
 
     let validator_3_balance =
-        withdraw_validator_reward(&mut builder, VALIDATOR_3_ADDR, VALIDATOR_3);
+        withdraw_validator_reward(&mut builder, *VALIDATOR_3_ADDR, VALIDATOR_3);
     let expected_validator_3_balance = (expected_total_reward * one_fifth).to_integer();
     assert_eq!(validator_3_balance, expected_validator_3_balance);
 
@@ -1202,7 +1206,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => SYSTEM_ADDR,
+            "target" =>SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1212,7 +1216,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => VALIDATOR_1_ADDR,
+            "target" =>*VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1222,7 +1226,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => VALIDATOR_2_ADDR,
+            "target" =>*VALIDATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1232,7 +1236,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => VALIDATOR_3_ADDR,
+            "target" =>*VALIDATOR_3_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1242,7 +1246,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => DELEGATOR_1_ADDR,
+            "target" =>*DELEGATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1252,7 +1256,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => DELEGATOR_2_ADDR,
+            "target" =>*DELEGATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1262,14 +1266,14 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => DELEGATOR_3_ADDR,
+            "target" =>*DELEGATOR_3_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
     .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_1_ADDR,
+        *VALIDATOR_1_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
@@ -1280,7 +1284,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     .build();
 
     let validator_2_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_2_ADDR,
+        *VALIDATOR_2_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_2_STAKE),
@@ -1291,7 +1295,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     .build();
 
     let validator_3_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_3_ADDR,
+        *VALIDATOR_3_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_3_STAKE),
@@ -1302,7 +1306,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     .build();
 
     let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
-        DELEGATOR_1_ADDR,
+        *DELEGATOR_1_ADDR,
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
@@ -1313,7 +1317,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     .build();
 
     let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
-        DELEGATOR_2_ADDR,
+        *DELEGATOR_2_ADDR,
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
@@ -1324,7 +1328,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     .build();
 
     let delegator_3_delegate_request = ExecuteRequestBuilder::standard(
-        DELEGATOR_3_ADDR,
+        *DELEGATOR_3_ADDR,
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_3_STAKE),
@@ -1383,22 +1387,22 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     builder.exec(distribute_request).commit().expect_success();
 
     let validator_1_balance =
-        withdraw_validator_reward(&mut builder, VALIDATOR_1_ADDR, VALIDATOR_1);
+        withdraw_validator_reward(&mut builder, *VALIDATOR_1_ADDR, VALIDATOR_1);
 
     let validator_2_balance =
-        withdraw_validator_reward(&mut builder, VALIDATOR_2_ADDR, VALIDATOR_2);
+        withdraw_validator_reward(&mut builder, *VALIDATOR_2_ADDR, VALIDATOR_2);
 
     let validator_3_balance =
-        withdraw_validator_reward(&mut builder, VALIDATOR_3_ADDR, VALIDATOR_3);
+        withdraw_validator_reward(&mut builder, *VALIDATOR_3_ADDR, VALIDATOR_3);
 
     let delegator_1_balance =
-        withdraw_delegator_reward(&mut builder, DELEGATOR_1_ADDR, VALIDATOR_1, DELEGATOR_1);
+        withdraw_delegator_reward(&mut builder, *DELEGATOR_1_ADDR, VALIDATOR_1, DELEGATOR_1);
 
     let delegator_2_balance =
-        withdraw_delegator_reward(&mut builder, DELEGATOR_2_ADDR, VALIDATOR_1, DELEGATOR_2);
+        withdraw_delegator_reward(&mut builder, *DELEGATOR_2_ADDR, VALIDATOR_1, DELEGATOR_2);
 
     let delegator_3_balance =
-        withdraw_delegator_reward(&mut builder, DELEGATOR_3_ADDR, VALIDATOR_2, DELEGATOR_3);
+        withdraw_delegator_reward(&mut builder, *DELEGATOR_3_ADDR, VALIDATOR_2, DELEGATOR_3);
 
     let total_payout: U512 = [
         validator_1_balance,
@@ -1446,7 +1450,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => SYSTEM_ADDR,
+            "target" =>SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1456,7 +1460,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => VALIDATOR_1_ADDR,
+            "target" =>*VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1466,7 +1470,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => VALIDATOR_2_ADDR,
+            "target" =>*VALIDATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1476,7 +1480,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => VALIDATOR_3_ADDR,
+            "target" =>*VALIDATOR_3_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1486,7 +1490,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => DELEGATOR_1_ADDR,
+            "target" =>*DELEGATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1496,7 +1500,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => DELEGATOR_2_ADDR,
+            "target" =>*DELEGATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1506,14 +1510,14 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => DELEGATOR_3_ADDR,
+            "target" =>*DELEGATOR_3_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
     .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_1_ADDR,
+        *VALIDATOR_1_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
@@ -1524,7 +1528,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     .build();
 
     let validator_2_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_2_ADDR,
+        *VALIDATOR_2_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_2_STAKE),
@@ -1535,7 +1539,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     .build();
 
     let validator_3_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_3_ADDR,
+        *VALIDATOR_3_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_3_STAKE),
@@ -1546,7 +1550,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     .build();
 
     let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
-        DELEGATOR_1_ADDR,
+        *DELEGATOR_1_ADDR,
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
@@ -1557,7 +1561,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     .build();
 
     let delegator_1_validator_2_delegate_request = ExecuteRequestBuilder::standard(
-        DELEGATOR_1_ADDR,
+        *DELEGATOR_1_ADDR,
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
@@ -1568,7 +1572,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     .build();
 
     let delegator_1_validator_3_delegate_request = ExecuteRequestBuilder::standard(
-        DELEGATOR_1_ADDR,
+        *DELEGATOR_1_ADDR,
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
@@ -1627,22 +1631,22 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     builder.exec(distribute_request).commit().expect_success();
 
     let validator_1_balance =
-        withdraw_validator_reward(&mut builder, VALIDATOR_1_ADDR, VALIDATOR_1);
+        withdraw_validator_reward(&mut builder, *VALIDATOR_1_ADDR, VALIDATOR_1);
     let expected_validator_1_balance = (expected_total_reward * validator_1_portion).to_integer();
     assert_eq!(validator_1_balance, expected_validator_1_balance);
 
     let validator_2_balance =
-        withdraw_validator_reward(&mut builder, VALIDATOR_2_ADDR, VALIDATOR_2);
+        withdraw_validator_reward(&mut builder, *VALIDATOR_2_ADDR, VALIDATOR_2);
     let expected_validator_2_balance = (expected_total_reward * validator_2_portion).to_integer();
     assert_eq!(validator_2_balance, expected_validator_2_balance);
 
     let validator_3_balance =
-        withdraw_validator_reward(&mut builder, VALIDATOR_3_ADDR, VALIDATOR_3);
+        withdraw_validator_reward(&mut builder, *VALIDATOR_3_ADDR, VALIDATOR_3);
     let expected_validator_3_balance = (expected_total_reward * validator_3_portion).to_integer();
     assert_eq!(validator_3_balance, expected_validator_3_balance);
 
     let delegator_1_validator_1_balance =
-        withdraw_delegator_reward(&mut builder, DELEGATOR_1_ADDR, VALIDATOR_1, DELEGATOR_1);
+        withdraw_delegator_reward(&mut builder, *DELEGATOR_1_ADDR, VALIDATOR_1, DELEGATOR_1);
     let expected_delegator_1_validator_1_balance =
         (expected_total_reward * delegator_1_validator_1_portion).to_integer();
     assert_eq!(
@@ -1651,7 +1655,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     );
 
     let delegator_1_validator_2_balance =
-        withdraw_delegator_reward(&mut builder, DELEGATOR_1_ADDR, VALIDATOR_2, DELEGATOR_1);
+        withdraw_delegator_reward(&mut builder, *DELEGATOR_1_ADDR, VALIDATOR_2, DELEGATOR_1);
     let expected_delegator_1_validator_2_balance =
         (expected_total_reward * delegator_1_validator_2_portion).to_integer();
     assert_eq!(
@@ -1660,7 +1664,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     );
 
     let delegator_1_validator_3_balance =
-        withdraw_delegator_reward(&mut builder, DELEGATOR_1_ADDR, VALIDATOR_3, DELEGATOR_1);
+        withdraw_delegator_reward(&mut builder, *DELEGATOR_1_ADDR, VALIDATOR_3, DELEGATOR_1);
     let expected_delegator_1_validator_3_balance =
         (expected_total_reward * delegator_1_validator_3_portion).to_integer();
     assert_eq!(
@@ -1681,4 +1685,256 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     .sum();
 
     assert_eq!(total_payout, expected_total_reward_integer - remainder);
+}
+
+#[ignore]
+#[should_panic]
+#[test]
+fn should_prevent_theft_of_validator_reward() {
+    const VALIDATOR_1_STAKE: u64 = 1_000_000;
+    const DELEGATOR_1_STAKE: u64 = 1_000_000;
+    const DELEGATOR_2_STAKE: u64 = 1_000_000;
+
+    const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
+
+    let system_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            "target" =>SYSTEM_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            "target" => *VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let delegator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            "target" => *DELEGATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let delegator_2_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            "target" => *DELEGATOR_2_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
+            ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
+            ARG_PUBLIC_KEY => VALIDATOR_1,
+        },
+    )
+    .build();
+
+    let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
+            ARG_VALIDATOR => VALIDATOR_1,
+            ARG_DELEGATOR => DELEGATOR_1,
+        },
+    )
+    .build();
+
+    let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_2_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
+            ARG_VALIDATOR => VALIDATOR_1,
+            ARG_DELEGATOR => DELEGATOR_2,
+        },
+    )
+    .build();
+
+    let post_genesis_requests = vec![
+        system_fund_request,
+        validator_1_fund_request,
+        delegator_1_fund_request,
+        delegator_2_fund_request,
+        validator_1_add_bid_request,
+        delegator_1_delegate_request,
+        delegator_2_delegate_request,
+    ];
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    for request in post_genesis_requests {
+        builder.exec(request).commit().expect_success();
+    }
+
+    for _ in 0..5 {
+        super::run_auction(&mut builder);
+    }
+
+    let reward_factors: BTreeMap<PublicKey, u64> = {
+        let mut tmp = BTreeMap::new();
+        tmp.insert(VALIDATOR_1, BLOCK_REWARD);
+        tmp
+    };
+
+    let distribute_request = ExecuteRequestBuilder::standard(
+        SYSTEM_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
+            ARG_REWARD_FACTORS => reward_factors
+        },
+    )
+    .build();
+
+    builder.exec(distribute_request).commit().expect_success();
+
+    withdraw_validator_reward(&mut builder, *DELEGATOR_1_ADDR, VALIDATOR_1);
+}
+
+#[ignore]
+#[should_panic]
+#[test]
+fn should_prevent_theft_of_delegator_reward() {
+    const VALIDATOR_1_STAKE: u64 = 1_000_000;
+    const DELEGATOR_1_STAKE: u64 = 1_000_000;
+    const DELEGATOR_2_STAKE: u64 = 1_000_000;
+
+    const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
+
+    let system_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            "target" =>SYSTEM_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            "target" => *VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let delegator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            "target" => *DELEGATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let delegator_2_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            "target" => *DELEGATOR_2_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
+            ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
+            ARG_PUBLIC_KEY => VALIDATOR_1,
+        },
+    )
+    .build();
+
+    let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
+            ARG_VALIDATOR => VALIDATOR_1,
+            ARG_DELEGATOR => DELEGATOR_1,
+        },
+    )
+    .build();
+
+    let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_2_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
+            ARG_VALIDATOR => VALIDATOR_1,
+            ARG_DELEGATOR => DELEGATOR_2,
+        },
+    )
+    .build();
+
+    let post_genesis_requests = vec![
+        system_fund_request,
+        validator_1_fund_request,
+        delegator_1_fund_request,
+        delegator_2_fund_request,
+        validator_1_add_bid_request,
+        delegator_1_delegate_request,
+        delegator_2_delegate_request,
+    ];
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    for request in post_genesis_requests {
+        builder.exec(request).commit().expect_success();
+    }
+
+    for _ in 0..5 {
+        super::run_auction(&mut builder);
+    }
+
+    let reward_factors: BTreeMap<PublicKey, u64> = {
+        let mut tmp = BTreeMap::new();
+        tmp.insert(VALIDATOR_1, BLOCK_REWARD);
+        tmp
+    };
+
+    let distribute_request = ExecuteRequestBuilder::standard(
+        SYSTEM_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
+            ARG_REWARD_FACTORS => reward_factors
+        },
+    )
+    .build();
+
+    builder.exec(distribute_request).commit().expect_success();
+
+    withdraw_delegator_reward(&mut builder, *DELEGATOR_2_ADDR, VALIDATOR_1, DELEGATOR_1);
 }

@@ -70,7 +70,7 @@ pub use key::{
 };
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
-pub use public_key::PublicKey;
+pub use public_key::{PublicKey, Secp256k1Bytes};
 pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use semver::{SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use system_contract_type::SystemContractType;

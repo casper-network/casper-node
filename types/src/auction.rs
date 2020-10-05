@@ -14,6 +14,7 @@ use alloc::{collections::BTreeMap, vec::Vec};
 use num_rational::Ratio;
 
 use crate::{
+    account::AccountHash,
     system_contract_errors::auction::{Error, Result},
     Key, PublicKey, URef, U512,
 };
@@ -79,6 +80,11 @@ pub trait Auction:
         delegation_rate: DelegationRate,
         amount: U512,
     ) -> Result<(URef, U512)> {
+        let account_hash = AccountHash::from_public_key(public_key, |x| self.blake2b(x));
+        if self.get_caller() != account_hash {
+            return Err(Error::InvalidCaller);
+        }
+
         // Creates new purse with desired amount taken from `source_purse`
         // Bonds whole amount from the newly created purse
         let (bonding_purse, _total_amount) = detail::bond(self, public_key, source, amount)?;
@@ -117,14 +123,19 @@ pub trait Auction:
     /// For a founding validator, this function first checks whether they are released, and fails
     /// if they are not.
     ///
-    /// The function returns the new amount of motes remaining in the bid. If the target bid does
-    /// not exist, the function call returns an error.
+    /// The function returns a the new amount of motes remaining in the bid. If the target bid
+    /// does not exist, the function call returns an error.
     fn withdraw_bid(
         &mut self,
         public_key: PublicKey,
         amount: U512,
         unbond_purse: URef,
     ) -> Result<U512> {
+        let account_hash = AccountHash::from_public_key(public_key, |x| self.blake2b(x));
+        if self.get_caller() != account_hash {
+            return Err(Error::InvalidCaller);
+        }
+
         // Update bids or stakes
         let mut bids = internal::get_bids(self)?;
 
@@ -132,14 +143,21 @@ pub trait Auction:
 
         let new_amount = if bid.can_withdraw_funds() {
             // Carefully decrease bonded funds
-            bid.staked_amount
+            let new_amount = bid
+                .staked_amount
                 .checked_sub(amount)
-                .ok_or(Error::InvalidAmount)?
+                .ok_or(Error::InvalidAmount)?;
+            bid.staked_amount = new_amount;
+            new_amount
         } else {
             // If validator is still locked-up (or with an autowin status), no withdrawals
             // are allowed.
             return Err(Error::ValidatorFundsLocked);
         };
+
+        if new_amount.is_zero() {
+            bids.remove(&public_key).unwrap();
+        }
 
         internal::set_bids(self, bids)?;
 
@@ -160,6 +178,11 @@ pub trait Auction:
         validator_public_key: PublicKey,
         amount: U512,
     ) -> Result<(URef, U512)> {
+        let account_hash = AccountHash::from_public_key(delegator_public_key, |x| self.blake2b(x));
+        if self.get_caller() != account_hash {
+            return Err(Error::InvalidCaller);
+        }
+
         let bids = internal::get_bids(self)?;
         if !bids.contains_key(&validator_public_key) {
             // Return early if target validator is not in `bids`
@@ -199,6 +222,11 @@ pub trait Auction:
         amount: U512,
         unbonding_purse: URef,
     ) -> Result<U512> {
+        let account_hash = AccountHash::from_public_key(delegator_public_key, |x| self.blake2b(x));
+        if self.get_caller() != account_hash {
+            return Err(Error::InvalidCaller);
+        }
+
         let bids = internal::get_bids(self)?;
 
         // Return early if target validator is not in `bids`
@@ -253,30 +281,6 @@ pub trait Auction:
         Ok(new_amount)
     }
 
-    /// Removes validator entries from either founders or validators, wherever they
-    /// might be found.
-    ///
-    /// This function is intended to be called together with the slash function in the Mint
-    /// contract.
-    fn quash_bid(&mut self, validator_public_keys: Vec<PublicKey>) -> Result<()> {
-        // Clean up inside `bids`
-        let mut validators = internal::get_bids(self)?;
-
-        let mut modified_validators = 0usize;
-
-        for validator_public_key in &validator_public_keys {
-            if validators.remove(validator_public_key).is_some() {
-                modified_validators += 1;
-            }
-        }
-
-        if modified_validators > 0 {
-            internal::set_bids(self, validators)?;
-        }
-
-        Ok(())
-    }
-
     /// Slashes each validator.
     ///
     /// This can be only invoked through a system call.
@@ -284,6 +288,8 @@ pub trait Auction:
         if self.get_caller() != SYSTEM_ACCOUNT {
             return Err(Error::InvalidCaller);
         }
+
+        detail::quash_bid(self, &validator_public_keys)?;
 
         let bid_purses_uref = self
             .get_key(BID_PURSES_KEY)
@@ -566,6 +572,11 @@ pub trait Auction:
         delegator_public_key: PublicKey,
         target_purse: URef,
     ) -> Result<U512> {
+        let account_hash = AccountHash::from_public_key(delegator_public_key, |x| self.blake2b(x));
+        if self.get_caller() != account_hash {
+            return Err(Error::InvalidCaller);
+        }
+
         let mut outer: DelegatorRewardMap = internal::get_delegator_reward_map(self)?;
         let mut inner = outer
             .remove(&validator_public_key)
@@ -602,6 +613,11 @@ pub trait Auction:
         validator_public_key: PublicKey,
         target_purse: URef,
     ) -> Result<U512> {
+        let account_hash = AccountHash::from_public_key(validator_public_key, |x| self.blake2b(x));
+        if self.get_caller() != account_hash {
+            return Err(Error::InvalidCaller);
+        }
+
         let mut validator_reward_map = internal::get_validator_reward_map(self)?;
 
         let reward_amount: &mut U512 = validator_reward_map

@@ -225,3 +225,30 @@ where
     internal::set_validator_reward_map(provider, validator_reward_map)?;
     Ok(())
 }
+
+/// Removes validator entries from either founders or validators, wherever they
+/// might be found.
+///
+/// This function is intended to be called together with the slash function in the Mint
+/// contract.
+pub(crate) fn quash_bid<P: StorageProvider + RuntimeProvider + ?Sized>(
+    provider: &mut P,
+    validator_public_keys: &[PublicKey],
+) -> Result<()> {
+    // Clean up inside `bids`
+    let mut validators = internal::get_bids(provider)?;
+
+    let mut modified_validators = 0usize;
+
+    for validator_public_key in validator_public_keys {
+        if validators.remove(validator_public_key).is_some() {
+            modified_validators += 1;
+        }
+    }
+
+    if modified_validators > 0 {
+        internal::set_bids(provider, validators)?;
+    }
+
+    Ok(())
+}
