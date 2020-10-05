@@ -4,6 +4,11 @@ version = "0.1.0"
 authors = ["Marc Brinkmann <marc@casperlabs.io>", "Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "A client for interacting with the Casper network"
+readme = "README.md"
+documentation = "https://docs.rs/casper-client"
+homepage = "https://casperlabs.io"
+repository = "https://github.com/CasperLabs/casper-node/tree/master/client"
+license-file = "../LICENSE"
 
 [dependencies]
 base64 = "0.12.3"

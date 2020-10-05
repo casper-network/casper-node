@@ -198,7 +198,7 @@ fn main() {
     grpc_test_support.update();
 
     let grpc_cargo_casper = Package::cargo(
-        "grpc/cargo-casper",
+        "grpc/cargo_casper",
         &*regex_data::grpc_cargo_casper::DEPENDENT_FILES,
     );
     grpc_cargo_casper.update();

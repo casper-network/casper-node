@@ -40,7 +40,7 @@ pub mod types {
                     replacement,
                 ),
                 DependentFile::new(
-                    "grpc/cargo-casper/src/common.rs",
+                    "grpc/cargo_casper/src/common.rs",
                     Regex::new(r#"(?m)("casper-types",\s*)"(?:[^"]+)"#).unwrap(),
                     replacement,
                 ),
@@ -201,7 +201,7 @@ pub mod smart_contracts_contract {
         pub static ref DEPENDENT_FILES: Vec<DependentFile> = {
             vec![
                 DependentFile::new(
-                    "grpc/cargo-casper/src/common.rs",
+                    "grpc/cargo_casper/src/common.rs",
                     Regex::new(r#"(?m)("casper-contract",\s*)"(?:[^"]+)"#).unwrap(),
                     replacement,
                 ),
@@ -253,7 +253,7 @@ pub mod grpc_test_support {
         pub static ref DEPENDENT_FILES: Vec<DependentFile> = {
             vec![
                 DependentFile::new(
-                    "grpc/cargo-casper/src/tests_package.rs",
+                    "grpc/cargo_casper/src/tests_package.rs",
                     Regex::new(r#"(?m)("casper-engine-test-support",\s*)"(?:[^"]+)"#).unwrap(),
                     cargo_casper_src_test_package_rs_replacement,
                 ),
@@ -282,7 +282,7 @@ pub mod grpc_cargo_casper {
     lazy_static! {
         pub static ref DEPENDENT_FILES: Vec<DependentFile> = {
             vec![DependentFile::new(
-                "grpc/cargo-casper/Cargo.toml",
+                "grpc/cargo_casper/Cargo.toml",
                 MANIFEST_VERSION_REGEX.clone(),
                 replacement,
             )]

@@ -1,10 +1,10 @@
 [workspace]
 
 members = [
-    "ci/casper-updater",
+    "ci/casper_updater",
     "client",
     "execution_engine",
-    "grpc/cargo-casper",
+    "grpc/cargo_casper",
     "grpc/server",
     "grpc/test_support",
     "grpc/tests",
@@ -15,10 +15,10 @@ members = [
 ]
 
 default-members = [
-    "ci/casper-updater",
+    "ci/casper_updater",
     "client",
     "execution_engine",
-    "grpc/cargo-casper",
+    "grpc/cargo_casper",
     "grpc/server",
     "grpc/test_support",
     "grpc/tests",

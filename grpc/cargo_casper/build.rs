@@ -75,7 +75,7 @@ fn build_package<T: Package>() {
 
     // Full path to the cargo binary.
     let cargo = env::var("CARGO").expect("env var 'CARGO' should be set");
-    // Full path to the 'grpc/cargo-casper' dir.
+    // Full path to the 'grpc/cargo_casper' dir.
     let root_dir = PathBuf::from(
         env::var("CARGO_MANIFEST_DIR").expect("env var 'CARGO_MANIFEST_DIR' should be set"),
     );
@@ -84,8 +84,8 @@ fn build_package<T: Package>() {
 
     // We can't build the contract right into the normal target dir since cargo has a lock on
     // this while building 'cargo-casper'.  Instead, we'll build to
-    // '.../cargo-casper/target/built-contracts' and then copy the resulting Wasm file from
-    // there to '.../cargo-casper/wasm'.
+    // '.../cargo_casper/target/built-contracts' and then copy the resulting Wasm file from
+    // there to '.../cargo_casper/wasm'.
 
     let target_dir = root_dir.join(TARGET_DIR_FOR_WASM);
     build_args.push(format!(
@@ -106,7 +106,7 @@ fn build_package<T: Package>() {
         output
     );
 
-    // Move the compiled Wasm file to our own folder ("cargo-casper/wasm").
+    // Move the compiled Wasm file to our own folder ("cargo_casper/wasm").
     let new_wasm_dir = env::current_dir().unwrap().join(NEW_WASM_DIR);
     let _ = fs::create_dir(&new_wasm_dir);
 

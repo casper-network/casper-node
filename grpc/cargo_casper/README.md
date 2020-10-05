@@ -21,7 +21,7 @@ To install from the latest `dev` branch:
 
 ```
 git clone https://github.com/CasperLabs/casper-node
-cd casper-node/grpc/cargo-casper
+cd casper-node/grpc/cargo_casper
 cargo install cargo-casper --path=.
 ```
 

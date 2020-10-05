@@ -11,7 +11,7 @@ repository = "https://github.com/CasperLabs/casper-node/tree/master/grpc/test_su
 license-file = "../../LICENSE"
 
 [dependencies]
-casper-contract = { version = "0.6.0", path = "../../smart_contracts/contract" }
+casper-contract = { version = "0.6.0", path = "../../smart_contracts/contract", features = ["std"] }
 casper-engine-grpc-server = { version = "0.20.0", path = "../server" }
 casper-execution-engine = { version = "0.7.0", path = "../../execution_engine" }
 casper-types = { version = "0.6.0", path = "../../types", features = ["std"] }
