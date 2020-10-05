@@ -182,7 +182,8 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
     ) -> Vec<CpResult<I, C>> {
         let start_time = Timestamp::now();
         let av_effects = self.highway.add_valid_vertex(vv.clone(), rng);
-        trace!("Added valid vertex in {}", start_time.elapsed());
+        let elapsed = start_time.elapsed();
+        trace!(%elapsed, "added valid vertex");
         let mut results = self.process_av_effects(av_effects);
         let msg = HighwayMessage::NewVertex(vv.into());
         results.push(ConsensusProtocolResult::CreatedGossipMessage(

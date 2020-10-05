@@ -98,18 +98,20 @@ impl<C: Context> FinalityDetector<C> {
         // point looking for higher summits.
         let mut target_lvl = 63;
         while target_lvl > 0 {
-            trace!("looking for summit with level {}", target_lvl);
+            trace!(%target_lvl, "looking for summit");
             let lvl = self.find_summit(target_lvl, candidate, state);
             if lvl == target_lvl {
                 self.last_finalized = Some(candidate.clone());
-                trace!("found finalized block in {}", start_time.elapsed());
+                let elapsed = start_time.elapsed();
+                trace!(%elapsed, "found finalized block");
                 return Some(candidate);
             }
             // The required quorum increases with decreasing level, so choosing `target_lvl`
             // greater than `lvl` would always yield a summit of level `lvl` or lower.
             target_lvl = lvl;
         }
-        trace!("found no finalized block in {}", start_time.elapsed());
+        let elapsed = start_time.elapsed();
+        trace!(%elapsed, "found no finalized block");
         None
     }
 
