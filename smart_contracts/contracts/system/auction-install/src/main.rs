@@ -47,10 +47,11 @@ pub extern "C" fn install() {
         let genesis_validators: BTreeMap<PublicKey, U512> =
             runtime::get_named_arg(ARG_GENESIS_VALIDATORS);
 
-        // List of validators for initial era.
-        let mut initial_validator_weights = ValidatorWeights::new();
         // Initial bid purses calculated based on founder validator stakes
         let mut bid_purses = BidPurses::new();
+
+        // List of validators for initial era.
+        let mut initial_validator_weights = ValidatorWeights::new();
 
         for (validator_public_key, amount) in genesis_validators {
             let bonding_purse = create_purse(mint_package_hash, amount);

@@ -138,14 +138,21 @@ pub trait Auction:
 
         let new_amount = if bid.can_withdraw_funds() {
             // Carefully decrease bonded funds
-            bid.staked_amount
+            let new_amount = bid
+                .staked_amount
                 .checked_sub(amount)
-                .ok_or(Error::InvalidAmount)?
+                .ok_or(Error::InvalidAmount)?;
+            bid.staked_amount = new_amount;
+            new_amount
         } else {
             // If validator is still locked-up (or with an autowin status), no withdrawals
             // are allowed.
             return Err(Error::ValidatorFundsLocked);
         };
+
+        if new_amount.is_zero() {
+            bids.remove(&public_key).unwrap();
+        }
 
         internal::set_bids(self, bids)?;
 

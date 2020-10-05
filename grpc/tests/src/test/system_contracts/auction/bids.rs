@@ -18,7 +18,7 @@ use casper_types::{
         UnbondingPurses, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
         ARG_PUBLIC_KEY, ARG_VALIDATOR, AUCTION_DELAY, BIDS_KEY, DEFAULT_LOCKED_FUNDS_PERIOD,
         DEFAULT_UNBONDING_DELAY, DELEGATORS_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY, INITIAL_ERA_ID,
-        SNAPSHOT_SIZE,
+        METHOD_RUN_AUCTION, SNAPSHOT_SIZE, UNBONDING_PURSES_KEY,
     },
     runtime_args, PublicKey, RuntimeArgs, U512,
 };
@@ -56,6 +56,8 @@ const NON_FOUNDER_VALIDATOR_2_PK: PublicKey = PublicKey::Ed25519([4; 32]);
 const ACCOUNT_1_PK: PublicKey = PublicKey::Ed25519([200; 32]);
 const ACCOUNT_1_BALANCE: u64 = 1_000_000_000;
 const ACCOUNT_1_BOND: u64 = 100_000;
+const ACCOUNT_1_WITHDRAW_1: u64 = 55_000;
+const ACCOUNT_1_WITHDRAW_2: u64 = 45_000;
 
 const ACCOUNT_2_PK: PublicKey = PublicKey::Ed25519([202; 32]);
 const ACCOUNT_2_BALANCE: u64 = 1_000_000_000;
@@ -659,6 +661,7 @@ fn should_get_first_seigniorage_recipients() {
 #[ignore]
 #[test]
 fn should_release_founder_stake() {
+    assert_eq!(ACCOUNT_1_WITHDRAW_1 + ACCOUNT_1_WITHDRAW_2, ACCOUNT_1_BOND);
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::new(
@@ -677,6 +680,8 @@ fn should_release_founder_stake() {
 
     builder.run_genesis(&run_genesis_request);
 
+    let auction = builder.get_auction_contract_hash();
+
     let transfer_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -689,11 +694,10 @@ fn should_release_founder_stake() {
     .build();
 
     let auction_hash = builder.get_auction_contract_hash();
-    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
-    assert_eq!(bids.len(), 1);
-    let (founding_validator, entry) = bids.into_iter().next().unwrap();
+    let genesis_bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
+    assert_eq!(genesis_bids.len(), 1);
+    let entry = genesis_bids.get(&ACCOUNT_1_PK).unwrap();
     assert_eq!(entry.funds_locked, Some(DEFAULT_LOCKED_FUNDS_PERIOD));
-    assert_eq!(founding_validator, ACCOUNT_1_PK);
 
     builder.exec(transfer_request_1).commit().expect_success();
 
@@ -713,7 +717,167 @@ fn should_release_founder_stake() {
     assert_eq!(bids.len(), 1);
     let (founding_validator, entry) = bids.into_iter().next().unwrap();
     assert_eq!(entry.funds_locked, None);
+    assert_eq!(
+        builder.get_purse_balance(entry.bonding_purse),
+        ACCOUNT_1_BOND.into()
+    );
     assert_eq!(founding_validator, ACCOUNT_1_PK);
+
+    // withdraw unlocked funds with partial amounts
+    let withdraw_bid_request_1 = ExecuteRequestBuilder::standard(
+        *ACCOUNT_1_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_ENTRY_POINT => ARG_WITHDRAW_BID,
+            ARG_PUBLIC_KEY => ACCOUNT_1_PK,
+            ARG_AMOUNT => U512::from(ACCOUNT_1_WITHDRAW_1),
+        },
+    )
+    .build();
+    let withdraw_bid_request_2 = ExecuteRequestBuilder::standard(
+        *ACCOUNT_1_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_ENTRY_POINT => ARG_WITHDRAW_BID,
+            ARG_PUBLIC_KEY => ACCOUNT_1_PK,
+            ARG_AMOUNT => U512::from(ACCOUNT_1_WITHDRAW_2),
+        },
+    )
+    .build();
+
+    let pre_unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    assert_eq!(pre_unbond_purses.len(), 0);
+
+    //
+    // founder does withdraw request 1 in INITIAL_ERA_ID
+    //
+
+    builder
+        .exec(withdraw_bid_request_1)
+        .commit()
+        .expect_success();
+
+    let post_bids_1: Bids = builder.get_value(auction_hash, BIDS_KEY);
+    assert_ne!(post_bids_1, genesis_bids);
+    assert_eq!(
+        post_bids_1[&ACCOUNT_1_PK].staked_amount,
+        U512::from(ACCOUNT_1_BOND - ACCOUNT_1_WITHDRAW_1)
+    );
+
+    // run auction to increase ERA ID
+    let run_auction_request_1 = ExecuteRequestBuilder::standard(
+        SYSTEM_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_ENTRY_POINT => ARG_RUN_AUCTION,
+        },
+    )
+    .build();
+
+    builder
+        .exec(run_auction_request_1)
+        .commit()
+        .expect_success();
+
+    //
+    // founder does withdraw request 2 in INITIAL_ERA_ID + 1
+    //
+    builder
+        .exec(withdraw_bid_request_2)
+        .commit()
+        .expect_success();
+
+    let post_bids_2: Bids = builder.get_value(auction_hash, BIDS_KEY);
+    assert_ne!(post_bids_2, genesis_bids);
+    assert_ne!(post_bids_2, post_bids_1);
+    assert!(post_bids_2.is_empty());
+
+    // original bonding purse is not updated (yet)
+    assert_eq!(
+        builder.get_purse_balance(entry.bonding_purse),
+        ACCOUNT_1_BOND.into()
+    );
+
+    let pre_unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    assert_eq!(pre_unbond_purses.len(), 1);
+    let pre_unbond_list = pre_unbond_purses
+        .get(&ACCOUNT_1_PK)
+        .expect("should have unbond");
+    assert_eq!(pre_unbond_list.len(), 2);
+    assert_eq!(pre_unbond_list[0].origin, ACCOUNT_1_PK);
+    assert_eq!(pre_unbond_list[0].amount, ACCOUNT_1_WITHDRAW_1.into());
+    assert_eq!(pre_unbond_list[1].origin, ACCOUNT_1_PK);
+    assert_eq!(pre_unbond_list[1].amount, ACCOUNT_1_WITHDRAW_2.into());
+
+    // Funds are not transferred yet from the original bonding purse
+    assert_eq!(
+        builder.get_purse_balance(pre_unbond_list[0].purse),
+        U512::zero(),
+    );
+    assert_eq!(
+        builder.get_purse_balance(pre_unbond_list[1].purse),
+        U512::zero(),
+    );
+    // check that bids are updated for given validator
+
+    for _ in 0..DEFAULT_UNBONDING_DELAY {
+        let run_auction_request_1 = ExecuteRequestBuilder::standard(
+            SYSTEM_ADDR,
+            CONTRACT_AUCTION_BIDS,
+            runtime_args! {
+                ARG_ENTRY_POINT => ARG_RUN_AUCTION,
+            },
+        )
+        .build();
+
+        builder
+            .exec(run_auction_request_1)
+            .commit()
+            .expect_success();
+    }
+
+    // Should pay out withdraw_bid request from INITIAL_ERA_ID
+
+    //
+    // Funds are transferred from the original bonding purse to the unbonding purses
+    //
+    assert_eq!(
+        builder.get_purse_balance(pre_unbond_list[0].purse), // still valid
+        ACCOUNT_1_WITHDRAW_1.into(),
+    );
+    assert_eq!(
+        builder.get_purse_balance(pre_unbond_list[1].purse), // still valid
+        U512::zero(),
+    );
+
+    let exec_request_4 = ExecuteRequestBuilder::contract_call_by_hash(
+        SYSTEM_ADDR,
+        auction,
+        METHOD_RUN_AUCTION,
+        runtime_args! {},
+    )
+    .build();
+
+    //
+    // Pays out withdraw_bid request that happened in INITIAL_ERA_ID + 1
+    //
+    builder.exec(exec_request_4).expect_success().commit();
+
+    assert_eq!(
+        builder.get_purse_balance(pre_unbond_list[0].purse), // still valid ref
+        ACCOUNT_1_WITHDRAW_1.into(),
+    );
+    assert_eq!(
+        builder.get_purse_balance(pre_unbond_list[1].purse), // still valid ref
+        ACCOUNT_1_WITHDRAW_2.into(),
+    );
+
+    let post_unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    assert_eq!(post_unbond_purses.len(), 0);
+
+    let post_bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
+    assert_ne!(post_bids, genesis_bids);
+    assert!(post_bids.is_empty());
 }
 
 #[ignore]
