@@ -52,8 +52,6 @@ pub extern "C" fn install() {
 
         // List of validators for initial era.
         let mut initial_validator_weights = ValidatorWeights::new();
-        // Initial bid purses calculated based on founder validator stakes
-        let mut bid_purses = BidPurses::new();
 
         for (validator_public_key, amount) in genesis_validators {
             let bonding_purse = create_purse(mint_package_hash, amount);
