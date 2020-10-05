@@ -117,9 +117,14 @@ pub trait Auction:
     /// For a founding validator, this function first checks whether they are released, and fails
     /// if they are not.
     ///
-    /// The function returns a tuple of the (new) unbonding purse key and the new amount of motes
-    /// remaining in the bid. If the target bid does not exist, the function call returns an error.
-    fn withdraw_bid(&mut self, public_key: PublicKey, amount: U512) -> Result<(URef, U512)> {
+    /// The function returns the new amount of motes remaining in the bid. If the target bid does
+    /// not exist, the function call returns an error.
+    fn withdraw_bid(
+        &mut self,
+        public_key: PublicKey,
+        amount: U512,
+        unbond_purse: URef,
+    ) -> Result<U512> {
         // Update bids or stakes
         let mut bids = internal::get_bids(self)?;
 
@@ -138,9 +143,9 @@ pub trait Auction:
 
         internal::set_bids(self, bids)?;
 
-        let (unbonding_purse, _total_amount) = detail::unbond(self, public_key, amount)?;
+        let _total_amount = detail::unbond(self, public_key, amount, unbond_purse)?;
 
-        Ok((unbonding_purse, new_amount))
+        Ok(new_amount)
     }
 
     /// Adds a new delegator to delegators, or tops off a current one. If the target validator is
@@ -192,7 +197,8 @@ pub trait Auction:
         delegator_public_key: PublicKey,
         validator_public_key: PublicKey,
         amount: U512,
-    ) -> Result<(URef, U512)> {
+        unbonding_purse: URef,
+    ) -> Result<U512> {
         let bids = internal::get_bids(self)?;
 
         // Return early if target validator is not in `bids`
@@ -200,8 +206,8 @@ pub trait Auction:
             return Err(Error::ValidatorNotFound);
         }
 
-        let (unbonding_purse, _unbonding_purse_balance) =
-            detail::unbond(self, delegator_public_key, amount)?;
+        let _unbonding_purse_balance =
+            detail::unbond(self, delegator_public_key, amount, unbonding_purse)?;
 
         let mut delegators = internal::get_delegators(self)?;
         let delegators_map = delegators
@@ -244,7 +250,7 @@ pub trait Auction:
 
         internal::set_delegators(self, delegators)?;
 
-        Ok((unbonding_purse, new_amount))
+        Ok(new_amount)
     }
 
     /// Removes validator entries from either founders or validators, wherever they

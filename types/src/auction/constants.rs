@@ -55,6 +55,8 @@ pub const ARG_VALIDATOR_PUBLIC_KEY: &str = "validator_public_key";
 pub const ARG_DELEGATOR_PUBLIC_KEY: &str = "delegator_public_key";
 /// Named constant for `target_purse`.
 pub const ARG_TARGET_PURSE: &str = "target_purse";
+/// Named constant for `unbond_purse`.
+pub const ARG_UNBOND_PURSE: &str = "unbond_purse";
 
 /// Named constant for method `get_era_validators`.
 pub const METHOD_GET_ERA_VALIDATORS: &str = "get_era_validators";

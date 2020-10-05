@@ -3,24 +3,23 @@
 
 extern crate alloc;
 
-use casper_contract::contract_api::{runtime, system};
+use casper_contract::contract_api::{account, runtime, system};
 use casper_types::{auction, runtime_args, PublicKey, RuntimeArgs, URef, U512};
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_DELEGATOR: &str = "delegator";
 const ARG_VALIDATOR: &str = "validator";
-const UNDELEGATE_PURSE: &str = "undelegate_purse";
+const ARG_UNBOND_PURSE: &str = "unbond_purse";
 
-fn undelegate(delegator: PublicKey, validator: PublicKey, amount: U512) -> URef {
+fn undelegate(delegator: PublicKey, validator: PublicKey, amount: U512, unbond_purse: URef) {
     let contract_hash = system::get_auction();
     let args = runtime_args! {
         auction::ARG_DELEGATOR => delegator,
         auction::ARG_VALIDATOR => validator,
         auction::ARG_AMOUNT => amount,
+        auction::ARG_UNBOND_PURSE => unbond_purse,
     };
-    let (undelegate_purse, _amount) =
-        runtime::call_contract::<(URef, U512)>(contract_hash, auction::METHOD_UNDELEGATE, args);
-    undelegate_purse
+    let _amount: U512 = runtime::call_contract(contract_hash, auction::METHOD_UNDELEGATE, args);
 }
 
 // Undelegate contract.
@@ -32,8 +31,9 @@ pub extern "C" fn call() {
     let delegator = runtime::get_named_arg(ARG_DELEGATOR);
     let validator = runtime::get_named_arg(ARG_VALIDATOR);
     let amount = runtime::get_named_arg(ARG_AMOUNT);
-    let undelegate_purse = undelegate(delegator, validator, amount);
-
-    // Save the purse under account's coontext to keep track of the funds.
-    runtime::put_key(UNDELEGATE_PURSE, undelegate_purse.into());
+    let unbond_purse = {
+        let maybe_purse: Option<_> = runtime::get_named_arg(ARG_UNBOND_PURSE);
+        maybe_purse.unwrap_or_else(account::get_main_purse)
+    };
+    undelegate(delegator, validator, amount, unbond_purse);
 }

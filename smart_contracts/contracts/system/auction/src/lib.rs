@@ -16,7 +16,7 @@ use casper_types::{
         Auction, DelegationRate, MintProvider, RuntimeProvider, SeigniorageRecipients,
         StorageProvider, SystemProvider, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE,
         ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_ERA_ID, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS,
-        ARG_SOURCE_PURSE, ARG_TARGET_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_KEYS,
+        ARG_SOURCE_PURSE, ARG_TARGET_PURSE, ARG_UNBOND_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_KEYS,
         ARG_VALIDATOR_PUBLIC_KEY, ARG_VALIDATOR_PUBLIC_KEYS, METHOD_ADD_BID, METHOD_DELEGATE,
         METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_QUASH_BID, METHOD_READ_ERA_ID,
         METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE,
@@ -164,9 +164,10 @@ pub extern "C" fn add_bid() {
 pub extern "C" fn withdraw_bid() {
     let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
     let amount = runtime::get_named_arg(ARG_AMOUNT);
+    let target_purse = runtime::get_named_arg(ARG_UNBOND_PURSE);
 
     let result = AuctionContract
-        .withdraw_bid(public_key, amount)
+        .withdraw_bid(public_key, amount, target_purse)
         .unwrap_or_revert();
     let cl_value = CLValue::from_t(result).unwrap_or_revert();
     runtime::ret(cl_value)
@@ -192,9 +193,10 @@ pub extern "C" fn undelegate() {
     let delegator = runtime::get_named_arg(ARG_DELEGATOR);
     let validator = runtime::get_named_arg(ARG_VALIDATOR);
     let amount = runtime::get_named_arg(ARG_AMOUNT);
+    let unbond_purse = runtime::get_named_arg(ARG_UNBOND_PURSE);
 
     let result = AuctionContract
-        .undelegate(delegator, validator, amount)
+        .undelegate(delegator, validator, amount, unbond_purse)
         .unwrap_or_revert();
 
     let cl_value = CLValue::from_t(result).unwrap_or_revert();
@@ -307,8 +309,9 @@ pub fn get_entry_points() -> EntryPoints {
         vec![
             Parameter::new(ARG_PUBLIC_KEY, AccountHash::cl_type()),
             Parameter::new(ARG_AMOUNT, U512::cl_type()),
+            Parameter::new(ARG_UNBOND_PURSE, URef::cl_type()),
         ],
-        <(URef, U512)>::cl_type(),
+        U512::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );
@@ -334,8 +337,9 @@ pub fn get_entry_points() -> EntryPoints {
             Parameter::new(ARG_DELEGATOR, AccountHash::cl_type()),
             Parameter::new(ARG_VALIDATOR, AccountHash::cl_type()),
             Parameter::new(ARG_AMOUNT, U512::cl_type()),
+            Parameter::new(ARG_UNBOND_PURSE, URef::cl_type()),
         ],
-        <(URef, U512)>::cl_type(),
+        U512::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );
