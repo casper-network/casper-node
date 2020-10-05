@@ -131,8 +131,6 @@ where
                     }
                 }
             }
-            Event::Request(LinearChainRequest::BlockAtHeightLocal(height, responder)) =>
-                responder.respond(self.linear_chain.get(height as usize).cloned()).ignore(),
             Event::GetBlockResult(block_hash, maybe_block, sender) => {
                 match maybe_block {
                     None => {

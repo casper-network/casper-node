@@ -508,6 +508,8 @@ where
     REv: From<NetworkRequest<NodeId, Message>> + Send,
     S: StorageType,
     Self: Sized + 'static,
+    <<S as StorageType>::Block as Value>::Id:
+        From<<<S as StorageType>::BlockHeight as Value>::Header>,
 {
     type Event = Event<S>;
 
@@ -532,6 +534,9 @@ where
                 block_hash,
                 responder,
             }) => self.get_block_header(block_hash, responder),
+            Event::Request(StorageRequest::GetBlockAtHeight { height, responder }) => {
+                self.get_block_by_height(height, responder)
+            }
             Event::Request(StorageRequest::PutDeploy { deploy, responder }) => {
                 self.put_deploy(deploy, responder)
             }

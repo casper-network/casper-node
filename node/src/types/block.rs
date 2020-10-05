@@ -663,6 +663,12 @@ pub enum BlockByHeight {
     Block(Box<Block>),
 }
 
+impl From<Block> for BlockByHeight {
+    fn from(block: Block) -> Self {
+        BlockByHeight::new(block)
+    }
+}
+
 impl BlockByHeight {
     /// Creates a new `BlockByHeight`
     pub fn new(block: Block) -> Self {

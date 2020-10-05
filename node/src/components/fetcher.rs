@@ -248,13 +248,12 @@ impl ItemFetcher<BlockByHeight> for Fetcher<BlockByHeight> {
         id: u64,
         peer: NodeId,
     ) -> Effects<Event<BlockByHeight>> {
-        //TODO: Replace with querying the storage instead of in-mem of linear chain.
         effect_builder
             .get_block_at_height(id)
             .event(move |result| Event::GetFromStorageResult {
                 id,
                 peer,
-                maybe_item: Box::new(result),
+                maybe_item: Box::new(result.map(Into::into)),
             })
     }
 }
