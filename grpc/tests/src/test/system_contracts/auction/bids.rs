@@ -725,7 +725,7 @@ fn should_release_founder_stake() {
 
     // withdraw unlocked funds with partial amounts
     let withdraw_bid_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
+        *ACCOUNT_1_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => ARG_WITHDRAW_BID,
@@ -735,7 +735,7 @@ fn should_release_founder_stake() {
     )
     .build();
     let withdraw_bid_request_2 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
+        *ACCOUNT_1_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => ARG_WITHDRAW_BID,
