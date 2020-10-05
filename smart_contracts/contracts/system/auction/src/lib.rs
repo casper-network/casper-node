@@ -3,7 +3,7 @@
 #[macro_use]
 extern crate alloc;
 
-use alloc::{boxed::Box, collections::BTreeMap, vec::Vec};
+use alloc::{boxed::Box, collections::BTreeMap};
 use core::result::Result as StdResult;
 
 use casper_contract::{
@@ -16,18 +16,18 @@ use casper_types::{
         Auction, DelegationRate, MintProvider, RuntimeProvider, SeigniorageRecipients,
         StorageProvider, SystemProvider, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE,
         ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_ERA_ID, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS,
-        ARG_SOURCE_PURSE, ARG_TARGET_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_KEYS,
-        ARG_VALIDATOR_PUBLIC_KEY, ARG_VALIDATOR_PUBLIC_KEYS, METHOD_ADD_BID, METHOD_DELEGATE,
-        METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_QUASH_BID, METHOD_READ_ERA_ID,
-        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE,
-        METHOD_WITHDRAW_BID, METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
+        ARG_SOURCE_PURSE, ARG_TARGET_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY,
+        ARG_VALIDATOR_PUBLIC_KEYS, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_DISTRIBUTE,
+        METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID, METHOD_READ_SEIGNIORAGE_RECIPIENTS,
+        METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
+        METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
     },
     bytesrepr::{FromBytes, ToBytes},
     mint::{METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD},
     system_contract_errors,
     system_contract_errors::auction::Error,
     CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
-    Parameter, PublicKey, RuntimeArgs, TransferResult, URef, U512,
+    Parameter, PublicKey, RuntimeArgs, TransferResult, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 struct AuctionContract;
@@ -73,6 +73,10 @@ impl RuntimeProvider for AuctionContract {
 
     fn put_key(&mut self, name: &str, key: Key) {
         runtime::put_key(name, key)
+    }
+
+    fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
+        runtime::blake2b(data)
     }
 }
 
@@ -202,13 +206,6 @@ pub extern "C" fn undelegate() {
 }
 
 #[no_mangle]
-pub extern "C" fn quash_bid() {
-    let validator_keys: Vec<PublicKey> = runtime::get_named_arg("validator_keys");
-
-    AuctionContract.quash_bid(validator_keys).unwrap_or_revert();
-}
-
-#[no_mangle]
 pub extern "C" fn run_auction() {
     AuctionContract.run_auction().unwrap_or_revert();
 }
@@ -335,19 +332,7 @@ pub fn get_entry_points() -> EntryPoints {
             Parameter::new(ARG_VALIDATOR, AccountHash::cl_type()),
             Parameter::new(ARG_AMOUNT, U512::cl_type()),
         ],
-        U512::cl_type(),
-        EntryPointAccess::Public,
-        EntryPointType::Contract,
-    );
-    entry_points.add_entry_point(entry_point);
-
-    let entry_point = EntryPoint::new(
-        METHOD_QUASH_BID,
-        vec![Parameter::new(
-            ARG_VALIDATOR_KEYS,
-            Vec::<AccountHash>::cl_type(),
-        )],
-        CLType::Unit,
+        <(URef, U512)>::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );

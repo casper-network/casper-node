@@ -408,8 +408,8 @@ pub enum ApiError {
     GetKey,
     /// The [`Key`](crate::Key) variant was not as expected.
     UnexpectedKeyVariant,
-    /// The [`ContractRef`](crate::ContractRef) variant was not as expected.
-    UnexpectedContractRefVariant,
+    /// Obsolete error variant (we no longer have ContractRef).
+    UnexpectedContractRefVariant, // TODO: this variant is not used any longer and can be removed
     /// Invalid purse name given.
     InvalidPurseName,
     /// Invalid purse retrieved.

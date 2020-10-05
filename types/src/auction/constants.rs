@@ -68,8 +68,6 @@ pub const METHOD_WITHDRAW_BID: &str = "withdraw_bid";
 pub const METHOD_DELEGATE: &str = "delegate";
 /// Named constant for method `undelegate`.
 pub const METHOD_UNDELEGATE: &str = "undelegate";
-/// Named constant for method `quash_bid`.
-pub const METHOD_QUASH_BID: &str = "quash_bid";
 /// Named constant for method `run_auction`.
 pub const METHOD_RUN_AUCTION: &str = "run_auction";
 /// Named constant for method `slash`.

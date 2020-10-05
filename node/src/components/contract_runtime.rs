@@ -13,7 +13,6 @@ use datasize::DataSize;
 use derive_more::From;
 use lmdb::DatabaseFlags;
 use prometheus::{self, Histogram, HistogramOpts, Registry};
-use rand::{CryptoRng, Rng};
 use thiserror::Error;
 use tokio::task;
 use tracing::trace;
@@ -33,6 +32,8 @@ use crate::{
     components::Component,
     crypto::hash,
     effect::{requests::ContractRuntimeRequest, EffectBuilder, EffectExt, Effects},
+    types::CryptoRngCore,
+    utils::WithDir,
     Chainspec, StorageConfig,
 };
 
@@ -139,17 +140,16 @@ impl ContractRuntimeMetrics {
     }
 }
 
-impl<REv, R> Component<REv, R> for ContractRuntime
+impl<REv> Component<REv> for ContractRuntime
 where
     REv: From<Event> + Send,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event;
 
     fn handle_event(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -304,6 +304,28 @@ where
                 }
                 .ignore()
             }
+            Event::Request(ContractRuntimeRequest::Step {
+                step_request,
+                responder,
+            }) => {
+                trace!(?step_request, "step request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        let start = Instant::now();
+                        let result = engine_state.commit_step(correlation_id, step_request);
+                        metrics.get_balance.observe(start.elapsed().as_secs_f64());
+                        result
+                    })
+                    .await
+                    .expect("should run");
+                    trace!(?result, "step response");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
         }
     }
 }
@@ -321,11 +343,11 @@ pub enum ConfigError {
 
 impl ContractRuntime {
     pub(crate) fn new(
-        storage_config: &StorageConfig,
+        storage_config: WithDir<StorageConfig>,
         contract_runtime_config: Config,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
-        let path = storage_config.path();
+        let path = storage_config.with_dir(storage_config.value().path());
         let environment = Arc::new(LmdbEnvironment::new(
             path.as_path(),
             contract_runtime_config.max_global_state_size(),

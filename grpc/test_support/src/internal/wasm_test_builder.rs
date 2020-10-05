@@ -14,7 +14,7 @@ use log::LevelFilter;
 
 use casper_engine_grpc_server::engine_server::{
     ipc::{
-        CommitRequest, CommitResponse, GenesisResponse, QueryRequest, UpgradeRequest,
+        CommitRequest, CommitResponse, GenesisResponse, QueryRequest, StepRequest, UpgradeRequest,
         UpgradeResponse,
     },
     ipc_grpc::ExecutionEngineService,
@@ -483,6 +483,19 @@ where
         self
     }
 
+    pub fn step(&mut self, step_request: StepRequest) -> &mut Self {
+        let response = self
+            .engine_state
+            .step(RequestOptions::new(), step_request)
+            .wait_drop_metadata()
+            .expect("should step");
+
+        let result = response.get_step_result();
+        let success = result.get_success();
+        self.post_state_hash = Some(success.get_poststate_hash().to_vec());
+        self
+    }
+
     /// Expects a successful run and caches transformations
     pub fn expect_success(&mut self) -> &mut Self {
         // Check first result, as only first result is interesting for a simple test
@@ -687,18 +700,14 @@ where
             .expect("should get era validators")
     }
 
-    pub fn get_value<T: FromBytes + CLTyped>(
-        &mut self,
-        contract_hash: ContractHash,
-        name: &str,
-    ) -> T {
+    pub fn get_value<T>(&mut self, contract_hash: ContractHash, name: &str) -> T
+    where
+        T: FromBytes + CLTyped,
+    {
         let contract = self
             .get_contract(contract_hash)
             .expect("should have contract");
-        let key = contract
-            .named_keys()
-            .get(name)
-            .expect("should have named key");
+        let key = contract.named_keys().get(name).expect("should have purse");
         let stored_value = self.query(None, *key, &[]).expect("should query");
         let cl_value = stored_value
             .as_cl_value()
