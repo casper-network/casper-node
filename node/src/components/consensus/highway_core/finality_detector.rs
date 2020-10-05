@@ -3,12 +3,21 @@ mod rewards;
 
 use std::iter;
 
-use super::{
-    highway::Highway,
-    state::{Observation, State, Weight},
-    validators::ValidatorIndex,
+use tracing::trace;
+
+use crate::{
+    components::consensus::{
+        consensus_protocol::FinalizedBlock,
+        highway_core::{
+            highway::Highway,
+            state::{Observation, State, Weight},
+            validators::ValidatorIndex,
+        },
+        traits::Context,
+        EraEnd,
+    },
+    types::Timestamp,
 };
-use crate::components::consensus::{consensus_protocol::FinalizedBlock, traits::Context, EraEnd};
 use horizon::Horizon;
 
 /// An error returned if the configured fault tolerance has been exceeded.
@@ -82,21 +91,25 @@ impl<C: Context> FinalityDetector<C> {
 
     /// Returns the next block, if any has been finalized since the last call.
     pub(super) fn next_finalized<'a>(&mut self, state: &'a State<C>) -> Option<&'a C::Hash> {
+        let start_time = Timestamp::now();
         let candidate = self.next_candidate(state)?;
         // For `lvl` → ∞, the quorum converges to a fixed value. After level 63, it is closer
         // to that limit than 1/2^-63. This won't make a difference in practice, so there is no
         // point looking for higher summits.
         let mut target_lvl = 63;
         while target_lvl > 0 {
+            trace!("looking for summit with level {}", target_lvl);
             let lvl = self.find_summit(target_lvl, candidate, state);
             if lvl == target_lvl {
                 self.last_finalized = Some(candidate.clone());
+                trace!("found finalized block in {}", start_time.elapsed());
                 return Some(candidate);
             }
             // The required quorum increases with decreasing level, so choosing `target_lvl`
             // greater than `lvl` would always yield a summit of level `lvl` or lower.
             target_lvl = lvl;
         }
+        trace!("found no finalized block in {}", start_time.elapsed());
         None
     }
 
