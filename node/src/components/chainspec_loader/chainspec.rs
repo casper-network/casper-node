@@ -366,7 +366,7 @@ impl Into<ExecConfig> for Chainspec {
 #[cfg(test)]
 mod tests {
     use casper_execution_engine::shared::{
-        host_function_costs::{HostFunctionCost, HostFunctionCosts, PolynomialExpr},
+        host_function_costs::{HostFunction, HostFunctionCosts},
         opcode_costs::OpCodeCosts,
         storage_costs::StorageCosts,
         wasm_config::WasmConfig,
@@ -451,136 +451,180 @@ mod tests {
                     div: 14,
                     mul: 15,
                     mem: 16,
-                    grow_mem: 18,
+                    grow_mem: 18
                 },
                 storage_costs: StorageCosts { gas_per_byte: 101 },
                 host_function_costs: HostFunctionCosts {
-                    read_value: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(137)]),
-                    read_value_local: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(138),
-                        PolynomialExpr::Coefficient(139)
-                    ]),
-                    write: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(154),
-                        PolynomialExpr::Coefficient(155)
-                    ]),
-                    write_local: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(156),
-                        PolynomialExpr::Coefficient(157),
-                        PolynomialExpr::Coefficient(158)
-                    ]),
-                    add: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(102)]),
-                    add_local: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(105),
-                        PolynomialExpr::Coefficient(106)
-                    ]),
-                    new_uref: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(130),
-                        PolynomialExpr::Coefficient(131)
-                    ]),
-                    load_named_keys: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(129)]),
-                    ret: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(145),
-                        PolynomialExpr::Coefficient(146),
-                        PolynomialExpr::Coefficient(147)
-                    ]),
-                    get_key: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(118),
-                        PolynomialExpr::Coefficient(119)
-                    ]),
-                    has_key: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(126),
-                        PolynomialExpr::Coefficient(127)
-                    ]),
-                    put_key: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(133),
-                        PolynomialExpr::Coefficient(134)
-                    ]),
-                    remove_key: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(143),
-                        PolynomialExpr::Coefficient(144)
-                    ]),
-                    revert: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(148)]),
-                    is_valid_uref: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(128)]),
-                    add_associated_key: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(
-                        103
-                    )]),
-                    remove_associated_key: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(140)
-                    ]),
-                    update_associated_key: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(153)
-                    ]),
-                    set_action_threshold: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(149)
-                    ]),
-                    get_caller: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(117)]),
-                    get_blocktime: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(116)]),
-                    create_purse: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(113)]),
-                    transfer_to_account: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(
-                        152
-                    )]),
-                    transfer_from_purse_to_account: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(150)
-                    ]),
-                    transfer_from_purse_to_purse: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(151)
-                    ]),
-                    get_balance: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(115)]),
-                    get_phase: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(124)]),
-                    get_system_contract: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(
-                        125
-                    )]),
-                    get_main_purse: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(120)]),
-                    read_host_buffer: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(135),
-                        PolynomialExpr::Coefficient(136)
-                    ]),
-                    create_contract_package_at_hash: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(111)
-                    ]),
-                    create_contract_user_group: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(112)
-                    ]),
-                    add_contract_version: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(104)
-                    ]),
-                    disable_contract_version: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(114)
-                    ]),
-                    call_contract: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(107),
-                        PolynomialExpr::Coefficient(108)
-                    ]),
-                    call_versioned_contract: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(109),
-                        PolynomialExpr::Coefficient(110)
-                    ]),
-                    get_named_arg_size: HostFunctionCost::from(vec![PolynomialExpr::Coefficient(
-                        123
-                    )]),
-                    get_named_arg: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(121),
-                        PolynomialExpr::Coefficient(122)
-                    ]),
-                    remove_contract_user_group: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(141)
-                    ]),
-                    provision_contract_user_group_uref: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(132)
-                    ]),
-                    remove_contract_user_group_urefs: HostFunctionCost::from(vec![
-                        PolynomialExpr::Coefficient(142)
-                    ]),
-                    print: HostFunctionCost::from(vec![
-                        PolynomialExpr::Variable {
-                            name: "text_size".into(),
-                            value: 159
-                        },
-                        PolynomialExpr::Coefficient(160)
-                    ])
+                    read_value: HostFunction {
+                        cost: 147,
+                        arguments: vec![]
+                    },
+                    read_value_local: HostFunction {
+                        cost: 148,
+                        arguments: vec![149]
+                    },
+                    write: HostFunction {
+                        cost: 164,
+                        arguments: vec![165]
+                    },
+                    write_local: HostFunction {
+                        cost: 166,
+                        arguments: vec![167, 168]
+                    },
+                    add: HostFunction {
+                        cost: 101,
+                        arguments: vec![]
+                    },
+                    add_local: HostFunction {
+                        cost: 104,
+                        arguments: vec![105, 106]
+                    },
+                    new_uref: HostFunction {
+                        cost: 140,
+                        arguments: vec![141]
+                    },
+                    load_named_keys: HostFunction {
+                        cost: 139,
+                        arguments: vec![]
+                    },
+                    ret: HostFunction {
+                        cost: 155,
+                        arguments: vec![156, 157]
+                    },
+                    get_key: HostFunction {
+                        cost: 128,
+                        arguments: vec![]
+                    },
+                    has_key: HostFunction {
+                        cost: 136,
+                        arguments: vec![137]
+                    },
+                    put_key: HostFunction {
+                        cost: 143,
+                        arguments: vec![144]
+                    },
+                    remove_key: HostFunction {
+                        cost: 153,
+                        arguments: vec![154]
+                    },
+                    revert: HostFunction {
+                        cost: 158,
+                        arguments: vec![]
+                    },
+                    is_valid_uref: HostFunction {
+                        cost: 138,
+                        arguments: vec![]
+                    },
+                    add_associated_key: HostFunction {
+                        cost: 102,
+                        arguments: vec![]
+                    },
+                    remove_associated_key: HostFunction {
+                        cost: 150,
+                        arguments: vec![]
+                    },
+                    update_associated_key: HostFunction {
+                        cost: 163,
+                        arguments: vec![]
+                    },
+                    set_action_threshold: HostFunction {
+                        cost: 159,
+                        arguments: vec![]
+                    },
+                    get_caller: HostFunction {
+                        cost: 127,
+                        arguments: vec![]
+                    },
+                    get_blocktime: HostFunction {
+                        cost: 126,
+                        arguments: vec![]
+                    },
+                    create_purse: HostFunction {
+                        cost: 123,
+                        arguments: vec![]
+                    },
+                    transfer_to_account: HostFunction {
+                        cost: 162,
+                        arguments: vec![]
+                    },
+                    transfer_from_purse_to_account: HostFunction {
+                        cost: 160,
+                        arguments: vec![]
+                    },
+                    transfer_from_purse_to_purse: HostFunction {
+                        cost: 161,
+                        arguments: vec![]
+                    },
+                    get_balance: HostFunction {
+                        cost: 125,
+                        arguments: vec![]
+                    },
+                    get_phase: HostFunction {
+                        cost: 134,
+                        arguments: vec![]
+                    },
+                    get_system_contract: HostFunction {
+                        cost: 135,
+                        arguments: vec![]
+                    },
+                    get_main_purse: HostFunction {
+                        cost: 130,
+                        arguments: vec![]
+                    },
+                    read_host_buffer: HostFunction {
+                        cost: 145,
+                        arguments: vec![146]
+                    },
+                    create_contract_package_at_hash: HostFunction {
+                        cost: 121,
+                        arguments: vec![]
+                    },
+                    create_contract_user_group: HostFunction {
+                        cost: 122,
+                        arguments: vec![]
+                    },
+                    add_contract_version: HostFunction {
+                        cost: 103,
+                        arguments: vec![]
+                    },
+                    disable_contract_version: HostFunction {
+                        cost: 124,
+                        arguments: vec![]
+                    },
+                    call_contract: HostFunction {
+                        cost: 107,
+                        arguments: vec![108]
+                    },
+                    call_versioned_contract: HostFunction {
+                        cost: 109,
+                        arguments: vec![120]
+                    },
+                    get_named_arg_size: HostFunction {
+                        cost: 133,
+                        arguments: vec![]
+                    },
+                    get_named_arg: HostFunction {
+                        cost: 131,
+                        arguments: vec![132]
+                    },
+                    remove_contract_user_group: HostFunction {
+                        cost: 151,
+                        arguments: vec![]
+                    },
+                    provision_contract_user_group_uref: HostFunction {
+                        cost: 142,
+                        arguments: vec![]
+                    },
+                    remove_contract_user_group_urefs: HostFunction {
+                        cost: 152,
+                        arguments: vec![]
+                    },
+                    print: HostFunction {
+                        cost: 169,
+                        arguments: vec![170]
+                    }
                 }
-            }
+            },
         );
 
         assert_eq!(spec.upgrades.len(), 2);

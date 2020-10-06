@@ -92,6 +92,10 @@ where
                 // args(2) = pointer to value
                 // args(3) = size of value
                 let (key_ptr, key_size, value_ptr, value_size) = Args::parse(args)?;
+                // let (_key_ptr_cost, key_size_cost, _value_ptr_cost, value_size_cost) =
+                // host_function_costs.add;
+
+                // host_function_cost.call + key_size * host_function_costs.add;
                 self.add(key_ptr, key_size, value_ptr, value_size)?;
                 Ok(None)
             }

@@ -1,72 +1,31 @@
 use std::convert::{TryFrom, TryInto};
 
-use casper_execution_engine::shared::host_function_costs::{
-    HostFunctionCost, HostFunctionCosts, PolynomialExpr,
-};
+use casper_execution_engine::shared::host_function_costs::{HostFunction, HostFunctionCosts};
 
 use crate::engine_server::{ipc, mappings::MappingError};
 
-impl From<PolynomialExpr>
-    for ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunctionCost_Polynomial
-{
-    fn from(polynomial: PolynomialExpr) -> Self {
-        let mut pb_polynomial = Self::new();
-
-        match polynomial {
-            PolynomialExpr::Coefficient(value) => pb_polynomial.set_coefficient(value),
-            PolynomialExpr::Variable { name, value } => {
-                let pb_variable = pb_polynomial.mut_variable();
-                pb_variable.set_name(name);
-                pb_variable.set_value(value);
-            }
-        }
-
-        pb_polynomial
-    }
-}
-
-impl TryFrom<ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunctionCost_Polynomial>
-    for PolynomialExpr
-{
-    type Error = MappingError;
-
-    fn try_from(
-        pb_polynomial: ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunctionCost_Polynomial,
-    ) -> Result<Self, Self::Error> {
-        let pb_polynomial_variant = pb_polynomial.variant.ok_or(MappingError::MissingPayload)?;
-        match pb_polynomial_variant {
-            ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunctionCost_Polynomial_oneof_variant::coefficient(pb_coefficient) => Ok(PolynomialExpr::Coefficient(pb_coefficient)),
-            ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunctionCost_Polynomial_oneof_variant::variable(mut pb_variable) => {
-                Ok(PolynomialExpr::Variable {
-                    name: pb_variable.take_name(),
-                    value: pb_variable.value
-                })
-            }
-        }
-    }
-}
-
-impl From<HostFunctionCost> for ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunctionCost {
-    fn from(host_function_cost: HostFunctionCost) -> Self {
+impl From<HostFunction> for ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction {
+    fn from(host_function_cost: HostFunction) -> Self {
         let mut pb_host_function_costs = Self::new();
-        for pn in host_function_cost.into_inner() {
-            pb_host_function_costs.mut_polynomials().push(pn.into());
+        pb_host_function_costs.set_cost(host_function_cost.cost);
+        for argument in host_function_cost.arguments {
+            pb_host_function_costs.mut_arguments().push(argument);
         }
         pb_host_function_costs
     }
 }
 
-impl TryFrom<ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunctionCost> for HostFunctionCost {
+impl TryFrom<ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction> for HostFunction {
     type Error = MappingError;
     fn try_from(
-        mut pb_host_function_cost: ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunctionCost,
+        mut pb_host_function: ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction,
     ) -> Result<Self, Self::Error> {
-        let mut polynomials = HostFunctionCost::default();
-        for pb_polynomial in pb_host_function_cost.take_polynomials().into_iter() {
-            let polynomial = pb_polynomial.try_into()?;
-            polynomials.add_polynomial(polynomial)
+        let mut host_function = HostFunction::default();
+        host_function.cost = pb_host_function.cost;
+        for pb_argument in pb_host_function.take_arguments().into_iter() {
+            host_function.arguments.push(pb_argument);
         }
-        Ok(polynomials)
+        Ok(host_function)
     }
 }
 

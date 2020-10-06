@@ -92,45 +92,45 @@ opcodes_div = 1
 
 # Host function declarations are located in smart_contracts/contract/src/ext_ffi.rs
 [wasm_config.host_function_costs]
-add = [5_800_000]
-add_associated_key = [9_000_000]
-add_contract_version = [200_000_000] # Not instrumented yet, assuming a sufficiently large number
-add_local = [810, 4_700_000]
-call_contract = [420, 4_500_000]
-call_versioned_contract = [420, 4_500_000] # Not instrumented yet, assuming the same as call_contract
-create_contract_package_at_hash = [200_000_000] # Not instrumented yet, assuming a sufficiently large number
-create_contract_user_group = [200_000_000] # Not instrumented yet, assuming a sufficiently large number
-create_purse = [170_000_000]
-disable_contract_version = [200_000_000] # Not instrumented yet, assuming a sufficiently large number
-get_balance = [3_800_000]
-get_blocktime = [330_000]
-get_caller = [380_000]
-get_key = [440, 2_000_000]
-get_main_purse = [1_300_000]
-get_named_arg = [76, 2_500_000]
-get_named_arg_size = [450_000]
-get_phase = [710_000]
-get_system_contract = [1_100_000]
-has_key = [840, 1_500_000]
-is_valid_uref = [760_000]
-load_named_keys = [42_000_000]
-new_uref = [590, 17_000_000]
-provision_contract_user_group_uref = [200_000_000] # Not instrumented yet, assuming a sufficiently large number
-put_key = [1_100, 38_000_000]
-read_host_buffer = [310, 3_500_000]
-read_value = [6_000_000]
-read_value_local = [590, 5_500_000]
-remove_associated_key = [4_200_000]
-remove_contract_user_group = [200_000_000] # Not instrumented yet, assuming a sufficiently large number
-remove_contract_user_group_urefs = [200_000_000] # Not instrumented yet, assuming a sufficiently large number
-remove_key = [3_200, 61_000_000]
-ret = [420_000, 260, 23_000_000]
-revert = [500_000]
-set_action_threshold = [74_000_000]
-transfer_from_purse_to_account = [160_000_000]
-transfer_from_purse_to_purse = [82_000_000]
-transfer_to_account = [24_000_000]
-update_associated_key = [4_200_000]
-write = [980, 14_000_000]
-write_local = [1_800, 520, 9_500_000]
-print = [{ name = "text_size", value = 4_600 }, 20_000_000]
+add = { cost = 5_800_000 }
+add_associated_key = { cost = 9_000_000 }
+add_contract_version = { cost = 200_000_000 } # Not instrumented yet, assuming a sufficiently large number
+add_local = { cost = 4_700_000, arguments = [810] }
+call_contract = { cost = 4_500_000, arguments = [421] }
+call_versioned_contract = { cost = 4_500_000, arguments = [420] } # Not instrumented yet, assuming the same as call_contract
+create_contract_package_at_hash = { cost = 200_000_000 } # Not instrumented yet, assuming a sufficiently large number
+create_contract_user_group = { cost = 200_000_000 } # Not instrumented yet, assuming a sufficiently large number
+create_purse = { cost = 170_000_000 }
+disable_contract_version = { cost = 200_000_000 } # Not instrumented yet, assuming a sufficiently large number
+get_balance = { cost = 3_800_000 }
+get_blocktime = { cost = 330_000 }
+get_caller = { cost = 380_000 }
+get_key = { cost = 2_000_000, arguements = [440] }
+get_main_purse = { cost = 1_300_000 }
+get_named_arg = { cost = 2_500_000, arguments = [76] }
+get_named_arg_size = { cost = 450_000 }
+get_phase = { cost = 710_000 }
+get_system_contract = { cost = 1_100_000 }
+has_key = { cost = 1_500_000, arguments = [840] }
+is_valid_uref = { cost = 760_000 }
+load_named_keys = { cost = 42_000_000 }
+new_uref = { cost = 17_000_000, arguments = [590] }
+provision_contract_user_group_uref = { cost = 200_000_000 } # Not instrumented yet, assuming a sufficiently large number
+put_key = { cost = 38_000_000, arguments = [1_100] }
+read_host_buffer = { cost = 3_500_000, arguments = [310] }
+read_value = { cost = 6_000_000 }
+read_value_local = { cost = 5_500_000, arguments = [590] }
+remove_associated_key = { cost = 4_200_000 }
+remove_contract_user_group = { cost = 200_000_000 }# Not instrumented yet, assuming a sufficiently large number
+remove_contract_user_group_urefs = { cost = 200_000_000 } # Not instrumented yet, assuming a sufficiently large number
+remove_key = { cost = 61_000_000, arguments = [3_200] }
+ret = { cost = 23_000_000, arguments = [420_000, 260] }
+revert = { cost = 500_000 }
+set_action_threshold = { cost = 74_000_000 }
+transfer_from_purse_to_account = { cost = 160_000_000 }
+transfer_from_purse_to_purse = { cost = 82_000_000 }
+transfer_to_account = { cost = 24_000_000 }
+update_associated_key = { cost = 4_200_000 }
+write = { cost = 14_000_000, arguments = [980] }
+write_local = { cost = 9_500_000, arguments = [1_800, 520] }
+print = { cost = 20_000_000, arguments = [4_600] }

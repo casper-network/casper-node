@@ -5,148 +5,149 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::bytesrepr;
 
-mod polynomial;
-
-pub use polynomial::{Polynomial, PolynomialExpr};
-
 /// Representation of a host function cost as ingredients of polynomials.
-#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
-pub struct HostFunctionCost(Polynomial);
+///
+/// Total gas cost is equal to `cost` + sum of each argument weight multiplied by the byte size of
+/// the data.
+#[derive(Clone, Default, PartialEq, Eq, Deserialize, Serialize, Debug, DataSize)]
+pub struct HostFunction {
+    /// How much user is charged for cost only
+    pub cost: u32,
+    /// All arguments in order and their associated cost per byte.
+    #[serde(default)]
+    pub arguments: Vec<u32>,
+}
 
-impl HostFunctionCost {
-    pub fn fixed(cost: u32) -> HostFunctionCost {
-        HostFunctionCost(vec![PolynomialExpr::Coefficient(cost)])
-    }
-
-    pub fn into_inner(self) -> Polynomial {
-        self.0
-    }
-
-    pub fn add_polynomial(&mut self, polynomial: PolynomialExpr) {
-        self.0.push(polynomial)
+impl HostFunction {
+    pub fn fixed(cost: u32) -> HostFunction {
+        Self {
+            cost,
+            arguments: Vec::new(),
+        }
     }
 }
 
-impl From<Polynomial> for HostFunctionCost {
-    fn from(polynomial: Polynomial) -> Self {
-        HostFunctionCost(polynomial)
+impl Distribution<HostFunction> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> HostFunction {
+        HostFunction {
+            cost: rng.gen(),
+            arguments: Vec::new(),
+        }
     }
 }
 
-impl Distribution<HostFunctionCost> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> HostFunctionCost {
-        HostFunctionCost::fixed(rng.gen())
-    }
-}
-
-impl ToBytes for HostFunctionCost {
+impl ToBytes for HostFunction {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.0.to_bytes()
+        let mut ret = bytesrepr::unchecked_allocate_buffer(self);
+        ret.append(&mut self.cost.to_bytes()?);
+        ret.append(&mut self.arguments.to_bytes()?);
+        Ok(ret)
     }
 
     fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
+        self.cost.serialized_length() + self.arguments.serialized_length()
     }
 }
 
-impl FromBytes for HostFunctionCost {
+impl FromBytes for HostFunction {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (polynomials, bytes) = FromBytes::from_bytes(bytes)?;
-        Ok((HostFunctionCost(polynomials), bytes))
+        let (cost, bytes) = FromBytes::from_bytes(bytes)?;
+        let (arguments, bytes) = FromBytes::from_bytes(bytes)?;
+        Ok((Self { cost, arguments }, bytes))
     }
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct HostFunctionCosts {
-    pub read_value: HostFunctionCost,
-    pub read_value_local: HostFunctionCost,
-    pub write: HostFunctionCost,
-    pub write_local: HostFunctionCost,
-    pub add: HostFunctionCost,
-    pub add_local: HostFunctionCost,
-    pub new_uref: HostFunctionCost,
-    pub load_named_keys: HostFunctionCost,
-    pub ret: HostFunctionCost,
-    pub get_key: HostFunctionCost,
-    pub has_key: HostFunctionCost,
-    pub put_key: HostFunctionCost,
-    pub remove_key: HostFunctionCost,
-    pub revert: HostFunctionCost,
-    pub is_valid_uref: HostFunctionCost,
-    pub add_associated_key: HostFunctionCost,
-    pub remove_associated_key: HostFunctionCost,
-    pub update_associated_key: HostFunctionCost,
-    pub set_action_threshold: HostFunctionCost,
-    pub get_caller: HostFunctionCost,
-    pub get_blocktime: HostFunctionCost,
-    pub create_purse: HostFunctionCost,
-    pub transfer_to_account: HostFunctionCost,
-    pub transfer_from_purse_to_account: HostFunctionCost,
-    pub transfer_from_purse_to_purse: HostFunctionCost,
-    pub get_balance: HostFunctionCost,
-    pub get_phase: HostFunctionCost,
-    pub get_system_contract: HostFunctionCost,
-    pub get_main_purse: HostFunctionCost,
-    pub read_host_buffer: HostFunctionCost,
-    pub create_contract_package_at_hash: HostFunctionCost,
-    pub create_contract_user_group: HostFunctionCost,
-    pub add_contract_version: HostFunctionCost,
-    pub disable_contract_version: HostFunctionCost,
-    pub call_contract: HostFunctionCost,
-    pub call_versioned_contract: HostFunctionCost,
-    pub get_named_arg_size: HostFunctionCost,
-    pub get_named_arg: HostFunctionCost,
-    pub remove_contract_user_group: HostFunctionCost,
-    pub provision_contract_user_group_uref: HostFunctionCost,
-    pub remove_contract_user_group_urefs: HostFunctionCost,
-    pub print: HostFunctionCost,
+    pub read_value: HostFunction,
+    pub read_value_local: HostFunction,
+    pub write: HostFunction,
+    pub write_local: HostFunction,
+    pub add: HostFunction,
+    pub add_local: HostFunction,
+    pub new_uref: HostFunction,
+    pub load_named_keys: HostFunction,
+    pub ret: HostFunction,
+    pub get_key: HostFunction,
+    pub has_key: HostFunction,
+    pub put_key: HostFunction,
+    pub remove_key: HostFunction,
+    pub revert: HostFunction,
+    pub is_valid_uref: HostFunction,
+    pub add_associated_key: HostFunction,
+    pub remove_associated_key: HostFunction,
+    pub update_associated_key: HostFunction,
+    pub set_action_threshold: HostFunction,
+    pub get_caller: HostFunction,
+    pub get_blocktime: HostFunction,
+    pub create_purse: HostFunction,
+    pub transfer_to_account: HostFunction,
+    pub transfer_from_purse_to_account: HostFunction,
+    pub transfer_from_purse_to_purse: HostFunction,
+    pub get_balance: HostFunction,
+    pub get_phase: HostFunction,
+    pub get_system_contract: HostFunction,
+    pub get_main_purse: HostFunction,
+    pub read_host_buffer: HostFunction,
+    pub create_contract_package_at_hash: HostFunction,
+    pub create_contract_user_group: HostFunction,
+    pub add_contract_version: HostFunction,
+    pub disable_contract_version: HostFunction,
+    pub call_contract: HostFunction,
+    pub call_versioned_contract: HostFunction,
+    pub get_named_arg_size: HostFunction,
+    pub get_named_arg: HostFunction,
+    pub remove_contract_user_group: HostFunction,
+    pub provision_contract_user_group_uref: HostFunction,
+    pub remove_contract_user_group_urefs: HostFunction,
+    pub print: HostFunction,
 }
 
 impl Default for HostFunctionCosts {
     fn default() -> Self {
         Self {
-            read_value: HostFunctionCost::fixed(0),
-            read_value_local: HostFunctionCost::fixed(0),
-            write: HostFunctionCost::fixed(0),
-            write_local: HostFunctionCost::fixed(0),
-            add: HostFunctionCost::fixed(0),
-            add_local: HostFunctionCost::fixed(0),
-            new_uref: HostFunctionCost::fixed(0),
-            load_named_keys: HostFunctionCost::fixed(0),
-            ret: HostFunctionCost::fixed(0),
-            get_key: HostFunctionCost::fixed(0),
-            has_key: HostFunctionCost::fixed(0),
-            put_key: HostFunctionCost::fixed(0),
-            remove_key: HostFunctionCost::fixed(0),
-            revert: HostFunctionCost::fixed(0),
-            is_valid_uref: HostFunctionCost::fixed(0),
-            add_associated_key: HostFunctionCost::fixed(0),
-            remove_associated_key: HostFunctionCost::fixed(0),
-            update_associated_key: HostFunctionCost::fixed(0),
-            set_action_threshold: HostFunctionCost::fixed(0),
-            get_caller: HostFunctionCost::fixed(0),
-            get_blocktime: HostFunctionCost::fixed(0),
-            create_purse: HostFunctionCost::fixed(0),
-            transfer_to_account: HostFunctionCost::fixed(0),
-            transfer_from_purse_to_account: HostFunctionCost::fixed(0),
-            transfer_from_purse_to_purse: HostFunctionCost::fixed(0),
-            get_balance: HostFunctionCost::fixed(0),
-            get_phase: HostFunctionCost::fixed(0),
-            get_system_contract: HostFunctionCost::fixed(0),
-            get_main_purse: HostFunctionCost::fixed(0),
-            read_host_buffer: HostFunctionCost::fixed(0),
-            create_contract_package_at_hash: HostFunctionCost::fixed(0),
-            create_contract_user_group: HostFunctionCost::fixed(0),
-            add_contract_version: HostFunctionCost::fixed(0),
-            disable_contract_version: HostFunctionCost::fixed(0),
-            call_contract: HostFunctionCost::fixed(0),
-            call_versioned_contract: HostFunctionCost::fixed(0),
-            get_named_arg_size: HostFunctionCost::fixed(0),
-            get_named_arg: HostFunctionCost::fixed(0),
-            remove_contract_user_group: HostFunctionCost::fixed(0),
-            provision_contract_user_group_uref: HostFunctionCost::fixed(0),
-            remove_contract_user_group_urefs: HostFunctionCost::fixed(0),
-            print: HostFunctionCost::fixed(0),
+            read_value: HostFunction::fixed(0),
+            read_value_local: HostFunction::fixed(0),
+            write: HostFunction::fixed(0),
+            write_local: HostFunction::fixed(0),
+            add: HostFunction::fixed(0),
+            add_local: HostFunction::fixed(0),
+            new_uref: HostFunction::fixed(0),
+            load_named_keys: HostFunction::fixed(0),
+            ret: HostFunction::fixed(0),
+            get_key: HostFunction::fixed(0),
+            has_key: HostFunction::fixed(0),
+            put_key: HostFunction::fixed(0),
+            remove_key: HostFunction::fixed(0),
+            revert: HostFunction::fixed(0),
+            is_valid_uref: HostFunction::fixed(0),
+            add_associated_key: HostFunction::fixed(0),
+            remove_associated_key: HostFunction::fixed(0),
+            update_associated_key: HostFunction::fixed(0),
+            set_action_threshold: HostFunction::fixed(0),
+            get_caller: HostFunction::fixed(0),
+            get_blocktime: HostFunction::fixed(0),
+            create_purse: HostFunction::fixed(0),
+            transfer_to_account: HostFunction::fixed(0),
+            transfer_from_purse_to_account: HostFunction::fixed(0),
+            transfer_from_purse_to_purse: HostFunction::fixed(0),
+            get_balance: HostFunction::fixed(0),
+            get_phase: HostFunction::fixed(0),
+            get_system_contract: HostFunction::fixed(0),
+            get_main_purse: HostFunction::fixed(0),
+            read_host_buffer: HostFunction::fixed(0),
+            create_contract_package_at_hash: HostFunction::fixed(0),
+            create_contract_user_group: HostFunction::fixed(0),
+            add_contract_version: HostFunction::fixed(0),
+            disable_contract_version: HostFunction::fixed(0),
+            call_contract: HostFunction::fixed(0),
+            call_versioned_contract: HostFunction::fixed(0),
+            get_named_arg_size: HostFunction::fixed(0),
+            get_named_arg: HostFunction::fixed(0),
+            remove_contract_user_group: HostFunction::fixed(0),
+            provision_contract_user_group_uref: HostFunction::fixed(0),
+            remove_contract_user_group_urefs: HostFunction::fixed(0),
+            print: HostFunction::fixed(0),
         }
     }
 }
@@ -392,11 +393,10 @@ impl Distribution<HostFunctionCosts> for Standard {
 pub mod gens {
     use proptest::prelude::*;
 
-    use super::{HostFunctionCost, HostFunctionCosts};
-    use crate::shared::host_function_costs::polynomial::gens::polynomial_arb;
+    use super::{HostFunction, HostFunctionCosts};
 
-    fn host_function_cost_arb() -> impl Strategy<Value = HostFunctionCost> {
-        polynomial_arb().prop_map(HostFunctionCost::from)
+    fn host_function_cost_arb() -> impl Strategy<Value = HostFunction> {
+        any::<u32>().prop_map(HostFunction::fixed)
     }
 
     prop_compose! {
