@@ -1,4 +1,6 @@
 //! The consensus component. Provides distributed consensus among the nodes in the network.
+
+mod candidate_block;
 mod config;
 mod consensus_protocol;
 mod era_supervisor;

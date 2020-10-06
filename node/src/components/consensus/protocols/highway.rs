@@ -14,6 +14,7 @@ use tracing::{info, trace};
 
 use crate::{
     components::consensus::{
+        candidate_block::CandidateBlock,
         consensus_protocol::{BlockContext, ConsensusProtocol, ConsensusProtocolResult},
         highway_core::{
             active_validator::Effect as AvEffect,
@@ -28,7 +29,7 @@ use crate::{
         asymmetric_key::{self, PublicKey, SecretKey, Signature},
         hash::{self, Digest},
     },
-    types::{CryptoRngCore, ProtoBlock, Timestamp},
+    types::{CryptoRngCore, Timestamp},
 };
 
 #[derive(DataSize, Debug)]
@@ -347,7 +348,7 @@ impl ValidatorSecret for HighwaySecret {
 pub(crate) struct HighwayContext;
 
 impl Context for HighwayContext {
-    type ConsensusValue = ProtoBlock;
+    type ConsensusValue = CandidateBlock;
     type ValidatorId = PublicKey;
     type ValidatorSecret = HighwaySecret;
     type Signature = Signature;

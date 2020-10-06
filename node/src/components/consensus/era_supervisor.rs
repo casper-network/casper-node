@@ -36,6 +36,7 @@ use crate::{
     components::{
         chainspec_loader::{Chainspec, HighwayConfig},
         consensus::{
+            candidate_block::CandidateBlock,
             consensus_protocol::{
                 BlockContext, ConsensusProtocol, ConsensusProtocolResult,
                 FinalizedBlock as CpFinalizedBlock,
@@ -85,7 +86,7 @@ impl Display for EraId {
 
 pub struct Era<I> {
     /// The consensus protocol instance.
-    consensus: Box<dyn ConsensusProtocol<I, ProtoBlock, PublicKey>>,
+    consensus: Box<dyn ConsensusProtocol<I, CandidateBlock, PublicKey>>,
     /// The height of this era's first block.
     start_height: u64,
 }
@@ -237,7 +238,7 @@ where
         start_time: Timestamp,
         start_height: u64,
         post_state_hash: hash::Digest,
-    ) -> Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>> {
+    ) -> Vec<ConsensusProtocolResult<I, CandidateBlock, PublicKey>> {
         if self.active_eras.contains_key(&era_id) {
             panic!("{:?} already exists", era_id);
         }
@@ -364,9 +365,10 @@ where
     fn delegate_to_era<F>(&mut self, era_id: EraId, f: F) -> Effects<Event<I>>
     where
         F: FnOnce(
-            &mut dyn ConsensusProtocol<I, ProtoBlock, PublicKey>,
+            &mut dyn ConsensusProtocol<I, CandidateBlock, PublicKey>,
             &mut dyn CryptoRngCore,
-        ) -> Result<Vec<ConsensusProtocolResult<I, ProtoBlock, PublicKey>>, Error>,
+        )
+            -> Result<Vec<ConsensusProtocolResult<I, CandidateBlock, PublicKey>>, Error>,
     {
         match self.era_supervisor.active_eras.get_mut(&era_id) {
             None => {
@@ -414,8 +416,10 @@ where
             .effect_builder
             .announce_proposed_proto_block(proto_block.clone())
             .ignore();
+        // TODO: Pass in accusations.
+        let candidate_block = CandidateBlock::new(proto_block, vec![]);
         effects.extend(self.delegate_to_era(era_id, move |consensus, rng| {
-            consensus.propose(proto_block, block_context, rng)
+            consensus.propose(candidate_block, block_context, rng)
         }));
         effects
     }
@@ -505,8 +509,10 @@ where
         era_id: EraId,
         proto_block: ProtoBlock,
     ) -> Effects<Event<I>> {
+        // TODO: Retrieve the correct candidate block.
+        let candidate_block = CandidateBlock::new(proto_block.clone(), vec![]);
         let mut effects = self.delegate_to_era(era_id, |consensus, rng| {
-            consensus.resolve_validity(&proto_block, true, rng)
+            consensus.resolve_validity(&candidate_block, true, rng)
         });
         effects.extend(
             self.effect_builder
@@ -522,14 +528,16 @@ where
         _sender: I,
         proto_block: ProtoBlock,
     ) -> Effects<Event<I>> {
+        // TODO: Retrieve the correct candidate block.
+        let candidate_block = CandidateBlock::new(proto_block, vec![]);
         self.delegate_to_era(era_id, |consensus, rng| {
-            consensus.resolve_validity(&proto_block, false, rng)
+            consensus.resolve_validity(&candidate_block, false, rng)
         })
     }
 
     fn handle_consensus_results<T>(&mut self, era_id: EraId, results: T) -> Effects<Event<I>>
     where
-        T: IntoIterator<Item = ConsensusProtocolResult<I, ProtoBlock, PublicKey>>,
+        T: IntoIterator<Item = ConsensusProtocolResult<I, CandidateBlock, PublicKey>>,
     {
         results
             .into_iter()
@@ -540,7 +548,7 @@ where
     fn handle_consensus_result(
         &mut self,
         era_id: EraId,
-        consensus_result: ConsensusProtocolResult<I, ProtoBlock, PublicKey>,
+        consensus_result: ConsensusProtocolResult<I, CandidateBlock, PublicKey>,
     ) -> Effects<Event<I>> {
         match consensus_result {
             ConsensusProtocolResult::InvalidIncomingMessage(_, sender, error) => {
@@ -577,14 +585,14 @@ where
                     block_context,
                 }),
             ConsensusProtocolResult::FinalizedBlock(CpFinalizedBlock {
-                value: proto_block,
+                value,
                 timestamp,
                 height,
                 era_end,
                 proposer,
             }) => {
                 let finalized_block = FinalizedBlock::new(
-                    proto_block,
+                    value.proto_block().clone(),
                     timestamp,
                     era_end,
                     era_id,
@@ -600,9 +608,9 @@ where
                 effects.extend(self.effect_builder.execute_block(finalized_block).ignore());
                 effects
             }
-            ConsensusProtocolResult::ValidateConsensusValue(sender, proto_block) => self
+            ConsensusProtocolResult::ValidateConsensusValue(sender, candidate_block) => self
                 .effect_builder
-                .validate_block(sender.clone(), proto_block)
+                .validate_block(sender.clone(), candidate_block.proto_block().clone())
                 .event(move |(is_valid, proto_block)| {
                     if is_valid {
                         Event::AcceptProtoBlock {
