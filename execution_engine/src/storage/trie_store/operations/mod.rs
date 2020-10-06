@@ -553,7 +553,7 @@ enum KeysIteratorState<K, V, S: TrieStore<K, V>> {
     /// Iterate normally
     Ok,
     /// Return the error and stop iterating
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Return variant alone is used in testing.
     ReturnError(S::Error),
     /// Already failed, only return None
     Failed,
