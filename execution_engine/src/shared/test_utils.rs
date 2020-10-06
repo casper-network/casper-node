@@ -18,8 +18,6 @@ pub fn wasm_costs_mock() -> OpCodeCosts {
         mul: 4,
         mem: 2,
         grow_mem: 8192,
-        opcodes_mul: 3,
-        opcodes_div: 8,
     }
 }
 
@@ -30,7 +28,5 @@ pub fn wasm_costs_free() -> OpCodeCosts {
         mul: 0,
         mem: 0,
         grow_mem: 8192,
-        opcodes_mul: 1,
-        opcodes_div: 1,
     }
 }

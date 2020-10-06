@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
 
-const NUM_FIELDS: usize = 7;
+const NUM_FIELDS: usize = 5;
 pub const OPCODE_COSTS_SERIALIZED_LENGTH: usize = NUM_FIELDS * U32_SERIALIZED_LENGTH;
 
 // Taken (partially) from parity-ethereum
@@ -23,12 +23,6 @@ pub struct OpCodeCosts {
     pub mem: u32,
     /// Grow memory cost, per page (64kb)
     pub grow_mem: u32,
-    /// Cost of wasm opcode is calculated as TABLE_ENTRY_COST * `opcodes_mul` /
-    /// `opcodes_div`
-    pub opcodes_mul: u32,
-    /// Cost of wasm opcode is calculated as TABLE_ENTRY_COST * `opcodes_mul` /
-    /// `opcodes_div`
-    pub opcodes_div: u32,
 }
 
 impl OpCodeCosts {
@@ -55,8 +49,6 @@ impl Default for OpCodeCosts {
             mul: 4,
             mem: 2,
             grow_mem: 8192,
-            opcodes_mul: 3,
-            opcodes_div: 8,
         }
     }
 }
@@ -69,8 +61,6 @@ impl Distribution<OpCodeCosts> for Standard {
             mul: rng.gen(),
             mem: rng.gen(),
             grow_mem: rng.gen(),
-            opcodes_mul: rng.gen(),
-            opcodes_div: rng.gen(),
         }
     }
 }
@@ -83,8 +73,6 @@ impl ToBytes for OpCodeCosts {
         ret.append(&mut self.mul.to_bytes()?);
         ret.append(&mut self.mem.to_bytes()?);
         ret.append(&mut self.grow_mem.to_bytes()?);
-        ret.append(&mut self.opcodes_mul.to_bytes()?);
-        ret.append(&mut self.opcodes_div.to_bytes()?);
         Ok(ret)
     }
 
@@ -95,21 +83,17 @@ impl ToBytes for OpCodeCosts {
 
 impl FromBytes for OpCodeCosts {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (regular, rem): (u32, &[u8]) = FromBytes::from_bytes(bytes)?;
-        let (div, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
-        let (mul, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
-        let (mem, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
-        let (grow_mem, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
-        let (opcodes_mul, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
-        let (opcodes_div, rem): (u32, &[u8]) = FromBytes::from_bytes(rem)?;
+        let (regular, rem): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
+        let (div, rem): (_, &[u8]) = FromBytes::from_bytes(rem)?;
+        let (mul, rem): (_, &[u8]) = FromBytes::from_bytes(rem)?;
+        let (mem, rem): (_, &[u8]) = FromBytes::from_bytes(rem)?;
+        let (grow_mem, rem): (_, &[u8]) = FromBytes::from_bytes(rem)?;
         let wasm_costs = OpCodeCosts {
             regular,
             div,
             mul,
             mem,
             grow_mem,
-            opcodes_mul,
-            opcodes_div,
         };
         Ok((wasm_costs, rem))
     }
@@ -128,8 +112,6 @@ pub mod gens {
             mul in num::u32::ANY,
             mem in num::u32::ANY,
             grow_mem in num::u32::ANY,
-            opcodes_mul in num::u32::ANY,
-            opcodes_div in num::u32::ANY,
         ) -> OpCodeCosts {
             OpCodeCosts {
                 regular,
@@ -137,8 +119,6 @@ pub mod gens {
                 mul,
                 mem,
                 grow_mem,
-                opcodes_mul,
-                opcodes_div,
             }
         }
     }

@@ -330,15 +330,8 @@ message ChainSpec {
             uint32 mul = 3;
             // Memory (load/store) operations multiplier.
             uint32 mem = 4;
-            // Amount of free memory (in 64kb pages) each contract can use for stack.
-            uint32 initial_mem = 5;
             // Grow memory cost, per page (64kb)
             uint32 grow_mem = 6;
-            // Max stack height (native WebAssembly stack limiter)
-            uint32 max_stack_height = 8;
-            // Cost of wasm opcode is calculated as TABLE_ENTRY_COST * `opcodes_mul` / `opcodes_div`
-            uint32 opcodes_mul = 9;
-            uint32 opcodes_div = 10;
         }
 
         message StorageCosts {

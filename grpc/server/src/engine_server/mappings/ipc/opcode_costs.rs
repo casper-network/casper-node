@@ -10,8 +10,6 @@ impl From<OpCodeCosts> for ipc::ChainSpec_WasmConfig_OpCodeCosts {
             mul: opcode_costs.mul,
             mem: opcode_costs.mem,
             grow_mem: opcode_costs.grow_mem,
-            opcodes_mul: opcode_costs.opcodes_mul,
-            opcodes_div: opcode_costs.opcodes_div,
             ..Default::default()
         }
     }
@@ -25,8 +23,6 @@ impl From<ipc::ChainSpec_WasmConfig_OpCodeCosts> for OpCodeCosts {
             mul: pb_opcode_costs.mul,
             mem: pb_opcode_costs.mem,
             grow_mem: pb_opcode_costs.grow_mem,
-            opcodes_mul: pb_opcode_costs.opcodes_mul,
-            opcodes_div: pb_opcode_costs.opcodes_div,
         }
     }
 }

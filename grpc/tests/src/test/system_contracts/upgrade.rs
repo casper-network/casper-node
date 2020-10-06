@@ -35,8 +35,6 @@ fn get_upgraded_wasm_config() -> WasmConfig {
             mul: 1,
             mem: 1,
             grow_mem: 8192,
-            opcodes_mul: 3,
-            opcodes_div: 8,
         },
         storage_costs: StorageCosts {
             gas_per_byte: 630_000_000,

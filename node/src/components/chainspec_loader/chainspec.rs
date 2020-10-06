@@ -452,8 +452,6 @@ mod tests {
                     mul: 15,
                     mem: 16,
                     grow_mem: 18,
-                    opcodes_mul: 20,
-                    opcodes_div: 21
                 },
                 storage_costs: StorageCosts { gas_per_byte: 101 },
                 host_function_costs: HostFunctionCosts {
@@ -629,24 +627,6 @@ mod tests {
         assert_eq!(
             upgrade0.new_wasm_config.as_ref().unwrap().max_stack_height,
             19
-        );
-        assert_eq!(
-            upgrade0
-                .new_wasm_config
-                .as_ref()
-                .unwrap()
-                .opcode_costs
-                .opcodes_mul,
-            31
-        );
-        assert_eq!(
-            upgrade0
-                .new_wasm_config
-                .as_ref()
-                .unwrap()
-                .opcode_costs
-                .opcodes_div,
-            32
         );
         assert_eq!(
             upgrade0.new_deploy_config.unwrap().max_payment_cost,
