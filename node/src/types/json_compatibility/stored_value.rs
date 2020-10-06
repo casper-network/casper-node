@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use casper_execution_engine::shared::stored_value::StoredValue as ExecutionEngineStoredValue;
 use casper_types::bytesrepr::{self, ToBytes};
 
-use super::Account;
+use super::{Account, CLValue};
 
 /// Representation of a value stored in global state.
 ///
@@ -18,7 +18,7 @@ use super::Account;
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub enum StoredValue {
     /// A CasperLabs value.
-    CLValue(String),
+    CLValue(CLValue),
     /// An account.
     Account(Account),
     /// A contract's Wasm
@@ -36,7 +36,7 @@ impl TryFrom<&ExecutionEngineStoredValue> for StoredValue {
         let stored_value = match ee_stored_value {
             ExecutionEngineStoredValue::Account(account) => StoredValue::Account(account.into()),
             ExecutionEngineStoredValue::CLValue(cl_value) => {
-                StoredValue::CLValue(hex::encode(&cl_value.to_bytes()?))
+                StoredValue::CLValue(CLValue::from(cl_value))
             }
             ExecutionEngineStoredValue::ContractWasm(contract_wasm) => {
                 StoredValue::ContractWasm(hex::encode(&contract_wasm.to_bytes()?))

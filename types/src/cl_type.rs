@@ -6,6 +6,8 @@ use alloc::{
 };
 use core::mem;
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     Key, URef, U128, U256, U512,
@@ -38,7 +40,7 @@ const CL_TYPE_TAG_PUBLIC_KEY: u8 = 22;
 /// Casper types, i.e. types which can be stored and manipulated by smart contracts.
 ///
 /// Provides a description of the underlying data type of a [`CLValue`](crate::CLValue).
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Serialize, Deserialize, Debug)]
 pub enum CLType {
     /// `bool` primitive.
     Bool,
