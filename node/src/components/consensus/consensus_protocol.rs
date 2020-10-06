@@ -24,13 +24,6 @@ impl BlockContext {
     pub(crate) fn timestamp(&self) -> Timestamp {
         self.timestamp
     }
-
-    /// The block's relative height within the current era.
-    // TODO - remove once used
-    #[allow(dead_code)]
-    pub(crate) fn height(&self) -> u64 {
-        self.height
-    }
 }
 
 /// Equivocation and reward information to be included in the terminal finalized block.

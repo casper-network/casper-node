@@ -148,7 +148,7 @@ where
 
 pub(crate) enum DeliverySchedule {
     AtInstant(Timestamp),
-    #[allow(dead_code)] // TODO: Use or remove this.
+    #[allow(dead_code)] // Drop variant used in tests.
     Drop,
 }
 

@@ -12,7 +12,10 @@ use datasize::DataSize;
 use fake_instant::FakeClock as Instant;
 use tracing::warn;
 
-use super::{Config, Error};
+#[cfg(test)]
+use super::Error;
+
+use super::Config;
 use crate::small_network::NodeId;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -372,7 +375,7 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
     ///
     /// Returns an error if gossiping this data is not in a paused state.
     // TODO - remove lint relaxation once the method is used.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn resume(&mut self, data_id: &T) -> Result<GossipAction, Error> {
         let (mut state, _timeout) = self.paused.remove(data_id).ok_or(Error::NotPaused)?;
         let is_new = !state.held_by_us;

@@ -77,21 +77,14 @@ use smallvec::{smallvec, SmallVec};
 use tracing::error;
 
 use casper_execution_engine::{
-    core::{
-        engine_state::{
-            self,
-            era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
-            execute_request::ExecuteRequest,
-            execution_result::ExecutionResults,
-            genesis::GenesisResult,
-            BalanceRequest, BalanceResult, QueryRequest, QueryResult,
-        },
-        execution,
+    core::engine_state::{
+        self, execute_request::ExecuteRequest, execution_result::ExecutionResults,
+        genesis::GenesisResult, BalanceRequest, BalanceResult, QueryRequest, QueryResult,
     },
     shared::{additive_map::AdditiveMap, transform::Transform},
     storage::global_state::CommitResult,
 };
-use casper_types::{auction::ValidatorWeights, Key};
+use casper_types::Key;
 
 use crate::{
     components::{
@@ -99,9 +92,7 @@ use crate::{
         consensus::BlockContext,
         fetcher::FetchResult,
         small_network::GossipedAddress,
-        storage::{
-            DeployHashes, DeployHeaderResults, DeployMetadata, DeployResults, StorageType, Value,
-        },
+        storage::{DeployHashes, DeployMetadata, DeployResults, StorageType, Value},
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
     reactor::{EventQueueHandle, QueueKind},
@@ -670,27 +661,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested deploy headers from the deploy store.
-    // TODO: remove once method is used.
-    #[allow(dead_code)]
-    pub(crate) async fn get_deploy_headers_from_storage<S>(
-        self,
-        deploy_hashes: DeployHashes<S>,
-    ) -> DeployHeaderResults<S>
-    where
-        S: StorageType + 'static,
-        REv: From<StorageRequest<S>>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetDeployHeaders {
-                deploy_hashes,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Stores the given execution results for the deploys in the given block in the linear block
     /// store.
     pub(crate) async fn put_execution_results_to_storage<S>(
@@ -878,20 +848,6 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Announces that a proto block has been orphaned.
-    #[allow(dead_code)] // TODO: Detect orphaned blocks.
-    pub(crate) async fn announce_orphaned_proto_block(self, proto_block: ProtoBlock)
-    where
-        REv: From<ConsensusAnnouncement>,
-    {
-        self.0
-            .schedule(
-                ConsensusAnnouncement::Orphaned(proto_block),
-                QueueKind::Regular,
-            )
-            .await
-    }
-
     pub(crate) async fn announce_block_handled(self, block_header: BlockHeader)
     where
         REv: From<ConsensusAnnouncement>,
@@ -1048,35 +1004,6 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
-    }
-
-    /// Returns a map of validators for given `era` to their weights as known from `root_hash`.
-    ///
-    /// This operation is read only.
-    #[allow(dead_code)]
-    pub(crate) async fn get_validators(
-        self,
-        get_request: GetEraValidatorsRequest,
-    ) -> Result<Option<ValidatorWeights>, GetEraValidatorsError>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::GetEraValidators {
-                get_request,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Runs auction using the system smart contract.
-    ///
-    /// Contract is ran on a given pre state hash and returns fully committed post state hash.
-    #[allow(dead_code)]
-    pub(crate) async fn run_auction(self, _root_hash: Digest) -> Result<Digest, execution::Error> {
-        todo!("run_auction")
     }
 
     /// Request consensus to sign a block from the linear chain and possibly start a new era.
