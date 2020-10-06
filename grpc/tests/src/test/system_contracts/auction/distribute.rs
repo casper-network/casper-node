@@ -13,8 +13,8 @@ use casper_types::{
     auction::{
         DelegationRate, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY,
         ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, BLOCK_REWARD,
-        DELEGATION_RATE_DENOMINATOR, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_DISTRIBUTE,
-        METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
+        DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE, METHOD_WITHDRAW_DELEGATOR_REWARD,
+        METHOD_WITHDRAW_VALIDATOR_REWARD,
     },
     mint, runtime_args, PublicKey, RuntimeArgs, U512,
 };
@@ -23,6 +23,8 @@ const ARG_ENTRY_POINT: &str = "entry_point";
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const CONTRACT_AUCTION_BIDS: &str = "auction_bids.wasm";
+const CONTRACT_ADD_BID: &str = "add_bid.wasm";
+const CONTRACT_DELEGATE: &str = "delegate.wasm";
 const TRANSFER_AMOUNT: u64 = 250_000_000;
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
@@ -163,9 +165,8 @@ fn should_distribute_delegation_rate_zero() {
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_1,
@@ -175,9 +176,8 @@ fn should_distribute_delegation_rate_zero() {
 
     let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
             ARG_VALIDATOR => VALIDATOR_1,
             ARG_DELEGATOR => DELEGATOR_1,
@@ -187,9 +187,8 @@ fn should_distribute_delegation_rate_zero() {
 
     let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
             ARG_VALIDATOR => VALIDATOR_1,
             ARG_DELEGATOR => DELEGATOR_2,
@@ -331,9 +330,8 @@ fn should_distribute_delegation_rate_half() {
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_1_DELGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_1,
@@ -343,9 +341,8 @@ fn should_distribute_delegation_rate_half() {
 
     let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
             ARG_VALIDATOR => VALIDATOR_1,
             ARG_DELEGATOR => DELEGATOR_1,
@@ -355,9 +352,8 @@ fn should_distribute_delegation_rate_half() {
 
     let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
             ARG_VALIDATOR => VALIDATOR_1,
             ARG_DELEGATOR => DELEGATOR_2,
@@ -479,9 +475,8 @@ fn should_distribute_delegation_rate_full() {
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_1,
@@ -491,9 +486,8 @@ fn should_distribute_delegation_rate_full() {
 
     let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
             ARG_VALIDATOR => VALIDATOR_1,
             ARG_DELEGATOR => DELEGATOR_1,
@@ -503,9 +497,8 @@ fn should_distribute_delegation_rate_full() {
 
     let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
             ARG_VALIDATOR => VALIDATOR_1,
             ARG_DELEGATOR => DELEGATOR_2,
@@ -633,9 +626,8 @@ fn should_distribute_uneven_delegation_rate_zero() {
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_1,
@@ -645,9 +637,8 @@ fn should_distribute_uneven_delegation_rate_zero() {
 
     let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
             ARG_VALIDATOR => VALIDATOR_1,
             ARG_DELEGATOR => DELEGATOR_1,
@@ -657,9 +648,8 @@ fn should_distribute_uneven_delegation_rate_zero() {
 
     let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
             ARG_VALIDATOR => VALIDATOR_1,
             ARG_DELEGATOR => DELEGATOR_2,
@@ -787,9 +777,8 @@ fn should_distribute_by_factor() {
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_1,
@@ -799,9 +788,8 @@ fn should_distribute_by_factor() {
 
     let validator_2_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_2_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_2_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_2,
@@ -811,9 +799,8 @@ fn should_distribute_by_factor() {
 
     let validator_3_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_3_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_3_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_3,
@@ -943,9 +930,8 @@ fn should_distribute_by_factor_regardless_of_stake() {
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_1,
@@ -955,9 +941,8 @@ fn should_distribute_by_factor_regardless_of_stake() {
 
     let validator_2_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_2_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_2_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_2,
@@ -967,9 +952,8 @@ fn should_distribute_by_factor_regardless_of_stake() {
 
     let validator_3_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_3_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_3_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_3,
@@ -1101,9 +1085,8 @@ fn should_distribute_by_factor_uneven() {
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_1,
@@ -1113,9 +1096,8 @@ fn should_distribute_by_factor_uneven() {
 
     let validator_2_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_2_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_2_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_2,
@@ -1125,9 +1107,8 @@ fn should_distribute_by_factor_uneven() {
 
     let validator_3_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_3_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_3_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_3,
@@ -1293,9 +1274,8 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_1,
@@ -1305,9 +1285,8 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     let validator_2_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_2_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_2_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_2_DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_2,
@@ -1317,9 +1296,8 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     let validator_3_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_3_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_3_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_3_DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_3,
@@ -1329,9 +1307,8 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
             ARG_VALIDATOR => VALIDATOR_1,
             ARG_DELEGATOR => DELEGATOR_1,
@@ -1341,9 +1318,8 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
             ARG_VALIDATOR => VALIDATOR_1,
             ARG_DELEGATOR => DELEGATOR_2,
@@ -1353,9 +1329,8 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     let delegator_3_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_3_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATOR_3_STAKE),
             ARG_VALIDATOR => VALIDATOR_2,
             ARG_DELEGATOR => DELEGATOR_3,
@@ -1543,9 +1518,8 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_1,
@@ -1555,9 +1529,8 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let validator_2_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_2_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_2_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_2,
@@ -1567,9 +1540,8 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let validator_3_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_3_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_3_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_3,
@@ -1579,9 +1551,8 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
             ARG_VALIDATOR => VALIDATOR_1,
             ARG_DELEGATOR => DELEGATOR_1,
@@ -1591,9 +1562,8 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let delegator_1_validator_2_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
             ARG_VALIDATOR => VALIDATOR_2,
             ARG_DELEGATOR => DELEGATOR_1,
@@ -1603,9 +1573,8 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let delegator_1_validator_3_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
             ARG_VALIDATOR => VALIDATOR_3,
             ARG_DELEGATOR => DELEGATOR_1,
@@ -1770,9 +1739,8 @@ fn should_prevent_theft_of_validator_reward() {
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_1,
@@ -1782,9 +1750,8 @@ fn should_prevent_theft_of_validator_reward() {
 
     let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
             ARG_VALIDATOR => VALIDATOR_1,
             ARG_DELEGATOR => DELEGATOR_1,
@@ -1796,7 +1763,6 @@ fn should_prevent_theft_of_validator_reward() {
         *DELEGATOR_2_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
             ARG_VALIDATOR => VALIDATOR_1,
             ARG_DELEGATOR => DELEGATOR_2,
@@ -1899,9 +1865,8 @@ fn should_prevent_theft_of_delegator_reward() {
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_ADD_BID,
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_1,
@@ -1911,9 +1876,8 @@ fn should_prevent_theft_of_delegator_reward() {
 
     let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
             ARG_VALIDATOR => VALIDATOR_1,
             ARG_DELEGATOR => DELEGATOR_1,
@@ -1923,9 +1887,8 @@ fn should_prevent_theft_of_delegator_reward() {
 
     let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DELEGATE,
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
             ARG_VALIDATOR => VALIDATOR_1,
             ARG_DELEGATOR => DELEGATOR_2,

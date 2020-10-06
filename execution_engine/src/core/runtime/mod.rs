@@ -1976,9 +1976,11 @@ where
                 let account_hash =
                     Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
                 let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let unbond_purse =
+                    Self::get_named_argument(&runtime_args, auction::ARG_UNBOND_PURSE)?;
 
                 let result = runtime
-                    .withdraw_bid(account_hash, amount)
+                    .withdraw_bid(account_hash, amount, unbond_purse)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
@@ -2001,9 +2003,11 @@ where
                 let delegator = Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
                 let validator = Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
                 let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let unbond_purse =
+                    Self::get_named_argument(&runtime_args, auction::ARG_UNBOND_PURSE)?;
 
                 let result = runtime
-                    .undelegate(delegator, validator, amount)
+                    .undelegate(delegator, validator, amount, unbond_purse)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)?

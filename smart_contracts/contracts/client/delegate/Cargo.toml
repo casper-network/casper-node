@@ -1,11 +1,11 @@
 [package]
-name = "unbonding"
+name = "delegate"
 version = "0.1.0"
-authors = ["Michael Birch <birchmd@casperlabs.io>"]
+authors = ["Michał Papierski <michal@casperlabs.io>"]
 edition = "2018"
 
 [[bin]]
-name = "unbonding"
+name = "delegate"
 bench = false
 doctest = false
 test = false
