@@ -75,6 +75,14 @@ impl ChainspecInfo {
     pub(crate) fn new(name: String, root_hash: Option<Digest>) -> ChainspecInfo {
         ChainspecInfo { name, root_hash }
     }
+
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    pub fn root_hash(&self) -> Option<Digest> {
+        self.root_hash
+    }
 }
 
 impl From<ChainspecLoader> for ChainspecInfo {
