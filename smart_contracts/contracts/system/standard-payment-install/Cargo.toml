@@ -17,5 +17,5 @@ no-unstable-features = ["casper-contract/no-unstable-features", "casper-types/no
 
 [dependencies]
 casper-contract = { path = "../../../contract" }
-standard-payment = { version = "0.1.0", path = "../standard-payment" }
-casper-types = { version = "0.6.0", path = "../../../../types" }
+casper-types = { path = "../../../../types" }
+standard-payment = { path = "../standard-payment" }

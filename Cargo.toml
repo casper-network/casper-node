@@ -1,28 +1,30 @@
 [workspace]
 
 members = [
+    "ci/casper_updater",
+    "client",
     "execution_engine",
-    "smart_contracts/contract",
-    "smart_contracts/contracts/[!.]*/*",
+    "grpc/cargo_casper",
     "grpc/server",
     "grpc/test_support",
     "grpc/tests",
-    "grpc/cargo-casper",
-    "types",
     "node",
-    "client",
+    "smart_contracts/contract",
+    "smart_contracts/contracts/[!.]*/*",
+    "types",
 ]
 
 default-members = [
+    "ci/casper_updater",
+    "client",
     "execution_engine",
-    "smart_contracts/contract",
+    "grpc/cargo_casper",
     "grpc/server",
     "grpc/test_support",
     "grpc/tests",
-    "grpc/cargo-casper",
-    "types",
     "node",
-    "client",
+    "smart_contracts/contract",
+    "types",
 ]
 
 # Include debug symbols in the release build of `casper-engine-tests` so that `simple-transfer` will yield useful

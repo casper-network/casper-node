@@ -1,15 +1,14 @@
 [package]
 name = "casper-node"
-version = "0.1.0"
+version = "0.1.0" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Marc Brinkmann <marc@casperlabs.io>", "Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "The Casper blockchain node"
 documentation = "https://docs.rs/casper-node"
 readme = "README.md"
 homepage = "https://casperlabs.io"
-repository = "https://github.com/CasperLabs/casper-node"
+repository = "https://github.com/CasperLabs/casper-node/tree/master/node"
 license-file = "../LICENSE"
-publish = false  # Prevent accidental `cargo publish` for now.
 default-run = "casper-node"
 
 [dependencies]
@@ -19,7 +18,7 @@ backtrace = "0.3.50"
 base16 = "0.2.1"
 base64 = "0.12.3"
 blake2 = { version = "0.8.1", default-features = false }
-casper-execution-engine = { path = "../execution_engine" }
+casper-execution-engine = { version = "0.7.0", path = "../execution_engine" }
 casper-types = { version = "0.6.0", path = "../types", features = ["std", "gens"] }
 chrono = "0.4.10"
 csv = "1.1.3"

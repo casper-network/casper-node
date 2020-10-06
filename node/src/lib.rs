@@ -6,9 +6,9 @@
 //! ## Application structure
 //!
 //! While the [`main`](fn.main.html) function is the central entrypoint for the node application,
-//! its core event loop is found inside the [reactor](reactor/index.html). To get a tour of the
-//! sourcecode, be sure to run `cargo doc --open`.
+//! its core event loop is found inside the [reactor](reactor/index.html).
 
+#![doc(html_root_url = "https://docs.rs/casper-node/0.1.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
