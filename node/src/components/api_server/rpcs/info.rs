@@ -184,6 +184,8 @@ pub struct GetStatusResult {
     pub peers: BTreeMap<String, SocketAddr>,
     /// The minimal info of the last block from the linear chain.
     pub last_finalized_block_info: Option<MinimalBlockInfo>,
+    /// The compiled node version.
+    pub version: String,
 }
 
 impl From<StatusFeed<NodeId>> for GetStatusResult {
@@ -192,6 +194,7 @@ impl From<StatusFeed<NodeId>> for GetStatusResult {
             api_version: CLIENT_API_VERSION.clone(),
             peers: peers_hashmap_to_btreemap(status_feed.peers),
             last_finalized_block_info: status_feed.last_finalized_block.map(Into::into),
+            version: crate::VERSION_STRING.clone(),
         }
     }
 }

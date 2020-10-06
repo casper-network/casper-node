@@ -7,7 +7,6 @@ pub mod arglang;
 use std::{env, fs, path::PathBuf, str::FromStr};
 
 use anyhow::{self, bail, Context};
-use lazy_static::lazy_static;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use regex::Regex;
@@ -23,17 +22,9 @@ use casper_node::{
 };
 use prometheus::Registry;
 
-lazy_static! {
-    static ref VERSION_STRING: String = format!(
-        "{}-{}",
-        env!("VERGEN_SEMVER_LIGHTWEIGHT"),
-        env!("VERGEN_SHA_SHORT")
-    );
-}
-
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
 #[derive(Debug, StructOpt)]
-#[structopt(version = VERSION_STRING.as_str())]
+#[structopt(version = casper_node::VERSION_STRING.as_str())]
 /// Casper blockchain node.
 pub enum Cli {
     /// Run the validator node.

@@ -14,6 +14,8 @@ pub struct StatusFeed<I> {
     pub peers: HashMap<I, SocketAddr>,
     /// The chainspec info for this node.
     pub chainspec_info: ChainspecInfo,
+    /// The compiled node version.
+    pub version: &'static str,
 }
 
 impl<I> StatusFeed<I> {
@@ -26,6 +28,7 @@ impl<I> StatusFeed<I> {
             last_finalized_block,
             peers,
             chainspec_info,
+            version: crate::VERSION_STRING.as_str(),
         }
     }
 }
