@@ -22,8 +22,19 @@ use casper_node::{
 };
 use prometheus::Registry;
 
+/// Outputs a suitable version string.
+fn get_version() -> &'static str {
+    let s = Box::new(format!(
+        "{}-{}",
+        env!("VERGEN_SEMVER_LIGHTWEIGHT"),
+        env!("VERGEN_SHA_SHORT")
+    ));
+    Box::leak(s).as_str()
+}
+
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
 #[derive(Debug, StructOpt)]
+#[structopt(version = get_version())]
 /// Casper blockchain node.
 pub enum Cli {
     /// Run the validator node.
