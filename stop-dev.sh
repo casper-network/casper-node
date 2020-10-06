@@ -11,7 +11,7 @@ ARGS="$@"
 # If no nodes defined, stop all.
 NODES="${ARGS:-1 2 3 4 5}"
 
-for i in 1 2 3 4 5; do
+for i in $NODES; do
     case "$NODES" in
         *"$i"*) systemctl --user stop node-$i
     esac
