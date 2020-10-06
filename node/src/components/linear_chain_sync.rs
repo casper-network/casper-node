@@ -228,6 +228,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         I: Send + Copy + 'static,
         REv: ReactorEventT<I>,
     {
+        self.reset_peers(rng);
         self.state.block_downloaded(block_header);
         self.add_block(block_header.clone());
         match &self.state {
