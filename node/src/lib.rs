@@ -49,9 +49,13 @@ pub use utils::OS_PAGE_SIZE;
 
 lazy_static! {
     /// Version string for the compiled node. Filled in at build time, output allocated at runtime.
-    pub static ref VERSION_STRING: String = format!(
-        "{}-{}",
-        env!("VERGEN_SEMVER_LIGHTWEIGHT"),
-        env!("VERGEN_SHA_SHORT")
-    );
+    pub static ref VERSION_STRING: String = if env!("VERGEN_SEMVER_LIGHTWEIGHT") == "UNKNOWN" {
+        env!("CARGO_PKG_VERSION").to_string()
+    } else {
+        format!(
+            "{}-{}",
+            env!("VERGEN_SEMVER_LIGHTWEIGHT"),
+            env!("VERGEN_SHA_SHORT")
+        )
+    };
 }
