@@ -623,16 +623,18 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests linear chain block at height.
-    // TODO: Should be eventually replaced with call to the linear chain storage.
-    pub(crate) async fn get_block_at_height<I>(self, height: u64) -> Option<BlockByHeight>
+    pub(crate) async fn get_block_at_height<S>(
+        self,
+        height: <S::BlockHeight as Value>::Id,
+    ) -> Option<S::Block>
     where
-        REv: From<LinearChainRequest<I>>,
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| LinearChainRequest::BlockAtHeightLocal(height, responder),
+            |responder| StorageRequest::GetBlockAtHeight { height, responder },
             QueueKind::Regular,
         )
-        .map(|block| block.map(BlockByHeight::new))
         .await
     }
 
