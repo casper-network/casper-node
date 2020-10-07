@@ -109,6 +109,9 @@ bench = false
 doctest = false
 test = false
 
+[build-dependencies]
+vergen = "3.1.0"
+
 [package.metadata.deb]
 features = ["vendored-openssl"]
 revision = "3"  # Increment with releases for updates to charlie data files when not version bumping casper-node.
