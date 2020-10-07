@@ -24,4 +24,9 @@ impl CandidateBlock {
     pub(crate) fn proto_block(&self) -> &ProtoBlock {
         &self.proto_block
     }
+
+    /// Returns the validators accused by this block.
+    pub(crate) fn accusations(&self) -> &Vec<PublicKey> {
+        &self.accusations
+    }
 }

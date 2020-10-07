@@ -6,7 +6,7 @@
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
     rc::Rc,
@@ -89,6 +89,22 @@ pub struct Era<I> {
     consensus: Box<dyn ConsensusProtocol<I, CandidateBlock, PublicKey>>,
     /// The height of this era's first block.
     start_height: u64,
+    /// Pending candidate blocks, waiting for validation. The boolean is `true` if the proto block
+    /// has been validated; the vector contains the list of accused validators missing evidence.
+    candidates: BTreeMap<CandidateBlock, (bool, Vec<PublicKey>)>,
+}
+
+impl<I> Era<I> {
+    fn new<C: 'static + ConsensusProtocol<I, CandidateBlock, PublicKey>>(
+        consensus: C,
+        start_height: u64,
+    ) -> Self {
+        Era {
+            consensus: Box::new(consensus),
+            start_height,
+            candidates: BTreeMap::new(),
+        }
+    }
 }
 
 impl<I> DataSize for Era<I>
@@ -317,10 +333,7 @@ where
             Vec::new()
         };
 
-        let era = Era {
-            consensus: Box::new(highway),
-            start_height,
-        };
+        let era = Era::new(highway, start_height);
         let _ = self.active_eras.insert(era_id, era);
 
         // Remove the era that has become obsolete now.
@@ -509,11 +522,33 @@ where
         era_id: EraId,
         proto_block: ProtoBlock,
     ) -> Effects<Event<I>> {
-        // TODO: Retrieve the correct candidate block.
-        let candidate_block = CandidateBlock::new(proto_block.clone(), vec![]);
-        let mut effects = self.delegate_to_era(era_id, |consensus, rng| {
-            consensus.resolve_validity(&candidate_block, true, rng)
-        });
+        let mut effects = Effects::new();
+        let candidate_blocks: Vec<CandidateBlock>;
+        if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
+            candidate_blocks = era
+                .candidates
+                .iter_mut()
+                .filter(|(cb, _)| *cb.proto_block() == proto_block)
+                .filter_map(|(cb, (valid, accusations))| {
+                    *valid = true;
+                    if accusations.is_empty() {
+                        Some(cb.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            for candidate_block in &candidate_blocks {
+                era.candidates.remove(candidate_block);
+            }
+        } else {
+            return effects;
+        }
+        for candidate_block in candidate_blocks {
+            effects.extend(self.delegate_to_era(era_id, |consensus, rng| {
+                consensus.resolve_validity(&candidate_block, true, rng)
+            }));
+        }
         effects.extend(
             self.effect_builder
                 .announce_proposed_proto_block(proto_block)
@@ -528,11 +563,27 @@ where
         _sender: I,
         proto_block: ProtoBlock,
     ) -> Effects<Event<I>> {
-        // TODO: Retrieve the correct candidate block.
-        let candidate_block = CandidateBlock::new(proto_block, vec![]);
-        self.delegate_to_era(era_id, |consensus, rng| {
-            consensus.resolve_validity(&candidate_block, false, rng)
-        })
+        let mut effects = Effects::new();
+        let candidate_blocks: Vec<CandidateBlock>;
+        if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
+            candidate_blocks = era
+                .candidates
+                .iter()
+                .filter(|(cb, _)| *cb.proto_block() == proto_block)
+                .map(|(cb, _)| cb.clone())
+                .collect();
+            for candidate_block in &candidate_blocks {
+                era.candidates.remove(candidate_block);
+            }
+        } else {
+            return effects;
+        }
+        for candidate_block in candidate_blocks {
+            effects.extend(self.delegate_to_era(era_id, |consensus, rng| {
+                consensus.resolve_validity(&candidate_block, false, rng)
+            }));
+        }
+        effects
     }
 
     fn handle_consensus_results<T>(&mut self, era_id: EraId, results: T) -> Effects<Event<I>>
@@ -608,23 +659,31 @@ where
                 effects.extend(self.effect_builder.execute_block(finalized_block).ignore());
                 effects
             }
-            ConsensusProtocolResult::ValidateConsensusValue(sender, candidate_block) => self
-                .effect_builder
-                .validate_block(sender.clone(), candidate_block.proto_block().clone())
-                .event(move |(is_valid, proto_block)| {
-                    if is_valid {
-                        Event::AcceptProtoBlock {
-                            era_id,
-                            proto_block,
+            ConsensusProtocolResult::ValidateConsensusValue(sender, candidate_block) => {
+                let proto_block = candidate_block.proto_block().clone();
+                let accusations = candidate_block.accusations().clone();
+                if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
+                    era.candidates.insert(candidate_block, (false, accusations));
+                } else {
+                    return Effects::new();
+                };
+                self.effect_builder
+                    .validate_block(sender.clone(), proto_block)
+                    .event(move |(is_valid, proto_block)| {
+                        if is_valid {
+                            Event::AcceptProtoBlock {
+                                era_id,
+                                proto_block,
+                            }
+                        } else {
+                            Event::InvalidProtoBlock {
+                                era_id,
+                                sender,
+                                proto_block,
+                            }
                         }
-                    } else {
-                        Event::InvalidProtoBlock {
-                            era_id,
-                            sender,
-                            proto_block,
-                        }
-                    }
-                }),
+                    })
+            }
         }
     }
 }
