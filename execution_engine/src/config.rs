@@ -1,3 +1,5 @@
+//! Configuration options for the execution engine.
+
 use serde::{Deserialize, Serialize};
 
 use crate::shared::utils;
@@ -10,22 +12,22 @@ const DEFAULT_USE_SYSTEM_CONTRACTS: bool = false;
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    /// Whether to use system contracts or not.  Defaults to false.
     use_system_contracts: Option<bool>,
-    /// The maximum size of the database to use for the global state store.
-    ///
-    /// Defaults to 805,306,368,000 == 750 GiB.
-    ///
-    /// The size should be a multiple of the OS page size.
     max_global_state_size: Option<usize>,
 }
 
 impl Config {
+    /// Whether to use system contracts or not.  Defaults to false.
     pub fn use_system_contracts(&self) -> bool {
         self.use_system_contracts
             .unwrap_or(DEFAULT_USE_SYSTEM_CONTRACTS)
     }
 
+    /// The maximum size of the database to use for the global state store.
+    ///
+    /// Defaults to 805,306,368,000 == 750 GiB.
+    ///
+    /// The size should be a multiple of the OS page size.
     pub fn max_global_state_size(&self) -> usize {
         let value = self
             .max_global_state_size

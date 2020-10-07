@@ -4,7 +4,6 @@ mod tests;
 use std::{collections::HashMap, fmt::Debug, time::Duration};
 
 use datasize::DataSize;
-use rand::{CryptoRng, Rng};
 use smallvec::smallvec;
 use tracing::{debug, error};
 
@@ -16,7 +15,7 @@ use crate::{
     },
     protocol::Message,
     small_network::NodeId,
-    types::{Block, BlockByHeight, BlockHash, Deploy, DeployHash, Item},
+    types::{Block, BlockByHeight, BlockHash, CryptoRngCore, Deploy, DeployHash, Item},
     utils::Source,
     GossipConfig,
 };
@@ -249,30 +248,28 @@ impl ItemFetcher<BlockByHeight> for Fetcher<BlockByHeight> {
         id: u64,
         peer: NodeId,
     ) -> Effects<Event<BlockByHeight>> {
-        //TODO: Replace with querying the storage instead of in-mem of linear chain.
         effect_builder
             .get_block_at_height(id)
             .event(move |result| Event::GetFromStorageResult {
                 id,
                 peer,
-                maybe_item: Box::new(result),
+                maybe_item: Box::new(result.map(Into::into)),
             })
     }
 }
 
-impl<T, REv, R> Component<REv, R> for Fetcher<T>
+impl<T, REv> Component<REv> for Fetcher<T>
 where
     Fetcher<T>: ItemFetcher<T>,
     T: Item + 'static,
     REv: ReactorEventT<T>,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event<T>;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         debug!(?event, "handling event");

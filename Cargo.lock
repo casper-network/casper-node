@@ -9,6 +9,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "add-bid"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "add-gas-subcall"
 version = "0.1.0"
 dependencies = [
@@ -284,6 +292,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "blake2b"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "blake2b_simd"
 version = "0.5.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -322,14 +338,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fa79dedbb091f449f1f39e53edf88d5dbe95f895dae6135a8d7b881fb5af73f5"
 dependencies = [
  "byte-tools",
-]
-
-[[package]]
-name = "bonding"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
 ]
 
 [[package]]
@@ -415,6 +423,7 @@ dependencies = [
  "lazy_static",
  "rand 0.7.3",
  "reqwest",
+ "semver 0.11.0",
  "serde",
  "serde_json",
  "thiserror",
@@ -568,6 +577,7 @@ dependencies = [
  "hex_fmt",
  "hostname",
  "http",
+ "humantime 2.0.1",
  "hyper",
  "itertools 0.8.2",
  "k256",
@@ -595,7 +605,7 @@ dependencies = [
  "reqwest",
  "rmp-serde",
  "sd-notify",
- "semver 0.10.0",
+ "semver 0.11.0",
  "serde",
  "serde-big-array",
  "serde_bytes",
@@ -617,6 +627,7 @@ dependencies = [
  "uint",
  "untrusted",
  "uuid",
+ "vergen",
  "wabt",
  "warp",
  "warp-json-rpc",
@@ -647,6 +658,16 @@ dependencies = [
  "serde_json",
  "uint",
  "version-sync",
+]
+
+[[package]]
+name = "casper-updater"
+version = "0.2.0"
+dependencies = [
+ "clap",
+ "lazy_static",
+ "regex",
+ "semver 0.11.0",
 ]
 
 [[package]]
@@ -1017,9 +1038,9 @@ dependencies = [
 
 [[package]]
 name = "datasize"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f1292b90d99c504eddae27e8cd709f040c30357095ba63b30d20d1601b3b446"
+checksum = "cedcf3edf464017c559ec6437c6211bbce8b0184fda85cfc4db9b913b62a08c1"
 dependencies = [
  "datasize_derive",
  "fake_instant",
@@ -1030,13 +1051,21 @@ dependencies = [
 
 [[package]]
 name = "datasize_derive"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f498ec2d61e8710f1fd214ea84e8dc6b791ba4ac3fe2b5e4b8ca17b75f0ee61"
+checksum = "4680ba6bbf90b5eeffce047a256fa61c6378247ccbd5dc167e2c8b919eb26a46"
 dependencies = [
  "proc-macro2 1.0.21",
  "quote 1.0.7",
  "syn 1.0.41",
+]
+
+[[package]]
+name = "delegate"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -1432,7 +1461,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "44533bbbb3bb3c1fa17d9f2e4e38bbbaf8396ba82193c4cb1b6445d711445d36"
 dependencies = [
  "atty",
- "humantime",
+ "humantime 1.3.0",
  "log 0.4.11",
  "regex",
  "termcolor",
@@ -1993,6 +2022,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "humantime"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c1ad908cc71012b7bea4d0c53ba96a8cba9962f048fa68d143376143d863b7a"
+
+[[package]]
 name = "hyper"
 version = "0.13.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2331,6 +2366,12 @@ dependencies = [
  "casper-contract",
  "casper-types",
 ]
+
+[[package]]
+name = "maplit"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e2e65a1a2e43cfcb47a895c4c8b10d1f4a61097f9f254f183aee60cad9c651d"
 
 [[package]]
 name = "match_cfg"
@@ -2887,6 +2928,49 @@ name = "percent-encoding"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4fd5641d01c8f18a23da7b6fe29298ff4b55afcccdf78973b24cf3175fee32e"
+
+[[package]]
+name = "pest"
+version = "2.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10f4872ae94d7b90ae48754df22fd42ad52ce740b8f370b03da4835417403e53"
+dependencies = [
+ "ucd-trie",
+]
+
+[[package]]
+name = "pest_derive"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "833d1ae558dc601e9a60366421196a8d94bc0ac980476d0b67e1d0988d72b2d0"
+dependencies = [
+ "pest",
+ "pest_generator",
+]
+
+[[package]]
+name = "pest_generator"
+version = "2.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "99b8db626e31e5b81787b9783425769681b347011cc59471e33ea46d2ea0cf55"
+dependencies = [
+ "pest",
+ "pest_meta",
+ "proc-macro2 1.0.21",
+ "quote 1.0.7",
+ "syn 1.0.41",
+]
+
+[[package]]
+name = "pest_meta"
+version = "2.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54be6e404f5317079812fc8f9f5279de376d8856929e21c184ecf6bbd692a11d"
+dependencies = [
+ "maplit",
+ "pest",
+ "sha-1 0.8.2",
+]
 
 [[package]]
 name = "pin-project"
@@ -3792,11 +3876,11 @@ dependencies = [
 
 [[package]]
 name = "semver"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "394cec28fa623e00903caf7ba4fa6fb9a0e260280bb8cdbbba029611108a0190"
+checksum = "f301af10236f6df4160f7c3f04eec6dbc70ace82d23326abad5edee88801c6b6"
 dependencies = [
- "semver-parser 0.7.0",
+ "semver-parser 0.10.0",
  "serde",
 ]
 
@@ -3811,6 +3895,16 @@ name = "semver-parser"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b46e1121e8180c12ff69a742aabc4f310542b6ccb69f1691689ac17fdf8618aa"
+
+[[package]]
+name = "semver-parser"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e012c6c5380fb91897ba7b9261a0f565e624e869d42fe1a1d03fa0d68a083d5"
+dependencies = [
+ "pest",
+ "pest_derive",
+]
 
 [[package]]
 name = "serde"
@@ -4917,6 +5011,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "373c8a200f9e67a0c95e62a4f52fbf80c23b4381c05a17845531982fa99e6b33"
 
 [[package]]
+name = "ucd-trie"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56dee185309b50d1f11bfedef0fe6d036842e3fb77413abef29f8f8d1c5d4c1c"
+
+[[package]]
 name = "uint"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4929,7 +5029,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "unbonding"
+name = "undelegate"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
@@ -5072,6 +5172,16 @@ name = "vec_map"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1bddf1187be692e79c5ffeab891132dfb0f236ed36a43c7ed39f1165ee20191"
+
+[[package]]
+name = "vergen"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ce50d8996df1f85af15f2cd8d33daae6e479575123ef4314a51a70a230739cb"
+dependencies = [
+ "bitflags 1.2.1",
+ "chrono",
+]
 
 [[package]]
 name = "version-sync"
@@ -5381,6 +5491,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0120db82e8a1e0b9fb3345a539c478767c0048d842860994d96113d5b667bd69"
 dependencies = [
  "winapi 0.3.9",
+]
+
+[[package]]
+name = "withdraw-bid"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]

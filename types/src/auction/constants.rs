@@ -55,6 +55,8 @@ pub const ARG_VALIDATOR_PUBLIC_KEY: &str = "validator_public_key";
 pub const ARG_DELEGATOR_PUBLIC_KEY: &str = "delegator_public_key";
 /// Named constant for `target_purse`.
 pub const ARG_TARGET_PURSE: &str = "target_purse";
+/// Named constant for `unbond_purse`.
+pub const ARG_UNBOND_PURSE: &str = "unbond_purse";
 
 /// Named constant for method `get_era_validators`.
 pub const METHOD_GET_ERA_VALIDATORS: &str = "get_era_validators";
@@ -68,8 +70,6 @@ pub const METHOD_WITHDRAW_BID: &str = "withdraw_bid";
 pub const METHOD_DELEGATE: &str = "delegate";
 /// Named constant for method `undelegate`.
 pub const METHOD_UNDELEGATE: &str = "undelegate";
-/// Named constant for method `quash_bid`.
-pub const METHOD_QUASH_BID: &str = "quash_bid";
 /// Named constant for method `run_auction`.
 pub const METHOD_RUN_AUCTION: &str = "run_auction";
 /// Named constant for method `slash`.

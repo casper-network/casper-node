@@ -12,7 +12,7 @@ const TURBO: &str = "turbo";
 lazy_static! {
     static ref WORKSPACE_PATH_ARG: String =
         format!("--workspace-path={}/../../", env!("CARGO_MANIFEST_DIR"));
-    static ref TEST_DIR: TempDir = TempDir::new("cargo-casper").unwrap();
+    static ref TEST_DIR: TempDir = TempDir::new("cargo_casper").unwrap();
 }
 
 #[test]

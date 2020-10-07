@@ -24,6 +24,7 @@ use prometheus::Registry;
 
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
 #[derive(Debug, StructOpt)]
+#[structopt(version = casper_node::VERSION_STRING.as_str())]
 /// Casper blockchain node.
 pub enum Cli {
     /// Run the validator node.
@@ -149,7 +150,7 @@ impl Cli {
                 // The metrics are shared across all reactors.
                 let registry = Registry::new();
 
-                let mut initializer_runner = Runner::<initializer::Reactor, _>::with_metrics(
+                let mut initializer_runner = Runner::<initializer::Reactor>::with_metrics(
                     WithDir::new(root.clone(), validator_config),
                     &mut rng,
                     &registry,
@@ -164,7 +165,7 @@ impl Cli {
                     bail!("failed to initialize successfully");
                 }
 
-                let mut joiner_runner = Runner::<joiner::Reactor<_>, _>::with_metrics(
+                let mut joiner_runner = Runner::<joiner::Reactor>::with_metrics(
                     WithDir::new(root, initializer),
                     &mut rng,
                     &registry,
@@ -177,8 +178,7 @@ impl Cli {
                 let config = joiner_runner.into_inner().into_validator_config().await;
 
                 let mut validator_runner =
-                    Runner::<validator::Reactor<_>, _>::with_metrics(config, &mut rng, &registry)
-                        .await?;
+                    Runner::<validator::Reactor>::with_metrics(config, &mut rng, &registry).await?;
                 validator_runner.run(&mut rng).await;
             }
         }

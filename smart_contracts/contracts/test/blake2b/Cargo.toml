@@ -1,11 +1,12 @@
 [package]
-name = "bonding"
+name = "blake2b"
 version = "0.1.0"
-authors = ["Michael Birch <birchmd@casperlabs.io>"]
+authors = ["Henry Till <henrytill@gmail.com>"]
 edition = "2018"
 
 [[bin]]
-name = "bonding"
+name = "blake2b"
+path = "src/main.rs"
 bench = false
 doctest = false
 test = false

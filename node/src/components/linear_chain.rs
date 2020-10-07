@@ -7,7 +7,6 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use futures::FutureExt;
-use rand::{CryptoRng, Rng};
 use tracing::{debug, error, info, warn};
 
 use super::{storage::Storage, Component};
@@ -19,7 +18,10 @@ use crate::{
         EffectExt, Effects,
     },
     protocol::Message,
-    types::{json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, DeployHash},
+    types::{
+        json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, CryptoRngCore,
+        DeployHash,
+    },
 };
 
 #[derive(Debug, From)]
@@ -36,6 +38,8 @@ pub enum Event<I> {
     },
     /// A continuation for `GetBlock` scenario.
     GetBlockResult(BlockHash, Option<Block>, I),
+    /// A continuation for `BlockAtHeight` scenario.
+    GetBlockByHeightResult(u64, Option<Block>, I),
     /// New finality signature.
     NewFinalitySignature(BlockHash, Signature),
     /// The result of putting a block to storage.
@@ -67,6 +71,13 @@ impl<I: Display> Display for Event<I> {
                 block_hash
             ),
             Event::PutBlockResult { .. } => write!(f, "linear-chain put-block result"),
+            Event::GetBlockByHeightResult(height, result, peer) => write!(
+                f,
+                "linear chain get-block-height for height {} from {} found: {}",
+                height,
+                peer,
+                result.is_some()
+            ),
         }
     }
 }
@@ -74,6 +85,7 @@ impl<I: Display> Display for Event<I> {
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChain<I> {
     /// A temporary workaround.
+    // TODO: Refactor to proper LRU cache.
     linear_chain: Vec<Block>,
     /// The last block this component put to storage which is presumably the last block in the
     /// linear chain.
@@ -90,19 +102,19 @@ impl<I> LinearChain<I> {
         }
     }
 
+    // TODO: Remove once we can return all linear chain blocks from persistent storage.
     pub fn linear_chain(&self) -> &Vec<Block> {
         &self.linear_chain
     }
 }
 
-impl<I, REv, R> Component<REv, R> for LinearChain<I>
+impl<I, REv> Component<REv> for LinearChain<I>
 where
     REv: From<StorageRequest<Storage>>
         + From<ConsensusRequest>
         + From<NetworkRequest<I, Message>>
         + From<LinearChainAnnouncement>
         + Send,
-    R: Rng + CryptoRng + ?Sized,
     I: Display + Send + 'static,
 {
     type Event = Event<I>;
@@ -110,7 +122,7 @@ where
     fn handle_event(
         &mut self,
         effect_builder: crate::effect::EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -121,7 +133,24 @@ where
                 responder.respond(self.last_block.clone()).ignore()
             }
             Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) => {
-                let block_at_height = self.linear_chain.get(height as usize).map(|block| BlockByHeight::new(block.clone())).unwrap_or_else(|| BlockByHeight::Absent(height));
+                // Treat `linear_chain` as a cache of least-recently asked for blocks.
+                // match self.linear_chain.get(height as usize).cloned() {
+                //     Some(block) => effect_builder
+                //         .immediately()
+                //         .event(move |_| Event::GetBlockByHeightResult(height, Some(block), sender)),
+                //     None => 
+                effect_builder
+                    .get_block_at_height(height)
+                    .event(move |maybe_block| Event::GetBlockByHeightResult(height, maybe_block, sender))
+            }
+            Event::GetBlockByHeightResult(block_height, maybe_block, sender) => {
+                let block_at_height = match maybe_block {
+                    None => {
+                        debug!("failed to get {} for {}", block_height, sender);
+                        BlockByHeight::Absent(block_height)
+                    },
+                    Some(block) => BlockByHeight::new(block),
+                };
                 match Message::new_get_response(&block_at_height) {
                     Ok(message) => effect_builder.send_message(sender, message).ignore(),
                     Err(error) => {
@@ -130,8 +159,6 @@ where
                     }
                 }
             }
-            Event::Request(LinearChainRequest::BlockAtHeightLocal(height, responder)) =>
-                responder.respond(self.linear_chain.get(height as usize).cloned()).ignore(),
             Event::GetBlockResult(block_hash, maybe_block, sender) => {
                 match maybe_block {
                     None => {
@@ -153,6 +180,7 @@ where
                 .event(move |_| Event::PutBlockResult{ block, execution_results })
             },
             Event::PutBlockResult { block, execution_results } => {
+                // TODO: Remove once we can return all linear chain blocks from persistent storage.
                 self.linear_chain.push(block.clone());
                 self.last_block = Some(block.clone());
 

@@ -16,15 +16,15 @@ use serde_json::Value as JsonValue;
 
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_node::{
-    crypto::hash::Digest,
+    crypto::{asymmetric_key::PublicKey as NodePublicKey, hash::Digest},
     rpcs::account::PutDeployParams,
     types::{Deploy, TimeDiff, Timestamp},
 };
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self, ToBytes},
-    AccessRights, CLType, CLTyped, CLValue, ContractHash, Key, NamedArg, RuntimeArgs, URef, U128,
-    U256, U512,
+    AccessRights, CLType, CLTyped, CLValue, ContractHash, Key, NamedArg, PublicKey, RuntimeArgs,
+    URef, U128, U256, U512,
 };
 
 use crate::common;
@@ -125,6 +125,14 @@ pub(super) mod show_arg_examples {
             "uref_name:uref='{}'",
             URef::new(array, AccessRights::READ_ADD_WRITE).to_formatted_string()
         );
+        println!(
+            "public_key_name:public_key='{}'",
+            NodePublicKey::from_hex(
+                "0119bf44096984cdfe8541bac167dc3b96c85086aa30b6b6cb0c5c38ad703166e1"
+            )
+            .unwrap()
+            .to_hex()
+        );
 
         true
     }
@@ -164,11 +172,13 @@ pub(super) mod ttl {
     use super::*;
 
     const ARG_NAME: &str = "ttl";
-    const ARG_VALUE_NAME: &str = "MILLISECONDS";
-    const ARG_DEFAULT: &str = "3600000";
+    const ARG_VALUE_NAME: &str = "DURATION";
+    const ARG_DEFAULT: &str = "1hour";
     const ARG_HELP: &str =
-        "Time (in milliseconds) that the deploy will remain valid for. A deploy can only be \
-        included in a block between `timestamp` and `timestamp + ttl`.";
+        "Time that the deploy will remain valid for. A deploy can only be included in a block \
+        between `timestamp` and `timestamp + ttl`. Input examples: '1hr 12min', '30min 50sec', \
+        '1day'. For all options, see \
+        https://docs.rs/humantime/latest/humantime/fn.parse_duration.html";
 
     pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -337,6 +347,7 @@ pub(super) mod arg_simple {
             ("key", CLType::Key),
             ("account_hash", AccountHash::cl_type()),
             ("uref", CLType::URef),
+            ("public_key", CLType::PublicKey),
         ];
         static ref SUPPORTED_LIST: String = {
             let mut msg = String::new();
@@ -430,6 +441,7 @@ pub(super) mod arg_simple {
             t if t == SUPPORTED_TYPES[11].0 => SUPPORTED_TYPES[11].1.clone(),
             t if t == SUPPORTED_TYPES[12].0 => SUPPORTED_TYPES[12].1.clone(),
             t if t == SUPPORTED_TYPES[13].0 => SUPPORTED_TYPES[13].1.clone(),
+            t if t == SUPPORTED_TYPES[14].0 => SUPPORTED_TYPES[14].1.clone(),
             _ => panic!(
                 "unknown variant {}, expected one of {}",
                 parts[1], *SUPPORTED_LIST
@@ -516,6 +528,12 @@ pub(super) mod arg_simple {
                 let uref = URef::from_formatted_str(value)
                     .unwrap_or_else(|error| panic!("can't parse {} as URef: {:?}", value, error));
                 CLValue::from_t(uref).unwrap()
+            }
+            CLType::PublicKey => {
+                let pub_key = NodePublicKey::from_hex(value).unwrap_or_else(|error| {
+                    panic!("can't parse {} as PublicKey: {:?}", value, error)
+                });
+                CLValue::from_t(PublicKey::from(pub_key)).unwrap()
             }
             _ => unreachable!(),
         };

@@ -2,6 +2,7 @@ use std::{
     convert::TryInto,
     fmt::{self, Debug, Formatter},
     path::Path,
+    str::FromStr,
 };
 
 use csv::ReaderBuilder;
@@ -35,6 +36,7 @@ pub struct DeployConfig {
     pub(crate) max_ttl: TimeDiff,
     pub(crate) max_dependencies: u8,
     pub(crate) max_block_size: u32,
+    pub(crate) block_max_deploy_count: u32,
     pub(crate) block_gas_limit: u64,
 }
 
@@ -42,9 +44,10 @@ impl Default for DeployConfig {
     fn default() -> Self {
         DeployConfig {
             max_payment_cost: Motes::zero(),
-            max_ttl: TimeDiff::from(86_400_000), // 1 day
+            max_ttl: TimeDiff::from_str("1day").unwrap(),
             max_dependencies: 10,
             max_block_size: 10_485_760,
+            block_max_deploy_count: 10,
             block_gas_limit: 10_000_000_000_000,
         }
     }
@@ -60,6 +63,7 @@ impl DeployConfig {
         let max_ttl = TimeDiff::from(rng.gen_range(60_000, 3_600_000));
         let max_dependencies = rng.gen();
         let max_block_size = rng.gen_range(1_000_000, 1_000_000_000);
+        let block_max_deploy_count = rng.gen();
         let block_gas_limit = rng.gen_range(100_000_000_000, 1_000_000_000_000_000);
 
         DeployConfig {
@@ -67,6 +71,7 @@ impl DeployConfig {
             max_ttl,
             max_dependencies,
             max_block_size,
+            block_max_deploy_count,
             block_gas_limit,
         }
     }
@@ -94,12 +99,12 @@ pub(crate) struct HighwayConfig {
 impl Default for HighwayConfig {
     fn default() -> Self {
         HighwayConfig {
-            genesis_era_start_timestamp: Timestamp::zero() + TimeDiff::from(1_583_712_000_000),
-            era_duration: TimeDiff::from(604_800_000), // 1 week
+            genesis_era_start_timestamp: Timestamp::from_str("2020-10-01T00:00:01.000Z").unwrap(),
+            era_duration: TimeDiff::from_str("1week").unwrap(),
             minimum_era_height: 100,
-            booking_duration: TimeDiff::from(864_000_000), // 10 days
-            entropy_duration: TimeDiff::from(10_800_000),  // 3 hours
-            voting_period_duration: TimeDiff::from(172_800_000), // 2 days
+            booking_duration: TimeDiff::from_str("10days").unwrap(),
+            entropy_duration: TimeDiff::from_str("3hours").unwrap(),
+            voting_period_duration: TimeDiff::from_str("2days").unwrap(),
             finality_threshold_percent: 10,
             minimum_round_exponent: 14, // 2**14 ms = ~16 seconds
         }
@@ -129,25 +134,21 @@ impl Loadable for Vec<GenesisAccount> {
     fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
         #[derive(Debug, Deserialize)]
         struct ParsedAccount {
-            public_key: String,
-            algorithm: String,
-            balance: String,
-            bonded_amount: String,
+            public_key: PublicKey,
+            balance: U512,
+            bonded_amount: U512,
         }
 
         let mut reader = ReaderBuilder::new().has_headers(false).from_path(path)?;
         let mut accounts = vec![];
         for result in reader.deserialize() {
             let parsed: ParsedAccount = result?;
-            let balance = Motes::new(U512::from_dec_str(&parsed.balance)?);
-            let bonded_amount = Motes::new(U512::from_dec_str(&parsed.bonded_amount)?);
-            let key_bytes = hex::decode(parsed.public_key)?;
+            let balance = Motes::new(parsed.balance);
+            let bonded_amount = Motes::new(parsed.bonded_amount);
 
-            let public_key =
-                PublicKey::key_from_algorithm_name_and_bytes(&parsed.algorithm, key_bytes)?;
             let account = GenesisAccount::new(
-                casper_types::PublicKey::from(public_key),
-                public_key.to_account_hash(),
+                casper_types::PublicKey::from(parsed.public_key),
+                parsed.public_key.to_account_hash(),
                 balance,
                 bonded_amount,
             );
@@ -369,7 +370,7 @@ mod tests {
 
     fn check_spec(spec: Chainspec) {
         assert_eq!(spec.genesis.name, "test-chain");
-        assert_eq!(spec.genesis.timestamp.millis(), 1);
+        assert_eq!(spec.genesis.timestamp.millis(), 1600454700000);
         assert_eq!(spec.genesis.protocol_version, Version::from((0, 1, 0)));
         assert_eq!(spec.genesis.mint_installer_bytes, b"Mint installer bytes");
         assert_eq!(
@@ -398,21 +399,24 @@ mod tests {
                 .highway_config
                 .genesis_era_start_timestamp
                 .millis(),
-            2
+            1600454700000
         );
-        assert_eq!(spec.genesis.highway_config.era_duration, TimeDiff::from(3));
+        assert_eq!(
+            spec.genesis.highway_config.era_duration,
+            TimeDiff::from(180000)
+        );
         assert_eq!(spec.genesis.highway_config.minimum_era_height, 9);
         assert_eq!(
             spec.genesis.highway_config.booking_duration,
-            TimeDiff::from(4)
+            TimeDiff::from(14400000)
         );
         assert_eq!(
             spec.genesis.highway_config.entropy_duration,
-            TimeDiff::from(5)
+            TimeDiff::from(432000000)
         );
         assert_eq!(
             spec.genesis.highway_config.voting_period_duration,
-            TimeDiff::from(6)
+            TimeDiff::from(3628800000)
         );
         assert_eq!(spec.genesis.highway_config.finality_threshold_percent, 8);
         assert_eq!(spec.genesis.highway_config.minimum_round_exponent, 13);
@@ -421,9 +425,13 @@ mod tests {
             spec.genesis.deploy_config.max_payment_cost,
             Motes::new(U512::from(9))
         );
-        assert_eq!(spec.genesis.deploy_config.max_ttl, TimeDiff::from(10));
+        assert_eq!(
+            spec.genesis.deploy_config.max_ttl,
+            TimeDiff::from(26300160000)
+        );
         assert_eq!(spec.genesis.deploy_config.max_dependencies, 11);
         assert_eq!(spec.genesis.deploy_config.max_block_size, 12);
+        assert_eq!(spec.genesis.deploy_config.block_max_deploy_count, 125);
         assert_eq!(spec.genesis.deploy_config.block_gas_limit, 13);
 
         assert_eq!(spec.genesis.costs.regular, 13);
@@ -463,10 +471,14 @@ mod tests {
         );
         assert_eq!(
             upgrade0.new_deploy_config.unwrap().max_ttl,
-            TimeDiff::from(35)
+            TimeDiff::from(1104516000000)
         );
         assert_eq!(upgrade0.new_deploy_config.unwrap().max_dependencies, 36);
         assert_eq!(upgrade0.new_deploy_config.unwrap().max_block_size, 37);
+        assert_eq!(
+            upgrade0.new_deploy_config.unwrap().block_max_deploy_count,
+            375
+        );
         assert_eq!(upgrade0.new_deploy_config.unwrap().block_gas_limit, 38);
 
         let upgrade1 = &spec.upgrades[1];

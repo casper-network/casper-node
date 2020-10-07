@@ -16,7 +16,6 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::{Display, From};
-use rand::{CryptoRng, Rng};
 use smallvec::{smallvec, SmallVec};
 
 use crate::{
@@ -25,7 +24,7 @@ use crate::{
         requests::{BlockValidationRequest, FetcherRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
     },
-    types::{BlockLike, Deploy, DeployHash},
+    types::{BlockLike, CryptoRngCore, Deploy, DeployHash},
 };
 use keyed_counter::KeyedCounter;
 
@@ -79,7 +78,7 @@ impl<T, I> BlockValidator<T, I> {
     }
 }
 
-impl<T, I, REv, R> Component<REv, R> for BlockValidator<T, I>
+impl<T, I, REv> Component<REv> for BlockValidator<T, I>
 where
     T: BlockLike + Send + Clone + 'static,
     I: Clone + Send + 'static,
@@ -87,14 +86,13 @@ where
         + From<BlockValidationRequest<T, I>>
         + From<FetcherRequest<I, Deploy>>
         + Send,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event<T, I>;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

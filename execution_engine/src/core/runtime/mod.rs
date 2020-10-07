@@ -1076,7 +1076,7 @@ fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
                 Ok(map.values().cloned().collect())
             }
             (CLType::PublicKey, CLType::URef) => {
-                let map: BTreeMap<casper_types::PublicKey, URef> = cl_value.to_owned().into_t()?;
+                let map: BTreeMap<PublicKey, URef> = cl_value.to_owned().into_t()?;
                 Ok(map.values().cloned().collect())
             }
             (CLType::Bool, CLType::Key) => {
@@ -1124,7 +1124,7 @@ fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
                 Ok(map.values().cloned().filter_map(Key::into_uref).collect())
             }
             (CLType::PublicKey, CLType::Key) => {
-                let map: BTreeMap<casper_types::PublicKey, Key> = cl_value.to_owned().into_t()?;
+                let map: BTreeMap<PublicKey, Key> = cl_value.to_owned().into_t()?;
                 Ok(map.values().cloned().filter_map(Key::into_uref).collect())
             }
             (_, _) => Ok(vec![]),
@@ -1976,9 +1976,11 @@ where
                 let account_hash =
                     Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
                 let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let unbond_purse =
+                    Self::get_named_argument(&runtime_args, auction::ARG_UNBOND_PURSE)?;
 
                 let result = runtime
-                    .withdraw_bid(account_hash, amount)
+                    .withdraw_bid(account_hash, amount, unbond_purse)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
@@ -2001,23 +2003,14 @@ where
                 let delegator = Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
                 let validator = Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
                 let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let unbond_purse =
+                    Self::get_named_argument(&runtime_args, auction::ARG_UNBOND_PURSE)?;
 
                 let result = runtime
-                    .undelegate(delegator, validator, amount)
+                    .undelegate(delegator, validator, amount, unbond_purse)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)?
-            }
-
-            auction::METHOD_QUASH_BID => {
-                let validator_public_keys: Vec<casper_types::PublicKey> =
-                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_KEYS)?;
-
-                runtime
-                    .quash_bid(validator_public_keys)
-                    .map_err(Self::reverter)?;
-
-                CLValue::from_t(()).map_err(Self::reverter)?
             }
 
             auction::METHOD_RUN_AUCTION => {

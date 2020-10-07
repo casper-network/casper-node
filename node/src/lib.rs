@@ -6,9 +6,9 @@
 //! ## Application structure
 //!
 //! While the [`main`](fn.main.html) function is the central entrypoint for the node application,
-//! its core event loop is found inside the [reactor](reactor/index.html). To get a tour of the
-//! sourcecode, be sure to run `cargo doc --open`.
+//! its core event loop is found inside the [reactor](reactor/index.html).
 
+#![doc(html_root_url = "https://docs.rs/casper-node/0.1.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
@@ -33,6 +33,8 @@ pub mod tls;
 pub mod types;
 pub mod utils;
 
+use lazy_static::lazy_static;
+
 pub(crate) use components::small_network;
 pub use components::{
     api_server::{rpcs, Config as ApiServerConfig},
@@ -44,3 +46,16 @@ pub use components::{
     storage::{Config as StorageConfig, Error as StorageError},
 };
 pub use utils::OS_PAGE_SIZE;
+
+lazy_static! {
+    /// Version string for the compiled node. Filled in at build time, output allocated at runtime.
+    pub static ref VERSION_STRING: String = if env!("VERGEN_SEMVER_LIGHTWEIGHT") == "UNKNOWN" {
+        env!("CARGO_PKG_VERSION").to_string()
+    } else {
+        format!(
+            "{}-{}",
+            env!("VERGEN_SEMVER_LIGHTWEIGHT"),
+            env!("VERGEN_SHA_SHORT")
+        )
+    };
+}

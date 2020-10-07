@@ -1,10 +1,12 @@
 use thiserror::Error;
 
+use datasize::DataSize;
+
 use casper_types::{auction::EraId, ProtocolVersion};
 
 use crate::{core::engine_state::error::Error, shared::newtypes::Blake2bHash};
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, DataSize)]
 pub enum GetEraValidatorsError {
     /// Invalid state hash was used to make this request
     #[error("Invalid state hash")]

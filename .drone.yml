@@ -69,6 +69,11 @@ steps:
   - cargo generate-lockfile
   - cargo audit
 
+- name: updater-dry-run
+  <<: *buildenv
+  commands:
+  - cargo run --package=casper-updater -- --root-dir=. --dry-run
+
 - name: cargo-test
   <<: *buildenv
   commands:

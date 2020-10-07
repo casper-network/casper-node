@@ -16,6 +16,7 @@
 mod config;
 mod event;
 mod http_server;
+mod rest_server;
 pub mod rpcs;
 mod sse_server;
 
@@ -24,7 +25,6 @@ use std::fmt::Debug;
 use datasize::DataSize;
 use futures::join;
 use lazy_static::lazy_static;
-use rand::{CryptoRng, Rng};
 use semver::Version;
 use tokio::sync::mpsc::{self, UnboundedSender};
 use tracing::info;
@@ -47,7 +47,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     small_network::NodeId,
-    types::StatusFeed,
+    types::{CryptoRngCore, StatusFeed},
 };
 pub use config::Config;
 pub(crate) use event::Event;
@@ -147,7 +147,7 @@ impl ApiServer {
     }
 }
 
-impl<REv, R> Component<REv, R> for ApiServer
+impl<REv> Component<REv> for ApiServer
 where
     REv: From<ApiServerAnnouncement>
         + From<NetworkInfoRequest<NodeId>>
@@ -159,14 +159,13 @@ where
         + From<Event>
         + From<ApiRequest<NodeId>>
         + Send,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

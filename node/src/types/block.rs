@@ -239,6 +239,12 @@ impl FinalizedBlock {
         self.timestamp
     }
 
+    /// Returns slashing and reward information if this is a switch block, i.e. the last block of
+    /// its era.
+    pub(crate) fn era_end(&self) -> &Option<EraEnd> {
+        &self.era_end
+    }
+
     /// Returns the ID of the era this block belongs to.
     pub(crate) fn era_id(&self) -> EraId {
         self.era_id
@@ -546,7 +552,8 @@ impl Block {
         self.header.global_state_hash()
     }
 
-    pub(crate) fn deploy_hashes(&self) -> &Vec<DeployHash> {
+    /// The deploy hashes included in this block.
+    pub fn deploy_hashes(&self) -> &Vec<DeployHash> {
         self.header.deploy_hashes()
     }
 
@@ -654,6 +661,12 @@ impl Item for Block {
 pub enum BlockByHeight {
     Absent(u64),
     Block(Box<Block>),
+}
+
+impl From<Block> for BlockByHeight {
+    fn from(block: Block) -> Self {
+        BlockByHeight::new(block)
+    }
 }
 
 impl BlockByHeight {

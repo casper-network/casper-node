@@ -2,10 +2,12 @@ use std::{any::Any, collections::BTreeMap, fmt::Debug};
 
 use anyhow::Error;
 use datasize::DataSize;
-use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 
-use crate::{components::consensus::traits::ConsensusValueT, types::Timestamp};
+use crate::{
+    components::consensus::traits::ConsensusValueT,
+    types::{CryptoRngCore, Timestamp},
+};
 
 /// Information about the context in which a new block is created.
 #[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd)]
@@ -83,7 +85,7 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
 }
 
 /// An API for a single instance of the consensus.
-pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID, R: Rng + CryptoRng + ?Sized> {
+pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID> {
     /// Upcasts consensus protocol into `dyn Any`.
     ///
     /// Typically called on a boxed trait object for downcasting afterwards.
@@ -94,14 +96,14 @@ pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID, R: Rng + CryptoRn
         &mut self,
         sender: I,
         msg: Vec<u8>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
 
     /// Triggers consensus' timer.
     fn handle_timer(
         &mut self,
-        timerstamp: Timestamp,
-        rng: &mut R,
+        timestamp: Timestamp,
+        rng: &mut dyn CryptoRngCore,
     ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
 
     /// Proposes a new value for consensus.
@@ -109,7 +111,7 @@ pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID, R: Rng + CryptoRn
         &mut self,
         value: C,
         block_context: BlockContext,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
 
     /// Marks the `value` as valid or invalid, based on validation requested via
@@ -118,7 +120,7 @@ pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID, R: Rng + CryptoRn
         &mut self,
         value: &C,
         valid: bool,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
 
     /// Turns this instance into a passive observer, that does not create any new vertices.

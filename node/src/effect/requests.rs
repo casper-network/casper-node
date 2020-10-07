@@ -21,6 +21,7 @@ use casper_execution_engine::{
         execution_result::ExecutionResults,
         genesis::GenesisResult,
         query::{QueryRequest, QueryResult},
+        step::{StepRequest, StepResult},
         upgrade::{UpgradeConfig, UpgradeResult},
     },
     shared::{additive_map::AdditiveMap, transform::Transform},
@@ -201,6 +202,13 @@ pub enum StorageRequest<S: StorageType + 'static> {
         /// storage.
         responder: Responder<Option<S::Block>>,
     },
+    /// Retrieve linear chain block with given height.
+    GetBlockAtHeight {
+        /// Height of the block.
+        height: <S::BlockHeight as Value>::Id,
+        /// Responder.
+        responder: Responder<Option<S::Block>>,
+    },
     /// Retrieve block header with given hash.
     GetBlockHeader {
         /// Hash of block to get header of.
@@ -294,6 +302,9 @@ impl<S: StorageType> Display for StorageRequest<S> {
             ),
             StorageRequest::GetChainspec { version, .. } => {
                 write!(formatter, "get chainspec {}", version)
+            }
+            StorageRequest::GetBlockAtHeight { height, .. } => {
+                write!(formatter, "get block at height {}", height)
             }
         }
     }
@@ -490,6 +501,14 @@ pub enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
     },
+    /// Performs a step consisting of calculating rewards, slashing and running the auction at the
+    /// end of an era.
+    Step {
+        /// The step request.
+        step_request: StepRequest,
+        /// Responder to call with the result.
+        responder: Responder<Result<StepResult, engine_state::Error>>,
+    },
 }
 
 impl Display for ContractRuntimeRequest {
@@ -532,6 +551,10 @@ impl Display for ContractRuntimeRequest {
 
             ContractRuntimeRequest::GetEraValidators { get_request, .. } => {
                 write!(formatter, "get validator weights: {:?}", get_request)
+            }
+
+            ContractRuntimeRequest::Step { step_request, .. } => {
+                write!(formatter, "step: {:?}", step_request)
             }
         }
     }
@@ -610,9 +633,6 @@ pub enum LinearChainRequest<I> {
     LastFinalizedBlock(Responder<Option<LinearBlock>>),
     /// Request for a linear chain block at height.
     BlockAtHeight(BlockHeight, I),
-    /// A local request for linear block at given height.
-    /// Temporary until we have implemented this functionality in the storage.
-    BlockAtHeightLocal(BlockHeight, Responder<Option<LinearBlock>>),
 }
 
 impl<I: Display> Display for LinearChainRequest<I> {
@@ -624,9 +644,6 @@ impl<I: Display> Display for LinearChainRequest<I> {
             LinearChainRequest::LastFinalizedBlock(_) => write!(f, "last finalized block request"),
             LinearChainRequest::BlockAtHeight(height, sender) => {
                 write!(f, "block request for {} from {}", height, sender)
-            }
-            LinearChainRequest::BlockAtHeightLocal(height, _) => {
-                write!(f, "local block request for {}", height)
             }
         }
     }

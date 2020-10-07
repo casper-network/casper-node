@@ -23,12 +23,18 @@ fn add_bid(
     runtime::call_contract::<(URef, U512)>(contract_hash, auction::METHOD_ADD_BID, runtime_args);
 }
 
-fn withdraw_bid(contract_hash: ContractHash, public_key: PublicKey, unbond_amount: U512) {
+fn withdraw_bid(
+    contract_hash: ContractHash,
+    public_key: PublicKey,
+    unbond_amount: U512,
+    unbond_purse: URef,
+) -> U512 {
     let args = runtime_args! {
         auction::ARG_AMOUNT => unbond_amount,
         auction::ARG_PUBLIC_KEY => public_key,
+        auction::ARG_UNBOND_PURSE => unbond_purse,
     };
-    runtime::call_contract::<(URef, U512)>(contract_hash, auction::METHOD_WITHDRAW_BID, args);
+    runtime::call_contract(contract_hash, auction::METHOD_WITHDRAW_BID, args)
 }
 
 #[no_mangle]
@@ -38,5 +44,10 @@ pub extern "C" fn call() {
     // unbond attempt for more than is staked should fail
     let contract_hash = system::get_auction();
     add_bid(contract_hash, public_key, amount, account::get_main_purse());
-    withdraw_bid(contract_hash, public_key, amount + 1);
+    withdraw_bid(
+        contract_hash,
+        public_key,
+        amount + 1,
+        account::get_main_purse(),
+    );
 }

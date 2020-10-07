@@ -30,14 +30,14 @@ use datasize::DataSize;
 use super::{fetcher::FetchResult, storage::Storage, Component};
 use crate::{
     effect::{self, EffectBuilder, EffectExt, EffectOptionExt, Effects},
-    types::{Block, BlockByHeight, BlockHash, BlockHeader, FinalizedBlock},
+    types::{Block, BlockByHeight, BlockHash, BlockHeader, CryptoRngCore, FinalizedBlock},
 };
 use effect::requests::{
     BlockExecutorRequest, BlockValidationRequest, FetcherRequest, StorageRequest,
 };
 use event::BlockByHeightResult;
 pub use event::Event;
-use rand::{seq::SliceRandom, CryptoRng, Rng};
+use rand::{seq::SliceRandom, Rng};
 use std::{fmt::Display, mem};
 use tracing::{error, info, trace, warn};
 
@@ -217,17 +217,17 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         }
     }
 
-    fn block_downloaded<R, REv>(
+    fn block_downloaded<REv>(
         &mut self,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         effect_builder: EffectBuilder<REv>,
         block_header: &BlockHeader,
     ) -> Effects<Event<I>>
     where
         I: Send + Copy + 'static,
-        R: Rng + CryptoRng + ?Sized,
         REv: ReactorEventT<I>,
     {
+        self.reset_peers(rng);
         self.state.block_downloaded(block_header);
         self.add_block(block_header.clone());
         match &self.state {
@@ -258,15 +258,14 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     /// consensus component. This is a signal that we can safely continue with the next blocks,
     /// without worrying about timing and/or ordering issues.
     /// Returns effects that are created as a response to that event.
-    fn block_handled<R, REv>(
+    fn block_handled<REv>(
         &mut self,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         effect_builder: EffectBuilder<REv>,
         block_header: BlockHeader,
     ) -> Effects<Event<I>>
     where
         I: Send + Copy + 'static,
-        R: Rng + CryptoRng + ?Sized,
         REv: ReactorEventT<I>,
     {
         // Reset peers before creating new requests.
@@ -367,16 +366,15 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         )
     }
 
-    fn fetch_next_block<R, REv>(
+    fn fetch_next_block<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         block_header: &BlockHeader,
     ) -> Effects<Event<I>>
     where
         I: Send + Copy + 'static,
         REv: ReactorEventT<I>,
-        R: Rng + CryptoRng + ?Sized,
     {
         self.reset_peers(rng);
         let peer = self.random_peer_unsafe();
@@ -396,10 +394,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     }
 }
 
-impl<I, REv, R> Component<REv, R> for LinearChainSync<I>
+impl<I, REv> Component<REv> for LinearChainSync<I>
 where
     I: Display + Clone + Copy + Send + PartialEq + 'static,
-    R: Rng + CryptoRng + ?Sized,
     REv: ReactorEventT<I>,
 {
     type Event = Event<I>;
@@ -407,7 +404,7 @@ where
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

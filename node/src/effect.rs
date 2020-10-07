@@ -64,13 +64,6 @@ pub mod requests;
 use std::{
     any::type_name,
     collections::{HashMap, HashSet},
-    fmt::{self, Debug, Display, Formatter},
-    future::Future,
-    net::SocketAddr,
-    time::{Duration, Instant},
-};
-
-use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use semver::Version;
 use smallvec::{smallvec, SmallVec};
@@ -78,8 +71,20 @@ use tracing::error;
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, execute_request::ExecuteRequest, execution_result::ExecutionResults,
-        genesis::GenesisResult, BalanceRequest, BalanceResult, QueryRequest, QueryResult,
+        self,
+        era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
+        execute_request::ExecuteRequest,
+        execution_result::ExecutionResults,
+        genesis::GenesisResult,
+        step::{StepRequest, StepResult},
+    fmt::{self, Debug, Display, Formatter},
+    future::Future,
+    net::SocketAddr,
+    time::{Duration, Instant},
+};
+
+use datasize::DataSize;
+        BalanceRequest, BalanceResult, QueryRequest, QueryResult,
     },
     shared::{additive_map::AdditiveMap, transform::Transform},
     storage::global_state::CommitResult,
@@ -616,16 +621,18 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests linear chain block at height.
-    // TODO: Should be eventually replaced with call to the linear chain storage.
-    pub(crate) async fn get_block_at_height<I>(self, height: u64) -> Option<BlockByHeight>
+    pub(crate) async fn get_block_at_height<S>(
+        self,
+        height: <S::BlockHeight as Value>::Id,
+    ) -> Option<S::Block>
     where
-        REv: From<LinearChainRequest<I>>,
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| LinearChainRequest::BlockAtHeightLocal(height, responder),
+            |responder| StorageRequest::GetBlockAtHeight { height, responder },
             QueueKind::Regular,
         )
-        .map(|block| block.map(BlockByHeight::new))
         .await
     }
 
@@ -999,6 +1006,45 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| ContractRuntimeRequest::GetBalance {
                 balance_request,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+
+    /// Returns a map of validators for given `era` to their weights as known from `root_hash`.
+    ///
+    /// This operation is read only.
+    pub(crate) async fn get_validators(
+        self,
+        get_request: GetEraValidatorsRequest,
+    ) -> Result<Option<ValidatorWeights>, GetEraValidatorsError>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetEraValidators {
+                get_request,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Runs the end of era step using the system smart contract.
+    pub(crate) async fn run_step(
+        self,
+        step_request: StepRequest,
+    ) -> Result<StepResult, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::Step {
+                step_request,
                 responder,
             },
             QueueKind::Regular,

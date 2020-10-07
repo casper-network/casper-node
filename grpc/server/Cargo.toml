@@ -19,7 +19,7 @@ include = [
 ]
 
 [dependencies]
-casper-execution-engine = { path = "../../execution_engine", features = ["gens"] }
+casper-execution-engine = { version = "0.7.0", path = "../../execution_engine", features = ["gens"] }
 casper-types = { version = "0.6.0", path = "../../types", features = ["std", "gens"] }
 clap = "2"
 ctrlc = "3"

@@ -109,13 +109,14 @@ pub(crate) fn bond<P: Auction + ?Sized>(
     Ok((target, total_amount))
 }
 
-/// Creates a new purse in unbonding_purses given a validator's key and amount, returning
-/// the new purse's key and the amount of motes remaining in the validator's bid purse.
+/// Creates a new purse in unbonding_purses given a validator's key, amount, and a destination
+/// unbonding purse. Returns the amount of motes remaining in the validator's bid purse.
 pub(crate) fn unbond<P: Auction + ?Sized>(
     provider: &mut P,
     public_key: PublicKey,
     amount: U512,
-) -> Result<(URef, U512)> {
+    unbond_purse: URef,
+) -> Result<U512> {
     let bid_purses_uref = provider
         .get_key(BID_PURSES_KEY)
         .and_then(Key::into_uref)
@@ -131,9 +132,6 @@ pub(crate) fn unbond<P: Auction + ?Sized>(
     if provider.get_balance(bid_purse)?.unwrap_or_default() < amount {
         return Err(Error::UnbondTooLarge);
     }
-
-    // Creates new unbonding purse with requested tokens
-    let unbond_purse = provider.create_purse();
 
     // Update `unbonding_purses` data
     let unbonding_purses_uref = provider
@@ -159,7 +157,7 @@ pub(crate) fn unbond<P: Auction + ?Sized>(
 
     // Remaining motes in the validator's bid purse
     let remaining_bond = provider.get_balance(bid_purse)?.unwrap_or_default();
-    Ok((unbond_purse, remaining_bond))
+    Ok(remaining_bond)
 }
 
 /// Update delegators entry. Initialize if it doesn't exist.
@@ -225,5 +223,32 @@ where
         .and_modify(|sum| *sum += amount)
         .or_insert_with(|| amount);
     internal::set_validator_reward_map(provider, validator_reward_map)?;
+    Ok(())
+}
+
+/// Removes validator entries from either founders or validators, wherever they
+/// might be found.
+///
+/// This function is intended to be called together with the slash function in the Mint
+/// contract.
+pub(crate) fn quash_bid<P: StorageProvider + RuntimeProvider + ?Sized>(
+    provider: &mut P,
+    validator_public_keys: &[PublicKey],
+) -> Result<()> {
+    // Clean up inside `bids`
+    let mut validators = internal::get_bids(provider)?;
+
+    let mut modified_validators = 0usize;
+
+    for validator_public_key in validator_public_keys {
+        if validators.remove(validator_public_key).is_some() {
+            modified_validators += 1;
+        }
+    }
+
+    if modified_validators > 0 {
+        internal::set_bids(provider, validators)?;
+    }
+
     Ok(())
 }

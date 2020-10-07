@@ -7,6 +7,7 @@ mod explorer;
 mod groups;
 mod manage_groups;
 mod regression;
+mod step;
 mod system_contracts;
 mod upgrade;
 mod wasmless_transfer;

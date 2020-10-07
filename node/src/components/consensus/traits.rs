@@ -3,12 +3,12 @@ use std::{
     hash::Hash,
 };
 
+use crate::types::CryptoRngCore;
 use datasize::DataSize;
-use rand::{CryptoRng, Rng};
 use serde::{de::DeserializeOwned, Serialize};
 
-pub trait NodeIdT: Clone + Debug + Send + Eq + Hash + 'static {}
-impl<I> NodeIdT for I where I: Clone + Debug + Send + Eq + Hash + 'static {}
+pub trait NodeIdT: Clone + Display + Debug + Send + Eq + Hash + 'static {}
+impl<I> NodeIdT for I where I: Clone + Display + Debug + Send + Eq + Hash + 'static {}
 
 /// A validator identifier.
 pub(crate) trait ValidatorIdT: Eq + Ord + Clone + Debug + Hash {}
@@ -35,7 +35,7 @@ pub(crate) trait ValidatorSecret {
 
     type Signature: Eq + PartialEq + Clone + Debug + Hash + Serialize + DeserializeOwned;
 
-    fn sign<R: Rng + CryptoRng + ?Sized>(&self, hash: &Self::Hash, rng: &mut R) -> Self::Signature;
+    fn sign(&self, hash: &Self::Hash, rng: &mut dyn CryptoRngCore) -> Self::Signature;
 }
 
 /// The collection of types the user can choose for cryptography, IDs, transactions, etc.
