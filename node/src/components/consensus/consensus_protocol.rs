@@ -125,4 +125,7 @@ pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID> {
 
     /// Turns this instance into a passive observer, that does not create any new vertices.
     fn deactivate_validator(&mut self);
+
+    /// Returns whether the validator `vid` is known to be faulty.
+    fn has_evidence(&self, vid: &VID) -> bool;
 }

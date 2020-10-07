@@ -56,9 +56,10 @@ use crate::{
     utils::WithDir,
 };
 
-/// The number of recent eras to retain. Eras older than this are dropped from memory.
+/// The unbonding period, in number of eras. After this many eras, a former validator is allowed to
+/// withdraw their stake, so their signature can't be trusted anymore.
 // TODO: This needs to be in sync with AUCTION_DELAY/booking_duration_millis. (Already duplicated!)
-const RETAIN_ERAS: u64 = 4;
+const BONDED_ERAS: u64 = 4;
 
 #[derive(
     DataSize, Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
@@ -337,8 +338,9 @@ where
         let _ = self.active_eras.insert(era_id, era);
 
         // Remove the era that has become obsolete now.
-        if era_id.0 > RETAIN_ERAS {
-            self.active_eras.remove(&EraId(era_id.0 - RETAIN_ERAS - 1));
+        if era_id.0 > 2 * BONDED_ERAS {
+            self.active_eras
+                .remove(&EraId(era_id.0 - 2 * BONDED_ERAS - 1));
         }
 
         results
@@ -414,6 +416,10 @@ where
 
     pub(super) fn handle_message(&mut self, sender: I, msg: ConsensusMessage) -> Effects<Event<I>> {
         let ConsensusMessage { era_id, payload } = msg;
+        if era_id.0 + BONDED_ERAS < self.era_supervisor.current_era.0 {
+            trace!(%era_id, "not handling message; era too old");
+            return Effects::new();
+        }
         self.delegate_to_era(era_id, move |consensus, rng| {
             consensus.handle_message(sender, payload, rng)
         })
@@ -596,6 +602,21 @@ where
             .collect()
     }
 
+    /// Returns `true` if any of the most recent eras has evidence against the validator with key
+    /// `pub_key`.
+    fn has_evidence(&self, era_id: EraId, pub_key: PublicKey) -> bool {
+        (era_id.0.saturating_sub(BONDED_ERAS)..era_id.0)
+            .map(EraId)
+            .any(|eid| {
+                self.era_supervisor
+                    .active_eras
+                    .get(&eid)
+                    .expect("missing era instance")
+                    .consensus
+                    .has_evidence(&pub_key)
+            })
+    }
+
     fn handle_consensus_result(
         &mut self,
         era_id: EraId,
@@ -661,7 +682,13 @@ where
             }
             ConsensusProtocolResult::ValidateConsensusValue(sender, candidate_block) => {
                 let proto_block = candidate_block.proto_block().clone();
-                let accusations = candidate_block.accusations().clone();
+                let accusations = candidate_block
+                    .accusations()
+                    .iter()
+                    .filter(|pub_key| !self.has_evidence(era_id, **pub_key))
+                    .cloned()
+                    .collect();
+                // TODO: Request evidence.
                 if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
                     era.candidates.insert(candidate_block, (false, accusations));
                 } else {

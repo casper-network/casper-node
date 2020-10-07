@@ -316,6 +316,10 @@ where
         self.highway.deactivate_validator()
     }
 
+    fn has_evidence(&self, vid: &C::ValidatorId) -> bool {
+        self.highway.has_evidence(vid)
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }

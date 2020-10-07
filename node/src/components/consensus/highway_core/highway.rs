@@ -214,6 +214,13 @@ impl<C: Context> Highway<C> {
         }
     }
 
+    /// Returns whether the validator is known to be faulty.
+    pub(crate) fn has_evidence(&self, vid: &C::ValidatorId) -> bool {
+        self.validators
+            .get_index(vid)
+            .map_or(false, |vidx| self.state.has_evidence(vidx))
+    }
+
     /// Returns whether we have a vertex that satisfies the dependency.
     pub(crate) fn has_dependency(&self, dependency: &Dependency<C>) -> bool {
         match dependency {
