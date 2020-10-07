@@ -9,12 +9,3 @@ services:
       - ./share:/root/share
     command: /bin/bash -c "/root/share/build_deb.sh _U18.04"
     tty: true
-
-#  deb_2004:
-#    build:
-#      context: .
-#      dockerfile: Dockerfile.U1804
-#    volumes:
-#      - ./share:/root/share
-#    command: /bin/bash -c "/root/share/build_deb.sh _U20.04"
-#    tty: true
