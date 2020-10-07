@@ -64,6 +64,13 @@ pub mod requests;
 use std::{
     any::type_name,
     collections::{HashMap, HashSet},
+    fmt::{self, Debug, Display, Formatter},
+    future::Future,
+    net::SocketAddr,
+    time::{Duration, Instant},
+};
+
+use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use semver::Version;
 use smallvec::{smallvec, SmallVec};
@@ -77,19 +84,13 @@ use casper_execution_engine::{
         execution_result::ExecutionResults,
         genesis::GenesisResult,
         step::{StepRequest, StepResult},
-    fmt::{self, Debug, Display, Formatter},
-    future::Future,
-    net::SocketAddr,
-    time::{Duration, Instant},
-};
-
-use datasize::DataSize;
         BalanceRequest, BalanceResult, QueryRequest, QueryResult,
     },
     shared::{additive_map::AdditiveMap, transform::Transform},
     storage::global_state::CommitResult,
 };
-use casper_types::Key;
+
+use casper_types::{auction::ValidatorWeights, Key};
 
 use crate::{
     components::{
@@ -108,6 +109,7 @@ use crate::{
     utils::Source,
     Chainspec,
 };
+
 use announcements::{
     ApiServerAnnouncement, BlockExecutorAnnouncement, ConsensusAnnouncement,
     DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
@@ -1012,7 +1014,6 @@ impl<REv> EffectBuilder<REv> {
         )
         .await
     }
-
 
     /// Returns a map of validators for given `era` to their weights as known from `root_hash`.
     ///
