@@ -8,9 +8,9 @@ After=network-online.target
 
 [Service]
 Type=simple
-# Using >> to deal with StandardOutput=file: not handling append.
-ExecStart=/usr/bin/casper-node validator /etc/casper/config.toml >>/var/log/casper-node.log
+ExecStart=/usr/bin/casper-node validator /etc/casper/config.toml
 Environment=RUST_LOG=info
+StandardOutput=file:/var/log/casper-node.log
 Restart=no
 
 [Install]
