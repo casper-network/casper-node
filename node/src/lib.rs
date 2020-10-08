@@ -33,6 +33,7 @@ pub mod tls;
 pub mod types;
 pub mod utils;
 
+use ansi_term::Color::Red;
 use lazy_static::lazy_static;
 
 pub(crate) use components::small_network;
@@ -49,13 +50,23 @@ pub use utils::OS_PAGE_SIZE;
 
 lazy_static! {
     /// Version string for the compiled node. Filled in at build time, output allocated at runtime.
-    pub static ref VERSION_STRING: String = if env!("VERGEN_SEMVER_LIGHTWEIGHT") == "UNKNOWN" {
-        env!("CARGO_PKG_VERSION").to_string()
-    } else {
-        format!(
-            "{}-{}",
-            env!("VERGEN_SEMVER_LIGHTWEIGHT"),
-            env!("VERGEN_SHA_SHORT")
-        )
+    pub static ref VERSION_STRING: String = {
+        let mut version = if env!("VERGEN_SEMVER_LIGHTWEIGHT") == "UNKNOWN" {
+            env!("CARGO_PKG_VERSION").to_string()
+        } else {
+            format!(
+                "{}-{}",
+                env!("VERGEN_SEMVER_LIGHTWEIGHT"),
+                env!("VERGEN_SHA_SHORT"),
+            )
+        };
+
+        // Add a `@DEBUG` (or similar) tag to release string on non-release builds.
+        if env!("NODE_BUILD_PROFILE") != "release" {
+            version += "@";
+            version.push_str(&Red.paint(&env!("NODE_BUILD_PROFILE").to_uppercase()).to_string());
+        }
+
+        version
     };
 }
