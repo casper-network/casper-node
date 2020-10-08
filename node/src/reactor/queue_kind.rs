@@ -7,11 +7,12 @@
 use std::num::NonZeroUsize;
 
 use enum_iterator::IntoEnumIterator;
+use serde::Serialize;
 
 /// Scheduling priority.
 ///
 /// Priorities are ordered from lowest to highest.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, IntoEnumIterator)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, IntoEnumIterator, Serialize)]
 pub enum QueueKind {
     /// Network events that were initiated outside of this node.
     ///

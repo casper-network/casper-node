@@ -31,6 +31,7 @@ pub mod validator;
 
 use std::{
     fmt::{Debug, Display},
+    fs::File,
     mem,
 };
 
@@ -46,6 +47,7 @@ use crate::{
     utils::{self, WeightedRoundRobin},
 };
 pub use queue_kind::QueueKind;
+use serde::Serialize;
 use tokio::time::{Duration, Instant};
 
 /// Event scheduler
@@ -220,6 +222,7 @@ impl Drop for RunnerMetrics {
 impl<R> Runner<R>
 where
     R: Reactor,
+    R::Event: Serialize,
     R::Error: From<prometheus::Error>,
 {
     /// Creates a new runner from a given configuration.
@@ -313,6 +316,20 @@ where
                 self.reactor.update_metrics();
                 self.last_metrics = now;
             }
+        }
+
+        // Dump event queue if requested, stopping the world.
+        if false {
+            let output_fn = "queue_dump.json";
+            let mut serializer = serde_json::Serializer::pretty(File::create(output_fn).expect(
+                "could not create output file for queue
+            snapshot",
+            ));
+
+            self.scheduler
+                .snapshot(&mut serializer)
+                .await
+                .expect("could not serialize snapshot");
         }
 
         let (event, q) = self.scheduler.pop().await;
