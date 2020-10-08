@@ -67,6 +67,11 @@ impl GossiperMetrics {
         )?;
 
         registry.register(Box::new(items_received.clone()))?;
+        registry.register(Box::new(items_regossipped.clone()))?;
+        registry.register(Box::new(times_ran_out_of_peers.clone()))?;
+        registry.register(Box::new(tbl_items_paused.clone()))?;
+        registry.register(Box::new(tbl_items_current.clone()))?;
+        registry.register(Box::new(tbl_items_finished.clone()))?;
 
         Ok(GossiperMetrics {
             items_received,
