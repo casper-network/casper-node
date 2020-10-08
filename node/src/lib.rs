@@ -61,7 +61,7 @@ lazy_static! {
             )
         };
 
-        // Add an `@DEBUG` (or similar) tag in read on non-release versions.
+        // Add a `@DEBUG` (or similar) tag to release string on non-release builds.
         if env!("NODE_BUILD_PROFILE") != "release" {
             version += "@";
             version.push_str(&Red.paint(&env!("NODE_BUILD_PROFILE").to_uppercase()).to_string());
