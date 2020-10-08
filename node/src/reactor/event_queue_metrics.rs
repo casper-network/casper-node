@@ -5,10 +5,14 @@ use itertools::Itertools;
 use std::collections::HashMap;
 use tracing::debug;
 
+/// Metrics for event queue sizes.
 #[derive(Debug)]
 pub(super) struct EventQueueMetrics {
+    /// Per queue kind gauges that measure number of event in the queue.
     event_queue_gauges: HashMap<QueueKind, IntGauge>,
+    /// Total events count.
     event_total: IntGauge,
+    /// Instance of registry to unregister from when being dropped.
     registry: Registry,
 }
 
