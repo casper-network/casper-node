@@ -49,7 +49,7 @@ voting_period_duration = '2days'
 finality_threshold_percent = 10
 # Integer between 0 and 255. The power of two that is the number of milliseconds in the minimum round length, and
 # therefore the minimum delay between a block and its child. E.g. 14 means 2^14 milliseconds, i.e. about 16 seconds.
-minimum_round_exponent = 14
+minimum_round_exponent = 12
 
 [deploys]
 # The maximum number of Motes allowed to be spent during payment.  0 means unlimited.
