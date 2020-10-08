@@ -24,7 +24,7 @@ impl EventQueueMetrics {
     ) -> Result<Self, prometheus::Error> {
         let mut event_queue_gauges: HashMap<QueueKind, IntGauge> = HashMap::new();
         for queue_kind in event_queue_handle.event_queues_counts().keys() {
-            let key = format!("scheduler_queue_{}_count", queue_kind);
+            let key = format!("scheduler_queue_{}_count", queue_kind.metrics_name());
             let queue_event_counter = IntGauge::new(key, "Event in the queue.".to_string())?;
             registry.register(Box::new(queue_event_counter.clone()))?;
             let result = event_queue_gauges.insert(*queue_kind, queue_event_counter);
@@ -45,6 +45,8 @@ impl EventQueueMetrics {
     }
 
     /// Updates the event queues size metrics.
+    /// NOTE: Count may be off by one b/c of the way locking works when elements are popped.
+    /// It's fine for its purposes.
     pub(super) fn record_event_queue_counts<REv: 'static>(
         &self,
         event_queue_handle: &EventQueueHandle<REv>,

@@ -38,7 +38,7 @@ impl Display for QueueKind {
             QueueKind::Regular => "Regular",
             QueueKind::Api => "Api",
         };
-        write!(f, "{}", str_value.to_string())
+        write!(f, "{}", str_value)
     }
 }
 
@@ -68,5 +68,14 @@ impl QueueKind {
         QueueKind::into_enum_iter()
             .map(|q| (q, q.weight()))
             .collect()
+    }
+
+    pub(crate) fn metrics_name(&self) -> &str {
+        match self {
+            QueueKind::NetworkIncoming => "network_incoming",
+            QueueKind::Network => "network",
+            QueueKind::Regular => "regular",
+            QueueKind::Api => "api",
+        }
     }
 }
