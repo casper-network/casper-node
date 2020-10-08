@@ -8,6 +8,7 @@ use std::{
 };
 
 use futures::future::{BoxFuture, FutureExt};
+use serde::Serialize;
 use tokio::time;
 use tracing::{debug, error_span};
 use tracing_futures::Instrument;
@@ -53,6 +54,7 @@ where
     R: Reactor + NetworkedReactor,
     R::Config: Default,
     <R as Reactor>::Error: Debug,
+    R::Event: Serialize,
     R::Error: From<prometheus::Error>,
 {
     /// Creates a new networking node on the network using the default root node port.
@@ -82,6 +84,7 @@ where
 impl<R> Network<R>
 where
     R: Reactor + NetworkedReactor,
+    R::Event: Serialize,
     R::Error: From<prometheus::Error> + From<R::Error>,
 {
     /// Creates a new network.
@@ -290,6 +293,7 @@ where
 impl<R> Finalize for Network<R>
 where
     R: Finalize + NetworkedReactor + Reactor + Send + 'static,
+    R::Event: Serialize,
     R::NodeId: Send,
     R::Error: From<prometheus::Error>,
 {

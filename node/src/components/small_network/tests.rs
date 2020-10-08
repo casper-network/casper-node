@@ -39,18 +39,18 @@ use crate::{
 };
 
 /// Test-reactor event.
-#[derive(Debug, From)]
+#[derive(Debug, From, Serialize)]
 enum Event {
     #[from]
-    SmallNet(small_network::Event<Message>),
+    SmallNet(#[serde(skip_serializing)] small_network::Event<Message>),
     #[from]
-    AddressGossiper(gossiper::Event<GossipedAddress>),
+    AddressGossiper(#[serde(skip_serializing)] gossiper::Event<GossipedAddress>),
     #[from]
-    NetworkRequest(NetworkRequest<NodeId, Message>),
+    NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
     #[from]
-    NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
+    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
     #[from]
-    AddressGossiperAnnouncement(GossiperAnnouncement<GossipedAddress>),
+    AddressGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<GossipedAddress>),
 }
 
 impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event {

@@ -7,6 +7,7 @@ use std::{
 use derive_more::From;
 use futures::FutureExt;
 use prometheus::Registry;
+use serde::Serialize;
 use tempfile::TempDir;
 use thiserror::Error;
 use tokio::time;
@@ -36,27 +37,27 @@ use crate::{
 const TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Top-level event for the reactor.
-#[derive(Debug, From)]
+#[derive(Debug, From, Serialize)]
 #[must_use]
 enum Event {
     #[from]
-    Storage(storage::Event<Storage>),
+    Storage(#[serde(skip_serializing)] storage::Event<Storage>),
     #[from]
-    DeployAcceptor(deploy_acceptor::Event),
+    DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
     #[from]
-    DeployFetcher(super::Event<Deploy>),
+    DeployFetcher(#[serde(skip_serializing)] super::Event<Deploy>),
     #[from]
-    DeployFetcherRequest(FetcherRequest<NodeId, Deploy>),
+    DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Deploy>),
     #[from]
-    NetworkRequest(NetworkRequest<NodeId, Message>),
+    NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
     #[from]
-    LinearChainRequest(LinearChainRequest<NodeId>),
+    LinearChainRequest(#[serde(skip_serializing)] LinearChainRequest<NodeId>),
     #[from]
-    NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
+    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
     #[from]
-    ApiServerAnnouncement(ApiServerAnnouncement),
+    ApiServerAnnouncement(#[serde(skip_serializing)] ApiServerAnnouncement),
     #[from]
-    DeployAcceptorAnnouncement(DeployAcceptorAnnouncement<NodeId>),
+    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
 }
 
 impl From<StorageRequest<Storage>> for Event {
