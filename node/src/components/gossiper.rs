@@ -3,6 +3,7 @@ mod error;
 mod event;
 mod gossip_table;
 mod message;
+mod metrics;
 mod tests;
 
 use datasize::DataSize;
@@ -31,6 +32,8 @@ pub use error::Error;
 pub use event::Event;
 use gossip_table::{GossipAction, GossipTable};
 pub use message::Message;
+use metrics::GossiperMetrics;
+use prometheus::Registry;
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `Gossiper` can
 /// work with.
@@ -102,6 +105,10 @@ where
     #[data_size(skip)] // Not well supported by datasize.
     get_from_holder:
         Box<dyn Fn(EffectBuilder<REv>, T::Id, NodeId) -> Effects<Event<T>> + Send + 'static>,
+
+    // Metrics collected for this gossiper instance.
+    #[data_size(skip)]
+    metrics: GossiperMetrics,
 }
 
 impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
@@ -119,34 +126,40 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         get_from_holder: impl Fn(EffectBuilder<REv>, T::Id, NodeId) -> Effects<Event<T>>
             + Send
             + 'static,
-    ) -> Self {
+        registry: &Registry,
+    ) -> Result<Self, prometheus::Error> {
         assert!(
             !T::ID_IS_COMPLETE_ITEM,
             "this should only be called for types where T::ID_IS_COMPLETE_ITEM is false"
         );
-        Gossiper {
+        Ok(Gossiper {
             table: GossipTable::new(config),
             gossip_timeout: Duration::from_secs(config.gossip_request_timeout_secs()),
             get_from_peer_timeout: Duration::from_secs(config.get_remainder_timeout_secs()),
             get_from_holder: Box::new(get_from_holder),
-        }
+            metrics: GossiperMetrics::new("TODO", registry)?,
+        })
     }
 
     /// Constructs a new gossiper component for use where `T::ID_IS_COMPLETE_ITEM == true`, i.e.
     /// where the gossip messages themselves contain the actual data being gossiped.
-    pub(crate) fn new_for_complete_items(config: Config) -> Self {
+    pub(crate) fn new_for_complete_items(
+        config: Config,
+        registry: &Registry,
+    ) -> Result<Self, prometheus::Error> {
         assert!(
             T::ID_IS_COMPLETE_ITEM,
             "this should only be called for types where T::ID_IS_COMPLETE_ITEM is true"
         );
-        Gossiper {
+        Ok(Gossiper {
             table: GossipTable::new(config),
             gossip_timeout: Duration::from_secs(config.gossip_request_timeout_secs()),
             get_from_peer_timeout: Duration::from_secs(config.get_remainder_timeout_secs()),
             get_from_holder: Box::new(|_, item, _| {
                 panic!("gossiper should never try to get {}", item)
             }),
-        }
+            metrics: GossiperMetrics::new("TODO", registry)?,
+        })
     }
 
     /// Handles a new item received from a peer or client.
