@@ -93,7 +93,7 @@ pub enum Event {
     DeployGossiper(#[serde(skip_serializing)] gossiper::Event<Deploy>),
     /// Address gossiper event.
     #[from]
-    AddressGossiper(#[serde(skip_serializing)] gossiper::Event<GossipedAddress>),
+    AddressGossiper(gossiper::Event<GossipedAddress>),
     /// Contract runtime event.
     #[from]
     ContractRuntime(#[serde(skip_serializing)] contract_runtime::Event),

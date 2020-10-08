@@ -105,7 +105,7 @@ pub enum Event {
 
     /// Address gossiper event.
     #[from]
-    AddressGossiper(#[serde(skip_serializing)] gossiper::Event<GossipedAddress>),
+    AddressGossiper(gossiper::Event<GossipedAddress>),
 
     /// Requests.
     /// Linear chain block by hash fetcher request.

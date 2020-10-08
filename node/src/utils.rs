@@ -15,6 +15,7 @@ use std::{
 
 use lazy_static::lazy_static;
 use libc::{c_long, sysconf, _SC_PAGESIZE};
+use serde::Serialize;
 use thiserror::Error;
 
 #[cfg(test)]
@@ -173,7 +174,7 @@ impl<T> WithDir<T> {
 }
 
 /// The source of a piece of data.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize)]
 pub enum Source<I> {
     /// A peer with the wrapped ID.
     Peer(I),
