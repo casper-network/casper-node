@@ -33,6 +33,7 @@ use std::{
     fmt::{Debug, Display},
     fs::File,
     mem,
+    sync::atomic::Ordering,
 };
 
 use datasize::DataSize;
@@ -319,7 +320,8 @@ where
         }
 
         // Dump event queue if requested, stopping the world.
-        if false {
+        if crate::QUEUE_DUMP_REQUESTED.load(Ordering::SeqCst) {
+            debug!("dumping event queue as requested");
             let output_fn = "queue_dump.json";
             let mut serializer = serde_json::Serializer::pretty(File::create(output_fn).expect(
                 "could not create output file for queue
@@ -330,6 +332,9 @@ where
                 .snapshot(&mut serializer)
                 .await
                 .expect("could not serialize snapshot");
+
+            // Indicate we are done with the dump.
+            crate::QUEUE_DUMP_REQUESTED.store(false, Ordering::SeqCst);
         }
 
         let (event, q) = self.scheduler.pop().await;

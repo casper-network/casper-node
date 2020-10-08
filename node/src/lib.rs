@@ -33,6 +33,8 @@ pub mod tls;
 pub mod types;
 pub mod utils;
 
+use std::sync::atomic::AtomicBool;
+
 use lazy_static::lazy_static;
 
 pub(crate) use components::small_network;
@@ -58,4 +60,7 @@ lazy_static! {
             env!("VERGEN_SHA_SHORT")
         )
     };
+
+    /// Global flag that indicates the currently running reactor should dump its event queue.
+    pub static ref QUEUE_DUMP_REQUESTED: AtomicBool = AtomicBool::new(false);
 }
