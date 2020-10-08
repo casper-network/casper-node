@@ -447,11 +447,23 @@ mod tests {
                 initial_mem: 17,
                 max_stack_height: 19,
                 opcode_costs: OpCodeCosts {
-                    regular: 13,
-                    div: 14,
+                    bit: 13,
+                    add: 14,
                     mul: 15,
-                    mem: 16,
-                    grow_mem: 18
+                    div: 16,
+                    load: 17,
+                    store: 18,
+                    op_const: 19,
+                    local: 20,
+                    global: 21,
+                    control_flow: 22,
+                    integer_comparsion: 23,
+                    conversion: 24,
+                    unreachable: 25,
+                    nop: 26,
+                    current_memory: 27,
+                    grow_memory: 28,
+                    regular: 29
                 },
                 storage_costs: StorageCosts { gas_per_byte: 101 },
                 host_function_costs: HostFunctionCosts {
@@ -638,26 +650,28 @@ mod tests {
         );
         assert!(upgrade0.upgrade_installer_args.is_none());
         assert_eq!(
-            upgrade0
-                .new_wasm_config
-                .as_ref()
-                .unwrap()
-                .opcode_costs
-                .regular,
-            24
+            upgrade0.new_wasm_config.as_ref().unwrap().opcode_costs,
+            OpCodeCosts {
+                bit: 24,
+                add: 25,
+                mul: 26,
+                div: 27,
+                load: 28,
+                store: 29,
+                op_const: 30,
+                local: 31,
+                global: 32,
+                control_flow: 33,
+                integer_comparsion: 34,
+                conversion: 35,
+                unreachable: 36,
+                nop: 37,
+                current_memory: 38,
+                grow_memory: 39,
+                regular: 40
+            }
         );
-        assert_eq!(
-            upgrade0.new_wasm_config.as_ref().unwrap().opcode_costs.div,
-            25
-        );
-        assert_eq!(
-            upgrade0.new_wasm_config.as_ref().unwrap().opcode_costs.mul,
-            26
-        );
-        assert_eq!(
-            upgrade0.new_wasm_config.as_ref().unwrap().opcode_costs.mem,
-            27
-        );
+
         assert_eq!(upgrade0.new_wasm_config.as_ref().unwrap().initial_mem, 17);
         assert_eq!(
             upgrade0
@@ -665,8 +679,8 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .opcode_costs
-                .grow_mem,
-            29
+                .grow_memory,
+            39
         );
         assert_eq!(
             upgrade0.new_wasm_config.as_ref().unwrap().max_stack_height,

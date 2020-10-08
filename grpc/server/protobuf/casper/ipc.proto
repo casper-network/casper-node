@@ -322,16 +322,40 @@ message ChainSpec {
 
     message WasmConfig {
         message OpCodeCosts {
-            // Default opcode cost
-            uint32 regular = 1;
-            // Div operations multiplier.
-            uint32 div = 2;
+            // Bit operations multiplier.
+            uint32 bit = 1;
+            // Arithmetic add operations multiplier.
+            uint32 add = 2;
             // Mul operations multiplier.
             uint32 mul = 3;
-            // Memory (load/store) operations multiplier.
-            uint32 mem = 4;
-            // Grow memory cost, per page (64kb)
-            uint32 grow_mem = 6;
+            // Div operations multiplier.
+            uint32 div = 4;
+            // Memory load operation multiplier.
+            uint32 load = 5;
+            // Memory store operation multiplier.
+            uint32 store = 6;
+            // Const store operation multiplier.
+            uint32 const = 7;
+            // Local operations multiplier.
+            uint32 local = 8;
+            // Global operations multiplier.
+            uint32 global = 9;
+            // Control flow operations multiplier.
+            uint32 control_flow = 10;
+            // Integer operations multiplier.
+            uint32 integer_comparsion = 11;
+            // Conversion operations multiplier.
+            uint32 conversion = 12;
+            // Unreachable operation multiplier.
+            uint32 unreachable = 14;
+            // Nop operation multiplier.
+            uint32 nop = 15;
+            // Get current memory operation multiplier.
+            uint32 current_memory = 16;
+            // Grow memory cost; per page (64kb)
+            uint32 grow_memory = 17;
+            // Regular opcode cost
+            uint32 regular = 18;
         }
 
         message StorageCosts {

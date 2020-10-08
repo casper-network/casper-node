@@ -31,13 +31,40 @@ initial_mem = 17
 max_stack_height = 19
 
 [wasm_config.opcode_costs]
-regular = 13
-div = 14
+# Bit operations multiplier.
+bit = 13
+# Arithmetic add operations multiplier.
+add = 14
+# Mul operations multiplier.
 mul = 15
-mem = 16
-grow_mem = 18
-opcodes_mul = 20
-opcodes_div = 21
+# Div operations multiplier.
+div = 16
+# Memory load operation multiplier.
+load = 17
+# Memory store operation multiplier.
+store = 18
+# Const store operation multiplier.
+const = 19
+# Local operations multiplier.
+local = 20
+# Global operations multiplier.
+global = 21
+# Control flow operations multiplier
+control_flow = 22
+# Integer operations multiplier.
+integer_comparsion = 23
+# Conversion operations multiplier.
+conversion = 24
+# Unreachable operation multiplier.
+unreachable = 25
+# Nop operation multiplier.
+nop = 26
+# Get current memory operation multiplier.
+current_memory = 27
+# Grow memory cost, per page (64kb)
+grow_memory = 28
+# Regular opcode cost
+regular = 29
 
 [wasm_config.storage_costs]
 gas_per_byte = 101
@@ -99,13 +126,40 @@ initial_mem = 17
 max_stack_height = 19
 
 [upgrade.new_wasm_config.opcode_costs]
-regular = 24
-div = 25
+# Bit operations multiplier.
+bit = 24
+# Arithmetic add operations multiplier.
+add = 25
+# Mul operations multiplier.
 mul = 26
-mem = 27
-grow_mem = 29
-opcodes_mul = 31
-opcodes_div = 32
+# Div operations multiplier.
+div = 27
+# Memory load operation multiplier.
+load = 28
+# Memory store operation multiplier.
+store = 29
+# Const store operation multiplier.
+const = 30
+# Local operations multiplier.
+local = 31
+# Global operations multiplier.
+global = 32
+# Control flow operations multiplier.
+control_flow = 33
+# Integer operations multiplier.
+integer_comparsion = 34
+# Conversion operations multiplier.
+conversion = 35
+# Unreachable operation multiplier.
+unreachable = 36
+# Nop operation multiplier.
+nop = 37
+# Get current memory operation multiplier.
+current_memory = 38
+# Grow memory cost, per page (64kb)
+grow_memory = 39
+# Regular opcode cost
+regular = 40
 
 [upgrade.new_wasm_config.storage_costs]
 gas_per_byte = 101

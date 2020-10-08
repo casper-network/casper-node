@@ -76,19 +76,40 @@ max_stack_height = 65_536
 gas_per_byte = 630_000_000
 
 [wasm_config.opcode_costs]
-# Default opcode cost.
-regular = 210_000
-# Div operations multiplier. (A div should cost 320_000)
+# Bit operations multiplier.
+bit = 1
+# Arithmetic add operations multiplier.
+add = 1
+# Mul operations multiplier.
+mul = 1
+# Div operations multiplier.
 div = 2
-# Mul operations multiplier. (A mul should cost 240_000)
-mul = 2
-# Memory (load/store) operations multiplier. (A mem should cost 4_700_000)
-mem = 23
-# Grow memory cost, per page (64kB).
-grow_mem = 240_000_000
-# Cost of wasm opcode is calculated as TABLE_ENTRY_COST * `opcodes_mul` / `opcodes_div`.
-opcodes_mul = 1
-opcodes_div = 1
+# Memory load operation multiplier.
+load = 1
+# Memory store operation multiplier.
+store = 1
+# Const store operation multiplier.
+const = 1
+# Local operations multiplier.
+local = 1
+# Global operations multiplier.
+global = 1
+# Control flow operations multiplier.
+control_flow = 1
+# Integer operations multiplier.
+integer_comparsion = 1
+# Conversion operations multiplier.
+conversion = 1
+# Unreachable operation multiplier.
+unreachable = 1
+# Nop operation multiplier.
+nop = 1
+# Get current memory operation multiplier.
+current_memory = 23
+# Grow memory cost, per page (64kb)
+grow_memory = 240_000_000
+# Regular opcode cost
+regular = 210_000
 
 # Host function declarations are located in smart_contracts/contract/src/ext_ffi.rs
 [wasm_config.host_function_costs]
@@ -121,7 +142,7 @@ read_host_buffer = { cost = 3_500_000, arguments = [310] }
 read_value = { cost = 6_000_000 }
 read_value_local = { cost = 5_500_000, arguments = [590] }
 remove_associated_key = { cost = 4_200_000 }
-remove_contract_user_group = { cost = 200_000_000 }# Not instrumented yet, assuming a sufficiently large number
+remove_contract_user_group = { cost = 200_000_000 } # Not instrumented yet, assuming a sufficiently large number
 remove_contract_user_group_urefs = { cost = 200_000_000 } # Not instrumented yet, assuming a sufficiently large number
 remove_key = { cost = 61_000_000, arguments = [3_200] }
 ret = { cost = 23_000_000, arguments = [420_000, 260] }
