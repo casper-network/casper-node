@@ -68,7 +68,7 @@ pub struct EraId(pub(crate) u64);
 
 impl EraId {
     fn message(self, payload: Vec<u8>) -> ConsensusMessage {
-        ConsensusMessage {
+        ConsensusMessage::Protocol {
             era_id: self,
             payload,
         }
@@ -81,7 +81,7 @@ impl EraId {
 
 impl Display for EraId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.0)
+        write!(f, "era {}", self.0)
     }
 }
 
@@ -397,7 +397,7 @@ where
             Some(era) => match f(&mut *era.consensus, self.rng) {
                 Ok(results) => self.handle_consensus_results(era_id, results),
                 Err(error) => {
-                    error!(%error, ?era_id, "got error from era id {:?}: {:?}", era_id, error);
+                    error!(%error, %era_id, "error while handling event in era");
                     Effects::new()
                 }
             },
@@ -415,14 +415,25 @@ where
     }
 
     pub(super) fn handle_message(&mut self, sender: I, msg: ConsensusMessage) -> Effects<Event<I>> {
-        let ConsensusMessage { era_id, payload } = msg;
-        if era_id.0 + BONDED_ERAS < self.era_supervisor.current_era.0 {
-            trace!(%era_id, "not handling message; era too old");
-            return Effects::new();
+        match msg {
+            ConsensusMessage::Protocol { era_id, payload } => {
+                if era_id.0 + BONDED_ERAS < self.era_supervisor.current_era.0 {
+                    trace!(%era_id, "not handling message; era too old");
+                    return Effects::new();
+                }
+                self.delegate_to_era(era_id, move |consensus, rng| {
+                    consensus.handle_message(sender, payload, rng)
+                })
+            }
+            ConsensusMessage::EvidenceRequest { era_id, pub_key: _ } => {
+                if era_id.0 + BONDED_ERAS < self.era_supervisor.current_era.0 {
+                    trace!(%era_id, "not handling message; era too old");
+                    return Effects::new();
+                }
+                // TODO: Respond with evidence, if we have any.
+                Effects::new()
+            }
         }
-        self.delegate_to_era(era_id, move |consensus, rng| {
-            consensus.handle_message(sender, payload, rng)
-        })
     }
 
     pub(super) fn handle_new_proto_block(
@@ -682,34 +693,45 @@ where
             }
             ConsensusProtocolResult::ValidateConsensusValue(sender, candidate_block) => {
                 let proto_block = candidate_block.proto_block().clone();
-                let accusations = candidate_block
+                let accusations: Vec<PublicKey> = candidate_block
                     .accusations()
                     .iter()
                     .filter(|pub_key| !self.has_evidence(era_id, **pub_key))
                     .cloned()
                     .collect();
-                // TODO: Request evidence.
+                let mut effects = Effects::new();
+                for pub_key in accusations.iter().cloned() {
+                    let msg = ConsensusMessage::EvidenceRequest { era_id, pub_key };
+                    effects.extend(
+                        self.effect_builder
+                            .send_message(sender.clone(), msg.into())
+                            .ignore(),
+                    );
+                }
                 if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
                     era.candidates.insert(candidate_block, (false, accusations));
                 } else {
-                    return Effects::new();
+                    return effects;
                 };
-                self.effect_builder
-                    .validate_block(sender.clone(), proto_block)
-                    .event(move |(is_valid, proto_block)| {
-                        if is_valid {
-                            Event::AcceptProtoBlock {
-                                era_id,
-                                proto_block,
+                effects.extend(
+                    self.effect_builder
+                        .validate_block(sender.clone(), proto_block)
+                        .event(move |(is_valid, proto_block)| {
+                            if is_valid {
+                                Event::AcceptProtoBlock {
+                                    era_id,
+                                    proto_block,
+                                }
+                            } else {
+                                Event::InvalidProtoBlock {
+                                    era_id,
+                                    sender,
+                                    proto_block,
+                                }
                             }
-                        } else {
-                            Event::InvalidProtoBlock {
-                                era_id,
-                                sender,
-                                proto_block,
-                            }
-                        }
-                    })
+                        }),
+                );
+                effects
             }
         }
     }

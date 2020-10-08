@@ -18,6 +18,7 @@ use casper_types::auction::ValidatorWeights;
 
 use crate::{
     components::{storage::Storage, Component},
+    crypto::asymmetric_key::PublicKey,
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
@@ -39,16 +40,13 @@ use serde::{Deserialize, Serialize};
 use tracing::error;
 use traits::NodeIdT;
 
-#[derive(DataSize, Clone, Serialize, Deserialize)]
-pub struct ConsensusMessage {
-    era_id: EraId,
-    payload: Vec<u8>,
-}
-
-impl ConsensusMessage {
-    fn payload(&self) -> &[u8] {
-        &self.payload
-    }
+#[derive(Debug, DataSize, Clone, Serialize, Deserialize)]
+pub enum ConsensusMessage {
+    /// A protocol message, to be handled by the instance in the specified era.
+    Protocol { era_id: EraId, payload: Vec<u8> },
+    /// A request for evidence against the specified validator, from any era that is still bonded
+    /// in `era_id`.
+    EvidenceRequest { era_id: EraId, pub_key: PublicKey },
 }
 
 /// Consensus component event.
@@ -87,23 +85,16 @@ pub enum Event<I> {
 
 impl Display for ConsensusMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ConsensusMessage {{ era_id: {}, {:10} }}",
-            self.era_id.0,
-            HexFmt(self.payload())
-        )
-    }
-}
-
-impl Debug for ConsensusMessage {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ConsensusMessage {{ era_id: {}, {:10} }}",
-            self.era_id.0,
-            HexFmt(self.payload())
-        )
+        match self {
+            ConsensusMessage::Protocol { era_id, payload } => {
+                write!(f, "protocol message {:10} in {}", HexFmt(payload), era_id)
+            }
+            ConsensusMessage::EvidenceRequest { era_id, pub_key } => write!(
+                f,
+                "request for evidence of fault by {} in {} or earlier",
+                pub_key, era_id,
+            ),
+        }
     }
 }
 
