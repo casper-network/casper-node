@@ -42,8 +42,9 @@ use crate::{
     },
     protocol::Message,
     reactor::{
-        self, initializer,
+        self,
         event_queue_metrics::EventQueueMetrics,
+        initializer,
         validator::{self, Error, ValidatorInitConfig},
         EventQueueHandle, Finalize,
     },
