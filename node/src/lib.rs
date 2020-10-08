@@ -62,5 +62,10 @@ lazy_static! {
     };
 
     /// Global flag that indicates the currently running reactor should dump its event queue.
-    pub static ref QUEUE_DUMP_REQUESTED: AtomicBool = AtomicBool::new(false);
+    pub static ref QUEUE_DUMP_REQUESTED: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+}
+
+/// Setup UNIX signal hooks for current application.
+fn setup_signal_hooks() {
+    signal_hook::flag::register(libc::SIGUSR1, QUEUE_DUMP_REQUESTED.clone());
 }
