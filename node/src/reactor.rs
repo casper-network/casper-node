@@ -90,8 +90,9 @@ impl<REv> EventQueueHandle<REv> {
         self.0.push(event.into(), queue_kind).await
     }
 
-    pub(crate) fn event_counts(&self) -> HashMap<QueueKind, usize> {
-        self.0.event_queue_counters()
+    /// Returns number of events in each of the scheduler's queues.
+    pub(crate) fn event_queues_counts(&self) -> HashMap<QueueKind, usize> {
+        self.0.event_queues_counts()
     }
 }
 

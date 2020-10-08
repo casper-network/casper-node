@@ -636,7 +636,8 @@ impl reactor::Reactor for Reactor {
     }
 
     fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
-        self.event_queue_metrics.estimate(&event_queue_handle)
+        self.event_queue_metrics
+            .record_event_queue_counts(&event_queue_handle)
     }
 }
 

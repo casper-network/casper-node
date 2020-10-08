@@ -54,15 +54,18 @@ impl<I> QueueState<I> {
         }
     }
 
+    #[inline]
     async fn push_back(&self, element: I) {
         self.queue.lock().await.push_back(element);
         self.event_count.fetch_add(1, Ordering::SeqCst);
     }
 
+    #[inline]
     fn dec_count(&self) {
         self.event_count.fetch_sub(1, Ordering::SeqCst);
     }
 
+    #[inline]
     fn event_count(&self) -> usize {
         self.event_count.load(Ordering::SeqCst)
     }
@@ -187,7 +190,7 @@ where
     }
 
     /// Returns the number of events in each of the queues.
-    pub(crate) fn event_queue_counters(&self) -> HashMap<K, usize> {
+    pub(crate) fn event_queues_counts(&self) -> HashMap<K, usize> {
         self.queues
             .iter()
             .map(|(key, queue)| (*key, queue.event_count()))
