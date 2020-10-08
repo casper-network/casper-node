@@ -334,12 +334,14 @@ impl reactor::Reactor for Reactor {
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, config.network, true)?;
 
-        let address_gossiper = Gossiper::new_for_complete_items(config.gossip, registry)?;
+        let address_gossiper =
+            Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
         let api_server = ApiServer::new(config.http_server, effect_builder);
         let deploy_acceptor = DeployAcceptor::new();
         let deploy_fetcher = Fetcher::new(config.gossip);
         let deploy_gossiper = Gossiper::new_for_partial_items(
+            "deploy_gossiper",
             config.gossip,
             gossiper::get_deploy_from_storage::<Deploy, Event>,
             registry,

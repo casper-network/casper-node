@@ -111,7 +111,8 @@ impl Reactor for TestReactor {
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let (net, effects) = SmallNetwork::new(event_queue, cfg, false)?;
         let gossiper_config = gossiper::Config::default();
-        let address_gossiper = Gossiper::new_for_complete_items(gossiper_config, registry)?;
+        let address_gossiper =
+            Gossiper::new_for_complete_items("address_gossiper", gossiper_config, registry)?;
 
         Ok((
             TestReactor {

@@ -121,7 +121,11 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
     ///
     /// For an example of how `get_from_holder` should be implemented, see
     /// `gossiper::get_deploy_from_store()` which is used by `Gossiper<Deploy>`.
+    ///
+    /// Must be supplied with a name, which should be a snake-case identifier to disambiguate the
+    /// specific gossiper from other potentially present gossipers.
     pub(crate) fn new_for_partial_items(
+        name: &str,
         config: Config,
         get_from_holder: impl Fn(EffectBuilder<REv>, T::Id, NodeId) -> Effects<Event<T>>
             + Send
@@ -137,13 +141,17 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             gossip_timeout: Duration::from_secs(config.gossip_request_timeout_secs()),
             get_from_peer_timeout: Duration::from_secs(config.get_remainder_timeout_secs()),
             get_from_holder: Box::new(get_from_holder),
-            metrics: GossiperMetrics::new("TODO", registry)?,
+            metrics: GossiperMetrics::new(name, registry)?,
         })
     }
 
     /// Constructs a new gossiper component for use where `T::ID_IS_COMPLETE_ITEM == true`, i.e.
     /// where the gossip messages themselves contain the actual data being gossiped.
+    ///
+    /// Must be supplied with a name, which should be a snake-case identifier to disambiguate the
+    /// specific gossiper from other potentially present gossipers.
     pub(crate) fn new_for_complete_items(
+        name: &str,
         config: Config,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
@@ -158,7 +166,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             get_from_holder: Box::new(|_, item, _| {
                 panic!("gossiper should never try to get {}", item)
             }),
-            metrics: GossiperMetrics::new("TODO", registry)?,
+            metrics: GossiperMetrics::new(name, registry)?,
         })
     }
 
