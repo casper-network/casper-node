@@ -4,7 +4,7 @@ use prometheus::{IntCounter, Registry};
 #[derive(Debug)]
 pub struct GossiperMetrics {
     /// Total number of items received by the gossiper.
-    items_received: IntCounter,
+    pub(super) items_received: IntCounter,
 
     /// Reference to the registry for unregistering.
     registry: Registry,

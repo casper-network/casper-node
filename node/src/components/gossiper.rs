@@ -169,6 +169,8 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         item_id: T::Id,
         source: Source<NodeId>,
     ) -> Effects<Event<T>> {
+        self.metrics.items_received.inc();
+
         if let Some(should_gossip) = self.table.new_complete_data(&item_id, source.node_id()) {
             self.gossip(
                 effect_builder,
