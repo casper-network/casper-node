@@ -180,6 +180,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         self.metrics.items_received.inc();
 
         if let Some(should_gossip) = self.table.new_complete_data(&item_id, source.node_id()) {
+            self.metrics.items_regossipped.inc();
             self.gossip(
                 effect_builder,
                 item_id,
@@ -215,6 +216,8 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         // We don't have any peers to gossip to, so pause the process, which will eventually result
         // in the entry being removed.
         if peers.is_empty() {
+            self.metrics.times_ran_out_of_peers.inc();
+
             self.table.pause(&item_id);
             debug!(
                 "paused gossiping {} since no more peers to gossip to",
@@ -435,6 +438,19 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         );
         Effects::new()
     }
+
+    /// Updates the gossiper metrics from the state of the gossip table.
+    fn update_gossip_table_metrics(&self) {
+        self.metrics
+            .tbl_items_current
+            .set(self.table.items_current() as i64);
+        self.metrics
+            .tbl_items_finished
+            .set(self.table.items_finished() as i64);
+        self.metrics
+            .tbl_items_paused
+            .set(self.table.items_paused() as i64);
+    }
 }
 
 impl<T, REv> Component<REv> for Gossiper<T, REv>
@@ -450,8 +466,7 @@ where
         _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        debug!(?event, "handling event");
-        match event {
+        let effects = match event {
             Event::ItemReceived { item_id, source } => {
                 self.handle_item_received(effect_builder, item_id, source)
             }
@@ -479,7 +494,9 @@ where
                 Ok(item) => self.got_from_holder(effect_builder, item, requester),
                 Err(error) => self.failed_to_get_from_holder(item_id, error),
             },
-        }
+        };
+        self.update_gossip_table_metrics();
+        effects
     }
 }
 
