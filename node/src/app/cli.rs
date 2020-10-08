@@ -18,6 +18,7 @@ use crate::config;
 use casper_node::{
     logging,
     reactor::{initializer, joiner, validator, Runner},
+    setup_signal_hooks,
     utils::WithDir,
 };
 use prometheus::Registry;
@@ -114,6 +115,9 @@ impl Cli {
     pub async fn run(self) -> anyhow::Result<()> {
         match self {
             Cli::Validator { config, config_ext } => {
+                // Setup UNIX signal hooks.
+                setup_signal_hooks();
+
                 // Determine the parent directory of the configuration file, if any.
                 // Otherwise, we default to `/`.
                 let root = config

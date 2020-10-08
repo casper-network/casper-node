@@ -33,7 +33,7 @@ pub mod tls;
 pub mod types;
 pub mod utils;
 
-use std::sync::atomic::AtomicBool;
+use std::sync::{atomic::AtomicBool, Arc};
 
 use lazy_static::lazy_static;
 
@@ -66,6 +66,6 @@ lazy_static! {
 }
 
 /// Setup UNIX signal hooks for current application.
-fn setup_signal_hooks() {
-    signal_hook::flag::register(libc::SIGUSR1, QUEUE_DUMP_REQUESTED.clone());
+pub fn setup_signal_hooks() {
+    let _ = signal_hook::flag::register(libc::SIGUSR1, QUEUE_DUMP_REQUESTED.clone());
 }
