@@ -82,6 +82,8 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
     /// that it has the expected structure, or that deploys that are mentioned by hash actually
     /// exist, and then call `ConsensusProtocol::resolve_validity`.
     ValidateConsensusValue(I, C),
+    /// New direct evidence was added against the given validator.
+    NewEvidence(VID),
 }
 
 /// An API for a single instance of the consensus.

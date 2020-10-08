@@ -6,7 +6,7 @@
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
     rc::Rc,
@@ -92,7 +92,7 @@ pub struct Era<I> {
     start_height: u64,
     /// Pending candidate blocks, waiting for validation. The boolean is `true` if the proto block
     /// has been validated; the vector contains the list of accused validators missing evidence.
-    candidates: BTreeMap<CandidateBlock, (bool, Vec<PublicKey>)>,
+    candidates: BTreeMap<CandidateBlock, (bool, BTreeSet<PublicKey>)>,
 }
 
 impl<I> Era<I> {
@@ -700,7 +700,7 @@ where
             }
             ConsensusProtocolResult::ValidateConsensusValue(sender, candidate_block) => {
                 let proto_block = candidate_block.proto_block().clone();
-                let accusations: Vec<PublicKey> = candidate_block
+                let accusations: BTreeSet<PublicKey> = candidate_block
                     .accusations()
                     .iter()
                     .filter(|pub_key| !self.has_evidence(era_id, **pub_key))
@@ -738,6 +738,37 @@ where
                             }
                         }),
                 );
+                effects
+            }
+            ConsensusProtocolResult::NewEvidence(v_id) => {
+                let mut effects = Effects::new();
+                for e_id in (era_id.0..=(era_id.0 + BONDED_ERAS)).map(EraId) {
+                    let candidate_blocks: Vec<CandidateBlock>;
+                    if let Some(era) = self.era_supervisor.active_eras.get_mut(&e_id) {
+                        candidate_blocks = era
+                            .candidates
+                            .iter_mut()
+                            .filter_map(|(cb, (valid, accusations))| {
+                                accusations.remove(&v_id);
+                                if *valid && accusations.is_empty() {
+                                    Some(cb.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        for candidate_block in &candidate_blocks {
+                            era.candidates.remove(candidate_block);
+                        }
+                    } else {
+                        continue;
+                    }
+                    for candidate_block in candidate_blocks {
+                        effects.extend(self.delegate_to_era(e_id, |consensus, rng| {
+                            consensus.resolve_validity(&candidate_block, true, rng)
+                        }));
+                    }
+                }
                 effects
             }
         }

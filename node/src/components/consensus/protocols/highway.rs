@@ -2,7 +2,6 @@ use std::{
     any::Any,
     collections::{BTreeMap, HashMap},
     fmt::Debug,
-    iter,
     rc::Rc,
 };
 
@@ -96,10 +95,23 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
     }
 
     fn process_new_vertex(&mut self, v: Vertex<C>) -> Vec<CpResult<I, C>> {
+        let mut results = Vec::new();
+        if let Vertex::Evidence(ev) = &v {
+            let v_id = self
+                .highway
+                .validators()
+                .get_by_index(ev.perpetrator())
+                .expect("validator not found")
+                .id()
+                .clone();
+            results.push(ConsensusProtocolResult::NewEvidence(v_id));
+        }
         let msg = HighwayMessage::NewVertex(v);
-        let serialized_msg = rmp_serde::to_vec(&msg).expect("should serialize message");
-        let result = ConsensusProtocolResult::CreatedGossipMessage(serialized_msg);
-        self.detect_finality().chain(iter::once(result)).collect()
+        results.push(ConsensusProtocolResult::CreatedGossipMessage(
+            rmp_serde::to_vec(&msg).expect("should serialize message"),
+        ));
+        results.extend(self.detect_finality());
+        results
     }
 
     fn detect_finality(&mut self) -> impl Iterator<Item = CpResult<I, C>> + '_ {
