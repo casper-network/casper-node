@@ -27,9 +27,11 @@
 pub mod initializer;
 pub mod joiner;
 mod queue_kind;
+mod event_queue_metrics;
 pub mod validator;
 
 use std::{
+    collections::HashMap,
     fmt::{Debug, Display},
     mem,
 };
@@ -87,6 +89,10 @@ impl<REv> EventQueueHandle<REv> {
     {
         self.0.push(event.into(), queue_kind).await
     }
+
+    pub(crate) fn event_counts(&self) -> HashMap<QueueKind, usize> {
+        self.0.event_queue_counters()
+    }
 }
 
 /// Reactor core.
@@ -139,7 +145,7 @@ pub trait Reactor: Sized {
     }
 
     /// Instructs the reactor to update performance metrics, if any.
-    fn update_metrics(&mut self) {}
+    fn update_metrics(&mut self, _event_queue_handle: EventQueueHandle<Self::Event>) {}
 }
 
 /// A drop-like trait for `async` compatible drop-and-wait.
@@ -302,7 +308,7 @@ where
         let event_queue = EventQueueHandle::new(self.scheduler);
         let effect_builder = EffectBuilder::new(event_queue);
 
-        // Update metrics like memory usage.
+        // Update metrics like memory usage and event queue sizes.
         if self.event_count % self.event_metrics_threshold == 0 {
             let now = Instant::now();
 
@@ -310,7 +316,7 @@ where
             if now.duration_since(self.last_metrics) >= self.event_metrics_min_delay
                 || self.event_count == 0
             {
-                self.reactor.update_metrics();
+                self.reactor.update_metrics(event_queue);
                 self.last_metrics = now;
             }
         }
