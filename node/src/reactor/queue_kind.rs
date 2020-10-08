@@ -11,7 +11,7 @@ use enum_iterator::IntoEnumIterator;
 /// Scheduling priority.
 ///
 /// Priorities are ordered from lowest to highest.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, IntoEnumIterator)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, IntoEnumIterator, Ord, PartialOrd)]
 pub enum QueueKind {
     /// Network events that were initiated outside of this node.
     ///

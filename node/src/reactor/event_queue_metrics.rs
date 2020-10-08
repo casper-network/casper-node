@@ -48,6 +48,7 @@ impl EventQueueMetrics {
 
         let event_counts: String = event_queue_count
             .iter()
+            .sorted_by_key(|k| k.0)
             .map(|(queue, event_count)| {
                 let _ = self
                     .event_queue_gauges
