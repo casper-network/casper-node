@@ -11,6 +11,7 @@ use std::{
 };
 
 use enum_iterator::IntoEnumIterator;
+use serde::{ser::SerializeMap, Serialize, Serializer};
 use tokio::sync::{Mutex, Semaphore};
 
 /// Weighted round-robin scheduler.
@@ -65,17 +66,19 @@ struct Slot<K> {
 
 impl<I, K> WeightedRoundRobin<I, K>
 where
-    I: Clone,
-    K: Copy + Clone + Eq + Hash + IntoEnumIterator,
+    I: Serialize,
+    K: Copy + Clone + Eq + Hash + IntoEnumIterator + Serialize,
 {
-    /// Create a snapshot of the queue by locking it and copying it.
+    /// Create a snapshot of the queue by locking it and serializing it.
+    ///
+    /// The serialized events are streamed directly into `serializer`.
     ///
     /// # Warning
     ///
     /// This function locks all queues in the order defined by the order defined by
     /// `IntoEnumIterator`. Calling it multiple times in parallel is safe, but other code that locks
     /// more than one queue at the same time needs to be aware of this.
-    pub async fn snapshot(&self) -> HashMap<K, Vec<I>> {
+    pub async fn snapshot<S: Serializer>(&self, serializer: S) -> Result<(), S::Error> {
         // Lock all queues in order get a snapshot, but release eagerly. This way we are guaranteed
         // to have a consistent result, but we also allow for queues to be used again earlier.
         let mut locks = Vec::new();
@@ -91,14 +94,17 @@ where
             locks.push((kind, queue_guard));
         }
 
-        let mut output = HashMap::new();
+        let mut map = serializer.serialize_map(Some(locks.len()))?;
 
         // By iterating over the guards, they are dropped in order.
         for (kind, guard) in locks {
-            output.insert(kind, (*guard).iter().cloned().collect());
+            let vd = &*guard;
+            map.serialize_key(&kind)?;
+            map.serialize_value(vd)?;
         }
+        map.end()?;
 
-        output
+        Ok(())
     }
 }
 
