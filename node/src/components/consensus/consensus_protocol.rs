@@ -128,4 +128,11 @@ pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID> {
 
     /// Returns whether the validator `vid` is known to be faulty.
     fn has_evidence(&self, vid: &VID) -> bool;
+
+    /// Sends evidence for a faulty of validator `vid` to the `sender` of the request.
+    fn request_evidence(
+        &self,
+        sender: I,
+        vid: &VID,
+    ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
 }

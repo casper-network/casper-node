@@ -320,6 +320,25 @@ where
         self.highway.has_evidence(vid)
     }
 
+    fn request_evidence(
+        &self,
+        sender: I,
+        vid: &C::ValidatorId,
+    ) -> Result<Vec<CpResult<I, C>>, Error> {
+        Ok(self
+            .highway
+            .validators()
+            .get_index(vid)
+            .and_then(|vidx| self.highway.get_dependency(&Dependency::Evidence(vidx)))
+            .map(|vv| {
+                let msg = HighwayMessage::NewVertex(vv.into());
+                let serialized_msg = rmp_serde::to_vec(&msg).expect("should serialize message");
+                ConsensusProtocolResult::CreatedTargetedMessage(serialized_msg, sender)
+            })
+            .into_iter()
+            .collect())
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }

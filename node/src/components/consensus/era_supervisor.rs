@@ -426,13 +426,19 @@ where
                     consensus.handle_message(sender, payload, rng)
                 })
             }
-            ConsensusMessage::EvidenceRequest { era_id, pub_key: _ } => {
+            ConsensusMessage::EvidenceRequest { era_id, pub_key } => {
                 if era_id.0 + BONDED_ERAS < self.era_supervisor.current_era.0 {
                     trace!(%era_id, "not handling message; era too old");
                     return Effects::new();
                 }
-                // TODO: Respond with evidence, if we have any.
-                Effects::new()
+                (era_id.0.saturating_sub(BONDED_ERAS)..=era_id.0)
+                    .map(EraId)
+                    .flat_map(|e_id| {
+                        self.delegate_to_era(e_id, |consensus, _| {
+                            consensus.request_evidence(sender.clone(), &pub_key)
+                        })
+                    })
+                    .collect()
             }
         }
     }
@@ -617,7 +623,7 @@ where
     /// Returns `true` if any of the most recent eras has evidence against the validator with key
     /// `pub_key`.
     fn has_evidence(&self, era_id: EraId, pub_key: PublicKey) -> bool {
-        (era_id.0.saturating_sub(BONDED_ERAS)..era_id.0)
+        (era_id.0.saturating_sub(BONDED_ERAS)..=era_id.0)
             .map(EraId)
             .any(|eid| {
                 self.era_supervisor
