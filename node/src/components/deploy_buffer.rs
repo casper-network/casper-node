@@ -12,8 +12,8 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use fmt::Debug;
-use semver::Version;
 use prometheus::{self, IntGauge, Registry};
+use semver::Version;
 use tracing::{error, info, trace};
 
 use crate::{
@@ -113,7 +113,10 @@ pub(crate) struct DeployBuffer {
 
 impl DeployBuffer {
     /// Creates a new, empty deploy buffer instance.
-    pub(crate) fn new<REv>(registry: &Registry, effect_builder: EffectBuilder<REv>) -> Result<(Self, Effects<Event>), prometheus::Error>
+    pub(crate) fn new<REv>(
+        registry: &Registry,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Result<(Self, Effects<Event>), prometheus::Error>
     where
         REv: ReactorEventT,
     {
@@ -122,7 +125,7 @@ impl DeployBuffer {
         let finalized = ProtoBlockCollection::default();
         let chainspecs: HashMap<Version, DeployConfig> = HashMap::new();
         let metrics = DeployBufferMetrics::new(registry)?;
-        let this = DeployBuffer{
+        let this = DeployBuffer {
             pending,
             proposed,
             finalized,
@@ -397,16 +400,16 @@ pub struct DeployBufferMetrics {
     /// Amount of pending deploys
     pending_deploys: IntGauge,
     /// registry Component.
-    registry: Registry
+    registry: Registry,
 }
 
 impl DeployBufferMetrics {
     pub fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
-        let pending_deploys = IntGauge::new("pending_deploy","amount of pending deploys")?;
+        let pending_deploys = IntGauge::new("pending_deploy", "amount of pending deploys")?;
         registry.register(Box::new(pending_deploys.clone()))?;
-        Ok(DeployBufferMetrics{
+        Ok(DeployBufferMetrics {
             pending_deploys,
-            registry: registry.clone()
+            registry: registry.clone(),
         })
     }
 }
@@ -418,7 +421,6 @@ impl Drop for DeployBufferMetrics {
             .expect("did not expect deregistering pending_deploys to fail");
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -492,7 +494,7 @@ mod tests {
         let block_time2 = Timestamp::from(120);
         let block_time3 = Timestamp::from(220);
 
-        let registry = Registry::new();        
+        let registry = Registry::new();
 
         let no_blocks = HashSet::new();
         let (mut buffer, _effects) = create_test_buffer(&registry);
@@ -592,7 +594,6 @@ mod tests {
         let ttl = TimeDiff::from(100);
 
         let registry = Registry::new();
-
 
         let mut rng = TestRng::new();
         let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
