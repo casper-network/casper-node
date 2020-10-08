@@ -50,7 +50,7 @@ use crate::{
         EffectBuilder, Effects,
     },
     protocol::Message,
-    reactor::{self, EventQueueHandle},
+    reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle},
     types::{Block, CryptoRngCore, Deploy, ProtoBlock, Tag},
     utils::Source,
 };
@@ -286,6 +286,9 @@ pub struct Reactor {
     // Non-components.
     #[data_size(skip)] // Never allocates heap data.
     memory_metrics: MemoryMetrics,
+
+    #[data_size(skip)]
+    event_queue_metrics: EventQueueMetrics,
 }
 
 #[cfg(test)]
@@ -323,6 +326,8 @@ impl reactor::Reactor for Reactor {
         } = config;
 
         let memory_metrics = MemoryMetrics::new(registry.clone())?;
+
+        let event_queue_metrics = EventQueueMetrics::new(registry.clone(), event_queue)?;
 
         let metrics = Metrics::new(registry.clone());
 
@@ -373,6 +378,7 @@ impl reactor::Reactor for Reactor {
                 proto_block_validator,
                 linear_chain,
                 memory_metrics,
+                event_queue_metrics,
             },
             effects,
         ))
@@ -702,8 +708,10 @@ impl reactor::Reactor for Reactor {
         }
     }
 
-    fn update_metrics(&mut self) {
-        self.memory_metrics.estimate(&self)
+    fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
+        self.memory_metrics.estimate(&self);
+        self.event_queue_metrics
+            .record_event_queue_counts(&event_queue_handle)
     }
 }
 

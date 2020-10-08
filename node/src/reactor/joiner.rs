@@ -42,7 +42,9 @@ use crate::{
     },
     protocol::Message,
     reactor::{
-        self, initializer,
+        self,
+        event_queue_metrics::EventQueueMetrics,
+        initializer,
         validator::{self, Error, ValidatorInitConfig},
         EventQueueHandle, Finalize,
     },
@@ -274,6 +276,8 @@ pub struct Reactor {
     pub(super) block_by_height_fetcher: Fetcher<BlockByHeight>,
     #[data_size(skip)]
     pub(super) deploy_acceptor: DeployAcceptor,
+    #[data_size(skip)]
+    event_queue_metrics: EventQueueMetrics,
 }
 
 impl reactor::Reactor for Reactor {
@@ -286,7 +290,7 @@ impl reactor::Reactor for Reactor {
 
     fn new(
         initializer: Self::Config,
-        _registry: &Registry,
+        registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut dyn CryptoRngCore,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
@@ -298,6 +302,8 @@ impl reactor::Reactor for Reactor {
             storage,
             contract_runtime,
         } = initializer;
+
+        let event_queue_metrics = EventQueueMetrics::new(registry.clone(), event_queue)?;
 
         let (net, net_effects) = SmallNetwork::new(event_queue, config.network.clone(), false)?;
 
@@ -371,6 +377,7 @@ impl reactor::Reactor for Reactor {
                 init_consensus_effects,
                 block_by_height_fetcher,
                 deploy_acceptor,
+                event_queue_metrics,
             },
             effects,
         ))
@@ -626,6 +633,11 @@ impl reactor::Reactor for Reactor {
 
     fn is_stopped(&mut self) -> bool {
         self.linear_chain_sync.is_synced()
+    }
+
+    fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
+        self.event_queue_metrics
+            .record_event_queue_counts(&event_queue_handle)
     }
 }
 
