@@ -221,12 +221,8 @@ where
                     handling_es.handle_get_validators_response(*block_header, result)
                 }
                 result => {
-                    error!(
-                        ?result,
-                        "get_validators in era {} returned an error: {:?}",
-                        block_header.era_id(),
-                        result
-                    );
+                    let era_id = block_header.era_id();
+                    error!(?result, %era_id, "get_validators returned an error");
                     panic!("couldn't get validators");
                 }
             },

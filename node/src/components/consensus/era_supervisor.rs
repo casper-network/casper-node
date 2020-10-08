@@ -128,7 +128,8 @@ where
                 highway.estimate_heap_size()
             } else {
                 warn!(
-                    "could not downcast consensus protocol to HighwayProtocol<I, HighwayContext> to determine heap allocation size"
+                    "could not downcast consensus protocol to \
+                    HighwayProtocol<I, HighwayContext> to determine heap allocation size"
                 );
                 0
             }
@@ -257,7 +258,7 @@ where
         post_state_hash: hash::Digest,
     ) -> Vec<ConsensusProtocolResult<I, CandidateBlock, PublicKey>> {
         if self.active_eras.contains_key(&era_id) {
-            panic!("{:?} already exists", era_id);
+            panic!("{} already exists", era_id);
         }
         self.current_era = era_id;
 
@@ -268,11 +269,11 @@ where
         );
         info!(
             ?validator_stakes,
-            ?start_time,
-            ?timestamp,
-            ?start_height,
-            "starting era {}",
-            era_id.0
+            %start_time,
+            %timestamp,
+            %start_height,
+            %era_id,
+            "starting era",
         );
         // For Highway, we need u64 weights. Scale down by  sum / u64::MAX,  rounded up.
         // If we round up the divisor, the resulting sum is guaranteed to be  <= u64::MAX.
@@ -313,11 +314,11 @@ where
         );
 
         let results = if should_activate {
-            info!("start voting in era {}", era_id.0);
+            info!(%era_id, "start voting in era");
             let secret = HighwaySecret::new(Rc::clone(&self.secret_signing_key), our_id);
             highway.activate_validator(our_id, secret, timestamp.max(start_time))
         } else {
-            info!("not voting in era {}", era_id.0);
+            info!(%era_id, "not voting in era");
             if start_time >= self.node_start_time {
                 info!(
                     "node was started at time {}, which is not earlier than the era start {}",
@@ -329,7 +330,7 @@ where
                     start_time, min_end_time, timestamp
                 );
             } else {
-                info!("not a validator; our ID: {}", our_id);
+                info!(%our_id, "not a validator");
             }
             Vec::new()
         };
@@ -388,9 +389,9 @@ where
         match self.era_supervisor.active_eras.get_mut(&era_id) {
             None => {
                 if era_id > self.era_supervisor.current_era {
-                    info!("received message for future {:?}", era_id);
+                    info!(%era_id, "received message for future era");
                 } else {
-                    info!("received message for obsolete {:?}", era_id);
+                    info!(%era_id, "received message for obsolete era");
                 }
                 Effects::new()
             }
@@ -468,7 +469,7 @@ where
         );
         let mut effects = responder.respond(signature).ignore();
         if block_header.era_id() < self.era_supervisor.current_era {
-            trace!("executed block in old era {}", block_header.era_id().0);
+            trace!(era_id = %block_header.era_id().0, "executed block in old era");
             return effects;
         }
         if block_header.switch_block() {
@@ -506,7 +507,7 @@ where
             .filter_map(|(key, stake)| match key.try_into() {
                 Ok(key) => Some((key, Motes::new(stake))),
                 Err(error) => {
-                    warn!(%error, "error converting the bonded key: {:?}", error);
+                    warn!(%error, "error converting the bonded key");
                     None
                 }
             })
@@ -515,17 +516,17 @@ where
             .current_era_mut()
             .consensus
             .deactivate_validator();
-        let new_era_id = block_header.era_id().successor();
-        info!(?new_era_id, "Era created");
+        let era_id = block_header.era_id().successor();
+        info!(%era_id, "era created");
         let results = self.era_supervisor.new_era(
-            new_era_id,
+            era_id,
             Timestamp::now(), // TODO: This should be passed in.
             validator_stakes,
             block_header.timestamp(),
             block_header.height() + 1,
             *block_header.global_state_hash(),
         );
-        let mut effects = self.handle_consensus_results(new_era_id, results);
+        let mut effects = self.handle_consensus_results(era_id, results);
         effects.extend(
             self.effect_builder
                 .announce_block_handled(block_header)
@@ -638,7 +639,7 @@ where
                 // TODO: we will probably want to disconnect from the sender here
                 error!(
                     %sender,
-                    ?error,
+                    %error,
                     "invalid incoming message to consensus instance"
                 );
                 Default::default()
