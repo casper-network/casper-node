@@ -336,6 +336,8 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
             );
 
             if !state.holders.contains(&peer) {
+                // Add the peer as a holder just to avoid retrying it.
+                let _ = state.holders.insert(peer);
                 state.in_flight_count = state.in_flight_count.saturating_sub(1);
                 let is_new = false;
                 return state.action(self.infection_target, self.holders_limit, is_new);
@@ -743,7 +745,7 @@ mod tests {
         let action = gossip_table.check_timeout(&data_id, node_ids[1]);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
-            exclude_peers: iter::once(node_ids[0]).collect(),
+            exclude_peers: node_ids[..=1].iter().copied().collect(),
             is_already_held: true,
         });
         assert_eq!(expected, action);
