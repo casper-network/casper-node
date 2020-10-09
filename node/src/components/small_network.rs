@@ -137,8 +137,8 @@ where
     /// Outgoing network connections' messages.
     outgoing: HashMap<NodeId, OutgoingConnection<P>>,
 
-    /// Blacklist
-    blacklist: HashSet<SocketAddr>,
+    /// Blocklist
+    blocklist: HashSet<SocketAddr>,
 
     /// Pending outgoing connections: ones for which we are currently trying to make a connection.
     pending: HashSet<SocketAddr>,
@@ -233,7 +233,7 @@ where
             incoming: HashMap::new(),
             outgoing: HashMap::new(),
             pending: HashSet::new(),
-            blacklist: HashSet::new(),
+            blocklist: HashSet::new(),
             gossip_interval: cfg.gossip_interval,
             next_gossip_address_index: 0,
             shutdown_sender: Some(server_shutdown_sender),
@@ -555,7 +555,7 @@ where
             }
         }
         for (node_id, peer_address) in remove {
-            self.blacklist.insert(peer_address);
+            self.blocklist.insert(peer_address);
             self.remove(&node_id);
         }
     }
@@ -577,13 +577,13 @@ where
 
     fn connect_to_peer_if_required(&mut self, peer_address: SocketAddr) -> Effects<Event<P>> {
         if self.pending.contains(&peer_address)
-            || self.blacklist.contains(&peer_address)
+            || self.blocklist.contains(&peer_address)
             || self
                 .outgoing
                 .iter()
                 .any(|(_peer_id, connection)| connection.peer_address == peer_address)
         {
-            // We're already trying to connect, are connected, or the connection is on the blacklist
+            // We're already trying to connect, are connected, or the connection is on the blocklist
             // - do nothing.
             Effects::new()
         } else {
@@ -629,7 +629,7 @@ where
         self.outgoing
             .iter()
             .filter_map(|(n, o)| {
-                if !self.blacklist.contains(&o.peer_address) {
+                if !self.blocklist.contains(&o.peer_address) {
                     Some(*n)
                 } else {
                     None
@@ -643,7 +643,7 @@ where
         self.incoming
             .iter()
             .filter_map(|(n, o)| {
-                if !self.blacklist.contains(&o.peer_address) {
+                if !self.blocklist.contains(&o.peer_address) {
                     Some(n)
                 } else {
                     None

@@ -191,9 +191,9 @@ impl Finalize for TestReactor {
     }
 }
 
-/// Checks whether or not a given network with a bad node is completely connected.
+/// Checks whether or not a given network with a unhealthy node is completely connected.
 fn network_is_complete(
-    blacklist: &HashSet<NodeId>,
+    blocklist: &HashSet<NodeId>,
     nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<TestReactor>>>,
 ) -> bool {
     // We need at least one node.
@@ -211,8 +211,8 @@ fn network_is_complete(
 
     for (node_id, node) in nodes {
         let net = &node.reactor().inner().net;
-        if blacklist.contains(node_id) {
-            // ignore blacklisted node
+        if blocklist.contains(node_id) {
+            // ignore blocklisted node
             continue;
         }
         let outgoing = net.outgoing_connected_nodes();
@@ -277,10 +277,10 @@ async fn run_two_node_network_five_times() {
         );
 
         let timeout = Duration::from_secs(2);
-        let blacklist = HashSet::new();
+        let blocklist = HashSet::new();
         net.settle_on(
             &mut rng,
-            |nodes| network_is_complete(&blacklist, nodes),
+            |nodes| network_is_complete(&blocklist, nodes),
             timeout,
         )
         .await;
@@ -295,7 +295,7 @@ async fn run_two_node_network_five_times() {
         net.settle(&mut rng, quiet_for, timeout).await;
 
         assert!(
-            network_is_complete(&blacklist, net.nodes()),
+            network_is_complete(&blocklist, net.nodes()),
             "network did not stay connected"
         );
 
@@ -305,11 +305,11 @@ async fn run_two_node_network_five_times() {
 
 /// Sanity check that we fail to settle with one node gossiping the wrong address.
 #[tokio::test]
-async fn network_with_bad_nodes_settles_without_them() {
+async fn network_with_unhealthy_nodes_settles_without_them() {
     init_logging();
 
     let mut rng = TestRng::new();
-    for (healthy, bad) in &[(1u64, 1u64), (1, 2), (1, 4), (2, 2), (4, 4), (4, 1)] {
+    for (healthy, unhealthy) in &[(1u64, 1u64), (1, 2), (1, 4), (2, 2), (4, 4), (4, 1)] {
         let port = testing::unused_port_on_localhost();
 
         let mut net = Network::<TestReactor>::new();
@@ -329,23 +329,23 @@ async fn network_with_bad_nodes_settles_without_them() {
             healthy_peers.insert(healthy_peer);
         }
 
-        let mut bad_nodes = HashSet::new();
+        let mut unhealthy_nodes = HashSet::new();
 
-        for b in 0..*bad {
-            let (bad_peer, runner3) = mr
+        for b in 0..*unhealthy {
+            let (unhealthy_peer, runner3) = mr
                 .add_node_with_config(Config::default_local_net(port), &mut rng)
                 .await
                 .unwrap();
-            let badguy = &mut runner3.reactor_mut().inner_mut().net;
-            badguy.public_address = SocketAddr::from(([254, 1, 1, b as u8], 0)); // cause the gossipped address to be wrong
-            bad_nodes.insert(bad_peer);
+            let unhealthy = &mut runner3.reactor_mut().inner_mut().net;
+            unhealthy.public_address = SocketAddr::from(([254, 1, 1, b as u8], 0)); // cause the gossipped address to be wrong
+            unhealthy_nodes.insert(unhealthy_peer);
         }
 
         // The network should be fully connected but with only the two good nodes
         net.settle_on(
             &mut rng,
-            move |nodes| network_is_complete(&bad_nodes, nodes),
-            Duration::from_secs(4 * (healthy + bad)),
+            move |nodes| network_is_complete(&unhealthy_nodes, nodes),
+            Duration::from_secs(4 * (healthy + unhealthy)),
         )
         .await;
 
@@ -384,10 +384,10 @@ async fn bind_to_real_network_interface() {
 
     // The network should be fully connected.
     let timeout = Duration::from_secs(2);
-    let blacklist = HashSet::new();
+    let blocklist = HashSet::new();
     net.settle_on(
         &mut rng,
-        |nodes| network_is_complete(&blacklist, nodes),
+        |nodes| network_is_complete(&blocklist, nodes),
         timeout,
     )
     .await;
@@ -426,18 +426,18 @@ async fn check_varying_size_network_connects() {
         }
 
         // The network should be fully connected.
-        let blacklist = HashSet::new();
+        let blocklist = HashSet::new();
         net.settle_on(
             &mut rng,
-            |nodes| network_is_complete(&blacklist, nodes),
+            |nodes| network_is_complete(&blocklist, nodes),
             timeout,
         )
         .await;
 
-        let blacklist = HashSet::new();
+        let blocklist = HashSet::new();
         // This should not make a difference at all, but we're paranoid, so check again.
         assert!(
-            network_is_complete(&blacklist, net.nodes()),
+            network_is_complete(&blocklist, net.nodes()),
             "network did not stay connected after being settled"
         );
 
