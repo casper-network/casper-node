@@ -108,6 +108,7 @@ test = false
 
 [package.metadata.deb]
 features = ["vendored-openssl"]
+revision = "0"
 assets = [
     ["../target/release/casper-node", "/usr/bin/casper-node", "755"],
     ["../target/release/casper-client", "/usr/bin/casper-client", "755"],
