@@ -417,7 +417,7 @@ impl reactor::Reactor for Reactor {
                     tag: Tag::Block,
                     serialized_item,
                 } => {
-                    let block = match rmp_serde::from_read_ref(&serialized_item) {
+                    let block = match bincode::deserialize(&serialized_item) {
                         Ok(block) => Box::new(block),
                         Err(err) => {
                             error!("failed to decode block from {}: {}", sender, err);
@@ -435,7 +435,7 @@ impl reactor::Reactor for Reactor {
                     serialized_item,
                 } => {
                     let block_at_height: BlockByHeight =
-                        match rmp_serde::from_read_ref(&serialized_item) {
+                        match bincode::deserialize(&serialized_item) {
                             Ok(maybe_block) => maybe_block,
                             Err(err) => {
                                 error!("failed to decode block from {}: {}", sender, err);
@@ -459,7 +459,7 @@ impl reactor::Reactor for Reactor {
                     tag: Tag::Deploy,
                     serialized_item,
                 } => {
-                    let deploy = match rmp_serde::from_read_ref(&serialized_item) {
+                    let deploy = match bincode::deserialize(&serialized_item) {
                         Ok(deploy) => Box::new(deploy),
                         Err(err) => {
                             error!("failed to decode deploy from {}: {}", sender, err);

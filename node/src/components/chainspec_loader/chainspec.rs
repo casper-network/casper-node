@@ -497,9 +497,9 @@ mod tests {
     }
 
     #[test]
-    fn rmp_serde_roundtrip() {
+    fn bincode_roundtrip() {
         let mut rng = TestRng::new();
         let chainspec = Chainspec::random(&mut rng);
-        testing::rmp_serde_roundtrip(&chainspec);
+        testing::bincode_roundtrip(&chainspec);
     }
 }

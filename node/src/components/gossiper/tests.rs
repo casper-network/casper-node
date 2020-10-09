@@ -184,7 +184,7 @@ impl reactor::Reactor for Reactor {
                         tag: Tag::Deploy,
                         serialized_id,
                     } => {
-                        let deploy_hash = match rmp_serde::from_read_ref(&serialized_id) {
+                        let deploy_hash = match bincode::deserialize(&serialized_id) {
                             Ok(hash) => hash,
                             Err(error) => {
                                 error!(
@@ -203,7 +203,7 @@ impl reactor::Reactor for Reactor {
                         tag: Tag::Deploy,
                         serialized_item,
                     } => {
-                        let deploy = match rmp_serde::from_read_ref(&serialized_item) {
+                        let deploy = match bincode::deserialize(&serialized_item) {
                             Ok(deploy) => Box::new(deploy),
                             Err(error) => {
                                 error!("failed to decode deploy from {}: {}", sender, error);

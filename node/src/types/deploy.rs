@@ -527,11 +527,11 @@ mod tests {
     }
 
     #[test]
-    fn msgpack_roundtrip() {
+    fn bincode_roundtrip() {
         let mut rng = TestRng::new();
         let deploy = Deploy::random(&mut rng);
-        let serialized = rmp_serde::to_vec(&deploy).unwrap();
-        let deserialized = rmp_serde::from_read_ref(&serialized).unwrap();
+        let serialized = bincode::serialize(&deploy).unwrap();
+        let deserialized = bincode::deserialize(&serialized).unwrap();
         assert_eq!(deploy, deserialized);
     }
 

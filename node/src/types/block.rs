@@ -124,7 +124,7 @@ pub struct ProtoBlock {
 impl ProtoBlock {
     pub(crate) fn new(deploys: Vec<DeployHash>, random_bit: bool) -> Self {
         let hash = ProtoBlockHash::new(hash::hash(
-            &rmp_serde::to_vec(&(&deploys, random_bit)).expect("serialize ProtoBlock"),
+            &bincode::serialize(&(&deploys, random_bit)).expect("serialize ProtoBlock"),
         ));
 
         ProtoBlock {
@@ -457,8 +457,8 @@ impl BlockHeader {
     }
 
     // Serialize the block header.
-    fn serialize(&self) -> Result<Vec<u8>, rmp_serde::encode::Error> {
-        rmp_serde::to_vec(self)
+    fn serialize(&self) -> Result<Vec<u8>, bincode::Error> {
+        bincode::serialize(self)
     }
 
     /// Hash of the block header.
@@ -567,8 +567,8 @@ impl Block {
         self.proofs.push(proof)
     }
 
-    fn serialize_body(body: &()) -> Result<Vec<u8>, rmp_serde::encode::Error> {
-        rmp_serde::to_vec(body)
+    fn serialize_body(body: &()) -> Result<Vec<u8>, bincode::Error> {
+        bincode::serialize(body)
     }
 
     /// Generates a random instance using a `TestRng`.
