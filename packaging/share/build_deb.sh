@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Call with argument for version of package ex: _U18.04 or _U20.04
+# Call with argument for version of package ex: _bionic or _focal
 
 cd ..
 git clone https://github.com/CasperLabs/casper-node.git ./casper-node
