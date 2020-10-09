@@ -39,6 +39,7 @@ use std::{
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use prometheus::{self, IntCounter, Registry};
+use quanta::IntoNanoseconds;
 use tracing::{debug, debug_span, info, trace, warn};
 use tracing_futures::Instrument;
 
@@ -47,8 +48,12 @@ use crate::{
     types::CryptoRngCore,
     utils::{self, WeightedRoundRobin},
 };
+use quanta::Clock;
 pub use queue_kind::QueueKind;
 use tokio::time::{Duration, Instant};
+
+/// Threshold for when an event is considered slow.
+const DISPATCH_EVENT_THRESHOLD: Duration = Duration::from_millis(1);
 
 /// Event scheduler
 ///
@@ -191,6 +196,9 @@ where
 
     /// Only update reactor metrics if at least this much time has passed.
     event_metrics_min_delay: Duration,
+
+    /// An accurate, possible TSC-supporting clock.
+    clock: Clock,
 }
 
 /// Metric data for the Runner
@@ -276,6 +284,7 @@ where
             last_metrics: Instant::now(),
             event_metrics_min_delay: Duration::from_secs(30),
             event_metrics_threshold: 1000,
+            clock: Clock::new(),
         })
     }
 
@@ -333,7 +342,17 @@ where
         trace!(?event, ?q);
 
         // Dispatch the event, then execute the resulting effect.
+        let start = self.clock.start();
         let effects = self.reactor.dispatch_event(effect_builder, rng, event);
+        let end = self.clock.end();
+        let delta = self.clock.delta(start, end);
+
+        if delta > DISPATCH_EVENT_THRESHOLD {
+            warn!(
+                ns = delta.into_nanos(),
+                "previous event took very long to dispatch"
+            );
+        }
 
         drop(inner_enter);
 

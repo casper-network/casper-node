@@ -553,6 +553,7 @@ enum KeysIteratorState<K, V, S: TrieStore<K, V>> {
     /// Iterate normally
     Ok,
     /// Return the error and stop iterating
+    #[allow(dead_code)] // Return variant alone is used in testing.
     ReturnError(S::Error),
     /// Already failed, only return None
     Failed,
@@ -700,7 +701,7 @@ where
 /// Returns the iterator over the keys at a given root hash.
 ///
 /// The root should be the apex of the trie.
-#[allow(dead_code)]
+#[cfg(test)]
 pub fn keys<'a, 'b, K, V, T, S>(
     correlation_id: CorrelationId,
     txn: &'b T,
@@ -720,7 +721,7 @@ where
 /// Returns the iterator over the keys in the subtrie matching `prefix`.
 ///
 /// The root should be the apex of the trie.
-#[allow(dead_code)]
+#[cfg(test)]
 pub fn keys_with_prefix<'a, 'b, K, V, T, S>(
     _correlation_id: CorrelationId,
     txn: &'b T,

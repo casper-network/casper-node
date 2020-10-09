@@ -3,8 +3,6 @@
 use datasize::DataSize;
 use futures::{Stream, StreamExt};
 use lazy_static::lazy_static;
-#[cfg(test)]
-use rand::Rng;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc};
@@ -18,11 +16,6 @@ use warp::{
 use super::CLIENT_API_VERSION;
 use crate::types::{
     json_compatibility::ExecutionResult, BlockHash, BlockHeader, DeployHash, FinalizedBlock,
-};
-#[cfg(test)]
-use crate::{
-    testing::TestRng,
-    types::{Block, Deploy},
 };
 
 /// The URL path.
@@ -63,37 +56,6 @@ pub enum SseData {
         block_hash: BlockHash,
         execution_result: ExecutionResult,
     },
-}
-
-impl SseData {
-    /// Generates a random instance using a `TestRng`, excluding the `ApiVersion` variant as that
-    /// variant is only ever sent once at the start of a new stream.
-    #[cfg(test)]
-    // TODO - remove once used.
-    #[allow(unused)]
-    pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0, 3) {
-            0 => SseData::BlockFinalized(FinalizedBlock::random(rng)),
-            1 => {
-                let block = Block::random(rng);
-                SseData::BlockAdded {
-                    block_hash: *block.hash(),
-                    block_header: block.take_header(),
-                }
-            }
-            2 => {
-                let block = Block::random(rng);
-                let deploy = Deploy::random(rng);
-
-                SseData::DeployProcessed {
-                    deploy_hash: *deploy.id(),
-                    block_hash: *block.hash(),
-                    execution_result: ExecutionResult::random(rng),
-                }
-            }
-            _ => unreachable!(),
-        }
-    }
 }
 
 /// The components of a single SSE.
