@@ -8,11 +8,10 @@ mod memory_metrics;
 #[cfg(test)]
 mod tests;
 
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Display, Formatter, Debug};
 
 use datasize::DataSize;
 use derive_more::From;
-use fmt::Debug;
 use prometheus::Registry;
 use tracing::{debug, error, warn};
 
