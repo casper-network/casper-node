@@ -13,7 +13,6 @@ use crate::types::json_compatibility::ExecutionResult;
 /// Used to namespace metadata associated with stored values.
 #[repr(u8)]
 enum Tag {
-    // TODO - remove once used.
     DeployMetadata,
 }
 

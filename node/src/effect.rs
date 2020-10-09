@@ -89,7 +89,6 @@ use casper_execution_engine::{
     shared::{additive_map::AdditiveMap, transform::Transform},
     storage::global_state::CommitResult,
 };
-
 use casper_types::{auction::ValidatorWeights, Key};
 
 use crate::{
@@ -109,7 +108,6 @@ use crate::{
     utils::Source,
     Chainspec,
 };
-
 use announcements::{
     ApiServerAnnouncement, BlockExecutorAnnouncement, ConsensusAnnouncement,
     DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
