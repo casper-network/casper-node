@@ -281,6 +281,14 @@ impl<C: Context> Highway<C> {
         &self.validators
     }
 
+    pub(crate) fn faulty_validators(&self) -> impl Iterator<Item = &C::ValidatorId> {
+        self.validators
+            .iter()
+            .enumerate()
+            .filter(move |(i, _)| self.state.has_evidence((*i as u32).into()))
+            .map(|(_, v)| v.id())
+    }
+
     pub(super) fn state(&self) -> &State<C> {
         &self.state
     }

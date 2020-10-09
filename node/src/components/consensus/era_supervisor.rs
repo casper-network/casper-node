@@ -19,6 +19,7 @@ use blake2::{
 };
 use datasize::DataSize;
 use fmt::Display;
+use itertools::Itertools;
 use num_traits::AsPrimitive;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -453,8 +454,20 @@ where
             .effect_builder
             .announce_proposed_proto_block(proto_block.clone())
             .ignore();
-        // TODO: Pass in accusations.
-        let candidate_block = CandidateBlock::new(proto_block, vec![]);
+        // TODO: Only include _new_ accusations.
+        let accusations = (era_id.0.saturating_sub(BONDED_ERAS)..=era_id.0)
+            .flat_map(|i| {
+                self.era_supervisor
+                    .active_eras
+                    .get(&EraId(i))
+                    .expect("should have bonded era")
+                    .consensus
+                    .faulty_validators()
+            })
+            .unique()
+            .cloned()
+            .collect();
+        let candidate_block = CandidateBlock::new(proto_block, accusations);
         effects.extend(self.delegate_to_era(era_id, move |consensus, rng| {
             consensus.propose(candidate_block, block_context, rng)
         }));

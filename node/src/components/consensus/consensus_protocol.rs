@@ -137,4 +137,7 @@ pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID> {
         sender: I,
         vid: &VID,
     ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
+
+    /// Returns the list of all validators that were observed as faulty in this consensus instance.
+    fn faulty_validators(&self) -> Vec<&VID>;
 }

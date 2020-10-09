@@ -351,6 +351,10 @@ where
             .collect())
     }
 
+    fn faulty_validators(&self) -> Vec<&C::ValidatorId> {
+        self.highway.faulty_validators().collect()
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }
