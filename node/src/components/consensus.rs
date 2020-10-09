@@ -16,6 +16,7 @@ use casper_types::auction::ValidatorWeights;
 
 use crate::{
     components::{storage::Storage, Component},
+    crypto::hash::Digest,
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
@@ -25,7 +26,7 @@ use crate::{
         EffectBuilder, Effects,
     },
     protocol::Message,
-    types::{BlockHeader, CryptoRngCore, ProtoBlock, Timestamp},
+    types::{BlockHash, BlockHeader, CryptoRngCore, ProtoBlock, Timestamp},
 };
 
 pub use config::Config;
@@ -75,10 +76,13 @@ pub enum Event<I> {
         sender: I,
         proto_block: ProtoBlock,
     },
-    /// Response from the Contract Runtime, containing the validators for the new era
-    GetValidatorsResponse {
+    /// Event raised when a new era should be created: once we get the set of validators, the
+    /// booking block hash and the seed from the key block
+    CreateNewEra {
         /// The header of the switch block
         block_header: Box<BlockHeader>,
+        booking_block_hash: Option<BlockHash>,
+        key_block_seed: Option<Digest>,
         get_validators_result: Result<Option<ValidatorWeights>, GetEraValidatorsError>,
     },
 }
@@ -145,13 +149,16 @@ impl<I: Debug> Display for Event<I> {
                 "A proto-block received from {:?} turned out to be invalid for era {:?}: {:?}",
                 sender, era_id, proto_block
             ),
-            Event::GetValidatorsResponse {
+            Event::CreateNewEra {
+                booking_block_hash,
+                key_block_seed,
                 get_validators_result,
                 ..
             } => write!(
                 f,
-                "We received the response to get_validators from the contract runtime: {:?}",
-                get_validators_result
+                "New era should be created; booking block hash: {:?}, key block seed: {:?}, \
+                response to get_validators from the contract runtime: {:?}",
+                booking_block_hash, key_block_seed, get_validators_result
             ),
         }
     }
@@ -220,23 +227,45 @@ where
                 sender,
                 proto_block,
             } => handling_es.handle_invalid_proto_block(era_id, sender, proto_block),
-            Event::GetValidatorsResponse {
+            Event::CreateNewEra {
                 block_header,
+                booking_block_hash,
+                key_block_seed,
                 get_validators_result,
-            } => match get_validators_result {
-                Ok(Some(result)) => {
-                    handling_es.handle_get_validators_response(*block_header, result)
-                }
-                result => {
+            } => {
+                let booking_block_hash = booking_block_hash.unwrap_or_else(|| {
                     error!(
-                        ?result,
-                        "get_validators in era {} returned an error: {:?}",
-                        block_header.era_id(),
-                        result
+                        "could not get the booking block hash for era {}",
+                        block_header.era_id().successor()
                     );
-                    panic!("couldn't get validators");
-                }
-            },
+                    panic!("couldn't get the booking block hash");
+                });
+                let key_block_seed = key_block_seed.unwrap_or_else(|| {
+                    error!(
+                        "could not get the seed from the key block for era {}",
+                        block_header.era_id().successor()
+                    );
+                    panic!("couldn't get the seed from the key block");
+                });
+                let validators = match get_validators_result {
+                    Ok(Some(result)) => result,
+                    result => {
+                        error!(
+                            ?result,
+                            "get_validators in era {} returned an error: {:?}",
+                            block_header.era_id(),
+                            result
+                        );
+                        panic!("couldn't get validators");
+                    }
+                };
+                handling_es.handle_create_new_era(
+                    *block_header,
+                    booking_block_hash,
+                    key_block_seed,
+                    validators,
+                )
+            }
         }
     }
 }
