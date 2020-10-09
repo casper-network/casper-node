@@ -316,6 +316,8 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
             );
 
             if !state.holders.contains(&peer) {
+                // Add the peer as a holder just to avoid retrying it.
+                let _ = state.holders.insert(peer);
                 state.in_flight_count = state.in_flight_count.saturating_sub(1);
                 let is_new = false;
                 return state.action(self.infection_target, self.holders_limit, is_new);
