@@ -23,7 +23,17 @@ In the section of the config named `[network]`, change the `<IP ADDRESS>` in `pu
 The `accounts.csv` and `chainspec.toml` files will be installed in `/etc/casper` with the deb package install. 
 This should allow easy configuration for each network run as they are updated with a new deb package revision.
 
-## External Ports
+## System Configuration
+
+Expectation for sizing a system running the casper-node is minimum of:
+
+ - 4 processors
+ - 4 GB RAM
+ - 100 GB disk space
+ 
+ Note: This may increase as throughput of the node is increased.
+
+## External Ports Required
 
 Port `7777` is needed for http access for the status endpoint: `http://<IP Address>:7777/status`.
 
