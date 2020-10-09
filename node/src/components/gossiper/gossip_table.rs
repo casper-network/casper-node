@@ -12,10 +12,9 @@ use datasize::DataSize;
 use fake_instant::FakeClock as Instant;
 use tracing::warn;
 
+use super::Config;
 #[cfg(test)]
 use super::Error;
-
-use super::Config;
 use crate::small_network::NodeId;
 
 #[derive(Debug, PartialEq, Eq)]
