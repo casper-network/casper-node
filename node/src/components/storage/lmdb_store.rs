@@ -14,8 +14,6 @@ use crate::types::json_compatibility::ExecutionResult;
 #[repr(u8)]
 enum Tag {
     // TODO - remove once used.
-    #[allow(unused)]
-    BlockMetadata,
     DeployMetadata,
 }
 
