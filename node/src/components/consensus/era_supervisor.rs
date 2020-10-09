@@ -262,6 +262,7 @@ where
     }
 
     /// Starts a new era; panics if it already exists.
+    #[allow(clippy::too_many_arguments)] // FIXME
     fn new_era(
         &mut self,
         era_id: EraId,
@@ -480,7 +481,7 @@ where
                 new_era_id.0,
                 ProtocolVersion::V1_0_0,
             );
-            let effect_builder = self.effect_builder.clone();
+            let effect_builder = self.effect_builder;
             let key_block_height = self
                 .era_supervisor
                 .key_block_height(new_era_id, block_header.height() + 1);
