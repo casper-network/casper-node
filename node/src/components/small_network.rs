@@ -505,7 +505,7 @@ where
 
     fn remove(&mut self, peer_id: &NodeId) {
         if let Some(incoming) = self.incoming.remove(&peer_id) {
-           let _ = self.pending.remove(&incoming.peer_address);
+            let _ = self.pending.remove(&incoming.peer_address);
         }
         let _ = self.outgoing.remove(&peer_id);
     }
@@ -525,17 +525,16 @@ where
         effects
     }
 
-    /// Marks connections as asymmetric (only incoming or only outgoing) and removes them if they pass the upper limit for this.
-    /// Connections that are symmetrical are reset to 0.
+    /// Marks connections as asymmetric (only incoming or only outgoing) and removes them if they
+    /// pass the upper limit for this. Connections that are symmetrical are reset to 0.
     fn enforce_symmetric_connections(&mut self) {
         if self.outgoing.is_empty() && self.incoming.is_empty() {
-            return
+            return;
         }
         let mut remove = Vec::new();
         for (node_id, conn) in self.incoming.iter_mut() {
             if !self.outgoing.contains_key(node_id) {
                 if conn.seen_asymmetrically >= MAX_ASYMMETRIC_CONNECTION_SEEN {
-                    println!("removing incoming");
                     remove.push((*node_id, conn.peer_address));
                 } else {
                     conn.seen_asymmetrically += 1;
@@ -547,7 +546,6 @@ where
         for (node_id, conn) in self.outgoing.iter_mut() {
             if !self.incoming.contains_key(node_id) {
                 if conn.seen_asymmetrically >= MAX_ASYMMETRIC_CONNECTION_SEEN {
-                    println!("removing outgoing");
                     remove.push((*node_id, conn.peer_address));
                 } else {
                     conn.seen_asymmetrically += 1;
@@ -586,7 +584,8 @@ where
                 .iter()
                 .any(|(_peer_id, connection)| connection.peer_address == peer_address)
         {
-            // We're already trying to connect, are connected, or the connection is on the blacklist - do nothing.
+            // We're already trying to connect, are connected, or the connection is on the blacklist
+            // - do nothing.
             Effects::new()
         } else {
             // We need to connect.
@@ -628,24 +627,31 @@ where
     /// Returns the set of connected nodes.
     #[cfg(test)]
     pub(crate) fn outgoing_connected_nodes(&self) -> HashSet<NodeId> {
-        self.outgoing.iter().filter_map(|(n, o)| {
-            if !self.blacklist.contains(&o.peer_address) {
-                Some(*n)
-            } else {
-                None
-            }
-        }).collect()
+        self.outgoing
+            .iter()
+            .filter_map(|(n, o)| {
+                if !self.blacklist.contains(&o.peer_address) {
+                    Some(*n)
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     #[cfg(test)]
     pub(crate) fn incoming_connected_nodes(&self) -> HashSet<NodeId> {
-        self.incoming.iter().filter_map(|(n, o)| {
-            if !self.blacklist.contains(&o.peer_address) {
-                Some(n)
-            } else {
-                None
-            }
-        }).cloned().collect()
+        self.incoming
+            .iter()
+            .filter_map(|(n, o)| {
+                if !self.blacklist.contains(&o.peer_address) {
+                    Some(n)
+                } else {
+                    None
+                }
+            })
+            .cloned()
+            .collect()
     }
 
     /// Returns the set of connected nodes.
@@ -823,7 +829,7 @@ where
                 let effects = self.gossip_our_address(effect_builder);
                 self.enforce_symmetric_connections();
                 effects
-            },
+            }
             Event::PeerAddressReceived(gossiped_address) => {
                 self.connect_to_peer_if_required(gossiped_address.into())
             }

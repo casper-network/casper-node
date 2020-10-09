@@ -200,12 +200,12 @@ fn network_is_complete(
     if nodes.is_empty() {
         return false;
     }
-    
+
     if nodes.len() == 1 {
         let nodes = &nodes.values().collect::<Vec<_>>();
         let net = &nodes[0].reactor().inner().net;
         if net.is_isolated() {
-            return true
+            return true;
         }
     }
 
@@ -213,22 +213,22 @@ fn network_is_complete(
         let net = &node.reactor().inner().net;
         if blacklist.contains(node_id) {
             // ignore blacklisted node
-            continue
+            continue;
         }
         let outgoing = net.outgoing_connected_nodes();
         let incoming = net.incoming_connected_nodes();
-        let difference = incoming 
+        let difference = incoming
             .symmetric_difference(&outgoing)
             .collect::<HashSet<_>>();
 
         // All nodes should be connected to every other node, except itself, so we add it to the
         // set of nodes and pretend we have a loopback connection.
         if !difference.is_empty() {
-            return false
+            return false;
         }
 
         if net.is_isolated() {
-            return false
+            return false;
         }
     }
     true
@@ -278,7 +278,12 @@ async fn run_two_node_network_five_times() {
 
         let timeout = Duration::from_secs(2);
         let blacklist = HashSet::new();
-        net.settle_on(&mut rng, |nodes| network_is_complete(&blacklist, nodes), timeout).await;
+        net.settle_on(
+            &mut rng,
+            |nodes| network_is_complete(&blacklist, nodes),
+            timeout,
+        )
+        .await;
 
         assert!(
             network_started(&net),
@@ -304,15 +309,7 @@ async fn network_with_bad_nodes_settles_without_them() {
     init_logging();
 
     let mut rng = TestRng::new();
-    for (healthy, bad) in vec![
-        (1u64, 1u64),
-        (1, 2),
-        (1, 4),
-        (2, 2),
-        (4, 4),
-        (4, 1),
-    ] {
-        println!("test with {} healthy and {} bad", healthy, bad);
+    for (healthy, bad) in &[(1u64, 1u64), (1, 2), (1, 4), (2, 2), (4, 4), (4, 1)] {
         let port = testing::unused_port_on_localhost();
 
         let mut net = Network::<TestReactor>::new();
@@ -324,8 +321,8 @@ async fn network_with_bad_nodes_settles_without_them() {
         let mr = &mut net;
         let mut healthy_peers = HashSet::new();
 
-        for _ in 1..healthy {
-           let (healthy_peer, _) = mr 
+        for _ in 1..*healthy {
+            let (healthy_peer, _) = mr
                 .add_node_with_config(Config::default_local_net(port), &mut rng)
                 .await
                 .unwrap();
@@ -334,7 +331,7 @@ async fn network_with_bad_nodes_settles_without_them() {
 
         let mut bad_nodes = HashSet::new();
 
-        for b in 0..bad {
+        for b in 0..*bad {
             let (bad_peer, runner3) = mr
                 .add_node_with_config(Config::default_local_net(port), &mut rng)
                 .await
@@ -345,9 +342,12 @@ async fn network_with_bad_nodes_settles_without_them() {
         }
 
         // The network should be fully connected but with only the two good nodes
-        net.settle_on(&mut rng, move |nodes| {
-            network_is_complete(&bad_nodes, nodes)
-        }, Duration::from_secs(4 * (healthy + bad) )).await;
+        net.settle_on(
+            &mut rng,
+            move |nodes| network_is_complete(&bad_nodes, nodes),
+            Duration::from_secs(4 * (healthy + bad)),
+        )
+        .await;
 
         net.finalize().await;
     }
@@ -385,7 +385,12 @@ async fn bind_to_real_network_interface() {
     // The network should be fully connected.
     let timeout = Duration::from_secs(2);
     let blacklist = HashSet::new();
-    net.settle_on(&mut rng, |nodes| network_is_complete(&blacklist, nodes), timeout).await;
+    net.settle_on(
+        &mut rng,
+        |nodes| network_is_complete(&blacklist, nodes),
+        timeout,
+    )
+    .await;
 
     net.finalize().await;
 }
@@ -406,12 +411,13 @@ async fn check_varying_size_network_connects() {
         // Pick a random port in the higher ranges that is likely to be unused.
         let first_node_port = testing::unused_port_on_localhost();
 
-        let (_first, _) = net.add_node_with_config(
-            Config::default_local_net_first_node(first_node_port),
-            &mut rng,
-        )
-        .await
-        .unwrap();
+        let (_first, _) = net
+            .add_node_with_config(
+                Config::default_local_net_first_node(first_node_port),
+                &mut rng,
+            )
+            .await
+            .unwrap();
 
         for _ in 1..number_of_nodes {
             net.add_node_with_config(Config::default_local_net(first_node_port), &mut rng)
@@ -421,7 +427,12 @@ async fn check_varying_size_network_connects() {
 
         // The network should be fully connected.
         let blacklist = HashSet::new();
-        net.settle_on(&mut rng, |nodes| network_is_complete(&blacklist, nodes), timeout).await;
+        net.settle_on(
+            &mut rng,
+            |nodes| network_is_complete(&blacklist, nodes),
+            timeout,
+        )
+        .await;
 
         let blacklist = HashSet::new();
         // This should not make a difference at all, but we're paranoid, so check again.
