@@ -321,7 +321,7 @@ message ChainSpec {
     }
 
     message WasmConfig {
-        message OpCodeCosts {
+        message OpcodeCosts {
             // Bit operations multiplier.
             uint32 bit = 1;
             // Arithmetic add operations multiplier.
@@ -418,7 +418,7 @@ message ChainSpec {
         // Max stack height (native WebAssembly stack limiter)
         uint32 max_stack_height = 2;
         // Wasm opcode costs
-        OpCodeCosts opcode_costs = 3;
+        OpcodeCosts opcode_costs = 3;
         // Storage costs
         StorageCosts storage_costs = 4;
         // Host function costs

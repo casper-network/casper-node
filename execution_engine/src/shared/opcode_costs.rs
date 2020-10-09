@@ -7,12 +7,32 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
 
+// TODO: These numbers are chosen to be arbitrarily small. As for now the researched opcode costs
+// are way too big to be practical with current settings.
+pub const DEFAULT_BIT_COST: u32 = 1;
+pub const DEFAULT_ADD_COST: u32 = 1;
+pub const DEFAULT_MUL_COST: u32 = 4;
+pub const DEFAULT_DIV_COST: u32 = 16;
+pub const DEFAULT_LOAD_COST: u32 = 2;
+pub const DEFAULT_STORE_COST: u32 = 2;
+pub const DEFAULT_OP_CONST_COST: u32 = 2;
+pub const DEFAULT_LOCAL_COST: u32 = 2;
+pub const DEFAULT_GLOBAL_COST: u32 = 2;
+pub const DEFAULT_CONTROL_FLOW_COST: u32 = 2;
+pub const DEFAULT_INTEGER_COMPARSION_COST: u32 = 2;
+pub const DEFAULT_CONVERSION_COST: u32 = 2;
+pub const DEFAULT_UNREACHABLE_COST: u32 = 2;
+pub const DEFAULT_NOP_COST: u32 = 0;
+pub const DEFAULT_CURRENT_MEMORY_COST: u32 = 2;
+pub const DEFAULT_GROW_MEMORY_COST: u32 = 8192;
+pub const DEFAULT_REGULAR_COST: u32 = 2;
+
 const NUM_FIELDS: usize = 17;
 pub const OPCODE_COSTS_SERIALIZED_LENGTH: usize = NUM_FIELDS * U32_SERIALIZED_LENGTH;
 
 // Taken (partially) from parity-ethereum
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
-pub struct OpCodeCosts {
+pub struct OpcodeCosts {
     /// Bit operations multiplier.
     pub bit: u32,
     /// Arithmetic add operations multiplier.
@@ -50,7 +70,7 @@ pub struct OpCodeCosts {
     pub regular: u32,
 }
 
-impl OpCodeCosts {
+impl OpcodeCosts {
     pub(crate) fn to_set(&self) -> Set {
         let meterings = {
             let mut tmp = BTreeMap::new();
@@ -100,33 +120,33 @@ impl OpCodeCosts {
     }
 }
 
-impl Default for OpCodeCosts {
+impl Default for OpcodeCosts {
     fn default() -> Self {
-        OpCodeCosts {
-            bit: 1,
-            add: 1,
-            mul: 4,
-            div: 16,
-            load: 2,
-            store: 2,
-            op_const: 2,
-            local: 2,
-            global: 2,
-            control_flow: 2,
-            integer_comparsion: 2,
-            conversion: 2,
-            unreachable: 2,
-            nop: 0,
-            current_memory: 2,
-            grow_memory: 8192,
-            regular: 2,
+        OpcodeCosts {
+            bit: DEFAULT_BIT_COST,
+            add: DEFAULT_ADD_COST,
+            mul: DEFAULT_MUL_COST,
+            div: DEFAULT_DIV_COST,
+            load: DEFAULT_LOAD_COST,
+            store: DEFAULT_STORE_COST,
+            op_const: DEFAULT_OP_CONST_COST,
+            local: DEFAULT_LOCAL_COST,
+            global: DEFAULT_GLOBAL_COST,
+            control_flow: DEFAULT_CONTROL_FLOW_COST,
+            integer_comparsion: DEFAULT_INTEGER_COMPARSION_COST,
+            conversion: DEFAULT_CONVERSION_COST,
+            unreachable: DEFAULT_UNREACHABLE_COST,
+            nop: DEFAULT_NOP_COST,
+            current_memory: DEFAULT_CURRENT_MEMORY_COST,
+            grow_memory: DEFAULT_GROW_MEMORY_COST,
+            regular: DEFAULT_REGULAR_COST,
         }
     }
 }
 
-impl Distribution<OpCodeCosts> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> OpCodeCosts {
-        OpCodeCosts {
+impl Distribution<OpcodeCosts> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> OpcodeCosts {
+        OpcodeCosts {
             bit: rng.gen(),
             add: rng.gen(),
             mul: rng.gen(),
@@ -148,7 +168,7 @@ impl Distribution<OpCodeCosts> for Standard {
     }
 }
 
-impl ToBytes for OpCodeCosts {
+impl ToBytes for OpcodeCosts {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
 
@@ -178,7 +198,7 @@ impl ToBytes for OpCodeCosts {
     }
 }
 
-impl FromBytes for OpCodeCosts {
+impl FromBytes for OpcodeCosts {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (bit, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
         let (add, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
@@ -197,7 +217,7 @@ impl FromBytes for OpCodeCosts {
         let (current_memory, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
         let (grow_memory, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
         let (regular, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
-        let wasm_costs = OpCodeCosts {
+        let wasm_costs = OpcodeCosts {
             bit,
             add,
             mul,
@@ -224,7 +244,7 @@ impl FromBytes for OpCodeCosts {
 pub mod gens {
     use proptest::{num, prop_compose};
 
-    use crate::shared::opcode_costs::OpCodeCosts;
+    use crate::shared::opcode_costs::OpcodeCosts;
 
     prop_compose! {
         pub fn opcode_costs_arb()(
@@ -245,8 +265,8 @@ pub mod gens {
             current_memory in num::u32::ANY,
             grow_memory in num::u32::ANY,
             regular in num::u32::ANY,
-        ) -> OpCodeCosts {
-            OpCodeCosts {
+        ) -> OpcodeCosts {
+            OpcodeCosts {
                 bit,
                 add,
                 mul,

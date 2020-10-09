@@ -1,10 +1,10 @@
-use casper_execution_engine::shared::opcode_costs::OpCodeCosts;
+use casper_execution_engine::shared::opcode_costs::OpcodeCosts;
 
 use crate::engine_server::ipc;
 
-impl From<OpCodeCosts> for ipc::ChainSpec_WasmConfig_OpCodeCosts {
-    fn from(opcode_costs: OpCodeCosts) -> Self {
-        ipc::ChainSpec_WasmConfig_OpCodeCosts {
+impl From<OpcodeCosts> for ipc::ChainSpec_WasmConfig_OpcodeCosts {
+    fn from(opcode_costs: OpcodeCosts) -> Self {
+        ipc::ChainSpec_WasmConfig_OpcodeCosts {
             bit: opcode_costs.bit,
             add: opcode_costs.add,
             mul: opcode_costs.mul,
@@ -27,9 +27,9 @@ impl From<OpCodeCosts> for ipc::ChainSpec_WasmConfig_OpCodeCosts {
     }
 }
 
-impl From<ipc::ChainSpec_WasmConfig_OpCodeCosts> for OpCodeCosts {
-    fn from(pb_opcode_costs: ipc::ChainSpec_WasmConfig_OpCodeCosts) -> Self {
-        OpCodeCosts {
+impl From<ipc::ChainSpec_WasmConfig_OpcodeCosts> for OpcodeCosts {
+    fn from(pb_opcode_costs: ipc::ChainSpec_WasmConfig_OpcodeCosts) -> Self {
+        OpcodeCosts {
             bit: pb_opcode_costs.bit,
             add: pb_opcode_costs.add,
             mul: pb_opcode_costs.mul,
@@ -63,7 +63,7 @@ mod tests {
     proptest! {
         #[test]
         fn round_trip(opcode_costs in gens::opcode_costs_arb()) {
-            test_utils::protobuf_round_trip::<OpCodeCosts, ipc::ChainSpec_WasmConfig_OpCodeCosts>(opcode_costs);
+            test_utils::protobuf_round_trip::<OpcodeCosts, ipc::ChainSpec_WasmConfig_OpcodeCosts>(opcode_costs);
         }
     }
 }

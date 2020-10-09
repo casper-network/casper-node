@@ -1,9 +1,10 @@
-use bytesrepr::{FromBytes, ToBytes};
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr;
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+
+pub const DEFAULT_GAS_PER_BYTE_COST: u32 = 625_000_000;
 
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct StorageCosts {
@@ -14,7 +15,7 @@ pub struct StorageCosts {
 impl Default for StorageCosts {
     fn default() -> Self {
         Self {
-            gas_per_byte: 625_000_000,
+            gas_per_byte: DEFAULT_GAS_PER_BYTE_COST,
         }
     }
 }

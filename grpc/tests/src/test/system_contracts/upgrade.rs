@@ -9,8 +9,21 @@ use casper_engine_test_support::{internal::ExecuteRequestBuilder, DEFAULT_ACCOUN
 use casper_execution_engine::shared::{stored_value::StoredValue, transform::Transform};
 use casper_execution_engine::{
     core::engine_state::{upgrade::ActivationPoint, Error},
-    shared::{opcode_costs::OpCodeCosts, storage_costs::StorageCosts, wasm_config::WasmConfig},
+    shared::{
+        host_function_costs::HostFunctionCosts,
+        opcode_costs::{
+            OpcodeCosts, DEFAULT_ADD_COST, DEFAULT_BIT_COST, DEFAULT_CONTROL_FLOW_COST,
+            DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DIV_COST,
+            DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INTEGER_COMPARSION_COST,
+            DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MUL_COST, DEFAULT_NOP_COST,
+            DEFAULT_OP_CONST_COST, DEFAULT_REGULAR_COST, DEFAULT_STORE_COST,
+            DEFAULT_UNREACHABLE_COST,
+        },
+        storage_costs::{StorageCosts, DEFAULT_GAS_PER_BYTE_COST},
+        wasm_config::{WasmConfig, DEFAULT_INITIAL_MEMORY, DEFAULT_MAX_STACK_HEIGHT},
+    },
 };
+
 use casper_types::ProtocolVersion;
 #[cfg(feature = "use-system-contracts")]
 use casper_types::{runtime_args, CLValue, Key, RuntimeArgs, U512};
@@ -26,33 +39,36 @@ const PAYMENT_AMOUNT: u64 = 200_000_000;
 const ARG_TARGET: &str = "target";
 
 fn get_upgraded_wasm_config() -> WasmConfig {
-    WasmConfig {
-        initial_mem: 64,
-        max_stack_height: 64 * 1024,
-        opcode_costs: OpCodeCosts {
-            bit: 2,
-            add: 2,
-            mul: 2,
-            div: 2,
-            load: 2,
-            store: 2,
-            op_const: 2,
-            local: 2,
-            global: 2,
-            control_flow: 2,
-            integer_comparsion: 2,
-            conversion: 2,
-            unreachable: 2,
-            nop: 2,
-            current_memory: 2,
-            grow_memory: 8192,
-            regular: 2,
-        },
-        storage_costs: StorageCosts {
-            gas_per_byte: 630_000_000,
-        },
-        host_function_costs: Default::default(),
-    }
+    let opcode_cost = OpcodeCosts {
+        bit: DEFAULT_BIT_COST + 1,
+        add: DEFAULT_ADD_COST + 1,
+        mul: DEFAULT_MUL_COST + 1,
+        div: DEFAULT_DIV_COST + 1,
+        load: DEFAULT_LOAD_COST + 1,
+        store: DEFAULT_STORE_COST + 1,
+        op_const: DEFAULT_OP_CONST_COST + 1,
+        local: DEFAULT_LOCAL_COST + 1,
+        global: DEFAULT_GLOBAL_COST + 1,
+        control_flow: DEFAULT_CONTROL_FLOW_COST + 1,
+        integer_comparsion: DEFAULT_INTEGER_COMPARSION_COST + 1,
+        conversion: DEFAULT_CONVERSION_COST + 1,
+        unreachable: DEFAULT_UNREACHABLE_COST + 1,
+        nop: DEFAULT_NOP_COST + 1,
+        current_memory: DEFAULT_CURRENT_MEMORY_COST + 1,
+        grow_memory: DEFAULT_GROW_MEMORY_COST + 1,
+        regular: DEFAULT_REGULAR_COST + 1,
+    };
+    let storage_costs = StorageCosts {
+        gas_per_byte: DEFAULT_GAS_PER_BYTE_COST,
+    };
+    let host_function_costs = HostFunctionCosts::default();
+    WasmConfig::new(
+        DEFAULT_INITIAL_MEMORY,
+        DEFAULT_MAX_STACK_HEIGHT * 2,
+        opcode_cost,
+        storage_costs,
+        host_function_costs,
+    )
 }
 
 #[ignore]

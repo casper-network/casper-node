@@ -1,21 +1,28 @@
-use bytesrepr::{FromBytes, ToBytes};
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr;
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+
+const DEFAULT_FIXED_COST: u32 = 0;
 
 /// Representation of a host function cost as ingredients of polynomials.
 ///
 /// Total gas cost is equal to `cost` + sum of each argument weight multiplied by the byte size of
 /// the data.
-#[derive(Clone, Default, PartialEq, Eq, Deserialize, Serialize, Debug, DataSize)]
+#[derive(Clone, PartialEq, Eq, Deserialize, Serialize, Debug, DataSize)]
 pub struct HostFunction {
     /// How much user is charged for cost only
     pub cost: u32,
     /// All arguments in order and their associated cost per byte.
     #[serde(default)]
     pub arguments: Vec<u32>,
+}
+
+impl Default for HostFunction {
+    fn default() -> Self {
+        HostFunction::fixed(DEFAULT_FIXED_COST)
+    }
 }
 
 impl HostFunction {
@@ -57,7 +64,7 @@ impl FromBytes for HostFunction {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize, Default)]
 pub struct HostFunctionCosts {
     pub read_value: HostFunction,
     pub read_value_local: HostFunction,
@@ -101,55 +108,6 @@ pub struct HostFunctionCosts {
     pub provision_contract_user_group_uref: HostFunction,
     pub remove_contract_user_group_urefs: HostFunction,
     pub print: HostFunction,
-}
-
-impl Default for HostFunctionCosts {
-    fn default() -> Self {
-        Self {
-            read_value: HostFunction::fixed(0),
-            read_value_local: HostFunction::fixed(0),
-            write: HostFunction::fixed(0),
-            write_local: HostFunction::fixed(0),
-            add: HostFunction::fixed(0),
-            add_local: HostFunction::fixed(0),
-            new_uref: HostFunction::fixed(0),
-            load_named_keys: HostFunction::fixed(0),
-            ret: HostFunction::fixed(0),
-            get_key: HostFunction::fixed(0),
-            has_key: HostFunction::fixed(0),
-            put_key: HostFunction::fixed(0),
-            remove_key: HostFunction::fixed(0),
-            revert: HostFunction::fixed(0),
-            is_valid_uref: HostFunction::fixed(0),
-            add_associated_key: HostFunction::fixed(0),
-            remove_associated_key: HostFunction::fixed(0),
-            update_associated_key: HostFunction::fixed(0),
-            set_action_threshold: HostFunction::fixed(0),
-            get_caller: HostFunction::fixed(0),
-            get_blocktime: HostFunction::fixed(0),
-            create_purse: HostFunction::fixed(0),
-            transfer_to_account: HostFunction::fixed(0),
-            transfer_from_purse_to_account: HostFunction::fixed(0),
-            transfer_from_purse_to_purse: HostFunction::fixed(0),
-            get_balance: HostFunction::fixed(0),
-            get_phase: HostFunction::fixed(0),
-            get_system_contract: HostFunction::fixed(0),
-            get_main_purse: HostFunction::fixed(0),
-            read_host_buffer: HostFunction::fixed(0),
-            create_contract_package_at_hash: HostFunction::fixed(0),
-            create_contract_user_group: HostFunction::fixed(0),
-            add_contract_version: HostFunction::fixed(0),
-            disable_contract_version: HostFunction::fixed(0),
-            call_contract: HostFunction::fixed(0),
-            call_versioned_contract: HostFunction::fixed(0),
-            get_named_arg_size: HostFunction::fixed(0),
-            get_named_arg: HostFunction::fixed(0),
-            remove_contract_user_group: HostFunction::fixed(0),
-            provision_contract_user_group_uref: HostFunction::fixed(0),
-            remove_contract_user_group_urefs: HostFunction::fixed(0),
-            print: HostFunction::fixed(0),
-        }
-    }
 }
 
 impl ToBytes for HostFunctionCosts {

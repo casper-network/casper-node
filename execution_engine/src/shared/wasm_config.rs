@@ -1,34 +1,67 @@
-use bytesrepr::{FromBytes, ToBytes};
-use casper_types::bytesrepr;
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+
 use super::{
-    host_function_costs::HostFunctionCosts, opcode_costs::OpCodeCosts, storage_costs::StorageCosts,
+    host_function_costs::HostFunctionCosts, opcode_costs::OpcodeCosts, storage_costs::StorageCosts,
 };
+
+pub const DEFAULT_INITIAL_MEMORY: u32 = 64;
+pub const DEFAULT_MAX_STACK_HEIGHT: u32 = 64 * 1024;
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct WasmConfig {
     /// Memory stipend. Amount of free memory (in 64kb pages) each contract can
     /// use for stack.
-    pub initial_mem: u32,
+    pub initial_memory: u32,
     /// Max stack height (native WebAssembly stack limiter)
     pub max_stack_height: u32,
     /// Wasm opcode costs table
-    pub opcode_costs: OpCodeCosts,
+    opcode_costs: OpcodeCosts,
     /// Storage costs
-    pub storage_costs: StorageCosts,
+    storage_costs: StorageCosts,
     /// Host function costs table
-    pub host_function_costs: HostFunctionCosts,
+    host_function_costs: HostFunctionCosts,
+}
+
+impl WasmConfig {
+    pub fn new(
+        initial_mem: u32,
+        max_stack_height: u32,
+        opcode_costs: OpcodeCosts,
+        storage_costs: StorageCosts,
+        host_function_costs: HostFunctionCosts,
+    ) -> Self {
+        Self {
+            initial_memory: initial_mem,
+            max_stack_height,
+            opcode_costs,
+            storage_costs,
+            host_function_costs,
+        }
+    }
+
+    pub fn opcode_costs(&self) -> OpcodeCosts {
+        self.opcode_costs
+    }
+
+    pub fn storage_costs(&self) -> StorageCosts {
+        self.storage_costs
+    }
+
+    pub fn take_host_function_costs(self) -> HostFunctionCosts {
+        self.host_function_costs
+    }
 }
 
 impl Default for WasmConfig {
     fn default() -> Self {
         Self {
-            initial_mem: 64,
-            max_stack_height: 64 * 1024,
-            opcode_costs: OpCodeCosts::default(),
+            initial_memory: DEFAULT_INITIAL_MEMORY,
+            max_stack_height: DEFAULT_MAX_STACK_HEIGHT,
+            opcode_costs: OpcodeCosts::default(),
             storage_costs: StorageCosts::default(),
             host_function_costs: HostFunctionCosts::default(),
         }
@@ -39,7 +72,7 @@ impl ToBytes for WasmConfig {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
 
-        ret.append(&mut self.initial_mem.to_bytes()?);
+        ret.append(&mut self.initial_memory.to_bytes()?);
         ret.append(&mut self.max_stack_height.to_bytes()?);
         ret.append(&mut self.opcode_costs.to_bytes()?);
         ret.append(&mut self.storage_costs.to_bytes()?);
@@ -49,7 +82,7 @@ impl ToBytes for WasmConfig {
     }
 
     fn serialized_length(&self) -> usize {
-        self.initial_mem.serialized_length()
+        self.initial_memory.serialized_length()
             + self.max_stack_height.serialized_length()
             + self.opcode_costs.serialized_length()
             + self.storage_costs.serialized_length()
@@ -67,7 +100,7 @@ impl FromBytes for WasmConfig {
 
         Ok((
             WasmConfig {
-                initial_mem,
+                initial_memory: initial_mem,
                 max_stack_height,
                 opcode_costs,
                 storage_costs,
@@ -81,7 +114,7 @@ impl FromBytes for WasmConfig {
 impl Distribution<WasmConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> WasmConfig {
         WasmConfig {
-            initial_mem: rng.gen(),
+            initial_memory: rng.gen(),
             max_stack_height: rng.gen(),
             opcode_costs: rng.gen(),
             storage_costs: rng.gen(),
@@ -102,14 +135,14 @@ pub mod gens {
 
     prop_compose! {
         pub fn wasm_config_arb() (
-            initial_mem in num::u32::ANY,
+            initial_memory in num::u32::ANY,
             max_stack_height in num::u32::ANY,
             opcode_costs in opcode_costs_arb(),
             storage_costs in storage_costs_arb(),
             host_function_costs in host_function_costs_arb(),
         ) -> WasmConfig {
             WasmConfig {
-                initial_mem,
+                initial_memory,
                 max_stack_height,
                 opcode_costs,
                 storage_costs,

@@ -365,11 +365,233 @@ impl Into<ExecConfig> for Chainspec {
 
 #[cfg(test)]
 mod tests {
+    use lazy_static::lazy_static;
+
     use casper_execution_engine::shared::{
         host_function_costs::{HostFunction, HostFunctionCosts},
-        opcode_costs::OpCodeCosts,
+        opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
         wasm_config::WasmConfig,
+    };
+
+    lazy_static! {
+        static ref EXPECTED_GENESIS_HOST_FUNCTION_COSTS: HostFunctionCosts = HostFunctionCosts {
+            read_value: HostFunction {
+                cost: 147,
+                arguments: vec![]
+            },
+            read_value_local: HostFunction {
+                cost: 148,
+                arguments: vec![149]
+            },
+            write: HostFunction {
+                cost: 164,
+                arguments: vec![165]
+            },
+            write_local: HostFunction {
+                cost: 166,
+                arguments: vec![167, 168]
+            },
+            add: HostFunction {
+                cost: 101,
+                arguments: vec![]
+            },
+            add_local: HostFunction {
+                cost: 104,
+                arguments: vec![105, 106]
+            },
+            new_uref: HostFunction {
+                cost: 140,
+                arguments: vec![141]
+            },
+            load_named_keys: HostFunction {
+                cost: 139,
+                arguments: vec![]
+            },
+            ret: HostFunction {
+                cost: 155,
+                arguments: vec![156, 157]
+            },
+            get_key: HostFunction {
+                cost: 128,
+                arguments: vec![]
+            },
+            has_key: HostFunction {
+                cost: 136,
+                arguments: vec![137]
+            },
+            put_key: HostFunction {
+                cost: 143,
+                arguments: vec![144]
+            },
+            remove_key: HostFunction {
+                cost: 153,
+                arguments: vec![154]
+            },
+            revert: HostFunction {
+                cost: 158,
+                arguments: vec![]
+            },
+            is_valid_uref: HostFunction {
+                cost: 138,
+                arguments: vec![]
+            },
+            add_associated_key: HostFunction {
+                cost: 102,
+                arguments: vec![]
+            },
+            remove_associated_key: HostFunction {
+                cost: 150,
+                arguments: vec![]
+            },
+            update_associated_key: HostFunction {
+                cost: 163,
+                arguments: vec![]
+            },
+            set_action_threshold: HostFunction {
+                cost: 159,
+                arguments: vec![]
+            },
+            get_caller: HostFunction {
+                cost: 127,
+                arguments: vec![]
+            },
+            get_blocktime: HostFunction {
+                cost: 126,
+                arguments: vec![]
+            },
+            create_purse: HostFunction {
+                cost: 123,
+                arguments: vec![]
+            },
+            transfer_to_account: HostFunction {
+                cost: 162,
+                arguments: vec![]
+            },
+            transfer_from_purse_to_account: HostFunction {
+                cost: 160,
+                arguments: vec![]
+            },
+            transfer_from_purse_to_purse: HostFunction {
+                cost: 161,
+                arguments: vec![]
+            },
+            get_balance: HostFunction {
+                cost: 125,
+                arguments: vec![]
+            },
+            get_phase: HostFunction {
+                cost: 134,
+                arguments: vec![]
+            },
+            get_system_contract: HostFunction {
+                cost: 135,
+                arguments: vec![]
+            },
+            get_main_purse: HostFunction {
+                cost: 130,
+                arguments: vec![]
+            },
+            read_host_buffer: HostFunction {
+                cost: 145,
+                arguments: vec![146]
+            },
+            create_contract_package_at_hash: HostFunction {
+                cost: 121,
+                arguments: vec![]
+            },
+            create_contract_user_group: HostFunction {
+                cost: 122,
+                arguments: vec![]
+            },
+            add_contract_version: HostFunction {
+                cost: 103,
+                arguments: vec![]
+            },
+            disable_contract_version: HostFunction {
+                cost: 124,
+                arguments: vec![]
+            },
+            call_contract: HostFunction {
+                cost: 107,
+                arguments: vec![108]
+            },
+            call_versioned_contract: HostFunction {
+                cost: 109,
+                arguments: vec![120]
+            },
+            get_named_arg_size: HostFunction {
+                cost: 133,
+                arguments: vec![]
+            },
+            get_named_arg: HostFunction {
+                cost: 131,
+                arguments: vec![132]
+            },
+            remove_contract_user_group: HostFunction {
+                cost: 151,
+                arguments: vec![]
+            },
+            provision_contract_user_group_uref: HostFunction {
+                cost: 142,
+                arguments: vec![]
+            },
+            remove_contract_user_group_urefs: HostFunction {
+                cost: 152,
+                arguments: vec![]
+            },
+            print: HostFunction {
+                cost: 169,
+                arguments: vec![170]
+            }
+        };
+        static ref EXPECTED_GENESIS_WASM_CONFIG: WasmConfig = WasmConfig::new(
+            17, // initial_memory
+            19, // max_stack_height
+            EXPECTED_GENESIS_COSTS,
+            EXPECTED_GENESIS_STORAGE_COSTS,
+            EXPECTED_GENESIS_HOST_FUNCTION_COSTS.clone(),
+        );
+    }
+    const EXPECTED_GENESIS_STORAGE_COSTS: StorageCosts = StorageCosts { gas_per_byte: 101 };
+
+    const EXPECTED_GENESIS_COSTS: OpcodeCosts = OpcodeCosts {
+        bit: 13,
+        add: 14,
+        mul: 15,
+        div: 16,
+        load: 17,
+        store: 18,
+        op_const: 19,
+        local: 20,
+        global: 21,
+        control_flow: 22,
+        integer_comparsion: 23,
+        conversion: 24,
+        unreachable: 25,
+        nop: 26,
+        current_memory: 27,
+        grow_memory: 28,
+        regular: 29,
+    };
+    const EXPECTED_UPGRADE_COSTS: OpcodeCosts = OpcodeCosts {
+        bit: 24,
+        add: 25,
+        mul: 26,
+        div: 27,
+        load: 28,
+        store: 29,
+        op_const: 30,
+        local: 31,
+        global: 32,
+        control_flow: 33,
+        integer_comparsion: 34,
+        conversion: 35,
+        unreachable: 36,
+        nop: 37,
+        current_memory: 38,
+        grow_memory: 39,
+        regular: 40,
     };
 
     use super::*;
@@ -441,203 +663,7 @@ mod tests {
         assert_eq!(spec.genesis.deploy_config.block_max_deploy_count, 125);
         assert_eq!(spec.genesis.deploy_config.block_gas_limit, 13);
 
-        assert_eq!(
-            spec.genesis.wasm_config,
-            WasmConfig {
-                initial_mem: 17,
-                max_stack_height: 19,
-                opcode_costs: OpCodeCosts {
-                    bit: 13,
-                    add: 14,
-                    mul: 15,
-                    div: 16,
-                    load: 17,
-                    store: 18,
-                    op_const: 19,
-                    local: 20,
-                    global: 21,
-                    control_flow: 22,
-                    integer_comparsion: 23,
-                    conversion: 24,
-                    unreachable: 25,
-                    nop: 26,
-                    current_memory: 27,
-                    grow_memory: 28,
-                    regular: 29
-                },
-                storage_costs: StorageCosts { gas_per_byte: 101 },
-                host_function_costs: HostFunctionCosts {
-                    read_value: HostFunction {
-                        cost: 147,
-                        arguments: vec![]
-                    },
-                    read_value_local: HostFunction {
-                        cost: 148,
-                        arguments: vec![149]
-                    },
-                    write: HostFunction {
-                        cost: 164,
-                        arguments: vec![165]
-                    },
-                    write_local: HostFunction {
-                        cost: 166,
-                        arguments: vec![167, 168]
-                    },
-                    add: HostFunction {
-                        cost: 101,
-                        arguments: vec![]
-                    },
-                    add_local: HostFunction {
-                        cost: 104,
-                        arguments: vec![105, 106]
-                    },
-                    new_uref: HostFunction {
-                        cost: 140,
-                        arguments: vec![141]
-                    },
-                    load_named_keys: HostFunction {
-                        cost: 139,
-                        arguments: vec![]
-                    },
-                    ret: HostFunction {
-                        cost: 155,
-                        arguments: vec![156, 157]
-                    },
-                    get_key: HostFunction {
-                        cost: 128,
-                        arguments: vec![]
-                    },
-                    has_key: HostFunction {
-                        cost: 136,
-                        arguments: vec![137]
-                    },
-                    put_key: HostFunction {
-                        cost: 143,
-                        arguments: vec![144]
-                    },
-                    remove_key: HostFunction {
-                        cost: 153,
-                        arguments: vec![154]
-                    },
-                    revert: HostFunction {
-                        cost: 158,
-                        arguments: vec![]
-                    },
-                    is_valid_uref: HostFunction {
-                        cost: 138,
-                        arguments: vec![]
-                    },
-                    add_associated_key: HostFunction {
-                        cost: 102,
-                        arguments: vec![]
-                    },
-                    remove_associated_key: HostFunction {
-                        cost: 150,
-                        arguments: vec![]
-                    },
-                    update_associated_key: HostFunction {
-                        cost: 163,
-                        arguments: vec![]
-                    },
-                    set_action_threshold: HostFunction {
-                        cost: 159,
-                        arguments: vec![]
-                    },
-                    get_caller: HostFunction {
-                        cost: 127,
-                        arguments: vec![]
-                    },
-                    get_blocktime: HostFunction {
-                        cost: 126,
-                        arguments: vec![]
-                    },
-                    create_purse: HostFunction {
-                        cost: 123,
-                        arguments: vec![]
-                    },
-                    transfer_to_account: HostFunction {
-                        cost: 162,
-                        arguments: vec![]
-                    },
-                    transfer_from_purse_to_account: HostFunction {
-                        cost: 160,
-                        arguments: vec![]
-                    },
-                    transfer_from_purse_to_purse: HostFunction {
-                        cost: 161,
-                        arguments: vec![]
-                    },
-                    get_balance: HostFunction {
-                        cost: 125,
-                        arguments: vec![]
-                    },
-                    get_phase: HostFunction {
-                        cost: 134,
-                        arguments: vec![]
-                    },
-                    get_system_contract: HostFunction {
-                        cost: 135,
-                        arguments: vec![]
-                    },
-                    get_main_purse: HostFunction {
-                        cost: 130,
-                        arguments: vec![]
-                    },
-                    read_host_buffer: HostFunction {
-                        cost: 145,
-                        arguments: vec![146]
-                    },
-                    create_contract_package_at_hash: HostFunction {
-                        cost: 121,
-                        arguments: vec![]
-                    },
-                    create_contract_user_group: HostFunction {
-                        cost: 122,
-                        arguments: vec![]
-                    },
-                    add_contract_version: HostFunction {
-                        cost: 103,
-                        arguments: vec![]
-                    },
-                    disable_contract_version: HostFunction {
-                        cost: 124,
-                        arguments: vec![]
-                    },
-                    call_contract: HostFunction {
-                        cost: 107,
-                        arguments: vec![108]
-                    },
-                    call_versioned_contract: HostFunction {
-                        cost: 109,
-                        arguments: vec![120]
-                    },
-                    get_named_arg_size: HostFunction {
-                        cost: 133,
-                        arguments: vec![]
-                    },
-                    get_named_arg: HostFunction {
-                        cost: 131,
-                        arguments: vec![132]
-                    },
-                    remove_contract_user_group: HostFunction {
-                        cost: 151,
-                        arguments: vec![]
-                    },
-                    provision_contract_user_group_uref: HostFunction {
-                        cost: 142,
-                        arguments: vec![]
-                    },
-                    remove_contract_user_group_urefs: HostFunction {
-                        cost: 152,
-                        arguments: vec![]
-                    },
-                    print: HostFunction {
-                        cost: 169,
-                        arguments: vec![170]
-                    }
-                }
-            },
-        );
+        assert_eq!(&spec.genesis.wasm_config, &*EXPECTED_GENESIS_WASM_CONFIG,);
 
         assert_eq!(spec.upgrades.len(), 2);
 
@@ -649,43 +675,20 @@ mod tests {
             Some(b"Upgrade installer bytes".to_vec())
         );
         assert!(upgrade0.upgrade_installer_args.is_none());
+
+        let new_wasm_config = upgrade0
+            .new_wasm_config
+            .as_ref()
+            .expect("should have new wasm config");
+
         assert_eq!(
-            upgrade0.new_wasm_config.as_ref().unwrap().opcode_costs,
-            OpCodeCosts {
-                bit: 24,
-                add: 25,
-                mul: 26,
-                div: 27,
-                load: 28,
-                store: 29,
-                op_const: 30,
-                local: 31,
-                global: 32,
-                control_flow: 33,
-                integer_comparsion: 34,
-                conversion: 35,
-                unreachable: 36,
-                nop: 37,
-                current_memory: 38,
-                grow_memory: 39,
-                regular: 40
-            }
+            upgrade0.new_wasm_config.as_ref().unwrap().opcode_costs(),
+            EXPECTED_UPGRADE_COSTS,
         );
 
-        assert_eq!(upgrade0.new_wasm_config.as_ref().unwrap().initial_mem, 17);
-        assert_eq!(
-            upgrade0
-                .new_wasm_config
-                .as_ref()
-                .unwrap()
-                .opcode_costs
-                .grow_memory,
-            39
-        );
-        assert_eq!(
-            upgrade0.new_wasm_config.as_ref().unwrap().max_stack_height,
-            19
-        );
+        assert_eq!(new_wasm_config.initial_memory, 17);
+        assert_eq!(new_wasm_config.max_stack_height, 19);
+
         assert_eq!(
             upgrade0.new_deploy_config.unwrap().max_payment_cost,
             Motes::new(U512::from(34))

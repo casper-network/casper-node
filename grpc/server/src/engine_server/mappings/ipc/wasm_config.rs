@@ -8,11 +8,11 @@ impl From<WasmConfig> for ipc::ChainSpec_WasmConfig {
     fn from(wasm_config: WasmConfig) -> Self {
         let mut pb_wasmconfig = ipc::ChainSpec_WasmConfig::new();
 
-        pb_wasmconfig.set_initial_mem(wasm_config.initial_mem);
+        pb_wasmconfig.set_initial_mem(wasm_config.initial_memory);
         pb_wasmconfig.set_max_stack_height(wasm_config.max_stack_height);
-        pb_wasmconfig.set_opcode_costs(wasm_config.opcode_costs.into());
-        pb_wasmconfig.set_storage_costs(wasm_config.storage_costs.into());
-        pb_wasmconfig.set_host_function_costs(wasm_config.host_function_costs.into());
+        pb_wasmconfig.set_opcode_costs(wasm_config.opcode_costs().into());
+        pb_wasmconfig.set_storage_costs(wasm_config.storage_costs().into());
+        pb_wasmconfig.set_host_function_costs(wasm_config.take_host_function_costs().into());
 
         pb_wasmconfig
     }
@@ -22,13 +22,13 @@ impl TryFrom<ipc::ChainSpec_WasmConfig> for WasmConfig {
     type Error = MappingError;
 
     fn try_from(mut pb_wasm_config: ipc::ChainSpec_WasmConfig) -> Result<Self, Self::Error> {
-        Ok(WasmConfig {
-            initial_mem: pb_wasm_config.initial_mem,
-            max_stack_height: pb_wasm_config.max_stack_height,
-            opcode_costs: pb_wasm_config.take_opcode_costs().into(),
-            storage_costs: pb_wasm_config.take_storage_costs().into(),
-            host_function_costs: pb_wasm_config.take_host_function_costs().try_into()?,
-        })
+        Ok(WasmConfig::new(
+            pb_wasm_config.initial_mem,
+            pb_wasm_config.max_stack_height,
+            pb_wasm_config.take_opcode_costs().into(),
+            pb_wasm_config.take_storage_costs().into(),
+            pb_wasm_config.take_host_function_costs().try_into()?,
+        ))
     }
 }
 
