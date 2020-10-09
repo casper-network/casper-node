@@ -216,5 +216,5 @@ fn is_valid(deploy: &Deploy, config: DeployAcceptorConfig) -> bool {
 
     // TODO - check if there is more that can be validated here.
 
-    true
+    deploy.is_valid()
 }
