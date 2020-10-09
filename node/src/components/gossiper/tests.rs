@@ -119,7 +119,7 @@ impl reactor::Reactor for Reactor {
 
     fn new(
         config: Self::Config,
-        _registry: &Registry,
+        registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut dyn CryptoRngCore,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
@@ -129,7 +129,12 @@ impl reactor::Reactor for Reactor {
         let storage = Storage::new(WithDir::new(storage_tempdir.path(), storage_config)).unwrap();
 
         let deploy_acceptor = DeployAcceptor::new();
-        let deploy_gossiper = Gossiper::new_for_partial_items(config, get_deploy_from_storage);
+        let deploy_gossiper = Gossiper::new_for_partial_items(
+            "deploy_gossiper",
+            config,
+            get_deploy_from_storage,
+            registry,
+        )?;
 
         let reactor = Reactor {
             network,
