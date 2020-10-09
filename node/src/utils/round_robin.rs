@@ -6,8 +6,10 @@
 
 use std::{
     collections::{HashMap, VecDeque},
+    fmt::Debug,
     hash::Hash,
     num::NonZeroUsize,
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use tokio::sync::{Mutex, Semaphore};
@@ -31,10 +33,42 @@ pub struct WeightedRoundRobin<I, K> {
     slots: Vec<Slot<K>>,
 
     /// Actual queues.
-    queues: HashMap<K, Mutex<VecDeque<I>>>,
+    queues: HashMap<K, QueueState<I>>,
 
     /// Number of items in all queues combined.
     total: Semaphore,
+}
+
+/// State that wraps queue and its event count.
+#[derive(Debug)]
+struct QueueState<I> {
+    event_count: AtomicUsize,
+    queue: Mutex<VecDeque<I>>,
+}
+
+impl<I> QueueState<I> {
+    fn new() -> Self {
+        QueueState {
+            event_count: AtomicUsize::new(0),
+            queue: Mutex::new(VecDeque::new()),
+        }
+    }
+
+    #[inline]
+    async fn push_back(&self, element: I) {
+        self.queue.lock().await.push_back(element);
+        self.event_count.fetch_add(1, Ordering::SeqCst);
+    }
+
+    #[inline]
+    fn dec_count(&self) {
+        self.event_count.fetch_sub(1, Ordering::SeqCst);
+    }
+
+    #[inline]
+    fn event_count(&self) -> usize {
+        self.event_count.load(Ordering::SeqCst)
+    }
 }
 
 /// The inner state of the queue iteration.
@@ -75,7 +109,7 @@ where
 
         let queues = weights
             .iter()
-            .map(|(idx, _)| (*idx, Mutex::new(VecDeque::new())))
+            .map(|(idx, _)| (*idx, QueueState::new()))
             .collect();
         let slots: Vec<Slot<K>> = weights
             .into_iter()
@@ -106,9 +140,8 @@ where
         self.queues
             .get(&queue)
             .expect("tried to push to non-existent queue")
-            .lock()
-            .await
-            .push_back(item);
+            .push_back(item)
+            .await;
 
         // We increase the item count after we've put the item into the queue.
         self.total.add_permits(1);
@@ -124,13 +157,13 @@ where
 
         // We know we have at least one item in a queue.
         loop {
-            let mut current_queue = self
+            let queue_state = self
                 .queues
                 // The queue disappearing should never happen.
                 .get(&inner.active_slot.key)
-                .expect("the queue disappeared. this should not happen")
-                .lock()
-                .await;
+                .expect("the queue disappeared. this should not happen");
+
+            let mut current_queue = queue_state.queue.lock().await;
 
             if inner.active_slot.tickets == 0 || current_queue.is_empty() {
                 // Go to next queue slot if we've exhausted the current queue.
@@ -142,19 +175,26 @@ where
             // We have hit a queue that is not empty. Decrease tickets and pop.
             inner.active_slot.tickets -= 1;
 
-            break (
-                current_queue
-                    .pop_front()
-                    // We hold the queue's lock and checked `is_empty` earlier.
-                    .expect("item disappeared. this should not happen"),
-                inner.active_slot.key,
-            );
+            let item = current_queue
+                .pop_front()
+                // We hold the queue's lock and checked `is_empty` earlier.
+                .expect("item disappeared. this should not happen");
+            queue_state.dec_count();
+            break (item, inner.active_slot.key);
         }
     }
 
     /// Returns the number of events currently in the queue.
     pub(crate) fn item_count(&self) -> usize {
         self.total.available_permits()
+    }
+
+    /// Returns the number of events in each of the queues.
+    pub(crate) fn event_queues_counts(&self) -> HashMap<K, usize> {
+        self.queues
+            .iter()
+            .map(|(key, queue)| (*key, queue.event_count()))
+            .collect()
     }
 }
 

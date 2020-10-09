@@ -3,6 +3,7 @@ import {U512} from "./bignum";
 import {URef} from "./uref";
 import {Key} from "./key";
 import {Option} from "./option";
+import {PublicKey} from "./public_key";
 
 /**
  * Casper types, i.e. types which can be stored and manipulated by smart contracts.
@@ -56,6 +57,8 @@ export enum CLTypeTag {
     Tuple3 = 20,
     /** A value of any type. */
     Any = 21,
+    /** A value of public key type. */
+    PublicKey = 22,
 }
 
 export class CLType {
@@ -157,6 +160,13 @@ export class CLValue {
      */
     static fromStringList(values: String[]): CLValue {
         return new CLValue(toBytesStringList(values), CLType.list(new CLType(CLTypeTag.String)));
+    }
+
+    /**
+     * Creates a `CLValue` holding a public key.
+     */
+    static fromPublicKey(publicKey: PublicKey): CLValue {
+        return new CLValue(publicKey.toBytes(), new CLType(CLTypeTag.PublicKey));
     }
 
     /**

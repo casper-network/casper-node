@@ -24,12 +24,14 @@
 //! in a step-wise manner using [`crank`](struct.Runner.html#method.crank) or indefinitely using
 //! [`run`](struct.Runner.html#method.crank).
 
+mod event_queue_metrics;
 pub mod initializer;
 pub mod joiner;
 mod queue_kind;
 pub mod validator;
 
 use std::{
+    collections::HashMap,
     fmt::{Debug, Display},
     mem,
 };
@@ -37,6 +39,7 @@ use std::{
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use prometheus::{self, IntCounter, Registry};
+use quanta::IntoNanoseconds;
 use tracing::{debug, debug_span, info, trace, warn};
 use tracing_futures::Instrument;
 
@@ -45,8 +48,12 @@ use crate::{
     types::CryptoRngCore,
     utils::{self, WeightedRoundRobin},
 };
+use quanta::Clock;
 pub use queue_kind::QueueKind;
 use tokio::time::{Duration, Instant};
+
+/// Threshold for when an event is considered slow.
+const DISPATCH_EVENT_THRESHOLD: Duration = Duration::from_millis(1);
 
 /// Event scheduler
 ///
@@ -86,6 +93,11 @@ impl<REv> EventQueueHandle<REv> {
         REv: From<Ev>,
     {
         self.0.push(event.into(), queue_kind).await
+    }
+
+    /// Returns number of events in each of the scheduler's queues.
+    pub(crate) fn event_queues_counts(&self) -> HashMap<QueueKind, usize> {
+        self.0.event_queues_counts()
     }
 }
 
@@ -139,7 +151,7 @@ pub trait Reactor: Sized {
     }
 
     /// Instructs the reactor to update performance metrics, if any.
-    fn update_metrics(&mut self) {}
+    fn update_metrics(&mut self, _event_queue_handle: EventQueueHandle<Self::Event>) {}
 }
 
 /// A drop-like trait for `async` compatible drop-and-wait.
@@ -184,6 +196,9 @@ where
 
     /// Only update reactor metrics if at least this much time has passed.
     event_metrics_min_delay: Duration,
+
+    /// An accurate, possible TSC-supporting clock.
+    clock: Clock,
 }
 
 /// Metric data for the Runner
@@ -269,6 +284,7 @@ where
             last_metrics: Instant::now(),
             event_metrics_min_delay: Duration::from_secs(30),
             event_metrics_threshold: 1000,
+            clock: Clock::new(),
         })
     }
 
@@ -302,7 +318,7 @@ where
         let event_queue = EventQueueHandle::new(self.scheduler);
         let effect_builder = EffectBuilder::new(event_queue);
 
-        // Update metrics like memory usage.
+        // Update metrics like memory usage and event queue sizes.
         if self.event_count % self.event_metrics_threshold == 0 {
             let now = Instant::now();
 
@@ -310,7 +326,7 @@ where
             if now.duration_since(self.last_metrics) >= self.event_metrics_min_delay
                 || self.event_count == 0
             {
-                self.reactor.update_metrics();
+                self.reactor.update_metrics(event_queue);
                 self.last_metrics = now;
             }
         }
@@ -326,7 +342,17 @@ where
         trace!(?event, ?q);
 
         // Dispatch the event, then execute the resulting effect.
+        let start = self.clock.start();
         let effects = self.reactor.dispatch_event(effect_builder, rng, event);
+        let end = self.clock.end();
+        let delta = self.clock.delta(start, end);
+
+        if delta > DISPATCH_EVENT_THRESHOLD {
+            warn!(
+                ns = delta.into_nanos(),
+                "previous event took very long to dispatch"
+            );
+        }
 
         drop(inner_enter);
 

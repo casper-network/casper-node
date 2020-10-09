@@ -159,7 +159,6 @@ where
     /// Flag to indicate the server has stopped running.
     is_stopped: Arc<AtomicBool>,
     /// Join handle for the server thread.
-    #[allow(dead_code)]
     server_join_handle: Option<JoinHandle<()>>,
 }
 
