@@ -7,5 +7,14 @@ services:
       dockerfile: Dockerfile.U1804
     volumes:
       - ./share:/root/share
-    command: /bin/bash -c "/root/share/build_deb.sh _U18.04"
+    command: /bin/bash -c "/root/share/build_deb.sh bionic"
+    tty: true
+
+  deb_2004:
+    build:
+      context: .
+      dockerfile: Dockerfile.U2004
+    volumes:
+      - ./share:/root/share
+    command: /bin/bash -c "/root/share/build_deb.sh focal"
     tty: true
