@@ -8,7 +8,7 @@ mod memory_metrics;
 #[cfg(test)]
 mod tests;
 
-use std::fmt::{self, Display, Formatter, Debug};
+use std::fmt::{self, Debug, Display, Formatter};
 
 use datasize::DataSize;
 use derive_more::From;
