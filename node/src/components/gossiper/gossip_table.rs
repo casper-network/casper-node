@@ -725,7 +725,7 @@ mod tests {
         let action = gossip_table.check_timeout(&data_id, node_ids[1]);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
-            exclude_peers: iter::once(node_ids[0]).collect(),
+            exclude_peers: node_ids[..=1].iter().copied().collect(),
             is_already_held: true,
         });
         assert_eq!(expected, action);
