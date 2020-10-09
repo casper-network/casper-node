@@ -184,6 +184,7 @@ pub struct State {
 struct ExecutedBlockSummary {
     hash: BlockHash,
     post_state_hash: Digest,
+    accumulated_seed: Digest,
 }
 
 type BlockHeight = u64;
@@ -221,6 +222,7 @@ impl BlockExecutor {
                     ExecutedBlockSummary {
                         hash: *block.hash(),
                         post_state_hash: *block.global_state_hash(),
+                        accumulated_seed: block.header().accumulated_seed(),
                     },
                 )
             })
@@ -396,21 +398,28 @@ impl BlockExecutor {
     }
 
     fn create_block(&mut self, finalized_block: FinalizedBlock, post_state_hash: Digest) -> Block {
-        let parent_summary_hash = if finalized_block.is_genesis_child() {
+        let (parent_summary_hash, parent_seed) = if finalized_block.is_genesis_child() {
             // Genesis, no parent summary.
-            BlockHash::new(Digest::default())
+            (BlockHash::new(Digest::default()), Digest::default())
         } else {
             let parent_block_height = finalized_block.height() - 1;
-            self.parent_map
+            let summary = self
+                .parent_map
                 .remove(&parent_block_height)
-                .unwrap_or_else(|| panic!("failed to take {:?}", parent_block_height))
-                .hash
+                .unwrap_or_else(|| panic!("failed to take {:?}", parent_block_height));
+            (summary.hash, summary.accumulated_seed)
         };
         let block_height = finalized_block.height();
-        let block = Block::new(parent_summary_hash, post_state_hash, finalized_block);
+        let block = Block::new(
+            parent_summary_hash,
+            parent_seed,
+            post_state_hash,
+            finalized_block,
+        );
         let summary = ExecutedBlockSummary {
             hash: *block.hash(),
             post_state_hash,
+            accumulated_seed: block.header().accumulated_seed(),
         };
         let _ = self.parent_map.insert(block_height, summary);
         block
