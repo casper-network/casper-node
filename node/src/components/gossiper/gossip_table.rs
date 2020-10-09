@@ -123,6 +123,23 @@ pub(crate) struct GossipTable<T> {
     finished_entry_duration: Duration,
 }
 
+impl<T> GossipTable<T> {
+    /// Number of items currently being gossiped.
+    pub fn items_current(&self) -> usize {
+        self.current.len()
+    }
+
+    /// Number of items that are kept but are finished gossiping.
+    pub fn items_finished(&self) -> usize {
+        self.finished.len()
+    }
+
+    /// Number of items for which gossipping is currently paused.
+    pub fn items_paused(&self) -> usize {
+        self.paused.len()
+    }
+}
+
 impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
     /// Returns a new `GossipTable` using the provided configuration.
     pub(crate) fn new(config: Config) -> Self {
