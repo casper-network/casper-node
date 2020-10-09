@@ -555,7 +555,6 @@ where
             }
         }
         for (node_id, peer_address) in remove {
-            // TODO: save in state - peers that have misbehaved
             self.blacklist.insert(peer_address);
             self.remove(&node_id);
         }
