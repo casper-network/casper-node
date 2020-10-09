@@ -12,8 +12,6 @@ use crate::effect::requests::{NetworkInfoRequest, NetworkRequest};
 
 #[derive(Debug, From)]
 pub enum Event<P> {
-    /// Check that we have an incoming+outgoing connection for a peer.
-    ConnectionParityCheck,
     /// Connection to the known node failed.
     BootstrappingFailed {
         peer_address: SocketAddr,
@@ -67,7 +65,6 @@ pub enum Event<P> {
 impl<P: Display> Display for Event<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::ConnectionParityCheck => write!(f, "checking connection parity",),
             Event::BootstrappingFailed {
                 peer_address,
                 error,

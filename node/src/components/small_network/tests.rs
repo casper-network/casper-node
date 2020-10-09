@@ -190,37 +190,47 @@ impl Finalize for TestReactor {
     }
 }
 
-/// Checks whether or not a given network is completely connected.
+/// Checks whether or not a given network with a bad node is completely connected.
 fn network_is_complete(
+    blacklist: &HashSet<NodeId>,
     nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<TestReactor>>>,
 ) -> bool {
     // We need at least one node.
     if nodes.is_empty() {
         return false;
     }
+    
+    if nodes.len() == 1 {
+        let nodes = &nodes.values().collect::<Vec<_>>();
+        let net = &nodes[0].reactor().inner().net;
+        if net.is_isolated() {
+            return true
+        }
+    }
 
-    // We collect a set of expected nodes by getting all nodes in the network into a set.
-    let expected: HashSet<_> = nodes
-        .iter()
-        .map(|(_, runner)| runner.reactor().inner().net.node_id())
-        .collect();
+    for (node_id, node) in nodes {
+        let net = &node.reactor().inner().net;
+        if blacklist.contains(node_id) {
+            // ignore blacklisted node
+            continue
+        }
+        let outgoing = net.outgoing_connected_nodes();
+        let incoming = net.incoming_connected_nodes();
+        let difference = incoming 
+            .symmetric_difference(&outgoing)
+            .collect::<HashSet<_>>();
 
-    nodes
-        .iter()
-        .map(|(_, runner)| {
-            let net = &runner.reactor().inner().net;
-            let mut actual = net
-                .outgoing_connected_nodes()
-                .intersection(&net.incoming_connected_nodes())
-                .cloned()
-                .collect::<HashSet<_>>();
+        // All nodes should be connected to every other node, except itself, so we add it to the
+        // set of nodes and pretend we have a loopback connection.
+        if !difference.is_empty() {
+            return false
+        }
 
-            // All nodes should be connected to every other node, except itself, so we add it to the
-            // set of nodes and pretend we have a loopback connection.
-            actual.insert(net.node_id());
-            actual
-        })
-        .all(|actual| actual == expected)
+        if net.is_isolated() {
+            return false
+        }
+    }
+    true
 }
 
 /// Checks whether or not a given network has at least one other node in it
@@ -266,7 +276,8 @@ async fn run_two_node_network_five_times() {
         );
 
         let timeout = Duration::from_secs(2);
-        net.settle_on(&mut rng, network_is_complete, timeout).await;
+        let blacklist = HashSet::new();
+        net.settle_on(&mut rng, |nodes| network_is_complete(&blacklist, nodes), timeout).await;
 
         assert!(
             network_started(&net),
@@ -278,7 +289,7 @@ async fn run_two_node_network_five_times() {
         net.settle(&mut rng, quiet_for, timeout).await;
 
         assert!(
-            network_is_complete(net.nodes()),
+            network_is_complete(&blacklist, net.nodes()),
             "network did not stay connected"
         );
 
@@ -286,51 +297,59 @@ async fn run_two_node_network_five_times() {
     }
 }
 
-/// Sanity check that we fail to settle with .
+/// Sanity check that we fail to settle with one node gossiping the wrong address.
 #[tokio::test]
-async fn bad_node_partially_connects() {
+async fn network_with_bad_nodes_settles_without_them() {
     init_logging();
 
     let mut rng = TestRng::new();
+    for (healthy, bad) in vec![
+        (1u64, 1u64),
+        (1, 2),
+        (1, 4),
+        (2, 2),
+        (4, 4),
+        (4, 1),
+    ] {
+        println!("test with {} healthy and {} bad", healthy, bad);
+        let port = testing::unused_port_on_localhost();
 
-    let iface = datalink::interfaces()
-        .into_iter()
-        .find(|net| !net.ips.is_empty() && !net.ips.iter().any(|ip| ip.ip().is_loopback()))
-        .expect("could not find a single networking interface that isn't localhost");
+        let mut net = Network::<TestReactor>::new();
+        let (_peer1, _) = net
+            .add_node_with_config(Config::default_local_net_first_node(port), &mut rng)
+            .await
+            .unwrap();
 
-    let local_addr = iface
-        .ips
-        .into_iter()
-        .next()
-        .expect("found a interface with no ips")
-        .ip();
-    let port = testing::unused_port_on_localhost();
+        let mr = &mut net;
+        let mut healthy_peers = HashSet::new();
 
-    let local_net_config = Config::new((local_addr, port).into());
+        for _ in 1..healthy {
+           let (healthy_peer, _) = mr 
+                .add_node_with_config(Config::default_local_net(port), &mut rng)
+                .await
+                .unwrap();
+            healthy_peers.insert(healthy_peer);
+        }
 
-    let mut net = Network::<TestReactor>::new();
-    let (peer1, _) = net
-        .add_node_with_config(local_net_config, &mut rng)
-        .await
-        .unwrap();
+        let mut bad_nodes = HashSet::new();
 
-    let port = testing::unused_port_on_localhost();
-    let local_net_config = Config::new((local_addr, port).into());
-    let (_peer2, runner2) = net
-        .add_node_with_config(local_net_config, &mut rng)
-        .await
-        .unwrap();
+        for b in 0..bad {
+            let (bad_peer, runner3) = mr
+                .add_node_with_config(Config::default_local_net(port), &mut rng)
+                .await
+                .unwrap();
+            let badguy = &mut runner3.reactor_mut().inner_mut().net;
+            badguy.public_address = SocketAddr::from(([254, 1, 1, b as u8], 0)); // cause the gossipped address to be wrong
+            bad_nodes.insert(bad_peer);
+        }
 
-    let badguy = &mut runner2.reactor_mut().inner_mut().net;
-    badguy.public_address = SocketAddr::from(([254, 1, 1, 1], 0)); // cause the gossipped address to be wrong
+        // The network should be fully connected but with only the two good nodes
+        net.settle_on(&mut rng, move |nodes| {
+            network_is_complete(&bad_nodes, nodes)
+        }, Duration::from_secs(4 * (healthy + bad) )).await;
 
-    let innocent_node = &net.nodes().get(&peer1).unwrap().reactor().inner().net;
-
-    // The network should be fully connected but with only one node
-    let timeout = innocent_node.gossip_interval * 3 + Duration::from_secs(5);
-    net.settle_on(&mut rng, network_is_complete, timeout).await;
-
-    net.finalize().await;
+        net.finalize().await;
+    }
 }
 
 /// Sanity check that we can bind to a real network.
@@ -364,7 +383,8 @@ async fn bind_to_real_network_interface() {
 
     // The network should be fully connected.
     let timeout = Duration::from_secs(2);
-    net.settle_on(&mut rng, network_is_complete, timeout).await;
+    let blacklist = HashSet::new();
+    net.settle_on(&mut rng, |nodes| network_is_complete(&blacklist, nodes), timeout).await;
 
     net.finalize().await;
 }
@@ -385,7 +405,7 @@ async fn check_varying_size_network_connects() {
         // Pick a random port in the higher ranges that is likely to be unused.
         let first_node_port = testing::unused_port_on_localhost();
 
-        net.add_node_with_config(
+        let (_first, _) = net.add_node_with_config(
             Config::default_local_net_first_node(first_node_port),
             &mut rng,
         )
@@ -399,11 +419,13 @@ async fn check_varying_size_network_connects() {
         }
 
         // The network should be fully connected.
-        net.settle_on(&mut rng, network_is_complete, timeout).await;
+        let blacklist = HashSet::new();
+        net.settle_on(&mut rng, |nodes| network_is_complete(&blacklist, nodes), timeout).await;
 
+        let blacklist = HashSet::new();
         // This should not make a difference at all, but we're paranoid, so check again.
         assert!(
-            network_is_complete(net.nodes()),
+            network_is_complete(&blacklist, net.nodes()),
             "network did not stay connected after being settled"
         );
 

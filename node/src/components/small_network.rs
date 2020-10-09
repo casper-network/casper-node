@@ -88,9 +88,10 @@ use crate::{
     fatal,
     reactor::{EventQueueHandle, Finalize, QueueKind},
     tls::{self, KeyFingerprint, TlsCert},
-    types::{CryptoRngCore, TimeDiff, Timestamp},
+    types::CryptoRngCore,
     utils,
 };
+
 pub use config::Config;
 pub use error::Error;
 
@@ -99,18 +100,20 @@ pub use error::Error;
 /// The key fingerprint found on TLS certificates.
 pub(crate) type NodeId = KeyFingerprint;
 
+const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 3;
+
 #[derive(DataSize, Debug)]
 pub(crate) struct OutgoingConnection<P> {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
     sender: UnboundedSender<Message<P>>,
     peer_address: SocketAddr,
-    established: Timestamp,
+    seen_asymmetrically: u16,
 }
 
 #[derive(DataSize, Debug)]
 pub(crate) struct IncomingConnection {
     peer_address: SocketAddr,
-    established: Timestamp,
+    seen_asymmetrically: u16,
 }
 
 #[derive(DataSize)]
@@ -133,6 +136,9 @@ where
     incoming: HashMap<NodeId, IncomingConnection>,
     /// Outgoing network connections' messages.
     outgoing: HashMap<NodeId, OutgoingConnection<P>>,
+
+    /// Blacklist
+    blacklist: HashSet<SocketAddr>,
 
     /// Pending outgoing connections: ones for which we are currently trying to make a connection.
     pending: HashSet<SocketAddr>,
@@ -228,6 +234,7 @@ where
             incoming: HashMap::new(),
             outgoing: HashMap::new(),
             pending: HashSet::new(),
+            blacklist: HashSet::new(),
             gossip_interval: cfg.gossip_interval,
             next_gossip_address_index: 0,
             shutdown_sender: Some(server_shutdown_sender),
@@ -379,7 +386,7 @@ where
                     peer_id,
                     IncomingConnection {
                         peer_address,
-                        established: Timestamp::now(),
+                        seen_asymmetrically: 0,
                     },
                 );
 
@@ -447,7 +454,7 @@ where
         let connection = OutgoingConnection {
             peer_address,
             sender,
-            established: Timestamp::now(),
+            seen_asymmetrically: 0,
         };
         if self.outgoing.insert(peer_id, connection).is_some() {
             // We assume that for a reconnect to have happened, the outgoing entry must have
@@ -498,7 +505,9 @@ where
     }
 
     fn remove(&mut self, peer_id: &NodeId) {
-        let _ = self.incoming.remove(&peer_id);
+        if let Some(incoming) = self.incoming.remove(&peer_id) {
+           let _ = self.pending.remove(&incoming.peer_address);
+        }
         let _ = self.outgoing.remove(&peer_id);
     }
 
@@ -517,21 +526,42 @@ where
         effects
     }
 
-    fn check_for_connection_parity(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-    ) -> Effects<Event<P>> {
-        let (partial_incoming, partial_outgoing) = self.partly_connected_nodes(Timestamp::now());
-
-        // TODO: more than just this, because while this does remove any connection that does not
-        // have it's match it still does not update the higher-level Network container that
-        // a node's connections are bogus...
-        self.incoming.retain(|k, _| !partial_incoming.contains(k));
-        self.outgoing.retain(|k, _| !partial_outgoing.contains(k));
-
-        effect_builder
-            .set_timeout(self.gossip_interval * 2 + Duration::from_secs(1))
-            .event(|_| Event::ConnectionParityCheck)
+    /// Marks connections as asymmetric (only incoming or only outgoing) and removes them if they pass the upper limit for this.
+    /// Connections that are symmetrical are reset to 0.
+    fn enforce_symmetric_connections(&mut self) {
+        if self.outgoing.is_empty() && self.incoming.is_empty() {
+            return
+        }
+        let mut remove = Vec::new();
+        for (node_id, conn) in self.incoming.iter_mut() {
+            if !self.outgoing.contains_key(node_id) {
+                if conn.seen_asymmetrically >= MAX_ASYMMETRIC_CONNECTION_SEEN {
+                    println!("removing incoming");
+                    remove.push((*node_id, conn.peer_address));
+                } else {
+                    conn.seen_asymmetrically += 1;
+                }
+            } else {
+                conn.seen_asymmetrically = 0;
+            }
+        }
+        for (node_id, conn) in self.outgoing.iter_mut() {
+            if !self.incoming.contains_key(node_id) {
+                if conn.seen_asymmetrically >= MAX_ASYMMETRIC_CONNECTION_SEEN {
+                    println!("removing outgoing");
+                    remove.push((*node_id, conn.peer_address));
+                } else {
+                    conn.seen_asymmetrically += 1;
+                }
+            } else {
+                conn.seen_asymmetrically = 0;
+            }
+        }
+        for (node_id, peer_address) in remove {
+            // TODO: save in state - peers that have misbehaved
+            self.blacklist.insert(peer_address);
+            self.remove(&node_id);
+        }
     }
 
     /// Handles a received message.
@@ -551,12 +581,13 @@ where
 
     fn connect_to_peer_if_required(&mut self, peer_address: SocketAddr) -> Effects<Event<P>> {
         if self.pending.contains(&peer_address)
+            || self.blacklist.contains(&peer_address)
             || self
                 .outgoing
                 .iter()
                 .any(|(_peer_id, connection)| connection.peer_address == peer_address)
         {
-            // We're already trying to connect or are connected - do nothing.
+            // We're already trying to connect, are connected, or the connection is on the blacklist - do nothing.
             Effects::new()
         } else {
             // We need to connect.
@@ -598,48 +629,24 @@ where
     /// Returns the set of connected nodes.
     #[cfg(test)]
     pub(crate) fn outgoing_connected_nodes(&self) -> HashSet<NodeId> {
-        self.outgoing.keys().cloned().collect()
+        self.outgoing.iter().filter_map(|(n, o)| {
+            if !self.blacklist.contains(&o.peer_address) {
+                Some(*n)
+            } else {
+                None
+            }
+        }).collect()
     }
 
     #[cfg(test)]
     pub(crate) fn incoming_connected_nodes(&self) -> HashSet<NodeId> {
-        self.incoming.keys().cloned().collect()
-    }
-
-    /// Returns the set of partially connected nodes, (Incoming, Outgoing)
-    pub(crate) fn partly_connected_nodes(
-        &self,
-        current_instant: Timestamp,
-    ) -> (HashSet<NodeId>, HashSet<NodeId>) {
-        let ttl = TimeDiff::from(self.gossip_interval.as_millis() as u64 * 2 + 1000);
-        let incoming = self
-            .incoming
-            .iter()
-            .filter_map(|(k, v)| {
-                if v.established + ttl < current_instant {
-                    Some(k)
-                } else {
-                    None
-                }
-            })
-            .cloned()
-            .collect::<HashSet<_>>();
-        let outgoing = self
-            .outgoing
-            .iter()
-            .filter_map(|(k, v)| {
-                if v.established + ttl < current_instant {
-                    Some(k)
-                } else {
-                    None
-                }
-            })
-            .cloned()
-            .collect::<HashSet<_>>();
-        (
-            incoming.difference(&outgoing).cloned().collect(),
-            outgoing.difference(&incoming).cloned().collect(),
-        )
+        self.incoming.iter().filter_map(|(n, o)| {
+            if !self.blacklist.contains(&o.peer_address) {
+                Some(n)
+            } else {
+                None
+            }
+        }).cloned().collect()
     }
 
     /// Returns the set of connected nodes.
@@ -712,7 +719,6 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::ConnectionParityCheck => self.check_for_connection_parity(effect_builder),
             Event::BootstrappingFailed {
                 peer_address,
                 error,
@@ -814,7 +820,11 @@ where
             Event::NetworkInfoRequest {
                 req: NetworkInfoRequest::GetPeers { responder },
             } => responder.respond(self.peers()).ignore(),
-            Event::GossipOurAddress => self.gossip_our_address(effect_builder),
+            Event::GossipOurAddress => {
+                let effects = self.gossip_our_address(effect_builder);
+                self.enforce_symmetric_connections();
+                effects
+            },
             Event::PeerAddressReceived(gossiped_address) => {
                 self.connect_to_peer_if_required(gossiped_address.into())
             }
