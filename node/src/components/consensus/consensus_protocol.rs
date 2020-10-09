@@ -55,9 +55,8 @@ pub(crate) struct FinalizedBlock<C: ConsensusValueT, VID> {
     pub(crate) timestamp: Timestamp,
     /// The relative height in this instance of the protocol.
     pub(crate) height: u64,
-    /// If this is a terminal block, i.e. the last one to be finalized, this includes reward and
-    /// equivocator information.
-    pub(crate) era_end: Option<EraEnd<VID>>,
+    /// If this is a terminal block, i.e. the last one to be finalized, this includes rewards.
+    pub(crate) rewards: Option<BTreeMap<VID, u64>>,
     /// Proposer of this value
     pub(crate) proposer: VID,
 }

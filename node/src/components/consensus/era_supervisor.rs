@@ -29,7 +29,7 @@ use casper_execution_engine::{
     core::engine_state::era_validators::GetEraValidatorsRequest, shared::motes::Motes,
 };
 use casper_types::{
-    auction::{ValidatorWeights, BLOCK_REWARD},
+    auction::{ValidatorWeights, AUCTION_DELAY, BLOCK_REWARD, DEFAULT_UNBONDING_DELAY},
     ProtocolVersion, U512,
 };
 
@@ -39,7 +39,7 @@ use crate::{
         consensus::{
             candidate_block::CandidateBlock,
             consensus_protocol::{
-                BlockContext, ConsensusProtocol, ConsensusProtocolResult,
+                BlockContext, ConsensusProtocol, ConsensusProtocolResult, EraEnd,
                 FinalizedBlock as CpFinalizedBlock,
             },
             highway_core::{highway::Params, validators::Validators},
@@ -59,8 +59,7 @@ use crate::{
 
 /// The unbonding period, in number of eras. After this many eras, a former validator is allowed to
 /// withdraw their stake, so their signature can't be trusted anymore.
-// TODO: This needs to be in sync with AUCTION_DELAY/booking_duration_millis. (Already duplicated!)
-const BONDED_ERAS: u64 = 4;
+const BONDED_ERAS: u64 = DEFAULT_UNBONDING_DELAY - AUCTION_DELAY;
 
 #[derive(
     DataSize, Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
@@ -691,9 +690,13 @@ where
                 value,
                 timestamp,
                 height,
-                era_end,
+                rewards,
                 proposer,
             }) => {
+                let era_end = rewards.map(|rewards| EraEnd {
+                    equivocators: value.accusations().clone(),
+                    rewards,
+                });
                 let finalized_block = FinalizedBlock::new(
                     value.proto_block().clone(),
                     timestamp,
