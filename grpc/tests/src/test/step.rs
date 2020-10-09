@@ -9,7 +9,7 @@ use casper_execution_engine::{
 use casper_types::{
     account::AccountHash,
     auction::{
-        BidPurses, Bids, SeigniorageRecipientsSnapshot, BIDS_KEY, BID_PURSES_KEY,
+        BidPurses, Bids, SeigniorageRecipientsSnapshot, BIDS_KEY, BID_PURSES_KEY, BLOCK_REWARD,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, VALIDATOR_REWARD_PURSE,
     },
     ContractHash, Key, ProtocolVersion, PublicKey,
@@ -17,13 +17,13 @@ use casper_types::{
 
 const ACCOUNT_1_PK: PublicKey = PublicKey::Ed25519([200; 32]);
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([200; 32]);
-const ACCOUNT_1_BALANCE: u64 = 10_000_000;
-const ACCOUNT_1_BOND: u64 = 100_000;
+const ACCOUNT_1_BALANCE: u64 = 10_000_000_000_000;
+const ACCOUNT_1_BOND: u64 = 100_000_000;
 
 const ACCOUNT_2_PK: PublicKey = PublicKey::Ed25519([202; 32]);
 const ACCOUNT_2_ADDR: AccountHash = AccountHash::new([202; 32]);
-const ACCOUNT_2_BALANCE: u64 = 25_000_000;
-const ACCOUNT_2_BOND: u64 = 200_000;
+const ACCOUNT_2_BALANCE: u64 = 25_000_000_000_000;
+const ACCOUNT_2_BOND: u64 = 200_000_000;
 
 fn get_named_key(
     builder: &mut InMemoryWasmTestBuilder,
@@ -74,8 +74,8 @@ fn should_step() {
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
         .with_slash_item(SlashItem::new(ACCOUNT_1_PK))
-        .with_reward_item(RewardItem::new(ACCOUNT_1_PK, 100000))
-        .with_reward_item(RewardItem::new(ACCOUNT_2_PK, 100000))
+        .with_reward_item(RewardItem::new(ACCOUNT_1_PK, BLOCK_REWARD / 2))
+        .with_reward_item(RewardItem::new(ACCOUNT_2_PK, BLOCK_REWARD / 2))
         .build();
 
     let auction_hash = builder.get_auction_contract_hash();
