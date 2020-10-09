@@ -3,6 +3,7 @@ mod rewards;
 
 use std::iter;
 
+use prometheus::{IntCounter, Registry};
 use tracing::trace;
 
 use crate::{
@@ -156,6 +157,39 @@ impl<C: Context> FinalityDetector<C> {
         self.last_finalized.as_ref().map_or(0, height_plus_1)
     }
 }
+
+/// Metrics to track rate of finalization
+#[derive(Debug)]
+pub struct FinalityDetectorMetrics {
+    /// Intital counter to track every new finalized block.
+    pub(crate) finalization: IntCounter,
+    /// registry component. 
+    pub(crate) registry: Registry,
+}
+
+impl FinalityDetectorMetrics {
+    pub fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        let finalization = IntCounter::new(
+            "finalization counter",
+            "counter to increment everytime a new block is finalized",
+        )?;
+        registry.register(Box::new(finalization.clone()))?;
+        Ok(FinalityDetectorMetrics{
+            finalization,
+            registry: registry.clone()
+        })
+    }
+}
+
+impl Drop for FinalityDetectorMetrics {
+    fn drop(&mut self) {
+        self.registry
+            .unregister(Box::new(self.finalization.clone()))
+            .expect("did not expect deregistering of finalization to fail");
+    }
+}
+
+
 
 #[allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
 #[cfg(test)]
