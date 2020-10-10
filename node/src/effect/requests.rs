@@ -202,10 +202,15 @@ pub enum StorageRequest<S: StorageType + 'static> {
         /// storage.
         responder: Responder<Option<S::Block>>,
     },
-    /// Retrieve linear chain block with given height.
+    /// Retrieve block with given height.
     GetBlockAtHeight {
         /// Height of the block.
-        height: <S::BlockHeight as Value>::Id,
+        height: u64,
+        /// Responder.
+        responder: Responder<Option<S::Block>>,
+    },
+    /// Retrieve highest block.
+    GetHighestBlock {
         /// Responder.
         responder: Responder<Option<S::Block>>,
     },
@@ -277,6 +282,10 @@ impl<S: StorageType> Display for StorageRequest<S> {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
             StorageRequest::GetBlock { block_hash, .. } => write!(formatter, "get {}", block_hash),
+            StorageRequest::GetBlockAtHeight { height, .. } => {
+                write!(formatter, "get block at height {}", height)
+            }
+            StorageRequest::GetHighestBlock { .. } => write!(formatter, "get highest block"),
             StorageRequest::GetBlockHeader { block_hash, .. } => {
                 write!(formatter, "get {}", block_hash)
             }
@@ -302,9 +311,6 @@ impl<S: StorageType> Display for StorageRequest<S> {
             ),
             StorageRequest::GetChainspec { version, .. } => {
                 write!(formatter, "get chainspec {}", version)
-            }
-            StorageRequest::GetBlockAtHeight { height, .. } => {
-                write!(formatter, "get block at height {}", height)
             }
         }
     }
@@ -629,8 +635,6 @@ type BlockHeight = u64;
 pub enum LinearChainRequest<I> {
     /// Request whole block from the linear chain, by hash.
     BlockRequest(BlockHash, I),
-    /// Get last finalized block.
-    LastFinalizedBlock(Responder<Option<LinearBlock>>),
     /// Request for a linear chain block at height.
     BlockAtHeight(BlockHeight, I),
 }
@@ -641,7 +645,6 @@ impl<I: Display> Display for LinearChainRequest<I> {
             LinearChainRequest::BlockRequest(bh, peer) => {
                 write!(f, "block request for hash {} from {}", bh, peer)
             }
-            LinearChainRequest::LastFinalizedBlock(_) => write!(f, "last finalized block request"),
             LinearChainRequest::BlockAtHeight(height, sender) => {
                 write!(f, "block request for {} from {}", height, sender)
             }
