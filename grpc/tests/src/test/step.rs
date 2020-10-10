@@ -17,12 +17,12 @@ use casper_types::{
 
 const ACCOUNT_1_PK: PublicKey = PublicKey::Ed25519([200; 32]);
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([200; 32]);
-const ACCOUNT_1_BALANCE: u64 = 10_000_000_000_000;
+const ACCOUNT_1_BALANCE: u64 = 100_000_000;
 const ACCOUNT_1_BOND: u64 = 100_000_000;
 
 const ACCOUNT_2_PK: PublicKey = PublicKey::Ed25519([202; 32]);
 const ACCOUNT_2_ADDR: AccountHash = AccountHash::new([202; 32]);
-const ACCOUNT_2_BALANCE: u64 = 25_000_000_000_000;
+const ACCOUNT_2_BALANCE: u64 = 200_000_000;
 const ACCOUNT_2_BOND: u64 = 200_000_000;
 
 fn get_named_key(
