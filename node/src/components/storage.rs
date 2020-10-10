@@ -211,7 +211,9 @@ pub trait StorageType {
                 let block_result = block_store
                     .put(*block)
                     .unwrap_or_else(|error| panic!("failed to put {}: {}", block_hash, error));
-                if height_result != block_result {
+                // TODO: once blocks' signatures are handled as metadata, this condition can be
+                //       changed to just `height_result != block_result`.
+                if height_result != block_result && !block_result {
                     panic!(
                         "mismatch in put results. height_result: {}. block_result: {}",
                         height_result, block_result
