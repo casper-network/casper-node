@@ -29,7 +29,7 @@ Expectation for sizing a system running the casper-node is minimum of:
 
  - 4 processors
  - 4 GB RAM
- - 100 GB disk space
+ - 1 TB disk space
  
  Note: This may increase as throughput of the node is increased.
 
