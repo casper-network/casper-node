@@ -40,6 +40,7 @@ use std::{
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
+use lazy_static::lazy_static;
 use prometheus::{self, IntCounter, Registry};
 use quanta::IntoNanoseconds;
 use tracing::{debug, debug_span, info, trace, warn};
@@ -55,9 +56,23 @@ pub use queue_kind::QueueKind;
 use tokio::time::{Duration, Instant};
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
-/// var `CL_EVENT_MAX_USEC=<MICROSECONDS>`.
+/// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
 const DEFAULT_DISPATCH_EVENT_THRESHOLD: Duration = Duration::from_secs(1);
-const DISPATCH_EVENT_THRESHOLD_ENV_VAR: &str = "CL_EVENT_MAX_USEC";
+const DISPATCH_EVENT_THRESHOLD_ENV_VAR: &str = "CL_EVENT_MAX_MICROSECS";
+
+lazy_static! {
+    static ref DISPATCH_EVENT_THRESHOLD: Duration = env::var(DISPATCH_EVENT_THRESHOLD_ENV_VAR)
+        .map(|threshold_str| {
+            let threshold_microsecs = u64::from_str(&threshold_str).unwrap_or_else(|error| {
+                panic!(
+                    "can't parse env var {}={} as a u64: {}",
+                    DISPATCH_EVENT_THRESHOLD_ENV_VAR, threshold_str, error
+                )
+            });
+            Duration::from_micros(threshold_microsecs)
+        })
+        .unwrap_or_else(|_| DEFAULT_DISPATCH_EVENT_THRESHOLD);
+}
 
 /// Event scheduler
 ///
@@ -352,22 +367,7 @@ where
         let end = self.clock.end();
         let delta = self.clock.delta(start, end);
 
-        let threshold = env::var(DISPATCH_EVENT_THRESHOLD_ENV_VAR)
-            .ok()
-            .and_then(|threshold_str| match u64::from_str(&threshold_str) {
-                Ok(threshold) => Some(Duration::from_micros(threshold)),
-                Err(error) => {
-                    if self.event_count % 1000 == 0 {
-                        warn!(
-                            "can't parse env var {}={} as a u64: {}",
-                            DISPATCH_EVENT_THRESHOLD_ENV_VAR, threshold_str, error
-                        );
-                    }
-                    None
-                }
-            })
-            .unwrap_or_else(|| DEFAULT_DISPATCH_EVENT_THRESHOLD);
-        if delta > threshold {
+        if delta > *DISPATCH_EVENT_THRESHOLD {
             warn!(
                 ns = delta.into_nanos(),
                 event = %event_as_string,
