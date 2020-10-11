@@ -4,9 +4,6 @@ use crate::account::AccountHash;
 /// System account hash.
 pub const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
 
-/// Maximum number of era validator slots.
-pub const AUCTION_SLOTS: usize = 5;
-
 /// Number of eras before an auction actually defines the set of validators.
 pub const AUCTION_DELAY: u64 = 3;
 
@@ -26,6 +23,9 @@ pub const DELEGATION_RATE_DENOMINATOR: u64 = 1_000_000_000_000;
 /// We use one trillion as a block reward unit because it's large enough to allow precise
 /// fractions, and small enough for many block rewards to fit into a u64.
 pub const BLOCK_REWARD: u64 = 1_000_000_000_000;
+
+/// Total validator slots allowed.
+pub const VALIDATOR_SLOTS_KEY: &str = "validator_slots";
 
 /// Named constant for `amount`.
 pub const ARG_AMOUNT: &str = "amount";
@@ -57,6 +57,12 @@ pub const ARG_DELEGATOR_PUBLIC_KEY: &str = "delegator_public_key";
 pub const ARG_TARGET_PURSE: &str = "target_purse";
 /// Named constant for `unbond_purse`.
 pub const ARG_UNBOND_PURSE: &str = "unbond_purse";
+/// Named constant for `validator_slots` argument.
+pub const ARG_VALIDATOR_SLOTS: &str = VALIDATOR_SLOTS_KEY;
+/// Named constant for `mint_contract_package_hash`
+pub const ARG_MINT_CONTRACT_PACKAGE_HASH: &str = "mint_contract_package_hash";
+/// Named constant for `genesis_validators`
+pub const ARG_GENESIS_VALIDATORS: &str = "genesis_validators";
 
 /// Named constant for method `get_era_validators`.
 pub const METHOD_GET_ERA_VALIDATORS: &str = "get_era_validators";
