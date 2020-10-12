@@ -327,7 +327,7 @@ where
             highway.activate_validator(our_id, secret, timestamp.max(start_time))
         } else {
             info!(%era_id, "not voting in era");
-            if start_time >= self.node_start_time {
+            if self.node_start_time >= start_time {
                 info!(
                     "node was started at time {}, which is not earlier than the era start {}",
                     self.node_start_time, start_time
