@@ -90,8 +90,13 @@ impl BlockExecutor {
         }
     }
 
-    pub(crate) fn with_parent_map(mut self, linear_chain: Vec<Block>) -> Self {
-        let parent_map = linear_chain
+    /// Adds the "parent map" to the instance of `BlockExecutor`.
+    ///
+    /// When transitioning from `joiner` to `validator` states we need
+    /// to carry over the last finalized block so that the next blocks in the linear chain
+    /// have the state to build on.
+    pub(crate) fn with_parent_map(mut self, lfb: Option<Block>) -> Self {
+        let parent_map = lfb
             .into_iter()
             .map(|block| {
                 (
@@ -227,9 +232,8 @@ impl BlockExecutor {
             self.execute_next_deploy_or_create_block(effect_builder, state)
         } else {
             let height = finalized_block.height();
-            println!("No pre-state hash for height {}", height);
+            debug!("No pre-state hash for height {}", height);
             // The parent block has not been executed yet; delay handling.
-            let height = finalized_block.height();
             self.exec_queue.insert(height, (finalized_block, deploys));
             Effects::new()
         }

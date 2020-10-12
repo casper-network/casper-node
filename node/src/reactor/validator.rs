@@ -352,8 +352,8 @@ impl reactor::Reactor for Reactor {
         let genesis_post_state_hash = chainspec_loader
             .genesis_post_state_hash()
             .expect("should have post state hash");
-        let block_executor =
-            BlockExecutor::new(genesis_post_state_hash).with_parent_map(linear_chain);
+        let block_executor = BlockExecutor::new(genesis_post_state_hash)
+            .with_parent_map(linear_chain.last().cloned());
         let proto_block_validator = BlockValidator::new();
         let linear_chain = LinearChain::new();
 
