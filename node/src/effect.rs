@@ -114,8 +114,8 @@ use announcements::{
 };
 use requests::{
     BlockExecutorRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-    ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, LinearChainRequest,
-    MetricsRequest, NetworkInfoRequest, NetworkRequest, StorageRequest,
+    ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MetricsRequest,
+    NetworkInfoRequest, NetworkRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -383,17 +383,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Retrieve the last finalized block.
-    ///
-    /// If an error occurred, `None` is returned.
-    pub(crate) async fn get_last_finalized_block<I>(self) -> Option<Block>
-    where
-        REv: From<LinearChainRequest<I>>,
-    {
-        self.make_request(LinearChainRequest::LastFinalizedBlock, QueueKind::Api)
-            .await
-    }
-
     /// Sends a network message.
     ///
     /// The message is queued in "fire-and-forget" fashion, there is no guarantee that the peer
@@ -620,17 +609,27 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests linear chain block at height.
-    pub(crate) async fn get_block_at_height<S>(
-        self,
-        height: <S::BlockHeight as Value>::Id,
-    ) -> Option<S::Block>
+    /// Requests block at height.
+    pub(crate) async fn get_block_at_height<S>(self, height: u64) -> Option<S::Block>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
     {
         self.make_request(
             |responder| StorageRequest::GetBlockAtHeight { height, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests the highest block.
+    pub(crate) async fn get_highest_block<S>(self) -> Option<S::Block>
+    where
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetHighestBlock { responder },
             QueueKind::Regular,
         )
         .await

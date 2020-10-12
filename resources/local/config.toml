@@ -115,6 +115,13 @@ path = '../node-storage'
 # The size should be a multiple of the OS page size.
 #max_deploy_store_size = 322122547200
 
+# Optional maximum size of the database to use for the block height store.
+#
+# If unset, defaults to 10,485,100 == 10 MiB.
+#
+# The size should be a multiple of the OS page size.
+#max_block_height_store_size = 10485100
+
 # Optional maximum size of the database to use for the chainspec store.
 #
 # If unset, defaults to 1,073,741,824 == 1 GiB.

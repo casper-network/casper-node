@@ -188,7 +188,7 @@ where
                 maybe_hash: None,
                 responder,
             }) => effect_builder
-                .get_last_finalized_block()
+                .get_highest_block()
                 .event(move |result| Event::GetBlockResult {
                     maybe_hash: None,
                     result: Box::new(result),
@@ -219,12 +219,12 @@ where
                     main_responder: responder,
                 }),
             Event::ApiRequest(ApiRequest::GetStatus { responder }) => async move {
-                let (last_finalized_block, peers, chainspec_info) = join!(
-                    effect_builder.get_last_finalized_block(),
+                let (last_added_block, peers, chainspec_info) = join!(
+                    effect_builder.get_highest_block(),
                     effect_builder.network_peers(),
                     effect_builder.get_chainspec_info()
                 );
-                let status_feed = StatusFeed::new(last_finalized_block, peers, chainspec_info);
+                let status_feed = StatusFeed::new(last_added_block, peers, chainspec_info);
                 info!("GetStatus --status_feed: {:?}", status_feed);
                 responder.respond(status_feed).await;
             }
