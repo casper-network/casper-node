@@ -74,6 +74,7 @@ use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use semver::Version;
 use smallvec::{smallvec, SmallVec};
+use tokio::join;
 use tracing::error;
 
 use casper_execution_engine::{
@@ -1107,6 +1108,27 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
+    }
+
+    /// Gets the set of validators, the booking block and the key block for a new era
+    pub(crate) async fn create_new_era<S>(
+        self,
+        request: GetEraValidatorsRequest,
+        booking_block_height: <S::BlockHeight as Value>::Id,
+        key_block_height: <S::BlockHeight as Value>::Id,
+    ) -> (
+        Result<Option<ValidatorWeights>, GetEraValidatorsError>,
+        Option<S::Block>,
+        Option<S::Block>,
+    )
+    where
+        REv: From<ContractRuntimeRequest> + From<StorageRequest<S>>,
+        S: StorageType + 'static,
+    {
+        let future_validators = self.get_validators(request);
+        let future_booking_block = self.get_block_at_height(booking_block_height);
+        let future_key_block = self.get_block_at_height(key_block_height);
+        join!(future_validators, future_booking_block, future_key_block)
     }
 
     /// Request consensus to sign a block from the linear chain and possibly start a new era.

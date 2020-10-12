@@ -22,7 +22,6 @@ use fmt::Display;
 use num_traits::AsPrimitive;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use tokio::join;
 use tracing::{error, info, trace, warn};
 
 use casper_execution_engine::{
@@ -481,29 +480,25 @@ where
                 new_era_id.0,
                 ProtocolVersion::V1_0_0,
             );
-            let effect_builder = self.effect_builder;
             let key_block_height = self
                 .era_supervisor
                 .key_block_height(new_era_id, block_header.height() + 1);
             let booking_block_height = self.era_supervisor.booking_block_height(new_era_id);
-            let effect = async move {
-                let future_validators = effect_builder.get_validators(request);
-                let future_booking_block = effect_builder.get_block_at_height(booking_block_height);
-                let future_key_block = effect_builder.get_block_at_height(key_block_height);
-                join!(future_validators, future_booking_block, future_key_block)
-            }
-            .event(
-                move |(validators, booking_block, key_block)| Event::CreateNewEra {
-                    block_header: Box::new(block_header),
-                    booking_block_hash: booking_block
-                        .map_or_else(|| Err(booking_block_height), |block| Ok(*block.hash())),
-                    key_block_seed: key_block.map_or_else(
-                        || Err(key_block_height),
-                        |block| Ok(block.header().accumulated_seed()),
-                    ),
-                    get_validators_result: validators,
-                },
-            );
+            let effect = self
+                .effect_builder
+                .create_new_era(request, booking_block_height, key_block_height)
+                .event(
+                    move |(validators, booking_block, key_block)| Event::CreateNewEra {
+                        block_header: Box::new(block_header),
+                        booking_block_hash: booking_block
+                            .map_or_else(|| Err(booking_block_height), |block| Ok(*block.hash())),
+                        key_block_seed: key_block.map_or_else(
+                            || Err(key_block_height),
+                            |block| Ok(block.header().accumulated_seed()),
+                        ),
+                        get_validators_result: validators,
+                    },
+                );
             effects.extend(effect);
         } else {
             // if it's not a switch block, we can already declare it handled
