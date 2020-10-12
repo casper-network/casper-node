@@ -32,20 +32,20 @@ pub enum Event<I> {
     /// New linear chain block has been produced.
     LinearChainBlock {
         /// The block.
-        block: Block,
+        block: Box<Block>,
         /// The deploys' execution results.
         execution_results: HashMap<DeployHash, ExecutionResult>,
     },
     /// A continuation for `GetBlock` scenario.
-    GetBlockResult(BlockHash, Option<Block>, I),
+    GetBlockResult(BlockHash, Option<Box<Block>>, I),
     /// A continuation for `BlockAtHeight` scenario.
-    GetBlockByHeightResult(u64, Option<Block>, I),
+    GetBlockByHeightResult(u64, Option<Box<Block>>, I),
     /// New finality signature.
     NewFinalitySignature(BlockHash, Signature),
     /// The result of putting a block to storage.
     PutBlockResult {
         /// The block.
-        block: Block,
+        block: Box<Block>,
         /// The deploys' execution results.
         execution_results: HashMap<DeployHash, ExecutionResult>,
     },
@@ -124,7 +124,7 @@ where
         match event {
             Event::Request(LinearChainRequest::BlockRequest(block_hash, sender)) => effect_builder
                 .get_block_from_storage(block_hash)
-                .event(move |maybe_block| Event::GetBlockResult(block_hash, maybe_block, sender)),
+                .event(move |maybe_block| Event::GetBlockResult(block_hash, maybe_block.map(Box::new), sender)),
             Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) => {
                 // Treat `linear_chain` as a cache of least-recently asked for blocks.
                 // match self.linear_chain.get(height as usize).cloned() {
@@ -134,7 +134,7 @@ where
                 //     None =>
                 effect_builder
                     .get_block_at_height(height)
-                    .event(move |maybe_block| Event::GetBlockByHeightResult(height, maybe_block, sender))
+                    .event(move |maybe_block| Event::GetBlockByHeightResult(height, maybe_block.map(Box::new), sender))
             }
             Event::GetBlockByHeightResult(block_height, maybe_block, sender) => {
                 let block_at_height = match maybe_block {
@@ -142,7 +142,7 @@ where
                         debug!("failed to get {} for {}", block_height, sender);
                         BlockByHeight::Absent(block_height)
                     },
-                    Some(block) => BlockByHeight::new(block),
+                    Some(block) => BlockByHeight::new(*block),
                 };
                 match Message::new_get_response(&block_at_height) {
                     Ok(message) => effect_builder.send_message(sender, message).ignore(),
@@ -158,7 +158,7 @@ where
                         debug!("failed to get {} for {}", block_hash, sender);
                         Effects::new()
                     },
-                    Some(block) => match Message::new_get_response(&block) {
+                    Some(block) => match Message::new_get_response(&*block) {
                         Ok(message) => effect_builder.send_message(sender, message).ignore(),
                         Err(error) => {
                             error!("failed to create get-response {}", error);
@@ -169,12 +169,12 @@ where
             }
             Event::LinearChainBlock{ block, execution_results } => {
                 effect_builder
-                .put_block_to_storage(Box::new(block.clone()))
+                .put_block_to_storage(block.clone())
                 .event(move |_| Event::PutBlockResult{ block, execution_results })
             },
             Event::PutBlockResult { block, execution_results } => {
                 // TODO: Remove once we can return all linear chain blocks from persistent storage.
-                self.linear_chain.push(block.clone());
+                self.linear_chain.push(*block.clone());
 
                 let block_header = block.take_header();
                 let block_hash = block_header.hash();

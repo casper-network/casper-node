@@ -7,6 +7,10 @@ use std::{
     hash::Hash,
 };
 
+use blake2::{
+    digest::{Input, VariableOutput},
+    VarBlake2b,
+};
 use datasize::DataSize;
 use hex::FromHexError;
 use hex_fmt::{HexFmt, HexList};
@@ -387,6 +391,7 @@ pub struct BlockHeader {
     body_hash: Digest,
     deploy_hashes: Vec<DeployHash>,
     random_bit: bool,
+    accumulated_seed: Digest,
     era_end: Option<EraEnd>,
     timestamp: Timestamp,
     era_id: EraId,
@@ -418,6 +423,11 @@ impl BlockHeader {
     /// A random bit needed for initializing a future era.
     pub fn random_bit(&self) -> bool {
         self.random_bit
+    }
+
+    /// A seed needed for initializing a future era.
+    pub fn accumulated_seed(&self) -> Digest {
+        self.accumulated_seed
     }
 
     /// The timestamp from when the proto block was proposed.
@@ -474,12 +484,13 @@ impl Display for BlockHeader {
         write!(
             formatter,
             "block header parent hash {}, post-state hash {}, body hash {}, deploys [{}], \
-            random bit {}, timestamp {}",
+            random bit {}, accumulated seed {}, timestamp {}",
             self.parent_hash.inner(),
             self.global_state_hash,
             self.body_hash,
             DisplayIter::new(self.deploy_hashes.iter()),
             self.random_bit,
+            self.accumulated_seed,
             self.timestamp,
         )?;
         if let Some(ee) = &self.era_end {
@@ -502,6 +513,7 @@ pub struct Block {
 impl Block {
     pub(crate) fn new(
         parent_hash: BlockHash,
+        parent_seed: Digest,
         global_state_hash: Digest,
         finalized_block: FinalizedBlock,
     ) -> Self {
@@ -513,12 +525,22 @@ impl Block {
         let era_id = finalized_block.era_id();
         let height = finalized_block.height();
 
+        let mut accumulated_seed = [0; Digest::LENGTH];
+
+        let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
+        hasher.input(parent_seed);
+        hasher.input([finalized_block.proto_block.random_bit as u8]);
+        hasher.variable_result(|slice| {
+            accumulated_seed.copy_from_slice(slice);
+        });
+
         let header = BlockHeader {
             parent_hash,
             global_state_hash,
             body_hash,
             deploy_hashes: finalized_block.proto_block.deploys,
             random_bit: finalized_block.proto_block.random_bit,
+            accumulated_seed: accumulated_seed.into(),
             era_end: finalized_block.era_end,
             timestamp: finalized_block.timestamp,
             era_id,
@@ -577,8 +599,9 @@ impl Block {
         let parent_hash = BlockHash::new(Digest::random(rng));
         let global_state_hash = Digest::random(rng);
         let finalized_block = FinalizedBlock::random(rng);
+        let parent_seed = Digest::random(rng);
 
-        let mut block = Block::new(parent_hash, global_state_hash, finalized_block);
+        let mut block = Block::new(parent_hash, parent_seed, global_state_hash, finalized_block);
 
         let signatures_count = rng.gen_range(0, 11);
         for _ in 0..signatures_count {

@@ -53,7 +53,7 @@ use crate::{
         hash,
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
-    types::{BlockHeader, CryptoRngCore, FinalizedBlock, ProtoBlock, Timestamp},
+    types::{BlockHash, BlockHeader, CryptoRngCore, FinalizedBlock, ProtoBlock, Timestamp},
     utils::WithDir,
 };
 
@@ -197,6 +197,7 @@ where
             EraId(0),
             timestamp,
             validator_stakes,
+            0, // hardcoded seed for era 0
             chainspec.genesis.highway_config.genesis_era_start_timestamp,
             0,
             genesis_post_state_hash,
@@ -255,12 +256,45 @@ where
         result.into()
     }
 
+    fn booking_block_height(&self, era_id: EraId) -> u64 {
+        // The booking block for era N is the last block of era N - AUCTION_DELAY - 1
+        // To find it, we get the start height of era N - AUCTION_DELAY and subtract 1
+        let after_booking_era_id = EraId(era_id.0.saturating_sub(AUCTION_DELAY));
+        self.active_eras
+            .get(&after_booking_era_id)
+            .expect("should have era after booking block")
+            .start_height
+            .saturating_sub(1)
+    }
+
+    fn key_block_height(&self, _era_id: EraId, start_height: u64) -> u64 {
+        // the switch block of the previous era
+        // TODO: consider defining the key block as a block further in the past
+        start_height.saturating_sub(1)
+    }
+
+    fn era_seed(booking_block_hash: BlockHash, key_block_seed: hash::Digest) -> u64 {
+        let mut result = [0; hash::Digest::LENGTH];
+        let mut hasher = VarBlake2b::new(hash::Digest::LENGTH).expect("should create hasher");
+
+        hasher.input(booking_block_hash);
+        hasher.input(key_block_seed);
+
+        hasher.variable_result(|slice| {
+            result.copy_from_slice(slice);
+        });
+
+        u64::from_le_bytes(result[0..std::mem::size_of::<u64>()].try_into().unwrap())
+    }
+
     /// Starts a new era; panics if it already exists.
+    #[allow(clippy::too_many_arguments)] // FIXME
     fn new_era(
         &mut self,
         era_id: EraId,
         timestamp: Timestamp,
         validator_stakes: Vec<(PublicKey, Motes)>,
+        seed: u64,
         start_time: Timestamp,
         start_height: u64,
         post_state_hash: hash::Digest,
@@ -297,7 +331,7 @@ where
             / 100;
         // TODO: The initial round length should be the observed median of the switch block.
         let params = Params::new(
-            0, // TODO: get a proper seed.
+            seed,
             BLOCK_REWARD,
             BLOCK_REWARD / 5, // TODO: Make reduced block reward configurable?
             self.highway_config().minimum_round_exponent,
@@ -498,17 +532,32 @@ where
         if block_header.switch_block() {
             // if the block is a switch block, we have to get the validators for the new era and
             // create it, before we can say we handled the block
+            let new_era_id = block_header.era_id().successor();
             let request = GetEraValidatorsRequest::new(
                 (*block_header.global_state_hash()).into(),
-                block_header.era_id().successor().0,
+                new_era_id.0,
                 ProtocolVersion::V1_0_0,
             );
-            effects.extend(self.effect_builder.get_validators(request).event(|result| {
-                Event::GetValidatorsResponse {
-                    block_header: Box::new(block_header),
-                    get_validators_result: result,
-                }
-            }));
+            let key_block_height = self
+                .era_supervisor
+                .key_block_height(new_era_id, block_header.height() + 1);
+            let booking_block_height = self.era_supervisor.booking_block_height(new_era_id);
+            let effect = self
+                .effect_builder
+                .create_new_era(request, booking_block_height, key_block_height)
+                .event(
+                    move |(validators, booking_block, key_block)| Event::CreateNewEra {
+                        block_header: Box::new(block_header),
+                        booking_block_hash: booking_block
+                            .map_or_else(|| Err(booking_block_height), |block| Ok(*block.hash())),
+                        key_block_seed: key_block.map_or_else(
+                            || Err(key_block_height),
+                            |block| Ok(block.header().accumulated_seed()),
+                        ),
+                        get_validators_result: validators,
+                    },
+                );
+            effects.extend(effect);
         } else {
             // if it's not a switch block, we can already declare it handled
             effects.extend(
@@ -520,9 +569,11 @@ where
         effects
     }
 
-    pub(super) fn handle_get_validators_response(
+    pub(super) fn handle_create_new_era(
         &mut self,
         block_header: BlockHeader,
+        booking_block_hash: BlockHash,
+        key_block_seed: hash::Digest,
         validator_weights: ValidatorWeights,
     ) -> Effects<Event<I>> {
         let validator_stakes = validator_weights
@@ -541,10 +592,13 @@ where
             .deactivate_validator();
         let era_id = block_header.era_id().successor();
         info!(%era_id, "era created");
+        let seed = EraSupervisor::<I>::era_seed(booking_block_hash, key_block_seed);
+        trace!(%seed, "the seed for {}: {}", era_id, seed);
         let results = self.era_supervisor.new_era(
             era_id,
             Timestamp::now(), // TODO: This should be passed in.
             validator_stakes,
+            seed,
             block_header.timestamp(),
             block_header.height() + 1,
             *block_header.global_state_hash(),
