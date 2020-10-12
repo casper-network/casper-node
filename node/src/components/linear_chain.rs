@@ -15,7 +15,7 @@ use crate::{
     effect::{
         announcements::LinearChainAnnouncement,
         requests::{ConsensusRequest, LinearChainRequest, NetworkRequest, StorageRequest},
-        EffectExt, Effects,
+        EffectExt, Effects, Responder,
     },
     protocol::Message,
     types::{
@@ -40,6 +40,8 @@ pub enum Event<I> {
     GetBlockResult(BlockHash, Option<Box<Block>>, I),
     /// A continuation for `BlockAtHeight` scenario.
     GetBlockByHeightResult(u64, Option<Box<Block>>, I),
+    /// A continuation for `BlockAtHeightLocal` scenario.
+    GetBlockByHeightResultLocal(u64, Option<Block>, Responder<Option<Block>>),
     /// New finality signature.
     NewFinalitySignature(BlockHash, Signature),
     /// The result of putting a block to storage.
@@ -77,6 +79,12 @@ impl<I: Display> Display for Event<I> {
                 height,
                 peer,
                 result.is_some()
+            ),
+            Event::GetBlockByHeightResultLocal(height, block, _) => write!(
+                f,
+                "linear chain get-block-height-local for height={} found={}",
+                height,
+                block.is_some()
             ),
         }
     }
@@ -125,6 +133,11 @@ where
             Event::Request(LinearChainRequest::BlockRequest(block_hash, sender)) => effect_builder
                 .get_block_from_storage(block_hash)
                 .event(move |maybe_block| Event::GetBlockResult(block_hash, maybe_block.map(Box::new), sender)),
+            Event::Request(LinearChainRequest::BlockAtHeightLocal(height, responder)) => {
+                effect_builder
+                    .get_block_at_height(height)
+                    .event(move |block| Event::GetBlockByHeightResultLocal(height, block, responder))
+            }
             Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) => {
                 // Treat `linear_chain` as a cache of least-recently asked for blocks.
                 // match self.linear_chain.get(height as usize).cloned() {
@@ -135,6 +148,9 @@ where
                 effect_builder
                     .get_block_at_height(height)
                     .event(move |maybe_block| Event::GetBlockByHeightResult(height, maybe_block.map(Box::new), sender))
+            }
+            Event::GetBlockByHeightResultLocal(_height, block, responder) => {
+                responder.respond(block).ignore()
             }
             Event::GetBlockByHeightResult(block_height, maybe_block, sender) => {
                 let block_at_height = match maybe_block {

@@ -1,7 +1,7 @@
 use crate::{
     crypto::hash::Digest,
     effect::requests::BlockExecutorRequest,
-    types::{json_compatibility::ExecutionResult, Deploy, DeployHash, FinalizedBlock},
+    types::{json_compatibility::ExecutionResult, BlockHash, Deploy, DeployHash, FinalizedBlock},
 };
 use casper_execution_engine::{
     core::{
@@ -28,6 +28,15 @@ pub enum Event {
         finalized_block: FinalizedBlock,
         /// Contents of deploys. All deploys are expected to be present in the storage component.
         deploys: VecDeque<Deploy>,
+    },
+    GetParentResult {
+        /// The block that needs the deploys for execution.
+        finalized_block: FinalizedBlock,
+        /// Contents of deploys. All deploys are expected to be present in the storage component.
+        deploys: VecDeque<Deploy>,
+        /// Parent of the newly finalized block.
+        /// If it's the first block after Genesis then `parent` is `None`.
+        parent: Option<(BlockHash, Digest, Digest)>,
     },
     /// The result of executing a single deploy.
     DeployExecutionResult {
@@ -66,6 +75,16 @@ impl Display for Event {
                 "fetch deploys for finalized block with height {} has {} deploys",
                 finalized_block.height(),
                 deploys.len()
+            ),
+            Event::GetParentResult {
+                finalized_block,
+                parent,
+                ..
+            } => write!(
+                f,
+                "found_parent={} for finalized block with height {}",
+                parent.is_some(),
+                finalized_block.height()
             ),
             Event::DeployExecutionResult {
                 state,

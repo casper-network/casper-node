@@ -27,9 +27,12 @@ use crate::{
     crypto::hash::Digest,
     effect::{
         announcements::BlockExecutorAnnouncement,
-        requests::{BlockExecutorRequest, ContractRuntimeRequest, StorageRequest},
+        requests::{
+            BlockExecutorRequest, ContractRuntimeRequest, LinearChainRequest, StorageRequest,
+        },
         EffectBuilder, EffectExt, Effects,
     },
+    small_network::NodeId,
     types::{
         json_compatibility::ExecutionResult, Block, BlockHash, CryptoRngCore, Deploy, DeployHash,
         FinalizedBlock,
@@ -42,6 +45,7 @@ pub(crate) use event::Event;
 pub trait ReactorEventT:
     From<Event>
     + From<StorageRequest<Storage>>
+    + From<LinearChainRequest<NodeId>>
     + From<ContractRuntimeRequest>
     + From<BlockExecutorAnnouncement>
     + Send
@@ -51,6 +55,7 @@ pub trait ReactorEventT:
 impl<REv> ReactorEventT for REv where
     REv: From<Event>
         + From<StorageRequest<Storage>>
+        + From<LinearChainRequest<NodeId>>
         + From<ContractRuntimeRequest>
         + From<BlockExecutorAnnouncement>
         + Send
@@ -231,11 +236,48 @@ impl BlockExecutor {
             });
             self.execute_next_deploy_or_create_block(effect_builder, state)
         } else {
+            // Didn't find parent in the `parent_map` cache.
+            // Read it from the storage.
             let height = finalized_block.height();
-            debug!("No pre-state hash for height {}", height);
-            // The parent block has not been executed yet; delay handling.
-            self.exec_queue.insert(height, (finalized_block, deploys));
-            Effects::new()
+            effect_builder
+                .get_block_at_height_local(height - 1)
+                .event(|parent| Event::GetParentResult {
+                    finalized_block,
+                    deploys,
+                    parent: parent.map(|b| {
+                        (
+                            *b.hash(),
+                            b.header().accumulated_seed(),
+                            *b.post_state_hash(),
+                        )
+                    }),
+                })
+        }
+    }
+
+    fn handle_get_parent_result<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        finalized_block: FinalizedBlock,
+        deploys: VecDeque<Deploy>,
+        parent: Option<ExecutedBlockSummary>,
+    ) -> Effects<Event> {
+        match parent {
+            None => {
+                let height = finalized_block.height();
+                debug!("No pre-state hash for height {}", height);
+                // The parent block has not been executed yet; delay handling.
+                self.exec_queue.insert(height, (finalized_block, deploys));
+                Effects::new()
+            }
+            Some(parent_summary) => {
+                // Parent found in the storage.
+                // Insert into `parent_map` cache.
+                // It will be removed in `create_block` method.
+                self.parent_map
+                    .insert(finalized_block.height().saturating_sub(1), parent_summary);
+                self.handle_get_deploys_result(effect_builder, finalized_block, deploys)
+            }
         }
     }
 
@@ -350,6 +392,28 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
             } => {
                 trace!(total = %deploys.len(), ?deploys, "fetched deploys");
                 self.handle_get_deploys_result(effect_builder, finalized_block, deploys)
+            }
+
+            Event::GetParentResult {
+                finalized_block,
+                deploys,
+                parent,
+            } => {
+                trace!(parent_found = %parent.is_some(), finalized_height = %finalized_block.height(), "fetched parent");
+                let parent_summary =
+                    parent.map(
+                        |(hash, accumulated_seed, post_state_hash)| ExecutedBlockSummary {
+                            hash,
+                            post_state_hash,
+                            accumulated_seed,
+                        },
+                    );
+                self.handle_get_parent_result(
+                    effect_builder,
+                    finalized_block,
+                    deploys,
+                    parent_summary,
+                )
             }
 
             Event::DeployExecutionResult {

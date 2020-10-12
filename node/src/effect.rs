@@ -101,6 +101,7 @@ use crate::{
         storage::{DeployHashes, DeployMetadata, DeployResults, StorageType, Value},
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
+    effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
         json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, BlockHeader,
@@ -380,6 +381,18 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| MetricsRequest::RenderNodeMetricsText { responder },
             QueueKind::Api,
+        )
+        .await
+    }
+
+    /// Retrieves block at `height` from the Linear Chain component.
+    pub(crate) async fn get_block_at_height_local<I>(self, height: u64) -> Option<Block>
+    where
+        REv: From<LinearChainRequest<I>>,
+    {
+        self.make_request(
+            |responder| LinearChainRequest::BlockAtHeightLocal(height, responder),
+            QueueKind::Regular,
         )
         .await
     }
