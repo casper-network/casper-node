@@ -41,7 +41,7 @@ pub enum Event<I> {
     /// A continuation for `BlockAtHeight` scenario.
     GetBlockByHeightResult(u64, Option<Box<Block>>, I),
     /// A continuation for `BlockAtHeightLocal` scenario.
-    GetBlockByHeightResultLocal(u64, Option<Block>, Responder<Option<Block>>),
+    GetBlockByHeightResultLocal(u64, Option<Box<Block>>, Responder<Option<Block>>),
     /// New finality signature.
     NewFinalitySignature(BlockHash, Signature),
     /// The result of putting a block to storage.
@@ -136,7 +136,7 @@ where
             Event::Request(LinearChainRequest::BlockAtHeightLocal(height, responder)) => {
                 effect_builder
                     .get_block_at_height(height)
-                    .event(move |block| Event::GetBlockByHeightResultLocal(height, block, responder))
+                    .event(move |block| Event::GetBlockByHeightResultLocal(height, block.map(Box::new), responder))
             }
             Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) => {
                 // Treat `linear_chain` as a cache of least-recently asked for blocks.
@@ -150,7 +150,7 @@ where
                     .event(move |maybe_block| Event::GetBlockByHeightResult(height, maybe_block.map(Box::new), sender))
             }
             Event::GetBlockByHeightResultLocal(_height, block, responder) => {
-                responder.respond(block).ignore()
+                responder.respond(block.map(|boxed| *boxed)).ignore()
             }
             Event::GetBlockByHeightResult(block_height, maybe_block, sender) => {
                 let block_at_height = match maybe_block {
