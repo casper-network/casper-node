@@ -221,7 +221,7 @@ steps:
 - name: publish-prod-bintray
   <<: *buildenv
   commands:
-  - "./upload.sh --repo-name casper-debian-tests --package-name casper-node"
+  - "./upload.sh --repo-name debian --package-name casper-node"
   environment:
     CL_VAULT_TOKEN:
       from_secret: vault_token
