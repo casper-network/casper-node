@@ -570,7 +570,7 @@ impl Block {
         &self.hash
     }
 
-    pub(crate) fn global_state_hash(&self) -> &Digest {
+    pub(crate) fn post_state_hash(&self) -> &Digest {
         self.header.global_state_hash()
     }
 
