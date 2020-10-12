@@ -150,7 +150,7 @@ pub struct State {
     pub finalized_block: FinalizedBlock,
     /// Deploys which have still to be executed.
     pub remaining_deploys: VecDeque<Deploy>,
-    /// A collection of result of executing the deploys.
+    /// A collection of results of executing the deploys.
     pub execution_results: HashMap<DeployHash, ExecutionResult>,
     /// Current pre-state hash of global storage.  Is initialized with the parent block's
     /// post-state hash, and is updated after each commit.
