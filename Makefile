@@ -98,6 +98,9 @@ build-contracts-rs: \
 .PHONY: build-system-contracts
 build-system-contracts: $(SYSTEM_CONTRACTS)
 
+.PHONY: build-client-contracts
+build-client-contracts: $(CLIENT_CONTRACTS)
+
 build-contract-as/%:
 	cd $* && $(NPM) run asbuild
 
@@ -185,7 +188,7 @@ clean:
 	$(CARGO) clean
 
 .PHONY: build-for-packaging
-build-for-packaging: build-system-contracts
+build-for-packaging: build-system-contracts build-client-contracts
 	$(CARGO) build --release
 
 .PHONY: deb
