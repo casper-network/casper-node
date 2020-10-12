@@ -290,6 +290,8 @@ pub struct Deploy {
     payment: ExecutableDeployItem,
     session: ExecutableDeployItem,
     approvals: Vec<Approval>,
+    #[serde(skip)]
+    is_valid: Option<bool>,
 }
 
 impl Deploy {
@@ -330,6 +332,7 @@ impl Deploy {
             payment,
             session,
             approvals: vec![],
+            is_valid: None,
         };
 
         deploy.sign(secret_key, rng);
@@ -376,31 +379,15 @@ impl Deploy {
     ///
     /// Note: this is a relatively expensive operation, requiring re-serialization of the deploy,
     ///       hashing, and signature checking, so should be called as infrequently as possible.
-    pub fn is_valid(&self) -> bool {
-        let serialized_body = serialize_body(&self.payment, &self.session);
-        let body_hash = hash::hash(&serialized_body);
-        if body_hash != self.header.body_hash {
-            warn!(?self, ?body_hash, "invalid deploy body hash");
-            return false;
-        }
-
-        let serialized_header = serialize_header(&self.header);
-        let hash = DeployHash::new(hash::hash(&serialized_header));
-        if hash != self.hash {
-            warn!(?self, ?hash, "invalid deploy hash");
-            return false;
-        }
-
-        for (index, approval) in self.approvals.iter().enumerate() {
-            if let Err(error) =
-                asymmetric_key::verify(&self.hash, &approval.signature, &approval.signer)
-            {
-                warn!(?self, "failed to verify approval {}: {}", index, error);
-                return false;
+    pub fn is_valid(&mut self) -> bool {
+        match self.is_valid {
+            None => {
+                let validity = validate_deploy(self);
+                self.is_valid = Some(validity);
+                validity
             }
+            Some(validity) => validity,
         }
-
-        true
     }
 
     /// Generates a random instance using a `TestRng`.
@@ -453,6 +440,35 @@ fn serialize_body(payment: &ExecutableDeployItem, session: &ExecutableDeployItem
             .unwrap_or_else(|error| panic!("should serialize session code: {}", error)),
     );
     buffer
+}
+
+// Computationally expensive validity check for a given deploy instance, including
+// asymmetric_key signing verification.
+fn validate_deploy(deploy: &Deploy) -> bool {
+    let serialized_body = serialize_body(&deploy.payment, &deploy.session);
+    let body_hash = hash::hash(&serialized_body);
+    if body_hash != deploy.header.body_hash {
+        warn!(?deploy, ?body_hash, "invalid deploy body hash");
+        return false;
+    }
+
+    let serialized_header = serialize_header(&deploy.header);
+    let hash = DeployHash::new(hash::hash(&serialized_header));
+    if hash != deploy.hash {
+        warn!(?deploy, ?hash, "invalid deploy hash");
+        return false;
+    }
+
+    for (index, approval) in deploy.approvals.iter().enumerate() {
+        if let Err(error) =
+            asymmetric_key::verify(&deploy.hash, &approval.signature, &approval.signer)
+        {
+            warn!(?deploy, "failed to verify approval {}: {}", index, error);
+            return false;
+        }
+    }
+
+    true
 }
 
 /// Trait to allow `Deploy`s to be used by the storage component.
@@ -514,6 +530,8 @@ impl From<Deploy> for DeployItem {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
     use crate::testing::TestRng;
 
@@ -548,56 +566,31 @@ mod tests {
     #[test]
     fn is_valid() {
         let mut rng = TestRng::new();
-        let deploy = Deploy::random(&mut rng);
+        let mut deploy = Deploy::random(&mut rng);
+        assert_eq!(deploy.is_valid, None, "is valid should initially be None");
         assert!(deploy.is_valid());
+        assert_eq!(deploy.is_valid, Some(true), "is valid should be true");
+    }
 
-        let mut changed_hash = deploy.clone();
-        changed_hash.hash = DeployHash(Digest::random(&mut rng));
-        assert!(!changed_hash.is_valid());
-
-        let mut changed_account = deploy.clone();
-        changed_account.header.account = PublicKey::random(&mut rng);
-        assert!(!changed_account.is_valid());
-
-        let mut changed_timestamp = deploy.clone();
-        changed_timestamp.header.timestamp = Timestamp::random(&mut rng);
-        assert!(!changed_timestamp.is_valid());
-
-        let mut changed_ttl = deploy.clone();
-        changed_ttl.header.ttl = TimeDiff::from(rng.gen::<u64>());
-        assert!(!changed_ttl.is_valid());
-
-        let mut changed_gas_price = deploy.clone();
-        changed_gas_price.header.gas_price = rng.gen();
-        assert!(!changed_gas_price.is_valid());
-
-        let mut changed_body_hash = deploy.clone();
-        changed_body_hash.header.body_hash = Digest::random(&mut rng);
-        assert!(!changed_body_hash.is_valid());
-
-        let mut changed_dependencies = deploy.clone();
-        changed_dependencies
-            .header
-            .dependencies
-            .push(DeployHash(Digest::random(&mut rng)));
-        assert!(!changed_dependencies.is_valid());
-
-        let mut changed_chain_name = deploy.clone();
-        changed_chain_name.header.chain_name.push('1');
-        assert!(!changed_chain_name.is_valid());
-
-        let mut changed_payment = deploy.clone();
-        changed_payment.payment = rng.gen();
-        assert!(!changed_payment.is_valid());
-
-        let mut changed_session = deploy.clone();
-        changed_session.session = rng.gen();
-        assert!(!changed_session.is_valid());
-
-        let mut invalid_approval = deploy;
-        invalid_approval
-            .approvals
-            .push(Deploy::random(&mut rng).approvals[0].clone());
-        assert!(!invalid_approval.is_valid());
+    #[test]
+    fn is_not_valid() {
+        let mut deploy = Deploy::new(
+            Timestamp::zero(),
+            TimeDiff::from(Duration::default()),
+            0,
+            vec![],
+            String::default(),
+            ExecutableDeployItem::ModuleBytes {
+                module_bytes: vec![],
+                args: vec![],
+            },
+            ExecutableDeployItem::Transfer { args: vec![] },
+            &SecretKey::generate_ed25519(),
+            &mut TestRng::new(),
+        );
+        deploy.header.gas_price = 1;
+        assert_eq!(deploy.is_valid, None, "is valid should initially be None");
+        assert!(!deploy.is_valid(), "should not be valid");
+        assert_eq!(deploy.is_valid, Some(false), "is valid should be false");
     }
 }
