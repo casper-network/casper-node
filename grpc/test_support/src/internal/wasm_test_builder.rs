@@ -51,6 +51,7 @@ use casper_types::{
     account::AccountHash,
     auction::{EraId, ValidatorWeights},
     bytesrepr::{self},
+    mint::TOTAL_SUPPLY_KEY,
     CLTyped, CLValue, Contract, ContractHash, ContractWasm, Key, URef, U512,
 };
 
@@ -382,6 +383,40 @@ where
             return Err(query_response.take_failure());
         }
         bytesrepr::deserialize(query_response.take_success()).map_err(|err| format!("{}", err))
+    }
+
+    pub fn total_supply(&self, maybe_post_state: Option<Vec<u8>>) -> U512 {
+        let post_state = maybe_post_state
+            .or_else(|| self.post_state_hash.clone())
+            .expect("builder must have a post-state hash");
+
+        let mint_key: Key = self
+            .mint_contract_hash
+            .expect("should have mint_contract_hash")
+            .into();
+
+        let query_request =
+            create_query_request(post_state, mint_key, vec![TOTAL_SUPPLY_KEY.to_string()]);
+
+        let mut query_response = self
+            .engine_state
+            .query(RequestOptions::new(), query_request)
+            .wait_drop_metadata()
+            .expect("should get query response");
+
+        if query_response.has_failure() {
+            panic!("mint error: {}", query_response.take_failure());
+        }
+
+        let result = bytesrepr::deserialize(query_response.take_success());
+
+        let total_supply: U512 = if let Ok(StoredValue::CLValue(total_supply)) = result {
+            total_supply.into_t().expect("total supply should be U512")
+        } else {
+            panic!("mint should track total supply");
+        };
+
+        total_supply
     }
 
     pub fn exec(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {

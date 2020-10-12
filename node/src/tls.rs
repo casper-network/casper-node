@@ -740,7 +740,7 @@ where
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         // Decode the data here, even if it is expensive.
-        match rmp_serde::from_read::<_, T>(self.data.as_slice()) {
+        match bincode::deserialize::<T>(self.data.as_slice()) {
             Ok(item) => write!(f, "signed[{}]<{} bytes>", self.signature, item),
             Err(_err) => write!(f, "signed[{}]<CORRUPT>", self.signature),
         }
@@ -786,10 +786,10 @@ mod test {
         let tls_cert = validate_cert(cert).expect("generated cert is not valid");
 
         // There is no `PartialEq` impl for `TlsCert`, so we simply serialize it twice.
-        let serialized = rmp_serde::to_vec(&tls_cert).expect("could not serialize");
+        let serialized = bincode::serialize(&tls_cert).expect("could not serialize");
         let deserialized: TlsCert =
-            rmp_serde::from_read(serialized.as_slice()).expect("could not deserialize");
-        let serialized_again = rmp_serde::to_vec(&deserialized).expect("could not serialize");
+            bincode::deserialize(serialized.as_slice()).expect("could not deserialize");
+        let serialized_again = bincode::serialize(&deserialized).expect("could not serialize");
 
         assert_eq!(serialized, serialized_again);
     }

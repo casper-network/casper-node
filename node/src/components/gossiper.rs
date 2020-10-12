@@ -8,6 +8,7 @@ mod tests;
 
 use datasize::DataSize;
 use futures::FutureExt;
+use prometheus::Registry;
 use smallvec::smallvec;
 use std::{
     collections::HashSet,
@@ -33,7 +34,6 @@ pub use event::Event;
 use gossip_table::{GossipAction, GossipTable};
 pub use message::Message;
 use metrics::GossiperMetrics;
-use prometheus::Registry;
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `Gossiper` can
 /// work with.
@@ -105,8 +105,6 @@ where
     #[data_size(skip)] // Not well supported by datasize.
     get_from_holder:
         Box<dyn Fn(EffectBuilder<REv>, T::Id, NodeId) -> Effects<Event<T>> + Send + 'static>,
-
-    // Metrics collected for this gossiper instance.
     #[data_size(skip)]
     metrics: GossiperMetrics,
 }
@@ -180,7 +178,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         self.metrics.items_received.inc();
 
         if let Some(should_gossip) = self.table.new_complete_data(&item_id, source.node_id()) {
-            self.metrics.items_regossipped.inc();
+            self.metrics.items_gossiped_onwards.inc();
             self.gossip(
                 effect_builder,
                 item_id,
@@ -442,13 +440,13 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
     /// Updates the gossiper metrics from the state of the gossip table.
     fn update_gossip_table_metrics(&self) {
         self.metrics
-            .tbl_items_current
+            .table_items_current
             .set(self.table.items_current() as i64);
         self.metrics
-            .tbl_items_finished
+            .table_items_finished
             .set(self.table.items_finished() as i64);
         self.metrics
-            .tbl_items_paused
+            .table_items_paused
             .set(self.table.items_paused() as i64);
     }
 }

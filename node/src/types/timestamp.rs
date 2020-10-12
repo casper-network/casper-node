@@ -12,6 +12,8 @@ use humantime::{DurationError, TimestampError};
 use rand::Rng;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+
 #[cfg(test)]
 use crate::testing::TestRng;
 
@@ -148,6 +150,22 @@ impl<'de> Deserialize<'de> for Timestamp {
     }
 }
 
+impl ToBytes for Timestamp {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for Timestamp {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        u64::from_bytes(bytes).map(|(inner, remainder)| (Timestamp(inner), remainder))
+    }
+}
+
 #[cfg(test)]
 impl From<u64> for Timestamp {
     fn from(arg: u64) -> Timestamp {
@@ -240,6 +258,22 @@ impl<'de> Deserialize<'de> for TimeDiff {
     }
 }
 
+impl ToBytes for TimeDiff {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for TimeDiff {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        u64::from_bytes(bytes).map(|(inner, remainder)| (TimeDiff(inner), remainder))
+    }
+}
+
 #[cfg(test)]
 impl From<Duration> for TimeDiff {
     fn from(duration: Duration) -> TimeDiff {
@@ -265,11 +299,13 @@ mod tests {
         let serialized_json = serde_json::to_string(&timestamp).unwrap();
         assert_eq!(timestamp, serde_json::from_str(&serialized_json).unwrap());
 
-        let serialized_rmp = rmp_serde::to_vec(&timestamp).unwrap();
+        let serialized_bincode = bincode::serialize(&timestamp).unwrap();
         assert_eq!(
             timestamp,
-            rmp_serde::from_read_ref(&serialized_rmp).unwrap()
+            bincode::deserialize(&serialized_bincode).unwrap()
         );
+
+        bytesrepr::test_serialization_roundtrip(&timestamp);
     }
 
     #[test]
@@ -283,7 +319,9 @@ mod tests {
         let serialized_json = serde_json::to_string(&timediff).unwrap();
         assert_eq!(timediff, serde_json::from_str(&serialized_json).unwrap());
 
-        let serialized_rmp = rmp_serde::to_vec(&timediff).unwrap();
-        assert_eq!(timediff, rmp_serde::from_read_ref(&serialized_rmp).unwrap());
+        let serialized_bincode = bincode::serialize(&timediff).unwrap();
+        assert_eq!(timediff, bincode::deserialize(&serialized_bincode).unwrap());
+
+        bytesrepr::test_serialization_roundtrip(&timediff);
     }
 }

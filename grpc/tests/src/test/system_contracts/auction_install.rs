@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use casper_engine_test_support::{
     internal::{
         exec_with_return, ExecuteRequestBuilder, WasmTestBuilder, DEFAULT_BLOCK_TIME,
-        DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_VALIDATOR_SLOTS,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
@@ -11,8 +11,9 @@ use casper_execution_engine::core::engine_state::EngineConfig;
 use casper_types::{
     account::AccountHash,
     auction::{
-        BIDS_KEY, BID_PURSES_KEY, DELEGATORS_KEY, DELEGATOR_REWARD_MAP, DELEGATOR_REWARD_PURSE,
-        ERA_ID_KEY, ERA_VALIDATORS_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_PURSES_KEY,
+        ARG_GENESIS_VALIDATORS, ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_VALIDATOR_SLOTS, BIDS_KEY,
+        BID_PURSES_KEY, DELEGATORS_KEY, DELEGATOR_REWARD_MAP, DELEGATOR_REWARD_PURSE, ERA_ID_KEY,
+        ERA_VALIDATORS_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_PURSES_KEY,
         VALIDATOR_REWARD_MAP, VALIDATOR_REWARD_PURSE,
     },
     runtime_args, ContractHash, RuntimeArgs, U512,
@@ -23,8 +24,8 @@ const TRANSFER_AMOUNT: u64 = 250_000_000 + 1000;
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 const DEPLOY_HASH_2: [u8; 32] = [2u8; 32];
 
-// one named_key for each validator and three for the purses
-const EXPECTED_KNOWN_KEYS_LEN: usize = 11;
+// one named_key for each validator and three for the purses and one for validator slots
+const EXPECTED_KNOWN_KEYS_LEN: usize = 12;
 
 #[ignore]
 #[test]
@@ -75,8 +76,9 @@ fn should_run_auction_install_contract() {
         DEPLOY_HASH_2,
         "install",
         runtime_args! {
-            "mint_contract_package_hash" => mint.contract_package_hash(),
-            "genesis_validators" => genesis_validators,
+            ARG_MINT_CONTRACT_PACKAGE_HASH => mint.contract_package_hash(),
+            ARG_GENESIS_VALIDATORS => genesis_validators,
+            ARG_VALIDATOR_SLOTS => DEFAULT_VALIDATOR_SLOTS
         },
         vec![],
     );

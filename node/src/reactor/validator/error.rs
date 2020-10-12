@@ -27,5 +27,5 @@ pub enum Error {
 
     /// Failed to serialize data.
     #[error("serialization: {0}")]
-    Serialization(#[from] rmp_serde::encode::Error),
+    Serialization(#[source] bincode::ErrorKind),
 }
