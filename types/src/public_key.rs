@@ -119,7 +119,7 @@ impl AsRef<[u8]> for PublicKey {
 }
 
 impl ToBytes for PublicKey {
-    fn to_bytes(&self) -> Result<Vec<u8>, crate::bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.variant_id().to_bytes()?);
         match self {
@@ -128,6 +128,7 @@ impl ToBytes for PublicKey {
         }
         Ok(buffer)
     }
+
     fn serialized_length(&self) -> usize {
         PUBLIC_KEY_VARIANT_LENGTH
             + match self {

@@ -12,7 +12,6 @@ use std::{
 use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches};
 use lazy_static::lazy_static;
 use serde::{self, Deserialize};
-use serde_json::Value as JsonValue;
 
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_node::{
@@ -977,12 +976,13 @@ pub(super) mod output {
     pub fn write_deploy(deploy: &Deploy, maybe_path: Option<String>) {
         let target = maybe_path.clone().unwrap_or_else(|| "stdout".to_string());
         let mut out = output_or_stdout(&maybe_path)
-            .unwrap_or_else(|e| panic!("unable to open {} : {:?}", target, e));
-        let content = deploy.to_json().to_string();
+            .unwrap_or_else(|error| panic!("unable to open {} : {:?}", target, error));
+        let content = serde_json::to_string_pretty(deploy)
+            .unwrap_or_else(|error| panic!("failed to encode deploy to json: {}", error));
         match out.write_all(content.as_bytes()) {
             Ok(_) if target == "stdout" => {}
             Ok(_) => println!("Successfully wrote deploy to file {}", target),
-            Err(err) => panic!("Error writing deploy to {} : {:?}", target, err),
+            Err(err) => panic!("error writing deploy to {}: {}", target, err),
         }
     }
 }
@@ -1015,10 +1015,18 @@ pub(super) mod input {
     /// Read a deploy from a file
     pub fn read_deploy(input_path: &str) -> Deploy {
         let input = common::read_file(&input_path);
-        let input = String::from_utf8(input).unwrap();
-        let deploy = Deploy::from_json(JsonValue::from_str(input.as_str()).unwrap())
-            .unwrap_or_else(|e| panic!("unable to deserialize deploy file {} - {:?}", input, e));
-        deploy
+        let input = String::from_utf8(input).unwrap_or_else(|error| {
+            panic!(
+                "failed to parse as utf-8 for deploy file {}: {}",
+                input_path, error
+            )
+        });
+        serde_json::from_str(input.as_str()).unwrap_or_else(|error| {
+            panic!(
+                "failed to decode from json for deploy file {}: {}",
+                input_path, error
+            )
+        })
     }
 }
 

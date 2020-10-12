@@ -26,7 +26,7 @@ use super::{Item, Tag, Timestamp};
 use crate::{
     components::{
         consensus::{self, EraId},
-        storage::Value,
+        storage::{Value, WithBlockHeight},
     },
     crypto::{
         asymmetric_key::{PublicKey, Signature},
@@ -665,6 +665,12 @@ impl Value for Block {
 
     fn take_header(self) -> Self::Header {
         self.header
+    }
+}
+
+impl WithBlockHeight for Block {
+    fn height(&self) -> u64 {
+        self.height()
     }
 }
 

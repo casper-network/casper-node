@@ -24,3 +24,5 @@ pub const HASH_KEY: &str = "mint_hash";
 pub const ACCESS_KEY: &str = "mint_access";
 /// Storage for base round reward key.
 pub const BASE_ROUND_REWARD_KEY: &str = "mint_base_round_reward";
+/// Storage for mint total supply key.
+pub const TOTAL_SUPPLY_KEY: &str = "total_supply";

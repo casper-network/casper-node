@@ -45,6 +45,10 @@ export const enum SystemContract {
    * Standard Payment contract.
    */
   StandardPayment = 2,
+  /**
+   * Auction contract.
+   */
+  Auction = 3,
 }
 
 /**

@@ -87,9 +87,6 @@ pub(crate) struct LinearChain<I> {
     /// A temporary workaround.
     // TODO: Refactor to proper LRU cache.
     linear_chain: Vec<Block>,
-    /// The last block this component put to storage which is presumably the last block in the
-    /// linear chain.
-    last_block: Option<Block>,
     _marker: PhantomData<I>,
 }
 
@@ -97,7 +94,6 @@ impl<I> LinearChain<I> {
     pub fn new() -> Self {
         LinearChain {
             linear_chain: Vec::new(),
-            last_block: None,
             _marker: PhantomData,
         }
     }
@@ -129,9 +125,6 @@ where
             Event::Request(LinearChainRequest::BlockRequest(block_hash, sender)) => effect_builder
                 .get_block_from_storage(block_hash)
                 .event(move |maybe_block| Event::GetBlockResult(block_hash, maybe_block.map(Box::new), sender)),
-            Event::Request(LinearChainRequest::LastFinalizedBlock(responder)) => {
-                responder.respond(self.last_block.clone()).ignore()
-            }
             Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) => {
                 // Treat `linear_chain` as a cache of least-recently asked for blocks.
                 // match self.linear_chain.get(height as usize).cloned() {
@@ -182,7 +175,6 @@ where
             Event::PutBlockResult { block, execution_results } => {
                 // TODO: Remove once we can return all linear chain blocks from persistent storage.
                 self.linear_chain.push(*block.clone());
-                self.last_block = Some(*block.clone());
 
                 let block_header = block.take_header();
                 let block_hash = block_header.hash();
