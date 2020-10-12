@@ -656,8 +656,8 @@ where
                 let time_since_proto_block = finalized_block.timestamp().elapsed().millis();
                 self.era_supervisor
                     .metrics
-                    .rate
-                    .set(1000.0 / time_since_proto_block as f64);
+                    .time_to_finalization
+                    .set(time_since_proto_block as f64);
                 self.era_supervisor.metrics.amount_of_blocks.inc();
                 // Announce the finalized proto block.
                 let mut effects = self
@@ -693,7 +693,7 @@ where
 #[derive(Debug)]
 pub struct EraSupervisorMetrics {
     /// Gauge to track rate.
-    rate: Gauge,
+    time_to_finalization: Gauge,
     /// Amount of finalized blocks.
     amount_of_blocks: IntCounter,
     /// registry component.
@@ -702,16 +702,16 @@ pub struct EraSupervisorMetrics {
 
 impl EraSupervisorMetrics {
     fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
-        let rate = Gauge::new(
-            "rate_of_finalization",
-            "the rate at which blocks are finalized per second",
+        let time_to_finalization = Gauge::new(
+            "time_to_finalization",
+            "the amount of time taken for Consensus to announce a final block",
         )?;
         let amount_of_blocks =
             IntCounter::new("amount_of_blocks", "the number of blocks finalized so far")?;
-        registry.register(Box::new(rate.clone()))?;
+        registry.register(Box::new(time_to_finalization.clone()))?;
         registry.register(Box::new(amount_of_blocks.clone()))?;
         Ok(EraSupervisorMetrics {
-            rate,
+            time_to_finalization,
             amount_of_blocks,
             registry: registry.clone(),
         })
@@ -721,7 +721,7 @@ impl EraSupervisorMetrics {
 impl Drop for EraSupervisorMetrics {
     fn drop(&mut self) {
         self.registry
-            .unregister(Box::new(self.rate.clone()))
+            .unregister(Box::new(self.time_to_finalization.clone()))
             .expect("did not expect deregistering rate to fail");
         self.registry
             .unregister(Box::new(self.amount_of_blocks.clone()))
