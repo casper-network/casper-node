@@ -535,6 +535,7 @@ where
         let new_era_id = block_header.era_id().successor();
         info!(?new_era_id, "Era created");
         let seed = EraSupervisor::<I>::era_seed(booking_block_hash, key_block_seed);
+        trace!(%seed, "The seed for era {:?}: {}", new_era_id, seed);
         let results = self.era_supervisor.new_era(
             new_era_id,
             Timestamp::now(), // TODO: This should be passed in.
