@@ -265,7 +265,7 @@ impl BlockExecutor {
         match parent {
             None => {
                 let height = finalized_block.height();
-                debug!("No pre-state hash for height {}", height);
+                debug!("no pre-state hash for height {}", height);
                 // The parent block has not been executed yet; delay handling.
                 self.exec_queue.insert(height, (finalized_block, deploys));
                 Effects::new()
