@@ -80,6 +80,11 @@ impl EraId {
     pub(crate) fn successor(self) -> EraId {
         EraId(self.0 + 1)
     }
+
+    /// Returns an iterator over all eras that are still bonded in this one.
+    fn iter_bonded(&self) -> impl Iterator<Item = EraId> {
+        (self.0.saturating_sub(BONDED_ERAS)..=self.0).map(EraId)
+    }
 }
 
 impl Display for EraId {
@@ -433,12 +438,12 @@ where
                 })
             }
             ConsensusMessage::EvidenceRequest { era_id, pub_key } => {
-                if era_id.0 + 2 * BONDED_ERAS < self.era_supervisor.current_era.0 {
+                if era_id.0 + BONDED_ERAS < self.era_supervisor.current_era.0 {
                     trace!(%era_id, "not handling message; era too old");
                     return Effects::new();
                 }
-                (era_id.0.saturating_sub(BONDED_ERAS)..=era_id.0)
-                    .map(EraId)
+                era_id
+                    .iter_bonded()
                     .flat_map(|e_id| {
                         self.delegate_to_era(e_id, |consensus, _| {
                             consensus.request_evidence(sender.clone(), &pub_key)
@@ -460,15 +465,9 @@ where
             .announce_proposed_proto_block(proto_block.clone())
             .ignore();
         // TODO: Only include _new_ accusations.
-        let accusations = (era_id.0.saturating_sub(BONDED_ERAS)..=era_id.0)
-            .flat_map(|i| {
-                self.era_supervisor
-                    .active_eras
-                    .get(&EraId(i))
-                    .expect("should have bonded era")
-                    .consensus
-                    .faulty_validators()
-            })
+        let accusations = era_id
+            .iter_bonded()
+            .flat_map(|e_id| self.era(e_id).consensus.faulty_validators())
             .unique()
             .cloned()
             .collect();
@@ -493,7 +492,7 @@ where
         );
         let mut effects = responder.respond(signature).ignore();
         if block_header.era_id() < self.era_supervisor.current_era {
-            trace!(era_id = %block_header.era_id().0, "executed block in old era");
+            trace!(era_id = %block_header.era_id(), "executed block in old era");
             return effects;
         }
         if block_header.switch_block() {
@@ -641,16 +640,14 @@ where
     /// Returns `true` if any of the most recent eras has evidence against the validator with key
     /// `pub_key`.
     fn has_evidence(&self, era_id: EraId, pub_key: PublicKey) -> bool {
-        (era_id.0.saturating_sub(BONDED_ERAS)..=era_id.0)
-            .map(EraId)
-            .any(|eid| {
-                self.era_supervisor
-                    .active_eras
-                    .get(&eid)
-                    .expect("missing era instance")
-                    .consensus
-                    .has_evidence(&pub_key)
-            })
+        era_id
+            .iter_bonded()
+            .any(|eid| self.era(eid).consensus.has_evidence(&pub_key))
+    }
+
+    /// Returns the era with the specified ID. Panics if it does not exist.
+    fn era(&self, era_id: EraId) -> &Era<I> {
+        &self.era_supervisor.active_eras[&era_id]
     }
 
     fn handle_consensus_result(
@@ -708,7 +705,7 @@ where
                     timestamp,
                     era_end,
                     era_id,
-                    self.era_supervisor.active_eras[&era_id].start_height + height,
+                    self.era(era_id).start_height + height,
                     proposer,
                 );
                 // Announce the finalized proto block.
