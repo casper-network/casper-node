@@ -106,8 +106,8 @@ impl DeployAcceptor {
         source: Source<NodeId>,
         deploy_config: DeployAcceptorConfig,
     ) -> Effects<Event> {
-        if is_valid(&*deploy, deploy_config) {
-            let cloned_deploy = deploy.clone();
+        let mut cloned_deploy = deploy.clone();
+        if is_valid(&mut cloned_deploy, deploy_config) {
             effect_builder
                 .put_deploy_to_storage(cloned_deploy)
                 .event(move |is_new| Event::PutToStorageResult {
@@ -183,7 +183,7 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
     }
 }
 
-fn is_valid(deploy: &Deploy, config: DeployAcceptorConfig) -> bool {
+fn is_valid(deploy: &mut Deploy, config: DeployAcceptorConfig) -> bool {
     if deploy.header().chain_name() != config.chain_name {
         warn!(
             deploy_hash = %deploy.id(),
@@ -216,5 +216,5 @@ fn is_valid(deploy: &Deploy, config: DeployAcceptorConfig) -> bool {
 
     // TODO - check if there is more that can be validated here.
 
-    true
+    deploy.is_valid()
 }
