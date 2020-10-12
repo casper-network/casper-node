@@ -334,15 +334,18 @@ impl reactor::Reactor for Reactor {
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, config.network, true)?;
 
-        let address_gossiper = Gossiper::new_for_complete_items(config.gossip);
+        let address_gossiper =
+            Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
         let api_server = ApiServer::new(config.http_server, effect_builder);
         let deploy_acceptor = DeployAcceptor::new();
         let deploy_fetcher = Fetcher::new(config.gossip);
         let deploy_gossiper = Gossiper::new_for_partial_items(
+            "deploy_gossiper",
             config.gossip,
             gossiper::get_deploy_from_storage::<Deploy, Event>,
-        );
+            registry,
+        )?;
         let (deploy_buffer, deploy_buffer_effects) = DeployBuffer::new(effect_builder);
         let mut effects = reactor::wrap_effects(Event::DeployBuffer, deploy_buffer_effects);
         // Post state hash is expected to be present.

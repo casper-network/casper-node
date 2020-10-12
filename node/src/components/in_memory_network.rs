@@ -14,7 +14,7 @@
 //! 3. Run a test that verifies everything is working.
 //!
 //! ```rust
-//! # #![allow(dead_code)] // FIXME: Remove me
+//! #
 //! # use std::{
 //! #     collections::HashMap,
 //! #     fmt::{self, Debug, Display, Formatter},

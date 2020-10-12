@@ -135,8 +135,8 @@ pub mod block_hash {
     const ARG_SHORT: &str = "b";
     const ARG_VALUE_NAME: &str = super::ARG_HEX_STRING;
     const ARG_HELP: &str =
-        "Hex-encoded block hash.  If not given, the latest finalized block as known at the given \
-        node will be used";
+        "Hex-encoded block hash.  If not given, the last block added to the chain as known at the \
+        given node will be used";
 
     pub(crate) fn arg(order: usize) -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)

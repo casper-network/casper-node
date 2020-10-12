@@ -310,7 +310,8 @@ impl reactor::Reactor for Reactor {
         let linear_chain_fetcher = Fetcher::new(config.gossip);
         let effects = reactor::wrap_effects(Event::Network, net_effects);
 
-        let address_gossiper = Gossiper::new_for_complete_items(config.gossip);
+        let address_gossiper =
+            Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
         let effect_builder = EffectBuilder::new(event_queue);
 
@@ -321,7 +322,7 @@ impl reactor::Reactor for Reactor {
             Some(hash) => info!("Synchronizing linear chain from: {:?}", hash),
         }
 
-        let linear_chain_sync = LinearChainSync::new(effect_builder, init_hash);
+        let linear_chain_sync = LinearChainSync::new(init_hash);
 
         let block_validator = BlockValidator::new();
 
