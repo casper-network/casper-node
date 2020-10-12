@@ -12,7 +12,9 @@ use datasize::DataSize;
 use fake_instant::FakeClock as Instant;
 use tracing::warn;
 
-use super::{Config, Error};
+use super::Config;
+#[cfg(test)]
+use super::Error;
 use crate::small_network::NodeId;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -118,6 +120,23 @@ pub(crate) struct GossipTable<T> {
     holders_limit: usize,
     /// See `Config::finished_entry_duration`.
     finished_entry_duration: Duration,
+}
+
+impl<T> GossipTable<T> {
+    /// Number of items currently being gossiped.
+    pub fn items_current(&self) -> usize {
+        self.current.len()
+    }
+
+    /// Number of items that are kept but are finished gossiping.
+    pub fn items_finished(&self) -> usize {
+        self.finished.len()
+    }
+
+    /// Number of items for which gossipping is currently paused.
+    pub fn items_paused(&self) -> usize {
+        self.paused.len()
+    }
 }
 
 impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
@@ -316,6 +335,8 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
             );
 
             if !state.holders.contains(&peer) {
+                // Add the peer as a holder just to avoid retrying it.
+                let _ = state.holders.insert(peer);
                 state.in_flight_count = state.in_flight_count.saturating_sub(1);
                 let is_new = false;
                 return state.action(self.infection_target, self.holders_limit, is_new);
@@ -372,7 +393,7 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
     ///
     /// Returns an error if gossiping this data is not in a paused state.
     // TODO - remove lint relaxation once the method is used.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn resume(&mut self, data_id: &T) -> Result<GossipAction, Error> {
         let (mut state, _timeout) = self.paused.remove(data_id).ok_or(Error::NotPaused)?;
         let is_new = !state.held_by_us;
@@ -723,7 +744,7 @@ mod tests {
         let action = gossip_table.check_timeout(&data_id, node_ids[1]);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
-            exclude_peers: iter::once(node_ids[0]).collect(),
+            exclude_peers: node_ids[..=1].iter().copied().collect(),
             is_already_held: true,
         });
         assert_eq!(expected, action);

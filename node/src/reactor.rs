@@ -32,12 +32,15 @@ pub mod validator;
 
 use std::{
     collections::HashMap,
+    env,
     fmt::{Debug, Display},
     mem,
+    str::FromStr,
 };
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
+use lazy_static::lazy_static;
 use prometheus::{self, Histogram, HistogramOpts, IntCounter, Registry};
 use quanta::IntoNanoseconds;
 use tracing::{debug, debug_span, info, trace, warn};
@@ -52,8 +55,24 @@ use quanta::Clock;
 pub use queue_kind::QueueKind;
 use tokio::time::{Duration, Instant};
 
-/// Threshold for when an event is considered slow.
-const DISPATCH_EVENT_THRESHOLD: Duration = Duration::from_millis(1);
+/// Default threshold for when an event is considered slow.  Can be overridden by setting the env
+/// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
+const DEFAULT_DISPATCH_EVENT_THRESHOLD: Duration = Duration::from_secs(1);
+const DISPATCH_EVENT_THRESHOLD_ENV_VAR: &str = "CL_EVENT_MAX_MICROSECS";
+
+lazy_static! {
+    static ref DISPATCH_EVENT_THRESHOLD: Duration = env::var(DISPATCH_EVENT_THRESHOLD_ENV_VAR)
+        .map(|threshold_str| {
+            let threshold_microsecs = u64::from_str(&threshold_str).unwrap_or_else(|error| {
+                panic!(
+                    "can't parse env var {}={} as a u64: {}",
+                    DISPATCH_EVENT_THRESHOLD_ENV_VAR, threshold_str, error
+                )
+            });
+            Duration::from_micros(threshold_microsecs)
+        })
+        .unwrap_or_else(|_| DEFAULT_DISPATCH_EVENT_THRESHOLD);
+}
 
 /// Event scheduler
 ///
@@ -376,7 +395,8 @@ where
         let inner_enter = event_span.enter();
 
         // We log events twice, once in display and once in debug mode.
-        debug!(%event, ?q);
+        let event_as_string = format!("{}", event);
+        debug!(event=%event_as_string, ?q);
         trace!(?event, ?q);
 
         // Dispatch the event, then execute the resulting effect.
@@ -386,10 +406,11 @@ where
 
         // Warn if processing took a long time, record to histogram.
         let delta = self.clock.delta(start, end);
-        if delta > DISPATCH_EVENT_THRESHOLD {
+        if delta > *DISPATCH_EVENT_THRESHOLD {
             warn!(
                 ns = delta.into_nanos(),
-                "previous event took very long to dispatch"
+                event = %event_as_string,
+                "event took very long to dispatch"
             );
         }
         self.metrics

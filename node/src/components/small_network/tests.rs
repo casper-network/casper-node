@@ -105,13 +105,14 @@ impl Reactor for TestReactor {
 
     fn new(
         cfg: Self::Config,
-        _registry: &Registry,
+        registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut dyn CryptoRngCore,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let (net, effects) = SmallNetwork::new(event_queue, cfg, false)?;
         let gossiper_config = gossiper::Config::default();
-        let address_gossiper = Gossiper::new_for_complete_items(gossiper_config);
+        let address_gossiper =
+            Gossiper::new_for_complete_items("address_gossiper", gossiper_config, registry)?;
 
         Ok((
             TestReactor {

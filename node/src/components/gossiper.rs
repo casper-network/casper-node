@@ -3,10 +3,12 @@ mod error;
 mod event;
 mod gossip_table;
 mod message;
+mod metrics;
 mod tests;
 
 use datasize::DataSize;
 use futures::FutureExt;
+use prometheus::Registry;
 use smallvec::smallvec;
 use std::{
     collections::HashSet,
@@ -31,6 +33,7 @@ pub use error::Error;
 pub use event::Event;
 use gossip_table::{GossipAction, GossipTable};
 pub use message::Message;
+use metrics::GossiperMetrics;
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `Gossiper` can
 /// work with.
@@ -102,6 +105,8 @@ where
     #[data_size(skip)] // Not well supported by datasize.
     get_from_holder:
         Box<dyn Fn(EffectBuilder<REv>, T::Id, NodeId) -> Effects<Event<T>> + Send + 'static>,
+    #[data_size(skip)]
+    metrics: GossiperMetrics,
 }
 
 impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
@@ -114,39 +119,53 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
     ///
     /// For an example of how `get_from_holder` should be implemented, see
     /// `gossiper::get_deploy_from_store()` which is used by `Gossiper<Deploy>`.
+    ///
+    /// Must be supplied with a name, which should be a snake-case identifier to disambiguate the
+    /// specific gossiper from other potentially present gossipers.
     pub(crate) fn new_for_partial_items(
+        name: &str,
         config: Config,
         get_from_holder: impl Fn(EffectBuilder<REv>, T::Id, NodeId) -> Effects<Event<T>>
             + Send
             + 'static,
-    ) -> Self {
+        registry: &Registry,
+    ) -> Result<Self, prometheus::Error> {
         assert!(
             !T::ID_IS_COMPLETE_ITEM,
             "this should only be called for types where T::ID_IS_COMPLETE_ITEM is false"
         );
-        Gossiper {
+        Ok(Gossiper {
             table: GossipTable::new(config),
             gossip_timeout: Duration::from_secs(config.gossip_request_timeout_secs()),
             get_from_peer_timeout: Duration::from_secs(config.get_remainder_timeout_secs()),
             get_from_holder: Box::new(get_from_holder),
-        }
+            metrics: GossiperMetrics::new(name, registry)?,
+        })
     }
 
     /// Constructs a new gossiper component for use where `T::ID_IS_COMPLETE_ITEM == true`, i.e.
     /// where the gossip messages themselves contain the actual data being gossiped.
-    pub(crate) fn new_for_complete_items(config: Config) -> Self {
+    ///
+    /// Must be supplied with a name, which should be a snake-case identifier to disambiguate the
+    /// specific gossiper from other potentially present gossipers.
+    pub(crate) fn new_for_complete_items(
+        name: &str,
+        config: Config,
+        registry: &Registry,
+    ) -> Result<Self, prometheus::Error> {
         assert!(
             T::ID_IS_COMPLETE_ITEM,
             "this should only be called for types where T::ID_IS_COMPLETE_ITEM is true"
         );
-        Gossiper {
+        Ok(Gossiper {
             table: GossipTable::new(config),
             gossip_timeout: Duration::from_secs(config.gossip_request_timeout_secs()),
             get_from_peer_timeout: Duration::from_secs(config.get_remainder_timeout_secs()),
             get_from_holder: Box::new(|_, item, _| {
                 panic!("gossiper should never try to get {}", item)
             }),
-        }
+            metrics: GossiperMetrics::new(name, registry)?,
+        })
     }
 
     /// Handles a new item received from a peer or client.
@@ -156,7 +175,10 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         item_id: T::Id,
         source: Source<NodeId>,
     ) -> Effects<Event<T>> {
+        self.metrics.items_received.inc();
+
         if let Some(should_gossip) = self.table.new_complete_data(&item_id, source.node_id()) {
+            self.metrics.items_gossiped_onwards.inc();
             self.gossip(
                 effect_builder,
                 item_id,
@@ -192,6 +214,8 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         // We don't have any peers to gossip to, so pause the process, which will eventually result
         // in the entry being removed.
         if peers.is_empty() {
+            self.metrics.times_ran_out_of_peers.inc();
+
             self.table.pause(&item_id);
             debug!(
                 "paused gossiping {} since no more peers to gossip to",
@@ -412,6 +436,19 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         );
         Effects::new()
     }
+
+    /// Updates the gossiper metrics from the state of the gossip table.
+    fn update_gossip_table_metrics(&self) {
+        self.metrics
+            .table_items_current
+            .set(self.table.items_current() as i64);
+        self.metrics
+            .table_items_finished
+            .set(self.table.items_finished() as i64);
+        self.metrics
+            .table_items_paused
+            .set(self.table.items_paused() as i64);
+    }
 }
 
 impl<T, REv> Component<REv> for Gossiper<T, REv>
@@ -427,8 +464,7 @@ where
         _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        debug!(?event, "handling event");
-        match event {
+        let effects = match event {
             Event::ItemReceived { item_id, source } => {
                 self.handle_item_received(effect_builder, item_id, source)
             }
@@ -456,7 +492,9 @@ where
                 Ok(item) => self.got_from_holder(effect_builder, item, requester),
                 Err(error) => self.failed_to_get_from_holder(item_id, error),
             },
-        }
+        };
+        self.update_gossip_table_metrics();
+        effects
     }
 }
 

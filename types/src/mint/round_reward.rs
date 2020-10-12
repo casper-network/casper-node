@@ -2,13 +2,6 @@ use num_rational::Ratio;
 
 use crate::U512;
 
-/// Returns the initial supply of token, in motes
-#[inline]
-pub fn initial_supply_motes() -> Ratio<U512> {
-    const INITIAL_SUPPLY_MOTES: u64 = 10_000_000_000_000_000_000; // 1e19
-    Ratio::new(U512::from(INITIAL_SUPPLY_MOTES), U512::one())
-}
-
 /// Returns the round seigniorage rate
 ///
 /// Annual issuance: 2%

@@ -97,9 +97,7 @@ use crate::{
         consensus::BlockContext,
         fetcher::FetchResult,
         small_network::GossipedAddress,
-        storage::{
-            DeployHashes, DeployHeaderResults, DeployMetadata, DeployResults, StorageType, Value,
-        },
+        storage::{DeployHashes, DeployMetadata, DeployResults, StorageType, Value},
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
     reactor::{EventQueueHandle, QueueKind},
@@ -638,26 +636,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested block header from the linear block store.
-    #[allow(unused)]
-    pub(crate) async fn get_block_header_from_storage<S>(
-        self,
-        block_hash: <S::Block as Value>::Id,
-    ) -> Option<<S::Block as Value>::Header>
-    where
-        S: StorageType + 'static,
-        REv: From<StorageRequest<S>>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetBlockHeader {
-                block_hash,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Puts the given deploy into the deploy store.
     pub(crate) async fn put_deploy_to_storage<S>(self, deploy: Box<S::Deploy>) -> bool
     where
@@ -682,27 +660,6 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetDeploys {
-                deploy_hashes,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Gets the requested deploy headers from the deploy store.
-    // TODO: remove once method is used.
-    #[allow(dead_code)]
-    pub(crate) async fn get_deploy_headers_from_storage<S>(
-        self,
-        deploy_hashes: DeployHashes<S>,
-    ) -> DeployHeaderResults<S>
-    where
-        S: StorageType + 'static,
-        REv: From<StorageRequest<S>>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetDeployHeaders {
                 deploy_hashes,
                 responder,
             },
@@ -794,7 +751,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests a linear chain block at `block_height`.
-    #[allow(unused)]
     pub(crate) async fn fetch_block_by_height<I>(
         self,
         block_height: u64,
@@ -894,20 +850,6 @@ impl<REv> EffectBuilder<REv> {
         self.0
             .schedule(
                 ConsensusAnnouncement::Finalized(Box::new(finalized_block)),
-                QueueKind::Regular,
-            )
-            .await
-    }
-
-    /// Announces that a proto block has been orphaned.
-    #[allow(dead_code)] // TODO: Detect orphaned blocks.
-    pub(crate) async fn announce_orphaned_proto_block(self, proto_block: ProtoBlock)
-    where
-        REv: From<ConsensusAnnouncement>,
-    {
-        self.0
-            .schedule(
-                ConsensusAnnouncement::Orphaned(proto_block),
                 QueueKind::Regular,
             )
             .await
