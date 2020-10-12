@@ -530,9 +530,10 @@ impl From<Deploy> for DeployItem {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
     use crate::testing::TestRng;
-    use uint::static_assertions::_core::time::Duration;
 
     #[test]
     fn json_roundtrip() {
