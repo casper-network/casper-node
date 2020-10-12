@@ -387,7 +387,7 @@ impl AsRef<[u8]> for BlockHash {
 #[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct BlockHeader {
     parent_hash: BlockHash,
-    global_state_hash: Digest,
+    state_root_hash: Digest,
     body_hash: Digest,
     deploy_hashes: Vec<DeployHash>,
     random_bit: bool,
@@ -406,8 +406,8 @@ impl BlockHeader {
     }
 
     /// The root hash of the resulting global state.
-    pub fn global_state_hash(&self) -> &Digest {
-        &self.global_state_hash
+    pub fn state_root_hash(&self) -> &Digest {
+        &self.state_root_hash
     }
 
     /// The hash of the block's body.
@@ -486,7 +486,7 @@ impl Display for BlockHeader {
             "block header parent hash {}, post-state hash {}, body hash {}, deploys [{}], \
             random bit {}, accumulated seed {}, timestamp {}",
             self.parent_hash.inner(),
-            self.global_state_hash,
+            self.state_root_hash,
             self.body_hash,
             DisplayIter::new(self.deploy_hashes.iter()),
             self.random_bit,
@@ -514,7 +514,7 @@ impl Block {
     pub(crate) fn new(
         parent_hash: BlockHash,
         parent_seed: Digest,
-        global_state_hash: Digest,
+        state_root_hash: Digest,
         finalized_block: FinalizedBlock,
     ) -> Self {
         let body = ();
@@ -536,7 +536,7 @@ impl Block {
 
         let header = BlockHeader {
             parent_hash,
-            global_state_hash,
+            state_root_hash,
             body_hash,
             deploy_hashes: finalized_block.proto_block.deploys,
             random_bit: finalized_block.proto_block.random_bit,
@@ -570,8 +570,8 @@ impl Block {
         &self.hash
     }
 
-    pub(crate) fn global_state_hash(&self) -> &Digest {
-        self.header.global_state_hash()
+    pub(crate) fn state_root_hash(&self) -> &Digest {
+        self.header.state_root_hash()
     }
 
     /// The deploy hashes included in this block.
@@ -597,11 +597,11 @@ impl Block {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         let parent_hash = BlockHash::new(Digest::random(rng));
-        let global_state_hash = Digest::random(rng);
+        let state_root_hash = Digest::random(rng);
         let finalized_block = FinalizedBlock::random(rng);
         let parent_seed = Digest::random(rng);
 
-        let mut block = Block::new(parent_hash, parent_seed, global_state_hash, finalized_block);
+        let mut block = Block::new(parent_hash, parent_seed, state_root_hash, finalized_block);
 
         let signatures_count = rng.gen_range(0, 11);
         for _ in 0..signatures_count {
@@ -623,7 +623,7 @@ impl Display for Block {
             random bit {}, timestamp {}, era_id {}, height {}, proofs count {}",
             self.hash.inner(),
             self.header.parent_hash.inner(),
-            self.header.global_state_hash,
+            self.header.state_root_hash,
             self.header.body_hash,
             DisplayIter::new(self.header.deploy_hashes.iter()),
             self.header.random_bit,

@@ -12,7 +12,7 @@ use crate::{command::ClientCommand, common, rpc::RpcClient};
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
     NodeAddress,
-    GlobalStateHash,
+    StateRootHash,
     PurseURef,
 }
 
@@ -49,11 +49,11 @@ mod balance_args {
     use super::*;
 
     pub(super) fn get(matches: &ArgMatches) -> <GetBalance as RpcWithParams>::RequestParams {
-        let global_state_hash = common::global_state_hash::get(&matches);
+        let state_hash = common::state_root_hash::get(&matches);
         let purse_uref = purse_uref::get(&matches);
 
         GetBalanceParams {
-            global_state_hash,
+            state_root_hash: state_hash,
             purse_uref,
         }
     }
@@ -74,8 +74,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {
             .arg(common::node_address::arg(
                 DisplayOrder::NodeAddress as usize,
             ))
-            .arg(common::global_state_hash::arg(
-                DisplayOrder::GlobalStateHash as usize,
+            .arg(common::state_root_hash::arg(
+                DisplayOrder::StateRootHash as usize,
             ))
             .arg(purse_uref::arg())
     }

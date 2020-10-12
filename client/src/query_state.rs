@@ -16,7 +16,7 @@ use crate::{command::ClientCommand, common, RpcClient};
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
     NodeAddress,
-    GlobalStateHash,
+    StateRootHash,
     Key,
     Path,
 }
@@ -125,8 +125,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
             .arg(common::node_address::arg(
                 DisplayOrder::NodeAddress as usize,
             ))
-            .arg(common::global_state_hash::arg(
-                DisplayOrder::GlobalStateHash as usize,
+            .arg(common::state_root_hash::arg(
+                DisplayOrder::StateRootHash as usize,
             ))
             .arg(key::arg())
             .arg(path::arg())
@@ -134,12 +134,12 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
 
     fn run(matches: &ArgMatches<'_>) {
         let node_address = common::node_address::get(matches);
-        let global_state_hash = common::global_state_hash::get(matches);
+        let state_root_hash = common::state_root_hash::get(matches);
         let key = key::get(matches);
         let path = path::get(matches);
 
         let params = GetItemParams {
-            global_state_hash,
+            state_root_hash,
             key,
             path,
         };

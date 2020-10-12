@@ -2,7 +2,7 @@ use std::str;
 
 use casper_node::rpcs::{
     account::PutDeployParams,
-    chain::{GetBlockParams, GetGlobalStateHashParams},
+    chain::{GetBlockParams, GetStateRootHashParams},
     info::GetDeployParams,
     state::{GetBalanceParams, GetItemParams},
     RPC_API_PATH,
@@ -86,7 +86,7 @@ pub(crate) trait IntoJsonMap: Serialize {
 
 impl IntoJsonMap for PutDeployParams {}
 impl IntoJsonMap for GetBlockParams {}
-impl IntoJsonMap for GetGlobalStateHashParams {}
+impl IntoJsonMap for GetStateRootHashParams {}
 impl IntoJsonMap for GetDeployParams {}
 impl IntoJsonMap for GetBalanceParams {}
 impl IntoJsonMap for GetItemParams {}

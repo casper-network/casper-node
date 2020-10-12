@@ -476,7 +476,7 @@ where
             // create it, before we can say we handled the block
             let new_era_id = block_header.era_id().successor();
             let request = GetEraValidatorsRequest::new(
-                (*block_header.global_state_hash()).into(),
+                (*block_header.state_root_hash()).into(),
                 new_era_id.0,
                 ProtocolVersion::V1_0_0,
             );
@@ -543,7 +543,7 @@ where
             seed,
             block_header.timestamp(),
             block_header.height() + 1,
-            *block_header.global_state_hash(),
+            *block_header.state_root_hash(),
         );
         let mut effects = self.handle_consensus_results(new_era_id, results);
         effects.extend(

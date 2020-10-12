@@ -34,7 +34,7 @@ pub trait StateReader<K, V> {
 #[derive(Debug)]
 pub enum CommitResult {
     RootNotFound,
-    Success { state_root: Blake2bHash },
+    Success { state_root_hash: Blake2bHash },
     KeyNotFound(Key),
     TypeMismatch(TypeMismatch),
     Serialization(bytesrepr::Error),
@@ -44,9 +44,9 @@ impl fmt::Display for CommitResult {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
             CommitResult::RootNotFound => write!(f, "Root not found"),
-            CommitResult::Success { state_root } => {
-                write!(f, "Success: state_root: {}", state_root,)
-            }
+            CommitResult::Success {
+                state_root_hash: state_root,
+            } => write!(f, "Success: state_root: {}", state_root,),
             CommitResult::KeyNotFound(key) => write!(f, "Key not found: {}", key),
             CommitResult::TypeMismatch(type_mismatch) => {
                 write!(f, "Type mismatch: {:?}", type_mismatch)
@@ -149,5 +149,7 @@ where
 
     txn.commit()?;
 
-    Ok(CommitResult::Success { state_root })
+    Ok(CommitResult::Success {
+        state_root_hash: state_root,
+    })
 }

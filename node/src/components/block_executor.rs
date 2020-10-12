@@ -135,14 +135,18 @@ impl Display for Event {
             ),
             Event::CommitExecutionEffects {
                 state,
-                commit_result: Ok(CommitResult::Success { state_root, .. }),
+                commit_result:
+                    Ok(CommitResult::Success {
+                        state_root_hash: state_root_hash,
+                        ..
+                    }),
             } => write!(
                 f,
                 "commit execution effects of finalized block with height {} with \
                 pre-state hash {}: success with post-state hash {}",
                 state.finalized_block.height(),
                 state.pre_state_hash,
-                state_root,
+                state_root_hash,
             ),
             Event::CommitExecutionEffects {
                 state,
@@ -221,7 +225,7 @@ impl BlockExecutor {
                     block.height(),
                     ExecutedBlockSummary {
                         hash: *block.hash(),
-                        post_state_hash: *block.global_state_hash(),
+                        post_state_hash: *block.state_root_hash(),
                         accumulated_seed: block.header().accumulated_seed(),
                     },
                 )
@@ -489,7 +493,7 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
                 trace!(?state, ?commit_result, "commit result");
                 match commit_result {
                     Ok(CommitResult::Success {
-                        state_root: post_state_hash,
+                        state_root_hash: post_state_hash,
                     }) => {
                         debug!(?post_state_hash, "commit succeeded");
                         state.pre_state_hash = post_state_hash.into();
