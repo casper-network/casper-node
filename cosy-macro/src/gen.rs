@@ -161,7 +161,7 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
                     dispatches.push(quote!(
                         #event_ident::#variant_ident(request) => {
 
-                    //         // TODO: Build proper parsed struct.
+                    // TODO: Build proper parsed struct.
                     //         crate::reactor::wrap_effects(
                     //             #event_ident::#variant_name,
                     //             <#full_type_path as crate::components::Component<#event_ident>>::handle_event(&mut self.#name, effect_builder, rng, event)
