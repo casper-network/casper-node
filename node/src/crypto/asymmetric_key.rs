@@ -1250,9 +1250,9 @@ mod tests {
     type OpenSSLPublicKey = PKey<Public>;
 
     fn secret_key_serialization_roundtrip(secret_key: SecretKey) {
-        // Try to/from MsgPack.
-        let serialized = rmp_serde::to_vec(&secret_key).unwrap();
-        let deserialized: SecretKey = rmp_serde::from_read_ref(&serialized).unwrap();
+        // Try to/from bincode.
+        let serialized = bincode::serialize(&secret_key).unwrap();
+        let deserialized: SecretKey = bincode::deserialize(&serialized).unwrap();
         assert_eq!(secret_key.as_secret_slice(), deserialized.as_secret_slice());
         assert_eq!(secret_key.tag(), deserialized.tag());
 
@@ -1304,9 +1304,9 @@ mod tests {
     }
 
     fn public_key_serialization_roundtrip(public_key: PublicKey) {
-        // Try to/from MsgPack.
-        let serialized = rmp_serde::to_vec(&public_key).unwrap();
-        let deserialized = rmp_serde::from_read_ref(&serialized).unwrap();
+        // Try to/from bincode.
+        let serialized = bincode::serialize(&public_key).unwrap();
+        let deserialized = bincode::deserialize(&serialized).unwrap();
         assert_eq!(public_key, deserialized);
         assert_eq!(public_key.tag(), deserialized.tag());
 
@@ -1372,9 +1372,9 @@ mod tests {
     }
 
     fn signature_serialization_roundtrip(signature: Signature) {
-        // Try to/from MsgPack.
-        let serialized = rmp_serde::to_vec(&signature).unwrap();
-        let deserialized: Signature = rmp_serde::from_read_ref(&serialized).unwrap();
+        // Try to/from bincode.
+        let serialized = bincode::serialize(&signature).unwrap();
+        let deserialized: Signature = bincode::deserialize(&serialized).unwrap();
         assert_eq!(signature, deserialized);
         assert_eq!(signature.tag(), deserialized.tag());
 

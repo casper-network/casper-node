@@ -915,11 +915,6 @@ mod tests {
             assert_eq!(value, deserialized);
         }
         {
-            let serialized = rmp_serde::to_vec(&value).unwrap();
-            let deserialized = rmp_serde::from_read_ref(serialized.as_slice()).unwrap();
-            assert_eq!(value, deserialized);
-        }
-        {
             let serialized = serde_json::to_string_pretty(&value).unwrap();
             let deserialized = serde_json::from_str(&serialized).unwrap();
             assert_eq!(value, deserialized);
