@@ -1,9 +1,11 @@
+use core::convert::TryInto;
+
 use crate::{
     auction::{
         providers::StorageProvider, Bids, DelegatorRewardMap, Delegators, EraId, EraValidators,
         RuntimeProvider, SeigniorageRecipientsSnapshot, ValidatorRewardMap, BIDS_KEY,
         DELEGATORS_KEY, DELEGATOR_REWARD_MAP, ERA_ID_KEY, ERA_VALIDATORS_KEY,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, VALIDATOR_REWARD_MAP,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, VALIDATOR_REWARD_MAP, VALIDATOR_SLOTS_KEY,
     },
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::{Error, Result},
@@ -139,4 +141,15 @@ where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
     write_to(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, snapshot)
+}
+
+pub fn get_validator_slots<P>(provider: &mut P) -> Result<usize>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    let validator_slots: u32 = read_from(provider, VALIDATOR_SLOTS_KEY)?;
+    let validator_slots = validator_slots
+        .try_into()
+        .map_err(|_| Error::InvalidValidatorSlotsValue)?;
+    Ok(validator_slots)
 }

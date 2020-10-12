@@ -29,12 +29,15 @@ use tracing::{debug, error, warn};
 
 use casper_types::{
     account::AccountHash,
-    auction::{ValidatorWeights, ARG_ERA_ID, ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS},
+    auction::{
+        ValidatorWeights, ARG_ERA_ID, ARG_GENESIS_VALIDATORS, ARG_MINT_CONTRACT_PACKAGE_HASH,
+        ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, ARG_VALIDATOR_SLOTS, VALIDATOR_SLOTS_KEY,
+    },
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
     runtime_args,
     system_contract_errors::mint,
-    AccessRights, BlockTime, Contract, ContractHash, ContractPackage, ContractPackageHash,
+    AccessRights, BlockTime, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
     ContractVersionKey, EntryPoint, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, URef,
     U512,
 };
@@ -386,10 +389,12 @@ where
                 &ee_config.auction_installer_bytes()
             };
 
+            let validator_slots = ee_config.validator_slots();
             let auction_installer_module = preprocessor.preprocess(auction_installer_bytes)?;
             let args = runtime_args! {
-                "mint_contract_package_hash" => mint_package_hash,
-                "genesis_validators" => bonded_validators,
+                ARG_MINT_CONTRACT_PACKAGE_HASH => mint_package_hash,
+                ARG_GENESIS_VALIDATORS => bonded_validators,
+                ARG_VALIDATOR_SLOTS => validator_slots,
             };
             let authorization_keys = BTreeSet::new();
             let install_deploy_hash = genesis_config_hash.value();
@@ -715,6 +720,21 @@ where
                         .map_err(Into::into)?;
                 }
             }
+        }
+
+        // 3.1.1.1.1.7 new total validator slots is optional
+        if let Some(new_validator_slots) = upgrade_config.new_validator_slots() {
+            // 3.1.2.4 if new total validator slots is provided, update auction contract state
+            let auction_contract = tracking_copy
+                .borrow_mut()
+                .get_contract(correlation_id, new_protocol_data.auction())?;
+
+            let validator_slots_key = auction_contract.named_keys()[VALIDATOR_SLOTS_KEY];
+            let value = StoredValue::CLValue(
+                CLValue::from_t(new_validator_slots)
+                    .map_err(|_| Error::Bytesrepr("new_validator_slots".to_string()))?,
+            );
+            tracking_copy.borrow_mut().write(validator_slots_key, value);
         }
 
         let effects = tracking_copy.borrow().effect();
