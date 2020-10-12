@@ -157,7 +157,6 @@ impl<C: Context> FinalityDetector<C> {
     }
 }
 
-
 #[allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
 #[cfg(test)]
 mod tests {
