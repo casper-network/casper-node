@@ -81,8 +81,10 @@ pub enum Event<I> {
     CreateNewEra {
         /// The header of the switch block
         block_header: Box<BlockHeader>,
-        booking_block_hash: Option<BlockHash>,
-        key_block_seed: Option<Digest>,
+        /// Ok(block_hash) if the booking block was found, Err(height) if not
+        booking_block_hash: Result<BlockHash, u64>,
+        /// Ok(seed) if the key block was found, Err(height) if not
+        key_block_seed: Result<Digest, u64>,
         get_validators_result: Result<Option<ValidatorWeights>, GetEraValidatorsError>,
     },
 }
@@ -233,16 +235,18 @@ where
                 key_block_seed,
                 get_validators_result,
             } => {
-                let booking_block_hash = booking_block_hash.unwrap_or_else(|| {
+                let booking_block_hash = booking_block_hash.unwrap_or_else(|height| {
                     error!(
-                        "could not get the booking block hash for era {}",
+                        "could not find the booking block at height {} for era {}",
+                        height,
                         block_header.era_id().successor()
                     );
                     panic!("couldn't get the booking block hash");
                 });
-                let key_block_seed = key_block_seed.unwrap_or_else(|| {
+                let key_block_seed = key_block_seed.unwrap_or_else(|height| {
                     error!(
-                        "could not get the seed from the key block for era {}",
+                        "could not find the key block at height {} for era {}",
+                        height,
                         block_header.era_id().successor()
                     );
                     panic!("couldn't get the seed from the key block");

@@ -493,10 +493,14 @@ where
                 join!(future_validators, future_booking_block, future_key_block)
             }
             .event(
-                |(validators, booking_block, key_block)| Event::CreateNewEra {
+                move |(validators, booking_block, key_block)| Event::CreateNewEra {
                     block_header: Box::new(block_header),
-                    booking_block_hash: booking_block.map(|block| *block.hash()),
-                    key_block_seed: key_block.map(|block| block.header().accumulated_seed()),
+                    booking_block_hash: booking_block
+                        .map_or_else(|| Err(booking_block_height), |block| Ok(*block.hash())),
+                    key_block_seed: key_block.map_or_else(
+                        || Err(key_block_height),
+                        |block| Ok(block.header().accumulated_seed()),
+                    ),
                     get_validators_result: validators,
                 },
             );
