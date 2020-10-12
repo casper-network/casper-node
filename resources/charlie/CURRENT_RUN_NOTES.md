@@ -1,18 +1,17 @@
-# Charlie-5 Run Notes
+# Charlie-6 Run Notes
 
-## Start Time: 2020-09-24 17:00 UTC
+## Start Time: 2020-10-01 17:00 UTC
 
 ## Changes
 
- - chainspec.toml and accounts.csv are no longer deployed with .deb package.
- - Fix to prevent equivocation when restarting nodes and catching up.
- - Improved log messages when detecting equivocation.
- - Improved log messages at era start.
- - Chainspec: `finality_threshold_percent = 12`
- - Chainspec: timestamp to 1600966800000
- - Added check for /etc/casper/accounts.csv and /etc/casper/chainspec.toml to systemd service since it is 
- no longer distributed with package.
-
+ - Network name updated to `casper-charlie-testnet-6`.
+ - Fix outdated confirmation warnings.
+ - Log in more detail if not voting in an era.
+ - Added log messages when not sending confirmation.
+ - Caching chainspec.toml for helping deal with chainspec db access.
+ - Removed panic of outdated block is exectuted.
+ - impl Display for validators to clean up logs.
+ 
 ## Testing
 
 We have learned what we will from load testing this as we did not have expectations for more than mostly idle
@@ -27,10 +26,10 @@ run and learn from this type of operation.
 ### Pull down genesis files:
 
 [chainspec.toml](https://raw.githubusercontent.com/CasperLabs/casper-node/charlie-testnet/resources/charlie/chainspec.toml)
- - md5: 52aba00f4362c3da82e79850ea72baba  chainspec.toml
+ - md5: 0b5fa5e7b22ae186c72f8cc1a5825548  chainspec.toml
 
 [accounts.csv](https://raw.githubusercontent.com/CasperLabs/casper-node/charlie-testnet/resources/charlie/accounts.csv)
- - md5: e094b414dfe5c13f7f98e81a00c82767  accounts.csv
+ - md5: e511b7407731ccbed243cec2ad5221fa  accounts.csv
 
 ```
 sudo curl -o /etc/casper/chainspec.toml https://raw.githubusercontent.com/CasperLabs/casper-node/charlie-testnet/resources/charlie/chainspec.toml
@@ -47,7 +46,7 @@ Pull down to `/etc/casper/`
 
 `sudo rm -rf /root/.local/share/casper-node`
 
-### Rename Log
+### Rename Log 
 
 `sudo mv /var/log/casper-node.log /var/log/casper-node.log.$(date "+%s")`
 
