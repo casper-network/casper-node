@@ -18,7 +18,6 @@ reactor!(Initializer {
   }
 
   events: {
-    // Storage events are typed and thus have to be listed explicitly here.
     storage = Event<Storage>;
   }
 

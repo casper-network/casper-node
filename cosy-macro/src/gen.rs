@@ -144,13 +144,12 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
         ));
 
         for request in def.requests() {
-            let variant_ident = request.variant_ident();
-            // let full_type_path = request.full_type_path();
+            let request_variant_ident = request.variant_ident();
 
             match request.target() {
                 Target::Discard => {
                     dispatches.push(quote!(
-                        #event_ident::#variant_ident(request) => {
+                        #event_ident::#request_variant_ident(request) => {
                             // Request is discarded.
                             // TODO: Add `trace!` call here? Consider the log spam though.
                             Default::default()
@@ -158,15 +157,20 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
                     ));
                 }
                 Target::Dest(ref dest) => {
-                    dispatches.push(quote!(
-                        #event_ident::#variant_ident(request) => {
+                    let dest_component_type = def.component(dest).full_component_type();
+                    let dest_variant_ident = def.component(dest).variant_ident();
+                    let dest_field_ident = dest;
 
-                    // TODO: Build proper parsed struct.
-                    //         crate::reactor::wrap_effects(
-                    //             #event_ident::#variant_name,
-                    //             <#full_type_path as crate::components::Component<#event_ident>>::handle_event(&mut self.#name, effect_builder, rng, event)
-                    //         )
-                    Default::default()
+                    dispatches.push(quote!(
+                        #event_ident::#request_variant_ident(request) => {
+                            // Turn request into event for target component.
+                            let dest_event = <#dest_component_type as crate::components::Component<Self::Event>>::Event::from(request);
+
+                            // Route the newly created event to the component.
+                            crate::reactor::wrap_effects(
+                                #event_ident::#dest_variant_ident,
+                                <#dest_component_type as crate::components::Component<Self::Event>>::handle_event(&mut self.#dest_field_ident, effect_builder, rng, dest_event)
+                            )
                         },
                     ));
                 }

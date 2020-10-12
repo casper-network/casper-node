@@ -88,6 +88,11 @@ impl ReactorDefinition {
         self.requests.iter()
     }
 
+    /// Returns the a full component by ident.
+    pub fn component(&self, ident: &Ident) -> &ComponentDefinition {
+        &self.components[ident]
+    }
+
     /// Returns the type for the event associated with a specific component.
     pub fn component_event(&self, component: &ComponentDefinition) -> TokenStream {
         let component_type = component.component_type();
