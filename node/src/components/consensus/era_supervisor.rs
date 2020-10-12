@@ -5,12 +5,7 @@
 //! it assumes is the concept of era/epoch and that each era runs separate consensus instance.
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
-use std::{
-    collections::HashMap,
-    convert::TryInto,
-    fmt::{self, Debug, Formatter},
-    rc::Rc,
-};
+use std::{collections::HashMap, convert::TryInto, fmt::{self, Debug, Formatter}, rc::Rc};
 
 use anyhow::Error;
 use blake2::{
@@ -20,6 +15,7 @@ use blake2::{
 use datasize::DataSize;
 use fmt::Display;
 use num_traits::AsPrimitive;
+use prometheus::{Gauge, IntCounter, Registry};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, trace, warn};
@@ -130,6 +126,8 @@ pub struct EraSupervisor<I> {
     current_era: EraId,
     chainspec: Chainspec,
     node_start_time: Timestamp,
+    #[data_size(skip)]
+    metrics: EraSupervisorMetrics,
 }
 
 impl<I> Debug for EraSupervisor<I> {
@@ -144,6 +142,7 @@ where
     I: NodeIdT,
 {
     /// Creates a new `EraSupervisor`, starting in era 0.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new<REv: ReactorEventT<I>>(
         timestamp: Timestamp,
         config: WithDir<Config>,
@@ -151,11 +150,15 @@ where
         validator_stakes: Vec<(PublicKey, Motes)>,
         chainspec: &Chainspec,
         genesis_post_state_hash: hash::Digest,
+        registry: &Registry,
         mut rng: &mut dyn CryptoRngCore,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
         let (root, config) = config.into_parts();
         let secret_signing_key = Rc::new(config.secret_key_path.load(root)?);
         let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
+        let metrics = EraSupervisorMetrics::new(registry).expect(
+            "failure to setup and register EraSupervisorMetrics"
+        );
 
         let mut era_supervisor = Self {
             active_eras: Default::default(),
@@ -164,6 +167,7 @@ where
             current_era: EraId(0),
             chainspec: chainspec.clone(),
             node_start_time: Timestamp::now(),
+            metrics,
         };
 
         let results = era_supervisor.new_era(
@@ -645,6 +649,9 @@ where
                     self.era_supervisor.active_eras[&era_id].start_height + height,
                     proposer,
                 );
+                let time_since_proto_block = finalized_block.timestamp().elapsed().millis();
+                self.era_supervisor.metrics.rate.set(1000.0 / time_since_proto_block as f64);
+                self.era_supervisor.metrics.amount_of_blocks.inc();
                 // Announce the finalized proto block.
                 let mut effects = self
                     .effect_builder
@@ -672,5 +679,44 @@ where
                     }
                 }),
         }
+    }
+}
+
+/// Metrics to track rate of finalization
+#[derive(Debug)] 
+pub struct EraSupervisorMetrics {
+    /// Gauge to track rate. 
+    rate: Gauge,
+    /// Amount of finalized blocks. 
+    amount_of_blocks: IntCounter,
+    /// registry component.
+    registry: Registry
+}
+
+impl EraSupervisorMetrics {
+    fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        let rate = Gauge::new("rate_of_finalization", "the rate at which blocks are finalized per second")?;
+        let amount_of_blocks = IntCounter::new("amount_of_blocks", "the number of blocks finalized so far")?;
+        registry.register(Box::new(rate.clone()))?;
+        registry.register(Box::new(amount_of_blocks.clone()))?;
+        Ok(EraSupervisorMetrics{
+            rate,
+            amount_of_blocks,
+            registry: registry.clone()
+        })
+    }
+}
+
+impl Drop for EraSupervisorMetrics {
+    fn drop(&mut self) {
+        self.registry
+            .unregister(Box::new(self.rate.clone()))
+            .expect(
+                "did not expect deregistering rate to fail"
+            );
+        self.registry
+            .unregister(Box::new(self.amount_of_blocks.clone()))
+            .expect("did not expect deregisterting amount to fail"
+        );
     }
 }
