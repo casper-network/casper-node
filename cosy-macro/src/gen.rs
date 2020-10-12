@@ -183,7 +183,7 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
             fn dispatch_event(
                 &mut self,
                 effect_builder: crate::reactor::EffectBuilder<Self::Event>,
-                rng: &mut dyn rand::RngCore,
+                rng: &mut dyn crate::types::CryptoRngCore,
                 event: Self::Event,
             ) -> crate::reactor::Effects<Self::Event> {
                 match event {
@@ -195,7 +195,7 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
                 cfg: Self::Config,
                 registry: &crate::reactor::Registry,
                 event_queue: crate::reactor::EventQueueHandle<Self::Event>,
-                rng: &mut dyn rand::RngCore,
+                rng: &mut dyn crate::types::CryptoRngCore,
             ) -> Result<(Self, crate::reactor::Effects<Self::Event>), Self::Error> {
                 todo!()
             }
