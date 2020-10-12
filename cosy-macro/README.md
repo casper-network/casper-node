@@ -1,8 +1,8 @@
 # Cosy macros
 
-The `cosy_macro` crate offers an easy-to-use macro to create reactor implementations for the component system. It enforces a set of convention and allows generating a large amount of otherwise boilerplate heavy setup code comfortably.
+The `cosy-macros` crate offers an easy-to-use macro to create reactor implementations for the component system. It enforces a set of convention and allows generating a large amount of otherwise boilerplate heavy setup code comfortably.
 
-The macro is invoked by calling the `cosy_macro::reactor` macro as follows:
+The macro is invoked by calling the `cosy_macros::reactor` macro as follows:
 
 ```rust
 reactor!(NameOfReactor {
