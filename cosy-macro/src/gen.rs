@@ -56,6 +56,14 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
         error_display_variants.push(quote!(
            #error_ident::#variant_ident(inner) => write!(f, "{}: {}", #field_name, inner)
         ));
+
+        from_impls.push(quote!(
+            impl From<#full_event_type> for #event_ident {
+                fn from(event: #full_event_type) -> Self {
+                    #event_ident::#variant_ident(event)
+                }
+            }
+        ));
     }
 
     // NOTE: Cannot use `From::from` to directly construct next component's event because doing so
@@ -144,7 +152,7 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
                     dispatches.push(quote!(
                         #event_ident::#variant_ident(request) => {
                             // Request is discarded.
-                            // TODO: Add `trace!` call here.
+                            // TODO: Add `trace!` call here? Consider the log spam though.
                             Default::default()
                         },
                     ));
