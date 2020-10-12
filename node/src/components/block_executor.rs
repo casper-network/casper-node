@@ -1,31 +1,29 @@
 //! Block executor component.
+mod event;
 
 use std::{
     collections::{HashMap, VecDeque},
-    fmt::{Debug, Display},
+    fmt::Debug,
 };
 
 use datasize::DataSize;
-use derive_more::From;
 use itertools::Itertools;
 use smallvec::SmallVec;
 use tracing::{debug, error, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self,
         deploy_item::DeployItem,
         execute_request::ExecuteRequest,
         execution_result::{ExecutionResult as EngineExecutionResult, ExecutionResults},
         step::{RewardItem, SlashItem, StepRequest, StepResult},
-        RootNotFound,
     },
     storage::global_state::CommitResult,
 };
 use casper_types::ProtocolVersion;
 
 use crate::{
-    components::{storage::Storage, Component},
+    components::{block_executor::event::State, storage::Storage, Component},
     crypto::hash::Digest,
     effect::{
         announcements::BlockExecutorAnnouncement,
@@ -37,6 +35,7 @@ use crate::{
         FinalizedBlock,
     },
 };
+pub(crate) use event::Event;
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `BlockExecutor`
 /// can work with.
@@ -56,128 +55,6 @@ impl<REv> ReactorEventT for REv where
         + From<BlockExecutorAnnouncement>
         + Send
 {
-}
-
-/// Block executor component event.
-#[derive(Debug, From)]
-pub enum Event {
-    /// A request made of the Block executor component.
-    #[from]
-    Request(BlockExecutorRequest),
-    /// Received all requested deploys.
-    GetDeploysResult {
-        /// The block that needs the deploys for execution.
-        finalized_block: FinalizedBlock,
-        /// Contents of deploys. All deploys are expected to be present in the storage component.
-        deploys: VecDeque<Deploy>,
-    },
-    /// The result of executing a single deploy.
-    DeployExecutionResult {
-        /// State of this request.
-        state: Box<State>,
-        /// The ID of the deploy currently being executed.
-        deploy_hash: DeployHash,
-        /// Result of deploy execution.
-        result: Result<ExecutionResults, RootNotFound>,
-    },
-    /// The result of committing a single set of transforms after executing a single deploy.
-    CommitExecutionEffects {
-        /// State of this request.
-        state: Box<State>,
-        /// Commit result for execution request.
-        commit_result: Result<CommitResult, engine_state::Error>,
-    },
-    /// The result of running the step on a switch block.
-    RunStepResult {
-        /// State of this request.
-        state: Box<State>,
-        /// The result.
-        result: Result<StepResult, engine_state::Error>,
-    },
-}
-
-impl Display for Event {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Event::Request(req) => write!(f, "{}", req),
-            Event::GetDeploysResult {
-                finalized_block,
-                deploys,
-            } => write!(
-                f,
-                "fetch deploys for finalized block with height {} has {} deploys",
-                finalized_block.height(),
-                deploys.len()
-            ),
-            Event::DeployExecutionResult {
-                state,
-                deploy_hash,
-                result: Ok(_),
-            } => write!(
-                f,
-                "execution result for {} of finalized block with height {} with \
-                pre-state hash {}: success",
-                deploy_hash,
-                state.finalized_block.height(),
-                state.pre_state_hash
-            ),
-            Event::DeployExecutionResult {
-                state,
-                deploy_hash,
-                result: Err(_),
-            } => write!(
-                f,
-                "execution result for {} of finalized block with height {} with \
-                pre-state hash {}: root not found",
-                deploy_hash,
-                state.finalized_block.height(),
-                state.pre_state_hash
-            ),
-            Event::CommitExecutionEffects {
-                state,
-                commit_result: Ok(CommitResult::Success { state_root, .. }),
-            } => write!(
-                f,
-                "commit execution effects of finalized block with height {} with \
-                pre-state hash {}: success with post-state hash {}",
-                state.finalized_block.height(),
-                state.pre_state_hash,
-                state_root,
-            ),
-            Event::CommitExecutionEffects {
-                state,
-                commit_result,
-            } => write!(
-                f,
-                "commit execution effects of finalized block with height {} with \
-                pre-state hash {}: failed {:?}",
-                state.finalized_block.height(),
-                state.pre_state_hash,
-                commit_result,
-            ),
-            Event::RunStepResult { state, result } => write!(
-                f,
-                "result of running the step after finalized block with height {} \
-                    with pre-state hash {}: {:?}",
-                state.finalized_block.height(),
-                state.pre_state_hash,
-                result
-            ),
-        }
-    }
-}
-
-/// Holds the state of an ongoing execute-commit cycle spawned from a given `Event::Request`.
-#[derive(Debug)]
-pub struct State {
-    finalized_block: FinalizedBlock,
-    /// Deploys which have still to be executed.
-    remaining_deploys: VecDeque<Deploy>,
-    /// A collection of result of executing the deploys.
-    execution_results: HashMap<DeployHash, ExecutionResult>,
-    /// Current pre-state hash of global storage.  Is initialized with the parent block's
-    /// post-state hash, and is updated after each commit.
-    pre_state_hash: Digest,
 }
 
 #[derive(DataSize, Debug)]
