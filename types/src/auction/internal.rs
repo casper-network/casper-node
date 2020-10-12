@@ -1,4 +1,4 @@
-use uint::core_::convert::TryInto;
+use core::convert::TryInto;
 
 use crate::{
     auction::{
