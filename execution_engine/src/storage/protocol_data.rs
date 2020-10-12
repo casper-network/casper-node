@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
 
 /// Represents a protocol's data. Intended to be associated with a given protocol version.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ProtocolData {
     wasm_config: WasmConfig,
     mint: ContractHash,

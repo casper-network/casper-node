@@ -78,7 +78,7 @@ fn main() {
         standard_payment_installer_bytes,
         auction_installer_bytes,
         DEFAULT_ACCOUNTS.clone(),
-        DEFAULT_WASM_CONFIG.clone(),
+        *DEFAULT_WASM_CONFIG,
     );
     let run_genesis_request = RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,

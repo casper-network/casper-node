@@ -68,7 +68,7 @@ impl From<&chainspec::UpgradePoint> for UpgradePoint {
             protocol_version: upgrade_point.protocol_version.clone(),
             upgrade_installer_path: Some(External::path(DEFAULT_UPGRADE_INSTALLER_PATH)),
             activation_point: upgrade_point.activation_point,
-            new_wasm_config: upgrade_point.new_wasm_config.clone(),
+            new_wasm_config: upgrade_point.new_wasm_config,
             new_deploy_config: upgrade_point.new_deploy_config,
         }
     }
@@ -126,7 +126,7 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
 
         let highway = chainspec.genesis.highway_config;
         let deploys = chainspec.genesis.deploy_config;
-        let wasm_config = chainspec.genesis.wasm_config.clone();
+        let wasm_config = chainspec.genesis.wasm_config;
 
         let upgrades = chainspec
             .upgrades

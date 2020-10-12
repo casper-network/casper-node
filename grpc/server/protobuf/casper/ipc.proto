@@ -365,8 +365,13 @@ message ChainSpec {
 
         message HostFunctionCosts {
             message HostFunction {
-               uint32 cost = 1;
-               repeated uint32 arguments = 2;
+                uint32 cost = 1;
+
+                message Argument {
+                    uint32 weight = 1;
+                }
+
+                repeated Argument arguments = 2;
             }
 
             HostFunction read_value = 1;

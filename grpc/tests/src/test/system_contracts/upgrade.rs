@@ -362,7 +362,7 @@ fn should_allow_only_wasm_costs_patch_version() {
             .with_current_protocol_version(PROTOCOL_VERSION)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .with_new_wasm_config(new_wasm_config.clone())
+            .with_new_wasm_config(new_wasm_config)
             .build()
     };
 
@@ -407,7 +407,7 @@ fn should_allow_only_wasm_costs_minor_version() {
             .with_current_protocol_version(PROTOCOL_VERSION)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .with_new_wasm_config(new_wasm_config.clone())
+            .with_new_wasm_config(new_wasm_config)
             .with_installer_code(installer_code)
             .build()
     };
@@ -457,7 +457,7 @@ fn should_upgrade_system_contract_and_wasm_costs_major() {
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .with_installer_code(installer_code)
-            .with_new_wasm_config(new_wasm_config.clone())
+            .with_new_wasm_config(new_wasm_config)
             .build()
     };
 

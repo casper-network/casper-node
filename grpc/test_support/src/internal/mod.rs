@@ -78,7 +78,7 @@ lazy_static! {
             standard_payment_installer_bytes,
             auction_installer_bytes,
             DEFAULT_ACCOUNTS.clone(),
-            DEFAULT_WASM_CONFIG.clone(),
+            *DEFAULT_WASM_CONFIG,
         )
     };
     pub static ref DEFAULT_GENESIS_CONFIG: GenesisConfig = {

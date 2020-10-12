@@ -1728,7 +1728,7 @@ where
             protocol_version,
             correlation_id,
             phase,
-            protocol_data.clone(),
+            *protocol_data,
         );
 
         let mut mint_runtime = Runtime::new(
@@ -1830,7 +1830,7 @@ where
             protocol_version,
             correlation_id,
             phase,
-            protocol_data.clone(),
+            *protocol_data,
         );
 
         let mut runtime = Runtime::new(
@@ -1928,7 +1928,7 @@ where
             protocol_version,
             correlation_id,
             phase,
-            protocol_data.clone(),
+            *protocol_data,
         );
 
         let mut runtime = Runtime::new(
@@ -2354,7 +2354,7 @@ where
             protocol_version,
             self.context.correlation_id(),
             self.context.phase(),
-            self.context.protocol_data().clone(),
+            *self.context.protocol_data(),
         );
 
         let mut runtime = Runtime {

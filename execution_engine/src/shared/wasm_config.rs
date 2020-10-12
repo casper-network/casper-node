@@ -11,7 +11,7 @@ use super::{
 pub const DEFAULT_INITIAL_MEMORY: u32 = 64;
 pub const DEFAULT_MAX_STACK_HEIGHT: u32 = 64 * 1024;
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct WasmConfig {
     /// Memory stipend. Amount of free memory (in 64kb pages) each contract can
     /// use for stack.
@@ -27,7 +27,7 @@ pub struct WasmConfig {
 }
 
 impl WasmConfig {
-    pub fn new(
+    pub const fn new(
         initial_mem: u32,
         max_stack_height: u32,
         opcode_costs: OpcodeCosts,
