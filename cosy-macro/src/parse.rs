@@ -1,18 +1,26 @@
+//! Parser for cosy macro.
+//!
+//! Contains the `Parse` implementations for the intermediate representation of the macro, which is
+//! `ReactorDefinition`. Many functions required by the code generator are also included here as
+//! methods in this representation.
+
 use std::{
     convert::TryFrom,
     fmt::{self, Debug, Formatter},
 };
 
 use indexmap::IndexMap;
-use inflector::cases::{pascalcase::to_pascal_case, snakecase::to_snake_case};
-use syn::parse::{Parse, ParseStream, Result};
-use syn::punctuated::Punctuated;
+use inflector::cases::pascalcase::to_pascal_case;
 use syn::{
-    braced, bracketed, export::quote::quote, parenthesized, Expr, Ident, ItemType, Path, Token,
-    Type,
+    braced, bracketed,
+    export::quote::quote,
+    parenthesized,
+    parse::{Parse, ParseStream, Result},
+    punctuated::Punctuated,
+    Expr, Ident, ItemType, Path, Token,
 };
 
-use crate::util::to_ident;
+use crate::{rust_type::RustType, util::to_ident};
 use proc_macro2::{Span, TokenStream};
 
 #[derive(Debug)]
@@ -43,60 +51,6 @@ pub(crate) struct ReactorDefinition {
 
     /// List of announcement routing directives.
     announcements: Vec<AnnouncementDefinition>,
-}
-/// A fully pathed Rust type with type arguments, e.g. `crate::components::SmallNet<NodeId>`.
-pub(crate) struct RustType(Path);
-
-impl Debug for RustType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let path = &self.0;
-        write!(f, "{}", quote!(#path).to_string())
-    }
-}
-
-impl RustType {
-    /// Returns the types identifier without type arguments, e.g. `SmallNet`.
-    pub fn ident(&self) -> Ident {
-        self.0
-            .segments
-            .last()
-            .expect("type has no last part?")
-            .ident
-            .clone()
-    }
-
-    /// Returns the type without the path, but with type arguments, e.g. `SmallNet<NodeId>`.
-    pub fn ty(&self) -> TokenStream {
-        let ident = self.ident();
-        let args = &self
-            .0
-            .segments
-            .last()
-            .expect("type has no last part?")
-            .arguments;
-        quote!(#ident #args)
-    }
-
-    /// Returns the full type as it was given in the macro call.
-    pub fn as_given(&self) -> &Path {
-        &self.0
-    }
-
-    /// Returns the module name that canonically would contain the type, e.g. `small_net`.
-    pub fn module_ident(&self) -> Ident {
-        to_ident(&to_snake_case(&self.ident().to_string()))
-    }
-}
-
-impl TryFrom<Type> for RustType {
-    type Error = String;
-
-    fn try_from(value: Type) -> core::result::Result<Self, Self::Error> {
-        match value {
-            Type::Path(type_path) => Ok(RustType(type_path.path)),
-            _ => Err(format!("cannot convert to RustType")),
-        }
-    }
 }
 
 impl ReactorDefinition {
@@ -290,7 +244,7 @@ impl Parse for ComponentDefinition {
         let args: Punctuated<Expr, Token!(,)> = content.parse_terminated(Expr::parse)?;
         Ok(ComponentDefinition {
             name,
-            component_type: RustType(ty),
+            component_type: RustType::new(ty),
             component_arguments: args.into_iter().collect(),
         })
     }
@@ -316,7 +270,7 @@ impl Parse for EventDefinition {
 
         Ok(EventDefinition {
             name,
-            event_type: RustType(ty),
+            event_type: RustType::new(ty),
         })
     }
 }
@@ -356,7 +310,7 @@ impl RequestDefinition {
 
 impl Parse for RequestDefinition {
     fn parse(input: ParseStream) -> Result<Self> {
-        let request_type = RustType(input.parse()?);
+        let request_type = RustType::new(input.parse()?);
         let _: Token!(->) = input.parse()?;
 
         let target = input.parse()?;
@@ -377,7 +331,7 @@ pub(crate) struct AnnouncementDefinition {
 
 impl Parse for AnnouncementDefinition {
     fn parse(input: ParseStream) -> Result<Self> {
-        let announcement_type = RustType(input.parse()?);
+        let announcement_type = RustType::new(input.parse()?);
         let _: Token!(->) = input.parse()?;
 
         let content;
@@ -394,8 +348,11 @@ impl Parse for AnnouncementDefinition {
     }
 }
 
+/// A routing target.
 pub(crate) enum Target {
+    /// Discard whatever is being routed.
     Discard,
+    /// Forward to destination.
     Dest(Ident),
 }
 
@@ -419,6 +376,9 @@ impl Parse for Target {
     }
 }
 
+/// Custom keyswords.
+///
+/// This module groups custom keywords used by the parser.
 mod kw {
     syn::custom_keyword!(components);
     syn::custom_keyword!(events);

@@ -28,6 +28,7 @@ pub(crate) fn generate_reactor(def: &ReactorDefinition) -> TokenStream {
     )
 }
 
+/// Generates types for the reactor implementation.
 pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
     let reactor_ident = def.reactor_ident();
     let event_ident = suffix_ident(&reactor_ident, "Event");
@@ -110,6 +111,7 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
     )
 }
 
+/// Generates the reactor implementation itself.
 pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
     let reactor_ident = def.reactor_ident();
     let event_ident = def.event_ident();
