@@ -59,6 +59,9 @@ use crate::{
 
 /// The unbonding period, in number of eras. After this many eras, a former validator is allowed to
 /// withdraw their stake, so their signature can't be trusted anymore.
+///
+/// A node keeps `2 * BONDED_ERAS` past eras around, because the oldest bonded era could still
+/// receive blocks that refer to `BONDED_ERAS` before that.
 const BONDED_ERAS: u64 = DEFAULT_UNBONDING_DELAY - AUCTION_DELAY;
 
 #[derive(
@@ -418,16 +421,19 @@ where
     pub(super) fn handle_message(&mut self, sender: I, msg: ConsensusMessage) -> Effects<Event<I>> {
         match msg {
             ConsensusMessage::Protocol { era_id, payload } => {
-                if era_id.0 + BONDED_ERAS < self.era_supervisor.current_era.0 {
+                if era_id.0 + 2 * BONDED_ERAS < self.era_supervisor.current_era.0 {
                     trace!(%era_id, "not handling message; era too old");
                     return Effects::new();
                 }
+                // If the era is already unbonded, only accept new evidence, because still-bonded
+                // eras could depend on that.
+                let evidence_only = era_id.0 + BONDED_ERAS < self.era_supervisor.current_era.0;
                 self.delegate_to_era(era_id, move |consensus, rng| {
-                    consensus.handle_message(sender, payload, rng)
+                    consensus.handle_message(sender, payload, evidence_only, rng)
                 })
             }
             ConsensusMessage::EvidenceRequest { era_id, pub_key } => {
-                if era_id.0 + BONDED_ERAS < self.era_supervisor.current_era.0 {
+                if era_id.0 + 2 * BONDED_ERAS < self.era_supervisor.current_era.0 {
                     trace!(%era_id, "not handling message; era too old");
                     return Effects::new();
                 }

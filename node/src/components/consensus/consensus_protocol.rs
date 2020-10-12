@@ -97,6 +97,7 @@ pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID> {
         &mut self,
         sender: I,
         msg: Vec<u8>,
+        evidence_only: bool,
         rng: &mut dyn CryptoRngCore,
     ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
 

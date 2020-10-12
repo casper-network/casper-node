@@ -240,6 +240,7 @@ where
         &mut self,
         sender: I,
         msg: Vec<u8>,
+        evidence_only: bool,
         rng: &mut dyn CryptoRngCore,
     ) -> Result<Vec<CpResult<I, C>>, Error> {
         match rmp_serde::from_read_ref(msg.as_slice()) {
@@ -248,7 +249,11 @@ where
                 sender,
                 err.into(),
             )]),
-            Ok(HighwayMessage::NewVertex(ref v)) if self.highway.has_vertex(v) => Ok(vec![]),
+            Ok(HighwayMessage::NewVertex(v))
+                if self.highway.has_vertex(&v) || (evidence_only && !v.is_evidence()) =>
+            {
+                Ok(vec![])
+            }
             Ok(HighwayMessage::NewVertex(v)) => {
                 match self.highway.pre_validate_vertex(v) {
                     Ok(pvv) => Ok(self.add_vertices(vec![(sender, pvv)], rng)),

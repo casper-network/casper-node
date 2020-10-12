@@ -51,6 +51,14 @@ impl<C: Context> Vertex<C> {
             Vertex::Evidence(_) => None,
         }
     }
+
+    /// Returns whether this is evidence, as opposed to other types of vertices.
+    pub(crate) fn is_evidence(&self) -> bool {
+        match self {
+            Vertex::Vote(_) => false,
+            Vertex::Evidence(_) => true,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

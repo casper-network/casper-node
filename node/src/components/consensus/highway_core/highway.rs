@@ -281,6 +281,7 @@ impl<C: Context> Highway<C> {
         &self.validators
     }
 
+    /// Returns an iterator over all validators known to be faulty.
     pub(crate) fn faulty_validators(&self) -> impl Iterator<Item = &C::ValidatorId> {
         self.validators
             .iter()
