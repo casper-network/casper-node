@@ -414,7 +414,7 @@ message ChainSpec {
         }
 
         // Memory stipend. Amount of free memory (in 64kb pages) each contract can use for stack.
-        uint32 initial_mem = 1;
+        uint32 initial_memory = 1;
         // Max stack height (native WebAssembly stack limiter)
         uint32 max_stack_height = 2;
         // Wasm opcode costs
