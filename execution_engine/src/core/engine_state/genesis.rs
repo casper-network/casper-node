@@ -1,7 +1,6 @@
 use std::{fmt, iter};
 
 use datasize::DataSize;
-use hex_fmt::HexFmt;
 use num_traits::Zero;
 use rand::{
     distributions::{Distribution, Standard},
@@ -216,7 +215,7 @@ impl Distribution<GenesisConfig> for Standard {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExecConfig {
     mint_installer_bytes: Vec<u8>,
     proof_of_stake_installer_bytes: Vec<u8>,
@@ -284,22 +283,6 @@ impl ExecConfig {
 
     pub fn validator_slots(&self) -> u32 {
         self.validator_slots
-    }
-}
-
-impl fmt::Debug for ExecConfig {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "validator_slots: {}, mint_installer_bytes: {:10}, proof_of_stake_installer_bytes: {:10}, standard_payment_installer_bytes: {:10}, auction_installer_bytes: {:10}, wasm_costs: {:?}, accounts: {:?}",
-            &self.validator_slots,
-            HexFmt(&self.mint_installer_bytes),
-            HexFmt(&self.proof_of_stake_installer_bytes),
-            HexFmt(&self.standard_payment_installer_bytes),
-            HexFmt(&self.auction_installer_bytes),
-            &self.wasm_costs,
-            &self.accounts,
-        )
     }
 }
 
