@@ -671,7 +671,7 @@ impl reactor::Reactor for Reactor {
             }) => {
                 let block_hash = *block.hash();
                 let reactor_event = Event::LinearChain(linear_chain::Event::LinearChainBlock {
-                    block,
+                    block: Box::new(block),
                     execution_results: execution_results.clone(),
                 });
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);

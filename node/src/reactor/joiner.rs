@@ -574,7 +574,7 @@ impl reactor::Reactor for Reactor {
                 execution_results,
             }) => {
                 let reactor_event = Event::LinearChain(linear_chain::Event::LinearChainBlock {
-                    block,
+                    block: Box::new(block),
                     execution_results,
                 });
                 self.dispatch_event(effect_builder, rng, reactor_event)
