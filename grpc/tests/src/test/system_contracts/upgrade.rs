@@ -23,8 +23,7 @@ use casper_execution_engine::{
         wasm_config::{WasmConfig, DEFAULT_INITIAL_MEMORY, DEFAULT_MAX_STACK_HEIGHT},
     },
 };
-
-use casper_types::ProtocolVersion;
+use casper_types::{auction::VALIDATOR_SLOTS_KEY, ProtocolVersion};
 #[cfg(feature = "use-system-contracts")]
 use casper_types::{runtime_args, CLValue, Key, RuntimeArgs, U512};
 
@@ -678,4 +677,63 @@ fn should_fail_major_upgrade_without_installer() {
         failed_deploy.message,
         Error::InvalidUpgradeConfig.to_string()
     );
+}
+
+#[ignore]
+#[test]
+fn should_upgrade_only_validator_slots() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    let sem_ver = PROTOCOL_VERSION.value();
+    let new_protocol_version =
+        ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
+
+    let valdiator_slot_key = builder
+        .get_contract(builder.get_auction_contract_hash())
+        .expect("auction should exist")
+        .named_keys()[VALIDATOR_SLOTS_KEY];
+
+    let before_validator_slots: u32 = builder
+        .query(None, valdiator_slot_key, &[])
+        .expect("should have validator slots")
+        .as_cl_value()
+        .expect("should be CLValue")
+        .clone()
+        .into_t()
+        .expect("should be u32");
+
+    let new_validator_slots = before_validator_slots + 1;
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(PROTOCOL_VERSION)
+            .with_new_protocol_version(new_protocol_version)
+            .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_new_validator_slots(new_validator_slots)
+            .build()
+    };
+
+    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+
+    let upgrade_response = builder
+        .get_upgrade_response(0)
+        .expect("should have response");
+
+    assert!(upgrade_response.has_success(), "expected success");
+
+    let after_validator_slots: u32 = builder
+        .query(None, valdiator_slot_key, &[])
+        .expect("should have validator slots")
+        .as_cl_value()
+        .expect("should be CLValue")
+        .clone()
+        .into_t()
+        .expect("should be u32");
+
+    assert_eq!(
+        new_validator_slots, after_validator_slots,
+        "should have upgraded validator slots to expected value"
+    )
 }

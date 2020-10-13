@@ -22,11 +22,13 @@ const DEFAULT_STANDARD_PAYMENT_INSTALLER_PATH: &str = "standard_payment_install.
 const DEFAULT_AUCTION_INSTALLER_PATH: &str = "auction_install.wasm";
 const DEFAULT_ACCOUNTS_CSV_PATH: &str = "accounts.csv";
 const DEFAULT_UPGRADE_INSTALLER_PATH: &str = "upgrade_install.wasm";
+const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
 struct Genesis {
     name: String,
     timestamp: Timestamp,
+    validator_slots: u32,
     protocol_version: Version,
     mint_installer_path: External<Vec<u8>>,
     pos_installer_path: External<Vec<u8>>,
@@ -40,6 +42,7 @@ impl Default for Genesis {
         Genesis {
             name: String::from(DEFAULT_CHAIN_NAME),
             timestamp: Timestamp::zero(),
+            validator_slots: DEFAULT_VALIDATOR_SLOTS,
             protocol_version: Version::from((1, 0, 0)),
             mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
             pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
@@ -60,6 +63,7 @@ struct UpgradePoint {
     activation_point: chainspec::ActivationPoint,
     new_wasm_config: Option<WasmConfig>,
     new_deploy_config: Option<DeployConfig>,
+    new_validator_slots: Option<u32>,
 }
 
 impl From<&chainspec::UpgradePoint> for UpgradePoint {
@@ -70,6 +74,7 @@ impl From<&chainspec::UpgradePoint> for UpgradePoint {
             activation_point: upgrade_point.activation_point,
             new_wasm_config: upgrade_point.new_wasm_config,
             new_deploy_config: upgrade_point.new_deploy_config,
+            new_validator_slots: upgrade_point.new_validator_slots,
         }
     }
 }
@@ -94,6 +99,7 @@ impl UpgradePoint {
             upgrade_installer_args,
             new_wasm_config: self.new_wasm_config,
             new_deploy_config: self.new_deploy_config,
+            new_validator_slots: self.new_validator_slots,
         })
     }
 }
@@ -114,6 +120,7 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
         let genesis = Genesis {
             name: chainspec.genesis.name.clone(),
             timestamp: chainspec.genesis.timestamp,
+            validator_slots: chainspec.genesis.validator_slots,
             protocol_version: chainspec.genesis.protocol_version.clone(),
             mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
             pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
@@ -191,6 +198,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
     let genesis = chainspec::GenesisConfig {
         name: chainspec.genesis.name,
         timestamp: chainspec.genesis.timestamp,
+        validator_slots: chainspec.genesis.validator_slots,
         protocol_version: chainspec.genesis.protocol_version,
         mint_installer_bytes,
         pos_installer_bytes,

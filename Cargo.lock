@@ -143,6 +143,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7deb0a829ca7bcfaf5da70b073a8d128619259a7be8216a355e23f00763059e5"
 
 [[package]]
+name = "atomic-shim"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d20fdac7156779a1a30d970e838195558b4810dd06aa69e7c7461bdc518edf9b"
+dependencies = [
+ "crossbeam",
+]
+
+[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -512,6 +521,7 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "base16",
+ "bincode",
  "blake2",
  "casper-types",
  "chrono",
@@ -536,7 +546,6 @@ dependencies = [
  "pwasm-utils",
  "rand 0.7.3",
  "rand_chacha 0.2.2",
- "rmp-serde",
  "serde",
  "serde_json",
  "tempfile",
@@ -558,6 +567,7 @@ dependencies = [
  "backtrace",
  "base16",
  "base64 0.12.3",
+ "bincode",
  "blake2",
  "casper-execution-engine",
  "casper-types",
@@ -598,13 +608,13 @@ dependencies = [
  "prometheus",
  "proptest",
  "pwasm-utils",
+ "quanta",
  "rand 0.7.3",
  "rand_chacha 0.2.2",
  "rand_core 0.5.1",
  "rand_pcg 0.2.1",
  "regex",
  "reqwest",
- "rmp-serde",
  "sd-notify",
  "semver 0.11.0",
  "serde",
@@ -653,7 +663,6 @@ dependencies = [
  "num-rational 0.3.0",
  "num-traits",
  "proptest",
- "rmp-serde",
  "serde",
  "serde-big-array",
  "serde_json",
@@ -894,6 +903,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69323bff1fb41c635347b8ead484a5ca6c3f11914d784170b158d8449ab07f8e"
+dependencies = [
+ "cfg-if",
+ "crossbeam-channel",
+ "crossbeam-deque",
+ "crossbeam-epoch",
+ "crossbeam-queue",
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "crossbeam-channel"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1012,6 +1035,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b2466559f260f48ad25fe6317b3c8dac77b5bdb5763ac7d9d6103530663bc90"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "ctor"
+version = "0.1.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7fbaabec2c953050352311293be5c6aba8e141ba19d6811862b232d6fd020484"
+dependencies = [
+ "quote 1.0.7",
+ "syn 1.0.41",
 ]
 
 [[package]]
@@ -2353,6 +2386,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mach"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b823e83b2affd8f40a9ee8c29dbc56404c1e34cd2710921f2801e2cf29527afa"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "main-purse"
 version = "0.1.0"
 dependencies = [
@@ -3374,6 +3416,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "quanta"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b9a7776952c6405aab84c51621523a5e053aa6fd63c8f8e8eeaaed79ad6d2dc"
+dependencies = [
+ "atomic-shim",
+ "ctor",
+ "libc",
+ "mach",
+ "once_cell",
+ "raw-cpuid",
+ "winapi 0.3.9",
+]
+
+[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3574,6 +3631,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77d416b86801d23dde1aa643023b775c3a462efc0ed96443add11546cdf1dca8"
 dependencies = [
  "rand_core 0.5.1",
+]
+
+[[package]]
+name = "raw-cpuid"
+version = "8.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0cee2c7710d96f9f90f56824fca5438b301dc0fb49ece4cf9dfa044e54067e10"
+dependencies = [
+ "bitflags 1.2.1",
+ "cc",
+ "rustc_version",
 ]
 
 [[package]]

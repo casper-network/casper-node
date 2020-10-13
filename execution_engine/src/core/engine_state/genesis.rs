@@ -215,7 +215,7 @@ impl Distribution<GenesisConfig> for Standard {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExecConfig {
     mint_installer_bytes: Vec<u8>,
     proof_of_stake_installer_bytes: Vec<u8>,
@@ -223,6 +223,7 @@ pub struct ExecConfig {
     auction_installer_bytes: Vec<u8>,
     accounts: Vec<GenesisAccount>,
     wasm_config: WasmConfig,
+    validator_slots: u32,
 }
 
 impl ExecConfig {
@@ -233,6 +234,7 @@ impl ExecConfig {
         auction_installer_bytes: Vec<u8>,
         accounts: Vec<GenesisAccount>,
         wasm_config: WasmConfig,
+        validator_slots: u32,
     ) -> ExecConfig {
         ExecConfig {
             mint_installer_bytes,
@@ -241,6 +243,7 @@ impl ExecConfig {
             auction_installer_bytes,
             accounts,
             wasm_config,
+            validator_slots,
         }
     }
 
@@ -277,6 +280,10 @@ impl ExecConfig {
     pub fn push_account(&mut self, account: GenesisAccount) {
         self.accounts.push(account)
     }
+
+    pub fn validator_slots(&self) -> u32 {
+        self.validator_slots
+    }
 }
 
 impl Distribution<ExecConfig> for Standard {
@@ -299,6 +306,8 @@ impl Distribution<ExecConfig> for Standard {
 
         let wasm_config = rng.gen();
 
+        let validator_slots = rng.gen();
+
         ExecConfig {
             mint_installer_bytes,
             proof_of_stake_installer_bytes,
@@ -306,6 +315,7 @@ impl Distribution<ExecConfig> for Standard {
             auction_installer_bytes,
             accounts,
             wasm_config,
+            validator_slots,
         }
     }
 }

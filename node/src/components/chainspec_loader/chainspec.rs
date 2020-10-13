@@ -164,6 +164,7 @@ impl Loadable for Vec<GenesisAccount> {
 pub struct GenesisConfig {
     pub(crate) name: String,
     pub(crate) timestamp: Timestamp,
+    pub(crate) validator_slots: u32,
     // We don't have an implementation for the semver version type, we skip it for now
     #[data_size(skip)]
     pub(crate) protocol_version: Version,
@@ -238,6 +239,7 @@ impl GenesisConfig {
     pub fn random(rng: &mut TestRng) -> Self {
         let name = rng.gen::<char>().to_string();
         let timestamp = Timestamp::random(rng);
+        let validator_slots = rng.gen::<u32>();
         let protocol_version = Version::new(
             rng.gen_range(0, 10),
             rng.gen::<u8>() as u64,
@@ -255,6 +257,7 @@ impl GenesisConfig {
         GenesisConfig {
             name,
             timestamp,
+            validator_slots,
             protocol_version,
             mint_installer_bytes,
             pos_installer_bytes,
@@ -282,6 +285,7 @@ pub(crate) struct UpgradePoint {
     pub(crate) upgrade_installer_args: Option<Vec<u8>>,
     pub(crate) new_wasm_config: Option<WasmConfig>,
     pub(crate) new_deploy_config: Option<DeployConfig>,
+    pub(crate) new_validator_slots: Option<u32>,
 }
 
 #[cfg(test)]
@@ -312,6 +316,7 @@ impl UpgradePoint {
         } else {
             None
         };
+        let new_validator_slots = rng.gen::<Option<u32>>();
 
         UpgradePoint {
             activation_point,
@@ -320,6 +325,7 @@ impl UpgradePoint {
             upgrade_installer_args,
             new_wasm_config: new_costs,
             new_deploy_config,
+            new_validator_slots,
         }
     }
 }
@@ -359,6 +365,7 @@ impl Into<ExecConfig> for Chainspec {
             self.genesis.auction_installer_bytes,
             self.genesis.accounts,
             self.genesis.wasm_config,
+            self.genesis.validator_slots,
         )
     }
 }
@@ -717,9 +724,9 @@ mod tests {
     }
 
     #[test]
-    fn rmp_serde_roundtrip() {
+    fn bincode_roundtrip() {
         let mut rng = TestRng::new();
         let chainspec = Chainspec::random(&mut rng);
-        testing::rmp_serde_roundtrip(&chainspec);
+        testing::bincode_roundtrip(&chainspec);
     }
 }

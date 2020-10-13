@@ -41,6 +41,16 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             Some(upgrade_point.get_activation_point().rank)
         };
 
+        let new_validator_slots: Option<u32> = if !upgrade_point.has_new_validator_slots() {
+            None
+        } else {
+            Some(
+                upgrade_point
+                    .take_new_validator_slots()
+                    .get_new_validator_slots(),
+            )
+        };
+
         Ok(UpgradeConfig::new(
             pre_state_hash,
             current_protocol_version,
@@ -49,6 +59,7 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             upgrade_installer_bytes,
             wasm_config,
             activation_point,
+            new_validator_slots,
         ))
     }
 }

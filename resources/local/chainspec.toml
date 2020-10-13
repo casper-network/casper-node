@@ -22,6 +22,8 @@ standard_payment_installer_path = '../../target/wasm32-unknown-unknown/release/s
 auction_installer_path = '../../target/wasm32-unknown-unknown/release/auction_install.wasm'
 # Path (absolute, or relative to this chainspec.toml) to the CSV file containing initial account balances and bonds.
 accounts_path = 'accounts.csv'
+# Number of slots available in validator auction.
+validator_slots = 5
 
 [highway]
 # Tick unit is milliseconds.

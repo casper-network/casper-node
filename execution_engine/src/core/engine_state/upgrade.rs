@@ -63,9 +63,11 @@ pub struct UpgradeConfig {
     upgrade_installer_bytes: Option<Vec<u8>>,
     wasm_config: Option<WasmConfig>,
     activation_point: Option<ActivationPoint>,
+    new_validator_slots: Option<u32>,
 }
 
 impl UpgradeConfig {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         pre_state_hash: Blake2bHash,
         current_protocol_version: ProtocolVersion,
@@ -74,6 +76,7 @@ impl UpgradeConfig {
         upgrade_installer_bytes: Option<Vec<u8>>,
         wasm_config: Option<WasmConfig>,
         activation_point: Option<ActivationPoint>,
+        new_validator_slots: Option<u32>,
     ) -> Self {
         UpgradeConfig {
             pre_state_hash,
@@ -83,6 +86,7 @@ impl UpgradeConfig {
             upgrade_installer_bytes,
             wasm_config,
             activation_point,
+            new_validator_slots,
         }
     }
 
@@ -114,5 +118,9 @@ impl UpgradeConfig {
 
     pub fn activation_point(&self) -> Option<u64> {
         self.activation_point
+    }
+
+    pub fn new_validator_slots(&self) -> Option<u32> {
+        self.new_validator_slots
     }
 }

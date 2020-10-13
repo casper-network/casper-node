@@ -41,17 +41,17 @@ pub enum Message {
 }
 
 impl Message {
-    pub(crate) fn new_get_request<T: Item>(id: &T::Id) -> Result<Self, rmp_serde::encode::Error> {
+    pub(crate) fn new_get_request<T: Item>(id: &T::Id) -> Result<Self, bincode::Error> {
         Ok(Message::GetRequest {
             tag: T::TAG,
-            serialized_id: rmp_serde::to_vec(id)?,
+            serialized_id: bincode::serialize(id)?,
         })
     }
 
-    pub(crate) fn new_get_response<T: Item>(item: &T) -> Result<Self, rmp_serde::encode::Error> {
+    pub(crate) fn new_get_response<T: Item>(item: &T) -> Result<Self, bincode::Error> {
         Ok(Message::GetResponse {
             tag: T::TAG,
-            serialized_item: rmp_serde::to_vec(item)?,
+            serialized_item: bincode::serialize(item)?,
         })
     }
 }

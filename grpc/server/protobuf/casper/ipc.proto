@@ -284,6 +284,8 @@ message ChainSpec {
             repeated GenesisAccount accounts = 4;
             // costs at genesis
             WasmConfig wasm_config = 5;
+            // The total number of validator slots available to auction.
+            uint32 validator_slots = 7;
 
             message GenesisAccount {
                 bytes public_key_bytes = 1;
@@ -438,9 +440,16 @@ message ChainSpec {
         casper.state.ProtocolVersion protocol_version = 2;
         // bytes for a contract to run that applies the upgrades to system contracts
         DeployCode upgrade_installer = 3;
-        // Note: this is optional; only needed when wasm config is changing
+        // Note: this is optional; only needed when costs are changing
         WasmConfig new_wasm_config = 4;
+        // DeployConfig changes
         DeployConfig new_deploy_config = 5;
+        // Change the total number of validator slots to this number (optional)
+        NewValidatorSlots new_validator_slots = 6;
+    }
+
+    message NewValidatorSlots {
+        uint32 new_validator_slots = 1;
     }
 
     message ActivationPoint {

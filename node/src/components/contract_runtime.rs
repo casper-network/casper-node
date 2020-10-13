@@ -381,7 +381,8 @@ impl ContractRuntime {
     /// Commits a genesis using a chainspec
     fn commit_genesis(&self, chainspec: Box<Chainspec>) -> Result<GenesisResult, Error> {
         let correlation_id = CorrelationId::new();
-        let serialized_chainspec = rmp_serde::to_vec(&chainspec)?;
+        let serialized_chainspec =
+            bincode::serialize(&chainspec).map_err(|error| Error::from_serialization(*error))?;
         let genesis_config_hash = hash::hash(&serialized_chainspec);
         let protocol_version = ProtocolVersion::from_parts(
             chainspec.genesis.protocol_version.major as u32,

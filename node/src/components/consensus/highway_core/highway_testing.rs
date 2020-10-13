@@ -1043,7 +1043,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_no_faults() {
-        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
+        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1107,7 +1107,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_some_mute() {
-        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
+        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1148,7 +1148,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_some_equivocate() {
-        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
+        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 
         let mut rng = TestRng::new();
         let cv_count = 10;

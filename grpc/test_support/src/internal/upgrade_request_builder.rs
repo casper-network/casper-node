@@ -1,7 +1,7 @@
 use casper_engine_grpc_server::engine_server::{
     ipc::{
-        ChainSpec_ActivationPoint, ChainSpec_UpgradePoint, ChainSpec_WasmConfig, DeployCode,
-        UpgradeRequest,
+        ChainSpec_ActivationPoint, ChainSpec_NewValidatorSlots, ChainSpec_UpgradePoint,
+        ChainSpec_WasmConfig, DeployCode, UpgradeRequest,
     },
     state,
 };
@@ -15,6 +15,7 @@ pub struct UpgradeRequestBuilder {
     upgrade_installer: DeployCode,
     new_wasm_config: Option<ChainSpec_WasmConfig>,
     activation_point: ChainSpec_ActivationPoint,
+    new_validator_slots: Option<u32>,
 }
 
 impl UpgradeRequestBuilder {
@@ -34,6 +35,11 @@ impl UpgradeRequestBuilder {
 
     pub fn with_new_protocol_version(mut self, protocol_version: ProtocolVersion) -> Self {
         self.new_protocol_version = protocol_version.into();
+        self
+    }
+
+    pub fn with_new_validator_slots(mut self, new_validator_slots: u32) -> Self {
+        self.new_validator_slots = Some(new_validator_slots);
         self
     }
 
@@ -62,6 +68,14 @@ impl UpgradeRequestBuilder {
         if let Some(new_wasm_config) = self.new_wasm_config {
             upgrade_point.set_new_wasm_config(new_wasm_config)
         }
+        match self.new_validator_slots {
+            None => {}
+            Some(new_validator_slots) => {
+                let mut chainspec_new_validator_slots = ChainSpec_NewValidatorSlots::new();
+                chainspec_new_validator_slots.set_new_validator_slots(new_validator_slots);
+                upgrade_point.set_new_validator_slots(chainspec_new_validator_slots);
+            }
+        }
         upgrade_point.set_protocol_version(self.new_protocol_version);
         upgrade_point.set_upgrade_installer(self.upgrade_installer);
 
@@ -81,6 +95,7 @@ impl Default for UpgradeRequestBuilder {
             upgrade_installer: Default::default(),
             new_wasm_config: None,
             activation_point: Default::default(),
+            new_validator_slots: Default::default(),
         }
     }
 }
