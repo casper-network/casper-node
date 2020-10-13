@@ -87,7 +87,7 @@ pub struct GetStateRootHashResult {
     pub state_root_hash: Option<Digest>,
 }
 
-/// "chain_get_state_hash" RPC.
+/// "chain_get_state_root_hash" RPC.
 pub struct GetStateRootHash {}
 
 impl RpcWithOptionalParams for GetStateRootHash {
