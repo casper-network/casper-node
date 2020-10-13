@@ -22,9 +22,9 @@ pub(crate) use test_rng::TestRng;
 // Lower bound for the port, below there's a high chance of hitting a system service.
 const PORT_LOWER_BOUND: u16 = 10_000;
 
-pub fn rmp_serde_roundtrip<T: Serialize + DeserializeOwned + Eq + Debug>(value: &T) {
-    let serialized = rmp_serde::to_vec(value).unwrap();
-    let deserialized = rmp_serde::from_read_ref(serialized.as_slice()).unwrap();
+pub fn bincode_roundtrip<T: Serialize + DeserializeOwned + Eq + Debug>(value: &T) {
+    let serialized = bincode::serialize(value).unwrap();
+    let deserialized = bincode::deserialize(serialized.as_slice()).unwrap();
     assert_eq!(*value, deserialized);
 }
 

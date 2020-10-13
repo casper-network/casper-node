@@ -10,7 +10,7 @@ use lmdb::{
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use super::{BlockHeightStore, Result};
+use super::{BlockHeightStore, Error, Result};
 
 /// LMDB version of a store.
 #[derive(Debug)]
@@ -49,7 +49,8 @@ impl LmdbBlockHeightStore {
 
 impl<H: Serialize + for<'de> Deserialize<'de>> BlockHeightStore<H> for LmdbBlockHeightStore {
     fn put(&self, height: u64, block_hash: H) -> Result<bool> {
-        let serialized_value = rmp_serde::to_vec(&block_hash)?;
+        let serialized_value =
+            bincode::serialize(&block_hash).map_err(|error| Error::from_serialization(*error))?;
         let mut txn = self.env.begin_rw_txn().expect("should create rw txn");
         let result = match txn.put(
             self.db,
@@ -73,7 +74,8 @@ impl<H: Serialize + for<'de> Deserialize<'de>> BlockHeightStore<H> for LmdbBlock
             Err(lmdb::Error::NotFound) => return Ok(None),
             Err(error) => panic!("should get: {:?}", error),
         };
-        let block_hash = rmp_serde::from_read_ref(serialized_value)?;
+        let block_hash = bincode::deserialize(serialized_value)
+            .map_err(|error| Error::from_deserialization(*error))?;
         txn.commit().expect("should commit txn");
         Ok(Some(block_hash))
     }

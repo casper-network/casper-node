@@ -8,11 +8,10 @@ mod memory_metrics;
 #[cfg(test)]
 mod tests;
 
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 
 use datasize::DataSize;
 use derive_more::From;
-use fmt::Debug;
 use prometheus::Registry;
 use tracing::{debug, error, warn};
 
@@ -346,14 +345,14 @@ impl reactor::Reactor for Reactor {
             gossiper::get_deploy_from_storage::<Deploy, Event>,
             registry,
         )?;
-        let (deploy_buffer, deploy_buffer_effects) = DeployBuffer::new(effect_builder);
+        let (deploy_buffer, deploy_buffer_effects) = DeployBuffer::new(registry, effect_builder)?;
         let mut effects = reactor::wrap_effects(Event::DeployBuffer, deploy_buffer_effects);
         // Post state hash is expected to be present.
         let genesis_post_state_hash = chainspec_loader
             .genesis_post_state_hash()
             .expect("should have post state hash");
-        let block_executor =
-            BlockExecutor::new(genesis_post_state_hash).with_parent_map(linear_chain);
+        let block_executor = BlockExecutor::new(genesis_post_state_hash)
+            .with_parent_map(linear_chain.last().cloned());
         let proto_block_validator = BlockValidator::new();
         let linear_chain = LinearChain::new();
 
@@ -509,7 +508,7 @@ impl reactor::Reactor for Reactor {
                     }
                     Message::GetRequest { tag, serialized_id } => match tag {
                         Tag::Deploy => {
-                            let deploy_hash = match rmp_serde::from_read_ref(&serialized_id) {
+                            let deploy_hash = match bincode::deserialize(&serialized_id) {
                                 Ok(hash) => hash,
                                 Err(error) => {
                                     error!(
@@ -525,7 +524,7 @@ impl reactor::Reactor for Reactor {
                             })
                         }
                         Tag::Block => {
-                            let block_hash = match rmp_serde::from_read_ref(&serialized_id) {
+                            let block_hash = match bincode::deserialize(&serialized_id) {
                                 Ok(hash) => hash,
                                 Err(error) => {
                                     error!(
@@ -540,7 +539,7 @@ impl reactor::Reactor for Reactor {
                             ))
                         }
                         Tag::BlockByHeight => {
-                            let height = match rmp_serde::from_read_ref(&serialized_id) {
+                            let height = match bincode::deserialize(&serialized_id) {
                                 Ok(block_by_height) => block_by_height,
                                 Err(error) => {
                                     error!(
@@ -564,7 +563,7 @@ impl reactor::Reactor for Reactor {
                         serialized_item,
                     } => match tag {
                         Tag::Deploy => {
-                            let deploy = match rmp_serde::from_read_ref(&serialized_item) {
+                            let deploy = match bincode::deserialize(&serialized_item) {
                                 Ok(deploy) => Box::new(deploy),
                                 Err(error) => {
                                     error!("failed to decode deploy from {}: {}", sender, error);

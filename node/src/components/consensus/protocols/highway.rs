@@ -108,7 +108,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         }
         let msg = HighwayMessage::NewVertex(v);
         results.push(ConsensusProtocolResult::CreatedGossipMessage(
-            rmp_serde::to_vec(&msg).expect("should serialize message"),
+            bincode::serialize(&msg).expect("should serialize message"),
         ));
         results.extend(self.detect_finality());
         results
@@ -149,7 +149,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
                         .push((sender.clone(), pvv));
                     let msg = HighwayMessage::RequestDependency(dep);
                     results.push(ConsensusProtocolResult::CreatedTargetedMessage(
-                        rmp_serde::to_vec(&msg).expect("should serialize message"),
+                        bincode::serialize(&msg).expect("should serialize message"),
                         sender,
                     ));
                 } else {
@@ -200,7 +200,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         let mut results = self.process_av_effects(av_effects);
         let msg = HighwayMessage::NewVertex(vv.into());
         results.push(ConsensusProtocolResult::CreatedGossipMessage(
-            rmp_serde::to_vec(&msg).expect("should serialize message"),
+            bincode::serialize(&msg).expect("should serialize message"),
         ));
         results
     }
@@ -243,7 +243,7 @@ where
         evidence_only: bool,
         rng: &mut dyn CryptoRngCore,
     ) -> Result<Vec<CpResult<I, C>>, Error> {
-        match rmp_serde::from_read_ref(msg.as_slice()) {
+        match bincode::deserialize(msg.as_slice()) {
             Err(err) => Ok(vec![ConsensusProtocolResult::InvalidIncomingMessage(
                 msg,
                 sender,
@@ -270,7 +270,8 @@ where
             Ok(HighwayMessage::RequestDependency(dep)) => {
                 if let Some(vv) = self.highway.get_dependency(&dep) {
                     let msg = HighwayMessage::NewVertex(vv.into());
-                    let serialized_msg = rmp_serde::to_vec(&msg).expect("should serialize message");
+                    let serialized_msg =
+                        bincode::serialize(&msg).expect("should serialize message");
                     // TODO: Should this be done via a gossip service?
                     Ok(vec![ConsensusProtocolResult::CreatedTargetedMessage(
                         serialized_msg,
@@ -349,7 +350,7 @@ where
             .and_then(|vidx| self.highway.get_dependency(&Dependency::Evidence(vidx)))
             .map(|vv| {
                 let msg = HighwayMessage::NewVertex(vv.into());
-                let serialized_msg = rmp_serde::to_vec(&msg).expect("should serialize message");
+                let serialized_msg = bincode::serialize(&msg).expect("should serialize message");
                 ConsensusProtocolResult::CreatedTargetedMessage(serialized_msg, sender)
             })
             .into_iter()

@@ -299,10 +299,10 @@ mod tests {
         let serialized_json = serde_json::to_string(&timestamp).unwrap();
         assert_eq!(timestamp, serde_json::from_str(&serialized_json).unwrap());
 
-        let serialized_rmp = rmp_serde::to_vec(&timestamp).unwrap();
+        let serialized_bincode = bincode::serialize(&timestamp).unwrap();
         assert_eq!(
             timestamp,
-            rmp_serde::from_read_ref(&serialized_rmp).unwrap()
+            bincode::deserialize(&serialized_bincode).unwrap()
         );
 
         bytesrepr::test_serialization_roundtrip(&timestamp);
@@ -319,8 +319,8 @@ mod tests {
         let serialized_json = serde_json::to_string(&timediff).unwrap();
         assert_eq!(timediff, serde_json::from_str(&serialized_json).unwrap());
 
-        let serialized_rmp = rmp_serde::to_vec(&timediff).unwrap();
-        assert_eq!(timediff, rmp_serde::from_read_ref(&serialized_rmp).unwrap());
+        let serialized_bincode = bincode::serialize(&timediff).unwrap();
+        assert_eq!(timediff, bincode::deserialize(&serialized_bincode).unwrap());
 
         bytesrepr::test_serialization_roundtrip(&timediff);
     }
