@@ -656,7 +656,7 @@ where
                 let time_since_proto_block = finalized_block.timestamp().elapsed().millis();
                 self.era_supervisor
                     .metrics
-                    .time_to_finalization
+                    .finalization_time
                     .set(time_since_proto_block as f64);
                 self.era_supervisor.metrics.amount_of_blocks.inc();
                 // Announce the finalized proto block.
@@ -693,7 +693,7 @@ where
 #[derive(Debug)]
 pub struct EraSupervisorMetrics {
     /// Gauge to track rate.
-    time_to_finalization: Gauge,
+    finalization_time: Gauge,
     /// Amount of finalized blocks.
     amount_of_blocks: IntCounter,
     /// registry component.
@@ -702,16 +702,16 @@ pub struct EraSupervisorMetrics {
 
 impl EraSupervisorMetrics {
     fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
-        let time_to_finalization = Gauge::new(
+        let finalization_time = Gauge::new(
             "time_to_finalization (ms)",
             "the amount of time taken for Consensus to announce a final block",
         )?;
         let amount_of_blocks =
             IntCounter::new("amount_of_blocks", "the number of blocks finalized so far")?;
-        registry.register(Box::new(time_to_finalization.clone()))?;
+        registry.register(Box::new(finalization_time.clone()))?;
         registry.register(Box::new(amount_of_blocks.clone()))?;
         Ok(EraSupervisorMetrics {
-            time_to_finalization,
+            finalization_time,
             amount_of_blocks,
             registry: registry.clone(),
         })
@@ -721,7 +721,7 @@ impl EraSupervisorMetrics {
 impl Drop for EraSupervisorMetrics {
     fn drop(&mut self) {
         self.registry
-            .unregister(Box::new(self.time_to_finalization.clone()))
+            .unregister(Box::new(self.finalization_time.clone()))
             .expect("did not expect deregistering rate to fail");
         self.registry
             .unregister(Box::new(self.amount_of_blocks.clone()))
