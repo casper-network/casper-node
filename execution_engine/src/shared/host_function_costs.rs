@@ -52,10 +52,9 @@ where
     T: Default,
 {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> HostFunction<T> {
-        HostFunction::<T> {
-            cost: 0, // TODO: Figure out rng.gen() does not work here in this context
-            arguments: rng.gen(),
-        }
+        let cost = rng.gen::<u32>();
+        let arguments = rng.gen();
+        HostFunction::<T> { cost, arguments }
     }
 }
 
@@ -377,7 +376,7 @@ pub mod gens {
 
     use super::{HostFunction, HostFunctionCosts};
 
-    fn host_function_cost_arb<T: Debug + Default + Arbitrary>(
+    pub fn host_function_cost_arb<T: Debug + Default + Arbitrary>(
     ) -> impl Strategy<Value = HostFunction<T>> {
         (any::<u32>(), any::<T>()).prop_map(|(cost, arguments)| HostFunction::new(cost, arguments))
     }
@@ -471,6 +470,29 @@ pub mod gens {
                 remove_contract_user_group_urefs,
                 print,
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod proptests {
+    use proptest::prelude::*;
+
+    use casper_types::bytesrepr;
+
+    use super::*;
+
+    type Signature = (u32, u32, u32, u32, u32, u32, u32, u32, u32, u32);
+
+    proptest! {
+        #[test]
+        fn test_host_function(host_function in gens::host_function_cost_arb::<Signature>()) {
+            bytesrepr::test_serialization_roundtrip(&host_function);
+        }
+
+        #[test]
+        fn test_host_function_costs(host_function_costs in gens::host_function_costs_arb()) {
+            bytesrepr::test_serialization_roundtrip(&host_function_costs);
         }
     }
 }
