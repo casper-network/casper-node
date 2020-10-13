@@ -383,7 +383,7 @@ pub enum ApiRequest<I> {
     },
     /// Query the global state at the given root hash.
     GetBalance {
-        /// The root state hash.
+        /// The state root hash.
         state_root_hash: Digest,
         /// The purse URef.
         purse_uref: URef,
