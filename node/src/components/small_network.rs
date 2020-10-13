@@ -636,36 +636,6 @@ where
     }
 
     /// Returns the set of connected nodes.
-    #[cfg(test)]
-    pub(crate) fn outgoing_connected_nodes(&self) -> HashSet<NodeId> {
-        self.outgoing
-            .iter()
-            .filter_map(|(node_id, outgoing)| {
-                if !self.blocklist.contains(&outgoing.peer_address) {
-                    Some(*node_id)
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn incoming_connected_nodes(&self) -> HashSet<NodeId> {
-        self.incoming
-            .iter()
-            .filter_map(|(node_id, incoming)| {
-                if !self.blocklist.contains(&incoming.peer_address) {
-                    Some(node_id)
-                } else {
-                    None
-                }
-            })
-            .cloned()
-            .collect()
-    }
-
-    /// Returns the set of connected nodes.
     pub(crate) fn peers(&self) -> HashMap<NodeId, SocketAddr> {
         let mut ret: HashMap<NodeId, SocketAddr> = HashMap::new();
         for x in &self.outgoing {
@@ -677,18 +647,19 @@ where
         ret
     }
 
-    /// Returns the node id of this network node.
-    #[cfg(test)]
-    pub(crate) fn node_id(&self) -> NodeId {
-        self.our_id
-    }
-
     /// Returns whether or not this node has been isolated.
     ///
     /// An isolated node has no chance of recovering a connection to the network and is not
     /// connected to any peer.
     fn is_isolated(&self) -> bool {
         self.pending.is_empty() && self.outgoing.is_empty() && self.incoming.is_empty()
+    }
+
+    /// Returns the node id of this network node.
+    /// - Used in validator test.
+    #[cfg(test)]
+    pub(crate) fn node_id(&self) -> NodeId {
+        self.our_id
     }
 }
 

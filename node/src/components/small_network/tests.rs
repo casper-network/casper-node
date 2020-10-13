@@ -215,8 +215,8 @@ fn network_is_complete(
             // ignore blocklisted node
             continue;
         }
-        let outgoing = net.outgoing_connected_nodes();
-        let incoming = net.incoming_connected_nodes();
+        let outgoing = net.outgoing.keys().collect::<HashSet<_>>();
+        let incoming = net.incoming.keys().collect::<HashSet<_>>();
         let difference = incoming
             .symmetric_difference(&outgoing)
             .collect::<HashSet<_>>();
