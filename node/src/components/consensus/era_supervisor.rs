@@ -703,8 +703,8 @@ pub struct EraSupervisorMetrics {
 impl EraSupervisorMetrics {
     fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
         let finalization_time = Gauge::new(
-            "time_to_finalization (ms)",
-            "the amount of time taken for Consensus to announce a final block",
+            "finalization_time",
+            "the amount of time, in miliseconds, taken for Consensus to announce a final block",
         )?;
         let amount_of_blocks =
             IntCounter::new("amount_of_blocks", "the number of blocks finalized so far")?;
