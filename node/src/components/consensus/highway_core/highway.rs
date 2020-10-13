@@ -251,6 +251,17 @@ impl<C: Context> Highway<C> {
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id.clone();
+
+        // Here we just use the timer's timestamp, and assume it's ~ Timestamp::now()
+        //
+        // This is because proposal votes, i.e. new blocks, are
+        // supposed to thave the exact timestamp that matches the
+        // beginning of the round (which we use as the "round ID").
+        //
+        // But at least any discrepancy here can only come from event
+        // handling delays in our own node, and not from timestamps
+        // set by other nodes.
+
         self.map_active_validator(
             |av, state, rng| av.handle_timer(timestamp, state, instance_id, rng),
             timestamp,
@@ -269,6 +280,23 @@ impl<C: Context> Highway<C> {
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id.clone();
+
+        // We just use the block context's timestamp, which is
+        // hopefully not much older than `Timestamp::now()`
+        //
+        // We do this because essentially what happens is this:
+        //
+        // 1. We realize it's our turn to propose a block in
+        // millisecond 64, so we set a timer.
+        //
+        // 2. The timer for timestamp 64 fires, and we request deploys
+        // for the new block from the deploy buffer (with 64 in the
+        // block context).
+        //
+        // 3. The deploy buffer responds and we finally end up here,
+        // and can propose the new block. But we still have to use
+        // timestamp 64.
+
         let timestamp = block_context.timestamp();
         self.map_active_validator(
             |av, state, rng| av.propose(value, block_context, state, instance_id, rng),
