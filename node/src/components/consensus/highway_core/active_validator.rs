@@ -223,7 +223,7 @@ impl<C: Context> ActiveValidator<C> {
     ) -> bool {
         let earliest_vote_time = self.earliest_vote_time(state);
         if timestamp < earliest_vote_time {
-            error!(%earliest_vote_time, %timestamp, "earliest_vote_time is greater than current time stamp");
+            warn!(%earliest_vote_time, %timestamp, "earliest_vote_time is greater than current time stamp");
             return false;
         };
         let vote = state.vote(vhash);
