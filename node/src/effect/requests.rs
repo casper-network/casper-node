@@ -372,7 +372,7 @@ pub enum ApiRequest<I> {
     },
     /// Query the global state at the given root hash.
     QueryGlobalState {
-        /// The root state hash.
+        /// The state root hash.
         state_root_hash: Digest,
         /// Hex-encoded `casper_types::Key`.
         base_key: Key,
