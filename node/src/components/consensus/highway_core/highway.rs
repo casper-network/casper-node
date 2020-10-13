@@ -192,10 +192,11 @@ impl<C: Context> Highway<C> {
         &mut self,
         ValidVertex(vertex): ValidVertex<C>,
         rng: &mut dyn CryptoRngCore,
+        now: Timestamp,
     ) -> Vec<Effect<C>> {
         if !self.has_vertex(&vertex) {
             match vertex {
-                Vertex::Vote(vote) => self.add_valid_vote(vote, rng),
+                Vertex::Vote(vote) => self.add_valid_vote(vote, now, rng),
                 Vertex::Evidence(evidence) => {
                     self.state.add_evidence(evidence);
                     vec![]
@@ -252,6 +253,7 @@ impl<C: Context> Highway<C> {
         let instance_id = self.instance_id.clone();
         self.map_active_validator(
             |av, state, rng| av.handle_timer(timestamp, state, instance_id, rng),
+            timestamp,
             rng,
         )
         .unwrap_or_else(|| {
@@ -267,8 +269,10 @@ impl<C: Context> Highway<C> {
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id.clone();
+        let timestamp = block_context.timestamp();
         self.map_active_validator(
             |av, state, rng| av.propose(value, block_context, state, instance_id, rng),
+            timestamp,
             rng,
         )
         .unwrap_or_else(|| {
@@ -303,6 +307,7 @@ impl<C: Context> Highway<C> {
         let instance_id = self.instance_id.clone();
         self.map_active_validator(
             |av, state, rng| av.on_new_vote(vhash, timestamp, state, instance_id, rng),
+            timestamp,
             rng,
         )
         .unwrap_or_default()
@@ -315,6 +320,7 @@ impl<C: Context> Highway<C> {
     fn map_active_validator<F>(
         &mut self,
         f: F,
+        timestamp: Timestamp,
         rng: &mut dyn CryptoRngCore,
     ) -> Option<Vec<Effect<C>>>
     where
@@ -324,7 +330,9 @@ impl<C: Context> Highway<C> {
         let mut result = vec![];
         for effect in &effects {
             match effect {
-                Effect::NewVertex(vv) => result.extend(self.add_valid_vertex(vv.clone(), rng)),
+                Effect::NewVertex(vv) => {
+                    result.extend(self.add_valid_vertex(vv.clone(), rng, timestamp))
+                }
                 Effect::WeEquivocated(_) => self.deactivate_validator(),
                 Effect::ScheduleTimer(_) | Effect::RequestNewBlock(_) => (),
             }
@@ -374,12 +382,12 @@ impl<C: Context> Highway<C> {
     fn add_valid_vote(
         &mut self,
         swvote: SignedWireVote<C>,
+        now: Timestamp,
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
-        let vote_timestamp = swvote.wire_vote.timestamp;
         let vote_hash = swvote.hash();
         self.state.add_valid_vote(swvote);
-        self.on_new_vote(&vote_hash, vote_timestamp, rng)
+        self.on_new_vote(&vote_hash, now, rng)
     }
 }
 
@@ -422,6 +430,7 @@ pub(crate) mod tests {
     #[test]
     fn invalid_signature_error() {
         let mut rng = TestRng::new();
+        let now: Timestamp = 500.into();
 
         let state: State<TestContext> = State::new_test(WEIGHTS, 0);
         let mut highway = Highway {
@@ -460,7 +469,7 @@ pub(crate) mod tests {
         let pvv = highway.pre_validate_vertex(valid_vertex).unwrap();
         assert_eq!(None, highway.missing_dependency(&pvv));
         let vv = highway.validate_vertex(pvv).unwrap();
-        assert!(highway.add_valid_vertex(vv, &mut rng).is_empty());
+        assert!(highway.add_valid_vertex(vv, &mut rng, now).is_empty());
     }
 
     #[test]

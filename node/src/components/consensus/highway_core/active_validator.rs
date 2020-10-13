@@ -126,7 +126,7 @@ impl<C: Context> ActiveValidator<C> {
     pub(crate) fn on_new_vote(
         &mut self,
         vhash: &C::Hash,
-        mut timestamp: Timestamp,
+        timestamp: Timestamp,
         state: &State<C>,
         instance_id: C::InstanceId,
         rng: &mut dyn CryptoRngCore,
@@ -134,9 +134,6 @@ impl<C: Context> ActiveValidator<C> {
         if let Some(evidence) = state.opt_evidence(self.vidx) {
             return vec![Effect::WeEquivocated(evidence.clone())];
         }
-        // TODO: `timestamp` should be the _current_ timestamp and we need to delay incoming votes
-        // with a future timestamp.
-        timestamp = self.earliest_vote_time(state).max(timestamp);
         if self.should_send_confirmation(vhash, timestamp, state) {
             let panorama = self.confirmation_panorama(vhash, state);
             if panorama.has_correct() {
@@ -224,9 +221,14 @@ impl<C: Context> ActiveValidator<C> {
         timestamp: Timestamp,
         state: &State<C>,
     ) -> bool {
+        let earliest_vote_time = self.earliest_vote_time(state);
+        if timestamp < earliest_vote_time {
+            error!(%earliest_vote_time, %timestamp, "earliest_vote_time is greater than current time stamp");
+            return false;
+        };
         let vote = state.vote(vhash);
         if vote.timestamp > timestamp {
-            warn!(%vote.timestamp, %timestamp, "added a vote with a future timestamp");
+            error!(%vote.timestamp, %timestamp, "added a vote with a future timestamp, should never happen");
             return false;
         }
         // If it's not a proposal, the sender is faulty, or we are, don't send a confirmation.
