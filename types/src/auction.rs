@@ -344,6 +344,9 @@ pub trait Auction:
 
         detail::process_unbond_requests(self)?;
 
+        // get allowed validator slots total
+        let validator_slots = internal::get_validator_slots(self)?;
+
         let mut era_id = internal::get_era_id(self)?;
 
         let mut bids = internal::get_bids(self)?;
@@ -405,7 +408,7 @@ pub trait Auction:
         scores.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
 
         // Fill in remaining validators
-        let remaining_auction_slots = AUCTION_SLOTS.saturating_sub(bid_weights.len());
+        let remaining_auction_slots = validator_slots.saturating_sub(bid_weights.len());
         bid_weights.extend(scores.into_iter().take(remaining_auction_slots));
 
         let mut era_validators = internal::get_era_validators(self)?;

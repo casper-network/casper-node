@@ -58,7 +58,8 @@ To run a validator node you will need to specify a config file and launch the va
 casper-node validator /etc/casper-node/config.toml
 ```
 
-The node ships with an [example configuration file](resources/local/config.toml) that should be setup first.  There is also a commented [local chainspec](resources/local/chainspec.toml) in the same folder.
+The node ships with an [example configuration file](resources/local/config.toml) that should be setup first.  There is
+also a commented [local chainspec](resources/local/chainspec.toml) in the same folder.
 
 For launching, the following configuration values must be properly set:
 
@@ -113,7 +114,9 @@ command line.
 
 ### Environment overrides
 
-Some environments may call for overriding options through the environment rather than the command line.  In this scenario, the `NODE_CONFIG` environment variable can be used. For example, the command from the previous section can be alternatively expressed as
+Some environments may call for overriding options through the environment rather than the command line.  In this
+scenario, the `NODE_CONFIG` environment variable can be used. For example, the command from the previous section can be
+alternatively expressed as
 
 ```
 export NODE_CONFIG=consensus.secret_key_path=secret_keys/node-1.pem;network.known_addresses=[1.2.3.4:34553, 200.201.203.204:34553]
@@ -121,6 +124,15 @@ casper-node validator /etc/casper-node/config.toml
 ```
 
 Note how the semicolon is used to separate configuration overrides here.
+
+### Development environment variables
+
+To set the threshold at which a warn-level log message is generated for a long-running reactor event, use the env var
+`CL_EVENT_MAX_MICROSECS`.  For example, to set the threshold to 1 millisecond:
+
+```
+CL_EVENT_MAX_MICROSECS=1000
+```
 
 ## Logging
 

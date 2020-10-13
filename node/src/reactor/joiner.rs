@@ -322,7 +322,7 @@ impl reactor::Reactor for Reactor {
             Some(hash) => info!("Synchronizing linear chain from: {:?}", hash),
         }
 
-        let linear_chain_sync = LinearChainSync::new(effect_builder, init_hash);
+        let linear_chain_sync = LinearChainSync::new(init_hash);
 
         let block_validator = BlockValidator::new();
 
@@ -418,7 +418,7 @@ impl reactor::Reactor for Reactor {
                     tag: Tag::Block,
                     serialized_item,
                 } => {
-                    let block = match rmp_serde::from_read_ref(&serialized_item) {
+                    let block = match bincode::deserialize(&serialized_item) {
                         Ok(block) => Box::new(block),
                         Err(err) => {
                             error!("failed to decode block from {}: {}", sender, err);
@@ -436,7 +436,7 @@ impl reactor::Reactor for Reactor {
                     serialized_item,
                 } => {
                     let block_at_height: BlockByHeight =
-                        match rmp_serde::from_read_ref(&serialized_item) {
+                        match bincode::deserialize(&serialized_item) {
                             Ok(maybe_block) => maybe_block,
                             Err(err) => {
                                 error!("failed to decode block from {}: {}", sender, err);
@@ -460,7 +460,7 @@ impl reactor::Reactor for Reactor {
                     tag: Tag::Deploy,
                     serialized_item,
                 } => {
-                    let deploy = match rmp_serde::from_read_ref(&serialized_item) {
+                    let deploy = match bincode::deserialize(&serialized_item) {
                         Ok(deploy) => Box::new(deploy),
                         Err(err) => {
                             error!("failed to decode deploy from {}: {}", sender, err);
@@ -575,7 +575,7 @@ impl reactor::Reactor for Reactor {
                 execution_results,
             }) => {
                 let reactor_event = Event::LinearChain(linear_chain::Event::LinearChainBlock {
-                    block,
+                    block: Box::new(block),
                     execution_results,
                 });
                 self.dispatch_event(effect_builder, rng, reactor_event)

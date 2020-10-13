@@ -113,7 +113,7 @@ impl RpcWithOptionalParamsExt for GetGlobalStateHash {
             // Return the result.
             let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
-                global_state_hash: maybe_block.map(|block| *block.global_state_hash()),
+                global_state_hash: maybe_block.map(|block| *block.post_state_hash()),
             };
             Ok(response_builder.success(result)?)
         }
