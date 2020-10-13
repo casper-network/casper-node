@@ -449,6 +449,7 @@ dependencies = [
  "casper-types",
  "clap",
  "ctrlc",
+ "datasize",
  "dirs",
  "grpc",
  "lmdb",
