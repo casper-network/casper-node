@@ -8,7 +8,7 @@ use crate::engine_server::{
     mappings::{MappingError, ParsingError},
 };
 
-const PARENT_STATE_HASH: &str = "parent_state_hash";
+const STATE_ROOT_HASH: &str = "state_root_hash";
 const REWARD_ITEMS: &str = "reward_items";
 const SLASH_ITEMS: &str = "slash_items";
 const VALIDATOR_ID: &str = "validator_id";
@@ -72,10 +72,10 @@ impl TryFrom<ipc::StepRequest> for StepRequest {
     type Error = MappingError;
 
     fn try_from(mut pb_step_request: ipc::StepRequest) -> Result<Self, Self::Error> {
-        let parent_state_hash = pb_step_request
+        let state_root_hash = pb_step_request
             .get_parent_state_hash()
             .try_into()
-            .map_err(|_| MappingError::InvalidStateHash(PARENT_STATE_HASH.to_string()))?;
+            .map_err(|_| MappingError::InvalidStateHash(STATE_ROOT_HASH.to_string()))?;
 
         let protocol_version = pb_step_request.take_protocol_version().into();
 
@@ -104,7 +104,7 @@ impl TryFrom<ipc::StepRequest> for StepRequest {
         let run_auction = pb_step_request.get_run_auction();
 
         Ok(StepRequest::new(
-            parent_state_hash,
+            state_root_hash,
             protocol_version,
             slash_items,
             reward_items,
@@ -118,7 +118,7 @@ impl TryFrom<StepRequest> for ipc::StepRequest {
 
     fn try_from(step_request: StepRequest) -> Result<Self, Self::Error> {
         let mut result = ipc::StepRequest::new();
-        result.set_parent_state_hash(step_request.pre_state_hash.to_vec());
+        result.set_parent_state_hash(step_request.state_root_hash.to_vec());
         result.set_protocol_version(step_request.protocol_version.into());
 
         let slash_items = {

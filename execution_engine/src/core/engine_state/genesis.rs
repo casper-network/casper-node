@@ -28,7 +28,7 @@ pub enum GenesisResult {
     TypeMismatch(TypeMismatch),
     Serialization(bytesrepr::Error),
     Success {
-        post_state_hash: Blake2bHash,
+        state_root_hash: Blake2bHash,
         effect: ExecutionEffect,
     },
 }
@@ -43,9 +43,9 @@ impl fmt::Display for GenesisResult {
             }
             GenesisResult::Serialization(error) => write!(f, "Serialization error: {:?}", error),
             GenesisResult::Success {
-                post_state_hash,
+                state_root_hash,
                 effect,
-            } => write!(f, "Success: {} {:?}", post_state_hash, effect),
+            } => write!(f, "Success: {} {:?}", state_root_hash, effect),
         }
     }
 }
@@ -58,10 +58,9 @@ impl GenesisResult {
             CommitResult::TypeMismatch(type_mismatch) => GenesisResult::TypeMismatch(type_mismatch),
             CommitResult::Serialization(error) => GenesisResult::Serialization(error),
             CommitResult::Success {
-                state_root_hash: state_root,
-                ..
+                state_root_hash, ..
             } => GenesisResult::Success {
-                post_state_hash: state_root,
+                state_root_hash,
                 effect,
             },
         }

@@ -96,7 +96,7 @@ impl Display for Event {
                 pre-state hash {}: success",
                 deploy_hash,
                 state.finalized_block.height(),
-                state.pre_state_hash
+                state.state_root_hash
             ),
             Event::DeployExecutionResult {
                 state,
@@ -108,7 +108,7 @@ impl Display for Event {
                 pre-state hash {}: root not found",
                 deploy_hash,
                 state.finalized_block.height(),
-                state.pre_state_hash
+                state.state_root_hash
             ),
             Event::CommitExecutionEffects {
                 state,
@@ -121,7 +121,7 @@ impl Display for Event {
                 "commit execution effects of finalized block with height {} with \
                 pre-state hash {}: success with post-state hash {}",
                 state.finalized_block.height(),
-                state.pre_state_hash,
+                state.state_root_hash,
                 state_root_hash,
             ),
             Event::CommitExecutionEffects {
@@ -132,7 +132,7 @@ impl Display for Event {
                 "commit execution effects of finalized block with height {} with \
                 pre-state hash {}: failed {:?}",
                 state.finalized_block.height(),
-                state.pre_state_hash,
+                state.state_root_hash,
                 commit_result,
             ),
             Event::RunStepResult { state, result } => write!(
@@ -140,7 +140,7 @@ impl Display for Event {
                 "result of running the step after finalized block with height {} \
                     with pre-state hash {}: {:?}",
                 state.finalized_block.height(),
-                state.pre_state_hash,
+                state.state_root_hash,
                 result
             ),
         }
@@ -155,7 +155,7 @@ pub struct State {
     pub remaining_deploys: VecDeque<Deploy>,
     /// A collection of results of executing the deploys.
     pub execution_results: HashMap<DeployHash, ExecutionResult>,
-    /// Current pre-state hash of global storage.  Is initialized with the parent block's
-    /// post-state hash, and is updated after each commit.
-    pub pre_state_hash: Digest,
+    /// Current state root hash of global storage.  Is initialized with the parent block's
+    /// state hash, and is updated after each commit.
+    pub state_root_hash: Digest,
 }

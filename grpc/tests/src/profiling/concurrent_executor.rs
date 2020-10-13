@@ -43,11 +43,11 @@ const SOCKET_ARG_SHORT: &str = "s";
 const SOCKET_ARG_VALUE_NAME: &str = "SOCKET";
 const SOCKET_ARG_HELP: &str = "Path to Execution Engine server's socket file";
 
-const PRE_STATE_HASH_ARG_NAME: &str = "pre-state-hash";
-const PRE_STATE_HASH_ARG_SHORT: &str = "p";
-const PRE_STATE_HASH_ARG_VALUE_NAME: &str = "HEX-ENCODED HASH";
-const PRE_STATE_HASH_ARG_HELP: &str =
-    "Pre-state hash; the output of running the 'state-initializer' executable";
+const STATE_ROOT_HASH_ARG_NAME: &str = "state-root-hash";
+const STATE_ROOT_HASH_ARG_SHORT: &str = "p";
+const STATE_ROOT_HASH_ARG_VALUE_NAME: &str = "HEX-ENCODED HASH";
+const STATE_ROOT_HASH_ARG_HELP: &str =
+    "State root hash; the output of running the 'state-initializer' executable";
 
 const THREAD_COUNT_ARG_NAME: &str = "threads";
 const THREAD_COUNT_ARG_SHORT: &str = "t";
@@ -81,13 +81,13 @@ fn socket_arg() -> Arg<'static, 'static> {
         .help(SOCKET_ARG_HELP)
 }
 
-fn pre_state_hash_arg() -> Arg<'static, 'static> {
-    Arg::with_name(PRE_STATE_HASH_ARG_NAME)
-        .long(PRE_STATE_HASH_ARG_NAME)
-        .short(PRE_STATE_HASH_ARG_SHORT)
+fn state_root_hash_arg() -> Arg<'static, 'static> {
+    Arg::with_name(STATE_ROOT_HASH_ARG_NAME)
+        .long(STATE_ROOT_HASH_ARG_NAME)
+        .short(STATE_ROOT_HASH_ARG_SHORT)
         .required(true)
-        .value_name(PRE_STATE_HASH_ARG_VALUE_NAME)
-        .help(PRE_STATE_HASH_ARG_HELP)
+        .value_name(STATE_ROOT_HASH_ARG_VALUE_NAME)
+        .help(STATE_ROOT_HASH_ARG_HELP)
 }
 
 fn thread_count_arg() -> Arg<'static, 'static> {
@@ -119,7 +119,7 @@ fn transfer_mode_arg() -> Arg<'static, 'static> {
 
 struct Args {
     socket: String,
-    pre_state_hash: Vec<u8>,
+    state_root_hash: Vec<u8>,
     thread_count: usize,
     request_count: usize,
     transfer_mode: TransferMode,
@@ -131,7 +131,7 @@ impl Args {
             .version(crate_version!())
             .about(ABOUT)
             .arg(socket_arg())
-            .arg(pre_state_hash_arg())
+            .arg(state_root_hash_arg())
             .arg(thread_count_arg())
             .arg(request_count_arg())
             .arg(transfer_mode_arg())
@@ -141,10 +141,10 @@ impl Args {
             .value_of(SOCKET_ARG_NAME)
             .expect("Expected path to socket file")
             .to_string();
-        let pre_state_hash = arg_matches
-            .value_of(PRE_STATE_HASH_ARG_NAME)
+        let state_root_hash = arg_matches
+            .value_of(STATE_ROOT_HASH_ARG_NAME)
             .map(profiling::parse_hash)
-            .expect("Expected a pre-state hash");
+            .expect("Expected a state root hash");
         let thread_count = arg_matches
             .value_of(THREAD_COUNT_ARG_NAME)
             .map(profiling::parse_count)
@@ -160,7 +160,7 @@ impl Args {
 
         Args {
             socket,
-            pre_state_hash,
+            state_root_hash,
             thread_count,
             request_count,
             transfer_mode,
@@ -364,7 +364,7 @@ fn new_execute_request(args: &Args) -> ExecuteRequest {
     };
 
     ExecuteRequestBuilder::from_deploy_item(deploy_item)
-        .with_pre_state_hash(&args.pre_state_hash)
+        .with_state_root_hash(&args.state_root_hash)
         .build()
         .into()
 }

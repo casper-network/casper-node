@@ -78,7 +78,7 @@ pub struct GetStateRootHashParams {
     pub block_hash: BlockHash,
 }
 
-/// Result for "chain_get_state_hash" RPC response.
+/// Result for "chain_get_state_root_hash" RPC response.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetStateRootHashResult {
     /// The RPC API version.

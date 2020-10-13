@@ -35,7 +35,7 @@ impl RewardItem {
 
 #[derive(Debug)]
 pub struct StepRequest {
-    pub pre_state_hash: Blake2bHash,
+    pub state_root_hash: Blake2bHash,
     pub protocol_version: ProtocolVersion,
 
     pub slash_items: Vec<SlashItem>,
@@ -45,14 +45,14 @@ pub struct StepRequest {
 
 impl StepRequest {
     pub fn new(
-        pre_state_hash: Blake2bHash,
+        state_root_hash: Blake2bHash,
         protocol_version: ProtocolVersion,
         slash_items: Vec<SlashItem>,
         reward_items: Vec<RewardItem>,
         run_auction: bool,
     ) -> Self {
         Self {
-            pre_state_hash,
+            state_root_hash,
             protocol_version,
             slash_items,
             reward_items,
@@ -87,7 +87,7 @@ pub enum StepResult {
     KeyNotFound(Key),
     TypeMismatch(TypeMismatch),
     Serialization(bytesrepr::Error),
-    Success { post_state_hash: Blake2bHash },
+    Success { state_root_hash: Blake2bHash },
 }
 
 impl Display for StepResult {

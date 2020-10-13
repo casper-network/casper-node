@@ -11,17 +11,17 @@ impl TryFrom<ipc::GetEraValidatorsRequest> for GetEraValidatorsRequest {
     fn try_from(
         mut pb_get_era_validators_request: ipc::GetEraValidatorsRequest,
     ) -> Result<Self, Self::Error> {
-        let pre_state_hash = pb_get_era_validators_request
+        let state_root_hash = pb_get_era_validators_request
             .get_parent_state_hash()
             .try_into()
-            .map_err(|_| MappingError::InvalidStateHash("parent_state_hash".to_string()))?;
+            .map_err(|_| MappingError::InvalidStateHash("state_root_hash".to_string()))?;
 
         let era_id = pb_get_era_validators_request.era_id;
 
         let protocol_version = pb_get_era_validators_request.take_protocol_version().into();
 
         Ok(GetEraValidatorsRequest::new(
-            pre_state_hash,
+            state_root_hash,
             era_id,
             protocol_version,
         ))

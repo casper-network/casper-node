@@ -332,11 +332,11 @@ impl reactor::Reactor for Reactor {
 
         let deploy_acceptor = DeployAcceptor::new();
 
-        let genesis_post_state_hash = chainspec_loader
-            .genesis_post_state_hash()
-            .expect("Should have Genesis post state hash");
+        let genesis_state_root_hash = chainspec_loader
+            .genesis_state_root_hash()
+            .expect("Should have Genesis state root hash");
 
-        let block_executor = BlockExecutor::new(genesis_post_state_hash);
+        let block_executor = BlockExecutor::new(genesis_state_root_hash);
 
         let linear_chain = linear_chain::LinearChain::new();
 
@@ -355,7 +355,7 @@ impl reactor::Reactor for Reactor {
             validator_stakes,
             chainspec_loader.chainspec(),
             chainspec_loader
-                .genesis_post_state_hash()
+                .genesis_state_root_hash()
                 .expect("should have genesis post state hash"),
             rng,
         )?;

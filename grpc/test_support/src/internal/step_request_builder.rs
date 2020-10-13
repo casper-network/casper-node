@@ -54,7 +54,7 @@ impl TryFrom<RewardItem> for ipc::RewardItem {
 
 #[derive(Debug)]
 pub struct StepRequestBuilder {
-    parent_state_hash: Vec<u8>,
+    state_root_hash: Vec<u8>,
     protocol_version: state::ProtocolVersion,
     slash_items: Vec<ipc::SlashItem>,
     reward_items: Vec<ipc::RewardItem>,
@@ -66,8 +66,8 @@ impl StepRequestBuilder {
         Default::default()
     }
 
-    pub fn with_parent_state_hash(mut self, parent_state_hash: Vec<u8>) -> Self {
-        self.parent_state_hash = parent_state_hash;
+    pub fn with_state_root_hash(mut self, state_root_hash: Vec<u8>) -> Self {
+        self.state_root_hash = state_root_hash;
         self
     }
 
@@ -93,7 +93,7 @@ impl StepRequestBuilder {
 
     pub fn build(self) -> ipc::StepRequest {
         let mut request = ipc::StepRequest::new();
-        request.set_parent_state_hash(self.parent_state_hash);
+        request.set_parent_state_hash(self.state_root_hash);
         request.set_protocol_version(self.protocol_version);
         request.set_slash_items(self.slash_items.into());
         request.set_reward_items(self.reward_items.into());
@@ -105,7 +105,7 @@ impl StepRequestBuilder {
 impl Default for StepRequestBuilder {
     fn default() -> Self {
         StepRequestBuilder {
-            parent_state_hash: Default::default(),
+            state_root_hash: Default::default(),
             protocol_version: Default::default(),
             slash_items: Default::default(),
             reward_items: Default::default(),

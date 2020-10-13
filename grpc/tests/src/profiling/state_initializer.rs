@@ -87,11 +87,11 @@ fn main() {
         exec_config,
     );
 
-    let post_state_hash = builder
+    let state_root_hash = builder
         .run_genesis(&run_genesis_request)
         .exec(exec_request)
         .expect_success()
         .commit()
-        .get_post_state_hash();
-    println!("{}", base16::encode_lower(&post_state_hash));
+        .get_state_root_hash();
+    println!("{}", base16::encode_lower(&state_root_hash));
 }

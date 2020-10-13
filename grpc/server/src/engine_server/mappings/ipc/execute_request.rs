@@ -11,19 +11,19 @@ impl TryFrom<ipc::ExecuteRequest> for ExecuteRequest {
     type Error = ipc::ExecuteResponse;
 
     fn try_from(mut request: ipc::ExecuteRequest) -> Result<Self, Self::Error> {
-        let parent_state_hash = {
-            let parent_state_hash = request.take_parent_state_hash();
-            let length = parent_state_hash.len();
+        let state_root_hash = {
+            let state_root_hash = request.take_parent_state_hash();
+            let length = state_root_hash.len();
             if length != Blake2bHash::LENGTH {
                 let mut result = ipc::ExecuteResponse::new();
-                result.mut_missing_parent().set_hash(parent_state_hash);
+                result.mut_missing_parent().set_hash(state_root_hash);
                 return Err(result);
             }
-            parent_state_hash.as_slice().try_into().map_err(|_| {
+            state_root_hash.as_slice().try_into().map_err(|_| {
                 let mut result = ipc::ExecuteResponse::new();
                 result
                     .mut_missing_parent()
-                    .set_hash(parent_state_hash.clone());
+                    .set_hash(state_root_hash.clone());
                 result
             })?
         };
@@ -42,7 +42,7 @@ impl TryFrom<ipc::ExecuteRequest> for ExecuteRequest {
         let protocol_version = request.take_protocol_version().into();
 
         Ok(ExecuteRequest::new(
-            parent_state_hash,
+            state_root_hash,
             block_time,
             deploys,
             protocol_version,
@@ -53,7 +53,7 @@ impl TryFrom<ipc::ExecuteRequest> for ExecuteRequest {
 impl From<ExecuteRequest> for ipc::ExecuteRequest {
     fn from(req: ExecuteRequest) -> Self {
         let mut result = ipc::ExecuteRequest::new();
-        result.set_parent_state_hash(req.parent_state_hash.to_vec());
+        result.set_parent_state_hash(req.state_root_hash.to_vec());
         result.set_block_time(req.block_time);
         result.set_deploys(
             req.deploys

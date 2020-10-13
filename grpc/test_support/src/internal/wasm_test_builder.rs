@@ -77,7 +77,7 @@ pub struct WasmTestBuilder<S> {
     exec_responses: Vec<Vec<Rc<ExecutionResult>>>,
     upgrade_responses: Vec<UpgradeResponse>,
     genesis_hash: Option<Vec<u8>>,
-    post_state_hash: Option<Vec<u8>>,
+    state_root_hash: Option<Vec<u8>>,
     /// Cached transform maps after subsequent successful runs i.e. `transforms[0]` is for first
     /// exec call etc.
     transforms: Vec<AdditiveMap<Key, Transform>>,
@@ -116,7 +116,7 @@ impl Default for InMemoryWasmTestBuilder {
             exec_responses: Vec::new(),
             upgrade_responses: Vec::new(),
             genesis_hash: None,
-            post_state_hash: None,
+            state_root_hash: None,
             transforms: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
@@ -137,7 +137,7 @@ impl<S> Clone for WasmTestBuilder<S> {
             exec_responses: self.exec_responses.clone(),
             upgrade_responses: self.upgrade_responses.clone(),
             genesis_hash: self.genesis_hash.clone(),
-            post_state_hash: self.post_state_hash.clone(),
+            state_root_hash: self.state_root_hash.clone(),
             transforms: self.transforms.clone(),
             genesis_account: self.genesis_account.clone(),
             genesis_transforms: self.genesis_transforms.clone(),
@@ -164,14 +164,14 @@ impl InMemoryWasmTestBuilder {
     pub fn new(
         global_state: InMemoryGlobalState,
         engine_config: EngineConfig,
-        post_state_hash: Vec<u8>,
+        state_root_hash: Vec<u8>,
     ) -> Self {
         Self::initialize_logging();
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
-            genesis_hash: Some(post_state_hash.clone()),
-            post_state_hash: Some(post_state_hash),
+            genesis_hash: Some(state_root_hash.clone()),
+            state_root_hash: Some(state_root_hash),
             ..Default::default()
         }
     }
@@ -205,7 +205,7 @@ impl LmdbWasmTestBuilder {
             exec_responses: Vec::new(),
             upgrade_responses: Vec::new(),
             genesis_hash: None,
-            post_state_hash: None,
+            state_root_hash: None,
             transforms: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
@@ -231,7 +231,7 @@ impl LmdbWasmTestBuilder {
         let mut builder = Self::new_with_config(data_dir, engine_config);
         // Applies existing properties from gi
         builder.genesis_hash = result.0.genesis_hash.clone();
-        builder.post_state_hash = result.0.post_state_hash.clone();
+        builder.state_root_hash = result.0.state_root_hash.clone();
         builder.mint_contract_hash = result.0.mint_contract_hash;
         builder.pos_contract_hash = result.0.pos_contract_hash;
         builder
@@ -242,7 +242,7 @@ impl LmdbWasmTestBuilder {
     pub fn open<T: AsRef<OsStr> + ?Sized>(
         data_dir: &T,
         engine_config: EngineConfig,
-        post_state_hash: Vec<u8>,
+        state_root_hash: Vec<u8>,
     ) -> Self {
         Self::initialize_logging();
         let page_size = *OS_PAGE_SIZE;
@@ -265,7 +265,7 @@ impl LmdbWasmTestBuilder {
             exec_responses: Vec::new(),
             upgrade_responses: Vec::new(),
             genesis_hash: None,
-            post_state_hash: Some(post_state_hash),
+            state_root_hash: Some(state_root_hash),
             transforms: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
@@ -301,7 +301,7 @@ where
             exec_responses: Vec::new(),
             upgrade_responses: Vec::new(),
             genesis_hash: result.0.genesis_hash,
-            post_state_hash: result.0.post_state_hash,
+            state_root_hash: result.0.state_root_hash,
             transforms: Vec::new(),
             genesis_account: result.0.genesis_account,
             mint_contract_hash: result.0.mint_contract_hash,
@@ -349,7 +349,7 @@ where
         let protocol_data = maybe_protocol_data.expect("should have protocol data stored");
 
         self.genesis_hash = Some(state_root_hash.to_vec());
-        self.post_state_hash = Some(state_root_hash.to_vec());
+        self.state_root_hash = Some(state_root_hash.to_vec());
         self.mint_contract_hash = Some(protocol_data.mint());
         self.pos_contract_hash = Some(protocol_data.proof_of_stake());
         self.standard_payment_hash = Some(protocol_data.standard_payment());
@@ -366,7 +366,7 @@ where
         path: &[&str],
     ) -> Result<StoredValue, String> {
         let post_state = maybe_post_state
-            .or_else(|| self.post_state_hash.clone())
+            .or_else(|| self.state_root_hash.clone())
             .expect("builder must have a post-state hash");
 
         let path_vec: Vec<String> = path.iter().map(|s| String::from(*s)).collect();
@@ -387,7 +387,7 @@ where
 
     pub fn total_supply(&self, maybe_post_state: Option<Vec<u8>>) -> U512 {
         let post_state = maybe_post_state
-            .or_else(|| self.post_state_hash.clone())
+            .or_else(|| self.state_root_hash.clone())
             .expect("builder must have a post-state hash");
 
         let mint_key: Key = self
@@ -422,10 +422,10 @@ where
     pub fn exec(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         let exec_request = {
             let hash = self
-                .post_state_hash
+                .state_root_hash
                 .clone()
-                .expect("expected post_state_hash");
-            exec_request.parent_state_hash =
+                .expect("expected state root hash");
+            exec_request.state_root_hash =
                 hash.as_slice().try_into().expect("expected a valid hash");
             exec_request
         };
@@ -449,7 +449,7 @@ where
     /// Commit effects of previous exec call on the latest post-state hash.
     pub fn commit(&mut self) -> &mut Self {
         let prestate_hash = self
-            .post_state_hash
+            .state_root_hash
             .clone()
             .expect("Should have genesis hash");
 
@@ -489,7 +489,7 @@ where
             );
         }
         let mut commit_success = commit_response.take_success();
-        self.post_state_hash = Some(commit_success.take_poststate_hash().to_vec());
+        self.state_root_hash = Some(commit_success.take_poststate_hash().to_vec());
         self
     }
 
@@ -499,9 +499,9 @@ where
     ) -> &mut Self {
         let upgrade_request = {
             let hash = self
-                .post_state_hash
+                .state_root_hash
                 .clone()
-                .expect("expected post_state_hash");
+                .expect("expected state root hash");
             upgrade_request.set_parent_state_hash(hash.to_vec());
             upgrade_request
         };
@@ -512,7 +512,7 @@ where
             .expect("should upgrade");
 
         let upgrade_success = upgrade_response.get_success();
-        self.post_state_hash = Some(upgrade_success.get_post_state_hash().to_vec());
+        self.state_root_hash = Some(upgrade_success.get_post_state_hash().to_vec());
 
         self.upgrade_responses.push(upgrade_response.clone());
         self
@@ -527,7 +527,7 @@ where
 
         let result = response.get_step_result();
         let success = result.get_success();
-        self.post_state_hash = Some(success.get_poststate_hash().to_vec());
+        self.state_root_hash = Some(success.get_poststate_hash().to_vec());
         self
     }
 
@@ -607,8 +607,8 @@ where
             .expect("Genesis hash should be present. Should be called after run_genesis.")
     }
 
-    pub fn get_post_state_hash(&self) -> Vec<u8> {
-        self.post_state_hash
+    pub fn get_state_root_hash(&self) -> Vec<u8> {
+        self.state_root_hash
             .clone()
             .expect("Should have post-state hash.")
     }
@@ -727,7 +727,7 @@ where
 
     pub fn get_era_validators(&mut self, era_id: EraId) -> Option<ValidatorWeights> {
         let correlation_id = CorrelationId::new();
-        let state_hash = Blake2bHash::try_from(self.get_post_state_hash().as_slice())
+        let state_hash = Blake2bHash::try_from(self.get_state_root_hash().as_slice())
             .expect("should create state hash");
         let request = GetEraValidatorsRequest::new(state_hash, era_id, *DEFAULT_PROTOCOL_VERSION);
         self.engine_state

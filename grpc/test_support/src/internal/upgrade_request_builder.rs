@@ -9,7 +9,7 @@ use casper_execution_engine::shared::wasm_costs::WasmCosts;
 use casper_types::ProtocolVersion;
 
 pub struct UpgradeRequestBuilder {
-    pre_state_hash: Vec<u8>,
+    state_root_hash: Vec<u8>,
     current_protocol_version: state::ProtocolVersion,
     new_protocol_version: state::ProtocolVersion,
     upgrade_installer: DeployCode,
@@ -23,8 +23,8 @@ impl UpgradeRequestBuilder {
         Default::default()
     }
 
-    pub fn with_pre_state_hash(mut self, pre_state_hash: &[u8]) -> Self {
-        self.pre_state_hash = pre_state_hash.to_vec();
+    pub fn with_state_root_hash(mut self, state_root_hash: &[u8]) -> Self {
+        self.state_root_hash = state_root_hash.to_vec();
         self
     }
 
@@ -105,7 +105,7 @@ impl UpgradeRequestBuilder {
 impl Default for UpgradeRequestBuilder {
     fn default() -> Self {
         UpgradeRequestBuilder {
-            pre_state_hash: Default::default(),
+            state_root_hash: Default::default(),
             current_protocol_version: Default::default(),
             new_protocol_version: Default::default(),
             upgrade_installer: Default::default(),

@@ -472,8 +472,8 @@ pub enum ContractRuntimeRequest {
     },
     /// A request to commit existing execution transforms.
     Commit {
-        /// A valid pre state hash.
-        pre_state_hash: Digest,
+        /// A valid state root hash.
+        state_root_hash: Digest,
         /// Effects obtained through `ExecutionResult`
         effects: AdditiveMap<Key, Transform>,
         /// Responder to call with the commit result.
@@ -530,17 +530,17 @@ impl Display for ContractRuntimeRequest {
             } => write!(
                 formatter,
                 "execute request: {}",
-                execute_request.parent_state_hash
+                execute_request.state_root_hash
             ),
 
             ContractRuntimeRequest::Commit {
-                pre_state_hash,
+                state_root_hash,
                 effects,
                 ..
             } => write!(
                 formatter,
                 "commit request: {} {:?}",
-                pre_state_hash, effects
+                state_root_hash, effects
             ),
 
             ContractRuntimeRequest::Upgrade { upgrade_config, .. } => {
