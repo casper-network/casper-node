@@ -318,11 +318,10 @@ async fn network_with_unhealthy_nodes_settles_without_them() {
             .await
             .unwrap();
 
-        let mr = &mut net;
         let mut healthy_peers = HashSet::new();
 
         for _ in 1..*healthy {
-            let (healthy_peer, _) = mr
+            let (healthy_peer, _) = net
                 .add_node_with_config(Config::default_local_net(port), &mut rng)
                 .await
                 .unwrap();
@@ -331,13 +330,13 @@ async fn network_with_unhealthy_nodes_settles_without_them() {
 
         let mut unhealthy_nodes = HashSet::new();
 
-        for b in 0..*unhealthy {
-            let (unhealthy_peer, runner3) = mr
+        for unhealthy_address in 0..*unhealthy {
+            let (unhealthy_peer, runner3) = net
                 .add_node_with_config(Config::default_local_net(port), &mut rng)
                 .await
                 .unwrap();
             let unhealthy = &mut runner3.reactor_mut().inner_mut().net;
-            unhealthy.public_address = SocketAddr::from(([254, 1, 1, b as u8], 0)); // cause the gossipped address to be wrong
+            unhealthy.public_address = SocketAddr::from(([254, 1, 1, unhealthy_address as u8], 0)); // cause the gossipped address to be wrong
             unhealthy_nodes.insert(unhealthy_peer);
         }
 
@@ -411,7 +410,7 @@ async fn check_varying_size_network_connects() {
         // Pick a random port in the higher ranges that is likely to be unused.
         let first_node_port = testing::unused_port_on_localhost();
 
-        let (_first, _) = net
+        let _ = net
             .add_node_with_config(
                 Config::default_local_net_first_node(first_node_port),
                 &mut rng,

@@ -107,13 +107,19 @@ pub(crate) struct OutgoingConnection<P> {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
     sender: UnboundedSender<Message<P>>,
     peer_address: SocketAddr,
-    seen_asymmetrically: u16,
+
+    // for keeping track of connection asymmetry, tracking the number of times we've seen this
+    // connection be asymmetric.
+    times_seen_asymmetric: u16,
 }
 
 #[derive(DataSize, Debug)]
 pub(crate) struct IncomingConnection {
     peer_address: SocketAddr,
-    seen_asymmetrically: u16,
+
+    // for keeping track of connection asymmetry, tracking the number of times we've seen this
+    // connection be asymmetric.
+    times_seen_asymmetric: u16,
 }
 
 #[derive(DataSize)]
@@ -137,7 +143,7 @@ where
     /// Outgoing network connections' messages.
     outgoing: HashMap<NodeId, OutgoingConnection<P>>,
 
-    /// Blocklist
+    /// List of addresses which this node will avoid connecting to.
     blocklist: HashSet<SocketAddr>,
 
     /// Pending outgoing connections: ones for which we are currently trying to make a connection.
@@ -385,7 +391,7 @@ where
                     peer_id,
                     IncomingConnection {
                         peer_address,
-                        seen_asymmetrically: 0,
+                        times_seen_asymmetric: 0,
                     },
                 );
 
@@ -453,7 +459,7 @@ where
         let connection = OutgoingConnection {
             peer_address,
             sender,
-            seen_asymmetrically: 0,
+            times_seen_asymmetric: 0,
         };
         if self.outgoing.insert(peer_id, connection).is_some() {
             // We assume that for a reconnect to have happened, the outgoing entry must have
@@ -528,35 +534,41 @@ where
     /// Marks connections as asymmetric (only incoming or only outgoing) and removes them if they
     /// pass the upper limit for this. Connections that are symmetrical are reset to 0.
     fn enforce_symmetric_connections(&mut self) {
-        if self.outgoing.is_empty() && self.incoming.is_empty() {
-            return;
-        }
         let mut remove = Vec::new();
+        enum Node {
+            Incoming(NodeId),
+            Outgoing(NodeId, SocketAddr),
+        }
         for (node_id, conn) in self.incoming.iter_mut() {
             if !self.outgoing.contains_key(node_id) {
-                if conn.seen_asymmetrically >= MAX_ASYMMETRIC_CONNECTION_SEEN {
-                    remove.push((*node_id, conn.peer_address));
+                if conn.times_seen_asymmetric >= MAX_ASYMMETRIC_CONNECTION_SEEN {
+                    remove.push(Node::Outgoing(*node_id, conn.peer_address));
                 } else {
-                    conn.seen_asymmetrically += 1;
+                    conn.times_seen_asymmetric += 1;
                 }
             } else {
-                conn.seen_asymmetrically = 0;
+                conn.times_seen_asymmetric = 0;
             }
         }
         for (node_id, conn) in self.outgoing.iter_mut() {
             if !self.incoming.contains_key(node_id) {
-                if conn.seen_asymmetrically >= MAX_ASYMMETRIC_CONNECTION_SEEN {
-                    remove.push((*node_id, conn.peer_address));
+                if conn.times_seen_asymmetric >= MAX_ASYMMETRIC_CONNECTION_SEEN {
+                    remove.push(Node::Incoming(*node_id));
                 } else {
-                    conn.seen_asymmetrically += 1;
+                    conn.times_seen_asymmetric += 1;
                 }
             } else {
-                conn.seen_asymmetrically = 0;
+                conn.times_seen_asymmetric = 0;
             }
         }
-        for (node_id, peer_address) in remove {
-            self.blocklist.insert(peer_address);
-            self.remove(&node_id);
+        for connection in remove {
+            match connection {
+                Node::Incoming(node_id) => self.remove(&node_id),
+                Node::Outgoing(node_id, peer_address) => {
+                    self.blocklist.insert(peer_address);
+                    self.remove(&node_id);
+                }
+            }
         }
     }
 
@@ -628,9 +640,9 @@ where
     pub(crate) fn outgoing_connected_nodes(&self) -> HashSet<NodeId> {
         self.outgoing
             .iter()
-            .filter_map(|(n, o)| {
-                if !self.blocklist.contains(&o.peer_address) {
-                    Some(*n)
+            .filter_map(|(node_id, outgoing)| {
+                if !self.blocklist.contains(&outgoing.peer_address) {
+                    Some(*node_id)
                 } else {
                     None
                 }
@@ -642,9 +654,9 @@ where
     pub(crate) fn incoming_connected_nodes(&self) -> HashSet<NodeId> {
         self.incoming
             .iter()
-            .filter_map(|(n, o)| {
-                if !self.blocklist.contains(&o.peer_address) {
-                    Some(n)
+            .filter_map(|(node_id, incoming)| {
+                if !self.blocklist.contains(&incoming.peer_address) {
+                    Some(node_id)
                 } else {
                     None
                 }
