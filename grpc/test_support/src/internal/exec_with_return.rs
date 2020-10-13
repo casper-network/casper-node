@@ -117,9 +117,9 @@ where
         args: Vec::new(),
     };
 
-    let wasm_costs = *DEFAULT_WASM_CONFIG;
+    let wasm_config = *DEFAULT_WASM_CONFIG;
 
-    let preprocessor = Preprocessor::new(wasm_costs);
+    let preprocessor = Preprocessor::new(wasm_config);
     let parity_module = builder
         .get_engine_state()
         .get_module(

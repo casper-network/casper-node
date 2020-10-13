@@ -217,7 +217,7 @@ impl FromBytes for OpcodeCosts {
         let (current_memory, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
         let (grow_memory, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
         let (regular, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
-        let wasm_costs = OpcodeCosts {
+        let opcode_costs = OpcodeCosts {
             bit,
             add,
             mul,
@@ -236,7 +236,7 @@ impl FromBytes for OpcodeCosts {
             grow_memory,
             regular,
         };
-        Ok((wasm_costs, bytes))
+        Ok((opcode_costs, bytes))
     }
 }
 
