@@ -99,7 +99,7 @@ pub mod force {
     }
 }
 
-/// Handles providing the arg for and retrieval of the root state hash.
+/// Handles providing the arg for and retrieval of the state root hash.
 pub mod state_root_hash {
     use super::*;
 
