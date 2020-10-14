@@ -7,12 +7,7 @@
     - 0.1.3 -> 1.4.0
  - bonding and unbonding added with auction
  - Actions Required:
-    - Update config.toml (see config.example.toml):
-        - network
-            - gossip_interval: Change from 30000 to 120000 (30 to 120 secs)
-        - gossip
-            - finished_entry_duration_secs: Change from 3600 to 60 (1 hour to 60 secs)
-            - gossip_request_timeout_secs: Change from 10 to 30 (10 to 30 secs)
+    - Update config.toml (we recommend starting with new config.example.toml, as there are many changes):
    
 ## casper-node_0.1.0-0_amd64.deb
 
