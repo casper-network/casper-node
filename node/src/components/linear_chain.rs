@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    convert::Infallible,
     fmt::{self, Display, Formatter},
     marker::PhantomData,
 };
@@ -122,6 +123,7 @@ where
     I: Display + Send + 'static,
 {
     type Event = Event<I>;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

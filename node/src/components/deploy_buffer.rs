@@ -5,6 +5,7 @@
 
 use std::{
     collections::{HashMap, HashSet},
+    convert::Infallible,
     fmt::{self, Display, Formatter},
     time::Duration,
 };
@@ -347,6 +348,7 @@ where
     REv: ReactorEventT,
 {
     type Event = Event;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

@@ -12,7 +12,10 @@ mod chainspec;
 mod config;
 mod error;
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+    convert::Infallible,
+    fmt::{self, Display, Formatter},
+};
 
 use datasize::DataSize;
 use derive_more::From;
@@ -95,7 +98,7 @@ impl From<ChainspecLoader> for ChainspecInfo {
 }
 
 #[derive(Clone, DataSize, Debug, Serialize, Deserialize)]
-pub(crate) struct ChainspecLoader {
+pub struct ChainspecLoader {
     chainspec: Chainspec,
     // If `Some`, we're finished.  The value of the bool indicates success (true) or not.
     completed_successfully: Option<bool>,
@@ -147,6 +150,7 @@ where
     REv: From<Event> + From<StorageRequest<Storage>> + From<ContractRuntimeRequest> + Send,
 {
     type Event = Event;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

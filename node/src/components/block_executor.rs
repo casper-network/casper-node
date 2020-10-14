@@ -3,6 +3,7 @@ mod event;
 
 use std::{
     collections::{HashMap, VecDeque},
+    convert::Infallible,
     fmt::Debug,
 };
 
@@ -364,6 +365,7 @@ impl BlockExecutor {
 
 impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
     type Event = Event;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

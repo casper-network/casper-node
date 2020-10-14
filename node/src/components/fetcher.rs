@@ -1,7 +1,7 @@
 mod event;
 mod tests;
 
-use std::{collections::HashMap, fmt::Debug, time::Duration};
+use std::{collections::HashMap, convert::Infallible, fmt::Debug, time::Duration};
 
 use datasize::DataSize;
 use smallvec::smallvec;
@@ -265,6 +265,7 @@ where
     REv: ReactorEventT<T>,
 {
     type Event = Event<T>;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

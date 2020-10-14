@@ -9,7 +9,10 @@ mod tests;
 mod traits;
 
 use datasize::DataSize;
-use std::fmt::{self, Debug, Display, Formatter};
+use std::{
+    convert::Infallible,
+    fmt::{self, Debug, Display, Formatter},
+};
 
 use casper_execution_engine::core::engine_state::era_validators::GetEraValidatorsError;
 use casper_types::auction::ValidatorWeights;
@@ -200,6 +203,7 @@ where
     REv: ReactorEventT<I>,
 {
     type Event = Event<I>;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
