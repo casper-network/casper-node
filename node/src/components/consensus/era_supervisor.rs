@@ -6,7 +6,7 @@
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::HashMap,
     convert::TryInto,
     fmt::{self, Debug, Formatter},
     rc::Rc,
@@ -98,6 +98,31 @@ impl Display for EraId {
     }
 }
 
+/// A candidate block waiting for validation and dependencies.
+#[derive(DataSize)]
+pub struct PendingCandidate {
+    /// The candidate, to be passed into the consensus instance once dependencies are resolved.
+    candidate: CandidateBlock,
+    /// Whether the proto block has been validated yet.
+    validated: bool,
+    /// A list of IDs of accused validators for which we are still missing evidence.
+    missing_evidence: Vec<PublicKey>,
+}
+
+impl PendingCandidate {
+    fn new(candidate: CandidateBlock, missing_evidence: Vec<PublicKey>) -> Self {
+        PendingCandidate {
+            candidate,
+            validated: false,
+            missing_evidence,
+        }
+    }
+
+    fn is_complete(&self) -> bool {
+        self.validated && self.missing_evidence.is_empty()
+    }
+}
+
 pub struct Era<I> {
     /// The consensus protocol instance.
     consensus: Box<dyn ConsensusProtocol<I, CandidateBlock, PublicKey>>,
@@ -105,7 +130,7 @@ pub struct Era<I> {
     start_height: u64,
     /// Pending candidate blocks, waiting for validation. The boolean is `true` if the proto block
     /// has been validated; the vector contains the list of accused validators missing evidence.
-    candidates: BTreeMap<CandidateBlock, (bool, BTreeSet<PublicKey>)>,
+    candidates: Vec<PendingCandidate>,
 }
 
 impl<I> Era<I> {
@@ -116,22 +141,22 @@ impl<I> Era<I> {
         Era {
             consensus: Box::new(consensus),
             start_height,
-            candidates: BTreeMap::new(),
+            candidates: Vec::new(),
         }
     }
 
     /// Adds a new candidate block, together with the accusations for which we don't have evidence
     /// yet.
-    fn add_candidate(&mut self, candidate_block: CandidateBlock, accusations: BTreeSet<PublicKey>) {
+    fn add_candidate(&mut self, candidate: CandidateBlock, missing_evidence: Vec<PublicKey>) {
         self.candidates
-            .insert(candidate_block, (false, accusations));
+            .push(PendingCandidate::new(candidate, missing_evidence));
     }
 
     /// Marks the dependencies of candidate blocks on evidence against validator `v_id` as resolved
     /// and returns all candidates that have no missing dependencies left.
     fn resolve_evidence(&mut self, v_id: &PublicKey) -> Vec<CandidateBlock> {
-        for (_, accusations) in self.candidates.values_mut() {
-            accusations.remove(v_id);
+        for pc in &mut self.candidates {
+            pc.missing_evidence.retain(|v| v != v_id);
         }
         self.remove_complete_candidates()
     }
@@ -139,9 +164,9 @@ impl<I> Era<I> {
     /// Marks the dependencies of candidate blocks on the validity of the specified proto block as
     /// resolved and returns all candidates that have no missing dependencies left.
     fn accept_proto_block(&mut self, proto_block: &ProtoBlock) -> Vec<CandidateBlock> {
-        for (cb, (valid, _)) in &mut self.candidates {
-            if cb.proto_block() == proto_block {
-                *valid = true;
+        for pc in &mut self.candidates {
+            if pc.candidate.proto_block() == proto_block {
+                pc.validated = true;
             }
         }
         self.remove_complete_candidates()
@@ -150,30 +175,22 @@ impl<I> Era<I> {
     /// Removes and returns any candidate blocks depending on the validity of the specified proto
     /// block. If it is invalid, all those candidates are invalid.
     fn reject_proto_block(&mut self, proto_block: &ProtoBlock) -> Vec<CandidateBlock> {
-        let candidate_blocks: Vec<CandidateBlock> = self
+        let (invalid, candidates): (Vec<_>, Vec<_>) = self
             .candidates
-            .iter()
-            .filter(|(cb, _)| cb.proto_block() == proto_block)
-            .map(|(cb, _)| cb.clone())
-            .collect();
-        for candidate_block in &candidate_blocks {
-            self.candidates.remove(candidate_block);
-        }
-        candidate_blocks
+            .drain(..)
+            .partition(|pc| pc.candidate.proto_block() == proto_block);
+        self.candidates = candidates;
+        invalid.into_iter().map(|pc| pc.candidate).collect()
     }
 
     /// Removes and returns all candidate blocks with no missing dependencies.
     fn remove_complete_candidates(&mut self) -> Vec<CandidateBlock> {
-        let candidate_blocks: Vec<CandidateBlock> = self
+        let (complete, candidates): (Vec<_>, Vec<_>) = self
             .candidates
-            .iter_mut()
-            .filter(|(_, (valid, accusations))| *valid && accusations.is_empty())
-            .map(|(cb, _)| cb.clone())
-            .collect();
-        for candidate_block in &candidate_blocks {
-            self.candidates.remove(candidate_block);
-        }
-        candidate_blocks
+            .drain(..)
+            .partition(PendingCandidate::is_complete);
+        self.candidates = candidates;
+        complete.into_iter().map(|pc| pc.candidate).collect()
     }
 }
 
@@ -187,11 +204,18 @@ where
 
     #[inline]
     fn estimate_heap_size(&self) -> usize {
+        // Destructure self, so we can't miss any fields.
+        let Era {
+            consensus,
+            start_height,
+            candidates,
+        } = self;
+
         // `DataSize` cannot be made object safe due its use of associated constants. We implement
         // it manually here, downcasting the consensus protocol as a workaround.
 
         let consensus_heap_size = {
-            let any_ref = self.consensus.as_any();
+            let any_ref = consensus.as_any();
 
             if let Some(highway) = any_ref.downcast_ref::<HighwayProtocol<I, HighwayContext>>() {
                 highway.estimate_heap_size()
@@ -204,7 +228,7 @@ where
             }
         };
 
-        consensus_heap_size + self.start_height.estimate_heap_size()
+        consensus_heap_size + start_height.estimate_heap_size() + candidates.estimate_heap_size()
     }
 }
 
@@ -804,14 +828,14 @@ where
             }
             ConsensusProtocolResult::ValidateConsensusValue(sender, candidate_block) => {
                 let proto_block = candidate_block.proto_block().clone();
-                let missing_accusations: BTreeSet<PublicKey> = candidate_block
+                let missing_evidence: Vec<PublicKey> = candidate_block
                     .accusations()
                     .iter()
                     .filter(|pub_key| !self.has_evidence(era_id, **pub_key))
                     .cloned()
                     .collect();
                 let mut effects = Effects::new();
-                for pub_key in missing_accusations.iter().cloned() {
+                for pub_key in missing_evidence.iter().cloned() {
                     let msg = ConsensusMessage::EvidenceRequest { era_id, pub_key };
                     effects.extend(
                         self.effect_builder
@@ -820,7 +844,7 @@ where
                     );
                 }
                 if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
-                    era.add_candidate(candidate_block, missing_accusations);
+                    era.add_candidate(candidate_block, missing_evidence);
                 } else {
                     return effects;
                 }
