@@ -27,6 +27,7 @@ impl From<u32> for ValidatorIndex {
 pub(crate) struct Validator<VID> {
     weight: Weight,
     id: VID,
+    banned: bool,
 }
 
 impl<VID, W: Into<Weight>> From<(VID, W)> for Validator<VID> {
@@ -34,6 +35,7 @@ impl<VID, W: Into<Weight>> From<(VID, W)> for Validator<VID> {
         Validator {
             id,
             weight: weight.into(),
+            banned: false,
         }
     }
 }
@@ -75,6 +77,22 @@ impl<VID: Eq + Hash> Validators<VID> {
     /// Returns an iterator over all validators, sorted by ID.
     pub(crate) fn iter(&self) -> impl Iterator<Item = &Validator<VID>> {
         self.validators.iter()
+    }
+
+    /// Marks the validator with that ID as banned, if it exists.
+    pub(crate) fn ban(&mut self, vid: &VID) {
+        if let Some(idx) = self.get_index(vid) {
+            self.validators[idx.0 as usize].banned = true;
+        }
+    }
+
+    /// Returns an iterator of all indices of banned validators.
+    pub(crate) fn iter_banned_idx(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
+        self.validators
+            .iter()
+            .enumerate()
+            .filter(|(_, v)| v.banned)
+            .map(|(idx, _)| ValidatorIndex::from(idx as u32))
     }
 }
 

@@ -202,7 +202,7 @@ mod tests {
             Timestamp::from(u64::MAX),
         );
         let weights = &[Weight(ALICE_W), Weight(BOB_W), Weight(CAROL_W)];
-        let mut state = State::new(weights, params);
+        let mut state = State::new(weights, params, vec![]);
         let total_weight = state.total_weight().0;
         let mut rng = TestRng::new();
 

@@ -69,6 +69,29 @@ pub(crate) enum VoteError {
     NonLeaderBlock(ValidatorIndex),
     #[error("The vote is a block, but its parent is already a terminal block.")]
     ValueAfterTerminalBlock,
+    #[error("The vote's creator is banned.")]
+    Banned,
+}
+
+/// A reason for a validator to be marked as faulty.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum Fault<C: Context> {
+    /// The validator was known to be faulty from the beginning. All their messages are considered
+    /// invalid in this Highway instance.
+    Banned,
+    /// The validator is known to be faulty, but the evidence is not in this Highway instance.
+    Indirect,
+    /// We have evidence of the validator's fault.
+    Direct(Evidence<C>),
+}
+
+impl<C: Context> Fault<C> {
+    pub(crate) fn evidence(&self) -> Option<&Evidence<C>> {
+        match self {
+            Fault::Banned | Fault::Indirect => None,
+            Fault::Direct(ev) => Some(ev),
+        }
+    }
 }
 
 /// A passive instance of the Highway protocol, containing its local state.
@@ -90,17 +113,18 @@ pub(crate) struct State<C: Context> {
     votes: HashMap<C::Hash, Vote<C>>,
     /// All blocks, by hash.
     blocks: HashMap<C::Hash, Block<C>>,
-    /// Evidence to prove a validator malicious, by index.
-    evidence: HashMap<ValidatorIndex, Evidence<C>>,
+    /// List of faulty validators and their type of fault.
+    faults: HashMap<ValidatorIndex, Fault<C>>,
     /// The full panorama, corresponding to the complete protocol state.
     panorama: Panorama<C>,
 }
 
 impl<C: Context> State<C> {
-    pub(crate) fn new<I>(weights: I, params: Params) -> State<C>
+    pub(crate) fn new<I, IB>(weights: I, params: Params, banned: IB) -> State<C>
     where
         I: IntoIterator,
         I::Item: Borrow<Weight>,
+        IB: IntoIterator<Item = ValidatorIndex>,
     {
         let weights = ValidatorMap::from(weights.into_iter().map(|w| *w.borrow()).collect_vec());
         assert!(
@@ -114,14 +138,22 @@ impl<C: Context> State<C> {
         };
         let cumulative_w = weights.iter().map(add).collect();
         assert!(sum > Weight(0), "total weight must not be zero");
-        let panorama = Panorama::new(weights.len());
+        let mut panorama = Panorama::new(weights.len());
+        let faults: HashMap<_, _> = banned.into_iter().map(|idx| (idx, Fault::Banned)).collect();
+        for idx in faults.keys() {
+            assert!(
+                idx.0 < weights.len() as u32,
+                "invalid banned validator index"
+            );
+            panorama[*idx] = Observation::Faulty;
+        }
         State {
             params,
             weights,
             cumulative_w,
             votes: HashMap::new(),
             blocks: HashMap::new(),
-            evidence: HashMap::new(),
+            faults,
             panorama,
         }
     }
@@ -172,17 +204,33 @@ impl<C: Context> State<C> {
 
     /// Returns evidence against validator nr. `idx`, if present.
     pub(crate) fn opt_evidence(&self, idx: ValidatorIndex) -> Option<&Evidence<C>> {
-        self.evidence.get(&idx)
+        self.opt_fault(idx).and_then(Fault::evidence)
     }
 
     /// Returns whether evidence against validator nr. `idx` is known.
     pub(crate) fn has_evidence(&self, idx: ValidatorIndex) -> bool {
-        self.evidence.contains_key(&idx)
+        self.opt_evidence(idx).is_some()
     }
 
-    /// Returns an iterator over all faulty validators against which we have evidence.
+    /// Marks the given validator as faulty, unless it is already banned or we have direct evidence.
+    pub(crate) fn mark_faulty(&mut self, idx: ValidatorIndex) {
+        self.panorama[idx] = Observation::Faulty;
+        self.faults.entry(idx).or_insert(Fault::Indirect);
+    }
+
+    /// Returns the fault type of validator nr. `idx`, if it is known to be faulty.
+    pub(crate) fn opt_fault(&self, idx: ValidatorIndex) -> Option<&Fault<C>> {
+        self.faults.get(&idx)
+    }
+
+    /// Returns whether validator nr. `idx` is known to be faulty.
+    pub(crate) fn is_faulty(&self, idx: ValidatorIndex) -> bool {
+        self.faults.contains_key(&idx)
+    }
+
+    /// Returns an iterator over all faulty validators.
     pub(crate) fn faulty_validators<'a>(&'a self) -> impl Iterator<Item = ValidatorIndex> + 'a {
-        self.evidence.keys().cloned()
+        self.faults.keys().cloned()
     }
 
     /// Returns the vote with the given hash, if present.
@@ -245,8 +293,12 @@ impl<C: Context> State<C> {
 
     pub(crate) fn add_evidence(&mut self, evidence: Evidence<C>) {
         let idx = evidence.perpetrator();
+        if Some(&Fault::Banned) == self.faults.get(&idx) {
+            return;
+        }
+        // TODO: Should use Display, not Debug!
         info!(?evidence, "marking validator #{} as faulty", idx.0);
-        self.evidence.insert(idx, evidence);
+        self.faults.insert(idx, Fault::Direct(evidence));
         self.panorama[idx] = Observation::Faulty;
     }
 
@@ -328,6 +380,9 @@ impl<C: Context> State<C> {
             error!("Nonexistent validator should be rejected in Highway::pre_validate_vote.");
             return Err(VoteError::Creator); // Should be unreachable.
         }
+        if Some(&Fault::Banned) == self.faults.get(&creator) {
+            return Err(VoteError::Banned);
+        }
         if wvote.round_exp < self.params.min_round_exp() {
             return Err(VoteError::RoundLength);
         }
@@ -406,7 +461,7 @@ impl<C: Context> State<C> {
     ///
     /// If the new vote is valid, it will just add `Observation::Correct(wvote.hash())` to the
     /// panorama. If it represents an equivocation, it adds `Observation::Faulty` and updates
-    /// `self.evidence`.
+    /// `self.faults`.
     ///
     /// Panics unless all dependencies of `wvote` have already been added to `self`.
     fn update_panorama(&mut self, swvote: &SignedWireVote<C>) {
@@ -431,7 +486,7 @@ impl<C: Context> State<C> {
 
     /// Returns `true` if this is a proposal and the creator is not faulty.
     pub(super) fn is_correct_proposal(&self, vote: &Vote<C>) -> bool {
-        !self.has_evidence(vote.creator)
+        !self.is_faulty(vote.creator)
             && self.leader(vote.timestamp) == vote.creator
             && vote.timestamp == round_id(vote.timestamp, vote.round_exp)
     }

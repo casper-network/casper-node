@@ -83,6 +83,8 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
     ValidateConsensusValue(I, C),
     /// New direct evidence was added against the given validator.
     NewEvidence(VID),
+    /// Send evidence about the validator from an earlier era to the peer.
+    SendEvidence(I, VID),
 }
 
 /// An API for a single instance of the consensus.
@@ -131,9 +133,12 @@ pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID> {
     /// Returns whether the validator `vid` is known to be faulty.
     fn has_evidence(&self, vid: &VID) -> bool;
 
+    /// Marks the validator `vid` as faulty, based on evidence from a different instance.
+    fn mark_faulty(&mut self, vid: &VID);
+
     /// Sends evidence for a faulty of validator `vid` to the `sender` of the request.
     fn request_evidence(&self, sender: I, vid: &VID) -> Vec<ConsensusProtocolResult<I, C, VID>>;
 
     /// Returns the list of all validators that were observed as faulty in this consensus instance.
-    fn faulty_validators(&self) -> Vec<&VID>;
+    fn validators_with_evidence(&self) -> Vec<&VID>;
 }

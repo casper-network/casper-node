@@ -108,7 +108,7 @@ impl State<TestContext> {
             u64::MAX,
             Timestamp::from(u64::MAX),
         );
-        State::new(weights, params)
+        State::new(weights, params, vec![])
     }
 
     /// Adds the vote to the protocol state, or returns an error if it is invalid.
@@ -199,6 +199,35 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
 
     // The state's own panorama has been updated correctly.
     assert_eq!(state.panorama, panorama!(F, b2, c1));
+    Ok(())
+}
+
+#[test]
+fn ban_and_mark_faulty() -> Result<(), AddVoteError<TestContext>> {
+    let mut rng = TestRng::new();
+    let params = Params::new(
+        0,
+        TEST_BLOCK_REWARD,
+        TEST_BLOCK_REWARD / 5,
+        4,
+        u64::MAX,
+        Timestamp::from(u64::MAX),
+    );
+    // Everyone already knows Alice is faulty, so she is banned.
+    let mut state = State::new(WEIGHTS, params, vec![ALICE]);
+
+    assert_eq!(panorama![F, N, N], *state.panorama());
+    let err = vote_err(add_vote!(state, rng, ALICE, 0xA; N, N, N).err().unwrap());
+    assert_eq!(VoteError::Banned, err);
+
+    state.mark_faulty(ALICE); // No change: Banned state is permanent.
+    assert_eq!(panorama![F, N, N], *state.panorama());
+    let err = vote_err(add_vote!(state, rng, ALICE, 0xA; N, N, N).err().unwrap());
+    assert_eq!(VoteError::Banned, err);
+
+    // Now we also received external evidence (i.e. not in this instance) that Bob is faulty.
+    state.mark_faulty(BOB);
+    assert_eq!(panorama![F, F, N], *state.panorama());
     Ok(())
 }
 
