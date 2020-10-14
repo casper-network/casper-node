@@ -421,21 +421,17 @@ dependencies = [
 name = "casper-client"
 version = "0.1.0"
 dependencies = [
- "base64 0.12.3",
  "casper-execution-engine",
  "casper-node",
  "casper-types",
  "clap",
- "futures 0.3.5",
+ "client-lib",
  "hex",
- "jsonrpc-lite",
  "lazy_static",
  "rand 0.7.3",
- "reqwest",
  "semver 0.11.0",
  "serde",
  "serde_json",
- "thiserror",
  "tokio 0.2.22",
 ]
 
@@ -724,6 +720,24 @@ dependencies = [
  "textwrap",
  "unicode-width",
  "vec_map",
+]
+
+[[package]]
+name = "client-lib"
+version = "0.1.0"
+dependencies = [
+ "casper-execution-engine",
+ "casper-node",
+ "casper-types",
+ "futures 0.3.5",
+ "jsonrpc-lite",
+ "lazy_static",
+ "rand 0.7.3",
+ "reqwest",
+ "semver 0.11.0",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]
