@@ -3,7 +3,9 @@
 ## casper-node_1.4.0_amd64.deb
 
  - pre-Delta test release
- - bonding and unbonding added
+ - Changed to major version of 1 to work better with Rust versioning.
+    - 0.1.3 -> 1.4.0
+ - bonding and unbonding added with auction
  - Actions Required:
     - Update config.toml (see config.example.toml):
         - network
