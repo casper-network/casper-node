@@ -22,7 +22,7 @@ pub(crate) fn generate_reactor(def: &ReactorDefinition) -> TokenStream {
 
     quote!(
         #[derive(Debug)]
-        struct #reactor_ident {
+        pub struct #reactor_ident {
             #(#reactor_fields,)*
         }
     )
@@ -91,11 +91,11 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
 
     quote!(
         #[derive(Debug)]
-        enum #event_ident {
+        pub enum #event_ident {
            #(#event_variants,)*
         }
 
-        enum #error_ident {
+        pub enum #error_ident {
             #(#error_variants,)*
         }
 
