@@ -425,11 +425,7 @@ dependencies = [
  "casper-node",
  "casper-types",
  "clap",
-<<<<<<< HEAD
  "client-lib",
-=======
- "futures 0.3.6",
->>>>>>> master
  "hex",
  "lazy_static",
  "rand 0.7.3",
@@ -742,7 +738,7 @@ dependencies = [
  "casper-execution-engine",
  "casper-node",
  "casper-types",
- "futures 0.3.5",
+ "futures 0.3.6",
  "jsonrpc-lite",
  "lazy_static",
  "rand 0.7.3",
