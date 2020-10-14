@@ -364,6 +364,28 @@ extern "C" {
         amount_ptr: *const u8,
         amount_size: usize,
     ) -> i32;
+    /// Records a transfer.  Can only be called from within the mint contract.
+    /// Needed to support system contract-based execution.
+    ///
+    /// # Arguments
+    ///
+    /// * `source_ptr` - pointer in wasm memory to bytes representing the source
+    ///   [`casper_types::uref::URef`] to transfer from
+    /// * `source_size` - size of the source [`casper_types::uref::URef`] (in bytes)
+    /// * `target_ptr` - pointer in wasm memory to bytes representing the target
+    ///   [`casper_types::uref::URef`] to transfer to
+    /// * `target_size` - size of the target (in bytes)
+    /// * `amount_ptr` - pointer in wasm memory to bytes representing the amount to transfer to the
+    ///   target account
+    /// * `amount_size` - size of the amount (in bytes)
+    pub fn record_transfer(
+        source_ptr: *const u8,
+        source_size: usize,
+        target_ptr: *const u8,
+        target_size: usize,
+        amount_ptr: *const u8,
+        amount_size: usize,
+    ) -> i32;
     /// This function uses the mint contract's balance function to get the balance
     /// of the specified purse. It causes a `Trap` if the bytes in wasm memory
     /// from `purse_ptr` to `purse_ptr + purse_size` cannot be

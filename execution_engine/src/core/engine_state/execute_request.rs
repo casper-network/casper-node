@@ -31,6 +31,10 @@ impl ExecuteRequest {
     pub fn take_deploys(&mut self) -> Vec<Result<DeployItem, ExecutionResult>> {
         mem::replace(&mut self.deploys, vec![])
     }
+
+    pub fn deploys(&self) -> &Vec<Result<DeployItem, ExecutionResult>> {
+        &self.deploys
+    }
 }
 
 impl Default for ExecuteRequest {

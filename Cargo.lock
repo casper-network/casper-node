@@ -5001,6 +5001,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "transfer-purse-to-accounts"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "transfer-purse-to-accounts-stored"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+ "transfer-purse-to-accounts",
+]
+
+[[package]]
+name = "transfer-purse-to-accounts-subcall"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "transfer-purse-to-purse"
 version = "0.1.0"
 dependencies = [

@@ -58,6 +58,7 @@ impl From<CLValueError> for Error {
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Transform {
     Identity,
@@ -176,6 +177,16 @@ impl Transform {
                 StoredValue::ContractWasm(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "ContractWasm".to_string();
+                    Err(TypeMismatch::new(expected, found).into())
+                }
+                StoredValue::Transfer(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "Transfer".to_string();
+                    Err(TypeMismatch::new(expected, found).into())
+                }
+                StoredValue::DeployInfo(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "DeployInfo".to_string();
                     Err(TypeMismatch::new(expected, found).into())
                 }
             },

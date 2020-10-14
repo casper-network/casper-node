@@ -208,6 +208,10 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
                 FunctionIndex::Blake2b.into(),
             ),
+            "record_transfer" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 6][..], Some(ValueType::I32)),
+                FunctionIndex::RecordTransfer.into(),
+            ),
             #[cfg(feature = "test-support")]
             "print" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 2][..], None),

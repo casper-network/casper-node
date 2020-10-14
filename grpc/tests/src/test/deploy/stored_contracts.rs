@@ -651,10 +651,25 @@ fn should_have_equivalent_transforms_with_stored_contract_pointers() {
                 // la has stored contracts under named urefs
                 assert_ne!(la.named_keys(), ra.named_keys());
             }
+            (
+                Transform::Write(StoredValue::Transfer(l_value)),
+                Transform::Write(StoredValue::Transfer(r_value)),
+            ) => assert_eq!(l_value, r_value),
+            (
+                Transform::Write(StoredValue::DeployInfo(l_value)),
+                Transform::Write(StoredValue::DeployInfo(r_value)),
+            ) => {
+                assert_eq!(l_value.deploy_hash, r_value.deploy_hash);
+                assert_eq!(l_value.from, r_value.from);
+                assert_eq!(l_value.source, r_value.source);
+                assert_eq!(l_value.transfers, r_value.transfers);
+                assert_ne!(l_value.gas, r_value.gas);
+            }
             (Transform::AddUInt512(_), Transform::AddUInt512(_)) => {
                 // differing payment
             }
             _ => {
+                println!("lr: {:?}", lr);
                 panic!("unexpected diff");
             }
         }

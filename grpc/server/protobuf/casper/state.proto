@@ -242,6 +242,23 @@ message ContractWasm {
     bytes wasm = 1;
 }
 
+message Transfer {
+    DeployHash deploy = 1;
+    AccountHash from = 2;
+    Key.URef source = 3;
+    Key.URef target = 4;
+    BigInt amount = 5;
+    BigInt gas = 6;
+}
+
+message DeployInfo {
+    DeployHash deploy = 1;
+    repeated TransferAddr transfers = 2;
+    AccountHash from = 3;
+    Key.URef source = 4;
+    BigInt gas = 5;
+}
+
 // Value stored under a key in global state.
 message StoredValue {
     oneof variants {
@@ -250,6 +267,8 @@ message StoredValue {
         Contract contract = 3;
         ContractPackage contract_package = 4;
         ContractWasm contract_wasm = 5;
+        Transfer transfer = 6;
+        DeployInfo deploy_info = 7;
     }
 }
 
@@ -269,11 +288,25 @@ message BigInt {
 	uint32 bit_width = 2;
 }
 
+message DeployHash {
+    bytes deploy_hash = 1;
+}
+
+message AccountHash {
+    bytes account_hash = 1;
+}
+
+message TransferAddr {
+    bytes transfer_addr = 1;
+}
+
 message Key {
 	oneof value {
 		Address address = 1;
 		Hash hash = 2;
 		URef uref = 3;
+    TransferAddr transfer = 4;
+		DeployHash deploy_info = 5;
 	}
 
 	message Address {

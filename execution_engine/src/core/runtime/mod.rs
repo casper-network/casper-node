@@ -30,9 +30,9 @@ use casper_types::{
     runtime_args, standard_payment,
     standard_payment::StandardPayment,
     system_contract_errors, AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash,
-    ContractPackageHash, ContractVersionKey, ContractWasm, EntryPointType, Key, ProtocolVersion,
-    PublicKey, RuntimeArgs, SystemContractType, TransferResult, TransferredTo, URef, U128, U256,
-    U512,
+    ContractPackageHash, ContractVersionKey, ContractWasm, DeployHash, EntryPointType, Key, Phase,
+    ProtocolVersion, PublicKey, RuntimeArgs, SystemContractType, Transfer, TransferResult,
+    TransferredTo, URef, U128, U256, U512,
 };
 
 use crate::{
@@ -99,6 +99,8 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::URef(uref) => Some((uref.addr(), uref.access_rights())),
         Key::Account(_) => None,
         Key::Hash(_) => None,
+        Key::Transfer(_) => None,
+        Key::DeployInfo(_) => None,
     }
 }
 
@@ -1706,9 +1708,11 @@ where
         let gas_counter = self.context.gas_counter();
         let hash_address_generator = self.context.hash_address_generator();
         let uref_address_generator = self.context.uref_address_generator();
+        let transfer_address_generator = self.context.transfer_address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
         let protocol_data = self.context.protocol_data();
+        let transfers = self.context.transfers().to_owned();
 
         let mint_context = RuntimeContext::new(
             state,
@@ -1725,10 +1729,12 @@ where
             gas_counter,
             hash_address_generator,
             uref_address_generator,
+            transfer_address_generator,
             protocol_version,
             correlation_id,
             phase,
             *protocol_data,
+            transfers,
         );
 
         let mut mint_runtime = Runtime::new(
@@ -1780,6 +1786,10 @@ where
         let urefs = extract_urefs(&ret)?;
         let access_rights = extract_access_rights_from_urefs(urefs);
         self.context.access_rights_extend(access_rights);
+        {
+            let transfers = self.context.transfers_mut();
+            *transfers = mint_runtime.context.transfers().to_owned();
+        }
         Ok(ret)
     }
 
@@ -1808,9 +1818,11 @@ where
         let gas_counter = self.context.gas_counter();
         let fn_store_id = self.context.hash_address_generator();
         let address_generator = self.context.uref_address_generator();
+        let transfer_address_generator = self.context.transfer_address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
         let protocol_data = self.context.protocol_data();
+        let transfers = self.context.transfers().to_owned();
 
         let runtime_context = RuntimeContext::new(
             state,
@@ -1827,10 +1839,12 @@ where
             gas_counter,
             fn_store_id,
             address_generator,
+            transfer_address_generator,
             protocol_version,
             correlation_id,
             phase,
             *protocol_data,
+            transfers,
         );
 
         let mut runtime = Runtime::new(
@@ -1872,6 +1886,10 @@ where
         let urefs = extract_urefs(&ret)?;
         let access_rights = extract_access_rights_from_urefs(urefs);
         self.context.access_rights_extend(access_rights);
+        {
+            let transfers = self.context.transfers_mut();
+            *transfers = runtime.context.transfers().to_owned();
+        }
         Ok(ret)
     }
 
@@ -1906,9 +1924,11 @@ where
         let gas_counter = self.context.gas_counter();
         let fn_store_id = self.context.hash_address_generator();
         let address_generator = self.context.uref_address_generator();
+        let transfer_address_generator = self.context.transfer_address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
         let protocol_data = self.context.protocol_data();
+        let transfers = self.context.transfers().to_owned();
 
         let runtime_context = RuntimeContext::new(
             state,
@@ -1925,10 +1945,12 @@ where
             gas_counter,
             fn_store_id,
             address_generator,
+            transfer_address_generator,
             protocol_version,
             correlation_id,
             phase,
             *protocol_data,
+            transfers,
         );
 
         let mut runtime = Runtime::new(
@@ -2075,6 +2097,10 @@ where
         let urefs = extract_urefs(&ret)?;
         let access_rights = extract_access_rights_from_urefs(urefs);
         self.context.access_rights_extend(access_rights);
+        {
+            let transfers = self.context.transfers_mut();
+            *transfers = runtime.context.transfers().to_owned();
+        }
         Ok(ret)
     }
 
@@ -2351,10 +2377,12 @@ where
             self.context.gas_counter(),
             self.context.hash_address_generator(),
             self.context.uref_address_generator(),
+            self.context.transfer_address_generator(),
             protocol_version,
             self.context.correlation_id(),
             self.context.phase(),
             *self.context.protocol_data(),
+            self.context.transfers().to_owned(),
         );
 
         let mut runtime = Runtime {
@@ -2372,6 +2400,11 @@ where
         // charged by the sub-call was added to its counter - so let's copy the correct value of the
         // counter from there to our counter
         self.context.set_gas_counter(runtime.context.gas_counter());
+
+        {
+            let transfers = self.context.transfers_mut();
+            *transfers = runtime.context.transfers().to_owned();
+        }
 
         let error = match result {
             Err(error) => error,
@@ -2809,6 +2842,32 @@ where
             .map_err(Into::into)
     }
 
+    /// Records a transfer.
+    fn record_transfer(&mut self, source: URef, target: URef, amount: U512) -> Result<(), Error> {
+        if self.context.base_key() != Key::from(self.protocol_data().mint()) {
+            return Err(Error::InvalidContext);
+        }
+
+        if self.context.phase() != Phase::Session {
+            return Ok(());
+        }
+
+        let transfer_addr = self.context.new_transfer_addr()?;
+        let transfer = {
+            let deploy_hash: DeployHash = self.context.get_deploy_hash();
+            let from: AccountHash = self.context.account().account_hash();
+            let fee: U512 = U512::zero(); // TODO
+            Transfer::new(deploy_hash, from, source, target, amount, fee)
+        };
+        {
+            let transfers = self.context.transfers_mut();
+            transfers.push(transfer_addr);
+        }
+        self.context
+            .write_transfer(Key::Transfer(transfer_addr), transfer);
+        Ok(())
+    }
+
     /// Adds `value` to the cell that `key` points at.
     fn add(
         &mut self,
@@ -3106,7 +3165,12 @@ where
             return Ok(Err(ApiError::Transfer));
         }
 
-        match self.mint_transfer(mint_contract_hash, source, target_purse, amount) {
+        match self.mint_transfer(
+            mint_contract_hash,
+            source,
+            target_purse.with_access_rights(AccessRights::ADD),
+            amount,
+        ) {
             Ok(_) => {
                 let account = Account::create(target, Default::default(), target_purse);
                 self.context.write_account(target_key, account)?;
