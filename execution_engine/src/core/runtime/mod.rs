@@ -43,7 +43,12 @@ use crate::{
         runtime_context::{self, RuntimeContext},
         Address,
     },
-    shared::{account::Account, gas::Gas, stored_value::StoredValue},
+    shared::{
+        account::Account,
+        gas::Gas,
+        host_function_costs::{Cost, HostFunction},
+        stored_value::StoredValue,
+    },
     storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
 use scoped_instrumenter::ScopedInstrumenter;
@@ -3597,6 +3602,20 @@ where
         );
 
         Ok(Ok(()))
+    }
+
+    /// Calculate gas cost for a host function
+    fn charge_host_function_call<T>(
+        &mut self,
+        host_function: &HostFunction<T>,
+        weights: T,
+    ) -> Result<(), Trap>
+    where
+        T: AsRef<[Cost]> + Copy,
+    {
+        let cost = host_function.calculate_gas_cost(weights);
+        self.gas(cost)?;
+        Ok(())
     }
 }
 

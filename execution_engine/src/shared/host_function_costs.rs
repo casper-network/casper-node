@@ -4,23 +4,25 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
-/// Representation of a host function cost as ingredients of polynomials.
+use super::gas::Gas;
+
+/// Representation of argument's cost.
+pub type Cost = u32;
+
+/// Representation of a host function cost
 ///
 /// Total gas cost is equal to `cost` + sum of each argument weight multiplied by the byte size of
 /// the data.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Debug, Default)]
-pub struct HostFunction<T>
-where
-    T: Default,
-{
+pub struct HostFunction<T> {
     /// How much user is charged for cost only
-    pub cost: u32,
+    pub cost: Cost,
     pub arguments: T,
 }
 
 impl<T> DataSize for HostFunction<T>
 where
-    T: Default,
+    T: Copy + AsRef<[Cost]>,
 {
     const IS_DYNAMIC: bool = false;
 
@@ -31,28 +33,35 @@ where
     }
 }
 
-impl<T> HostFunction<T>
-where
-    T: Default,
-{
-    pub fn new(cost: u32, arguments: T) -> Self {
+impl<T> HostFunction<T> {
+    pub fn new(cost: Cost, arguments: T) -> Self {
         Self { cost, arguments }
     }
 }
 
-impl HostFunction<()> {
-    pub fn fixed(cost: u32) -> Self {
-        Self::new(cost, ())
+impl<T> HostFunction<T>
+where
+    T: AsRef<[Cost]>,
+{
+    /// Calculate gas cost for a host function
+    pub fn calculate_gas_cost(&self, weights: T) -> Gas {
+        let mut gas = Gas::new(self.cost.into());
+        for (argument, weight) in self.arguments.as_ref().iter().zip(weights.as_ref()) {
+            let lhs = Gas::new((*argument).into());
+            let rhs = Gas::new((*weight).into());
+            gas += lhs * rhs;
+        }
+        gas
     }
 }
 
 impl<T> Distribution<HostFunction<T>> for Standard
 where
     Standard: Distribution<T>,
-    T: Default,
+    T: AsRef<[Cost]>,
 {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> HostFunction<T> {
-        let cost = rng.gen::<u32>();
+        let cost = rng.gen::<Cost>();
         let arguments = rng.gen();
         HostFunction::<T> { cost, arguments }
     }
@@ -60,7 +69,7 @@ where
 
 impl<T> ToBytes for HostFunction<T>
 where
-    T: ToBytes + Default,
+    T: ToBytes + AsRef<[Cost]>,
 {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
@@ -86,50 +95,50 @@ where
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize, Default)]
-#[allow(clippy::type_complexity)]
 pub struct HostFunctionCosts {
-    pub read_value: HostFunction<(u32, u32, u32)>,
-    pub read_value_local: HostFunction<(u32, u32, u32)>,
-    pub write: HostFunction<(u32, u32, u32, u32)>,
-    pub write_local: HostFunction<(u32, u32, u32, u32)>,
-    pub add: HostFunction<(u32, u32, u32, u32)>,
-    pub add_local: HostFunction<(u32, u32, u32, u32)>,
-    pub new_uref: HostFunction<(u32, u32, u32)>,
-    pub load_named_keys: HostFunction<(u32, u32)>,
-    pub ret: HostFunction<(u32, u32)>,
-    pub get_key: HostFunction<(u32, u32, u32, u32, u32)>,
-    pub has_key: HostFunction<(u32, u32)>,
-    pub put_key: HostFunction<(u32, u32)>,
-    pub remove_key: HostFunction<(u32, u32)>,
-    pub revert: HostFunction<(u32,)>,
-    pub is_valid_uref: HostFunction<(u32, u32)>,
-    pub add_associated_key: HostFunction<(u32, u32, u32, u32)>,
-    pub remove_associated_key: HostFunction<(u32, u32)>,
-    pub update_associated_key: HostFunction<(u32, u32, u32)>,
-    pub set_action_threshold: HostFunction<(u32, u32)>,
-    pub get_caller: HostFunction<(u32,)>,
-    pub get_blocktime: HostFunction<(u32,)>,
-    pub create_purse: HostFunction<(u32, u32)>,
-    pub transfer_to_account: HostFunction<(u32, u32, u32, u32)>,
-    pub transfer_from_purse_to_account: HostFunction<(u32, u32, u32, u32, u32, u32)>,
-    pub transfer_from_purse_to_purse: HostFunction<(u32, u32, u32, u32, u32, u32)>,
-    pub get_balance: HostFunction<(u32, u32, u32)>,
-    pub get_phase: HostFunction<(u32,)>,
-    pub get_system_contract: HostFunction<(u32, u32, u32)>,
-    pub get_main_purse: HostFunction<(u32,)>,
-    pub read_host_buffer: HostFunction<(u32, u32, u32)>,
-    pub create_contract_package_at_hash: HostFunction<(u32, u32)>,
-    pub create_contract_user_group: HostFunction<(u32, u32, u32, u32, u32, u32, u32, u32)>,
-    pub add_contract_version: HostFunction<(u32, u32, u32, u32, u32, u32, u32, u32, u32, u32)>,
-    pub disable_contract_version: HostFunction<(u32, u32, u32, u32)>,
-    pub call_contract: HostFunction<(u32, u32, u32, u32, u32, u32, u32)>,
-    pub call_versioned_contract: HostFunction<(u32, u32, u32, u32, u32, u32, u32, u32, u32)>,
-    pub get_named_arg_size: HostFunction<(u32, u32, u32)>,
-    pub get_named_arg: HostFunction<(u32, u32, u32, u32)>,
-    pub remove_contract_user_group: HostFunction<(u32, u32, u32, u32)>,
-    pub provision_contract_user_group_uref: HostFunction<(u32, u32, u32, u32, u32)>,
-    pub remove_contract_user_group_urefs: HostFunction<(u32, u32, u32, u32, u32, u32)>,
-    pub print: HostFunction<(u32, u32)>,
+    pub read_value: HostFunction<[Cost; 3]>,
+    pub read_value_local: HostFunction<[Cost; 3]>,
+    pub write: HostFunction<[Cost; 4]>,
+    pub write_local: HostFunction<[Cost; 4]>,
+    pub add: HostFunction<[Cost; 4]>,
+    pub add_local: HostFunction<[Cost; 4]>,
+    pub new_uref: HostFunction<[Cost; 3]>,
+    pub load_named_keys: HostFunction<[Cost; 2]>,
+    pub ret: HostFunction<[Cost; 2]>,
+    pub get_key: HostFunction<[Cost; 5]>,
+    pub has_key: HostFunction<[Cost; 2]>,
+    pub put_key: HostFunction<[Cost; 4]>,
+    pub remove_key: HostFunction<[Cost; 2]>,
+    pub revert: HostFunction<[Cost; 1]>,
+    pub is_valid_uref: HostFunction<[Cost; 2]>,
+    pub add_associated_key: HostFunction<[Cost; 3]>,
+    pub remove_associated_key: HostFunction<[Cost; 2]>,
+    pub update_associated_key: HostFunction<[Cost; 3]>,
+    pub set_action_threshold: HostFunction<[Cost; 2]>,
+    pub get_caller: HostFunction<[Cost; 1]>,
+    pub get_blocktime: HostFunction<[Cost; 1]>,
+    pub create_purse: HostFunction<[Cost; 2]>,
+    pub transfer_to_account: HostFunction<[Cost; 4]>,
+    pub transfer_from_purse_to_account: HostFunction<[Cost; 6]>,
+    pub transfer_from_purse_to_purse: HostFunction<[Cost; 6]>,
+    pub get_balance: HostFunction<[Cost; 3]>,
+    pub get_phase: HostFunction<[Cost; 1]>,
+    pub get_system_contract: HostFunction<[Cost; 3]>,
+    pub get_main_purse: HostFunction<[Cost; 1]>,
+    pub read_host_buffer: HostFunction<[Cost; 3]>,
+    pub create_contract_package_at_hash: HostFunction<[Cost; 2]>,
+    pub create_contract_user_group: HostFunction<[Cost; 8]>,
+    pub add_contract_version: HostFunction<[Cost; 10]>,
+    pub disable_contract_version: HostFunction<[Cost; 4]>,
+    pub call_contract: HostFunction<[Cost; 7]>,
+    pub call_versioned_contract: HostFunction<[Cost; 9]>,
+    pub get_named_arg_size: HostFunction<[Cost; 3]>,
+    pub get_named_arg: HostFunction<[Cost; 4]>,
+    pub remove_contract_user_group: HostFunction<[Cost; 4]>,
+    pub provision_contract_user_group_uref: HostFunction<[Cost; 5]>,
+    pub remove_contract_user_group_urefs: HostFunction<[Cost; 6]>,
+    pub print: HostFunction<[Cost; 2]>,
+    pub blake2b: HostFunction<[Cost; 4]>,
 }
 
 impl ToBytes for HostFunctionCosts {
@@ -177,6 +186,7 @@ impl ToBytes for HostFunctionCosts {
         ret.append(&mut self.provision_contract_user_group_uref.to_bytes()?);
         ret.append(&mut self.remove_contract_user_group_urefs.to_bytes()?);
         ret.append(&mut self.print.to_bytes()?);
+        ret.append(&mut self.blake2b.to_bytes()?);
         Ok(ret)
     }
 
@@ -223,6 +233,7 @@ impl ToBytes for HostFunctionCosts {
             + self.provision_contract_user_group_uref.serialized_length()
             + self.remove_contract_user_group_urefs.serialized_length()
             + self.print.serialized_length()
+            + self.blake2b.serialized_length()
     }
 }
 
@@ -270,6 +281,7 @@ impl FromBytes for HostFunctionCosts {
         let (provision_contract_user_group_uref, rem) = FromBytes::from_bytes(rem)?;
         let (remove_contract_user_group_urefs, rem) = FromBytes::from_bytes(rem)?;
         let (print, rem) = FromBytes::from_bytes(rem)?;
+        let (blake2b, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             HostFunctionCosts {
                 read_value,
@@ -314,6 +326,7 @@ impl FromBytes for HostFunctionCosts {
                 provision_contract_user_group_uref,
                 remove_contract_user_group_urefs,
                 print,
+                blake2b,
             },
             rem,
         ))
@@ -365,6 +378,7 @@ impl Distribution<HostFunctionCosts> for Standard {
             provision_contract_user_group_uref: rng.gen(),
             remove_contract_user_group_urefs: rng.gen(),
             print: rng.gen(),
+            blake2b: rng.gen(),
         }
     }
 }
@@ -372,13 +386,11 @@ impl Distribution<HostFunctionCosts> for Standard {
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::prelude::*;
-    use std::fmt::Debug;
 
-    use super::{HostFunction, HostFunctionCosts};
+    use super::{Cost, HostFunction, HostFunctionCosts};
 
-    pub fn host_function_cost_arb<T: Debug + Default + Arbitrary>(
-    ) -> impl Strategy<Value = HostFunction<T>> {
-        (any::<u32>(), any::<T>()).prop_map(|(cost, arguments)| HostFunction::new(cost, arguments))
+    pub fn host_function_cost_arb<T: Copy + Arbitrary>() -> impl Strategy<Value = HostFunction<T>> {
+        (any::<Cost>(), any::<T>()).prop_map(|(cost, arguments)| HostFunction::new(cost, arguments))
     }
 
     prop_compose! {
@@ -425,6 +437,7 @@ pub mod gens {
             provision_contract_user_group_uref in host_function_cost_arb(),
             remove_contract_user_group_urefs in host_function_cost_arb(),
             print in host_function_cost_arb(),
+            blake2b in host_function_cost_arb(),
         ) -> HostFunctionCosts {
             HostFunctionCosts {
                 read_value,
@@ -469,8 +482,51 @@ pub mod gens {
                 provision_contract_user_group_uref,
                 remove_contract_user_group_urefs,
                 print,
+                blake2b,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use casper_types::U512;
+
+    use super::*;
+
+    const COST: Cost = 42;
+    const ARGUMENT_COSTS: [Cost; 3] = [123, 456, 789];
+    const WEIGHTS: [Cost; 3] = [1000, 1100, 1200];
+
+    #[test]
+    fn calculate_gas_cost_for_host_function() {
+        let host_function = HostFunction::new(COST, ARGUMENT_COSTS);
+        let expected_cost = COST
+            + (ARGUMENT_COSTS[0] * WEIGHTS[0])
+            + (ARGUMENT_COSTS[1] * WEIGHTS[1])
+            + (ARGUMENT_COSTS[2] * WEIGHTS[2]);
+        assert_eq!(
+            host_function.calculate_gas_cost(WEIGHTS),
+            Gas::new(expected_cost.into())
+        );
+    }
+
+    #[test]
+    fn calculate_gas_cost_would_overflow() {
+        let large_value = Cost::max_value();
+
+        let host_function = HostFunction::new(
+            large_value,
+            [large_value, large_value, large_value, large_value],
+        );
+
+        let lhs =
+            host_function.calculate_gas_cost([large_value, large_value, large_value, large_value]);
+
+        let large_value = U512::from(large_value);
+        let rhs = large_value + (U512::from(4) * large_value * large_value);
+
+        assert_eq!(lhs, Gas::new(rhs));
     }
 }
 
@@ -482,7 +538,7 @@ mod proptests {
 
     use super::*;
 
-    type Signature = (u32, u32, u32, u32, u32, u32, u32, u32, u32, u32);
+    type Signature = [Cost; 10];
 
     proptest! {
         #[test]

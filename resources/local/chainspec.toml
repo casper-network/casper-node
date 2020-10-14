@@ -116,9 +116,10 @@ regular = 210_000
 # Host function declarations are located in smart_contracts/contract/src/ext_ffi.rs
 [wasm_config.host_function_costs]
 add = { cost = 5_800_000, arguments = [0, 1, 2, 3] }
-add_associated_key = { cost = 9_000_000, arguments = [0, 1, 2, 3] }
+add_associated_key = { cost = 9_000_000, arguments = [0, 1, 2] }
 add_contract_version = { cost = 200_000_000, arguments = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] } # Not instrumented yet, assuming a sufficiently large number
 add_local = { cost = 4_700_000, arguments = [0, 1, 2, 3] }
+blake2b = { cost = 200_000, arguments = [0, 1, 2, 3] }
 call_contract = { cost = 4_500_000, arguments = [0, 1, 2, 3, 4, 5, 6] }
 call_versioned_contract = { cost = 4_500_000, arguments = [0, 1, 2, 3, 4, 5, 6, 7, 8] } # Not instrumented yet, assuming the same as call_contract
 create_contract_package_at_hash = { cost = 200_000_000, arguments = [0, 1] } # Not instrumented yet, assuming a sufficiently large number
@@ -140,7 +141,7 @@ load_named_keys = { cost = 42_000_000, arguments = [0, 1] }
 new_uref = { cost = 17_000_000, arguments = [0, 1, 2] }
 print = { cost = 20_000_000, arguments = [0, 1] }
 provision_contract_user_group_uref = { cost = 200_000_000, arguments = [0,1,2,3,4] } # Not instrumented yet, assuming a sufficiently large number
-put_key = { cost = 38_000_000, arguments = [0, 1] }
+put_key = { cost = 38_000_000, arguments = [0, 1, 2, 3] }
 read_host_buffer = { cost = 3_500_000, arguments = [0, 1, 2] }
 read_value = { cost = 6_000_000, arguments = [0, 1, 0] }
 read_value_local = { cost = 5_500_000,  arguments = [0, 1, 0] }

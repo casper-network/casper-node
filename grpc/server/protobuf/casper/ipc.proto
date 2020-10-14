@@ -418,6 +418,7 @@ message ChainSpec {
             HostFunction provision_contract_user_group_uref = 40;
             HostFunction remove_contract_user_group_urefs = 41;
             HostFunction print = 42;
+            HostFunction blake2b = 43;
         }
 
         // Memory stipend. Amount of free memory (in 64kb pages) each contract can use for stack.
