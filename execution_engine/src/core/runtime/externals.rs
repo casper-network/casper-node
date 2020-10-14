@@ -92,6 +92,7 @@ where
                 // args(2) = pointer to value
                 // args(3) = size of value
                 let (key_ptr, key_size, value_ptr, value_size) = Args::parse(args)?;
+
                 self.add(key_ptr, key_size, value_ptr, value_size)?;
                 Ok(None)
             }

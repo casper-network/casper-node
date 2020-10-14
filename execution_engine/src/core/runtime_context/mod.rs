@@ -819,8 +819,8 @@ where
         Ok(())
     }
 
-    pub fn protocol_data(&self) -> ProtocolData {
-        self.protocol_data
+    pub fn protocol_data(&self) -> &ProtocolData {
+        &self.protocol_data
     }
 
     /// Creates validated instance of `StoredValue` from `account`.
