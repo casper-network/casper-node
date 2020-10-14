@@ -214,6 +214,13 @@ impl<C: Context> Highway<C> {
         }
     }
 
+    /// Returns whether the validator is known to be faulty.
+    pub(crate) fn has_evidence(&self, vid: &C::ValidatorId) -> bool {
+        self.validators
+            .get_index(vid)
+            .map_or(false, |vidx| self.state.has_evidence(vidx))
+    }
+
     /// Returns whether we have a vertex that satisfies the dependency.
     pub(crate) fn has_dependency(&self, dependency: &Dependency<C>) -> bool {
         match dependency {
@@ -272,6 +279,15 @@ impl<C: Context> Highway<C> {
 
     pub(crate) fn validators(&self) -> &Validators<C::ValidatorId> {
         &self.validators
+    }
+
+    /// Returns an iterator over all validators known to be faulty.
+    pub(crate) fn faulty_validators(&self) -> impl Iterator<Item = &C::ValidatorId> {
+        self.validators
+            .iter()
+            .enumerate()
+            .filter(move |(i, _)| self.state.has_evidence((*i as u32).into()))
+            .map(|(_, v)| v.id())
     }
 
     pub(super) fn state(&self) -> &State<C> {
