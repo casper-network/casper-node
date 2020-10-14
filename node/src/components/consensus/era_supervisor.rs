@@ -314,7 +314,7 @@ where
             %start_time,
             %timestamp,
             %start_height,
-            %era_id,
+            era = era_id.0,
             "starting era",
         );
         // For Highway, we need u64 weights. Scale down by  sum / u64::MAX,  rounded up.
@@ -356,11 +356,11 @@ where
         );
 
         let results = if should_activate {
-            info!(%era_id, "start voting in era");
+            info!(era = era_id.0, "start voting");
             let secret = HighwaySecret::new(Rc::clone(&self.secret_signing_key), our_id);
             highway.activate_validator(our_id, secret, timestamp.max(start_time))
         } else {
-            info!(%era_id, "not voting in era");
+            info!(era = era_id.0, "not voting");
             if self.node_start_time >= start_time {
                 info!(
                     "node was started at time {}, which is not earlier than the era start {}",
@@ -431,16 +431,16 @@ where
         match self.era_supervisor.active_eras.get_mut(&era_id) {
             None => {
                 if era_id > self.era_supervisor.current_era {
-                    info!(%era_id, "received message for future era");
+                    info!(era = era_id.0, "received message for future era");
                 } else {
-                    info!(%era_id, "received message for obsolete era");
+                    info!(era = era_id.0, "received message for obsolete era");
                 }
                 Effects::new()
             }
             Some(era) => match f(&mut *era.consensus, self.rng) {
                 Ok(results) => self.handle_consensus_results(era_id, results),
                 Err(error) => {
-                    error!(%error, %era_id, "error while handling event in era");
+                    error!(%error, era = era_id.0, "error while handling event");
                     Effects::new()
                 }
             },
@@ -461,7 +461,7 @@ where
         match msg {
             ConsensusMessage::Protocol { era_id, payload } => {
                 if era_id.0 + 2 * BONDED_ERAS < self.era_supervisor.current_era.0 {
-                    trace!(%era_id, "not handling message; era too old");
+                    trace!(era = era_id.0, "not handling message; era too old");
                     return Effects::new();
                 }
                 // If the era is already unbonded, only accept new evidence, because still-bonded
@@ -473,7 +473,7 @@ where
             }
             ConsensusMessage::EvidenceRequest { era_id, pub_key } => {
                 if era_id.0 + BONDED_ERAS < self.era_supervisor.current_era.0 {
-                    trace!(%era_id, "not handling message; era too old");
+                    trace!(era = era_id.0, "not handling message; era too old");
                     return Effects::new();
                 }
                 era_id
@@ -591,7 +591,7 @@ where
             .consensus
             .deactivate_validator();
         let era_id = block_header.era_id().successor();
-        info!(%era_id, "era created");
+        info!(era = era_id.0, "era created");
         let seed = EraSupervisor::<I>::era_seed(booking_block_hash, key_block_seed);
         trace!(%seed, "the seed for {}: {}", era_id, seed);
         let results = self.era_supervisor.new_era(
