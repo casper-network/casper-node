@@ -85,6 +85,11 @@ impl EraId {
     fn iter_bonded(&self) -> impl Iterator<Item = EraId> {
         (self.0.saturating_sub(BONDED_ERAS)..=self.0).map(EraId)
     }
+
+    /// Returns the current era minus `x`, or `None` if that would be less than `0`.
+    fn checked_sub(&self, x: u64) -> Option<EraId> {
+        self.0.checked_sub(x).map(EraId)
+    }
 }
 
 impl Display for EraId {
@@ -437,9 +442,8 @@ where
         let _ = self.active_eras.insert(era_id, era);
 
         // Remove the era that has become obsolete now.
-        if era_id.0 > 2 * BONDED_ERAS {
-            self.active_eras
-                .remove(&EraId(era_id.0 - 2 * BONDED_ERAS - 1));
+        if let Some(obsolete_era_id) = era_id.checked_sub(2 * BONDED_ERAS + 1) {
+            self.active_eras.remove(&obsolete_era_id);
         }
 
         results
@@ -516,10 +520,6 @@ where
     pub(super) fn handle_message(&mut self, sender: I, msg: ConsensusMessage) -> Effects<Event<I>> {
         match msg {
             ConsensusMessage::Protocol { era_id, payload } => {
-                if era_id.0 + 2 * BONDED_ERAS < self.era_supervisor.current_era.0 {
-                    trace!(era = era_id.0, "not handling message; era too old");
-                    return Effects::new();
-                }
                 // If the era is already unbonded, only accept new evidence, because still-bonded
                 // eras could depend on that.
                 let evidence_only = era_id.0 + BONDED_ERAS < self.era_supervisor.current_era.0;
