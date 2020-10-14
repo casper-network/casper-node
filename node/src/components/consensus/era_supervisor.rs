@@ -465,7 +465,8 @@ where
         let era = Era::new(highway, start_height);
         let _ = self.active_eras.insert(era_id, era);
 
-        // Remove the era that has become obsolete now.
+        // Remove the era that has become obsolete now. We keep 2 * BONDED_ERAS past eras because
+        // the oldest bonded era could still receive blocks that refer to BONDED_ERAS before that.
         if let Some(obsolete_era_id) = era_id.checked_sub(2 * BONDED_ERAS + 1) {
             self.active_eras.remove(&obsolete_era_id);
         }
