@@ -13,7 +13,7 @@ use casper_types::{account::AccountHash, bytesrepr, Key, ProtocolVersion, Public
 use super::SYSTEM_ACCOUNT_ADDR;
 use crate::{
     core::engine_state::execution_effect::ExecutionEffect,
-    shared::{motes::Motes, newtypes::Blake2bHash, wasm_costs::WasmCosts, TypeMismatch},
+    shared::{motes::Motes, newtypes::Blake2bHash, wasm_config::WasmConfig, TypeMismatch},
     storage::global_state::CommitResult,
 };
 
@@ -222,7 +222,7 @@ pub struct ExecConfig {
     standard_payment_installer_bytes: Vec<u8>,
     auction_installer_bytes: Vec<u8>,
     accounts: Vec<GenesisAccount>,
-    wasm_costs: WasmCosts,
+    wasm_config: WasmConfig,
     validator_slots: u32,
 }
 
@@ -233,7 +233,7 @@ impl ExecConfig {
         standard_payment_installer_bytes: Vec<u8>,
         auction_installer_bytes: Vec<u8>,
         accounts: Vec<GenesisAccount>,
-        wasm_costs: WasmCosts,
+        wasm_config: WasmConfig,
         validator_slots: u32,
     ) -> ExecConfig {
         ExecConfig {
@@ -242,7 +242,7 @@ impl ExecConfig {
             standard_payment_installer_bytes,
             auction_installer_bytes,
             accounts,
-            wasm_costs,
+            wasm_config,
             validator_slots,
         }
     }
@@ -263,8 +263,8 @@ impl ExecConfig {
         self.auction_installer_bytes.as_slice()
     }
 
-    pub fn wasm_costs(&self) -> WasmCosts {
-        self.wasm_costs
+    pub fn wasm_config(&self) -> &WasmConfig {
+        &self.wasm_config
     }
 
     pub fn get_bonded_validators(&self) -> impl Iterator<Item = &GenesisAccount> {
@@ -304,7 +304,7 @@ impl Distribution<ExecConfig> for Standard {
         count = rng.gen_range(1, 10);
         let accounts = iter::repeat(()).map(|_| rng.gen()).take(count).collect();
 
-        let wasm_costs = rng.gen();
+        let wasm_config = rng.gen();
 
         let validator_slots = rng.gen();
 
@@ -314,7 +314,7 @@ impl Distribution<ExecConfig> for Standard {
             standard_payment_installer_bytes,
             auction_installer_bytes,
             accounts,
-            wasm_costs,
+            wasm_config,
             validator_slots,
         }
     }

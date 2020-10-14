@@ -2,12 +2,16 @@
 Description=Casper Node
 Documentation=https://docs.casperlabs.io
 ConditionPathExists=/etc/casper/config.toml
+ConditionPathExists=/etc/casper/accounts.csv
+ConditionPathExists=/etc/casper/chainspec.toml
 After=network-online.target
 
 [Service]
 Type=simple
 ExecStart=/usr/bin/casper-node validator /etc/casper/config.toml
 Environment=RUST_LOG=info
+StandardOutput=file:/var/log/casper-node.log
+Restart=no
 
 [Install]
 WantedBy=multi-user.target

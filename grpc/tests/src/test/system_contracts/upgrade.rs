@@ -1,7 +1,7 @@
 use casper_engine_grpc_server::engine_server::ipc::DeployCode;
 use casper_engine_test_support::internal::{
     utils, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_RUN_GENESIS_REQUEST,
-    DEFAULT_WASM_COSTS,
+    DEFAULT_WASM_CONFIG,
 };
 #[cfg(feature = "use-system-contracts")]
 use casper_engine_test_support::{internal::ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
@@ -9,7 +9,19 @@ use casper_engine_test_support::{internal::ExecuteRequestBuilder, DEFAULT_ACCOUN
 use casper_execution_engine::shared::{stored_value::StoredValue, transform::Transform};
 use casper_execution_engine::{
     core::engine_state::{upgrade::ActivationPoint, Error},
-    shared::wasm_costs::WasmCosts,
+    shared::{
+        host_function_costs::HostFunctionCosts,
+        opcode_costs::{
+            OpcodeCosts, DEFAULT_ADD_COST, DEFAULT_BIT_COST, DEFAULT_CONTROL_FLOW_COST,
+            DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DIV_COST,
+            DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INTEGER_COMPARSION_COST,
+            DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MUL_COST, DEFAULT_NOP_COST,
+            DEFAULT_OP_CONST_COST, DEFAULT_REGULAR_COST, DEFAULT_STORE_COST,
+            DEFAULT_UNREACHABLE_COST,
+        },
+        storage_costs::{StorageCosts, DEFAULT_GAS_PER_BYTE_COST},
+        wasm_config::{WasmConfig, DEFAULT_INITIAL_MEMORY, DEFAULT_MAX_STACK_HEIGHT},
+    },
 };
 use casper_types::{auction::VALIDATOR_SLOTS_KEY, ProtocolVersion};
 #[cfg(feature = "use-system-contracts")]
@@ -25,19 +37,37 @@ const PAYMENT_AMOUNT: u64 = 200_000_000;
 #[cfg(feature = "use-system-contracts")]
 const ARG_TARGET: &str = "target";
 
-fn get_upgraded_wasm_costs() -> WasmCosts {
-    WasmCosts {
-        regular: 1,
-        div: 1,
-        mul: 1,
-        mem: 1,
-        initial_mem: 4096,
-        grow_mem: 8192,
-        memcpy: 1,
-        max_stack_height: 64 * 1024,
-        opcodes_mul: 3,
-        opcodes_div: 8,
-    }
+fn get_upgraded_wasm_config() -> WasmConfig {
+    let opcode_cost = OpcodeCosts {
+        bit: DEFAULT_BIT_COST + 1,
+        add: DEFAULT_ADD_COST + 1,
+        mul: DEFAULT_MUL_COST + 1,
+        div: DEFAULT_DIV_COST + 1,
+        load: DEFAULT_LOAD_COST + 1,
+        store: DEFAULT_STORE_COST + 1,
+        op_const: DEFAULT_OP_CONST_COST + 1,
+        local: DEFAULT_LOCAL_COST + 1,
+        global: DEFAULT_GLOBAL_COST + 1,
+        control_flow: DEFAULT_CONTROL_FLOW_COST + 1,
+        integer_comparsion: DEFAULT_INTEGER_COMPARSION_COST + 1,
+        conversion: DEFAULT_CONVERSION_COST + 1,
+        unreachable: DEFAULT_UNREACHABLE_COST + 1,
+        nop: DEFAULT_NOP_COST + 1,
+        current_memory: DEFAULT_CURRENT_MEMORY_COST + 1,
+        grow_memory: DEFAULT_GROW_MEMORY_COST + 1,
+        regular: DEFAULT_REGULAR_COST + 1,
+    };
+    let storage_costs = StorageCosts {
+        gas_per_byte: DEFAULT_GAS_PER_BYTE_COST,
+    };
+    let host_function_costs = HostFunctionCosts::default();
+    WasmConfig::new(
+        DEFAULT_INITIAL_MEMORY,
+        DEFAULT_MAX_STACK_HEIGHT * 2,
+        opcode_cost,
+        storage_costs,
+        host_function_costs,
+    )
 }
 
 #[ignore]
@@ -69,12 +99,12 @@ fn should_upgrade_only_protocol_version() {
 
     let upgraded_wasm_costs = builder
         .get_engine_state()
-        .wasm_costs(new_protocol_version)
+        .wasm_config(new_protocol_version)
         .expect("should have result")
         .expect("should have costs");
 
     assert_eq!(
-        *DEFAULT_WASM_COSTS, upgraded_wasm_costs,
+        *DEFAULT_WASM_CONFIG, upgraded_wasm_costs,
         "upgraded costs should equal original costs"
     );
 }
@@ -324,14 +354,14 @@ fn should_allow_only_wasm_costs_patch_version() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 2);
 
-    let new_costs = get_upgraded_wasm_costs();
+    let new_wasm_config = get_upgraded_wasm_config();
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
             .with_current_protocol_version(PROTOCOL_VERSION)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .with_new_costs(new_costs)
+            .with_new_wasm_config(new_wasm_config)
             .build()
     };
 
@@ -343,14 +373,14 @@ fn should_allow_only_wasm_costs_patch_version() {
 
     assert!(upgrade_response.has_success(), "expected success");
 
-    let upgraded_wasm_costs = builder
+    let upgraded_wasm_config = builder
         .get_engine_state()
-        .wasm_costs(new_protocol_version)
+        .wasm_config(new_protocol_version)
         .expect("should have result")
         .expect("should have upgraded costs");
 
     assert_eq!(
-        new_costs, upgraded_wasm_costs,
+        new_wasm_config, upgraded_wasm_config,
         "upgraded costs should equal new costs"
     );
 }
@@ -366,7 +396,7 @@ fn should_allow_only_wasm_costs_minor_version() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor + 1, sem_ver.patch);
 
-    let new_costs = get_upgraded_wasm_costs();
+    let new_wasm_config = get_upgraded_wasm_config();
 
     let mut upgrade_request = {
         let bytes = utils::read_wasm_file_bytes(MODIFIED_SYSTEM_UPGRADER_CONTRACT_NAME);
@@ -376,7 +406,7 @@ fn should_allow_only_wasm_costs_minor_version() {
             .with_current_protocol_version(PROTOCOL_VERSION)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .with_new_costs(new_costs)
+            .with_new_wasm_config(new_wasm_config)
             .with_installer_code(installer_code)
             .build()
     };
@@ -387,16 +417,20 @@ fn should_allow_only_wasm_costs_minor_version() {
         .get_upgrade_response(0)
         .expect("should have response");
 
-    assert!(upgrade_response.has_success(), "expected success");
+    assert!(
+        upgrade_response.has_success(),
+        "expected success {:?}",
+        upgrade_response
+    );
 
     let upgraded_wasm_costs = builder
         .get_engine_state()
-        .wasm_costs(new_protocol_version)
+        .wasm_config(new_protocol_version)
         .expect("should have result")
         .expect("should have upgraded costs");
 
     assert_eq!(
-        new_costs, upgraded_wasm_costs,
+        new_wasm_config, upgraded_wasm_costs,
         "upgraded costs should equal new costs"
     );
 }
@@ -411,7 +445,7 @@ fn should_upgrade_system_contract_and_wasm_costs_major() {
 
     let new_protocol_version = ProtocolVersion::from_parts(2, 0, 0);
 
-    let new_costs = get_upgraded_wasm_costs();
+    let new_wasm_config = get_upgraded_wasm_config();
 
     let mut upgrade_request = {
         let bytes = utils::read_wasm_file_bytes(MODIFIED_SYSTEM_UPGRADER_CONTRACT_NAME);
@@ -422,7 +456,7 @@ fn should_upgrade_system_contract_and_wasm_costs_major() {
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .with_installer_code(installer_code)
-            .with_new_costs(new_costs)
+            .with_new_wasm_config(new_wasm_config)
             .build()
     };
 
@@ -478,12 +512,12 @@ fn should_upgrade_system_contract_and_wasm_costs_major() {
 
     let upgraded_wasm_costs = builder
         .get_engine_state()
-        .wasm_costs(new_protocol_version)
+        .wasm_config(new_protocol_version)
         .expect("should have result")
         .expect("should have upgraded costs");
 
     assert_eq!(
-        new_costs, upgraded_wasm_costs,
+        new_wasm_config, upgraded_wasm_costs,
         "upgraded costs should equal new costs"
     );
 }
@@ -523,12 +557,12 @@ fn should_not_downgrade() {
 
     let upgraded_wasm_costs = builder
         .get_engine_state()
-        .wasm_costs(new_protocol_version)
+        .wasm_config(new_protocol_version)
         .expect("should have result")
         .expect("should have costs");
 
     assert_eq!(
-        *DEFAULT_WASM_COSTS, upgraded_wasm_costs,
+        *DEFAULT_WASM_CONFIG, upgraded_wasm_costs,
         "upgraded costs should equal original costs"
     );
 
