@@ -23,10 +23,10 @@ impl<'a, 'b> ClientCommand<'a, 'b> for SignDeploy {
 
     fn run(matches: &ArgMatches<'_>) {
         let input_path = creation_common::input::get(matches);
-        let mut deploy = creation_common::input::read_deploy(&input_path);
         let secret_key = common::secret_key::get(matches);
-        let mut rng = rand::thread_rng();
-        deploy.sign(&secret_key, &mut rng);
-        creation_common::output::write_deploy(&deploy, creation_common::output::get(matches));
+        let maybe_output = creation_common::output::get(matches);
+        client_lib::deploy::sign_deploy_file(&input_path, secret_key, maybe_output).unwrap_or_else(
+            move |err| panic!("error writing deploy to {:?}: {}", maybe_output, err),
+        );
     }
 }

@@ -1,5 +1,3 @@
-use std::str;
-
 use casper_node::rpcs::{
     account::PutDeployParams,
     chain::{GetBlockParams, GetGlobalStateHashParams},
@@ -14,20 +12,25 @@ use reqwest::Client;
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 
-use crate::{Error, Result};
+use crate::error::{Error, Result};
 
 // Magic number for JSON-RPC calls.
 const RPC_ID: RpcId = RpcId::Num(1234);
 
+// TODO: consider async_trait
+
+/// General purpose client trait for making requests to casper-node's HTTP endpoints.
 pub(crate) trait RpcClient {
     const RPC_METHOD: &'static str;
 
+    /// Call a casper-node JSON-RPC endpoint.
     fn request(node_address: &str) -> Result<Value> {
         executor::block_on(async {
             request(node_address, RPC_ID, Self::RPC_METHOD, Params::None(())).await
         })
     }
 
+    /// Call a casper node JSON-RPC endpoint with parameters.
     fn request_with_map_params<T: IntoJsonMap>(node_address: &str, params: T) -> Result<Value> {
         executor::block_on(async {
             request(
@@ -72,7 +75,7 @@ async fn request(node_address: &str, id: RpcId, method: &str, params: Params) ->
     Err(Error::InvalidResponse(rpc_response))
 }
 
-pub(crate) trait IntoJsonMap: Serialize {
+pub trait IntoJsonMap: Serialize {
     fn into_json_map(self) -> Map<String, Value>
     where
         Self: Sized,

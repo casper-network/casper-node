@@ -4,15 +4,9 @@ use clap::{App, ArgMatches, SubCommand};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use casper_node::{
-    rpcs::{
-        chain::{GetBlock, GetBlockParams, GetBlockResult},
-        RpcWithOptionalParams,
-    },
-    types::DeployHash,
-};
+use casper_node::{rpcs::chain::GetBlockResult, types::DeployHash};
 
-use crate::{command::ClientCommand, common, RpcClient};
+use crate::{command::ClientCommand, common};
 
 /// This struct defines the order in which the args are shown for this subcommand.
 enum DisplayOrder {
@@ -21,10 +15,6 @@ enum DisplayOrder {
 }
 
 pub struct ListDeploys {}
-
-impl RpcClient for ListDeploys {
-    const RPC_METHOD: &'static str = GetBlock::METHOD;
-}
 
 /// Result for "chain_get_block" RPC response.
 #[derive(Serialize, Deserialize, Debug)]
@@ -64,19 +54,9 @@ impl<'a, 'b> ClientCommand<'a, 'b> for ListDeploys {
         let node_address = common::node_address::get(matches);
         let maybe_block_hash = common::block_hash::get(matches);
 
-        let response_value = match maybe_block_hash {
-            Some(block_hash) => {
-                let params = GetBlockParams { block_hash };
-                Self::request_with_map_params(&node_address, params)
-            }
-            None => Self::request(&node_address),
-        }
-        .unwrap_or_else(|error| panic!("response error: {}", error));
-
-        let get_block_result: GetBlockResult = serde_json::from_value(response_value)
+        let response_value = client_lib::deploy::list_deploys(node_address, maybe_block_hash)
             .unwrap_or_else(|error| panic!("should parse as a GetBlockResult: {}", error));
 
-        let result = ListDeploysResult::from(get_block_result);
-        println!("{}", serde_json::to_string(&result).unwrap());
+        println!("{}", serde_json::to_string(&response_value).unwrap());
     }
 }

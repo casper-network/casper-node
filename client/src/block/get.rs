@@ -2,21 +2,14 @@ use std::str;
 
 use clap::{App, ArgMatches, SubCommand};
 
-use casper_node::rpcs::{
-    chain::{GetBlock, GetBlockParams},
-    RpcWithOptionalParams,
-};
+use casper_node::rpcs::chain::GetBlock;
 
-use crate::{command::ClientCommand, common, RpcClient};
+use crate::{command::ClientCommand, common};
 
 /// This struct defines the order in which the args are shown for this subcommand.
 enum DisplayOrder {
     NodeAddress,
     BlockHash,
-}
-
-impl RpcClient for GetBlock {
-    const RPC_METHOD: &'static str = Self::METHOD;
 }
 
 impl<'a, 'b> ClientCommand<'a, 'b> for GetBlock {
@@ -36,15 +29,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBlock {
     fn run(matches: &ArgMatches<'_>) {
         let node_address = common::node_address::get(matches);
         let maybe_block_hash = common::block_hash::get(matches);
-
-        let response_value = match maybe_block_hash {
-            Some(block_hash) => {
-                let params = GetBlockParams { block_hash };
-                Self::request_with_map_params(&node_address, params)
-            }
-            None => Self::request(&node_address),
-        }
-        .unwrap_or_else(|error| panic!("response error: {}", error));
-        println!("{}", response_value);
+        let response_value = client_lib::block::get_block(&node_address, maybe_block_hash)
+            .unwrap_or_else(|error| panic!("response error: {}", error));
+        println!("{:?}", response_value);
     }
 }

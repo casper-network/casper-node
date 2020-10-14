@@ -3,8 +3,6 @@
 
 use std::{
     convert::{TryFrom, TryInto},
-    fs::File,
-    io::{self, Write},
     process,
     str::FromStr,
 };
@@ -16,7 +14,6 @@ use serde::{self, Deserialize};
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_node::{
     crypto::{asymmetric_key::PublicKey as NodePublicKey, hash::Digest},
-    rpcs::account::PutDeployParams,
     types::{Deploy, TimeDiff, Timestamp},
 };
 use casper_types::{
@@ -25,6 +22,7 @@ use casper_types::{
     AccessRights, CLType, CLTyped, CLValue, ContractHash, Key, NamedArg, PublicKey, RuntimeArgs,
     URef, U128, U256, U512,
 };
+use client_lib::{deploy::DeployParams, ExecutableDeployItemExt};
 
 use crate::common;
 
@@ -710,6 +708,24 @@ fn args_from_simple_or_complex(
     }
 }
 
+pub(super) fn parse_deploy_params(matches: &ArgMatches<'_>) -> DeployParams {
+    let secret_key = common::secret_key::get(matches);
+    let timestamp = timestamp::get(matches);
+    let ttl = ttl::get(matches);
+    let gas_price = gas_price::get(matches);
+    let dependencies = dependencies::get(matches);
+    let chain_name = chain_name::get(matches);
+
+    DeployParams {
+        timestamp,
+        ttl,
+        gas_price,
+        dependencies,
+        chain_name,
+        secret_key,
+    }
+}
+
 pub(super) fn parse_session_module_args(matches: &ArgMatches<'_>) -> (Vec<u8>, RuntimeArgs) {
     let module_bytes = session::get(matches);
     let session_args = args_from_simple_or_complex(
@@ -722,35 +738,40 @@ pub(super) fn parse_session_module_args(matches: &ArgMatches<'_>) -> (Vec<u8>, R
 pub(super) fn parse_session_info(matches: &ArgMatches) -> ExecutableDeployItem {
     let (module_bytes, session_args) = parse_session_module_args(matches);
     if let Some(name) = session_name::get(matches) {
-        return ExecutableDeployItem::StoredContractByName {
+        return ExecutableDeployItem::stored_contract_by_name(
             name,
-            args: session_args.to_bytes().expect("should serialize"),
-            entry_point: require_session_entry_point(matches),
-        };
+            require_session_entry_point(matches),
+            session_args,
+        )
+        .expect("should serialize");
     }
     if let Some(hash) = session_hash::get(matches) {
-        return ExecutableDeployItem::StoredContractByHash {
+        return ExecutableDeployItem::stored_contract_by_hash(
             hash,
-            args: session_args.to_bytes().expect("should serialize"),
-            entry_point: require_session_entry_point(matches),
-        };
+            require_session_entry_point(matches),
+            session_args,
+        )
+        .expect("should serialize");
     }
-    let version = session_version::get(matches);
-    if let Some(name) = session_package_name::get(matches) {
-        return ExecutableDeployItem::StoredVersionedContractByName {
-            name,
-            version, // defaults to highest enabled version
-            args: session_args.to_bytes().expect("should serialize"),
-            entry_point: require_session_entry_point(matches),
-        };
-    }
-    if let Some(hash) = session_package_hash::get(matches) {
-        return ExecutableDeployItem::StoredVersionedContractByHash {
-            hash,
-            version, // defaults to highest enabled version
-            args: session_args.to_bytes().expect("should serialize"),
-            entry_point: require_session_entry_point(matches),
-        };
+    if let Some(version) = session_version::get(matches) {
+        if let Some(name) = session_package_name::get(matches) {
+            return ExecutableDeployItem::stored_versioned_contract_by_name(
+                name,
+                version,
+                require_session_entry_point(matches),
+                session_args,
+            )
+            .expect("should serialize");
+        }
+        if let Some(hash) = session_package_hash::get(matches) {
+            return ExecutableDeployItem::stored_versioned_contract_by_hash(
+                hash,
+                version,
+                require_session_entry_point(matches),
+                session_args,
+            )
+            .expect("should serialize");
+        }
     }
     ExecutableDeployItem::ModuleBytes {
         module_bytes,
@@ -761,35 +782,40 @@ pub(super) fn parse_session_info(matches: &ArgMatches) -> ExecutableDeployItem {
 pub(super) fn parse_payment_info(matches: &ArgMatches) -> ExecutableDeployItem {
     let (module_bytes, payment_args) = parse_payment_module_args(matches);
     if let Some(name) = payment_name::get(matches) {
-        return ExecutableDeployItem::StoredContractByName {
+        return ExecutableDeployItem::stored_contract_by_name(
             name,
-            args: payment_args.to_bytes().expect("should serialize"),
-            entry_point: require_payment_entry_point(matches),
-        };
+            require_payment_entry_point(matches),
+            payment_args,
+        )
+        .expect("should serialize");
     }
     if let Some(hash) = payment_hash::get(matches) {
-        return ExecutableDeployItem::StoredContractByHash {
+        return ExecutableDeployItem::stored_contract_by_hash(
             hash,
-            args: payment_args.to_bytes().expect("should serialize"),
-            entry_point: require_payment_entry_point(matches),
-        };
+            require_payment_entry_point(matches),
+            payment_args,
+        )
+        .expect("should serialize");
     }
-    let version = payment_version::get(matches);
-    if let Some(name) = payment_package_name::get(matches) {
-        return ExecutableDeployItem::StoredVersionedContractByName {
-            name,
-            version, // defaults to highest enabled version
-            args: payment_args.to_bytes().expect("should serialize"),
-            entry_point: require_payment_entry_point(matches),
-        };
-    }
-    if let Some(hash) = payment_package_hash::get(matches) {
-        return ExecutableDeployItem::StoredVersionedContractByHash {
-            hash,
-            version, // defaults to highest enabled version
-            args: payment_args.to_bytes().expect("should serialize"),
-            entry_point: require_payment_entry_point(matches),
-        };
+    if let Some(version) = payment_version::get(matches) {
+        if let Some(name) = payment_package_name::get(matches) {
+            return ExecutableDeployItem::stored_versioned_contract_by_name(
+                name,
+                version,
+                require_payment_entry_point(matches),
+                payment_args,
+            )
+            .expect("should serialize");
+        }
+        if let Some(hash) = payment_package_hash::get(matches) {
+            return ExecutableDeployItem::stored_versioned_contract_by_hash(
+                hash,
+                version,
+                require_payment_entry_point(matches),
+                payment_args,
+            )
+            .expect("should serialize");
+        }
     }
     ExecutableDeployItem::ModuleBytes {
         module_bytes,
@@ -908,7 +934,7 @@ pub(super) fn show_arg_examples_and_exit_if_required(matches: &ArgMatches<'_>) {
     }
 }
 
-pub(super) fn parse_deploy(matches: &ArgMatches<'_>, session: ExecutableDeployItem) -> Deploy {
+pub fn parse_deploy(matches: &ArgMatches<'_>, session: ExecutableDeployItem) -> Deploy {
     let secret_key = common::secret_key::get(matches);
     let timestamp = timestamp::get(matches);
     let ttl = ttl::get(matches);
@@ -933,14 +959,6 @@ pub(super) fn parse_deploy(matches: &ArgMatches<'_>, session: ExecutableDeployIt
     )
 }
 
-pub(super) fn construct_deploy(
-    matches: &ArgMatches<'_>,
-    session: ExecutableDeployItem,
-) -> PutDeployParams {
-    let deploy = parse_deploy(matches, session);
-    PutDeployParams { deploy }
-}
-
 pub(super) mod output {
     use super::*;
 
@@ -959,31 +977,8 @@ pub(super) mod output {
             .display_order(DisplayOrder::Output as usize)
     }
 
-    pub fn get(matches: &ArgMatches) -> Option<String> {
-        matches.value_of(ARG_NAME).map(|v| v.to_string())
-    }
-
-    /// Creates a Write trait object for File or Stdout respective to the path value passed
-    /// Stdout is used when None
-    pub fn output_or_stdout(maybe_path: &Option<String>) -> io::Result<Box<dyn Write>> {
-        match maybe_path {
-            Some(output_path) => File::create(&output_path).map(|f| Box::new(f) as Box<dyn Write>),
-            None => Ok(Box::new(std::io::stdout()) as Box<dyn Write>),
-        }
-    }
-
-    /// Write the deploy to a file, or if maybe_path is None, stdout
-    pub fn write_deploy(deploy: &Deploy, maybe_path: Option<String>) {
-        let target = maybe_path.clone().unwrap_or_else(|| "stdout".to_string());
-        let mut out = output_or_stdout(&maybe_path)
-            .unwrap_or_else(|error| panic!("unable to open {} : {:?}", target, error));
-        let content = serde_json::to_string_pretty(deploy)
-            .unwrap_or_else(|error| panic!("failed to encode deploy to json: {}", error));
-        match out.write_all(content.as_bytes()) {
-            Ok(_) if target == "stdout" => {}
-            Ok(_) => println!("Successfully wrote deploy to file {}", target),
-            Err(err) => panic!("error writing deploy to {}: {}", target, err),
-        }
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
@@ -1010,23 +1005,6 @@ pub(super) mod input {
             .value_of(ARG_NAME)
             .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
             .to_string()
-    }
-
-    /// Read a deploy from a file
-    pub fn read_deploy(input_path: &str) -> Deploy {
-        let input = common::read_file(&input_path);
-        let input = String::from_utf8(input).unwrap_or_else(|error| {
-            panic!(
-                "failed to parse as utf-8 for deploy file {}: {}",
-                input_path, error
-            )
-        });
-        serde_json::from_str(input.as_str()).unwrap_or_else(|error| {
-            panic!(
-                "failed to decode from json for deploy file {}: {}",
-                input_path, error
-            )
-        })
     }
 }
 

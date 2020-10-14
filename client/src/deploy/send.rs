@@ -1,18 +1,9 @@
 use clap::{App, ArgMatches, SubCommand};
 
-use casper_node::rpcs::{
-    account::{PutDeploy, PutDeployParams},
-    RpcWithParams,
-};
-
 use super::creation_common;
-use crate::{command::ClientCommand, common, RpcClient};
+use crate::{command::ClientCommand, common};
 
 pub struct SendDeploy;
-
-impl RpcClient for SendDeploy {
-    const RPC_METHOD: &'static str = PutDeploy::METHOD;
-}
 
 impl<'a, 'b> ClientCommand<'a, 'b> for SendDeploy {
     const NAME: &'static str = "send-deploy";
@@ -31,10 +22,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for SendDeploy {
     fn run(matches: &ArgMatches<'_>) {
         let node_address = common::node_address::get(matches);
         let input_path = creation_common::input::get(matches);
-        let deploy = creation_common::input::read_deploy(&input_path);
-        let params = PutDeployParams { deploy };
-        let response_value = Self::request_with_map_params(&node_address, params)
+        let response_value = client_lib::deploy::send_deploy_file(&node_address, &input_path)
             .unwrap_or_else(|error| panic!("response error: {}", error));
-        println!("{}", response_value);
+        println!("{:?}", response_value);
     }
 }

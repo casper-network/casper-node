@@ -2,16 +2,10 @@ use std::{fs, str};
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 
-use casper_node::{
-    crypto::asymmetric_key::PublicKey,
-    rpcs::{
-        state::{GetItem, GetItemParams},
-        RpcWithParams,
-    },
-};
+use casper_node::{crypto::asymmetric_key::PublicKey, rpcs::state::GetItem};
 use casper_types::Key;
 
-use crate::{command::ClientCommand, common, RpcClient};
+use crate::{command::ClientCommand, common};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
@@ -110,10 +104,6 @@ mod path {
     }
 }
 
-impl RpcClient for GetItem {
-    const RPC_METHOD: &'static str = Self::METHOD;
-}
-
 impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
     const NAME: &'static str = "query-state";
     const ABOUT: &'static str = "Retrieves a stored value from global state";
@@ -138,14 +128,9 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
         let key = key::get(matches);
         let path = path::get(matches);
 
-        let params = GetItemParams {
-            global_state_hash,
-            key,
-            path,
-        };
-
-        let response_value = Self::request_with_map_params(&node_address, params)
-            .unwrap_or_else(|error| panic!("response error: {}", error));
-        println!("{}", response_value);
+        let response_value =
+            client_lib::query_state::get_item(node_address, global_state_hash, key, path)
+                .unwrap_or_else(|error| panic!("response error: {}", error));
+        println!("{:?}", response_value);
     }
 }

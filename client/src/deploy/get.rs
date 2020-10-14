@@ -2,16 +2,9 @@ use std::str;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 
-use casper_node::{
-    crypto::hash::Digest,
-    rpcs::{
-        info::{GetDeploy, GetDeployParams},
-        RpcWithParams,
-    },
-    types::DeployHash,
-};
+use casper_node::{crypto::hash::Digest, rpcs::info::GetDeploy, types::DeployHash};
 
-use crate::{command::ClientCommand, common, RpcClient};
+use crate::{command::ClientCommand, common};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
@@ -45,10 +38,6 @@ mod deploy_hash {
     }
 }
 
-impl RpcClient for GetDeploy {
-    const RPC_METHOD: &'static str = Self::METHOD;
-}
-
 impl<'a, 'b> ClientCommand<'a, 'b> for GetDeploy {
     const NAME: &'static str = "get-deploy";
     const ABOUT: &'static str = "Retrieves a stored deploy";
@@ -66,10 +55,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetDeploy {
     fn run(matches: &ArgMatches<'_>) {
         let node_address = common::node_address::get(matches);
         let deploy_hash = deploy_hash::get(matches);
-        let params = GetDeployParams { deploy_hash };
-
-        let response_value = Self::request_with_map_params(&node_address, params)
+        let response_value = client_lib::deploy::get_deploy(node_address, deploy_hash)
             .unwrap_or_else(|error| panic!("response error: {}", error));
-        println!("{}", response_value);
+        println!("{:?}", response_value);
     }
 }

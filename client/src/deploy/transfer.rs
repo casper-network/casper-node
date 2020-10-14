@@ -1,14 +1,12 @@
 use clap::{App, Arg, ArgGroup, ArgMatches, SubCommand};
 
-use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_node::{
     crypto::asymmetric_key::PublicKey,
-    rpcs::{account::PutDeploy, RpcWithParams},
 };
-use casper_types::{bytesrepr::ToBytes, RuntimeArgs, URef, U512};
+use casper_types::{URef, U512};
 
 use super::creation_common::{self, DisplayOrder};
-use crate::{command::ClientCommand, common, RpcClient};
+use crate::{command::ClientCommand, common};
 
 /// Handles providing the arg for and retrieval of the transfer amount.
 pub(super) mod amount {
@@ -130,37 +128,7 @@ mod target_purse {
     }
 }
 
-fn create_transfer_args(matches: &ArgMatches) -> RuntimeArgs {
-    const TRANSFER_ARG_AMOUNT: &str = "amount";
-    const TRANSFER_ARG_SOURCE: &str = "source";
-    const TRANSFER_ARG_TARGET: &str = "target";
-
-    let mut runtime_args = RuntimeArgs::new();
-    runtime_args.insert(TRANSFER_ARG_AMOUNT, amount::get(matches));
-
-    if let Some(source_purse) = source_purse::get(matches) {
-        runtime_args.insert(TRANSFER_ARG_SOURCE, source_purse);
-    }
-
-    match (target_account::get(matches), target_purse::get(matches)) {
-        (Some(target_account), None) => {
-            let target_account_hash = target_account.to_account_hash().value();
-            runtime_args.insert(TRANSFER_ARG_TARGET, target_account_hash);
-        }
-        (None, Some(target_purse)) => {
-            runtime_args.insert(TRANSFER_ARG_TARGET, target_purse);
-        }
-        _ => unreachable!("should have a target"),
-    }
-
-    runtime_args
-}
-
 pub struct Transfer {}
-
-impl RpcClient for Transfer {
-    const RPC_METHOD: &'static str = PutDeploy::METHOD;
-}
 
 impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
     const NAME: &'static str = "transfer";
@@ -188,20 +156,20 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
 
     fn run(matches: &ArgMatches<'_>) {
         creation_common::show_arg_examples_and_exit_if_required(matches);
+        let deploy_params = creation_common::parse_deploy_params(matches);
+        let payment = creation_common::parse_payment_info(matches);
 
-        let node_address = common::node_address::get(matches);
-
-        let transfer_args = create_transfer_args(matches)
-            .to_bytes()
-            .expect("should serialize");
-        let session = ExecutableDeployItem::Transfer {
-            args: transfer_args,
-        };
-
-        let params = creation_common::construct_deploy(matches, session);
-
-        let response_value = Self::request_with_map_params(&node_address, params)
-            .unwrap_or_else(|error| panic!("response error: {}", error));
-        println!("{}", response_value);
+        let response_value = client_lib::deploy::transfer(
+            common::node_address::get(matches),
+            amount::get(matches),
+            source_purse::get(matches),
+            target_account::get(matches),
+            target_purse::get(matches),
+            deploy_params,
+            payment,
+        )
+        .unwrap_or_else(|error| panic!("response error: {}", error));
+        // TODO improve output
+        println!("{:?}", response_value);
     }
 }

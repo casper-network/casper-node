@@ -7,7 +7,7 @@ use casper_node::rpcs::{
     RpcWithParams,
 };
 
-use crate::{command::ClientCommand, common, rpc::RpcClient};
+use crate::{command::ClientCommand, common};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
@@ -59,10 +59,6 @@ mod balance_args {
     }
 }
 
-impl RpcClient for GetBalance {
-    const RPC_METHOD: &'static str = Self::METHOD;
-}
-
 impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {
     const NAME: &'static str = "get-balance";
     const ABOUT: &'static str = "Retrieves a stored balance";
@@ -82,9 +78,9 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {
 
     fn run(matches: &ArgMatches<'_>) {
         let node_address = common::node_address::get(matches);
-        let args = balance_args::get(matches);
-        let res = Self::request_with_map_params(&node_address, args)
+        let params = balance_args::get(matches);
+        let response_value = client_lib::balance::get_balance(node_address, params)
             .unwrap_or_else(|error| panic!("response error: {}", error));
-        println!("{}", res);
+        println!("{:?}", response_value);
     }
 }

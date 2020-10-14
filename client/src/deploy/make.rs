@@ -24,7 +24,10 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeDeploy {
     fn run(matches: &ArgMatches<'_>) {
         creation_common::show_arg_examples_and_exit_if_required(matches);
         let session = creation_common::parse_session_info(matches);
-        let deploy = creation_common::parse_deploy(matches, session);
-        creation_common::output::write_deploy(&deploy, creation_common::output::get(matches));
+        let payment = creation_common::parse_payment_info(matches);
+        let deploy_params = creation_common::parse_deploy_params(matches);
+        let maybe_output_path = creation_common::output::get(matches);
+        client_lib::deploy::make_deploy(maybe_output_path, deploy_params, payment, session)
+            .unwrap_or_else(|err| panic!("unable to make deploy {:?}", err));
     }
 }

@@ -3,12 +3,10 @@ mod block;
 mod command;
 mod common;
 mod deploy;
-mod error;
 mod generate_completion;
 mod get_global_state_hash;
 mod keygen;
 mod query_state;
-mod rpc;
 
 use clap::{crate_description, crate_version, App};
 
@@ -23,10 +21,8 @@ use deploy::{MakeDeploy, SendDeploy, SignDeploy};
 
 use command::ClientCommand;
 use deploy::{ListDeploys, Transfer};
-use error::{Error, Result};
 use generate_completion::GenerateCompletion;
 use keygen::Keygen;
-use rpc::RpcClient;
 
 const APP_NAME: &str = "Casper client";
 
