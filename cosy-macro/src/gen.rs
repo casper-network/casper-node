@@ -38,12 +38,13 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
     let mut error_variants = Vec::new();
     let mut display_variants = Vec::new();
     let mut error_display_variants = Vec::new();
+    let mut error_source_variants = Vec::new();
     let mut from_impls = Vec::new();
 
     for component in def.components() {
         let variant_ident = component.variant_ident();
         let full_event_type = def.component_event(component);
-        let full_error_type = component.full_error_type();
+        let full_error_type = component.full_error_type(quote!(#event_ident));
         let field_name = component.field_ident().to_string();
 
         event_variants.push(quote!(#variant_ident(#full_event_type)));
@@ -55,6 +56,10 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
 
         error_display_variants.push(quote!(
            #error_ident::#variant_ident(inner) => write!(f, "{}: {}", #field_name, inner)
+        ));
+
+        error_source_variants.push(quote!(
+            #error_ident::#variant_ident(inner) => Some(inner)
         ));
 
         from_impls.push(quote!(
@@ -123,6 +128,15 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
         impl From<prometheus::Error> for #error_ident {
             fn from(err: prometheus::Error) -> Self {
                 #error_ident::MetricsInitialization(err)
+            }
+        }
+
+        impl std::error::Error for #error_ident {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                match self {
+                    #(#error_source_variants,)*
+                    #error_ident::MetricsInitialization(inner) => Some(inner),
+                }
             }
         }
     )

@@ -219,9 +219,9 @@ impl ComponentDefinition {
     }
 
     /// Returns the full path for a component's event e.g. `crate::components::small_net::Error`
-    pub fn full_error_type(&self) -> TokenStream {
-        // TODO: Use actual error type instead of anyhow.
-        quote!(anyhow::Error)
+    pub fn full_error_type(&self, reactor_event_type: TokenStream) -> TokenStream {
+        let comp_type = self.full_component_type();
+        quote!(<#comp_type as crate::components::Component<#reactor_event_type>>::ConstructionError)
     }
 }
 
