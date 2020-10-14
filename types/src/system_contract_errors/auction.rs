@@ -88,9 +88,12 @@ pub enum Error {
     /// current era validators when distributing rewards.
     #[fail(display = "Mismatched era validator sets to distribute rewards")]
     MismatchedEraValidators = 22,
-    /// Failed to mint reward tokens
+    /// Failed to mint reward tokens.
     #[fail(display = "Failed to mint rewards")]
-    MintReward,
+    MintReward = 23,
+    /// Invalid number of validator slots.
+    #[fail(display = "Invalid number of validator slots")]
+    InvalidValidatorSlotsValue = 24,
 }
 
 impl CLTyped for Error {

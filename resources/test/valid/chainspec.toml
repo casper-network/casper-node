@@ -7,6 +7,7 @@ pos_installer_path = 'pos.wasm'
 standard_payment_installer_path = 'standard_payment.wasm'
 auction_installer_path = 'auction_install.wasm'
 accounts_path = 'accounts.csv'
+validator_slots = 5
 
 [highway]
 genesis_era_start_timestamp = '2020-09-18T18:45:00Z'

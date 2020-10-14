@@ -17,6 +17,7 @@ anyhow = "1.0.28"
 backtrace = "0.3.50"
 base16 = "0.2.1"
 base64 = "0.12.3"
+bincode = "1.3.1"
 blake2 = { version = "0.8.1", default-features = false }
 casper-execution-engine = { version = "0.7.0", path = "../execution_engine" }
 casper-types = { version = "0.6.0", path = "../types", features = ["std", "gens"] }
@@ -60,7 +61,6 @@ quanta = "0.6.5"
 rand = "0.7.3"
 rand_chacha = "0.2.2"
 regex = "1.3.9"
-rmp-serde = "0.14.3"
 sd-notify = "0.1.1"
 semver = { version = "0.11.0", features = ["serde"] }
 serde = { version = "1.0.110", features = ["derive"] }
@@ -116,7 +116,7 @@ vergen = "3.1.0"
 
 [package.metadata.deb]
 features = ["vendored-openssl"]
-revision = "3"  # Increment with releases for updates to charlie data files when not version bumping casper-node.
+revision = "0"
 assets = [
     ["../target/release/casper-node", "/usr/bin/casper-node", "755"],
     ["../target/release/casper-client", "/usr/bin/casper-client", "755"],
@@ -124,12 +124,10 @@ assets = [
     ["../target/wasm32-unknown-unknown/release/pos_install.wasm", "/etc/casper/wasm/pos_install.wasm", "644"],
     ["../target/wasm32-unknown-unknown/release/standard_payment_install.wasm", "/etc/casper/wasm/standard_payment_install.wasm", "644"],
     ["../target/wasm32-unknown-unknown/release/auction_install.wasm", "/etc/casper/wasm/auction_install.wasm", "644"],
-    ["../resources/charlie/accounts.csv", "/etc/casper/accounts.csv", "644"],
-    ["../resources/charlie/chainspec.toml", "/etc/casper/chainspec.toml", "644"],
-    ["../resources/charlie/README.md", "/etc/casper/README.md", "644"],
-    ["../resources/charlie/CHANGE_LOG.md", "/etc/casper/CHANGE_LOG.md", "644"],
-    ["../resources/charlie/config-example.toml", "/etc/casper/config-example.toml", "644"],
-    ["../resources/charlie/validator_keys/README.md", "/etc/casper/validator_keys/README.md", "644"]
+    ["../resources/production/README.md", "/etc/casper/README.md", "644"],
+    ["../resources/production/CHANGE_LOG.md", "/etc/casper/CHANGE_LOG.md", "644"],
+    ["../resources/production/config-example.toml", "/etc/casper/config-example.toml", "644"],
+    ["../resources/production/validator_keys/README.md", "/etc/casper/validator_keys/README.md", "644"]
 ]
 extended-description = """
 Package for Casper Node and Client.

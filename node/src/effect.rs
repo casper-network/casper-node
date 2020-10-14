@@ -74,6 +74,7 @@ use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use semver::Version;
 use smallvec::{smallvec, SmallVec};
+use tokio::join;
 use tracing::error;
 
 use casper_execution_engine::{
@@ -100,6 +101,7 @@ use crate::{
         storage::{DeployHashes, DeployMetadata, DeployResults, StorageType, Value},
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
+    effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
         json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, BlockHeader,
@@ -114,8 +116,8 @@ use announcements::{
 };
 use requests::{
     BlockExecutorRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-    ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, LinearChainRequest,
-    MetricsRequest, NetworkInfoRequest, NetworkRequest, StorageRequest,
+    ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MetricsRequest,
+    NetworkInfoRequest, NetworkRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -383,15 +385,16 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Retrieve the last finalized block.
-    ///
-    /// If an error occurred, `None` is returned.
-    pub(crate) async fn get_last_finalized_block<I>(self) -> Option<Block>
+    /// Retrieves block at `height` from the Linear Chain component.
+    pub(crate) async fn get_block_at_height_local<I>(self, height: u64) -> Option<Block>
     where
         REv: From<LinearChainRequest<I>>,
     {
-        self.make_request(LinearChainRequest::LastFinalizedBlock, QueueKind::Api)
-            .await
+        self.make_request(
+            |responder| LinearChainRequest::BlockAtHeightLocal(height, responder),
+            QueueKind::Regular,
+        )
+        .await
     }
 
     /// Sends a network message.
@@ -620,17 +623,27 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests linear chain block at height.
-    pub(crate) async fn get_block_at_height<S>(
-        self,
-        height: <S::BlockHeight as Value>::Id,
-    ) -> Option<S::Block>
+    /// Requests block at height.
+    pub(crate) async fn get_block_at_height<S>(self, height: u64) -> Option<S::Block>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
     {
         self.make_request(
             |responder| StorageRequest::GetBlockAtHeight { height, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests the highest block.
+    pub(crate) async fn get_highest_block<S>(self) -> Option<S::Block>
+    where
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetHighestBlock { responder },
             QueueKind::Regular,
         )
         .await
@@ -1049,6 +1062,27 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
+    }
+
+    /// Gets the set of validators, the booking block and the key block for a new era
+    pub(crate) async fn create_new_era<S>(
+        self,
+        request: GetEraValidatorsRequest,
+        booking_block_height: u64,
+        key_block_height: u64,
+    ) -> (
+        Result<Option<ValidatorWeights>, GetEraValidatorsError>,
+        Option<S::Block>,
+        Option<S::Block>,
+    )
+    where
+        REv: From<ContractRuntimeRequest> + From<StorageRequest<S>>,
+        S: StorageType + 'static,
+    {
+        let future_validators = self.get_validators(request);
+        let future_booking_block = self.get_block_at_height(booking_block_height);
+        let future_key_block = self.get_block_at_height(key_block_height);
+        join!(future_validators, future_booking_block, future_key_block)
     }
 
     /// Request consensus to sign a block from the linear chain and possibly start a new era.

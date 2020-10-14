@@ -4,10 +4,12 @@
 [node]
 
 # Path (absolute, or relative to this config.toml) to the chainspec configuration file.
-chainspec_config_path = 'chainspec.toml'
+chainspec_config_path = '/etc/casper/chainspec.toml'
 
+# The maximum number of deploys permitted in a single block.
+block_max_deploy_count = 3
 # If set, use this hash as a trust anchor when joining an existing network.
-#trusted_hash = 'HEX-FORMATTED BLOCK HASH'
+# trusted_hash =
 
 
 # =================================
@@ -15,24 +17,21 @@ chainspec_config_path = 'chainspec.toml'
 # =================================
 [logging]
 
-# Output format.  Possible values are 'text' or 'json'.
-format = 'text'
-
-# Colored output.  Has no effect if format = 'json'.
-color = false
-
-# Abbreviate module names in text output.  Has no effect if format = 'json'.
+# Abbreviate module names in text ouptut.
 abbreviate_modules = false
 
+# Output format. Change this to JSON if you want to parse your logs.
+format = "text"
 
-# ===================================
+
+# ====================================
 # Configuration options for consensus
-# ===================================
+# ====================================
 [consensus]
 
 # Path (absolute, or relative to this config.toml) to validator's secret key file used to sign
 # consensus messages.
-secret_key_path = 'secret_key.pem'
+secret_key_path = '/etc/casper/validator_keys/secret_key.pem'
 
 
 # ====================================
@@ -44,7 +43,7 @@ secret_key_path = 'secret_key.pem'
 #
 # It must be publicly available in order to allow peers to connect to this node.
 # If the port is set to 0, the actual bound port will be substituted.
-public_address = '127.0.0.1:0'
+public_address = '<IP ADDRESS>:0'
 
 # Address to bind to for listening.
 # If port is set to 0, a random port will be used.
@@ -58,17 +57,10 @@ bind_address = '0.0.0.0:34553'
 #
 # Multiple addresses can be given and the node will attempt to connect to each, requiring at least
 # one connection.
-known_addresses = ['127.0.0.1:34553']
+known_addresses = ['54.177.84.9:34553','18.144.69.216:34553','13.57.251.65:34553']
 
 # The interval (in milliseconds) between each fresh round of gossiping the node's public address.
-gossip_interval = 30000
-
-# Enable systemd support. If enabled, the node will notify systemd once it has synced and its
-# listening socket for incoming connections is open.
-#
-# It is usually better to leave this option off and enable it explicitly via command-line override
-# only in the unit files themselves via `-C=network.systemd_support=true`.
-systemd_support = false
+gossip_interval = 120_000
 
 
 # =============================================
@@ -76,16 +68,11 @@ systemd_support = false
 # =============================================
 [http_server]
 
-# Listening address for HTTP server.  If the port is set to 0, a random port will be used.
-#
-# If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
-# the HTTP server will not run, but the node will be otherwise unaffected.
-#
-# The actual bound address will be reported via a log line if logging is enabled.
-address = '0.0.0.0:7777'
+# Interface to bind to.  Defaults to loopback address.
+bind_interface = '0.0.0.0'
 
-# The number of event-stream events to buffer.
-event_stream_buffer_length = 100
+# Port to bind to.  Use 0 for a random port.
+bind_port = 7777
 
 
 # ===============================================
@@ -93,13 +80,14 @@ event_stream_buffer_length = 100
 # ===============================================
 [storage]
 
-# Path (absolute, or relative to this config.toml) to the folder where any files created
+# Optional path (absolute, or relative to this config.toml) to the folder where any files created
 # or read by the storage component will exist.
 #
 # If the folder doesn't exist, it and any required parents will be created.
 #
-# If unset, the path must be supplied as an argument via the CLI.
-path = '../node-storage'
+# If unset, defaults to:
+#   /root/.local/share/casper-node
+# path = 'node-storage'
 
 # Optional maximum size of the database to use for the block store.
 #
@@ -114,13 +102,6 @@ path = '../node-storage'
 #
 # The size should be a multiple of the OS page size.
 #max_deploy_store_size = 322122547200
-
-# Optional maximum size of the database to use for the block height store.
-#
-# If unset, defaults to 10,485,100 == 10 MiB.
-#
-# The size should be a multiple of the OS page size.
-#max_block_height_store_size = 10485100
 
 # Optional maximum size of the database to use for the chainspec store.
 #
@@ -150,17 +131,16 @@ saturation_limit_percent = 80
 #
 # The longer they are retained, the lower the likelihood of re-gossiping a piece of data.  However,
 # the longer they are retained, the larger the list of finished entries can grow.
-finished_entry_duration_secs = 3600
+finished_entry_duration_secs = 60
 
 # The timeout duration in seconds for a single gossip request, i.e. for a single gossip message
 # sent from this node, it will be considered timed out if the expected response from that peer is
 # not received within this specified duration.
-gossip_request_timeout_secs = 10
+gossip_request_timeout_secs = 30
 
 # The timeout duration in seconds for retrieving the remaining part(s) of newly-discovered data
 # from a peer which gossiped information about that data to this node.
 get_remainder_timeout_secs = 60
-
 
 # ========================================================
 # Configuration options for the contract runtime component

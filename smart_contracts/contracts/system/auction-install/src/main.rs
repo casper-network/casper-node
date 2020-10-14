@@ -12,10 +12,11 @@ use casper_types::{
     auction::{
         Bid, BidPurses, Bids, DelegatorRewardMap, Delegators, EraValidators, SeigniorageRecipient,
         SeigniorageRecipients, SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorRewardMap,
-        ValidatorWeights, AUCTION_DELAY, BIDS_KEY, BID_PURSES_KEY, DEFAULT_LOCKED_FUNDS_PERIOD,
+        ValidatorWeights, ARG_GENESIS_VALIDATORS, ARG_MINT_CONTRACT_PACKAGE_HASH,
+        ARG_VALIDATOR_SLOTS, AUCTION_DELAY, BIDS_KEY, BID_PURSES_KEY, DEFAULT_LOCKED_FUNDS_PERIOD,
         DELEGATORS_KEY, DELEGATOR_REWARD_MAP, DELEGATOR_REWARD_PURSE, ERA_ID_KEY,
         ERA_VALIDATORS_KEY, INITIAL_ERA_ID, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-        UNBONDING_PURSES_KEY, VALIDATOR_REWARD_MAP, VALIDATOR_REWARD_PURSE,
+        UNBONDING_PURSES_KEY, VALIDATOR_REWARD_MAP, VALIDATOR_REWARD_PURSE, VALIDATOR_SLOTS_KEY,
     },
     contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
     runtime_args,
@@ -27,12 +28,13 @@ const HASH_KEY_NAME: &str = "auction_hash";
 const ACCESS_KEY_NAME: &str = "auction_access";
 const ENTRY_POINT_MINT: &str = "mint";
 const ARG_AMOUNT: &str = "amount";
-const ARG_GENESIS_VALIDATORS: &str = "genesis_validators";
 
 #[no_mangle]
 pub extern "C" fn install() {
     let mint_package_hash: ContractPackageHash =
-        runtime::get_named_arg("mint_contract_package_hash");
+        runtime::get_named_arg(ARG_MINT_CONTRACT_PACKAGE_HASH);
+
+    let validator_slots: u32 = runtime::get_named_arg(ARG_VALIDATOR_SLOTS);
 
     let entry_points = auction::get_entry_points();
     let (contract_package_hash, access_uref) = storage::create_contract_package_at_hash();
@@ -111,6 +113,10 @@ pub extern "C" fn install() {
         named_keys.insert(
             VALIDATOR_REWARD_MAP.into(),
             storage::new_uref(ValidatorRewardMap::new()).into(),
+        );
+        named_keys.insert(
+            VALIDATOR_SLOTS_KEY.into(),
+            storage::new_uref(validator_slots).into(),
         );
 
         named_keys

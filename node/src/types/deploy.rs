@@ -1,7 +1,6 @@
 use std::{
     array::TryFromSliceError,
     collections::BTreeSet,
-    convert::TryFrom,
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
     iter::FromIterator,
@@ -12,14 +11,14 @@ use hex::FromHexError;
 use itertools::Itertools;
 #[cfg(test)]
 use rand::{Rng, RngCore};
-use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::{json, Value as JsonValue};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::warn;
 
 use casper_execution_engine::core::engine_state::{
     executable_deploy_item::ExecutableDeployItem, DeployItem,
 };
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use super::{CryptoRngCore, Item, Tag, TimeDiff, Timestamp};
 #[cfg(test)]
@@ -33,10 +32,6 @@ use crate::{
     },
     utils::DisplayIter,
 };
-
-const DESER_ERROR_MSG_GENERAL: &str = "failed to deserialize deploy";
-const DEPLOY_HASH_MISMATCH_MSG: &str = "deploy hash mismatch";
-const DEPLOY_BODY_HASH_MISMATCH_MSG: &str = "deploy body hash mismatch";
 
 /// Error returned from constructing or validating a `Deploy`.
 #[derive(Debug, Error)]
@@ -122,6 +117,22 @@ impl AsRef<[u8]> for DeployHash {
     }
 }
 
+impl ToBytes for DeployHash {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for DeployHash {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        Digest::from_bytes(bytes).map(|(inner, remainder)| (DeployHash(inner), remainder))
+    }
+}
+
 /// The header portion of a [`Deploy`](struct.Deploy.html).
 #[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct DeployHeader {
@@ -184,6 +195,52 @@ impl DeployHeader {
     }
 }
 
+impl ToBytes for DeployHeader {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(self.account.to_bytes()?);
+        buffer.extend(self.timestamp.to_bytes()?);
+        buffer.extend(self.ttl.to_bytes()?);
+        buffer.extend(self.gas_price.to_bytes()?);
+        buffer.extend(self.body_hash.to_bytes()?);
+        buffer.extend(self.dependencies.to_bytes()?);
+        buffer.extend(self.chain_name.to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.account.serialized_length()
+            + self.timestamp.serialized_length()
+            + self.ttl.serialized_length()
+            + self.gas_price.serialized_length()
+            + self.body_hash.serialized_length()
+            + self.dependencies.serialized_length()
+            + self.chain_name.serialized_length()
+    }
+}
+
+impl FromBytes for DeployHeader {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (account, remainder) = PublicKey::from_bytes(bytes)?;
+        let (timestamp, remainder) = Timestamp::from_bytes(remainder)?;
+        let (ttl, remainder) = TimeDiff::from_bytes(remainder)?;
+        let (gas_price, remainder) = u64::from_bytes(remainder)?;
+        let (body_hash, remainder) = Digest::from_bytes(remainder)?;
+        let (dependencies, remainder) = Vec::<DeployHash>::from_bytes(remainder)?;
+        let (chain_name, remainder) = String::from_bytes(remainder)?;
+        let deploy_header = DeployHeader {
+            account,
+            timestamp,
+            ttl,
+            gas_price,
+            body_hash,
+            dependencies,
+            chain_name,
+        };
+        Ok((deploy_header, remainder))
+    }
+}
+
 impl Display for DeployHeader {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
@@ -226,13 +283,15 @@ impl Display for Approval {
 }
 
 /// A deploy; an item containing a smart contract along with the requester's signature(s).
-#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct Deploy {
     hash: DeployHash,
     header: DeployHeader,
     payment: ExecutableDeployItem,
     session: ExecutableDeployItem,
     approvals: Vec<Approval>,
+    #[serde(skip)]
+    is_valid: Option<bool>,
 }
 
 impl Deploy {
@@ -249,8 +308,7 @@ impl Deploy {
         secret_key: &SecretKey,
         rng: &mut dyn CryptoRngCore,
     ) -> Deploy {
-        let serialized_body = serialize_body(&payment, &session)
-            .unwrap_or_else(|error| panic!("should serialize deploy body: {}", error));
+        let serialized_body = serialize_body(&payment, &session);
         let body_hash = hash::hash(&serialized_body);
 
         let account = PublicKey::from(secret_key);
@@ -265,8 +323,7 @@ impl Deploy {
             dependencies,
             chain_name,
         };
-        let serialized_header = serialize_header(&header)
-            .unwrap_or_else(|error| panic!("should serialize deploy header: {}", error));
+        let serialized_header = serialize_header(&header);
         let hash = DeployHash::new(hash::hash(&serialized_header));
 
         let mut deploy = Deploy {
@@ -275,6 +332,7 @@ impl Deploy {
             payment,
             session,
             approvals: vec![],
+            is_valid: None,
         };
 
         deploy.sign(secret_key, rng);
@@ -304,24 +362,6 @@ impl Deploy {
         self.header
     }
 
-    /// Convert the `Deploy` to a JSON value.
-    pub fn to_json(&self) -> JsonValue {
-        json!(self)
-    }
-
-    /// Try to convert the JSON value to a `Deploy`.
-    pub fn from_json(input: JsonValue) -> Result<Self, Error> {
-        let deploy: Deploy = serde_json::from_value(input)?;
-
-        // Serialize and deserialize to run validity checks in deserialization.
-        let serialized =
-            rmp_serde::to_vec(&deploy).map_err(|error| Error::DecodeFromJson(Box::new(error)))?;
-        let _: Deploy = rmp_serde::from_read_ref(&serialized)
-            .map_err(|error| Error::DecodeFromJson(Box::new(error)))?;
-
-        Ok(deploy)
-    }
-
     /// Returns the `ExecutableDeployItem` for payment code.
     pub fn payment(&self) -> &ExecutableDeployItem {
         &self.payment
@@ -330,6 +370,24 @@ impl Deploy {
     /// Returns the `ExecutableDeployItem` for session code.
     pub fn session(&self) -> &ExecutableDeployItem {
         &self.session
+    }
+
+    /// Returns true iff:
+    ///   * the deploy hash is correct (should be the hash of the header), and
+    ///   * the body hash is correct (should be the hash of the body), and
+    ///   * the approvals are all valid signatures of the deploy hash
+    ///
+    /// Note: this is a relatively expensive operation, requiring re-serialization of the deploy,
+    ///       hashing, and signature checking, so should be called as infrequently as possible.
+    pub fn is_valid(&mut self) -> bool {
+        match self.is_valid {
+            None => {
+                let validity = validate_deploy(self);
+                self.is_valid = Some(validity);
+                validity
+            }
+            Some(validity) => validity,
+        }
     }
 
     /// Generates a random instance using a `TestRng`.
@@ -366,135 +424,51 @@ impl Deploy {
     }
 }
 
-fn serialize_header(header: &DeployHeader) -> Result<Vec<u8>, rmp_serde::encode::Error> {
-    rmp_serde::to_vec(header)
+fn serialize_header(header: &DeployHeader) -> Vec<u8> {
+    header
+        .to_bytes()
+        .unwrap_or_else(|error| panic!("should serialize deploy header: {}", error))
 }
 
-fn deserialize_header(serialized_header: &[u8]) -> Result<DeployHeader, rmp_serde::decode::Error> {
-    rmp_serde::from_read_ref(serialized_header)
+fn serialize_body(payment: &ExecutableDeployItem, session: &ExecutableDeployItem) -> Vec<u8> {
+    let mut buffer = payment
+        .to_bytes()
+        .unwrap_or_else(|error| panic!("should serialize payment code: {}", error));
+    buffer.extend(
+        session
+            .to_bytes()
+            .unwrap_or_else(|error| panic!("should serialize session code: {}", error)),
+    );
+    buffer
 }
 
-fn serialize_body(
-    payment: &ExecutableDeployItem,
-    session: &ExecutableDeployItem,
-) -> Result<Vec<u8>, rmp_serde::encode::Error> {
-    rmp_serde::to_vec(&(&payment, &session))
-}
-
-fn deserialize_body(
-    serialized_body: &[u8],
-) -> Result<(ExecutableDeployItem, ExecutableDeployItem), rmp_serde::decode::Error> {
-    rmp_serde::from_read_ref(serialized_body)
-}
-
-/// A helper to allow us to derive `Serialize` and `Deserialize` for use with human-readable
-/// (de)serializer types.
-#[derive(Serialize, Deserialize)]
-struct HumanReadableHelper {
-    hash: DeployHash,
-    header: DeployHeader,
-    payment: ExecutableDeployItem,
-    session: ExecutableDeployItem,
-    approvals: Vec<Approval>,
-}
-
-impl Serialize for Deploy {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if serializer.is_human_readable() {
-            return HumanReadableHelper {
-                hash: self.hash,
-                header: self.header.clone(),
-                payment: self.payment.clone(),
-                session: self.session.clone(),
-                approvals: self.approvals.clone(),
-            }
-            .serialize(serializer);
-        }
-
-        let deploy_hash = self.hash.as_ref();
-        let serialized_header =
-            serialize_header(&self.header).map_err(serde::ser::Error::custom)?;
-        let serialized_body =
-            serialize_body(&self.payment, &self.session).map_err(serde::ser::Error::custom)?;
-
-        let bridging_deploy = BridgingDeploy {
-            deploy_hash,
-            serialized_header,
-            serialized_body,
-        };
-
-        (bridging_deploy, &self.approvals).serialize(serializer)
+// Computationally expensive validity check for a given deploy instance, including
+// asymmetric_key signing verification.
+fn validate_deploy(deploy: &Deploy) -> bool {
+    let serialized_body = serialize_body(&deploy.payment, &deploy.session);
+    let body_hash = hash::hash(&serialized_body);
+    if body_hash != deploy.header.body_hash {
+        warn!(?deploy, ?body_hash, "invalid deploy body hash");
+        return false;
     }
-}
 
-impl<'de> Deserialize<'de> for Deploy {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        if deserializer.is_human_readable() {
-            let helper = HumanReadableHelper::deserialize(deserializer)?;
-            return Ok(Deploy {
-                hash: helper.hash,
-                header: helper.header,
-                payment: helper.payment,
-                session: helper.session,
-                approvals: helper.approvals,
-            });
-        }
-
-        let (bridging_deploy, approvals) =
-            <(BridgingDeploy, Vec<Approval>)>::deserialize(deserializer)?;
-
-        let actual_deploy_hash = hash::hash(&bridging_deploy.serialized_header);
-        if actual_deploy_hash.as_ref() != bridging_deploy.deploy_hash {
-            warn!(
-                ?actual_deploy_hash,
-                ?bridging_deploy.deploy_hash,
-                "{}: {}",
-                DESER_ERROR_MSG_GENERAL,
-                DEPLOY_HASH_MISMATCH_MSG
-            );
-            return Err(SerdeError::custom(DEPLOY_HASH_MISMATCH_MSG));
-        }
-
-        let header =
-            deserialize_header(&bridging_deploy.serialized_header).map_err(SerdeError::custom)?;
-
-        let actual_body_hash = hash::hash(&bridging_deploy.serialized_body);
-        if actual_body_hash != header.body_hash {
-            warn!(
-                ?actual_body_hash,
-                ?header.body_hash,
-                "{}: {}",
-                DESER_ERROR_MSG_GENERAL,
-                DEPLOY_BODY_HASH_MISMATCH_MSG
-            );
-            return Err(SerdeError::custom(DEPLOY_BODY_HASH_MISMATCH_MSG));
-        }
-
-        let (payment, session) =
-            deserialize_body(&bridging_deploy.serialized_body).map_err(SerdeError::custom)?;
-
-        let deploy = Deploy {
-            hash: DeployHash::from(
-                Digest::try_from(bridging_deploy.deploy_hash).map_err(SerdeError::custom)?,
-            ),
-            header,
-            payment,
-            session,
-            approvals,
-        };
-
-        for (index, approval) in deploy.approvals.iter().enumerate() {
-            if let Err(error) =
-                asymmetric_key::verify(&deploy.hash, &approval.signature, &approval.signer)
-            {
-                let error_msg = format!("failed to verify approval {}", index);
-                warn!("{}: {}: {}", DESER_ERROR_MSG_GENERAL, error_msg, error);
-                return Err(SerdeError::custom(error_msg));
-            }
-        }
-
-        Ok(deploy)
+    let serialized_header = serialize_header(&deploy.header);
+    let hash = DeployHash::new(hash::hash(&serialized_header));
+    if hash != deploy.hash {
+        warn!(?deploy, ?hash, "invalid deploy hash");
+        return false;
     }
+
+    for (index, approval) in deploy.approvals.iter().enumerate() {
+        if let Err(error) =
+            asymmetric_key::verify(&deploy.hash, &approval.signature, &approval.signer)
+        {
+            warn!(?deploy, "failed to verify approval {}: {}", index, error);
+            return false;
+        }
+    }
+
+    true
 }
 
 /// Trait to allow `Deploy`s to be used by the storage component.
@@ -549,27 +523,14 @@ impl From<Deploy> for DeployItem {
             deploy.payment().clone(),
             deploy.header().gas_price(),
             BTreeSet::from_iter(vec![account_hash]),
-            deploy.id().inner().to_bytes(),
+            deploy.id().inner().to_array(),
         )
     }
 }
 
-/// This is a helper struct to allow for efficient deserialization of a `Deploy` whereby fields
-/// required to be serialized for validation are held in a serialized form until validated, and then
-/// deserialized into their appropriate types.
-#[derive(Serialize, Deserialize)]
-struct BridgingDeploy<'a> {
-    #[serde(with = "serde_bytes")]
-    deploy_hash: &'a [u8],
-    #[serde(with = "serde_bytes")]
-    serialized_header: Vec<u8>,
-    #[serde(with = "serde_bytes")]
-    serialized_body: Vec<u8>,
-}
-
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
+    use std::time::Duration;
 
     use super::*;
     use crate::testing::TestRng;
@@ -578,18 +539,58 @@ mod tests {
     fn json_roundtrip() {
         let mut rng = TestRng::new();
         let deploy = Deploy::random(&mut rng);
-        let json_string = deploy.to_json().to_string();
-        let json = JsonValue::from_str(json_string.as_str()).unwrap();
-        let decoded = Deploy::from_json(json).unwrap();
+        let json_string = serde_json::to_string_pretty(&deploy).unwrap();
+        let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(deploy, decoded);
     }
 
     #[test]
-    fn msgpack_roundtrip() {
+    fn bincode_roundtrip() {
         let mut rng = TestRng::new();
         let deploy = Deploy::random(&mut rng);
-        let serialized = rmp_serde::to_vec(&deploy).unwrap();
-        let deserialized = rmp_serde::from_read_ref(&serialized).unwrap();
+        let serialized = bincode::serialize(&deploy).unwrap();
+        let deserialized = bincode::deserialize(&serialized).unwrap();
         assert_eq!(deploy, deserialized);
+    }
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let mut rng = TestRng::new();
+        let hash = DeployHash(Digest::random(&mut rng));
+        bytesrepr::test_serialization_roundtrip(&hash);
+
+        let deploy = Deploy::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(deploy.header());
+    }
+
+    #[test]
+    fn is_valid() {
+        let mut rng = TestRng::new();
+        let mut deploy = Deploy::random(&mut rng);
+        assert_eq!(deploy.is_valid, None, "is valid should initially be None");
+        assert!(deploy.is_valid());
+        assert_eq!(deploy.is_valid, Some(true), "is valid should be true");
+    }
+
+    #[test]
+    fn is_not_valid() {
+        let mut deploy = Deploy::new(
+            Timestamp::zero(),
+            TimeDiff::from(Duration::default()),
+            0,
+            vec![],
+            String::default(),
+            ExecutableDeployItem::ModuleBytes {
+                module_bytes: vec![],
+                args: vec![],
+            },
+            ExecutableDeployItem::Transfer { args: vec![] },
+            &SecretKey::generate_ed25519(),
+            &mut TestRng::new(),
+        );
+        deploy.header.gas_price = 1;
+        assert_eq!(deploy.is_valid, None, "is valid should initially be None");
+        assert!(!deploy.is_valid(), "should not be valid");
+        assert_eq!(deploy.is_valid, Some(false), "is valid should be false");
     }
 }

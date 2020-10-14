@@ -2,8 +2,9 @@ use lazy_static::lazy_static;
 
 use casper_engine_test_support::{
     internal::{
-        utils, InMemoryWasmTestBuilder, AUCTION_INSTALL_CONTRACT, DEFAULT_WASM_COSTS,
-        MINT_INSTALL_CONTRACT, POS_INSTALL_CONTRACT, STANDARD_PAYMENT_INSTALL_CONTRACT,
+        utils, InMemoryWasmTestBuilder, AUCTION_INSTALL_CONTRACT, DEFAULT_VALIDATOR_SLOTS,
+        DEFAULT_WASM_COSTS, MINT_INSTALL_CONTRACT, POS_INSTALL_CONTRACT,
+        STANDARD_PAYMENT_INSTALL_CONTRACT,
     },
     AccountHash,
 };
@@ -66,6 +67,7 @@ fn should_run_genesis() {
     let auction_installer_bytes = utils::read_wasm_file_bytes(AUCTION_INSTALL_CONTRACT);
     let protocol_version = ProtocolVersion::V1_0_0;
     let wasm_costs = *DEFAULT_WASM_COSTS;
+    let validator_slots = DEFAULT_VALIDATOR_SLOTS;
 
     let exec_config = ExecConfig::new(
         mint_installer_bytes,
@@ -74,6 +76,7 @@ fn should_run_genesis() {
         auction_installer_bytes,
         GENESIS_CUSTOM_ACCOUNTS.clone(),
         wasm_costs,
+        validator_slots,
     );
     let run_genesis_request =
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config);
@@ -130,6 +133,7 @@ fn should_track_total_token_supply_in_mint() {
     let accounts = GENESIS_CUSTOM_ACCOUNTS.clone();
     let wasm_costs = *DEFAULT_WASM_COSTS;
     let protocol_version = ProtocolVersion::V1_0_0;
+    let validator_slots = DEFAULT_VALIDATOR_SLOTS;
 
     let ee_config = ExecConfig::new(
         mint_installer_bytes,
@@ -138,6 +142,7 @@ fn should_track_total_token_supply_in_mint() {
         auction_installer_bytes,
         accounts.clone(),
         wasm_costs,
+        validator_slots,
     );
     let run_genesis_request =
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, ee_config);
@@ -182,6 +187,7 @@ fn should_fail_if_bad_mint_install_contract_is_provided() {
         let auction_installer_bytes = utils::read_wasm_file_bytes(AUCTION_INSTALL_CONTRACT);
         let protocol_version = ProtocolVersion::V1_0_0;
         let wasm_costs = *DEFAULT_WASM_COSTS;
+        let validator_slots = DEFAULT_VALIDATOR_SLOTS;
 
         let exec_config = ExecConfig::new(
             mint_installer_bytes,
@@ -190,6 +196,7 @@ fn should_fail_if_bad_mint_install_contract_is_provided() {
             auction_installer_bytes,
             GENESIS_CUSTOM_ACCOUNTS.clone(),
             wasm_costs,
+            validator_slots,
         );
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config)
     };
@@ -212,6 +219,7 @@ fn should_fail_if_bad_pos_install_contract_is_provided() {
         let auction_installer_bytes = utils::read_wasm_file_bytes(AUCTION_INSTALL_CONTRACT);
         let protocol_version = ProtocolVersion::V1_0_0;
         let wasm_costs = *DEFAULT_WASM_COSTS;
+        let validator_slots = DEFAULT_VALIDATOR_SLOTS;
         let exec_config = ExecConfig::new(
             mint_installer_bytes,
             pos_installer_bytes,
@@ -219,6 +227,7 @@ fn should_fail_if_bad_pos_install_contract_is_provided() {
             auction_installer_bytes,
             GENESIS_CUSTOM_ACCOUNTS.clone(),
             wasm_costs,
+            validator_slots,
         );
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config)
     };
