@@ -4,11 +4,8 @@ The purpose of this document is to guide configuring a system with the new Rust 
 
 ## Software Install
 
-The package can be installed with `sudo apt install casper-node_0.1.x-r_amd64.deb`.  Depending on system you
-might need to use `sudo dpkg -i casper-node_0.1.x-r_amd64.deb`.
-
-Where `x` is last minor version of software and `r` is the package revision. We can push revisions
-with no code changes for updates to genesis files or use curl from github files.
+The package can be installed with `sudo apt install casper-node_x.x.x-x_amd64.deb`.  Depending on system you
+might need to use `sudo dpkg -i casper-node_x.x.x-x_amd64.deb`.
 
 This package will install both `casper-node` and `casper-client` executables in `/usr/bin`.
 (These will be separating in two packages the future.)
@@ -121,16 +118,10 @@ Sep 10 10:37:15 joe-ubuntu casper-node[826251]: Sep 10 10:37:15.205 INFO  [caspe
 
 ### Reading logs
 
-The `journalctl` command is used to read logs from a systemd service. You specify the unit name and usually flags
-to jump to the end (-x) or follow (-f).
+Logs were requested to be removed from journald. They now are created in /var/log/casper-node.log.
 
-This will show logs at the end of the logs:
-
-`journalctl -u casper-node -x`
-
-This will follow logs as they occur until stopped with Ctrl+C:
-
-`journalctl -u casper-node -f`
+Due to issues with systemd writing logs in a non-standard way, this file can only be created but not appended.
+This requires moving the file with each start.
 
 ### Starting and stopping services
 
@@ -159,10 +150,14 @@ sudo apt remove casper-node
 sudo rm -rf /root/.local/share/casper-node
 ```
 
+Rename `/var/log/casper-node.log`.  You could move it to a file with unique extension with something like:
+
+`sudo mv /var/log/casper-node.log /var/log/casper-node.log.$(date "+%s")`
+
 Pull down new .deb package, install and run.
 
 ```
-sudo apt install casper-node_0.1.x-r_amd64.deb`
+sudo apt install casper-node_x.x.x-x_amd64.deb`
 ```
  
 Look at `/etc/casper/CHANGE_LOG.md` for any changes that require action from
