@@ -19,10 +19,12 @@ make setup-rs
 ### Step 2 - set local setup file.
 
 ```
+cd YOUR_WORKING_DIRECTORY/casper-node
+
 cat >> $HOME/.casper-nctl <<- EOM
 
 # Activate nctl shell.
-. $(pwd)/casper-node/utils/nctl/activate
+. $(pwd)/utils/nctl/activate
 
 EOM
 ```
