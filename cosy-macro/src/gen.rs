@@ -97,6 +97,7 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
 
         pub enum #error_ident {
             #(#error_variants,)*
+            MetricsInitialization(prometheus::Error),
         }
 
         impl std::fmt::Display for #event_ident {
@@ -111,11 +112,18 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self {
                     #(#error_display_variants,)*
+                    #error_ident::MetricsInitialization(err) => write!(f, "metrics_initialization: {}", err),
                 }
             }
         }
 
         #(#from_impls)*
+
+        impl From<prometheus::Error> for #error_ident {
+            fn from(err: prometheus::Error) -> Self {
+                #error_ident::MetricsInitialization(err)
+            }
+        }
     )
 }
 
