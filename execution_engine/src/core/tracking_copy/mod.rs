@@ -400,6 +400,12 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                 StoredValue::ContractWasm(_) => {
                     return Ok(query.into_not_found_result(&"ContractWasm value found."));
                 }
+                StoredValue::Transfer(_) => {
+                    let _name = query.next_name();
+                }
+                StoredValue::DeployInfo(_) => {
+                    let _name = query.next_name();
+                }
             }
         }
     }

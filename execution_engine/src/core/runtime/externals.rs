@@ -686,6 +686,25 @@ where
                     .map_err(|error| Error::Interpreter(error.into()))?;
                 Ok(Some(RuntimeValue::I32(0)))
             }
+
+            FunctionIndex::RecordTransfer => {
+                let (source_ptr, source_size, target_ptr, target_size, amount_ptr, amount_size): (
+                    u32,
+                    u32,
+                    u32,
+                    u32,
+                    u32,
+                    u32,
+                ) = Args::parse(args)?;
+                scoped_instrumenter.add_property("source_size", source_size.to_string());
+                scoped_instrumenter.add_property("target_size", target_size.to_string());
+                scoped_instrumenter.add_property("amount_size", amount_size.to_string());
+                let source: URef = self.t_from_mem(source_ptr, source_size)?;
+                let target: URef = self.t_from_mem(target_ptr, target_size)?;
+                let amount: U512 = self.t_from_mem(amount_ptr, amount_size)?;
+                self.record_transfer(source, target, amount)?;
+                Ok(Some(RuntimeValue::I32(0)))
+            }
         }
     }
 }

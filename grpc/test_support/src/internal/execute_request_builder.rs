@@ -114,6 +114,21 @@ impl ExecuteRequestBuilder {
 
         ExecuteRequestBuilder::new().push_deploy(deploy)
     }
+
+    pub fn transfer(sender: AccountHash, transfer_args: RuntimeArgs) -> Self {
+        let mut rng = rand::thread_rng();
+        let deploy_hash = rng.gen();
+
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(sender)
+            .with_empty_payment_bytes(runtime_args! {})
+            .with_transfer_args(transfer_args)
+            .with_authorization_keys(&[sender])
+            .with_deploy_hash(deploy_hash)
+            .build();
+
+        ExecuteRequestBuilder::from_deploy_item(deploy_item)
+    }
 }
 
 impl Default for ExecuteRequestBuilder {

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use casper_execution_engine::shared::stored_value::StoredValue as ExecutionEngineStoredValue;
 use casper_types::bytesrepr::{self, ToBytes};
 
-use super::{Account, CLValue};
+use super::{Account, CLValue, DeployInfo, Transfer};
 
 /// Representation of a value stored in global state.
 ///
@@ -27,6 +27,10 @@ pub enum StoredValue {
     Contract(String),
     /// A contract definition, metadata, and security container.
     ContractPackage(String),
+    /// A record of a transfer
+    Transfer(Transfer),
+    /// A record of a deploy
+    DeployInfo(DeployInfo),
 }
 
 impl TryFrom<&ExecutionEngineStoredValue> for StoredValue {
@@ -46,6 +50,12 @@ impl TryFrom<&ExecutionEngineStoredValue> for StoredValue {
             }
             ExecutionEngineStoredValue::ContractPackage(contract_package) => {
                 StoredValue::ContractPackage(hex::encode(&contract_package.to_bytes()?))
+            }
+            ExecutionEngineStoredValue::Transfer(transfer) => {
+                StoredValue::Transfer(transfer.into())
+            }
+            ExecutionEngineStoredValue::DeployInfo(deploy_info) => {
+                StoredValue::DeployInfo(deploy_info.into())
             }
         };
 

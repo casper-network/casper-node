@@ -5,6 +5,7 @@ use crate::{
     shared::{newtypes::Blake2bHash, stored_value::StoredValue},
 };
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum QueryResult {
     RootNotFound,
