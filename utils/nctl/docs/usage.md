@@ -6,7 +6,7 @@ This usage guide focusses upon the former use case, i.e. testing a single networ
 
 ## Step 0: Compile network binaries.
 
-Prior to testing a network we need to ensure that the binary sets arre available:
+Prior to testing a network we need to ensure that the binary sets are available:
 
 ```
 nctl-compile
@@ -128,4 +128,4 @@ Not only does this delete all previously created assets, it also stops any nodes
 
 ## Summary
 
-Using nctl one can spin up either a single or multiple test networks.  Each network is isolated in terms of its assets - this includes port numbers.  The nctl commands parrameter defaults are set for the general use case of testing a single local 5 node network.  You are encouraged to integrate nctl into your daily workflow so as to standardise the manner in which the network is tested in a localised setting.
+Using nctl one can spin up either a single or multiple test networks.  Each network is isolated in terms of its assets - this includes port numbers.  The nctl commands parameter defaults are set for the general use case of testing a single local 5 node network.  You are encouraged to integrate nctl into your daily workflow so as to standardise the manner in which the network is tested in a localised setting.
