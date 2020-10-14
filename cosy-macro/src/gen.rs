@@ -95,6 +95,7 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
            #(#event_variants,)*
         }
 
+        #[derive(Debug)]
         pub enum #error_ident {
             #(#error_variants,)*
             MetricsInitialization(prometheus::Error),
