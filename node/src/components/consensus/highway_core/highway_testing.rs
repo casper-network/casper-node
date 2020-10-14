@@ -537,15 +537,8 @@ where
                     {
                         Err((pvv, error)) => return Ok(Err((pvv.into_vertex(), error))),
                         Ok(valid_vertex) => self.call_validator(rng, &recipient, |v, rng| {
-                            // TODO: Find a better way of making deterministic timestamps for
-                            // testing than this kluge
-                            let now = match &valid_vertex {
-                                ValidVertex(Vertex::Vote(signed_wire_vote)) => {
-                                    signed_wire_vote.wire_vote.timestamp
-                                }
-                                ValidVertex(Vertex::Evidence(_)) => 0.into(),
-                            };
-                            v.highway_mut().add_valid_vertex(valid_vertex, rng, now)
+                            v.highway_mut()
+                                .add_valid_vertex(valid_vertex, rng, delivery_time)
                         })?,
                     }
                 };
