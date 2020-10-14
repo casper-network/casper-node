@@ -114,6 +114,62 @@ impl<I> Era<I> {
             candidates: BTreeMap::new(),
         }
     }
+
+    /// Adds a new candidate block, together with the accusations for which we don't have evidence
+    /// yet.
+    fn add_candidate(&mut self, candidate_block: CandidateBlock, accusations: BTreeSet<PublicKey>) {
+        self.candidates
+            .insert(candidate_block, (false, accusations));
+    }
+
+    /// Marks the dependencies of candidate blocks on evidence against validator `v_id` as resolved
+    /// and returns all candidates that have no missing dependencies left.
+    fn resolve_evidence(&mut self, v_id: &PublicKey) -> Vec<CandidateBlock> {
+        for (_, accusations) in self.candidates.values_mut() {
+            accusations.remove(v_id);
+        }
+        self.remove_complete_candidates()
+    }
+
+    /// Marks the dependencies of candidate blocks on the validity of the specified proto block as
+    /// resolved and returns all candidates that have no missing dependencies left.
+    fn accept_proto_block(&mut self, proto_block: &ProtoBlock) -> Vec<CandidateBlock> {
+        for (cb, (valid, _)) in &mut self.candidates {
+            if cb.proto_block() == proto_block {
+                *valid = true;
+            }
+        }
+        self.remove_complete_candidates()
+    }
+
+    /// Removes and returns any candidate blocks depending on the validity of the specified proto
+    /// block. If it is invalid, all those candidates are invalid.
+    fn reject_proto_block(&mut self, proto_block: &ProtoBlock) -> Vec<CandidateBlock> {
+        let candidate_blocks: Vec<CandidateBlock> = self
+            .candidates
+            .iter()
+            .filter(|(cb, _)| cb.proto_block() == proto_block)
+            .map(|(cb, _)| cb.clone())
+            .collect();
+        for candidate_block in &candidate_blocks {
+            self.candidates.remove(candidate_block);
+        }
+        candidate_blocks
+    }
+
+    /// Removes and returns all candidate blocks with no missing dependencies.
+    fn remove_complete_candidates(&mut self) -> Vec<CandidateBlock> {
+        let candidate_blocks: Vec<CandidateBlock> = self
+            .candidates
+            .iter_mut()
+            .filter(|(_, (valid, accusations))| *valid && accusations.is_empty())
+            .map(|(cb, _)| cb.clone())
+            .collect();
+        for candidate_block in &candidate_blocks {
+            self.candidates.remove(candidate_block);
+        }
+        candidate_blocks
+    }
 }
 
 impl<I> DataSize for Era<I>
@@ -618,27 +674,11 @@ where
         proto_block: ProtoBlock,
     ) -> Effects<Event<I>> {
         let mut effects = Effects::new();
-        let candidate_blocks: Vec<CandidateBlock>;
-        if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
-            candidate_blocks = era
-                .candidates
-                .iter_mut()
-                .filter(|(cb, _)| *cb.proto_block() == proto_block)
-                .filter_map(|(cb, (valid, accusations))| {
-                    *valid = true;
-                    if accusations.is_empty() {
-                        Some(cb.clone())
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            for candidate_block in &candidate_blocks {
-                era.candidates.remove(candidate_block);
-            }
+        let candidate_blocks = if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
+            era.accept_proto_block(&proto_block)
         } else {
             return effects;
-        }
+        };
         for candidate_block in candidate_blocks {
             effects.extend(self.delegate_to_era(era_id, |consensus, rng| {
                 consensus.resolve_validity(&candidate_block, true, rng)
@@ -659,20 +699,11 @@ where
         proto_block: ProtoBlock,
     ) -> Effects<Event<I>> {
         let mut effects = Effects::new();
-        let candidate_blocks: Vec<CandidateBlock>;
-        if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
-            candidate_blocks = era
-                .candidates
-                .iter()
-                .filter(|(cb, _)| *cb.proto_block() == proto_block)
-                .map(|(cb, _)| cb.clone())
-                .collect();
-            for candidate_block in &candidate_blocks {
-                era.candidates.remove(candidate_block);
-            }
+        let candidate_blocks = if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
+            era.reject_proto_block(&proto_block)
         } else {
             return effects;
-        }
+        };
         for candidate_block in candidate_blocks {
             effects.extend(self.delegate_to_era(era_id, |consensus, rng| {
                 consensus.resolve_validity(&candidate_block, false, rng)
@@ -773,14 +804,14 @@ where
             }
             ConsensusProtocolResult::ValidateConsensusValue(sender, candidate_block) => {
                 let proto_block = candidate_block.proto_block().clone();
-                let accusations: BTreeSet<PublicKey> = candidate_block
+                let missing_accusations: BTreeSet<PublicKey> = candidate_block
                     .accusations()
                     .iter()
                     .filter(|pub_key| !self.has_evidence(era_id, **pub_key))
                     .cloned()
                     .collect();
                 let mut effects = Effects::new();
-                for pub_key in accusations.iter().cloned() {
+                for pub_key in missing_accusations.iter().cloned() {
                     let msg = ConsensusMessage::EvidenceRequest { era_id, pub_key };
                     effects.extend(
                         self.effect_builder
@@ -789,10 +820,10 @@ where
                     );
                 }
                 if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
-                    era.candidates.insert(candidate_block, (false, accusations));
+                    era.add_candidate(candidate_block, missing_accusations);
                 } else {
                     return effects;
-                };
+                }
                 effects.extend(
                     self.effect_builder
                         .validate_block(sender.clone(), proto_block)
@@ -816,26 +847,12 @@ where
             ConsensusProtocolResult::NewEvidence(v_id) => {
                 let mut effects = Effects::new();
                 for e_id in (era_id.0..=(era_id.0 + BONDED_ERAS)).map(EraId) {
-                    let candidate_blocks: Vec<CandidateBlock>;
-                    if let Some(era) = self.era_supervisor.active_eras.get_mut(&e_id) {
-                        candidate_blocks = era
-                            .candidates
-                            .iter_mut()
-                            .filter_map(|(cb, (valid, accusations))| {
-                                accusations.remove(&v_id);
-                                if *valid && accusations.is_empty() {
-                                    Some(cb.clone())
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-                        for candidate_block in &candidate_blocks {
-                            era.candidates.remove(candidate_block);
-                        }
-                    } else {
-                        continue;
-                    }
+                    let candidate_blocks =
+                        if let Some(era) = self.era_supervisor.active_eras.get_mut(&e_id) {
+                            era.resolve_evidence(&v_id)
+                        } else {
+                            continue;
+                        };
                     for candidate_block in candidate_blocks {
                         effects.extend(self.delegate_to_era(e_id, |consensus, rng| {
                             consensus.resolve_validity(&candidate_block, true, rng)
