@@ -24,13 +24,13 @@ pub enum SystemContractType {
 }
 
 /// Name of mint system contract
-const MINT: &str = "mint";
+pub const MINT: &str = "mint";
 /// Name of proof of stake system contract
 pub const PROOF_OF_STAKE: &str = "proof of stake";
 /// Name of standard payment system contract
 const STANDARD_PAYMENT: &str = "standard payment";
 /// Name of auction system contract
-const AUCTION: &str = "auction";
+pub const AUCTION: &str = "auction";
 
 impl From<SystemContractType> for u32 {
     fn from(system_contract_type: SystemContractType) -> u32 {
