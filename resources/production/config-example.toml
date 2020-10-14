@@ -6,8 +6,6 @@
 # Path (absolute, or relative to this config.toml) to the chainspec configuration file.
 chainspec_config_path = '/etc/casper/chainspec.toml'
 
-# The maximum number of deploys permitted in a single block.
-block_max_deploy_count = 3
 # If set, use this hash as a trust anchor when joining an existing network.
 # trusted_hash =
 
@@ -17,16 +15,18 @@ block_max_deploy_count = 3
 # =================================
 [logging]
 
-# Abbreviate module names in text ouptut.
+# Output format.  Possible values are 'text' or 'json'.
+format = 'text'
+
+# Colored output.  Has no effect if format = 'json'.
+color = false
+
+# Abbreviate module names in text output.  Has no effect if format = 'json'.
 abbreviate_modules = false
 
-# Output format. Change this to JSON if you want to parse your logs.
-format = "text"
-
-
-# ====================================
+# ===================================
 # Configuration options for consensus
-# ====================================
+# ===================================
 [consensus]
 
 # Path (absolute, or relative to this config.toml) to validator's secret key file used to sign
@@ -62,17 +62,28 @@ known_addresses = ['54.177.84.9:34553','18.144.69.216:34553','13.57.251.65:34553
 # The interval (in milliseconds) between each fresh round of gossiping the node's public address.
 gossip_interval = 120_000
 
+# Enable systemd support. If enabled, the node will notify systemd once it has synced and its
+# listening socket for incoming connections is open.
+#
+# It is usually better to leave this option off and enable it explicitly via command-line override
+# only in the unit files themselves via `-C=network.systemd_support=true`.
+systemd_support = false
 
 # =============================================
 # Configuration options for the HTTP API server
 # =============================================
 [http_server]
 
-# Interface to bind to.  Defaults to loopback address.
-bind_interface = '0.0.0.0'
+# Listening address for HTTP server.  If the port is set to 0, a random port will be used.
+#
+# If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
+# the HTTP server will not run, but the node will be otherwise unaffected.
+#
+# The actual bound address will be reported via a log line if logging is enabled.
+address = '0.0.0.0:7777'
 
-# Port to bind to.  Use 0 for a random port.
-bind_port = 7777
+# The number of event-stream events to buffer.
+event_stream_buffer_length = 100
 
 
 # ===============================================
@@ -80,14 +91,13 @@ bind_port = 7777
 # ===============================================
 [storage]
 
-# Optional path (absolute, or relative to this config.toml) to the folder where any files created
+# Path (absolute, or relative to this config.toml) to the folder where any files created
 # or read by the storage component will exist.
 #
 # If the folder doesn't exist, it and any required parents will be created.
 #
-# If unset, defaults to:
-#   /root/.local/share/casper-node
-# path = 'node-storage'
+# If unset, the path must be supplied as an argument via the CLI.
+path = '/root/.local/share/casper-node'
 
 # Optional maximum size of the database to use for the block store.
 #
@@ -102,6 +112,13 @@ bind_port = 7777
 #
 # The size should be a multiple of the OS page size.
 #max_deploy_store_size = 322122547200
+
+# Optional maximum size of the database to use for the block height store.
+#
+# If unset, defaults to 10,485,100 == 10 MiB.
+#
+# The size should be a multiple of the OS page size.
+#max_block_height_store_size = 10485100
 
 # Optional maximum size of the database to use for the chainspec store.
 #
