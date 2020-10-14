@@ -126,7 +126,7 @@ impl<C: Context> ActiveValidator<C> {
     pub(crate) fn on_new_vote(
         &mut self,
         vhash: &C::Hash,
-        timestamp: Timestamp,
+        now: Timestamp,
         state: &State<C>,
         instance_id: C::InstanceId,
         rng: &mut dyn CryptoRngCore,
@@ -134,11 +134,10 @@ impl<C: Context> ActiveValidator<C> {
         if let Some(evidence) = state.opt_evidence(self.vidx) {
             return vec![Effect::WeEquivocated(evidence.clone())];
         }
-        if self.should_send_confirmation(vhash, timestamp, state) {
+        if self.should_send_confirmation(vhash, now, state) {
             let panorama = self.confirmation_panorama(vhash, state);
             if panorama.has_correct() {
-                let confirmation_vote =
-                    self.new_vote(panorama, timestamp, None, state, instance_id, rng);
+                let confirmation_vote = self.new_vote(panorama, now, None, state, instance_id, rng);
                 let vv = ValidVertex(Vertex::Vote(confirmation_vote));
                 return vec![Effect::NewVertex(vv)];
             }
