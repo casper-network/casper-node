@@ -72,7 +72,6 @@ impl From<HostFunctionCosts> for ipc::ChainSpec_WasmConfig_HostFunctionCosts {
         pb_host_function_costs.set_write(host_function_costs.write.into());
         pb_host_function_costs.set_write_local(host_function_costs.write_local.into());
         pb_host_function_costs.set_add(host_function_costs.add.into());
-        pb_host_function_costs.set_add_local(host_function_costs.add_local.into());
         pb_host_function_costs.set_new_uref(host_function_costs.new_uref.into());
         pb_host_function_costs.set_load_named_keys(host_function_costs.load_named_keys.into());
         pb_host_function_costs.set_ret(host_function_costs.ret.into());
@@ -150,7 +149,6 @@ impl TryFrom<ipc::ChainSpec_WasmConfig_HostFunctionCosts> for HostFunctionCosts 
             write: pb_host_function_costs.take_write().try_into()?,
             write_local: pb_host_function_costs.take_write_local().try_into()?,
             add: pb_host_function_costs.take_add().try_into()?,
-            add_local: pb_host_function_costs.take_add_local().try_into()?,
             new_uref: pb_host_function_costs.take_new_uref().try_into()?,
             load_named_keys: pb_host_function_costs.take_load_named_keys().try_into()?,
             ret: pb_host_function_costs.take_ret().try_into()?,

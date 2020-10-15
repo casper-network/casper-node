@@ -109,7 +109,6 @@ pub struct HostFunctionCosts {
     pub write: HostFunction<[Cost; 4]>,
     pub write_local: HostFunction<[Cost; 4]>,
     pub add: HostFunction<[Cost; 4]>,
-    pub add_local: HostFunction<[Cost; 4]>,
     pub new_uref: HostFunction<[Cost; 3]>,
     pub load_named_keys: HostFunction<[Cost; 2]>,
     pub ret: HostFunction<[Cost; 2]>,
@@ -157,7 +156,6 @@ impl ToBytes for HostFunctionCosts {
         ret.append(&mut self.write.to_bytes()?);
         ret.append(&mut self.write_local.to_bytes()?);
         ret.append(&mut self.add.to_bytes()?);
-        ret.append(&mut self.add_local.to_bytes()?);
         ret.append(&mut self.new_uref.to_bytes()?);
         ret.append(&mut self.load_named_keys.to_bytes()?);
         ret.append(&mut self.ret.to_bytes()?);
@@ -204,7 +202,6 @@ impl ToBytes for HostFunctionCosts {
             + self.write.serialized_length()
             + self.write_local.serialized_length()
             + self.add.serialized_length()
-            + self.add_local.serialized_length()
             + self.new_uref.serialized_length()
             + self.load_named_keys.serialized_length()
             + self.ret.serialized_length()
@@ -252,7 +249,6 @@ impl FromBytes for HostFunctionCosts {
         let (write, rem) = FromBytes::from_bytes(rem)?;
         let (write_local, rem) = FromBytes::from_bytes(rem)?;
         let (add, rem) = FromBytes::from_bytes(rem)?;
-        let (add_local, rem) = FromBytes::from_bytes(rem)?;
         let (new_uref, rem) = FromBytes::from_bytes(rem)?;
         let (load_named_keys, rem) = FromBytes::from_bytes(rem)?;
         let (ret, rem) = FromBytes::from_bytes(rem)?;
@@ -297,7 +293,6 @@ impl FromBytes for HostFunctionCosts {
                 write,
                 write_local,
                 add,
-                add_local,
                 new_uref,
                 load_named_keys,
                 ret,
@@ -349,7 +344,6 @@ impl Distribution<HostFunctionCosts> for Standard {
             write: rng.gen(),
             write_local: rng.gen(),
             add: rng.gen(),
-            add_local: rng.gen(),
             new_uref: rng.gen(),
             load_named_keys: rng.gen(),
             ret: rng.gen(),
@@ -408,7 +402,6 @@ pub mod gens {
             write in host_function_cost_arb(),
             write_local in host_function_cost_arb(),
             add in host_function_cost_arb(),
-            add_local in host_function_cost_arb(),
             new_uref in host_function_cost_arb(),
             load_named_keys in host_function_cost_arb(),
             ret in host_function_cost_arb(),
@@ -453,7 +446,6 @@ pub mod gens {
                 write,
                 write_local,
                 add,
-                add_local,
                 new_uref,
                 load_named_keys,
                 ret,

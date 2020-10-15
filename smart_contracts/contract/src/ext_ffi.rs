@@ -75,8 +75,6 @@ extern "C" {
     /// * `value_ptr` - pointer to bytes representing the value to write at the key
     /// * `value_size` - size of the value (in bytes)
     pub fn add(key_ptr: *const u8, key_size: usize, value_ptr: *const u8, value_size: usize);
-    ///
-    pub fn add_local(key_ptr: *const u8, key_size: usize, value_ptr: *const u8, value_size: usize);
     /// This function causes the runtime to generate a new [`casper_types::uref::URef`], with
     /// the provided value stored under it in the global state. The new
     /// [`casper_types::uref::URef`] is written (in serialized form) to the wasm linear

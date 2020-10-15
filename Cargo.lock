@@ -2330,14 +2330,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "local-state-add"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
 name = "local-state-stored"
 version = "0.1.0"
 dependencies = [
