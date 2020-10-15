@@ -187,6 +187,7 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     // Alice equivocates: A1 doesn't see a1.
     let ae1 = add_vote!(state, rng, ALICE, None; a0, b1, c0)?;
     assert!(state.has_evidence(ALICE));
+    assert_eq!(panorama![F, b1, c1], *state.panorama());
 
     let missing = panorama!(F, b1, c0).missing_dependency(&state);
     assert_eq!(None, missing);
