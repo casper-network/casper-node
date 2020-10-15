@@ -284,7 +284,7 @@ where
             validator_stakes,
             0, // hardcoded seed for era 0
             chainspec.genesis.highway_config.genesis_era_start_timestamp,
-            0,
+            0, // the first block has height 0
             genesis_post_state_hash,
         );
         let effects = era_supervisor

@@ -60,10 +60,8 @@ impl<C: Context> FinalityDetector<C> {
         }
         Ok(iter::from_fn(move || {
             let bhash = self.next_finalized(state)?;
-            let to_id = |vidx: ValidatorIndex| {
-                let opt_validator = highway.validators().get_by_index(vidx);
-                opt_validator.unwrap().id().clone() // Index exists, since we have votes from them.
-            };
+            // Index exists, since we have votes from them.
+            let to_id = |vidx: ValidatorIndex| highway.validators().id(vidx).unwrap().clone();
             let block = state.block(bhash);
             let vote = state.vote(bhash);
             let rewards = if state.is_terminal_block(bhash) {

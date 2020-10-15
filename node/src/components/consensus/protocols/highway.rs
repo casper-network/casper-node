@@ -100,9 +100,8 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
             let v_id = self
                 .highway
                 .validators()
-                .get_by_index(ev.perpetrator())
+                .id(ev.perpetrator())
                 .expect("validator not found")
-                .id()
                 .clone();
             results.push(ConsensusProtocolResult::NewEvidence(v_id));
         }
