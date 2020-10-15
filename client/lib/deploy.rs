@@ -10,8 +10,7 @@ use casper_node::{
         account::PutDeploy,
         chain::{GetBlock, GetBlockResult},
         info::GetDeploy,
-        RpcWithParams,
-        RpcWithOptionalParams,
+        RpcWithOptionalParams, RpcWithParams,
     },
     types::{Deploy, DeployHash, TimeDiff, Timestamp},
 };

@@ -5,7 +5,9 @@ use serde::Serialize;
 use serde_json::{json, Map, Value};
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
-use casper_node::{crypto::asymmetric_key::PublicKey, crypto::hash::Digest, rpcs::{
+use casper_node::{
+    crypto::{asymmetric_key::PublicKey, hash::Digest},
+    rpcs::{
         account::{PutDeploy, PutDeployParams},
         chain::{
             GetBlock, GetBlockParams, GetBlockResult, GetGlobalStateHash, GetGlobalStateHashParams,
@@ -15,8 +17,10 @@ use casper_node::{crypto::asymmetric_key::PublicKey, crypto::hash::Digest, rpcs:
             GetBalance, GetBalanceParams, GetBalanceResult, GetItem, GetItemParams, GetItemResult,
         },
         RPC_API_PATH,
-    }, types::{BlockHash, Deploy, DeployHash}};
-use casper_types::{RuntimeArgs, U512, URef, bytesrepr::ToBytes};
+    },
+    types::{BlockHash, Deploy, DeployHash},
+};
+use casper_types::{bytesrepr::ToBytes, RuntimeArgs, URef, U512};
 
 use crate::{
     deploy::{DeployExt, DeployParams, ListDeploys, ListDeploysResult, SendDeploy, Transfer},
@@ -57,7 +61,8 @@ impl RpcCall {
             key,
             path,
         };
-        let response_value = GetItem::request_with_map_params(self.verbose, &node_address, self.rpc_id, params)?;
+        let response_value =
+            GetItem::request_with_map_params(self.verbose, &node_address, self.rpc_id, params)?;
         Ok(serde_json::from_value::<GetItemResult>(response_value)?)
     }
 
@@ -69,7 +74,12 @@ impl RpcCall {
         let response_value = match maybe_block_hash {
             Some(block_hash) => {
                 let params = GetGlobalStateHashParams { block_hash };
-                GetGlobalStateHash::request_with_map_params(self.verbose, &node_address, self.rpc_id, params)?
+                GetGlobalStateHash::request_with_map_params(
+                    self.verbose,
+                    &node_address,
+                    self.rpc_id,
+                    params,
+                )?
             }
             None => GetGlobalStateHash::request(self.verbose, &node_address, self.rpc_id)?,
         };
@@ -119,20 +129,23 @@ impl RpcCall {
         };
         let deploy = Deploy::with_payment_and_session(deploy_params, payment, session);
         let params = PutDeployParams { deploy };
-        let _ = Transfer::request_with_map_params(self.verbose, &node_address, self.rpc_id, params)?;
+        let _ =
+            Transfer::request_with_map_params(self.verbose, &node_address, self.rpc_id, params)?;
         Ok(())
     }
 
     pub fn send_deploy_file(self, node_address: &str, input_path: &str) -> Result<()> {
         let deploy = Deploy::read_deploy(&input_path)?;
         let params = PutDeployParams { deploy };
-        let _ = SendDeploy::request_with_map_params(self.verbose, node_address,self.rpc_id, params)?;
+        let _ =
+            SendDeploy::request_with_map_params(self.verbose, node_address, self.rpc_id, params)?;
         Ok(())
     }
 
     pub fn put_deploy(self, node_address: String, deploy: Deploy) -> Result<()> {
         let params = PutDeployParams { deploy };
-        let _ = PutDeploy::request_with_map_params(self.verbose, &node_address,self.rpc_id, params)?;
+        let _ =
+            PutDeploy::request_with_map_params(self.verbose, &node_address, self.rpc_id, params)?;
         Ok(())
     }
 
@@ -144,7 +157,12 @@ impl RpcCall {
         let response_value = match maybe_block_hash {
             Some(block_hash) => {
                 let params = GetBlockParams { block_hash };
-                ListDeploys::request_with_map_params(self.verbose, &node_address, self.rpc_id, params)?
+                ListDeploys::request_with_map_params(
+                    self.verbose,
+                    &node_address,
+                    self.rpc_id,
+                    params,
+                )?
             }
             None => ListDeploys::request(self.verbose, &node_address, self.rpc_id)?,
         };
@@ -230,19 +248,16 @@ async fn request(
         if verbose {
             println!("Failed Sending {:?}, {}", rpc_req, error);
         }
-        return Err(Error::FailedSending(rpc_req))
+        return Err(Error::FailedSending(rpc_req));
     }
 
-    let rpc_response = response
-        .json()
-        .await
-        .map_err(Error::FailedToParseResponse);
+    let rpc_response = response.json().await.map_err(Error::FailedToParseResponse);
 
     if let Err(error) = rpc_response {
         if verbose {
             println!("Failed parsing as a JSON-RPC response: {}", error);
         }
-        return Err(error)
+        return Err(error);
     }
 
     let rpc_response: JsonRpc = rpc_response?;

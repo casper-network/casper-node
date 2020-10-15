@@ -35,7 +35,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetGlobalStateHash {
         let node_address = common::node_address::get(matches);
         let rpc_id = common::rpc_id::get(matches);
         let maybe_block_hash = common::block_hash::get(matches);
-        let response = casper_client::RpcCall::new(rpc_id, verbose).get_global_state_hash(node_address, maybe_block_hash)
+        let response = casper_client::RpcCall::new(rpc_id, verbose)
+            .get_global_state_hash(node_address, maybe_block_hash)
             .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",

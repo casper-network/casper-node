@@ -1,13 +1,13 @@
-mod common;
-mod error;
-mod rpc;
 mod balance;
 mod block;
-mod query_state;
+mod common;
+mod error;
 mod get_global_state_hash;
+mod query_state;
+mod rpc;
 
 pub mod deploy;
 pub mod keygen;
-pub use rpc::RpcCall;
 pub use common::ExecutableDeployItemExt;
 pub use error::{Error, Result};
+pub use rpc::RpcCall;

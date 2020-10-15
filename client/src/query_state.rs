@@ -134,9 +134,9 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
         let key = key::get(matches);
         let path = path::get(matches);
 
-        let response =
-            casper_client::RpcCall::new(rpc_id, verbose).get_item(node_address, global_state_hash, key, path)
-                .unwrap_or_else(|error| panic!("response error: {}", error));
+        let response = casper_client::RpcCall::new(rpc_id, verbose)
+            .get_item(node_address, global_state_hash, key, path)
+            .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",
             serde_json::to_string_pretty(&response).expect("should encode to JSON")

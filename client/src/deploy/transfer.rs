@@ -161,16 +161,17 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
         let deploy_params = creation_common::parse_deploy_params(matches);
         let payment = creation_common::parse_payment_info(matches);
 
-        let response = casper_client::RpcCall::new(rpc_id, verbose).transfer(
-            common::node_address::get(matches),
-            amount::get(matches),
-            source_purse::get(matches),
-            target_account::get(matches),
-            target_purse::get(matches),
-            deploy_params,
-            payment,
-        )
-        .unwrap_or_else(|error| panic!("response error: {}", error));
+        let response = casper_client::RpcCall::new(rpc_id, verbose)
+            .transfer(
+                common::node_address::get(matches),
+                amount::get(matches),
+                source_purse::get(matches),
+                target_account::get(matches),
+                target_purse::get(matches),
+                deploy_params,
+                payment,
+            )
+            .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",
             serde_json::to_string_pretty(&response).expect("should encode to JSON")

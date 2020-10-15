@@ -60,7 +60,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for ListDeploys {
         let rpc_id = common::rpc_id::get(matches);
         let maybe_block_hash = common::block_hash::get(matches);
 
-        let response_value = casper_client::RpcCall::new(rpc_id, verbose).list_deploys(node_address, maybe_block_hash)
+        let response_value = casper_client::RpcCall::new(rpc_id, verbose)
+            .list_deploys(node_address, maybe_block_hash)
             .unwrap_or_else(|error| panic!("should parse as a GetBlockResult: {}", error));
         println!(
             "{}",

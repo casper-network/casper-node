@@ -61,7 +61,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetDeploy {
         let node_address = common::node_address::get(matches);
         let rpc_id = common::rpc_id::get(matches);
         let deploy_hash = deploy_hash::get(matches);
-        let response = casper_client::RpcCall::new(rpc_id, verbose).get_deploy(node_address, deploy_hash)
+        let response = casper_client::RpcCall::new(rpc_id, verbose)
+            .get_deploy(node_address, deploy_hash)
             .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",
