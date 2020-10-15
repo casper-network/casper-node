@@ -1,41 +1,204 @@
-use casper_node::rpcs::{
-    account::PutDeployParams,
-    chain::{GetBlockParams, GetGlobalStateHashParams},
-    info::GetDeployParams,
-    state::{GetBalanceParams, GetItemParams},
-    RPC_API_PATH,
-};
-
 use futures::executor;
-use jsonrpc_lite::{Id as RpcId, JsonRpc, Params};
+use jsonrpc_lite::{JsonRpc, Params};
 use reqwest::Client;
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 
-use crate::error::{Error, Result};
+use casper_execution_engine::core::engine_state::ExecutableDeployItem;
+use casper_node::{crypto::asymmetric_key::PublicKey, crypto::hash::Digest, rpcs::{
+        account::{PutDeploy, PutDeployParams},
+        chain::{
+            GetBlock, GetBlockParams, GetBlockResult, GetGlobalStateHash, GetGlobalStateHashParams,
+        },
+        info::{GetDeploy, GetDeployParams, GetDeployResult},
+        state::{
+            GetBalance, GetBalanceParams, GetBalanceResult, GetItem, GetItemParams, GetItemResult,
+        },
+        RPC_API_PATH,
+    }, types::{BlockHash, Deploy, DeployHash}};
+use casper_types::{RuntimeArgs, U512, URef, bytesrepr::ToBytes};
 
-// Magic number for JSON-RPC calls.
-const RPC_ID: RpcId = RpcId::Num(1234);
+use crate::{
+    deploy::{DeployExt, DeployParams, ListDeploys, ListDeploysResult, SendDeploy, Transfer},
+    error::{Error, Result},
+};
 
-// TODO: consider async_trait
+#[derive(Debug, Default)]
+pub struct RpcCall {
+    rpc_id: u32,
+    verbose: bool,
+}
+
+impl RpcCall {
+    pub fn new(rpc_id: u32, verbose: bool) -> Self {
+        Self { rpc_id, verbose }
+    }
+
+    pub fn get_deploy(
+        self,
+        node_address: String,
+        deploy_hash: DeployHash,
+    ) -> Result<GetDeployResult> {
+        let params = GetDeployParams { deploy_hash };
+        let response_value =
+            GetDeploy::request_with_map_params(self.verbose, &node_address, self.rpc_id, params)?;
+        Ok(serde_json::from_value::<GetDeployResult>(response_value)?)
+    }
+
+    pub fn get_item(
+        self,
+        node_address: String,
+        global_state_hash: Digest,
+        key: String,
+        path: Vec<String>,
+    ) -> Result<GetItemResult> {
+        let params = GetItemParams {
+            global_state_hash,
+            key,
+            path,
+        };
+        let response_value = GetItem::request_with_map_params(self.verbose, &node_address, self.rpc_id, params)?;
+        Ok(serde_json::from_value::<GetItemResult>(response_value)?)
+    }
+
+    pub fn get_global_state_hash(
+        self,
+        node_address: String,
+        maybe_block_hash: Option<BlockHash>,
+    ) -> Result<String> {
+        let response_value = match maybe_block_hash {
+            Some(block_hash) => {
+                let params = GetGlobalStateHashParams { block_hash };
+                GetGlobalStateHash::request_with_map_params(self.verbose, &node_address, self.rpc_id, params)?
+            }
+            None => GetGlobalStateHash::request(self.verbose, &node_address, self.rpc_id)?,
+        };
+        Ok(serde_json::from_value::<String>(response_value)?)
+    }
+
+    pub fn get_balance(
+        self,
+        node_address: String,
+        params: GetBalanceParams,
+    ) -> Result<GetBalanceResult> {
+        let response_value =
+            GetBalance::request_with_map_params(self.verbose, &node_address, self.rpc_id, params)?;
+        Ok(serde_json::from_value::<GetBalanceResult>(response_value)?)
+    }
+
+    pub fn transfer(
+        self,
+        node_address: String,
+        amount: U512,
+        source_purse: Option<URef>, // TODO un-option and multivariate
+        target_account: Option<PublicKey>,
+        target_purse: Option<URef>,
+        deploy_params: DeployParams,
+        payment: ExecutableDeployItem,
+    ) -> Result<()> {
+        const TRANSFER_ARG_AMOUNT: &str = "amount";
+        const TRANSFER_ARG_SOURCE: &str = "source";
+        const TRANSFER_ARG_TARGET: &str = "target";
+        let mut transfer_args = RuntimeArgs::new();
+        transfer_args.insert(TRANSFER_ARG_AMOUNT, amount);
+        if let Some(source_purse) = source_purse {
+            transfer_args.insert(TRANSFER_ARG_SOURCE, source_purse);
+        }
+        match (target_account, target_purse) {
+            (Some(target_account), None) => {
+                let target_account_hash = target_account.to_account_hash().value();
+                transfer_args.insert(TRANSFER_ARG_TARGET, target_account_hash);
+            }
+            (None, Some(target_purse)) => {
+                transfer_args.insert(TRANSFER_ARG_TARGET, target_purse);
+            }
+            _ => unreachable!("should have a target"),
+        }
+        let session = ExecutableDeployItem::Transfer {
+            args: transfer_args.to_bytes()?,
+        };
+        let deploy = Deploy::with_payment_and_session(deploy_params, payment, session);
+        let params = PutDeployParams { deploy };
+        let _ = Transfer::request_with_map_params(self.verbose, &node_address, self.rpc_id, params)?;
+        Ok(())
+    }
+
+    pub fn send_deploy_file(self, node_address: &str, input_path: &str) -> Result<()> {
+        let deploy = Deploy::read_deploy(&input_path)?;
+        let params = PutDeployParams { deploy };
+        let _ = SendDeploy::request_with_map_params(self.verbose, node_address,self.rpc_id, params)?;
+        Ok(())
+    }
+
+    pub fn put_deploy(self, node_address: String, deploy: Deploy) -> Result<()> {
+        let params = PutDeployParams { deploy };
+        let _ = PutDeploy::request_with_map_params(self.verbose, &node_address,self.rpc_id, params)?;
+        Ok(())
+    }
+
+    pub fn list_deploys(
+        self,
+        node_address: String,
+        maybe_block_hash: Option<BlockHash>,
+    ) -> Result<ListDeploysResult> {
+        let response_value = match maybe_block_hash {
+            Some(block_hash) => {
+                let params = GetBlockParams { block_hash };
+                ListDeploys::request_with_map_params(self.verbose, &node_address, self.rpc_id, params)?
+            }
+            None => ListDeploys::request(self.verbose, &node_address, self.rpc_id)?,
+        };
+        let get_block_result: GetBlockResult = serde_json::from_value(response_value)?;
+        let result = ListDeploysResult::from(get_block_result);
+        Ok(result)
+    }
+
+    pub fn get_block(
+        self,
+        node_address: &str,
+        maybe_block_hash: Option<BlockHash>,
+    ) -> Result<GetBlockResult> {
+        let response_value = match maybe_block_hash {
+            Some(block_hash) => {
+                let params = GetBlockParams { block_hash };
+                GetBlock::request_with_map_params(self.verbose, &node_address, self.rpc_id, params)?
+            }
+            None => GetBlock::request(self.verbose, &node_address, self.rpc_id)?,
+        };
+        Ok(serde_json::from_value::<GetBlockResult>(response_value)?)
+    }
+}
 
 /// General purpose client trait for making requests to casper-node's HTTP endpoints.
 pub(crate) trait RpcClient {
     const RPC_METHOD: &'static str;
 
     /// Call a casper-node JSON-RPC endpoint.
-    fn request(node_address: &str) -> Result<Value> {
+    fn request(verbose: bool, node_address: &str, rpc_id: u32) -> Result<Value> {
         executor::block_on(async {
-            request(node_address, RPC_ID, Self::RPC_METHOD, Params::None(())).await
+            request(
+                verbose,
+                node_address,
+                rpc_id,
+                Self::RPC_METHOD,
+                Params::None(()),
+            )
+            .await
         })
     }
 
     /// Call a casper node JSON-RPC endpoint with parameters.
-    fn request_with_map_params<T: IntoJsonMap>(node_address: &str, params: T) -> Result<Value> {
+    fn request_with_map_params<T: IntoJsonMap>(
+        verbose: bool,
+        node_address: &str,
+        rpc_id: u32,
+        params: T,
+    ) -> Result<Value> {
         executor::block_on(async {
             request(
+                verbose,
                 node_address,
-                RPC_ID,
+                rpc_id,
                 Self::RPC_METHOD,
                 Params::from(params.into_json_map()),
             )
@@ -44,9 +207,17 @@ pub(crate) trait RpcClient {
     }
 }
 
-async fn request(node_address: &str, id: RpcId, method: &str, params: Params) -> Result<Value> {
+// TODO - If/when https://github.com/AtsukiTak/warp-json-rpc/pull/1 is merged and published,
+//        change `rpc_id` to a `jsonrpc_lite::Id`.
+async fn request(
+    verbose: bool,
+    node_address: &str,
+    rpc_id: u32,
+    method: &str,
+    params: Params,
+) -> Result<Value> {
     let url = format!("{}/{}", node_address, RPC_API_PATH);
-    let rpc_req = JsonRpc::request_with_params(id, method, params);
+    let rpc_req = JsonRpc::request_with_params(rpc_id as i64, method, params);
     let client = Client::new();
     let response = client
         .post(&url)
@@ -56,22 +227,55 @@ async fn request(node_address: &str, id: RpcId, method: &str, params: Params) ->
         .map_err(Error::FailedToGetResponse)?;
 
     if let Err(error) = response.error_for_status_ref() {
-        panic!("Failed sending {:?}: {}", rpc_req, error);
+        if verbose {
+            println!("Failed Sending {:?}, {}", rpc_req, error);
+        }
+        return Err(Error::FailedSending(rpc_req))
     }
 
-    let rpc_response: JsonRpc = response
+    let rpc_response = response
         .json()
         .await
-        .map_err(Error::FailedToParseResponse)?;
+        .map_err(Error::FailedToParseResponse);
+
+    if let Err(error) = rpc_response {
+        if verbose {
+            println!("Failed parsing as a JSON-RPC response: {}", error);
+        }
+        return Err(error)
+    }
+
+    let rpc_response: JsonRpc = rpc_response?;
 
     if let Some(success) = rpc_response.get_result() {
+        if verbose {
+            println!("Received successful response:");
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&rpc_response).expect("should encode to JSON")
+            );
+        }
         return Ok(success.clone());
     }
 
     if let Some(error) = rpc_response.get_error() {
+        if verbose {
+            println!("Response returned an error");
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&rpc_response).expect("should encode to JSON")
+            );
+        }
         return Err(Error::ResponseIsError(error.clone()));
     }
 
+    if verbose {
+        println!("Invalid response returned");
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&rpc_response).expect("should encode to JSON")
+        );
+    }
     Err(Error::InvalidResponse(rpc_response))
 }
 

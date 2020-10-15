@@ -23,6 +23,9 @@ pub enum Error {
     #[error("invalid response: {0:?}")]
     InvalidResponse(JsonRpc),
 
+    #[error("Failed sending {0:?}")]
+    FailedSending(JsonRpc),
+
     #[error("io::Error {0:?}")]
     IoError(#[from] std::io::Error),
 

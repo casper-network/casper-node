@@ -136,6 +136,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
         let subcommand = SubCommand::with_name(Self::NAME)
             .about(Self::ABOUT)
             .display_order(display_order)
+            .arg(common::verbose::arg(DisplayOrder::Verbose as usize))
+            .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
             .arg(amount::arg())
             .arg(source_purse::arg())
             .arg(target_account::arg())
@@ -154,10 +156,12 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
 
     fn run(matches: &ArgMatches<'_>) {
         creation_common::show_arg_examples_and_exit_if_required(matches);
+        let verbose = common::verbose::get(matches);
+        let rpc_id = common::rpc_id::get(matches);
         let deploy_params = creation_common::parse_deploy_params(matches);
         let payment = creation_common::parse_payment_info(matches);
 
-        let response_value = casper_client::deploy::transfer(
+        let response = casper_client::RpcCall::new(rpc_id, verbose).transfer(
             common::node_address::get(matches),
             amount::get(matches),
             source_purse::get(matches),
@@ -167,7 +171,9 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
             payment,
         )
         .unwrap_or_else(|error| panic!("response error: {}", error));
-        // TODO improve output
-        println!("{:?}", response_value);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&response).expect("should encode to JSON")
+        );
     }
 }

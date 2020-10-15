@@ -1,3 +1,12 @@
-mod get;
+use casper_node::{
+    rpcs::{
+        chain::{GetBlock},
+        RpcWithOptionalParams,
+    },
+};
 
-pub use get::get_block;
+use crate::{rpc::RpcClient};
+
+impl RpcClient for GetBlock {
+    const RPC_METHOD: &'static str = Self::METHOD;
+}

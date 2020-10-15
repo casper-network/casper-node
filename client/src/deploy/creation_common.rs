@@ -29,7 +29,9 @@ use crate::common;
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 pub(super) enum DisplayOrder {
     ShowArgExamples,
+    Verbose,
     NodeAddress,
+    RpcId,
     SecretKey,
     Input,
     Output,
@@ -202,7 +204,7 @@ pub(super) mod gas_price {
     use super::*;
 
     const ARG_NAME: &str = "gas-price";
-    const ARG_VALUE_NAME: &str = "INTEGER";
+    const ARG_VALUE_NAME: &str = common::ARG_INTEGER;
     const ARG_DEFAULT: &str = "10";
     const ARG_HELP: &str =
         "Conversion rate between the cost of Wasm opcodes and the motes sent by the payment code";
@@ -1130,7 +1132,7 @@ pub(crate) mod session_version {
     use super::*;
 
     pub const ARG_NAME: &str = "session-version";
-    const ARG_VALUE_NAME: &str = "INTEGER";
+    const ARG_VALUE_NAME: &str = common::ARG_INTEGER;
     const ARG_HELP: &str = "Version of the called session contract. Latest will be used by default";
 
     pub fn arg() -> Arg<'static, 'static> {
@@ -1264,7 +1266,7 @@ pub(crate) mod payment_version {
     use super::*;
 
     pub const ARG_NAME: &str = "payment-version";
-    const ARG_VALUE_NAME: &str = "INTEGER";
+    const ARG_VALUE_NAME: &str = common::ARG_INTEGER;
     const ARG_HELP: &str = "Version of the called payment contract. Latest will be used by default";
 
     pub fn arg() -> Arg<'static, 'static> {

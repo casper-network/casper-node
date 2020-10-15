@@ -9,7 +9,9 @@ use crate::{command::ClientCommand, common};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
+    Verbose,
     NodeAddress,
+    RpcId,
     GlobalStateHash,
     Key,
     Path,
@@ -112,9 +114,11 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
         SubCommand::with_name(Self::NAME)
             .about(Self::ABOUT)
             .display_order(display_order)
+            .arg(common::verbose::arg(DisplayOrder::Verbose as usize))
             .arg(common::node_address::arg(
                 DisplayOrder::NodeAddress as usize,
             ))
+            .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
             .arg(common::global_state_hash::arg(
                 DisplayOrder::GlobalStateHash as usize,
             ))
@@ -123,14 +127,19 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
     }
 
     fn run(matches: &ArgMatches<'_>) {
+        let verbose = common::verbose::get(matches);
         let node_address = common::node_address::get(matches);
+        let rpc_id = common::rpc_id::get(matches);
         let global_state_hash = common::global_state_hash::get(matches);
         let key = key::get(matches);
         let path = path::get(matches);
 
-        let response_value =
-            casper_client::query_state::get_item(node_address, global_state_hash, key, path)
+        let response =
+            casper_client::RpcCall::new(rpc_id, verbose).get_item(node_address, global_state_hash, key, path)
                 .unwrap_or_else(|error| panic!("response error: {}", error));
-        println!("{:?}", response_value);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&response).expect("should encode to JSON")
+        );
     }
 }

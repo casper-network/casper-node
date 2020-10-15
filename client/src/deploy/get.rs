@@ -8,7 +8,9 @@ use crate::{command::ClientCommand, common};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
+    Verbose,
     NodeAddress,
+    RpcId,
     DeployHash,
 }
 
@@ -46,17 +48,24 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetDeploy {
         SubCommand::with_name(Self::NAME)
             .about(Self::ABOUT)
             .display_order(display_order)
+            .arg(common::verbose::arg(DisplayOrder::Verbose as usize))
             .arg(common::node_address::arg(
                 DisplayOrder::NodeAddress as usize,
             ))
+            .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
             .arg(deploy_hash::arg())
     }
 
     fn run(matches: &ArgMatches<'_>) {
+        let verbose = common::verbose::get(matches);
         let node_address = common::node_address::get(matches);
+        let rpc_id = common::rpc_id::get(matches);
         let deploy_hash = deploy_hash::get(matches);
-        let response_value = casper_client::deploy::get_deploy(node_address, deploy_hash)
+        let response = casper_client::RpcCall::new(rpc_id, verbose).get_deploy(node_address, deploy_hash)
             .unwrap_or_else(|error| panic!("response error: {}", error));
-        println!("{:?}", response_value);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&response).expect("should encode to JSON")
+        );
     }
 }
