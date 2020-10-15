@@ -16,7 +16,9 @@ use crate::{command::ClientCommand, common, RpcClient};
 
 /// This struct defines the order in which the args are shown for this subcommand.
 enum DisplayOrder {
+    Verbose,
     NodeAddress,
+    RpcId,
     BlockHash,
 }
 
@@ -54,27 +56,35 @@ impl<'a, 'b> ClientCommand<'a, 'b> for ListDeploys {
         SubCommand::with_name(Self::NAME)
             .about(Self::ABOUT)
             .display_order(display_order)
+            .arg(common::verbose::arg(DisplayOrder::Verbose as usize))
             .arg(common::node_address::arg(
                 DisplayOrder::NodeAddress as usize,
             ))
+            .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
             .arg(common::block_hash::arg(DisplayOrder::BlockHash as usize))
     }
 
     fn run(matches: &ArgMatches<'_>) {
+        let verbose = common::verbose::get(matches);
         let node_address = common::node_address::get(matches);
+        let rpc_id = common::rpc_id::get(matches);
         let maybe_block_hash = common::block_hash::get(matches);
 
-        let response_value = match maybe_block_hash {
+        let response = match maybe_block_hash {
             Some(block_hash) => {
                 let params = GetBlockParams { block_hash };
-                Self::request_with_map_params(&node_address, params)
+                Self::request_with_map_params(verbose, &node_address, rpc_id, params)
             }
-            None => Self::request(&node_address),
-        }
-        .unwrap_or_else(|error| panic!("response error: {}", error));
+            None => Self::request(verbose, &node_address, rpc_id),
+        };
 
-        let get_block_result: GetBlockResult = serde_json::from_value(response_value)
-            .unwrap_or_else(|error| panic!("should parse as a GetBlockResult: {}", error));
+        let get_block_result: GetBlockResult = serde_json::from_value(
+            response
+                .get_result()
+                .expect("should already be validated as a successful response")
+                .clone(),
+        )
+        .unwrap_or_else(|error| panic!("should parse as a GetBlockResult: {}", error));
 
         let result = ListDeploysResult::from(get_block_result);
         println!("{}", serde_json::to_string(&result).unwrap());

@@ -130,6 +130,8 @@ impl reactor::Reactor for Reactor {
             .load(root.clone())
             .map_err(|err| Error::ConfigError(err.to_string()))?;
 
+        chainspec.validate_config();
+
         let effect_builder = EffectBuilder::new(event_queue);
 
         let storage_config = WithDir::new(&root, config.storage.clone());

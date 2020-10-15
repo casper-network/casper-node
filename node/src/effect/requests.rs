@@ -482,7 +482,7 @@ pub enum ContractRuntimeRequest {
     /// A request to run upgrade.
     Upgrade {
         /// Upgrade config.
-        upgrade_config: UpgradeConfig,
+        upgrade_config: Box<UpgradeConfig>,
         /// Responder to call with the upgrade result.
         responder: Responder<Result<UpgradeResult, engine_state::Error>>,
     },
@@ -530,7 +530,7 @@ impl Display for ContractRuntimeRequest {
             } => write!(
                 formatter,
                 "execute request: {}",
-                execute_request.state_root_hash
+                execute_request.parent_state_hash
             ),
 
             ContractRuntimeRequest::Commit {

@@ -175,14 +175,14 @@ where
                             self.completed_successfully = Some(false);
                         }
                         GenesisResult::Success {
-                            state_root_hash,
+                            post_state_hash,
                             effect,
                         } => {
                             info!("chainspec name {}", self.chainspec.genesis.name);
-                            info!("genesis state root hash {}", state_root_hash);
-                            trace!(%state_root_hash, ?effect);
+                            info!("genesis state root hash {}", post_state_hash);
+                            trace!(%post_state_hash, ?effect);
                             self.completed_successfully = Some(true);
-                            self.genesis_state_root_hash = Some(state_root_hash.into());
+                            self.genesis_state_root_hash = Some(post_state_hash.into());
                         }
                     },
                     Err(error) => {

@@ -191,7 +191,7 @@ impl BlockExecutor {
                     .map(|&vid| SlashItem::new(vid.into()))
                     .collect();
                 let request = StepRequest {
-                    state_root_hash: state.state_root_hash.into(),
+                    pre_state_hash: state.state_root_hash.into(),
                     protocol_version: ProtocolVersion::V1_0_0,
                     reward_items,
                     slash_items,
@@ -453,8 +453,8 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
             Event::RunStepResult { mut state, result } => {
                 trace!(?result, "run step result");
                 match result {
-                    Ok(StepResult::Success { state_root_hash }) => {
-                        state.state_root_hash = state_root_hash.into();
+                    Ok(StepResult::Success { post_state_hash }) => {
+                        state.state_root_hash = post_state_hash.into();
                         self.finalize_block_execution(effect_builder, state)
                     }
                     _ => {

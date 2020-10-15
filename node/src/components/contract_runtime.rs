@@ -221,7 +221,7 @@ where
                     let correlation_id = CorrelationId::new();
                     let result = task::spawn_blocking(move || {
                         let start = Instant::now();
-                        let result = engine_state.commit_upgrade(correlation_id, upgrade_config);
+                        let result = engine_state.commit_upgrade(correlation_id, *upgrade_config);
                         metrics
                             .commit_upgrade
                             .observe(start.elapsed().as_secs_f64());
