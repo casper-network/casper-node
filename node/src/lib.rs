@@ -51,6 +51,9 @@ pub use components::{
 };
 pub use utils::OS_PAGE_SIZE;
 
+/// The maximum thread count which should be spawned by the tokio runtime.
+pub const MAX_THREAD_COUNT: usize = 512;
+
 lazy_static! {
     /// Version string for the compiled node. Filled in at build time, output allocated at runtime.
     pub static ref VERSION_STRING: String = {
