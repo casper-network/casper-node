@@ -117,7 +117,10 @@ impl State<TestContext> {
         &mut self,
         swvote: SignedWireVote<TestContext>,
     ) -> Result<(), AddVoteError<TestContext>> {
-        if let Err(err) = self.validate_vote(&swvote) {
+        if let Err(err) = self
+            .pre_validate_vote(&swvote)
+            .and_then(|()| self.validate_vote(&swvote))
+        {
             return Err(swvote.with_error(err));
         }
         self.add_valid_vote(swvote);
