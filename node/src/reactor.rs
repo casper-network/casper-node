@@ -41,7 +41,7 @@ use std::{
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use lazy_static::lazy_static;
-use prometheus::{self, IntCounter, Registry};
+use prometheus::{self, Histogram, HistogramOpts, IntCounter, Registry};
 use quanta::IntoNanoseconds;
 use tracing::{debug, debug_span, info, trace, warn};
 use tracing_futures::Instrument;
@@ -226,6 +226,9 @@ struct RunnerMetrics {
     /// Total number of events processed.
     events: IntCounter,
 
+    /// Histogram of how long it took to dispatch an event.
+    event_dispatch_duration: Histogram,
+
     /// Handle to the metrics registry, in case we need to unregister.
     registry: Registry,
 }
@@ -234,10 +237,42 @@ impl RunnerMetrics {
     /// Create and register new runner metrics.
     fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
         let events = IntCounter::new("runner_events", "total event count")?;
+
+        // Create an event dispatch histogram, putting extra emphasis on the area between 1-10 us.
+        let event_dispatch_duration = Histogram::with_opts(
+            HistogramOpts::new(
+                "event_dispatch_duration",
+                "duration of complete dispatch of a single event in nanoseconds",
+            )
+            .buckets(vec![
+                100.0,
+                500.0,
+                1_000.0,
+                5_000.0,
+                10_000.0,
+                20_000.0,
+                50_000.0,
+                100_000.0,
+                200_000.0,
+                300_000.0,
+                400_000.0,
+                500_000.0,
+                600_000.0,
+                700_000.0,
+                800_000.0,
+                900_000.0,
+                1_000_000.0,
+                2_000_000.0,
+                5_000_000.0,
+            ]),
+        )?;
+
         registry.register(Box::new(events.clone()))?;
+        registry.register(Box::new(event_dispatch_duration.clone()))?;
 
         Ok(RunnerMetrics {
             events,
+            event_dispatch_duration,
             registry: registry.clone(),
         })
     }
@@ -247,7 +282,10 @@ impl Drop for RunnerMetrics {
     fn drop(&mut self) {
         self.registry
             .unregister(Box::new(self.events.clone()))
-            .expect("did not expect deregistering metrics to fail")
+            .expect("did not expect deregistering events to fail");
+        self.registry
+            .unregister(Box::new(self.event_dispatch_duration.clone()))
+            .expect("did not expect deregistering event_dispatch_duration to fail");
     }
 }
 
@@ -365,8 +403,9 @@ where
         let start = self.clock.start();
         let effects = self.reactor.dispatch_event(effect_builder, rng, event);
         let end = self.clock.end();
-        let delta = self.clock.delta(start, end);
 
+        // Warn if processing took a long time, record to histogram.
+        let delta = self.clock.delta(start, end);
         if delta > *DISPATCH_EVENT_THRESHOLD {
             warn!(
                 ns = delta.into_nanos(),
@@ -374,6 +413,9 @@ where
                 "event took very long to dispatch"
             );
         }
+        self.metrics
+            .event_dispatch_duration
+            .observe(delta.into_nanos() as f64);
 
         drop(inner_enter);
 

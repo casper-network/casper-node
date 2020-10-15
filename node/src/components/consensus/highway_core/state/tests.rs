@@ -117,7 +117,10 @@ impl State<TestContext> {
         &mut self,
         swvote: SignedWireVote<TestContext>,
     ) -> Result<(), AddVoteError<TestContext>> {
-        if let Err(err) = self.validate_vote(&swvote) {
+        if let Err(err) = self
+            .pre_validate_vote(&swvote)
+            .and_then(|()| self.validate_vote(&swvote))
+        {
             return Err(swvote.with_error(err));
         }
         self.add_valid_vote(swvote);
@@ -184,6 +187,7 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     // Alice equivocates: A1 doesn't see a1.
     let ae1 = add_vote!(state, rng, ALICE, None; a0, b1, c0)?;
     assert!(state.has_evidence(ALICE));
+    assert_eq!(panorama![F, b1, c1], *state.panorama());
 
     let missing = panorama!(F, b1, c0).missing_dependency(&state);
     assert_eq!(None, missing);

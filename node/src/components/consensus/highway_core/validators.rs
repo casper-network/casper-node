@@ -67,9 +67,9 @@ impl<VID: Eq + Hash> Validators<VID> {
         self.index_by_id.get(id).cloned()
     }
 
-    /// Returns validator at index, or `None` if it doesn't exist.
-    pub(crate) fn get_by_index(&self, idx: ValidatorIndex) -> Option<&Validator<VID>> {
-        self.validators.get(idx.0 as usize)
+    /// Returns validator ID by index, or `None` if it doesn't exist.
+    pub(crate) fn id(&self, idx: ValidatorIndex) -> Option<&VID> {
+        self.validators.get(idx.0 as usize).map(Validator::id)
     }
 
     /// Returns an iterator over all validators, sorted by ID.

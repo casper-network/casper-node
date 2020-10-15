@@ -40,8 +40,8 @@ use crate::{
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
     types::{
-        json_compatibility::ExecutionResult, Block as LinearBlock, BlockHash, BlockHeader, Deploy,
-        DeployHash, FinalizedBlock, Item, ProtoBlockHash, StatusFeed, Timestamp,
+        json_compatibility::ExecutionResult, Block as LinearBlock, Block, BlockHash, BlockHeader,
+        Deploy, DeployHash, FinalizedBlock, Item, ProtoBlockHash, StatusFeed, Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
@@ -482,7 +482,7 @@ pub enum ContractRuntimeRequest {
     /// A request to run upgrade.
     Upgrade {
         /// Upgrade config.
-        upgrade_config: UpgradeConfig,
+        upgrade_config: Box<UpgradeConfig>,
         /// Responder to call with the upgrade result.
         responder: Responder<Result<UpgradeResult, engine_state::Error>>,
     },
@@ -637,6 +637,9 @@ pub enum LinearChainRequest<I> {
     BlockRequest(BlockHash, I),
     /// Request for a linear chain block at height.
     BlockAtHeight(BlockHeight, I),
+    /// Local request for a linear chain block at height.
+    /// TODO: Unify `BlockAtHeight` and `BlockAtHeightLocal`.
+    BlockAtHeightLocal(BlockHeight, Responder<Option<Block>>),
 }
 
 impl<I: Display> Display for LinearChainRequest<I> {
@@ -647,6 +650,9 @@ impl<I: Display> Display for LinearChainRequest<I> {
             }
             LinearChainRequest::BlockAtHeight(height, sender) => {
                 write!(f, "block request for {} from {}", height, sender)
+            }
+            LinearChainRequest::BlockAtHeightLocal(height, _) => {
+                write!(f, "local request for block at height {}", height)
             }
         }
     }
