@@ -9,27 +9,25 @@ use super::gas::Gas;
 /// Representation of argument's cost.
 pub type Cost = u32;
 
+const DEFAULT_FIXED_COST: Cost = 42;
+
 /// Representation of a host function cost
 ///
 /// Total gas cost is equal to `cost` + sum of each argument weight multiplied by the byte size of
 /// the data.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Debug, Default)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Debug, DataSize)]
 pub struct HostFunction<T> {
     /// How much user is charged for cost only
     cost: Cost,
     arguments: T,
 }
 
-impl<T> DataSize for HostFunction<T>
+impl<T> Default for HostFunction<T>
 where
-    T: Copy + AsRef<[Cost]>,
+    T: Default,
 {
-    const IS_DYNAMIC: bool = false;
-
-    const STATIC_HEAP_SIZE: usize = 0;
-
-    fn estimate_heap_size(&self) -> usize {
-        0
+    fn default() -> Self {
+        HostFunction::new(DEFAULT_FIXED_COST, Default::default())
     }
 }
 
@@ -40,6 +38,18 @@ impl<T> HostFunction<T> {
 
     pub fn cost(&self) -> Cost {
         self.cost
+    }
+}
+
+impl<T> HostFunction<T>
+where
+    T: Default,
+{
+    pub fn fixed(cost: Cost) -> Self {
+        Self {
+            cost,
+            ..Default::default()
+        }
     }
 }
 
@@ -71,7 +81,7 @@ where
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> HostFunction<T> {
         let cost = rng.gen::<Cost>();
         let arguments = rng.gen();
-        HostFunction::<T> { cost, arguments }
+        HostFunction::new(cost, arguments)
     }
 }
 

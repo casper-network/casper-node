@@ -23,6 +23,7 @@ use std::{
     rc::Rc,
 };
 
+use lazy_static::lazy_static;
 use num_traits::Zero;
 use parity_wasm::elements::Module;
 use tracing::{debug, error, warn};
@@ -84,7 +85,10 @@ use crate::{
 
 // TODO?: MAX_PAYMENT && CONV_RATE values are currently arbitrary w/ real values
 // TBD gas * CONV_RATE = motes
-pub const MAX_PAYMENT: u64 = 10_000_000;
+lazy_static! {
+    pub static ref MAX_PAYMENT: U512 = U512::from(10_000_000);
+}
+
 pub const CONV_RATE: u64 = 10;
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
@@ -1376,7 +1380,7 @@ where
             Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
         };
 
-        let max_payment_cost: Motes = Motes::new(U512::from(MAX_PAYMENT));
+        let max_payment_cost: Motes = Motes::new(*MAX_PAYMENT);
 
         // Enforce minimum main purse balance validation
         // validation_spec_5: account main purse minimum balance

@@ -32,7 +32,7 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
     let exec_request = ExecuteRequestBuilder::standard(
        *DEFAULT_ACCOUNT_ADDR,
         TRANSFER_PURSE_TO_ACCOUNT_WASM,
-        runtime_args! { "target" =>account_1_account_hash, "amount" => U512::from(MAX_PAYMENT - 1) },
+        runtime_args! { "target" => account_1_account_hash, "amount" => *MAX_PAYMENT - U512::one() },
     )
     .build();
 
@@ -113,7 +113,7 @@ fn should_raise_insufficient_payment_when_payment_code_does_not_pay_enough() {
     let reward_balance = get_pos_rewards_purse_balance(&builder);
 
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-    let expected_reward_balance: U512 = U512::from(MAX_PAYMENT);
+    let expected_reward_balance = *MAX_PAYMENT;
 
     assert_eq!(
         modified_balance,
@@ -180,7 +180,7 @@ fn should_raise_insufficient_payment_error_when_out_of_gas() {
         .finish();
 
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-    let expected_reward_balance: U512 = U512::from(MAX_PAYMENT);
+    let expected_reward_balance = *MAX_PAYMENT;
 
     let modified_balance = builder.get_purse_balance(
         builder
@@ -253,7 +253,7 @@ fn should_forward_payment_execution_runtime_error() {
         .finish();
 
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-    let expected_reward_balance: U512 = U512::from(MAX_PAYMENT);
+    let expected_reward_balance = *MAX_PAYMENT;
 
     let modified_balance = builder.get_purse_balance(
         builder
@@ -322,7 +322,7 @@ fn should_forward_payment_execution_gas_limit_error() {
         .finish();
 
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-    let expected_reward_balance: U512 = U512::from(MAX_PAYMENT);
+    let expected_reward_balance = *MAX_PAYMENT;
 
     let modified_balance = builder.get_purse_balance(
         builder
