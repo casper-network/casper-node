@@ -152,11 +152,11 @@ impl<I> Era<I> {
             .push(PendingCandidate::new(candidate, missing_evidence));
     }
 
-    /// Marks the dependencies of candidate blocks on evidence against validator `v_id` as resolved
-    /// and returns all candidates that have no missing dependencies left.
-    fn resolve_evidence(&mut self, v_id: &PublicKey) -> Vec<CandidateBlock> {
+    /// Marks the dependencies of candidate blocks on evidence against validator `pub_key` as
+    /// resolved and returns all candidates that have no missing dependencies left.
+    fn resolve_evidence(&mut self, pub_key: &PublicKey) -> Vec<CandidateBlock> {
         for pc in &mut self.candidates {
-            pc.missing_evidence.retain(|v| v != v_id);
+            pc.missing_evidence.retain(|pk| pk != pub_key);
         }
         self.remove_complete_candidates()
     }
@@ -869,12 +869,12 @@ where
                 );
                 effects
             }
-            ConsensusProtocolResult::NewEvidence(v_id) => {
+            ConsensusProtocolResult::NewEvidence(pub_key) => {
                 let mut effects = Effects::new();
                 for e_id in (era_id.0..=(era_id.0 + BONDED_ERAS)).map(EraId) {
                     let candidate_blocks =
                         if let Some(era) = self.era_supervisor.active_eras.get_mut(&e_id) {
-                            era.resolve_evidence(&v_id)
+                            era.resolve_evidence(&pub_key)
                         } else {
                             continue;
                         };
