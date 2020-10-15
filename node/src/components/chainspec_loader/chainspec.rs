@@ -116,7 +116,11 @@ impl HighwayConfig {
     /// Checks whether the values set in the config make sense and prints warnings if they don't
     pub fn validate_config(&self) {
         let min_era_ms = 1u64 << self.minimum_round_exponent;
-        if self.era_duration.millis() < self.minimum_era_height * min_era_ms {
+        // if the era duration is set to zero, we will treat it as explicitly stating that eras
+        // should be defined by height only
+        if self.era_duration.millis() > 0
+            && self.era_duration.millis() < self.minimum_era_height * min_era_ms
+        {
             warn!("Era duration is less than minimum era height * round length!");
         }
     }
