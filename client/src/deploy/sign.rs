@@ -1,32 +1,16 @@
-use clap::{App, ArgMatches, SubCommand};
+use casper_node::{crypto::asymmetric_key::SecretKey, types::Deploy};
 
-use super::creation_common;
-use crate::{command::ClientCommand, common};
+use super::DeployExt;
+use crate::error::Result;
 
-pub struct SignDeploy;
-
-impl<'a, 'b> ClientCommand<'a, 'b> for SignDeploy {
-    const NAME: &'static str = "sign-deploy";
-    const ABOUT: &'static str =
-        "Cryptographically signs a deploy and appends signature to existing approvals";
-
-    fn build(display_order: usize) -> App<'a, 'b> {
-        SubCommand::with_name(Self::NAME)
-            .about(Self::ABOUT)
-            .display_order(display_order)
-            .arg(common::secret_key::arg(
-                creation_common::DisplayOrder::SecretKey as usize,
-            ))
-            .arg(creation_common::input::arg())
-            .arg(creation_common::output::arg())
-    }
-
-    fn run(matches: &ArgMatches<'_>) {
-        let input_path = creation_common::input::get(matches);
-        let secret_key = common::secret_key::get(matches);
-        let maybe_output = creation_common::output::get(matches);
-        client_lib::deploy::sign_deploy_file(&input_path, secret_key, maybe_output).unwrap_or_else(
-            move |err| panic!("error writing deploy to {:?}: {}", maybe_output, err),
-        );
-    }
+pub fn sign_deploy_file(
+    input_path: &str,
+    secret_key: SecretKey,
+    output_path: Option<&str>,
+) -> Result<()> {
+    let mut deploy = Deploy::read_deploy(input_path)?;
+    let mut rng = rand::thread_rng();
+    deploy.sign(&secret_key, &mut rng);
+    deploy.write_deploy(output_path)?;
+    Ok(())
 }

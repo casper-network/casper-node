@@ -1,20 +1,21 @@
-use std::str;
-
-use clap::{App, ArgMatches, SubCommand};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use casper_node::{rpcs::chain::GetBlockResult, types::DeployHash};
+use casper_node::{
+    rpcs::{
+        chain::{GetBlock, GetBlockParams, GetBlockResult},
+        RpcWithOptionalParams,
+    },
+    types::{BlockHash, DeployHash},
+};
 
-use crate::{command::ClientCommand, common};
-
-/// This struct defines the order in which the args are shown for this subcommand.
-enum DisplayOrder {
-    NodeAddress,
-    BlockHash,
-}
+use crate::{error::Result, rpc::RpcClient};
 
 pub struct ListDeploys {}
+
+impl RpcClient for ListDeploys {
+    const RPC_METHOD: &'static str = GetBlock::METHOD;
+}
 
 /// Result for "chain_get_block" RPC response.
 #[derive(Serialize, Deserialize, Debug)]
@@ -36,27 +37,18 @@ impl From<GetBlockResult> for ListDeploysResult {
     }
 }
 
-impl<'a, 'b> ClientCommand<'a, 'b> for ListDeploys {
-    const NAME: &'static str = "list-deploys";
-    const ABOUT: &'static str = "Gets the list of all deploy hashes from a given block";
-
-    fn build(display_order: usize) -> App<'a, 'b> {
-        SubCommand::with_name(Self::NAME)
-            .about(Self::ABOUT)
-            .display_order(display_order)
-            .arg(common::node_address::arg(
-                DisplayOrder::NodeAddress as usize,
-            ))
-            .arg(common::block_hash::arg(DisplayOrder::BlockHash as usize))
-    }
-
-    fn run(matches: &ArgMatches<'_>) {
-        let node_address = common::node_address::get(matches);
-        let maybe_block_hash = common::block_hash::get(matches);
-
-        let response_value = client_lib::deploy::list_deploys(node_address, maybe_block_hash)
-            .unwrap_or_else(|error| panic!("should parse as a GetBlockResult: {}", error));
-
-        println!("{}", serde_json::to_string(&response_value).unwrap());
-    }
+pub fn list_deploys(
+    node_address: String,
+    maybe_block_hash: Option<BlockHash>,
+) -> Result<ListDeploysResult> {
+    let response_value = match maybe_block_hash {
+        Some(block_hash) => {
+            let params = GetBlockParams { block_hash };
+            ListDeploys::request_with_map_params(&node_address, params)?
+        }
+        None => ListDeploys::request(&node_address)?,
+    };
+    let get_block_result: GetBlockResult = serde_json::from_value(response_value)?;
+    let result = ListDeploysResult::from(get_block_result);
+    Ok(result)
 }

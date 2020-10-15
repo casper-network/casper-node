@@ -11,6 +11,7 @@ use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches};
 use lazy_static::lazy_static;
 use serde::{self, Deserialize};
 
+use casper_client::{deploy::DeployParams, ExecutableDeployItemExt};
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_node::{
     crypto::{asymmetric_key::PublicKey as NodePublicKey, hash::Digest},
@@ -22,7 +23,6 @@ use casper_types::{
     AccessRights, CLType, CLTyped, CLValue, ContractHash, Key, NamedArg, PublicKey, RuntimeArgs,
     URef, U128, U256, U512,
 };
-use client_lib::{deploy::DeployParams, ExecutableDeployItemExt};
 
 use crate::common;
 
