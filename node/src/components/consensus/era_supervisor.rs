@@ -692,7 +692,7 @@ where
 /// Network metrics to track Consensus
 #[derive(Debug)]
 pub struct ConsensusMetrics {
-    /// Gauge to track rate.
+    /// Gauge to track time between proposal and finalization.
     finalization_time: Gauge,
     /// Amount of finalized blocks.
     finalized_block_count: IntCounter,
