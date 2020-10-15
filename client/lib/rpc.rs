@@ -33,11 +33,16 @@ pub struct RpcCall {
     verbose: bool,
 }
 
+/// RpcCall encapsulates calls made to the `casper-node` service via JSON-RPC.
 impl RpcCall {
+    /// Create a new instance, specifying an `rpc_id` for RPC-ID as required by the JSON-RPC
+    /// specification. When `verbose` is `true`, requests and responses will be printed to
+    /// `stdout`.
     pub fn new(rpc_id: u32, verbose: bool) -> Self {
         Self { rpc_id, verbose }
     }
 
+    /// Gets a deploy from the node.
     pub fn get_deploy(
         self,
         node_address: String,
@@ -49,6 +54,7 @@ impl RpcCall {
         Ok(serde_json::from_value::<GetDeployResult>(response_value)?)
     }
 
+    /// Queries the node for an item at `key`, given a `path` and a `global_state_hash`.
     pub fn get_item(
         self,
         node_address: String,
@@ -66,6 +72,8 @@ impl RpcCall {
         Ok(serde_json::from_value::<GetItemResult>(response_value)?)
     }
 
+    /// Queries the node for the most recent `global_state_hash`, or as of a given block hash if
+    /// `maybe_block_hash` is provided.
     pub fn get_global_state_hash(
         self,
         node_address: String,
@@ -86,6 +94,7 @@ impl RpcCall {
         Ok(serde_json::from_value::<String>(response_value)?)
     }
 
+    /// Get the balance from an account.
     pub fn get_balance(
         self,
         node_address: String,
@@ -96,6 +105,8 @@ impl RpcCall {
         Ok(serde_json::from_value::<GetBalanceResult>(response_value)?)
     }
 
+    /// Transfer an amount between accounts.
+    #[allow(clippy::too_many_arguments)]
     pub fn transfer(
         self,
         node_address: String,
@@ -134,6 +145,7 @@ impl RpcCall {
         Ok(())
     }
 
+    /// Attempt to read a previously-saved deploy from file, and send that to the node.
     pub fn send_deploy_file(self, node_address: &str, input_path: &str) -> Result<()> {
         let deploy = Deploy::read_deploy(&input_path)?;
         let params = PutDeployParams { deploy };
@@ -142,6 +154,7 @@ impl RpcCall {
         Ok(())
     }
 
+    /// Put a deploy to a node.
     pub fn put_deploy(self, node_address: String, deploy: Deploy) -> Result<()> {
         let params = PutDeployParams { deploy };
         let _ =
@@ -149,6 +162,7 @@ impl RpcCall {
         Ok(())
     }
 
+    /// List deploys for the most recent block, or optionally passed block hash.
     pub fn list_deploys(
         self,
         node_address: String,
@@ -171,6 +185,7 @@ impl RpcCall {
         Ok(result)
     }
 
+    /// Get a block from the node.
     pub fn get_block(
         self,
         node_address: &str,
