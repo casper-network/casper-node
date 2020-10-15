@@ -314,83 +314,13 @@ impl DeployBuffer {
 
     /// Prunes expired deploy information from the DeployBuffer, returns the total deploys pruned
     fn prune(&mut self, current_instant: Timestamp) -> usize {
-        /// Prunes a deploy from an individual DeployCollection, returns the total
-        /// deploys pruned
-        fn prune_deploys(deploys: &mut DeployCollection, expired: DeployHash) -> usize {
-            let initial_len = deploys.len();
-            deploys.retain(|k, v| k != &expired && !v.dependencies().contains(k));
-            initial_len - deploys.len()
-        }
-        /// Prunes an expired deploy information from each ProtoBlockCollection, returns the total
-        /// deploys pruned
-        fn prune_blocks(blocks: &mut ProtoBlockCollection, expired: DeployHash) -> usize {
-            let mut pruned = 0;
-            let mut remove = Vec::new();
-            for (block_hash, deploys) in blocks.iter_mut() {
-                pruned += prune_deploys(deploys, expired);
-                if deploys.is_empty() {
-                    remove.push(*block_hash);
-                }
-            }
-            blocks.retain(|k, _v| !remove.contains(&k));
-            pruned
-        }
-
-        /// Create an iterator over all expired deploys in this DeployCollection
-        fn iter_expired_deploys(
-            deploys: &DeployCollection,
-            current_instant: Timestamp,
-        ) -> impl Iterator<Item = &DeployHash> {
-            deploys.iter().filter_map(move |(hash, header)| {
-                if header.expired(current_instant) {
-                    Some(hash)
-                } else {
-                    None
-                }
-            })
-        }
-
-        /// Helper to create iterator over all blocks
-        fn iter_expired_deploys_from_block(
-            blocks: &ProtoBlockCollection,
-            current_instant: Timestamp,
-        ) -> impl Iterator<Item = &DeployHash> {
-            blocks
-                .iter()
-                .flat_map(move |(_block, deploys)| iter_expired_deploys(deploys, current_instant))
-        }
-
-        /// Helper to create iterator over all dependencies of deploys in this DeployCollection
-        fn iter_dependencies_of_expired_deploys<'a>(
-            deploys: &'a DeployCollection,
-            expired_deploys: &'a HashSet<&'a DeployHash>,
-        ) -> impl Iterator<Item = &'a DeployHash> {
-            deploys.iter().filter_map(move |(k, v)| {
-                if v.dependencies().iter().any(|f| expired_deploys.contains(f)) {
-                    Some(k)
-                } else {
-                    None
-                }
-            })
-        }
-
-        /// Helper to create iteraor over all dependencies of deploys contained in this block
-        fn iter_dependencies_of_expired_deploys_from_block<'a>(
-            blocks: &'a ProtoBlockCollection,
-            expired_deploys: &'a HashSet<&'a DeployHash>,
-        ) -> impl Iterator<Item = &'a DeployHash> {
-            blocks.iter().flat_map(move |(_block, deploys)| {
-                iter_dependencies_of_expired_deploys(deploys, expired_deploys)
-            })
-        }
-
         let expired_deploys = {
-            let expired_deploys = iter_expired_deploys(&self.pending, current_instant)
-                .chain(iter_expired_deploys_from_block(
+            let expired_deploys = prune::iter_expired_deploys(&self.pending, current_instant)
+                .chain(prune::iter_expired_deploys_from_block(
                     &self.proposed,
                     current_instant,
                 ))
-                .chain(iter_expired_deploys_from_block(
+                .chain(prune::iter_expired_deploys_from_block(
                     &self.finalized,
                     current_instant,
                 ))
@@ -398,16 +328,18 @@ impl DeployBuffer {
 
             // without traversing to dependencies of dependencies, a best effort here is made to
             // expire hashes
-            let expired_deploys_iter =
-                iter_dependencies_of_expired_deploys(&self.pending, &expired_deploys)
-                    .chain(iter_dependencies_of_expired_deploys_from_block(
-                        &self.proposed,
-                        &expired_deploys,
-                    ))
-                    .chain(iter_dependencies_of_expired_deploys_from_block(
-                        &self.finalized,
-                        &expired_deploys,
-                    ));
+            let expired_deploys_iter = prune::iter_reverse_dependencies_of_expired_deploys(
+                &self.pending,
+                &expired_deploys,
+            )
+            .chain(prune::iter_dependencies_of_expired_deploys_from_block(
+                &self.proposed,
+                &expired_deploys,
+            ))
+            .chain(prune::iter_dependencies_of_expired_deploys_from_block(
+                &self.finalized,
+                &expired_deploys,
+            ));
 
             expired_deploys
                 .iter()
@@ -419,9 +351,9 @@ impl DeployBuffer {
 
         let mut pruned = 0;
         for expired_hash in expired_deploys {
-            pruned += prune_deploys(&mut self.pending, expired_hash)
-                + prune_blocks(&mut self.proposed, expired_hash)
-                + prune_blocks(&mut self.finalized, expired_hash);
+            pruned += prune::prune_deploys(&mut self.pending, expired_hash)
+                + prune::prune_blocks(&mut self.proposed, expired_hash)
+                + prune::prune_blocks(&mut self.finalized, expired_hash);
         }
         pruned
     }
@@ -504,6 +436,80 @@ impl Drop for DeployBufferMetrics {
         self.registry
             .unregister(Box::new(self.pending_deploys.clone()))
             .expect("did not expect deregistering pending_deploys to fail");
+    }
+}
+
+mod prune {
+    use super::*;
+
+    /// Prunes a deploy from an individual DeployCollection, returns the total
+    /// deploys pruned
+    pub fn prune_deploys(deploys: &mut DeployCollection, expired: DeployHash) -> usize {
+        let initial_len = deploys.len();
+        deploys.retain(|k, v| k != &expired && !v.dependencies().contains(k));
+        initial_len - deploys.len()
+    }
+    /// Prunes an expired deploy information from each ProtoBlockCollection, returns the total
+    /// deploys pruned
+    pub fn prune_blocks(blocks: &mut ProtoBlockCollection, expired: DeployHash) -> usize {
+        let mut pruned = 0;
+        let mut remove = Vec::new();
+        for (block_hash, deploys) in blocks.iter_mut() {
+            pruned += prune_deploys(deploys, expired);
+            if deploys.is_empty() {
+                remove.push(*block_hash);
+            }
+        }
+        blocks.retain(|k, _v| !remove.contains(&k));
+        pruned
+    }
+
+    /// Create an iterator over all expired deploys in this DeployCollection
+    pub fn iter_expired_deploys(
+        deploys: &DeployCollection,
+        current_instant: Timestamp,
+    ) -> impl Iterator<Item = &DeployHash> {
+        deploys.iter().filter_map(move |(hash, header)| {
+            if header.expired(current_instant) {
+                Some(hash)
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Helper to create iterator over all blocks
+    pub fn iter_expired_deploys_from_block(
+        blocks: &ProtoBlockCollection,
+        current_instant: Timestamp,
+    ) -> impl Iterator<Item = &DeployHash> {
+        blocks
+            .iter()
+            .flat_map(move |(_block, deploys)| iter_expired_deploys(deploys, current_instant))
+    }
+
+    /// Helper to create iterator over all dependencies of deploys in this DeployCollection
+    pub fn iter_reverse_dependencies_of_expired_deploys<'a>(
+        deploys: &'a DeployCollection,
+        expired_deploys: &'a HashSet<&'a DeployHash>,
+    ) -> impl Iterator<Item = &'a DeployHash> {
+        deploys.iter().filter_map(move |(k, v)| {
+            if v.dependencies().iter().any(|f| expired_deploys.contains(f)) {
+                Some(k)
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Helper to create iteraor over all dependencies of deploys contained in this block
+    pub fn iter_dependencies_of_expired_deploys_from_block<'a>(
+        blocks: &'a ProtoBlockCollection,
+        expired_deploys: &'a HashSet<&'a DeployHash>,
+    ) -> impl Iterator<Item = &'a DeployHash> {
+        blocks.iter().flat_map(move |(_block, deploys)| {
+            iter_reverse_dependencies_of_expired_deploys(deploys, expired_deploys)
+        })
     }
 }
 
@@ -683,7 +689,8 @@ mod tests {
         let mut rng = TestRng::new();
         let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
         let (hash2, deploy2) = generate_deploy(&mut rng, not_expired_time, ttl, vec![hash1]);
-        let (mut buffer, _effects) = create_test_buffer();
+        let registry = Registry::new();
+        let (mut buffer, _effects) = create_test_buffer(&registry);
 
         // pending
         buffer.add_deploy(creation_time, hash1, deploy1);
