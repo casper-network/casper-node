@@ -76,7 +76,8 @@ impl State {
         }
 
         if self.held_by_us {
-            let count = infection_target.saturating_sub(self.in_flight_count);
+            let count =
+                infection_target.saturating_sub(self.in_flight_count + self.infected_by_us.len());
             if count > 0 {
                 self.in_flight_count += count;
                 return GossipAction::ShouldGossip(ShouldGossip {
@@ -632,14 +633,10 @@ mod tests {
         // gossiping.
         let _ = gossip_table.new_complete_data(&data_id, None);
         let limit = EXPECTED_DEFAULT_INFECTION_TARGET - 1;
-        for (index, node_id) in node_ids.iter().enumerate().take(limit) {
+        for node_id in node_ids.iter().take(limit) {
             let action = gossip_table.we_infected(&data_id, *node_id);
-            let expected = GossipAction::ShouldGossip(ShouldGossip {
-                count: 1,
-                exclude_peers: node_ids[..(index + 1)].iter().copied().collect(),
-                is_already_held: true,
-            });
-            assert_eq!(expected, action);
+            assert_eq!(GossipAction::Noop, action);
+            assert!(!gossip_table.finished.contains_key(&data_id));
         }
 
         // Check recording an infection from an already-recorded infectee doesn't cause us to stop
@@ -651,10 +648,12 @@ mod tests {
             is_already_held: true,
         });
         assert_eq!(expected, action);
+        assert!(!gossip_table.finished.contains_key(&data_id));
 
         // Check third new infection does cause us to stop gossiping.
         let action = gossip_table.we_infected(&data_id, node_ids[limit]);
         assert_eq!(GossipAction::Noop, action);
+        assert!(gossip_table.finished.contains_key(&data_id));
     }
 
     #[test]
