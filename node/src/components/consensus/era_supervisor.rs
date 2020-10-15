@@ -132,7 +132,7 @@ pub struct EraSupervisor<I> {
     chainspec: Chainspec,
     node_start_time: Timestamp,
     #[data_size(skip)]
-    metrics: EraSupervisorMetrics,
+    metrics: ConsensusMetrics,
 }
 
 impl<I> Debug for EraSupervisor<I> {
@@ -161,8 +161,8 @@ where
         let (root, config) = config.into_parts();
         let secret_signing_key = Rc::new(config.secret_key_path.load(root)?);
         let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
-        let metrics = EraSupervisorMetrics::new(registry)
-            .expect("failure to setup and register EraSupervisorMetrics");
+        let metrics = ConsensusMetrics::new(registry)
+            .expect("failure to setup and register ConsensusMetrics");
 
         let mut era_supervisor = Self {
             active_eras: Default::default(),
@@ -658,7 +658,7 @@ where
                     .metrics
                     .finalization_time
                     .set(time_since_proto_block as f64);
-                self.era_supervisor.metrics.amount_of_blocks.inc();
+                self.era_supervisor.metrics.finalized_block_count.inc();
                 // Announce the finalized proto block.
                 let mut effects = self
                     .effect_builder
@@ -689,42 +689,42 @@ where
     }
 }
 
-/// Metrics to track rate of finalization
+/// Network metrics to track Consensus
 #[derive(Debug)]
-pub struct EraSupervisorMetrics {
+pub struct ConsensusMetrics {
     /// Gauge to track rate.
     finalization_time: Gauge,
     /// Amount of finalized blocks.
-    amount_of_blocks: IntCounter,
+    finalized_block_count: IntCounter,
     /// registry component.
     registry: Registry,
 }
 
-impl EraSupervisorMetrics {
+impl ConsensusMetrics {
     fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
         let finalization_time = Gauge::new(
             "finalization_time",
             "the amount of time, in milliseconds, between proposal and finalization of a block",
         )?;
-        let amount_of_blocks =
+        let finalized_block_count =
             IntCounter::new("amount_of_blocks", "the number of blocks finalized so far")?;
         registry.register(Box::new(finalization_time.clone()))?;
-        registry.register(Box::new(amount_of_blocks.clone()))?;
-        Ok(EraSupervisorMetrics {
+        registry.register(Box::new(finalized_block_count.clone()))?;
+        Ok(ConsensusMetrics {
             finalization_time,
-            amount_of_blocks,
+            finalized_block_count,
             registry: registry.clone(),
         })
     }
 }
 
-impl Drop for EraSupervisorMetrics {
+impl Drop for ConsensusMetrics {
     fn drop(&mut self) {
         self.registry
             .unregister(Box::new(self.finalization_time.clone()))
             .expect("did not expect deregistering rate to fail");
         self.registry
-            .unregister(Box::new(self.amount_of_blocks.clone()))
+            .unregister(Box::new(self.finalized_block_count.clone()))
             .expect("did not expect deregisterting amount to fail");
     }
 }
