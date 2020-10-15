@@ -399,6 +399,8 @@ impl Into<ExecConfig> for Chainspec {
 
 #[cfg(test)]
 mod tests {
+    use lazy_static::lazy_static;
+
     use casper_execution_engine::shared::{
         host_function_costs::{HostFunction, HostFunctionCosts},
         opcode_costs::OpcodeCosts,
@@ -406,187 +408,60 @@ mod tests {
         wasm_config::WasmConfig,
     };
 
-    const EXPECTED_GENESIS_HOST_FUNCTION_COSTS: HostFunctionCosts = HostFunctionCosts {
-        read_value: HostFunction {
-            cost: 127,
-            arguments: [0, 1, 0],
-        },
-        read_value_local: HostFunction {
-            cost: 128,
-            arguments: [0, 1, 0],
-        },
-        write: HostFunction {
-            cost: 140,
-            arguments: [0, 1, 0, 2],
-        },
-        write_local: HostFunction {
-            cost: 141,
-            arguments: [0, 1, 2, 3],
-        },
-        add: HostFunction {
-            cost: 100,
-            arguments: [0, 1, 2, 3],
-        },
-        add_local: HostFunction {
-            cost: 103,
-            arguments: [0, 1, 2, 3],
-        },
-        new_uref: HostFunction {
-            cost: 122,
-            arguments: [0, 1, 2],
-        },
-        load_named_keys: HostFunction {
-            cost: 121,
-            arguments: [0, 1],
-        },
-        ret: HostFunction {
-            cost: 133,
-            arguments: [0, 1],
-        },
-        get_key: HostFunction {
-            cost: 113,
-            arguments: [0, 1, 2, 3, 4],
-        },
-        has_key: HostFunction {
-            cost: 119,
-            arguments: [0, 1],
-        },
-        put_key: HostFunction {
-            cost: 125,
-            arguments: [0, 1, 2, 3],
-        },
-        remove_key: HostFunction {
-            cost: 132,
-            arguments: [0, 1],
-        },
-        revert: HostFunction {
-            cost: 134,
-            arguments: [0],
-        },
-        is_valid_uref: HostFunction {
-            cost: 120,
-            arguments: [0, 1],
-        },
-        add_associated_key: HostFunction {
-            cost: 101,
-            arguments: [0, 1, 2],
-        },
-        remove_associated_key: HostFunction {
-            cost: 129,
-            arguments: [0, 1],
-        },
-        update_associated_key: HostFunction {
-            cost: 139,
-            arguments: [0, 1, 2],
-        },
-        set_action_threshold: HostFunction {
-            cost: 135,
-            arguments: [0, 1],
-        },
-        get_caller: HostFunction {
-            cost: 112,
-            arguments: [0],
-        },
-        get_blocktime: HostFunction {
-            cost: 111,
-            arguments: [0],
-        },
-        create_purse: HostFunction {
-            cost: 108,
-            arguments: [0, 1],
-        },
-        transfer_to_account: HostFunction {
-            cost: 138,
-            arguments: [0, 1, 2, 3],
-        },
-        transfer_from_purse_to_account: HostFunction {
-            cost: 136,
-            arguments: [0, 1, 2, 3, 4, 5],
-        },
-        transfer_from_purse_to_purse: HostFunction {
-            cost: 137,
-            arguments: [0, 1, 2, 3, 4, 5],
-        },
-        get_balance: HostFunction {
-            cost: 110,
-            arguments: [0, 1, 2],
-        },
-        get_phase: HostFunction {
-            cost: 117,
-            arguments: [0],
-        },
-        get_system_contract: HostFunction {
-            cost: 118,
-            arguments: [0, 1, 2],
-        },
-        get_main_purse: HostFunction {
-            cost: 114,
-            arguments: [0],
-        },
-        read_host_buffer: HostFunction {
-            cost: 126,
-            arguments: [0, 1, 2],
-        },
-        create_contract_package_at_hash: HostFunction {
-            cost: 106,
-            arguments: [0, 1],
-        },
-        create_contract_user_group: HostFunction {
-            cost: 107,
-            arguments: [0, 1, 2, 3, 4, 5, 6, 7],
-        },
-        add_contract_version: HostFunction {
-            cost: 102,
-            arguments: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-        },
-        disable_contract_version: HostFunction {
-            cost: 109,
-            arguments: [0, 1, 2, 3],
-        },
-        call_contract: HostFunction {
-            cost: 104,
-            arguments: [0, 1, 2, 3, 4, 5, 6],
-        },
-        call_versioned_contract: HostFunction {
-            cost: 105,
-            arguments: [0, 1, 2, 3, 4, 5, 6, 7, 8],
-        },
-        get_named_arg_size: HostFunction {
-            cost: 116,
-            arguments: [0, 1, 2],
-        },
-        get_named_arg: HostFunction {
-            cost: 115,
-            arguments: [0, 1, 2, 3],
-        },
-        remove_contract_user_group: HostFunction {
-            cost: 130,
-            arguments: [0, 1, 2, 3],
-        },
-        provision_contract_user_group_uref: HostFunction {
-            cost: 124,
-            arguments: [0, 1, 2, 3, 4],
-        },
-        remove_contract_user_group_urefs: HostFunction {
-            cost: 131,
-            arguments: [0, 1, 2, 3, 4, 5],
-        },
-        print: HostFunction {
-            cost: 123,
-            arguments: [0, 1],
-        },
-        blake2b: HostFunction {
-            cost: 133,
-            arguments: [0, 1, 2, 3],
-        },
-    };
-    const EXPECTED_GENESIS_WASM_CONFIG: WasmConfig = WasmConfig::new(
-        17, // initial_memory
-        19, // max_stack_height
-        EXPECTED_GENESIS_COSTS,
-        EXPECTED_GENESIS_STORAGE_COSTS,
-        EXPECTED_GENESIS_HOST_FUNCTION_COSTS,
-    );
+    lazy_static! {
+        static ref EXPECTED_GENESIS_HOST_FUNCTION_COSTS: HostFunctionCosts = HostFunctionCosts {
+            read_value: HostFunction::new(127,  [0, 1, 0]),
+            read_value_local: HostFunction::new(128,  [0, 1, 0]),
+            write: HostFunction::new(140,  [0, 1, 0, 2]),
+            write_local: HostFunction::new(141,  [0, 1, 2, 3]),
+            add: HostFunction::new(100,  [0, 1, 2, 3]),
+            add_local: HostFunction::new(103,  [0, 1, 2, 3]),
+            new_uref: HostFunction::new(122,  [0, 1, 2]),
+            load_named_keys: HostFunction::new(121,  [0, 1]),
+            ret: HostFunction::new(133,  [0, 1]),
+            get_key: HostFunction::new(113,  [0, 1, 2, 3, 4]),
+            has_key: HostFunction::new(119,  [0, 1]),
+            put_key: HostFunction::new(125,  [0, 1, 2, 3]),
+            remove_key: HostFunction::new(132,  [0, 1]),
+            revert: HostFunction::new(134,  [0]),
+            is_valid_uref: HostFunction::new(120,  [0, 1]),
+            add_associated_key: HostFunction::new(101,  [0, 1, 2]),
+            remove_associated_key: HostFunction::new(129,  [0, 1]),
+            update_associated_key: HostFunction::new(139,  [0, 1, 2]),
+            set_action_threshold: HostFunction::new(135,  [0, 1]),
+            get_caller: HostFunction::new(112,  [0]),
+            get_blocktime: HostFunction::new(111,  [0]),
+            create_purse: HostFunction::new(108,  [0, 1]),
+            transfer_to_account: HostFunction::new(138,  [0, 1, 2, 3]),
+            transfer_from_purse_to_account: HostFunction::new(136,  [0, 1, 2, 3, 4, 5]),
+            transfer_from_purse_to_purse: HostFunction::new(137,  [0, 1, 2, 3, 4, 5]),
+            get_balance: HostFunction::new(110,  [0, 1, 2]),
+            get_phase: HostFunction::new(117,  [0]),
+            get_system_contract: HostFunction::new(118,  [0, 1, 2]),
+            get_main_purse: HostFunction::new(114,  [0]),
+            read_host_buffer: HostFunction::new(126,  [0, 1, 2]),
+            create_contract_package_at_hash: HostFunction::new(106,  [0, 1]),
+            create_contract_user_group: HostFunction::new(107,  [0, 1, 2, 3, 4, 5, 6, 7]),
+            add_contract_version: HostFunction::new(102,  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+            disable_contract_version: HostFunction::new(109,  [0, 1, 2, 3]),
+            call_contract: HostFunction::new(104,  [0, 1, 2, 3, 4, 5, 6]),
+            call_versioned_contract: HostFunction::new(105,  [0, 1, 2, 3, 4, 5, 6, 7, 8]),
+            get_named_arg_size: HostFunction::new(116,  [0, 1, 2]),
+            get_named_arg: HostFunction::new(115,  [0, 1, 2, 3]),
+            remove_contract_user_group: HostFunction::new(130,  [0, 1, 2, 3]),
+            provision_contract_user_group_uref: HostFunction::new(124,  [0, 1, 2, 3, 4]),
+            remove_contract_user_group_urefs: HostFunction::new(131,  [0, 1, 2, 3, 4, 5]),
+            print: HostFunction::new(123,  [0, 1]),
+            blake2b: HostFunction::new(133,  [0, 1, 2, 3]),
+        };
+        static ref EXPECTED_GENESIS_WASM_CONFIG: WasmConfig = WasmConfig::new(
+            17, // initial_memory
+            19, // max_stack_height
+            EXPECTED_GENESIS_COSTS,
+            EXPECTED_GENESIS_STORAGE_COSTS,
+            *EXPECTED_GENESIS_HOST_FUNCTION_COSTS,
+        );
+    }
     const EXPECTED_GENESIS_STORAGE_COSTS: StorageCosts = StorageCosts { gas_per_byte: 101 };
 
     const EXPECTED_GENESIS_COSTS: OpcodeCosts = OpcodeCosts {
@@ -697,7 +572,7 @@ mod tests {
         assert_eq!(spec.genesis.deploy_config.block_max_deploy_count, 125);
         assert_eq!(spec.genesis.deploy_config.block_gas_limit, 13);
 
-        assert_eq!(spec.genesis.wasm_config, EXPECTED_GENESIS_WASM_CONFIG);
+        assert_eq!(spec.genesis.wasm_config, *EXPECTED_GENESIS_WASM_CONFIG);
 
         assert_eq!(spec.upgrades.len(), 2);
 

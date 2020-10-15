@@ -16,8 +16,8 @@ pub type Cost = u32;
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Debug, Default)]
 pub struct HostFunction<T> {
     /// How much user is charged for cost only
-    pub cost: Cost,
-    pub arguments: T,
+    cost: Cost,
+    arguments: T,
 }
 
 impl<T> DataSize for HostFunction<T>
@@ -37,12 +37,20 @@ impl<T> HostFunction<T> {
     pub fn new(cost: Cost, arguments: T) -> Self {
         Self { cost, arguments }
     }
+
+    pub fn cost(&self) -> Cost {
+        self.cost
+    }
 }
 
 impl<T> HostFunction<T>
 where
     T: AsRef<[Cost]>,
 {
+    pub fn arguments(&self) -> &[Cost] {
+        self.arguments.as_ref()
+    }
+
     /// Calculate gas cost for a host function
     pub fn calculate_gas_cost(&self, weights: T) -> Gas {
         let mut gas = Gas::new(self.cost.into());

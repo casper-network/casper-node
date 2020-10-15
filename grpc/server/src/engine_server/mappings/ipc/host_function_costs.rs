@@ -26,11 +26,10 @@ where
 {
     fn from(host_function_cost: HostFunction<T>) -> Self {
         let mut pb_host_function_costs = Self::new();
-        pb_host_function_costs.set_cost(host_function_cost.cost);
+        pb_host_function_costs.set_cost(host_function_cost.cost());
 
         let pb_arguments: Vec<_> = host_function_cost
-            .arguments
-            .as_ref()
+            .arguments()
             .iter()
             .copied()
             .map(Into::into)
