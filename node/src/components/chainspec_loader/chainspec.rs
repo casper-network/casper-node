@@ -12,10 +12,11 @@ use num_traits::Zero;
 use rand::Rng;
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 use casper_execution_engine::{
     core::engine_state::genesis::{ExecConfig, GenesisAccount},
-    shared::{motes::Motes, wasm_costs::WasmCosts},
+    shared::{motes::Motes, wasm_config::WasmConfig},
 };
 use casper_types::U512;
 
@@ -111,6 +112,20 @@ impl Default for HighwayConfig {
     }
 }
 
+impl HighwayConfig {
+    /// Checks whether the values set in the config make sense and prints warnings if they don't
+    pub fn validate_config(&self) {
+        let min_era_ms = 1u64 << self.minimum_round_exponent;
+        // if the era duration is set to zero, we will treat it as explicitly stating that eras
+        // should be defined by height only
+        if self.era_duration.millis() > 0
+            && self.era_duration.millis() < self.minimum_era_height * min_era_ms
+        {
+            warn!("Era duration is less than minimum era height * round length!");
+        }
+    }
+}
+
 #[cfg(test)]
 impl HighwayConfig {
     /// Generates a random instance using a `TestRng`.
@@ -164,6 +179,7 @@ impl Loadable for Vec<GenesisAccount> {
 pub struct GenesisConfig {
     pub(crate) name: String,
     pub(crate) timestamp: Timestamp,
+    pub(crate) validator_slots: u32,
     // We don't have an implementation for the semver version type, we skip it for now
     #[data_size(skip)]
     pub(crate) protocol_version: Version,
@@ -172,7 +188,7 @@ pub struct GenesisConfig {
     pub(crate) standard_payment_installer_bytes: Vec<u8>,
     pub(crate) auction_installer_bytes: Vec<u8>,
     pub(crate) accounts: Vec<GenesisAccount>,
-    pub(crate) costs: WasmCosts,
+    pub(crate) wasm_config: WasmConfig,
     pub(crate) deploy_config: DeployConfig,
     pub(crate) highway_config: HighwayConfig,
 }
@@ -200,6 +216,11 @@ impl GenesisConfig {
             .clone()
             .collect()
     }
+
+    /// Checks whether the values set in the config make sense and prints warnings if they don't
+    pub fn validate_config(&self) {
+        self.highway_config.validate_config();
+    }
 }
 
 impl Debug for GenesisConfig {
@@ -225,7 +246,7 @@ impl Debug for GenesisConfig {
                 &format_args!("[{} bytes]", self.standard_payment_installer_bytes.len()),
             )
             .field("accounts", &self.accounts)
-            .field("costs", &self.costs)
+            .field("costs", &self.wasm_config)
             .field("deploy_config", &self.deploy_config)
             .field("highway_config", &self.highway_config)
             .finish()
@@ -238,6 +259,7 @@ impl GenesisConfig {
     pub fn random(rng: &mut TestRng) -> Self {
         let name = rng.gen::<char>().to_string();
         let timestamp = Timestamp::random(rng);
+        let validator_slots = rng.gen::<u32>();
         let protocol_version = Version::new(
             rng.gen_range(0, 10),
             rng.gen::<u8>() as u64,
@@ -255,13 +277,14 @@ impl GenesisConfig {
         GenesisConfig {
             name,
             timestamp,
+            validator_slots,
             protocol_version,
             mint_installer_bytes,
             pos_installer_bytes,
             standard_payment_installer_bytes,
             auction_installer_bytes,
             accounts,
-            costs,
+            wasm_config: costs,
             deploy_config,
             highway_config,
         }
@@ -280,8 +303,9 @@ pub(crate) struct UpgradePoint {
     pub(crate) protocol_version: Version,
     pub(crate) upgrade_installer_bytes: Option<Vec<u8>>,
     pub(crate) upgrade_installer_args: Option<Vec<u8>>,
-    pub(crate) new_costs: Option<WasmCosts>,
+    pub(crate) new_wasm_config: Option<WasmConfig>,
     pub(crate) new_deploy_config: Option<DeployConfig>,
+    pub(crate) new_validator_slots: Option<u32>,
 }
 
 #[cfg(test)]
@@ -312,14 +336,16 @@ impl UpgradePoint {
         } else {
             None
         };
+        let new_validator_slots = rng.gen::<Option<u32>>();
 
         UpgradePoint {
             activation_point,
             protocol_version,
             upgrade_installer_bytes,
             upgrade_installer_args,
-            new_costs,
+            new_wasm_config: new_costs,
             new_deploy_config,
+            new_validator_slots,
         }
     }
 }
@@ -337,6 +363,13 @@ impl Loadable for Chainspec {
     type Error = Error;
     fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
         config::parse_toml(path)
+    }
+}
+
+impl Chainspec {
+    /// Checks whether the values set in the config make sense and prints warnings if they don't
+    pub fn validate_config(&self) {
+        self.genesis.validate_config();
     }
 }
 
@@ -358,13 +391,239 @@ impl Into<ExecConfig> for Chainspec {
             self.genesis.standard_payment_installer_bytes,
             self.genesis.auction_installer_bytes,
             self.genesis.accounts,
-            self.genesis.costs,
+            self.genesis.wasm_config,
+            self.genesis.validator_slots,
         )
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use casper_execution_engine::shared::{
+        host_function_costs::{HostFunction, HostFunctionCosts},
+        opcode_costs::OpcodeCosts,
+        storage_costs::StorageCosts,
+        wasm_config::WasmConfig,
+    };
+
+    const EXPECTED_GENESIS_HOST_FUNCTION_COSTS: HostFunctionCosts = HostFunctionCosts {
+        read_value: HostFunction {
+            cost: 127,
+            arguments: (0, 1, 0),
+        },
+        read_value_local: HostFunction {
+            cost: 128,
+            arguments: (0, 1, 0),
+        },
+        write: HostFunction {
+            cost: 140,
+            arguments: (0, 1, 0, 2),
+        },
+        write_local: HostFunction {
+            cost: 141,
+            arguments: (0, 1, 2, 3),
+        },
+        add: HostFunction {
+            cost: 100,
+            arguments: (0, 1, 2, 3),
+        },
+        add_local: HostFunction {
+            cost: 103,
+            arguments: (0, 1, 2, 3),
+        },
+        new_uref: HostFunction {
+            cost: 122,
+            arguments: (0, 1, 2),
+        },
+        load_named_keys: HostFunction {
+            cost: 121,
+            arguments: (0, 1),
+        },
+        ret: HostFunction {
+            cost: 133,
+            arguments: (0, 1),
+        },
+        get_key: HostFunction {
+            cost: 113,
+            arguments: (0, 1, 2, 3, 4),
+        },
+        has_key: HostFunction {
+            cost: 119,
+            arguments: (0, 1),
+        },
+        put_key: HostFunction {
+            cost: 125,
+            arguments: (0, 1),
+        },
+        remove_key: HostFunction {
+            cost: 132,
+            arguments: (0, 1),
+        },
+        revert: HostFunction {
+            cost: 134,
+            arguments: (0,),
+        },
+        is_valid_uref: HostFunction {
+            cost: 120,
+            arguments: (0, 1),
+        },
+        add_associated_key: HostFunction {
+            cost: 101,
+            arguments: (0, 1, 2, 3),
+        },
+        remove_associated_key: HostFunction {
+            cost: 129,
+            arguments: (0, 1),
+        },
+        update_associated_key: HostFunction {
+            cost: 139,
+            arguments: (0, 1, 2),
+        },
+        set_action_threshold: HostFunction {
+            cost: 135,
+            arguments: (0, 1),
+        },
+        get_caller: HostFunction {
+            cost: 112,
+            arguments: (0,),
+        },
+        get_blocktime: HostFunction {
+            cost: 111,
+            arguments: (0,),
+        },
+        create_purse: HostFunction {
+            cost: 108,
+            arguments: (0, 1),
+        },
+        transfer_to_account: HostFunction {
+            cost: 138,
+            arguments: (0, 1, 2, 3),
+        },
+        transfer_from_purse_to_account: HostFunction {
+            cost: 136,
+            arguments: (0, 1, 2, 3, 4, 5),
+        },
+        transfer_from_purse_to_purse: HostFunction {
+            cost: 137,
+            arguments: (0, 1, 2, 3, 4, 5),
+        },
+        get_balance: HostFunction {
+            cost: 110,
+            arguments: (0, 1, 2),
+        },
+        get_phase: HostFunction {
+            cost: 117,
+            arguments: (0,),
+        },
+        get_system_contract: HostFunction {
+            cost: 118,
+            arguments: (0, 1, 2),
+        },
+        get_main_purse: HostFunction {
+            cost: 114,
+            arguments: (0,),
+        },
+        read_host_buffer: HostFunction {
+            cost: 126,
+            arguments: (0, 1, 2),
+        },
+        create_contract_package_at_hash: HostFunction {
+            cost: 106,
+            arguments: (0, 1),
+        },
+        create_contract_user_group: HostFunction {
+            cost: 107,
+            arguments: (0, 1, 2, 3, 4, 5, 6, 7),
+        },
+        add_contract_version: HostFunction {
+            cost: 102,
+            arguments: (0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
+        },
+        disable_contract_version: HostFunction {
+            cost: 109,
+            arguments: (0, 1, 2, 3),
+        },
+        call_contract: HostFunction {
+            cost: 104,
+            arguments: (0, 1, 2, 3, 4, 5, 6),
+        },
+        call_versioned_contract: HostFunction {
+            cost: 105,
+            arguments: (0, 1, 2, 3, 4, 5, 6, 7, 8),
+        },
+        get_named_arg_size: HostFunction {
+            cost: 116,
+            arguments: (0, 1, 2),
+        },
+        get_named_arg: HostFunction {
+            cost: 115,
+            arguments: (0, 1, 2, 3),
+        },
+        remove_contract_user_group: HostFunction {
+            cost: 130,
+            arguments: (0, 1, 2, 3),
+        },
+        provision_contract_user_group_uref: HostFunction {
+            cost: 124,
+            arguments: (0, 1, 2, 3, 4),
+        },
+        remove_contract_user_group_urefs: HostFunction {
+            cost: 131,
+            arguments: (0, 1, 2, 3, 4, 5),
+        },
+        print: HostFunction {
+            cost: 123,
+            arguments: (0, 1),
+        },
+    };
+    const EXPECTED_GENESIS_WASM_CONFIG: WasmConfig = WasmConfig::new(
+        17, // initial_memory
+        19, // max_stack_height
+        EXPECTED_GENESIS_COSTS,
+        EXPECTED_GENESIS_STORAGE_COSTS,
+        EXPECTED_GENESIS_HOST_FUNCTION_COSTS,
+    );
+    const EXPECTED_GENESIS_STORAGE_COSTS: StorageCosts = StorageCosts { gas_per_byte: 101 };
+
+    const EXPECTED_GENESIS_COSTS: OpcodeCosts = OpcodeCosts {
+        bit: 13,
+        add: 14,
+        mul: 15,
+        div: 16,
+        load: 17,
+        store: 18,
+        op_const: 19,
+        local: 20,
+        global: 21,
+        control_flow: 22,
+        integer_comparsion: 23,
+        conversion: 24,
+        unreachable: 25,
+        nop: 26,
+        current_memory: 27,
+        grow_memory: 28,
+        regular: 29,
+    };
+    const EXPECTED_UPGRADE_COSTS: OpcodeCosts = OpcodeCosts {
+        bit: 24,
+        add: 25,
+        mul: 26,
+        div: 27,
+        load: 28,
+        store: 29,
+        op_const: 30,
+        local: 31,
+        global: 32,
+        control_flow: 33,
+        integer_comparsion: 34,
+        conversion: 35,
+        unreachable: 36,
+        nop: 37,
+        current_memory: 38,
+        grow_memory: 39,
+        regular: 40,
+    };
+
     use super::*;
     use crate::testing::{self, TestRng};
 
@@ -434,16 +693,7 @@ mod tests {
         assert_eq!(spec.genesis.deploy_config.block_max_deploy_count, 125);
         assert_eq!(spec.genesis.deploy_config.block_gas_limit, 13);
 
-        assert_eq!(spec.genesis.costs.regular, 13);
-        assert_eq!(spec.genesis.costs.div, 14);
-        assert_eq!(spec.genesis.costs.mul, 15);
-        assert_eq!(spec.genesis.costs.mem, 16);
-        assert_eq!(spec.genesis.costs.initial_mem, 17);
-        assert_eq!(spec.genesis.costs.grow_mem, 18);
-        assert_eq!(spec.genesis.costs.memcpy, 19);
-        assert_eq!(spec.genesis.costs.max_stack_height, 20);
-        assert_eq!(spec.genesis.costs.opcodes_mul, 21);
-        assert_eq!(spec.genesis.costs.opcodes_div, 22);
+        assert_eq!(spec.genesis.wasm_config, EXPECTED_GENESIS_WASM_CONFIG);
 
         assert_eq!(spec.upgrades.len(), 2);
 
@@ -455,16 +705,20 @@ mod tests {
             Some(b"Upgrade installer bytes".to_vec())
         );
         assert!(upgrade0.upgrade_installer_args.is_none());
-        assert_eq!(upgrade0.new_costs.unwrap().regular, 24);
-        assert_eq!(upgrade0.new_costs.unwrap().div, 25);
-        assert_eq!(upgrade0.new_costs.unwrap().mul, 26);
-        assert_eq!(upgrade0.new_costs.unwrap().mem, 27);
-        assert_eq!(upgrade0.new_costs.unwrap().initial_mem, 28);
-        assert_eq!(upgrade0.new_costs.unwrap().grow_mem, 29);
-        assert_eq!(upgrade0.new_costs.unwrap().memcpy, 30);
-        assert_eq!(upgrade0.new_costs.unwrap().max_stack_height, 31);
-        assert_eq!(upgrade0.new_costs.unwrap().opcodes_mul, 32);
-        assert_eq!(upgrade0.new_costs.unwrap().opcodes_div, 33);
+
+        let new_wasm_config = upgrade0
+            .new_wasm_config
+            .as_ref()
+            .expect("should have new wasm config");
+
+        assert_eq!(
+            upgrade0.new_wasm_config.as_ref().unwrap().opcode_costs(),
+            EXPECTED_UPGRADE_COSTS,
+        );
+
+        assert_eq!(new_wasm_config.initial_memory, 17);
+        assert_eq!(new_wasm_config.max_stack_height, 19);
+
         assert_eq!(
             upgrade0.new_deploy_config.unwrap().max_payment_cost,
             Motes::new(U512::from(34))
@@ -486,7 +740,7 @@ mod tests {
         assert_eq!(upgrade1.protocol_version, Version::from((0, 3, 0)));
         assert!(upgrade1.upgrade_installer_bytes.is_none());
         assert!(upgrade1.upgrade_installer_args.is_none());
-        assert!(upgrade1.new_costs.is_none());
+        assert!(upgrade1.new_wasm_config.is_none());
         assert!(upgrade1.new_deploy_config.is_none());
     }
 
@@ -497,9 +751,9 @@ mod tests {
     }
 
     #[test]
-    fn rmp_serde_roundtrip() {
+    fn bincode_roundtrip() {
         let mut rng = TestRng::new();
         let chainspec = Chainspec::random(&mut rng);
-        testing::rmp_serde_roundtrip(&chainspec);
+        testing::bincode_roundtrip(&chainspec);
     }
 }

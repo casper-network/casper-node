@@ -9,8 +9,8 @@ use clap::{crate_version, App};
 use casper_engine_test_support::internal::{
     utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
     AUCTION_INSTALL_CONTRACT, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, DEFAULT_WASM_COSTS, MINT_INSTALL_CONTRACT,
-    POS_INSTALL_CONTRACT, STANDARD_PAYMENT_INSTALL_CONTRACT,
+    DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+    MINT_INSTALL_CONTRACT, POS_INSTALL_CONTRACT, STANDARD_PAYMENT_INSTALL_CONTRACT,
 };
 use casper_execution_engine::core::engine_state::{
     engine_config::EngineConfig, genesis::ExecConfig, run_genesis_request::RunGenesisRequest,
@@ -78,7 +78,8 @@ fn main() {
         standard_payment_installer_bytes,
         auction_installer_bytes,
         DEFAULT_ACCOUNTS.clone(),
-        *DEFAULT_WASM_COSTS,
+        *DEFAULT_WASM_CONFIG,
+        DEFAULT_VALIDATOR_SLOTS,
     );
     let run_genesis_request = RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,

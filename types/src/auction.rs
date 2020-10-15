@@ -123,9 +123,14 @@ pub trait Auction:
     /// For a founding validator, this function first checks whether they are released, and fails
     /// if they are not.
     ///
-    /// The function returns a tuple of the (new) unbonding purse key and the new amount of motes
-    /// remaining in the bid. If the target bid does not exist, the function call returns an error.
-    fn withdraw_bid(&mut self, public_key: PublicKey, amount: U512) -> Result<(URef, U512)> {
+    /// The function returns a the new amount of motes remaining in the bid. If the target bid
+    /// does not exist, the function call returns an error.
+    fn withdraw_bid(
+        &mut self,
+        public_key: PublicKey,
+        amount: U512,
+        unbond_purse: URef,
+    ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidCaller);
@@ -156,9 +161,9 @@ pub trait Auction:
 
         internal::set_bids(self, bids)?;
 
-        let (unbonding_purse, _total_amount) = detail::unbond(self, public_key, amount)?;
+        let _total_amount = detail::unbond(self, public_key, amount, unbond_purse)?;
 
-        Ok((unbonding_purse, new_amount))
+        Ok(new_amount)
     }
 
     /// Adds a new delegator to delegators, or tops off a current one. If the target validator is
@@ -215,7 +220,8 @@ pub trait Auction:
         delegator_public_key: PublicKey,
         validator_public_key: PublicKey,
         amount: U512,
-    ) -> Result<(URef, U512)> {
+        unbonding_purse: URef,
+    ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(delegator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidCaller);
@@ -228,8 +234,8 @@ pub trait Auction:
             return Err(Error::ValidatorNotFound);
         }
 
-        let (unbonding_purse, _unbonding_purse_balance) =
-            detail::unbond(self, delegator_public_key, amount)?;
+        let _unbonding_purse_balance =
+            detail::unbond(self, delegator_public_key, amount, unbonding_purse)?;
 
         let mut delegators = internal::get_delegators(self)?;
         let delegators_map = delegators
@@ -272,7 +278,7 @@ pub trait Auction:
 
         internal::set_delegators(self, delegators)?;
 
-        Ok((unbonding_purse, new_amount))
+        Ok(new_amount)
     }
 
     /// Slashes each validator.
@@ -338,6 +344,9 @@ pub trait Auction:
 
         detail::process_unbond_requests(self)?;
 
+        // get allowed validator slots total
+        let validator_slots = internal::get_validator_slots(self)?;
+
         let mut era_id = internal::get_era_id(self)?;
 
         let mut bids = internal::get_bids(self)?;
@@ -399,7 +408,7 @@ pub trait Auction:
         scores.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
 
         // Fill in remaining validators
-        let remaining_auction_slots = AUCTION_SLOTS.saturating_sub(bid_weights.len());
+        let remaining_auction_slots = validator_slots.saturating_sub(bid_weights.len());
         bid_weights.extend(scores.into_iter().take(remaining_auction_slots));
 
         let mut era_validators = internal::get_era_validators(self)?;

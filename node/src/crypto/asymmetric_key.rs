@@ -25,7 +25,10 @@ use serde::{
     Deserialize, Serialize, Serializer,
 };
 use signature::{RandomizedSigner, Signature as Sig, Verifier};
+use tracing::info;
 use untrusted::Input;
+
+use casper_types::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
 use super::{Error, Result};
 #[cfg(test)]
@@ -36,6 +39,8 @@ use crate::{
     utils::{read_file, write_file},
 };
 use casper_types::account::AccountHash;
+
+const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 
 const ED25519_TAG: u8 = 1;
 const ED25519: &str = "Ed25519";
@@ -476,7 +481,7 @@ impl PublicKey {
         };
         // Hash the preimage data using blake2b256 and return it.
         let digest = hash(&preimage);
-        AccountHash::new(digest.to_bytes())
+        AccountHash::new(digest.to_array())
     }
 
     /// Attempts to write the public key PEM-encoded to the configured file path.
@@ -725,6 +730,62 @@ impl Serialize for PublicKey {
 impl<'de> Deserialize<'de> for PublicKey {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
         deserialize(deserializer)
+    }
+}
+
+impl ToBytes for PublicKey {
+    fn to_bytes(&self) -> StdResult<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        match self {
+            PublicKey::Ed25519(public_key) => {
+                buffer.insert(0, ED25519_TAG);
+                buffer.extend(public_key.as_ref().to_vec().into_bytes()?);
+            }
+            PublicKey::Secp256k1(public_key) => {
+                buffer.insert(0, SECP256K1_TAG);
+                buffer.extend(public_key.as_ref().to_vec().into_bytes()?);
+            }
+        }
+        Ok(buffer)
+    }
+
+    // TODO: implement ToBytes for `&[u8]` to avoid allocating via `to_vec()` here.
+    fn serialized_length(&self) -> usize {
+        TAG_LENGTH
+            + match self {
+                PublicKey::Ed25519(public_key) => public_key.as_ref().to_vec().serialized_length(),
+                PublicKey::Secp256k1(public_key) => {
+                    public_key.as_ref().to_vec().serialized_length()
+                }
+            }
+    }
+}
+
+impl FromBytes for PublicKey {
+    fn from_bytes(bytes: &[u8]) -> StdResult<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            ED25519_TAG => {
+                let (raw_bytes, remainder) = Vec::<u8>::from_bytes(remainder)?;
+                let public_key = Self::ed25519_from_bytes(&raw_bytes).map_err(|error| {
+                    info!("failed deserializing to public key: {}", error);
+                    bytesrepr::Error::Formatting
+                })?;
+                Ok((public_key, remainder))
+            }
+            SECP256K1_TAG => {
+                let (raw_bytes, remainder) = Vec::<u8>::from_bytes(remainder)?;
+                let public_key = Self::secp256k1_from_bytes(&raw_bytes).map_err(|error| {
+                    info!("failed deserializing to public key: {}", error);
+                    bytesrepr::Error::Formatting
+                })?;
+                Ok((public_key, remainder))
+            }
+            _ => {
+                info!("failed deserializing to public key: invalid tag {}", tag);
+                Err(bytesrepr::Error::Formatting)
+            }
+        }
     }
 }
 
@@ -1189,9 +1250,9 @@ mod tests {
     type OpenSSLPublicKey = PKey<Public>;
 
     fn secret_key_serialization_roundtrip(secret_key: SecretKey) {
-        // Try to/from MsgPack.
-        let serialized = rmp_serde::to_vec(&secret_key).unwrap();
-        let deserialized: SecretKey = rmp_serde::from_read_ref(&serialized).unwrap();
+        // Try to/from bincode.
+        let serialized = bincode::serialize(&secret_key).unwrap();
+        let deserialized: SecretKey = bincode::deserialize(&serialized).unwrap();
         assert_eq!(secret_key.as_secret_slice(), deserialized.as_secret_slice());
         assert_eq!(secret_key.tag(), deserialized.tag());
 
@@ -1243,9 +1304,9 @@ mod tests {
     }
 
     fn public_key_serialization_roundtrip(public_key: PublicKey) {
-        // Try to/from MsgPack.
-        let serialized = rmp_serde::to_vec(&public_key).unwrap();
-        let deserialized = rmp_serde::from_read_ref(&serialized).unwrap();
+        // Try to/from bincode.
+        let serialized = bincode::serialize(&public_key).unwrap();
+        let deserialized = bincode::deserialize(&serialized).unwrap();
         assert_eq!(public_key, deserialized);
         assert_eq!(public_key.tag(), deserialized.tag());
 
@@ -1254,6 +1315,9 @@ mod tests {
         let deserialized = serde_json::from_slice(&serialized).unwrap();
         assert_eq!(public_key, deserialized);
         assert_eq!(public_key.tag(), deserialized.tag());
+
+        // Using bytesrepr.
+        bytesrepr::test_serialization_roundtrip(&public_key);
     }
 
     fn public_key_der_roundtrip(public_key: PublicKey) {
@@ -1308,9 +1372,9 @@ mod tests {
     }
 
     fn signature_serialization_roundtrip(signature: Signature) {
-        // Try to/from MsgPack.
-        let serialized = rmp_serde::to_vec(&signature).unwrap();
-        let deserialized: Signature = rmp_serde::from_read_ref(&serialized).unwrap();
+        // Try to/from bincode.
+        let serialized = bincode::serialize(&signature).unwrap();
+        let deserialized: Signature = bincode::deserialize(&serialized).unwrap();
         assert_eq!(signature, deserialized);
         assert_eq!(signature.tag(), deserialized.tag());
 

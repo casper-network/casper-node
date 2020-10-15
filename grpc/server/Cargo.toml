@@ -19,7 +19,7 @@ include = [
 ]
 
 [dependencies]
-casper-execution-engine = { path = "../../execution_engine", features = ["gens"] }
+casper-execution-engine = { version = "0.7.0", path = "../../execution_engine", features = ["gens"] }
 casper-types = { version = "0.6.0", path = "../../types", features = ["std", "gens"] }
 clap = "2"
 ctrlc = "3"
@@ -28,6 +28,7 @@ grpc = "0.6.1"
 lmdb = "0.8"
 log = "0.4.8"
 protobuf = "=2.8"
+datasize = "0.2.0"
 
 [build-dependencies]
 protoc-rust-grpc = "0.6.1"

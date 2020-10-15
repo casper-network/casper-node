@@ -2,7 +2,6 @@ use std::{
     any::Any,
     collections::{BTreeMap, HashMap},
     fmt::Debug,
-    iter,
     rc::Rc,
 };
 
@@ -14,6 +13,7 @@ use tracing::{info, trace};
 
 use crate::{
     components::consensus::{
+        candidate_block::CandidateBlock,
         consensus_protocol::{BlockContext, ConsensusProtocol, ConsensusProtocolResult},
         highway_core::{
             active_validator::Effect as AvEffect,
@@ -28,7 +28,7 @@ use crate::{
         asymmetric_key::{self, PublicKey, SecretKey, Signature},
         hash::{self, Digest},
     },
-    types::{CryptoRngCore, ProtoBlock, Timestamp},
+    types::{CryptoRngCore, Timestamp},
 };
 
 #[derive(DataSize, Debug)]
@@ -95,10 +95,22 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
     }
 
     fn process_new_vertex(&mut self, v: Vertex<C>) -> Vec<CpResult<I, C>> {
+        let mut results = Vec::new();
+        if let Vertex::Evidence(ev) = &v {
+            let v_id = self
+                .highway
+                .validators()
+                .id(ev.perpetrator())
+                .expect("validator not found")
+                .clone();
+            results.push(ConsensusProtocolResult::NewEvidence(v_id));
+        }
         let msg = HighwayMessage::NewVertex(v);
-        let serialized_msg = rmp_serde::to_vec(&msg).expect("should serialize message");
-        let result = ConsensusProtocolResult::CreatedGossipMessage(serialized_msg);
-        self.detect_finality().chain(iter::once(result)).collect()
+        results.push(ConsensusProtocolResult::CreatedGossipMessage(
+            bincode::serialize(&msg).expect("should serialize message"),
+        ));
+        results.extend(self.detect_finality());
+        results
     }
 
     fn detect_finality(&mut self) -> impl Iterator<Item = CpResult<I, C>> + '_ {
@@ -136,7 +148,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
                         .push((sender.clone(), pvv));
                     let msg = HighwayMessage::RequestDependency(dep);
                     results.push(ConsensusProtocolResult::CreatedTargetedMessage(
-                        rmp_serde::to_vec(&msg).expect("should serialize message"),
+                        bincode::serialize(&msg).expect("should serialize message"),
                         sender,
                     ));
                 } else {
@@ -187,7 +199,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         let mut results = self.process_av_effects(av_effects);
         let msg = HighwayMessage::NewVertex(vv.into());
         results.push(ConsensusProtocolResult::CreatedGossipMessage(
-            rmp_serde::to_vec(&msg).expect("should serialize message"),
+            bincode::serialize(&msg).expect("should serialize message"),
         ));
         results
     }
@@ -227,15 +239,20 @@ where
         &mut self,
         sender: I,
         msg: Vec<u8>,
+        evidence_only: bool,
         rng: &mut dyn CryptoRngCore,
     ) -> Result<Vec<CpResult<I, C>>, Error> {
-        match rmp_serde::from_read_ref(msg.as_slice()) {
+        match bincode::deserialize(msg.as_slice()) {
             Err(err) => Ok(vec![ConsensusProtocolResult::InvalidIncomingMessage(
                 msg,
                 sender,
                 err.into(),
             )]),
-            Ok(HighwayMessage::NewVertex(ref v)) if self.highway.has_vertex(v) => Ok(vec![]),
+            Ok(HighwayMessage::NewVertex(v))
+                if self.highway.has_vertex(&v) || (evidence_only && !v.is_evidence()) =>
+            {
+                Ok(vec![])
+            }
             Ok(HighwayMessage::NewVertex(v)) => {
                 match self.highway.pre_validate_vertex(v) {
                     Ok(pvv) => Ok(self.add_vertices(vec![(sender, pvv)], rng)),
@@ -252,7 +269,8 @@ where
             Ok(HighwayMessage::RequestDependency(dep)) => {
                 if let Some(vv) = self.highway.get_dependency(&dep) {
                     let msg = HighwayMessage::NewVertex(vv.into());
-                    let serialized_msg = rmp_serde::to_vec(&msg).expect("should serialize message");
+                    let serialized_msg =
+                        bincode::serialize(&msg).expect("should serialize message");
                     // TODO: Should this be done via a gossip service?
                     Ok(vec![ConsensusProtocolResult::CreatedTargetedMessage(
                         serialized_msg,
@@ -315,6 +333,33 @@ where
         self.highway.deactivate_validator()
     }
 
+    fn has_evidence(&self, vid: &C::ValidatorId) -> bool {
+        self.highway.has_evidence(vid)
+    }
+
+    fn request_evidence(
+        &self,
+        sender: I,
+        vid: &C::ValidatorId,
+    ) -> Result<Vec<CpResult<I, C>>, Error> {
+        Ok(self
+            .highway
+            .validators()
+            .get_index(vid)
+            .and_then(|vidx| self.highway.get_dependency(&Dependency::Evidence(vidx)))
+            .map(|vv| {
+                let msg = HighwayMessage::NewVertex(vv.into());
+                let serialized_msg = bincode::serialize(&msg).expect("should serialize message");
+                ConsensusProtocolResult::CreatedTargetedMessage(serialized_msg, sender)
+            })
+            .into_iter()
+            .collect())
+    }
+
+    fn faulty_validators(&self) -> Vec<&C::ValidatorId> {
+        self.highway.faulty_validators().collect()
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -347,7 +392,7 @@ impl ValidatorSecret for HighwaySecret {
 pub(crate) struct HighwayContext;
 
 impl Context for HighwayContext {
-    type ConsensusValue = ProtoBlock;
+    type ConsensusValue = CandidateBlock;
     type ValidatorId = PublicKey;
     type ValidatorSecret = HighwaySecret;
     type Signature = Signature;

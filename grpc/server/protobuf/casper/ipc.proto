@@ -283,7 +283,9 @@ message ChainSpec {
             // genesis account information
             repeated GenesisAccount accounts = 4;
             // costs at genesis
-            CostTable costs = 5;
+            WasmConfig wasm_config = 5;
+            // The total number of validator slots available to auction.
+            uint32 validator_slots = 7;
 
             message GenesisAccount {
                 bytes public_key_bytes = 1;
@@ -320,31 +322,114 @@ message ChainSpec {
 
     }
 
-    message CostTable {
-        WasmCosts wasm = 1;
-        // TODO (https://casperlabs.atlassian.net/browse/EE-638): design host function costs
-
-        message WasmCosts {
-            // Default opcode cost
-            uint32 regular = 1;
-            // Div operations multiplier.
-            uint32 div = 2;
+    message WasmConfig {
+        message OpcodeCosts {
+            // Bit operations multiplier.
+            uint32 bit = 1;
+            // Arithmetic add operations multiplier.
+            uint32 add = 2;
             // Mul operations multiplier.
             uint32 mul = 3;
-            // Memory (load/store) operations multiplier.
-            uint32 mem = 4;
-            // Amount of free memory (in 64kb pages) each contract can use for stack.
-            uint32 initial_mem = 5;
-            // Grow memory cost, per page (64kb)
-            uint32 grow_mem = 6;
-            // Memory copy cost, per byte
-            uint32 memcpy = 7;
-            // Max stack height (native WebAssembly stack limiter)
-            uint32 max_stack_height = 8;
-            // Cost of wasm opcode is calculated as TABLE_ENTRY_COST * `opcodes_mul` / `opcodes_div`
-            uint32 opcodes_mul = 9;
-            uint32 opcodes_div = 10;
+            // Div operations multiplier.
+            uint32 div = 4;
+            // Memory load operation multiplier.
+            uint32 load = 5;
+            // Memory store operation multiplier.
+            uint32 store = 6;
+            // Const store operation multiplier.
+            uint32 const = 7;
+            // Local operations multiplier.
+            uint32 local = 8;
+            // Global operations multiplier.
+            uint32 global = 9;
+            // Control flow operations multiplier.
+            uint32 control_flow = 10;
+            // Integer operations multiplier.
+            uint32 integer_comparsion = 11;
+            // Conversion operations multiplier.
+            uint32 conversion = 12;
+            // Unreachable operation multiplier.
+            uint32 unreachable = 14;
+            // Nop operation multiplier.
+            uint32 nop = 15;
+            // Get current memory operation multiplier.
+            uint32 current_memory = 16;
+            // Grow memory cost; per page (64kb)
+            uint32 grow_memory = 17;
+            // Regular opcode cost
+            uint32 regular = 18;
         }
+
+        message StorageCosts {
+            // Gas charged per byte stored in the global state.
+            uint32 gas_per_byte = 1;
+        }
+
+        message HostFunctionCosts {
+            message HostFunction {
+                uint32 cost = 1;
+
+                message Argument {
+                    uint32 weight = 1;
+                }
+
+                repeated Argument arguments = 2;
+            }
+
+            HostFunction read_value = 1;
+            HostFunction read_value_local = 2;
+            HostFunction write = 3;
+            HostFunction write_local = 4;
+            HostFunction add = 5;
+            HostFunction add_local = 6;
+            HostFunction new_uref = 7;
+            HostFunction load_named_keys = 8;
+            HostFunction ret = 9;
+            HostFunction get_key = 10;
+            HostFunction has_key = 11;
+            HostFunction put_key = 12;
+            HostFunction remove_key = 13;
+            HostFunction revert = 14;
+            HostFunction is_valid_uref = 15;
+            HostFunction add_associated_key = 16;
+            HostFunction remove_associated_key = 17;
+            HostFunction update_associated_key = 18;
+            HostFunction set_action_threshold = 19;
+            HostFunction get_caller = 20;
+            HostFunction get_blocktime = 21;
+            HostFunction create_purse = 22;
+            HostFunction transfer_to_account = 23;
+            HostFunction transfer_from_purse_to_account = 24;
+            HostFunction transfer_from_purse_to_purse = 25;
+            HostFunction get_balance = 26;
+            HostFunction get_phase = 27;
+            HostFunction get_system_contract = 28;
+            HostFunction get_main_purse = 29;
+            HostFunction read_host_buffer = 30;
+            HostFunction create_contract_package_at_hash = 31;
+            HostFunction create_contract_user_group = 32;
+            HostFunction add_contract_version = 33;
+            HostFunction disable_contract_version = 34;
+            HostFunction call_contract = 35;
+            HostFunction call_versioned_contract = 36;
+            HostFunction get_named_arg_size = 37;
+            HostFunction get_named_arg = 38;
+            HostFunction remove_contract_user_group = 39;
+            HostFunction provision_contract_user_group_uref = 40;
+            HostFunction remove_contract_user_group_urefs = 41;
+            HostFunction print = 42;
+        }
+
+        // Memory stipend. Amount of free memory (in 64kb pages) each contract can use for stack.
+        uint32 initial_memory = 1;
+        // Max stack height (native WebAssembly stack limiter)
+        uint32 max_stack_height = 2;
+        // Wasm opcode costs
+        OpcodeCosts opcode_costs = 3;
+        // Storage costs
+        StorageCosts storage_costs = 4;
+        // Host function costs
+        HostFunctionCosts host_function_costs = 5;
     }
 
     message UpgradePoint {
@@ -356,8 +441,15 @@ message ChainSpec {
         // bytes for a contract to run that applies the upgrades to system contracts
         DeployCode upgrade_installer = 3;
         // Note: this is optional; only needed when costs are changing
-        CostTable new_costs = 4;
+        WasmConfig new_wasm_config = 4;
+        // DeployConfig changes
         DeployConfig new_deploy_config = 5;
+        // Change the total number of validator slots to this number (optional)
+        NewValidatorSlots new_validator_slots = 6;
+    }
+
+    message NewValidatorSlots {
+        uint32 new_validator_slots = 1;
     }
 
     message ActivationPoint {

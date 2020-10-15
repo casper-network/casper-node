@@ -40,8 +40,8 @@ use crate::{
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
     types::{
-        json_compatibility::ExecutionResult, Block as LinearBlock, BlockHash, BlockHeader, Deploy,
-        DeployHash, FinalizedBlock, Item, ProtoBlockHash, StatusFeed, Timestamp,
+        json_compatibility::ExecutionResult, Block as LinearBlock, Block, BlockHash, BlockHeader,
+        Deploy, DeployHash, FinalizedBlock, Item, ProtoBlockHash, StatusFeed, Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
@@ -202,6 +202,18 @@ pub enum StorageRequest<S: StorageType + 'static> {
         /// storage.
         responder: Responder<Option<S::Block>>,
     },
+    /// Retrieve block with given height.
+    GetBlockAtHeight {
+        /// Height of the block.
+        height: u64,
+        /// Responder.
+        responder: Responder<Option<S::Block>>,
+    },
+    /// Retrieve highest block.
+    GetHighestBlock {
+        /// Responder.
+        responder: Responder<Option<S::Block>>,
+    },
     /// Retrieve block header with given hash.
     GetBlockHeader {
         /// Hash of block to get header of.
@@ -270,6 +282,10 @@ impl<S: StorageType> Display for StorageRequest<S> {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
             StorageRequest::GetBlock { block_hash, .. } => write!(formatter, "get {}", block_hash),
+            StorageRequest::GetBlockAtHeight { height, .. } => {
+                write!(formatter, "get block at height {}", height)
+            }
+            StorageRequest::GetHighestBlock { .. } => write!(formatter, "get highest block"),
             StorageRequest::GetBlockHeader { block_hash, .. } => {
                 write!(formatter, "get {}", block_hash)
             }
@@ -466,7 +482,7 @@ pub enum ContractRuntimeRequest {
     /// A request to run upgrade.
     Upgrade {
         /// Upgrade config.
-        upgrade_config: UpgradeConfig,
+        upgrade_config: Box<UpgradeConfig>,
         /// Responder to call with the upgrade result.
         responder: Responder<Result<UpgradeResult, engine_state::Error>>,
     },
@@ -619,13 +635,11 @@ type BlockHeight = u64;
 pub enum LinearChainRequest<I> {
     /// Request whole block from the linear chain, by hash.
     BlockRequest(BlockHash, I),
-    /// Get last finalized block.
-    LastFinalizedBlock(Responder<Option<LinearBlock>>),
     /// Request for a linear chain block at height.
     BlockAtHeight(BlockHeight, I),
-    /// A local request for linear block at given height.
-    /// Temporary until we have implemented this functionality in the storage.
-    BlockAtHeightLocal(BlockHeight, Responder<Option<LinearBlock>>),
+    /// Local request for a linear chain block at height.
+    /// TODO: Unify `BlockAtHeight` and `BlockAtHeightLocal`.
+    BlockAtHeightLocal(BlockHeight, Responder<Option<Block>>),
 }
 
 impl<I: Display> Display for LinearChainRequest<I> {
@@ -634,12 +648,11 @@ impl<I: Display> Display for LinearChainRequest<I> {
             LinearChainRequest::BlockRequest(bh, peer) => {
                 write!(f, "block request for hash {} from {}", bh, peer)
             }
-            LinearChainRequest::LastFinalizedBlock(_) => write!(f, "last finalized block request"),
             LinearChainRequest::BlockAtHeight(height, sender) => {
                 write!(f, "block request for {} from {}", height, sender)
             }
             LinearChainRequest::BlockAtHeightLocal(height, _) => {
-                write!(f, "local block request for {}", height)
+                write!(f, "local request for block at height {}", height)
             }
         }
     }

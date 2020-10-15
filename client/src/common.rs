@@ -1,6 +1,7 @@
 use std::{fs, path::PathBuf};
 
 use clap::{Arg, ArgMatches};
+use rand::Rng;
 
 use casper_node::{
     crypto::{asymmetric_key::SecretKey, hash::Digest},
@@ -10,6 +11,28 @@ use casper_node::{
 pub const ARG_PATH: &str = "PATH";
 pub const ARG_HEX_STRING: &str = "HEX STRING";
 pub const ARG_STRING: &str = "STRING";
+pub const ARG_INTEGER: &str = "INTEGER";
+
+/// Handles the arg for whether verbose output is required or not.
+pub mod verbose {
+    use super::*;
+
+    pub const ARG_NAME: &str = "verbose";
+    const ARG_NAME_SHORT: &str = "v";
+    const ARG_HELP: &str = "Generates verbose output";
+
+    pub fn arg(order: usize) -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .short(ARG_NAME_SHORT)
+            .required(false)
+            .help(ARG_HELP)
+            .display_order(order)
+    }
+
+    pub fn get(matches: &ArgMatches) -> bool {
+        matches.is_present(ARG_NAME)
+    }
+}
 
 /// Handles providing the arg for and retrieval of the node hostname/IP and port.
 pub mod node_address {
@@ -18,7 +41,7 @@ pub mod node_address {
     const ARG_NAME: &str = "node-address";
     const ARG_SHORT: &str = "n";
     const ARG_VALUE_NAME: &str = "HOST:PORT";
-    const ARG_DEFAULT: &str = "http://localhost:7777";
+    const ARG_DEFAULT: &str = "http://localhost:50101";
     const ARG_HELP: &str = "Hostname or IP and port of node on which HTTP service is running";
 
     pub fn arg(order: usize) -> Arg<'static, 'static> {
@@ -37,6 +60,39 @@ pub mod node_address {
             .value_of(ARG_NAME)
             .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
             .to_string()
+    }
+}
+
+/// Handles providing the arg for the RPC ID.
+pub mod rpc_id {
+    use super::*;
+
+    const ARG_NAME: &str = "id";
+    const ARG_VALUE_NAME: &str = "STRING OR INTEGER";
+    const ARG_HELP: &str =
+        "JSON-RPC identifier, applied to the request and returned in the response.  If not \
+        provided, a random one will be assigned";
+
+    pub fn arg(order: usize) -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .required(false)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .display_order(order)
+    }
+
+    // TODO: If/when https://github.com/AtsukiTak/warp-json-rpc/pull/1 is merged and published,
+    //       update this to return a `jsonrpc_lite::Id`, and update the ARG_VALUE_NAME.
+    pub fn get(matches: &ArgMatches) -> u32 {
+        matches
+            .value_of(ARG_NAME)
+            .map(|id_str| {
+                id_str
+                    .parse()
+                    .unwrap_or_else(|error| panic!("should parse {} as u64: {}", id_str, error))
+            })
+            .unwrap_or_else(|| rand::thread_rng().gen())
     }
 }
 
@@ -135,8 +191,8 @@ pub mod block_hash {
     const ARG_SHORT: &str = "b";
     const ARG_VALUE_NAME: &str = super::ARG_HEX_STRING;
     const ARG_HELP: &str =
-        "Hex-encoded block hash.  If not given, the latest finalized block as known at the given \
-        node will be used";
+        "Hex-encoded block hash.  If not given, the last block added to the chain as known at the \
+        given node will be used";
 
     pub(crate) fn arg(order: usize) -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)

@@ -1076,7 +1076,7 @@ fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
                 Ok(map.values().cloned().collect())
             }
             (CLType::PublicKey, CLType::URef) => {
-                let map: BTreeMap<casper_types::PublicKey, URef> = cl_value.to_owned().into_t()?;
+                let map: BTreeMap<PublicKey, URef> = cl_value.to_owned().into_t()?;
                 Ok(map.values().cloned().collect())
             }
             (CLType::Bool, CLType::Key) => {
@@ -1124,7 +1124,7 @@ fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
                 Ok(map.values().cloned().filter_map(Key::into_uref).collect())
             }
             (CLType::PublicKey, CLType::Key) => {
-                let map: BTreeMap<casper_types::PublicKey, Key> = cl_value.to_owned().into_t()?;
+                let map: BTreeMap<PublicKey, Key> = cl_value.to_owned().into_t()?;
                 Ok(map.values().cloned().filter_map(Key::into_uref).collect())
             }
             (_, _) => Ok(vec![]),
@@ -1391,7 +1391,7 @@ where
         &self.context
     }
 
-    pub fn protocol_data(&self) -> ProtocolData {
+    pub fn protocol_data(&self) -> &ProtocolData {
         self.context.protocol_data()
     }
 
@@ -1728,7 +1728,7 @@ where
             protocol_version,
             correlation_id,
             phase,
-            protocol_data,
+            *protocol_data,
         );
 
         let mut mint_runtime = Runtime::new(
@@ -1830,7 +1830,7 @@ where
             protocol_version,
             correlation_id,
             phase,
-            protocol_data,
+            *protocol_data,
         );
 
         let mut runtime = Runtime::new(
@@ -1928,7 +1928,7 @@ where
             protocol_version,
             correlation_id,
             phase,
-            protocol_data,
+            *protocol_data,
         );
 
         let mut runtime = Runtime::new(
@@ -1976,9 +1976,11 @@ where
                 let account_hash =
                     Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
                 let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let unbond_purse =
+                    Self::get_named_argument(&runtime_args, auction::ARG_UNBOND_PURSE)?;
 
                 let result = runtime
-                    .withdraw_bid(account_hash, amount)
+                    .withdraw_bid(account_hash, amount, unbond_purse)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
@@ -2001,9 +2003,11 @@ where
                 let delegator = Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
                 let validator = Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
                 let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
+                let unbond_purse =
+                    Self::get_named_argument(&runtime_args, auction::ARG_UNBOND_PURSE)?;
 
                 let result = runtime
-                    .undelegate(delegator, validator, amount)
+                    .undelegate(delegator, validator, amount, unbond_purse)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)?
@@ -2350,7 +2354,7 @@ where
             protocol_version,
             self.context.correlation_id(),
             self.context.phase(),
-            self.context.protocol_data(),
+            *self.context.protocol_data(),
         );
 
         let mut runtime = Runtime {

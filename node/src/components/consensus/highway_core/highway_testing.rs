@@ -476,24 +476,18 @@ where
             value,
             timestamp: _,
             height,
-            era_end,
+            rewards,
             proposer: _,
         } in finalized_values
         {
             trace!(
                 "{}consensus value finalized: {:?}, height: {:?}",
-                if era_end.is_some() { "last " } else { "" },
+                if rewards.is_some() { "last " } else { "" },
                 value,
                 height
             );
-            if let Some(ee) = era_end {
-                if !ee.equivocators.is_empty() {
-                    warn!("New equivocators detected: {:?}", ee.equivocators);
-                    recipient.new_equivocators(ee.equivocators);
-                }
-                if !ee.rewards.is_empty() {
-                    warn!("Rewards are not verified yet: {:?}", ee.rewards);
-                }
+            if let Some(r) = rewards {
+                warn!(?r, "rewards are not verified yet");
             }
             recipient.push_finalized(value);
         }
@@ -1043,7 +1037,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_no_faults() {
-        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
+        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1107,7 +1101,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_some_mute() {
-        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
+        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1148,7 +1142,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_some_equivocate() {
-        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
+        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1184,7 +1178,11 @@ mod test_harness {
             .map(|v| {
                 (
                     v.finalized_values().cloned().collect::<Vec<_>>(),
-                    v.equivocators().cloned().collect::<HashSet<_>>(),
+                    v.validator()
+                        .highway()
+                        .faulty_validators()
+                        .cloned()
+                        .collect::<HashSet<_>>(),
                 )
             })
             .unzip();

@@ -29,12 +29,15 @@ use tracing::{debug, error, warn};
 
 use casper_types::{
     account::AccountHash,
-    auction::{ValidatorWeights, ARG_ERA_ID, ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS},
+    auction::{
+        ValidatorWeights, ARG_ERA_ID, ARG_GENESIS_VALIDATORS, ARG_MINT_CONTRACT_PACKAGE_HASH,
+        ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, ARG_VALIDATOR_SLOTS, VALIDATOR_SLOTS_KEY,
+    },
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
     runtime_args,
     system_contract_errors::mint,
-    AccessRights, BlockTime, Contract, ContractHash, ContractPackage, ContractPackageHash,
+    AccessRights, BlockTime, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
     ContractVersionKey, EntryPoint, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, URef,
     U512,
 };
@@ -70,7 +73,7 @@ use crate::{
         newtypes::{Blake2bHash, CorrelationId},
         stored_value::StoredValue,
         transform::Transform,
-        wasm_costs::WasmCosts,
+        wasm_config::WasmConfig,
         wasm_prep::{self, Preprocessor},
     },
     storage::{
@@ -140,12 +143,12 @@ where
         &self.config
     }
 
-    pub fn wasm_costs(
+    pub fn wasm_config(
         &self,
         protocol_version: ProtocolVersion,
-    ) -> Result<Option<WasmCosts>, Error> {
+    ) -> Result<Option<WasmConfig>, Error> {
         match self.get_protocol_data(protocol_version)? {
-            Some(protocol_data) => Ok(Some(*protocol_data.wasm_costs())),
+            Some(protocol_data) => Ok(Some(*protocol_data.wasm_config())),
             None => Ok(None),
         }
     }
@@ -175,8 +178,8 @@ where
         let phase = Phase::System;
 
         let initial_root_hash = self.state.empty_root();
-        let wasm_costs = ee_config.wasm_costs();
-        let preprocessor = Preprocessor::new(wasm_costs);
+        let wasm_config = ee_config.wasm_config();
+        let preprocessor = Preprocessor::new(*wasm_config);
 
         // Spec #3: Create "virtual system account" object.
         let mut virtual_system_account = {
@@ -310,7 +313,7 @@ where
         // Note: this deviates from the implementation strategy described in the original
         // specification.
         let protocol_data = ProtocolData::partial_without_standard_payment(
-            wasm_costs,
+            *wasm_config,
             mint_hash,
             proof_of_stake_hash,
         );
@@ -386,10 +389,12 @@ where
                 &ee_config.auction_installer_bytes()
             };
 
+            let validator_slots = ee_config.validator_slots();
             let auction_installer_module = preprocessor.preprocess(auction_installer_bytes)?;
             let args = runtime_args! {
-                "mint_contract_package_hash" => mint_package_hash,
-                "genesis_validators" => bonded_validators,
+                ARG_MINT_CONTRACT_PACKAGE_HASH => mint_package_hash,
+                ARG_GENESIS_VALIDATORS => bonded_validators,
+                ARG_VALIDATOR_SLOTS => validator_slots,
             };
             let authorization_keys = BTreeSet::new();
             let install_deploy_hash = genesis_config_hash.value();
@@ -420,7 +425,7 @@ where
 
         // Spec #2: Associate given CostTable with given ProtocolVersion.
         let protocol_data = ProtocolData::new(
-            wasm_costs,
+            *wasm_config,
             mint_hash,
             proof_of_stake_hash,
             standard_payment_hash,
@@ -599,14 +604,14 @@ where
         }
 
         // 3.1.1.1.1.6 resolve wasm CostTable for new protocol version
-        let new_wasm_costs = match upgrade_config.wasm_costs() {
+        let new_wasm_config = match upgrade_config.wasm_config() {
             Some(new_wasm_costs) => new_wasm_costs,
-            None => *current_protocol_data.wasm_costs(),
+            None => current_protocol_data.wasm_config(),
         };
 
         // 3.1.2.2 persist wasm CostTable
         let mut new_protocol_data = ProtocolData::new(
-            new_wasm_costs,
+            *new_wasm_config,
             current_protocol_data.mint(),
             current_protocol_data.proof_of_stake(),
             current_protocol_data.standard_payment(),
@@ -631,7 +636,7 @@ where
 
                 // preprocess installer module
                 let upgrade_installer_module = {
-                    let preprocessor = Preprocessor::new(new_wasm_costs);
+                    let preprocessor = Preprocessor::new(*new_wasm_config);
                     preprocessor.preprocess(bytes)?
                 };
 
@@ -717,6 +722,21 @@ where
             }
         }
 
+        // 3.1.1.1.1.7 new total validator slots is optional
+        if let Some(new_validator_slots) = upgrade_config.new_validator_slots() {
+            // 3.1.2.4 if new total validator slots is provided, update auction contract state
+            let auction_contract = tracking_copy
+                .borrow_mut()
+                .get_contract(correlation_id, new_protocol_data.auction())?;
+
+            let validator_slots_key = auction_contract.named_keys()[VALIDATOR_SLOTS_KEY];
+            let value = StoredValue::CLValue(
+                CLValue::from_t(new_validator_slots)
+                    .map_err(|_| Error::Bytesrepr("new_validator_slots".to_string()))?,
+            );
+            tracking_copy.borrow_mut().write(validator_slots_key, value);
+        }
+
         let effects = tracking_copy.borrow().effect();
 
         // commit
@@ -767,12 +787,12 @@ where
         mut exec_request: ExecuteRequest,
     ) -> Result<ExecutionResults, RootNotFound> {
         // TODO: do not unwrap
-        let wasm_costs = self
-            .wasm_costs(exec_request.protocol_version)
+        let wasm_config = self
+            .wasm_config(exec_request.protocol_version)
             .unwrap()
             .unwrap();
         let executor = Executor::new(self.config);
-        let preprocessor = Preprocessor::new(wasm_costs);
+        let preprocessor = Preprocessor::new(wasm_config);
 
         let deploys = exec_request.take_deploys();
         let mut results = ExecutionResults::with_capacity(deploys.len());
@@ -1822,9 +1842,9 @@ where
             None => return Err(Error::InvalidProtocolVersion(protocol_version).into()),
         };
 
-        let wasm_costs = protocol_data.wasm_costs();
+        let wasm_config = protocol_data.wasm_config();
 
-        let preprocessor = Preprocessor::new(*wasm_costs);
+        let preprocessor = Preprocessor::new(*wasm_config);
 
         let auction_contract: Contract = tracking_copy
             .borrow_mut()
@@ -1926,11 +1946,11 @@ where
         let executor = Executor::new(self.config);
 
         let preprocessor = {
-            let wasm_costs = self
-                .wasm_costs(step_request.protocol_version)
+            let wasm_config = self
+                .wasm_config(step_request.protocol_version)
                 .unwrap()
                 .unwrap();
-            Preprocessor::new(wasm_costs)
+            Preprocessor::new(wasm_config)
         };
 
         let auction_hash = protocol_data.auction();

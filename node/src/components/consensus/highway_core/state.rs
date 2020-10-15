@@ -247,6 +247,7 @@ impl<C: Context> State<C> {
         let idx = evidence.perpetrator();
         info!(?evidence, "marking validator #{} as faulty", idx.0);
         self.evidence.insert(idx, evidence);
+        self.panorama[idx] = Observation::Faulty;
     }
 
     pub(crate) fn wire_vote(

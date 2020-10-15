@@ -180,18 +180,33 @@ impl From<Block> for MinimalBlockInfo {
 pub struct GetStatusResult {
     /// The RPC API version.
     pub api_version: Version,
+    /// The chainspec name.
+    pub chainspec_name: String,
+    /// The genesis root hash.
+    pub genesis_root_hash: String,
     /// The node ID and network address of each connected peer.
     pub peers: BTreeMap<String, SocketAddr>,
     /// The minimal info of the last block from the linear chain.
-    pub last_finalized_block_info: Option<MinimalBlockInfo>,
+    pub last_added_block_info: Option<MinimalBlockInfo>,
+    /// The compiled node version.
+    pub build_version: String,
 }
 
 impl From<StatusFeed<NodeId>> for GetStatusResult {
     fn from(status_feed: StatusFeed<NodeId>) -> Self {
+        let chainspec_name = status_feed.chainspec_info.name();
+        let genesis_root_hash = status_feed
+            .chainspec_info
+            .root_hash()
+            .unwrap_or_default()
+            .to_string();
         GetStatusResult {
             api_version: CLIENT_API_VERSION.clone(),
+            chainspec_name,
+            genesis_root_hash,
             peers: peers_hashmap_to_btreemap(status_feed.peers),
-            last_finalized_block_info: status_feed.last_finalized_block.map(Into::into),
+            last_added_block_info: status_feed.last_added_block.map(Into::into),
+            build_version: crate::VERSION_STRING.clone(),
         }
     }
 }

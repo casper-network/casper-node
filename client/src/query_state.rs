@@ -15,7 +15,9 @@ use crate::{command::ClientCommand, common, RpcClient};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
+    Verbose,
     NodeAddress,
+    RpcId,
     GlobalStateHash,
     Key,
     Path,
@@ -122,9 +124,11 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
         SubCommand::with_name(Self::NAME)
             .about(Self::ABOUT)
             .display_order(display_order)
+            .arg(common::verbose::arg(DisplayOrder::Verbose as usize))
             .arg(common::node_address::arg(
                 DisplayOrder::NodeAddress as usize,
             ))
+            .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
             .arg(common::global_state_hash::arg(
                 DisplayOrder::GlobalStateHash as usize,
             ))
@@ -133,7 +137,9 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
     }
 
     fn run(matches: &ArgMatches<'_>) {
+        let verbose = common::verbose::get(matches);
         let node_address = common::node_address::get(matches);
+        let rpc_id = common::rpc_id::get(matches);
         let global_state_hash = common::global_state_hash::get(matches);
         let key = key::get(matches);
         let path = path::get(matches);
@@ -144,8 +150,10 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
             path,
         };
 
-        let response_value = Self::request_with_map_params(&node_address, params)
-            .unwrap_or_else(|error| panic!("response error: {}", error));
-        println!("{}", response_value);
+        let response = Self::request_with_map_params(verbose, &node_address, rpc_id, params);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&response).expect("should encode to JSON")
+        );
     }
 }

@@ -15,18 +15,20 @@ impl TryFrom<ipc::ChainSpec_GenesisConfig_ExecConfig> for ExecConfig {
             .into_iter()
             .map(TryInto::try_into)
             .collect::<Result<Vec<GenesisAccount>, Self::Error>>()?;
-        let wasm_costs = pb_exec_config.take_costs().take_wasm().into();
+        let wasm_config = pb_exec_config.take_wasm_config().try_into()?;
         let mint_initializer_bytes = pb_exec_config.take_mint_installer();
         let proof_of_stake_initializer_bytes = pb_exec_config.take_pos_installer();
         let standard_payment_installer_bytes = pb_exec_config.take_standard_payment_installer();
         let auction_installer_bytes = pb_exec_config.take_auction_installer();
+        let validator_slots = pb_exec_config.get_validator_slots();
         Ok(ExecConfig::new(
             mint_initializer_bytes,
             proof_of_stake_initializer_bytes,
             standard_payment_installer_bytes,
             auction_installer_bytes,
             accounts,
-            wasm_costs,
+            wasm_config,
+            validator_slots,
         ))
     }
 }
@@ -49,9 +51,8 @@ impl From<ExecConfig> for ipc::ChainSpec_GenesisConfig_ExecConfig {
                 .collect::<Vec<ipc::ChainSpec_GenesisConfig_ExecConfig_GenesisAccount>>();
             pb_exec_config.set_accounts(accounts.into());
         }
-        pb_exec_config
-            .mut_costs()
-            .set_wasm(exec_config.wasm_costs().into());
+        pb_exec_config.set_wasm_config(exec_config.wasm_config().clone().into());
+        pb_exec_config.set_validator_slots(exec_config.validator_slots());
         pb_exec_config
     }
 }

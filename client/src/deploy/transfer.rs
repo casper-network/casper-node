@@ -170,6 +170,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
         let subcommand = SubCommand::with_name(Self::NAME)
             .about(Self::ABOUT)
             .display_order(display_order)
+            .arg(common::verbose::arg(DisplayOrder::Verbose as usize))
+            .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
             .arg(amount::arg())
             .arg(source_purse::arg())
             .arg(target_account::arg())
@@ -189,7 +191,9 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
     fn run(matches: &ArgMatches<'_>) {
         creation_common::show_arg_examples_and_exit_if_required(matches);
 
+        let verbose = common::verbose::get(matches);
         let node_address = common::node_address::get(matches);
+        let rpc_id = common::rpc_id::get(matches);
 
         let transfer_args = create_transfer_args(matches)
             .to_bytes()
@@ -200,8 +204,10 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
 
         let params = creation_common::construct_deploy(matches, session);
 
-        let response_value = Self::request_with_map_params(&node_address, params)
-            .unwrap_or_else(|error| panic!("response error: {}", error));
-        println!("{}", response_value);
+        let response = Self::request_with_map_params(verbose, &node_address, rpc_id, params);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&response).expect("should encode to JSON")
+        );
     }
 }
