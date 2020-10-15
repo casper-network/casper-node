@@ -165,7 +165,8 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
                                 ));
                             } else {
                                 // It's not a block: Add it to the state.
-                                results.extend(self.add_valid_vertex(vv, rng));
+                                let now = Timestamp::now();
+                                results.extend(self.add_valid_vertex(vv, rng, now));
                                 state_changed = true;
                             }
                         }
@@ -191,9 +192,10 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         &mut self,
         vv: ValidVertex<C>,
         rng: &mut dyn CryptoRngCore,
+        now: Timestamp,
     ) -> Vec<CpResult<I, C>> {
         let start_time = Timestamp::now();
-        let av_effects = self.highway.add_valid_vertex(vv.clone(), rng);
+        let av_effects = self.highway.add_valid_vertex(vv.clone(), rng, now);
         let elapsed = start_time.elapsed();
         trace!(%elapsed, "added valid vertex");
         let mut results = self.process_av_effects(av_effects);
@@ -254,6 +256,7 @@ where
                 Ok(vec![])
             }
             Ok(HighwayMessage::NewVertex(v)) => {
+                // TODO: Incoming vertex, check timestamp and schedule a delay
                 match self.highway.pre_validate_vertex(v) {
                     Ok(pvv) => Ok(self.add_vertices(vec![(sender, pvv)], rng)),
                     Err((_, err)) => {
@@ -315,7 +318,10 @@ where
                 .remove(value)
                 .into_iter()
                 .flatten()
-                .flat_map(|vv| self.add_valid_vertex(vv, rng))
+                .flat_map(|vv| {
+                    let now = Timestamp::now();
+                    self.add_valid_vertex(vv, rng, now)
+                })
                 .collect_vec();
             let satisfied_pvvs = self.remove_satisfied_deps().collect();
             results.extend(self.add_vertices(satisfied_pvvs, rng));
