@@ -44,7 +44,7 @@ where
     T: FromBytes + CLTyped,
 {
     let prestate = builder
-        .get_state_root_hash()
+        .get_post_state_hash()
         .as_slice()
         .try_into()
         .expect("should be able to make Blake2bHash from post-state hash");

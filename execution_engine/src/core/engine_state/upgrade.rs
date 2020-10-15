@@ -17,7 +17,7 @@ pub enum UpgradeResult {
     TypeMismatch(TypeMismatch),
     Serialization(bytesrepr::Error),
     Success {
-        state_root_hash: Blake2bHash,
+        post_state_hash: Blake2bHash,
         effect: ExecutionEffect,
     },
 }
@@ -32,9 +32,9 @@ impl fmt::Display for UpgradeResult {
             }
             UpgradeResult::Serialization(error) => write!(f, "Serialization error: {:?}", error),
             UpgradeResult::Success {
-                state_root_hash,
+                post_state_hash,
                 effect,
-            } => write!(f, "Success: {} {:?}", state_root_hash, effect),
+            } => write!(f, "Success: {} {:?}", post_state_hash, effect),
         }
     }
 }
@@ -50,7 +50,7 @@ impl UpgradeResult {
                 state_root_hash: state_root,
                 ..
             } => UpgradeResult::Success {
-                state_root_hash: state_root,
+                post_state_hash: state_root,
                 effect,
             },
         }
@@ -59,7 +59,7 @@ impl UpgradeResult {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpgradeConfig {
-    state_root_hash: Blake2bHash,
+    pre_state_hash: Blake2bHash,
     current_protocol_version: ProtocolVersion,
     new_protocol_version: ProtocolVersion,
     upgrade_installer_args: Option<Vec<u8>>,
@@ -72,7 +72,7 @@ pub struct UpgradeConfig {
 impl UpgradeConfig {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        state_root_hash: Blake2bHash,
+        pre_state_hash: Blake2bHash,
         current_protocol_version: ProtocolVersion,
         new_protocol_version: ProtocolVersion,
         upgrade_installer_args: Option<Vec<u8>>,
@@ -82,7 +82,7 @@ impl UpgradeConfig {
         new_validator_slots: Option<u32>,
     ) -> Self {
         UpgradeConfig {
-            state_root_hash,
+            pre_state_hash,
             current_protocol_version,
             new_protocol_version,
             upgrade_installer_args,
@@ -93,8 +93,8 @@ impl UpgradeConfig {
         }
     }
 
-    pub fn state_root_hash(&self) -> Blake2bHash {
-        self.state_root_hash
+    pub fn pre_state_hash(&self) -> Blake2bHash {
+        self.pre_state_hash
     }
 
     pub fn current_protocol_version(&self) -> ProtocolVersion {

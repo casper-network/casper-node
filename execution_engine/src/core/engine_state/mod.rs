@@ -573,9 +573,9 @@ where
         // https://casperlabs.atlassian.net/wiki/spaces/EN/pages/139854367/Upgrading+System+Contracts+Specification
 
         // 3.1.1.1.1.1 validate pre state hash exists
-        // 3.1.2.1 get a tracking_copy at the provided state_root_hash
-        let state_root_hash = upgrade_config.state_root_hash();
-        let tracking_copy = match self.tracking_copy(state_root_hash)? {
+        // 3.1.2.1 get a tracking_copy at the provided pre_state_hash
+        let pre_state_hash = upgrade_config.pre_state_hash();
+        let tracking_copy = match self.tracking_copy(pre_state_hash)? {
             Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
             None => return Ok(UpgradeResult::RootNotFound),
         };
@@ -681,11 +681,11 @@ where
                 let gas_limit = Gas::new(std::u64::MAX.into());
                 let phase = Phase::System;
                 let hash_address_generator = {
-                    let generator = AddressGenerator::new(state_root_hash.as_ref(), phase);
+                    let generator = AddressGenerator::new(pre_state_hash.as_ref(), phase);
                     Rc::new(RefCell::new(generator))
                 };
                 let uref_address_generator = {
-                    let generator = AddressGenerator::new(state_root_hash.as_ref(), phase);
+                    let generator = AddressGenerator::new(pre_state_hash.as_ref(), phase);
                     Rc::new(RefCell::new(generator))
                 };
                 let tracking_copy = Rc::clone(&tracking_copy);
@@ -744,7 +744,7 @@ where
             .state
             .commit(
                 correlation_id,
-                state_root_hash,
+                pre_state_hash,
                 effects.transforms.to_owned(),
             )
             .map_err(Into::into)?;
@@ -806,7 +806,7 @@ where
                         &executor,
                         &preprocessor,
                         exec_request.protocol_version,
-                        exec_request.state_root_hash,
+                        exec_request.parent_state_hash,
                         BlockTime::new(exec_request.block_time),
                         deploy_item,
                     ),
@@ -815,7 +815,7 @@ where
                         &executor,
                         &preprocessor,
                         exec_request.protocol_version,
-                        exec_request.state_root_hash,
+                        exec_request.parent_state_hash,
                         BlockTime::new(exec_request.block_time),
                         deploy_item,
                     ),
@@ -1812,16 +1812,13 @@ where
     pub fn apply_effect(
         &self,
         correlation_id: CorrelationId,
-        state_root_hash: Blake2bHash,
+        pre_state_hash: Blake2bHash,
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<CommitResult, Error>
     where
         Error: From<S::Error>,
     {
-        match self
-            .state
-            .commit(correlation_id, state_root_hash, effects)?
-        {
+        match self.state.commit(correlation_id, pre_state_hash, effects)? {
             CommitResult::Success {
                 state_root_hash: state_root,
                 ..
@@ -1840,11 +1837,10 @@ where
     ) -> Result<Option<ValidatorWeights>, GetEraValidatorsError> {
         let protocol_version = get_era_validators_request.protocol_version();
 
-        let tracking_copy =
-            match self.tracking_copy(get_era_validators_request.state_root_hash())? {
-                Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
-                None => return Err(GetEraValidatorsError::RootNotFound),
-            };
+        let tracking_copy = match self.tracking_copy(get_era_validators_request.state_hash())? {
+            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
+            None => return Err(GetEraValidatorsError::RootNotFound),
+        };
 
         let protocol_data = match self.get_protocol_data(protocol_version)? {
             Some(protocol_data) => protocol_data,
@@ -1946,7 +1942,7 @@ where
             }
         };
 
-        let tracking_copy = match self.tracking_copy(step_request.state_root_hash) {
+        let tracking_copy = match self.tracking_copy(step_request.pre_state_hash) {
             Err(_) => return Ok(StepResult::PreconditionError),
             Ok(None) => return Ok(StepResult::RootNotFound),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
@@ -2121,15 +2117,17 @@ where
             .state
             .commit(
                 correlation_id,
-                step_request.state_root_hash,
+                step_request.pre_state_hash,
                 effects.transforms,
             )
             .map_err(Into::into)?;
 
         match commit_result {
-            CommitResult::Success { state_root_hash } => {
-                Ok(StepResult::Success { state_root_hash })
-            }
+            CommitResult::Success {
+                state_root_hash: state_root,
+            } => Ok(StepResult::Success {
+                post_state_hash: state_root,
+            }),
             CommitResult::RootNotFound => Ok(StepResult::RootNotFound),
             CommitResult::KeyNotFound(key) => Ok(StepResult::KeyNotFound(key)),
             CommitResult::TypeMismatch(type_mismatch) => {

@@ -46,7 +46,7 @@ build_contracts_and_run_state_initializer() {
     cd $EE_DIR
     make build-contracts-rs
     cd engine-tests/
-    STATE_ROOT_HASH=$(cargo run --release --bin=state-initializer -- --data-dir=$DATA_DIR)
+    PRE_STATE_HASH=$(cargo run --release --bin=state-initializer -- --data-dir=$DATA_DIR)
 }
 
 run_server() {
@@ -59,7 +59,7 @@ run_server() {
 run_client() {
     cd ${EE_DIR}/engine-tests/
     CLIENT_OUTPUT=$(cargo run --release --bin=$CLIENT -- \
-        --socket=$SOCKET --state-root-hash=$STATE_ROOT_HASH --threads=$CLIENT_THREAD_COUNT --requests=$MESSAGE_COUNT)
+        --socket=$SOCKET --pre-state-hash=$PRE_STATE_HASH --threads=$CLIENT_THREAD_COUNT --requests=$MESSAGE_COUNT)
 }
 
 kill_server() {

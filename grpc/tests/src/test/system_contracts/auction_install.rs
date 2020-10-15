@@ -85,7 +85,7 @@ fn should_run_auction_install_contract() {
     let (auction_hash, _ret_urefs, effect): (ContractHash, _, _) =
         res.expect("should run successfully");
 
-    let prestate = builder.get_state_root_hash();
+    let prestate = builder.get_post_state_hash();
     builder.commit_effects(prestate, effect.transforms);
 
     // should have written a contract under that uref

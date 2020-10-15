@@ -9,10 +9,10 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
     type Error = MappingError;
 
     fn try_from(mut pb_upgrade_request: UpgradeRequest) -> Result<Self, Self::Error> {
-        let state_root_hash = pb_upgrade_request
+        let pre_state_hash = pb_upgrade_request
             .get_parent_state_hash()
             .try_into()
-            .map_err(|_| MappingError::InvalidStateHash("state_root_hash".to_string()))?;
+            .map_err(|_| MappingError::InvalidStateHash("pre_state_hash".to_string()))?;
 
         let current_protocol_version = pb_upgrade_request.take_protocol_version().into();
 
@@ -52,7 +52,7 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
         };
 
         Ok(UpgradeConfig::new(
-            state_root_hash,
+            pre_state_hash,
             current_protocol_version,
             new_protocol_version,
             upgrade_installer_args,

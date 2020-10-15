@@ -33,8 +33,8 @@ impl ExecuteRequestBuilder {
         self
     }
 
-    pub fn with_state_root_hash(mut self, state_root_hash: &[u8]) -> Self {
-        self.execute_request.state_root_hash = state_root_hash.try_into().unwrap();
+    pub fn with_pre_state_hash(mut self, pre_state_hash: &[u8]) -> Self {
+        self.execute_request.parent_state_hash = pre_state_hash.try_into().unwrap();
         self
     }
 

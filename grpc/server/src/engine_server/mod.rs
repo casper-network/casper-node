@@ -178,7 +178,7 @@ where
         let correlation_id = CorrelationId::new();
 
         // Acquire pre-state hash
-        let state_root_hash: Blake2bHash = match commit_request.get_prestate_hash().try_into() {
+        let pre_state_hash: Blake2bHash = match commit_request.get_prestate_hash().try_into() {
             Err(_) => {
                 let error_message = "Could not parse pre-state hash".to_string();
                 warn!("{}", error_message);
@@ -208,7 +208,7 @@ where
         let commit_response = {
             let mut ret = CommitResponse::new();
 
-            match self.apply_effect(correlation_id, state_root_hash, transforms) {
+            match self.apply_effect(correlation_id, pre_state_hash, transforms) {
                 Ok(CommitResult::Success {
                     state_root_hash: state_root,
                 }) => {
@@ -229,8 +229,7 @@ where
                 }
                 Ok(CommitResult::RootNotFound) => {
                     warn!("RootNotFound");
-                    ret.mut_missing_prestate()
-                        .set_hash(state_root_hash.to_vec());
+                    ret.mut_missing_prestate().set_hash(pre_state_hash.to_vec());
                 }
                 Ok(CommitResult::KeyNotFound(key)) => {
                     warn!("{:?} not found", key);
@@ -287,15 +286,15 @@ where
             ee_config,
         ) {
             Ok(GenesisResult::Success {
-                state_root_hash,
+                post_state_hash,
                 effect,
             }) => {
-                let success_message = format!("run_genesis successful: {}", state_root_hash);
+                let success_message = format!("run_genesis successful: {}", post_state_hash);
                 info!("{}", success_message);
 
                 let mut genesis_response = GenesisResponse::new();
                 let genesis_result = genesis_response.mut_success();
-                genesis_result.set_poststate_hash(state_root_hash.to_vec());
+                genesis_result.set_poststate_hash(post_state_hash.to_vec());
                 genesis_result.set_effect(effect.into());
                 genesis_response
             }
@@ -342,13 +341,13 @@ where
 
         let upgrade_response = match self.commit_upgrade(correlation_id, upgrade_config) {
             Ok(UpgradeResult::Success {
-                state_root_hash,
+                post_state_hash,
                 effect,
             }) => {
-                info!("upgrade successful: {}", state_root_hash);
+                info!("upgrade successful: {}", post_state_hash);
                 let mut ret = UpgradeResponse::new();
                 let upgrade_result = ret.mut_success();
-                upgrade_result.set_post_state_hash(state_root_hash.to_vec());
+                upgrade_result.set_post_state_hash(post_state_hash.to_vec());
                 upgrade_result.set_effect(effect.into());
                 ret
             }
@@ -392,7 +391,7 @@ where
                 }
             };
 
-        let state_root_hash = get_era_validators_request.state_root_hash();
+        let pre_state_hash = get_era_validators_request.state_hash();
 
         let mut response = ipc::GetEraValidatorsResponse::new();
 
@@ -410,7 +409,7 @@ where
 
             Err(GetEraValidatorsError::RootNotFound) => response
                 .mut_missing_prestate()
-                .set_hash(state_root_hash.to_vec()),
+                .set_hash(pre_state_hash.to_vec()),
 
             Err(error) => {
                 response.mut_error().set_message(error.to_string());
@@ -446,11 +445,11 @@ where
         };
 
         let response = match self.commit_step(correlation_id, request) {
-            Ok(StepResult::Success { state_root_hash }) => {
-                info!("step successful: {}", state_root_hash);
+            Ok(StepResult::Success { post_state_hash }) => {
+                info!("step successful: {}", post_state_hash);
                 let mut ret = ipc::StepResponse::new();
                 let success = ret.mut_step_result().mut_success();
-                success.set_poststate_hash(state_root_hash.to_vec());
+                success.set_poststate_hash(post_state_hash.to_vec());
                 ret
             }
             Ok(result) => {

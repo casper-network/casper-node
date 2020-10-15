@@ -71,7 +71,7 @@ fn should_step() {
     let mut builder = initialize_builder();
 
     let step_request = StepRequestBuilder::new()
-        .with_state_root_hash(builder.get_state_root_hash())
+        .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
         .with_slash_item(SlashItem::new(ACCOUNT_1_PK))
         .with_reward_item(RewardItem::new(ACCOUNT_1_PK, BLOCK_REWARD / 2))

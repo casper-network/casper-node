@@ -79,7 +79,7 @@ pub trait StateProvider {
     fn commit(
         &self,
         correlation_id: CorrelationId,
-        state_root_hash: Blake2bHash,
+        state_hash: Blake2bHash,
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<CommitResult, Self::Error>;
 
