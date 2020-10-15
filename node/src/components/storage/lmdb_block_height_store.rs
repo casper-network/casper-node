@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use super::{BlockHeightStore, Error, Result};
+use crate::MAX_THREAD_COUNT;
 
 /// LMDB version of a store.
 #[derive(Debug)]
@@ -25,6 +26,8 @@ impl LmdbBlockHeightStore {
         let env = Environment::new()
             .set_flags(EnvironmentFlags::NO_SUB_DIR)
             .set_map_size(max_size)
+            // to avoid panic on excessive read-only transactions
+            .set_max_readers(MAX_THREAD_COUNT as u32)
             .open(db_path.as_ref())?;
         let db = env.create_db(None, DatabaseFlags::INTEGER_KEY)?;
 

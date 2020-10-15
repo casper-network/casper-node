@@ -20,6 +20,9 @@
     trivial_numeric_casts,
     unused_qualifications
 )]
+#![feature(test)]
+
+extern crate test;
 
 pub mod components;
 pub mod crypto;
@@ -47,6 +50,9 @@ pub use components::{
     storage::{Config as StorageConfig, Error as StorageError},
 };
 pub use utils::OS_PAGE_SIZE;
+
+/// The maximum thread count which should be spawned by the tokio runtime.
+pub const MAX_THREAD_COUNT: usize = 512;
 
 lazy_static! {
     /// Version string for the compiled node. Filled in at build time, output allocated at runtime.
