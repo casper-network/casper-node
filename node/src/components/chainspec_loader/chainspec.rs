@@ -12,6 +12,7 @@ use num_traits::Zero;
 use rand::Rng;
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 use casper_execution_engine::{
     core::engine_state::genesis::{ExecConfig, GenesisAccount},
@@ -111,6 +112,16 @@ impl Default for HighwayConfig {
     }
 }
 
+impl HighwayConfig {
+    /// Checks whether the values set in the config make sense and prints warnings if they don't
+    pub fn validate_config(&self) {
+        let min_era_ms = 1u64 << self.minimum_round_exponent;
+        if self.era_duration.millis() < self.minimum_era_height * min_era_ms {
+            warn!("Era duration is less than minimum era height * round length!");
+        }
+    }
+}
+
 #[cfg(test)]
 impl HighwayConfig {
     /// Generates a random instance using a `TestRng`.
@@ -200,6 +211,11 @@ impl GenesisConfig {
             })
             .clone()
             .collect()
+    }
+
+    /// Checks whether the values set in the config make sense and prints warnings if they don't
+    pub fn validate_config(&self) {
+        self.highway_config.validate_config();
     }
 }
 
@@ -343,6 +359,13 @@ impl Loadable for Chainspec {
     type Error = Error;
     fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
         config::parse_toml(path)
+    }
+}
+
+impl Chainspec {
+    /// Checks whether the values set in the config make sense and prints warnings if they don't
+    pub fn validate_config(&self) {
+        self.genesis.validate_config();
     }
 }
 
