@@ -338,7 +338,8 @@ impl<C: Context> Highway<C> {
     fn do_pre_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
             Vertex::Vote(vote) => {
-                let v_id = self.validator_id(&vote).ok_or(VoteError::Creator)?;
+                let creator = vote.wire_vote.creator;
+                let v_id = self.validators.id(creator).ok_or(VoteError::Creator)?;
                 if vote.wire_vote.instance_id != self.instance_id {
                     return Err(VoteError::InstanceId.into());
                 }
@@ -350,8 +351,7 @@ impl<C: Context> Highway<C> {
             Vertex::Evidence(evidence) => {
                 let v_id = self
                     .validators
-                    .get_by_index(evidence.perpetrator())
-                    .map(Validator::id)
+                    .id(evidence.perpetrator())
                     .ok_or(EvidenceError::UnknownPerpetrator)?;
                 Ok(evidence.validate(v_id, &self.instance_id)?)
             }
@@ -380,13 +380,6 @@ impl<C: Context> Highway<C> {
         let vote_hash = swvote.hash();
         self.state.add_valid_vote(swvote);
         self.on_new_vote(&vote_hash, vote_timestamp, rng)
-    }
-
-    /// Returns validator ID of the `swvote` creator, if it exists.
-    fn validator_id(&self, swvote: &SignedWireVote<C>) -> Option<&C::ValidatorId> {
-        self.validators
-            .get_by_index(swvote.wire_vote.creator)
-            .map(Validator::id)
     }
 }
 

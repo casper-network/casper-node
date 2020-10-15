@@ -41,7 +41,7 @@ pub mod node_address {
     const ARG_NAME: &str = "node-address";
     const ARG_SHORT: &str = "n";
     const ARG_VALUE_NAME: &str = "HOST:PORT";
-    const ARG_DEFAULT: &str = "http://localhost:7777";
+    const ARG_DEFAULT: &str = "http://localhost:50101";
     const ARG_HELP: &str = "Hostname or IP and port of node on which HTTP service is running";
 
     pub fn arg(order: usize) -> Arg<'static, 'static> {
