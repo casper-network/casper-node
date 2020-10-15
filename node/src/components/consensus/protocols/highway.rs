@@ -42,7 +42,7 @@ where
     finality_detector: FinalityDetector<C>,
     highway: Highway<C>,
     /// The vertices that are scheduled to be processed at a later time.  The keys of this
-    /// `BTreeMap` are timestamps when the corresponding vector of vertices will be added added.
+    /// `BTreeMap` are timestamps when the corresponding vector of vertices will be added.
     vertices_to_be_added_later: BTreeMap<Timestamp, Vec<(I, PreValidatedVertex<C>)>>,
 }
 
