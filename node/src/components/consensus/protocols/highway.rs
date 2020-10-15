@@ -5,7 +5,6 @@ use std::{
     rc::Rc,
 };
 
-use anyhow::Error;
 use datasize::DataSize;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -287,35 +286,35 @@ where
         msg: Vec<u8>,
         evidence_only: bool,
         rng: &mut dyn CryptoRngCore,
-    ) -> Result<Vec<CpResult<I, C>>, Error> {
+    ) -> Vec<CpResult<I, C>> {
         match bincode::deserialize(msg.as_slice()) {
-            Err(err) => Ok(vec![ConsensusProtocolResult::InvalidIncomingMessage(
+            Err(err) => vec![ConsensusProtocolResult::InvalidIncomingMessage(
                 msg,
                 sender,
                 err.into(),
-            )]),
+            )],
             Ok(HighwayMessage::NewVertex(v))
                 if self.highway.has_vertex(&v) || (evidence_only && !v.is_evidence()) =>
             {
-                Ok(vec![])
+                vec![]
             }
             Ok(HighwayMessage::NewVertex(v)) => {
                 let pvv = match self.highway.pre_validate_vertex(v) {
                     Ok(pvv) => pvv,
                     Err((_, err)) => {
                         // TODO: Disconnect from senders.
-                        return Ok(vec![ConsensusProtocolResult::InvalidIncomingMessage(
+                        return vec![ConsensusProtocolResult::InvalidIncomingMessage(
                             msg,
                             sender,
                             err.into(),
-                        )]);
+                        )];
                     }
                 };
                 match pvv.timestamp() {
                     Some(timestamp) if timestamp > Timestamp::now() => {
-                        Ok(self.store_vertex_for_addition_later(timestamp, sender, pvv))
+                        self.store_vertex_for_addition_later(timestamp, sender, pvv)
                     }
-                    _ => Ok(self.add_vertices(vec![(sender, pvv)], rng)),
+                    _ => self.add_vertices(vec![(sender, pvv)], rng),
                 }
             }
             Ok(HighwayMessage::RequestDependency(dep)) => {
@@ -324,13 +323,13 @@ where
                     let serialized_msg =
                         bincode::serialize(&msg).expect("should serialize message");
                     // TODO: Should this be done via a gossip service?
-                    Ok(vec![ConsensusProtocolResult::CreatedTargetedMessage(
+                    vec![ConsensusProtocolResult::CreatedTargetedMessage(
                         serialized_msg,
                         sender,
-                    )])
+                    )]
                 } else {
                     info!(?dep, ?sender, "requested dependency doesn't exist");
-                    Ok(vec![])
+                    vec![]
                 }
             }
         }
@@ -340,11 +339,11 @@ where
         &mut self,
         timestamp: Timestamp,
         rng: &mut dyn CryptoRngCore,
-    ) -> Result<Vec<CpResult<I, C>>, Error> {
+    ) -> Vec<CpResult<I, C>> {
         let effects = self.highway.handle_timer(timestamp, rng);
         let mut results = self.process_av_effects(effects);
         results.extend(self.add_past_due_stored_vertices(timestamp, rng));
-        Ok(results)
+        results
     }
 
     fn propose(
@@ -352,9 +351,9 @@ where
         value: C::ConsensusValue,
         block_context: BlockContext,
         rng: &mut dyn CryptoRngCore,
-    ) -> Result<Vec<CpResult<I, C>>, Error> {
+    ) -> Vec<CpResult<I, C>> {
         let effects = self.highway.propose(value, block_context, rng);
-        Ok(self.process_av_effects(effects))
+        self.process_av_effects(effects)
     }
 
     fn resolve_validity(
@@ -362,7 +361,7 @@ where
         value: &C::ConsensusValue,
         valid: bool,
         rng: &mut dyn CryptoRngCore,
-    ) -> Result<Vec<CpResult<I, C>>, Error> {
+    ) -> Vec<CpResult<I, C>> {
         if valid {
             let mut results = self
                 .pending_values
@@ -377,12 +376,12 @@ where
             let satisfied_pvvs = self.remove_satisfied_deps().collect();
             results.extend(self.add_vertices(satisfied_pvvs, rng));
             results.extend(self.detect_finality());
-            Ok(results)
+            results
         } else {
             // TODO: Slash proposer?
             // TODO: Drop dependent vertices? Or add timeout.
             // TODO: Disconnect from senders.
-            Ok(vec![])
+            vec![]
         }
     }
 
@@ -394,13 +393,8 @@ where
         self.highway.has_evidence(vid)
     }
 
-    fn request_evidence(
-        &self,
-        sender: I,
-        vid: &C::ValidatorId,
-    ) -> Result<Vec<CpResult<I, C>>, Error> {
-        Ok(self
-            .highway
+    fn request_evidence(&self, sender: I, vid: &C::ValidatorId) -> Vec<CpResult<I, C>> {
+        self.highway
             .validators()
             .get_index(vid)
             .and_then(|vidx| self.highway.get_dependency(&Dependency::Evidence(vidx)))
@@ -410,7 +404,7 @@ where
                 ConsensusProtocolResult::CreatedTargetedMessage(serialized_msg, sender)
             })
             .into_iter()
-            .collect())
+            .collect()
     }
 
     fn faulty_validators(&self) -> Vec<&C::ValidatorId> {
