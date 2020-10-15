@@ -1,27 +1,36 @@
-use casper_node::{
-    rpcs::{
-        chain::{GetGlobalStateHash, GetGlobalStateHashParams},
-        RpcWithOptionalParams,
-    },
-    types::BlockHash,
-};
+use std::str;
 
-use crate::{error::Result, rpc::RpcClient};
+use clap::{App, ArgMatches, SubCommand};
 
-impl RpcClient for GetGlobalStateHash {
-    const RPC_METHOD: &'static str = Self::METHOD;
+use casper_node::rpcs::chain::GetGlobalStateHash;
+
+use crate::{command::ClientCommand, common};
+
+/// This struct defines the order in which the args are shown for this subcommand's help message.
+enum DisplayOrder {
+    NodeAddress,
+    BlockHash,
 }
 
-pub fn get_global_state_hash(
-    node_address: String,
-    maybe_block_hash: Option<BlockHash>,
-) -> Result<String> {
-    let response_value = match maybe_block_hash {
-        Some(block_hash) => {
-            let params = GetGlobalStateHashParams { block_hash };
-            GetGlobalStateHash::request_with_map_params(&node_address, params)?
-        }
-        None => GetGlobalStateHash::request(&node_address)?,
-    };
-    Ok(serde_json::from_value::<String>(response_value)?)
+impl<'a, 'b> ClientCommand<'a, 'b> for GetGlobalStateHash {
+    const NAME: &'static str = "get-global-state-hash";
+    const ABOUT: &'static str = "Retrieves a global state hash";
+
+    fn build(display_order: usize) -> App<'a, 'b> {
+        SubCommand::with_name(Self::NAME)
+            .about(Self::ABOUT)
+            .display_order(display_order)
+            .arg(common::node_address::arg(
+                DisplayOrder::NodeAddress as usize,
+            ))
+            .arg(common::block_hash::arg(DisplayOrder::BlockHash as usize))
+    }
+
+    fn run(matches: &ArgMatches<'_>) {
+        let node_address = common::node_address::get(matches);
+        let maybe_block_hash = common::block_hash::get(matches);
+        let response_value = casper_client::get_global_state_hash(node_address, maybe_block_hash)
+            .unwrap_or_else(|error| panic!("response error: {}", error));
+        println!("{}", response_value);
+    }
 }
