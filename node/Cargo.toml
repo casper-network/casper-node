@@ -109,10 +109,9 @@ test = false
 
 [package.metadata.deb]
 features = ["vendored-openssl"]
-revision = "3"  # Increment with releases for updates to charlie data files when not version bumping casper-node.
+revision = "0"
 assets = [
     ["../target/release/casper-node", "/usr/bin/casper-node", "755"],
-    ["../target/release/casper-client", "/usr/bin/casper-client", "755"],
     ["../target/wasm32-unknown-unknown/release/mint_install.wasm", "/etc/casper/wasm/mint_install.wasm", "644"],
     ["../target/wasm32-unknown-unknown/release/pos_install.wasm", "/etc/casper/wasm/pos_install.wasm", "644"],
     ["../target/wasm32-unknown-unknown/release/standard_payment_install.wasm", "/etc/casper/wasm/standard_payment_install.wasm", "644"],
