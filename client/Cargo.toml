@@ -15,7 +15,7 @@ name = "casper_client"
 path = "lib/lib.rs"
 
 [[bin]]
-name = "casper_client"
+name = "casper-client"
 path = "src/main.rs"
 
 [dependencies]

@@ -2,6 +2,7 @@ use std::str;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 
+use casper_client::RpcCall;
 use casper_node::rpcs::{
     state::{GetBalance, GetBalanceParams},
     RpcWithParams,
@@ -85,7 +86,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {
         let rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
         let params = balance_args::get(matches);
-        let response = casper_client::RpcCall::new(rpc_id, verbose)
+        let response = RpcCall::new(rpc_id, verbose)
             .get_balance(node_address, params)
             .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(

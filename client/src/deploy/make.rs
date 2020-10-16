@@ -1,5 +1,8 @@
 use clap::{App, ArgMatches, SubCommand};
 
+use casper_client::deploy::DeployExt;
+use casper_node::types::Deploy;
+
 use super::creation_common;
 use crate::command::ClientCommand;
 
@@ -27,7 +30,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeDeploy {
         let payment = creation_common::parse_payment_info(matches);
         let deploy_params = creation_common::parse_deploy_params(matches);
         let maybe_output_path = creation_common::output::get(matches);
-        casper_client::deploy::make_deploy(maybe_output_path, deploy_params, payment, session)
+        Deploy::make_deploy(maybe_output_path, deploy_params, payment, session)
             .unwrap_or_else(|err| panic!("unable to make deploy {:?}", err));
     }
 }

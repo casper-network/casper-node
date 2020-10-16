@@ -1,5 +1,6 @@
 use clap::{App, ArgMatches, SubCommand};
 
+use casper_client::RpcCall;
 use casper_node::rpcs::account::PutDeploy;
 
 use super::creation_common::{self, DisplayOrder};
@@ -28,7 +29,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
         let rpc_id = common::rpc_id::get(matches);
         let session = creation_common::parse_session_info(matches);
         let deploy = creation_common::parse_deploy(matches, session);
-        let _ = casper_client::RpcCall::new(rpc_id, verbose)
+        let _ = RpcCall::new(rpc_id, verbose)
             .put_deploy(node_address, deploy)
             .unwrap_or_else(|error| panic!("response error: {}", error));
     }

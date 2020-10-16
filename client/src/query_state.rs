@@ -2,6 +2,7 @@ use std::{fs, str};
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 
+use casper_client::RpcCall;
 use casper_node::{crypto::asymmetric_key::PublicKey, rpcs::state::GetItem};
 use casper_types::Key;
 
@@ -134,7 +135,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
         let key = key::get(matches);
         let path = path::get(matches);
 
-        let response = casper_client::RpcCall::new(rpc_id, verbose)
+        let response = RpcCall::new(rpc_id, verbose)
             .get_item(node_address, global_state_hash, key, path)
             .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(

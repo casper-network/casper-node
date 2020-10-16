@@ -1,5 +1,6 @@
 use clap::{App, Arg, ArgGroup, ArgMatches, SubCommand};
 
+use casper_client::RpcCall;
 use casper_node::crypto::asymmetric_key::PublicKey;
 use casper_types::{URef, U512};
 
@@ -161,7 +162,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
         let deploy_params = creation_common::parse_deploy_params(matches);
         let payment = creation_common::parse_payment_info(matches);
 
-        let response = casper_client::RpcCall::new(rpc_id, verbose)
+        let response = RpcCall::new(rpc_id, verbose)
             .transfer(
                 common::node_address::get(matches),
                 amount::get(matches),

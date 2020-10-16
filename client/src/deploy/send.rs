@@ -1,5 +1,7 @@
 use clap::{App, ArgMatches, SubCommand};
 
+use casper_client::RpcCall;
+
 use super::creation_common::{self, DisplayOrder};
 use crate::{command::ClientCommand, common};
 
@@ -26,7 +28,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for SendDeploy {
         let node_address = common::node_address::get(matches);
         let rpc_id = common::rpc_id::get(matches);
         let input_path = creation_common::input::get(matches);
-        let response = casper_client::RpcCall::new(rpc_id, verbose)
+        let response = RpcCall::new(rpc_id, verbose)
             .send_deploy_file(&node_address, &input_path)
             .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(

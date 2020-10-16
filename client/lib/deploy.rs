@@ -1,7 +1,10 @@
 use std::{
     fs::File,
-    io::{self, Write},
+    io::{self, BufReader, Write},
 };
+
+use semver::Version;
+use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_node::{
@@ -14,14 +17,16 @@ use casper_node::{
     },
     types::{Deploy, DeployHash, TimeDiff, Timestamp},
 };
-use io::BufReader;
-use semver::Version;
-use serde::{Deserialize, Serialize};
 
 use crate::{error::Result, rpc::RpcClient};
 
+/// SendDeploy allows sending a deploy to the node.
 pub struct SendDeploy;
+
+/// Transfer allows transferring an amount between accounts.
 pub struct Transfer {}
+
+/// ListDeploys gets a list of the deploys within a block.
 pub struct ListDeploys {}
 
 impl RpcClient for PutDeploy {
@@ -68,28 +73,66 @@ impl From<GetBlockResult> for ListDeploysResult {
 /// Stdout is used when None
 fn output_or_stdout(maybe_path: &Option<&str>) -> io::Result<Box<dyn Write>> {
     match maybe_path {
-        Some(output_path) => File::create(&output_path).map(|f| Box::new(f) as Box<dyn Write>),
-        None => Ok(Box::new(std::io::stdout()) as Box<dyn Write>),
+        Some(output_path) => File::create(&output_path).map(|file| {
+            let write: Box<dyn Write> = Box::new(file);
+            write
+        }),
+        None => Ok(Box::new(io::stdout())),
     }
 }
 
+/// DeployParams are used as a helper to construct a Deploy with
+/// `DeployExt::with_payment_and_session`.
 pub struct DeployParams {
+    /// The secret key for this deploy.
     pub secret_key: SecretKey,
+
+    /// The timestamp that this deploy was created.
     pub timestamp: Timestamp,
+
+    /// Time to live for this deploy.
     pub ttl: TimeDiff,
+
+    /// Gas price for this deploy.
     pub gas_price: u64,
+
+    /// A list of other deploys (hashes) that this deploy depends upon.
     pub dependencies: Vec<DeployHash>,
+
+    /// The name of the chain this deploy will be considered for inclusion in.
     pub chain_name: String,
 }
 
+/// `DeployExt` is an extension trait that adds some client-specific functionality to `Deploy`.
 pub trait DeployExt {
+    /// Constructor for `Deploy`.
     fn with_payment_and_session(
         params: DeployParams,
         payment: ExecutableDeployItem,
         session: ExecutableDeployItem,
     ) -> Deploy;
+
+    /// Write the deploy to a file, or if maybe_path is None, `stdout`.
     fn write_deploy(&self, maybe_path: Option<&str>) -> Result<()>;
+
+    /// Read a deploy from file.
     fn read_deploy(input_path: &str) -> Result<Deploy>;
+
+    /// Read a deploy from file, sign it, write it back to a file (or `stdout` if no file is
+    /// specified).
+    fn sign_deploy_file(
+        input_path: &str,
+        secret_key: SecretKey,
+        output_path: Option<&str>,
+    ) -> Result<()>;
+
+    /// Create a deploy from parts and save to deploy file, or if maybe_path is None, `stdout`.
+    fn make_deploy(
+        maybe_output_path: Option<&str>,
+        deploy_params: DeployParams,
+        payment: ExecutableDeployItem,
+        session: ExecutableDeployItem,
+    ) -> Result<()>;
 }
 
 impl DeployExt for Deploy {
@@ -120,38 +163,36 @@ impl DeployExt for Deploy {
         )
     }
 
-    /// Write the deploy to a file, or if maybe_path is None, stdout
     fn write_deploy(&self, maybe_path: Option<&str>) -> Result<()> {
         let mut out = output_or_stdout(&maybe_path)?;
         let content = serde_json::to_string_pretty(self)?;
         Ok(out.write_all(content.as_bytes())?)
     }
 
-    /// Read a deploy from a file
     fn read_deploy(input_path: &str) -> Result<Deploy> {
         let reader = BufReader::new(File::open(&input_path)?);
         Ok(serde_json::from_reader(reader)?)
     }
-}
 
-pub fn make_deploy(
-    maybe_output_path: Option<&str>,
-    deploy_params: DeployParams,
-    payment: ExecutableDeployItem,
-    session: ExecutableDeployItem,
-) -> Result<()> {
-    let deploy = Deploy::with_payment_and_session(deploy_params, payment, session);
-    deploy.write_deploy(maybe_output_path)
-}
+    fn make_deploy(
+        maybe_output_path: Option<&str>,
+        deploy_params: DeployParams,
+        payment: ExecutableDeployItem,
+        session: ExecutableDeployItem,
+    ) -> Result<()> {
+        let deploy = Deploy::with_payment_and_session(deploy_params, payment, session);
+        deploy.write_deploy(maybe_output_path)
+    }
 
-pub fn sign_deploy_file(
-    input_path: &str,
-    secret_key: SecretKey,
-    output_path: Option<&str>,
-) -> Result<()> {
-    let mut deploy = Deploy::read_deploy(input_path)?;
-    let mut rng = rand::thread_rng();
-    deploy.sign(&secret_key, &mut rng);
-    deploy.write_deploy(output_path)?;
-    Ok(())
+    fn sign_deploy_file(
+        input_path: &str,
+        secret_key: SecretKey,
+        output_path: Option<&str>,
+    ) -> Result<()> {
+        let mut deploy = Deploy::read_deploy(input_path)?;
+        let mut rng = rand::thread_rng();
+        deploy.sign(&secret_key, &mut rng);
+        deploy.write_deploy(output_path)?;
+        Ok(())
+    }
 }

@@ -2,6 +2,7 @@ use std::str;
 
 use clap::{App, ArgMatches, SubCommand};
 
+use casper_client::RpcCall;
 use casper_node::rpcs::chain::GetBlock;
 
 use crate::{command::ClientCommand, common};
@@ -35,7 +36,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBlock {
         let node_address = common::node_address::get(matches);
         let rpc_id = common::rpc_id::get(matches);
         let maybe_block_hash = common::block_hash::get(matches);
-        let response = casper_client::RpcCall::new(rpc_id, verbose)
+        let response = RpcCall::new(rpc_id, verbose)
             .get_block(&node_address, maybe_block_hash)
             .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
