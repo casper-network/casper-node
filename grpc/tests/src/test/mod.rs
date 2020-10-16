@@ -5,6 +5,7 @@ mod counter;
 mod deploy;
 mod explorer;
 mod groups;
+mod host_function_costs;
 mod manage_groups;
 mod regression;
 mod step;
