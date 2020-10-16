@@ -14,6 +14,7 @@ use derive_more::From;
 use fmt::Debug;
 use prometheus::{self, IntGauge, Registry};
 use semver::Version;
+use smallvec::SmallVec;
 use tracing::{error, info, trace};
 
 use crate::{
@@ -22,7 +23,9 @@ use crate::{
         requests::{DeployBufferRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{CryptoRngCore, DeployHash, DeployHeader, ProtoBlock, ProtoBlockHash, Timestamp},
+    types::{
+        Block, CryptoRngCore, DeployHash, DeployHeader, ProtoBlock, ProtoBlockHash, Timestamp,
+    },
 };
 
 const DEPLOY_BUFFER_PRUNE_INTERVAL: Duration = Duration::from_secs(10);
@@ -53,6 +56,13 @@ pub enum Event {
         past_blocks: HashSet<ProtoBlockHash>,
         responder: Responder<HashSet<DeployHash>>,
     },
+
+    /// The DeployBuffer will query storage for any finalized blocks passed in from the joiner
+    /// phase.
+    GetDeploysForFinalizedBlockResult {
+        block_hash: ProtoBlockHash,
+        deploys: HashMap<DeployHash, DeployHeader>,
+    },
 }
 
 impl Display for Event {
@@ -79,6 +89,9 @@ impl Display for Event {
                 } else {
                     write!(f, "deploy-buffer failed to get chainspec")
                 }
+            }
+            Event::GetDeploysForFinalizedBlockResult { .. } => {
+                write!(f, "deploy-buffer got finalized blocks from storage ")
             }
         }
     }
@@ -116,10 +129,38 @@ impl DeployBuffer {
     pub(crate) fn new<REv>(
         registry: &Registry,
         effect_builder: EffectBuilder<REv>,
+        linear_chain: &[Block],
     ) -> Result<(Self, Effects<Event>), prometheus::Error>
     where
         REv: ReactorEventT,
     {
+        let mut effects = effect_builder
+            .set_timeout(DEPLOY_BUFFER_PRUNE_INTERVAL)
+            .event(|_| Event::BufferPrune);
+
+        for block in linear_chain.iter() {
+            let deploy_hashes = block.deploy_hashes();
+            let mut hashes = SmallVec::with_capacity(deploy_hashes.len());
+            let block_hash =
+                ProtoBlockHash::from_parts(&deploy_hashes, block.header().random_bit());
+            hashes.extend(deploy_hashes.iter().cloned());
+            effects.extend(
+                effect_builder
+                    .get_deploys_from_storage(hashes)
+                    .event(move |result| {
+                        let deploys = result
+                            .iter()
+                            .flatten()
+                            .map(|deploy| (*deploy.id(), deploy.header().clone()))
+                            .collect::<HashMap<_, _>>();
+                        Event::GetDeploysForFinalizedBlockResult {
+                            block_hash,
+                            deploys,
+                        }
+                    }),
+            )
+        }
+
         let pending = DeployCollection::default();
         let proposed = ProtoBlockCollection::default();
         let finalized = ProtoBlockCollection::default();
@@ -132,10 +173,7 @@ impl DeployBuffer {
             chainspecs,
             metrics,
         };
-        let cleanup = effect_builder
-            .set_timeout(DEPLOY_BUFFER_PRUNE_INTERVAL)
-            .event(|_| Event::BufferPrune);
-        Ok((this, cleanup))
+        Ok((this, effects))
     }
 
     /// Adds a deploy to the deploy buffer.
@@ -390,6 +428,12 @@ where
                 let deploys = self.remaining_deploys(deploy_config, current_instant, past_blocks);
                 return responder.respond(deploys).ignore();
             }
+            Event::GetDeploysForFinalizedBlockResult {
+                block_hash,
+                deploys,
+            } => {
+                self.finalized.insert(block_hash, deploys);
+            }
         }
         Effects::new()
     }
@@ -475,7 +519,9 @@ mod tests {
         let scheduler = utils::leak(Scheduler::<Event>::new(QueueKind::weights()));
         let event_queue = EventQueueHandle::new(&scheduler);
         let effect_builder = EffectBuilder::new(event_queue);
-        DeployBuffer::new(registry, effect_builder).expect("Failure to create a new Deploy Buffer")
+        let linear_chain = Vec::new();
+        DeployBuffer::new(registry, effect_builder, &linear_chain)
+            .expect("Failure to create a new Deploy Buffer")
     }
 
     impl From<StorageRequest<Storage>> for Event {

@@ -345,7 +345,8 @@ impl reactor::Reactor for Reactor {
             gossiper::get_deploy_from_storage::<Deploy, Event>,
             registry,
         )?;
-        let (deploy_buffer, deploy_buffer_effects) = DeployBuffer::new(registry, effect_builder)?;
+        let (deploy_buffer, deploy_buffer_effects) =
+            DeployBuffer::new(registry, effect_builder, &linear_chain)?;
         let mut effects = reactor::wrap_effects(Event::DeployBuffer, deploy_buffer_effects);
         // Post state hash is expected to be present.
         let genesis_post_state_hash = chainspec_loader

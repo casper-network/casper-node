@@ -92,6 +92,12 @@ impl ProtoBlockHash {
         ProtoBlockHash(hash)
     }
 
+    pub fn from_parts(deploys: &[DeployHash], random_bit: bool) -> Self {
+        ProtoBlockHash::new(hash::hash(
+            &bincode::serialize(&(deploys, random_bit)).expect("serialize ProtoBlock"),
+        ))
+    }
+
     /// Returns the wrapped inner hash.
     pub fn inner(&self) -> &Digest {
         &self.0
