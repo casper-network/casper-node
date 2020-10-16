@@ -1,16 +1,22 @@
 //! Reactor used to join the network.
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+    collections::HashMap,
+    fmt::{self, Display, Formatter},
+};
 
 use datasize::DataSize;
+use derive_more::From;
+use prometheus::Registry;
+use smallvec::SmallVec;
+use tokio::task;
+use tracing::{error, info, warn};
 
 use block_executor::BlockExecutor;
 use consensus::EraSupervisor;
 use deploy_acceptor::DeployAcceptor;
-use derive_more::From;
-use prometheus::Registry;
 use small_network::GossipedAddress;
-use tracing::{error, info, warn};
+use storage::StorageType;
 
 use crate::{
     components::{
@@ -20,6 +26,7 @@ use crate::{
         consensus::{self},
         contract_runtime::{self, ContractRuntime},
         deploy_acceptor,
+        deploy_buffer::ProtoBlockCollection,
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
         linear_chain,
@@ -48,7 +55,10 @@ use crate::{
         validator::{self, Error, ValidatorInitConfig},
         EventQueueHandle, Finalize,
     },
-    types::{Block, BlockByHeight, BlockHeader, CryptoRngCore, Deploy, ProtoBlock, Tag, Timestamp},
+    types::{
+        Block, BlockByHeight, BlockHeader, CryptoRngCore, Deploy, ProtoBlock, ProtoBlockHash, Tag,
+        Timestamp,
+    },
     utils::{Source, WithDir},
 };
 
@@ -647,6 +657,7 @@ impl Reactor {
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
     pub async fn into_validator_config(self) -> ValidatorInitConfig {
+        let finalized_deploys = self.get_finalized_deploys_from_storage().await;
         let (net, config) = (
             self.net,
             ValidatorInitConfig {
@@ -657,9 +668,36 @@ impl Reactor {
                 consensus: self.consensus,
                 init_consensus_effects: self.init_consensus_effects,
                 linear_chain: self.linear_chain.linear_chain().clone(),
+                finalized_deploys,
             },
         );
         net.finalize().await;
         config
+    }
+
+    async fn get_finalized_deploys_from_storage(&self) -> ProtoBlockCollection {
+        let mut finalized = HashMap::new();
+        let linear_chain = self.linear_chain.linear_chain();
+        let deploy_store = self.storage.deploy_store();
+        for block in linear_chain.iter() {
+            let deploy_store = deploy_store.clone();
+            let deploy_hash_vec = block.deploy_hashes();
+            let mut deploy_hashes = SmallVec::with_capacity(deploy_hash_vec.len());
+            let block_hash =
+                ProtoBlockHash::from_parts(&deploy_hashes, block.header().random_bit());
+            deploy_hashes.extend(deploy_hash_vec.iter().cloned());
+            let deploys = task::spawn_blocking(move || deploy_store.get(deploy_hashes))
+                .await
+                .expect("should run")
+                .into_iter()
+                .map(|result| {
+                    result.unwrap_or_else(|error| panic!("failed to get deploy: {}", error))
+                })
+                .flatten()
+                .map(|deploy| (*deploy.id(), deploy.header().clone()))
+                .collect::<HashMap<_, _>>();
+            finalized.insert(block_hash, deploys);
+        }
+        finalized
     }
 }
