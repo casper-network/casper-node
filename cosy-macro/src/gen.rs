@@ -212,8 +212,11 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
         let constructor_args = cdef.component_arguments();
 
         component_instantiations.push(quote!(
-            let (#field_ident, effects) = #component_type::new(#(#constructor_args),*)
+            let (#field_ident, effects) = #component_type::new::<#event_ident>(#(#constructor_args),*)
                 .map_err(#error_ident::#variant_ident)?;
+            let wrapped_effects: crate::effect::Effects<#event_ident> = crate::reactor::wrap_effects(#event_ident::#variant_ident, effects);
+
+            all_effects.extend(wrapped_effects.into_iter());
         ));
 
         component_fields.push(quote!(#field_ident));
@@ -242,13 +245,17 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
                 event_queue: crate::reactor::EventQueueHandle<Self::Event>,
                 rng: &mut dyn crate::types::CryptoRngCore,
             ) -> Result<(Self, crate::reactor::Effects<Self::Event>), Self::Error> {
+                let mut all_effects = crate::reactor::Effects::new();
+
                 // Instantiate each component.
                 #(#component_instantiations)*
 
                 // Assign component fields during reactor construction.
-                Ok(#reactor_ident {
+                let reactor = #reactor_ident {
                     #(#component_fields,)*
-                })
+                };
+
+                Ok((reactor, all_effects))
             }
         }
     )

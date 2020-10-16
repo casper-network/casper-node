@@ -7,8 +7,14 @@ use lmdb::{
 use smallvec::smallvec;
 use tracing::info;
 
-use super::{DeployMetadata, DeployStore, Error, Multiple, Result, Store, Value};
-use crate::types::json_compatibility::ExecutionResult;
+use super::{
+    DeployMetadata, DeployStore, Error, Event, Multiple, Result, StorageType, Store, Value,
+    WithBlockHeight,
+};
+use crate::{
+    effect::Effects,
+    types::{json_compatibility::ExecutionResult, Item},
+};
 
 /// Used to namespace metadata associated with stored values.
 #[repr(u8)]
@@ -29,8 +35,17 @@ where
     _phantom: PhantomData<(V, M)>,
 }
 
-impl<V: Value, M: Default + Send + Sync> LmdbStore<V, M> {
-    pub(crate) fn new<P: AsRef<Path>>(db_path: P, max_size: usize) -> Result<Self> {
+impl<V, M> LmdbStore<V, M>
+where
+    V: Value,
+    M: Default + Send + Sync,
+    V: Value + WithBlockHeight + 'static,
+    M: Value + Item + 'static,
+{
+    pub(crate) fn new<P: AsRef<Path>>(
+        db_path: P,
+        max_size: usize,
+    ) -> Result<(Self, Effects<Event<Self>>)> {
         let env = Environment::new()
             .set_flags(EnvironmentFlags::NO_SUB_DIR)
             .set_map_size(max_size)
@@ -38,11 +53,14 @@ impl<V: Value, M: Default + Send + Sync> LmdbStore<V, M> {
         let db = env.create_db(None, DatabaseFlags::empty())?;
         info!("opened DB at {}", db_path.as_ref().display());
 
-        Ok(LmdbStore {
-            env,
-            db,
-            _phantom: PhantomData,
-        })
+        Ok((
+            LmdbStore {
+                env,
+                db,
+                _phantom: PhantomData,
+            },
+            Effects::new(),
+        ))
     }
 }
 

@@ -17,7 +17,7 @@ use tracing::{info, trace};
 use crate::config;
 use casper_node::{
     logging,
-    reactor::{initializer, joiner, validator, Runner},
+    reactor::{initializer2, joiner, validator, Runner},
     utils::WithDir,
 };
 use prometheus::Registry;
@@ -150,36 +150,47 @@ impl Cli {
                 // The metrics are shared across all reactors.
                 let registry = Registry::new();
 
-                let mut initializer_runner = Runner::<initializer::Reactor>::with_metrics(
+                // let mut initializer_runner = Runner::<initializer::Reactor>::with_metrics(
+                //     WithDir::new(root.clone(), validator_config),
+                //     &mut rng,
+                //     &registry,
+                // )
+                // .await?;
+
+                let mut initializer2_runner = Runner::<initializer2::Initializer>::with_metrics(
                     WithDir::new(root.clone(), validator_config),
                     &mut rng,
                     &registry,
                 )
                 .await?;
-                initializer_runner.run(&mut rng).await;
+                initializer2_runner.run(&mut rng).await;
+
+                // initializer_runner.run(&mut rng).await;
 
                 info!("finished initialization");
 
-                let initializer = initializer_runner.into_inner();
+                let initializer = initializer2_runner.into_inner();
                 if !initializer.stopped_successfully() {
                     bail!("failed to initialize successfully");
                 }
 
-                let mut joiner_runner = Runner::<joiner::Reactor>::with_metrics(
-                    WithDir::new(root, initializer),
-                    &mut rng,
-                    &registry,
-                )
-                .await?;
-                joiner_runner.run(&mut rng).await;
+                todo!("THIS IS GOOD");
 
-                info!("finished joining");
+                // let mut joiner_runner = Runner::<joiner::Reactor>::with_metrics(
+                //     WithDir::new(root, initializer),
+                //     &mut rng,
+                //     &registry,
+                // )
+                // .await?;
+                // joiner_runner.run(&mut rng).await;
 
-                let config = joiner_runner.into_inner().into_validator_config().await;
+                // info!("finished joining");
 
-                let mut validator_runner =
-                    Runner::<validator::Reactor>::with_metrics(config, &mut rng, &registry).await?;
-                validator_runner.run(&mut rng).await;
+                // let config = joiner_runner.into_inner().into_validator_config().await;
+
+                // let mut validator_runner =
+                //     Runner::<validator::Reactor>::with_metrics(config, &mut rng,
+                // &registry).await?; validator_runner.run(&mut rng).await;
             }
         }
 

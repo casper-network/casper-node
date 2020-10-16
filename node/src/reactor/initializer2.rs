@@ -3,17 +3,21 @@
 use cosy_macro::reactor;
 
 use crate::{
-    components::{small_network::NodeId, storage::Storage},
+    components::{
+        small_network::NodeId,
+        storage::{Storage, StorageType},
+    },
     protocol::Message,
     reactor::validator,
+    utils::WithDir,
 };
 
 reactor!(Initializer {
-  type Config = validator::Config;
+  type Config =  WithDir<validator::Config>;
 
   components: {
-    chainspec = ChainspecLoader();
-    storage = Storage();
+    chainspec = ChainspecLoader(todo!(), todo!());
+    storage = Storage(todo!());
     contract_runtime = ContractRuntime();
   }
 
