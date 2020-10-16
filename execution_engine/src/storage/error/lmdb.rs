@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use casper_types::bytesrepr;
 
-use super::in_memory;
+use crate::storage::{error::in_memory, trie::merkle_proof};
 
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum Error {
@@ -17,6 +17,14 @@ pub enum Error {
 
     #[error("Another thread panicked while holding a lock")]
     Poison,
+
+    #[error(
+        "`hole_index` with value {hole_index:?} must be less than RADIX (proof step {proof_step_index:?})"
+    )]
+    HoleIndexOutOfRange {
+        hole_index: u8,
+        proof_step_index: u8,
+    },
 }
 
 impl wasmi::HostError for Error {}
@@ -33,11 +41,33 @@ impl<T> From<sync::PoisonError<T>> for Error {
     }
 }
 
+impl From<merkle_proof::Error> for Error {
+    fn from(error: merkle_proof::Error) -> Self {
+        match error {
+            merkle_proof::Error::HoleIndexOutOfRange {
+                hole_index,
+                proof_step_index,
+            } => Error::HoleIndexOutOfRange {
+                hole_index,
+                proof_step_index,
+            },
+            merkle_proof::Error::BytesRepr(error) => Error::BytesRepr(error),
+        }
+    }
+}
+
 impl From<in_memory::Error> for Error {
     fn from(error: in_memory::Error) -> Self {
         match error {
             in_memory::Error::BytesRepr(error) => Error::BytesRepr(error),
             in_memory::Error::Poison => Error::Poison,
+            in_memory::Error::HoleIndexOutOfRange {
+                hole_index,
+                proof_step_index,
+            } => Error::HoleIndexOutOfRange {
+                hole_index,
+                proof_step_index,
+            },
         }
     }
 }
