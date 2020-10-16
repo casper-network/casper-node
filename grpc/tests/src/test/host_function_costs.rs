@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_types::{ContractHash, RuntimeArgs, U512};
+use casper_types::{ContractHash, RuntimeArgs};
 
 const HOST_FUNCTION_COSTS_NAME: &str = "host_function_costs.wasm";
 const CONTRACT_KEY_NAME: &str = "contract";
@@ -55,17 +55,9 @@ fn should_measure_gas_cost() {
     )
     .build();
 
-    let account_1_funds_before = builder.get_purse_balance(account.main_purse());
-
     builder.exec(exec_request_2).expect_success().commit();
 
-    let account_1_funds_after = builder.get_purse_balance(account.main_purse());
-
-    let do_nothing_cost = account_1_funds_before - account_1_funds_after;
-    assert!(
-        do_nothing_cost.is_zero(),
-        "executing nothing should cost zero"
-    );
+    let do_nothing_cost = builder.last_exec_gas_cost().value();
 
     //
     // Measure opcodes (doing something)
@@ -78,13 +70,13 @@ fn should_measure_gas_cost() {
     )
     .build();
 
-    let account_1_funds_before = builder.get_purse_balance(account.main_purse());
+    // let account_1_funds_before = builder.get_purse_balance(account.main_purse());
 
     builder.exec(exec_request_2).expect_success().commit();
 
-    let account_1_funds_after = builder.get_purse_balance(account.main_purse());
+    // let account_1_funds_after = builder.get_purse_balance(account.main_purse());
 
-    let do_something_cost = account_1_funds_before - account_1_funds_after;
+    let do_something_cost = builder.last_exec_gas_cost().value();
     assert!(
         !do_something_cost.is_zero(),
         "executing nothing should cost zero"
@@ -159,13 +151,9 @@ fn should_measure_nested_host_function_call_cost() {
     )
     .build();
 
-    let account_1_funds_before = builder.get_purse_balance(account.main_purse());
-
     builder.exec(exec_request_2).expect_success().commit();
+    let level_1_cost = builder.last_exec_gas_cost().value();
 
-    let account_1_funds_after = builder.get_purse_balance(account.main_purse());
-
-    let level_1_cost = account_1_funds_before - account_1_funds_after;
     assert!(
         !level_1_cost.is_zero(),
         "executing nested call should not cost zero"
@@ -183,13 +171,9 @@ fn should_measure_nested_host_function_call_cost() {
     )
     .build();
 
-    let account_1_funds_before = builder.get_purse_balance(account.main_purse());
-
     builder.exec(exec_request_3).expect_success().commit();
+    let level_2_cost = builder.last_exec_gas_cost().value();
 
-    let account_1_funds_after = builder.get_purse_balance(account.main_purse());
-
-    let level_2_cost = account_1_funds_before - account_1_funds_after;
     assert!(
         !level_2_cost.is_zero(),
         "executing nested call should not cost zero"
@@ -201,7 +185,4 @@ fn should_measure_nested_host_function_call_cost() {
         level_2_cost,
         level_1_cost,
     );
-
-    // level1 calls do_nothing therefore level2 costs at least twice the cost of level1
-    assert!(level_2_cost >= U512::from(2) * level_1_cost);
 }
