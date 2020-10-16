@@ -351,14 +351,13 @@ pub enum StorageRequest2 {
         /// results.
         responder: Responder<usize>,
     },
-    // TODO: Cleanup and replace
-    // /// Retrieve deploy and its metadata.
-    // GetDeployAndMetadata {
-    //     /// Hash of deploy to be retrieved.
-    //     deploy_hash: D::Id,
-    //     /// Responder to call with the results.
-    //     responder: Responder<Option<DeployAndMetadata<S>>>,
-    // },
+    /// Retrieve deploy and its metadata.
+    GetDeployAndMetadata {
+        /// Hash of deploy to be retrieved.
+        deploy_hash: DeployHash,
+        /// Responder to call with the results.
+        responder: Responder<Option<(Deploy, DeployMetadata<Block>)>>,
+    },
     /// Store given chainspec.
     PutChainspec {
         /// Chainspec.

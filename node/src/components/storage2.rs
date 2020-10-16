@@ -273,6 +273,22 @@ impl Storage {
 
                 responder.respond(total_new).ignore()
             }
+            StorageRequest2::GetDeployAndMetadata {
+                deploy_hash,
+                responder,
+            } => {
+                let mut tx = self.env.ro_transaction();
+
+                let value = tx.get_value(self.deploy_db, &deploy_hash).map(|deploy| {
+                    (
+                        deploy,
+                        tx.get_value(self.deploy_metadata_db, &deploy_hash)
+                            .unwrap_or_default(),
+                    )
+                });
+                responder.respond(value).ignore()
+            }
+
             StorageRequest2::PutChainspec {
                 chainspec,
                 responder,
