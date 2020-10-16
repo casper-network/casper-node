@@ -194,6 +194,11 @@ pub(crate) struct ComponentDefinition {
 }
 
 impl ComponentDefinition {
+    /// Returns the component construction arguments.
+    pub(crate) fn component_arguments(&self) -> &[Expr] {
+        self.component_arguments.as_slice()
+    }
+
     /// Returns an ident identifying the component that is suitable for a struct field, e.g. `net`.
     pub(crate) fn field_ident(&self) -> &Ident {
         &self.name

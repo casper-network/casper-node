@@ -201,6 +201,24 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
         }
     }
 
+    let mut component_instantiations = Vec::new();
+    let mut component_fields = Vec::new();
+
+    for cdef in def.components() {
+        let field_ident = cdef.field_ident();
+        let component_type = cdef.full_component_type();
+        let variant_ident = cdef.variant_ident();
+
+        let constructor_args = cdef.component_arguments();
+
+        component_instantiations.push(quote!(
+            let (#field_ident, effects) = #component_type::new(#(#constructor_args),*)
+                .map_err(#error_ident::#variant_ident)?;
+        ));
+
+        component_fields.push(quote!(#field_ident));
+    }
+
     quote!(
         impl crate::reactor::Reactor for #reactor_ident {
             type Event = #event_ident;
@@ -224,7 +242,13 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
                 event_queue: crate::reactor::EventQueueHandle<Self::Event>,
                 rng: &mut dyn crate::types::CryptoRngCore,
             ) -> Result<(Self, crate::reactor::Effects<Self::Event>), Self::Error> {
-                todo!()
+                // Instantiate each component.
+                #(#component_instantiations)*
+
+                // Assign component fields during reactor construction.
+                Ok(#reactor_ident {
+                    #(#component_fields,)*
+                })
             }
         }
     )
