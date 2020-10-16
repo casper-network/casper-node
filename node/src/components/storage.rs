@@ -13,7 +13,6 @@ mod store;
 
 use std::{
     collections::HashMap,
-    convert::Infallible,
     fmt::{Debug, Display},
     fs,
     hash::Hash,
@@ -509,7 +508,7 @@ where
     Self: Sized + 'static,
 {
     type Event = Event<S>;
-    type ConstructionError = Infallible;
+    type ConstructionError = Error;
 
     fn handle_event(
         &mut self,

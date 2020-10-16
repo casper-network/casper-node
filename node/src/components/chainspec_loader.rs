@@ -12,10 +12,7 @@ mod chainspec;
 mod config;
 mod error;
 
-use std::{
-    convert::Infallible,
-    fmt::{self, Display, Formatter},
-};
+use std::fmt::{self, Display, Formatter};
 
 use datasize::DataSize;
 use derive_more::From;
@@ -150,7 +147,7 @@ where
     REv: From<Event> + From<StorageRequest<Storage>> + From<ContractRuntimeRequest> + Send,
 {
     type Event = Event;
-    type ConstructionError = Infallible;
+    type ConstructionError = Error;
 
     fn handle_event(
         &mut self,
