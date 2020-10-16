@@ -7,6 +7,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
+    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -29,7 +30,7 @@ use casper_execution_engine::{
 };
 use casper_types::{auction::ValidatorWeights, Key, URef};
 
-use super::Responder;
+use super::{Multiple, Responder};
 use crate::{
     components::{
         chainspec_loader::ChainspecInfo,
@@ -41,7 +42,8 @@ use crate::{
     crypto::{asymmetric_key::Signature, hash::Digest},
     types::{
         json_compatibility::ExecutionResult, Block as LinearBlock, Block, BlockHash, BlockHeader,
-        Deploy, DeployHash, FinalizedBlock, Item, ProtoBlockHash, StatusFeed, Timestamp,
+        Deploy, DeployHash, DeployHeader, FinalizedBlock, Item, ProtoBlockHash, StatusFeed,
+        Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
@@ -274,6 +276,102 @@ pub enum StorageRequest<S: StorageType + 'static> {
         version: Version,
         /// Responder to call with the result.
         responder: Responder<Option<Chainspec>>,
+    },
+}
+
+#[derive(Debug)]
+/// A storage request.
+#[must_use]
+pub enum StorageRequest2 {
+    /// Store given block.
+    PutBlock {
+        /// Block to be stored.
+        block: Box<Block>,
+        /// Responder to call with the result.  Returns true if the block was stored on this
+        /// attempt or false if it was previously stored.
+        responder: Responder<bool>,
+    },
+    /// Retrieve block with given hash.
+    GetBlock {
+        /// Hash of block to be retrieved.
+        block_hash: BlockHash,
+        /// Responder to call with the result.  Returns `None` is the block doesn't exist in local
+        /// storage.
+        responder: Responder<Option<Block>>,
+    },
+    /// Retrieve block with given height.
+    GetBlockAtHeight {
+        /// Height of the block.
+        height: u64,
+        /// Responder.
+        responder: Responder<Option<Block>>,
+    },
+    /// Retrieve highest block.
+    GetHighestBlock {
+        /// Responder.
+        responder: Responder<Option<Block>>,
+    },
+    /// Retrieve block header with given hash.
+    GetBlockHeader {
+        /// Hash of block to get header of.
+        block_hash: BlockHash,
+        /// Responder to call with the result.  Returns `None` is the block header doesn't exist in
+        /// local storage.
+        responder: Responder<Option<BlockHeader>>,
+    },
+    /// Store given deploy.
+    PutDeploy {
+        /// Deploy to store.
+        deploy: Box<Deploy>,
+        /// Responder to call with the result.  Returns true if the deploy was stored on this
+        /// attempt or false if it was previously stored.
+        responder: Responder<bool>,
+    },
+    /// Retrieve deploys with given hashes.
+    GetDeploys {
+        /// Hashes of deploys to be retrieved.
+        deploy_hashes: Multiple<DeployHash>,
+        /// Responder to call with the results.
+        responder: Responder<Vec<Option<Deploy>>>,
+    },
+    /// Retrieve deploy headers with given hashes.
+    GetDeployHeaders {
+        /// Hashes of deploy headers to be retrieved.
+        deploy_hashes: Multiple<DeployHash>,
+        /// Responder to call with the results.
+        responder: Responder<Vec<Option<DeployHeader>>>,
+    },
+    /// Store the given execution results for the deploys in the given block.
+    PutExecutionResults {
+        /// Hash of block.
+        block_hash: BlockHash,
+        /// Execution results.
+        execution_results: HashMap<DeployHash, ExecutionResult>,
+        /// Responder to call with the result.  Returns the number of already stored execution
+        /// results.
+        responder: Responder<usize>,
+    },
+    // TODO: Cleanup and replace
+    // /// Retrieve deploy and its metadata.
+    // GetDeployAndMetadata {
+    //     /// Hash of deploy to be retrieved.
+    //     deploy_hash: D::Id,
+    //     /// Responder to call with the results.
+    //     responder: Responder<Option<DeployAndMetadata<S>>>,
+    // },
+    /// Store given chainspec.
+    PutChainspec {
+        /// Chainspec.
+        chainspec: Arc<Chainspec>,
+        /// Responder to call with the result.
+        responder: Responder<()>,
+    },
+    /// Retrieve chainspec with given version.
+    GetChainspec {
+        /// Version.
+        version: Version,
+        /// Responder to call with the result.
+        responder: Responder<Option<Arc<Chainspec>>>,
     },
 }
 
