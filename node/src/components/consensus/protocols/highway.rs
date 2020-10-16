@@ -133,7 +133,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
     ) -> Vec<CpResult<I, C>> {
         self.vertices_to_be_added_later
             .entry(future_timestamp)
-            .or_insert(vec![])
+            .or_insert_with(Vec::new)
             .push((sender, pvv));
         vec![ConsensusProtocolResult::ScheduleTimer(future_timestamp)]
     }
