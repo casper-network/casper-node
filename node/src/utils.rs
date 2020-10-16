@@ -7,17 +7,15 @@ mod round_robin;
 
 use std::{
     cell::RefCell,
-    env::current_dir,
     fmt::{self, Display, Formatter},
     fs, io,
-    net::{IpAddr, SocketAddr, ToSocketAddrs},
+    net::{SocketAddr, ToSocketAddrs},
     path::{Path, PathBuf},
 };
 
 use lazy_static::lazy_static;
 use libc::{c_long, sysconf, _SC_PAGESIZE};
 use thiserror::Error;
-use tracing::warn;
 
 #[cfg(test)]
 pub use external::RESOURCES_PATH;
@@ -40,24 +38,14 @@ lazy_static! {
     };
 }
 
-/// Formats a host and port pair into a string.
-pub fn format_address<I: Into<IpAddr>>(host: I, port: u16) -> String {
-    SocketAddr::from((host, port)).to_string()
-}
-
 /// Parses a network address from a string, with DNS resolution.
-pub fn resolve_address(addr: &str) -> io::Result<SocketAddr> {
+pub(crate) fn resolve_address(addr: &str) -> io::Result<SocketAddr> {
     addr.to_socket_addrs()?.next().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::Other,
             format!("could not resolve `{}`", addr),
         )
     })
-}
-
-/// Resolves a hostname.
-pub fn resolve_ip(host: &str) -> io::Result<IpAddr> {
-    Ok(resolve_address(format!("{}:0", host).as_str())?.ip())
 }
 
 /// Moves a value to the heap and then forgets about, leaving only a static reference behind.
@@ -136,7 +124,7 @@ pub fn read_file<P: AsRef<Path>>(filename: P) -> Result<Vec<u8>, ReadFileError> 
 /// Write data to `path`.
 ///
 /// Wraps `fs::write`, but preserves the filename for better error printing.
-pub fn write_file<P: AsRef<Path>, B: AsRef<[u8]>>(
+pub(crate) fn write_file<P: AsRef<Path>, B: AsRef<[u8]>>(
     filename: P,
     data: B,
 ) -> Result<(), WriteFileError> {
@@ -147,23 +135,12 @@ pub fn write_file<P: AsRef<Path>, B: AsRef<[u8]>>(
     })
 }
 
-/// Read a complete `path` into memory and convert to string.
-///
-/// Wraps `fs::read_to_string`, but preserves the filename for better error printing.
-pub fn read_file_to_string<P: AsRef<Path>>(filename: P) -> Result<String, ReadFileError> {
-    let path = filename.as_ref();
-    fs::read_to_string(path).map_err(|error| ReadFileError {
-        path: path.to_owned(),
-        error,
-    })
-}
-
 /// With-directory context.
 ///
 /// Associates a type with a "working directory".
 #[derive(Clone, Debug)]
 pub struct WithDir<T> {
-    path: PathBuf,
+    dir: PathBuf,
     value: T,
 }
 
@@ -171,26 +148,27 @@ impl<T> WithDir<T> {
     /// Creates a new with-directory context.
     pub fn new<P: Into<PathBuf>>(path: P, value: T) -> Self {
         WithDir {
-            path: path.into(),
-            value,
-        }
-    }
-
-    /// Creates a new with-directory context based on the current working directory, falling back
-    /// on `/` if it cannot be read.
-    pub fn default_path(value: T) -> Self {
-        WithDir {
-            path: current_dir().unwrap_or_else(|err| {
-                warn!(%err, "could not determine current working directory, falling back to /");
-                "/".into()
-            }),
+            dir: path.into(),
             value,
         }
     }
 
     /// Deconstructs a with-directory context.
-    pub fn into_parts(self) -> (PathBuf, T) {
-        (self.path, self.value)
+    pub(crate) fn into_parts(self) -> (PathBuf, T) {
+        (self.dir, self.value)
+    }
+
+    pub(crate) fn value(&self) -> &T {
+        &self.value
+    }
+
+    /// Adds `self.dir` as a parent if `path` is relative, otherwise returns `path` unchanged.
+    pub(crate) fn with_dir(&self, path: PathBuf) -> PathBuf {
+        if path.is_relative() {
+            self.dir.join(path)
+        } else {
+            path
+        }
     }
 }
 
@@ -205,7 +183,7 @@ pub enum Source<I> {
 
 impl<I: Copy> Source<I> {
     /// If `self` represents a peer, returns its ID, otherwise returns `None`.
-    pub fn node_id(&self) -> Option<I> {
+    pub(crate) fn node_id(&self) -> Option<I> {
         match self {
             Source::Peer(node_id) => Some(*node_id),
             Source::Client => None,

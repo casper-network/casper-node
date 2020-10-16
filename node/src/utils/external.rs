@@ -8,6 +8,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use datasize::DataSize;
 use openssl::{
     pkey::{PKey, Private},
     x509::X509,
@@ -39,7 +40,7 @@ lazy_static::lazy_static! {
 /// An `External` also always provides a default, which will always result in an error when `load`
 /// is called. Should the underlying type `T` implement `Default`, the `with_default` can be
 /// used instead.
-#[derive(Clone, Eq, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, DataSize, Eq, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum External<T> {
     /// Value that should be loaded from an external path.

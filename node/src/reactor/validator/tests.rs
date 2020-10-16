@@ -12,7 +12,7 @@ use crate::{
     crypto::asymmetric_key::{PublicKey, SecretKey},
     reactor::{initializer, joiner, validator, Runner},
     testing::{self, network::Network, ConditionCheckReactor, TestRng},
-    types::Timestamp,
+    types::{CryptoRngCore, Timestamp},
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
     Chainspec,
 };
@@ -23,7 +23,7 @@ struct TestChain {
     chainspec: Chainspec,
 }
 
-type Nodes = crate::testing::network::Nodes<validator::Reactor<TestRng>>;
+type Nodes = crate::testing::network::Nodes<validator::Reactor>;
 
 impl TestChain {
     /// Instantiates a new test chain configuration.
@@ -50,8 +50,9 @@ impl TestChain {
             })
             .collect();
         // TODO: This is duplicated. Remove the `HighwayConfig` field.
-        chainspec.genesis.timestamp = Timestamp::now();
-        chainspec.genesis.highway_config.genesis_era_start_timestamp = Timestamp::now();
+        // Make the genesis timestamp 30 seconds from now, to allow for all validators to start up.
+        chainspec.genesis.timestamp = Timestamp::now() + 30000.into();
+        chainspec.genesis.highway_config.genesis_era_start_timestamp = chainspec.genesis.timestamp;
 
         TestChain {
             keys,
@@ -88,11 +89,11 @@ impl TestChain {
 
     async fn create_initialized_network(
         &mut self,
-        rng: &mut TestRng,
-    ) -> anyhow::Result<Network<validator::Reactor<TestRng>>> {
+        rng: &mut dyn CryptoRngCore,
+    ) -> anyhow::Result<Network<validator::Reactor>> {
         let root = RESOURCES_PATH.join("local");
 
-        let mut network: Network<validator::Reactor<TestRng>> = Network::new();
+        let mut network: Network<validator::Reactor> = Network::new();
         let first_node_port = testing::unused_port_on_localhost();
 
         for idx in 0..self.keys.len() {
@@ -100,8 +101,7 @@ impl TestChain {
 
             // We create an initializer reactor here and run it to completion.
             let mut initializer_runner =
-                Runner::<initializer::Reactor, TestRng>::new(WithDir::new(root.clone(), cfg), rng)
-                    .await?;
+                Runner::<initializer::Reactor>::new(WithDir::new(root.clone(), cfg), rng).await?;
             initializer_runner.run(rng).await;
 
             // Now we can construct the actual node.
@@ -110,11 +110,9 @@ impl TestChain {
                 bail!("failed to initialize successfully");
             }
 
-            let mut joiner_runner = Runner::<joiner::Reactor<TestRng>, TestRng>::new(
-                WithDir::new(root.clone(), initializer),
-                rng,
-            )
-            .await?;
+            let mut joiner_runner =
+                Runner::<joiner::Reactor>::new(WithDir::new(root.clone(), initializer), rng)
+                    .await?;
             joiner_runner.run(rng).await;
 
             let config = joiner_runner.into_inner().into_validator_config().await;
@@ -130,9 +128,7 @@ impl TestChain {
 }
 
 /// Get the set of era IDs from a runner.
-fn era_ids(
-    runner: &Runner<ConditionCheckReactor<validator::Reactor<TestRng>>, TestRng>,
-) -> HashSet<EraId> {
+fn era_ids(runner: &Runner<ConditionCheckReactor<validator::Reactor>>) -> HashSet<EraId> {
     runner
         .reactor()
         .inner()
@@ -179,7 +175,7 @@ async fn run_validator_network() {
     };
 
     // Wait for all nodes to agree on one era.
-    net.settle_on(&mut rng, is_in_era(1), Duration::from_secs(60))
+    net.settle_on(&mut rng, is_in_era(1), Duration::from_secs(90))
         .await;
 
     net.settle_on(&mut rng, is_in_era(2), Duration::from_secs(60))

@@ -70,53 +70,54 @@ use std::{
     time::{Duration, Instant},
 };
 
+use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use semver::Version;
 use smallvec::{smallvec, SmallVec};
+use tokio::join;
 use tracing::error;
 
 use casper_execution_engine::{
-    core::{
-        engine_state::{
-            self, execute_request::ExecuteRequest, execution_result::ExecutionResults,
-            genesis::GenesisResult, BalanceRequest, BalanceResult, QueryRequest, QueryResult,
-        },
-        execution,
+    core::engine_state::{
+        self,
+        era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
+        execute_request::ExecuteRequest,
+        execution_result::ExecutionResults,
+        genesis::GenesisResult,
+        step::{StepRequest, StepResult},
+        BalanceRequest, BalanceResult, QueryRequest, QueryResult,
     },
     shared::{additive_map::AdditiveMap, transform::Transform},
     storage::global_state::CommitResult,
 };
-use casper_types::Key;
+use casper_types::{auction::ValidatorWeights, Key};
 
 use crate::{
     components::{
-        consensus::{BlockContext, EraId},
+        chainspec_loader::ChainspecInfo,
+        consensus::BlockContext,
         fetcher::FetchResult,
         small_network::GossipedAddress,
-        storage::{
-            DeployHashes, DeployHeaderResults, DeployMetadata, DeployResults, StorageType, Value,
-        },
+        storage::{DeployHashes, DeployMetadata, DeployResults, StorageType, Value},
     },
-    crypto::{
-        asymmetric_key::{PublicKey, Signature},
-        hash::Digest,
-    },
+    crypto::{asymmetric_key::Signature, hash::Digest},
+    effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        json_compatibility::ExecutionResult, Block, BlockHash, BlockHeader, BlockLike, Deploy,
-        DeployHash, FinalizedBlock, Item, ProtoBlock,
+        json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, BlockHeader,
+        BlockLike, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock,
     },
     utils::Source,
     Chainspec,
 };
 use announcements::{
     ApiServerAnnouncement, BlockExecutorAnnouncement, ConsensusAnnouncement,
-    DeployAcceptorAnnouncement, GossiperAnnouncement, NetworkAnnouncement,
+    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
 };
 use requests::{
-    BlockExecutorRequest, BlockValidationRequest, ConsensusRequest, ContractRuntimeRequest,
-    DeployBufferRequest, FetcherRequest, LinearChainRequest, MetricsRequest, NetworkInfoRequest,
-    NetworkRequest, StorageRequest,
+    BlockExecutorRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
+    ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MetricsRequest,
+    NetworkInfoRequest, NetworkRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -135,6 +136,7 @@ type Multiple<T> = SmallVec<[T; 2]>;
 
 /// A responder satisfying a request.
 #[must_use]
+#[derive(DataSize)]
 pub struct Responder<T>(Option<oneshot::Sender<T>>);
 
 impl<T: 'static + Send> Responder<T> {
@@ -383,15 +385,16 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Retrieve the last finalized block.
-    ///
-    /// If an error occurred, `None` is returned.
-    pub(crate) async fn get_last_finalized_block<I>(self) -> Option<Block>
+    /// Retrieves block at `height` from the Linear Chain component.
+    pub(crate) async fn get_block_at_height_local<I>(self, height: u64) -> Option<Block>
     where
         REv: From<LinearChainRequest<I>>,
     {
-        self.make_request(LinearChainRequest::LastFinalizedBlock, QueueKind::Api)
-            .await
+        self.make_request(
+            |responder| LinearChainRequest::BlockAtHeightLocal(height, responder),
+            QueueKind::Regular,
+        )
+        .await
     }
 
     /// Sends a network message.
@@ -620,21 +623,27 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested block header from the linear block store.
-    #[allow(unused)]
-    pub(crate) async fn get_block_header_from_storage<S>(
-        self,
-        block_hash: <S::Block as Value>::Id,
-    ) -> Option<<S::Block as Value>::Header>
+    /// Requests block at height.
+    pub(crate) async fn get_block_at_height<S>(self, height: u64) -> Option<S::Block>
     where
         S: StorageType + 'static,
         REv: From<StorageRequest<S>>,
     {
         self.make_request(
-            |responder| StorageRequest::GetBlockHeader {
-                block_hash,
-                responder,
-            },
+            |responder| StorageRequest::GetBlockAtHeight { height, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests the highest block.
+    pub(crate) async fn get_highest_block<S>(self) -> Option<S::Block>
+    where
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetHighestBlock { responder },
             QueueKind::Regular,
         )
         .await
@@ -664,27 +673,6 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetDeploys {
-                deploy_hashes,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Gets the requested deploy headers from the deploy store.
-    // TODO: remove once method is used.
-    #[allow(dead_code)]
-    pub(crate) async fn get_deploy_headers_from_storage<S>(
-        self,
-        deploy_hashes: DeployHashes<S>,
-    ) -> DeployHeaderResults<S>
-    where
-        S: StorageType + 'static,
-        REv: From<StorageRequest<S>>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetDeployHeaders {
                 deploy_hashes,
                 responder,
             },
@@ -775,6 +763,27 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Requests a linear chain block at `block_height`.
+    pub(crate) async fn fetch_block_by_height<I>(
+        self,
+        block_height: u64,
+        peer: I,
+    ) -> Option<FetchResult<BlockByHeight>>
+    where
+        REv: From<FetcherRequest<I, BlockByHeight>>,
+        I: Send + 'static,
+    {
+        self.make_request(
+            |responder| FetcherRequest::Fetch {
+                id: block_height,
+                peer,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Passes the timestamp of a future block for which deploys are to be proposed.
     // TODO: The input `BlockContext` will probably be a different type than the context in the
     //       return value in the future.
@@ -847,52 +856,43 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that a proto block has been finalized.
-    pub(crate) async fn announce_finalized_proto_block(self, proto_block: ProtoBlock)
+    pub(crate) async fn announce_finalized_block(self, finalized_block: FinalizedBlock)
     where
         REv: From<ConsensusAnnouncement>,
     {
         self.0
             .schedule(
-                ConsensusAnnouncement::Finalized(proto_block),
+                ConsensusAnnouncement::Finalized(Box::new(finalized_block)),
                 QueueKind::Regular,
             )
             .await
     }
 
-    /// Announces that a proto block has been orphaned.
-    #[allow(dead_code)] // TODO: Detect orphaned blocks.
-    pub(crate) async fn announce_orphaned_proto_block(self, proto_block: ProtoBlock)
+    pub(crate) async fn announce_block_handled(self, block_header: BlockHeader)
     where
         REv: From<ConsensusAnnouncement>,
     {
         self.0
             .schedule(
-                ConsensusAnnouncement::Orphaned(proto_block),
+                ConsensusAnnouncement::Handled(Box::new(block_header)),
                 QueueKind::Regular,
             )
             .await
     }
 
-    /// Announce that we received a message in a given era
-    /// TODO: Remove when proper linear chain syncing is in place
-    pub(crate) async fn announce_message_in_era(self, era_id: EraId)
+    /// The linear chain has stored a newly-created block.
+    pub(crate) async fn announce_block_added(self, block_hash: BlockHash, block_header: BlockHeader)
     where
-        REv: From<ConsensusAnnouncement>,
+        REv: From<LinearChainAnnouncement>,
     {
         self.0
             .schedule(
-                ConsensusAnnouncement::GotMessageInEra(era_id),
+                LinearChainAnnouncement::BlockAdded {
+                    block_hash,
+                    block_header: Box::new(block_header),
+                },
                 QueueKind::Regular,
             )
-            .await
-    }
-
-    pub(crate) async fn announce_block_handled(self, height: u64)
-    where
-        REv: From<ConsensusAnnouncement>,
-    {
-        self.0
-            .schedule(ConsensusAnnouncement::Handled(height), QueueKind::Regular)
             .await
     }
 
@@ -941,6 +941,15 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
+    }
+
+    /// Gets the requested chainspec info from the chainspec loader.
+    pub(crate) async fn get_chainspec_info(self) -> ChainspecInfo
+    where
+        REv: From<ChainspecLoaderRequest> + Send,
+    {
+        self.make_request(ChainspecLoaderRequest::GetChainspecInfo, QueueKind::Regular)
+            .await
     }
 
     /// Requests an execution of deploys using Contract Runtime.
@@ -1020,21 +1029,60 @@ impl<REv> EffectBuilder<REv> {
     /// Returns a map of validators for given `era` to their weights as known from `root_hash`.
     ///
     /// This operation is read only.
-    #[allow(dead_code)]
     pub(crate) async fn get_validators(
         self,
-        _root_hash: Digest,
-        _era: u64,
-    ) -> Result<Option<HashMap<PublicKey, u64>>, execution::Error> {
-        todo!("get_validators")
+        get_request: GetEraValidatorsRequest,
+    ) -> Result<Option<ValidatorWeights>, GetEraValidatorsError>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetEraValidators {
+                get_request,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
     }
 
-    /// Runs auction using the system smart contract.
-    ///
-    /// Contract is ran on a given pre state hash and returns fully committed post state hash.
-    #[allow(dead_code)]
-    pub(crate) async fn run_auction(self, _root_hash: Digest) -> Result<Digest, execution::Error> {
-        todo!("run_auction")
+    /// Runs the end of era step using the system smart contract.
+    pub(crate) async fn run_step(
+        self,
+        step_request: StepRequest,
+    ) -> Result<StepResult, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::Step {
+                step_request,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the set of validators, the booking block and the key block for a new era
+    pub(crate) async fn create_new_era<S>(
+        self,
+        request: GetEraValidatorsRequest,
+        booking_block_height: u64,
+        key_block_height: u64,
+    ) -> (
+        Result<Option<ValidatorWeights>, GetEraValidatorsError>,
+        Option<S::Block>,
+        Option<S::Block>,
+    )
+    where
+        REv: From<ContractRuntimeRequest> + From<StorageRequest<S>>,
+        S: StorageType + 'static,
+    {
+        let future_validators = self.get_validators(request);
+        let future_booking_block = self.get_block_at_height(booking_block_height);
+        let future_key_block = self.get_block_at_height(key_block_height);
+        join!(future_validators, future_booking_block, future_key_block)
     }
 
     /// Request consensus to sign a block from the linear chain and possibly start a new era.

@@ -32,8 +32,9 @@ use crate::{
         ConditionCheckReactor, TestRng,
     },
     types::{Deploy, Tag},
-    utils::Loadable,
+    utils::{Loadable, WithDir},
 };
+use rand::Rng;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From)]
@@ -111,31 +112,36 @@ impl Drop for Reactor {
     }
 }
 
-impl reactor::Reactor<TestRng> for Reactor {
+impl reactor::Reactor for Reactor {
     type Event = Event;
     type Config = Config;
     type Error = Error;
 
     fn new(
         config: Self::Config,
-        _registry: &Registry,
+        registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut TestRng,
+        rng: &mut dyn CryptoRngCore,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let network = NetworkController::create_node(event_queue, rng);
 
-        let (storage_config, _storage_tempdir) = storage::Config::default_for_tests();
-        let storage = Storage::new(&storage_config).unwrap();
+        let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
+        let storage = Storage::new(WithDir::new(storage_tempdir.path(), storage_config)).unwrap();
 
         let deploy_acceptor = DeployAcceptor::new();
-        let deploy_gossiper = Gossiper::new_for_partial_items(config, get_deploy_from_storage);
+        let deploy_gossiper = Gossiper::new_for_partial_items(
+            "deploy_gossiper",
+            config,
+            get_deploy_from_storage,
+            registry,
+        )?;
 
         let reactor = Reactor {
             network,
             storage,
             deploy_acceptor,
             deploy_gossiper,
-            _storage_tempdir,
+            _storage_tempdir: storage_tempdir,
         };
 
         let effects = Effects::new();
@@ -146,7 +152,7 @@ impl reactor::Reactor<TestRng> for Reactor {
     fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut TestRng,
+        rng: &mut dyn CryptoRngCore,
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -183,7 +189,7 @@ impl reactor::Reactor<TestRng> for Reactor {
                         tag: Tag::Deploy,
                         serialized_id,
                     } => {
-                        let deploy_hash = match rmp_serde::from_read_ref(&serialized_id) {
+                        let deploy_hash = match bincode::deserialize(&serialized_id) {
                             Ok(hash) => hash,
                             Err(error) => {
                                 error!(
@@ -202,7 +208,7 @@ impl reactor::Reactor<TestRng> for Reactor {
                         tag: Tag::Deploy,
                         serialized_item,
                     } => {
-                        let deploy = match rmp_serde::from_read_ref(&serialized_item) {
+                        let deploy = match bincode::deserialize(&serialized_item) {
                             Ok(deploy) => Box::new(deploy),
                             Err(error) => {
                                 error!("failed to decode deploy from {}: {}", sender, error);
@@ -297,7 +303,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
     }
 
     // Check every node has every deploy stored locally.
-    let all_deploys_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>, _>>| {
+    let all_deploys_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
         nodes.values().all(|runner| {
             let hashes = runner
                 .reactor()
@@ -397,7 +403,7 @@ async fn should_get_from_alternate_source() {
     debug!("advanced time by {} secs", secs_to_advance);
 
     // Check node 0 has the deploy stored locally.
-    let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>, _>>| {
+    let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
         let runner = nodes.get(&node_ids[2]).unwrap();
         runner
             .reactor()
@@ -473,7 +479,7 @@ async fn should_timeout_gossip_response() {
     debug!("advanced time by {} secs", secs_to_advance);
 
     // Check every node has every deploy stored locally.
-    let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>, _>>| {
+    let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
         nodes.values().all(|runner| {
             runner
                 .reactor()

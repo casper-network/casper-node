@@ -1,6 +1,7 @@
 use alloc::vec::Vec;
 use core::{cmp, fmt};
 
+use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -22,10 +23,12 @@ mod big_array {
     big_array! { BigArray; super::SECP256K1_PUBLIC_KEY_LENGTH }
 }
 
-#[derive(Copy, Clone, Serialize, Deserialize)]
+/// Represents the bytes of a secp256k1 public key.
+#[derive(Copy, Clone, DataSize, Serialize, Deserialize)]
 pub struct Secp256k1Bytes(#[serde(with = "big_array::BigArray")] [u8; SECP256K1_PUBLIC_KEY_LENGTH]);
 
 impl Secp256k1Bytes {
+    /// Returns the underlying bytes.
     pub fn value(self) -> [u8; SECP256K1_PUBLIC_KEY_LENGTH] {
         self.0
     }
@@ -89,7 +92,7 @@ impl ToBytes for Secp256k1Bytes {
 }
 
 /// Simplified raw data type
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(DataSize, Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum PublicKey {
     /// Ed25519 public key.
     Ed25519([u8; ED25519_PUBLIC_KEY_LENGTH]),
@@ -106,8 +109,17 @@ impl PublicKey {
     }
 }
 
+impl AsRef<[u8]> for PublicKey {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            PublicKey::Ed25519(bytes) => bytes.as_ref(),
+            PublicKey::Secp256k1(bytes) => bytes.as_ref(),
+        }
+    }
+}
+
 impl ToBytes for PublicKey {
-    fn to_bytes(&self) -> Result<Vec<u8>, crate::bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.variant_id().to_bytes()?);
         match self {
@@ -116,6 +128,7 @@ impl ToBytes for PublicKey {
         }
         Ok(buffer)
     }
+
     fn serialized_length(&self) -> usize {
         PUBLIC_KEY_VARIANT_LENGTH
             + match self {

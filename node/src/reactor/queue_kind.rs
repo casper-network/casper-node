@@ -4,14 +4,14 @@
 //! round-robin manner. This way, events are only competing for time within one queue, non-congested
 //! queues can always assume to be speedily processed.
 
-use std::num::NonZeroUsize;
+use std::{fmt::Display, num::NonZeroUsize};
 
 use enum_iterator::IntoEnumIterator;
 
 /// Scheduling priority.
 ///
 /// Priorities are ordered from lowest to highest.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, IntoEnumIterator)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, IntoEnumIterator, Ord, PartialOrd)]
 pub enum QueueKind {
     /// Network events that were initiated outside of this node.
     ///
@@ -28,6 +28,18 @@ pub enum QueueKind {
     /// Metric events take precedence over most other events since missing a request for metrics
     /// might cause the requester to assume that the node is down and forcefully restart it.
     Api,
+}
+
+impl Display for QueueKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str_value = match self {
+            QueueKind::NetworkIncoming => "NetworkIncoming",
+            QueueKind::Network => "Network",
+            QueueKind::Regular => "Regular",
+            QueueKind::Api => "Api",
+        };
+        write!(f, "{}", str_value)
+    }
 }
 
 impl Default for QueueKind {
@@ -52,9 +64,18 @@ impl QueueKind {
     }
 
     /// Return weights of all possible `Queue`s.
-    pub(super) fn weights() -> Vec<(Self, NonZeroUsize)> {
+    pub(crate) fn weights() -> Vec<(Self, NonZeroUsize)> {
         QueueKind::into_enum_iter()
             .map(|q| (q, q.weight()))
             .collect()
+    }
+
+    pub(crate) fn metrics_name(&self) -> &str {
+        match self {
+            QueueKind::NetworkIncoming => "network_incoming",
+            QueueKind::Network => "network",
+            QueueKind::Regular => "regular",
+            QueueKind::Api => "api",
+        }
     }
 }

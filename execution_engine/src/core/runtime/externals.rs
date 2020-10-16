@@ -3,6 +3,7 @@ use std::{collections::BTreeSet, convert::TryFrom};
 use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
 use casper_types::{
+    account,
     account::AccountHash,
     api_error,
     bytesrepr::{self, ToBytes},
@@ -91,6 +92,7 @@ where
                 // args(2) = pointer to value
                 // args(3) = size of value
                 let (key_ptr, key_size, value_ptr, value_size) = Args::parse(args)?;
+
                 self.add(key_ptr, key_size, value_ptr, value_size)?;
                 Ok(None)
             }
@@ -667,6 +669,22 @@ where
                     urefs_size,
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
+
+            FunctionIndex::Blake2b => {
+                let (in_ptr, in_size, out_ptr, out_size): (u32, u32, u32, u32) = Args::parse(args)?;
+                scoped_instrumenter.add_property("in_size", in_size.to_string());
+                scoped_instrumenter.add_property("out_size", out_size.to_string());
+                let input: Vec<u8> = self.bytes_from_mem(in_ptr, in_size as usize)?;
+                let digest = account::blake2b(&input);
+                if digest.len() != out_size as usize {
+                    let err_value = u32::from(api_error::ApiError::BufferTooSmall) as i32;
+                    return Ok(Some(RuntimeValue::I32(err_value)));
+                }
+                self.memory
+                    .set(out_ptr, &digest)
+                    .map_err(|error| Error::Interpreter(error.into()))?;
+                Ok(Some(RuntimeValue::I32(0)))
             }
         }
     }

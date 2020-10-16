@@ -130,6 +130,12 @@ dist
 # End of https://www.toptal.com/developers/gitignore/api/rust,node
 
 resources/production/*.wasm
+resources/node-storage/*
 
 # CLion
 .idea/
+
+# NCTL transient assets
+/utils/nctl/assets
+/utils/nctl/dumps
+/utils/nctl/templates/node-config-*.toml

@@ -2,7 +2,7 @@
 //! defined in protobuf/io/casperlabs/casper/consensus/state.proto
 
 mod account;
-mod big_int;
+pub(crate) mod big_int;
 mod cl_type;
 mod cl_value;
 mod contract;

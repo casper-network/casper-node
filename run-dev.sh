@@ -7,8 +7,27 @@ set -eu
 BASEDIR=$(readlink -f $(dirname $0))
 CHAINSPEC=$(mktemp -t chainspec_XXXXXXXX --suffix .toml)
 TRUSTED_HASH="${TRUSTED_HASH:-}"
-TIMESTAMP="${GENESIS_TIMESTAMP:-$(date '+%s000')}"
-echo "GENESIS_TIMESTAMP="$TIMESTAMP
+
+# Generate a genesis timestamp 30 seconds into the future, unless explicity given a different one.
+TIMESTAMP=$(python3 -c 'from datetime import datetime, timedelta; print((datetime.utcnow() + timedelta(seconds=20)).isoformat("T") + "Z")')
+TIMESTAMP=${GENESIS_TIMESTAMP:-$TIMESTAMP}
+
+echo "GENESIS_TIMESTAMP=${TIMESTAMP}"
+
+# Build the contracts
+make build-contracts-rs
+
+# Build the node first, so that `sleep` in the loop has an effect.
+cargo build -p casper-node
+
+# Update the chainspec to use the current time as the genesis timestamp.
+cp ${BASEDIR}/resources/local/chainspec.toml ${CHAINSPEC}
+sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = \"${TIMESTAMP}\"/" ${CHAINSPEC}
+sed -i 's|\.\./\.\.|'"$BASEDIR"'|' ${CHAINSPEC}
+sed -i 's|accounts\.csv|'"$BASEDIR"'/resources/local/accounts.csv|' ${CHAINSPEC}
+
+# If no nodes defined, start all.
+NODES="${@:-1 2 3 4 5}"
 
 run_node() {
     ID=$1
@@ -22,8 +41,10 @@ run_node() {
     if [ $1 -ne 1 ]
     then
         BIND_ADDRESS_ARG=--config-ext=network.bind_address='0.0.0.0:0'
+        DEPS="--property=After=node-1.service --property=Requires=node-1.service"
     else
         BIND_ADDRESS_ARG=
+        DEPS=
     fi
 
     if ! [ -z "$TRUSTED_HASH" ]
@@ -35,12 +56,17 @@ run_node() {
 
     echo "$TRUSTED_HASH_ARG"
 
+    # We run with a 10 minute timeout, to allow for compilation and loading.
     systemd-run \
         --user \
         --unit node-$ID \
         --description "Casper Dev Node ${ID}" \
         --collect \
+        --no-block \
+        --property=Type=notify \
+        --property=TimeoutSec=600 \
         --property=WorkingDirectory=${BASEDIR} \
+        $DEPS \
         --setenv=RUST_LOG=trace \
         --property=StandardOutput=file:${LOGFILE} \
         --property=StandardError=file:${LOGFILE}.stderr \
@@ -48,6 +74,7 @@ run_node() {
         cargo run -p casper-node \
         validator \
         resources/local/config.toml \
+        --config-ext=network.systemd_support=true \
         --config-ext=consensus.secret_key_path=secret_keys/node-${ID}.pem \
         --config-ext=storage.path=${STORAGE_DIR} \
         --config-ext=network.gossip_interval=1000 \
@@ -62,24 +89,11 @@ run_node() {
     sleep 1;
 }
 
-# Build the node first, so that `sleep` in the loop has an effect.
-cargo build -p casper-node
-
-# Update the chainspec to use the current time as the genesis timestamp.
-cp ${BASEDIR}/resources/local/chainspec.toml ${CHAINSPEC}
-sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = ${TIMESTAMP}/" ${CHAINSPEC}
-sed -i 's|\.\./\.\.|'"$BASEDIR"'|' ${CHAINSPEC}
-sed -i 's|accounts\.csv|'"$BASEDIR"'/resources/local/accounts.csv|' ${CHAINSPEC}
-
-NODES="$@"
-
-for i in 1 2 3 4 5; do
-    case "$NODES" in
-        *"$i"*) run_node $i
-    esac
+for i in $NODES; do
+    run_node $i
 done;
 
-echo "Test network started."
+echo "Test network starting."
 echo
 echo "To stop all nodes, run"
 echo "  systemctl --user stop node-\\*"

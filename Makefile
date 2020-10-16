@@ -54,8 +54,8 @@ SYSTEM_CONTRACTS_FEATURED := $(patsubst %, build-system-contract-featured-rs/%, 
 CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 CONTRACT_TARGET_DIR_AS    = target_as
 PACKAGED_SYSTEM_CONTRACTS = mint_install.wasm pos_install.wasm standard_payment_install.wasm auction_install.wasm
-TOOL_TARGET_DIR           = grpc/cargo-casper/target
-TOOL_WASM_DIR             = grpc/cargo-casper/wasm
+TOOL_TARGET_DIR           = grpc/cargo_casper/target
+TOOL_WASM_DIR             = grpc/cargo_casper/wasm
 
 CRATES_WITH_DOCS_RS_MANIFEST_TABLE = \
 	grpc/server \

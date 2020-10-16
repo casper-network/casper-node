@@ -1,12 +1,9 @@
 #[cfg(test)]
 use std::net::{Ipv4Addr, SocketAddr};
-
 use std::time::Duration;
 
+use datasize::DataSize;
 use serde::{Deserialize, Serialize};
-
-#[cfg(test)]
-use crate::utils::format_address;
 
 /// Default binding address.
 ///
@@ -29,18 +26,19 @@ impl Default for Config {
             public_address: DEFAULT_PUBLIC_ADDRESS.to_string(),
             known_addresses: Vec::new(),
             gossip_interval: DEFAULT_GOSSIP_INTERVAL,
+            systemd_support: false,
         }
     }
 }
 
 /// Small network configuration.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(DataSize, Debug, Clone, Deserialize, Serialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {
     /// Address to bind to.
     pub bind_address: String,
-    /// Publically advertised address, in case the node has a different external IP.
+    /// Publicly advertised address, in case the node has a different external IP.
     ///
     /// If the port is specified as `0`, it will be replaced with the actually bound port.
     pub public_address: String,
@@ -49,6 +47,8 @@ pub struct Config {
     /// Interval in milliseconds used for gossiping.
     #[serde(with = "crate::utils::milliseconds")]
     pub gossip_interval: Duration,
+    /// Enable systemd startup notification.
+    pub systemd_support: bool,
 }
 
 #[cfg(test)]
@@ -69,6 +69,7 @@ impl Config {
             public_address: bind_address.to_string(),
             known_addresses: Vec::new(),
             gossip_interval: DEFAULT_TEST_GOSSIP_INTERVAL,
+            systemd_support: false,
         }
     }
 
@@ -80,10 +81,13 @@ impl Config {
     /// Constructs a `Config` suitable for use by a node joining a testnet on a single machine.
     pub(crate) fn default_local_net(known_peer_port: u16) -> Self {
         Config {
-            bind_address: format_address(TEST_BIND_INTERFACE, 0),
-            public_address: format_address(TEST_BIND_INTERFACE, 0),
-            known_addresses: vec![format_address(TEST_BIND_INTERFACE, known_peer_port)],
+            bind_address: SocketAddr::from((TEST_BIND_INTERFACE, 0)).to_string(),
+            public_address: SocketAddr::from((TEST_BIND_INTERFACE, 0)).to_string(),
+            known_addresses: vec![
+                SocketAddr::from((TEST_BIND_INTERFACE, known_peer_port)).to_string()
+            ],
             gossip_interval: DEFAULT_TEST_GOSSIP_INTERVAL,
+            systemd_support: false,
         }
     }
 }

@@ -1,17 +1,23 @@
-use std::str;
+use std::{fs, str};
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 
-use casper_node::rpcs::{
-    state::{GetItem, GetItemParams},
-    RpcWithParams,
+use casper_node::{
+    crypto::asymmetric_key::PublicKey,
+    rpcs::{
+        state::{GetItem, GetItemParams},
+        RpcWithParams,
+    },
 };
+use casper_types::Key;
 
 use crate::{command::ClientCommand, common, RpcClient};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
+    Verbose,
     NodeAddress,
+    RpcId,
     GlobalStateHash,
     Key,
     Path,
@@ -23,12 +29,15 @@ mod key {
 
     const ARG_NAME: &str = "key";
     const ARG_SHORT: &str = "k";
-    const ARG_VALUE_NAME: &str = "FORMATTED STRING";
+    const ARG_VALUE_NAME: &str = "FORMATTED STRING or PATH";
     const ARG_HELP: &str =
-        "The base key for the query.  This must be a properly formatted account hash, contract \
-        address hash or URef.  The format for each respectively is \
-        \"account-account_hash-<HEX STRING>\", \"hash-<HEX STRING>\" and \
-        \"uref-<HEX STRING>-<THREE DIGIT INTEGER>\"";
+        "The base key for the query.  This must be a properly formatted public key, account hash, \
+        contract address hash or URef.  The format for each respectively is \"<HEX STRING>\", \
+        \"account-hash-<HEX STRING>\", \"hash-<HEX STRING>\" and \
+        \"uref-<HEX STRING>-<THREE DIGIT INTEGER>\".  The public key may instead be read in from a \
+        file, in which case enter the path to the file as the --key argument.  The file should be \
+        one of the two public key files generated via the `keygen` subcommand; \"public_key_hex\" \
+        or \"public_key.pem\"";
 
     pub(super) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -41,10 +50,38 @@ mod key {
     }
 
     pub(super) fn get(matches: &ArgMatches) -> String {
-        matches
+        let value = matches
             .value_of(ARG_NAME)
-            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
-            .to_string()
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME));
+
+        // Try to parse as a `Key` first.
+        if Key::from_formatted_str(value).is_ok() {
+            return value.to_string();
+        }
+
+        // Try to parse from a hex-encoded `PublicKey`, a pem-encoded file then a hex-encoded file.
+        let public_key = if let Ok(public_key) = PublicKey::from_hex(value) {
+            public_key
+        } else if let Ok(public_key) = PublicKey::from_file(value) {
+            public_key
+        } else {
+            let contents = fs::read(value).unwrap_or_else(|_| {
+                panic!(
+                    "failed to parse '{}' as a public key (as a hex string, hex file or pem file), \
+                    account hash, contract address hash or URef",
+                    value
+                )
+            });
+            PublicKey::from_hex(contents).unwrap_or_else(|error| {
+                panic!(
+                    "failed to parse '{}' as a hex-encoded public key file: {}",
+                    value, error
+                )
+            })
+        };
+
+        // Return the public key as an account hash.
+        public_key.to_account_hash().to_formatted_string()
     }
 }
 
@@ -52,8 +89,8 @@ mod key {
 mod path {
     use super::*;
 
-    const ARG_NAME: &str = "path";
-    const ARG_SHORT: &str = "p";
+    const ARG_NAME: &str = "query-path";
+    const ARG_SHORT: &str = "q";
     const ARG_VALUE_NAME: &str = "PATH/FROM/BASE/KEY";
     const ARG_HELP: &str = "The path from the base key for the query";
 
@@ -87,9 +124,11 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
         SubCommand::with_name(Self::NAME)
             .about(Self::ABOUT)
             .display_order(display_order)
+            .arg(common::verbose::arg(DisplayOrder::Verbose as usize))
             .arg(common::node_address::arg(
                 DisplayOrder::NodeAddress as usize,
             ))
+            .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
             .arg(common::global_state_hash::arg(
                 DisplayOrder::GlobalStateHash as usize,
             ))
@@ -98,7 +137,9 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
     }
 
     fn run(matches: &ArgMatches<'_>) {
+        let verbose = common::verbose::get(matches);
         let node_address = common::node_address::get(matches);
+        let rpc_id = common::rpc_id::get(matches);
         let global_state_hash = common::global_state_hash::get(matches);
         let key = key::get(matches);
         let path = path::get(matches);
@@ -109,8 +150,10 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
             path,
         };
 
-        let response_value = Self::request_with_map_params(&node_address, params)
-            .unwrap_or_else(|error| panic!("response error: {}", error));
-        println!("{}", response_value);
+        let response = Self::request_with_map_params(verbose, &node_address, rpc_id, params);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&response).expect("should encode to JSON")
+        );
     }
 }

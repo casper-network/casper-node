@@ -1,4 +1,5 @@
 mod account;
+mod blake2b;
 mod create_purse;
 mod get_arg;
 mod get_blocktime;

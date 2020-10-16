@@ -1,5 +1,6 @@
 use std::{fmt, iter::Sum};
 
+use datasize::DataSize;
 use num::Zero;
 use serde::{Deserialize, Serialize};
 
@@ -7,7 +8,9 @@ use casper_types::U512;
 
 use crate::shared::gas::Gas;
 
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[derive(
+    DataSize, Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize,
+)]
 pub struct Motes(U512);
 
 impl Motes {

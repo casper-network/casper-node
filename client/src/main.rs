@@ -3,7 +3,6 @@ mod block;
 mod command;
 mod common;
 mod deploy;
-mod error;
 mod generate_completion;
 mod get_global_state_hash;
 mod keygen;
@@ -19,9 +18,10 @@ use casper_node::rpcs::{
     state::{GetBalance, GetItem as QueryState},
 };
 
+use deploy::{MakeDeploy, SendDeploy, SignDeploy};
+
 use command::ClientCommand;
 use deploy::{ListDeploys, Transfer};
-use error::{Error, Result};
 use generate_completion::GenerateCompletion;
 use keygen::Keygen;
 use rpc::RpcClient;
@@ -31,6 +31,9 @@ const APP_NAME: &str = "Casper client";
 /// This struct defines the order in which the subcommands are shown in the app's help message.
 enum DisplayOrder {
     PutDeploy,
+    MakeDeploy,
+    SignDeploy,
+    SendDeploy,
     Transfer,
     GetDeploy,
     GetBlock,
@@ -47,6 +50,9 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         .version(crate_version!())
         .about(crate_description!())
         .subcommand(PutDeploy::build(DisplayOrder::PutDeploy as usize))
+        .subcommand(MakeDeploy::build(DisplayOrder::MakeDeploy as usize))
+        .subcommand(SignDeploy::build(DisplayOrder::SignDeploy as usize))
+        .subcommand(SendDeploy::build(DisplayOrder::SendDeploy as usize))
         .subcommand(Transfer::build(DisplayOrder::Transfer as usize))
         .subcommand(GetDeploy::build(DisplayOrder::GetDeploy as usize))
         .subcommand(GetBlock::build(DisplayOrder::GetBlock as usize))
@@ -67,6 +73,9 @@ async fn main() {
     let arg_matches = cli().get_matches();
     match arg_matches.subcommand() {
         (PutDeploy::NAME, Some(matches)) => PutDeploy::run(matches),
+        (MakeDeploy::NAME, Some(matches)) => MakeDeploy::run(matches),
+        (SignDeploy::NAME, Some(matches)) => SignDeploy::run(matches),
+        (SendDeploy::NAME, Some(matches)) => SendDeploy::run(matches),
         (Transfer::NAME, Some(matches)) => Transfer::run(matches),
         (GetDeploy::NAME, Some(matches)) => GetDeploy::run(matches),
         (GetBlock::NAME, Some(matches)) => GetBlock::run(matches),
@@ -76,6 +85,9 @@ async fn main() {
         (QueryState::NAME, Some(matches)) => QueryState::run(matches),
         (Keygen::NAME, Some(matches)) => Keygen::run(matches),
         (GenerateCompletion::NAME, Some(matches)) => GenerateCompletion::run(matches),
-        _ => panic!("You must choose a subcommand to execute"),
+        _ => {
+            let _ = cli().print_long_help();
+            println!();
+        }
     }
 }

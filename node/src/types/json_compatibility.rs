@@ -5,10 +5,12 @@ use std::collections::BTreeMap;
 use casper_types::Key;
 
 mod account;
+mod cl_value;
 mod execution_result;
 mod stored_value;
 
 pub use account::Account;
+pub use cl_value::CLValue;
 pub use execution_result::ExecutionResult;
 pub use stored_value::StoredValue;
 

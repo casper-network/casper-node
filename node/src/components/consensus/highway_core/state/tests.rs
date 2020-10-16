@@ -2,18 +2,16 @@
 
 use std::{collections::hash_map::DefaultHasher, hash::Hasher};
 
-use rand::{CryptoRng, Rng, RngCore};
+use rand::{Rng, RngCore};
 
 use super::*;
 use crate::{
     components::consensus::{
-        highway_core::{
-            highway::Dependency,
-            highway_testing::{TEST_BLOCK_REWARD, TEST_REWARD_DELAY},
-        },
+        highway_core::{highway::Dependency, highway_testing::TEST_BLOCK_REWARD},
         traits::ValidatorSecret,
     },
     testing::TestRng,
+    types::CryptoRngCore,
 };
 
 pub(crate) const WEIGHTS: &[Weight] = &[Weight(3), Weight(4), Weight(5)];
@@ -35,11 +33,7 @@ impl ValidatorSecret for TestSecret {
     type Hash = u64;
     type Signature = u64;
 
-    fn sign<R: Rng + CryptoRng + ?Sized>(
-        &self,
-        data: &Self::Hash,
-        _rng: &mut R,
-    ) -> Self::Signature {
+    fn sign(&self, data: &Self::Hash, _rng: &mut dyn CryptoRngCore) -> Self::Signature {
         data + u64::from(self.0)
     }
 }
@@ -110,7 +104,6 @@ impl State<TestContext> {
             seed,
             TEST_BLOCK_REWARD,
             TEST_BLOCK_REWARD / 5,
-            TEST_REWARD_DELAY,
             4,
             u64::MAX,
             Timestamp::from(u64::MAX),
@@ -124,7 +117,10 @@ impl State<TestContext> {
         &mut self,
         swvote: SignedWireVote<TestContext>,
     ) -> Result<(), AddVoteError<TestContext>> {
-        if let Err(err) = self.validate_vote(&swvote) {
+        if let Err(err) = self
+            .pre_validate_vote(&swvote)
+            .and_then(|()| self.validate_vote(&swvote))
+        {
             return Err(swvote.with_error(err));
         }
         self.add_valid_vote(swvote);
@@ -191,6 +187,7 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     // Alice equivocates: A1 doesn't see a1.
     let ae1 = add_vote!(state, rng, ALICE, None; a0, b1, c0)?;
     assert!(state.has_evidence(ALICE));
+    assert_eq!(panorama![F, b1, c1], *state.panorama());
 
     let missing = panorama!(F, b1, c0).missing_dependency(&state);
     assert_eq!(None, missing);

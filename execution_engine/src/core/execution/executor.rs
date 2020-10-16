@@ -9,9 +9,9 @@ use tracing::warn;
 use wasmi::ModuleRef;
 
 use casper_types::{
-    account::AccountHash, bytesrepr::FromBytes, contracts::NamedKeys, AccessRights, BlockTime,
-    CLTyped, CLValue, ContractPackage, EntryPoint, EntryPointType, Key, Phase, ProtocolVersion,
-    RuntimeArgs,
+    account::AccountHash, auction, bytesrepr::FromBytes, contracts::NamedKeys, AccessRights,
+    BlockTime, CLTyped, CLValue, ContractPackage, EntryPoint, EntryPointType, Key, Phase,
+    ProtocolVersion, RuntimeArgs,
 };
 
 use crate::{
@@ -280,6 +280,16 @@ impl Executor {
         T: FromBytes + CLTyped,
     {
         match direct_system_contract_call {
+            DirectSystemContractCall::Slash
+            | DirectSystemContractCall::RunAuction
+            | DirectSystemContractCall::DistributeRewards => {
+                if protocol_data.auction() != base_key.into_seed() {
+                    panic!(
+                        "{} should only be called with the auction contract",
+                        direct_system_contract_call.entry_point_name()
+                    );
+                }
+            }
             DirectSystemContractCall::FinalizePayment => {
                 if protocol_data.proof_of_stake() != base_key.into_seed() {
                     panic!(
@@ -292,6 +302,14 @@ impl Executor {
                 if protocol_data.mint() != base_key.into_seed() {
                     panic!(
                         "{} should only be called with the mint contract",
+                        direct_system_contract_call.entry_point_name()
+                    );
+                }
+            }
+            DirectSystemContractCall::GetEraValidators => {
+                if protocol_data.auction() != base_key.into_seed() {
+                    panic!(
+                        "{} should only be called with the auction contract",
                         direct_system_contract_call.entry_point_name()
                     );
                 }
@@ -575,17 +593,25 @@ impl Executor {
 }
 
 pub enum DirectSystemContractCall {
+    Slash,
+    RunAuction,
+    DistributeRewards,
     FinalizePayment,
     CreatePurse,
     Transfer,
+    GetEraValidators,
 }
 
 impl DirectSystemContractCall {
     fn entry_point_name(&self) -> &str {
         match self {
+            DirectSystemContractCall::Slash => "slash",
+            DirectSystemContractCall::RunAuction => "run_auction",
+            DirectSystemContractCall::DistributeRewards => "distribute",
             DirectSystemContractCall::FinalizePayment => "finalize_payment",
             DirectSystemContractCall::CreatePurse => "create",
             DirectSystemContractCall::Transfer => "transfer",
+            DirectSystemContractCall::GetEraValidators => auction::METHOD_GET_ERA_VALIDATORS,
         }
     }
 
@@ -605,6 +631,15 @@ impl DirectSystemContractCall {
     {
         let entry_point_name = self.entry_point_name();
         let result = match self {
+            DirectSystemContractCall::Slash
+            | DirectSystemContractCall::RunAuction
+            | DirectSystemContractCall::DistributeRewards => runtime.call_host_auction(
+                protocol_version,
+                entry_point_name,
+                named_keys,
+                runtime_args,
+                extra_keys,
+            ),
             DirectSystemContractCall::FinalizePayment => runtime.call_host_proof_of_stake(
                 protocol_version,
                 entry_point_name,
@@ -620,6 +655,13 @@ impl DirectSystemContractCall {
                     runtime_args,
                     extra_keys,
                 ),
+            DirectSystemContractCall::GetEraValidators => runtime.call_host_auction(
+                protocol_version,
+                entry_point_name,
+                named_keys,
+                runtime_args,
+                extra_keys,
+            ),
         };
 
         match result {

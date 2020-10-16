@@ -1,22 +1,17 @@
 //! Helper structs used to parse chainspec configuration files into their respective domain objects.
 
-use std::{
-    convert::{TryFrom, TryInto},
-    path::Path,
-};
+use std::path::Path;
 
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::{
-    core::engine_state::genesis::GenesisAccount,
-    shared::{motes::Motes, wasm_costs::WasmCosts},
+    core::engine_state::genesis::GenesisAccount, shared::wasm_config::WasmConfig,
 };
-use casper_types::U512;
 
-use super::{chainspec, Error};
+use super::{chainspec, DeployConfig, Error, HighwayConfig};
 use crate::{
-    types::{TimeDiff, Timestamp},
+    types::Timestamp,
     utils::{read_file, External},
 };
 
@@ -27,55 +22,13 @@ const DEFAULT_STANDARD_PAYMENT_INSTALLER_PATH: &str = "standard_payment_install.
 const DEFAULT_AUCTION_INSTALLER_PATH: &str = "auction_install.wasm";
 const DEFAULT_ACCOUNTS_CSV_PATH: &str = "accounts.csv";
 const DEFAULT_UPGRADE_INSTALLER_PATH: &str = "upgrade_install.wasm";
-
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
-#[serde(deny_unknown_fields)]
-pub struct DeployConfig {
-    max_payment_cost: String,
-    max_ttl_millis: TimeDiff,
-    max_dependencies: u8,
-    max_block_size: u32,
-    block_gas_limit: u64,
-}
-
-impl Default for DeployConfig {
-    fn default() -> Self {
-        chainspec::DeployConfig::default().into()
-    }
-}
-
-impl From<chainspec::DeployConfig> for DeployConfig {
-    fn from(cfg: chainspec::DeployConfig) -> Self {
-        DeployConfig {
-            max_payment_cost: cfg.max_payment_cost.to_string(),
-            max_ttl_millis: cfg.max_ttl,
-            max_dependencies: cfg.max_dependencies,
-            max_block_size: cfg.max_block_size,
-            block_gas_limit: cfg.block_gas_limit,
-        }
-    }
-}
-
-impl TryFrom<DeployConfig> for chainspec::DeployConfig {
-    type Error = Error;
-
-    fn try_from(cfg: DeployConfig) -> Result<Self, Self::Error> {
-        let max_payment_cost = Motes::new(U512::from_dec_str(&cfg.max_payment_cost)?);
-        Ok(chainspec::DeployConfig {
-            max_payment_cost,
-            max_ttl: cfg.max_ttl_millis,
-            max_dependencies: cfg.max_dependencies,
-            max_block_size: cfg.max_block_size,
-            block_gas_limit: cfg.block_gas_limit,
-        })
-    }
-}
+const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
 struct Genesis {
     name: String,
     timestamp: Timestamp,
+    validator_slots: u32,
     protocol_version: Version,
     mint_installer_path: External<Vec<u8>>,
     pos_installer_path: External<Vec<u8>>,
@@ -89,6 +42,7 @@ impl Default for Genesis {
         Genesis {
             name: String::from(DEFAULT_CHAIN_NAME),
             timestamp: Timestamp::zero(),
+            validator_slots: DEFAULT_VALIDATOR_SLOTS,
             protocol_version: Version::from((1, 0, 0)),
             mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
             pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
@@ -102,48 +56,14 @@ impl Default for Genesis {
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
-// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
-#[serde(deny_unknown_fields)]
-struct HighwayConfig {
-    genesis_era_start_timestamp: Timestamp,
-    era_duration_millis: u64,
-    minimum_era_height: u64,
-    booking_duration_millis: u64,
-    entropy_duration_millis: u64,
-    voting_period_duration_millis: u64,
-    finality_threshold_percent: u8,
-    minimum_round_exponent: u8,
-}
-
-impl Default for HighwayConfig {
-    fn default() -> Self {
-        chainspec::HighwayConfig::default().into()
-    }
-}
-
-impl From<chainspec::HighwayConfig> for HighwayConfig {
-    fn from(cfg: chainspec::HighwayConfig) -> Self {
-        HighwayConfig {
-            genesis_era_start_timestamp: cfg.genesis_era_start_timestamp,
-            era_duration_millis: cfg.era_duration.millis(),
-            minimum_era_height: cfg.minimum_era_height,
-            booking_duration_millis: cfg.booking_duration.millis(),
-            entropy_duration_millis: cfg.entropy_duration.millis(),
-            voting_period_duration_millis: cfg.voting_period_duration.millis(),
-            finality_threshold_percent: cfg.finality_threshold_percent,
-            minimum_round_exponent: cfg.minimum_round_exponent,
-        }
-    }
-}
-
-#[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 struct UpgradePoint {
     protocol_version: Version,
     upgrade_installer_path: Option<External<Vec<u8>>>,
     activation_point: chainspec::ActivationPoint,
-    new_costs: Option<WasmCosts>,
+    new_wasm_config: Option<WasmConfig>,
     new_deploy_config: Option<DeployConfig>,
+    new_validator_slots: Option<u32>,
 }
 
 impl From<&chainspec::UpgradePoint> for UpgradePoint {
@@ -152,8 +72,9 @@ impl From<&chainspec::UpgradePoint> for UpgradePoint {
             protocol_version: upgrade_point.protocol_version.clone(),
             upgrade_installer_path: Some(External::path(DEFAULT_UPGRADE_INSTALLER_PATH)),
             activation_point: upgrade_point.activation_point,
-            new_costs: upgrade_point.new_costs,
-            new_deploy_config: upgrade_point.new_deploy_config.map(DeployConfig::from),
+            new_wasm_config: upgrade_point.new_wasm_config,
+            new_deploy_config: upgrade_point.new_deploy_config,
+            new_validator_slots: upgrade_point.new_validator_slots,
         }
     }
 }
@@ -171,17 +92,14 @@ impl UpgradePoint {
         // TODO - read this in?
         let upgrade_installer_args = None;
 
-        let new_deploy_config = self
-            .new_deploy_config
-            .map(DeployConfig::try_into)
-            .transpose()?;
         Ok(chainspec::UpgradePoint {
             activation_point: self.activation_point,
             protocol_version: self.protocol_version,
             upgrade_installer_bytes,
             upgrade_installer_args,
-            new_costs: self.new_costs,
-            new_deploy_config,
+            new_wasm_config: self.new_wasm_config,
+            new_deploy_config: self.new_deploy_config,
+            new_validator_slots: self.new_validator_slots,
         })
     }
 }
@@ -193,8 +111,8 @@ pub(super) struct ChainspecConfig {
     genesis: Genesis,
     highway: HighwayConfig,
     deploys: DeployConfig,
-    wasm_costs: WasmCosts,
     upgrade: Option<Vec<UpgradePoint>>,
+    wasm_config: WasmConfig,
 }
 
 impl From<&chainspec::Chainspec> for ChainspecConfig {
@@ -202,6 +120,7 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
         let genesis = Genesis {
             name: chainspec.genesis.name.clone(),
             timestamp: chainspec.genesis.timestamp,
+            validator_slots: chainspec.genesis.validator_slots,
             protocol_version: chainspec.genesis.protocol_version.clone(),
             mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
             pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
@@ -212,26 +131,9 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
             accounts_path: External::path(DEFAULT_ACCOUNTS_CSV_PATH),
         };
 
-        let highway = HighwayConfig {
-            genesis_era_start_timestamp: chainspec
-                .genesis
-                .highway_config
-                .genesis_era_start_timestamp,
-            era_duration_millis: chainspec.genesis.highway_config.era_duration.millis(),
-            minimum_era_height: chainspec.genesis.highway_config.minimum_era_height,
-            booking_duration_millis: chainspec.genesis.highway_config.booking_duration.millis(),
-            entropy_duration_millis: chainspec.genesis.highway_config.entropy_duration.millis(),
-            voting_period_duration_millis: chainspec
-                .genesis
-                .highway_config
-                .voting_period_duration
-                .millis(),
-            finality_threshold_percent: chainspec.genesis.highway_config.finality_threshold_percent,
-            minimum_round_exponent: chainspec.genesis.highway_config.minimum_round_exponent,
-        };
-
-        let deploys = chainspec.genesis.deploy_config.into();
-        let wasm_costs = chainspec.genesis.costs;
+        let highway = chainspec.genesis.highway_config;
+        let deploys = chainspec.genesis.deploy_config;
+        let wasm_config = chainspec.genesis.wasm_config;
 
         let upgrades = chainspec
             .upgrades
@@ -248,8 +150,8 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
             genesis,
             highway,
             deploys,
-            wasm_costs,
             upgrade,
+            wasm_config,
         }
     }
 }
@@ -292,29 +194,20 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         .accounts_path
         .load(root)
         .map_err(Error::LoadGenesisAccounts)?;
-    let highway_config = chainspec::HighwayConfig {
-        genesis_era_start_timestamp: chainspec.highway.genesis_era_start_timestamp,
-        era_duration: TimeDiff::from(chainspec.highway.era_duration_millis),
-        minimum_era_height: chainspec.highway.minimum_era_height,
-        booking_duration: TimeDiff::from(chainspec.highway.booking_duration_millis),
-        entropy_duration: TimeDiff::from(chainspec.highway.entropy_duration_millis),
-        voting_period_duration: TimeDiff::from(chainspec.highway.voting_period_duration_millis),
-        finality_threshold_percent: chainspec.highway.finality_threshold_percent,
-        minimum_round_exponent: chainspec.highway.minimum_round_exponent,
-    };
 
     let genesis = chainspec::GenesisConfig {
         name: chainspec.genesis.name,
         timestamp: chainspec.genesis.timestamp,
+        validator_slots: chainspec.genesis.validator_slots,
         protocol_version: chainspec.genesis.protocol_version,
         mint_installer_bytes,
         pos_installer_bytes,
         standard_payment_installer_bytes,
         auction_installer_bytes,
         accounts,
-        costs: chainspec.wasm_costs,
-        deploy_config: chainspec.deploys.try_into()?,
-        highway_config,
+        wasm_config: chainspec.wasm_config,
+        deploy_config: chainspec.deploys,
+        highway_config: chainspec.highway,
     };
 
     let mut upgrades = vec![];

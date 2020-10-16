@@ -14,8 +14,10 @@ mod error;
 
 use std::fmt::{self, Display, Formatter};
 
-use rand::{CryptoRng, Rng};
+use datasize::DataSize;
+use derive_more::From;
 use semver::Version;
+use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::core::engine_state::{self, genesis::GenesisResult};
@@ -24,17 +26,20 @@ use crate::{
     components::{storage::Storage, Component},
     crypto::hash::Digest,
     effect::{
-        requests::{ContractRuntimeRequest, StorageRequest},
+        requests::{ChainspecLoaderRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
+    types::CryptoRngCore,
 };
 pub use chainspec::Chainspec;
 pub(crate) use chainspec::{DeployConfig, HighwayConfig};
 pub use error::Error;
 
 /// `ChainspecHandler` events.
-#[derive(Debug)]
+#[derive(Debug, From)]
 pub enum Event {
+    #[from]
+    Request(ChainspecLoaderRequest),
     /// The result of the `ChainspecHandler` putting a `Chainspec` to the storage component.
     PutToStorage { version: Version },
     /// The result of contract runtime running the genesis process.
@@ -44,6 +49,7 @@ pub enum Event {
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Event::Request(_) => write!(formatter, "chainspec_loader request"),
             Event::PutToStorage { version } => {
                 write!(formatter, "put chainspec {} to storage", version)
             }
@@ -57,7 +63,38 @@ impl Display for Event {
     }
 }
 
-#[derive(Debug)]
+#[derive(DataSize, Debug, Serialize, Deserialize)]
+pub struct ChainspecInfo {
+    // Name of the chainspec.
+    name: String,
+    // If `Some` then genesis process returned a valid post state hash.
+    root_hash: Option<Digest>,
+}
+
+impl ChainspecInfo {
+    pub(crate) fn new(name: String, root_hash: Option<Digest>) -> ChainspecInfo {
+        ChainspecInfo { name, root_hash }
+    }
+
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    pub fn root_hash(&self) -> Option<Digest> {
+        self.root_hash
+    }
+}
+
+impl From<ChainspecLoader> for ChainspecInfo {
+    fn from(chainspec_loader: ChainspecLoader) -> Self {
+        ChainspecInfo::new(
+            chainspec_loader.chainspec.genesis.name.clone(),
+            chainspec_loader.genesis_post_state_hash,
+        )
+    }
+}
+
+#[derive(Clone, DataSize, Debug, Serialize, Deserialize)]
 pub(crate) struct ChainspecLoader {
     chainspec: Chainspec,
     // If `Some`, we're finished.  The value of the bool indicates success (true) or not.
@@ -105,20 +142,22 @@ impl ChainspecLoader {
     }
 }
 
-impl<REv, R> Component<REv, R> for ChainspecLoader
+impl<REv> Component<REv> for ChainspecLoader
 where
     REv: From<Event> + From<StorageRequest<Storage>> + From<ContractRuntimeRequest> + Send,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
+            Event::Request(ChainspecLoaderRequest::GetChainspecInfo(req)) => {
+                req.respond(self.clone().into()).ignore()
+            }
             Event::PutToStorage { version } => {
                 debug!("stored chainspec {}", version);
                 effect_builder
@@ -139,7 +178,8 @@ where
                             post_state_hash,
                             effect,
                         } => {
-                            info!("successfully committed genesis");
+                            info!("chainspec name {}", self.chainspec.genesis.name);
+                            info!("genesis root hash {}", post_state_hash);
                             trace!(%post_state_hash, ?effect);
                             self.completed_successfully = Some(true);
                             self.genesis_post_state_hash = Some(post_state_hash.into());

@@ -32,6 +32,7 @@ use std::{
 };
 
 use anyhow::Context;
+use datasize::DataSize;
 use hex_fmt::HexFmt;
 use nid::Nid;
 use openssl::{
@@ -79,7 +80,7 @@ const SIGNATURE_DIGEST: Nid = Nid::SHA512;
 type SslResult<T> = Result<T, ErrorStack>;
 
 /// SHA512 hash.
-#[derive(Copy, Clone, Deserialize, Serialize)]
+#[derive(Copy, Clone, DataSize, Deserialize, Serialize)]
 struct Sha512(#[serde(with = "big_array::BigArray")] [u8; Sha512::SIZE]);
 
 impl Sha512 {
@@ -129,7 +130,7 @@ impl Sha512 {
 }
 
 /// Certificate fingerprint.
-#[derive(Copy, Clone, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Copy, Clone, DataSize, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub(crate) struct CertFingerprint(Sha512);
 
 impl Debug for CertFingerprint {
@@ -139,7 +140,7 @@ impl Debug for CertFingerprint {
 }
 
 /// Public key fingerprint.
-#[derive(Copy, Clone, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Copy, Clone, DataSize, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct KeyFingerprint(Sha512);
 
 impl Debug for KeyFingerprint {
@@ -177,9 +178,10 @@ impl Debug for Signature {
 /// TLS certificate.
 ///
 /// Thin wrapper around `X509` enabling things like Serde serialization and fingerprint caching.
-#[derive(Clone)]
+#[derive(Clone, DataSize)]
 pub struct TlsCert {
     /// The wrapped x509 certificate.
+    #[data_size(skip)] // Skip OpenSSL type.
     x509: X509,
 
     /// Cached certificate fingerprint.
@@ -722,7 +724,7 @@ impl Display for CertFingerprint {
 
 impl Display for KeyFingerprint {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        Display::fmt(&self.0, f)
+        write!(f, "{:10}", HexFmt(self.0.bytes()))
     }
 }
 
@@ -738,7 +740,7 @@ where
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         // Decode the data here, even if it is expensive.
-        match rmp_serde::from_read::<_, T>(self.data.as_slice()) {
+        match bincode::deserialize::<T>(self.data.as_slice()) {
             Ok(item) => write!(f, "signed[{}]<{} bytes>", self.signature, item),
             Err(_err) => write!(f, "signed[{}]<CORRUPT>", self.signature),
         }
@@ -784,10 +786,10 @@ mod test {
         let tls_cert = validate_cert(cert).expect("generated cert is not valid");
 
         // There is no `PartialEq` impl for `TlsCert`, so we simply serialize it twice.
-        let serialized = rmp_serde::to_vec(&tls_cert).expect("could not serialize");
+        let serialized = bincode::serialize(&tls_cert).expect("could not serialize");
         let deserialized: TlsCert =
-            rmp_serde::from_read(serialized.as_slice()).expect("could not deserialize");
-        let serialized_again = rmp_serde::to_vec(&deserialized).expect("could not serialize");
+            bincode::deserialize(serialized.as_slice()).expect("could not deserialize");
+        let serialized_again = bincode::serialize(&deserialized).expect("could not serialize");
 
         assert_eq!(serialized, serialized_again);
     }

@@ -1,18 +1,26 @@
 //! Contains types and constants associated with user accounts.
 
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box, format, string::String, vec::Vec};
 use core::{
+    array::TryFromSliceError,
     convert::TryFrom,
     fmt::{Debug, Display, Formatter},
 };
 
+use blake2::{
+    digest::{Input, VariableOutput},
+    VarBlake2b,
+};
+use datasize::DataSize;
 use failure::Fail;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    CLType, CLTyped,
+    CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
 };
+
+const FORMATTED_STRING_PREFIX: &str = "account-hash-";
 
 // This error type is not intended to be used by third party crates.
 #[doc(hidden)]
@@ -22,6 +30,29 @@ pub struct TryFromIntError(());
 /// Associated error type of `TryFrom<&[u8]>` for [`AccountHash`].
 #[derive(Debug)]
 pub struct TryFromSliceForAccountHashError(());
+
+/// Error returned when decoding an `AccountHash` from a formatted string.
+#[derive(Debug)]
+pub enum FromStrError {
+    /// The prefix is invalid.
+    InvalidPrefix,
+    /// The hash is not valid hex.
+    Hex(base16::DecodeError),
+    /// The hash is the wrong length.
+    Hash(TryFromSliceError),
+}
+
+impl From<base16::DecodeError> for FromStrError {
+    fn from(error: base16::DecodeError) -> Self {
+        FromStrError::Hex(error)
+    }
+}
+
+impl From<TryFromSliceError> for FromStrError {
+    fn from(error: TryFromSliceError) -> Self {
+        FromStrError::Hash(error)
+    }
+}
 
 /// The various types of action which can be performed in the context of a given account.
 #[repr(u32)]
@@ -155,7 +186,7 @@ pub type AccountHashBytes = [u8; ACCOUNT_HASH_LENGTH];
 
 /// A newtype wrapping a [`AccountHashBytes`] which is the raw bytes of
 /// the AccountHash, a hash of Public Key and Algorithm
-#[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
+#[derive(DataSize, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
 pub struct AccountHash(AccountHashBytes);
 
 impl AccountHash {
@@ -173,6 +204,63 @@ impl AccountHash {
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
+
+    /// Formats the `AccountHash` for users getting and putting.
+    pub fn to_formatted_string(&self) -> String {
+        format!(
+            "{}{}",
+            FORMATTED_STRING_PREFIX,
+            base16::encode_lower(&self.0),
+        )
+    }
+
+    /// Parses a string formatted as per `Self::to_formatted_string()` into an `AccountHash`.
+    pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
+        let remainder = input
+            .strip_prefix(FORMATTED_STRING_PREFIX)
+            .ok_or_else(|| FromStrError::InvalidPrefix)?;
+        let bytes = AccountHashBytes::try_from(base16::decode(remainder)?.as_ref())?;
+        Ok(AccountHash(bytes))
+    }
+
+    #[doc(hidden)]
+    pub fn from_public_key(
+        public_key: PublicKey,
+        blake2b_hash_fn: impl Fn(Vec<u8>) -> [u8; BLAKE2B_DIGEST_LENGTH],
+    ) -> Self {
+        const ED25519_LOWERCASE: &str = "ed25519";
+        const SECP256K1_LOWERCASE: &str = "secp256k1";
+
+        let algorithm_name = match public_key {
+            PublicKey::Ed25519(_) => ED25519_LOWERCASE,
+            PublicKey::Secp256k1(_) => SECP256K1_LOWERCASE,
+        };
+        let public_key_bytes = public_key.as_ref();
+
+        // Prepare preimage based on the public key parameters.
+        let preimage = {
+            let mut data = Vec::with_capacity(algorithm_name.len() + public_key_bytes.len() + 1);
+            data.extend(algorithm_name.as_bytes());
+            data.push(0);
+            data.extend(public_key_bytes);
+            data
+        };
+        // Hash the preimage data using blake2b256 and return it.
+        let digest = blake2b_hash_fn(preimage);
+        Self::new(digest)
+    }
+}
+
+#[doc(hidden)]
+pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
+    let mut result = [0; BLAKE2B_DIGEST_LENGTH];
+    let mut hasher = VarBlake2b::new(BLAKE2B_DIGEST_LENGTH).expect("should create hasher");
+
+    hasher.input(data);
+    hasher.variable_result(|slice| {
+        result.copy_from_slice(slice);
+    });
+    result
 }
 
 impl TryFrom<&[u8]> for AccountHash {
@@ -192,6 +280,12 @@ impl TryFrom<&alloc::vec::Vec<u8>> for AccountHash {
         AccountHashBytes::try_from(bytes as &[u8])
             .map(AccountHash::new)
             .map_err(|_| TryFromSliceForAccountHashError(()))
+    }
+}
+
+impl From<PublicKey> for AccountHash {
+    fn from(public_key: PublicKey) -> Self {
+        AccountHash::from_public_key(public_key, blake2b)
     }
 }
 
@@ -409,5 +503,33 @@ mod tests {
             "Did you forget to update `UpdateKeyFailure::try_from` for a new variant of \
                    `UpdateKeyFailure`, or `max_valid_value_for_variant` in this test?"
         );
+    }
+
+    #[test]
+    fn account_hash_from_str() {
+        let account_hash = AccountHash([3; 32]);
+        let encoded = account_hash.to_formatted_string();
+        let decoded = AccountHash::from_formatted_str(&encoded).unwrap();
+        assert_eq!(account_hash, decoded);
+
+        let invalid_prefix =
+            "accounthash-0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(AccountHash::from_formatted_str(invalid_prefix).is_err());
+
+        let invalid_prefix =
+            "account-hash0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(AccountHash::from_formatted_str(invalid_prefix).is_err());
+
+        let short_addr =
+            "account-hash-00000000000000000000000000000000000000000000000000000000000000";
+        assert!(AccountHash::from_formatted_str(short_addr).is_err());
+
+        let long_addr =
+            "account-hash-000000000000000000000000000000000000000000000000000000000000000000";
+        assert!(AccountHash::from_formatted_str(long_addr).is_err());
+
+        let invalid_hex =
+            "account-hash-000000000000000000000000000000000000000000000000000000000000000g";
+        assert!(AccountHash::from_formatted_str(invalid_hex).is_err());
     }
 }

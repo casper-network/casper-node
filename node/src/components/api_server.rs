@@ -1,28 +1,33 @@
 //! API server
 //!
-//! The API server provides clients with a JSON-RPC API for query state and sending commands to the
-//! node. The actual server is run in backgrounded tasks, various requests are translated into
-//! reactor-requests to various components.
+//! The API server provides clients with two types of service: a JSON-RPC API for querying state and
+//! sending commands to the node, and an event-stream returning Server-Sent Events (SSEs) holding
+//! JSON-encoded data.
+//!
+//! The actual server is run in backgrounded tasks.   RPCs requests are translated into reactor
+//! requests to various components.
 //!
 //! This module currently provides both halves of what is required for an API server: An abstract
-//! API Server that handles API requests and an external service endpoint based on HTTP & JSON-RPC.
+//! API Server that handles API requests and an external service endpoint based on HTTP.
 //!
-//! For the list of supported RPCs, see
+//! For the list of supported RPCs and SSEs, see
 //! https://github.com/CasperLabs/ceps/blob/master/text/0009-client-api.md#rpcs
 
 mod config;
 mod event;
+mod http_server;
+mod rest_server;
 pub mod rpcs;
+mod sse_server;
 
-use std::{convert::Infallible, fmt::Debug, net::SocketAddr};
+use std::fmt::Debug;
 
-use futures::{future, join};
-use hyper::Server;
+use datasize::DataSize;
+use futures::join;
 use lazy_static::lazy_static;
-use rand::{CryptoRng, Rng};
 use semver::Version;
-use tracing::{debug, info, warn};
-use warp::Filter;
+use tokio::sync::mpsc::{self, UnboundedSender};
+use tracing::info;
 
 use casper_execution_engine::core::engine_state::{
     self, BalanceRequest, BalanceResult, QueryRequest, QueryResult,
@@ -36,17 +41,17 @@ use crate::{
     effect::{
         announcements::ApiServerAnnouncement,
         requests::{
-            ApiRequest, ContractRuntimeRequest, LinearChainRequest, MetricsRequest,
-            NetworkInfoRequest, StorageRequest,
+            ApiRequest, ChainspecLoaderRequest, ContractRuntimeRequest, LinearChainRequest,
+            MetricsRequest, NetworkInfoRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects, Responder,
     },
     small_network::NodeId,
-    types::StatusFeed,
+    types::{CryptoRngCore, StatusFeed},
 };
 pub use config::Config;
 pub(crate) use event::Event;
-use rpcs::{RpcWithOptionalParamsExt, RpcWithParamsExt, RpcWithoutParamsExt};
+pub use sse_server::SseData;
 
 // TODO - confirm if we want to use the protocol version for this.
 lazy_static! {
@@ -76,8 +81,13 @@ impl<REv> ReactorEventT for REv where
 {
 }
 
-#[derive(Debug)]
-pub(crate) struct ApiServer {}
+#[derive(DataSize, Debug)]
+pub(crate) struct ApiServer {
+    /// Channel sender to pass event-stream data to the event-stream server.
+    // TODO - this should not be skipped.  Awaiting support for `UnboundedSender` in datasize crate.
+    #[data_size(skip)]
+    sse_data_sender: UnboundedSender<SseData>,
+}
 
 impl ApiServer {
     pub(crate) fn new<REv>(config: Config, effect_builder: EffectBuilder<REv>) -> Self
@@ -89,62 +99,10 @@ impl ApiServer {
             + From<ContractRuntimeRequest>
             + Send,
     {
-        tokio::spawn(run_server(config, effect_builder));
-        ApiServer {}
-    }
-}
+        let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
+        tokio::spawn(http_server::run(config, effect_builder, sse_data_receiver));
 
-/// Run the HTTP server.
-async fn run_server<REv: ReactorEventT>(config: Config, effect_builder: EffectBuilder<REv>) {
-    let put_deploy = rpcs::account::PutDeploy::create_filter(effect_builder);
-    let get_block = rpcs::chain::GetBlock::create_filter(effect_builder);
-    let get_global_state_hash = rpcs::chain::GetGlobalStateHash::create_filter(effect_builder);
-    let get_item = rpcs::state::GetItem::create_filter(effect_builder);
-    let get_balance = rpcs::state::GetBalance::create_filter(effect_builder);
-    let get_deploy = rpcs::info::GetDeploy::create_filter(effect_builder);
-    let get_peers = rpcs::info::GetPeers::create_filter(effect_builder);
-    let get_status = rpcs::info::GetStatus::create_filter(effect_builder);
-    let get_metrics = rpcs::info::GetMetrics::create_filter(effect_builder);
-
-    let service = warp_json_rpc::service(
-        put_deploy
-            .or(get_block)
-            .or(get_global_state_hash)
-            .or(get_item)
-            .or(get_balance)
-            .or(get_deploy)
-            .or(get_peers)
-            .or(get_status)
-            .or(get_metrics),
-    );
-
-    let mut server_addr = SocketAddr::from((config.bind_interface, config.bind_port));
-
-    // Try to bind to the user's chosen port, or if that fails, try once to bind to any port then
-    // error out if that fails too.
-    loop {
-        match Server::try_bind(&server_addr) {
-            Ok(builder) => {
-                let make_svc = hyper::service::make_service_fn(move |_| {
-                    future::ok::<_, Infallible>(service.clone())
-                });
-                let server = builder.serve(make_svc);
-                info!(address = %server.local_addr(), "started HTTP server");
-                if let Err(error) = server.await {
-                    debug!(%error, "error running HTTP server");
-                }
-                return;
-            }
-            Err(error) => {
-                if server_addr.port() == 0 {
-                    warn!(%error, "failed to start HTTP server");
-                    return;
-                } else {
-                    server_addr.set_port(0);
-                    debug!(%error, "failed to start HTTP server. retrying on random port");
-                }
-            }
-        }
+        ApiServer { sse_data_sender }
     }
 }
 
@@ -181,27 +139,33 @@ impl ApiServer {
                 main_responder: responder,
             })
     }
+
+    /// Broadcasts the SSE data to all clients connected to the event stream.
+    fn broadcast(&mut self, sse_data: SseData) -> Effects<Event> {
+        let _ = self.sse_data_sender.send(sse_data);
+        Effects::new()
+    }
 }
 
-impl<REv, R> Component<REv, R> for ApiServer
+impl<REv> Component<REv> for ApiServer
 where
     REv: From<ApiServerAnnouncement>
         + From<NetworkInfoRequest<NodeId>>
         + From<LinearChainRequest<NodeId>>
         + From<ContractRuntimeRequest>
+        + From<ChainspecLoaderRequest>
         + From<MetricsRequest>
         + From<StorageRequest<Storage>>
         + From<Event>
         + From<ApiRequest<NodeId>>
         + Send,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -224,7 +188,7 @@ where
                 maybe_hash: None,
                 responder,
             }) => effect_builder
-                .get_last_finalized_block()
+                .get_highest_block()
                 .event(move |result| Event::GetBlockResult {
                     maybe_hash: None,
                     result: Box::new(result),
@@ -255,12 +219,13 @@ where
                     main_responder: responder,
                 }),
             Event::ApiRequest(ApiRequest::GetStatus { responder }) => async move {
-                let (last_finalized_block, peers) = join!(
-                    effect_builder.get_last_finalized_block(),
-                    effect_builder.network_peers()
+                let (last_added_block, peers, chainspec_info) = join!(
+                    effect_builder.get_highest_block(),
+                    effect_builder.network_peers(),
+                    effect_builder.get_chainspec_info()
                 );
-                let status_feed = StatusFeed::new(last_finalized_block, peers);
-                debug!("GetStatus --status_feed: {:?}", status_feed);
+                let status_feed = StatusFeed::new(last_added_block, peers, chainspec_info);
+                info!("GetStatus --status_feed: {:?}", status_feed);
                 responder.respond(status_feed).await;
             }
             .ignore(),
@@ -296,6 +261,25 @@ where
                 text,
                 main_responder,
             } => main_responder.respond(text).ignore(),
+            Event::BlockFinalized(finalized_block) => {
+                self.broadcast(SseData::BlockFinalized(*finalized_block))
+            }
+            Event::BlockAdded {
+                block_hash,
+                block_header,
+            } => self.broadcast(SseData::BlockAdded {
+                block_hash,
+                block_header: *block_header,
+            }),
+            Event::DeployProcessed {
+                deploy_hash,
+                block_hash,
+                execution_result,
+            } => self.broadcast(SseData::DeployProcessed {
+                deploy_hash,
+                block_hash,
+                execution_result,
+            }),
         }
     }
 }

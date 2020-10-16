@@ -1,4 +1,8 @@
-use alloc::vec::Vec;
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::{
     fmt::{self, Formatter},
     iter::Sum,
@@ -25,12 +29,15 @@ mod macro_code {
     use uint::construct_uint;
 
     construct_uint! {
+        #[derive(datasize::DataSize)]
         pub struct U512(8);
     }
     construct_uint! {
+        #[derive(datasize::DataSize)]
         pub struct U256(4);
     }
     construct_uint! {
+        #[derive(datasize::DataSize)]
         pub struct U128(2);
     }
 }
@@ -52,6 +59,10 @@ macro_rules! impl_traits_for_uint {
     ($type:ident, $total_bytes:expr, $test_mod:ident) => {
         impl Serialize for $type {
             fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                if serializer.is_human_readable() {
+                    return self.to_string().serialize(serializer);
+                }
+
                 let mut buffer = [0u8; $total_bytes];
                 self.to_little_endian(&mut buffer);
                 let non_zero_bytes: Vec<u8> = buffer
@@ -130,6 +141,13 @@ macro_rules! impl_traits_for_uint {
                     "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53",
                     "54", "55", "56", "57", "58", "59", "60", "61", "62", "63", "64",
                 ];
+
+                if deserializer.is_human_readable() {
+                    let decimal_string = String::deserialize(deserializer)?;
+                    return Ok(Self::from_dec_str(&decimal_string)
+                        .map_err(|error| de::Error::custom(format!("{:?}", error)))?);
+                }
+
                 deserializer.deserialize_struct("bigint", FIELDS, BigNumVisitor)
             }
         }
@@ -897,8 +915,8 @@ mod tests {
             assert_eq!(value, deserialized);
         }
         {
-            let serialized = rmp_serde::to_vec(&value).unwrap();
-            let deserialized = rmp_serde::from_read_ref(serialized.as_slice()).unwrap();
+            let serialized = serde_json::to_string_pretty(&value).unwrap();
+            let deserialized = serde_json::from_str(&serialized).unwrap();
             assert_eq!(value, deserialized);
         }
     }

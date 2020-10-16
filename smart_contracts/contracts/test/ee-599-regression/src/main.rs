@@ -1,6 +1,5 @@
 #![no_std]
 #![no_main]
-#![allow(dead_code)]
 #![allow(unused_imports)]
 
 extern crate alloc;
@@ -23,23 +22,17 @@ const DONATION_AMOUNT: u64 = 1;
 // sources wouldn't overlap (if ever that's possible)
 const DONATION_PURSE_COPY: &str = "donation_purse_copy";
 const DONATION_PURSE: &str = "donation_purse";
-const GET_MAIN_PURSE: &str = "get_main_purse_ext";
 const MAINTAINER: &str = "maintainer";
 const METHOD_CALL: &str = "call";
 const METHOD_INSTALL: &str = "install";
 const TRANSFER_FROM_PURSE_TO_ACCOUNT: &str = "transfer_from_purse_to_account_ext";
 const TRANSFER_FROM_PURSE_TO_PURSE: &str = "transfer_from_purse_to_purse_ext";
-const TRANSFER_FUNDS_EXT: &str = "transfer_funds_ext";
 const TRANSFER_FUNDS_KEY: &str = "transfer_funds";
 const TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_ext";
 
 const ARG_METHOD: &str = "method";
 const ARG_CONTRACTKEY: &str = "contract_key";
 const ARG_SUBCONTRACTMETHODFWD: &str = "sub_contract_method_fwd";
-
-enum TransferFunds {
-    Method = 0,
-}
 
 #[repr(u16)]
 enum ContractError {

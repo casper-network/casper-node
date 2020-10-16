@@ -3,6 +3,7 @@
 use std::{fmt, io};
 
 use ansi_term::{Color, Style};
+use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use tracing::{Event, Level, Subscriber};
@@ -18,12 +19,19 @@ use tracing_subscriber::{
 };
 
 /// Logging configuration.
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(DataSize, Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LoggingConfig {
     /// Output format for log.
     format: LoggingFormat,
-    /// Abbreviate module names.
+
+    /// Colored output (has no effect if JSON format is enabled).
+    ///
+    /// If set, the logger will inject ANSI color codes into log messages.  This is useful if
+    /// writing out to stdout or stderr on an ANSI terminal, but not so if writing to a logfile.
+    color: bool,
+
+    /// Abbreviate module names (has no effect if JSON format is enabled).
     ///
     /// If set, human-readable formats will abbreviate module names, `foo::bar::baz::bizz` will
     /// turn into `f:b:b:bizz`.
@@ -32,9 +40,10 @@ pub struct LoggingConfig {
 
 impl LoggingConfig {
     /// Creates a new instance of LoggingConfig.
-    pub fn new(format: LoggingFormat, abbreviate_modules: bool) -> Self {
+    pub fn new(format: LoggingFormat, color: bool, abbreviate_modules: bool) -> Self {
         LoggingConfig {
             format,
+            color,
             abbreviate_modules,
         }
     }
@@ -43,7 +52,7 @@ impl LoggingConfig {
 /// Logging output format.
 ///
 /// Defaults to "text"".
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(DataSize, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LoggingFormat {
     /// Text format.
@@ -61,13 +70,34 @@ impl Default for LoggingFormat {
 /// This is used to implement tracing's `FormatEvent` so that we can customize the way tracing
 /// events are formatted.
 struct FmtEvent {
-    // Whether module segments should be shortened to first letter only.
+    /// Whether to use ANSI color formatting or not.
+    ansi_color: bool,
+    /// Whether module segments should be shortened to first letter only.
     abbreviate_modules: bool,
 }
 
 impl FmtEvent {
-    fn new(abbreviate_modules: bool) -> Self {
-        FmtEvent { abbreviate_modules }
+    fn new(ansi_color: bool, abbreviate_modules: bool) -> Self {
+        FmtEvent {
+            ansi_color,
+            abbreviate_modules,
+        }
+    }
+
+    fn enable_dimmed_if_ansi(&self, writer: &mut dyn fmt::Write) -> fmt::Result {
+        if self.ansi_color {
+            write!(writer, "{}", Style::new().dimmed().prefix())
+        } else {
+            Ok(())
+        }
+    }
+
+    fn disable_dimmed_if_ansi(&self, writer: &mut dyn fmt::Write) -> fmt::Result {
+        if self.ansi_color {
+            write!(writer, "{}", Style::new().dimmed().suffix())
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -82,29 +112,32 @@ where
         writer: &mut dyn fmt::Write,
         event: &Event<'_>,
     ) -> fmt::Result {
-        // print the date/time with dimmed style
-        let dimmed = Style::new().dimmed();
-        write!(writer, "{}", dimmed.prefix())?;
+        // print the date/time with dimmed style if `ansi_color` is true
+        self.enable_dimmed_if_ansi(writer)?;
         SystemTime.format_time(writer)?;
-        write!(writer, "{}", dimmed.suffix())?;
+        self.disable_dimmed_if_ansi(writer)?;
 
-        // print the log level in color
+        // print the log level
         let meta = event.metadata();
-        let color = match *meta.level() {
-            Level::TRACE => Color::Purple,
-            Level::DEBUG => Color::Blue,
-            Level::INFO => Color::Green,
-            Level::WARN => Color::Yellow,
-            Level::ERROR => Color::Red,
-        };
+        if self.ansi_color {
+            let color = match *meta.level() {
+                Level::TRACE => Color::Purple,
+                Level::DEBUG => Color::Blue,
+                Level::INFO => Color::Green,
+                Level::WARN => Color::Yellow,
+                Level::ERROR => Color::Red,
+            };
 
-        write!(
-            writer,
-            " {}{:<6}{}",
-            color.prefix(),
-            meta.level().to_string(),
-            color.suffix()
-        )?;
+            write!(
+                writer,
+                " {}{:<6}{}",
+                color.prefix(),
+                meta.level().to_string(),
+                color.suffix()
+            )?;
+        } else {
+            write!(writer, " {:<6}", meta.level().to_string())?;
+        }
 
         // print the span information as per
         // https://github.com/tokio-rs/tracing/blob/21f28f74/tracing-subscriber/src/fmt/format/mod.rs#L667-L695
@@ -128,7 +161,7 @@ where
             writer.write_char(' ')?;
         }
 
-        // print the module path, filename and line number with dimmed style
+        // print the module path, filename and line number with dimmed style if `ansi_color` is true
         let module = {
             let full_module_path = meta.module_path().unwrap_or_default();
             if self.abbreviate_modules {
@@ -162,15 +195,9 @@ where
 
         let line = meta.line().unwrap_or_default();
 
-        write!(
-            writer,
-            "{}[{} {}:{}]{} ",
-            dimmed.prefix(),
-            module,
-            file,
-            line,
-            dimmed.suffix()
-        )?;
+        self.enable_dimmed_if_ansi(writer)?;
+        write!(writer, "[{} {}:{}] ", module, file, line,)?;
+        self.disable_dimmed_if_ansi(writer)?;
 
         // print the log message and other fields
         ctx.format_fields(writer, event)?;
@@ -208,7 +235,7 @@ pub fn init_with_config(config: &LoggingConfig) -> anyhow::Result<()> {
                 .with_writer(io::stdout)
                 .with_env_filter(EnvFilter::from_default_env())
                 .fmt_fields(formatter)
-                .event_format(FmtEvent::new(config.abbreviate_modules))
+                .event_format(FmtEvent::new(config.color, config.abbreviate_modules))
                 .finish(),
         )?,
         // JSON logging writes to `stdout` as well but uses the JSON format.

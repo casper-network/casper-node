@@ -1,7 +1,10 @@
 use clap::{App, Arg, ArgGroup, ArgMatches, SubCommand};
 
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
-use casper_node::crypto::asymmetric_key::PublicKey;
+use casper_node::{
+    crypto::asymmetric_key::PublicKey,
+    rpcs::{account::PutDeploy, RpcWithParams},
+};
 use casper_types::{bytesrepr::ToBytes, RuntimeArgs, URef, U512};
 
 use super::creation_common::{self, DisplayOrder};
@@ -20,7 +23,7 @@ pub(super) mod amount {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
             .short(ARG_SHORT)
-            .required(true)
+            .required_unless(creation_common::show_arg_examples::ARG_NAME)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
             .display_order(DisplayOrder::TransferAmount as usize)
@@ -75,13 +78,14 @@ mod target_account {
         "Hex-encoded public key of the account from which the main purse will be used as the \
         target.";
 
+    // Conflicts with --target-purse, but that's handled via an `ArgGroup` in the subcommand.  Don't
+    // add a `conflicts_with()` to the arg or the `ArgGroup` fails to work correctly.
     pub(super) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
             .short(ARG_SHORT)
             .required(false)
             .value_name(ARG_VALUE_NAME)
-            .conflicts_with(super::target_purse::ARG_NAME)
             .help(ARG_HELP)
             .display_order(DisplayOrder::TransferTargetAccount as usize)
     }
@@ -106,6 +110,8 @@ mod target_purse {
     const ARG_VALUE_NAME: &str = "HEX STRING";
     const ARG_HELP: &str = "Hex-encoded URef of the target purse";
 
+    // Conflicts with --target-account, but that's handled via an `ArgGroup` in the subcommand.
+    // Don't add a `conflicts_with()` to the arg or the `ArgGroup` fails to work correctly.
     pub(super) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
@@ -153,7 +159,7 @@ fn create_transfer_args(matches: &ArgMatches) -> RuntimeArgs {
 pub struct Transfer {}
 
 impl RpcClient for Transfer {
-    const RPC_METHOD: &'static str = "account_put_deploy";
+    const RPC_METHOD: &'static str = PutDeploy::METHOD;
 }
 
 impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
@@ -164,22 +170,30 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
         let subcommand = SubCommand::with_name(Self::NAME)
             .about(Self::ABOUT)
             .display_order(display_order)
+            .arg(common::verbose::arg(DisplayOrder::Verbose as usize))
+            .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
             .arg(amount::arg())
             .arg(source_purse::arg())
             .arg(target_account::arg())
             .arg(target_purse::arg())
-            // Group the target args to ensure one is given.
+            // Group the target args to ensure exactly one is required.
             .group(
-                ArgGroup::with_name("target-args")
+                ArgGroup::with_name("required-target-args")
                     .arg(target_account::ARG_NAME)
                     .arg(target_purse::ARG_NAME)
-                    .required(false),
+                    .arg(creation_common::show_arg_examples::ARG_NAME)
+                    .required(true),
             );
-        creation_common::apply_common_creation_options(subcommand)
+        let subcommand = creation_common::apply_common_payment_options(subcommand);
+        creation_common::apply_common_creation_options(subcommand, true)
     }
 
     fn run(matches: &ArgMatches<'_>) {
+        creation_common::show_arg_examples_and_exit_if_required(matches);
+
+        let verbose = common::verbose::get(matches);
         let node_address = common::node_address::get(matches);
+        let rpc_id = common::rpc_id::get(matches);
 
         let transfer_args = create_transfer_args(matches)
             .to_bytes()
@@ -190,8 +204,10 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
 
         let params = creation_common::construct_deploy(matches, session);
 
-        let response_value = Self::request_with_map_params(&node_address, params)
-            .unwrap_or_else(|error| panic!("response error: {}", error));
-        println!("{}", response_value);
+        let response = Self::request_with_map_params(verbose, &node_address, rpc_id, params);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&response).expect("should encode to JSON")
+        );
     }
 }

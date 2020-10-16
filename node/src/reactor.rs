@@ -24,27 +24,55 @@
 //! in a step-wise manner using [`crank`](struct.Runner.html#method.crank) or indefinitely using
 //! [`run`](struct.Runner.html#method.crank).
 
+mod event_queue_metrics;
 pub mod initializer;
 pub mod joiner;
 mod queue_kind;
 pub mod validator;
 
 use std::{
+    collections::HashMap,
+    env,
     fmt::{Debug, Display},
     mem,
+    str::FromStr,
 };
 
+use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
-use prometheus::{self, IntCounter, Registry};
-use rand::{CryptoRng, Rng};
+use lazy_static::lazy_static;
+use prometheus::{self, Histogram, HistogramOpts, IntCounter, Registry};
+use quanta::IntoNanoseconds;
 use tracing::{debug, debug_span, info, trace, warn};
 use tracing_futures::Instrument;
 
 use crate::{
     effect::{Effect, EffectBuilder, Effects},
+    types::CryptoRngCore,
     utils::{self, WeightedRoundRobin},
 };
+use quanta::Clock;
 pub use queue_kind::QueueKind;
+use tokio::time::{Duration, Instant};
+
+/// Default threshold for when an event is considered slow.  Can be overridden by setting the env
+/// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
+const DEFAULT_DISPATCH_EVENT_THRESHOLD: Duration = Duration::from_secs(1);
+const DISPATCH_EVENT_THRESHOLD_ENV_VAR: &str = "CL_EVENT_MAX_MICROSECS";
+
+lazy_static! {
+    static ref DISPATCH_EVENT_THRESHOLD: Duration = env::var(DISPATCH_EVENT_THRESHOLD_ENV_VAR)
+        .map(|threshold_str| {
+            let threshold_microsecs = u64::from_str(&threshold_str).unwrap_or_else(|error| {
+                panic!(
+                    "can't parse env var {}={} as a u64: {}",
+                    DISPATCH_EVENT_THRESHOLD_ENV_VAR, threshold_str, error
+                )
+            });
+            Duration::from_micros(threshold_microsecs)
+        })
+        .unwrap_or_else(|_| DEFAULT_DISPATCH_EVENT_THRESHOLD);
+}
 
 /// Event scheduler
 ///
@@ -59,8 +87,10 @@ pub type Scheduler<Ev> = WeightedRoundRobin<Ev, QueueKind>;
 /// The event queue handle is how almost all parts of the application interact with the reactor
 /// outside of the normal event loop. It gives different parts a chance to schedule messages that
 /// stem from things like external IO.
-#[derive(Debug)]
-pub struct EventQueueHandle<REv: 'static>(&'static Scheduler<REv>);
+#[derive(DataSize, Debug)]
+pub struct EventQueueHandle<REv>(&'static Scheduler<REv>)
+where
+    REv: 'static;
 
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `R` and `Ev` otherwise.
 impl<REv> Clone for EventQueueHandle<REv> {
@@ -83,12 +113,17 @@ impl<REv> EventQueueHandle<REv> {
     {
         self.0.push(event.into(), queue_kind).await
     }
+
+    /// Returns number of events in each of the scheduler's queues.
+    pub(crate) fn event_queues_counts(&self) -> HashMap<QueueKind, usize> {
+        self.0.event_queues_counts()
+    }
 }
 
 /// Reactor core.
 ///
 /// Any reactor should implement this trait and be executed by the `reactor::run` function.
-pub trait Reactor<R: Rng + CryptoRng + ?Sized>: Sized {
+pub trait Reactor: Sized {
     // Note: We've gone for the `Sized` bound here, since we return an instance in `new`. As an
     // alternative, `new` could return a boxed instance instead, removing this requirement.
 
@@ -111,7 +146,7 @@ pub trait Reactor<R: Rng + CryptoRng + ?Sized>: Sized {
     fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event>;
 
@@ -125,7 +160,7 @@ pub trait Reactor<R: Rng + CryptoRng + ?Sized>: Sized {
         cfg: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error>;
 
     /// Indicates that the reactor has completed all its work and should no longer dispatch events.
@@ -133,6 +168,9 @@ pub trait Reactor<R: Rng + CryptoRng + ?Sized>: Sized {
     fn is_stopped(&mut self) -> bool {
         false
     }
+
+    /// Instructs the reactor to update performance metrics, if any.
+    fn update_metrics(&mut self, _event_queue_handle: EventQueueHandle<Self::Event>) {}
 }
 
 /// A drop-like trait for `async` compatible drop-and-wait.
@@ -153,10 +191,9 @@ pub trait Finalize: Sized {
 /// The runner manages a reactors event queue and reactor itself and can run it either continuously
 /// or in a step-by-step manner.
 #[derive(Debug)]
-pub struct Runner<R, RNG>
+pub struct Runner<R>
 where
-    R: Reactor<RNG>,
-    RNG: Rng + CryptoRng + ?Sized,
+    R: Reactor,
 {
     /// The scheduler used for the reactor.
     scheduler: &'static Scheduler<R::Event>,
@@ -167,8 +204,20 @@ where
     /// Counter for events, to aid tracing.
     event_count: usize,
 
+    /// Timestamp of last reactor metrics update.
+    last_metrics: Instant,
+
     /// Metrics for the runner.
     metrics: RunnerMetrics,
+
+    /// Check if we need to update reactor metrics every this many events.
+    event_metrics_threshold: usize,
+
+    /// Only update reactor metrics if at least this much time has passed.
+    event_metrics_min_delay: Duration,
+
+    /// An accurate, possible TSC-supporting clock.
+    clock: Clock,
 }
 
 /// Metric data for the Runner
@@ -176,6 +225,9 @@ where
 struct RunnerMetrics {
     /// Total number of events processed.
     events: IntCounter,
+
+    /// Histogram of how long it took to dispatch an event.
+    event_dispatch_duration: Histogram,
 
     /// Handle to the metrics registry, in case we need to unregister.
     registry: Registry,
@@ -185,10 +237,42 @@ impl RunnerMetrics {
     /// Create and register new runner metrics.
     fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
         let events = IntCounter::new("runner_events", "total event count")?;
+
+        // Create an event dispatch histogram, putting extra emphasis on the area between 1-10 us.
+        let event_dispatch_duration = Histogram::with_opts(
+            HistogramOpts::new(
+                "event_dispatch_duration",
+                "duration of complete dispatch of a single event in nanoseconds",
+            )
+            .buckets(vec![
+                100.0,
+                500.0,
+                1_000.0,
+                5_000.0,
+                10_000.0,
+                20_000.0,
+                50_000.0,
+                100_000.0,
+                200_000.0,
+                300_000.0,
+                400_000.0,
+                500_000.0,
+                600_000.0,
+                700_000.0,
+                800_000.0,
+                900_000.0,
+                1_000_000.0,
+                2_000_000.0,
+                5_000_000.0,
+            ]),
+        )?;
+
         registry.register(Box::new(events.clone()))?;
+        registry.register(Box::new(event_dispatch_duration.clone()))?;
 
         Ok(RunnerMetrics {
             events,
+            event_dispatch_duration,
             registry: registry.clone(),
         })
     }
@@ -198,21 +282,23 @@ impl Drop for RunnerMetrics {
     fn drop(&mut self) {
         self.registry
             .unregister(Box::new(self.events.clone()))
-            .expect("did not expect deregistering metrics to fail")
+            .expect("did not expect deregistering events to fail");
+        self.registry
+            .unregister(Box::new(self.event_dispatch_duration.clone()))
+            .expect("did not expect deregistering event_dispatch_duration to fail");
     }
 }
 
-impl<R, RNG> Runner<R, RNG>
+impl<R> Runner<R>
 where
-    R: Reactor<RNG>,
+    R: Reactor,
     R::Error: From<prometheus::Error>,
-    RNG: Rng + CryptoRng + ?Sized,
 {
     /// Creates a new runner from a given configuration.
     ///
     /// Creates a metrics registry that is only going to be used in this runner.
     #[inline]
-    pub async fn new(cfg: R::Config, rng: &mut RNG) -> Result<Self, R::Error> {
+    pub async fn new(cfg: R::Config, rng: &mut dyn CryptoRngCore) -> Result<Self, R::Error> {
         // Instantiate a new registry for metrics for this reactor.
         let registry = Registry::new();
         Self::with_metrics(cfg, rng, &registry).await
@@ -222,7 +308,7 @@ where
     #[inline]
     pub async fn with_metrics(
         cfg: R::Config,
-        rng: &mut RNG,
+        rng: &mut dyn CryptoRngCore,
         registry: &Registry,
     ) -> Result<Self, R::Error> {
         let event_size = mem::size_of::<R::Event>();
@@ -252,6 +338,10 @@ where
             reactor,
             event_count: 0,
             metrics: RunnerMetrics::new(registry)?,
+            last_metrics: Instant::now(),
+            event_metrics_min_delay: Duration::from_secs(30),
+            event_metrics_threshold: 1000,
+            clock: Clock::new(),
         })
     }
 
@@ -275,16 +365,28 @@ where
 
     /// Processes a single event on the event queue.
     #[inline]
-    pub async fn crank(&mut self, rng: &mut RNG) {
+    pub async fn crank(&mut self, rng: &mut dyn CryptoRngCore) {
         // Create another span for tracing the processing of one event.
         let crank_span = debug_span!("crank", ev = self.event_count);
         let _inner_enter = crank_span.enter();
 
-        self.event_count += 1;
         self.metrics.events.inc();
 
         let event_queue = EventQueueHandle::new(self.scheduler);
         let effect_builder = EffectBuilder::new(event_queue);
+
+        // Update metrics like memory usage and event queue sizes.
+        if self.event_count % self.event_metrics_threshold == 0 {
+            let now = Instant::now();
+
+            // We update metrics on the first very event as well to get a good baseline.
+            if now.duration_since(self.last_metrics) >= self.event_metrics_min_delay
+                || self.event_count == 0
+            {
+                self.reactor.update_metrics(event_queue);
+                self.last_metrics = now;
+            }
+        }
 
         let (event, q) = self.scheduler.pop().await;
 
@@ -293,11 +395,27 @@ where
         let inner_enter = event_span.enter();
 
         // We log events twice, once in display and once in debug mode.
-        debug!(%event, ?q);
+        let event_as_string = format!("{}", event);
+        debug!(event=%event_as_string, ?q);
         trace!(?event, ?q);
 
         // Dispatch the event, then execute the resulting effect.
+        let start = self.clock.start();
         let effects = self.reactor.dispatch_event(effect_builder, rng, event);
+        let end = self.clock.end();
+
+        // Warn if processing took a long time, record to histogram.
+        let delta = self.clock.delta(start, end);
+        if delta > *DISPATCH_EVENT_THRESHOLD {
+            warn!(
+                ns = delta.into_nanos(),
+                event = %event_as_string,
+                "event took very long to dispatch"
+            );
+        }
+        self.metrics
+            .event_dispatch_duration
+            .observe(delta.into_nanos() as f64);
 
         drop(inner_enter);
 
@@ -307,12 +425,13 @@ where
         process_effects(self.scheduler, effects)
             .instrument(effect_span)
             .await;
+
         self.event_count += 1;
     }
 
     /// Processes a single event if there is one, returns `None` otherwise.
     #[inline]
-    pub async fn try_crank(&mut self, rng: &mut RNG) -> Option<()> {
+    pub async fn try_crank(&mut self, rng: &mut dyn CryptoRngCore) -> Option<()> {
         if self.scheduler.item_count() == 0 {
             None
         } else {
@@ -323,7 +442,7 @@ where
 
     /// Runs the reactor until `is_stopped()` returns true.
     #[inline]
-    pub async fn run(&mut self, rng: &mut RNG) {
+    pub async fn run(&mut self, rng: &mut dyn CryptoRngCore) {
         while !self.reactor.is_stopped() {
             self.crank(rng).await;
         }

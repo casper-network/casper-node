@@ -2,6 +2,7 @@ mod additive_map_diff;
 mod deploy_item_builder;
 pub mod exec_with_return;
 mod execute_request_builder;
+mod step_request_builder;
 mod upgrade_request_builder;
 pub mod utils;
 mod wasm_test_builder;
@@ -14,7 +15,7 @@ use casper_execution_engine::{
         genesis::{ExecConfig, GenesisAccount, GenesisConfig},
         run_genesis_request::RunGenesisRequest,
     },
-    shared::{motes::Motes, newtypes::Blake2bHash, test_utils, wasm_costs::WasmCosts},
+    shared::{motes::Motes, newtypes::Blake2bHash, wasm_config::WasmConfig},
 };
 use casper_types::{account::AccountHash, ProtocolVersion, PublicKey, U512};
 
@@ -22,6 +23,7 @@ use super::DEFAULT_ACCOUNT_INITIAL_BALANCE;
 pub use additive_map_diff::AdditiveMapDiff;
 pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
+pub use step_request_builder::{RewardItem, SlashItem, StepRequestBuilder};
 pub use upgrade_request_builder::UpgradeRequestBuilder;
 pub use wasm_test_builder::{
     InMemoryWasmTestBuilder, LmdbWasmTestBuilder, WasmTestBuilder, WasmTestResult,
@@ -31,6 +33,7 @@ pub const MINT_INSTALL_CONTRACT: &str = "mint_install.wasm";
 pub const POS_INSTALL_CONTRACT: &str = "pos_install.wasm";
 pub const STANDARD_PAYMENT_INSTALL_CONTRACT: &str = "standard_payment_install.wasm";
 pub const AUCTION_INSTALL_CONTRACT: &str = "auction_install.wasm";
+pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 
 pub const DEFAULT_CHAIN_NAME: &str = "gerald";
 pub const DEFAULT_GENESIS_TIMESTAMP: u64 = 0;
@@ -43,15 +46,7 @@ lazy_static! {
     // NOTE: Those values could be contants but are kept az lazy statics to avoid changes of `*FOO` into `FOO` back and forth.
     pub static ref DEFAULT_GENESIS_CONFIG_HASH: Blake2bHash = [42; 32].into();
     pub static ref DEFAULT_ACCOUNT_PUBLIC_KEY: PublicKey = PublicKey::Ed25519([199; 32]);
-    pub static ref DEFAULT_ACCOUNT_ADDR: AccountHash = {
-        // Default addr initialized to seemingly unique address to avoid accidental collisions
-        // with custom addresses in tests.
-        let mut account_hash_bytes: [u8; 32] = Default::default();
-        for (position, byte) in account_hash_bytes.iter_mut().enumerate() {
-            *byte = 100u8 + position as u8;
-        }
-        AccountHash::new(account_hash_bytes)
-    };
+    pub static ref DEFAULT_ACCOUNT_ADDR: AccountHash = AccountHash::from(*DEFAULT_ACCOUNT_PUBLIC_KEY);
     pub static ref DEFAULT_ACCOUNT_KEY: AccountHash = *DEFAULT_ACCOUNT_ADDR;
     pub static ref DEFAULT_ACCOUNTS: Vec<GenesisAccount> = {
         let mut ret = Vec::new();
@@ -66,7 +61,7 @@ lazy_static! {
     };
     pub static ref DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
     pub static ref DEFAULT_PAYMENT: U512 = 100_000_000.into();
-    pub static ref DEFAULT_WASM_COSTS: WasmCosts = test_utils::wasm_costs_mock();
+    pub static ref DEFAULT_WASM_CONFIG: WasmConfig = WasmConfig::default();
     pub static ref DEFAULT_EXEC_CONFIG: ExecConfig = {
         let mint_installer_bytes;
         let pos_installer_bytes;
@@ -84,7 +79,8 @@ lazy_static! {
             standard_payment_installer_bytes,
             auction_installer_bytes,
             DEFAULT_ACCOUNTS.clone(),
-            *DEFAULT_WASM_COSTS,
+            *DEFAULT_WASM_CONFIG,
+            DEFAULT_VALIDATOR_SLOTS,
         )
     };
     pub static ref DEFAULT_GENESIS_CONFIG: GenesisConfig = {

@@ -14,20 +14,13 @@ pub(crate) use weight::Weight;
 pub(super) use panorama::{Observation, Panorama};
 pub(super) use vote::Vote;
 
-use std::{
-    borrow::Borrow,
-    cmp::Ordering,
-    collections::{BTreeMap, BTreeSet, HashMap},
-    convert::identity,
-    iter,
-    ops::RangeBounds,
-};
+use std::{borrow::Borrow, cmp::Ordering, collections::HashMap, convert::identity, iter};
 
 use itertools::Itertools;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
-use tracing::error;
+use tracing::{error, info};
 
 use crate::{
     components::consensus::{
@@ -97,8 +90,6 @@ pub(crate) struct State<C: Context> {
     votes: HashMap<C::Hash, Vote<C>>,
     /// All blocks, by hash.
     blocks: HashMap<C::Hash, Block<C>>,
-    /// All block hashes, by the earliest time at which rewards for the blocks' rounds can be paid.
-    reward_index: BTreeMap<Timestamp, BTreeSet<C::Hash>>,
     /// Evidence to prove a validator malicious, by index.
     evidence: HashMap<ValidatorIndex, Evidence<C>>,
     /// The full panorama, corresponding to the complete protocol state.
@@ -130,7 +121,6 @@ impl<C: Context> State<C> {
             cumulative_w,
             votes: HashMap::new(),
             blocks: HashMap::new(),
-            reward_index: BTreeMap::new(),
             evidence: HashMap::new(),
             panorama,
         }
@@ -220,17 +210,6 @@ impl<C: Context> State<C> {
         self.opt_block(hash).expect("block hash must exist")
     }
 
-    /// Returns an iterator over all hashes of blocks whose earliest timestamp for reward payout is
-    /// in the specified range.
-    pub(crate) fn rewards_range<RB>(&self, range: RB) -> impl Iterator<Item = &C::Hash>
-    where
-        RB: RangeBounds<Timestamp>,
-    {
-        self.reward_index
-            .range(range)
-            .flat_map(|(_, blocks)| blocks)
-    }
-
     /// Returns the complete protocol state's latest panorama.
     pub(crate) fn panorama(&self) -> &Panorama<C> {
         &self.panorama
@@ -259,10 +238,6 @@ impl<C: Context> State<C> {
         let (vote, opt_value) = Vote::new(swvote, fork_choice.as_ref(), self);
         if let Some(value) = opt_value {
             let block = Block::new(fork_choice, value, self);
-            self.reward_index
-                .entry(self.reward_time(&vote))
-                .or_default()
-                .insert(hash.clone());
             self.blocks.insert(hash.clone(), block);
         }
         self.votes.insert(hash, vote);
@@ -270,7 +245,9 @@ impl<C: Context> State<C> {
 
     pub(crate) fn add_evidence(&mut self, evidence: Evidence<C>) {
         let idx = evidence.perpetrator();
+        info!(?evidence, "marking validator #{} as faulty", idx.0);
         self.evidence.insert(idx, evidence);
+        self.panorama[idx] = Observation::Faulty;
     }
 
     pub(crate) fn wire_vote(
@@ -452,9 +429,11 @@ impl<C: Context> State<C> {
         self.panorama[wvote.creator] = new_obs;
     }
 
-    /// Returns the earliest time at which rewards for a block introduced by this vote can be paid.
-    pub(super) fn reward_time(&self, vote: &Vote<C>) -> Timestamp {
-        vote.timestamp + vote.round_len() * self.params.reward_delay()
+    /// Returns `true` if this is a proposal and the creator is not faulty.
+    pub(super) fn is_correct_proposal(&self, vote: &Vote<C>) -> bool {
+        !self.has_evidence(vote.creator)
+            && self.leader(vote.timestamp) == vote.creator
+            && vote.timestamp == round_id(vote.timestamp, vote.round_exp)
     }
 
     /// Returns the hash of the message with the given sequence number from the creator of `hash`,
@@ -489,25 +468,18 @@ impl<C: Context> State<C> {
         })
     }
 
-    /// Returns a vector of validator indexes that equivocated between block
-    /// identified by `fhash` and its parent.
-    pub(super) fn get_new_equivocators(&self, fhash: &C::Hash) -> Vec<ValidatorIndex> {
-        let cvote = self.vote(fhash);
-        let mut equivocators: Vec<ValidatorIndex> = Vec::new();
-        let fblock = self.block(fhash);
-        let empty_panorama = Panorama::new(self.validator_count());
-        let pvpanorama = fblock
-            .parent()
-            .map(|pvhash| &self.vote(pvhash).panorama)
-            .unwrap_or(&empty_panorama);
-        for (vid, obs) in cvote.panorama.enumerate() {
-            // If validator is faulty in candidate's panorama but not in its
-            // parent, it means it's a "new" equivocator.
-            if obs.is_faulty() && !pvpanorama.get(vid).is_faulty() {
-                equivocators.push(vid)
-            }
-        }
-        equivocators
+    /// Returns an iterator over all hashes of ancestors of the block `bhash`, excluding `bhash`
+    /// itself. Panics if `bhash` is not the hash of a known block.
+    pub(crate) fn ancestor_hashes<'a>(
+        &'a self,
+        bhash: &'a C::Hash,
+    ) -> impl Iterator<Item = &'a C::Hash> {
+        let mut next = self.block(bhash).parent();
+        iter::from_fn(move || {
+            let current = next?;
+            next = self.block(current).parent();
+            Some(current)
+        })
     }
 }
 

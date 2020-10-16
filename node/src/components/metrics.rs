@@ -23,29 +23,31 @@
 //!    prevent any actual logic depending on them. If a counter is being increment as a metric and
 //!    also required for busines logic, a second counter should be kept in the component's state.
 
+use datasize::DataSize;
 use prometheus::{Encoder, Registry, TextEncoder};
-use rand::{CryptoRng, Rng};
 use tracing::error;
 
 use crate::{
     components::Component,
     effect::{requests::MetricsRequest, EffectBuilder, EffectExt, Effects},
+    types::CryptoRngCore,
 };
 
 /// The metrics component.
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 pub(crate) struct Metrics {
     /// Metrics registry used to answer metrics queries.
+    #[data_size(skip)] // Actual implementation is just a wrapper around an `Arc`.
     registry: Registry,
 }
 
-impl<REv, R: Rng + CryptoRng + ?Sized> Component<REv, R> for Metrics {
+impl<REv> Component<REv> for Metrics {
     type Event = MetricsRequest;
 
     fn handle_event(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         req: Self::Event,
     ) -> Effects<Self::Event> {
         match req {

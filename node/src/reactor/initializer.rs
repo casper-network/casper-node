@@ -2,9 +2,9 @@
 
 use std::fmt::{self, Display, Formatter};
 
+use datasize::DataSize;
 use derive_more::From;
 use prometheus::Registry;
-use rand::{CryptoRng, Rng};
 use thiserror::Error;
 
 use crate::{
@@ -21,6 +21,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, validator, EventQueueHandle},
+    types::CryptoRngCore,
     utils::WithDir,
 };
 
@@ -94,7 +95,7 @@ pub enum Error {
 }
 
 /// Initializer node reactor.
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 pub struct Reactor {
     pub(super) config: validator::Config,
     pub(super) chainspec_loader: ChainspecLoader,
@@ -109,7 +110,7 @@ impl Reactor {
     }
 }
 
-impl<RNG: Rng + CryptoRng + ?Sized> reactor::Reactor<RNG> for Reactor {
+impl reactor::Reactor for Reactor {
     type Event = Event;
     type Config = WithDir<validator::Config>;
     type Error = Error;
@@ -118,7 +119,7 @@ impl<RNG: Rng + CryptoRng + ?Sized> reactor::Reactor<RNG> for Reactor {
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut RNG,
+        _rng: &mut dyn CryptoRngCore,
     ) -> Result<(Self, Effects<Self::Event>), Error> {
         let (root, config) = config.into_parts();
 
@@ -126,14 +127,17 @@ impl<RNG: Rng + CryptoRng + ?Sized> reactor::Reactor<RNG> for Reactor {
             .node
             .chainspec_config_path
             .clone()
-            .load(root)
+            .load(root.clone())
             .map_err(|err| Error::ConfigError(err.to_string()))?;
+
+        chainspec.validate_config();
 
         let effect_builder = EffectBuilder::new(event_queue);
 
-        let storage = Storage::new(&config.storage)?;
+        let storage_config = WithDir::new(&root, config.storage.clone());
+        let storage = Storage::new(storage_config.clone())?;
         let contract_runtime =
-            ContractRuntime::new(&config.storage, config.contract_runtime, registry)?;
+            ContractRuntime::new(storage_config, config.contract_runtime, registry)?;
         let (chainspec_loader, chainspec_effects) =
             ChainspecLoader::new(chainspec, effect_builder)?;
 
@@ -153,7 +157,7 @@ impl<RNG: Rng + CryptoRng + ?Sized> reactor::Reactor<RNG> for Reactor {
     fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut RNG,
+        rng: &mut dyn CryptoRngCore,
         event: Event,
     ) -> Effects<Self::Event> {
         match event {

@@ -7,7 +7,7 @@ use std::{
 
 use hex_fmt::HexFmt;
 use itertools::Itertools;
-use rand::{CryptoRng, Rng};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::{trace, warn};
 
@@ -35,7 +35,7 @@ use crate::{
         traits::{Context, ValidatorSecret},
         BlockContext,
     },
-    types::Timestamp,
+    types::{CryptoRngCore, Timestamp},
 };
 
 type ConsensusValue = Vec<u32>;
@@ -44,7 +44,6 @@ const TEST_MIN_ROUND_EXP: u8 = 12;
 const TEST_END_HEIGHT: u64 = 100000;
 pub(crate) const TEST_BLOCK_REWARD: u64 = 1_000_000_000_000;
 pub(crate) const TEST_REDUCED_BLOCK_REWARD: u64 = 200_000_000_000;
-pub(crate) const TEST_REWARD_DELAY: u64 = 8;
 
 #[derive(Clone, Eq, PartialEq)]
 enum HighwayMessage {
@@ -182,9 +181,9 @@ enum Distribution {
 
 impl Distribution {
     /// Returns vector of `count` elements of random values between `lower` and `uppwer`.
-    fn gen_range_vec<R: Rng + CryptoRng + ?Sized>(
+    fn gen_range_vec(
         &self,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         lower: u64,
         upper: u64,
         count: u8,
@@ -196,9 +195,9 @@ impl Distribution {
 }
 
 trait DeliveryStrategy {
-    fn gen_delay<R: Rng + CryptoRng + ?Sized>(
+    fn gen_delay(
         &mut self,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         message: &HighwayMessage,
         distributon: &Distribution,
         base_delivery_timestamp: Timestamp,
@@ -238,9 +237,9 @@ impl HighwayValidator {
         Ok(self.finality_detector.run(&self.highway)?.collect())
     }
 
-    fn post_hook<R: Rng + CryptoRng + ?Sized>(
+    fn post_hook(
         &mut self,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         msg: HighwayMessage,
     ) -> Vec<HighwayMessage> {
         match self.fault.as_ref() {
@@ -322,7 +321,7 @@ where
     /// Pops one message from the message queue (if there are any)
     /// and pass it to the recipient validator for execution.
     /// Messages returned from the execution are scheduled for later delivery.
-    pub(crate) fn crank<R: Rng + CryptoRng + ?Sized>(&mut self, rng: &mut R) -> TestResult<()> {
+    pub(crate) fn crank(&mut self, rng: &mut dyn CryptoRngCore) -> TestResult<()> {
         let QueueEntry {
             delivery_time,
             recipient,
@@ -341,7 +340,7 @@ where
             message.payload(),
         );
 
-        let messages = self.process_message(rng, recipient, message)?;
+        let messages = self.process_message(rng, recipient, message, delivery_time)?;
 
         let targeted_messages = messages
             .into_iter()
@@ -381,14 +380,14 @@ where
             .ok_or_else(|| TestRunError::MissingValidator(*validator_id))
     }
 
-    fn call_validator<F, R: Rng + CryptoRng + ?Sized>(
+    fn call_validator<F>(
         &mut self,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         validator_id: &ValidatorId,
         f: F,
     ) -> TestResult<Vec<HighwayMessage>>
     where
-        F: FnOnce(&mut HighwayValidator, &mut R) -> Vec<Effect<TestContext>>,
+        F: FnOnce(&mut HighwayValidator, &mut dyn CryptoRngCore) -> Vec<Effect<TestContext>>,
     {
         let validator_node = self.node_mut(validator_id)?;
         let res = f(validator_node.validator_mut(), rng);
@@ -406,11 +405,12 @@ where
     /// Processes a message sent to `validator_id`.
     /// Returns a vector of messages produced by the `validator` in reaction to processing a
     /// message.
-    fn process_message<R: Rng + CryptoRng + ?Sized>(
+    fn process_message(
         &mut self,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         validator_id: ValidatorId,
         message: Message<HighwayMessage>,
+        delivery_time: Timestamp,
     ) -> TestResult<Vec<HighwayMessage>> {
         self.node_mut(&validator_id)?
             .push_messages_received(vec![message.clone()]);
@@ -427,7 +427,7 @@ where
                     })?
                 }
                 HighwayMessage::NewVertex(v) => {
-                    match self.add_vertex(rng, validator_id, sender_id, v.clone())? {
+                    match self.add_vertex(rng, validator_id, sender_id, v.clone(), delivery_time)? {
                         Ok(msgs) => {
                             trace!("{:?} successfuly added to the state.", v);
                             msgs
@@ -475,27 +475,21 @@ where
             .expect("FTT exceeded but not handled");
         for FinalizedBlock {
             value,
-            new_equivocators,
-            rewards,
             timestamp: _,
             height,
-            terminal,
+            rewards,
             proposer: _,
         } in finalized_values
         {
-            if !new_equivocators.is_empty() {
-                warn!("New equivocators detected: {:?}", new_equivocators);
-                recipient.new_equivocators(new_equivocators.into_iter());
-            }
-            if !rewards.is_empty() {
-                warn!("Rewards are not verified yet: {:?}", rewards);
-            }
             trace!(
                 "{}consensus value finalized: {:?}, height: {:?}",
-                if terminal { "last " } else { "" },
+                if rewards.is_some() { "last " } else { "" },
                 value,
                 height
             );
+            if let Some(r) = rewards {
+                warn!(?r, "rewards are not verified yet");
+            }
             recipient.push_finalized(value);
         }
 
@@ -505,12 +499,13 @@ where
     // Adds vertex to the `recipient` validator state.
     // Synchronizes its state if necessary.
     // From the POV of the test system, synchronization is immediate.
-    fn add_vertex<R: Rng + CryptoRng + ?Sized>(
+    fn add_vertex(
         &mut self,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         recipient: ValidatorId,
         sender: ValidatorId,
         vertex: Vertex<TestContext>,
+        delivery_time: Timestamp,
     ) -> TestRunResult<Vec<HighwayMessage>> {
         // 1. pre_validate_vertex
         // 2. missing_dependency
@@ -526,7 +521,7 @@ where
                 .pre_validate_vertex(vertex)
             {
                 Err((v, error)) => Ok(Err((v, error))),
-                Ok(pvv) => self.synchronize_validator(rng, recipient, sender, pvv),
+                Ok(pvv) => self.synchronize_validator(rng, recipient, sender, pvv, delivery_time),
             }
         }?;
 
@@ -542,7 +537,8 @@ where
                     {
                         Err((pvv, error)) => return Ok(Err((pvv.into_vertex(), error))),
                         Ok(valid_vertex) => self.call_validator(rng, &recipient, |v, rng| {
-                            v.highway_mut().add_valid_vertex(valid_vertex, rng)
+                            v.highway_mut()
+                                .add_valid_vertex(valid_vertex, rng, delivery_time)
                         })?,
                     }
                 };
@@ -557,12 +553,13 @@ where
     /// Synchronizes all missing dependencies of `pvv` that `recipient` is missing.
     /// If an error occurs during synchronization of one of `pvv`'s dependencies
     /// it's returned and the original vertex mustn't be added to the state.
-    fn synchronize_validator<R: Rng + CryptoRng + ?Sized>(
+    fn synchronize_validator(
         &mut self,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         recipient: ValidatorId,
         sender: ValidatorId,
         pvv: PreValidatedVertex<TestContext>,
+        delivery_time: Timestamp,
     ) -> TestRunResult<(PreValidatedVertex<TestContext>, Vec<HighwayMessage>)> {
         // There may be more than one dependency missing and we want to sync all of them.
         loop {
@@ -576,17 +573,19 @@ where
 
             match validator.highway().missing_dependency(&pvv) {
                 None => return Ok(Ok((pvv, messages))),
-                Some(d) => match self.synchronize_dependency(rng, d, recipient, sender)? {
-                    Ok(sync_messages) => {
-                        // `hwm` represent messages produced while synchronizing `d`.
-                        messages.extend(sync_messages)
+                Some(d) => {
+                    match self.synchronize_dependency(rng, d, recipient, sender, delivery_time)? {
+                        Ok(sync_messages) => {
+                            // `hwm` represent messages produced while synchronizing `d`.
+                            messages.extend(sync_messages)
+                        }
+                        Err(vertex_error) => {
+                            // An error occurred when trying to synchronize a missing dependency.
+                            // We must stop the synchronization process and return it to the caller.
+                            return Ok(Err(vertex_error));
+                        }
                     }
-                    Err(vertex_error) => {
-                        // An error occurred when trying to synchronize a missing dependency.
-                        // We must stop the synchronization process and return it to the caller.
-                        return Ok(Err(vertex_error));
-                    }
-                },
+                }
             }
         }
     }
@@ -597,12 +596,13 @@ where
     // We don't want to test synchronization, and the Highway theory assumes
     // that when votes are added then all their dependencies are satisfied.
     #[allow(clippy::type_complexity)]
-    fn synchronize_dependency<R: Rng + CryptoRng + ?Sized>(
+    fn synchronize_dependency(
         &mut self,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         missing_dependency: Dependency<TestContext>,
         recipient: ValidatorId,
         sender: ValidatorId,
+        delivery_time: Timestamp,
     ) -> TestRunResult<Vec<HighwayMessage>> {
         let vertex = self
             .node_mut(&sender)?
@@ -612,7 +612,7 @@ where
             .map(|vv| vv.0)
             .ok_or_else(|| TestRunError::SenderMissingDependency(sender, missing_dependency))?;
 
-        self.add_vertex(rng, recipient, sender, vertex)
+        self.add_vertex(rng, recipient, sender, vertex, delivery_time)
     }
 
     /// Returns a `MutableHandle` on the `HighwayTestHarness` object
@@ -622,9 +622,9 @@ where
     }
 }
 
-fn crank_until<F, R: Rng + CryptoRng + ?Sized, DS: DeliveryStrategy>(
+fn crank_until<F, DS: DeliveryStrategy>(
     htt: &mut HighwayTestHarness<DS>,
-    rng: &mut R,
+    rng: &mut dyn CryptoRngCore,
     f: F,
 ) -> TestResult<()>
 where
@@ -689,9 +689,9 @@ struct HighwayTestHarnessBuilder<DS: DeliveryStrategy> {
 struct InstantDeliveryNoDropping;
 
 impl DeliveryStrategy for InstantDeliveryNoDropping {
-    fn gen_delay<R: Rng + CryptoRng + ?Sized>(
+    fn gen_delay(
         &mut self,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         message: &HighwayMessage,
         _distributon: &Distribution,
         base_delivery_timestamp: Timestamp,
@@ -760,10 +760,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
         self
     }
 
-    fn build<R: Rng + CryptoRng + ?Sized>(
-        self,
-        rng: &mut R,
-    ) -> Result<HighwayTestHarness<DS>, BuilderError> {
+    fn build(self, rng: &mut dyn CryptoRngCore) -> Result<HighwayTestHarness<DS>, BuilderError> {
         let consensus_values = (0..self.consensus_values_count as u32)
             .map(|el| vec![el])
             .collect::<VecDeque<ConsensusValue>>();
@@ -872,7 +869,6 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                     seed,
                     TEST_BLOCK_REWARD,
                     TEST_REDUCED_BLOCK_REWARD,
-                    TEST_REWARD_DELAY,
                     TEST_MIN_ROUND_EXP,
                     TEST_END_HEIGHT,
                     Timestamp::zero(), // Length depends only on block number.
@@ -975,11 +971,7 @@ impl ValidatorSecret for TestSecret {
     type Hash = HashWrapper;
     type Signature = SignatureWrapper;
 
-    fn sign<R: Rng + CryptoRng + ?Sized>(
-        &self,
-        data: &Self::Hash,
-        _rng: &mut R,
-    ) -> Self::Signature {
+    fn sign(&self, data: &Self::Hash, _rng: &mut dyn CryptoRngCore) -> Self::Signature {
         SignatureWrapper(data.0 + self.0)
     }
 }
@@ -1052,7 +1044,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_no_faults() {
-        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
+        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1116,7 +1108,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_some_mute() {
-        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
+        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1157,7 +1149,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_some_equivocate() {
-        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
+        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1193,7 +1185,11 @@ mod test_harness {
             .map(|v| {
                 (
                     v.finalized_values().cloned().collect::<Vec<_>>(),
-                    v.equivocators().cloned().collect::<HashSet<_>>(),
+                    v.validator()
+                        .highway()
+                        .faulty_validators()
+                        .cloned()
+                        .collect::<HashSet<_>>(),
                 )
             })
             .unzip();

@@ -1,4 +1,6 @@
 //! The consensus component. Provides distributed consensus among the nodes in the network.
+
+mod candidate_block;
 mod config;
 mod consensus_protocol;
 mod era_supervisor;
@@ -8,44 +10,47 @@ mod protocols;
 mod tests;
 mod traits;
 
+use datasize::DataSize;
 use std::fmt::{self, Debug, Display, Formatter};
+
+use casper_execution_engine::core::engine_state::era_validators::GetEraValidatorsError;
+use casper_types::auction::ValidatorWeights;
 
 use crate::{
     components::{storage::Storage, Component},
+    crypto::{asymmetric_key::PublicKey, hash::Digest},
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
-            self, BlockExecutorRequest, BlockValidationRequest, DeployBufferRequest,
-            NetworkRequest, StorageRequest,
+            self, BlockExecutorRequest, BlockValidationRequest, ContractRuntimeRequest,
+            DeployBufferRequest, NetworkRequest, StorageRequest,
         },
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, Effects,
     },
     protocol::Message,
-    types::{ProtoBlock, Timestamp},
+    types::{BlockHash, BlockHeader, CryptoRngCore, ProtoBlock, Timestamp},
 };
+
 pub use config::Config;
-pub(crate) use consensus_protocol::BlockContext;
+pub(crate) use consensus_protocol::{BlockContext, EraEnd};
 use derive_more::From;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 use hex_fmt::HexFmt;
-use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
+use tracing::error;
 use traits::NodeIdT;
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct ConsensusMessage {
-    era_id: EraId,
-    payload: Vec<u8>,
-}
-
-impl ConsensusMessage {
-    fn payload(&self) -> &[u8] {
-        &self.payload
-    }
+#[derive(Debug, DataSize, Clone, Serialize, Deserialize)]
+pub enum ConsensusMessage {
+    /// A protocol message, to be handled by the instance in the specified era.
+    Protocol { era_id: EraId, payload: Vec<u8> },
+    /// A request for evidence against the specified validator, from any era that is still bonded
+    /// in `era_id`.
+    EvidenceRequest { era_id: EraId, pub_key: PublicKey },
 }
 
 /// Consensus component event.
-#[derive(Debug, From)]
+#[derive(DataSize, Debug, From)]
 pub enum Event<I> {
     /// An incoming network message.
     MessageReceived { sender: I, msg: ConsensusMessage },
@@ -70,27 +75,31 @@ pub enum Event<I> {
         sender: I,
         proto_block: ProtoBlock,
     },
+    /// Event raised when a new era should be created: once we get the set of validators, the
+    /// booking block hash and the seed from the key block
+    CreateNewEra {
+        /// The header of the switch block
+        block_header: Box<BlockHeader>,
+        /// Ok(block_hash) if the booking block was found, Err(height) if not
+        booking_block_hash: Result<BlockHash, u64>,
+        /// Ok(seed) if the key block was found, Err(height) if not
+        key_block_seed: Result<Digest, u64>,
+        get_validators_result: Result<Option<ValidatorWeights>, GetEraValidatorsError>,
+    },
 }
 
 impl Display for ConsensusMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ConsensusMessage {{ era_id: {}, {:10} }}",
-            self.era_id.0,
-            HexFmt(self.payload())
-        )
-    }
-}
-
-impl Debug for ConsensusMessage {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ConsensusMessage {{ era_id: {}, {:10} }}",
-            self.era_id.0,
-            HexFmt(self.payload())
-        )
+        match self {
+            ConsensusMessage::Protocol { era_id, payload } => {
+                write!(f, "protocol message {:10} in {}", HexFmt(payload), era_id)
+            }
+            ConsensusMessage::EvidenceRequest { era_id, pub_key } => write!(
+                f,
+                "request for evidence of fault by {} in {} or earlier",
+                pub_key, era_id,
+            ),
+        }
     }
 }
 
@@ -134,6 +143,17 @@ impl<I: Debug> Display for Event<I> {
                 "A proto-block received from {:?} turned out to be invalid for era {:?}: {:?}",
                 sender, era_id, proto_block
             ),
+            Event::CreateNewEra {
+                booking_block_hash,
+                key_block_seed,
+                get_validators_result,
+                ..
+            } => write!(
+                f,
+                "New era should be created; booking block hash: {:?}, key block seed: {:?}, \
+                response to get_validators from the contract runtime: {:?}",
+                booking_block_hash, key_block_seed, get_validators_result
+            ),
         }
     }
 }
@@ -149,6 +169,7 @@ pub trait ReactorEventT<I>:
     + From<BlockExecutorRequest>
     + From<BlockValidationRequest<ProtoBlock, I>>
     + From<StorageRequest<Storage>>
+    + From<ContractRuntimeRequest>
 {
 }
 
@@ -161,31 +182,27 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<BlockExecutorRequest>
         + From<BlockValidationRequest<ProtoBlock, I>>
         + From<StorageRequest<Storage>>
+        + From<ContractRuntimeRequest>
 {
 }
 
-impl<I, REv, R> Component<REv, R> for EraSupervisor<I, R>
+impl<I, REv> Component<REv> for EraSupervisor<I>
 where
     I: NodeIdT,
     REv: ReactorEventT<I>,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event<I>;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        rng: &mut R,
+        mut rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        let mut handling_es = self.handling_wrapper(effect_builder, rng);
+        let mut handling_es = self.handling_wrapper(effect_builder, &mut rng);
         match event {
             Event::Timer { era_id, timestamp } => handling_es.handle_timer(era_id, timestamp),
-            Event::MessageReceived { sender, msg } => {
-                let mut effects = effect_builder.announce_message_in_era(msg.era_id).ignore();
-                effects.extend(handling_es.handle_message(sender, msg));
-                effects
-            }
+            Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
             Event::NewProtoBlock {
                 era_id,
                 proto_block,
@@ -204,6 +221,47 @@ where
                 sender,
                 proto_block,
             } => handling_es.handle_invalid_proto_block(era_id, sender, proto_block),
+            Event::CreateNewEra {
+                block_header,
+                booking_block_hash,
+                key_block_seed,
+                get_validators_result,
+            } => {
+                let booking_block_hash = booking_block_hash.unwrap_or_else(|height| {
+                    error!(
+                        "could not find the booking block at height {} for era {}",
+                        height,
+                        block_header.era_id().successor()
+                    );
+                    panic!("couldn't get the booking block hash");
+                });
+                let key_block_seed = key_block_seed.unwrap_or_else(|height| {
+                    error!(
+                        "could not find the key block at height {} for era {}",
+                        height,
+                        block_header.era_id().successor()
+                    );
+                    panic!("couldn't get the seed from the key block");
+                });
+                let validators = match get_validators_result {
+                    Ok(Some(result)) => result,
+                    result => {
+                        error!(
+                            ?result,
+                            "get_validators in era {} returned an error: {:?}",
+                            block_header.era_id(),
+                            result
+                        );
+                        panic!("couldn't get validators");
+                    }
+                };
+                handling_es.handle_create_new_era(
+                    *block_header,
+                    booking_block_hash,
+                    key_block_seed,
+                    validators,
+                )
+            }
         }
     }
 }

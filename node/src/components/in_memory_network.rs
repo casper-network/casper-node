@@ -14,7 +14,7 @@
 //! 3. Run a test that verifies everything is working.
 //!
 //! ```rust
-//! # #![allow(dead_code)] // FIXME: Remove me
+//! #
 //! # use std::{
 //! #     collections::HashMap,
 //! #     fmt::{self, Debug, Display, Formatter},
@@ -101,13 +101,12 @@
 //! impl<REv, R> Component<REv, R> for Shouter
 //! where
 //!     REv: From<NetworkRequest<NodeId, Message>> + Send,
-//!     R: Rng + CryptoRng + ?Sized
 //! {
 //!     type Event = ShouterEvent<NodeId, Message>;
 //!
 //!     fn handle_event(&mut self,
 //!         effect_builder: EffectBuilder<REv>,
-//!         _rng: &mut R,
+//!         _rng: &mut dyn CryptoRngCore,
 //!         event: Self::Event
 //!     ) -> Effects<Self::Event> {
 //!         match event {
@@ -182,7 +181,7 @@
 //!            _cfg: Self::Config,
 //!            _registry: &Registry,
 //!            event_queue: EventQueueHandle<Self::Event>,
-//!            rng: &mut R,
+//!            rng: &mut dyn CryptoRngCore,
 //!     ) -> Result<(Self, Effects<Self::Event>), anyhow::Error> {
 //!         let effect_builder = EffectBuilder::new(event_queue);
 //!         let (shouter, shouter_effect) = Shouter::new(effect_builder);
@@ -195,7 +194,7 @@
 //!
 //!     fn dispatch_event<R: Rng + ?Sized>(&mut self,
 //!                       effect_builder: EffectBuilder<Event>,
-//!                       rng: &mut R,
+//!                       rng: &mut dyn CryptoRngCore,
 //!                       event: Event
 //!     ) -> Effects<Event> {
 //!          match event {
@@ -288,7 +287,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use rand::{seq::IteratorRandom, CryptoRng, Rng};
+use rand::{seq::IteratorRandom, Rng};
 use tokio::sync::mpsc::{self, error::SendError};
 use tracing::{debug, error, info, warn};
 
@@ -301,6 +300,7 @@ use crate::{
     logging,
     reactor::{EventQueueHandle, QueueKind},
     tls::KeyFingerprint,
+    types::CryptoRngCore,
 };
 
 /// The node ID type used by the in-memory network.
@@ -370,12 +370,11 @@ where
     ///
     /// Panics if the internal lock has been poisoned, there is no active network or the active
     /// network is not of the correct message type.
-    pub fn create_node<REv, R>(
+    pub fn create_node<REv>(
         event_queue: EventQueueHandle<REv>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> InMemoryNetwork<P>
     where
-        R: Rng + ?Sized,
         REv: From<NetworkAnnouncement<NodeId, P>> + Send,
     {
         ACTIVE_NETWORK.with(|active_network| {
@@ -413,13 +412,12 @@ where
     /// Creates a new networking node with a random node ID.
     ///
     /// Returns the already connected new networking component for new node.
-    pub(crate) fn create_node_local<REv, R>(
+    pub(crate) fn create_node_local<REv>(
         &self,
         event_queue: EventQueueHandle<REv>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> InMemoryNetwork<P>
     where
-        R: Rng + ?Sized,
         REv: From<NetworkAnnouncement<NodeId, P>> + Send,
     {
         InMemoryNetwork::new(event_queue, rng.gen(), self.nodes.clone())
@@ -493,17 +491,16 @@ where
     }
 }
 
-impl<P, REv, R> Component<REv, R> for InMemoryNetwork<P>
+impl<P, REv> Component<REv> for InMemoryNetwork<P>
 where
     P: Display + Clone,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = NetworkRequest<NodeId, P>;
 
     fn handle_event(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

@@ -1,14 +1,17 @@
 //! Contains implementation of a Mint contract functionality.
 mod constants;
+mod round_reward;
 mod runtime_provider;
 mod storage_provider;
 
 use core::convert::TryFrom;
+use num_rational::Ratio;
 
 use crate::{account::AccountHash, system_contract_errors::mint::Error, Key, URef, U512};
 
 pub use crate::mint::{
-    constants::*, runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+    constants::*, round_reward::*, runtime_provider::RuntimeProvider,
+    storage_provider::StorageProvider,
 };
 
 const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
@@ -19,7 +22,8 @@ pub trait Mint: RuntimeProvider + StorageProvider {
     /// an error.
     fn mint(&mut self, initial_balance: U512) -> Result<URef, Error> {
         let caller = self.get_caller();
-        if !initial_balance.is_zero() && caller != SYSTEM_ACCOUNT {
+        let is_empty_purse = initial_balance.is_zero();
+        if !is_empty_purse && caller != SYSTEM_ACCOUNT {
             return Err(Error::InvalidNonEmptyPurseCreation);
         }
 
@@ -32,7 +36,22 @@ pub trait Mint: RuntimeProvider + StorageProvider {
 
         // store association between purse id and balance uref
         self.write_local(purse_uref.addr(), balance_key);
-        // self.write(purse_uref.addr(), Key::Hash)
+
+        if !is_empty_purse {
+            // get total supply uref if exists, otherwise create it.
+            let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY) {
+                None => {
+                    // create total_supply value and track in mint context
+                    let uref: URef = self.new_uref(U512::zero());
+                    self.put_key(TOTAL_SUPPLY_KEY, uref.into());
+                    uref
+                }
+                Some(Key::URef(uref)) => uref,
+                Some(_) => return Err(Error::MissingKey),
+            };
+            // increase total supply
+            self.add(total_supply_uref, initial_balance)?;
+        }
 
         Ok(purse_uref)
     }
@@ -72,5 +91,23 @@ pub trait Mint: RuntimeProvider + StorageProvider {
         self.write(source_balance, source_value - amount)?;
         self.add(target_balance, amount)?;
         Ok(())
+    }
+
+    /// Retrieves the base round reward.
+    fn read_base_round_reward(&mut self) -> Result<U512, Error> {
+        let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY) {
+            Some(Key::URef(uref)) => uref,
+            Some(_) => return Err(Error::MissingKey), // TODO
+            None => return Err(Error::MissingKey),
+        };
+        let total_supply: U512 = self
+            .read(total_supply_uref)?
+            .ok_or(Error::TotalSupplyNotFound)?;
+
+        let round_seigniorage_rate = round_reward::round_seigniorage_rate();
+
+        let ret = (round_seigniorage_rate * Ratio::from(total_supply)).to_integer();
+
+        Ok(ret)
     }
 }

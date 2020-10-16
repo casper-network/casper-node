@@ -7,13 +7,14 @@ use std::{
     sync::Arc,
 };
 
+use bytesrepr::FromBytes;
 use grpc::RequestOptions;
 use lmdb::DatabaseFlags;
 use log::LevelFilter;
 
 use casper_engine_grpc_server::engine_server::{
     ipc::{
-        CommitRequest, CommitResponse, GenesisResponse, QueryRequest, UpgradeRequest,
+        CommitRequest, CommitResponse, GenesisResponse, QueryRequest, StepRequest, UpgradeRequest,
         UpgradeResponse,
     },
     ipc_grpc::ExecutionEngineService,
@@ -23,8 +24,9 @@ use casper_engine_grpc_server::engine_server::{
 use casper_execution_engine::{
     core::{
         engine_state::{
-            execute_request::ExecuteRequest, execution_result::ExecutionResult,
-            run_genesis_request::RunGenesisRequest, EngineConfig, EngineState, SYSTEM_ACCOUNT_ADDR,
+            era_validators::GetEraValidatorsRequest, execute_request::ExecuteRequest,
+            execution_result::ExecutionResult, run_genesis_request::RunGenesisRequest,
+            EngineConfig, EngineState, SYSTEM_ACCOUNT_ADDR,
         },
         execution,
     },
@@ -47,11 +49,13 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash,
+    auction::{EraId, ValidatorWeights},
     bytesrepr::{self},
-    CLValue, Contract, ContractHash, ContractWasm, Key, URef, U512,
+    mint::TOTAL_SUPPLY_KEY,
+    CLTyped, CLValue, Contract, ContractHash, ContractWasm, Key, URef, U512,
 };
 
-use crate::internal::utils;
+use crate::internal::{utils, DEFAULT_PROTOCOL_VERSION};
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
 ///
@@ -381,6 +385,40 @@ where
         bytesrepr::deserialize(query_response.take_success()).map_err(|err| format!("{}", err))
     }
 
+    pub fn total_supply(&self, maybe_post_state: Option<Vec<u8>>) -> U512 {
+        let post_state = maybe_post_state
+            .or_else(|| self.post_state_hash.clone())
+            .expect("builder must have a post-state hash");
+
+        let mint_key: Key = self
+            .mint_contract_hash
+            .expect("should have mint_contract_hash")
+            .into();
+
+        let query_request =
+            create_query_request(post_state, mint_key, vec![TOTAL_SUPPLY_KEY.to_string()]);
+
+        let mut query_response = self
+            .engine_state
+            .query(RequestOptions::new(), query_request)
+            .wait_drop_metadata()
+            .expect("should get query response");
+
+        if query_response.has_failure() {
+            panic!("mint error: {}", query_response.take_failure());
+        }
+
+        let result = bytesrepr::deserialize(query_response.take_success());
+
+        let total_supply: U512 = if let Ok(StoredValue::CLValue(total_supply)) = result {
+            total_supply.into_t().expect("total supply should be U512")
+        } else {
+            panic!("mint should track total supply");
+        };
+
+        total_supply
+    }
+
     pub fn exec(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         let exec_request = {
             let hash = self
@@ -477,6 +515,19 @@ where
         self.post_state_hash = Some(upgrade_success.get_post_state_hash().to_vec());
 
         self.upgrade_responses.push(upgrade_response.clone());
+        self
+    }
+
+    pub fn step(&mut self, step_request: StepRequest) -> &mut Self {
+        let response = self
+            .engine_state
+            .step(RequestOptions::new(), step_request)
+            .wait_drop_metadata()
+            .expect("should step");
+
+        let result = response.get_step_result();
+        let success = result.get_success();
+        self.post_state_hash = Some(success.get_poststate_hash().to_vec());
         self
     }
 
@@ -672,6 +723,33 @@ where
             .expect_success()
             .commit()
             .finish()
+    }
+
+    pub fn get_era_validators(&mut self, era_id: EraId) -> Option<ValidatorWeights> {
+        let correlation_id = CorrelationId::new();
+        let state_hash = Blake2bHash::try_from(self.get_post_state_hash().as_slice())
+            .expect("should create state hash");
+        let request = GetEraValidatorsRequest::new(state_hash, era_id, *DEFAULT_PROTOCOL_VERSION);
+        self.engine_state
+            .get_era_validators(correlation_id, request)
+            .expect("should get era validators")
+    }
+
+    pub fn get_value<T>(&mut self, contract_hash: ContractHash, name: &str) -> T
+    where
+        T: FromBytes + CLTyped,
+    {
+        let contract = self
+            .get_contract(contract_hash)
+            .expect("should have contract");
+        let key = contract.named_keys().get(name).expect("should have purse");
+        let stored_value = self.query(None, *key, &[]).expect("should query");
+        let cl_value = stored_value
+            .as_cl_value()
+            .cloned()
+            .expect("should be cl value");
+        let result: T = cl_value.into_t().expect("should convert");
+        result
     }
 }
 

@@ -3,28 +3,30 @@
 
 extern crate alloc;
 
-use alloc::string::String;
+use alloc::{collections::BTreeMap, string::String};
 
 use casper_contract::contract_api::{account, runtime, storage, system};
 
 use casper_types::{
     auction::{
-        DelegationRate, SeigniorageRecipients, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_SOURCE_PURSE,
-        ARG_VALIDATOR, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_READ_SEIGNIORAGE_RECIPIENTS,
-        METHOD_RUN_AUCTION, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
+        SeigniorageRecipients, ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_REWARD_FACTORS,
+        ARG_SOURCE_PURSE, ARG_TARGET_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY,
+        METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION,
+        METHOD_UNDELEGATE, METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
     },
     runtime_args, ApiError, PublicKey, RuntimeArgs, URef, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
-const ARG_ADD_BID: &str = METHOD_ADD_BID;
-const ARG_WITHDRAW_BID: &str = METHOD_WITHDRAW_BID;
 const ARG_AMOUNT: &str = "amount";
-const ARG_DELEGATION_RATE: &str = "delegation_rate";
 const ARG_DELEGATE: &str = "delegate";
 const ARG_UNDELEGATE: &str = "undelegate";
 const ARG_RUN_AUCTION: &str = "run_auction";
 const ARG_READ_SEIGNIORAGE_RECIPIENTS: &str = "read_seigniorage_recipients";
+
+const REWARD_PURSE: &str = "reward_purse";
+const DELEGATE_PURSE: &str = "delegate_purse";
+const UNDELEGATE_PURSE: &str = "undelegate_purse";
 
 #[repr(u16)]
 enum Error {
@@ -36,44 +38,15 @@ pub extern "C" fn call() {
     let command: String = runtime::get_named_arg(ARG_ENTRY_POINT);
 
     match command.as_str() {
-        ARG_ADD_BID => add_bid(),
-        ARG_WITHDRAW_BID => withdraw_bid(),
         ARG_DELEGATE => delegate(),
         ARG_UNDELEGATE => undelegate(),
         ARG_RUN_AUCTION => run_auction(),
         ARG_READ_SEIGNIORAGE_RECIPIENTS => read_seigniorage_recipients(),
+        METHOD_DISTRIBUTE => distribute(),
+        METHOD_WITHDRAW_DELEGATOR_REWARD => withdraw_delegator_reward(),
+        METHOD_WITHDRAW_VALIDATOR_REWARD => withdraw_validator_reward(),
         _ => runtime::revert(ApiError::User(Error::UnknownCommand as u16)),
     }
-}
-
-fn add_bid() {
-    let auction = system::get_auction();
-    let public_key: PublicKey = runtime::get_named_arg(ARG_PUBLIC_KEY);
-    let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
-    let delegation_rate: DelegationRate = runtime::get_named_arg(ARG_DELEGATION_RATE);
-
-    let args = runtime_args! {
-        ARG_PUBLIC_KEY => public_key,
-        ARG_SOURCE_PURSE => account::get_main_purse(),
-        ARG_DELEGATION_RATE => delegation_rate,
-        ARG_AMOUNT => amount,
-    };
-
-    runtime::call_contract::<(URef, U512)>(auction, METHOD_ADD_BID, args);
-}
-
-fn withdraw_bid() {
-    let auction = system::get_auction();
-    let public_key: PublicKey = runtime::get_named_arg(ARG_PUBLIC_KEY);
-    let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
-
-    let args = runtime_args! {
-        ARG_AMOUNT => amount,
-        ARG_PUBLIC_KEY => public_key,
-    };
-
-    let (_purse, _amount): (URef, U512) =
-        runtime::call_contract(auction, METHOD_WITHDRAW_BID, args);
 }
 
 fn delegate() {
@@ -88,7 +61,9 @@ fn delegate() {
         ARG_AMOUNT => amount,
     };
 
-    let (_purse, _amount): (URef, U512) = runtime::call_contract(auction, METHOD_DELEGATE, args);
+    let (purse, _amount): (URef, U512) = runtime::call_contract(auction, METHOD_DELEGATE, args);
+
+    runtime::put_key(DELEGATE_PURSE, purse.into())
 }
 
 fn undelegate() {
@@ -103,7 +78,10 @@ fn undelegate() {
         ARG_DELEGATOR => delegator,
     };
 
-    let _total_amount: U512 = runtime::call_contract(auction, METHOD_UNDELEGATE, args);
+    let (purse, _remaining_bid): (URef, U512) =
+        runtime::call_contract(auction, METHOD_UNDELEGATE, args);
+
+    runtime::put_key(UNDELEGATE_PURSE, purse.into());
 }
 
 fn run_auction() {
@@ -119,4 +97,45 @@ fn read_seigniorage_recipients() {
         runtime::call_contract(auction, METHOD_READ_SEIGNIORAGE_RECIPIENTS, args);
     let uref = storage::new_uref(result);
     runtime::put_key("seigniorage_recipients_result", uref.into());
+}
+
+fn distribute() {
+    let auction = system::get_auction();
+    let reward_factors: BTreeMap<PublicKey, u64> = runtime::get_named_arg(ARG_REWARD_FACTORS);
+    let args = runtime_args! {
+        ARG_REWARD_FACTORS => reward_factors
+    };
+    runtime::call_contract::<()>(auction, METHOD_DISTRIBUTE, args);
+}
+
+fn withdraw_delegator_reward() {
+    let auction = system::get_auction();
+    let validator_public_key: PublicKey = runtime::get_named_arg(ARG_VALIDATOR_PUBLIC_KEY);
+    let delegator_public_key: PublicKey = runtime::get_named_arg(ARG_DELEGATOR_PUBLIC_KEY);
+
+    let reward_purse = system::create_purse();
+
+    runtime::put_key(REWARD_PURSE, reward_purse.into());
+
+    let args = runtime_args! {
+        ARG_VALIDATOR_PUBLIC_KEY => validator_public_key,
+        ARG_DELEGATOR_PUBLIC_KEY => delegator_public_key,
+        ARG_TARGET_PURSE => reward_purse,
+    };
+    runtime::call_contract::<()>(auction, METHOD_WITHDRAW_DELEGATOR_REWARD, args);
+}
+
+fn withdraw_validator_reward() {
+    let auction = system::get_auction();
+    let validator_public_key: PublicKey = runtime::get_named_arg(ARG_VALIDATOR_PUBLIC_KEY);
+
+    let reward_purse = system::create_purse();
+
+    runtime::put_key(REWARD_PURSE, reward_purse.into());
+
+    let args = runtime_args! {
+        ARG_VALIDATOR_PUBLIC_KEY => validator_public_key,
+        ARG_TARGET_PURSE => reward_purse,
+    };
+    runtime::call_contract::<()>(auction, METHOD_WITHDRAW_VALIDATOR_REWARD, args);
 }

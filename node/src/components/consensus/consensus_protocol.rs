@@ -1,12 +1,16 @@
-use std::{collections::BTreeMap, fmt::Debug};
+use std::{any::Any, collections::BTreeMap, fmt::Debug};
 
 use anyhow::Error;
-use rand::{CryptoRng, Rng};
+use datasize::DataSize;
+use serde::{Deserialize, Serialize};
 
-use crate::{components::consensus::traits::ConsensusValueT, types::Timestamp};
+use crate::{
+    components::consensus::traits::ConsensusValueT,
+    types::{CryptoRngCore, Timestamp},
+};
 
 /// Information about the context in which a new block is created.
-#[derive(Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
+#[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd)]
 pub struct BlockContext {
     timestamp: Timestamp,
     height: u64,
@@ -22,13 +26,22 @@ impl BlockContext {
     pub(crate) fn timestamp(&self) -> Timestamp {
         self.timestamp
     }
+}
 
-    /// The block's relative height within the current era.
-    // TODO - remove once used
-    #[allow(dead_code)]
-    pub(crate) fn height(&self) -> u64 {
-        self.height
-    }
+/// Equivocation and reward information to be included in the terminal finalized block.
+#[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "VID: Ord + Serialize",
+    deserialize = "VID: Ord + Deserialize<'de>",
+))]
+pub struct EraEnd<VID> {
+    /// The set of equivocators.
+    pub(crate) equivocators: Vec<VID>,
+    /// Rewards for finalization of earlier blocks.
+    ///
+    /// This is a measure of the value of each validator's contribution to consensus, in
+    /// fractions of the configured maximum block reward.
+    pub(crate) rewards: BTreeMap<VID, u64>,
 }
 
 /// A finalized block. All nodes are guaranteed to see the same sequence of blocks, and to agree
@@ -38,19 +51,12 @@ impl BlockContext {
 pub(crate) struct FinalizedBlock<C: ConsensusValueT, VID> {
     /// The finalized value.
     pub(crate) value: C,
-    /// The set of newly detected equivocators.
-    pub(crate) new_equivocators: Vec<VID>,
-    /// Rewards for finalization of earlier blocks.
-    ///
-    /// This is a measure of the value of each validator's contribution to consensus, in
-    /// fractions of the configured maximum block reward.
-    pub(crate) rewards: BTreeMap<VID, u64>,
     /// The timestamp at which this value was proposed.
     pub(crate) timestamp: Timestamp,
     /// The relative height in this instance of the protocol.
     pub(crate) height: u64,
-    /// Whether this is a terminal block, i.e. the last one to be finalized.
-    pub(crate) terminal: bool,
+    /// If this is a terminal block, i.e. the last one to be finalized, this includes rewards.
+    pub(crate) rewards: Option<BTreeMap<VID, u64>>,
     /// Proposer of this value
     pub(crate) proposer: VID,
 }
@@ -75,32 +81,40 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
     /// that it has the expected structure, or that deploys that are mentioned by hash actually
     /// exist, and then call `ConsensusProtocol::resolve_validity`.
     ValidateConsensusValue(I, C),
+    /// New direct evidence was added against the given validator.
+    NewEvidence(VID),
 }
 
 /// An API for a single instance of the consensus.
-pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID, R: Rng + CryptoRng + ?Sized> {
+pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID> {
+    /// Upcasts consensus protocol into `dyn Any`.
+    ///
+    /// Typically called on a boxed trait object for downcasting afterwards.
+    fn as_any(&self) -> &dyn Any;
+
     /// Handles an incoming message (like NewVote, RequestDependency).
     fn handle_message(
         &mut self,
         sender: I,
         msg: Vec<u8>,
-        rng: &mut R,
-    ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
+        evidence_only: bool,
+        rng: &mut dyn CryptoRngCore,
+    ) -> Vec<ConsensusProtocolResult<I, C, VID>>;
 
     /// Triggers consensus' timer.
     fn handle_timer(
         &mut self,
-        timerstamp: Timestamp,
-        rng: &mut R,
-    ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
+        timestamp: Timestamp,
+        rng: &mut dyn CryptoRngCore,
+    ) -> Vec<ConsensusProtocolResult<I, C, VID>>;
 
     /// Proposes a new value for consensus.
     fn propose(
         &mut self,
         value: C,
         block_context: BlockContext,
-        rng: &mut R,
-    ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
+        rng: &mut dyn CryptoRngCore,
+    ) -> Vec<ConsensusProtocolResult<I, C, VID>>;
 
     /// Marks the `value` as valid or invalid, based on validation requested via
     /// `ConsensusProtocolResult::ValidateConsensusvalue`.
@@ -108,9 +122,18 @@ pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID, R: Rng + CryptoRn
         &mut self,
         value: &C,
         valid: bool,
-        rng: &mut R,
-    ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
+        rng: &mut dyn CryptoRngCore,
+    ) -> Vec<ConsensusProtocolResult<I, C, VID>>;
 
     /// Turns this instance into a passive observer, that does not create any new vertices.
     fn deactivate_validator(&mut self);
+
+    /// Returns whether the validator `vid` is known to be faulty.
+    fn has_evidence(&self, vid: &VID) -> bool;
+
+    /// Sends evidence for a faulty of validator `vid` to the `sender` of the request.
+    fn request_evidence(&self, sender: I, vid: &VID) -> Vec<ConsensusProtocolResult<I, C, VID>>;
+
+    /// Returns the list of all validators that were observed as faulty in this consensus instance.
+    fn faulty_validators(&self) -> Vec<&VID>;
 }

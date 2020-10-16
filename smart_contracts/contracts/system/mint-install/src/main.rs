@@ -32,6 +32,11 @@ pub extern "C" fn transfer() {
 }
 
 #[no_mangle]
+pub extern "C" fn read_base_round_reward() {
+    mint_token::read_base_round_reward();
+}
+
+#[no_mangle]
 pub extern "C" fn install() {
     let entry_points = mint_token::get_entry_points();
 

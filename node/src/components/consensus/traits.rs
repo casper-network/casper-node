@@ -3,11 +3,12 @@ use std::{
     hash::Hash,
 };
 
-use rand::{CryptoRng, Rng};
+use crate::types::CryptoRngCore;
+use datasize::DataSize;
 use serde::{de::DeserializeOwned, Serialize};
 
-pub(crate) trait NodeIdT: Clone + Debug + Send + Eq + Hash + 'static {}
-impl<I> NodeIdT for I where I: Clone + Debug + Send + Eq + Hash + 'static {}
+pub trait NodeIdT: Clone + Display + Debug + Send + Eq + Hash + 'static {}
+impl<I> NodeIdT for I where I: Clone + Display + Debug + Send + Eq + Hash + 'static {}
 
 /// A validator identifier.
 pub(crate) trait ValidatorIdT: Eq + Ord + Clone + Debug + Hash {}
@@ -34,7 +35,7 @@ pub(crate) trait ValidatorSecret {
 
     type Signature: Eq + PartialEq + Clone + Debug + Hash + Serialize + DeserializeOwned;
 
-    fn sign<R: Rng + CryptoRng + ?Sized>(&self, hash: &Self::Hash, rng: &mut R) -> Self::Signature;
+    fn sign(&self, hash: &Self::Hash, rng: &mut dyn CryptoRngCore) -> Self::Signature;
 }
 
 /// The collection of types the user can choose for cryptography, IDs, transactions, etc.
@@ -42,7 +43,7 @@ pub(crate) trait ValidatorSecret {
 // parameter. Split this up or replace the derives with explicit implementations.
 pub(crate) trait Context: Clone + Debug + Eq + Ord + Hash {
     /// The consensus value type, e.g. a list of transactions.
-    type ConsensusValue: ConsensusValueT;
+    type ConsensusValue: ConsensusValueT + DataSize;
     /// Unique identifiers for validators.
     type ValidatorId: ValidatorIdT;
     /// A validator's secret signing key.

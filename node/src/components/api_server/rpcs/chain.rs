@@ -7,7 +7,6 @@ use http::Response;
 use hyper::Body;
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use tracing::info;
 use warp_json_rpc::Builder;
 
@@ -25,8 +24,8 @@ use crate::{
 /// Params for "chain_get_block" RPC request.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetBlockParams {
-    /// Hex-encoded block hash.
-    pub block_hash: String,
+    /// The block hash.
+    pub block_hash: BlockHash,
 }
 
 /// Result for "chain_get_block" RPC response.
@@ -34,8 +33,8 @@ pub struct GetBlockParams {
 pub struct GetBlockResult {
     /// The RPC API version.
     pub api_version: Version,
-    /// JSON-encoded block.
-    pub block: Option<Value>,
+    /// The block, if found.
+    pub block: Option<Block>,
 }
 
 /// "chain_get_block" RPC.
@@ -64,7 +63,7 @@ impl RpcWithOptionalParamsExt for GetBlock {
             // Return the result.
             let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
-                block: maybe_block.map(|block| block.to_json()),
+                block: maybe_block,
             };
             Ok(response_builder.success(result)?)
         }
@@ -75,8 +74,8 @@ impl RpcWithOptionalParamsExt for GetBlock {
 /// Params for "chain_get_global_state_hash" RPC request.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetGlobalStateHashParams {
-    /// Hex-encoded block hash.
-    pub block_hash: String,
+    /// The block hash.
+    pub block_hash: BlockHash,
 }
 
 /// Result for "chain_get_global_state_hash" RPC response.
@@ -85,7 +84,7 @@ pub struct GetGlobalStateHashResult {
     /// The RPC API version.
     pub api_version: Version,
     /// Hex-encoded global state hash.
-    pub global_state_hash: Option<String>,
+    pub global_state_hash: Option<Digest>,
 }
 
 /// "chain_get_global_state_hash" RPC.
@@ -114,7 +113,7 @@ impl RpcWithOptionalParamsExt for GetGlobalStateHash {
             // Return the result.
             let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
-                global_state_hash: maybe_block.map(|block| hex::encode(block.global_state_hash())),
+                global_state_hash: maybe_block.map(|block| *block.post_state_hash()),
             };
             Ok(response_builder.success(result)?)
         }
@@ -123,54 +122,28 @@ impl RpcWithOptionalParamsExt for GetGlobalStateHash {
 }
 
 async fn get_block<REv: ReactorEventT>(
-    maybe_hex_block_hash: Option<String>,
+    maybe_hash: Option<BlockHash>,
     effect_builder: EffectBuilder<REv>,
 ) -> Result<Option<Block>, warp_json_rpc::Error> {
     // Get the block from storage or the latest from the linear chain.
-    if let Some(hex_block_hash) = maybe_hex_block_hash {
-        // Try to parse the block hash.
-        let block_hash = match Digest::from_hex(&hex_block_hash).map_err(|error| error.to_string())
-        {
-            Ok(digest) => BlockHash::new(digest),
-            Err(error_msg) => {
-                info!("failed to parse block hash: {}", error_msg);
-                return Err(warp_json_rpc::Error::custom(
-                    ErrorCode::ParseBlockHash as i64,
-                    error_msg,
-                ));
-            }
-        };
+    let getting_from_storage = maybe_hash.is_some();
+    let maybe_block = effect_builder
+        .make_request(
+            |responder| ApiRequest::GetBlock {
+                maybe_hash,
+                responder,
+            },
+            QueueKind::Api,
+        )
+        .await;
 
-        // Try to get the block from storage.
-        let maybe_block = effect_builder
-            .make_request(
-                |responder| ApiRequest::GetBlock {
-                    maybe_hash: Some(block_hash),
-                    responder,
-                },
-                QueueKind::Api,
-            )
-            .await;
-
-        if maybe_block.is_none() {
-            info!("failed to get {} from storage", block_hash);
-            return Err(warp_json_rpc::Error::custom(
-                ErrorCode::NoSuchBlock as i64,
-                "block not known",
-            ));
-        }
-
-        Ok(maybe_block)
-    } else {
-        // Get the latest block from the linear chain.
-        Ok(effect_builder
-            .make_request(
-                |responder| ApiRequest::GetBlock {
-                    maybe_hash: None,
-                    responder,
-                },
-                QueueKind::Api,
-            )
-            .await)
+    if maybe_block.is_none() && getting_from_storage {
+        info!("failed to get {} from storage", maybe_hash.unwrap());
+        return Err(warp_json_rpc::Error::custom(
+            ErrorCode::NoSuchBlock as i64,
+            "block not known",
+        ));
     }
+
+    Ok(maybe_block)
 }

@@ -10,6 +10,8 @@ use blake2::{
     digest::{Input, VariableOutput},
     VarBlake2b,
 };
+use datasize::DataSize;
+use hex_buffer_serde::{Hex, HexForm};
 use hex_fmt::HexFmt;
 #[cfg(test)]
 use rand::Rng;
@@ -23,15 +25,17 @@ use super::Error;
 use crate::testing::TestRng;
 
 /// The hash digest; a wrapped `u8` array.
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Default)]
-pub struct Digest([u8; Digest::LENGTH]);
+#[derive(
+    Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Default,
+)]
+pub struct Digest(#[serde(with = "HexForm::<[u8; Digest::LENGTH]>")] [u8; Digest::LENGTH]);
 
 impl Digest {
     /// Length of `Digest` in bytes.
     pub const LENGTH: usize = 32;
 
     /// Returns a copy of the wrapped `u8` array.
-    pub fn to_bytes(&self) -> [u8; Digest::LENGTH] {
+    pub fn to_array(&self) -> [u8; Digest::LENGTH] {
         self.0
     }
 
@@ -66,7 +70,7 @@ impl From<[u8; Digest::LENGTH]> for Digest {
     }
 }
 
-impl<'a> TryFrom<&'a [u8]> for Digest {
+impl TryFrom<&[u8]> for Digest {
     type Error = TryFromSliceError;
 
     fn try_from(slice: &[u8]) -> Result<Digest, Self::Error> {
@@ -117,7 +121,8 @@ impl ToBytes for Digest {
 
 impl FromBytes for Digest {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        <[u8; Digest::LENGTH]>::from_bytes(bytes).map(|(inner, rem)| (Digest(inner), rem))
+        <[u8; Digest::LENGTH]>::from_bytes(bytes)
+            .map(|(inner, remainder)| (Digest(inner), remainder))
     }
 }
 
@@ -135,7 +140,7 @@ pub fn hash<T: AsRef<[u8]>>(data: T) -> Digest {
 
 impl From<Digest> for Blake2bHash {
     fn from(digest: Digest) -> Self {
-        let digest_bytes = digest.to_bytes();
+        let digest_bytes = digest.to_array();
         Blake2bHash::from(digest_bytes)
     }
 }
@@ -237,5 +242,12 @@ mod test {
             hash_hex_alt,
             "0x0000000000000000000000000000000000000000000000000000000000000000"
         )
+    }
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let mut rng = TestRng::new();
+        let hash = Digest::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&hash);
     }
 }

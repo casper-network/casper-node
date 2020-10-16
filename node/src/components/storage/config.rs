@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use datasize::DataSize;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
@@ -14,13 +15,14 @@ const APPLICATION: &str = "casper-node";
 
 const DEFAULT_MAX_BLOCK_STORE_SIZE: usize = 483_183_820_800; // 450 GiB
 const DEFAULT_MAX_DEPLOY_STORE_SIZE: usize = 322_122_547_200; // 300 GiB
+const DEFAULT_MAX_BLOCK_HEIGHT_STORE_SIZE: usize = 10_485_100; // 10 MiB
 const DEFAULT_MAX_CHAINSPEC_STORE_SIZE: usize = 1_073_741_824; // 1 GiB
 
 #[cfg(test)]
 const DEFAULT_TEST_MAX_DB_SIZE: usize = 52_428_800; // 50 MiB
 
 /// On-disk storage configuration.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -28,14 +30,8 @@ pub struct Config {
     ///
     /// If the folder doesn't exist, it and any required parents will be created.
     ///
-    /// Defaults to:
-    /// * Linux: `$XDG_DATA_HOME/casper-node` or `$HOME/.local/share/casper-node`, e.g.
-    ///   /home/alice/.local/share/casper-node
-    /// * macOS: `$HOME/Library/Application Support/io.CasperLabs.casper-node`, e.g.
-    ///   /Users/Alice/Library/Application Support/io.CasperLabs.casper-node
-    /// * Windows: `{FOLDERID_RoamingAppData}\CasperLabs\casper-node\data` e.g.
-    ///   C:\Users\Alice\AppData\Roaming\CasperLabs\casper-node\data
-    path: Option<PathBuf>,
+    /// If unset via the configuration file, the value must be provided via the CLI.
+    path: PathBuf,
     /// The maximum size of the database to use for the block store.
     ///
     /// Defaults to 483,183,820,800 == 450 GiB.
@@ -48,6 +44,12 @@ pub struct Config {
     ///
     /// The size should be a multiple of the OS page size.
     max_deploy_store_size: Option<usize>,
+    /// The maximum size of the database to use for the block-height store.
+    ///
+    /// Defaults to 10,485,100 == 10 MiB.
+    ///
+    /// The size should be a multiple of the OS page size.
+    max_block_height_store_size: Option<usize>,
     /// The maximum size of the database to use for the chainspec store.
     ///
     /// Defaults to 1,073,741,824 == 1 GiB.
@@ -62,22 +64,20 @@ impl Config {
     #[cfg(test)]
     pub(crate) fn default_for_tests() -> (Self, TempDir) {
         let tempdir = tempfile::tempdir().expect("should get tempdir");
-        let path = Some(tempdir.path().join("lmdb"));
+        let path = tempdir.path().join("lmdb");
 
         let config = Config {
             path,
             max_block_store_size: Some(DEFAULT_TEST_MAX_DB_SIZE),
             max_deploy_store_size: Some(DEFAULT_TEST_MAX_DB_SIZE),
+            max_block_height_store_size: Some(DEFAULT_TEST_MAX_DB_SIZE),
             max_chainspec_store_size: Some(DEFAULT_TEST_MAX_DB_SIZE),
         };
         (config, tempdir)
     }
 
     pub(crate) fn path(&self) -> PathBuf {
-        match self.path {
-            Some(ref path) => path.clone(),
-            None => Self::default_path(),
-        }
+        self.path.clone()
     }
 
     pub(crate) fn max_block_store_size(&self) -> usize {
@@ -92,6 +92,14 @@ impl Config {
         let value = self
             .max_deploy_store_size
             .unwrap_or(DEFAULT_MAX_DEPLOY_STORE_SIZE);
+        utils::check_multiple_of_page_size(value);
+        value
+    }
+
+    pub(crate) fn max_block_height_store_size(&self) -> usize {
+        let value = self
+            .max_block_height_store_size
+            .unwrap_or(DEFAULT_MAX_BLOCK_HEIGHT_STORE_SIZE);
         utils::check_multiple_of_page_size(value);
         value
     }
@@ -116,11 +124,13 @@ impl Config {
 
 impl Default for Config {
     fn default() -> Self {
-        let path = Some(Self::default_path());
+        let path = Self::default_path();
+
         Config {
             path,
             max_block_store_size: Some(DEFAULT_MAX_BLOCK_STORE_SIZE),
             max_deploy_store_size: Some(DEFAULT_MAX_DEPLOY_STORE_SIZE),
+            max_block_height_store_size: Some(DEFAULT_MAX_BLOCK_HEIGHT_STORE_SIZE),
             max_chainspec_store_size: Some(DEFAULT_MAX_CHAINSPEC_STORE_SIZE),
         }
     }

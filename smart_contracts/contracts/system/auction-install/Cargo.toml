@@ -16,6 +16,6 @@ std = ["casper-contract/std", "casper-types/std"]
 no-unstable-features = ["casper-contract/no-unstable-features", "casper-types/no-unstable-features"]
 
 [dependencies]
+auction = { path = "../auction" }
 casper-contract = { path = "../../../contract" }
-auction = { version = "0.1.0", path = "../auction" }
-casper-types = { version = "0.6.0", path = "../../../../types" }
+casper-types = { path = "../../../../types" }

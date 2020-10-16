@@ -1,6 +1,7 @@
 pub mod balance;
 pub mod deploy_item;
 pub mod engine_config;
+pub mod era_validators;
 mod error;
 pub mod executable_deploy_item;
 pub mod execute_request;
@@ -10,6 +11,7 @@ pub mod genesis;
 pub mod op;
 pub mod query;
 pub mod run_genesis_request;
+pub mod step;
 pub mod system_contract_cache;
 mod transfer;
 pub mod upgrade;
@@ -17,20 +19,25 @@ pub mod upgrade;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
+    iter::FromIterator,
     rc::Rc,
 };
 
 use num_traits::Zero;
 use parity_wasm::elements::Module;
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 use casper_types::{
     account::AccountHash,
+    auction::{
+        ValidatorWeights, ARG_ERA_ID, ARG_GENESIS_VALIDATORS, ARG_MINT_CONTRACT_PACKAGE_HASH,
+        ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, ARG_VALIDATOR_SLOTS, VALIDATOR_SLOTS_KEY,
+    },
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
     runtime_args,
     system_contract_errors::mint,
-    AccessRights, BlockTime, Contract, ContractHash, ContractPackage, ContractPackageHash,
+    AccessRights, BlockTime, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
     ContractVersionKey, EntryPoint, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, URef,
     U512,
 };
@@ -39,11 +46,12 @@ pub use self::{
     balance::{BalanceRequest, BalanceResult},
     deploy_item::DeployItem,
     engine_config::EngineConfig,
+    era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
     error::{Error, RootNotFound},
     executable_deploy_item::ExecutableDeployItem,
     execute_request::ExecuteRequest,
-    execution_result::{ExecutionResult, ForcedTransferResult},
-    genesis::{ExecConfig, GenesisResult, POS_PAYMENT_PURSE, POS_REWARDS_PURSE},
+    execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},
+    genesis::{ExecConfig, GenesisAccount, GenesisResult, POS_PAYMENT_PURSE, POS_REWARDS_PURSE},
     query::{QueryRequest, QueryResult},
     system_contract_cache::SystemContractCache,
     transfer::{TransferRuntimeArgsBuilder, TransferTargetMode},
@@ -51,6 +59,7 @@ pub use self::{
 };
 use crate::{
     core::{
+        engine_state::step::{StepRequest, StepResult},
         execution::{
             self, AddressGenerator, AddressGeneratorBuilder, DirectSystemContractCall, Executor,
         },
@@ -64,7 +73,7 @@ use crate::{
         newtypes::{Blake2bHash, CorrelationId},
         stored_value::StoredValue,
         transform::Transform,
-        wasm_costs::WasmCosts,
+        wasm_config::WasmConfig,
         wasm_prep::{self, Preprocessor},
     },
     storage::{
@@ -72,8 +81,6 @@ use crate::{
         protocol_data::ProtocolData,
     },
 };
-use execution_result::ExecutionResults;
-use genesis::GenesisAccount;
 
 // TODO?: MAX_PAYMENT && CONV_RATE values are currently arbitrary w/ real values
 // TBD gas * CONV_RATE = motes
@@ -136,12 +143,12 @@ where
         &self.config
     }
 
-    pub fn wasm_costs(
+    pub fn wasm_config(
         &self,
         protocol_version: ProtocolVersion,
-    ) -> Result<Option<WasmCosts>, Error> {
+    ) -> Result<Option<WasmConfig>, Error> {
         match self.get_protocol_data(protocol_version)? {
-            Some(protocol_data) => Ok(Some(*protocol_data.wasm_costs())),
+            Some(protocol_data) => Ok(Some(*protocol_data.wasm_config())),
             None => Ok(None),
         }
     }
@@ -156,6 +163,7 @@ where
             _ => Ok(None),
         }
     }
+
     pub fn commit_genesis(
         &self,
         correlation_id: CorrelationId,
@@ -170,8 +178,8 @@ where
         let phase = Phase::System;
 
         let initial_root_hash = self.state.empty_root();
-        let wasm_costs = ee_config.wasm_costs();
-        let preprocessor = Preprocessor::new(wasm_costs);
+        let wasm_config = ee_config.wasm_config();
+        let preprocessor = Preprocessor::new(*wasm_config);
 
         // Spec #3: Create "virtual system account" object.
         let mut virtual_system_account = {
@@ -305,7 +313,7 @@ where
         // Note: this deviates from the implementation strategy described in the original
         // specification.
         let protocol_data = ProtocolData::partial_without_standard_payment(
-            wasm_costs,
+            *wasm_config,
             mint_hash,
             proof_of_stake_hash,
         );
@@ -381,10 +389,12 @@ where
                 &ee_config.auction_installer_bytes()
             };
 
+            let validator_slots = ee_config.validator_slots();
             let auction_installer_module = preprocessor.preprocess(auction_installer_bytes)?;
             let args = runtime_args! {
-                "mint_contract_package_hash" => mint_package_hash,
-                "genesis_validators" => bonded_validators,
+                ARG_MINT_CONTRACT_PACKAGE_HASH => mint_package_hash,
+                ARG_GENESIS_VALIDATORS => bonded_validators,
+                ARG_VALIDATOR_SLOTS => validator_slots,
             };
             let authorization_keys = BTreeSet::new();
             let install_deploy_hash = genesis_config_hash.value();
@@ -415,7 +425,7 @@ where
 
         // Spec #2: Associate given CostTable with given ProtocolVersion.
         let protocol_data = ProtocolData::new(
-            wasm_costs,
+            *wasm_config,
             mint_hash,
             proof_of_stake_hash,
             standard_payment_hash,
@@ -594,14 +604,14 @@ where
         }
 
         // 3.1.1.1.1.6 resolve wasm CostTable for new protocol version
-        let new_wasm_costs = match upgrade_config.wasm_costs() {
+        let new_wasm_config = match upgrade_config.wasm_config() {
             Some(new_wasm_costs) => new_wasm_costs,
-            None => *current_protocol_data.wasm_costs(),
+            None => current_protocol_data.wasm_config(),
         };
 
         // 3.1.2.2 persist wasm CostTable
         let mut new_protocol_data = ProtocolData::new(
-            new_wasm_costs,
+            *new_wasm_config,
             current_protocol_data.mint(),
             current_protocol_data.proof_of_stake(),
             current_protocol_data.standard_payment(),
@@ -626,7 +636,7 @@ where
 
                 // preprocess installer module
                 let upgrade_installer_module = {
-                    let preprocessor = Preprocessor::new(new_wasm_costs);
+                    let preprocessor = Preprocessor::new(*new_wasm_config);
                     preprocessor.preprocess(bytes)?
                 };
 
@@ -712,6 +722,21 @@ where
             }
         }
 
+        // 3.1.1.1.1.7 new total validator slots is optional
+        if let Some(new_validator_slots) = upgrade_config.new_validator_slots() {
+            // 3.1.2.4 if new total validator slots is provided, update auction contract state
+            let auction_contract = tracking_copy
+                .borrow_mut()
+                .get_contract(correlation_id, new_protocol_data.auction())?;
+
+            let validator_slots_key = auction_contract.named_keys()[VALIDATOR_SLOTS_KEY];
+            let value = StoredValue::CLValue(
+                CLValue::from_t(new_validator_slots)
+                    .map_err(|_| Error::Bytesrepr("new_validator_slots".to_string()))?,
+            );
+            tracking_copy.borrow_mut().write(validator_slots_key, value);
+        }
+
         let effects = tracking_copy.borrow().effect();
 
         // commit
@@ -762,12 +787,12 @@ where
         mut exec_request: ExecuteRequest,
     ) -> Result<ExecutionResults, RootNotFound> {
         // TODO: do not unwrap
-        let wasm_costs = self
-            .wasm_costs(exec_request.protocol_version)
+        let wasm_config = self
+            .wasm_config(exec_request.protocol_version)
             .unwrap()
             .unwrap();
         let executor = Executor::new(self.config);
-        let preprocessor = Preprocessor::new(wasm_costs);
+        let preprocessor = Preprocessor::new(wasm_config);
 
         let deploys = exec_request.take_deploys();
         let mut results = ExecutionResults::with_capacity(deploys.len());
@@ -1796,6 +1821,314 @@ where
         match self.state.commit(correlation_id, pre_state_hash, effects)? {
             CommitResult::Success { state_root, .. } => Ok(CommitResult::Success { state_root }),
             commit_result => Ok(commit_result),
+        }
+    }
+
+    /// Obtains validator weights for given era.
+    pub fn get_era_validators(
+        &self,
+        correlation_id: CorrelationId,
+        get_era_validators_request: GetEraValidatorsRequest,
+    ) -> Result<Option<ValidatorWeights>, GetEraValidatorsError> {
+        let protocol_version = get_era_validators_request.protocol_version();
+
+        let tracking_copy = match self.tracking_copy(get_era_validators_request.state_hash())? {
+            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
+            None => return Err(GetEraValidatorsError::RootNotFound),
+        };
+
+        let protocol_data = match self.get_protocol_data(protocol_version)? {
+            Some(protocol_data) => protocol_data,
+            None => return Err(Error::InvalidProtocolVersion(protocol_version).into()),
+        };
+
+        let wasm_config = protocol_data.wasm_config();
+
+        let preprocessor = Preprocessor::new(*wasm_config);
+
+        let auction_contract: Contract = tracking_copy
+            .borrow_mut()
+            .get_contract(correlation_id, protocol_data.auction())
+            .map_err(Error::from)?;
+
+        let auction_module = {
+            let contract_wasm_hash = auction_contract.contract_wasm_hash();
+            let use_system_contracts = self.config.use_system_contracts();
+            tracking_copy
+                .borrow_mut()
+                .get_system_module(
+                    correlation_id,
+                    contract_wasm_hash,
+                    use_system_contracts,
+                    &preprocessor,
+                )
+                .map_err(Error::from)?
+        };
+
+        let executor = Executor::new(self.config);
+
+        let auction_args = runtime_args! {
+            ARG_ERA_ID => get_era_validators_request.era_id(),
+        };
+
+        let mut named_keys = auction_contract.named_keys().to_owned();
+        let base_key = Key::from(protocol_data.auction());
+        let gas_limit = Gas::new(U512::from(std::u64::MAX));
+        let virtual_system_account = {
+            let named_keys = NamedKeys::new();
+            let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
+            Account::create(SYSTEM_ACCOUNT_ADDR, named_keys, purse)
+        };
+        let authorization_keys = BTreeSet::from_iter(vec![SYSTEM_ACCOUNT_ADDR]);
+        let blocktime = BlockTime::default();
+        let deploy_hash = {
+            // seeds address generator w/ protocol version
+            let bytes: Vec<u8> = get_era_validators_request
+                .protocol_version()
+                .value()
+                .into_bytes()
+                .map_err(Error::from)?
+                .to_vec();
+            Blake2bHash::new(&bytes).value()
+        };
+
+        let (era_validators, execution_result): (
+            Option<Option<ValidatorWeights>>,
+            ExecutionResult,
+        ) = executor.exec_system_contract(
+            DirectSystemContractCall::GetEraValidators,
+            auction_module,
+            auction_args,
+            &mut named_keys,
+            Default::default(),
+            base_key,
+            &virtual_system_account,
+            authorization_keys,
+            blocktime,
+            deploy_hash,
+            gas_limit,
+            protocol_version,
+            correlation_id,
+            Rc::clone(&tracking_copy),
+            Phase::Session,
+            protocol_data,
+            SystemContractCache::clone(&self.system_contract_cache),
+        );
+
+        if let Some(error) = execution_result.take_error() {
+            return Err(error.into());
+        }
+
+        Ok(era_validators.flatten())
+    }
+
+    pub fn commit_step(
+        &self,
+        correlation_id: CorrelationId,
+        step_request: StepRequest,
+    ) -> Result<StepResult, Error> {
+        let protocol_data = match self.state.get_protocol_data(step_request.protocol_version) {
+            Ok(Some(protocol_data)) => protocol_data,
+            Ok(None) => {
+                return Ok(StepResult::InvalidProtocolVersion);
+            }
+            Err(_) => {
+                return Ok(StepResult::PreconditionError);
+            }
+        };
+
+        let tracking_copy = match self.tracking_copy(step_request.pre_state_hash) {
+            Err(_) => return Ok(StepResult::PreconditionError),
+            Ok(None) => return Ok(StepResult::RootNotFound),
+            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
+        };
+
+        let executor = Executor::new(self.config);
+
+        let preprocessor = {
+            let wasm_config = self
+                .wasm_config(step_request.protocol_version)
+                .unwrap()
+                .unwrap();
+            Preprocessor::new(wasm_config)
+        };
+
+        let auction_hash = protocol_data.auction();
+
+        let auction_contract = match tracking_copy
+            .borrow_mut()
+            .get_contract(correlation_id, auction_hash)
+        {
+            Ok(contract) => contract,
+            Err(_) => {
+                return Ok(StepResult::PreconditionError);
+            }
+        };
+
+        let auction_module = match tracking_copy.borrow_mut().get_system_module(
+            correlation_id,
+            auction_contract.contract_wasm_hash(),
+            self.config.use_system_contracts(),
+            &preprocessor,
+        ) {
+            Ok(module) => module,
+            Err(_) => {
+                return Ok(StepResult::PreconditionError);
+            }
+        };
+
+        if !self.system_contract_cache.has(auction_hash) {
+            self.system_contract_cache
+                .insert(auction_hash, auction_module.clone());
+        }
+
+        let virtual_system_account = {
+            let named_keys = NamedKeys::new();
+            let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
+            Account::create(SYSTEM_ACCOUNT_ADDR, named_keys, purse)
+        };
+        let authorization_keys = {
+            let mut ret = BTreeSet::new();
+            ret.insert(SYSTEM_ACCOUNT_ADDR);
+            ret
+        };
+        let mut named_keys = auction_contract.named_keys().to_owned();
+        let gas_limit = Gas::new(U512::from(std::u64::MAX));
+        let deploy_hash = {
+            // seeds address generator w/ protocol version
+            let bytes: Vec<u8> = step_request.protocol_version.value().into_bytes()?.to_vec();
+            Blake2bHash::new(&bytes).value()
+        };
+
+        let base_key = Key::from(protocol_data.auction());
+
+        let slashed_validators = match step_request.slashed_validators() {
+            Ok(slashed_validators) => slashed_validators,
+            Err(error) => {
+                error!(
+                    "failed to deserialize validator_ids for slashing: {}",
+                    error.to_string()
+                );
+                return Ok(StepResult::Serialization(error));
+            }
+        };
+
+        let slash_args = runtime_args! {ARG_VALIDATOR_PUBLIC_KEYS => slashed_validators};
+
+        let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
+            DirectSystemContractCall::Slash,
+            auction_module.clone(),
+            slash_args,
+            &mut named_keys,
+            Default::default(),
+            base_key,
+            &virtual_system_account,
+            authorization_keys.clone(),
+            BlockTime::default(),
+            deploy_hash,
+            gas_limit,
+            step_request.protocol_version,
+            correlation_id,
+            Rc::clone(&tracking_copy),
+            Phase::Session,
+            protocol_data,
+            SystemContractCache::clone(&self.system_contract_cache),
+        );
+
+        if execution_result.has_precondition_failure() {
+            return Ok(StepResult::PreconditionError);
+        }
+
+        if step_request.run_auction {
+            let run_auction_args = runtime_args! {};
+
+            let (_, execution_result): (Option<()>, ExecutionResult) = executor
+                .exec_system_contract(
+                    DirectSystemContractCall::RunAuction,
+                    auction_module.clone(),
+                    run_auction_args,
+                    &mut named_keys,
+                    Default::default(),
+                    base_key,
+                    &virtual_system_account,
+                    authorization_keys.clone(),
+                    BlockTime::default(),
+                    deploy_hash,
+                    gas_limit,
+                    step_request.protocol_version,
+                    correlation_id,
+                    Rc::clone(&tracking_copy),
+                    Phase::Session,
+                    protocol_data,
+                    SystemContractCache::clone(&self.system_contract_cache),
+                );
+
+            if execution_result.has_precondition_failure() {
+                return Ok(StepResult::PreconditionError);
+            }
+        }
+
+        let reward_factors = match step_request.reward_factors() {
+            Ok(reward_factors) => reward_factors,
+            Err(error) => {
+                error!(
+                    "failed to deserialize reward factors: {}",
+                    error.to_string()
+                );
+                return Ok(StepResult::Serialization(error));
+            }
+        };
+
+        let reward_args = runtime_args! {ARG_REWARD_FACTORS => reward_factors};
+
+        let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
+            DirectSystemContractCall::DistributeRewards,
+            auction_module,
+            reward_args,
+            &mut named_keys,
+            Default::default(),
+            base_key,
+            &virtual_system_account,
+            authorization_keys,
+            BlockTime::default(),
+            deploy_hash,
+            gas_limit,
+            step_request.protocol_version,
+            correlation_id,
+            Rc::clone(&tracking_copy),
+            Phase::Session,
+            protocol_data,
+            SystemContractCache::clone(&self.system_contract_cache),
+        );
+
+        if execution_result.has_precondition_failure() {
+            return Ok(StepResult::PreconditionError);
+        }
+
+        let effects = tracking_copy.borrow().effect();
+
+        // commit
+        let commit_result = self
+            .state
+            .commit(
+                correlation_id,
+                step_request.pre_state_hash,
+                effects.transforms,
+            )
+            .map_err(Into::into)?;
+
+        match commit_result {
+            CommitResult::Success { state_root } => Ok(StepResult::Success {
+                post_state_hash: state_root,
+            }),
+            CommitResult::RootNotFound => Ok(StepResult::RootNotFound),
+            CommitResult::KeyNotFound(key) => Ok(StepResult::KeyNotFound(key)),
+            CommitResult::TypeMismatch(type_mismatch) => {
+                Ok(StepResult::TypeMismatch(type_mismatch))
+            }
+            CommitResult::Serialization(bytesrepr_error) => {
+                Ok(StepResult::Serialization(bytesrepr_error))
+            }
         }
     }
 }

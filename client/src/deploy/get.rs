@@ -2,16 +2,22 @@ use std::str;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 
-use casper_node::rpcs::{
-    info::{GetDeploy, GetDeployParams},
-    RpcWithParams,
+use casper_node::{
+    crypto::hash::Digest,
+    rpcs::{
+        info::{GetDeploy, GetDeployParams},
+        RpcWithParams,
+    },
+    types::DeployHash,
 };
 
 use crate::{command::ClientCommand, common, RpcClient};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
+    Verbose,
     NodeAddress,
+    RpcId,
     DeployHash,
 }
 
@@ -31,11 +37,13 @@ mod deploy_hash {
             .display_order(DisplayOrder::DeployHash as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> String {
-        matches
+    pub(super) fn get(matches: &ArgMatches) -> DeployHash {
+        let hex_str = matches
             .value_of(ARG_NAME)
-            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
-            .to_string()
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME));
+        let hash = Digest::from_hex(hex_str)
+            .unwrap_or_else(|error| panic!("cannot parse as a deploy hash: {}", error));
+        DeployHash::new(hash)
     }
 }
 
@@ -51,19 +59,25 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetDeploy {
         SubCommand::with_name(Self::NAME)
             .about(Self::ABOUT)
             .display_order(display_order)
+            .arg(common::verbose::arg(DisplayOrder::Verbose as usize))
             .arg(common::node_address::arg(
                 DisplayOrder::NodeAddress as usize,
             ))
+            .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
             .arg(deploy_hash::arg())
     }
 
     fn run(matches: &ArgMatches<'_>) {
+        let verbose = common::verbose::get(matches);
         let node_address = common::node_address::get(matches);
+        let rpc_id = common::rpc_id::get(matches);
         let deploy_hash = deploy_hash::get(matches);
         let params = GetDeployParams { deploy_hash };
 
-        let response_value = Self::request_with_map_params(&node_address, params)
-            .unwrap_or_else(|error| panic!("response error: {}", error));
-        println!("{}", response_value);
+        let response = Self::request_with_map_params(verbose, &node_address, rpc_id, params);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&response).expect("should encode to JSON")
+        );
     }
 }

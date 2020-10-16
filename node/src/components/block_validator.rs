@@ -14,8 +14,8 @@ use std::{
     fmt::Debug,
 };
 
+use datasize::DataSize;
 use derive_more::{Display, From};
-use rand::{CryptoRng, Rng};
 use smallvec::{smallvec, SmallVec};
 
 use crate::{
@@ -24,7 +24,7 @@ use crate::{
         requests::{BlockValidationRequest, FetcherRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
     },
-    types::{BlockLike, Deploy, DeployHash},
+    types::{BlockLike, CryptoRngCore, Deploy, DeployHash},
 };
 use keyed_counter::KeyedCounter;
 
@@ -47,8 +47,8 @@ pub enum Event<T, I> {
 /// State of the current process of block validation.
 ///
 /// Tracks whether or not there are deploys still missing and who is interested in the final result.
-#[derive(Debug)]
-struct BlockValidationState<T> {
+#[derive(DataSize, Debug)]
+pub(crate) struct BlockValidationState<T> {
     /// The deploys that have not yet been "crossed off" the list of potential misses.
     missing_deploys: HashSet<DeployHash>,
     /// A list of responders that are awaiting an answer.
@@ -56,7 +56,7 @@ struct BlockValidationState<T> {
 }
 
 /// Block validator.
-#[derive(Debug, Default)]
+#[derive(DataSize, Debug, Default)]
 pub(crate) struct BlockValidator<T, I> {
     /// State of validation of a specific block.
     validation_states: HashMap<T, BlockValidationState<T>>,
@@ -78,7 +78,7 @@ impl<T, I> BlockValidator<T, I> {
     }
 }
 
-impl<T, I, REv, R> Component<REv, R> for BlockValidator<T, I>
+impl<T, I, REv> Component<REv> for BlockValidator<T, I>
 where
     T: BlockLike + Send + Clone + 'static,
     I: Clone + Send + 'static,
@@ -86,14 +86,13 @@ where
         + From<BlockValidationRequest<T, I>>
         + From<FetcherRequest<I, Deploy>>
         + Send,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event<T, I>;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

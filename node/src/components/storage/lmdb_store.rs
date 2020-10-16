@@ -1,5 +1,6 @@
 use std::{fmt::Debug, marker::PhantomData, path::Path};
 
+use datasize::DataSize;
 use lmdb::{
     self, Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags,
 };
@@ -7,21 +8,23 @@ use smallvec::smallvec;
 use tracing::info;
 
 use super::{DeployMetadata, DeployStore, Error, Multiple, Result, Store, Value};
-use crate::types::json_compatibility::ExecutionResult;
+use crate::{types::json_compatibility::ExecutionResult, MAX_THREAD_COUNT};
 
 /// Used to namespace metadata associated with stored values.
 #[repr(u8)]
 enum Tag {
-    // TODO - remove once used.
-    #[allow(unused)]
-    BlockMetadata,
     DeployMetadata,
 }
 
 /// LMDB version of a store.
-#[derive(Debug)]
-pub(super) struct LmdbStore<V: Value, M> {
+#[derive(DataSize, Debug)]
+pub struct LmdbStore<V, M>
+where
+    V: Value,
+{
+    #[data_size(skip)] // Just a pointer to an external C lib
     env: Environment,
+    #[data_size(skip)] // Just a pointer to an external C lib
     db: Database,
     _phantom: PhantomData<(V, M)>,
 }
@@ -31,6 +34,8 @@ impl<V: Value, M: Default + Send + Sync> LmdbStore<V, M> {
         let env = Environment::new()
             .set_flags(EnvironmentFlags::NO_SUB_DIR)
             .set_map_size(max_size)
+            // to avoid panic on excessive read-only transactions
+            .set_max_readers(MAX_THREAD_COUNT as u32)
             .open(db_path.as_ref())?;
         let db = env.create_db(None, DatabaseFlags::empty())?;
         info!("opened DB at {}", db_path.as_ref().display());
@@ -57,9 +62,9 @@ impl<V: Value, M> LmdbStore<V, M> {
                 Ok(serialized_id) => {
                     match txn.get(self.db, &serialized_id) {
                         Ok(serialized_value) => {
-                            let value_result = rmp_serde::from_read_ref(serialized_value)
+                            let value_result = bincode::deserialize(serialized_value)
                                 .map(Some)
-                                .map_err(Error::from);
+                                .map_err(|error| Error::from_deserialization(*error));
                             values.push(value_result)
                         }
                         Err(lmdb::Error::NotFound) => {
@@ -77,10 +82,10 @@ impl<V: Value, M> LmdbStore<V, M> {
 
     fn serialized_id(id: &V::Id, maybe_tag: Option<Tag>) -> Result<Vec<u8>> {
         match maybe_tag {
-            Some(tag) => rmp_serde::to_vec(&(tag as u8, id)),
-            None => rmp_serde::to_vec(id),
+            Some(tag) => bincode::serialize(&(tag as u8, id)),
+            None => bincode::serialize(id),
         }
-        .map_err(Error::from)
+        .map_err(|error| Error::from_serialization(*error))
     }
 }
 
@@ -89,13 +94,17 @@ impl<V: Value, M: Send + Sync> Store for LmdbStore<V, M> {
 
     fn put(&self, value: V) -> Result<bool> {
         let serialized_id = Self::serialized_id(value.id(), None)?;
-        let serialized_value = rmp_serde::to_vec(&value)?;
+        let serialized_value =
+            bincode::serialize(&value).map_err(|error| Error::from_serialization(*error))?;
         let mut txn = self.env.begin_rw_txn().expect("should create rw txn");
         let result = match txn.put(
             self.db,
             &serialized_id,
             &serialized_value,
-            WriteFlags::NO_OVERWRITE,
+            // TODO - this should be changed back to `WriteFlags::NO_OVERWRITE` once the mutable
+            //        data (i.e. blocks' proofs) are handled via metadata as per deploys'
+            //        execution results.
+            WriteFlags::default(),
         ) {
             Ok(()) => true,
             Err(lmdb::Error::KeyExist) => false,
@@ -124,7 +133,7 @@ impl<V: Value, M: Send + Sync> Store for LmdbStore<V, M> {
                 .open_ro_cursor(self.db)
                 .expect("should create ro cursor");
             for (serialized_id, _value) in cursor.iter() {
-                if let Ok(id) = rmp_serde::from_read_ref::<_, V::Id>(serialized_id) {
+                if let Ok(id) = bincode::deserialize::<V::Id>(serialized_id) {
                     ids.push(id);
                 }
             }
@@ -149,9 +158,8 @@ impl<D: Value, B: Value> DeployStore for LmdbStore<D, DeployMetadata<B>> {
         let mut txn = self.env.begin_rw_txn().expect("should create rw txn");
 
         let mut metadata: DeployMetadata<B> = match txn.get(self.db, &serialized_id) {
-            Ok(serialized_value) => {
-                rmp_serde::from_read_ref(serialized_value).map_err(Error::from)?
-            }
+            Ok(serialized_value) => bincode::deserialize(serialized_value)
+                .map_err(|error| Error::from_deserialization(*error))?,
             Err(lmdb::Error::NotFound) => DeployMetadata::default(),
             Err(error) => panic!("should get: {:?}", error),
         };
@@ -167,7 +175,8 @@ impl<D: Value, B: Value> DeployStore for LmdbStore<D, DeployMetadata<B>> {
         }
 
         // Store the updated metadata.
-        let serialized_value = rmp_serde::to_vec(&metadata)?;
+        let serialized_value =
+            bincode::serialize(&metadata).map_err(|error| Error::from_serialization(*error))?;
         txn.put(
             self.db,
             &serialized_id,
@@ -185,9 +194,8 @@ impl<D: Value, B: Value> DeployStore for LmdbStore<D, DeployMetadata<B>> {
         // Get the deploy.
         let txn = self.env.begin_ro_txn().expect("should create ro txn");
         let deploy: D = match txn.get(self.db, &serialized_deploy_id) {
-            Ok(serialized_value) => {
-                rmp_serde::from_read_ref(serialized_value).map_err(Error::from)?
-            }
+            Ok(serialized_value) => bincode::deserialize(serialized_value)
+                .map_err(|error| Error::from_deserialization(*error))?,
             Err(lmdb::Error::NotFound) => {
                 // Return `None` if the deploy doesn't exist.
                 txn.commit().expect("should commit txn");
@@ -198,9 +206,8 @@ impl<D: Value, B: Value> DeployStore for LmdbStore<D, DeployMetadata<B>> {
 
         // Get the metadata or create a default one.
         let metadata: DeployMetadata<B> = match txn.get(self.db, &serialized_metadata_id) {
-            Ok(serialized_value) => {
-                rmp_serde::from_read_ref(serialized_value).map_err(Error::from)?
-            }
+            Ok(serialized_value) => bincode::deserialize(serialized_value)
+                .map_err(|error| Error::from_deserialization(*error))?,
             Err(lmdb::Error::NotFound) => DeployMetadata::default(),
             Err(error) => panic!("should get: {:?}", error),
         };

@@ -2,24 +2,30 @@ use crate::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::Error,
-    CLTyped, Key, URef, U512,
+    CLTyped, Key, TransferResult, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {
     /// This method should return the caller of the current context.
     fn get_caller(&self) -> AccountHash;
+
+    /// Gets named key under a `name`.
+    fn get_key(&self, name: &str) -> Option<Key>;
+
+    /// Puts key under a `name`.
+    fn put_key(&mut self, name: &str, key: Key);
+
+    /// Returns a 32-byte BLAKE2b digest
+    fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH];
 }
 
 /// Provides functionality of a contract storage.
 pub trait StorageProvider {
-    /// Obtain named [`Key`].
-    fn get_key(&mut self, name: &str) -> Option<Key>;
-
-    /// Read data from [`URef`].
+    /// Reads data from [`URef`].
     fn read<T: FromBytes + CLTyped>(&mut self, uref: URef) -> Result<Option<T>, Error>;
 
-    /// Write data to [`URef].
+    /// Writes data to [`URef].
     fn write<T: ToBytes + CLTyped>(&mut self, uref: URef, value: T) -> Result<(), Error>;
 }
 
@@ -38,4 +44,33 @@ pub trait SystemProvider {
         target: URef,
         amount: U512,
     ) -> Result<(), Error>;
+}
+
+/// Provides an access to mint.
+pub trait MintProvider {
+    /// Transfers `amount` from `source` purse to a `target` account.
+    fn transfer_purse_to_account(
+        &mut self,
+        source: URef,
+        target: AccountHash,
+        amount: U512,
+    ) -> TransferResult;
+
+    /// Transfers `amount` from `source` purse to a `target` purse.
+    fn transfer_purse_to_purse(
+        &mut self,
+        source: URef,
+        target: URef,
+        amount: U512,
+    ) -> Result<(), ()>;
+
+    /// Checks balance of a `purse`. Returns `None` if given purse does not exist.
+    fn balance(&mut self, purse: URef) -> Option<U512>;
+
+    /// Reads the base round reward.
+    fn read_base_round_reward(&mut self) -> Result<U512, Error>;
+
+    /// Mints new token with given `initial_balance` balance. Returns new purse on success,
+    /// otherwise an error.
+    fn mint(&mut self, amount: U512) -> Result<URef, Error>;
 }

@@ -60,7 +60,13 @@ pub enum Error {
     /// System time error.
     #[error("system time error: {0}")]
     SystemTime(#[from] SystemTimeError),
+    /// Systemd notification error
+    #[error("could not interact with systemd: {0}")]
+    SystemD(io::Error),
     /// Other error.
     #[error(transparent)]
     Anyhow(#[from] anyhow::Error),
+    /// Server has stopped.
+    #[error("failed to create outgoing connection as server has stopped")]
+    ServerStopped,
 }

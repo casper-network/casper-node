@@ -3,19 +3,19 @@ mod tests;
 
 use std::{collections::HashMap, fmt::Debug, time::Duration};
 
-use rand::{CryptoRng, Rng};
+use datasize::DataSize;
 use smallvec::smallvec;
 use tracing::{debug, error};
 
 use crate::{
     components::{fetcher::event::FetchResponder, storage::Storage, Component},
     effect::{
-        requests::{NetworkRequest, StorageRequest},
+        requests::{LinearChainRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
     small_network::NodeId,
-    types::{Block, BlockHash, Deploy, DeployHash, Item},
+    types::{Block, BlockByHeight, BlockHash, CryptoRngCore, Deploy, DeployHash, Item},
     utils::Source,
     GossipConfig,
 };
@@ -27,6 +27,8 @@ pub trait ReactorEventT<T>:
     From<Event<T>>
     + From<NetworkRequest<NodeId, Message>>
     + From<StorageRequest<Storage>>
+    // Won't be needed when we implement "get block by height" feature in storage.
+    + From<LinearChainRequest<NodeId>>
     + Send
     + 'static
 where
@@ -42,6 +44,7 @@ where
     REv: From<Event<T>>
         + From<NetworkRequest<NodeId, Message>>
         + From<StorageRequest<Storage>>
+        + From<LinearChainRequest<NodeId>>
         + Send
         + 'static,
 {
@@ -155,8 +158,11 @@ pub trait ItemFetcher<T: Item + 'static> {
 }
 
 /// The component which fetches an item from local storage or asks a peer if it's not in storage.
-#[derive(Debug)]
-pub(crate) struct Fetcher<T: Item + 'static> {
+#[derive(DataSize, Debug)]
+pub(crate) struct Fetcher<T>
+where
+    T: Item + 'static,
+{
     get_from_peer_timeout: Duration,
     responders: HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>,
 }
@@ -225,19 +231,45 @@ impl ItemFetcher<Block> for Fetcher<Block> {
     }
 }
 
-impl<T, REv, R> Component<REv, R> for Fetcher<T>
+impl ItemFetcher<BlockByHeight> for Fetcher<BlockByHeight> {
+    fn responders(
+        &mut self,
+    ) -> &mut HashMap<u64, HashMap<NodeId, Vec<FetchResponder<BlockByHeight>>>> {
+        &mut self.responders
+    }
+
+    fn peer_timeout(&self) -> Duration {
+        self.get_from_peer_timeout
+    }
+
+    fn get_from_storage<REv: ReactorEventT<BlockByHeight>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        id: u64,
+        peer: NodeId,
+    ) -> Effects<Event<BlockByHeight>> {
+        effect_builder
+            .get_block_at_height(id)
+            .event(move |result| Event::GetFromStorageResult {
+                id,
+                peer,
+                maybe_item: Box::new(result.map(Into::into)),
+            })
+    }
+}
+
+impl<T, REv> Component<REv> for Fetcher<T>
 where
     Fetcher<T>: ItemFetcher<T>,
     T: Item + 'static,
     REv: ReactorEventT<T>,
-    R: Rng + CryptoRng + ?Sized,
 {
     type Event = Event<T>;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut R,
+        _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         debug!(?event, "handling event");
@@ -266,6 +298,7 @@ where
                     }
                 }
             }
+            Event::AbsentRemotely { id, peer } => self.signal(id, None, peer),
             Event::TimeoutPeer { id, peer } => self.signal(id, None, peer),
         }
     }

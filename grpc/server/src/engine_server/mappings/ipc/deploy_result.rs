@@ -54,8 +54,8 @@ impl From<(EngineStateError, ExecutionEffect, Gas)> for DeployResult {
             | error @ EngineStateError::Deploy
             | error @ EngineStateError::Finalization
             | error @ EngineStateError::Bytesrepr(_)
-            | error @ EngineStateError::RmpSerdeSerialization(_)
-            | error @ EngineStateError::RmpSerdeDeserialization(_)
+            | error @ EngineStateError::BincodeSerialization(_)
+            | error @ EngineStateError::BincodeDeserialization(_)
             | error @ EngineStateError::Mint(_) => detail::execution_error(error, effect, cost),
             EngineStateError::Exec(exec_error) => (exec_error, effect, cost).into(),
         }
@@ -233,6 +233,8 @@ mod tests {
 
     #[test]
     fn revert_error_maps_to_execution_error() {
+        // TODO: UnexpectedContractRefVariant is no longer used in actual code; in this test it can
+        // be replaced with any other error variant
         let expected_revert = ApiError::UnexpectedContractRefVariant;
         let revert_error = ExecutionError::Revert(expected_revert);
         let amount = U512::from(15);

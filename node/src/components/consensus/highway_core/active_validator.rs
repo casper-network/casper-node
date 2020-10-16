@@ -1,6 +1,5 @@
 use std::fmt::{self, Debug};
 
-use rand::{CryptoRng, Rng};
 use tracing::{error, warn};
 
 use super::{
@@ -14,7 +13,7 @@ use crate::{
     components::consensus::{
         consensus_protocol::BlockContext, highway_core::highway::SignedWireVote, traits::Context,
     },
-    types::{TimeDiff, Timestamp},
+    types::{CryptoRngCore, TimeDiff, Timestamp},
 };
 
 /// An action taken by a validator.
@@ -91,12 +90,12 @@ impl<C: Context> ActiveValidator<C> {
 
     /// Returns actions a validator needs to take at the specified `timestamp`, with the given
     /// protocol `state`.
-    pub(crate) fn handle_timer<R: Rng + CryptoRng + ?Sized>(
+    pub(crate) fn handle_timer(
         &mut self,
         timestamp: Timestamp,
         state: &State<C>,
         instance_id: C::InstanceId,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         if self.is_faulty(state) {
             warn!("Creator knows it's faulty. Won't create a message.");
@@ -124,24 +123,21 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// Returns actions a validator needs to take upon receiving a new vote.
-    pub(crate) fn on_new_vote<R: Rng + CryptoRng + ?Sized>(
+    pub(crate) fn on_new_vote(
         &mut self,
         vhash: &C::Hash,
-        timestamp: Timestamp,
+        now: Timestamp,
         state: &State<C>,
         instance_id: C::InstanceId,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         if let Some(evidence) = state.opt_evidence(self.vidx) {
             return vec![Effect::WeEquivocated(evidence.clone())];
         }
-        if self.earliest_vote_time(state) > timestamp {
-            warn!(%timestamp, "skipping outdated confirmation");
-        } else if self.should_send_confirmation(vhash, timestamp, state) {
+        if self.should_send_confirmation(vhash, now, state) {
             let panorama = self.confirmation_panorama(vhash, state);
             if panorama.has_correct() {
-                let confirmation_vote =
-                    self.new_vote(panorama, timestamp, None, state, instance_id, rng);
+                let confirmation_vote = self.new_vote(panorama, now, None, state, instance_id, rng);
                 let vv = ValidVertex(Vertex::Vote(confirmation_vote));
                 return vec![Effect::NewVertex(vv)];
             }
@@ -154,12 +150,12 @@ impl<C: Context> ActiveValidator<C> {
     /// If we are already waiting for a consensus value, `None` is returned instead.
     /// If the new value would come after a terminal block, the proposal is made immediately, and
     /// without a value.
-    pub(crate) fn request_new_block<R: Rng + CryptoRng + ?Sized>(
+    pub(crate) fn request_new_block(
         &mut self,
         state: &State<C>,
         instance_id: C::InstanceId,
         timestamp: Timestamp,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Option<Effect<C>> {
         if let Some((prop_time, _)) = self.next_proposal {
             warn!(
@@ -182,13 +178,13 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// Proposes a new block with the given consensus value.
-    pub(crate) fn propose<R: Rng + CryptoRng + ?Sized>(
+    pub(crate) fn propose(
         &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
         state: &State<C>,
         instance_id: C::InstanceId,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         let timestamp = block_context.timestamp();
         if self.earliest_vote_time(state) > timestamp {
@@ -224,22 +220,35 @@ impl<C: Context> ActiveValidator<C> {
         timestamp: Timestamp,
         state: &State<C>,
     ) -> bool {
+        let earliest_vote_time = self.earliest_vote_time(state);
+        if timestamp < earliest_vote_time {
+            warn!(%earliest_vote_time, %timestamp, "earliest_vote_time is greater than current time stamp");
+            return false;
+        };
         let vote = state.vote(vhash);
         if vote.timestamp > timestamp {
-            warn!(%vote.timestamp, %timestamp, "added a vote with a future timestamp");
+            error!(%vote.timestamp, %timestamp, "added a vote with a future timestamp, should never happen");
             return false;
         }
-        let r_exp = self.round_exp(state, timestamp);
-        timestamp >> r_exp == vote.timestamp >> r_exp // Current round.
-            && state.leader(vote.timestamp) == vote.creator // The creator is the round's leader.
-            && vote.timestamp == state::round_id(vote.timestamp, vote.round_exp) // It's a proposal.
-            && vote.creator != self.vidx // We didn't send it ourselves.
-            && !state.has_evidence(vote.creator) // The creator is not faulty.
-            && !self.is_faulty(state) // We are not faulty.
-            && self.latest_vote(state)
-                .map_or(true, |vote| {
-                    !vote.panorama.sees_correct(state, vhash)
-                }) // We haven't confirmed it already.
+        // If it's not a proposal, the sender is faulty, or we are, don't send a confirmation.
+        if vote.creator == self.vidx || self.is_faulty(state) || !state.is_correct_proposal(vote) {
+            return false;
+        }
+        if let Some(vote) = self.latest_vote(state) {
+            if vote.panorama.sees_correct(state, vhash) {
+                error!(%vhash, "called on_new_vote with already confirmed proposal");
+                return false; // We already sent a confirmation.
+            }
+        }
+        let r_id = state::round_id(timestamp, self.round_exp(state, timestamp));
+        if vote.timestamp != r_id {
+            warn!(
+                %vote.timestamp, %r_id,
+                "received proposal from unexpected round",
+            );
+            return false;
+        }
+        true
     }
 
     /// Returns the panorama of the confirmation for the leader vote `vhash`.
@@ -261,14 +270,14 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// Returns a new vote with the given data, and the correct sequence number.
-    fn new_vote<R: Rng + CryptoRng + ?Sized>(
+    fn new_vote(
         &mut self,
         mut panorama: Panorama<C>,
         timestamp: Timestamp,
         value: Option<C::ConsensusValue>,
         state: &State<C>,
         instance_id: C::InstanceId,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> SignedWireVote<C> {
         if let Some((prop_time, _)) = self.next_proposal.take() {
             warn!(
@@ -319,11 +328,16 @@ impl<C: Context> ActiveValidator<C> {
         vec![Effect::ScheduleTimer(self.next_timer)]
     }
 
-    /// Returns the earliest timestamp where we can cast our next vote without equivocating, i.e.
-    /// the timestamp of our previous vote, or 0 if there is none.
+    /// Returns the earliest timestamp where we can cast our next vote: It can't be earlier than
+    /// our previous vote, and it can't be the third vote in a single round.
     fn earliest_vote_time(&self, state: &State<C>) -> Timestamp {
         self.latest_vote(state)
-            .map_or_else(Timestamp::zero, |vh| vh.timestamp)
+            .map_or_else(Timestamp::zero, |vote| {
+                vote.previous().map_or(vote.timestamp, |vh2| {
+                    let vote2 = state.vote(vh2);
+                    vote.timestamp.max(vote2.round_id() + vote2.round_len())
+                })
+            })
     }
 
     /// Returns the most recent vote by this validator.
@@ -450,7 +464,7 @@ mod tests {
         assert_eq!(None, effects.next());
 
         // Alice has not witnessed Bob's vote yet.
-        assert_eq!(None, fd.next_finalized(&state, 0.into()));
+        assert_eq!(None, fd.next_finalized(&state));
 
         // Alice also sends her own witness message, completing the summit for her proposal.
         let mut effects = alice_av
@@ -461,7 +475,7 @@ mod tests {
         assert_eq!(None, effects.next());
 
         // Payment finalized! "One Pumpkin Spice Mochaccino for Corbyn!"
-        assert_eq!(Some(&prop_hash), fd.next_finalized(&state, 0.into()));
+        assert_eq!(Some(&prop_hash), fd.next_finalized(&state));
         Ok(())
     }
 }

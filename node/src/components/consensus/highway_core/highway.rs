@@ -3,21 +3,21 @@ mod vertex;
 pub(crate) use crate::components::consensus::highway_core::state::Params;
 pub(crate) use vertex::{Dependency, SignedWireVote, Vertex, WireVote};
 
-use rand::{CryptoRng, Rng};
 use thiserror::Error;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 use crate::{
     components::consensus::{
         consensus_protocol::BlockContext,
         highway_core::{
             active_validator::{ActiveValidator, Effect},
+            evidence::EvidenceError,
             state::{State, VoteError},
             validators::{Validator, Validators},
         },
         traits::Context,
     },
-    types::Timestamp,
+    types::{CryptoRngCore, Timestamp},
 };
 
 /// An error due to an invalid vertex.
@@ -27,19 +27,6 @@ pub(crate) enum VertexError {
     Vote(#[from] VoteError),
     #[error("The vertex contains invalid evidence.")]
     Evidence(#[from] EvidenceError),
-}
-
-/// An error due to invalid evidence.
-#[derive(Debug, Error, PartialEq)]
-pub(crate) enum EvidenceError {
-    #[error("The creators in the equivocating votes are different.")]
-    EquivocationDifferentCreators,
-    #[error("The sequence numbers in the equivocating votes are different.")]
-    EquivocationDifferentSeqNumbers,
-    #[error("The instance IDs in the equivocating votes are different.")]
-    EquivocationDifferentInstances,
-    #[error("The perpetrator is not a validator.")]
-    UnknownPerpetrator,
 }
 
 /// A vertex that has passed initial validation.
@@ -53,6 +40,10 @@ pub(crate) struct PreValidatedVertex<C: Context>(Vertex<C>);
 impl<C: Context> PreValidatedVertex<C> {
     pub(crate) fn inner(&self) -> &Vertex<C> {
         &self.0
+    }
+
+    pub(crate) fn timestamp(&self) -> Option<Timestamp> {
+        self.0.timestamp()
     }
 
     #[cfg(test)]
@@ -124,6 +115,7 @@ impl<C: Context> Highway<C> {
         validators: Validators<C::ValidatorId>,
         params: Params,
     ) -> Highway<C> {
+        info!(%validators, "creating Highway instance {:?}", instance_id);
         let state = State::new(validators.iter().map(Validator::weight), params);
         Highway {
             instance_id,
@@ -200,14 +192,15 @@ impl<C: Context> Highway<C> {
     /// The validation must have been performed by _this_ `Highway` instance.
     /// More precisely: The instance on which `add_valid_vertex` is called must contain everything
     /// (and possibly more) that the instance on which `validate_vertex` was called contained.
-    pub(crate) fn add_valid_vertex<R: Rng + CryptoRng + ?Sized>(
+    pub(crate) fn add_valid_vertex(
         &mut self,
         ValidVertex(vertex): ValidVertex<C>,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
+        now: Timestamp,
     ) -> Vec<Effect<C>> {
         if !self.has_vertex(&vertex) {
             match vertex {
-                Vertex::Vote(vote) => self.add_valid_vote(vote, rng),
+                Vertex::Vote(vote) => self.add_valid_vote(vote, now, rng),
                 Vertex::Evidence(evidence) => {
                     self.state.add_evidence(evidence);
                     vec![]
@@ -224,6 +217,13 @@ impl<C: Context> Highway<C> {
             Vertex::Vote(vote) => self.state.has_vote(&vote.hash()),
             Vertex::Evidence(evidence) => self.state.has_evidence(evidence.perpetrator()),
         }
+    }
+
+    /// Returns whether the validator is known to be faulty.
+    pub(crate) fn has_evidence(&self, vid: &C::ValidatorId) -> bool {
+        self.validators
+            .get_index(vid)
+            .map_or(false, |vidx| self.state.has_evidence(vidx))
     }
 
     /// Returns whether we have a vertex that satisfies the dependency.
@@ -249,14 +249,26 @@ impl<C: Context> Highway<C> {
         .map(ValidVertex)
     }
 
-    pub(crate) fn handle_timer<R: Rng + CryptoRng + ?Sized>(
+    pub(crate) fn handle_timer(
         &mut self,
         timestamp: Timestamp,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id.clone();
+
+        // Here we just use the timer's timestamp, and assume it's ~ Timestamp::now()
+        //
+        // This is because proposal votes, i.e. new blocks, are
+        // supposed to thave the exact timestamp that matches the
+        // beginning of the round (which we use as the "round ID").
+        //
+        // But at least any discrepancy here can only come from event
+        // handling delays in our own node, and not from timestamps
+        // set by other nodes.
+
         self.map_active_validator(
             |av, state, rng| av.handle_timer(timestamp, state, instance_id, rng),
+            timestamp,
             rng,
         )
         .unwrap_or_else(|| {
@@ -265,15 +277,34 @@ impl<C: Context> Highway<C> {
         })
     }
 
-    pub(crate) fn propose<R: Rng + CryptoRng + ?Sized>(
+    pub(crate) fn propose(
         &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id.clone();
+
+        // We just use the block context's timestamp, which is
+        // hopefully not much older than `Timestamp::now()`
+        //
+        // We do this because essentially what happens is this:
+        //
+        // 1. We realize it's our turn to propose a block in
+        // millisecond 64, so we set a timer.
+        //
+        // 2. The timer for timestamp 64 fires, and we request deploys
+        // for the new block from the deploy buffer (with 64 in the
+        // block context).
+        //
+        // 3. The deploy buffer responds and we finally end up here,
+        // and can propose the new block. But we still have to use
+        // timestamp 64.
+
+        let timestamp = block_context.timestamp();
         self.map_active_validator(
             |av, state, rng| av.propose(value, block_context, state, instance_id, rng),
+            timestamp,
             rng,
         )
         .unwrap_or_else(|| {
@@ -286,19 +317,29 @@ impl<C: Context> Highway<C> {
         &self.validators
     }
 
+    /// Returns an iterator over all validators known to be faulty.
+    pub(crate) fn faulty_validators(&self) -> impl Iterator<Item = &C::ValidatorId> {
+        self.validators
+            .iter()
+            .enumerate()
+            .filter(move |(i, _)| self.state.has_evidence((*i as u32).into()))
+            .map(|(_, v)| v.id())
+    }
+
     pub(super) fn state(&self) -> &State<C> {
         &self.state
     }
 
-    fn on_new_vote<R: Rng + CryptoRng + ?Sized>(
+    fn on_new_vote(
         &mut self,
         vhash: &C::Hash,
         timestamp: Timestamp,
-        rng: &mut R,
+        rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id.clone();
         self.map_active_validator(
             |av, state, rng| av.on_new_vote(vhash, timestamp, state, instance_id, rng),
+            timestamp,
             rng,
         )
         .unwrap_or_default()
@@ -308,16 +349,22 @@ impl<C: Context> Highway<C> {
     ///
     /// Newly created vertices are added to the state. If an equivocation of this validator is
     /// detected, it gets deactivated.
-    fn map_active_validator<F, R>(&mut self, f: F, rng: &mut R) -> Option<Vec<Effect<C>>>
+    fn map_active_validator<F>(
+        &mut self,
+        f: F,
+        timestamp: Timestamp,
+        rng: &mut dyn CryptoRngCore,
+    ) -> Option<Vec<Effect<C>>>
     where
-        F: FnOnce(&mut ActiveValidator<C>, &State<C>, &mut R) -> Vec<Effect<C>>,
-        R: Rng + CryptoRng + ?Sized,
+        F: FnOnce(&mut ActiveValidator<C>, &State<C>, &mut dyn CryptoRngCore) -> Vec<Effect<C>>,
     {
         let effects = f(self.active_validator.as_mut()?, &self.state, rng);
         let mut result = vec![];
         for effect in &effects {
             match effect {
-                Effect::NewVertex(vv) => result.extend(self.add_valid_vertex(vv.clone(), rng)),
+                Effect::NewVertex(vv) => {
+                    result.extend(self.add_valid_vertex(vv.clone(), rng, timestamp))
+                }
                 Effect::WeEquivocated(_) => self.deactivate_validator(),
                 Effect::ScheduleTimer(_) | Effect::RequestNewBlock(_) => (),
             }
@@ -331,7 +378,8 @@ impl<C: Context> Highway<C> {
     fn do_pre_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
             Vertex::Vote(vote) => {
-                let v_id = self.validator_id(&vote).ok_or(VoteError::Creator)?;
+                let creator = vote.wire_vote.creator;
+                let v_id = self.validators.id(creator).ok_or(VoteError::Creator)?;
                 if vote.wire_vote.instance_id != self.instance_id {
                     return Err(VoteError::InstanceId.into());
                 }
@@ -341,11 +389,11 @@ impl<C: Context> Highway<C> {
                 Ok(self.state.pre_validate_vote(vote)?)
             }
             Vertex::Evidence(evidence) => {
-                evidence.validate()?;
-                if !self.validators.contains(evidence.perpetrator()) {
-                    return Err(EvidenceError::UnknownPerpetrator.into());
-                }
-                Ok(())
+                let v_id = self
+                    .validators
+                    .id(evidence.perpetrator())
+                    .ok_or(EvidenceError::UnknownPerpetrator)?;
+                Ok(evidence.validate(v_id, &self.instance_id)?)
             }
         }
     }
@@ -363,22 +411,15 @@ impl<C: Context> Highway<C> {
     ///
     /// Validity must be checked before calling this! Adding an invalid vote will result in a panic
     /// or an inconsistent state.
-    fn add_valid_vote<R: Rng + CryptoRng + ?Sized>(
+    fn add_valid_vote(
         &mut self,
         swvote: SignedWireVote<C>,
-        rng: &mut R,
+        now: Timestamp,
+        rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
-        let vote_timestamp = swvote.wire_vote.timestamp;
         let vote_hash = swvote.hash();
         self.state.add_valid_vote(swvote);
-        self.on_new_vote(&vote_hash, vote_timestamp, rng)
-    }
-
-    /// Returns validator ID of the `swvote` creator, if it exists.
-    fn validator_id(&self, swvote: &SignedWireVote<C>) -> Option<&C::ValidatorId> {
-        self.validators
-            .get_by_index(swvote.wire_vote.creator)
-            .map(Validator::id)
+        self.on_new_vote(&vote_hash, now, rng)
     }
 }
 
@@ -389,10 +430,12 @@ pub(crate) mod tests {
     use crate::{
         components::consensus::{
             highway_core::{
+                evidence::{Evidence, EvidenceError},
                 highway::{Highway, SignedWireVote, Vertex, VertexError, VoteError, WireVote},
                 state::{
                     tests::{
-                        TestContext, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC, WEIGHTS,
+                        TestContext, TestSecret, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC,
+                        WEIGHTS,
                     },
                     Panorama, State,
                 },
@@ -404,25 +447,27 @@ pub(crate) mod tests {
         types::Timestamp,
     };
 
+    fn test_validators() -> Validators<u32> {
+        let vid_weights: Vec<(u32, u64)> =
+            vec![(ALICE_SEC, ALICE), (BOB_SEC, BOB), (CAROL_SEC, CAROL)]
+                .into_iter()
+                .map(|(sk, vid)| {
+                    assert_eq!(sk.0, vid.0);
+                    (sk.0, WEIGHTS[vid.0 as usize].0)
+                })
+                .collect();
+        Validators::from_iter(vid_weights)
+    }
+
     #[test]
     fn invalid_signature_error() {
         let mut rng = TestRng::new();
+        let now: Timestamp = 500.into();
 
         let state: State<TestContext> = State::new_test(WEIGHTS, 0);
-        let validators = {
-            let vid_weights: Vec<(u32, u64)> =
-                vec![(ALICE_SEC, ALICE), (BOB_SEC, BOB), (CAROL_SEC, CAROL)]
-                    .into_iter()
-                    .map(|(sk, vid)| {
-                        assert_eq!(sk.0, vid.0);
-                        (sk.0, WEIGHTS[vid.0 as usize].0)
-                    })
-                    .collect();
-            Validators::from_iter(vid_weights)
-        };
         let mut highway = Highway {
             instance_id: 1u64,
-            validators,
+            validators: test_validators(),
             state,
             active_validator: None,
         };
@@ -456,6 +501,100 @@ pub(crate) mod tests {
         let pvv = highway.pre_validate_vertex(valid_vertex).unwrap();
         assert_eq!(None, highway.missing_dependency(&pvv));
         let vv = highway.validate_vertex(pvv).unwrap();
-        assert!(highway.add_valid_vertex(vv, &mut rng).is_empty());
+        assert!(highway.add_valid_vertex(vv, &mut rng, now).is_empty());
+    }
+
+    #[test]
+    fn invalid_evidence() {
+        let mut rng = TestRng::new();
+
+        let state: State<TestContext> = State::new_test(WEIGHTS, 0);
+        let highway = Highway {
+            instance_id: 1u64,
+            validators: test_validators(),
+            state,
+            active_validator: None,
+        };
+
+        let mut validate = |wvote0: &WireVote<TestContext>,
+                            signer0: &TestSecret,
+                            wvote1: &WireVote<TestContext>,
+                            signer1: &TestSecret| {
+            let swvote0 = SignedWireVote::new(wvote0.clone(), signer0, &mut rng);
+            let swvote1 = SignedWireVote::new(wvote1.clone(), signer1, &mut rng);
+            let evidence = Evidence::Equivocation(swvote0, swvote1);
+            let vertex = Vertex::Evidence(evidence);
+            highway
+                .pre_validate_vertex(vertex.clone())
+                .map_err(|(v, err)| {
+                    assert_eq!(v, vertex);
+                    err
+                })
+        };
+
+        // Two votes with different values and the same sequence number. Carol equivocated!
+        let mut wvote0 = WireVote {
+            panorama: Panorama::new(WEIGHTS.len()),
+            creator: CAROL,
+            instance_id: highway.instance_id,
+            value: Some(0),
+            seq_number: 0,
+            timestamp: Timestamp::zero(),
+            round_exp: 4,
+        };
+        let wvote1 = WireVote {
+            panorama: Panorama::new(WEIGHTS.len()),
+            creator: CAROL,
+            instance_id: highway.instance_id,
+            value: Some(1),
+            seq_number: 0,
+            timestamp: Timestamp::zero(),
+            round_exp: 4,
+        };
+
+        assert!(validate(&wvote0, &CAROL_SEC, &wvote1, &CAROL_SEC,).is_ok());
+
+        // It's only an equivocation if the two votes are different.
+        assert_eq!(
+            Err(VertexError::Evidence(EvidenceError::EquivocationSameVote)),
+            validate(&wvote0, &CAROL_SEC, &wvote0, &CAROL_SEC)
+        );
+
+        // Both votes have Carol as their creator; Bob's signature would be invalid.
+        assert_eq!(
+            Err(VertexError::Evidence(EvidenceError::Signature)),
+            validate(&wvote0, &CAROL_SEC, &wvote1, &BOB_SEC)
+        );
+        assert_eq!(
+            Err(VertexError::Evidence(EvidenceError::Signature)),
+            validate(&wvote0, &BOB_SEC, &wvote1, &CAROL_SEC)
+        );
+
+        // If the first vote was actually Bob's and the second Carol's, nobody equivocated.
+        wvote0.creator = BOB;
+        assert_eq!(
+            Err(VertexError::Evidence(
+                EvidenceError::EquivocationDifferentCreators
+            )),
+            validate(&wvote0, &BOB_SEC, &wvote1, &CAROL_SEC)
+        );
+        wvote0.creator = CAROL;
+
+        // If the votes have different sequence numbers they might belong to the same fork.
+        wvote0.seq_number = 1;
+        assert_eq!(
+            Err(VertexError::Evidence(
+                EvidenceError::EquivocationDifferentSeqNumbers
+            )),
+            validate(&wvote0, &CAROL_SEC, &wvote1, &CAROL_SEC)
+        );
+        wvote0.seq_number = 0;
+
+        // If the votes are from a different network or era we don't accept the evidence.
+        wvote0.instance_id = 2;
+        assert_eq!(
+            Err(VertexError::Evidence(EvidenceError::EquivocationInstanceId)),
+            validate(&wvote0, &CAROL_SEC, &wvote1, &CAROL_SEC)
+        );
     }
 }
