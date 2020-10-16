@@ -706,6 +706,12 @@ where
         era_id: EraId,
         proto_block: ProtoBlock,
     ) -> Effects<Event<I>> {
+        let current = Timestamp::now();
+        self.era_supervisor.metrics.time_since_proto_block.set(
+            (current.millis() - self.era_supervisor.metrics.most_recent_timestamp.millis()) as f64
+                / 1000.00,
+        );
+        self.era_supervisor.metrics.most_recent_timestamp = current;
         let mut effects = Effects::new();
         let candidate_blocks = if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
             era.accept_proto_block(&proto_block)
@@ -911,6 +917,10 @@ pub struct ConsensusMetrics {
     finalization_time: Gauge,
     /// Amount of finalized blocks.
     finalized_block_count: IntCounter,
+    /// Time delta between the most recent pair of accepted proto blocks.
+    time_since_proto_block: Gauge,
+    /// Timestamp of most recently accepted proto block.
+    most_recent_timestamp: Timestamp,
     /// registry component.
     registry: Registry,
 }
@@ -923,11 +933,18 @@ impl ConsensusMetrics {
         )?;
         let finalized_block_count =
             IntCounter::new("amount_of_blocks", "the number of blocks finalized so far")?;
+        let time_since_proto_block = Gauge::new(
+            "time_since_proto_block",
+            "time delta in milliseconds since the most recent pair of accepted proto blocks",
+        )?;
         registry.register(Box::new(finalization_time.clone()))?;
         registry.register(Box::new(finalized_block_count.clone()))?;
+        registry.register(Box::new(time_since_proto_block.clone()))?;
         Ok(ConsensusMetrics {
             finalization_time,
             finalized_block_count,
+            time_since_proto_block,
+            most_recent_timestamp: Timestamp::zero(),
             registry: registry.clone(),
         })
     }
