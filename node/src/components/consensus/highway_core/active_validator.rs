@@ -227,7 +227,7 @@ impl<C: Context> ActiveValidator<C> {
         };
         let vote = state.vote(vhash);
         if vote.timestamp > timestamp {
-            warn!(%vote.timestamp, %timestamp, "added a vote with a future timestamp");
+            error!(%vote.timestamp, %timestamp, "added a vote with a future timestamp, should never happen");
             return false;
         }
         // If it's not a proposal, the sender is faulty, or we are, don't send a confirmation.

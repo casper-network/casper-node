@@ -42,6 +42,10 @@ impl<C: Context> PreValidatedVertex<C> {
         &self.0
     }
 
+    pub(crate) fn timestamp(&self) -> Option<Timestamp> {
+        self.0.timestamp()
+    }
+
     #[cfg(test)]
     pub(crate) fn into_vertex(self) -> Vertex<C> {
         self.0

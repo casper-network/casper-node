@@ -5,7 +5,6 @@ use std::{
     rc::Rc,
 };
 
-use anyhow::Error;
 use datasize::DataSize;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -42,6 +41,9 @@ where
     pending_values: HashMap<C::ConsensusValue, Vec<ValidVertex<C>>>,
     finality_detector: FinalityDetector<C>,
     highway: Highway<C>,
+    /// The vertices that are scheduled to be processed at a later time.  The keys of this
+    /// `BTreeMap` are timestamps when the corresponding vector of vertices will be added.
+    vertices_to_be_added_later: BTreeMap<Timestamp, Vec<(I, PreValidatedVertex<C>)>>,
 }
 
 impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
@@ -56,6 +58,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
             pending_values: HashMap::new(),
             finality_detector: FinalityDetector::new(ftt),
             highway: Highway::new(instance_id, validators, params),
+            vertices_to_be_added_later: BTreeMap::new(),
         }
     }
 
@@ -118,6 +121,46 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
             .run(&self.highway)
             .expect("too many faulty validators")
             .map(ConsensusProtocolResult::FinalizedBlock)
+    }
+
+    /// Store a (pre-validated) vertex which will be added later.  This creates a timer to be sent
+    /// to the reactor. The vertex be added using `Self::add_vertices` when that timer goes off.
+    fn store_vertex_for_addition_later(
+        &mut self,
+        future_timestamp: Timestamp,
+        sender: I,
+        pvv: PreValidatedVertex<C>,
+    ) -> Vec<CpResult<I, C>> {
+        self.vertices_to_be_added_later
+            .entry(future_timestamp)
+            .or_insert_with(Vec::new)
+            .push((sender, pvv));
+        vec![ConsensusProtocolResult::ScheduleTimer(future_timestamp)]
+    }
+
+    /// Call `Self::add_vertices` on any vertices in `vertices_to_be_added_later` which are
+    /// scheduled for after the given `transpired_timestamp`.  In general the specified
+    /// `transpired_timestamp` is approximately `Timestamp::now()`.  Vertices keyed by timestamps
+    /// chronologically before `transpired_timestamp` should all be added.
+    fn add_past_due_stored_vertices(
+        &mut self,
+        timestamp: Timestamp,
+        rng: &mut dyn CryptoRngCore,
+    ) -> Vec<CpResult<I, C>> {
+        let mut results = vec![];
+        let past_due_timestamps: Vec<Timestamp> = self
+            .vertices_to_be_added_later
+            .range(..=timestamp) // Inclusive range
+            .map(|(past_due_timestamp, _)| past_due_timestamp.to_owned())
+            .collect();
+        for past_due_timestamp in past_due_timestamps {
+            if let Some(vertices_to_add) =
+                self.vertices_to_be_added_later.remove(&past_due_timestamp)
+            {
+                results.extend(self.add_vertices(vertices_to_add, rng))
+            }
+        }
+        results
     }
 
     /// Adds the given vertices to the protocol state, if possible, or requests missing
@@ -243,30 +286,35 @@ where
         msg: Vec<u8>,
         evidence_only: bool,
         rng: &mut dyn CryptoRngCore,
-    ) -> Result<Vec<CpResult<I, C>>, Error> {
+    ) -> Vec<CpResult<I, C>> {
         match bincode::deserialize(msg.as_slice()) {
-            Err(err) => Ok(vec![ConsensusProtocolResult::InvalidIncomingMessage(
+            Err(err) => vec![ConsensusProtocolResult::InvalidIncomingMessage(
                 msg,
                 sender,
                 err.into(),
-            )]),
+            )],
             Ok(HighwayMessage::NewVertex(v))
                 if self.highway.has_vertex(&v) || (evidence_only && !v.is_evidence()) =>
             {
-                Ok(vec![])
+                vec![]
             }
             Ok(HighwayMessage::NewVertex(v)) => {
-                // TODO: Incoming vertex, check timestamp and schedule a delay
-                match self.highway.pre_validate_vertex(v) {
-                    Ok(pvv) => Ok(self.add_vertices(vec![(sender, pvv)], rng)),
+                let pvv = match self.highway.pre_validate_vertex(v) {
+                    Ok(pvv) => pvv,
                     Err((_, err)) => {
                         // TODO: Disconnect from senders.
-                        Ok(vec![ConsensusProtocolResult::InvalidIncomingMessage(
+                        return vec![ConsensusProtocolResult::InvalidIncomingMessage(
                             msg,
                             sender,
                             err.into(),
-                        )])
+                        )];
                     }
+                };
+                match pvv.timestamp() {
+                    Some(timestamp) if timestamp > Timestamp::now() => {
+                        self.store_vertex_for_addition_later(timestamp, sender, pvv)
+                    }
+                    _ => self.add_vertices(vec![(sender, pvv)], rng),
                 }
             }
             Ok(HighwayMessage::RequestDependency(dep)) => {
@@ -275,13 +323,13 @@ where
                     let serialized_msg =
                         bincode::serialize(&msg).expect("should serialize message");
                     // TODO: Should this be done via a gossip service?
-                    Ok(vec![ConsensusProtocolResult::CreatedTargetedMessage(
+                    vec![ConsensusProtocolResult::CreatedTargetedMessage(
                         serialized_msg,
                         sender,
-                    )])
+                    )]
                 } else {
                     info!(?dep, ?sender, "requested dependency doesn't exist");
-                    Ok(vec![])
+                    vec![]
                 }
             }
         }
@@ -291,9 +339,11 @@ where
         &mut self,
         timestamp: Timestamp,
         rng: &mut dyn CryptoRngCore,
-    ) -> Result<Vec<CpResult<I, C>>, Error> {
+    ) -> Vec<CpResult<I, C>> {
         let effects = self.highway.handle_timer(timestamp, rng);
-        Ok(self.process_av_effects(effects))
+        let mut results = self.process_av_effects(effects);
+        results.extend(self.add_past_due_stored_vertices(timestamp, rng));
+        results
     }
 
     fn propose(
@@ -301,9 +351,9 @@ where
         value: C::ConsensusValue,
         block_context: BlockContext,
         rng: &mut dyn CryptoRngCore,
-    ) -> Result<Vec<CpResult<I, C>>, Error> {
+    ) -> Vec<CpResult<I, C>> {
         let effects = self.highway.propose(value, block_context, rng);
-        Ok(self.process_av_effects(effects))
+        self.process_av_effects(effects)
     }
 
     fn resolve_validity(
@@ -311,7 +361,7 @@ where
         value: &C::ConsensusValue,
         valid: bool,
         rng: &mut dyn CryptoRngCore,
-    ) -> Result<Vec<CpResult<I, C>>, Error> {
+    ) -> Vec<CpResult<I, C>> {
         if valid {
             let mut results = self
                 .pending_values
@@ -326,12 +376,12 @@ where
             let satisfied_pvvs = self.remove_satisfied_deps().collect();
             results.extend(self.add_vertices(satisfied_pvvs, rng));
             results.extend(self.detect_finality());
-            Ok(results)
+            results
         } else {
             // TODO: Slash proposer?
             // TODO: Drop dependent vertices? Or add timeout.
             // TODO: Disconnect from senders.
-            Ok(vec![])
+            vec![]
         }
     }
 
@@ -343,13 +393,8 @@ where
         self.highway.has_evidence(vid)
     }
 
-    fn request_evidence(
-        &self,
-        sender: I,
-        vid: &C::ValidatorId,
-    ) -> Result<Vec<CpResult<I, C>>, Error> {
-        Ok(self
-            .highway
+    fn request_evidence(&self, sender: I, vid: &C::ValidatorId) -> Vec<CpResult<I, C>> {
+        self.highway
             .validators()
             .get_index(vid)
             .and_then(|vidx| self.highway.get_dependency(&Dependency::Evidence(vidx)))
@@ -359,7 +404,7 @@ where
                 ConsensusProtocolResult::CreatedTargetedMessage(serialized_msg, sender)
             })
             .into_iter()
-            .collect())
+            .collect()
     }
 
     fn faulty_validators(&self) -> Vec<&C::ValidatorId> {
