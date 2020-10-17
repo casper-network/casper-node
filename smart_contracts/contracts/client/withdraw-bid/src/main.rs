@@ -8,7 +8,7 @@ use casper_types::{auction, runtime_args, PublicKey, RuntimeArgs, URef, U512};
 
 const ARG_PUBLIC_KEY: &str = "public_key";
 const ARG_AMOUNT: &str = "amount";
-const ARG_UNBOND_PURSE: &str = "unbond_purse";
+// const ARG_UNBOND_PURSE: &str = "unbond_purse";
 
 fn withdraw_bid(public_key: PublicKey, unbond_amount: U512, unbond_purse: URef) -> U512 {
     let contract_hash = system::get_auction();
@@ -28,10 +28,12 @@ fn withdraw_bid(public_key: PublicKey, unbond_amount: U512, unbond_purse: URef) 
 pub extern "C" fn call() {
     let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
     let amount = runtime::get_named_arg(ARG_AMOUNT);
-    let unbond_purse = {
-        let maybe_unbond_purse: Option<URef> = runtime::get_named_arg(ARG_UNBOND_PURSE);
-        maybe_unbond_purse.unwrap_or_else(account::get_main_purse)
-    };
-
+    //
+    // TEMP REMOVAL until NDRS-521 is addressed for client.
+    // let unbond_purse = {
+    //     let maybe_unbond_purse: Option<URef> = runtime::get_named_arg(ARG_UNBOND_PURSE);
+    //     maybe_unbond_purse.unwrap_or_else(account::get_main_purse)
+    // };
+    let unbond_purse = account::get_main_purse();
     withdraw_bid(public_key, amount, unbond_purse);
 }
