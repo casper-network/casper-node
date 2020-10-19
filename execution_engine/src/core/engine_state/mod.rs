@@ -85,11 +85,11 @@ use crate::{
 
 // TODO?: MAX_PAYMENT && CONV_RATE values are currently arbitrary w/ real values
 // TBD gas * CONV_RATE = motes
-lazy_static! {
-    pub static ref MAX_PAYMENT: U512 = U512::from(10_000_000);
-}
-
 pub const CONV_RATE: u64 = 10;
+
+lazy_static! {
+    pub static ref MAX_PAYMENT: U512 = U512::from(200_000_000_000u64 * CONV_RATE);
+}
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 

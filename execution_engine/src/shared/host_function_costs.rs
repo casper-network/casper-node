@@ -9,7 +9,8 @@ use super::gas::Gas;
 /// Representation of argument's cost.
 pub type Cost = u32;
 
-const DEFAULT_FIXED_COST: Cost = 42;
+const DEFAULT_FIXED_COST: Cost = 200_000;
+const NOT_USED: Cost = 0;
 
 /// Representation of a host function cost
 ///
@@ -112,7 +113,7 @@ where
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize, Default)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct HostFunctionCosts {
     pub read_value: HostFunction<[Cost; 3]>,
     pub read_value_local: HostFunction<[Cost; 3]>,
@@ -156,6 +157,60 @@ pub struct HostFunctionCosts {
     pub remove_contract_user_group_urefs: HostFunction<[Cost; 6]>,
     pub print: HostFunction<[Cost; 2]>,
     pub blake2b: HostFunction<[Cost; 4]>,
+}
+
+impl Default for HostFunctionCosts {
+    fn default() -> Self {
+        Self {
+            read_value: HostFunction::fixed(6_000_000),
+            read_value_local: HostFunction::new(5_500_000, [NOT_USED, 590, NOT_USED]),
+            write: HostFunction::new(14_000_000, [NOT_USED, NOT_USED, NOT_USED, 980]),
+            write_local: HostFunction::new(9_500_000, [NOT_USED, 1_800, NOT_USED, 520]),
+            add: HostFunction::fixed(5_800_000),
+            new_uref: HostFunction::new(17_000_000, [NOT_USED, NOT_USED, 590]),
+            load_named_keys: HostFunction::fixed(42_000_000),
+            ret: HostFunction::new(23_000_000, [NOT_USED, 420_000]),
+            get_key: HostFunction::new(2_000_000, [NOT_USED, 440, NOT_USED, NOT_USED, NOT_USED]),
+            has_key: HostFunction::new(1_500_000, [NOT_USED, 840]),
+            put_key: HostFunction::new(38_000_000, [NOT_USED, 840, NOT_USED, NOT_USED]),
+            remove_key: HostFunction::new(61_000_000, [NOT_USED, 3_200]),
+            revert: HostFunction::fixed(500_000),
+            is_valid_uref: HostFunction::fixed(760_000),
+            add_associated_key: HostFunction::fixed(9_000_000),
+            remove_associated_key: HostFunction::fixed(4_200_000),
+            update_associated_key: HostFunction::fixed(4_200_000),
+            set_action_threshold: HostFunction::fixed(74_000_000),
+            get_caller: HostFunction::fixed(380_000),
+            get_blocktime: HostFunction::fixed(330_000),
+            create_purse: HostFunction::fixed(170_000_000),
+            transfer_to_account: HostFunction::fixed(24_000_000),
+            transfer_from_purse_to_account: HostFunction::fixed(160_000_000),
+            transfer_from_purse_to_purse: HostFunction::fixed(82_000_000),
+            get_balance: HostFunction::fixed(3_800_000),
+            get_phase: HostFunction::fixed(710_000),
+            get_system_contract: HostFunction::fixed(1_100_000),
+            get_main_purse: HostFunction::fixed(1_300_000),
+            read_host_buffer: HostFunction::new(3_500_000, [NOT_USED, 310, NOT_USED]),
+            create_contract_package_at_hash: HostFunction::default(),
+            create_contract_user_group: HostFunction::default(),
+            add_contract_version: HostFunction::default(),
+            disable_contract_version: HostFunction::default(),
+            call_contract: HostFunction::new(
+                4_500_000,
+                [
+                    NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED, 420, NOT_USED,
+                ],
+            ),
+            call_versioned_contract: HostFunction::default(),
+            get_named_arg_size: HostFunction::default(),
+            get_named_arg: HostFunction::default(),
+            remove_contract_user_group: HostFunction::default(),
+            provision_contract_user_group_uref: HostFunction::default(),
+            remove_contract_user_group_urefs: HostFunction::default(),
+            print: HostFunction::new(20_000_000, [NOT_USED, 4_600]),
+            blake2b: HostFunction::default(),
+        }
+    }
 }
 
 impl ToBytes for HostFunctionCosts {

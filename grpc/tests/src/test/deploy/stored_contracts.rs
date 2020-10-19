@@ -4,7 +4,8 @@ use casper_engine_grpc_server::engine_server::ipc::DeployCode;
 use casper_engine_test_support::{
     internal::{
         utils, AdditiveMapDiff, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-        UpgradeRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNT_KEY, DEFAULT_RUN_GENESIS_REQUEST,
+        UpgradeRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT,
+        DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
@@ -98,7 +99,7 @@ fn should_exec_non_stored_code() {
     // should work exactly as it did with the original exec logic
 
     let account_1_account_hash = ACCOUNT_1_ADDR;
-    let payment_purse_amount = 10_000_000;
+    let payment_purse_amount = *DEFAULT_PAYMENT;
     let transferred_amount = 1;
 
     let exec_request = {
@@ -112,7 +113,7 @@ fn should_exec_non_stored_code() {
                 },
             )
             .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => U512::from(payment_purse_amount),
+                ARG_AMOUNT => payment_purse_amount,
             })
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .with_deploy_hash([1; 32])
@@ -158,7 +159,7 @@ fn should_exec_non_stored_code() {
 #[ignore]
 #[test]
 fn should_exec_stored_code_by_hash() {
-    let payment_purse_amount = 10_000_000;
+    let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // genesis
     let mut builder = InMemoryWasmTestBuilder::default();
@@ -201,7 +202,7 @@ fn should_exec_stored_code_by_hash() {
                     Some(CONTRACT_INITIAL_VERSION),
                     PAY,
                     runtime_args! {
-                        ARG_AMOUNT => U512::from(payment_purse_amount),
+                        ARG_AMOUNT => payment_purse_amount,
                     },
                 )
                 .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
@@ -255,7 +256,7 @@ fn should_exec_stored_code_by_hash() {
 #[ignore]
 #[test]
 fn should_exec_stored_code_by_named_hash() {
-    let payment_purse_amount = 10_000_000;
+    let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // genesis
     let mut builder = InMemoryWasmTestBuilder::default();
@@ -298,7 +299,7 @@ fn should_exec_stored_code_by_named_hash() {
                     Some(CONTRACT_INITIAL_VERSION),
                     PAY,
                     runtime_args! {
-                        ARG_AMOUNT => U512::from(payment_purse_amount),
+                        ARG_AMOUNT => payment_purse_amount,
                     },
                 )
                 .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
@@ -352,7 +353,7 @@ fn should_exec_stored_code_by_named_hash() {
 #[ignore]
 #[test]
 fn should_exec_payment_and_session_stored_code() {
-    let payment_purse_amount = 100_000_000; // <- seems like a lot, but it gets spent fast!
+    let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // genesis
     let mut builder = InMemoryWasmTestBuilder::default();
@@ -389,7 +390,7 @@ fn should_exec_payment_and_session_stored_code() {
                 Some(CONTRACT_INITIAL_VERSION),
                 PAY,
                 runtime_args! {
-                    ARG_AMOUNT => U512::from(payment_purse_amount),
+                    ARG_AMOUNT => payment_purse_amount,
                 },
             )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
@@ -434,7 +435,7 @@ fn should_exec_payment_and_session_stored_code() {
                 Some(CONTRACT_INITIAL_VERSION),
                 PAY,
                 runtime_args! {
-                    ARG_AMOUNT => U512::from(payment_purse_amount),
+                    ARG_AMOUNT => payment_purse_amount,
                 },
             )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
@@ -483,7 +484,7 @@ fn should_exec_payment_and_session_stored_code() {
 #[test]
 fn should_have_equivalent_transforms_with_stored_contract_pointers() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
-    let payment_purse_amount = 100_000_000;
+    let payment_purse_amount = *DEFAULT_PAYMENT;
     let transferred_amount = 1;
 
     let stored_transforms = {
@@ -497,7 +498,7 @@ fn should_have_equivalent_transforms_with_stored_contract_pointers() {
                     RuntimeArgs::default(),
                 )
                 .with_empty_payment_bytes(runtime_args! {
-                    ARG_AMOUNT => U512::from(payment_purse_amount),
+                    ARG_AMOUNT => payment_purse_amount,
                 })
                 .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
                 .with_deploy_hash([1; 32])
@@ -513,7 +514,7 @@ fn should_have_equivalent_transforms_with_stored_contract_pointers() {
                 .with_address(*DEFAULT_ACCOUNT_ADDR)
                 .with_session_code(STORED_PAYMENT_CONTRACT_NAME, RuntimeArgs::default())
                 .with_empty_payment_bytes(runtime_args! {
-                    ARG_AMOUNT => U512::from(payment_purse_amount),
+                    ARG_AMOUNT => payment_purse_amount,
                 })
                 .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
                 .with_deploy_hash([2; 32])
@@ -544,7 +545,7 @@ fn should_have_equivalent_transforms_with_stored_contract_pointers() {
                     STORED_PAYMENT_CONTRACT_HASH_NAME,
                     PAY,
                     runtime_args! {
-                        ARG_AMOUNT => U512::from(payment_purse_amount),
+                        ARG_AMOUNT => payment_purse_amount,
                     },
                 )
                 .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
@@ -567,9 +568,7 @@ fn should_have_equivalent_transforms_with_stored_contract_pointers() {
             let deploy = DeployItemBuilder::new()
                 .with_address(*DEFAULT_ACCOUNT_ADDR)
                 .with_session_code(&format!("{}.wasm", DO_NOTHING_NAME), RuntimeArgs::default())
-                .with_empty_payment_bytes(
-                    runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount), },
-                )
+                .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount, })
                 .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
                 .with_deploy_hash(deploy_hash)
                 .build();
@@ -586,7 +585,7 @@ fn should_have_equivalent_transforms_with_stored_contract_pointers() {
                 )
                 .with_empty_payment_bytes(
                     runtime_args! {
-                            ARG_AMOUNT => U512::from(payment_purse_amount),
+                            ARG_AMOUNT => payment_purse_amount,
                         },
                 )
                 .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
@@ -664,7 +663,7 @@ fn should_have_equivalent_transforms_with_stored_contract_pointers() {
 #[ignore]
 #[test]
 fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
-    let payment_purse_amount = 10_000_000;
+    let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // first, store payment contract
     let exec_request = ExecuteRequestBuilder::standard(
@@ -721,7 +720,7 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
                 STORED_PAYMENT_CONTRACT_HASH_NAME,
                 PAY,
                 runtime_args! {
-                    ARG_AMOUNT => U512::from(payment_purse_amount),
+                    ARG_AMOUNT => payment_purse_amount,
                 },
             )
             // .with_stored_versioned_payment_contract_by_name(
@@ -729,7 +728,7 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
             //                   Some(CONTRACT_INITIAL_VERSION),
             //     PAY,
             //     runtime_args! {
-            //         ARG_AMOUNT => U512::from(payment_purse_amount),
+            //         ARG_AMOUNT => payment_purse_amount,
             //     },
             // )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
@@ -761,7 +760,7 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
 #[ignore]
 #[test]
 fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
-    let payment_purse_amount = 10_000_000;
+    let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // first, store payment contract
     let exec_request = ExecuteRequestBuilder::standard(
@@ -820,7 +819,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
             .with_stored_payment_hash(
                 stored_payment_contract_hash,
                 DEFAULT_ENTRY_POINT_NAME,
-                runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount) },
+                runtime_args! { ARG_AMOUNT => payment_purse_amount },
             )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .with_deploy_hash([2; 32])
@@ -847,7 +846,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
 #[ignore]
 #[test]
 fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
-    let payment_purse_amount = 10_000_000;
+    let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // first, store payment contract for v1.0.0
     let exec_request_1 = ExecuteRequestBuilder::standard(
@@ -906,7 +905,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
             .with_payment_code(
                 STORED_PAYMENT_CONTRACT_NAME,
                 runtime_args! {
-                    ARG_AMOUNT => U512::from(payment_purse_amount),
+                    ARG_AMOUNT => payment_purse_amount,
                 },
             )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
@@ -938,7 +937,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
 #[ignore]
 #[test]
 fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
-    let payment_purse_amount = 10_000_000;
+    let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // first, store payment contract for v1.0.0
     let exec_request_1 = ExecuteRequestBuilder::standard(
@@ -998,7 +997,7 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
             .with_payment_code(
                 STORED_PAYMENT_CONTRACT_NAME,
                 runtime_args! {
-                    ARG_AMOUNT => U512::from(payment_purse_amount),
+                    ARG_AMOUNT => payment_purse_amount,
                 },
             )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
@@ -1030,7 +1029,7 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
 #[ignore]
 #[test]
 fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
-    let payment_purse_amount = 10_000_000;
+    let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // first, store payment contract for v1.0.0
     let exec_request_1 = ExecuteRequestBuilder::standard(
@@ -1076,7 +1075,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
             .with_payment_code(
                 STORED_PAYMENT_CONTRACT_NAME,
                 runtime_args! {
-                    ARG_AMOUNT => U512::from(payment_purse_amount),
+                    ARG_AMOUNT => payment_purse_amount,
                 },
             )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
@@ -1108,7 +1107,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
 #[ignore]
 #[test]
 fn should_execute_stored_payment_and_session_code_with_new_major_version() {
-    let payment_purse_amount = 10_000_000;
+    let payment_purse_amount = *DEFAULT_PAYMENT;
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -1189,7 +1188,7 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
             .with_stored_payment_hash(
                 test_payment_stored_hash,
                 "pay",
-                runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount) },
+                runtime_args! { ARG_AMOUNT => payment_purse_amount },
             )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .with_deploy_hash([3; 32])

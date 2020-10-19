@@ -1,16 +1,16 @@
 use casper_engine_test_support::{
     internal::{
-        utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-        DEFAULT_ACCOUNT_KEY, DEFAULT_RUN_GENESIS_REQUEST,
+        utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
+        DEFAULT_RUN_GENESIS_REQUEST,
     },
-    DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{core::engine_state::CONV_RATE, shared::motes::Motes};
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
 const DO_NOTHING_WASM: &str = "do_nothing.wasm";
-const TRANSFER_PURSE_TO_ACCOUNT_WASM: &str = "transfer_purse_to_account.wasm";
+const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const TRANSFER_MAIN_PURSE_TO_NEW_PURSE_WASM: &str = "transfer_main_purse_to_new_purse.wasm";
 const NAMED_PURSE_PAYMENT_WASM: &str = "named_purse_payment.wasm";
 const ARG_TARGET: &str = "target";
@@ -26,46 +26,26 @@ fn should_charge_non_main_purse() {
     const TEST_PURSE_NAME: &str = "test-purse";
 
     let account_1_account_hash = ACCOUNT_1_ADDR;
-    let payment_purse_amount = U512::from(10_000_000);
-    let account_1_funding_amount = U512::from(100_000_000);
-    let account_1_purse_funding_amount = U512::from(50_000_000);
+    let payment_purse_amount = *DEFAULT_PAYMENT;
+    let account_1_funding_amount = U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE);
+    let account_1_purse_funding_amount = *DEFAULT_PAYMENT;
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    let setup_exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_code(
-                TRANSFER_PURSE_TO_ACCOUNT_WASM, // creates account_1
-                runtime_args! {
-                    ARG_TARGET => account_1_account_hash,
-                    ARG_AMOUNT => account_1_funding_amount
-                },
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount})
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
-            .with_deploy_hash([1; 32])
-            .build();
+    let setup_exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => account_1_funding_amount },
+    )
+    .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let create_purse_exec_request = ExecuteRequestBuilder::standard(
+        ACCOUNT_1_ADDR,
+        TRANSFER_MAIN_PURSE_TO_NEW_PURSE_WASM,
+        runtime_args! { ARG_DESTINATION => TEST_PURSE_NAME, ARG_AMOUNT => account_1_purse_funding_amount },
+    )
+    .build();
 
-    let create_purse_exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(ACCOUNT_1_ADDR)
-            .with_session_code(
-                TRANSFER_MAIN_PURSE_TO_NEW_PURSE_WASM, // creates test purse
-                runtime_args! { ARG_DESTINATION => TEST_PURSE_NAME, ARG_AMOUNT => account_1_purse_funding_amount },
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount})
-            .with_authorization_keys(&[account_1_account_hash])
-            .with_deploy_hash([2; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
-
-    // let transfer_result =
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     builder.exec(setup_exec_request).expect_success().commit();

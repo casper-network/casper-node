@@ -1,7 +1,7 @@
 use casper_engine_test_support::{
     internal::{
         utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-        DEFAULT_ACCOUNT_KEY, DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
@@ -13,6 +13,8 @@ const CONTRACT_KEY_NAME: &str = "transfer_to_account";
 const CONTRACT_TRANSFER_TO_ACCOUNT_NAME: &str = "transfer_to_account_u512";
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 const TRANSFER_AMOUNT: u64 = 1;
+const ARG_AMOUNT: &str = "amount";
+const ARG_TARGET: &str = "target";
 
 #[ignore]
 #[test]
@@ -52,7 +54,7 @@ fn should_transfer_to_account_stored() {
     let modified_balance_alpha: U512 = builder.get_purse_balance(default_account.main_purse());
 
     let transferred_amount: U512 = U512::from(TRANSFER_AMOUNT);
-    let payment_purse_amount = 10_000_000;
+    let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // next make another deploy that USES stored payment logic
     let exec_request = {
@@ -61,10 +63,10 @@ fn should_transfer_to_account_stored() {
             .with_stored_session_hash(
                 contract_hash,
                 FUNCTION_NAME,
-                runtime_args! { "target" => ACCOUNT_1_ADDR, "amount" => transferred_amount },
+                runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => transferred_amount },
             )
             .with_empty_payment_bytes(runtime_args! {
-                "amount" => U512::from(payment_purse_amount),
+                ARG_AMOUNT => payment_purse_amount,
             })
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .with_deploy_hash([2; 32])
