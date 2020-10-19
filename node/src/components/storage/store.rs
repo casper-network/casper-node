@@ -88,4 +88,26 @@ mod tests {
         let mut in_mem_deploy_store = InMemStore::<Deploy, DeployMetadata<Block>>::new();
         should_put_then_get(&mut in_mem_deploy_store);
     }
+
+    fn second_put_should_return_false<T: Store<Value = Deploy>>(store: &mut T) {
+        let mut rng = TestRng::new();
+        let deploy = Deploy::random(&mut rng);
+        assert!(store.put(deploy.clone()).unwrap());
+        assert!(!store.put(deploy).unwrap());
+    }
+    #[test]
+    fn lmdb_deploy_store_second_put_should_return_false() {
+        let (config, _tempdir) = Config::default_for_tests();
+        let mut lmdb_deploy_store = LmdbStore::<Deploy, DeployMetadata<Block>>::new(
+            config.path(),
+            config.max_deploy_store_size(),
+        )
+        .unwrap();
+        second_put_should_return_false(&mut lmdb_deploy_store);
+    }
+    #[test]
+    fn in_mem_deploy_store_second_put_should_return_false() {
+        let mut in_mem_deploy_store = InMemStore::<Deploy, DeployMetadata<Block>>::new();
+        second_put_should_return_false(&mut in_mem_deploy_store);
+    }
 }

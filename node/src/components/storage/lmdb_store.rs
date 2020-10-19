@@ -97,6 +97,13 @@ impl<V: Value, M: Send + Sync> Store for LmdbStore<V, M> {
         let serialized_value =
             bincode::serialize(&value).map_err(|error| Error::from_serialization(*error))?;
         let mut txn = self.env.begin_rw_txn().expect("should create rw txn");
+
+        // TODO: this get() call should be removed when we pass WriteFlags::NO_OVERWRITE as below
+        let has_existing_value = match txn.get(self.db, &serialized_id) {
+            Ok(_) => true,
+            Err(lmdb::Error::NotFound) => false,
+            Err(error) => panic!("should get: {:?}", error),
+        };
         let result = match txn.put(
             self.db,
             &serialized_id,
@@ -106,7 +113,8 @@ impl<V: Value, M: Send + Sync> Store for LmdbStore<V, M> {
             //        execution results.
             WriteFlags::default(),
         ) {
-            Ok(()) => true,
+            Ok(()) => !has_existing_value, /* TODO: when the above notes are fixed, return true
+                                             * here */
             Err(lmdb::Error::KeyExist) => false,
             Err(error) => panic!("should put: {:?}", error),
         };
