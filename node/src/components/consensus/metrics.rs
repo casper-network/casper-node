@@ -8,7 +8,7 @@ pub struct ConsensusMetrics {
     /// Amount of finalized blocks.
     pub finalized_block_count: IntCounter,
     /// Timestamp of the most recently accepted proto block.
-    pub time_since_proto_block: Gauge,
+    pub time_of_last_proposed_block: Gauge,
     /// registry component.
     registry: Registry,
 }
@@ -21,7 +21,7 @@ impl ConsensusMetrics {
         )?;
         let finalized_block_count =
             IntCounter::new("amount_of_blocks", "the number of blocks finalized so far")?;
-        let time_since_proto_block = Gauge::new(
+        let time_of_last_proposed_block = Gauge::new(
             "time_of_last_proto_block",
             "timestamp of the most recently accepted proto block",
         )?;
@@ -30,7 +30,7 @@ impl ConsensusMetrics {
         Ok(ConsensusMetrics {
             finalization_time,
             finalized_block_count,
-            time_since_proto_block,
+            time_of_last_proposed_block,
             registry: registry.clone(),
         })
     }

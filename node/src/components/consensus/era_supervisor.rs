@@ -709,7 +709,7 @@ where
     ) -> Effects<Event<I>> {
         self.era_supervisor
             .metrics
-            .time_since_proto_block
+            .time_of_last_proposed_block
             .set(Timestamp::now().millis() as f64 / 1000.00);
         let mut effects = Effects::new();
         let candidate_blocks = if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
