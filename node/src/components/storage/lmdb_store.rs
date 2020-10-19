@@ -7,14 +7,8 @@ use lmdb::{
 use smallvec::smallvec;
 use tracing::info;
 
-use super::{
-    DeployMetadata, DeployStore, Error, Event, Multiple, Result, StorageType, Store, Value,
-    WithBlockHeight,
-};
-use crate::{
-    effect::Effects,
-    types::{json_compatibility::ExecutionResult, Item},
-};
+use super::{DeployMetadata, DeployStore, Error, Multiple, Result, Store, Value};
+use crate::types::json_compatibility::ExecutionResult;
 
 /// Used to namespace metadata associated with stored values.
 #[repr(u8)]
