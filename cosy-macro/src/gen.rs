@@ -254,6 +254,8 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
             ) -> Result<(Self, crate::reactor::Effects<Self::Event>), Self::Error> {
                 let mut all_effects = crate::reactor::Effects::new();
 
+                let effect_builder = crate::effect::EffectBuilder::new(event_queue);
+
                 // Instantiate each component.
                 #(#component_instantiations)*
 
@@ -261,6 +263,9 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
                 let reactor = #reactor_ident {
                     #(#component_fields,)*
                 };
+
+                // To avoid unused warnings.
+                drop(effect_builder);
 
                 Ok((reactor, all_effects))
             }
