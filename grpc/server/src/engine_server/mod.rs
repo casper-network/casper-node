@@ -209,12 +209,10 @@ where
             let mut ret = CommitResponse::new();
 
             match self.apply_effect(correlation_id, pre_state_hash, transforms) {
-                Ok(CommitResult::Success {
-                    state_root_hash: state_root,
-                }) => {
+                Ok(CommitResult::Success { state_root_hash }) => {
                     let properties = {
                         let mut tmp = BTreeMap::new();
-                        tmp.insert("post-state-hash", format!("{:?}", state_root));
+                        tmp.insert("post-state-hash", format!("{:?}", state_root_hash));
                         tmp.insert("success", true.to_string());
                         tmp
                     };
@@ -225,7 +223,7 @@ where
                     );
 
                     let commit_result = ret.mut_success();
-                    commit_result.set_poststate_hash(state_root.to_vec());
+                    commit_result.set_poststate_hash(state_root_hash.to_vec());
                 }
                 Ok(CommitResult::RootNotFound) => {
                     warn!("RootNotFound");

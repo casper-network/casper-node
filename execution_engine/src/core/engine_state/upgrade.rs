@@ -47,10 +47,9 @@ impl UpgradeResult {
             CommitResult::TypeMismatch(type_mismatch) => UpgradeResult::TypeMismatch(type_mismatch),
             CommitResult::Serialization(error) => UpgradeResult::Serialization(error),
             CommitResult::Success {
-                state_root_hash: state_root,
-                ..
+                state_root_hash, ..
             } => UpgradeResult::Success {
-                post_state_hash: state_root,
+                post_state_hash: state_root_hash,
                 effect,
             },
         }
