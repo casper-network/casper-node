@@ -42,6 +42,10 @@ impl<C: Context> PreValidatedVertex<C> {
         &self.0
     }
 
+    pub(crate) fn timestamp(&self) -> Option<Timestamp> {
+        self.0.timestamp()
+    }
+
     #[cfg(test)]
     pub(crate) fn into_vertex(self) -> Vertex<C> {
         self.0
@@ -192,10 +196,11 @@ impl<C: Context> Highway<C> {
         &mut self,
         ValidVertex(vertex): ValidVertex<C>,
         rng: &mut dyn CryptoRngCore,
+        now: Timestamp,
     ) -> Vec<Effect<C>> {
         if !self.has_vertex(&vertex) {
             match vertex {
-                Vertex::Vote(vote) => self.add_valid_vote(vote, rng),
+                Vertex::Vote(vote) => self.add_valid_vote(vote, now, rng),
                 Vertex::Evidence(evidence) => {
                     self.state.add_evidence(evidence);
                     vec![]
@@ -212,6 +217,13 @@ impl<C: Context> Highway<C> {
             Vertex::Vote(vote) => self.state.has_vote(&vote.hash()),
             Vertex::Evidence(evidence) => self.state.has_evidence(evidence.perpetrator()),
         }
+    }
+
+    /// Returns whether the validator is known to be faulty.
+    pub(crate) fn has_evidence(&self, vid: &C::ValidatorId) -> bool {
+        self.validators
+            .get_index(vid)
+            .map_or(false, |vidx| self.state.has_evidence(vidx))
     }
 
     /// Returns whether we have a vertex that satisfies the dependency.
@@ -243,8 +255,20 @@ impl<C: Context> Highway<C> {
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id.clone();
+
+        // Here we just use the timer's timestamp, and assume it's ~ Timestamp::now()
+        //
+        // This is because proposal votes, i.e. new blocks, are
+        // supposed to thave the exact timestamp that matches the
+        // beginning of the round (which we use as the "round ID").
+        //
+        // But at least any discrepancy here can only come from event
+        // handling delays in our own node, and not from timestamps
+        // set by other nodes.
+
         self.map_active_validator(
             |av, state, rng| av.handle_timer(timestamp, state, instance_id, rng),
+            timestamp,
             rng,
         )
         .unwrap_or_else(|| {
@@ -260,8 +284,27 @@ impl<C: Context> Highway<C> {
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id.clone();
+
+        // We just use the block context's timestamp, which is
+        // hopefully not much older than `Timestamp::now()`
+        //
+        // We do this because essentially what happens is this:
+        //
+        // 1. We realize it's our turn to propose a block in
+        // millisecond 64, so we set a timer.
+        //
+        // 2. The timer for timestamp 64 fires, and we request deploys
+        // for the new block from the deploy buffer (with 64 in the
+        // block context).
+        //
+        // 3. The deploy buffer responds and we finally end up here,
+        // and can propose the new block. But we still have to use
+        // timestamp 64.
+
+        let timestamp = block_context.timestamp();
         self.map_active_validator(
             |av, state, rng| av.propose(value, block_context, state, instance_id, rng),
+            timestamp,
             rng,
         )
         .unwrap_or_else(|| {
@@ -272,6 +315,15 @@ impl<C: Context> Highway<C> {
 
     pub(crate) fn validators(&self) -> &Validators<C::ValidatorId> {
         &self.validators
+    }
+
+    /// Returns an iterator over all validators known to be faulty.
+    pub(crate) fn faulty_validators(&self) -> impl Iterator<Item = &C::ValidatorId> {
+        self.validators
+            .iter()
+            .enumerate()
+            .filter(move |(i, _)| self.state.has_evidence((*i as u32).into()))
+            .map(|(_, v)| v.id())
     }
 
     pub(super) fn state(&self) -> &State<C> {
@@ -287,6 +339,7 @@ impl<C: Context> Highway<C> {
         let instance_id = self.instance_id.clone();
         self.map_active_validator(
             |av, state, rng| av.on_new_vote(vhash, timestamp, state, instance_id, rng),
+            timestamp,
             rng,
         )
         .unwrap_or_default()
@@ -299,6 +352,7 @@ impl<C: Context> Highway<C> {
     fn map_active_validator<F>(
         &mut self,
         f: F,
+        timestamp: Timestamp,
         rng: &mut dyn CryptoRngCore,
     ) -> Option<Vec<Effect<C>>>
     where
@@ -308,7 +362,9 @@ impl<C: Context> Highway<C> {
         let mut result = vec![];
         for effect in &effects {
             match effect {
-                Effect::NewVertex(vv) => result.extend(self.add_valid_vertex(vv.clone(), rng)),
+                Effect::NewVertex(vv) => {
+                    result.extend(self.add_valid_vertex(vv.clone(), rng, timestamp))
+                }
                 Effect::WeEquivocated(_) => self.deactivate_validator(),
                 Effect::ScheduleTimer(_) | Effect::RequestNewBlock(_) => (),
             }
@@ -322,7 +378,8 @@ impl<C: Context> Highway<C> {
     fn do_pre_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
             Vertex::Vote(vote) => {
-                let v_id = self.validator_id(&vote).ok_or(VoteError::Creator)?;
+                let creator = vote.wire_vote.creator;
+                let v_id = self.validators.id(creator).ok_or(VoteError::Creator)?;
                 if vote.wire_vote.instance_id != self.instance_id {
                     return Err(VoteError::InstanceId.into());
                 }
@@ -334,8 +391,7 @@ impl<C: Context> Highway<C> {
             Vertex::Evidence(evidence) => {
                 let v_id = self
                     .validators
-                    .get_by_index(evidence.perpetrator())
-                    .map(Validator::id)
+                    .id(evidence.perpetrator())
                     .ok_or(EvidenceError::UnknownPerpetrator)?;
                 Ok(evidence.validate(v_id, &self.instance_id)?)
             }
@@ -358,19 +414,12 @@ impl<C: Context> Highway<C> {
     fn add_valid_vote(
         &mut self,
         swvote: SignedWireVote<C>,
+        now: Timestamp,
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
-        let vote_timestamp = swvote.wire_vote.timestamp;
         let vote_hash = swvote.hash();
         self.state.add_valid_vote(swvote);
-        self.on_new_vote(&vote_hash, vote_timestamp, rng)
-    }
-
-    /// Returns validator ID of the `swvote` creator, if it exists.
-    fn validator_id(&self, swvote: &SignedWireVote<C>) -> Option<&C::ValidatorId> {
-        self.validators
-            .get_by_index(swvote.wire_vote.creator)
-            .map(Validator::id)
+        self.on_new_vote(&vote_hash, now, rng)
     }
 }
 
@@ -413,6 +462,7 @@ pub(crate) mod tests {
     #[test]
     fn invalid_signature_error() {
         let mut rng = TestRng::new();
+        let now: Timestamp = 500.into();
 
         let state: State<TestContext> = State::new_test(WEIGHTS, 0);
         let mut highway = Highway {
@@ -451,7 +501,7 @@ pub(crate) mod tests {
         let pvv = highway.pre_validate_vertex(valid_vertex).unwrap();
         assert_eq!(None, highway.missing_dependency(&pvv));
         let vv = highway.validate_vertex(pvv).unwrap();
-        assert!(highway.add_valid_vertex(vv, &mut rng).is_empty());
+        assert!(highway.add_valid_vertex(vv, &mut rng, now).is_empty());
     }
 
     #[test]

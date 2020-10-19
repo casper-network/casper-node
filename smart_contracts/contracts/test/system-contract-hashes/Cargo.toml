@@ -1,0 +1,16 @@
+[package]
+name = "system-contract-hashes"
+version = "0.1.0"
+authors = ["Ed Hastings <ehastings@casperlabs.io>"]
+edition = "2018"
+
+[[bin]]
+name = "system_contract_hashes"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }

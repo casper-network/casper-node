@@ -51,6 +51,22 @@ impl<C: Context> Vertex<C> {
             Vertex::Evidence(_) => None,
         }
     }
+
+    /// Returns whether this is evidence, as opposed to other types of vertices.
+    pub(crate) fn is_evidence(&self) -> bool {
+        match self {
+            Vertex::Vote(_) => false,
+            Vertex::Evidence(_) => true,
+        }
+    }
+
+    /// Returns a `Timestamp` provided the vertex is a `Vertex::Vote`
+    pub(crate) fn timestamp(&self) -> Option<Timestamp> {
+        match self {
+            Vertex::Vote(signed_wire_vote) => Some(signed_wire_vote.wire_vote.timestamp),
+            Vertex::Evidence(_) => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

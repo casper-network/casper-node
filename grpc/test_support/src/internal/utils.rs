@@ -23,7 +23,7 @@ use casper_types::Key;
 use crate::internal::{
     AUCTION_INSTALL_CONTRACT, DEFAULT_CHAIN_NAME, DEFAULT_GENESIS_CONFIG_HASH,
     DEFAULT_GENESIS_TIMESTAMP, DEFAULT_PROTOCOL_VERSION, DEFAULT_VALIDATOR_SLOTS,
-    DEFAULT_WASM_COSTS, MINT_INSTALL_CONTRACT, POS_INSTALL_CONTRACT,
+    DEFAULT_WASM_CONFIG, MINT_INSTALL_CONTRACT, POS_INSTALL_CONTRACT,
     STANDARD_PAYMENT_INSTALL_CONTRACT,
 };
 
@@ -128,7 +128,7 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
     let proof_of_stake_installer_bytes = read_wasm_file_bytes(POS_INSTALL_CONTRACT);
     let standard_payment_installer_bytes = read_wasm_file_bytes(STANDARD_PAYMENT_INSTALL_CONTRACT);
     let auction_installer_bytes = read_wasm_file_bytes(AUCTION_INSTALL_CONTRACT);
-    let wasm_costs = *DEFAULT_WASM_COSTS;
+    let wasm_config = *DEFAULT_WASM_CONFIG;
     let validator_slots = DEFAULT_VALIDATOR_SLOTS;
     ExecConfig::new(
         mint_installer_bytes,
@@ -136,7 +136,7 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
         standard_payment_installer_bytes,
         auction_installer_bytes,
         accounts,
-        wasm_costs,
+        wasm_config,
         validator_slots,
     )
 }

@@ -14,7 +14,6 @@ use crate::{
             validators::ValidatorIndex,
         },
         traits::Context,
-        EraEnd,
     },
     types::Timestamp,
 };
@@ -61,20 +60,14 @@ impl<C: Context> FinalityDetector<C> {
         }
         Ok(iter::from_fn(move || {
             let bhash = self.next_finalized(state)?;
-            let to_id = |vidx: ValidatorIndex| {
-                let opt_validator = highway.validators().get_by_index(vidx);
-                opt_validator.unwrap().id().clone() // Index exists, since we have votes from them.
-            };
+            // Index exists, since we have votes from them.
+            let to_id = |vidx: ValidatorIndex| highway.validators().id(vidx).unwrap().clone();
             let block = state.block(bhash);
             let vote = state.vote(bhash);
-            let era_end = if state.is_terminal_block(bhash) {
+            let rewards = if state.is_terminal_block(bhash) {
                 let rewards = rewards::compute_rewards(state, bhash);
                 let rewards_iter = rewards.enumerate();
-                let faulty_iter = vote.panorama.enumerate().filter(|(_, obs)| obs.is_faulty());
-                Some(EraEnd {
-                    equivocators: faulty_iter.map(|(vidx, _)| to_id(vidx)).collect(),
-                    rewards: rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect(),
-                })
+                Some(rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect())
             } else {
                 None
             };
@@ -83,7 +76,7 @@ impl<C: Context> FinalityDetector<C> {
                 value: block.value.clone(),
                 timestamp: vote.timestamp,
                 height: block.height,
-                era_end,
+                rewards,
                 proposer: to_id(vote.creator),
             })
         }))

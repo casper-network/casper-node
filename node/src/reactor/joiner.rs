@@ -360,6 +360,7 @@ impl reactor::Reactor for Reactor {
             chainspec_loader
                 .genesis_post_state_hash()
                 .expect("should have genesis post state hash"),
+            registry,
             rng,
         )?;
 

@@ -134,3 +134,8 @@ resources/node-storage/*
 
 # CLion
 .idea/
+
+# NCTL transient assets
+/utils/nctl/assets
+/utils/nctl/dumps
+/utils/nctl/templates/node-config-*.toml

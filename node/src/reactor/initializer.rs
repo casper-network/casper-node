@@ -129,6 +129,8 @@ impl reactor::Reactor for Reactor {
             .load(config.dir())
             .map_err(|err| Error::ConfigError(err.to_string()))?;
 
+        chainspec.validate_config();
+
         let effect_builder = EffectBuilder::new(event_queue);
 
         let storage_config = config.map_ref(|cfg| cfg.storage.clone());

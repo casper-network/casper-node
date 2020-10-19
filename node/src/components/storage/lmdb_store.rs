@@ -8,7 +8,7 @@ use smallvec::smallvec;
 use tracing::info;
 
 use super::{DeployMetadata, DeployStore, Error, Multiple, Result, Store, Value};
-use crate::types::json_compatibility::ExecutionResult;
+use crate::{types::json_compatibility::ExecutionResult, MAX_THREAD_COUNT};
 
 /// Used to namespace metadata associated with stored values.
 #[repr(u8)]
@@ -38,6 +38,8 @@ where
         let env = Environment::new()
             .set_flags(EnvironmentFlags::NO_SUB_DIR)
             .set_map_size(max_size)
+            // to avoid panic on excessive read-only transactions
+            .set_max_readers(MAX_THREAD_COUNT as u32)
             .open(db_path.as_ref())?;
         let db = env.create_db(None, DatabaseFlags::empty())?;
         info!("opened DB at {}", db_path.as_ref().display());
