@@ -112,18 +112,14 @@ impl Display for Event {
             ),
             Event::CommitExecutionEffects {
                 state,
-                commit_result:
-                    Ok(CommitResult::Success {
-                        state_root: state_root_hash,
-                        ..
-                    }),
+                commit_result: Ok(CommitResult::Success { state_root, .. }),
             } => write!(
                 f,
                 "commit execution effects of finalized block with height {} with \
                 pre-state hash {}: success with post-state hash {}",
                 state.finalized_block.height(),
                 state.state_root_hash,
-                state_root_hash,
+                state_root,
             ),
             Event::CommitExecutionEffects {
                 state,

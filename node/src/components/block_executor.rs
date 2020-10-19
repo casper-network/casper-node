@@ -433,11 +433,9 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
             } => {
                 trace!(?state, ?commit_result, "commit result");
                 match commit_result {
-                    Ok(CommitResult::Success {
-                        state_root: state_root_hash,
-                    }) => {
-                        debug!(?state_root_hash, "commit succeeded");
-                        state.state_root_hash = state_root_hash.into();
+                    Ok(CommitResult::Success { state_root }) => {
+                        debug!(?state_root, "commit succeeded");
+                        state.state_root_hash = state_root.into();
                         self.execute_next_deploy_or_create_block(effect_builder, state)
                     }
                     _ => {

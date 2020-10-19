@@ -1819,12 +1819,7 @@ where
         Error: From<S::Error>,
     {
         match self.state.commit(correlation_id, pre_state_hash, effects)? {
-            CommitResult::Success {
-                state_root: state_root_hash,
-                ..
-            } => Ok(CommitResult::Success {
-                state_root: state_root_hash,
-            }),
+            CommitResult::Success { state_root, .. } => Ok(CommitResult::Success { state_root }),
             commit_result => Ok(commit_result),
         }
     }
@@ -2123,10 +2118,8 @@ where
             .map_err(Into::into)?;
 
         match commit_result {
-            CommitResult::Success {
-                state_root: state_root_hash,
-            } => Ok(StepResult::Success {
-                post_state_hash: state_root_hash,
+            CommitResult::Success { state_root } => Ok(StepResult::Success {
+                post_state_hash: state_root,
             }),
             CommitResult::RootNotFound => Ok(StepResult::RootNotFound),
             CommitResult::KeyNotFound(key) => Ok(StepResult::KeyNotFound(key)),

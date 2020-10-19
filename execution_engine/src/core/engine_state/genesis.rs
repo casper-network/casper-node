@@ -57,11 +57,8 @@ impl GenesisResult {
             CommitResult::KeyNotFound(key) => GenesisResult::KeyNotFound(key),
             CommitResult::TypeMismatch(type_mismatch) => GenesisResult::TypeMismatch(type_mismatch),
             CommitResult::Serialization(error) => GenesisResult::Serialization(error),
-            CommitResult::Success {
-                state_root: state_root_hash,
-                ..
-            } => GenesisResult::Success {
-                post_state_hash: state_root_hash,
+            CommitResult::Success { state_root, .. } => GenesisResult::Success {
+                post_state_hash: state_root,
                 effect,
             },
         }

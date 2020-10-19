@@ -44,9 +44,9 @@ impl fmt::Display for CommitResult {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
             CommitResult::RootNotFound => write!(f, "Root not found"),
-            CommitResult::Success {
-                state_root: state_root_hash,
-            } => write!(f, "Success: state_root: {}", state_root_hash,),
+            CommitResult::Success { state_root } => {
+                write!(f, "Success: state_root: {}", state_root,)
+            }
             CommitResult::KeyNotFound(key) => write!(f, "Key not found: {}", key),
             CommitResult::TypeMismatch(type_mismatch) => {
                 write!(f, "Type mismatch: {:?}", type_mismatch)
@@ -112,17 +112,16 @@ where
     H: BuildHasher,
 {
     let mut txn = environment.create_read_write_txn()?;
-    let mut state_root_hash = prestate_hash;
+    let mut state_root = prestate_hash;
 
-    let maybe_root: Option<Trie<Key, StoredValue>> = store.get(&txn, &state_root_hash)?;
+    let maybe_root: Option<Trie<Key, StoredValue>> = store.get(&txn, &state_root)?;
 
     if maybe_root.is_none() {
         return Ok(CommitResult::RootNotFound);
     };
 
     for (key, transform) in effects.into_iter() {
-        let read_result =
-            read::<_, _, _, _, E>(correlation_id, &txn, store, &state_root_hash, &key)?;
+        let read_result = read::<_, _, _, _, E>(correlation_id, &txn, store, &state_root, &key)?;
 
         let value = match (read_result, transform) {
             (ReadResult::NotFound, Transform::Write(new_value)) => new_value,
@@ -136,18 +135,12 @@ where
             _x @ (ReadResult::RootNotFound, _) => panic!(stringify!(_x._1)),
         };
 
-        let write_result = write::<_, _, _, _, E>(
-            correlation_id,
-            &mut txn,
-            store,
-            &state_root_hash,
-            &key,
-            &value,
-        )?;
+        let write_result =
+            write::<_, _, _, _, E>(correlation_id, &mut txn, store, &state_root, &key, &value)?;
 
         match write_result {
             WriteResult::Written(root_hash) => {
-                state_root_hash = root_hash;
+                state_root = root_hash;
             }
             WriteResult::AlreadyExists => (),
             _x @ WriteResult::RootNotFound => panic!(stringify!(_x)),
@@ -156,7 +149,5 @@ where
 
     txn.commit()?;
 
-    Ok(CommitResult::Success {
-        state_root: state_root_hash,
-    })
+    Ok(CommitResult::Success { state_root })
 }

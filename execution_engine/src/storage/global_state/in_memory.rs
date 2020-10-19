@@ -287,10 +287,7 @@ mod tests {
             .collect();
 
         let updated_hash = match state.commit(correlation_id, root_hash, effects).unwrap() {
-            CommitResult::Success {
-                state_root: state_root_hash,
-                ..
-            } => state_root_hash,
+            CommitResult::Success { state_root, .. } => state_root,
             _ => panic!("commit failed"),
         };
 
@@ -320,10 +317,7 @@ mod tests {
         };
 
         let updated_hash = match state.commit(correlation_id, root_hash, effects).unwrap() {
-            CommitResult::Success {
-                state_root: state_root_hash,
-                ..
-            } => state_root_hash,
+            CommitResult::Success { state_root, .. } => state_root,
             _ => panic!("commit failed"),
         };
 
