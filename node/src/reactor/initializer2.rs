@@ -7,18 +7,25 @@ use crate::{
         small_network::NodeId,
         storage::{Storage, StorageType},
     },
+    effect::Effects,
     protocol::Message,
     reactor::validator,
     utils::WithDir,
 };
 
 reactor!(Initializer {
-  type Config =  WithDir<validator::Config>;
+  type Config = WithDir<validator::Config>;
 
   components: {
-    chainspec = @ChainspecLoader(todo!(), todo!());
-    storage = Storage(todo!());
-    contract_runtime = ContractRuntime(todo!(), todo!(), todo!());
+    chainspec = @ChainspecLoader(cfg
+           .value()
+           .node
+           .chainspec_config_path
+           .clone()
+           .load(cfg.dir())
+           .expect("TODO: return proper error when chainspec cannot be loaded"), effect_builder);
+    storage = Storage(cfg.map_ref(|cfg| cfg.storage.clone()));
+    contract_runtime = ContractRuntime(cfg.map_ref(|cfg| cfg.storage.clone()), &cfg.value().contract_runtime, registry);
   }
 
   events: {
@@ -26,11 +33,8 @@ reactor!(Initializer {
   }
 
   requests: {
-    // StorageRequest<Storage> -> storage;
-    // ContractRuntimeRequest -> contract_runtime;
-
-    StorageRequest<Storage> -> !;
-    ContractRuntimeRequest -> !;
+    StorageRequest<Storage> -> storage;
+    ContractRuntimeRequest -> contract_runtime;
 
     // No network traffic during initialization, just discard.
     // TODO: Allow for "hard" discard, resulting in a crash?
@@ -44,7 +48,6 @@ reactor!(Initializer {
 
 // TODO: Metrics
 // TODO: is_stopped
-// TODO: config processing
 
 impl Initializer {
     /// Returns whether the initialization process completed successfully or not.
