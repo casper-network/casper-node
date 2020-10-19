@@ -17,12 +17,11 @@ use syn::{
     parenthesized,
     parse::{Parse, ParseStream, Result},
     punctuated::Punctuated,
-    token::Group,
     Expr, Ident, ItemType, Path, Token,
 };
 
 use crate::{rust_type::RustType, util::to_ident};
-use proc_macro2::{Delimiter, Span, TokenStream, TokenTree};
+use proc_macro2::{Span, TokenStream};
 
 #[derive(Debug)]
 pub(crate) struct ReactorDefinition {
