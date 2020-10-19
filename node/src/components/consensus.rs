@@ -5,6 +5,7 @@ mod config;
 mod consensus_protocol;
 mod era_supervisor;
 mod highway_core;
+mod metrics;
 mod protocols;
 #[cfg(test)]
 mod tests;

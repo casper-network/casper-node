@@ -21,7 +21,7 @@ use datasize::DataSize;
 use fmt::Display;
 use itertools::Itertools;
 use num_traits::AsPrimitive;
-use prometheus::{Gauge, IntCounter, Registry};
+use prometheus::Registry;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, trace, warn};
@@ -44,6 +44,7 @@ use crate::{
                 FinalizedBlock as CpFinalizedBlock,
             },
             highway_core::{highway::Params, validators::Validators},
+            metrics::ConsensusMetrics,
             protocols::highway::{HighwayContext, HighwayProtocol, HighwaySecret},
             traits::NodeIdT,
             Config, ConsensusMessage, Event, ReactorEventT,
@@ -902,53 +903,5 @@ where
                 effects
             }
         }
-    }
-}
-
-/// Network metrics to track Consensus
-#[derive(Debug)]
-pub struct ConsensusMetrics {
-    /// Gauge to track time between proposal and finalization.
-    finalization_time: Gauge,
-    /// Amount of finalized blocks.
-    finalized_block_count: IntCounter,
-    /// Time stamp of the most recent proto block.
-    time_since_proto_block: Gauge,
-    /// registry component.
-    registry: Registry,
-}
-
-impl ConsensusMetrics {
-    fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
-        let finalization_time = Gauge::new(
-            "finalization_time",
-            "the amount of time, in milliseconds, between proposal and finalization of a block",
-        )?;
-        let finalized_block_count =
-            IntCounter::new("amount_of_blocks", "the number of blocks finalized so far")?;
-        let time_since_proto_block = Gauge::new(
-            "time_since_proto_block",
-            "timestamp of the most recently accepted proto-block",
-        )?;
-        registry.register(Box::new(finalization_time.clone()))?;
-        registry.register(Box::new(finalized_block_count.clone()))?;
-        registry.register(Box::new(time_since_proto_block.clone()))?;
-        Ok(ConsensusMetrics {
-            finalization_time,
-            finalized_block_count,
-            time_since_proto_block,
-            registry: registry.clone(),
-        })
-    }
-}
-
-impl Drop for ConsensusMetrics {
-    fn drop(&mut self) {
-        self.registry
-            .unregister(Box::new(self.finalization_time.clone()))
-            .expect("did not expect deregistering rate to fail");
-        self.registry
-            .unregister(Box::new(self.finalized_block_count.clone()))
-            .expect("did not expect deregisterting amount to fail");
     }
 }
