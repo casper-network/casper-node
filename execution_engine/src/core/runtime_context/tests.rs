@@ -56,7 +56,8 @@ fn mock_tracking_copy(
 
     let new_hash = match commit_result {
         CommitResult::Success {
-            state_root_hash, ..
+            state_root: state_root_hash,
+            ..
         } => state_root_hash,
         other => panic!("Commiting changes to test History failed: {:?}.", other),
     };

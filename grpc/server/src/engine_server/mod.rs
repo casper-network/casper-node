@@ -209,7 +209,9 @@ where
             let mut ret = CommitResponse::new();
 
             match self.apply_effect(correlation_id, pre_state_hash, transforms) {
-                Ok(CommitResult::Success { state_root_hash }) => {
+                Ok(CommitResult::Success {
+                    state_root: state_root_hash,
+                }) => {
                     let properties = {
                         let mut tmp = BTreeMap::new();
                         tmp.insert("post-state-hash", format!("{:?}", state_root_hash));

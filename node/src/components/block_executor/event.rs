@@ -114,7 +114,8 @@ impl Display for Event {
                 state,
                 commit_result:
                     Ok(CommitResult::Success {
-                        state_root_hash, ..
+                        state_root: state_root_hash,
+                        ..
                     }),
             } => write!(
                 f,
