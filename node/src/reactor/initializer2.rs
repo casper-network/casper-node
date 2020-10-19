@@ -16,9 +16,9 @@ reactor!(Initializer {
   type Config =  WithDir<validator::Config>;
 
   components: {
-    chainspec = ChainspecLoader(todo!(), todo!());
+    chainspec = @ChainspecLoader(todo!(), todo!());
     storage = Storage(todo!());
-    contract_runtime = ContractRuntime();
+    contract_runtime = ContractRuntime(todo!(), todo!(), todo!());
   }
 
   events: {
