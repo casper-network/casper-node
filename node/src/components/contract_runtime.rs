@@ -4,7 +4,6 @@ mod config;
 pub use config::Config;
 
 use std::{
-    convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
     sync::Arc,
     time::Instant,
@@ -146,7 +145,7 @@ where
     REv: From<Event> + Send,
 {
     type Event = Event;
-    type ConstructionError = Infallible;
+    type ConstructionError = ConfigError;
 
     fn handle_event(
         &mut self,
