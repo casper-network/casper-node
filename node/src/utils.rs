@@ -13,6 +13,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use datasize::DataSize;
 use lazy_static::lazy_static;
 use libc::{c_long, sysconf, _SC_PAGESIZE};
 use thiserror::Error;
@@ -138,7 +139,7 @@ pub(crate) fn write_file<P: AsRef<Path>, B: AsRef<[u8]>>(
 /// With-directory context.
 ///
 /// Associates a type with a "working directory".
-#[derive(Clone, Debug)]
+#[derive(Clone, DataSize, Debug)]
 pub struct WithDir<T> {
     dir: PathBuf,
     value: T,
