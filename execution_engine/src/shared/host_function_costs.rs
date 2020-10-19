@@ -9,8 +9,68 @@ use super::gas::Gas;
 /// Representation of argument's cost.
 pub type Cost = u32;
 
-const DEFAULT_FIXED_COST: Cost = 200_000;
+/// An identifier that represents an unused argument.
 const NOT_USED: Cost = 0;
+
+/// An arbitrary default fixed cost for host functions that were not researched yet.
+const DEFAULT_FIXED_COST: Cost = 200_000;
+
+const DEFAULT_ADD_ASSOCIATED_KEY_COST: u32 = 9_000_000;
+const DEFAULT_ADD_COST: u32 = 5_800_000;
+
+const DEFAULT_CALL_CONTRACT_COST: u32 = 4_500_000;
+const DEFAULT_CALL_CONTRACT_ARGS_SIZE_WEIGHT: u32 = 420;
+
+const DEFAULT_CREATE_PURSE_COST: u32 = 170_000_000;
+const DEFAULT_GET_BALANCE_COST: u32 = 3_800_000;
+const DEFAULT_GET_BLOCKTIME_COST: u32 = 330_000;
+const DEFAULT_GET_CALLER_COST: u32 = 380_000;
+const DEFAULT_GET_KEY_COST: u32 = 2_000_000;
+const DEFAULT_GET_KEY_NAME_SIZE_WEIGHT: u32 = 440;
+const DEFAULT_GET_MAIN_PURSE_COST: u32 = 1_300_000;
+const DEFAULT_GET_PHASE_COST: u32 = 710_000;
+const DEFAULT_GET_SYSTEM_CONTRACT_COST: u32 = 1_100_000;
+const DEFAULT_HAS_KEY_COST: u32 = 1_500_000;
+const DEFAULT_HAS_KEY_NAME_SIZE_WEIGHT: u32 = 840;
+const DEFAULT_IS_VALID_UREF_COST: u32 = 760_000;
+const DEFAULT_LOAD_NAMED_KEYS_COST: u32 = 42_000_000;
+const DEFAULT_NEW_UREF_COST: u32 = 17_000_000;
+const DEFAULT_NEW_UREF_VALUE_SIZE_WEIGHT: u32 = 590;
+
+const DEFAULT_PRINT_COST: u32 = 20_000_000;
+const DEFAULT_PRINT_TEXT_SIZE_WEIGHT: u32 = 4_600;
+
+const DEFAULT_PUT_KEY_COST: u32 = 38_000_000;
+const DEFAULT_PUT_KEY_NAME_SIZE_WEIGHT: u32 = 840;
+
+const DEFAULT_READ_HOST_BUFFER_COST: u32 = 3_500_000;
+const DEFAULT_READ_HOST_BUFFER_DEST_SIZE_WEIGHT: u32 = 310;
+
+const DEFAULT_READ_VALUE_COST: u32 = 6_000_000;
+const DEFAULT_READ_VALUE_LOCAL_COST: u32 = 5_500_000;
+const DEFAULT_READ_VALUE_LOCAL_KEY_SIZE_WEIGHT: u32 = 590;
+
+const DEFAULT_REMOVE_ASSOCIATED_KEY_COST: u32 = 4_200_000;
+
+const DEFAULT_REMOVE_KEY_COST: u32 = 61_000_000;
+const DEFAULT_REMOVE_KEY_NAME_SIZE_WEIGHT: u32 = 3_200;
+
+const DEFAULT_RET_COST: u32 = 23_000_000;
+const DEFAULT_RET_VALUE_SIZE_WEIGHT: u32 = 420_000;
+
+const DEFAULT_REVERT_COST: u32 = 500_000;
+const DEFAULT_SET_ACTION_THRESHOLD_COST: u32 = 74_000_000;
+const DEFAULT_TRANSFER_FROM_PURSE_TO_ACCOUNT_COST: u32 = 160_000_000;
+const DEFAULT_TRANSFER_FROM_PURSE_TO_PURSE_COST: u32 = 82_000_000;
+const DEFAULT_TRANSFER_TO_ACCOUNT_COST: u32 = 24_000_000;
+const DEFAULT_UPDATE_ASSOCIATED_KEY_COST: u32 = 4_200_000;
+
+const DEFAULT_WRITE_COST: u32 = 14_000_000;
+const DEFAULT_WRITE_KEY_BYTES_SIZE_WEIGHT: u32 = 1_800;
+const DEFAULT_WRITE_VALUE_SIZE_WEIGHT: u32 = 980;
+
+const DEFAULT_WRITE_LOCAL_COST: u32 = 9_500_000;
+const DEFAULT_WRITE_LOCAL_VALUE_SIZE_WEIGHT: u32 = 520;
 
 /// Representation of a host function cost
 ///
@@ -162,43 +222,105 @@ pub struct HostFunctionCosts {
 impl Default for HostFunctionCosts {
     fn default() -> Self {
         Self {
-            read_value: HostFunction::fixed(6_000_000),
-            read_value_local: HostFunction::new(5_500_000, [NOT_USED, 590, NOT_USED]),
-            write: HostFunction::new(14_000_000, [NOT_USED, NOT_USED, NOT_USED, 980]),
-            write_local: HostFunction::new(9_500_000, [NOT_USED, 1_800, NOT_USED, 520]),
-            add: HostFunction::fixed(5_800_000),
-            new_uref: HostFunction::new(17_000_000, [NOT_USED, NOT_USED, 590]),
-            load_named_keys: HostFunction::fixed(42_000_000),
-            ret: HostFunction::new(23_000_000, [NOT_USED, 420_000]),
-            get_key: HostFunction::new(2_000_000, [NOT_USED, 440, NOT_USED, NOT_USED, NOT_USED]),
-            has_key: HostFunction::new(1_500_000, [NOT_USED, 840]),
-            put_key: HostFunction::new(38_000_000, [NOT_USED, 840, NOT_USED, NOT_USED]),
-            remove_key: HostFunction::new(61_000_000, [NOT_USED, 3_200]),
-            revert: HostFunction::fixed(500_000),
-            is_valid_uref: HostFunction::fixed(760_000),
-            add_associated_key: HostFunction::fixed(9_000_000),
-            remove_associated_key: HostFunction::fixed(4_200_000),
-            update_associated_key: HostFunction::fixed(4_200_000),
-            set_action_threshold: HostFunction::fixed(74_000_000),
-            get_caller: HostFunction::fixed(380_000),
-            get_blocktime: HostFunction::fixed(330_000),
-            create_purse: HostFunction::fixed(170_000_000),
-            transfer_to_account: HostFunction::fixed(24_000_000),
-            transfer_from_purse_to_account: HostFunction::fixed(160_000_000),
-            transfer_from_purse_to_purse: HostFunction::fixed(82_000_000),
-            get_balance: HostFunction::fixed(3_800_000),
-            get_phase: HostFunction::fixed(710_000),
-            get_system_contract: HostFunction::fixed(1_100_000),
-            get_main_purse: HostFunction::fixed(1_300_000),
-            read_host_buffer: HostFunction::new(3_500_000, [NOT_USED, 310, NOT_USED]),
+            read_value: HostFunction::fixed(DEFAULT_READ_VALUE_COST),
+            read_value_local: HostFunction::new(
+                DEFAULT_READ_VALUE_LOCAL_COST,
+                [NOT_USED, DEFAULT_READ_VALUE_LOCAL_KEY_SIZE_WEIGHT, NOT_USED],
+            ),
+            write: HostFunction::new(
+                DEFAULT_WRITE_COST,
+                [
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    DEFAULT_WRITE_VALUE_SIZE_WEIGHT,
+                ],
+            ),
+            write_local: HostFunction::new(
+                DEFAULT_WRITE_LOCAL_COST,
+                [
+                    NOT_USED,
+                    DEFAULT_WRITE_KEY_BYTES_SIZE_WEIGHT,
+                    NOT_USED,
+                    DEFAULT_WRITE_LOCAL_VALUE_SIZE_WEIGHT,
+                ],
+            ),
+            add: HostFunction::fixed(DEFAULT_ADD_COST),
+            new_uref: HostFunction::new(
+                DEFAULT_NEW_UREF_COST,
+                [NOT_USED, NOT_USED, DEFAULT_NEW_UREF_VALUE_SIZE_WEIGHT],
+            ),
+            load_named_keys: HostFunction::fixed(DEFAULT_LOAD_NAMED_KEYS_COST),
+            ret: HostFunction::new(DEFAULT_RET_COST, [NOT_USED, DEFAULT_RET_VALUE_SIZE_WEIGHT]),
+            get_key: HostFunction::new(
+                DEFAULT_GET_KEY_COST,
+                [
+                    NOT_USED,
+                    DEFAULT_GET_KEY_NAME_SIZE_WEIGHT,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                ],
+            ),
+            has_key: HostFunction::new(
+                DEFAULT_HAS_KEY_COST,
+                [NOT_USED, DEFAULT_HAS_KEY_NAME_SIZE_WEIGHT],
+            ),
+            put_key: HostFunction::new(
+                DEFAULT_PUT_KEY_COST,
+                [
+                    NOT_USED,
+                    DEFAULT_PUT_KEY_NAME_SIZE_WEIGHT,
+                    NOT_USED,
+                    NOT_USED,
+                ],
+            ),
+            remove_key: HostFunction::new(
+                DEFAULT_REMOVE_KEY_COST,
+                [NOT_USED, DEFAULT_REMOVE_KEY_NAME_SIZE_WEIGHT],
+            ),
+            revert: HostFunction::fixed(DEFAULT_REVERT_COST),
+            is_valid_uref: HostFunction::fixed(DEFAULT_IS_VALID_UREF_COST),
+            add_associated_key: HostFunction::fixed(DEFAULT_ADD_ASSOCIATED_KEY_COST),
+            remove_associated_key: HostFunction::fixed(DEFAULT_REMOVE_ASSOCIATED_KEY_COST),
+            update_associated_key: HostFunction::fixed(DEFAULT_UPDATE_ASSOCIATED_KEY_COST),
+            set_action_threshold: HostFunction::fixed(DEFAULT_SET_ACTION_THRESHOLD_COST),
+            get_caller: HostFunction::fixed(DEFAULT_GET_CALLER_COST),
+            get_blocktime: HostFunction::fixed(DEFAULT_GET_BLOCKTIME_COST),
+            create_purse: HostFunction::fixed(DEFAULT_CREATE_PURSE_COST),
+            transfer_to_account: HostFunction::fixed(DEFAULT_TRANSFER_TO_ACCOUNT_COST),
+            transfer_from_purse_to_account: HostFunction::fixed(
+                DEFAULT_TRANSFER_FROM_PURSE_TO_ACCOUNT_COST,
+            ),
+            transfer_from_purse_to_purse: HostFunction::fixed(
+                DEFAULT_TRANSFER_FROM_PURSE_TO_PURSE_COST,
+            ),
+            get_balance: HostFunction::fixed(DEFAULT_GET_BALANCE_COST),
+            get_phase: HostFunction::fixed(DEFAULT_GET_PHASE_COST),
+            get_system_contract: HostFunction::fixed(DEFAULT_GET_SYSTEM_CONTRACT_COST),
+            get_main_purse: HostFunction::fixed(DEFAULT_GET_MAIN_PURSE_COST),
+            read_host_buffer: HostFunction::new(
+                DEFAULT_READ_HOST_BUFFER_COST,
+                [
+                    NOT_USED,
+                    DEFAULT_READ_HOST_BUFFER_DEST_SIZE_WEIGHT,
+                    NOT_USED,
+                ],
+            ),
             create_contract_package_at_hash: HostFunction::default(),
             create_contract_user_group: HostFunction::default(),
             add_contract_version: HostFunction::default(),
             disable_contract_version: HostFunction::default(),
             call_contract: HostFunction::new(
-                4_500_000,
+                DEFAULT_CALL_CONTRACT_COST,
                 [
-                    NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED, 420, NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    DEFAULT_CALL_CONTRACT_ARGS_SIZE_WEIGHT,
+                    NOT_USED,
                 ],
             ),
             call_versioned_contract: HostFunction::default(),
@@ -207,7 +329,10 @@ impl Default for HostFunctionCosts {
             remove_contract_user_group: HostFunction::default(),
             provision_contract_user_group_uref: HostFunction::default(),
             remove_contract_user_group_urefs: HostFunction::default(),
-            print: HostFunction::new(20_000_000, [NOT_USED, 4_600]),
+            print: HostFunction::new(
+                DEFAULT_PRINT_COST,
+                [NOT_USED, DEFAULT_PRINT_TEXT_SIZE_WEIGHT],
+            ),
             blake2b: HostFunction::default(),
         }
     }
