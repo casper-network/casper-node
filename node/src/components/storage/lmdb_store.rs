@@ -113,8 +113,7 @@ impl<V: Value, M: Send + Sync> Store for LmdbStore<V, M> {
             //        execution results.
             WriteFlags::default(),
         ) {
-            Ok(()) => !has_existing_value, /* TODO: when the above notes are fixed, return true
-                                             * here */
+            Ok(()) => !has_existing_value, /* TODO: `true` when the above notes are fixed */
             Err(lmdb::Error::KeyExist) => false,
             Err(error) => panic!("should put: {:?}", error),
         };
