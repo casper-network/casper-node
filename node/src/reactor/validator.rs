@@ -32,7 +32,7 @@ use crate::{
         linear_chain,
         metrics::Metrics,
         small_network::{self, GossipedAddress, NodeId, SmallNetwork},
-        storage::{self, Storage},
+        storage2::{self, Storage},
         Component,
     },
     effect::{
@@ -70,7 +70,7 @@ pub enum Event {
     DeployBuffer(deploy_buffer::Event),
     #[from]
     /// Storage event.
-    Storage(storage::Event<Storage>),
+    Storage(storage2::Event),
     #[from]
     /// API server event.
     ApiServer(api_server::Event),
@@ -158,9 +158,9 @@ pub enum Event {
     LinearChainAnnouncement(LinearChainAnnouncement),
 }
 
-impl From<StorageRequest<Storage>> for Event {
-    fn from(request: StorageRequest<Storage>) -> Self {
-        Event::Storage(storage::Event::Request(request))
+impl From<StorageRequest> for Event {
+    fn from(request: StorageRequest) -> Self {
+        Event::Storage(request.into())
     }
 }
 
@@ -518,10 +518,11 @@ impl reactor::Reactor for Reactor {
                                     return Effects::new();
                                 }
                             };
-                            Event::Storage(storage::Event::GetDeployForPeer {
-                                deploy_hash,
-                                peer: sender,
-                            })
+                            todo!() // WTF?
+                                    // Event::Storage(storage2::Event::GetDeployForPeer {
+                                    //     deploy_hash,
+                                    //     peer: sender,
+                                    // })
                         }
                         Tag::Block => {
                             let block_hash = match bincode::deserialize(&serialized_id) {

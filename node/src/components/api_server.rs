@@ -36,7 +36,6 @@ use casper_types::{Key, URef};
 
 use super::Component;
 use crate::{
-    components::storage::Storage,
     crypto::hash::Digest,
     effect::{
         announcements::ApiServerAnnouncement,
@@ -63,7 +62,7 @@ lazy_static! {
 trait ReactorEventT:
     From<Event>
     + From<ApiRequest<NodeId>>
-    + From<StorageRequest<Storage>>
+    + From<StorageRequest>
     + From<LinearChainRequest<NodeId>>
     + From<ContractRuntimeRequest>
     + Send
@@ -73,7 +72,7 @@ trait ReactorEventT:
 impl<REv> ReactorEventT for REv where
     REv: From<Event>
         + From<ApiRequest<NodeId>>
-        + From<StorageRequest<Storage>>
+        + From<StorageRequest>
         + From<LinearChainRequest<NodeId>>
         + From<ContractRuntimeRequest>
         + Send
@@ -94,7 +93,7 @@ impl ApiServer {
     where
         REv: From<Event>
             + From<ApiRequest<NodeId>>
-            + From<StorageRequest<Storage>>
+            + From<StorageRequest>
             + From<LinearChainRequest<NodeId>>
             + From<ContractRuntimeRequest>
             + Send,
@@ -155,7 +154,7 @@ where
         + From<ContractRuntimeRequest>
         + From<ChainspecLoaderRequest>
         + From<MetricsRequest>
-        + From<StorageRequest<Storage>>
+        + From<StorageRequest>
         + From<Event>
         + From<ApiRequest<NodeId>>
         + Send,

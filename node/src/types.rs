@@ -12,7 +12,9 @@ use rand::{CryptoRng, RngCore};
 
 pub use block::{Block, BlockHash, BlockHeader};
 pub(crate) use block::{BlockByHeight, BlockLike, FinalizedBlock, ProtoBlock, ProtoBlockHash};
-pub use deploy::{Approval, Deploy, DeployHash, DeployHeader, Error as DeployError};
+pub use deploy::{
+    Approval, Deploy, DeployHash, DeployHeader, DeployMetadata, Error as DeployError,
+};
 pub use item::{Item, Tag};
 pub use node_config::NodeConfig;
 pub use status_feed::StatusFeed;

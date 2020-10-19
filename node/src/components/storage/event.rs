@@ -14,7 +14,7 @@ pub enum Event<S: StorageType + 'static> {
         peer: NodeId,
     },
     #[from]
-    Request(StorageRequest<S>),
+    Request(StorageRequest),
 }
 
 impl<S: StorageType + 'static> Display for Event<S> {

@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::components::{contract_runtime, small_network, storage};
+use crate::components::{contract_runtime, small_network, storage2};
 
 /// Error type returned by the validator reactor.
 #[derive(Debug, Error)]
@@ -15,7 +15,7 @@ pub enum Error {
 
     /// `Storage` component error.
     #[error("storage error: {0}")]
-    Storage(#[from] storage::Error),
+    Storage(#[from] storage2::Error),
 
     /// `Consensus` component error.
     #[error("consensus error: {0}")]

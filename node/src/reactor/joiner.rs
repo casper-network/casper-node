@@ -25,7 +25,7 @@ use crate::{
         linear_chain,
         linear_chain_sync::{self, LinearChainSync},
         small_network::{self, NodeId, SmallNetwork},
-        storage::{self, Storage},
+        storage2::{self, Storage},
         Component,
     },
     effect::{
@@ -62,7 +62,7 @@ pub enum Event {
 
     /// Storage event.
     #[from]
-    Storage(storage::Event<Storage>),
+    Storage(storage2::Event),
 
     /// Linear chain fetcher event.
     #[from]
@@ -169,9 +169,9 @@ impl From<LinearChainRequest<NodeId>> for Event {
     }
 }
 
-impl From<StorageRequest<Storage>> for Event {
-    fn from(request: StorageRequest<Storage>) -> Self {
-        Event::Storage(storage::Event::Request(request))
+impl From<StorageRequest> for Event {
+    fn from(request: StorageRequest) -> Self {
+        Event::Storage(request.from())
     }
 }
 

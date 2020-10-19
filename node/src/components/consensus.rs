@@ -17,7 +17,7 @@ use casper_execution_engine::core::engine_state::era_validators::GetEraValidator
 use casper_types::auction::ValidatorWeights;
 
 use crate::{
-    components::{storage::Storage, Component},
+    components::Component,
     crypto::{asymmetric_key::PublicKey, hash::Digest},
     effect::{
         announcements::ConsensusAnnouncement,
@@ -168,7 +168,7 @@ pub trait ReactorEventT<I>:
     + From<ConsensusAnnouncement>
     + From<BlockExecutorRequest>
     + From<BlockValidationRequest<ProtoBlock, I>>
-    + From<StorageRequest<Storage>>
+    + From<StorageRequest>
     + From<ContractRuntimeRequest>
 {
 }
@@ -181,7 +181,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<ConsensusAnnouncement>
         + From<BlockExecutorRequest>
         + From<BlockValidationRequest<ProtoBlock, I>>
-        + From<StorageRequest<Storage>>
+        + From<StorageRequest>
         + From<ContractRuntimeRequest>
 {
 }

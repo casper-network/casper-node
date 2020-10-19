@@ -23,7 +23,7 @@ use casper_execution_engine::{
 use casper_types::ProtocolVersion;
 
 use crate::{
-    components::{block_executor::event::State, storage::Storage, Component},
+    components::{block_executor::event::State, Component},
     crypto::hash::Digest,
     effect::{
         announcements::BlockExecutorAnnouncement,
@@ -44,7 +44,7 @@ pub(crate) use event::Event;
 /// can work with.
 pub trait ReactorEventT:
     From<Event>
-    + From<StorageRequest<Storage>>
+    + From<StorageRequest>
     + From<LinearChainRequest<NodeId>>
     + From<ContractRuntimeRequest>
     + From<BlockExecutorAnnouncement>
@@ -54,7 +54,7 @@ pub trait ReactorEventT:
 
 impl<REv> ReactorEventT for REv where
     REv: From<Event>
-        + From<StorageRequest<Storage>>
+        + From<StorageRequest>
         + From<LinearChainRequest<NodeId>>
         + From<ContractRuntimeRequest>
         + From<BlockExecutorAnnouncement>

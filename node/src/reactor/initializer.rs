@@ -12,7 +12,7 @@ use crate::{
         chainspec_loader::{self, ChainspecLoader},
         contract_runtime::{self, ContractRuntime},
         small_network::NodeId,
-        storage::{self, Storage, StorageType},
+        storage2::{self, Storage},
         Component,
     },
     effect::{
@@ -35,16 +35,16 @@ pub enum Event {
 
     /// Storage event.
     #[from]
-    Storage(storage::Event<Storage>),
+    Storage(storage2::Event),
 
     /// Contract runtime event.
     #[from]
     ContractRuntime(contract_runtime::Event),
 }
 
-impl From<StorageRequest<Storage>> for Event {
-    fn from(request: StorageRequest<Storage>) -> Self {
-        Event::Storage(storage::Event::Request(request))
+impl From<StorageRequest> for Event {
+    fn from(request: StorageRequest) -> Self {
+        Event::Storage(storage2::Event::StorageRequest(request))
     }
 }
 
@@ -87,7 +87,7 @@ pub enum Error {
 
     /// `Storage` component error.
     #[error("storage error: {0}")]
-    Storage(#[from] storage::Error),
+    Storage(#[from] storage2::Error),
 
     /// `ContractRuntime` component error.
     #[error("contract runtime config error: {0}")]
@@ -135,7 +135,7 @@ impl reactor::Reactor for Reactor {
         let effect_builder = EffectBuilder::new(event_queue);
 
         let storage_config = WithDir::new(&root, config.storage.clone());
-        let storage = Storage::new(storage_config.clone())?;
+        let storage = Storage::new(&storage_config)?;
         let contract_runtime =
             ContractRuntime::new(storage_config, config.contract_runtime, registry)?;
         let (chainspec_loader, chainspec_effects) =

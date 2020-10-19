@@ -23,7 +23,7 @@ use tracing::{debug, error, info, trace};
 use casper_execution_engine::core::engine_state::{self, genesis::GenesisResult};
 
 use crate::{
-    components::{storage::Storage, Component},
+    components::Component,
     crypto::hash::Digest,
     effect::{
         requests::{ChainspecLoaderRequest, ContractRuntimeRequest, StorageRequest},
@@ -109,7 +109,7 @@ impl ChainspecLoader {
         effect_builder: EffectBuilder<REv>,
     ) -> Result<(Self, Effects<Event>), Error>
     where
-        REv: From<Event> + From<StorageRequest<Storage>> + Send,
+        REv: From<Event> + From<StorageRequest> + Send,
     {
         let version = chainspec.genesis.protocol_version.clone();
         let effects = effect_builder
@@ -144,7 +144,7 @@ impl ChainspecLoader {
 
 impl<REv> Component<REv> for ChainspecLoader
 where
-    REv: From<Event> + From<StorageRequest<Storage>> + From<ContractRuntimeRequest> + Send,
+    REv: From<Event> + From<StorageRequest> + From<ContractRuntimeRequest> + Send,
 {
     type Event = Event;
 

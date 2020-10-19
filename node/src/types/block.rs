@@ -24,10 +24,7 @@ use casper_types::auction::BLOCK_REWARD;
 
 use super::{Item, Tag, Timestamp};
 use crate::{
-    components::{
-        consensus::{self, EraId},
-        storage::{Value, WithBlockHeight},
-    },
+    components::consensus::{self, EraId},
     crypto::{
         asymmetric_key::{PublicKey, Signature},
         hash::{self, Digest},
@@ -648,29 +645,6 @@ impl BlockLike for Block {
 impl BlockLike for BlockHeader {
     fn deploys(&self) -> &Vec<DeployHash> {
         self.deploy_hashes()
-    }
-}
-
-impl Value for Block {
-    type Id = BlockHash;
-    type Header = BlockHeader;
-
-    fn id(&self) -> &Self::Id {
-        &self.hash
-    }
-
-    fn header(&self) -> &Self::Header {
-        &self.header
-    }
-
-    fn take_header(self) -> Self::Header {
-        self.header
-    }
-}
-
-impl WithBlockHeight for Block {
-    fn height(&self) -> u64 {
-        self.height()
     }
 }
 

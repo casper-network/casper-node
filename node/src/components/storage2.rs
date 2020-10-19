@@ -1,5 +1,12 @@
-use std::{collections::BTreeMap, fs, io, path::PathBuf, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    fmt::{self, Display, Formatter},
+    fs, io,
+    path::PathBuf,
+    sync::Arc,
+};
 
+use datasize::DataSize;
 use derive_more::From;
 use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RoTransaction, RwTransaction,
@@ -8,10 +15,10 @@ use lmdb::{
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
 
-use super::{storage::DeployMetadata, Component};
+use super::Component;
 use crate::{
-    effect::{requests::StorageRequest2, EffectExt, Effects},
-    types::{Block, BlockHash, Deploy, DeployHash},
+    effect::{requests::StorageRequest, EffectExt, Effects},
+    types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata},
     utils::WithDir,
     Chainspec,
 };
@@ -27,11 +34,11 @@ const CHAINSPEC_CACHE_FILENAME: &str = "chainspec_cache";
 pub(crate) enum Event {
     /// Incoming storage request.
     #[from]
-    StorageRequest(StorageRequest2),
+    StorageRequest(StorageRequest),
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum Error {
+pub enum Error {
     /// Failure to create the root database directory.
     #[error("failed to create database directory `{}`: {}", 0, 1)]
     CreateDatabaseDirectory(PathBuf, io::Error),
@@ -40,20 +47,28 @@ pub(crate) enum Error {
     LmdbInit(lmdb::Error),
 }
 
-struct Storage {
+#[derive(DataSize, Debug)]
+pub(crate) struct Storage {
     /// Storage location.
+    #[data_size(skip)]
     root: PathBuf,
     /// Environment holding LMDB databases.
+    #[data_size(skip)]
     env: Environment,
     /// The block database.
+    #[data_size(skip)]
     block_db: Database,
     /// The deploy database.
+    #[data_size(skip)]
     deploy_db: Database,
     /// The deploy metadata database.
+    #[data_size(skip)]
     deploy_metadata_db: Database,
     /// Block height index.
+    #[data_size(skip)]
     block_height_index: BTreeMap<u64, BlockHash>,
     /// Chainspec chache.
+    #[data_size(skip)]
     chainspec_cache: Option<Arc<Chainspec>>,
 }
 
@@ -73,7 +88,8 @@ impl<REv> Component<REv> for Storage {
 }
 
 impl Storage {
-    fn new(cfg: &WithDir<Config>) -> Result<Self, Error> {
+    /// Creates a new storage component.
+    pub(crate) fn new(cfg: &WithDir<Config>) -> Result<Self, Error> {
         let config = cfg.value();
 
         // Create the database directory.
@@ -164,7 +180,7 @@ impl Storage {
     /// Handles a storage request.
     fn handle_storage_request<REv>(
         &mut self,
-        req: StorageRequest2,
+        req: StorageRequest,
     ) -> Effects<<Self as Component<REv>>::Event>
     where
         Self: Component<REv>,
@@ -173,7 +189,7 @@ impl Storage {
         // The rationale behind is that long IO operations are very rare and cache misses
         // frequent, so on average the actual execution time will be very low.
         match req {
-            StorageRequest2::PutBlock { block, responder } => {
+            StorageRequest::PutBlock { block, responder } => {
                 let mut tx = self.env.rw_transaction();
                 let outcome = tx.put_value(self.block_db, block.hash(), &block);
                 tx.commit_ok();
@@ -192,16 +208,16 @@ impl Storage {
 
                 responder.respond(outcome).ignore()
             }
-            StorageRequest2::GetBlock {
+            StorageRequest::GetBlock {
                 block_hash,
                 responder,
             } => responder
                 .respond(self.get_single_block(&block_hash))
                 .ignore(),
-            StorageRequest2::GetBlockAtHeight { height, responder } => {
+            StorageRequest::GetBlockAtHeight { height, responder } => {
                 responder.respond(self.get_block_by_height(height)).ignore()
             }
-            StorageRequest2::GetHighestBlock { responder } => responder
+            StorageRequest::GetHighestBlock { responder } => responder
                 .respond(
                     self.block_height_index
                         .keys()
@@ -209,7 +225,7 @@ impl Storage {
                         .and_then(|&height| self.get_block_by_height(height)),
                 )
                 .ignore(),
-            StorageRequest2::GetBlockHeader {
+            StorageRequest::GetBlockHeader {
                 block_hash,
                 responder,
             } => responder
@@ -218,19 +234,19 @@ impl Storage {
                         .map(|block| block.header().clone()),
                 )
                 .ignore(),
-            StorageRequest2::PutDeploy { deploy, responder } => {
+            StorageRequest::PutDeploy { deploy, responder } => {
                 let mut tx = self.env.rw_transaction();
                 let outcome = tx.put_value(self.deploy_db, deploy.id(), &deploy);
                 tx.commit_ok();
                 responder.respond(outcome).ignore()
             }
-            StorageRequest2::GetDeploys {
+            StorageRequest::GetDeploys {
                 deploy_hashes,
                 responder,
             } => responder
                 .respond(self.get_deploys(deploy_hashes.as_slice()))
                 .ignore(),
-            StorageRequest2::GetDeployHeaders {
+            StorageRequest::GetDeployHeaders {
                 deploy_hashes,
                 responder,
             } => responder
@@ -241,7 +257,7 @@ impl Storage {
                         .collect(),
                 )
                 .ignore(),
-            StorageRequest2::PutExecutionResults {
+            StorageRequest::PutExecutionResults {
                 block_hash,
                 execution_results,
                 responder,
@@ -249,7 +265,7 @@ impl Storage {
                 // TODO: Verify this code is working as intended.
                 let mut tx = self.env.rw_transaction();
 
-                let mut metadata: DeployMetadata<Block> = tx
+                let mut metadata: DeployMetadata = tx
                     .get_value(self.deploy_metadata_db, &block_hash)
                     .unwrap_or_default();
 
@@ -273,7 +289,7 @@ impl Storage {
 
                 responder.respond(total_new).ignore()
             }
-            StorageRequest2::GetDeployAndMetadata {
+            StorageRequest::GetDeployAndMetadata {
                 deploy_hash,
                 responder,
             } => {
@@ -289,7 +305,7 @@ impl Storage {
                 responder.respond(value).ignore()
             }
 
-            StorageRequest2::PutChainspec {
+            StorageRequest::PutChainspec {
                 chainspec,
                 responder,
             } => {
@@ -301,7 +317,7 @@ impl Storage {
 
                 Effects::new()
             }
-            StorageRequest2::GetChainspec { version, responder } => {
+            StorageRequest::GetChainspec { version, responder } => {
                 responder.respond(self.chainspec_cache.clone()).ignore()
             }
         }
@@ -340,7 +356,7 @@ pub struct Config {
     /// If the folder doesn't exist, it and any required parents will be created.
     ///
     /// If unset via the configuration file, the value must be provided via the CLI.
-    path: PathBuf,
+    pub(crate) path: PathBuf,
     /// The maximum size of the database to use for the block store.
     ///
     /// The size should be a multiple of the OS page size.
@@ -381,6 +397,14 @@ fn ser<T: Serialize, W: io::Write>(writer: W, value: &T) -> Result<(), io::Error
             } else {
                 panic!("serialization error. this is a bug: {}", err)
             }
+        }
+    }
+}
+
+impl Display for Event {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Event::StorageRequest(req) => req.fmt(f),
         }
     }
 }

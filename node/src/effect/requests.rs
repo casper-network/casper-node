@@ -32,27 +32,16 @@ use casper_types::{auction::ValidatorWeights, Key, URef};
 
 use super::{Multiple, Responder};
 use crate::{
-    components::{
-        chainspec_loader::ChainspecInfo,
-        fetcher::FetchResult,
-        storage::{
-            DeployHashes, DeployHeaderResults, DeployMetadata, DeployResults, StorageType, Value,
-        },
-    },
+    components::{chainspec_loader::ChainspecInfo, fetcher::FetchResult},
     crypto::{asymmetric_key::Signature, hash::Digest},
     types::{
         json_compatibility::ExecutionResult, Block as LinearBlock, Block, BlockHash, BlockHeader,
-        Deploy, DeployHash, DeployHeader, FinalizedBlock, Item, ProtoBlockHash, StatusFeed,
-        Timestamp,
+        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item, ProtoBlockHash,
+        StatusFeed, Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
 };
-
-type DeployAndMetadata<S> = (
-    <S as StorageType>::Deploy,
-    DeployMetadata<<S as StorageType>::Block>,
-);
 
 /// A metrics request.
 #[derive(Debug)]
@@ -187,102 +176,7 @@ where
 #[derive(Debug)]
 /// A storage request.
 #[must_use]
-pub enum StorageRequest<S: StorageType + 'static> {
-    /// Store given block.
-    PutBlock {
-        /// Block to be stored.
-        block: Box<S::Block>,
-        /// Responder to call with the result.  Returns true if the block was stored on this
-        /// attempt or false if it was previously stored.
-        responder: Responder<bool>,
-    },
-    /// Retrieve block with given hash.
-    GetBlock {
-        /// Hash of block to be retrieved.
-        block_hash: <S::Block as Value>::Id,
-        /// Responder to call with the result.  Returns `None` is the block doesn't exist in local
-        /// storage.
-        responder: Responder<Option<S::Block>>,
-    },
-    /// Retrieve block with given height.
-    GetBlockAtHeight {
-        /// Height of the block.
-        height: u64,
-        /// Responder.
-        responder: Responder<Option<S::Block>>,
-    },
-    /// Retrieve highest block.
-    GetHighestBlock {
-        /// Responder.
-        responder: Responder<Option<S::Block>>,
-    },
-    /// Retrieve block header with given hash.
-    GetBlockHeader {
-        /// Hash of block to get header of.
-        block_hash: <S::Block as Value>::Id,
-        /// Responder to call with the result.  Returns `None` is the block header doesn't exist in
-        /// local storage.
-        responder: Responder<Option<<S::Block as Value>::Header>>,
-    },
-    /// Store given deploy.
-    PutDeploy {
-        /// Deploy to store.
-        deploy: Box<S::Deploy>,
-        /// Responder to call with the result.  Returns true if the deploy was stored on this
-        /// attempt or false if it was previously stored.
-        responder: Responder<bool>,
-    },
-    /// Retrieve deploys with given hashes.
-    GetDeploys {
-        /// Hashes of deploys to be retrieved.
-        deploy_hashes: DeployHashes<S>,
-        /// Responder to call with the results.
-        responder: Responder<DeployResults<S>>,
-    },
-    /// Retrieve deploy headers with given hashes.
-    GetDeployHeaders {
-        /// Hashes of deploy headers to be retrieved.
-        deploy_hashes: DeployHashes<S>,
-        /// Responder to call with the results.
-        responder: Responder<DeployHeaderResults<S>>,
-    },
-    /// Store the given execution results for the deploys in the given block.
-    PutExecutionResults {
-        /// Hash of block.
-        block_hash: <S::Block as Value>::Id,
-        /// Execution results.
-        execution_results: HashMap<<S::Deploy as Value>::Id, ExecutionResult>,
-        /// Responder to call with the result.  Returns true if the execution results were stored
-        /// on this attempt or false if they were previously stored.
-        responder: Responder<()>,
-    },
-    /// Retrieve deploy and its metadata.
-    GetDeployAndMetadata {
-        /// Hash of deploy to be retrieved.
-        deploy_hash: <S::Deploy as Value>::Id,
-        /// Responder to call with the results.
-        responder: Responder<Option<DeployAndMetadata<S>>>,
-    },
-    /// Store given chainspec.
-    PutChainspec {
-        /// Chainspec.
-        chainspec: Box<Chainspec>,
-        /// Responder to call with the result.
-        responder: Responder<()>,
-    },
-    /// Retrieve chainspec with given version.
-    GetChainspec {
-        /// Version.
-        version: Version,
-        /// Responder to call with the result.
-        responder: Responder<Option<Chainspec>>,
-    },
-}
-
-#[derive(Debug)]
-/// A storage request.
-#[must_use]
-pub enum StorageRequest2 {
+pub enum StorageRequest {
     /// Store given block.
     PutBlock {
         /// Block to be stored.
@@ -302,7 +196,7 @@ pub enum StorageRequest2 {
     /// Retrieve block with given height.
     GetBlockAtHeight {
         /// Height of the block.
-        height: u64,
+        height: BlockHeight,
         /// Responder.
         responder: Responder<Option<Block>>,
     },
@@ -356,7 +250,7 @@ pub enum StorageRequest2 {
         /// Hash of deploy to be retrieved.
         deploy_hash: DeployHash,
         /// Responder to call with the results.
-        responder: Responder<Option<(Deploy, DeployMetadata<Block>)>>,
+        responder: Responder<Option<(Deploy, DeployMetadata)>>,
     },
     /// Store given chainspec.
     PutChainspec {
@@ -374,7 +268,7 @@ pub enum StorageRequest2 {
     },
 }
 
-impl<S: StorageType> Display for StorageRequest<S> {
+impl Display for StorageRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
@@ -492,7 +386,7 @@ pub enum ApiRequest<I> {
         /// The hash of the deploy to be retrieved.
         hash: DeployHash,
         /// Responder to call with the result.
-        responder: Responder<Option<(Deploy, DeployMetadata<LinearBlock>)>>,
+        responder: Responder<Option<(Deploy, DeployMetadata)>>,
     },
     /// Return the connected peers.
     GetPeers {

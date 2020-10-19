@@ -17,7 +17,7 @@ use semver::Version;
 use tracing::{error, info, trace};
 
 use crate::{
-    components::{chainspec_loader::DeployConfig, storage::Storage, Component},
+    components::{chainspec_loader::DeployConfig, Component},
     effect::{
         requests::{DeployBufferRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
@@ -87,15 +87,9 @@ impl Display for Event {
 type DeployCollection = HashMap<DeployHash, DeployHeader>;
 type ProtoBlockCollection = HashMap<ProtoBlockHash, DeployCollection>;
 
-pub(crate) trait ReactorEventT:
-    From<Event> + From<StorageRequest<Storage>> + Send + 'static
-{
-}
+pub(crate) trait ReactorEventT: From<Event> + From<StorageRequest> + Send + 'static {}
 
-impl<REv> ReactorEventT for REv where
-    REv: From<Event> + From<StorageRequest<Storage>> + Send + 'static
-{
-}
+impl<REv> ReactorEventT for REv where REv: From<Event> + From<StorageRequest> + Send + 'static {}
 
 /// Deploy buffer.
 #[derive(DataSize, Debug, Clone)]
@@ -205,7 +199,7 @@ impl DeployBuffer {
         responder: Responder<HashSet<DeployHash>>,
     ) -> Effects<Event>
     where
-        REv: From<StorageRequest<Storage>> + Send,
+        REv: From<StorageRequest> + Send,
     {
         effect_builder
             .get_chainspec(chainspec_version.clone())
@@ -478,8 +472,8 @@ mod tests {
         DeployBuffer::new(registry, effect_builder).expect("Failure to create a new Deploy Buffer")
     }
 
-    impl From<StorageRequest<Storage>> for Event {
-        fn from(_: StorageRequest<Storage>) -> Self {
+    impl From<StorageRequest> for Event {
+        fn from(_: StorageRequest) -> Self {
             // we never send a storage request in our unit tests, but if this does become
             // meaningful....
             todo!()

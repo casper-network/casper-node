@@ -8,7 +8,7 @@ use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, share
 use casper_types::U512;
 
 use crate::{
-    components::{consensus::EraId, small_network, storage},
+    components::{consensus::EraId, small_network, storage2},
     crypto::asymmetric_key::{PublicKey, SecretKey},
     reactor::{initializer, joiner, validator, Runner},
     testing::{self, network::Network, ConditionCheckReactor, TestRng},
@@ -80,7 +80,7 @@ impl TestChain {
         cfg.consensus.secret_key_path = External::value(self.keys[idx].duplicate());
 
         // Additionally set up storage in a temporary directory.
-        let (storage_cfg, temp_dir) = storage::Config::default_for_tests();
+        let (storage_cfg, temp_dir) = storage2::Config::default_for_tests();
         self.storages.push(temp_dir);
         cfg.storage = storage_cfg;
 

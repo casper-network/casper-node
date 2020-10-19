@@ -27,7 +27,7 @@ mod event;
 
 use datasize::DataSize;
 
-use super::{fetcher::FetchResult, storage::Storage, Component};
+use super::{fetcher::FetchResult, Component};
 use crate::{
     effect::{self, EffectBuilder, EffectExt, EffectOptionExt, Effects},
     types::{Block, BlockByHeight, BlockHash, BlockHeader, CryptoRngCore, FinalizedBlock},
@@ -42,7 +42,7 @@ use std::{fmt::Display, mem};
 use tracing::{error, info, trace, warn};
 
 pub trait ReactorEventT<I>:
-    From<StorageRequest<Storage>>
+    From<StorageRequest>
     + From<FetcherRequest<I, Block>>
     + From<FetcherRequest<I, BlockByHeight>>
     + From<BlockValidationRequest<BlockHeader, I>>
@@ -52,7 +52,7 @@ pub trait ReactorEventT<I>:
 }
 
 impl<I, REv> ReactorEventT<I> for REv where
-    REv: From<StorageRequest<Storage>>
+    REv: From<StorageRequest>
         + From<FetcherRequest<I, Block>>
         + From<FetcherRequest<I, BlockByHeight>>
         + From<BlockValidationRequest<BlockHeader, I>>

@@ -19,8 +19,8 @@ pub(crate) mod linear_chain_sync;
 pub mod in_memory_network;
 pub(crate) mod metrics;
 pub(crate) mod small_network;
-pub(crate) mod storage;
-pub mod storage2;
+// pub(crate) mod storage;
+pub(crate) mod storage2;
 
 use crate::{
     effect::{EffectBuilder, Effects},

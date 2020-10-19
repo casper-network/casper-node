@@ -1,6 +1,6 @@
 use std::{
     array::TryFromSliceError,
-    collections::BTreeSet,
+    collections::{BTreeSet, HashMap},
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
     iter::FromIterator,
@@ -16,15 +16,14 @@ use thiserror::Error;
 use tracing::warn;
 
 use casper_execution_engine::core::engine_state::{
-    executable_deploy_item::ExecutableDeployItem, DeployItem,
+    executable_deploy_item::ExecutableDeployItem, DeployItem, ExecutionResult,
 };
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
-use super::{CryptoRngCore, Item, Tag, TimeDiff, Timestamp};
+use super::{BlockHash, CryptoRngCore, Item, Tag, TimeDiff, Timestamp};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
-    components::storage::Value,
     crypto::{
         asymmetric_key::{self, PublicKey, SecretKey, Signature},
         hash::{self, Digest},
@@ -471,24 +470,6 @@ fn validate_deploy(deploy: &Deploy) -> bool {
     true
 }
 
-/// Trait to allow `Deploy`s to be used by the storage component.
-impl Value for Deploy {
-    type Id = DeployHash;
-    type Header = DeployHeader;
-
-    fn id(&self) -> &Self::Id {
-        self.id()
-    }
-
-    fn header(&self) -> &Self::Header {
-        self.header()
-    }
-
-    fn take_header(self) -> Self::Header {
-        self.take_header()
-    }
-}
-
 impl Item for Deploy {
     type Id = DeployHash;
 
@@ -526,6 +507,13 @@ impl From<Deploy> for DeployItem {
             deploy.id().inner().to_array(),
         )
     }
+}
+
+#[derive(Clone, Default, Serialize, Deserialize, Debug)]
+pub struct DeployMetadata {
+    /// The block hashes of blocks containing the related deploy, along with the results of
+    /// executing the related deploy.
+    pub execution_results: HashMap<BlockHash, ExecutionResult>,
 }
 
 #[cfg(test)]

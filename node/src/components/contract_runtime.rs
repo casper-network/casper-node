@@ -347,7 +347,7 @@ impl ContractRuntime {
         contract_runtime_config: Config,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
-        let path = storage_config.with_dir(storage_config.value().path());
+        let path = storage_config.with_dir(storage_config.value().path.clone());
         let environment = Arc::new(LmdbEnvironment::new(
             path.as_path(),
             contract_runtime_config.max_global_state_size(),
