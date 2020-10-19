@@ -26,8 +26,11 @@ reactor!(Initializer {
   }
 
   requests: {
-    StorageRequest<Storage> -> storage;
-    ContractRuntimeRequest -> contract_runtime;
+    // StorageRequest<Storage> -> storage;
+    // ContractRuntimeRequest -> contract_runtime;
+
+    StorageRequest<Storage> -> !;
+    ContractRuntimeRequest -> !;
 
     // No network traffic during initialization, just discard.
     // TODO: Allow for "hard" discard, resulting in a crash?
@@ -41,7 +44,7 @@ reactor!(Initializer {
 
 // TODO: Metrics
 // TODO: is_stopped
-// TODO: initialization/config processing
+// TODO: config processing
 
 impl Initializer {
     /// Returns whether the initialization process completed successfully or not.

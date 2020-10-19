@@ -39,13 +39,8 @@ impl<V, M> LmdbStore<V, M>
 where
     V: Value,
     M: Default + Send + Sync,
-    V: Value + WithBlockHeight + 'static,
-    M: Value + Item + 'static,
 {
-    pub(crate) fn new<P: AsRef<Path>>(
-        db_path: P,
-        max_size: usize,
-    ) -> Result<(Self, Effects<Event<Self>>)> {
+    pub(crate) fn new<P: AsRef<Path>>(db_path: P, max_size: usize) -> Result<Self> {
         let env = Environment::new()
             .set_flags(EnvironmentFlags::NO_SUB_DIR)
             .set_map_size(max_size)
@@ -53,14 +48,11 @@ where
         let db = env.create_db(None, DatabaseFlags::empty())?;
         info!("opened DB at {}", db_path.as_ref().display());
 
-        Ok((
-            LmdbStore {
-                env,
-                db,
-                _phantom: PhantomData,
-            },
-            Effects::new(),
-        ))
+        Ok(LmdbStore {
+            env,
+            db,
+            _phantom: PhantomData,
+        })
     }
 }
 
