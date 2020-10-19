@@ -345,7 +345,7 @@ pub enum ConfigError {
 impl ContractRuntime {
     pub(crate) fn new(
         storage_config: WithDir<StorageConfig>,
-        contract_runtime_config: Config,
+        contract_runtime_config: &Config,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         let path = storage_config.with_dir(storage_config.value().path());

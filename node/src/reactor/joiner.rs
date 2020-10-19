@@ -303,6 +303,9 @@ impl reactor::Reactor for Reactor {
             contract_runtime,
         } = initializer;
 
+        // TODO: Remove wrapper around Reactor::Config instead.
+        let (_, config) = config.into_parts();
+
         let event_queue_metrics = EventQueueMetrics::new(registry.clone(), event_queue)?;
 
         let (net, net_effects) = SmallNetwork::new(event_queue, config.network.clone(), false)?;

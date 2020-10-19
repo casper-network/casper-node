@@ -97,7 +97,7 @@ pub enum Error {
 /// Initializer node reactor.
 #[derive(DataSize, Debug)]
 pub struct Reactor {
-    pub(super) config: validator::Config,
+    pub(super) config: WithDir<validator::Config>,
     pub(super) chainspec_loader: ChainspecLoader,
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
@@ -121,21 +121,21 @@ impl reactor::Reactor for Reactor {
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut dyn CryptoRngCore,
     ) -> Result<(Self, Effects<Self::Event>), Error> {
-        let (root, config) = config.into_parts();
-
         let chainspec = config
+            .value()
             .node
             .chainspec_config_path
             .clone()
-            .load(root.clone())
+            .load(config.dir())
             .map_err(|err| Error::ConfigError(err.to_string()))?;
 
         let effect_builder = EffectBuilder::new(event_queue);
 
-        let storage_config = WithDir::new(&root, config.storage.clone());
+        let storage_config = config.map_ref(|cfg| cfg.storage.clone());
         let storage = Storage::new(storage_config.clone())?;
+
         let contract_runtime =
-            ContractRuntime::new(storage_config, config.contract_runtime, registry)?;
+            ContractRuntime::new(storage_config, &config.value().contract_runtime, registry)?;
         let (chainspec_loader, chainspec_effects) =
             ChainspecLoader::new(chainspec, effect_builder)?;
 

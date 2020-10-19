@@ -153,11 +153,24 @@ impl<T> WithDir<T> {
         }
     }
 
+    /// Returns a reference to the inner path.
+    pub(crate) fn dir(&self) -> &Path {
+        self.dir.as_ref()
+    }
+
     /// Deconstructs a with-directory context.
     pub(crate) fn into_parts(self) -> (PathBuf, T) {
         (self.dir, self.value)
     }
 
+    pub(crate) fn map_ref<U, F: FnOnce(&T) -> U>(&self, f: F) -> WithDir<U> {
+        WithDir {
+            dir: self.dir.clone(),
+            value: f(&self.value),
+        }
+    }
+
+    /// Get a reference to the inner value.
     pub(crate) fn value(&self) -> &T {
         &self.value
     }
