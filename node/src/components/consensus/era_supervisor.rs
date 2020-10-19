@@ -21,6 +21,7 @@ use datasize::DataSize;
 use fmt::Display;
 use itertools::Itertools;
 use num_traits::AsPrimitive;
+use prometheus::Registry;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, trace, warn};
@@ -43,6 +44,7 @@ use crate::{
                 FinalizedBlock as CpFinalizedBlock,
             },
             highway_core::{highway::Params, validators::Validators},
+            metrics::ConsensusMetrics,
             protocols::highway::{HighwayContext, HighwayProtocol, HighwaySecret},
             traits::NodeIdT,
             Config, ConsensusMessage, Event, ReactorEventT,
@@ -242,6 +244,8 @@ pub struct EraSupervisor<I> {
     current_era: EraId,
     chainspec: Chainspec,
     node_start_time: Timestamp,
+    #[data_size(skip)]
+    metrics: ConsensusMetrics,
 }
 
 impl<I> Debug for EraSupervisor<I> {
@@ -256,6 +260,7 @@ where
     I: NodeIdT,
 {
     /// Creates a new `EraSupervisor`, starting in era 0.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new<REv: ReactorEventT<I>>(
         timestamp: Timestamp,
         config: WithDir<Config>,
@@ -263,11 +268,14 @@ where
         validator_stakes: Vec<(PublicKey, Motes)>,
         chainspec: &Chainspec,
         genesis_state_root_hash: hash::Digest,
+        registry: &Registry,
         mut rng: &mut dyn CryptoRngCore,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
         let (root, config) = config.into_parts();
         let secret_signing_key = Rc::new(config.secret_key_path.load(root)?);
         let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
+        let metrics = ConsensusMetrics::new(registry)
+            .expect("failure to setup and register ConsensusMetrics");
 
         let mut era_supervisor = Self {
             active_eras: Default::default(),
@@ -276,6 +284,7 @@ where
             current_era: EraId(0),
             chainspec: chainspec.clone(),
             node_start_time: Timestamp::now(),
+            metrics,
         };
 
         let results = era_supervisor.new_era(
@@ -814,6 +823,12 @@ where
                     self.era(era_id).start_height + height,
                     proposer,
                 );
+                let time_since_proto_block = finalized_block.timestamp().elapsed().millis();
+                self.era_supervisor
+                    .metrics
+                    .finalization_time
+                    .set(time_since_proto_block as f64);
+                self.era_supervisor.metrics.finalized_block_count.inc();
                 // Announce the finalized proto block.
                 let mut effects = self
                     .effect_builder

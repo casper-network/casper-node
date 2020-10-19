@@ -27,3 +27,15 @@ serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = "1.0.55"
 thiserror = "1.0.20"
 tokio = { version = "0.2.20", features = ["macros", "rt-threaded", "sync", "tcp", "time", "blocking"] }
+
+[package.metadata.deb]
+features = ["vendored-openssl"]
+revision = "0"
+assets = [
+    ["../target/release/casper-client", "/usr/bin/casper-client", "755"],
+]
+extended-description = """
+Package for Casper Client to connect to Casper Node.
+
+For information on using package, see https://github.com/CasperLabs/casper-node
+"""
