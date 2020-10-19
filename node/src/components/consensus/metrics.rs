@@ -1,6 +1,5 @@
 use prometheus::{Gauge, IntCounter, Registry};
 
-
 /// Network metrics to track Consensus
 #[derive(Debug)]
 pub struct ConsensusMetrics {
