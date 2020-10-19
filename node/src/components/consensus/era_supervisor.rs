@@ -519,8 +519,7 @@ where
         F: FnOnce(
             &mut dyn ConsensusProtocol<I, CandidateBlock, PublicKey>,
             &mut dyn CryptoRngCore,
-        )
-            -> Result<Vec<ConsensusProtocolResult<I, CandidateBlock, PublicKey>>, Error>,
+        ) -> Vec<ConsensusProtocolResult<I, CandidateBlock, PublicKey>>,
     {
         match self.era_supervisor.active_eras.get_mut(&era_id) {
             None => {
@@ -531,13 +530,10 @@ where
                 }
                 Effects::new()
             }
-            Some(era) => match f(&mut *era.consensus, self.rng) {
-                Ok(results) => self.handle_consensus_results(era_id, results),
-                Err(error) => {
-                    error!(%error, era = era_id.0, "error while handling event");
-                    Effects::new()
-                }
-            },
+            Some(era) => {
+                let results = f(&mut *era.consensus, self.rng);
+                self.handle_consensus_results(era_id, results)
+            }
         }
     }
 
