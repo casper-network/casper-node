@@ -152,11 +152,11 @@ impl<I> Era<I> {
             .push(PendingCandidate::new(candidate, missing_evidence));
     }
 
-    /// Marks the dependencies of candidate blocks on evidence against validator `v_id` as resolved
-    /// and returns all candidates that have no missing dependencies left.
-    fn resolve_evidence(&mut self, v_id: &PublicKey) -> Vec<CandidateBlock> {
+    /// Marks the dependencies of candidate blocks on evidence against validator `pub_key` as
+    /// resolved and returns all candidates that have no missing dependencies left.
+    fn resolve_evidence(&mut self, pub_key: &PublicKey) -> Vec<CandidateBlock> {
         for pc in &mut self.candidates {
-            pc.missing_evidence.retain(|v| v != v_id);
+            pc.missing_evidence.retain(|pk| pk != pub_key);
         }
         self.remove_complete_candidates()
     }
@@ -284,7 +284,7 @@ where
             validator_stakes,
             0, // hardcoded seed for era 0
             chainspec.genesis.highway_config.genesis_era_start_timestamp,
-            0,
+            0, // the first block has height 0
             genesis_state_root_hash,
         );
         let effects = era_supervisor
@@ -510,8 +510,7 @@ where
         F: FnOnce(
             &mut dyn ConsensusProtocol<I, CandidateBlock, PublicKey>,
             &mut dyn CryptoRngCore,
-        )
-            -> Result<Vec<ConsensusProtocolResult<I, CandidateBlock, PublicKey>>, Error>,
+        ) -> Vec<ConsensusProtocolResult<I, CandidateBlock, PublicKey>>,
     {
         match self.era_supervisor.active_eras.get_mut(&era_id) {
             None => {
@@ -522,13 +521,10 @@ where
                 }
                 Effects::new()
             }
-            Some(era) => match f(&mut *era.consensus, self.rng) {
-                Ok(results) => self.handle_consensus_results(era_id, results),
-                Err(error) => {
-                    error!(%error, era = era_id.0, "error while handling event");
-                    Effects::new()
-                }
-            },
+            Some(era) => {
+                let results = f(&mut *era.consensus, self.rng);
+                self.handle_consensus_results(era_id, results)
+            }
         }
     }
 
@@ -869,12 +865,12 @@ where
                 );
                 effects
             }
-            ConsensusProtocolResult::NewEvidence(v_id) => {
+            ConsensusProtocolResult::NewEvidence(pub_key) => {
                 let mut effects = Effects::new();
                 for e_id in (era_id.0..=(era_id.0 + BONDED_ERAS)).map(EraId) {
                     let candidate_blocks =
                         if let Some(era) = self.era_supervisor.active_eras.get_mut(&e_id) {
-                            era.resolve_evidence(&v_id)
+                            era.resolve_evidence(&pub_key)
                         } else {
                             continue;
                         };

@@ -144,7 +144,9 @@ mod tests {
     use super::*;
     use crate::{
         components::consensus::highway_core::{
-            highway_testing::TEST_BLOCK_REWARD, state::tests::*, validators::ValidatorMap,
+            highway_testing::TEST_BLOCK_REWARD,
+            state::{tests::*, Params},
+            validators::ValidatorMap,
         },
         testing::TestRng,
     };
@@ -154,29 +156,29 @@ mod tests {
         let mut state = State::new_test(&[Weight(5)], 0); // Alice is the only validator.
         let mut rng = TestRng::new();
 
-        // Round ID 0, length 16: Alice participates.
-        let p0 = add_vote!(state, rng, ALICE, 0, 4u8, 0x1; N)?; // Proposal
-        let w0 = add_vote!(state, rng, ALICE, 10, 4u8, None; p0)?; // Witness
+        // Round ID 0, length 32: Alice participates.
+        let p0 = add_vote!(state, rng, ALICE, 0, 5u8, 0x1; N)?; // Proposal
+        let w0 = add_vote!(state, rng, ALICE, 20, 5u8, None; p0)?; // Witness
 
-        // Round ID 16, length 16: Alice partially participates.
-        let w16 = add_vote!(state, rng, ALICE, 26, 4u8, None; w0)?; // Witness
+        // Round ID 32, length 32: Alice partially participates.
+        let w32 = add_vote!(state, rng, ALICE, 52, 5u8, None; w0)?; // Witness
 
-        // Round ID 32, length 16: Alice doesn't participate.
+        // Round ID 64, length 32: Alice doesn't participate.
 
-        // Round ID 48, length 8: Alice participates.
-        let p48 = add_vote!(state, rng, ALICE, 48, 3u8, 0x2; w16)?;
-        let w48 = add_vote!(state, rng, ALICE, 53, 3u8, None; p48)?;
+        // Round ID 96, length 16: Alice participates.
+        let p96 = add_vote!(state, rng, ALICE, 96, 4u8, 0x2; w32)?;
+        let w96 = add_vote!(state, rng, ALICE, 106, 4u8, None; p96)?;
 
-        let obs = Observation::Correct(w48);
+        let obs = Observation::Correct(w96);
         let rp = |time: u64| round_participation(&state, &obs, Timestamp::from(time));
         assert_eq!(RoundParticipation::Yes(&w0), rp(0));
-        assert_eq!(RoundParticipation::Unassigned, rp(8));
-        assert_eq!(RoundParticipation::Yes(&w16), rp(16));
-        assert_eq!(RoundParticipation::No, rp(32));
-        assert_eq!(RoundParticipation::Unassigned, rp(40));
-        assert_eq!(RoundParticipation::Yes(&w48), rp(48));
-        assert_eq!(RoundParticipation::Unassigned, rp(52));
-        assert_eq!(RoundParticipation::No, rp(56));
+        assert_eq!(RoundParticipation::Unassigned, rp(16));
+        assert_eq!(RoundParticipation::Yes(&w32), rp(32));
+        assert_eq!(RoundParticipation::No, rp(64));
+        assert_eq!(RoundParticipation::Unassigned, rp(80));
+        assert_eq!(RoundParticipation::Yes(&w96), rp(96));
+        assert_eq!(RoundParticipation::Unassigned, rp(106));
+        assert_eq!(RoundParticipation::No, rp(112));
         Ok(())
     }
 
@@ -191,7 +193,16 @@ mod tests {
         const ALICE_CAROL_W: u64 = ALICE_W + CAROL_W;
         const BOB_CAROL_W: u64 = BOB_W + CAROL_W;
 
-        let mut state = State::new_test(&[Weight(ALICE_W), Weight(BOB_W), Weight(CAROL_W)], 0);
+        let params = Params::new(
+            0,
+            TEST_BLOCK_REWARD,
+            TEST_BLOCK_REWARD / 5,
+            3,
+            u64::MAX,
+            Timestamp::from(u64::MAX),
+        );
+        let weights = &[Weight(ALICE_W), Weight(BOB_W), Weight(CAROL_W)];
+        let mut state = State::new(weights, params);
         let total_weight = state.total_weight().0;
         let mut rng = TestRng::new();
 
