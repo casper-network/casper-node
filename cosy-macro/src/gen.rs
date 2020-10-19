@@ -211,13 +211,20 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
 
         let constructor_args = cdef.component_arguments();
 
-        component_instantiations.push(quote!(
-            let (#field_ident, effects) = #component_type::new::<#event_ident>(#(#constructor_args),*)
-                .map_err(#error_ident::#variant_ident)?;
-            let wrapped_effects: crate::effect::Effects<#event_ident> = crate::reactor::wrap_effects(#event_ident::#variant_ident, effects);
+        if cdef.has_effects() {
+            component_instantiations.push(quote!(
+                let (#field_ident, effects) = #component_type::new::<#event_ident>(#(#constructor_args),*)
+                    .map_err(#error_ident::#variant_ident)?;
+                let wrapped_effects: crate::effect::Effects<#event_ident> = crate::reactor::wrap_effects(#event_ident::#variant_ident, effects);
 
-            all_effects.extend(wrapped_effects.into_iter());
-        ));
+                all_effects.extend(wrapped_effects.into_iter());
+            ));
+        } else {
+            component_instantiations.push(quote!(
+                let #field_ident = #component_type::new(#(#constructor_args),*)
+                    .map_err(#error_ident::#variant_ident)?;
+            ));
+        }
 
         component_fields.push(quote!(#field_ident));
     }

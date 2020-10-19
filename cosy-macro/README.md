@@ -10,7 +10,7 @@ reactor!(NameOfReactor {
 
     components: {
         component_a = CompA<TypeArg>(constructor_arg_1, constructor_arg_2, ...);
-        component_b = CompB(constructor_arg1, ..);
+        component_b = @CompB(constructor_arg1, ..);
         // ...
     }
 
@@ -59,7 +59,7 @@ Components are defined in the first section:
 ```rust
     components: {
         component_a = CompA<TypeArg>(constructor_arg_1, constructor_arg_2, ...);
-        component_b = CompB(constructor_arg1, ..);
+        component_b = @CompB(constructor_arg1, ..);
         // ...
     }
 ```
@@ -69,6 +69,7 @@ Here
 * two components will be defined as fields on the reactor struct, the fields being named `component_a` and `component_b` respectively,
 * their type will be `crate::components::comp_a::CompA` (automatically deduced from the name),
 * they will be constructed passing in `constructor_arg_1`, `constructor_arg_2` to the first and `constructor_arg1` to the second component in addition to the default parameters to constructors (TODO: document these),
+* `CompA::new` will return just the component, while `CompB::new` will return a tuple of `(component, effects)`, indicated by the `@` prefix,
 * two variants `NameOfReactorEvent::ComponentA` and `NameOfReactorEvent::ComponentB` will be added to the reactors event type,
 * these events will wrap `crate::components::comp_a::Event` (see caveat below) and `crate::components::comp_b::Event` respectively,
 * a `From<crate::components::comp_a::Event>` impl will be generated for `NameOfReactorEvent` (similary for `comp_b`),

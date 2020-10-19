@@ -191,6 +191,8 @@ pub(crate) struct ComponentDefinition {
     component_type: RustType,
     /// Arguments passed to the components `new` constructor when constructing.
     component_arguments: Vec<Expr>,
+    /// Whether or not the component has actual effects when constructed.
+    has_effects: bool,
 }
 
 impl ComponentDefinition {
@@ -228,6 +230,11 @@ impl ComponentDefinition {
         let comp_type = self.full_component_type();
         quote!(<#comp_type as crate::components::Component<#reactor_event_type>>::ConstructionError)
     }
+
+    /// Returns whether or not the component returns effects upon instantiation.
+    pub fn has_effects(&self) -> bool {
+        self.has_effects
+    }
 }
 
 impl Debug for ComponentDefinition {
@@ -245,6 +252,14 @@ impl Parse for ComponentDefinition {
         // Parse left hand side and type def.
         let name: Ident = input.parse()?;
         let _: Token!(=) = input.parse()?;
+
+        let has_effects = if input.peek(Token!(@)) {
+            let _: Token!(@) = input.parse()?;
+            true
+        } else {
+            false
+        };
+
         let ty: Path = input.parse()?;
 
         // Parse arguments
@@ -256,6 +271,7 @@ impl Parse for ComponentDefinition {
             name,
             component_type: RustType::new(ty),
             component_arguments: args.into_iter().collect(),
+            has_effects,
         })
     }
 }
