@@ -372,8 +372,8 @@ pub enum ApiRequest<I> {
     },
     /// Query the global state at the given root hash.
     QueryGlobalState {
-        /// The global state hash.
-        global_state_hash: Digest,
+        /// The state root hash.
+        state_root_hash: Digest,
         /// Hex-encoded `casper_types::Key`.
         base_key: Key,
         /// The path components starting from the key as base.
@@ -383,8 +383,8 @@ pub enum ApiRequest<I> {
     },
     /// Query the global state at the given root hash.
     GetBalance {
-        /// The global state hash.
-        global_state_hash: Digest,
+        /// The state root hash.
+        state_root_hash: Digest,
         /// The purse URef.
         purse_uref: URef,
         /// Responder to call with the result.
@@ -426,23 +426,23 @@ impl<I> Display for ApiRequest<I> {
                 maybe_hash: None, ..
             } => write!(formatter, "get latest block"),
             ApiRequest::QueryGlobalState {
-                global_state_hash,
+                state_root_hash,
                 base_key,
                 path,
                 ..
             } => write!(
                 formatter,
                 "query {}, base_key: {}, path: {:?}",
-                global_state_hash, base_key, path
+                state_root_hash, base_key, path
             ),
             ApiRequest::GetBalance {
-                global_state_hash,
+                state_root_hash,
                 purse_uref,
                 ..
             } => write!(
                 formatter,
                 "balance {}, purse_uref: {}",
-                global_state_hash, purse_uref
+                state_root_hash, purse_uref
             ),
             ApiRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
             ApiRequest::GetPeers { .. } => write!(formatter, "get peers"),
@@ -472,8 +472,8 @@ pub enum ContractRuntimeRequest {
     },
     /// A request to commit existing execution transforms.
     Commit {
-        /// A valid pre state hash.
-        pre_state_hash: Digest,
+        /// A valid state root hash.
+        state_root_hash: Digest,
         /// Effects obtained through `ExecutionResult`
         effects: AdditiveMap<Key, Transform>,
         /// Responder to call with the commit result.
@@ -534,13 +534,13 @@ impl Display for ContractRuntimeRequest {
             ),
 
             ContractRuntimeRequest::Commit {
-                pre_state_hash,
+                state_root_hash,
                 effects,
                 ..
             } => write!(
                 formatter,
                 "commit request: {} {:?}",
-                pre_state_hash, effects
+                state_root_hash, effects
             ),
 
             ContractRuntimeRequest::Upgrade { upgrade_config, .. } => {

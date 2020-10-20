@@ -21,6 +21,7 @@ use datasize::DataSize;
 use fmt::Display;
 use itertools::Itertools;
 use num_traits::AsPrimitive;
+use prometheus::Registry;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, trace, warn};
@@ -43,6 +44,7 @@ use crate::{
                 FinalizedBlock as CpFinalizedBlock,
             },
             highway_core::{highway::Params, validators::Validators},
+            metrics::ConsensusMetrics,
             protocols::highway::{HighwayContext, HighwayProtocol, HighwaySecret},
             traits::NodeIdT,
             Config, ConsensusMessage, Event, ReactorEventT,
@@ -257,6 +259,8 @@ pub struct EraSupervisor<I> {
     current_era: EraId,
     chainspec: Chainspec,
     node_start_time: Timestamp,
+    #[data_size(skip)]
+    metrics: ConsensusMetrics,
 }
 
 impl<I> Debug for EraSupervisor<I> {
@@ -271,18 +275,22 @@ where
     I: NodeIdT,
 {
     /// Creates a new `EraSupervisor`, starting in era 0.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new<REv: ReactorEventT<I>>(
         timestamp: Timestamp,
         config: WithDir<Config>,
         effect_builder: EffectBuilder<REv>,
         validator_stakes: Vec<(PublicKey, Motes)>,
         chainspec: &Chainspec,
-        genesis_post_state_hash: hash::Digest,
+        genesis_state_root_hash: hash::Digest,
+        registry: &Registry,
         mut rng: &mut dyn CryptoRngCore,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
         let (root, config) = config.into_parts();
         let secret_signing_key = Rc::new(config.secret_key_path.load(root)?);
         let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
+        let metrics = ConsensusMetrics::new(registry)
+            .expect("failure to setup and register ConsensusMetrics");
 
         let mut era_supervisor = Self {
             active_eras: Default::default(),
@@ -291,6 +299,7 @@ where
             current_era: EraId(0),
             chainspec: chainspec.clone(),
             node_start_time: Timestamp::now(),
+            metrics,
         };
 
         let results = era_supervisor.new_era(
@@ -301,7 +310,7 @@ where
             0,      // hardcoded seed for era 0
             chainspec.genesis.highway_config.genesis_era_start_timestamp,
             0, // the first block has height 0
-            genesis_post_state_hash,
+            genesis_state_root_hash,
         );
         let effects = era_supervisor
             .handling_wrapper(effect_builder, &mut rng)
@@ -328,13 +337,13 @@ where
         self.chainspec.genesis.highway_config
     }
 
-    fn instance_id(&self, post_state_hash: hash::Digest, block_height: u64) -> hash::Digest {
+    fn instance_id(&self, state_root_hash: hash::Digest, block_height: u64) -> hash::Digest {
         let mut result = [0; hash::Digest::LENGTH];
         let mut hasher = VarBlake2b::new(hash::Digest::LENGTH).expect("should create hasher");
 
         hasher.input(&self.chainspec.genesis.name);
         hasher.input(self.chainspec.genesis.timestamp.millis().to_le_bytes());
-        hasher.input(post_state_hash);
+        hasher.input(state_root_hash);
 
         for upgrade_point in self
             .chainspec
@@ -399,7 +408,7 @@ where
         seed: u64,
         start_time: Timestamp,
         start_height: u64,
-        post_state_hash: hash::Digest,
+        state_root_hash: hash::Digest,
     ) -> Vec<ConsensusProtocolResult<I, CandidateBlock, PublicKey>> {
         if self.active_eras.contains_key(&era_id) {
             panic!("{} already exists", era_id);
@@ -457,7 +466,7 @@ where
             && validators.iter().any(|v| *v.id() == our_id);
 
         let mut highway = HighwayProtocol::<I, HighwayContext>::new(
-            self.instance_id(post_state_hash, start_height),
+            self.instance_id(state_root_hash, start_height),
             validators,
             params,
             ftt,
@@ -634,7 +643,7 @@ where
             // create it, before we can say we handled the block
             let new_era_id = block_header.era_id().successor();
             let request = GetEraValidatorsRequest::new(
-                (*block_header.global_state_hash()).into(),
+                (*block_header.state_root_hash()).into(),
                 new_era_id.0,
                 ProtocolVersion::V1_0_0,
             );
@@ -707,7 +716,7 @@ where
             seed,
             block_header.timestamp(),
             block_header.height() + 1,
-            *block_header.global_state_hash(),
+            *block_header.state_root_hash(),
         );
         let mut effects = self.handle_consensus_results(era_id, results);
         effects.extend(
@@ -843,6 +852,12 @@ where
                     self.era(era_id).start_height + height,
                     proposer,
                 );
+                let time_since_proto_block = finalized_block.timestamp().elapsed().millis();
+                self.era_supervisor
+                    .metrics
+                    .finalization_time
+                    .set(time_since_proto_block as f64);
+                self.era_supervisor.metrics.finalized_block_count.inc();
                 // Announce the finalized proto block.
                 let mut effects = self
                     .effect_builder
