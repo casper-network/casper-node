@@ -44,14 +44,14 @@ mod key {
             .display_order(DisplayOrder::Key as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> String {
+    pub(super) fn get(matches: &ArgMatches) -> Key {
         let value = matches
             .value_of(ARG_NAME)
             .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME));
 
         // Try to parse as a `Key` first.
-        if Key::from_formatted_str(value).is_ok() {
-            return value.to_string();
+        if let Ok(value) = Key::from_formatted_str(value) {
+            return value;
         }
 
         // Try to parse from a hex-encoded `PublicKey`, a pem-encoded file then a hex-encoded file.
@@ -76,7 +76,7 @@ mod key {
         };
 
         // Return the public key as an account hash.
-        public_key.to_account_hash().to_formatted_string()
+        Key::Account(public_key.to_account_hash())
     }
 }
 
