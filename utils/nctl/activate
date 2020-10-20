@@ -1,0 +1,25 @@
+# ###############################################################
+# VARS
+# ###############################################################
+
+# Set here.
+export NCTL="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Set node root.
+export NCTL_CASPER_HOME="$( cd "$( dirname "${NCTL[0]}" )" && pwd )"
+export NCTL_CASPER_HOME="$( cd "$( dirname "${NCTL_CASPER_HOME[0]}" )" && pwd )"
+
+# Set type of daemon to run.
+export NCTL_DAEMON_TYPE=${NCTL_DAEMON_TYPE:-supervisord}
+
+# ###############################################################
+# UTILS
+# ###############################################################
+
+source $NCTL/sh/utils/misc.sh
+
+# ###############################################################
+# ALIASES
+# ###############################################################
+
+source $NCTL/sh/utils/set_aliases.sh

@@ -8,7 +8,7 @@ use smallvec::smallvec;
 use tracing::info;
 
 use super::{DeployMetadata, DeployStore, Error, Multiple, Result, Store, Value};
-use crate::types::json_compatibility::ExecutionResult;
+use crate::{types::json_compatibility::ExecutionResult, MAX_THREAD_COUNT};
 
 /// Used to namespace metadata associated with stored values.
 #[repr(u8)]
@@ -34,6 +34,8 @@ impl<V: Value, M: Default + Send + Sync> LmdbStore<V, M> {
         let env = Environment::new()
             .set_flags(EnvironmentFlags::NO_SUB_DIR)
             .set_map_size(max_size)
+            // to avoid panic on excessive read-only transactions
+            .set_max_readers(MAX_THREAD_COUNT as u32)
             .open(db_path.as_ref())?;
         let db = env.create_db(None, DatabaseFlags::empty())?;
         info!("opened DB at {}", db_path.as_ref().display());
@@ -95,6 +97,13 @@ impl<V: Value, M: Send + Sync> Store for LmdbStore<V, M> {
         let serialized_value =
             bincode::serialize(&value).map_err(|error| Error::from_serialization(*error))?;
         let mut txn = self.env.begin_rw_txn().expect("should create rw txn");
+
+        // TODO: this get() call should be removed when we pass WriteFlags::NO_OVERWRITE as below
+        let has_existing_value = match txn.get(self.db, &serialized_id) {
+            Ok(_) => true,
+            Err(lmdb::Error::NotFound) => false,
+            Err(error) => panic!("should get: {:?}", error),
+        };
         let result = match txn.put(
             self.db,
             &serialized_id,
@@ -104,7 +113,7 @@ impl<V: Value, M: Send + Sync> Store for LmdbStore<V, M> {
             //        execution results.
             WriteFlags::default(),
         ) {
-            Ok(()) => true,
+            Ok(()) => !has_existing_value, /* TODO: `true` when the above notes are fixed */
             Err(lmdb::Error::KeyExist) => false,
             Err(error) => panic!("should put: {:?}", error),
         };

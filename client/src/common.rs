@@ -41,7 +41,7 @@ pub mod node_address {
     const ARG_NAME: &str = "node-address";
     const ARG_SHORT: &str = "n";
     const ARG_VALUE_NAME: &str = "HOST:PORT";
-    const ARG_DEFAULT: &str = "http://localhost:7777";
+    const ARG_DEFAULT: &str = "http://localhost:50101";
     const ARG_HELP: &str = "Hostname or IP and port of node on which HTTP service is running";
 
     pub fn arg(order: usize) -> Arg<'static, 'static> {
@@ -155,14 +155,14 @@ pub mod force {
     }
 }
 
-/// Handles providing the arg for and retrieval of the global state hash.
-pub mod global_state_hash {
+/// Handles providing the arg for and retrieval of the state root hash.
+pub mod state_root_hash {
     use super::*;
 
-    const ARG_NAME: &str = "global-state-hash";
+    const ARG_NAME: &str = "state-root-hash";
     const ARG_SHORT: &str = "g";
     const ARG_VALUE_NAME: &str = super::ARG_HEX_STRING;
-    const ARG_HELP: &str = "Hex-encoded global state hash";
+    const ARG_HELP: &str = "Hex-encoded hash of the state root";
 
     pub(crate) fn arg(order: usize) -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -179,7 +179,7 @@ pub mod global_state_hash {
             .value_of(ARG_NAME)
             .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME));
         Digest::from_hex(hex_str)
-            .unwrap_or_else(|error| panic!("cannot parse as a global state hash: {}", error))
+            .unwrap_or_else(|error| panic!("cannot parse as a hash of the state root: {}", error))
     }
 }
 

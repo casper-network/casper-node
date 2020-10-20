@@ -3,7 +3,7 @@ use std::str;
 use clap::{App, ArgMatches, SubCommand};
 
 use casper_client::RpcCall;
-use casper_node::rpcs::chain::GetGlobalStateHash;
+use casper_node::rpcs::chain::GetStateRootHash;
 
 use crate::{command::ClientCommand, common};
 
@@ -15,9 +15,9 @@ enum DisplayOrder {
     BlockHash,
 }
 
-impl<'a, 'b> ClientCommand<'a, 'b> for GetGlobalStateHash {
-    const NAME: &'static str = "get-global-state-hash";
-    const ABOUT: &'static str = "Retrieves a global state hash";
+impl<'a, 'b> ClientCommand<'a, 'b> for GetStateRootHash {
+    const NAME: &'static str = "get-state-root-hash";
+    const ABOUT: &'static str = "Retrieves a hash of the state root";
 
     fn build(display_order: usize) -> App<'a, 'b> {
         SubCommand::with_name(Self::NAME)
@@ -37,7 +37,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetGlobalStateHash {
         let rpc_id = common::rpc_id::get(matches);
         let maybe_block_hash = common::block_hash::get(matches);
         let response = RpcCall::new(rpc_id, verbose)
-            .get_global_state_hash(node_address, maybe_block_hash)
+            .get_state_root_hash(node_address, maybe_block_hash)
             .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",

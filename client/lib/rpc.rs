@@ -9,7 +9,7 @@ use casper_node::{
     crypto::{asymmetric_key::PublicKey, hash::Digest},
     rpcs::{
         account::{PutDeploy, PutDeployParams},
-        chain::{GetBlock, GetBlockParams, GetGlobalStateHash, GetGlobalStateHashParams},
+        chain::{GetBlock, GetBlockParams, GetStateRootHash, GetStateRootHashParams},
         info::{GetDeploy, GetDeployParams},
         state::{GetBalance, GetBalanceParams, GetItem, GetItemParams},
         RPC_API_PATH,
@@ -48,12 +48,12 @@ impl RpcCall {
     pub fn get_item(
         self,
         node_address: String,
-        global_state_hash: Digest,
+        state_root_hash: Digest,
         key: String,
         path: Vec<String>,
     ) -> Result<JsonRpc> {
         let params = GetItemParams {
-            global_state_hash,
+            state_root_hash,
             key,
             path,
         };
@@ -62,22 +62,22 @@ impl RpcCall {
 
     /// Queries the node for the most recent `global_state_hash`, or as of a given block hash if
     /// `maybe_block_hash` is provided.
-    pub fn get_global_state_hash(
+    pub fn get_state_root_hash(
         self,
         node_address: String,
         maybe_block_hash: Option<BlockHash>,
     ) -> Result<JsonRpc> {
         match maybe_block_hash {
             Some(block_hash) => {
-                let params = GetGlobalStateHashParams { block_hash };
-                GetGlobalStateHash::request_with_map_params(
+                let params = GetStateRootHashParams { block_hash };
+                GetStateRootHash::request_with_map_params(
                     self.verbose,
                     &node_address,
                     self.rpc_id,
                     params,
                 )
             }
-            None => GetGlobalStateHash::request(self.verbose, &node_address, self.rpc_id),
+            None => GetStateRootHash::request(self.verbose, &node_address, self.rpc_id),
         }
     }
 
@@ -290,7 +290,7 @@ pub trait IntoJsonMap: Serialize {
 
 impl IntoJsonMap for PutDeployParams {}
 impl IntoJsonMap for GetBlockParams {}
-impl IntoJsonMap for GetGlobalStateHashParams {}
+impl IntoJsonMap for GetStateRootHashParams {}
 impl IntoJsonMap for GetDeployParams {}
 impl IntoJsonMap for GetBalanceParams {}
 impl IntoJsonMap for GetItemParams {}

@@ -1,6 +1,6 @@
 [package]
 name = "casper-node"
-version = "0.1.0" # when updating, also update 'html_root_url' in lib.rs
+version = "1.5.0" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Marc Brinkmann <marc@casperlabs.io>", "Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "The Casper blockchain node"
@@ -118,7 +118,6 @@ features = ["vendored-openssl"]
 revision = "0"
 assets = [
     ["../target/release/casper-node", "/usr/bin/casper-node", "755"],
-    ["../target/release/casper-client", "/usr/bin/casper-client", "755"],
     ["../target/wasm32-unknown-unknown/release/mint_install.wasm", "/etc/casper/wasm/mint_install.wasm", "644"],
     ["../target/wasm32-unknown-unknown/release/pos_install.wasm", "/etc/casper/wasm/pos_install.wasm", "644"],
     ["../target/wasm32-unknown-unknown/release/standard_payment_install.wasm", "/etc/casper/wasm/standard_payment_install.wasm", "644"],
