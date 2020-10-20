@@ -66,7 +66,7 @@ pub fn supported_cl_type_list() -> String {
     msg
 }
 
-/// Parse a `CLValue` given a `CLType` and a `value`, 
+/// Parse a `CLValue` given a `CLType` and a `value`,
 pub fn parse_value(cl_type: CLType, value: &str) -> Result<CLValue> {
     let cl_value = match cl_type {
         CLType::Bool => match value.to_lowercase().as_str() {

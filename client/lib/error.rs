@@ -4,7 +4,7 @@ use jsonrpc_lite::JsonRpc;
 use thiserror::Error;
 
 use casper_node::crypto::Error as CryptoError;
-use casper_types::{bytesrepr::Error as ToBytesError};
+use casper_types::bytesrepr::Error as ToBytesError;
 
 /// Crate-wide Result type wrapper.
 pub(crate) type Result<T> = std::result::Result<T, Error>;

@@ -1,4 +1,7 @@
-use std::{fs::File, io::{self, BufReader, Write}};
+use std::{
+    fs::File,
+    io::{self, BufReader, Write},
+};
 
 use semver::Version;
 use serde::{Deserialize, Serialize};
