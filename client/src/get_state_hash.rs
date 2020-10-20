@@ -3,7 +3,7 @@ use std::str;
 use clap::{App, ArgMatches, SubCommand};
 
 use casper_node::rpcs::{
-    chain::{GetGlobalStateHash, GetGlobalStateHashParams},
+    chain::{GetStateRootHash, GetStateRootHashParams},
     RpcWithOptionalParams,
 };
 
@@ -17,13 +17,13 @@ enum DisplayOrder {
     BlockHash,
 }
 
-impl RpcClient for GetGlobalStateHash {
+impl RpcClient for GetStateRootHash {
     const RPC_METHOD: &'static str = Self::METHOD;
 }
 
-impl<'a, 'b> ClientCommand<'a, 'b> for GetGlobalStateHash {
-    const NAME: &'static str = "get-global-state-hash";
-    const ABOUT: &'static str = "Retrieves a global state hash";
+impl<'a, 'b> ClientCommand<'a, 'b> for GetStateRootHash {
+    const NAME: &'static str = "get-state-root-hash";
+    const ABOUT: &'static str = "Retrieves a hash of the state root";
 
     fn build(display_order: usize) -> App<'a, 'b> {
         SubCommand::with_name(Self::NAME)
@@ -45,7 +45,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetGlobalStateHash {
 
         let response = match maybe_block_hash {
             Some(block_hash) => {
-                let params = GetGlobalStateHashParams { block_hash };
+                let params = GetStateRootHashParams { block_hash };
                 Self::request_with_map_params(verbose, &node_address, rpc_id, params)
             }
             None => Self::request(verbose, &node_address, rpc_id),
