@@ -628,7 +628,7 @@ where
             .iter_bonded()
             .flat_map(|e_id| self.era(e_id).consensus.validators_with_evidence())
             .unique()
-            .filter(|pub_key| self.era(era_id).slashed.contains(pub_key))
+            .filter(|pub_key| !self.era(era_id).slashed.contains(pub_key))
             .cloned()
             .collect();
         let candidate_block = CandidateBlock::new(proto_block, accusations);
