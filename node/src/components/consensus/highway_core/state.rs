@@ -74,15 +74,19 @@ pub(crate) enum VoteError {
 }
 
 /// A reason for a validator to be marked as faulty.
+///
+/// The `Banned` state is fixed from the beginning and can't be replaced. However, `Indirect` can
+/// be replaced with `Direct` evidence, which has the same effect but doesn't rely on information
+/// from other consensus protocol instances.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Fault<C: Context> {
     /// The validator was known to be faulty from the beginning. All their messages are considered
     /// invalid in this Highway instance.
     Banned,
+    /// We have direct evidence of the validator's fault.
+    Direct(Evidence<C>),
     /// The validator is known to be faulty, but the evidence is not in this Highway instance.
     Indirect,
-    /// We have evidence of the validator's fault.
-    Direct(Evidence<C>),
 }
 
 impl<C: Context> Fault<C> {
@@ -291,10 +295,13 @@ impl<C: Context> State<C> {
         self.votes.insert(hash, vote);
     }
 
+    /// Adds direct evidence proving a validator to be faulty, unless that validators is already
+    /// banned or we already have other direct evidence.
     pub(crate) fn add_evidence(&mut self, evidence: Evidence<C>) {
         let idx = evidence.perpetrator();
-        if Some(&Fault::Banned) == self.faults.get(&idx) {
-            return;
+        match self.faults.get(&idx) {
+            Some(&Fault::Banned) | Some(&Fault::Direct(_)) => return,
+            None | Some(&Fault::Indirect) => (),
         }
         // TODO: Should use Display, not Debug!
         info!(?evidence, "marking validator #{} as faulty", idx.0);
