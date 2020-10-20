@@ -58,12 +58,15 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetDeploy {
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let verbose = common::verbose::get(matches);
-        let node_address = common::node_address::get(matches);
-        let rpc_id = common::rpc_id::get(matches);
+        let rpc = RpcCall::new(
+            common::rpc_id::get(matches),
+            common::node_address::get(matches),
+            common::verbose::get(matches),
+        );
+
         let deploy_hash = deploy_hash::get(matches);
-        let response = RpcCall::new(rpc_id, verbose)
-            .get_deploy(node_address, deploy_hash)
+        let response = rpc
+            .get_deploy(deploy_hash)
             .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",

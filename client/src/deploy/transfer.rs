@@ -157,18 +157,26 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
 
     fn run(matches: &ArgMatches<'_>) {
         creation_common::show_arg_examples_and_exit_if_required(matches);
-        let verbose = common::verbose::get(matches);
-        let rpc_id = common::rpc_id::get(matches);
+
+        let rpc = RpcCall::new(
+            common::rpc_id::get(matches),
+            common::node_address::get(matches),
+            common::verbose::get(matches),
+        );
+
+        let amount = amount::get(matches);
+        let source_purse = source_purse::get(matches);
+        let target_account = target_account::get(matches);
+        let target_purse = target_purse::get(matches);
         let deploy_params = creation_common::parse_deploy_params(matches);
         let payment = creation_common::parse_payment_info(matches);
 
-        let response = RpcCall::new(rpc_id, verbose)
+        let response = rpc
             .transfer(
-                common::node_address::get(matches),
-                amount::get(matches),
-                source_purse::get(matches),
-                target_account::get(matches),
-                target_purse::get(matches),
+                amount,
+                source_purse,
+                target_account,
+                target_purse,
                 deploy_params,
                 payment,
             )

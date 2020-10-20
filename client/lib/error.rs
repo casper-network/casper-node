@@ -5,36 +5,36 @@ use casper_node::crypto::Error as CryptoError;
 use casper_types::bytesrepr::Error as ToBytesError;
 
 /// Crate-wide Result type wrapper.
-pub type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;
 
 /// Error that can be returned by `casper-client`.
 #[derive(Error, Debug)]
 pub enum Error {
-    /// Failed to get a response from the server.
+    /// Failed to get a response from the node.
     #[error("failed to get rpc response: {0}")]
     FailedToGetResponse(reqwest::Error),
 
-    /// Failed to parse the response from the server.
+    /// Failed to parse the response from the node.
     #[error("failed to parse as json-rpc response: {0}")]
     FailedToParseResponse(reqwest::Error),
 
-    /// JSON-RPC error returned from the server.
+    /// JSON-RPC error returned from the node.
     #[error("rpc response is error: {0}")]
     ResponseIsError(#[from] jsonrpc_lite::Error),
 
-    /// Invalid JSON returned from the server.
+    /// Invalid JSON returned from the node.
     #[error("invalid json: {0}")]
     InvalidJson(#[from] serde_json::Error),
 
-    /// Invalid response returned from the server.
+    /// Invalid response returned from the node.
     #[error("invalid response: {0:?}")]
     InvalidResponse(JsonRpc),
 
-    /// Failed to send the request to the server.
+    /// Failed to send the request to the node.
     #[error("Failed sending {0:?}")]
     FailedSending(JsonRpc),
 
-    /// Wrapper for std::io::Error
+    /// Wrapper for `std::io::Error`.
     #[error("io::Error {0}")]
     IoError(#[from] std::io::Error),
 

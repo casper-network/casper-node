@@ -24,13 +24,21 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
     fn run(matches: &ArgMatches<'_>) {
         creation_common::show_arg_examples_and_exit_if_required(matches);
 
-        let verbose = common::verbose::get(matches);
-        let node_address = common::node_address::get(matches);
-        let rpc_id = common::rpc_id::get(matches);
+        let rpc = RpcCall::new(
+            common::rpc_id::get(matches),
+            common::node_address::get(matches),
+            common::verbose::get(matches),
+        );
+
         let session = creation_common::parse_session_info(matches);
         let deploy = creation_common::parse_deploy(matches, session);
-        let _ = RpcCall::new(rpc_id, verbose)
-            .put_deploy(node_address, deploy)
+
+        let response = rpc
+            .put_deploy(deploy)
             .unwrap_or_else(|error| panic!("response error: {}", error));
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&response).expect("should encode to JSON")
+        );
     }
 }

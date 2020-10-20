@@ -3,10 +3,7 @@ use std::str;
 use clap::{App, Arg, ArgMatches, SubCommand};
 
 use casper_client::RpcCall;
-use casper_node::rpcs::{
-    state::{GetBalance, GetBalanceParams},
-    RpcWithParams,
-};
+use casper_node::rpcs::state::GetBalance;
 
 use crate::{command::ClientCommand, common};
 
@@ -48,20 +45,6 @@ mod purse_uref {
     }
 }
 
-mod balance_args {
-    use super::*;
-
-    pub(super) fn get(matches: &ArgMatches) -> <GetBalance as RpcWithParams>::RequestParams {
-        let state_hash = common::state_root_hash::get(&matches);
-        let purse_uref = purse_uref::get(&matches);
-
-        GetBalanceParams {
-            state_root_hash: state_hash,
-            purse_uref,
-        }
-    }
-}
-
 impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {
     const NAME: &'static str = "get-balance";
     const ABOUT: &'static str = "Retrieves a stored balance";
@@ -82,12 +65,17 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let verbose = common::verbose::get(matches);
-        let rpc_id = common::rpc_id::get(matches);
-        let node_address = common::node_address::get(matches);
-        let params = balance_args::get(matches);
-        let response = RpcCall::new(rpc_id, verbose)
-            .get_balance(node_address, params)
+        let rpc = RpcCall::new(
+            common::rpc_id::get(matches),
+            common::node_address::get(matches),
+            common::verbose::get(matches),
+        );
+
+        let state_root_hash = common::state_root_hash::get(&matches);
+        let purse_uref = purse_uref::get(&matches);
+
+        let response = rpc
+            .get_balance(state_root_hash, purse_uref)
             .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",

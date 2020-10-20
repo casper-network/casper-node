@@ -1,6 +1,6 @@
 use clap::{App, ArgMatches, SubCommand};
 
-use casper_client::deploy::DeployExt;
+use casper_client::DeployExt;
 use casper_node::types::Deploy;
 
 use super::creation_common;

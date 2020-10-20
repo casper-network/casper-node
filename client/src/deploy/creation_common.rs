@@ -11,7 +11,7 @@ use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches};
 use lazy_static::lazy_static;
 use serde::{self, Deserialize};
 
-use casper_client::{deploy::DeployParams, ExecutableDeployItemExt};
+use casper_client::{DeployParams, ExecutableDeployItemExt};
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_node::{
     crypto::{asymmetric_key::PublicKey as NodePublicKey, hash::Digest},
@@ -740,7 +740,7 @@ pub(super) fn parse_session_module_args(matches: &ArgMatches<'_>) -> (Vec<u8>, R
 pub(super) fn parse_session_info(matches: &ArgMatches) -> ExecutableDeployItem {
     let (module_bytes, session_args) = parse_session_module_args(matches);
     if let Some(name) = session_name::get(matches) {
-        return ExecutableDeployItem::stored_contract_by_name(
+        return ExecutableDeployItem::new_stored_contract_by_name(
             name,
             require_session_entry_point(matches),
             session_args,
@@ -748,7 +748,7 @@ pub(super) fn parse_session_info(matches: &ArgMatches) -> ExecutableDeployItem {
         .expect("should serialize");
     }
     if let Some(hash) = session_hash::get(matches) {
-        return ExecutableDeployItem::stored_contract_by_hash(
+        return ExecutableDeployItem::new_stored_contract_by_hash(
             hash,
             require_session_entry_point(matches),
             session_args,
@@ -757,7 +757,7 @@ pub(super) fn parse_session_info(matches: &ArgMatches) -> ExecutableDeployItem {
     }
     if let Some(version) = session_version::get(matches) {
         if let Some(name) = session_package_name::get(matches) {
-            return ExecutableDeployItem::stored_versioned_contract_by_name(
+            return ExecutableDeployItem::new_stored_versioned_contract_by_name(
                 name,
                 version,
                 require_session_entry_point(matches),
@@ -766,7 +766,7 @@ pub(super) fn parse_session_info(matches: &ArgMatches) -> ExecutableDeployItem {
             .expect("should serialize");
         }
         if let Some(hash) = session_package_hash::get(matches) {
-            return ExecutableDeployItem::stored_versioned_contract_by_hash(
+            return ExecutableDeployItem::new_stored_versioned_contract_by_hash(
                 hash,
                 version,
                 require_session_entry_point(matches),
@@ -784,7 +784,7 @@ pub(super) fn parse_session_info(matches: &ArgMatches) -> ExecutableDeployItem {
 pub(super) fn parse_payment_info(matches: &ArgMatches) -> ExecutableDeployItem {
     let (module_bytes, payment_args) = parse_payment_module_args(matches);
     if let Some(name) = payment_name::get(matches) {
-        return ExecutableDeployItem::stored_contract_by_name(
+        return ExecutableDeployItem::new_stored_contract_by_name(
             name,
             require_payment_entry_point(matches),
             payment_args,
@@ -792,7 +792,7 @@ pub(super) fn parse_payment_info(matches: &ArgMatches) -> ExecutableDeployItem {
         .expect("should serialize");
     }
     if let Some(hash) = payment_hash::get(matches) {
-        return ExecutableDeployItem::stored_contract_by_hash(
+        return ExecutableDeployItem::new_stored_contract_by_hash(
             hash,
             require_payment_entry_point(matches),
             payment_args,
@@ -801,7 +801,7 @@ pub(super) fn parse_payment_info(matches: &ArgMatches) -> ExecutableDeployItem {
     }
     if let Some(version) = payment_version::get(matches) {
         if let Some(name) = payment_package_name::get(matches) {
-            return ExecutableDeployItem::stored_versioned_contract_by_name(
+            return ExecutableDeployItem::new_stored_versioned_contract_by_name(
                 name,
                 version,
                 require_payment_entry_point(matches),
@@ -810,7 +810,7 @@ pub(super) fn parse_payment_info(matches: &ArgMatches) -> ExecutableDeployItem {
             .expect("should serialize");
         }
         if let Some(hash) = payment_package_hash::get(matches) {
-            return ExecutableDeployItem::stored_versioned_contract_by_hash(
+            return ExecutableDeployItem::new_stored_versioned_contract_by_hash(
                 hash,
                 version,
                 require_payment_entry_point(matches),
