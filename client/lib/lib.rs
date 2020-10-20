@@ -17,7 +17,7 @@ mod block;
 mod deploy;
 mod error;
 mod executable_deploy_item_ext;
-mod get_global_state_hash;
+mod get_state_hash;
 pub mod keygen;
 mod query_state;
 mod rpc;

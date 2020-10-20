@@ -7,12 +7,15 @@ mod cli;
 pub mod config;
 
 use std::{
-    panic::{set_hook, PanicInfo},
-    process::abort,
+    panic::{self, PanicInfo},
+    process,
 };
 
 use backtrace::Backtrace;
 use structopt::StructOpt;
+use tokio::runtime::Builder;
+
+use casper_node::MAX_THREAD_COUNT;
 
 use cli::Cli;
 
@@ -35,14 +38,21 @@ fn panic_hook(info: &PanicInfo) {
     }
 
     // Abort after a panic, even if only a worker thread panicked.
-    abort()
+    process::abort()
 }
 
-#[tokio::main]
-pub async fn main() -> anyhow::Result<()> {
-    set_hook(Box::new(panic_hook));
+fn main() -> anyhow::Result<()> {
+    let mut runtime = Builder::new()
+        .threaded_scheduler()
+        .enable_all()
+        .max_threads(MAX_THREAD_COUNT)
+        .build()
+        .unwrap();
+
+    panic::set_hook(Box::new(panic_hook));
 
     // Parse CLI args and run selected subcommand.
     let opts = Cli::from_args();
-    opts.run().await
+
+    runtime.block_on(async { opts.run().await })
 }

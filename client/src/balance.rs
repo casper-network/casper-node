@@ -12,7 +12,7 @@ enum DisplayOrder {
     Verbose,
     NodeAddress,
     RpcId,
-    GlobalStateHash,
+    StateRootHash,
     PurseURef,
 }
 
@@ -58,8 +58,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {
                 DisplayOrder::NodeAddress as usize,
             ))
             .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
-            .arg(common::global_state_hash::arg(
-                DisplayOrder::GlobalStateHash as usize,
+            .arg(common::state_root_hash::arg(
+                DisplayOrder::StateRootHash as usize,
             ))
             .arg(purse_uref::arg())
     }
@@ -71,11 +71,11 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {
             common::verbose::get(matches),
         );
 
-        let global_state_hash = common::global_state_hash::get(&matches);
+        let state_root_hash = common::state_root_hash::get(&matches);
         let purse_uref = purse_uref::get(&matches);
 
         let response = rpc
-            .get_balance(global_state_hash, purse_uref)
+            .get_balance(state_root_hash, purse_uref)
             .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",

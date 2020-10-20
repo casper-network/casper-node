@@ -9,7 +9,7 @@ use casper_node::{
     crypto::{asymmetric_key::PublicKey, hash::Digest},
     rpcs::{
         account::{PutDeploy, PutDeployParams},
-        chain::{GetBlock, GetBlockParams, GetGlobalStateHash, GetGlobalStateHashParams},
+        chain::{GetBlock, GetBlockParams, GetStateRootHash, GetStateRootHashParams},
         info::{GetDeploy, GetDeployParams},
         state::{GetBalance, GetBalanceParams, GetItem, GetItemParams},
         RPC_API_PATH,
@@ -58,37 +58,37 @@ impl RpcCall {
         GetDeploy::request_with_map_params(self, params)
     }
 
-    /// Queries the node for an item at `key`, given a `path` and a `global_state_hash`.
+    /// Queries the node for an item at `key`, given a `path` and a `state_root_hash`.
     pub fn get_item(
         self,
-        global_state_hash: Digest,
+        state_root_hash: Digest,
         key: String,
         path: Vec<String>,
     ) -> Result<JsonRpc> {
         let params = GetItemParams {
-            global_state_hash,
+            state_root_hash,
             key,
             path,
         };
         GetItem::request_with_map_params(self, params)
     }
 
-    /// Queries the node for the most recent `global_state_hash`, or as of a given `BlockHash` if
-    /// `maybe_block_hash` is `Some`.
-    pub fn get_global_state_hash(self, maybe_block_hash: Option<BlockHash>) -> Result<JsonRpc> {
+    /// Queries the node for the most recent state root hash or as of a given block hash if
+    /// `maybe_block_hash` is provided.
+    pub fn get_state_root_hash(self, maybe_block_hash: Option<BlockHash>) -> Result<JsonRpc> {
         match maybe_block_hash {
             Some(block_hash) => {
-                let params = GetGlobalStateHashParams { block_hash };
-                GetGlobalStateHash::request_with_map_params(self, params)
+                let params = GetStateRootHashParams { block_hash };
+                GetStateRootHash::request_with_map_params(self, params)
             }
-            None => GetGlobalStateHash::request(self),
+            None => GetStateRootHash::request(self),
         }
     }
 
     /// Gets the balance from a purse.
-    pub fn get_balance(self, global_state_hash: Digest, purse_uref: String) -> Result<JsonRpc> {
+    pub fn get_balance(self, state_root_hash: Digest, purse_uref: String) -> Result<JsonRpc> {
         let params = GetBalanceParams {
-            global_state_hash,
+            state_root_hash,
             purse_uref,
         };
         GetBalance::request_with_map_params(self, params)
@@ -263,7 +263,7 @@ pub(crate) trait IntoJsonMap: Serialize {
 
 impl IntoJsonMap for PutDeployParams {}
 impl IntoJsonMap for GetBlockParams {}
-impl IntoJsonMap for GetGlobalStateHashParams {}
+impl IntoJsonMap for GetStateRootHashParams {}
 impl IntoJsonMap for GetDeployParams {}
 impl IntoJsonMap for GetBalanceParams {}
 impl IntoJsonMap for GetItemParams {}
