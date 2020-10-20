@@ -166,6 +166,13 @@ impl<C: Context> Highway<C> {
         self.active_validator = None;
     }
 
+    /// Notifies the active validator of a new finalized block
+    pub(crate) fn handle_finalized_block(&mut self, block_timestamp: Timestamp) {
+        if let Some(av) = self.active_validator.as_mut() {
+            av.handle_finalized_block(block_timestamp);
+        }
+    }
+
     /// Does initial validation. Returns an error if the vertex is invalid.
     pub(crate) fn pre_validate_vertex(
         &self,

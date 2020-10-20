@@ -119,9 +119,16 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
     }
 
     fn detect_finality(&mut self) -> impl Iterator<Item = CpResult<I, C>> + '_ {
-        self.finality_detector
+        let finalized_blocks = self
+            .finality_detector
             .run(&self.highway)
             .expect("too many faulty validators")
+            .collect::<Vec<_>>();
+        for block in &finalized_blocks {
+            self.highway.handle_finalized_block(block.timestamp);
+        }
+        finalized_blocks
+            .into_iter()
             .map(ConsensusProtocolResult::FinalizedBlock)
     }
 

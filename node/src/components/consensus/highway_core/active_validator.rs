@@ -1,6 +1,10 @@
+mod round_success_meter;
+
 use std::fmt::{self, Debug};
 
 use tracing::{error, warn};
+
+use self::round_success_meter::{ExponentChange, RoundSuccessMeter};
 
 use super::{
     evidence::Evidence,
@@ -57,6 +61,8 @@ pub(crate) struct ActiveValidator<C: Context> {
     next_timer: Timestamp,
     /// Panorama and timestamp for a block we are about to propose when we get a consensus value.
     next_proposal: Option<(Timestamp, Panorama<C>)>,
+    /// A tracker for whether we are keeping up with the current round exponent or not
+    round_success_meter: RoundSuccessMeter,
 }
 
 impl<C: Context> Debug for ActiveValidator<C> {
@@ -77,12 +83,14 @@ impl<C: Context> ActiveValidator<C> {
         timestamp: Timestamp,
         state: &State<C>,
     ) -> (Self, Vec<Effect<C>>) {
+        let next_round_exp = state.params().init_round_exp();
         let mut av = ActiveValidator {
             vidx,
             secret,
-            next_round_exp: state.params().init_round_exp(),
+            next_round_exp,
             next_timer: Timestamp::zero(),
             next_proposal: None,
+            round_success_meter: RoundSuccessMeter::new(next_round_exp, timestamp),
         };
         let effects = av.schedule_timer(timestamp, state);
         (av, effects)
@@ -213,6 +221,23 @@ impl<C: Context> ActiveValidator<C> {
         vec![Effect::NewVertex(ValidVertex(Vertex::Vote(proposal_vote)))]
     }
 
+    /// Registers the finalization of a block and checks whether the round exponent should be
+    /// changed
+    pub(crate) fn handle_finalized_block(&mut self, block_timestamp: Timestamp) {
+        match self
+            .round_success_meter
+            .handle_finalized_block(block_timestamp, Timestamp::now())
+        {
+            ExponentChange::Increase => {
+                self.next_round_exp += 1;
+            }
+            ExponentChange::Decrease => {
+                self.next_round_exp -= 1;
+            }
+            ExponentChange::Nothing => (),
+        }
+    }
+
     /// Returns whether the incoming message is a proposal that we need to send a confirmation for.
     fn should_send_confirmation(
         &self,
@@ -290,6 +315,14 @@ impl<C: Context> ActiveValidator<C> {
             panorama = state.panorama().clone();
         }
         let seq_number = panorama.next_seq_num(state, self.vidx);
+        let prev_round_exp = self
+            .latest_vote(state)
+            .map_or(self.next_round_exp, |vote| vote.round_exp);
+        let next_round_exp = self.round_exp(state, timestamp);
+        if next_round_exp != prev_round_exp {
+            self.round_success_meter
+                .change_exponent(next_round_exp, timestamp);
+        }
         let wvote = WireVote {
             panorama,
             creator: self.vidx,
@@ -297,7 +330,7 @@ impl<C: Context> ActiveValidator<C> {
             value,
             seq_number,
             timestamp,
-            round_exp: self.round_exp(state, timestamp),
+            round_exp: next_round_exp,
         };
         SignedWireVote::new(wvote, &self.secret, rng)
     }
